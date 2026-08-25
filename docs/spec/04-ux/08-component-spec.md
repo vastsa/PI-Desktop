@@ -910,9 +910,9 @@ SESSIONS                                      [msg+][↕]
   scrolls internally when more rows exist. The Projects list uses the remaining
   sidebar height and scrolls independently; neither region scrolls the footer
   or primary navigation. Both list scrollbars remain 6px, trackless, and
-  low-contrast at rest; the semantic-ink thumb strengthens on hover or drag so
-  the independent regions stay available without becoming persistent visual
-  rails.
+  transparent at rest; the semantic-ink thumb appears when its list is hovered
+  or focused and remains visible while dragging, so the independent regions
+  stay available without becoming persistent visual rails.
 
 ---
 

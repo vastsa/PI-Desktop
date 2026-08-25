@@ -64,13 +64,12 @@
 }
 
 /* Keep sidebar scrolling available without turning the navigation tree into a
-   second visual rail. The thumb gets a small, low-contrast resting state and
-   only gains emphasis while the pointer is over the control. */
+   second visual rail. The thumb stays hidden at rest and appears when the
+   pointer or keyboard focus enters the owning scroll region. */
 .sidebar-session-groups,
 .sidebar-session-group-body.standalone {
-  --sidebar-scrollbar-thumb: color-mix(in oklab, var(--ds-text-primary) 10%, transparent);
   --sidebar-scrollbar-thumb-hover: color-mix(in oklab, var(--ds-text-primary) 20%, transparent);
-  scrollbar-color: var(--sidebar-scrollbar-thumb) transparent;
+  scrollbar-color: transparent transparent;
 }
 
 .sidebar-session-groups::-webkit-scrollbar,
@@ -83,10 +82,21 @@
 .sidebar-session-group-body.standalone::-webkit-scrollbar-thumb {
   border: 1px solid transparent;
   border-radius: var(--radius-full);
-  background: var(--sidebar-scrollbar-thumb);
+  background: transparent;
   background-clip: content-box;
 }
 
+.sidebar-session-groups:hover,
+.sidebar-session-groups:focus-within,
+.sidebar-session-group-body.standalone:hover,
+.sidebar-session-group-body.standalone:focus-within {
+  scrollbar-color: var(--sidebar-scrollbar-thumb-hover) transparent;
+}
+
+.sidebar-session-groups:hover::-webkit-scrollbar-thumb,
+.sidebar-session-groups:focus-within::-webkit-scrollbar-thumb,
+.sidebar-session-group-body.standalone:hover::-webkit-scrollbar-thumb,
+.sidebar-session-group-body.standalone:focus-within::-webkit-scrollbar-thumb,
 .sidebar-session-groups::-webkit-scrollbar-thumb:hover,
 .sidebar-session-groups::-webkit-scrollbar-thumb:active,
 .sidebar-session-group-body.standalone::-webkit-scrollbar-thumb:hover,

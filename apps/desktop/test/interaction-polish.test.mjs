@@ -39,19 +39,22 @@ test("scrollbars expose a hover-strengthened thumb", () => {
   );
 });
 
-test("sidebar scrollbars stay quiet until pointer interaction", () => {
+test("sidebar scrollbars stay hidden until hover or focus", () => {
   assert.match(
     styles,
-    /\.sidebar-session-groups,\s*\.sidebar-session-group-body\.standalone\s*\{[\s\S]*?scrollbar-color:\s*var\(--sidebar-scrollbar-thumb\) transparent;/,
+    /\.sidebar-session-groups,\s*\.sidebar-session-group-body\.standalone\s*\{[\s\S]*?scrollbar-color:\s*transparent transparent;/,
   );
   assert.match(
     styles,
     /\.sidebar-session-groups::-webkit-scrollbar\s*,[\s\S]*?\.sidebar-session-group-body\.standalone::-webkit-scrollbar\s*\{[\s\S]*?width:\s*6px;[\s\S]*?height:\s*6px;/,
   );
-  assert.match(styles, /--sidebar-scrollbar-thumb: color-mix\([^;]*10%/);
   assert.match(styles, /--sidebar-scrollbar-thumb-hover: color-mix\([^;]*20%/);
   assert.match(
     styles,
-    /\.sidebar-session-groups::-webkit-scrollbar-thumb:hover,[\s\S]*?background:\s*var\(--sidebar-scrollbar-thumb-hover\);/,
+    /\.sidebar-session-groups:hover,\s*\.sidebar-session-groups:focus-within,[\s\S]*?scrollbar-color:\s*var\(--sidebar-scrollbar-thumb-hover\) transparent;/,
+  );
+  assert.match(
+    styles,
+    /\.sidebar-session-groups:hover::-webkit-scrollbar-thumb,[\s\S]*?background:\s*var\(--sidebar-scrollbar-thumb-hover\);/,
   );
 });

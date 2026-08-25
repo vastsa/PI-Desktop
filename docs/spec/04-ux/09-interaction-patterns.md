@@ -967,7 +967,9 @@ When drag/drop is implemented, these patterns should apply:
   navigation.
 - No horizontal scroll in sidebar
 - Scroll indicators use the platform's subtle overlay treatment without
-  changing either region's width.
+  changing either region's width. The 6px thumb is transparent at rest and
+  appears when the owning list is hovered or focused; dragging keeps it
+  visible until the interaction ends.
 
 ### 9.3 Settings scrolling
 

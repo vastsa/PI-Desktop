@@ -6185,16 +6185,19 @@ This test plan spec is accepted when:
   temporary sessions than the five-row cap, and enough retained project
   sessions to overflow the Projects region.
 - **Steps**: 1) Inspect the idle Sessions and Projects scrollbars in light and
-  dark themes. 2) Move the pointer over each thumb and drag it through its
-  region. 3) Scroll the list with the wheel or trackpad after moving the
-  pointer away from the thumb.
+  dark themes. 2) Move the pointer into each list and then away from it,
+  confirming that only the hovered list's thumb appears. 3) Move the pointer
+  back into each list, drag its thumb through the region, and keyboard-focus a
+  row to confirm the focused list keeps its thumb available. 4) Scroll the
+  list with the wheel or trackpad after moving the pointer away from the thumb.
 - **Expected**: Both regions remain independently scrollable and the footer
-  stays fixed. At rest each scrollbar is trackless, 6px wide, and low contrast;
-  hovering or dragging strengthens only the active thumb so navigation remains
-  visually quiet without hiding the scroll affordance. Chat, code, and Settings
-  scrollbars keep their existing treatments.
+  stays fixed. At rest each scrollbar is trackless, 6px wide, and transparent;
+  hovering or focusing the owning list reveals only its thumb, and dragging
+  keeps it visible so navigation remains visually quiet without changing the
+  scroll region's width. Chat, code, and Settings scrollbars keep their
+  existing treatments.
 - **Specs linked**: `04-ux/07-ui-design-system.md`,
-  `04-ux/08-component-spec.md`
+  `04-ux/08-component-spec.md`, `04-ux/09-interaction-patterns.md`
 - **Acceptance**: Quality (sidebar polish and independent navigation)
 - **Milestone**: M6+
 - **Status**: Unit-covered (`interaction-polish.test.mjs`); rendered scenario

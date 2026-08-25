@@ -446,9 +446,10 @@ point. Hover and active states use semantic sidebar surfaces; neither side adds
 a persistent card fill.
 
 Sidebar list scrollers keep their native scroll affordance but use a 6px
-trackless scrollbar with a 10% semantic-ink thumb at rest and a 20% thumb on
-hover/drag. This keeps the navigation tree visually quiet while preserving a
-discoverable control for pointer and keyboard users; chat, code, and settings
+trackless scrollbar whose thumb is transparent at rest and uses a 20%
+semantic-ink color when the list is hovered or focused, including while the
+thumb is dragged. This keeps the navigation tree visually quiet while
+preserving a discoverable control during interaction; chat, code, and settings
 scroll containers keep their own scrollbar treatments.
 
 The profile menu is `280px` wide, opens `8px` above the footer, and uses the
