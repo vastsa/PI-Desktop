@@ -241,16 +241,23 @@ test("menu and window IPC reject actions outside their shared allowlists", () =>
   );
 });
 
-test("explicit minimize paths remain resident in the cross-platform tray", () => {
+test("Windows/Linux explicit minimize paths use the native taskbar", () => {
   assert.match(mainSource, /import \{[\s\S]*Tray[\s\S]*\} from "electron"/);
   assert.match(mainSource, /function createTray\(\)/);
   assert.match(mainSource, /join\(resourceRoot, "tray-icon-mac\.png"\)/);
   assert.match(mainSource, /icon\.setTemplateImage\(true\)/);
   assert.match(mainSource, /tray\.on\("click", restoreMainWindow\)/);
   assert.match(mainSource, /tray\.on\("double-click", restoreMainWindow\)/);
-  assert.match(mainSource, /window\.on\("minimize", \(\) => \{[\s\S]*window\.hide\(\)/);
+  assert.match(
+    mainSource,
+    /window\.on\("minimize", \(\) => \{[\s\S]*process\.platform !== "darwin"\) return;[\s\S]*window\.hide\(\)/,
+  );
   assert.match(mainSource, /tray\?\.destroy\(\)/);
-  assert.doesNotMatch(mainSource, /window\.minimize\(\)/);
+  assert.match(mainSource, /case "minimize":\s*window\.minimize\(\)/);
+  const nativeMenuBlock = mainSource.slice(
+    mainSource.indexOf("IPC.invoke.nativeMenuAction"),
+  );
+  assert.match(nativeMenuBlock, /case "minimize":\s*window\.minimize\(\)/);
   const trayResource = packageJson.build.extraResources.find(
     (resource) => resource.to === "tray-icon.png",
   );
@@ -279,11 +286,15 @@ test("Windows taskbar minimize keeps the taskbar entry", () => {
   );
   assert.match(
     minimizeHandler,
-    /if \(quitting \|\| !tray \|\| process\.platform === "win32"\) return;/,
+    /if \(quitting \|\| !tray \|\| process\.platform !== "darwin"\) return;/,
   );
   assert.match(
     mainSource,
     /function restoreMainWindow\(\)[\s\S]*if \(window\.isMinimized\(\)\) window\.restore\(\);[\s\S]*window\.focus\(\);/,
+  );
+  assert.match(
+    mainSource,
+    /IPC\.invoke\.windowControl[\s\S]*case "minimize":\s*window\.minimize\(\)/,
   );
 });
 

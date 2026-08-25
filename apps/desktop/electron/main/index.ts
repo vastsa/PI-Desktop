@@ -2316,14 +2316,12 @@ async function createWindow() {
     !window.isDestroyed() &&
     !window.webContents.isDestroyed();
 
-  // Keep tray-resident minimize for native controls on macOS/Linux. Windows
-  // taskbar clicks are different: when the focused window is toggled from the
-  // taskbar, Electron emits `minimize`; allowing that native transition to
-  // continue keeps the app's taskbar entry available for the next click.
-  // Renderer/menu minimize actions still call `hide()` directly and therefore
-  // retain the explicit tray-resident behavior.
+  // Keep the macOS traffic-light minimize tray-resident. Windows/Linux
+  // minimize actions use Electron's native transition so the OS keeps the
+  // ordinary taskbar entry available for restore. Close-to-tray remains an
+  // explicit close behavior handled below.
   window.on("minimize", () => {
-    if (quitting || !tray || process.platform === "win32") return;
+    if (quitting || !tray || process.platform !== "darwin") return;
     window.hide();
   });
   let workPanelReconcileTimer: NodeJS.Timeout | null = null;
@@ -6278,7 +6276,7 @@ function registerIpc() {
         case "getState":
           break;
         case "minimize":
-          window.hide();
+          window.minimize();
           break;
         case "toggleMaximize":
           if (window.isMaximized()) window.unmaximize();
@@ -6381,7 +6379,7 @@ function registerIpc() {
           window.setFullScreen(!window.isFullScreen());
           break;
         case "minimize":
-          window.hide();
+          window.minimize();
           break;
         case "toggleMaximize":
           if (window.isMaximized()) window.unmaximize();
@@ -7960,8 +7958,9 @@ app.on("second-instance", () => {
 
 // macOS only emits `activate` from `applicationShouldHandleReopen:` — a Dock
 // click or a relaunch. Cmd+Tab, App Exposé, and Spotlight activation do not
-// reach it, and minimize hides the window into the tray (ADR 0078), so the app
-// could be focused with nothing on screen and no way back except the tray.
+// reach it, and macOS traffic-light minimize hides the window into the tray
+// (ADR 0078), so the app could be focused with nothing on screen and no way
+// back except the tray.
 // Restore only when no window is visible: activating the plugin launcher or a
 // plugin panel must not drag the main window up with it (ADR 0086).
 if (process.platform === "darwin") {

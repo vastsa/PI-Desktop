@@ -116,14 +116,15 @@ Supervision parameters (implemented in Electron main):
 9. Close windows / exit
 
 Minimizing the main window is a resident-shell action, not an application
-shutdown. Explicit application minimize actions hide the window and keep the
-process alive through the cross-platform tray. On Windows, clicking the
-focused window's taskbar button uses the native minimize transition and keeps
-the taskbar entry; clicking it again restores/focuses the same window. The
-tray owns restore/focus for tray-hidden windows and an explicit Quit action.
-Quit from the tray, the existing close path, or an update install still enters
-the normal shutdown sequence above; destroying the tray happens during
-`before-quit` so shutdown cannot be intercepted by a stale shell affordance.
+shutdown. On Windows/Linux, explicit application minimize actions use the
+native taskbar transition and keep the process alive; clicking the Windows
+focused taskbar button uses the same transition and keeps the taskbar entry,
+while clicking it again restores/focuses the same window. macOS native
+minimize remains tray-resident. The tray owns restore/focus for tray-hidden
+windows and an explicit Quit action. Quit from the tray, the existing close
+path, or an update install still enters the normal shutdown sequence above;
+destroying the tray happens during `before-quit` so shutdown cannot be
+intercepted by a stale shell affordance.
 
 On macOS the app runs under the regular (foreground) activation policy for its
 whole lifetime, so it is always listed in the Dock and Cmd+Tab: Main never

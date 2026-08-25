@@ -3,7 +3,7 @@
 - Status: Accepted for implementation
 - Date: 2026-08-12
 - Deciders: PI-Desktop core
-- Related: D230, ADR 0021, ADR 0025, ADR 0078
+- Related: D230, D256, ADR 0021, ADR 0025, ADR 0078, ADR 0123
 
 ## Context
 
@@ -87,8 +87,9 @@ matches the desired behavior.
 
 ## Consequences
 
-- Minimize keeps hiding the window into the D216 tray, unchanged by this
-  decision.
+- Windows/Linux explicit minimize uses the normal taskbar transition; a close
+  choice of `tray` still hides the window under the resident D216 tray icon.
+  macOS native minimize remains tray-resident under D216.
 - Close on Windows/Linux either hides to tray or quits, per user choice,
   remembered across launches and changeable in Settings.
 - The tray menu and the first-close dialog reuse the existing

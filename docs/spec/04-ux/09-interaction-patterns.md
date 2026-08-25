@@ -114,11 +114,12 @@ recency only breaks ties between equally relevant matches.
   drag region. Maximize state is queried on mount and updated from native
   window events, so the restore affordance never depends only on optimistic
   renderer state.
-- Explicit minimize actions hide the window into the resident tray. On Windows,
-  clicking the focused window's taskbar button uses native minimize and keeps
-  the taskbar entry; clicking it again restores/focuses the same window, while
-  clicking the entry for a merely covered window keeps the normal bring-to-front
-  behavior (D252 / ADR 0117). Windows/Linux close behavior is user-configurable
+- Windows/Linux explicit minimize actions use native minimize and keep the
+  taskbar entry. On Windows, clicking the focused window's taskbar button also
+  uses native minimize and keeps the taskbar entry; clicking it again
+  restores/focuses the same window, while clicking the entry for a merely
+  covered window keeps the normal bring-to-front behavior (D252 / ADR 0117).
+  macOS native minimize remains tray-resident. Windows/Linux close behavior is user-configurable
   (ADR 0090): an unset preference asks once via a native prompt (Cancel / Close
   to tray / Quit); `tray` hides the window under that same tray icon, whose
   click restores the window; `quit` exits the app. Close behavior never creates
@@ -131,17 +132,18 @@ recency only breaks ties between equally relevant matches.
 
 ### 1.5.1 Tray-resident and taskbar minimize
 
-- Explicit application minimize means **hide to tray** on macOS, Windows, and
-  Linux. The renderer's Windows/Linux minimize button, the Windows native-menu
-  minimize action, the macOS traffic-light minimize button, and the macOS
-  Window → Minimize role share this behavior.
+- Explicit application minimize means **native taskbar minimize** on Windows
+  and Linux: the renderer's window-control button and native-menu minimize
+  action use the normal OS transition. macOS traffic-light minimize and the
+  macOS Window → Minimize role remain **hide to tray**.
 - On Windows, clicking the taskbar button of the focused visible main window
   means **native minimize**. The window stays represented by its taskbar entry;
   the next click restores and focuses it. A taskbar click while the window is
   merely covered brings it to the front and does not hide it to the tray.
-- Tray hiding removes the main window from the taskbar/dock window list while
-  the Electron process and background work remain alive. It does not persist a
-  minimized geometry or dispose the host/sidecar.
+- Tray hiding, including a Windows/Linux close with `tray`, removes the main
+  window from the taskbar/dock window list while the Electron process and
+  background work remain alive. It does not persist a minimized geometry or
+  dispose the host/sidecar.
 - Clicking or double-clicking the PI-Desktop tray icon, choosing Show from its
   menu, or activating the app from the macOS dock restores and focuses the
   existing window. If the window was closed, the same action creates a fresh

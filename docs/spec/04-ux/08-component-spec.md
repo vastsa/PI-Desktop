@@ -124,15 +124,15 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
   restore, or close clicks. Their shared 112×46px control band is opaque
   `bg-primary`, preventing destination content from bleeding through the
   reserved titlebar surface.
-- Minimize is a resident-shell action: the renderer button hides the main
-  window to the PI-Desktop tray, as do the Windows native-menu action and the
-  macOS native traffic light/Window menu role. On Windows, clicking the
-  focused window's taskbar button uses native minimize and keeps the taskbar
-  entry; a second click restores/focuses it, while a click on a covered window
-  brings it to the front. Tray activation restores and focuses tray-hidden
-  windows; Quit remains explicit. On macOS the tray uses a transparent
-  monochrome template of the PI mark rather than the rounded application tile,
-  so it remains readable in the menu bar.
+- Minimize uses the platform's normal window model: Windows/Linux renderer and
+  native-menu actions call native minimize and keep the taskbar entry, while
+  the macOS traffic light/Window menu role remains tray-resident. Clicking a
+  focused Windows taskbar button also uses native minimize; a second click
+  restores/focuses the same window, while clicking a covered window brings it
+  to the front. Tray activation restores and focuses tray-hidden windows; Quit
+  remains explicit. On macOS the tray uses a transparent monochrome template
+  of the PI mark rather than the rounded application tile, so it remains
+  readable in the menu bar.
 - Windows/Linux do not render File/Edit/View/Window/Help in the titlebar and
   do not reserve left-side space for an application menubar. F10 and
   Shift+F10 remain available to focused content.

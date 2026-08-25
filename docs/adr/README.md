@@ -137,3 +137,4 @@ Each ADR includes:
 | 0120 | Bounded session history windows | Accepted |
 | 0121 | Keep Composer prompt enhancement one-shot and main-owned | Accepted |
 | 0122 | Reserve native width while the work panel is visible | Accepted |
+| 0123 | Use native taskbar minimize for Windows/Linux window controls | Accepted |

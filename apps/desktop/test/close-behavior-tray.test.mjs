@@ -39,14 +39,25 @@ test("choosing quit never destroys the resident tray", () => {
   assert.doesNotMatch(body, /tray\.destroy\(\)/);
 });
 
-test("minimize only hides when a tray exists to restore from", () => {
+test("Windows/Linux minimize stays in the taskbar while macOS may hide to tray", () => {
   const minimize = mainSource.slice(mainSource.indexOf('window.on("minimize"'));
   const body = minimize.slice(0, minimize.indexOf("});") + 3);
   assert.match(
     body,
-    /if \(quitting \|\| !tray \|\| process\.platform === "win32"\) return;/,
+    /if \(quitting \|\| !tray \|\| process\.platform !== "darwin"\) return;/,
   );
   assert.match(body, /window\.hide\(\)/);
+
+  const windowControl = mainSource.slice(
+    mainSource.indexOf(
+      'case "minimize":',
+      mainSource.indexOf("IPC.invoke.windowControl"),
+    ),
+  );
+  assert.match(
+    windowControl.slice(0, windowControl.indexOf('case "toggleMaximize":')),
+    /window\.minimize\(\)/,
+  );
 });
 
 test("a stored quit preference still quits while the tray is resident", () => {

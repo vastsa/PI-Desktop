@@ -1169,6 +1169,12 @@ window/control({ action: WindowControlAction })
   -> { maximized: boolean }
 ```
 
+On Windows/Linux, `minimize` performs the native OS minimize transition so
+the window remains represented in the taskbar and can be restored there. A
+Windows/Linux close still follows the persisted close-behavior choice below;
+it is the close path, not minimize, that can hide the window to the tray.
+macOS keeps its native Dock/tray minimize behavior.
+
 Windows/Linux close behavior (D230, ADR 0090) is read and written through
 two additive Main-owned channels. `closeBehavior/get` returns the persisted
 preference and whether the platform supports it (macOS keeps the native
