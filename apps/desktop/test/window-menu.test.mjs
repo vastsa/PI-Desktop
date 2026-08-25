@@ -171,7 +171,7 @@ test("Windows and Linux use menu-free frameless chrome with window controls", ()
   );
   assert.match(
     stylesSource,
-    /\.window-controls\s*\{[^}]*height:\s*46px[^}]*padding-left:\s*8px;[^}]*background:\s*var\(--ds-bg-secondary\);[^}]*border-left:\s*1px solid var\(--ds-border-default\);/s,
+    /\.window-controls\s*\{[^}]*height:\s*var\(--ds-toolbar-height\)[^}]*padding-left:\s*8px;[^}]*background:\s*var\(--ds-bg-secondary\);[^}]*border-left:\s*1px solid var\(--ds-border-default\);/s,
   );
   assert.match(stylesSource, /--ds-window-controls-width:\s*120px;/);
   assert.match(
@@ -185,7 +185,7 @@ test("Windows and Linux use menu-free frameless chrome with window controls", ()
   assert.doesNotMatch(stylesSource, /\.work-panel-header\s*\{[^}]*margin-right:/s);
   assert.match(
     stylesSource,
-    /:root\[data-platform="(win32|linux)"\] \.thread-content[\s\S]*?padding-top:\s*46px;/,
+    /:root\[data-platform="(win32|linux)"\] \.thread-content[\s\S]*?padding-top:\s*var\(--ds-toolbar-height\);/,
   );
   assert.match(
     stylesSource,

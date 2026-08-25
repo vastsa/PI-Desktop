@@ -314,10 +314,12 @@
   top: 0;
   z-index: 10;
   display: flex;
-  height: 46px;
+  height: var(--ds-toolbar-height);
   align-items: center;
   justify-content: flex-end;
   padding: 0 12px;
+  background: var(--ds-bg-primary);
+  border-bottom: 1px solid var(--ds-border-subtle);
   -webkit-app-region: drag;
 }
 
@@ -336,7 +338,7 @@
   top: 0;
   z-index: 10;
   display: flex;
-  height: 46px;
+  height: var(--ds-toolbar-height);
   align-items: center;
   justify-content: space-between;
   padding: 0 12px;
@@ -806,7 +808,7 @@
   display: flex;
   align-items: center;
   width: var(--ds-window-controls-width);
-  height: 46px; /* matches .main-titlebar band */
+  height: var(--ds-toolbar-height);
   box-sizing: border-box;
   padding-left: 8px;
   /* Paint a separate full hit band so page content cannot show through the
@@ -863,8 +865,8 @@
 
 .sidebar-header {
   display: flex;
-  height: 46px;
-  flex: 0 0 46px;
+  height: var(--ds-toolbar-height);
+  flex: 0 0 var(--ds-toolbar-height);
   align-items: center;
   justify-content: space-between;
   gap: 4px;

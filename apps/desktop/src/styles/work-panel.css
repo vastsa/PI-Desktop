@@ -146,7 +146,7 @@
 .work-panel-header {
   position: relative;
   display: flex;
-  height: 46px; /* aligns with .main-titlebar */
+  height: var(--ds-toolbar-height);
   flex: 0 0 auto;
   align-items: center;
   gap: 6px;

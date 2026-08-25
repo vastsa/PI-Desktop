@@ -24,7 +24,9 @@
   inset-inline: 0;
   top: 0;
   z-index: 10;
-  height: 46px;
+  height: var(--ds-toolbar-height);
+  background: var(--ds-bg-primary);
+  border-bottom: 1px solid var(--ds-border-subtle);
   -webkit-app-region: drag;
 }
 
@@ -204,7 +206,7 @@
   flex: 1;
   overflow: auto;
   /* webContents has no traffic-light chrome; keep airy top like gold content band */
-  padding: 36px 48px 56px 40px;
+  padding: calc(var(--ds-toolbar-height) + 8px) 48px 56px 40px;
   background: var(--ds-bg-primary);
 }
 
