@@ -179,9 +179,11 @@ combined model × reasoning selection (§11).
 
 ### 2.3 Layout
 
-- Height: 46px (Codex toolbar rhythm, D034; supersedes the old 44px)
-- Background: bg-primary
-- Border: border-subtle bottom
+- Height: `--ds-toolbar-height` (46px; Codex toolbar rhythm, D034; supersedes
+  the old 44px)
+- Background: bg-primary for the conversation bar and every route-owned
+  frameless drag band
+- Border: border-subtle bottom on every route-owned titlebar surface
 - Position: absolute 46px frameless band; `-webkit-app-region: drag` with
   `no-drag` on interactive controls; macOS reserves the left ~76px for traffic
   lights (only when the sidebar is collapsed), Windows/Linux reserve the right
@@ -197,6 +199,11 @@ combined model × reasoning selection (§11).
 - macOS fullscreen resets the left reserve to 8px (mirrors the sidebar header).
 - Sticky: `z-sticky`
 - Items: left-aligned controls, right-aligned actions
+- Shell consistency: the chat topbar, non-chat drag band, Settings drag band,
+  sidebar header, work-panel header, and native window-control band all use
+  `--ds-toolbar-height`. Windows/Linux keep the same `--ds-window-controls-width`
+  reservation so the right boundary and native controls stay aligned when the
+  route or work panel changes.
 
 ### 2.4 States
 

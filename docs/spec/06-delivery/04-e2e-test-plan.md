@@ -522,22 +522,24 @@ Each scenario is documented in this format:
 - **Preconditions**: Provider configured; at least one session exists.
 - **Steps**: 1) Open the chat route. 2) Inspect the 46px bar at the top of the
   conversation area. 3) Confirm it shows the concise session/task title and the
-  New task / Search / Commands
-  action buttons; confirm the
+  New task / Search action buttons; confirm the
   sidebar toggle appears **only when the sidebar is collapsed** (when expanded,
   the sidebar owns that control). 4) Switch to the Pull requests, Scheduled,
   Plugins, or Settings routes and inspect the same top region.
-- **Expected**: On the chat route the conversation top bar renders with its
-  title and actions only; it has no model or Agent|Plan|Goal mode control. The
+- **Expected**: Every route-owned top region uses the same `--ds-toolbar-height`
+  (46px), bg-primary surface, and bottom border; Windows/Linux reserve the
+  same 120px native-control band at the right. On the chat route the
+  conversation top bar renders with its title and actions only; it has no model
+  or Agent|Plan|Goal mode control. The
   left-of-input Composer chip owns the active session's Agent/Plan/Goal switch,
   and the Composer-right combined chip owns model and reasoning selection. The
   task title is the only visible title text and is capped at 10 characters
-  with an ellipsis; project scope is available through its tooltip. A compact
-  status dot appears while running. The sidebar
+  with an ellipsis; project scope is available through its tooltip. The sidebar
   toggle is present only in the collapsed state (no
   duplicate of the sidebar's control). On every other route the frameless drag
-  band renders instead (no top-bar controls). The bar is draggable to move the
-  window; interactive controls do not start a window drag.
+  band renders instead (no chat top-bar controls) while retaining the same
+  surface and alignment. The bar is draggable to move the window; interactive
+  controls do not start a window drag.
   macOS leaves the left ~76px clear for traffic lights only while the sidebar is
   collapsed (8px in fullscreen); Windows/Linux leave the right 120px clear for
   native window controls.
