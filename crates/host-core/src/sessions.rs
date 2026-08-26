@@ -6,6 +6,9 @@ use uuid::Uuid;
 
 use crate::db::{ms_to_ts, now_ms, ts_to_ms, Database};
 use crate::notifications::{self, Notification};
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
+
 use crate::transcripts::{self, CompactionRecord, MessageRecord, RevisionRecord};
 
 pub const MODES: [&str; 3] = ["plan", "goal", "agent"];
@@ -1043,6 +1046,42 @@ pub fn session_mode(db: &Database, id: &str) -> Result<Option<String>> {
         .map(|mode| normalize_mode(Some(&mode))))
 }
 
+/// Process-wide cache of transcript layouts, keyed by session id.
+///
+/// The layout is derived data: it can always be rebuilt by scanning the file,
+/// and `file_len` makes a stale entry detectable. Caching it turns a repeated
+/// session open, and each older page, into a bounded seek-and-parse instead of
+/// another full-history scan.
+static TRANSCRIPT_LAYOUTS: OnceLock<Mutex<HashMap<String, transcripts::TranscriptLayout>>> =
+    OnceLock::new();
+
+fn layout_cache() -> &'static Mutex<HashMap<String, transcripts::TranscriptLayout>> {
+    TRANSCRIPT_LAYOUTS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Return an up-to-date layout for one session, reusing the cached offsets and
+/// scanning only what was appended since.
+fn session_layout(db: &Database, session_id: &str) -> Result<transcripts::TranscriptLayout> {
+    let cached = layout_cache()
+        .lock()
+        .ok()
+        .and_then(|guard| guard.get(session_id).cloned())
+        .unwrap_or_default();
+    let layout = transcripts::refresh_layout(db.data_dir(), session_id, cached)?;
+    if let Ok(mut guard) = layout_cache().lock() {
+        guard.insert(session_id.to_string(), layout.clone());
+    }
+    Ok(layout)
+}
+
+/// Drop a session's cached layout. Called after a rewrite or a delete so the
+/// next read rebuilds from the file rather than trusting stale offsets.
+pub fn invalidate_transcript_layout(session_id: &str) {
+    if let Ok(mut guard) = layout_cache().lock() {
+        guard.remove(session_id);
+    }
+}
+
 pub fn get_session(db: &Database, id: &str) -> Result<Option<SessionDetail>> {
     get_session_with_options(db, id, SessionReadOptions::default())
 }
@@ -1069,15 +1108,22 @@ pub fn get_session_with_options(
     let (records, compactions, message_start, has_more_before) =
         if let Some(raw_limit) = options.message_limit.filter(|limit| *limit > 0) {
             let limit = raw_limit.min(1_000) as usize;
-            let total = summary.message_count.max(0) as usize;
-            let before = options
-                .message_before
-                .unwrap_or(summary.message_count)
-                .clamp(0, summary.message_count) as usize;
+            // Window coordinates are physical transcript lines, so they must be
+            // clamped against the file layout rather than against `last_seq`.
+            // The index counter is a deduplicated logical count: a retried
+            // append leaves two lines with one id, and mixing the two spaces
+            // silently dropped the newest messages of a long session.
+            let layout = session_layout(db, id)?;
+            let total = layout.message_count();
+            let before = match options.message_before {
+                Some(value) => (value.max(0) as usize).min(total),
+                None => total,
+            };
             let start = before.saturating_sub(limit);
-            let read = transcripts::read_transcript_window(
+            let read = transcripts::read_transcript_window_with_layout(
                 db.data_dir(),
                 id,
+                &layout,
                 start,
                 Some(before.saturating_sub(start)),
             )?;
@@ -1085,7 +1131,7 @@ pub fn get_session_with_options(
                 dedupe_records(read.messages),
                 read.compactions,
                 Some(start as i64),
-                Some(start > 0 && total > 0),
+                Some(start > 0),
             )
         } else {
             let read = transcripts::read_transcript_with_compactions(db.data_dir(), id)?;
@@ -1175,6 +1221,7 @@ pub fn fork_session_through(
         .map(|value| value.chars().take(100).collect::<String>())
         .unwrap_or_else(|| format!("{} (branch)", source.summary.title));
 
+    invalidate_transcript_layout(&id);
     transcripts::write_transcript_with_compactions(
         db.data_dir(),
         &id,
@@ -1205,6 +1252,7 @@ pub fn fork_session_through(
         Ok(())
     })();
     if let Err(error) = indexed {
+        invalidate_transcript_layout(&id);
         transcripts::remove_session_files(db.data_dir(), &id);
         return Err(error);
     }
@@ -1308,6 +1356,7 @@ pub fn delete_session(db: &Database, id: &str) -> Result<bool> {
     if n > 0 {
         // Here rather than in the RPC handler so every deletion path (UI,
         // failed scheduled-run cleanup) also drops the transcript files.
+        invalidate_transcript_layout(id);
         transcripts::remove_session_files(db.data_dir(), id);
     }
     Ok(n > 0)
@@ -1415,6 +1464,7 @@ pub fn replace_messages(db: &Database, session_id: &str, messages: &[UiMessage])
             .into_iter()
             .filter(|record| compaction_valid_for_records(record, &records))
             .collect();
+    invalidate_transcript_layout(session_id);
     transcripts::write_transcript_with_compactions(
         db.data_dir(),
         session_id,
@@ -1679,6 +1729,7 @@ pub fn save_active_branch_revision(
     root.revision_count = Some(total);
     root.active_revision = Some(active);
     let (record, _) = ui_to_record(root);
+    invalidate_transcript_layout(session_id);
     transcripts::update_message(db.data_dir(), session_id, &record)?;
     Ok(Some(ActiveRevisionSave {
         root_user_id,
@@ -1746,6 +1797,7 @@ pub fn activate_message_revision(
     }
 
     let (records, texts) = records_and_texts(&combined);
+    invalidate_transcript_layout(session_id);
     transcripts::write_transcript(db.data_dir(), session_id, &session_created, &records)?;
     let tx = conn.unchecked_transaction()?;
     tx.prepare_cached(
@@ -1792,6 +1844,7 @@ pub fn import_session(
         return Ok(false);
     }
     let (records, texts) = records_and_texts(messages);
+    invalidate_transcript_layout(&summary.id);
     transcripts::write_transcript(db.data_dir(), &summary.id, &summary.created_at, &records)?;
     let indexed = (|| -> Result<()> {
         let tx = conn.unchecked_transaction()?;
@@ -1846,6 +1899,7 @@ pub fn import_session(
     if let Err(e) = indexed {
         // Don't leave transcript files behind for a session row that never
         // materialized.
+        invalidate_transcript_layout(&summary.id);
         transcripts::remove_session_files(db.data_dir(), &summary.id);
         return Err(e);
     }
@@ -2587,6 +2641,83 @@ mod tests {
         assert_eq!(blocks[1]["type"], "attachment");
         assert_eq!(blocks[1]["ref"], "attachments/abc123");
         assert!(blocks[1].get("data").is_none());
+    }
+
+    #[test]
+    fn bounded_reads_use_physical_line_positions_not_the_dedup_counter() {
+        // A retried append leaves the same message id on two file lines. The
+        // index counter (`last_seq`) counts it once, so a window clamped
+        // against that counter cut one line short and hid the newest message.
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        for index in 0..4 {
+            append_message(
+                &db,
+                &session.id,
+                &user_msg(
+                    &format!("m{index}"),
+                    &format!("body {index}"),
+                    "2025-05-01T00:00:00Z",
+                ),
+                None,
+            )
+            .unwrap();
+        }
+        // Append one line straight to the file, as a crash between the durable
+        // file append and its index commit does. `last_seq` stays at 4 while the
+        // file holds 5 message lines, and it never catches up.
+        let (record, _) = ui_to_record(&user_msg("m4", "newest", "2025-05-01T00:00:04Z"));
+        transcripts::append_message(db.data_dir(), &session.id, "2025-05-01T00:00:00Z", &record)
+            .unwrap();
+        let last_seq: i64 = db
+            .conn()
+            .query_row(
+                "SELECT last_seq FROM sessions WHERE id = ?1",
+                params![session.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(last_seq, 4);
+
+        let page = get_session_with_options(
+            &db,
+            &session.id,
+            SessionReadOptions {
+                message_before: None,
+                message_limit: Some(2),
+                content_limit: None,
+            },
+        )
+        .unwrap()
+        .unwrap();
+        // Clamping the window to `last_seq` used to cut the newest line off the
+        // tail, so the message existed on disk but never reached the renderer.
+        let ids: Vec<&str> = page.messages.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(ids, ["m3", "m4"]);
+        assert_eq!(page.has_more_before, Some(true));
+
+        // Paging backwards from the reported start reaches the true head
+        // without skipping a message.
+        let mut seen: Vec<String> = page.messages.iter().map(|m| m.id.clone()).collect();
+        let mut start = page.message_start.unwrap();
+        while start > 0 {
+            let older = get_session_with_options(
+                &db,
+                &session.id,
+                SessionReadOptions {
+                    message_before: Some(start),
+                    message_limit: Some(2),
+                    content_limit: None,
+                },
+            )
+            .unwrap()
+            .unwrap();
+            let mut ids: Vec<String> = older.messages.iter().map(|m| m.id.clone()).collect();
+            ids.append(&mut seen);
+            seen = ids;
+            start = older.message_start.unwrap();
+        }
+        assert_eq!(seen, ["m0", "m1", "m2", "m3", "m4"]);
     }
 
     #[test]

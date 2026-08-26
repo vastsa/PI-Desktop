@@ -19,7 +19,7 @@
 //! their session, never by an age or orphan sweep.
 
 use std::fs::{self, File, OpenOptions};
-use std::io::{BufRead, BufReader, BufWriter, Write};
+use std::io::{BufRead, BufReader, BufWriter, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
@@ -91,12 +91,6 @@ struct SessionHeader {
     created_at: String,
 }
 
-#[derive(Debug, Deserialize)]
-struct LineTag {
-    #[serde(rename = "type")]
-    kind: String,
-}
-
 /// The portions of one transcript read that callers commonly need together.
 /// Keeping this as one pass matters for long sessions: the old session loader
 /// read the same JSONL file once for messages and once for compactions.
@@ -106,13 +100,156 @@ pub struct TranscriptRead {
     pub compactions: Vec<CompactionRecord>,
 }
 
+/// Physical layout of one transcript file: the byte offset of every message and
+/// compaction line, plus the file length it was built from.
+///
+/// A window read seeks straight to its first selected line instead of parsing
+/// every earlier line, so opening a long session costs the window rather than
+/// the whole history. `file_len` is the validity token: the transcript is
+/// append-only between atomic rewrites, so a longer file is scanned
+/// incrementally while a shorter or replaced file invalidates the layout.
+#[derive(Debug, Default, Clone)]
+pub struct TranscriptLayout {
+    /// Byte offset of each message line, in file order.
+    pub message_offsets: Vec<u64>,
+    /// Byte offset of each compaction line, in file order.
+    pub compaction_offsets: Vec<u64>,
+    /// Byte length of the file prefix this layout describes.
+    pub file_len: u64,
+}
+
+impl TranscriptLayout {
+    /// Physical message-line count. Every window offset in this module is
+    /// expressed in this coordinate space, not in deduplicated positions.
+    pub fn message_count(&self) -> usize {
+        self.message_offsets.len()
+    }
+}
+
+/// Classify a JSONL line without building a `serde_json::Value`.
+///
+/// Every line written by this module carries `"type"` in the first object
+/// level, so a bounded prefix scan decides the kind. Deserializing a `LineTag`
+/// instead makes serde walk the entire line -- including a multi-megabyte tool
+/// payload -- to read one short string, which dominates the cost of scanning a
+/// long transcript.
+fn sniff_line_kind(line: &str) -> Option<&'static str> {
+    const SNIFF_LIMIT: usize = 512;
+    let bytes = line.as_bytes();
+    let head = &bytes[..bytes.len().min(SNIFF_LIMIT)];
+    // Lines written before the discriminator moved to the front carry it at the
+    // end of the object, so a bounded tail check keeps existing files readable
+    // without parsing them.
+    let tail = &bytes[bytes.len().saturating_sub(SNIFF_LIMIT)..];
+    sniff_window(head).or_else(|| sniff_window(tail))
+}
+
+fn sniff_window(window: &[u8]) -> Option<&'static str> {
+    let needle = b"\"type\":\"";
+    let position = window
+        .windows(needle.len())
+        .position(|candidate| candidate == needle)?;
+    let rest = &window[position + needle.len()..];
+    let end = rest.iter().position(|byte| *byte == b'"')?;
+    match &rest[..end] {
+        b"message" => Some("message"),
+        b"compaction" => Some("compaction"),
+        b"session" => Some("session"),
+        b"revision" => Some("revision"),
+        _ => None,
+    }
+}
+
+/// Extend `base` with any lines appended after `base.file_len`.
+///
+/// A transcript only grows between atomic rewrites, so the common case after a
+/// new message is a short tail scan. A file that shrank or was replaced by a
+/// rewrite of a different length is rescanned from the start, because offsets
+/// recorded against the previous contents cannot be trusted.
+pub fn refresh_layout(
+    data_dir: &Path,
+    session_id: &str,
+    base: TranscriptLayout,
+) -> Result<TranscriptLayout> {
+    let path = transcript_path(data_dir, session_id)?;
+    let len = match fs::metadata(&path) {
+        Ok(meta) => meta.len(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(TranscriptLayout::default())
+        }
+        Err(e) => return Err(e).with_context(|| format!("stat {}", path.display())),
+    };
+    if len == base.file_len {
+        return Ok(base);
+    }
+    if len < base.file_len {
+        return scan_layout(&path, TranscriptLayout::default());
+    }
+    scan_layout(&path, base)
+}
+
+/// Scan from `layout.file_len` to the end of the file, appending offsets.
+fn scan_layout(path: &Path, mut layout: TranscriptLayout) -> Result<TranscriptLayout> {
+    let mut file = match File::open(path) {
+        Ok(file) => file,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(TranscriptLayout::default())
+        }
+        Err(e) => return Err(e).with_context(|| format!("read {}", path.display())),
+    };
+    let mut offset = layout.file_len;
+    if offset > 0 {
+        file.seek(SeekFrom::Start(offset))
+            .with_context(|| format!("seek {}", path.display()))?;
+    }
+    let mut reader = BufReader::new(file);
+    let mut line = String::new();
+    loop {
+        line.clear();
+        let read = reader.read_line(&mut line)?;
+        if read == 0 {
+            break;
+        }
+        // A torn trailing line (crash mid-append) has no newline yet. Keeping it
+        // out of both the offsets and `file_len` lets a later refresh pick it up
+        // once the writer completes it.
+        if !line.ends_with('\n') {
+            break;
+        }
+        match sniff_line_kind(line.trim_end()) {
+            Some("message") => layout.message_offsets.push(offset),
+            Some("compaction") => layout.compaction_offsets.push(offset),
+            _ => {}
+        }
+        offset += read as u64;
+        // A skipped multi-megabyte line must not leave its capacity attached to
+        // every following read.
+        if line.capacity() > 1024 * 1024 {
+            line = String::new();
+        }
+    }
+    layout.file_len = offset;
+    Ok(layout)
+}
+
+/// Serialize one JSONL line with its `type` discriminator first.
+///
+/// Position matters for reads: `serde_json`'s map is sorted, so inserting the
+/// key would place it after the payload and force a reader to walk a whole
+/// multi-megabyte tool result before it can tell what the line is. Writing it
+/// first makes classification a fixed-cost prefix check.
 fn tagged(tag: &str, body: &impl Serialize) -> Result<String> {
-    let mut value = serde_json::to_value(body)?;
-    value
-        .as_object_mut()
-        .ok_or_else(|| anyhow!("line body must be an object"))?
-        .insert("type".into(), Value::String(tag.into()));
-    Ok(value.to_string())
+    let value = serde_json::to_value(body)?;
+    let object = value
+        .as_object()
+        .ok_or_else(|| anyhow!("line body must be an object"))?;
+    let body = Value::Object(object.clone()).to_string();
+    let head = format!("{{\"type\":{}", Value::String(tag.into()));
+    // `{}` has no fields to append after the discriminator.
+    if object.is_empty() {
+        return Ok(format!("{head}}}"));
+    }
+    Ok(format!("{head},{}", &body[1..]))
 }
 
 /// Session ids come from our own DB (UUIDs), but stay defensive: an id that
@@ -217,6 +354,88 @@ pub fn read_transcript(data_dir: &Path, session_id: &str) -> Result<Vec<MessageR
     Ok(read_transcript_window(data_dir, session_id, 0, None)?.messages)
 }
 
+/// Read a message window using a precomputed layout, seeking directly to the
+/// first selected line.
+///
+/// `message_start` and `message_limit` are physical message-line positions,
+/// the same coordinate space as [`TranscriptLayout::message_count`]. Unlike a
+/// sequential scan, the cost here is proportional to the window, not to the
+/// history in front of it. Compaction lines are always returned in full: the
+/// chain is small and the newest element is required for model context.
+pub fn read_transcript_window_with_layout(
+    data_dir: &Path,
+    session_id: &str,
+    layout: &TranscriptLayout,
+    message_start: usize,
+    message_limit: Option<usize>,
+) -> Result<TranscriptRead> {
+    let path = transcript_path(data_dir, session_id)?;
+    let mut out = TranscriptRead::default();
+    let total = layout.message_count();
+    let start = message_start.min(total);
+    let end = message_limit
+        .map(|limit| start.saturating_add(limit).min(total))
+        .unwrap_or(total);
+
+    // Every offset that has to be visited, in ascending file order, so one
+    // forward-only reader can serve both kinds without seeking backwards.
+    let mut wanted: Vec<(u64, bool)> = Vec::with_capacity(
+        end.saturating_sub(start) + layout.compaction_offsets.len(),
+    );
+    wanted.extend(
+        layout.message_offsets[start..end]
+            .iter()
+            .map(|offset| (*offset, true)),
+    );
+    wanted.extend(
+        layout
+            .compaction_offsets
+            .iter()
+            .map(|offset| (*offset, false)),
+    );
+    if wanted.is_empty() {
+        return Ok(out);
+    }
+    wanted.sort_unstable_by_key(|(offset, _)| *offset);
+
+    let file = match File::open(&path) {
+        Ok(file) => file,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(out),
+        Err(e) => return Err(e).with_context(|| format!("read {}", path.display())),
+    };
+    let mut reader = BufReader::new(file);
+    let mut line = String::new();
+    for (offset, is_message) in wanted {
+        reader
+            .seek(SeekFrom::Start(offset))
+            .with_context(|| format!("seek {}", path.display()))?;
+        line.clear();
+        if reader.read_line(&mut line)? == 0 {
+            continue;
+        }
+        let trimmed = line.trim();
+        if is_message {
+            match serde_json::from_str::<MessageRecord>(trimmed) {
+                Ok(record) => out.messages.push(record),
+                Err(error) => {
+                    tracing::warn!(path = %path.display(), %error, "skipping invalid message line");
+                }
+            }
+        } else {
+            match serde_json::from_str::<CompactionRecord>(trimmed) {
+                Ok(record) => out.compactions.push(record),
+                Err(error) => {
+                    tracing::warn!(path = %path.display(), %error, "skipping invalid compaction line");
+                }
+            }
+        }
+        if line.capacity() > 1024 * 1024 {
+            line = String::new();
+        }
+    }
+    Ok(out)
+}
+
 /// Read a message window without materializing the whole JSONL file. Message
 /// positions are zero-based and count message lines in file order. A `None`
 /// limit reads through the end, which is the full-history path used by the
@@ -243,11 +462,13 @@ pub fn read_transcript_window(
         if reader.read_line(&mut line)? == 0 {
             break;
         }
-        let Some(tag) = serde_json::from_str::<LineTag>(line.trim()).ok() else {
+        // Classify by a bounded prefix scan: a full parse here walks every byte
+        // of a large tool payload before the line is even selected.
+        let Some(kind) = sniff_line_kind(line.trim_end()) else {
             tracing::warn!(path = %path.display(), "skipping unparseable transcript line");
             continue;
         };
-        match tag.kind.as_str() {
+        match kind {
             "message" => {
                 let index = message_index;
                 message_index += 1;
@@ -500,6 +721,110 @@ mod tests {
             model_id: Some("model-1".into()),
             created_at: "2026-07-26T00:00:02Z".into(),
         }
+    }
+
+
+    #[test]
+    fn layout_records_message_offsets_and_grows_incrementally() {
+        let dir = tempdir().unwrap();
+        for id in ["m1", "m2", "m3"] {
+            append_message(dir.path(), "s1", "2026-07-26T00:00:00Z", &record(id, id)).unwrap();
+        }
+        let layout = refresh_layout(dir.path(), "s1", TranscriptLayout::default()).unwrap();
+        assert_eq!(layout.message_count(), 3);
+
+        // An unchanged file reuses the cached layout without rescanning.
+        let same = refresh_layout(dir.path(), "s1", layout.clone()).unwrap();
+        assert_eq!(same.file_len, layout.file_len);
+        assert_eq!(same.message_count(), 3);
+
+        // A later append extends the same layout.
+        append_message(dir.path(), "s1", "2026-07-26T00:00:00Z", &record("m4", "m4")).unwrap();
+        let grown = refresh_layout(dir.path(), "s1", same).unwrap();
+        assert_eq!(grown.message_count(), 4);
+        assert!(grown.file_len > layout.file_len);
+        assert_eq!(&grown.message_offsets[..3], &layout.message_offsets[..3]);
+    }
+
+    #[test]
+    fn layout_window_reads_only_the_requested_tail() {
+        let dir = tempdir().unwrap();
+        for index in 0..10 {
+            append_message(
+                dir.path(),
+                "s1",
+                "2026-07-26T00:00:00Z",
+                &record(&format!("m{index}"), &format!("body {index}")),
+            )
+            .unwrap();
+        }
+        let layout = refresh_layout(dir.path(), "s1", TranscriptLayout::default()).unwrap();
+        let read =
+            read_transcript_window_with_layout(dir.path(), "s1", &layout, 7, Some(3)).unwrap();
+        let ids: Vec<&str> = read.messages.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(ids, ["m7", "m8", "m9"]);
+
+        // The same window is produced by the sequential reader.
+        let sequential = read_transcript_window(dir.path(), "s1", 7, Some(3)).unwrap();
+        let sequential_ids: Vec<&str> =
+            sequential.messages.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(ids, sequential_ids);
+    }
+
+    #[test]
+    fn layout_window_always_returns_the_whole_compaction_chain() {
+        let dir = tempdir().unwrap();
+        append_message(dir.path(), "s1", "2026-07-26T00:00:00Z", &record("m1", "one")).unwrap();
+        append_compaction(dir.path(), "s1", "2026-07-26T00:00:00Z", &compaction()).unwrap();
+        for id in ["m2", "m3"] {
+            append_message(dir.path(), "s1", "2026-07-26T00:00:00Z", &record(id, id)).unwrap();
+        }
+        let layout = refresh_layout(dir.path(), "s1", TranscriptLayout::default()).unwrap();
+        assert_eq!(layout.message_count(), 3);
+        // A tail window that excludes the compaction's neighbourhood still needs
+        // the checkpoint chain, because the newest element drives model context.
+        let read =
+            read_transcript_window_with_layout(dir.path(), "s1", &layout, 2, Some(1)).unwrap();
+        assert_eq!(read.messages.len(), 1);
+        assert_eq!(read.messages[0].id, "m3");
+        assert_eq!(read.compactions.len(), 1);
+    }
+
+    #[test]
+    fn layout_is_rebuilt_after_a_shorter_rewrite() {
+        let dir = tempdir().unwrap();
+        for id in ["m1", "m2", "m3"] {
+            append_message(dir.path(), "s1", "2026-07-26T00:00:00Z", &record(id, id)).unwrap();
+        }
+        let layout = refresh_layout(dir.path(), "s1", TranscriptLayout::default()).unwrap();
+        write_transcript(
+            dir.path(),
+            "s1",
+            "2026-07-26T00:00:00Z",
+            &[record("m1", "one")],
+        )
+        .unwrap();
+        let rebuilt = refresh_layout(dir.path(), "s1", layout).unwrap();
+        assert_eq!(rebuilt.message_count(), 1);
+        let read =
+            read_transcript_window_with_layout(dir.path(), "s1", &rebuilt, 0, Some(50)).unwrap();
+        assert_eq!(read.messages.len(), 1);
+        assert_eq!(read.messages[0].id, "m1");
+    }
+
+    #[test]
+    fn sniffing_classifies_lines_without_full_parsing() {
+        assert_eq!(sniff_line_kind(r#"{"type":"message","id":"m1"}"#), Some("message"));
+        assert_eq!(
+            sniff_line_kind(r#"{"schema":1,"type":"session"}"#),
+            Some("session")
+        );
+        assert_eq!(
+            sniff_line_kind(r#"{"type":"compaction","id":"c1"}"#),
+            Some("compaction")
+        );
+        assert_eq!(sniff_line_kind(r#"{"type":"unknown"}"#), None);
+        assert_eq!(sniff_line_kind("not json"), None);
     }
 
     #[test]
