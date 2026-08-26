@@ -86,6 +86,10 @@
   --ds-shadow-composer: var(--ds-elevation-stroke), 0 3px 7.5px #0000000a, 0 0 20px #0000000d;
   --ds-bg-elevated-primary: color-mix(in oklab, var(--gray-800) 96%, transparent);
   --ds-sidebar-width: clamp(240px, 275px, min(520px, calc(100vw - 320px)));
+  /* Settings rail border-box width, including its 1px right border. The
+   * settings drag band starts after the rail so the rail keeps a single
+   * surface tone from the window top edge down. */
+  --ds-settings-nav-width: 275px;
   --ds-toolbar-height: 46px;
   /* Keep an 8px visual buffer between work-panel actions and window chrome. */
   --ds-window-controls-width: 120px;

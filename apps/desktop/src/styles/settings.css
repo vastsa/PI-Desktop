@@ -18,10 +18,18 @@
   background: var(--ds-bg-primary);
 }
 
+/* The band spans the content column only. Spanning the full window width
+ * painted --ds-bg-primary over the nav rail, so the strip above the rail read
+ * as a different color from the rail underneath it. */
 .settings-titlebar {
   pointer-events: none;
   position: absolute;
-  inset-inline: 0;
+  /* Physical insets on purpose: chrome.css narrows this band on Windows/Linux
+   * with `right`, and a logical `inset-inline-end` here would beat it on
+   * declaration order rather than lose on specificity. The app never renders
+   * RTL, so there is no directional cost. */
+  left: var(--ds-settings-nav-width);
+  right: 0;
   top: 0;
   z-index: 10;
   height: var(--ds-toolbar-height);
@@ -32,8 +40,8 @@
 
 .settings-shell-full .settings-nav {
   /* Gold coding-shell settings rail ~275px at 1200-wide captures */
-  width: 275px;
-  flex: 0 0 275px;
+  width: var(--ds-settings-nav-width);
+  flex: 0 0 var(--ds-settings-nav-width);
   border-right: 1px solid transparent;
   background: var(--ds-bg-sidebar);
   padding: 0;
