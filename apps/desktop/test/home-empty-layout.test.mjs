@@ -13,7 +13,10 @@ const [chatSurface, styles, checklist, composer] = await Promise.all([
 ]);
 
 test("empty home uses a single scrollable stack instead of dual-grow portals", () => {
-  assert.match(chatSurface, /className="home-main-content" data-testid="home-empty"/);
+  assert.match(
+    chatSurface,
+    /className="home-main-content"[\s\S]*data-testid="home-empty"/,
+  );
   assert.match(chatSurface, /className="home-scroll"/);
   assert.match(chatSurface, /className="home-stack-inner"/);
   assert.match(chatSurface, /className="empty-hero-subtitle"/);

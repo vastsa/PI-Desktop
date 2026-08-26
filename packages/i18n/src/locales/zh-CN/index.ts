@@ -170,7 +170,9 @@ export const zhCN = {
   chat: {
     emptyTitle: "今天想做点什么？",
     emptyTitleInProject: "今天想在 {{project}} 里做点什么？",
+    emptyTitleTemporary: "临时聊点什么？",
     emptySubtitle: "从一个任务开始，或者选择一个方向。",
+    emptySubtitleTemporary: "这是一个独立的临时对话，会随本次会话一起丢弃。",
     emptyHint: "添加 AI 模型服务、打开项目，然后发送第一条消息。",
     placeholder: "让 PI-Desktop 帮你做任何事",
     placeholderHome: "随便问问",

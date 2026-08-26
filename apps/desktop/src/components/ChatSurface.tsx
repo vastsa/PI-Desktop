@@ -48,6 +48,11 @@ export const ChatSurface = memo(function ChatSurface() {
   const error = useAppStore((state) => state.error);
   const errorCode = useAppStore((state) => state.errorCode);
   const errorRetriable = useAppStore((state) => state.errorRetriable);
+  const activeSession = useAppStore((state) =>
+    state.activeSessionId
+      ? state.sessions.find((session) => session.id === state.activeSessionId)
+      : undefined,
+  );
 
   // Permission queue for the active session.
   const activePermission = useAppStore((state) =>
@@ -80,8 +85,14 @@ export const ChatSurface = memo(function ChatSurface() {
   );
 
   const heroProject = useMemo(
-    () => projectName(workspace?.path, workspace?.name),
-    [workspace?.path, workspace?.name],
+    () =>
+      activeSession?.projectPath?.trim()
+        ? projectName(activeSession.projectPath, workspace?.name)
+        : null,
+    [activeSession?.projectPath, workspace?.name],
+  );
+  const isTemporarySession = Boolean(
+    activeSessionId && activeSession && !activeSession.projectPath?.trim(),
   );
   const emptyTitleParts = useMemo(() => {
     const marker = "__PROJECT__";
@@ -155,7 +166,13 @@ export const ChatSurface = memo(function ChatSurface() {
         </div>
       ) : null}
       {!hasTranscript ? (
-        <div className="home-main-content" data-testid="home-empty">
+        <div
+          className="home-main-content"
+          data-testid="home-empty"
+          data-home-session-kind={
+            heroProject ? "project" : isTemporarySession ? "temporary" : "empty"
+          }
+        >
           <div className="home-scroll">
             <div className="home-stack-inner">
               <div className="empty-hero">
@@ -174,17 +191,29 @@ export const ChatSurface = memo(function ChatSurface() {
                         type="button"
                         className="project-underline"
                         onClick={() => void openProject()}
-                        title={workspace?.path || t("project.open")}
+                        title={
+                          workspace?.path ||
+                          activeSession?.projectPath ||
+                          t("project.open")
+                        }
                       >
                         {heroProject}
                       </button>
                       {emptyTitleParts.after}
                     </>
+                  ) : isTemporarySession ? (
+                    t("chat.emptyTitleTemporary")
                   ) : (
                     t("chat.emptyTitle")
                   )}
                 </h1>
-                <p className="empty-hero-subtitle">{t("chat.emptySubtitle")}</p>
+                <p className="empty-hero-subtitle">
+                  {t(
+                    isTemporarySession
+                      ? "chat.emptySubtitleTemporary"
+                      : "chat.emptySubtitle",
+                  )}
+                </p>
               </div>
               <OnboardingChecklist />
             </div>

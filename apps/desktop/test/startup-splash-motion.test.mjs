@@ -53,9 +53,12 @@ test("crash and empty-home copy is catalog-backed in English and Chinese", () =>
   assert.match(chinese, /uiCrashed:\s*"界面出现了问题"/);
   assert.match(app, /i18n\.t\("app\.uiCrashed"\)/);
   assert.match(chinese, /emptyTitle:\s*"今天想做点什么？"/);
+  assert.match(english, /emptyTitleTemporary:\s*"What would you like to explore temporarily\?"/);
+  assert.match(chinese, /emptyTitleTemporary:\s*"临时聊点什么？"/);
   assert.match(
     chinese,
     /emptyTitleInProject:\s*"今天想在 \{\{project\}\} 里做点什么？"/,
   );
   assert.match(chinese, /emptySubtitle:\s*"从一个任务开始，或者选择一个方向。"/);
+  assert.match(chinese, /emptySubtitleTemporary:\s*"这是一个独立的临时对话，会随本次会话一起丢弃。"/);
 });

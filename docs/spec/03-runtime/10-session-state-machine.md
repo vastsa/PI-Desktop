@@ -92,8 +92,9 @@ accept_prompt
 6. Session status returns to idle after terminal turn states are persisted
 7. Changing the renderer's active project/session does not transition or abort
    any background session
-8. A tool transition retains the originating session's persisted project root;
-   it never adopts the newly active project's root
+8. A tool transition retains the originating session's persisted project root,
+   or that session's own scratch root when it is temporary; it never adopts the
+   newly active project's root
 9. `session.endTurn` moves only a `running` turn to terminal. In that same
    transaction, unseen `completed` inserts `task.completed`, unseen `error`
    inserts `task.failed`, and a result already visible in the focused current
@@ -155,6 +156,9 @@ transcript-file line first, index transaction second.
   then atomically rewrite the transcript to the prefix before its root user row;
   the structured composer snapshot remains renderer-memory-only
 - mode/project fields: on change
+- temporary-session tool binding: a path-less session uses its own
+  `<data_dir>/scratch/<sessionId>` root while keeping `projectPath` absent;
+  Plan/Goal workspace validation continues to require a persisted project
 - Plan/Goal submission: write exact Markdown bytes to a new unique
   `.pi/<kind>/*.md`,
   record path/hash/size plus the kind and structured title/question, and insert

@@ -96,8 +96,9 @@ for that prompt instead of guessing a file name or calling `Read` on a
 directory.
 
 - For a durable `sessionId`, `workspaceRoot` is resolved from that session's
-  persisted project binding. It is not read from the mutable active sidebar
-  tab at execution time.
+  persisted project binding. A path-less temporary session instead binds its
+  `workspaceRoot` to `<data_dir>/scratch/<sessionId>`. Neither root is read
+  from the mutable active sidebar tab at execution time.
 - All file paths are relative to the resolved `workspaceRoot` by default
 - After normalization they must still reside within the workspace unless the
   call receives explicit outside-path permission
@@ -152,9 +153,12 @@ fallback paths. They use the same session lifecycle as other scratch data and
 do not enter the workspace, artifacts, or the persisted prompt as binary
 content.
 
-- **Addressing.** The model addresses scratch by absolute path only; the path
-  is advertised in the system prompt. Relative tool paths always resolve
-  against the workspace. `Bash` additionally exports `PI_SCRATCH_DIR`.
+- **Addressing.** In a project session, the model addresses scratch by absolute
+  path only; the path is advertised in the system prompt, relative tool paths
+  resolve against the project workspace, and `Bash` exports
+  `PI_SCRATCH_DIR`. In a temporary session, that same scratch directory is the
+  session workspace root, so relative Read/Glob/Grep/Write/Edit/Bash paths work
+  there without inheriting a project.
 - **Containment.** `resolve_tool_path` tries the workspace root first, then
   the scratch root, applying the identical two-layer defense (lexical `..`
   normalization + canonicalized-ancestor symlink check) to each. A symlink
@@ -187,8 +191,11 @@ content.
   needed).
 - A project switch does not redirect or cancel a background session's tools;
   sessions A and B remain sandboxed to projects A and B respectively.
-- A Temporary/path-less session has no workspace root, even if another project
-  is visible. High-risk tools are unavailable without a session project.
+- A Temporary/path-less session uses only its own scratch directory as its
+  workspace root, even if another project is visible or recently active. It
+  never inherits that project. Plan and Goal still require a persisted project
+  root, so this binding does not expand contract-mode execution. High-risk
+  tools operate only inside the temporary session's scratch root.
 - Legacy calls that do not resolve to a durable session may use the selected
   host workspace only during the compatibility window.
 - A session lookup/storage error fails the tool request; it must never be

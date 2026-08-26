@@ -272,6 +272,10 @@ shared capability contract:
 - Selecting a project-scoped thread activates its project before switching to
   `chat`. Selecting a temporary thread clears the visible active workspace
   before loading it.
+- Empty home has three explicit session states: a project-bound session shows
+  the existing project-underlined welcome; a temporary session shows dedicated
+  temporary-chat copy with no project underline or folder-open action; and no
+  active session keeps the generic welcome title.
 - New task resolves the current project or temporary group by its most recent
   session: if that session has `messageCount = 0`, it is selected and reused;
   otherwise a durable empty session is created immediately and appears in the

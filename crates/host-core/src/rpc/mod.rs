@@ -549,12 +549,34 @@ fn plan_rpc_err(error: impl ToString) -> JsonRpcError {
     rpc_err(1015, message, &error_code)
 }
 
-fn resolve_tool_workspace(
+fn resolve_persisted_project_workspace(
     state: &AppState,
     session_id: &str,
 ) -> Result<Option<String>, JsonRpcError> {
     match sessions::get_session(&state.db, session_id) {
         Ok(Some(detail)) => Ok(detail.summary.project_path),
+        // Compatibility fallback for old callers that did not persist a
+        // session before dispatching a tool request.
+        Ok(None) => Ok(state.workspace.path.clone()),
+        Err(error) => Err(rpc_err(1000, error.to_string(), "INTERNAL")),
+    }
+}
+
+fn resolve_tool_workspace(
+    state: &AppState,
+    session_id: &str,
+) -> Result<Option<String>, JsonRpcError> {
+    match sessions::get_session(&state.db, session_id) {
+        Ok(Some(detail)) => {
+            if let Some(project_path) = detail.summary.project_path {
+                return Ok(Some(project_path));
+            }
+            let scratch = scratch::session_dir(&state.data_dir, session_id)
+                .ok_or_else(|| rpc_err(1000, "temporary session has an invalid id", "INTERNAL"))?;
+            std::fs::create_dir_all(&scratch)
+                .map_err(|error| rpc_err(1000, error.to_string(), "INTERNAL"))?;
+            Ok(Some(scratch.to_string_lossy().into_owned()))
+        }
         // Compatibility fallback for old callers that did not persist a
         // session before dispatching a tool request.
         Ok(None) => Ok(state.workspace.path.clone()),
@@ -600,7 +622,7 @@ fn resolve_plan_workspace(state: &AppState, session_id: &str) -> Result<PathBuf,
         Ok(None) => return Err(plan_rpc_err("PLAN_SESSION_NOT_FOUND")),
         Err(error) => return Err(rpc_err(1000, error.to_string(), "INTERNAL")),
     }
-    resolve_tool_workspace(state, session_id)?
+    resolve_persisted_project_workspace(state, session_id)?
         .map(PathBuf::from)
         .ok_or_else(|| plan_rpc_err("PLAN_WORKSPACE_REQUIRED"))
 }
@@ -614,7 +636,7 @@ fn resolve_plan_workspace_if_available(
         Ok(None) => return Err(plan_rpc_err("PLAN_SESSION_NOT_FOUND")),
         Err(error) => return Err(rpc_err(1000, error.to_string(), "INTERNAL")),
     }
-    Ok(resolve_tool_workspace(state, session_id)?.map(PathBuf::from))
+    Ok(resolve_persisted_project_workspace(state, session_id)?.map(PathBuf::from))
 }
 
 async fn emit_notification(tx: &mpsc::UnboundedSender<String>, method: &str, params: Value) {
@@ -3386,8 +3408,8 @@ mod tests {
     use tokio::sync::{mpsc, Mutex};
 
     use super::{
-        capability_err, handle_request, parse_capability_query, resolve_tool_workspace, scope_err,
-        skill_err,
+        capability_err, handle_request, parse_capability_query, resolve_plan_workspace,
+        resolve_tool_workspace, scope_err, skill_err,
     };
     use crate::plans::{PlanResolveParams, PlanSubmitParams};
     use crate::scheduled;
@@ -3568,7 +3590,7 @@ mod tests {
     }
 
     #[test]
-    fn temporary_session_does_not_inherit_the_active_workspace() {
+    fn temporary_session_uses_its_own_scratch_workspace() {
         let data_dir = tempfile::tempdir().unwrap();
         let active_project = data_dir.path().join("active-project");
         fs::create_dir_all(&active_project).unwrap();
@@ -3584,11 +3606,81 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(resolve_tool_workspace(&state, &session.id).unwrap(), None);
+        let resolved = PathBuf::from(
+            resolve_tool_workspace(&state, &session.id)
+                .unwrap()
+                .unwrap(),
+        );
+        let expected = data_dir.path().join("scratch").join(&session.id);
+        assert_eq!(resolved, expected);
+        assert!(resolved.is_dir());
+        assert_ne!(resolved, active_project);
+        assert_eq!(
+            resolve_plan_workspace(&state, &session.id)
+                .expect_err("temporary sessions must not enter Plan/Goal workspaces")
+                .data
+                .unwrap()["errorCode"],
+            "PLAN_WORKSPACE_REQUIRED"
+        );
         assert_eq!(
             resolve_tool_workspace(&state, "legacy-missing-session").unwrap(),
             state.workspace.path
         );
+    }
+
+    #[tokio::test]
+    async fn temporary_session_reads_and_writes_inside_its_scratch_workspace() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let active_project = data_dir.path().join("active-project");
+        fs::create_dir_all(&active_project).unwrap();
+        let mut state = AppState::open(data_dir.path()).unwrap();
+        state.workspace.set(&active_project);
+        let session = sessions::create_session(
+            &state.db,
+            Some("Temporary".into()),
+            Some("agent".into()),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        let root = PathBuf::from(
+            resolve_tool_workspace(&state, &session.id)
+                .unwrap()
+                .unwrap(),
+        );
+        let scratch = crate::scratch::session_dir(data_dir.path(), &session.id).unwrap();
+
+        let written = crate::tools::execute_tool_with_path_access(
+            Some(&root),
+            Some(&scratch),
+            "Write",
+            &json!({ "path": "notes.txt", "content": "temporary" }),
+            None,
+            None,
+            false,
+        )
+        .await;
+        assert!(written.ok);
+        assert_eq!(written.content["root"], "workspace");
+        assert_eq!(
+            fs::read_to_string(root.join("notes.txt")).unwrap(),
+            "temporary"
+        );
+
+        let read = crate::tools::execute_tool_with_path_access(
+            Some(&root),
+            Some(&scratch),
+            "Read",
+            &json!({ "path": "notes.txt" }),
+            None,
+            None,
+            false,
+        )
+        .await;
+        assert!(read.ok);
+        assert_eq!(read.content["content"], "temporary");
+        assert!(!active_project.join("notes.txt").exists());
     }
 
     #[tokio::test]

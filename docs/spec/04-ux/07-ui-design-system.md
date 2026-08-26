@@ -118,6 +118,11 @@ Codex as a visual reference. The identity contract is deliberately small:
   `BrandLogo` remains 20px/18px in the expanded/collapsed sidebar and 64px in
   the startup splash. Composer prompt rows do not render a leading brand icon
   in either home or thread-docked mode.
+- The empty-home hero keeps three session identities: project sessions retain
+  the underlined project action, temporary sessions use dedicated temporary
+  chat copy without a project or folder action, and no active session uses the
+  generic welcome copy. The state is derived from the selected session, not
+  merely from the visible workspace.
 - New-session controls use the dedicated message-plus icon at 15–16px. The
   generic plus icon remains reserved for non-session additions such as adding
   a project.

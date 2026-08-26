@@ -175,7 +175,10 @@ export const en = {
   chat: {
     emptyTitle: "What can I help you build?",
     emptyTitleInProject: "What can we build in {{project}}?",
+    emptyTitleTemporary: "What would you like to explore temporarily?",
     emptySubtitle: "Start with a task, or choose a place to begin.",
+    emptySubtitleTemporary:
+      "This is a private scratch chat and will be discarded with this session.",
     emptyHint: "Add an AI provider, open a project, then send your first message.",
     placeholder: "Ask PI-Desktop to help with anything",
     placeholderHome: "Ask anything",
