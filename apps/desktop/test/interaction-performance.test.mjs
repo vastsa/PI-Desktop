@@ -5,14 +5,16 @@ import { loadStyles } from "./helpers/styles.mjs";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-const [app, chatSurface, transcript, minimap, styles, store] = await Promise.all([
-  read("../src/App.tsx"),
-  read("../src/components/ChatSurface.tsx"),
-  read("../src/components/ChatTranscript.tsx"),
-  read("../src/components/ConversationMinimap.tsx"),
-  loadStyles(),
-  read("../src/stores/app-store.ts"),
-]);
+const [app, chatSurface, transcript, minimap, composer, styles, store] =
+  await Promise.all([
+    read("../src/App.tsx"),
+    read("../src/components/ChatSurface.tsx"),
+    read("../src/components/ChatTranscript.tsx"),
+    read("../src/components/ConversationMinimap.tsx"),
+    read("../src/components/Composer.tsx"),
+    loadStyles(),
+    read("../src/stores/app-store.ts"),
+  ]);
 
 test("streaming state stays inside the chat render boundary", () => {
   assert.match(app, /<ChatSurface \/>/);
@@ -235,6 +237,30 @@ test("minimap hover magnification never measures geometry per dash", () => {
     minimap.indexOf("// Initial offset computation"),
   );
   assert.match(resize, /measureMagnifyCenters\(\)/);
+});
+
+test("minimap re-measures dash centers when the rail's own box changes", () => {
+  // The rail's height is `calc(var(--composer-dock-height) + 16px)` and the
+  // composer republishes that variable on documentElement as its draft grows.
+  // That moves every dash without changing the marker set and without a window
+  // resize, so observing only the thread content left magnification tracking
+  // stale positions while the user typed a multi-line prompt.
+  assert.match(minimap, /new ResizeObserver\(\(\) => \{[\s\S]*?measureMagnifyCenters\)/);
+  const railObserver = minimap.slice(
+    minimap.indexOf("const rail = railRef.current;\n    if (!rail || typeof ResizeObserver"),
+    minimap.indexOf("const jumpTo = useCallback("),
+  );
+  assert.ok(railObserver.length > 0, "the rail must be observed for its own resizes");
+  assert.match(railObserver, /observer\.observe\(rail\)/);
+  assert.match(railObserver, /observer\.disconnect\(\)/);
+  assert.match(railObserver, /cancelAnimationFrame\(frame\)/);
+  // `overflows` gates whether the rail is mounted, so the observer must reattach.
+  assert.match(railObserver, /\}, \[measureMagnifyCenters, overflows\]\)/);
+  // The composer is the source of that variable.
+  assert.match(
+    composer,
+    /setProperty\(\s*"--composer-dock-height"/,
+  );
 });
 
 test("motion feedback is composited, bounded, and accessible", () => {

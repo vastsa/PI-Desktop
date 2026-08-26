@@ -171,6 +171,28 @@ export const ConversationMinimap = memo(function ConversationMinimap({
     measureMagnifyCenters();
   }, [markerIdentity, measureMagnifyCenters, recomputeOffsets, updateOverflow]);
 
+  /* Dash centers follow the rail's own box, which is not driven by the marker
+     set or the window alone: the rail's height is derived from
+     `--composer-dock-height`, which the composer republishes as its draft grows.
+     Observing the rail catches every cause, so magnification never tracks stale
+     positions. */
+  useEffect(() => {
+    const rail = railRef.current;
+    if (!rail || typeof ResizeObserver === "undefined") return;
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(measureMagnifyCenters);
+    });
+    observer.observe(rail);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+    // `overflows` gates whether the rail is mounted at all, so the observer has
+    // to be reattached when it returns.
+  }, [measureMagnifyCenters, overflows]);
+
   useEffect(() => {
     updateActive();
   }, [markerIdentity, updateActive]);
