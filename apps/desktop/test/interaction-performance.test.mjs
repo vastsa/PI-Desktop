@@ -154,6 +154,39 @@ test("session activation pins the latest record before the first paint", () => {
   assert.doesNotMatch(activationEffect, /smooth/);
 });
 
+test("session switch bounds the first transcript commit instead of rebuilding it", () => {
+  // Progressive hydration must decide during render. Setting the gate from a
+  // layout effect (`useState(true)` + `setHydrated(false)`) meant a switch
+  // mounted the whole history, threw it away, and rebuilt it - three commits,
+  // and the long sessions this protects paid for the full DOM anyway.
+  const hydration = transcript.slice(
+    transcript.indexOf("// Progressive hydration"),
+    transcript.indexOf("const lastEntry = entries[entries.length - 1];"),
+  );
+  assert.ok(hydration.length > 0, "hydration block must exist");
+  assert.match(
+    hydration,
+    /const hydrationBounded =\s*hydratedSessionRef\.current !== sessionId &&/,
+    "the gate must be derived from the rendered session, not stored state",
+  );
+  assert.match(
+    hydration,
+    /historyEntries = hydrationBounded\s*\?\s*allHistoryEntries\.slice\(-INITIAL_RENDER_BUDGET\)/,
+  );
+  // No layout effect may flip the gate; that is what caused the extra commits.
+  assert.doesNotMatch(hydration, /useLayoutEffect/);
+  assert.doesNotMatch(transcript, /setHydrated\(/);
+  // The spacer holds scroll height for exactly the entries left unmounted.
+  assert.match(
+    transcript,
+    /\{hydrationBounded \? \([\s\S]*?transcript-hydration-spacer/,
+  );
+  assert.match(
+    transcript,
+    /allHistoryEntries\.length - INITIAL_RENDER_BUDGET\) \* 60/,
+  );
+});
+
 test("minimap separates resize checks from message-position measurement", () => {
   assert.match(minimap, /buildConversationMinimapMarkers\(messages\)/);
   assert.match(minimap, /const markerIdentity = useMemo/);
