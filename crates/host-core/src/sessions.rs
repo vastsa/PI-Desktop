@@ -2644,6 +2644,79 @@ mod tests {
     }
 
     #[test]
+    fn a_window_over_a_duplicated_id_stays_complete_and_reaches_the_head() {
+        // Physical lines can exceed distinct messages: a retried append leaves
+        // one id on two lines and reads dedupe keep-last. A window is therefore
+        // allowed to return fewer messages than its limit, and what matters is
+        // that paging still covers every message exactly once.
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        for index in 0..4 {
+            append_message(
+                &db,
+                &session.id,
+                &user_msg(&format!("m{index}"), &format!("body {index}"), "2025-05-01T00:00:00Z"),
+                None,
+            )
+            .unwrap();
+        }
+        // Duplicate an *older* line so the duplicate pair straddles a page edge.
+        let (record, _) = ui_to_record(&user_msg("m1", "body 1 retried", "2025-05-01T00:00:01Z"));
+        transcripts::append_message(db.data_dir(), &session.id, "2025-05-01T00:00:00Z", &record)
+            .unwrap();
+
+        let mut collected: Vec<String> = Vec::new();
+        let mut before: Option<i64> = None;
+        loop {
+            let page = get_session_with_options(
+                &db,
+                &session.id,
+                SessionReadOptions {
+                    message_before: before,
+                    message_limit: Some(2),
+                    content_limit: None,
+                },
+            )
+            .unwrap()
+            .unwrap();
+            let mut ids: Vec<String> = page.messages.iter().map(|m| m.id.clone()).collect();
+            ids.append(&mut collected);
+            collected = ids;
+            let start = page.message_start.unwrap();
+            if start == 0 || page.has_more_before != Some(true) {
+                break;
+            }
+            before = Some(start);
+        }
+        // Every message stays reachable by paging, which is the guarantee that
+        // matters: the pre-change clamp against `last_seq` dropped the newest
+        // ones entirely.
+        for id in ["m0", "m1", "m2", "m3"] {
+            assert!(collected.iter().any(|seen| seen == id), "missing {id} in {collected:?}");
+        }
+        // The retried line is physically last, so it is the newest line the tail
+        // window returns; the keep-last content wins and the renderer merges the
+        // two sightings of that id. A page is always internally deduplicated.
+        let newest = get_session_with_options(
+            &db,
+            &session.id,
+            SessionReadOptions {
+                message_before: None,
+                message_limit: Some(2),
+                content_limit: None,
+            },
+        )
+        .unwrap()
+        .unwrap();
+        let newest_ids: Vec<&str> = newest.messages.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(newest_ids, ["m3", "m1"]);
+        assert_eq!(newest.messages[1].content, "body 1 retried");
+        // An uncapped read still collapses the pair to one message.
+        let whole = get_session(&db, &session.id).unwrap().unwrap();
+        assert_eq!(whole.messages.len(), 4);
+    }
+
+    #[test]
     fn bounded_reads_use_physical_line_positions_not_the_dedup_counter() {
         // A retried append leaves the same message id on two file lines. The
         // index counter (`last_seq`) counts it once, so a window clamped

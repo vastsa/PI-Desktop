@@ -126,53 +126,94 @@ impl TranscriptLayout {
     }
 }
 
-/// Classify a JSONL line without building a `serde_json::Value`.
+/// Classify a JSONL line by reading its top-level `type` value.
 ///
-/// Every line written by this module carries `"type"` in the first object
-/// level, so a bounded prefix scan decides the kind. Deserializing a `LineTag`
-/// instead makes serde walk the entire line -- including a multi-megabyte tool
-/// payload -- to read one short string, which dominates the cost of scanning a
-/// long transcript.
+/// Deserializing a `LineTag` makes serde walk the entire line -- including a
+/// multi-megabyte tool payload -- to read one short string, which dominates the
+/// cost of scanning a long transcript. This finds the discriminator directly.
+///
+/// The scan is depth-aware on purpose. Tool results and checkpoint details are
+/// open-ended JSON and can nest an object whose own key is `type` with a value
+/// that happens to name a line kind, so matching the first `"type":"` in the
+/// line would misclassify it. Only a key at the top level of the object counts.
+///
+/// Lines written before the discriminator moved to the front carry it after
+/// their payload; those are found by the same scan, just later in the line. A
+/// line in the current format is decided from its first key.
 fn sniff_line_kind(line: &str) -> Option<&'static str> {
-    const SNIFF_LIMIT: usize = 512;
     let bytes = line.as_bytes();
-    let head = &bytes[..bytes.len().min(SNIFF_LIMIT)];
-    // Lines written before the discriminator moved to the front carry it after
-    // their payload, so a bounded tail check keeps existing files readable
-    // without parsing them.
-    let tail = &bytes[bytes.len().saturating_sub(SNIFF_LIMIT)..];
-    sniff_window(head).or_else(|| sniff_window(tail))
+    let mut index = 0usize;
+    // Enter the object.
+    while index < bytes.len() && bytes[index].is_ascii_whitespace() {
+        index += 1;
+    }
+    if index >= bytes.len() || bytes[index] != b'{' {
+        return None;
+    }
+    index += 1;
+    let mut depth = 1usize;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'"' => {
+                let (text, next) = scan_json_string(bytes, index)?;
+                index = next;
+                // A key at the top level is followed by ':'; anything else was a
+                // value and needs no further attention.
+                if depth != 1 || text != b"type" {
+                    continue;
+                }
+                while index < bytes.len() && bytes[index].is_ascii_whitespace() {
+                    index += 1;
+                }
+                if index >= bytes.len() || bytes[index] != b':' {
+                    continue;
+                }
+                index += 1;
+                while index < bytes.len() && bytes[index].is_ascii_whitespace() {
+                    index += 1;
+                }
+                if index >= bytes.len() || bytes[index] != b'"' {
+                    return None;
+                }
+                let (value, _) = scan_json_string(bytes, index)?;
+                return match value {
+                    b"message" => Some("message"),
+                    b"compaction" => Some("compaction"),
+                    b"session" => Some("session"),
+                    b"revision" => Some("revision"),
+                    _ => None,
+                };
+            }
+            b'{' | b'[' => {
+                depth += 1;
+                index += 1;
+            }
+            b'}' | b']' => {
+                depth -= 1;
+                index += 1;
+                if depth == 0 {
+                    return None;
+                }
+            }
+            _ => index += 1,
+        }
+    }
+    None
 }
 
-/// Find the line kind named anywhere in `window`.
+/// Read one JSON string starting at the opening quote in `bytes[start]`.
 ///
-/// Block payloads carry their own `type` ("text", "tool_call", ...), so the
-/// first match is not necessarily the line's discriminator. Every occurrence is
-/// examined and the first one naming a line kind wins; no block type shares a
-/// name with a line type, so this cannot pick the wrong one.
-fn sniff_window(window: &[u8]) -> Option<&'static str> {
-    let needle = b"\"type\":\"";
-    let mut offset = 0usize;
-    while offset + needle.len() < window.len() {
-        let Some(found) = window[offset..]
-            .windows(needle.len())
-            .position(|candidate| candidate == needle)
-        else {
-            return None;
-        };
-        let value_start = offset + found + needle.len();
-        let rest = &window[value_start..];
-        let Some(end) = rest.iter().position(|byte| *byte == b'"') else {
-            return None;
-        };
-        match &rest[..end] {
-            b"message" => return Some("message"),
-            b"compaction" => return Some("compaction"),
-            b"session" => return Some("session"),
-            b"revision" => return Some("revision"),
-            _ => {}
+/// Returns the raw (still-escaped) contents and the index just past the closing
+/// quote. Escapes only need to be stepped over, never decoded: the keys and
+/// values this scanner compares against contain no escapable characters.
+fn scan_json_string(bytes: &[u8], start: usize) -> Option<(&[u8], usize)> {
+    let mut index = start + 1;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'\\' => index += 2,
+            b'"' => return Some((&bytes[start + 1..index], index + 1)),
+            _ => index += 1,
         }
-        offset = value_start + end;
     }
     None
 }
@@ -875,6 +916,60 @@ mod tests {
             sniff_line_kind(&json!({ "blocks": [{ "type": "text" }] }).to_string()),
             None,
         );
+    }
+
+    #[test]
+    fn nested_type_keys_never_decide_a_line_kind() {
+        // Tool results and checkpoint details are open-ended JSON. A nested
+        // object can carry its own `type` naming a line kind, and in the legacy
+        // key order it appears before the real discriminator. Only the top-level
+        // key may decide the line.
+        let legacy_compaction = json!({
+            "createdAt": "2026-07-26T00:00:00Z",
+            "details": { "echo": { "type": "message" } },
+            "id": "c1",
+            "summary": "s",
+            "throughMessageId": "m1",
+            "tokensBefore": 1,
+            "type": "compaction",
+        });
+        assert_eq!(
+            sniff_line_kind(&legacy_compaction.to_string()),
+            Some("compaction"),
+        );
+
+        // A nested `type` inside a tool payload does not turn a message into
+        // something else, and an escaped one inside a string is inert.
+        let message = json!({
+            "type": "message",
+            "id": "m1",
+            "role": "tool",
+            "blocks": [{ "type": "tool_call", "result": { "text": "{\"type\":\"session\"}" } }],
+            "createdAt": "2026-07-26T00:00:00Z",
+        });
+        assert_eq!(sniff_line_kind(&message.to_string()), Some("message"));
+
+        // An object with no top-level discriminator is not a transcript line,
+        // however many nested ones it contains.
+        assert_eq!(
+            sniff_line_kind(&json!({ "blocks": [{ "type": "message" }] }).to_string()),
+            None,
+        );
+        // Nor is a bare array, a truncated object, or a non-object.
+        assert_eq!(sniff_line_kind("[{\"type\":\"message\"}]"), None);
+        assert_eq!(sniff_line_kind("{\"type\":\"mess"), None);
+        assert_eq!(sniff_line_kind("null"), None);
+        // A line whose payload is bigger than any bounded prefix is still
+        // classified from its real key.
+        let huge = json!({
+            "blocks": [{ "type": "text", "text": "x".repeat(200_000) }],
+            "createdAt": "2026-07-26T00:00:00Z",
+            "id": "m2",
+            "isError": false,
+            "role": "assistant",
+            "type": "message",
+        });
+        assert_eq!(sniff_line_kind(&huge.to_string()), Some("message"));
     }
 
     #[test]
