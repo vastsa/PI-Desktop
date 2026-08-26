@@ -42,7 +42,10 @@ test("renderer surfaces the PI-Desktop brand instead of the Codex shell brand", 
 });
 
 test("app chrome uses the shared brand asset without branding the composer input", () => {
-  assert.match(brandLogo, /import brandLogoUrl.*from\s*"\.\.\/\.\.\/build\/icon_1024\.png"/);
+  // Renderer-sized brand marks, not the 1024px electron-builder installer icons.
+  assert.match(brandLogo, /import brandLogoUrlLight from\s*"\.\.\/assets\/brand\/logo-light\.png"/);
+  assert.match(brandLogo, /import brandLogoUrlDark from\s*"\.\.\/assets\/brand\/logo-dark\.png"/);
+  assert.doesNotMatch(brandLogo, /\.\.\/\.\.\/build\//);
   assert.match(brandLogo, /export function BrandLogo/);
   assert.match(brandLogo, /src=\{.*brandLogoUrl/);
   assert.match(icons, /export const IconNewSession/);
