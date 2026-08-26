@@ -1284,10 +1284,12 @@ Renderer: `apps/desktop/src/components/Markdown.tsx` + `apps/desktop/src/lib/shi
   painted; deciding it from an effect instead makes the switch mount the whole
   history, discard it, and rebuild it.
 - **Minimap hover cost**: dash magnification is applied by writing a custom
-  property per dash, and dash centers are measured in a separate read-only pass
-  that runs when the marker set changes or the rail resizes. Reading a dash's
-  geometry inside the same loop that writes to it forces one synchronous layout
-  per dash on every hover frame.
+  property per dash, and dash centers are measured in a separate read-only pass.
+  Reading a dash's geometry inside the same loop that writes to it forces one
+  synchronous layout per dash on every hover frame. The measurement is refreshed
+  when the marker set changes and whenever the rail's own box resizes: the rail's
+  height derives from `--composer-dock-height`, which the composer republishes as
+  its draft grows, so dashes move without a marker change or a window resize.
 
 ---
 
