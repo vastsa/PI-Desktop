@@ -3,20 +3,18 @@
 ## 1. Scope
 
 The prompt-enhancement capability supports a one-shot `Enhance prompt` request
-for a non-empty draft. The current Composer does not render a standalone
-sparkle toolbar action for it; the right toolbar stays limited to the combined
-model × reasoning selector and the single Stop/Send submit slot. The bridge and
-runtime contract remain available for a future explicit surface. When invoked,
-the request rewrites only the draft text with the model currently displayed in
-the Composer. File-reference chips remain unchanged.
+for a non-empty draft. The Composer renders it as a standalone Sparkles action
+between the combined model × reasoning selector and the single Stop/Send
+submit slot. When invoked, the request rewrites only the draft text with the
+model currently displayed in the Composer. File-reference chips remain
+unchanged.
 
 This is a v1 utility action, not an agent turn: it does not append a message,
 read session history, run tools, or persist a transcript row.
 
 ## 2. Availability and interaction
 
-When invoked by a supported surface, enhancement is enabled only when all of
-the following are true:
+The Sparkles action is enabled only when all of the following are true:
 
 - the draft is non-empty after trimming;
 - the effective displayed provider/model is enabled and authenticated, using

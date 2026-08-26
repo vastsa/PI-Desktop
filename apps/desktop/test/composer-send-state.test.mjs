@@ -31,11 +31,18 @@ test("composer send/stop button follows draft content and the visible session's 
   assert.match(submitSlot, /stopGenerating/);
   assert.match(submitSlot, /onClick=\{\(\) => void abort\(\)\}/);
   assert.doesNotMatch(composerRight, /\{runActive \? \(/);
-  assert.doesNotMatch(
+  assert.match(
     composerRight,
-    /composer-enhance-btn/,
-    "The standalone prompt-enhancement icon must not sit beside Send/Stop",
+    /composer-model-thinking-chip[\s\S]*composer-enhance-btn[\s\S]*className="(?:stop|send)-btn"/,
+    "The enhancement action should sit between model selection and the submit slot",
   );
+  const modelTrigger =
+    composer.match(
+      /className=\{`icon-btn composer-model-thinking-chip[\s\S]*?<\/button>/,
+    )?.[0] ?? "";
+  assert.ok(modelTrigger.length > 0, "model selector trigger not found");
+  assert.match(modelTrigger, /<IconBot size=\{14\} \/>/);
+  assert.doesNotMatch(modelTrigger, /IconSparkles/);
   assert.doesNotMatch(
     composerRight,
     /className="stop-btn"[\s\S]*?\) : null\}[\s\S]*?className="send-btn"/,

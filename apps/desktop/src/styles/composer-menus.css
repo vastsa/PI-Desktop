@@ -105,11 +105,6 @@
   align-items: center;
   justify-content: center;
   color: var(--ds-accent);
-  transition: opacity var(--motion-duration-fast) var(--motion-ease-out);
-}
-
-.composer-model-thinking-icon.is-off {
-  opacity: 0.3;
 }
 
 .composer-model-thinking-model,

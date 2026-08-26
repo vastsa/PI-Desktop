@@ -621,9 +621,10 @@ Each scenario is documented in this format:
   menu opens upward from the bottom composer. 3) Enter Model, select a different
   provider/model, and return to the root. 4) Enter Reasoning level and select a
   supported level. 5) Open Settings from the command palette or application menu.
-- **Expected**: The root shows only Model and Reasoning level entries; the Model
-  submenu lists enabled runnable providers and only the model bindings saved
-  for each provider, with each model row visibly indented beneath its provider
+- **Expected**: The trigger uses a Bot icon while retaining the current model
+  and reasoning labels. The root shows only Model and Reasoning level entries.
+  The Model submenu lists enabled runnable providers and only the model bindings
+  saved for each provider, with each model row visibly indented beneath its provider
   heading. Cached or freshly discovered models may supply display names and
   metadata for those bindings, but unconfigured discovery results are absent;
   configured IDs remain available when discovery is unavailable. The Reasoning
@@ -1541,8 +1542,8 @@ Each scenario is documented in this format:
   sidebar renders the canonical `build/icon_1024.png` asset through `BrandLogo`
   and the docked composer prompt row has no leading
   brand icon or reserved icon slot and its text aligns directly with the input
-  gutter. The right Composer toolbar has no standalone prompt-enhancement
-  sparkle button between the model × reasoning chip and the single submit
+  gutter. The right Composer toolbar shows a Bot model × reasoning chip, then
+  a standalone prompt-enhancement Sparkles button, then the single submit
   slot. The footer Settings and Plugins actions are compact icon buttons;
   Plugins sits immediately to the right of Settings and exposes a localized
   accessible name. Every scoped session-creation control uses the dedicated
@@ -1683,8 +1684,9 @@ Each scenario is documented in this format:
   the menu remains open at the root, then open Reasoning level and choose multiple
   supported levels. 5) Repeat with a non-reasoning provider and an unknown
   free-form model id; exercise Escape, outside click, Up/Down, Enter, and Left.
-- **Expected**: The chip is in the right toolbar before Send/Abort; Off dims
-  Sparkles and omits the level text. The single anchored menu replaces its root
+- **Expected**: The chip is in the right toolbar with a Bot icon, before the
+  standalone prompt-enhancement Sparkles action and Send/Abort; Off omits the
+  level text. The single anchored menu replaces its root
   with an in-place back row and submenu, never opens tabs or a second popover,
   and always reopens at the root. Model search filters sticky provider groups;
   reasoning rows come only from the selected provider's sparse supported levels,
@@ -2984,8 +2986,8 @@ Each scenario is documented in this format:
     published for the inherited reasoning model, even when the provider returns
     its sparse levels out of order.
   - Reopening the first session preserves the user's later explicit selection.
-  - The non-reasoning session starts at `off`; its combined chip dims Sparkles,
-    omits level text, and its reasoning submenu exposes only Off. Missing
+  - The non-reasoning session starts at `off`; its combined chip keeps the Bot
+    icon, omits level text, and its reasoning submenu exposes only Off. Missing
     capability metadata also falls back to `off`.
 - **Specs linked**: `03-runtime/13-model-catalog-and-selection.md`,
   `04-ux/08-component-spec.md`, ADR 0018, D153

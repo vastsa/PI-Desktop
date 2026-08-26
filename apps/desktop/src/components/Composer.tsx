@@ -1527,13 +1527,8 @@ export function Composer({
                     setModelThinkingOpen((open) => !open);
                   }}
                 >
-                  <span
-                    className={`composer-model-thinking-icon ${
-                      thinkingLevel === "off" ? "is-off" : ""
-                    }`}
-                    aria-hidden="true"
-                  >
-                    <IconSparkles size={14} />
+                  <span className="composer-model-thinking-icon" aria-hidden="true">
+                    <IconBot size={14} />
                   </span>
                   <span className="composer-model-thinking-model">
                     {modelLabel}
@@ -1729,6 +1724,34 @@ export function Composer({
                   </div>
                 ) : null}
               </div>
+              <button
+                type="button"
+                className={`icon-btn composer-enhance-btn${enhancingPrompt ? " is-loading" : ""}`}
+                title={t("chat.enhancePrompt")}
+                aria-label={
+                  enhancingPrompt
+                    ? t("chat.enhancingPrompt")
+                    : t("chat.enhancePrompt")
+                }
+                aria-busy={enhancingPrompt}
+                disabled={
+                  !value.trim() ||
+                  value.trim().startsWith("/") ||
+                  !modelReady ||
+                  sendBlocked ||
+                  enhancingPrompt
+                }
+                onClick={() => void enhancePrompt()}
+              >
+                {enhancingPrompt ? (
+                  <>
+                    <span className="tool-spinner" aria-hidden="true" />
+                    <span>{t("chat.enhancingPrompt")}</span>
+                  </>
+                ) : (
+                  <IconSparkles size={15} aria-hidden="true" />
+                )}
+              </button>
               {enhancementUndoText !== null ? (
                 <button
                   type="button"
