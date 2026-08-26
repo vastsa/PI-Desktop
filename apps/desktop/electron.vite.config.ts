@@ -20,6 +20,28 @@ function tightenCsp(): Plugin {
   };
 }
 
+// Electron 43 ships a Chromium that always supports woff2, but KaTeX's
+// stylesheet lists woff and truetype fallbacks for every face. Dropping those
+// src entries lets Rollup tree-shake ~0.8 MB of .woff/.ttf assets it would
+// otherwise emit but never serve.
+function dropLegacyFontFallbacks(): Plugin {
+  return {
+    name: "pi-drop-legacy-font-fallbacks",
+    apply: "build",
+    // Must run before Vite rewrites url() into asset references, otherwise the
+    // .woff/.ttf files are already registered for emission.
+    enforce: "pre",
+    transform(code, id) {
+      if (!/\.css(?:\?.*)?$/.test(id)) return null;
+      const stripped = code.replace(
+        /,\s*url\([^)]+\)\s*format\("(?:woff|truetype)"\)/g,
+        "",
+      );
+      return stripped === code ? null : { code: stripped, map: null };
+    },
+  };
+}
+
 export default defineConfig({
   main: {
     build: {
@@ -57,13 +79,17 @@ export default defineConfig({
   renderer: {
     root: ".",
     build: {
+      // electron-vite's renderer preset hard-defaults minify to false, unlike
+      // plain Vite. Enabling esbuild minification roughly halves the emitted
+      // renderer chunks with no behavior change.
+      minify: "esbuild",
       rollupOptions: {
         input: {
           index: resolve(__dirname, "index.html"),
         },
       },
     },
-    plugins: [react(), tailwindcss(), tightenCsp()],
+    plugins: [react(), tailwindcss(), tightenCsp(), dropLegacyFontFallbacks()],
     resolve: {
       alias: {
         "@renderer": resolve("src"),

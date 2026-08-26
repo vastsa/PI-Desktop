@@ -32,6 +32,65 @@ test("packaging installs only the updater runtime dependency", () => {
   }
 });
 
+test("renderer output keeps its size controls", async () => {
+  // electron-vite's renderer preset hard-defaults minify to false, unlike plain
+  // Vite, so leaving it implicit ships unminified chunks.
+  assert.match(viteConfigSource, /minify:\s*"esbuild"/);
+
+  // The bundled Chromium supports woff2 universally; woff/truetype src entries
+  // would be emitted as assets and never served.
+  assert.match(viteConfigSource, /dropLegacyFontFallbacks/);
+  assert.match(viteConfigSource, /plugins:\s*\[[^\]]*dropLegacyFontFallbacks\(\)/);
+
+  // build/*.png are electron-builder installer icons (1024px+). The renderer
+  // must import the downscaled marks instead.
+  const brandLogoSource = await readFile(
+    new URL("../src/components/BrandLogo.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(brandLogoSource, /"\.\.\/assets\/brand\/logo-light\.png"/);
+  assert.match(brandLogoSource, /"\.\.\/assets\/brand\/logo-dark\.png"/);
+  assert.doesNotMatch(brandLogoSource, /\.\.\/\.\.\/build\//);
+});
+
+test("legacy font fallback stripping only removes redundant fallback sources", () => {
+  // Mirror of the pi-drop-legacy-font-fallbacks regex in electron.vite.config.ts.
+  const pattern = new RegExp(
+    viteConfigSource.match(/code\.replace\(\s*(\/[^\n]+\/g)/)[1].slice(1, -2),
+    "g",
+  );
+  const strip = (css) => css.replace(pattern, "");
+
+  // A KaTeX-shaped face keeps only its woff2 source.
+  assert.equal(
+    strip('src:url(a.woff2) format("woff2"),url(a.woff) format("woff"),url(a.ttf) format("truetype");'),
+    'src:url(a.woff2) format("woff2");',
+  );
+
+  // The bundled faces use woff2-variations and must survive untouched.
+  const variations = 'src: url("../f.woff2") format("woff2-variations");';
+  assert.equal(strip(variations), variations);
+
+  // A face whose only source is a legacy format would otherwise lose every
+  // source; the leading comma in the pattern is what protects it.
+  for (const soleSource of [
+    'src: url(only.woff) format("woff");',
+    'src: url(only.ttf) format("truetype");',
+  ]) {
+    assert.equal(strip(soleSource), soleSource);
+  }
+
+  // Stripping must never leave a dangling comma or an empty declaration.
+  for (const css of [
+    'src:url(a.woff2) format("woff2"),url(a.woff) format("woff");',
+    'src:url(a.woff2) format("woff2"),url("data:font/woff;base64,AA)BB") format("woff");',
+  ]) {
+    const out = strip(css);
+    assert.doesNotMatch(out, /,\s*;/);
+    assert.doesNotMatch(out, /src:\s*;/);
+  }
+});
+
 test("main bundles JavaScript dependencies and externalizes only runtime modules", () => {
   assert.doesNotMatch(viteConfigSource, /externalizeDepsPlugin\s*\(/);
   assert.match(viteConfigSource, /external:\s*\["electron-updater"\]/);
