@@ -2655,6 +2655,31 @@ Each scenario is documented in this format:
 - **Status**: Unit-covered (`transcript-truncation.test.ts`,
   `transcript-style.test.mjs`); UI scenario Draft
 
+#### E2E-071f: Long-transcript scrolling and minimap hover stay smooth
+
+- **Preconditions**: One session with several hundred messages, including large
+  tool results and at least one code block, so the minimap rail shows a dense
+  dash stack.
+- **Steps**: 1) Open the session. 2) Scroll continuously through the whole
+  transcript, up and down. 3) Sweep the cursor slowly along the minimap rail from
+  top to bottom and back. 4) Hover a dash until its preview popover appears, then
+  click it. 5) Resize the window and repeat the rail sweep. 6) Switch to another
+  session and back.
+- **Expected**: Scrolling holds a steady frame rate with no progressive
+  slowdown as more history is traversed. The rail sweep magnifies dashes smoothly
+  and does not degrade as the dash count grows; the dash stack never shifts
+  vertically while magnifying. The popover names the correct turn and clicking
+  scrolls to it. After a resize, magnification still tracks the cursor against
+  the dashes' new positions. Returning to the session paints its newest turn
+  without a visible rebuild of the earlier history.
+- **Specs linked**: `04-ux/08-component-spec.md`
+- **Acceptance**: C (chat stream), Quality
+- **Milestone**: M5
+- **Status**: Unit-covered (`interaction-performance.test.mjs`
+  `minimap hover magnification never measures geometry per dash`,
+  `session switch bounds the first transcript commit instead of rebuilding it`);
+  UI scenario Draft
+
 #### E2E-073: Icon-only message toolbars and editing a user prompt
 
 - **Preconditions**: An idle conversation contains two completed user/assistant
