@@ -83,7 +83,8 @@ PI-Desktop 的行为类似于桌面应用程序 shell，因此意外拖动
 - 侧边栏外壳名称、设置副本和输入框占位符使用
   `PI-Desktop`； `Codex` 保留用于外部会话导入源或
 历史设计参考文本。
-- `build/icon_1024.png` 是规范的 shell 徽标。 `BrandLogo` 导入它
+- `build/icon_1024.png` 是规范的 shell 徽标母版；渲染器导入由其派生的
+  192x192 标记，位于 `src/assets/brand/`（ADR 0125）。 `BrandLogo` 导入它们
   通过Vite所以渲染器捆绑，开发Dock，并打包
   应用程序都使用相同的视觉资产。
 - 在 macOS 上，开发和打包发布均将 `PI-Desktop` 公开为

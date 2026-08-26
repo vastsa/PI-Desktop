@@ -420,8 +420,10 @@ visually distinct from list content.
 
 - The visible shell name is `PI-Desktop`; Codex is not used as the renderer
   identity.
-- `BrandLogo` imports canonical `build/icon_1024.png` through Vite for light
-  mode, and `build/logo_dark.png` for dark mode. The component subscribes to
+- `BrandLogo` imports the renderer-sized marks derived from the canonical
+  masters through Vite: `src/assets/brand/logo-light.png` for light mode and
+  `src/assets/brand/logo-dark.png` for dark mode (192x192, covering the 64 px
+  splash at 3x; ADR 0125). The component subscribes to
   `document.documentElement[data-theme]` via a `MutationObserver` and swaps the
   source at runtime for the sidebar and startup splash without a reload. The
   empty-home hero uses `HomeMascotLogo` at 100px: its transparent sprite is

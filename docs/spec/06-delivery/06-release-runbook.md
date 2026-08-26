@@ -201,6 +201,42 @@ The pre-optimization unpacked regular-file total was 559,355,716 bytes
 (533.4 MiB). The audited package is 307,630,906 bytes smaller, a 55.0%
 reduction. Its curated renderer output is 14.1 MiB, down from 20.5 MiB.
 
+#### Renderer output budget
+
+The renderer bundle carries three standing controls. Regressing any of them
+shows up as renderer growth in the table above and must be explained before
+publication:
+
+- **Minification is explicit.** `electron-vite` hard-defaults the renderer
+  preset to `minify: false`, unlike plain Vite, so
+  `apps/desktop/electron.vite.config.ts` sets `minify: "esbuild"`. Removing it
+  silently doubles emitted JS.
+- **Legacy font formats are stripped.** The `pi-drop-legacy-font-fallbacks`
+  plugin removes `woff` and `truetype` `src` entries before Vite registers
+  them as assets. The bundled Chromium supports `woff2` universally, so those
+  faces would be emitted and never served.
+- **Brand marks are renderer-sized.** `src/assets/brand/logo-{light,dark}.png`
+  are the renderer assets. `build/icon_1024.png` and `build/logo_dark.png` are
+  electron-builder installer icons and must not be imported by the renderer.
+
+Renderer output measured on 2026-08-26 after applying these three controls,
+against the same tree at `v0.10.8`:
+
+| Renderer group | Before | After |
+|---|---:|---:|
+| JavaScript (120 chunks) | 12.53 MiB | 7.72 MiB |
+| `woff2` | 15.71 MiB | 15.71 MiB |
+| `woff` + `ttf` legacy fallbacks (40 files) | 0.78 MiB | 0 |
+| PNG brand assets | 1.23 MiB | 0.27 MiB |
+| CSS | 0.42 MiB | 0.35 MiB |
+| **Total `out/renderer`** | **31 MiB** | **24 MiB** |
+
+The two bundled CJK faces (`lxgw-wenkai.woff2` 7.6 MiB, `noto-sans-sc.woff2`
+7.4 MiB) dominate the remainder. They stay unsubset on purpose: ADR 0083 §2
+appends `Noto Sans SC` to every font stack so Chinese text stays readable
+offline, and subsetting would drop glyphs from user-supplied content. Reducing
+them requires an ADR revision, not a build-config change.
+
 Manual smoke on a clean profile (`PI_DESKTOP_DATA_DIR=$(mktemp -d)`):
 
 1. `pnpm dev` launches with `PI-Desktop` in the macOS application menu and the

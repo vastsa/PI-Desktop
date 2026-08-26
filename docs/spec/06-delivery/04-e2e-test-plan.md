@@ -1539,7 +1539,7 @@ Each scenario is documented in this format:
   without translating the mascot horizontally; pointer hover continuously
   advances the groups while leaving the mascot resumes the slower idle cadence.
   The expanded/collapsed
-  sidebar renders the canonical `build/icon_1024.png` asset through `BrandLogo`
+  sidebar renders the derived `src/assets/brand/logo-*.png` asset through `BrandLogo`
   and the docked composer prompt row has no leading
   brand icon or reserved icon slot and its text aligns directly with the input
   gutter. The right Composer toolbar shows a Bot model × reasoning chip, then
@@ -2645,8 +2645,9 @@ Each scenario is documented in this format:
   complete brand has a localized Home accessible name, visible hover/focus
   feedback, and returns the main pane to chat without clearing the active
   conversation or workspace. Collapse remains immediately after Search. The
-  logo itself is theme-aware: light mode shows `build/icon_1024.png`, dark mode
-  shows `build/logo_dark.png`, swapping live with `data-theme` (no reload).
+  logo itself is theme-aware: light mode shows `src/assets/brand/logo-light.png`,
+  dark mode shows `src/assets/brand/logo-dark.png`, swapping live with
+  `data-theme` (no reload).
 - **Specs linked**: `04-ux/01-ui-ia.md`, `04-ux/07-ui-design-system.md`,
   `04-ux/08-component-spec.md`
 - **Acceptance**: Quality
@@ -2866,7 +2867,8 @@ Each scenario is documented in this format:
   4. Re-inspect the same surfaces without reloading.
   5. Switch back to light and re-inspect.
 - **Expected**:
-  - Light and dark mode render `build/icon_1024.png` / `build/logo_dark.png`
+  - Light and dark mode render `src/assets/brand/logo-light.png` /
+    `src/assets/brand/logo-dark.png`
     live in the sidebar and startup splash without a window reload.
   - The empty-home hero renders the 100px mascot sprite, chooses one of nine
     remaining pose groups on mount, swaps discrete frames within the fixed
@@ -3252,21 +3254,32 @@ Each scenario is documented in this format:
   2. Inspect ASAR and resource inventories for sidecar, host, production
      modules, source maps, tests/examples/declarations, Chromium locales, and
      native prebuild targets.
-  3. Configure the loopback fixture provider, disable external egress, and
+  3. Inspect the renderer output for its size controls: emitted JS is minified,
+     no `.woff` or `.ttf` files are present, the KaTeX `woff2` faces remain, and
+     the brand marks are the renderer-sized `assets/brand/logo-*.png` rather
+     than the 1024px installer icons.
+  4. Configure the loopback fixture provider, disable external egress, and
      launch from a clean profile. Switch between English and Simplified
      Chinese, request the deterministic response, render common
      JavaScript/TypeScript, Python, Rust, shell, Mermaid, and unknown-language
      fences plus KaTeX and a Mermaid diagram, run the Bash fixture, and verify
      host and agent-sidecar health.
+  5. Confirm typography and branding survive the stripped font fallbacks: KaTeX
+     math renders with its own faces, Chinese text in both the UI chrome and
+     assistant output stays readable under each bundled font selection, and the
+     sidebar plus startup-splash logos render crisply on a HiDPI display.
 - **Expected**: The package contains exactly one bundled agent sidecar, the
   target-native Rust host, and only configured Chromium locale
   packs. Renderer dependencies exist through Vite output rather than duplicate
   raw `node_modules`; dependency source maps, tests, examples, declarations,
   a second agent-runtime tree, and reliably excludable non-target native assets
   are absent. Curated Shiki grammars highlight locally while an unknown fence
-  stays readable as plain text. The offline shell starts and all fixture
-  capabilities use local packaged assets; provider/update network failures do
-  not block startup.
+  stays readable as plain text. The renderer ships minified chunks, carries no
+  legacy `woff`/`truetype` payload, keeps every KaTeX `woff2` face, and imports
+  only renderer-sized brand marks; math, Chinese text under each bundled font,
+  and the chrome logos all render correctly. The offline shell starts and all
+  fixture capabilities use local packaged assets; provider/update network
+  failures do not block startup.
 - **Specs linked**: `02-architecture/01-architecture.md`,
   `02-architecture/02-tech-stack.md`, `03-runtime/07-process-model.md`,
   `04-ux/02-i18n-english-first.md`, `05-security/01-security.md`,

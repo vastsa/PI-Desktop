@@ -90,7 +90,9 @@ Codex as a visual reference. The identity contract is deliberately small:
 - The sidebar shell name, settings copy, and composer placeholder use
   `PI-Desktop`; `Codex` is reserved for the external session-import source or
   historical design-reference text.
-- `build/icon_1024.png` is the canonical shell logo. `BrandLogo` imports it
+- `build/icon_1024.png` is the canonical shell logo master; the renderer
+  imports the 192x192 marks derived from it under `src/assets/brand/`
+  (ADR 0125). `BrandLogo` imports those
   through Vite so the renderer bundle, development Dock, and packaged
   application all use the same visual asset.
 - On macOS, both development and packaged launches expose `PI-Desktop` as the

@@ -42,7 +42,7 @@ destination, chat as the home surface, tools and permissions inline.
   discoverable through Settings → Project archive.
   Collapsible to an icon rail (Cmd/Ctrl+B).
 - **Product identity**: runtime shell copy uses `PI-Desktop`; the home hero and
-  sidebar reuse the canonical `build/icon_1024.png` logo, while composer prompt
+  sidebar reuse the derived `src/assets/brand/logo-*.png` marks, while composer prompt
   rows have no leading brand icon and session-creation controls use a dedicated
   message-plus icon. On
   Windows/Linux, the expanded sidebar begins with a keyboard-accessible Home

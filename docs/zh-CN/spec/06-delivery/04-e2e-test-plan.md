@@ -1274,7 +1274,7 @@ M5。
   无需水平平移吉祥物；指针连续悬停
   在离开吉祥物的同时推进小组，恢复较慢的空闲节奏。
   expanded/collapsed
-  侧边栏通过 `BrandLogo` 呈现规范的 `build/icon_1024.png` 资源
+  侧边栏通过 `BrandLogo` 呈现派生的 `src/assets/brand/logo-*.png` 资源
   并且停靠的输入框提示行没有前导
   品牌图标或保留图标槽及其文本直接与输入对齐
   天沟。页脚设置和插件操作是紧凑的图标按钮；
@@ -2310,8 +2310,9 @@ PI-Desktop 图标；两个表面都不会暴露库存 Electron 名称或图标�
 完整的品牌有一个本地化的主页可访问名称，可见 hover/focus
   反馈，并返回主窗格进行聊天，而不清除活动的
   对话或工作空间。搜索后立即保持折叠状态。的
-  徽标本身具有主题感知：浅色模式显示 `build/icon_1024.png`，深色模式
-  显示 `build/logo_dark.png`，与 `data-theme` 实时交换（无需重新加载）。
+  徽标本身具有主题感知：浅色模式显示 `src/assets/brand/logo-light.png`，
+  深色模式显示 `src/assets/brand/logo-dark.png`，与 `data-theme` 实时交换
+  （无需重新加载）。
 - **链接规格**：`04-ux/01-ui-ia.md`、`04-ux/07-ui-design-system.md`、
   `04-ux/08-component-spec.md`
 - **验收**：质量
@@ -2509,7 +2510,8 @@ IPC 请求无法关闭。
   4. 重新检查相同的表面，无需重新加载。
   5. 切换回光源并重新检查。
 - **预期**：
-  - 明暗模式渲染 `build/icon_1024.png` / `build/logo_dark.png`
+  - 明暗模式渲染 `src/assets/brand/logo-light.png` /
+    `src/assets/brand/logo-dark.png`
     位于侧边栏和启动画面中，无需重新加载窗口。
 - 空荡荡的英雄渲染 100 像素的吉祥物精灵，选择九个之一
     安装上的剩余姿势组，交换固定内的离散帧

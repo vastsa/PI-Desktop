@@ -384,8 +384,10 @@ Collapsed (48px):
 
 - 可见shell名称为`PI-Desktop`； Codex 不用作渲染器
   身份。
-- `BrandLogo`通过Vite导入规范的`build/icon_1024.png`用于light
-  模式，`build/logo_dark.png` 用于暗模式。该组件订阅了
+- `BrandLogo` 通过 Vite 导入从规范母版派生的渲染器尺寸标记：
+  `src/assets/brand/logo-light.png` 用于浅色模式，
+  `src/assets/brand/logo-dark.png` 用于深色模式（192x192，可覆盖 3x 下的
+  64 px 启动画面；ADR 0125）。该组件订阅了
   `document.documentElement[data-theme]` 通过 `MutationObserver` 并交换
   运行时侧边栏和启动画面的源代码，无需重新加载。的
   空屋英雄在 100 像素处使用 `HomeMascotLogo`：它的透明精灵是
