@@ -86,6 +86,28 @@ export const ConversationMinimap = memo(function ConversationMinimap({
     cachedOffsetsRef.current = out;
   }, [scrollRef]);
 
+  /**
+   * Vertical centers of the dashes, in rail-local pixels.
+   *
+   * Dashes have a CSS-fixed height and magnify horizontally only, so their
+   * centers change with the rail's layout, not with the cursor. Measuring them
+   * once per layout keeps hover off the critical path: `applyMagnify` runs on
+   * every mousemove frame, and reading `offsetTop` there — interleaved with the
+   * `--magnify` writes it makes in the same loop — forced a synchronous reflow per
+   * dash, so hovering a long conversation's rail cost O(markers) layouts a frame.
+   */
+  const magnifyCentersRef = useRef<{ id: string; center: number }[]>([]);
+
+  const measureMagnifyCenters = useCallback(() => {
+    const centers: { id: string; center: number }[] = [];
+    // Read-only pass: no style writes, so layout is computed at most once.
+    for (const [id, btn] of markerEls.current) {
+      centers.push({ id, center: btn.offsetTop + btn.offsetHeight / 2 });
+    }
+    centers.sort((a, b) => a.center - b.center);
+    magnifyCentersRef.current = centers;
+  }, []);
+
   /* Fresh offset query used only by jumpTo (needs pixel-accurate data). */
   const getOffsets = useCallback(() => {
     const el = scrollRef.current;
@@ -146,7 +168,8 @@ export const ConversationMinimap = memo(function ConversationMinimap({
   useEffect(() => {
     recomputeOffsets();
     updateOverflow();
-  }, [markerIdentity, recomputeOffsets, updateOverflow]);
+    measureMagnifyCenters();
+  }, [markerIdentity, measureMagnifyCenters, recomputeOffsets, updateOverflow]);
 
   useEffect(() => {
     updateActive();
@@ -170,6 +193,9 @@ export const ConversationMinimap = memo(function ConversationMinimap({
         recomputeOffsets();
         updateActive();
         updateOverflow();
+        // The rail's gap is marker-count dependent and its height follows the
+        // composer, so dash centers move without the marker set changing.
+        measureMagnifyCenters();
       });
     };
     // Initial offset computation
@@ -191,7 +217,7 @@ export const ConversationMinimap = memo(function ConversationMinimap({
       cancelAnimationFrame(resizeRaf);
       window.removeEventListener("resize", scheduleResize);
     };
-  }, [scrollRef, updateActive, updateOverflow, recomputeOffsets]);
+  }, [measureMagnifyCenters, scrollRef, updateActive, updateOverflow, recomputeOffsets]);
 
   const jumpTo = useCallback(
     (id: string) => {
@@ -211,11 +237,20 @@ export const ConversationMinimap = memo(function ConversationMinimap({
   );
 
   /* Dock magnification, applied imperatively so mousemove never re-renders.
-   * Dash buttons keep a fixed height, so scaling is layout-stable. */
+   * Dash buttons keep a fixed height, so scaling is layout-stable. Centers come
+   * from the cached measurement: writing `--magnify` while reading `offsetTop`
+   * in the same loop would force one layout per dash on every hover frame. */
   const applyMagnify = useCallback((cursorY: number | null) => {
+    const centers = magnifyCentersRef.current;
+    if (centers.length === 0) {
+      // Nothing measured yet (first frame after mount): fall back to a
+      // measurement rather than skipping the effect the user asked for.
+      measureMagnifyCenters();
+    }
     let nearest: { id: string; dist: number; center: number } | null = null;
-    for (const [id, btn] of markerEls.current) {
-      const center = btn.offsetTop + btn.offsetHeight / 2;
+    for (const { id, center } of magnifyCentersRef.current) {
+      const btn = markerEls.current.get(id);
+      if (!btn) continue;
       let scale = 1;
       if (cursorY != null) {
         const dist = Math.abs(center - cursorY);
@@ -245,7 +280,7 @@ export const ConversationMinimap = memo(function ConversationMinimap({
       }
     }
     setHovered(null);
-  }, []);
+  }, [measureMagnifyCenters]);
 
   const handleMouseMove = useCallback(
     (event: React.MouseEvent) => {

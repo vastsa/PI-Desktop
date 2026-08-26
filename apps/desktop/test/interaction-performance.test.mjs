@@ -164,6 +164,46 @@ test("minimap separates resize checks from message-position measurement", () => 
   assert.match(minimap, /behavior: reduceMotion \? "auto" : "smooth"/);
 });
 
+test("minimap hover magnification never measures geometry per dash", () => {
+  // applyMagnify runs on every mousemove frame. Reading a dash's offsetTop in
+  // the same loop that writes --magnify forces a synchronous layout per dash, so
+  // hovering a long conversation's rail cost O(markers) layouts a frame. Centers
+  // are measured once per layout instead, and the hover loop only writes.
+  const applyMagnify = minimap.slice(
+    minimap.indexOf("const applyMagnify"),
+    minimap.indexOf("const handleMouseMove"),
+  );
+  const loopStart = applyMagnify.indexOf("for (const { id, center }");
+  assert.ok(loopStart > 0, "applyMagnify must iterate the cached centers");
+  const loopBody = applyMagnify.slice(loopStart, applyMagnify.indexOf("\n    }\n", loopStart));
+  assert.doesNotMatch(
+    loopBody,
+    /\.(offsetTop|offsetHeight|clientHeight|clientWidth|getBoundingClientRect|scrollTop|scrollHeight)\b/,
+    "the per-dash loop must not read layout geometry",
+  );
+  assert.match(loopBody, /style\.setProperty\("--magnify"/);
+
+  // The measurement pass is read-only, so it cannot thrash either.
+  const measure = minimap.slice(
+    minimap.indexOf("const measureMagnifyCenters"),
+    minimap.indexOf("/* Fresh offset query"),
+  );
+  assert.match(measure, /btn\.offsetTop \+ btn\.offsetHeight \/ 2/);
+  assert.doesNotMatch(measure, /style\.setProperty/);
+
+  // Centers move when the marker set changes and when the rail is resized (its
+  // gap is marker-count dependent and its height follows the composer).
+  assert.match(
+    minimap,
+    /\}, \[markerIdentity, measureMagnifyCenters, recomputeOffsets, updateOverflow\]\)/,
+  );
+  const resize = minimap.slice(
+    minimap.indexOf("const scheduleResize"),
+    minimap.indexOf("// Initial offset computation"),
+  );
+  assert.match(resize, /measureMagnifyCenters\(\)/);
+});
+
 test("motion feedback is composited, bounded, and accessible", () => {
   assert.match(styles, /@keyframes route-surface-in/);
   assert.match(styles, /@keyframes work-panel-in/);
