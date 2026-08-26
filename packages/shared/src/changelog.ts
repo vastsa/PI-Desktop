@@ -23,6 +23,16 @@ export type ChangelogEntry = {
 
 const enEntries: ChangelogEntry[] = [
   {
+    version: "0.10.8",
+    date: "2026-08-26",
+    highlights: [
+      "Keep Windows native window controls isolated from panel actions across the frameless shell.",
+      "Give temporary chats isolated scratch workspaces so their files stay separate from project work.",
+      "Restore prompt enhancement in the command launcher with a clearer bot model icon.",
+      "Reveal sidebar scrollbars on hover while keeping them quiet at rest.",
+    ],
+  },
+  {
     version: "0.10.7",
     date: "2026-08-25",
     highlights: [
@@ -446,6 +456,16 @@ const enEntries: ChangelogEntry[] = [
 ];
 
 const zhCNEntries: ChangelogEntry[] = [
+  {
+    version: "0.10.8",
+    date: "2026-08-26",
+    highlights: [
+      "让无边框窗口中的 Windows 原生控件与面板操作保持隔离。",
+      "为临时会话提供相互隔离的临时工作区，避免文件与项目工作混在一起。",
+      "在命令启动器中恢复提示增强功能，并使用更清晰的机器人模型图标。",
+      "侧边栏滚动条仅在悬停时显示，同时在静止时保持低调。",
+    ],
+  },
   {
     version: "0.10.7",
     date: "2026-08-25",
