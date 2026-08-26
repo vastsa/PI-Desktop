@@ -137,27 +137,44 @@ fn sniff_line_kind(line: &str) -> Option<&'static str> {
     const SNIFF_LIMIT: usize = 512;
     let bytes = line.as_bytes();
     let head = &bytes[..bytes.len().min(SNIFF_LIMIT)];
-    // Lines written before the discriminator moved to the front carry it at the
-    // end of the object, so a bounded tail check keeps existing files readable
+    // Lines written before the discriminator moved to the front carry it after
+    // their payload, so a bounded tail check keeps existing files readable
     // without parsing them.
     let tail = &bytes[bytes.len().saturating_sub(SNIFF_LIMIT)..];
     sniff_window(head).or_else(|| sniff_window(tail))
 }
 
+/// Find the line kind named anywhere in `window`.
+///
+/// Block payloads carry their own `type` ("text", "tool_call", ...), so the
+/// first match is not necessarily the line's discriminator. Every occurrence is
+/// examined and the first one naming a line kind wins; no block type shares a
+/// name with a line type, so this cannot pick the wrong one.
 fn sniff_window(window: &[u8]) -> Option<&'static str> {
     let needle = b"\"type\":\"";
-    let position = window
-        .windows(needle.len())
-        .position(|candidate| candidate == needle)?;
-    let rest = &window[position + needle.len()..];
-    let end = rest.iter().position(|byte| *byte == b'"')?;
-    match &rest[..end] {
-        b"message" => Some("message"),
-        b"compaction" => Some("compaction"),
-        b"session" => Some("session"),
-        b"revision" => Some("revision"),
-        _ => None,
+    let mut offset = 0usize;
+    while offset + needle.len() < window.len() {
+        let Some(found) = window[offset..]
+            .windows(needle.len())
+            .position(|candidate| candidate == needle)
+        else {
+            return None;
+        };
+        let value_start = offset + found + needle.len();
+        let rest = &window[value_start..];
+        let Some(end) = rest.iter().position(|byte| *byte == b'"') else {
+            return None;
+        };
+        match &rest[..end] {
+            b"message" => return Some("message"),
+            b"compaction" => return Some("compaction"),
+            b"session" => return Some("session"),
+            b"revision" => return Some("revision"),
+            _ => {}
+        }
+        offset = value_start + end;
     }
+    None
 }
 
 /// Extend `base` with any lines appended after `base.file_len`.
@@ -810,6 +827,54 @@ mod tests {
             read_transcript_window_with_layout(dir.path(), "s1", &rebuilt, 0, Some(50)).unwrap();
         assert_eq!(read.messages.len(), 1);
         assert_eq!(read.messages[0].id, "m1");
+    }
+
+    #[test]
+    fn reads_legacy_lines_whose_type_follows_their_blocks() {
+        // Before the discriminator moved to the front, `tagged()` inserted it
+        // into a sorted map, so it landed after `blocks` - whose entries carry a
+        // nested `"type"` of their own. A reader that trusts the first match
+        // classifies such a line as its first block and skips it.
+        let dir = tempdir().unwrap();
+        let path = transcript_path(dir.path(), "legacy").unwrap();
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let legacy_message = json!({
+            "blocks": [{ "type": "text", "text": "kept" }],
+            "createdAt": "2026-07-26T00:00:00Z",
+            "id": "m1",
+            "isError": false,
+            "role": "user",
+            "type": "message",
+        });
+        let legacy_header = json!({
+            "createdAt": "2026-07-26T00:00:00Z",
+            "schema": 1,
+            "sessionId": "legacy",
+            "type": "session",
+        });
+        fs::write(
+            &path,
+            format!("{legacy_header}\n{legacy_message}\n"),
+        )
+        .unwrap();
+
+        assert_eq!(sniff_line_kind(&legacy_message.to_string()), Some("message"));
+        let sequential = read_transcript(dir.path(), "legacy").unwrap();
+        assert_eq!(sequential.len(), 1);
+        assert_eq!(sequential[0].id, "m1");
+
+        let layout = refresh_layout(dir.path(), "legacy", TranscriptLayout::default()).unwrap();
+        assert_eq!(layout.message_count(), 1);
+        let windowed =
+            read_transcript_window_with_layout(dir.path(), "legacy", &layout, 0, Some(10)).unwrap();
+        assert_eq!(windowed.messages.len(), 1);
+        assert_eq!(windowed.messages[0].id, "m1");
+
+        // A line carrying no line-level discriminator is still rejected.
+        assert_eq!(
+            sniff_line_kind(&json!({ "blocks": [{ "type": "text" }] }).to_string()),
+            None,
+        );
     }
 
     #[test]
