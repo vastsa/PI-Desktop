@@ -139,3 +139,5 @@ Each ADR includes:
 | 0122 | Reserve native width while the work panel is visible | Accepted |
 | 0123 | Use native taskbar minimize for Windows/Linux window controls | Accepted |
 | 0124 | Bind temporary sessions to their own scratch workspace | Accepted |
+| 0125 | Renderer-derived brand marks and minified renderer output | Accepted |
+| 0126 | Transcript layout index and identity-based truncation | Accepted |

@@ -866,14 +866,45 @@ next rewrite; transcript reads dedupe repeated ids keep-last.
 
 The renderer never needs the whole JSONL file to open a session. Its
 `session.get` request may specify a zero-based exclusive `messageBefore`, a
-positive `messageLimit`, and a positive `contentLimit`. Host-core streams the
-JSONL file once, returns only that message window, and applies the content cap
-only to the derived `UiMessage` projection. The full transcript remains
-lossless on disk and the sidecar's uncapped `session.get` path is unchanged for
-model context, edits, revisions, and other host-owned mutations. The renderer
-opens with the newest window and requests older windows on demand; the
-response's `messageStart` and `hasMoreBefore` fields are the only pagination
-state it needs.
+positive `messageLimit`, and a positive `contentLimit`. Host-core returns only
+that message window and applies the content cap only to the derived `UiMessage`
+projection. The full transcript remains lossless on disk and the sidecar's
+uncapped `session.get` path is unchanged for model context, edits, revisions,
+and other host-owned mutations. The renderer opens with the newest window and
+requests older windows on demand; the response's `messageStart` and
+`hasMoreBefore` fields are the only pagination state it needs.
+
+A bounded window is served through a per-session **transcript layout**: the byte
+offset of every message and compaction line, plus the file length those offsets
+were recorded against. Serving a window then seeks to its first selected line
+instead of parsing the history in front of it, so the cost of opening a session
+is proportional to the window rather than to the conversation. Consequences:
+
+- The layout is derived data, cached in memory and rebuilt by scanning the file.
+  `file_len` is its validity token: the transcript is append-only between atomic
+  rewrites, so a longer file is scanned from the previous end and a shorter or
+  replaced file is rescanned in full. Every rewrite and delete path also drops
+  the cached entry, because a rewrite can land on an identical length.
+- A torn trailing line (crash mid-append) is excluded from both the offsets and
+  `file_len`, so a later refresh picks it up once the writer completes it.
+- Line classification reads the `type` discriminator from a bounded prefix,
+  never by parsing the line. `type` is therefore written **first** on every
+  transcript line; lines written before that ordering carry it last and stay
+  readable through a bounded suffix check.
+- Window offsets are **physical message-line positions**, the same space the
+  layout counts in. They are never clamped against the session index counter
+  (`last_seq`), which is a deduplicated logical count: a file line whose index
+  commit never landed leaves the counter permanently behind the file, and
+  clamping to it cut the newest messages out of the tail.
+- The compaction chain is always returned whole with any window, because the
+  newest checkpoint drives model context regardless of which messages are
+  visible.
+
+A regenerate or edit-resend names its cut by **message identity**, not by a
+count. The renderer holds a bounded, deduplicated, display-filtered view, so an
+index into it is not a transcript position; the host resolves the named message
+against its own transcript and rejects a boundary it cannot find rather than
+truncating at a guessed position.
 
 ## 6. Performance notes
 
