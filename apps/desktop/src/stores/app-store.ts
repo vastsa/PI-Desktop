@@ -1910,7 +1910,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       attachments ?? state.messages[userIndex].attachments,
     );
     const kept = state.messages.slice(0, userIndex);
-    const transcriptOffset = state.sessionHistory[sessionId]?.messageStart ?? 0;
+    // Name the boundary rather than computing it: a window offset plus an
+    // index into the deduplicated renderer array are different coordinate
+    // spaces, and mixing them cuts the wrong message on a paged transcript.
+    const truncateFromMessageId = state.messages[userIndex].id;
 
     set((s) => ({
       messages: kept,
@@ -1929,7 +1932,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         content: prompt,
         viewingSessionId: viewingSessionIdForPrompt(get(), sessionId),
         attachments: promptAttachments,
-        truncateBefore: transcriptOffset + userIndex,
+        truncateFromMessageId,
       });
       return true;
     } catch (e) {
@@ -2005,7 +2008,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       state.messages[userIndex].attachments,
     );
     const kept = state.messages.slice(0, userIndex);
-    const transcriptOffset = state.sessionHistory[sessionId]?.messageStart ?? 0;
+    // Name the boundary rather than computing it: a window offset plus an
+    // index into the deduplicated renderer array are different coordinate
+    // spaces, and mixing them cuts the wrong message on a paged transcript.
+    const truncateFromMessageId = state.messages[userIndex].id;
     set((s) => ({
       messages: kept,
       isRunning: true,
@@ -2022,7 +2028,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         content: prompt,
         viewingSessionId: viewingSessionIdForPrompt(get(), sessionId),
         attachments: promptAttachments,
-        truncateBefore: transcriptOffset + userIndex,
+        truncateFromMessageId,
       });
     } catch (e) {
       set((s) => ({

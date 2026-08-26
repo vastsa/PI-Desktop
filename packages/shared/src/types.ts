@@ -422,8 +422,17 @@ export type AgentPromptRequest = {
    * When set, truncate the durable transcript to this many leading messages
    * before appending the new user turn. Used by regenerate / edit-resend so
    * the branch replaces the tail instead of stacking a duplicate turn.
+   *
+   * Prefer `truncateFromMessageId`: a count is only correct when the renderer
+   * holds the entire history, and it is kept for older callers.
    */
   truncateBefore?: number;
+  /**
+   * Identity of the first message to drop. The host resolves it against its own
+   * transcript, so a bounded window or a deduplicated renderer array cannot
+   * shift the cut. Takes precedence over `truncateBefore`.
+   */
+  truncateFromMessageId?: string;
   /**
    * Renderer snapshot of the chat session visible when the prompt was sent.
    * Electron installs it before asynchronous turn setup for notification
