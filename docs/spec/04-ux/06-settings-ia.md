@@ -6,8 +6,12 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
 
 - Left settings rail only (sidebar surface `#f4f4f4` light / `#000` dark), **~275px** (Codex gold at 1200-wide)
 - Top of rail: traffic-light clearance, **Back to app** (`返回应用`), pill **Search settings…**
-- The 46px top band across both the rail and content pane is a native window
-  drag region; interactive controls remain explicitly non-draggable
+- The 46px top band is a native window drag region across both the rail and the
+  content pane, but it is drawn in two parts so each keeps its own surface: the
+  rail drags via its own top strip on the rail surface, and the content pane's
+  band starts at the rail edge on the primary surface. The band must never paint
+  the primary surface over the rail, which would show two colors in one top row.
+  Interactive controls remain explicitly non-draggable
 - A compact navigation directory with icons, in this exact order:
   1. **Basics** — Lucide `SlidersHorizontal` (appearance)
   2. **全局 AI / AI** — Lucide `Sparkles` (permissions, defaults, command shell)
@@ -359,8 +363,9 @@ the current window width:
 
 | Token | Value |
 |---|---|
-| Rail width | ~275px |
+| Rail width | ~275px (`--ds-settings-nav-width`, shared by the rail and the top band inset) |
 | Rail light bg | `#f4f4f4` |
+| Top band | content pane only, inset by the rail width; rail keeps its own surface |
 | Active nav pill | denser 6px/10px pad, ~8px radius, gray mix on rail |
 | Section title | 28px / 560, first baseline ~y70 |
 | Content width | Full available pane width after rail and gutters |

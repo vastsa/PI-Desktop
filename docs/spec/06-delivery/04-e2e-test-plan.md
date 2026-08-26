@@ -942,8 +942,8 @@ Each scenario is documented in this format:
 #### E2E-039: Settings titlebar drag moves the window
 
 - **Preconditions**: App running windowed on macOS with Settings open.
-- **Steps**: 1) Record the window position. 2) Drag the empty 46px band above the settings rail. 3) Drag the same band above the content pane. 4) Use Back, search, Project archive, and navigation controls.
-- **Expected**: Either top-band drag moves the native window; Back, search, and navigation remain interactive and never initiate a window drag.
+- **Steps**: 1) Record the window position. 2) Drag the empty 46px band above the settings rail. 3) Drag the same band above the content pane. 4) Use Back, search, Project archive, and navigation controls. 5) In light and dark themes, sample the top row's color above the rail and above the content pane.
+- **Expected**: Either top-band drag moves the native window; Back, search, and navigation remain interactive and never initiate a window drag. The top row above the rail matches the rail surface (`#f4f4f4` light / `#000` dark) and the top row above the content pane matches the primary surface, so the band never renders a mismatched color over the rail.
 - **Specs linked**: `04-ux/06-settings-ia.md`, `04-ux/01-ui-ia.md`
 - **Acceptance**: Quality (key operations feel polished)
 - **Milestone**: M5
