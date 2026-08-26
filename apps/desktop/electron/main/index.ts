@@ -77,6 +77,7 @@ import {
   type McpServerStatus,
   type ModelBinding,
   type Mode,
+  resolveTranscriptTruncation,
   type NativeMenuAction,
   type OAuthRespondInput,
   type PlanExecution,
@@ -6565,13 +6566,19 @@ function registerIpc() {
         errorCode: ErrorCodes.NOT_FOUND,
       });
     }
-    if (
-      typeof req.truncateBefore === "number" &&
-      Number.isFinite(req.truncateBefore) &&
-      req.truncateBefore >= 0
-    ) {
-      const all = Array.isArray(session.messages) ? session.messages : [];
-      const cut = Math.floor(req.truncateBefore);
+    // The host's own transcript decides where the cut lands, so a renderer
+    // holding a bounded window cannot shift it.
+    const allMessages = Array.isArray(session.messages) ? session.messages : [];
+    const truncation = resolveTranscriptTruncation(allMessages, req);
+    if (truncation.kind === "unknown-message") {
+      throw Object.assign(
+        new Error("truncateFromMessageId is not in this session"),
+        { errorCode: ErrorCodes.NOT_FOUND },
+      );
+    }
+    if (truncation.kind === "cut") {
+      const all = allMessages;
+      const cut = truncation.index;
       const kept = all.slice(0, cut);
       const discarded = all.slice(cut);
       // ChatGPT-style regenerate history: archive the discarded branch under

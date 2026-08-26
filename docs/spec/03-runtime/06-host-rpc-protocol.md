@@ -232,7 +232,10 @@ reach this protocol — see [14-secrets-storage](14-secrets-storage.md) §10.
   for the derived display projection. The response includes
   `messageStart` and `hasMoreBefore` when a window is requested. Omitting all
   three options returns the complete lossless UI projection for sidecar and
-  mutation callers.
+  mutation callers. Window offsets are physical transcript message-line
+  positions, clamped against the cached transcript layout rather than the
+  deduplicated session index counter, and a window is served by seeking to its
+  first selected line instead of scanning the history before it.
 - `session.delete`
 - `session.rename`
 - `session.configure` — atomically persists `mode`, `providerId`, `modelId`,

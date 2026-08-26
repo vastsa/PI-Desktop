@@ -657,7 +657,8 @@ Minimal interface:
   read-window options returns the complete UI projection; with them returns a
   bounded newest/older page plus `messageStart` and `hasMoreBefore`. The
   content limit applies only to display values and never changes the lossless
-  transcript or model context.
+  transcript or model context. `messageBefore` and `messageStart` are physical
+  message-line positions in the transcript file, not deduplicated index counts.
 - `session/delete`
 - `session/rename`
 - `session/importScan`
@@ -665,6 +666,14 @@ Minimal interface:
 
 Import candidates carry `projectPath: string | null`. A successful import
 refreshes both sessions and the durable Projects index.
+
+A regenerate or edit-resend truncates the durable transcript before appending
+its new user turn. `agent/prompt` accepts `truncateFromMessageId` — the identity
+of the first message to drop — which the host resolves against its own
+transcript; an unresolvable id is rejected with `NOT_FOUND` rather than cutting
+at a guessed position. The older `truncateBefore` count remains accepted, but it
+is only correct when the caller holds the entire history: a renderer showing a
+bounded window addresses different messages than the transcript does.
 
 `session/fork` is a protocol-v5 channel that creates an independent
 session from the source session's current active transcript. When optional

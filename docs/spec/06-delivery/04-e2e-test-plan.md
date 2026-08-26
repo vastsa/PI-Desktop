@@ -2597,7 +2597,63 @@ Each scenario is documented in this format:
 - **Acceptance**: C (chat stream), F (persistence), Quality
 - **Milestone**: M5
 - **Status**: Unit-covered (`session-fork.test.mjs`
-  `fork actions populate sessionHistory and cache transcript`); UI scenario Draft
+  `fork actions commit the child through one durable helper`); UI scenario Draft
+
+#### E2E-071c: A branch survives a navigation that lands during the fork
+
+- **Preconditions**: A completed conversation with several exchanges, and at
+  least one other session in the sidebar.
+- **Steps**: 1) Start Branch from here on the source session. 2) While the fork
+  request is in flight, immediately click another session in the sidebar (or
+  press the history-back shortcut). 3) Wait for both to settle. 4) Inspect the
+  sidebar. 5) Open the branch and scroll its transcript.
+- **Expected**: The later navigation wins the view, and the branch is still
+  listed in the sidebar with its title, with no manual refresh. Opening it shows
+  its complete copied transcript from cache. Nothing is lost and no duplicate
+  branch row appears if the fork is repeated.
+- **Specs linked**: `03-runtime/01-ipc-protocol.md`, `03-runtime/04-data-storage.md`
+- **Acceptance**: C (chat stream), F (persistence), Quality
+- **Milestone**: M5
+- **Status**: Unit-covered (`session-fork.test.mjs`
+  `a fork is recorded even when a newer navigation took over`); UI scenario Draft
+
+#### E2E-071d: Opening a long session stays responsive and shows its newest turn
+
+- **Preconditions**: One session whose transcript is far longer than the
+  renderer page size (several hundred messages, including large tool results).
+- **Steps**: 1) Open the long session from the sidebar. 2) Observe the first
+  painted frame and the scroll position. 3) Scroll to the top edge to page older
+  history, repeatedly, until the first message is reached. 4) Switch to another
+  session and back. 5) Send a new prompt and let it complete.
+- **Expected**: The session opens at its newest turn without a blank or
+  top-of-history frame, and opening it does not visibly slow down as the
+  conversation grows. Each older page prepends without moving the message the
+  user is reading. Paging back reaches the true first message with none skipped
+  or duplicated. Re-selection paints from cache. The new turn appends normally.
+- **Specs linked**: `03-runtime/04-data-storage.md`, `03-runtime/06-host-rpc-protocol.md`
+- **Acceptance**: C (chat stream), F (persistence), Quality
+- **Milestone**: M5
+- **Status**: Unit-covered (`transcripts::tests::layout_window_reads_only_the_requested_tail`,
+  `sessions::tests::bounded_reads_use_physical_line_positions_not_the_dedup_counter`);
+  UI scenario Draft
+
+#### E2E-071e: Regenerating from a paged-back transcript replaces the right turn
+
+- **Preconditions**: A session long enough that opening it loads only a bounded
+  window, with several completed exchanges above that window.
+- **Steps**: 1) Open the session and page older history until an earlier user
+  turn is visible. 2) Regenerate that turn (or edit and resend it). 3) Wait for
+  the new answer. 4) Walk the revision pager back to the original. 5) Reopen the
+  session.
+- **Expected**: Exactly the selected turn and its answer tail are replaced; no
+  unrelated earlier or later exchange is truncated or archived. The pager
+  restores the original tail. After reopening, the transcript matches what was
+  shown, with no missing messages.
+- **Specs linked**: `03-runtime/01-ipc-protocol.md`, `03-runtime/04-data-storage.md`
+- **Acceptance**: C (chat stream), F (persistence), Quality
+- **Milestone**: M5
+- **Status**: Unit-covered (`transcript-truncation.test.ts`,
+  `transcript-style.test.mjs`); UI scenario Draft
 
 #### E2E-073: Icon-only message toolbars and editing a user prompt
 

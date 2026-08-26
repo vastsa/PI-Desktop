@@ -193,10 +193,14 @@ test("editing a user prompt regenerates it and keeps the old branch reachable", 
   // Same branch mechanics as regenerate, so main archives the replaced turn
   // as a revision the pager can walk back to.
   assert.match(storeSource, /editUserMessage:\s*async \(messageId, content, attachments\)/);
+  // The cut is named by message identity: a window offset plus an index into
+  // the deduplicated renderer array are different coordinate spaces.
+  assert.match(storeSource, /truncateFromMessageId,/);
   assert.match(
     storeSource,
-    /truncateBefore:\s*(?:transcriptOffset\s*\+\s*)?userIndex/,
+    /const truncateFromMessageId = state\.messages\[userIndex\]\.id/,
   );
+  assert.doesNotMatch(storeSource, /truncateBefore:\s*transcriptOffset/);
   assert.match(
     storeSource,
     /editUserMessage\(root\.id, root\.content, root\.attachments\)/,
@@ -320,14 +324,25 @@ test("regenerate rewrites the current turn instead of appending", async () => {
     new URL("../../../packages/shared/src/protocol.ts", import.meta.url),
     "utf8",
   );
+  // The cut is named by message identity: a window offset plus an index into
+  // the deduplicated renderer array are different coordinate spaces.
+  assert.match(storeSource, /truncateFromMessageId,/);
   assert.match(
     storeSource,
-    /truncateBefore:\s*(?:transcriptOffset\s*\+\s*)?userIndex/,
+    /const truncateFromMessageId = state\.messages\[userIndex\]\.id/,
   );
+  assert.doesNotMatch(storeSource, /truncateBefore:\s*transcriptOffset/);
   assert.match(storeSource, /messages:\s*kept/);
   assert.match(mainSource, /session\.replaceMessages/);
   assert.match(mainSource, /agent\.disposeSession/);
-  assert.match(mainSource, /truncateBefore/);
+  assert.match(mainSource, /truncateFromMessageId/);
+  // The host resolves the boundary against its own transcript, and an
+  // unresolvable boundary fails instead of truncating at a guessed position.
+  assert.match(
+    mainSource,
+    /resolveTranscriptTruncation\(allMessages,\s*req\)/,
+  );
+  assert.match(mainSource, /truncation\.kind === "unknown-message"/);
   assert.match(protocolSource, /sessionReplaceMessages/);
 });
 
