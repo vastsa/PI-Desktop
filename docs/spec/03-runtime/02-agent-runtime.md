@@ -143,6 +143,9 @@ seconds, then `retry-after` HTTP-date, capped at 8 seconds. Captured headers are
 retained for every status that can carry a usable delay (429, 408, 409, and
 5xx), not for 429 alone. Without a usable header the delay keeps its exponential
 shape and grows per attempt, and the mid-stream replay keeps its 750 ms floor.
+The floor applies only to a calculated backoff: a server-stated delay wins
+outright, including one shorter than the floor, and the 8-second cap always wins
+over the floor.
 Each retry is silent and abortable. The main session, builtin subagents, and
 one-shot composer enhancement use the same codes, budget size, and precedence.
 
