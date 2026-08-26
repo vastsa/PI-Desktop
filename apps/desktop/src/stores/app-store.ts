@@ -26,6 +26,7 @@ import type {
   ProposalKind,
   ProviderPublic,
   ReviewRollbackResult,
+  SessionDetail,
   SessionSummary,
   ThinkingLevel,
   UiMessage,
@@ -42,6 +43,11 @@ import {
 import { api } from "../lib/api";
 import type { SettingsTabId } from "../lib/settings-search";
 import { createNavigationIntentController } from "../lib/navigation-intent";
+import {
+  commitForkedSessionState,
+  forkedSessionMessages,
+  FORKED_SESSION_WINDOW,
+} from "../lib/session-fork";
 import { rememberProject, setProjectPinned } from "../lib/recent-projects";
 import { normalizeProjectPath, sessionMatchesProject } from "../lib/sidebar-session-groups";
 import {
@@ -844,6 +850,53 @@ function rememberSessionCompactions(
   }));
 }
 
+/**
+ * Record a freshly forked child session, and optionally activate it.
+ *
+ * `api.forkSession` has already committed the child on the host by the time it
+ * resolves, so the sidebar row and the cached transcript are written even when a
+ * newer navigation has taken over the view. Only the visible switch - active
+ * session, transcript, work panel, history entry - is conditional. Previously
+ * both were skipped together, which left a branch on disk that the UI never
+ * showed until the next manual refresh.
+ */
+function commitForkedSession(
+  session: SessionDetail,
+  options: { activate: boolean; clearError?: boolean },
+): void {
+  const { messages: _forkedMessages, ...summary } = session;
+  const messages = forkedSessionMessages(session);
+  const historyWindow = { ...FORKED_SESSION_WINDOW };
+  cacheSessionTranscript(summary.id, messages, historyWindow);
+  useAppStore.setState((current) => {
+    const commit = commitForkedSessionState(current, summary, {
+      activate: options.activate,
+    });
+    const shared: Partial<AppState> = {
+      sessions: decorateSessions(commit.sessions, current.sessionMeta),
+      sessionHistory: { ...current.sessionHistory, [summary.id]: historyWindow },
+      planningStates: {
+        ...current.planningStates,
+        [summary.id]: summary.mode === "plan" ? "planning" : "inactive",
+      },
+      ...(options.clearError ? { error: null, errorCode: null } : {}),
+    };
+    if (!commit.activated) return shared;
+    return {
+      ...switchWorkPanelSession(current, summary.id),
+      ...shared,
+      activeSessionId: summary.id,
+      messages,
+      page: "chat" as const,
+      isRunning: false,
+      navStack: commit.navStack as AppState["navStack"],
+      navIndex: commit.navIndex,
+    };
+  });
+  rememberSessionCompactions(summary.id, session);
+  void useAppStore.getState().restorePendingPlan(summary.id);
+}
+
 /** Append a freshly installed checkpoint, or replace a retried one by id. */
 function withCompactionMark(
   marks: ContextCompactionMark[] | undefined,
@@ -1477,41 +1530,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       id,
       i18n.t("nav.branchTitle", { title: sourceTitle }),
     );
-    if (!navigationIntentIsCurrent(intent)) return;
-    const { messages, ...summary } = result.session;
-    set((current) => {
-      const sessions = decorateSessions(
-        [
-          summary,
-          ...current.sessions.filter((session) => session.id !== summary.id),
-        ],
-        current.sessionMeta,
-      );
-      const stack = current.navStack.slice(0, current.navIndex + 1);
-      const entry = { page: "chat" as const, sessionId: summary.id };
-      const nextStack = [...stack, entry].slice(-50);
-      return {
-        ...switchWorkPanelSession(current, summary.id),
-        sessions,
-        activeSessionId: summary.id,
-        messages,
-        sessionHistory: {
-          ...current.sessionHistory,
-          [summary.id]: { messageStart: 0, hasMoreBefore: false },
-        },
-        page: "chat" as const,
-        isRunning: false,
-        planningStates: {
-          ...current.planningStates,
-          [summary.id]: summary.mode === "plan" ? "planning" : "inactive",
-        },
-        navStack: nextStack,
-        navIndex: nextStack.length - 1,
-      };
+    // The child is already durable on the host. Recording it is unconditional;
+    // only activating it depends on this navigation still owning the view.
+    commitForkedSession(result.session, {
+      activate: navigationIntentIsCurrent(intent),
     });
-    cacheSessionTranscript(summary.id, messages, { messageStart: 0, hasMoreBefore: false });
-    rememberSessionCompactions(summary.id, result.session);
-    void get().restorePendingPlan(summary.id);
   },
 
   forkAssistantMessage: async (messageId) => {
@@ -1530,40 +1553,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         i18n.t("nav.branchTitle", { title: sourceTitle }),
         messageId,
       );
-      if (!navigationIntentIsCurrent(intent)) return;
-      const { messages, ...summary } = result.session;
-      set((current) => {
-        const sessions = decorateSessions(
-          [summary, ...current.sessions.filter((session) => session.id !== summary.id)],
-          current.sessionMeta,
-        );
-        const stack = current.navStack.slice(0, current.navIndex + 1);
-        const entry = { page: "chat" as const, sessionId: summary.id };
-        const nextStack = [...stack, entry].slice(-50);
-        return {
-          ...switchWorkPanelSession(current, summary.id),
-          sessions,
-          activeSessionId: summary.id,
-          messages,
-          sessionHistory: {
-            ...current.sessionHistory,
-            [summary.id]: { messageStart: 0, hasMoreBefore: false },
-          },
-          page: "chat" as const,
-          isRunning: false,
-          planningStates: {
-            ...current.planningStates,
-            [summary.id]: summary.mode === "plan" ? "planning" : "inactive",
-          },
-          navStack: nextStack,
-          navIndex: nextStack.length - 1,
-          error: null,
-          errorCode: null,
-        };
+      commitForkedSession(result.session, {
+        activate: navigationIntentIsCurrent(intent),
+        clearError: true,
       });
-      cacheSessionTranscript(summary.id, messages, { messageStart: 0, hasMoreBefore: false });
-      rememberSessionCompactions(summary.id, result.session);
-      void get().restorePendingPlan(summary.id);
     } catch (error) {
       set({
         error: error instanceof Error ? error.message : String(error),
