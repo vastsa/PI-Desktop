@@ -1273,9 +1273,23 @@ Renderer: `apps/desktop/src/components/Markdown.tsx` + `apps/desktop/src/lib/shi
   `target="_blank"` so main routes through `shell.openExternal`; in-window
   navigation stays blocked.
 - **Long transcript behavior**: `.thread-scroll` sets `overflow-anchor: none`
-  (pinned-follow owns the scroll position), `.message-row` uses
-  `content-visibility: auto`, and offscreen Mermaid diagrams defer loading and
-  layout until they approach the viewport.
+  (pinned-follow owns the scroll position), `.message-row` and
+  `.tool-activity-group` use `content-visibility: auto` with an intrinsic size so
+  far-offscreen rows skip layout and paint, and offscreen Mermaid diagrams defer
+  loading and layout until they approach the viewport.
+- **Bounded first commit**: activating a session whose history exceeds the
+  initial render budget mounts only the newest entries in that commit, with a
+  spacer holding the remaining scroll height, and expands to the full history on
+  the next frame. The gate is derived during render from the session being
+  painted; deciding it from an effect instead makes the switch mount the whole
+  history, discard it, and rebuild it.
+- **Minimap hover cost**: dash magnification is applied by writing a custom
+  property per dash, and dash centers are measured in a separate read-only pass.
+  Reading a dash's geometry inside the same loop that writes to it forces one
+  synchronous layout per dash on every hover frame. The measurement is refreshed
+  when the marker set changes and whenever the rail's own box resizes: the rail's
+  height derives from `--composer-dock-height`, which the composer republishes as
+  its draft grows, so dashes move without a marker change or a window resize.
 
 ---
 

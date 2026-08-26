@@ -2392,28 +2392,40 @@ export const ChatTranscript = memo(function ChatTranscript({
   const allHistoryEntries = entries.slice(0, -1);
   const tailEntry = entries.at(-1);
 
-  // Progressive hydration (D247): on session switch, mount only the bottom
-  // portion of the transcript in the first frame (what fits the viewport),
-  // then expand to the full history after paint. This keeps first-paint fast
-  // for long conversations while a spacer preserves scroll height.
+  // Progressive hydration: on session switch, mount only the bottom portion of
+  // the transcript in the first commit (what fits the viewport), then expand to
+  // the full history after paint, with a spacer holding the scroll height.
+  //
+  // The gate has to be derived during render, not set from an effect. With
+  // `useState(true)` the switch rendered the *whole* history first, and only then
+  // did a layout effect cut it back to the budget before expanding again - so a
+  // long session built its entire DOM, discarded it, and rebuilt it, which is the
+  // opposite of what bounding the first commit is for.
   const INITIAL_RENDER_BUDGET = 15;
-  const [hydrated, setHydrated] = useState(true);
-
-  useLayoutEffect(() => {
-    if (sessionSwitched && allHistoryEntries.length > INITIAL_RENDER_BUDGET) {
-      setHydrated(false);
-    }
-  }, [sessionSwitched, allHistoryEntries.length]);
+  const hydratedSessionRef = useRef(sessionId);
+  const [hydrationTick, setHydrationTick] = useState(0);
+  const hydrationBounded =
+    hydratedSessionRef.current !== sessionId &&
+    allHistoryEntries.length > INITIAL_RENDER_BUDGET;
 
   useEffect(() => {
-    if (hydrated) return;
-    const frame = requestAnimationFrame(() => setHydrated(true));
+    if (!hydrationBounded) {
+      hydratedSessionRef.current = sessionId;
+      return;
+    }
+    const frame = requestAnimationFrame(() => {
+      hydratedSessionRef.current = sessionId;
+      setHydrationTick((tick) => tick + 1);
+    });
     return () => cancelAnimationFrame(frame);
-  }, [hydrated]);
+    // `hydrationTick` is a dependency so a session that switches again while its
+    // expansion is still queued re-evaluates instead of keeping a stale frame.
+  }, [hydrationBounded, hydrationTick, sessionId]);
 
-  const historyEntries = hydrated
-    ? allHistoryEntries
-    : allHistoryEntries.slice(-INITIAL_RENDER_BUDGET);
+  const historyEntries = hydrationBounded
+    ? allHistoryEntries.slice(-INITIAL_RENDER_BUDGET)
+    : allHistoryEntries;
+
   const lastEntry = entries[entries.length - 1];
   const lastTurnPart =
     lastEntry?.kind === "assistant-turn" ? lastEntry.parts.at(-1) : undefined;
@@ -2458,11 +2470,13 @@ export const ChatTranscript = memo(function ChatTranscript({
           >
             {loadingOlder ? t("chat.loadingEarlierMessages") : null}
           </div>
-          {!hydrated && allHistoryEntries.length > INITIAL_RENDER_BUDGET ? (
+          {hydrationBounded ? (
             <div
               className="transcript-hydration-spacer"
               aria-hidden
-              style={{ minHeight: `${(allHistoryEntries.length - INITIAL_RENDER_BUDGET) * 60}px` }}
+              style={{
+                minHeight: `${(allHistoryEntries.length - INITIAL_RENDER_BUDGET) * 60}px`,
+              }}
             />
           ) : null}
           <TranscriptHistory entries={historyEntries} isRunning={isRunning} />

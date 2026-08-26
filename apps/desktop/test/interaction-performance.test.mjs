@@ -5,14 +5,16 @@ import { loadStyles } from "./helpers/styles.mjs";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-const [app, chatSurface, transcript, minimap, styles, store] = await Promise.all([
-  read("../src/App.tsx"),
-  read("../src/components/ChatSurface.tsx"),
-  read("../src/components/ChatTranscript.tsx"),
-  read("../src/components/ConversationMinimap.tsx"),
-  loadStyles(),
-  read("../src/stores/app-store.ts"),
-]);
+const [app, chatSurface, transcript, minimap, composer, styles, store] =
+  await Promise.all([
+    read("../src/App.tsx"),
+    read("../src/components/ChatSurface.tsx"),
+    read("../src/components/ChatTranscript.tsx"),
+    read("../src/components/ConversationMinimap.tsx"),
+    read("../src/components/Composer.tsx"),
+    loadStyles(),
+    read("../src/stores/app-store.ts"),
+  ]);
 
 test("streaming state stays inside the chat render boundary", () => {
   assert.match(app, /<ChatSurface \/>/);
@@ -154,6 +156,39 @@ test("session activation pins the latest record before the first paint", () => {
   assert.doesNotMatch(activationEffect, /smooth/);
 });
 
+test("session switch bounds the first transcript commit instead of rebuilding it", () => {
+  // Progressive hydration must decide during render. Setting the gate from a
+  // layout effect (`useState(true)` + `setHydrated(false)`) meant a switch
+  // mounted the whole history, threw it away, and rebuilt it - three commits,
+  // and the long sessions this protects paid for the full DOM anyway.
+  const hydration = transcript.slice(
+    transcript.indexOf("// Progressive hydration"),
+    transcript.indexOf("const lastEntry = entries[entries.length - 1];"),
+  );
+  assert.ok(hydration.length > 0, "hydration block must exist");
+  assert.match(
+    hydration,
+    /const hydrationBounded =\s*hydratedSessionRef\.current !== sessionId &&/,
+    "the gate must be derived from the rendered session, not stored state",
+  );
+  assert.match(
+    hydration,
+    /historyEntries = hydrationBounded\s*\?\s*allHistoryEntries\.slice\(-INITIAL_RENDER_BUDGET\)/,
+  );
+  // No layout effect may flip the gate; that is what caused the extra commits.
+  assert.doesNotMatch(hydration, /useLayoutEffect/);
+  assert.doesNotMatch(transcript, /setHydrated\(/);
+  // The spacer holds scroll height for exactly the entries left unmounted.
+  assert.match(
+    transcript,
+    /\{hydrationBounded \? \([\s\S]*?transcript-hydration-spacer/,
+  );
+  assert.match(
+    transcript,
+    /allHistoryEntries\.length - INITIAL_RENDER_BUDGET\) \* 60/,
+  );
+});
+
 test("minimap separates resize checks from message-position measurement", () => {
   assert.match(minimap, /buildConversationMinimapMarkers\(messages\)/);
   assert.match(minimap, /const markerIdentity = useMemo/);
@@ -162,6 +197,70 @@ test("minimap separates resize checks from message-position measurement", () => 
   assert.match(minimap, /recomputeOffsets\(\);[\s\S]*?updateOverflow\(\);/);
   assert.match(minimap, /addEventListener\("scroll", scheduleScroll/);
   assert.match(minimap, /behavior: reduceMotion \? "auto" : "smooth"/);
+});
+
+test("minimap hover magnification never measures geometry per dash", () => {
+  // applyMagnify runs on every mousemove frame. Reading a dash's offsetTop in
+  // the same loop that writes --magnify forces a synchronous layout per dash, so
+  // hovering a long conversation's rail cost O(markers) layouts a frame. Centers
+  // are measured once per layout instead, and the hover loop only writes.
+  const applyMagnify = minimap.slice(
+    minimap.indexOf("const applyMagnify"),
+    minimap.indexOf("const handleMouseMove"),
+  );
+  const loopStart = applyMagnify.indexOf("for (const { id, center }");
+  assert.ok(loopStart > 0, "applyMagnify must iterate the cached centers");
+  const loopBody = applyMagnify.slice(loopStart, applyMagnify.indexOf("\n    }\n", loopStart));
+  assert.doesNotMatch(
+    loopBody,
+    /\.(offsetTop|offsetHeight|clientHeight|clientWidth|getBoundingClientRect|scrollTop|scrollHeight)\b/,
+    "the per-dash loop must not read layout geometry",
+  );
+  assert.match(loopBody, /style\.setProperty\("--magnify"/);
+
+  // The measurement pass is read-only, so it cannot thrash either.
+  const measure = minimap.slice(
+    minimap.indexOf("const measureMagnifyCenters"),
+    minimap.indexOf("/* Fresh offset query"),
+  );
+  assert.match(measure, /btn\.offsetTop \+ btn\.offsetHeight \/ 2/);
+  assert.doesNotMatch(measure, /style\.setProperty/);
+
+  // Centers move when the marker set changes and when the rail is resized (its
+  // gap is marker-count dependent and its height follows the composer).
+  assert.match(
+    minimap,
+    /\}, \[markerIdentity, measureMagnifyCenters, recomputeOffsets, updateOverflow\]\)/,
+  );
+  const resize = minimap.slice(
+    minimap.indexOf("const scheduleResize"),
+    minimap.indexOf("// Initial offset computation"),
+  );
+  assert.match(resize, /measureMagnifyCenters\(\)/);
+});
+
+test("minimap re-measures dash centers when the rail's own box changes", () => {
+  // The rail's height is `calc(var(--composer-dock-height) + 16px)` and the
+  // composer republishes that variable on documentElement as its draft grows.
+  // That moves every dash without changing the marker set and without a window
+  // resize, so observing only the thread content left magnification tracking
+  // stale positions while the user typed a multi-line prompt.
+  assert.match(minimap, /new ResizeObserver\(\(\) => \{[\s\S]*?measureMagnifyCenters\)/);
+  const railObserver = minimap.slice(
+    minimap.indexOf("const rail = railRef.current;\n    if (!rail || typeof ResizeObserver"),
+    minimap.indexOf("const jumpTo = useCallback("),
+  );
+  assert.ok(railObserver.length > 0, "the rail must be observed for its own resizes");
+  assert.match(railObserver, /observer\.observe\(rail\)/);
+  assert.match(railObserver, /observer\.disconnect\(\)/);
+  assert.match(railObserver, /cancelAnimationFrame\(frame\)/);
+  // `overflows` gates whether the rail is mounted, so the observer must reattach.
+  assert.match(railObserver, /\}, \[measureMagnifyCenters, overflows\]\)/);
+  // The composer is the source of that variable.
+  assert.match(
+    composer,
+    /setProperty\(\s*"--composer-dock-height"/,
+  );
 });
 
 test("motion feedback is composited, bounded, and accessible", () => {
