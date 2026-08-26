@@ -2595,6 +2595,85 @@ describe("DesktopAgentRuntime assistant thinking events", () => {
     await runtime.dispose();
   });
 
+  it("replays repeated mid-stream 502s in place and surfaces only the exhausted failure", async () => {
+    const onEvent = vi.fn();
+    const runtime = createRuntime({ onEvent });
+    const agent = (runtime as any).agent;
+    const handleAgentEvent = (runtime as any).handleAgentEvent.bind(runtime);
+    const gatewayMessage = (timestamp: number) => ({
+      role: "assistant",
+      content: [{ type: "text", text: "partial response" }],
+      api: "openai-completions",
+      provider: "local",
+      model: "local-model",
+      usage: {
+        input: 1,
+        output: 1,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 2,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "error",
+      errorMessage:
+        'OpenAI API error (502): {"type":"api_error","message":"Upstream API request failed."}',
+      timestamp,
+    });
+
+    agent.prompt = vi.fn(async () => {
+      agent.state.messages = [
+        { role: "user", content: "hello", timestamp: 1 },
+        gatewayMessage(2),
+      ];
+      await handleAgentEvent({ type: "message_start", message: gatewayMessage(2) });
+      await handleAgentEvent({ type: "message_end", message: gatewayMessage(2) });
+      await handleAgentEvent({ type: "turn_end" });
+      await handleAgentEvent({ type: "agent_end", messages: [] });
+    });
+    agent.waitForIdle = vi.fn(async () => undefined);
+    let continues = 0;
+    agent.continue = vi.fn(async () => {
+      continues += 1;
+      const failed = gatewayMessage(2 + continues);
+      agent.state.messages = [
+        { role: "user", content: "hello", timestamp: 1 },
+        failed,
+      ];
+      await handleAgentEvent({ type: "agent_start" });
+      await handleAgentEvent({ type: "turn_start" });
+      await handleAgentEvent({
+        type: "message_start",
+        message: { role: "assistant", content: [] },
+      });
+      await handleAgentEvent({ type: "message_end", message: failed });
+      await handleAgentEvent({ type: "turn_end" });
+      await handleAgentEvent({ type: "agent_end", messages: [] });
+    });
+
+    vi.useFakeTimers();
+    try {
+      const prompt = runtime.prompt("hello", "user-1");
+      await vi.runAllTimersAsync();
+      await prompt;
+    } finally {
+      vi.useRealTimers();
+    }
+
+    const events = onEvent.mock.calls.map(([envelope]) => (envelope as any).event);
+    // Three retries after the initial attempt, then the failure is surfaced.
+    expect(continues).toBe(3);
+    expect(events.filter((event) => event.type === "message_start")).toHaveLength(1);
+    expect(events.filter((event) => event.type === "agent_end")).toHaveLength(1);
+    const errors = events.filter((event) => event.type === "error");
+    expect(errors).toHaveLength(1);
+    expect(errors[0].error).toMatchObject({
+      code: "PROVIDER_ERROR",
+      details: { retryAttempt: 3, phase: "stream" },
+    });
+
+    await runtime.dispose();
+  });
+
   it("surfaces repeated 429s only after exhausting the five-retry budget", async () => {
     const onEvent = vi.fn();
     const runtime = createRuntime({ onEvent });

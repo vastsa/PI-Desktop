@@ -3397,11 +3397,14 @@ Delegation rules:
   private async retryPendingProviderFailure(): Promise<void> {
     if (!this.pendingProviderRetry) return;
     const retryError = this.pendingProviderRetry;
+    // Fall back to the budget the error actually draws from. Hardcoding 1 here
+    // under-reported `retryAttempt` once non-429 failures gained a multi-attempt
+    // budget, so a third 502 was diagnosed as if it were the first.
     const retryAttempt =
       this.activeProviderRetryAttempt ||
       (retryError.code === "PROVIDER_RATE_LIMITED"
         ? this.providerRateLimitRetryAttempt
-        : 1);
+        : this.providerTransientRetryAttempt || 1);
     this.activeProviderRetryAttempt = retryAttempt;
     this.pendingProviderRetry = undefined;
 
