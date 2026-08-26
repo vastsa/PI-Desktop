@@ -887,10 +887,13 @@ is proportional to the window rather than to the conversation. Consequences:
   the cached entry, because a rewrite can land on an identical length.
 - A torn trailing line (crash mid-append) is excluded from both the offsets and
   `file_len`, so a later refresh picks it up once the writer completes it.
-- Line classification reads the `type` discriminator from a bounded prefix,
-  never by parsing the line. `type` is therefore written **first** on every
-  transcript line; lines written before that ordering carry it last and stay
-  readable through a bounded suffix check.
+- Line classification reads the `type` discriminator with a single depth-aware
+  scan, never by parsing the line into a value. Only a **top-level** `type` key
+  decides the kind: tool results and checkpoint details are open-ended JSON and
+  may nest an object whose own `type` names a line kind. `type` is written
+  **first** on every new line so the scan usually stops at the first key, and
+  lines written before that ordering carry it after their payload and are read
+  by the same scan.
 - Window offsets are **physical message-line positions**, the same space the
   layout counts in. They are never clamped against the session index counter
   (`last_seq`), which is a deduplicated logical count: a file line whose index

@@ -48,11 +48,14 @@ and was absent from the sidebar until a manual refresh.
    delete path drops the entry because a rewrite can reproduce the same length.
    A torn trailing line is excluded from both offsets and `file_len` so a later
    refresh adopts it once the writer completes it.
-2. **Cheap classification.** Transcript lines are classified by reading `type`
-   from a bounded prefix, never by parsing the line. `type` is therefore written
-   first on every line; lines written under the previous ordering carry it last
-   and remain readable through a bounded suffix check, so no migration is
-   required.
+2. **Cheap classification.** Transcript lines are classified by one depth-aware
+   scan for the *top-level* `type` key, never by parsing the line into a value.
+   Depth matters: tool results and checkpoint details are open-ended JSON and can
+   nest an object whose own `type` names a line kind, which a positional or
+   first-match check misreads. `type` is written first on every new line so the
+   scan normally stops at the first key, while lines written under the previous
+   ordering carry it after their payload and are read by the same scan, so no
+   migration is required.
 3. **One coordinate space.** Read-window offsets are physical message-line
    positions, clamped against the layout. `last_seq` is never used for this
    purpose. The compaction chain is still returned whole with any window,
@@ -87,6 +90,10 @@ and was absent from the sidebar until a manual refresh.
 
 - Opening a session, and each older page, costs the requested window rather than
   the conversation length; a large tool result is no longer parsed to be skipped.
+  Measured on synthetic transcripts of 3,000 messages / 32 MB and 12,000 /
+  129 MB, a warm tail window stays around 0.7-0.8 ms while the previous
+  sequential read grew from 6 ms to 25 ms, so the cost stops tracking history
+  length. The first open of a session still pays one index scan.
 - The layout is a cache with an explicit validity token, so correctness after a
   crash or rewrite does not depend on it being present or fresh.
 - The newest messages of a session with an unindexed file line are visible again,
