@@ -19,6 +19,8 @@ import {
   captureProviderResponse,
   createProviderRetryStream,
   PROVIDER_RATE_LIMIT_MAX_RETRIES,
+  PROVIDER_TRANSIENT_MAX_RETRIES,
+  isTransientProviderRetryCode,
 } from "./provider-retry.js";
 import { classifyAgentError } from "./agent-errors.js";
 
@@ -84,7 +86,7 @@ export async function enhancePromptDraft(
   const context = promptEnhancementContext(draft);
   let providerStatus: number | undefined;
   let providerHeaders: Record<string, string> | undefined;
-  let setupRetryAttempted = false;
+  let transientRetryAttempt = 0;
   let rateLimitRetryAttempt = 0;
 
   const requestOptions: SimpleStreamOptions = {
@@ -111,9 +113,14 @@ export async function enhancePromptDraft(
           rateLimitRetryAttempt += 1;
           return rateLimitRetryAttempt;
         }
-        if (setupRetryAttempted) return undefined;
-        setupRetryAttempted = true;
-        return 1;
+        // Share the runtime's bounded transient budget so an upstream 502 does
+        // not surface as an immediate enhancement failure.
+        if (!isTransientProviderRetryCode(error.code)) return undefined;
+        if (transientRetryAttempt >= PROVIDER_TRANSIENT_MAX_RETRIES) {
+          return undefined;
+        }
+        transientRetryAttempt += 1;
+        return transientRetryAttempt;
       },
       headers: () => providerHeaders,
       status: () => providerStatus,

@@ -126,7 +126,11 @@ import {
   createProviderRetryStream,
   delayWithAbort,
   PROVIDER_RATE_LIMIT_MAX_RETRIES,
+  PROVIDER_TRANSIENT_MAX_RETRIES,
+  carriesRetryDelayHeaders,
+  isTransientProviderRetryCode,
   providerRateLimitDelayMs,
+  providerSetupRetryDelayMs,
 } from "./provider-retry.js";
 
 export type { RuntimeProviderConfig } from "./provider-binding.js";
@@ -1075,10 +1079,11 @@ export class DesktopAgentRuntime {
   private providerResponseStatus?: number;
   private providerRetryHeaders?: Record<string, string>;
   private pendingProviderRetry?: ReturnType<typeof classifyAgentError>;
-  /** One same-turn retry for non-rate-limit stream failures. */
-  private providerRetryAttempted = false;
-  /** One request-setup retry for non-rate-limit transient failures. */
-  private providerSetupRetryAttempted = false;
+  /**
+   * Shared bounded retry count for non-rate-limit transient failures, counted
+   * across the request-setup and stream phases (D259).
+   */
+  private providerTransientRetryAttempt = 0;
   /** Shared OpenCode-style 429 retry count across setup and stream phases. */
   private providerRateLimitRetryAttempt = 0;
   private activeProviderRetryAttempt = 0;
@@ -1251,8 +1256,13 @@ Delegation rules:
           // failed response separately so a 429 can honor Retry-After headers.
           fetch: captureProviderResponse(options?.fetch, (response) => {
             this.providerResponseStatus = response?.status;
-            this.providerRetryHeaders =
-              response?.status === 429 ? response.headers : undefined;
+            // A gateway 502/503 can also state Retry-After, so keep headers for
+            // every status whose delay is usable instead of only for 429.
+            this.providerRetryHeaders = carriesRetryDelayHeaders(
+              response?.status,
+            )
+              ? response?.headers
+              : undefined;
           }),
           onResponse: async (response, responseModel) => {
             this.providerResponseStatus = response.status;
@@ -3293,7 +3303,10 @@ Delegation rules:
   /**
    * Claim a retry without exposing an intermediate error to the user. Rate
    * limits use one shared five-attempt budget across request setup and stream
-   * recovery; other transient failures retain their existing one-retry rules.
+   * recovery. Other transient failures — upstream gateway 5xx, dropped sockets,
+   * timeouts, truncated streams — share their own bounded budget across both
+   * phases, so a flapping gateway is retried instead of surfacing an error
+   * after a single attempt.
    */
   private claimProviderRetry(
     error: ReturnType<typeof classifyAgentError>,
@@ -3312,32 +3325,17 @@ Delegation rules:
       return attempt;
     }
 
-    if (phase === "request") {
-      if (this.providerSetupRetryAttempted) return undefined;
-      if (
-        error.code !== "NETWORK_ERROR" &&
-        error.code !== "TIMEOUT" &&
-        error.code !== "STREAM_FAILED" &&
-        error.code !== "PROVIDER_ERROR"
-      ) {
-        return undefined;
-      }
-      this.providerSetupRetryAttempted = true;
-      this.activeProviderRetryAttempt = 1;
-      return 1;
-    }
-
-    if (
-      this.providerRetryAttempted ||
-      (error.code !== "STREAM_FAILED" &&
-        error.code !== "NETWORK_ERROR" &&
-        error.code !== "TIMEOUT")
-    ) {
+    // Request setup and stream delivery share this counter. An upstream
+    // gateway that fails before headers on one attempt and mid-stream on the
+    // next must not multiply the budget or reset it by changing phase.
+    void phase;
+    if (!isTransientProviderRetryCode(error.code)) return undefined;
+    if (this.providerTransientRetryAttempt >= PROVIDER_TRANSIENT_MAX_RETRIES) {
       return undefined;
     }
-    this.providerRetryAttempted = true;
-    this.activeProviderRetryAttempt = 1;
-    return 1;
+    const attempt = ++this.providerTransientRetryAttempt;
+    this.activeProviderRetryAttempt = attempt;
+    return attempt;
   }
 
   private providerErrorWithDiagnostics(
@@ -3377,8 +3375,7 @@ Delegation rules:
     this.overflowRecoveryAttempted = false;
     this.suppressOverflowRunEnd = false;
     this.pendingProviderRetry = undefined;
-    this.providerRetryAttempted = false;
-    this.providerSetupRetryAttempted = false;
+    this.providerTransientRetryAttempt = 0;
     this.providerRateLimitRetryAttempt = 0;
     this.providerRetryHeaders = undefined;
     this.activeProviderRetryAttempt = 0;
@@ -3425,7 +3422,17 @@ Delegation rules:
               retryAttempt || this.providerRateLimitRetryAttempt,
               this.providerRetryHeaders,
             )
-          : PROVIDER_STREAM_RETRY_BACKOFF_MS;
+          : // Later attempts back off further so a flapping upstream is not
+            // hammered at a fixed interval. The mid-stream floor only applies
+            // to the calculated backoff; a server-stated delay wins outright,
+            // even a shorter one.
+            providerSetupRetryDelayMs(
+              retryAttempt,
+              undefined,
+              this.providerRetryHeaders,
+              undefined,
+              PROVIDER_STREAM_RETRY_BACKOFF_MS,
+            );
       await delayWithAbort(delayMs, this.providerRetryAbort.signal);
       if (this.disposed) throw new Error("runtime disposed");
       // The failed attempt has already finished. Only its lifecycle events

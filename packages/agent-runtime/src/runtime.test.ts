@@ -10,6 +10,7 @@ import {
   type RuntimeProviderConfig,
 } from "./runtime.js";
 import type { ProjectInstructions } from "./project-instructions.js";
+import { classifyAgentError } from "./agent-errors.js";
 /**
  * The delegate loop itself is covered in `subagent.test.ts`; here only the
  * `Task` wiring around it is under test, so `SubagentRun` is replaced by a
@@ -2457,6 +2458,46 @@ describe("DesktopAgentRuntime assistant thinking events", () => {
         }),
       }),
     );
+
+    await runtime.dispose();
+  });
+
+  it("shares one bounded transient budget across setup and stream phases", async () => {
+    const runtime = createRuntime({ onEvent: vi.fn() });
+    const claim = (runtime as any).claimProviderRetry.bind(runtime);
+    const gateway502 = classifyAgentError(
+      'OpenAI API error (502): {"type":"api_error","message":"Upstream API request failed."}',
+    );
+    expect(gateway502).toMatchObject({ code: "PROVIDER_ERROR", retriable: true });
+
+    // A gateway fault that moves between phases draws from one counter.
+    expect(claim(gateway502, "request")).toBe(1);
+    expect(claim(gateway502, "stream")).toBe(2);
+    expect(claim(gateway502, "request")).toBe(3);
+    expect(claim(gateway502, "stream")).toBeUndefined();
+
+    (runtime as any).resetRunRecoveryState();
+    // A mid-stream 502 is now retried; it used to be excluded outright.
+    expect(claim(gateway502, "stream")).toBe(1);
+
+    (runtime as any).resetRunRecoveryState();
+    // The 429 budget stays separate and is not drained by transient failures.
+    const rateLimited = classifyAgentError("429: too many requests");
+    expect(claim(gateway502, "request")).toBe(1);
+    expect(claim(rateLimited, "request")).toBe(1);
+    expect(claim(rateLimited, "stream")).toBe(2);
+
+    (runtime as any).resetRunRecoveryState();
+    // Permanent failures never claim a retry, whatever the phase.
+    for (const message of [
+      "401: invalid api key",
+      "404: unknown model",
+      "413: context length exceeded",
+      "400: invalid request body",
+    ]) {
+      expect(claim(classifyAgentError(message), "request")).toBeUndefined();
+      expect(claim(classifyAgentError(message), "stream")).toBeUndefined();
+    }
 
     await runtime.dispose();
   });

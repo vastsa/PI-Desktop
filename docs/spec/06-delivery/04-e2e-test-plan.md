@@ -3416,44 +3416,60 @@ Each scenario is documented in this format:
 - **Status**: Unit-covered (`tool_budget.rs`, `tools/mod.rs`,
   `agent-runtime/runtime.test.ts`); full provider/UI journey Draft
 
-#### E2E-096: Recover one transient provider stream termination in place
+#### E2E-096: Recover transient provider stream failures in place
 
 - **Preconditions**: A project-bound Agent session uses a deterministic
-  provider fixture that emits a partial assistant stream, terminates once,
-  then succeeds on the next request; a second fixture run can terminate twice;
-  timing logs are enabled.
+  provider fixture that emits a partial assistant stream, terminates once, then
+  succeeds on the next request; a second fixture run can terminate four times; a
+  third fixture returns `OpenAI API error (502)` before headers on one attempt
+  and mid-stream on the next; a fourth fixture returns five consecutive 502s; a
+  fifth fixture returns a 503 with `Retry-After`; timing logs are enabled.
 - **Steps**:
   1. Start an Agent turn with the one-termination fixture and observe the
      partial assistant response.
   2. Wait for the bounded retry and inspect the transcript, session state, and
      model timing log after recovery.
-  3. Repeat with the two-termination fixture and inspect the terminal error
+  3. Repeat with the four-termination fixture and inspect the terminal error
      message/event and its diagnostic details.
-  4. Reload the session and verify that only the completed response or the
+  4. Run the mixed-phase 502 fixture and inspect the request count and timing
+     log for both the pre-header and the mid-stream 502.
+  5. Run the persistent five-502 fixture and inspect the terminal error.
+  6. Run the 503 `Retry-After` fixture and inspect the observed wait.
+  7. Reload the session and verify that only the completed response or the
      single terminal failed assistant remains durable.
 - **Expected**:
-  - `terminated` is classified as `STREAM_FAILED`.
-  - The first post-stream transient failure waits for one abortable bounded
-    backoff, removes the failed assistant from model context, and retries once
-    without a duplicate assistant bubble or terminal error notification.
+  - `terminated` is classified as `STREAM_FAILED`, and an upstream gateway
+    `502`/`503`/`504` as retryable `PROVIDER_ERROR`.
+  - Non-429 transient failures share one bounded budget of three retries after
+    the initial attempt, for four provider attempts total, shared by request
+    setup and stream delivery. Each retry waits for an abortable bounded
+    backoff, removes the failed assistant from model context, and produces no
+    duplicate assistant bubble or terminal error notification.
+  - A mid-stream 502 is retried rather than surfacing immediately. The
+    mixed-phase fixture spends one counter across both phases and makes four
+    attempts in total, not one retry per phase.
   - The recovered turn emits one terminal lifecycle and keeps the same visible
-    assistant message id. The timing log records `outcome=retry` and the final
-    outcome.
-  - The second failure emits one terminal `STREAM_FAILED` assistant error and
-    lifecycle event. Available details include phase, stream timing, provider
-    status, and `retryAttempt`, without credentials or an unrestricted provider
-    body.
-  - A mid-stream HTTP 429 is covered by E2E-149's separate five-retry path;
-    it is not charged to this one-retry non-429 scenario.
+    assistant message id. The timing log records `outcome=retry` for each retry
+    with its attempt number, and the final outcome.
+  - The fourth termination emits one terminal `STREAM_FAILED` assistant error
+    and lifecycle event; the persistent 502 fixture emits one terminal
+    `PROVIDER_ERROR`. Both carry `retryAttempt: 3`. Available details include
+    phase, stream timing, and provider status, without credentials or an
+    unrestricted provider body.
+  - The 503 fixture waits for the server's `Retry-After` instead of the client
+    backoff. Non-429 server and fallback waits are capped at 8 seconds.
+  - A mid-stream HTTP 429 is covered by E2E-149's separate five-retry path; the
+    two budgets do not draw from each other.
   - Authentication, model-selection, context, and malformed-request failures
-    do not enter either provider replay path.
+    do not enter either provider replay path, including a non-retryable
+    `PROVIDER_ERROR` from a malformed 400/422 request.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md`,
   `03-runtime/02-agent-runtime.md`, `03-runtime/08-error-codes.md`,
-  `08-meta/decisions-log.md` (D186), ADR 0050
+  `08-meta/decisions-log.md` (D186, D259), ADR 0050, ADR 0128
 - **Acceptance**: C (chat & stream), F (persistence), H (diagnostics), Quality
 - **Milestone**: M5
-- **Status**: Unit-covered (`agent-errors.test.ts`, `runtime.test.ts`); full
-  provider/UI journey Draft
+- **Status**: Unit-covered (`agent-errors.test.ts`, `provider-retry.test.ts`,
+  `runtime.test.ts`, `subagent.test.ts`); full provider/UI journey Draft
 
 #### E2E-149: Recover provider rate limits (429) silently in place
 
@@ -3502,6 +3518,9 @@ Each scenario is documented in this format:
   - Aborting during a backoff cancels the pending timer and starts no later
     provider request. Authentication, model-selection, malformed-request, and
     context fixtures make no automatic retry.
+  - The 429 budget is separate from the non-429 transient budget in E2E-096.
+    A 429 does not consume transient retries and a 502 does not consume 429
+    retries.
 - **Specs linked**: `03-runtime/02-agent-runtime.md` (D245),
   `03-runtime/08-error-codes.md`, `08-meta/decisions-log.md` (D245), ADR 0091
 - **Acceptance**: C (chat & stream), H (diagnostics), Quality

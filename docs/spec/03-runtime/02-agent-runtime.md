@@ -97,7 +97,7 @@ not select a second model, planner service, permission implementation, or
 runtime. The same Agent changes its planning state and tool registry after a
 host-confirmed transition.
 
-### 5d. Bounded provider recovery and diagnostics (D186, D245, ADR 0091)
+### 5d. Bounded provider recovery and diagnostics (D186, D245, D259, ADR 0091, ADR 0128)
 
 Provider request setup and stream delivery are separate failure phases, but
 HTTP 429 handling is one logical-turn policy. pi-ai's nested adapter retry is
@@ -127,18 +127,32 @@ server or calculated value is capped at 30 seconds. The runtime captures the
 failed response status and headers from fetch because pi-ai's ordinary response
 callback only covers an established response.
 
-Other transient failures preserve their previous finite behavior: request setup
-gets one bounded retry, while `STREAM_FAILED`, `NETWORK_ERROR`, and `TIMEOUT`
-after streaming starts get one abortable same-turn replay. Authentication,
-model-selection, malformed-request, context, and other non-retryable errors do
-not enter either provider replay path.
+Non-429 transient failures share their own bounded logical-turn budget of three
+retries after the initial attempt, for four provider attempts total. The budget
+is shared by request setup and stream delivery, so a fault that moves between
+phases cannot reset or multiply it, and it is separate from the 429 budget. It
+admits exactly `NETWORK_ERROR`, `TIMEOUT`, `STREAM_FAILED`, and retryable
+`PROVIDER_ERROR` — including a gateway `502`/`503`/`504` that arrives before
+headers or mid-stream. Authentication, model-selection, malformed-request,
+context, and other non-retryable errors do not enter either provider replay
+path, and a non-retryable `PROVIDER_ERROR` from a malformed 400/422 request
+stays terminal.
+
+The non-429 delay honors the server first: `retry-after-ms`, `retry-after`
+seconds, then `retry-after` HTTP-date, capped at 8 seconds. Captured headers are
+retained for every status that can carry a usable delay (429, 408, 409, and
+5xx), not for 429 alone. Without a usable header the delay keeps its exponential
+shape and grows per attempt, and the mid-stream replay keeps its 750 ms floor.
+Each retry is silent and abortable. The main session, builtin subagents, and
+one-shot composer enhancement use the same codes, budget size, and precedence.
 
 When the 429 budget is exhausted, the final assistant error and lifecycle
 `error` are emitted once. Provider failures carry bounded diagnostics in
 `AppError.details` when available: `phase` (`request` or `stream`),
 `providerStatus`, `providerCode`, `providerWaitMs`, `streamMs`, and
-`retryAttempt`. For a persistent 429, `retryAttempt` is `5`; credentials and
-unrestricted response bodies never enter the event or log.
+`retryAttempt`. For a persistent 429, `retryAttempt` is `5`; for a persistent
+non-429 transient failure it is `3`. Credentials and unrestricted response
+bodies never enter the event or log.
 
 ### 5e. Silent-turn recovery
 

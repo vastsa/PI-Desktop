@@ -60,7 +60,11 @@ import {
   createProviderRetryStream,
   delayWithAbort,
   PROVIDER_RATE_LIMIT_MAX_RETRIES,
+  PROVIDER_TRANSIENT_MAX_RETRIES,
+  carriesRetryDelayHeaders,
+  isTransientProviderRetryCode,
   providerRateLimitDelayMs,
+  providerSetupRetryDelayMs,
 } from "./provider-retry.js";
 
 export const SUBAGENT_TOOL_NAME = "Task";
@@ -211,7 +215,7 @@ export class SubagentRun {
   private streamError?: { code: string; message: string };
   private pendingProviderRetry?: ReturnType<typeof classifyAgentError>;
   private providerRetryInProgress = false;
-  private providerSetupRetryAttempted = false;
+  private providerTransientRetryAttempt = 0;
   private providerRateLimitRetryAttempt = 0;
   private providerRetryHeaders?: Record<string, string>;
   private providerResponseStatus?: number;
@@ -236,8 +240,11 @@ export class SubagentRun {
           sessionId: opts.sessionId,
           fetch: captureProviderResponse(options?.fetch, (response) => {
             this.providerResponseStatus = response?.status;
-            this.providerRetryHeaders =
-              response?.status === 429 ? response.headers : undefined;
+            this.providerRetryHeaders = carriesRetryDelayHeaders(
+              response?.status,
+            )
+              ? response?.headers
+              : undefined;
           }),
         };
         return createProviderRetryStream(
@@ -336,18 +343,14 @@ export class SubagentRun {
       }
       return ++this.providerRateLimitRetryAttempt;
     }
-    if (
-      phase !== "request" ||
-      this.providerSetupRetryAttempted ||
-      (error.code !== "NETWORK_ERROR" &&
-        error.code !== "TIMEOUT" &&
-        error.code !== "STREAM_FAILED" &&
-        error.code !== "PROVIDER_ERROR")
-    ) {
+    // Setup and stream failures share one bounded budget, exactly as the main
+    // session does, so a delegate is not abandoned on a single gateway 502.
+    void phase;
+    if (!isTransientProviderRetryCode(error.code)) return undefined;
+    if (this.providerTransientRetryAttempt >= PROVIDER_TRANSIENT_MAX_RETRIES) {
       return undefined;
     }
-    this.providerSetupRetryAttempted = true;
-    return 1;
+    return ++this.providerTransientRetryAttempt;
   }
 
   private async retryPendingProviderFailure(): Promise<void> {
@@ -362,13 +365,18 @@ export class SubagentRun {
     this.agent.state.messages = messages;
     this.providerRetryInProgress = true;
     try {
-      await delayWithAbort(
-        providerRateLimitDelayMs(
-          this.providerRateLimitRetryAttempt,
-          this.providerRetryHeaders,
-        ),
-        this.runSignal(),
-      );
+      const delayMs =
+        retryError.code === "PROVIDER_RATE_LIMITED"
+          ? providerRateLimitDelayMs(
+              this.providerRateLimitRetryAttempt,
+              this.providerRetryHeaders,
+            )
+          : providerSetupRetryDelayMs(
+              this.providerTransientRetryAttempt,
+              undefined,
+              this.providerRetryHeaders,
+            );
+      await delayWithAbort(delayMs, this.runSignal());
       if (this.opts.signal?.aborted) return;
       await this.agent.continue();
       await this.agent.waitForIdle();

@@ -7,6 +7,7 @@ import {
   type SubagentRunOptions,
 } from "./subagent.js";
 import type { RuntimeProviderConfig } from "./provider-binding.js";
+import { classifyAgentError } from "./agent-errors.js";
 
 const provider: RuntimeProviderConfig = {
   id: "local",
@@ -449,6 +450,34 @@ describe("SubagentRun watchdogs", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("retries a gateway 502 in either phase from one bounded budget", () => {
+    const { run } = createRun();
+    const claim = (error: unknown, phase: string) =>
+      (run as any).claimProviderRetry(error, phase);
+    const gateway502 = classifyAgentError(
+      'OpenAI API error (502): {"type":"api_error","message":"Upstream API request failed."}',
+    );
+
+    // The stream phase used to be refused outright for a delegate.
+    expect(claim(gateway502, "stream")).toBe(1);
+    expect(claim(gateway502, "request")).toBe(2);
+    expect(claim(gateway502, "stream")).toBe(3);
+    expect(claim(gateway502, "request")).toBeUndefined();
+
+    const { run: fresh } = createRun();
+    const freshClaim = (error: unknown, phase: string) =>
+      (fresh as any).claimProviderRetry(error, phase);
+    // Rate limits keep their own separate five-retry budget.
+    const rateLimited = classifyAgentError("429: too many requests");
+    expect(freshClaim(gateway502, "request")).toBe(1);
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+      expect(freshClaim(rateLimited, "stream")).toBe(attempt);
+    }
+    expect(freshClaim(rateLimited, "stream")).toBeUndefined();
+    // Permanent failures stay terminal.
+    expect(freshClaim(classifyAgentError("401: invalid api key"), "request")).toBeUndefined();
   });
 
   it("does not impose a turn cap when maxTurns is omitted", async () => {
