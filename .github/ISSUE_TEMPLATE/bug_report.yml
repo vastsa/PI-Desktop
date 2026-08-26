@@ -1,0 +1,38 @@
+name: Bug report / Bug 反馈
+description: Report something not working as expected. 报告产品行为异常。
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Bug 反馈 · Bug report
+        请描述问题，可附上复现步骤与截图。Describe the issue; steps and screenshots are optional.
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述 / Description
+      description: 什么坏了、影响是什么？What is broken and its impact?
+      placeholder: "示例：打开设置页时崩溃，无法进入模型配置。Example: App crashes when opening Settings → Model config."
+      render: markdown
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤 / Steps to reproduce
+      description: 选填。Steps are optional.
+      placeholder: |-
+        示例 / Example:
+        1. 打开应用 / Open the app
+        2. 进入设置 → 模型配置 / Open Settings → Model config
+        3. 点击“添加服务” / Click “Add service”
+        4. 应用崩溃 / App crashes
+      render: bash
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: 截图 / Screenshots
+      description: 选填，可拖拽图片。Optional; drag & drop images.
+      placeholder: "![截图](url)"
+      render: markdown

@@ -1,0 +1,29 @@
+name: Feature request / 功能请求
+description: Suggest an enhancement or ask a question. 建议新功能或提出问题。
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        功能请求 · Feature request
+        请描述你的需求，可附上草图。Describe your need; a sketch is optional.
+  - type: textarea
+    id: requirement
+    attributes:
+      label: 需求 / Requirement
+      description: 你希望有什么功能或改进？What feature or change do you want?
+      placeholder: |-
+        示例 / Example:
+        希望能按会话单独设置模型，而不是全局一个模型。
+        I want to set the model per session instead of one global model.
+      render: markdown
+    validations:
+      required: true
+  - type: textarea
+    id: sketch
+    attributes:
+      label: 草图 / Sketch
+      description: 选填，可绘制示意或拖拽图片。Optional; sketch or drag & drop an image.
+      placeholder: "![草图](url)"
+      render: markdown

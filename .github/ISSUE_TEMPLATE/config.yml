@@ -1,0 +1,4 @@
+# Issue 选择器行为配置 / Issue picker behaviour for this repository.
+# 仅允许使用模板提交；禁止空白 issue。Only templates allowed; no blank issues.
+
+blank_issues_enabled: false
