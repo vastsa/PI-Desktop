@@ -222,6 +222,18 @@
   padding: 20px 28px calc(var(--composer-dock-height, 228px) + 16px);
 }
 
+/* Holds enough scroll height for the bounded first commit of a session switch to
+ * reach its own bottom. Deliberately not proportional to the unmounted entries:
+ * a guessed total gets corrected when the full history mounts, and that
+ * correction is visible as the transcript jumping. A percentage is not usable
+ * here: `.thread-content` has an auto height, so a percentage min-height would
+ * resolve against an indefinite containing block and collapse to zero. One
+ * viewport height always exceeds the scroller, which is all the reserve has to
+ * do - the surplus sits above the newest turn and is never read as content. */
+.transcript-hydration-spacer {
+  min-height: 100vh;
+}
+
 .transcript-history-loading {
   min-height: 26px;
   box-sizing: border-box;
