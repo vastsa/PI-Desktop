@@ -581,10 +581,12 @@ export function CapabilityButton({
   busy?: boolean;
   title?: string;
 }) {
+  // No `size="sm"`: its utilities live in Tailwind's `utilities` layer while the
+  // style partials are unlayered, so `.btn` wins regardless. Toolbar buttons get
+  // their compact geometry from `.agent-capability-toolbar-actions > .btn`.
   return (
     <Button
       variant={variant}
-      size="sm"
       disabled={disabled || busy}
       aria-busy={busy || undefined}
       title={title}

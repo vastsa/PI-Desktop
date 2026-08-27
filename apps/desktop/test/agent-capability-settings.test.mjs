@@ -107,8 +107,27 @@ test("the workbench reuses the shared segmented control instead of a third copy"
   ]) {
     assert.match(styles, decl);
   }
-  assert.doesNotMatch(styles, /^\.agent-capability-segment\s*\{/m);
-  assert.doesNotMatch(styles, /^\.agent-capability-segment-btn\s*\{/m);
+  // Leading \s* so a rule nested in a media query counts too: that is exactly
+  // where two bare selectors first slipped past this check.
+  assert.doesNotMatch(styles, /^\s*\.agent-capability-segment\s*\{/m);
+  assert.doesNotMatch(styles, /^\s*\.agent-capability-segment-btn\s*\{/m);
+});
+
+test("toolbar buttons carry their own compact geometry", () => {
+  // `Button size="sm"` is inert app-wide: its utilities are in Tailwind's
+  // `utilities` layer and every partial here is unlayered, so `.btn` wins. A
+  // previous pass zeroed the buttons' vertical padding and leaned on a fixed
+  // container height instead, which collapsed them whenever that height did not
+  // apply. Geometry belongs on the button.
+  assert.doesNotMatch(layout, /^\s+size="sm"$/m);
+  const actions = styles.slice(styles.indexOf(".agent-capability-toolbar-actions"));
+  const rule = actions.slice(
+    actions.indexOf(".agent-capability-toolbar-actions > .btn"),
+    actions.indexOf("}", actions.indexOf(".agent-capability-toolbar-actions > .btn")),
+  );
+  assert.match(rule, /min-height:\s*var\(--agent-capability-control-height\)/);
+  assert.match(rule, /padding:\s*5px 11px/);
+  assert.doesNotMatch(styles, /\.agent-capability-toolbar-actions > \.btn \{[^}]*padding-top:\s*0/);
 });
 
 test("capability elevation is theme-relative and meaningful text is not faint", () => {

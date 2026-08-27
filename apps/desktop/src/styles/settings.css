@@ -1261,23 +1261,24 @@
   color: var(--ds-text-primary);
 }
 
-/*
-  `Button size="sm"` is shorter than the filter and search, so the actions
-  stretch to the shared control height here instead of the shared `.btn`
-  changing size for every other page that uses it.
-*/
 .agent-capability-toolbar-actions {
   display: flex;
-  height: var(--agent-capability-control-height);
   flex: 0 0 auto;
-  align-items: stretch;
+  align-items: center;
   gap: 8px;
   margin-left: auto;
 }
 
+/*
+  The shared `.btn` runs a step larger than this toolbar's filter and search, so
+  give it toolbar geometry here rather than resizing it for every other page.
+  `min-height` instead of `height` so a wrapped label grows the button instead of
+  spilling out of it, same as `.plugins-header-actions > .btn`.
+*/
 .agent-capability-toolbar-actions > .btn {
-  padding-top: 0;
-  padding-bottom: 0;
+  min-height: var(--agent-capability-control-height);
+  padding: 5px 11px;
+  font-size: var(--text-sm);
 }
 
 /* A reload that already has rows dims them instead of tearing them down. */
@@ -1899,11 +1900,12 @@
     gap: 10px;
   }
 
-  .agent-capability-segment {
+  /* Compound for the same reason as above: providers.css imports later. */
+  .settings-segment.agent-capability-segment {
     justify-content: space-between;
   }
 
-  .agent-capability-segment-btn {
+  .settings-segment-item.agent-capability-segment-btn {
     flex: 1;
     justify-content: center;
   }
@@ -1916,18 +1918,11 @@
     min-width: min(100%, 220px);
   }
 
-  /* Wrapped actions need their own heights back. */
+  /* Stacked toolbar: actions lead their own row instead of trailing the search. */
   .agent-capability-toolbar-actions {
-    height: auto;
-    align-items: center;
     justify-content: flex-start;
     flex-wrap: wrap;
     margin-left: 0;
-  }
-
-  .agent-capability-toolbar-actions > .btn {
-    padding-top: 7px;
-    padding-bottom: 7px;
   }
 
   /* Row copy needs the width more than the group path does. */
