@@ -153,7 +153,7 @@ list, and the release line quoted in both READMEs. `scripts/release.mjs` runs
 that check and refuses to tag while anything disagrees:
 
 ```bash
-node scripts/check-release-docs.mjs        # verify the current tree is aligned
+pnpm check:release-docs                    # verify the current tree is aligned
 node scripts/release.mjs 0.11.0 --tag      # bump versions + commit + tag v0.11.0
 git push origin <branch> v0.11.0           # Release workflow builds & publishes
 ```

@@ -211,7 +211,7 @@ README.md, README.zh-CN.md              # current <major>.<minor>.x release line
 Verify with the preflight before tagging; `scripts/release.mjs` runs the same check and refuses to tag while any surface disagrees:
 
 ```bash
-node scripts/check-release-docs.mjs
+pnpm check:release-docs
 ```
 
 READMEs are release surfaces. When a release changes user-visible behavior, refresh the affected Highlights, Download, Getting started, Status, or Development claims in both locales; English is the source of truth and the Chinese file links the `docs/zh-CN/` mirrors.

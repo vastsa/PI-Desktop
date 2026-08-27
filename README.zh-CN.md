@@ -148,7 +148,7 @@ CI 会为涉及代码的 PR 和推送到 `main` 的提交运行 JS 构建 / 类�
 发布通过打 tag 完成。提升稳定版本号意味着先更新所有带版本号的位置——双语应用内更新日志、对应的测试清单，以及两个 README 中声明的版本线。`scripts/release.mjs` 会执行该检查，任一处不一致就拒绝打 tag：
 
 ```bash
-node scripts/check-release-docs.mjs        # 校验当前工作树是否一致
+pnpm check:release-docs                    # 校验当前工作树是否一致
 node scripts/release.mjs 0.11.0 --tag      # 升版本 + 提交 + 打 v0.11.0 标签
 git push origin <branch> v0.11.0           # Release 工作流自动构建并发布
 ```

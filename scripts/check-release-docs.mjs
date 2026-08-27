@@ -57,46 +57,43 @@ for (const [relPath, pattern, label] of [
   if (found !== version) fail(relPath, `${label} is ${found ?? "missing"}, expected ${version}`);
 }
 
-// 2. Dual-locale in-app changelog.
-const changelogSource = read("packages/shared/src/changelog.ts");
-const localeEntries = (constName) => {
-  const block = changelogSource.match(
-    new RegExp(`const ${constName}: ChangelogEntry\\[\\] = \\[([\\s\\S]*?)\\n\\];`),
-  )?.[1];
-  if (block === undefined) return null;
-  return [...block.matchAll(/version: "([^"]+)",(?:\s*date: "[^"]*",)?\s*highlights: \[([\s\S]*?)\n\s*\],/g)].map(
-    ([, entryVersion, highlights]) => ({
-      version: entryVersion,
-      count: (highlights.match(/^\s*"/gm) ?? []).length,
-    }),
-  );
-};
-
-const catalogs = { en: localeEntries("enEntries"), "zh-CN": localeEntries("zhCNEntries") };
-for (const [locale, entries] of Object.entries(catalogs)) {
-  if (!entries?.length) {
-    fail("packages/shared/src/changelog.ts", `could not parse the ${locale} catalog`);
-    continue;
-  }
-  const entry = entries.find((candidate) => candidate.version === version);
-  if (!entry) {
-    fail("packages/shared/src/changelog.ts", `${locale} has no entry for ${version}`);
-    continue;
-  }
-  if (entries[0].version !== version) {
-    fail(
-      "packages/shared/src/changelog.ts",
-      `${locale} lists ${entries[0].version} first; ${version} must be newest-first`,
-    );
-  }
+// 2. Dual-locale in-app changelog. Import the real catalog rather than parsing
+// it: Node strips the TypeScript types, so wrapped or concatenated highlight
+// strings are counted as the app sees them.
+let catalogs = null;
+try {
+  ({ CHANGELOG: catalogs } = await import(
+    new URL("../packages/shared/src/changelog.ts", import.meta.url)
+  ));
+} catch (error) {
+  fail("packages/shared/src/changelog.ts", `could not be imported: ${error.message}`);
 }
-if (catalogs.en?.length && catalogs["zh-CN"]?.length) {
-  const en = catalogs.en.find((entry) => entry.version === version);
-  const zh = catalogs["zh-CN"].find((entry) => entry.version === version);
-  if (en && zh && en.count !== zh.count) {
+
+if (catalogs) {
+  for (const locale of ["en", "zh-CN"]) {
+    const entries = catalogs[locale];
+    if (!entries?.length) {
+      fail("packages/shared/src/changelog.ts", `the ${locale} catalog is empty`);
+      continue;
+    }
+    if (!entries.some((entry) => entry.version === version)) {
+      fail("packages/shared/src/changelog.ts", `${locale} has no entry for ${version}`);
+      continue;
+    }
+    if (entries[0].version !== version) {
+      fail(
+        "packages/shared/src/changelog.ts",
+        `${locale} lists ${entries[0].version} first; ${version} must be newest-first`,
+      );
+    }
+  }
+
+  const en = catalogs.en?.find((entry) => entry.version === version);
+  const zh = catalogs["zh-CN"]?.find((entry) => entry.version === version);
+  if (en && zh && en.highlights.length !== zh.highlights.length) {
     fail(
       "packages/shared/src/changelog.ts",
-      `${version} has ${en.count} en highlights and ${zh.count} zh-CN highlights`,
+      `${version} has ${en.highlights.length} en highlights and ${zh.highlights.length} zh-CN highlights`,
     );
   }
 }

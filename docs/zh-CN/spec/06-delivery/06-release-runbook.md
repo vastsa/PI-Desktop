@@ -112,7 +112,8 @@ PNG 通过 `BrandLogo`。 PNG 是规范的；
    状态或参与开发章节的描述不再准确时同样要更新。两个语言版本保持结构一致，
    英文是事实来源，中文版链接 `docs/zh-CN/` 镜像。
 5. 运行预检并修复所有报告的位置：
-   `node scripts/check-release-docs.mjs [version]`。`scripts/release.mjs` 在升
+   `pnpm check:release-docs [version]`（即 `node scripts/check-release-docs.mjs`）。
+   `scripts/release.mjs` 在升
    版本后运行同一检查，未通过时拒绝提交或打标签；`--skip-docs-check` 仅用于
    明确的非发布性升版本。
 6. 提交文档更新，使被打标签的提交同时包含该版本的说明与准确的版本描述

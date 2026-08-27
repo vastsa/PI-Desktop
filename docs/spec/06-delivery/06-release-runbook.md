@@ -116,7 +116,8 @@ Blocking steps:
    now describe incorrectly. Both locales stay structurally in sync; English is
    the source of truth and the zh-CN file links the `docs/zh-CN/` mirrors.
 5. Run the preflight and fix every reported surface:
-   `node scripts/check-release-docs.mjs [version]`. `scripts/release.mjs` runs
+   `pnpm check:release-docs [version]` (`node scripts/check-release-docs.mjs`).
+   `scripts/release.mjs` runs
    the same check after bumping and refuses to commit or tag while it fails;
    `--skip-docs-check` exists only for a deliberate non-release bump.
 6. Commit the documentation updates so the tagged commit contains notes and
