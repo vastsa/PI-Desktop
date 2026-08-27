@@ -72,43 +72,63 @@ PNG 通过 `BrandLogo`。 PNG 是规范的；
 
 ## 4. 发布步骤
 
-### 4. 1 强制应用内变更日志门 (D164)
+### 4. 1 强制发布版本面门禁 (D164 + D200)
 
-**每个提升稳定应用程序版本并削减标签的产品版本都必须
-首先更新双区域设置应用内产品变更日志。** 标记稳定版
-版本中没有匹配的 EN + zh-CN 条目
-`packages/shared/src/changelog.ts` 是**发布过程失败**：已打包
-如果没有网络获取，构建无法显示“新增内容”，并且 GitHub
-自动生成的发布体**不是**替代品（扩展 D120 /
-ADR 0022）。
+**每个提升稳定应用版本并打标签的产品发布，都必须先更新所有带版本号的位置：
+双语应用内产品更新日志，以及项目文档中声明的版本号。** 如果任一位置仍在描述
+旧版本就打稳定标签，属于**发布过程失败**：打包版本在没有网络请求时无法显示
+“新增内容”，README 会宣传过期的版本线，而 GitHub 自动生成的发布正文
+**不是**替代品（扩展 D120 / ADR 0022）。
 
-封锁步骤：
+门禁覆盖的位置：
 
-1. **之前**编辑 `packages/shared/src/changelog.ts`
-   `node scripts/release.mjs <version>` / `git tag`：
-   - 在 `en` 和 `zh-CN` 下添加 **最新优先** 条目。
-   - 相同的 `version` 字符串（semver **没有** 前导 `v`，匹配
-     `apps/desktop` / `APP_VERSION`）。
-   - 可选 ISO `date` (`YYYY-MM-DD`)。
-   - 匹配亮点计数；英语是真理的来源（ADR 0009）。
-   - 每个项目符号都是一个简短的面向用户的想法（不是原始的公关标题）。
-2. **不要**对仅预发布版本 (`x.y.z-rc.*`) 进行编录，除非产品
-   明确发布该频道的应用内注释。
-3. 运行 `pnpm --filter @pi-desktop/shared test` 并确认目录对齐
-   （版本集+亮点计数）仍然通过。
-4. 提交目录更新，以便标记的提交包含该更新的注释
-   版本（单独或与版本凹凸相邻）。
-5. GitHub 发布机构仍可能使用 `generate_release_notes: true`
-   网页；它们仍然仅限于网络，并且**不是**应用内注释源。
+| 位置 | 要求 |
+|---|---|
+| `packages/shared/src/changelog.ts` | 该版本的 EN + zh-CN 条目按最新优先排列，亮点条数一致 |
+| `packages/shared/src/changelog.test.ts` | 该版本加入最新优先清单的首位 |
+| `package.json`、`apps/*/package.json`、`packages/*/package.json`、`docs/package.json` | 版本号一致（`docs` 是第三个工作区根，不在 `apps`/`packages` 之下） |
+| `Cargo.toml` 的 `[workspace.package]`、`Cargo.lock` 的 `host-core` | 版本号一致 |
+| `packages/shared/src/protocol.ts` 的 `APP_VERSION` | 版本号一致 |
+| `README.md`、`README.zh-CN.md` | 状态章节声明当前 `<major>.<minor>.x` 版本线；工具链、命令与路线图描述仍然成立 |
 
-预标记清单：
+阻塞步骤：
 
-- [ ] `packages/shared/src/changelog.ts` 具有该版本的 EN + zh-CN 条目
-      即将被标记
-- [ ] 突出显示跨区域设置匹配的计数
-- [ ] 共享变更日志测试通过
-- [ ] `release.mjs` / 标记仅在目录提交发布后运行
-      分行
+1. 在 `node scripts/release.mjs <version>` / `git tag` **之前**编辑
+   `packages/shared/src/changelog.ts`：
+   - 在 `en` 和 `zh-CN` 下各添加**最新优先**的条目。
+   - 使用相同的 `version` 字符串（semver，**不带**前导 `v`，与
+     `apps/desktop` / `APP_VERSION` 一致）。
+   - 可选的 ISO `date`（`YYYY-MM-DD`）。
+   - 亮点条数一致；英文是唯一事实来源（ADR 0009）。
+   - 每条只表达一个面向用户的要点（不是原始 PR 标题）。
+2. 除非产品明确为该渠道提供应用内说明，**不要**收录仅预发布版本
+   （`x.y.z-rc.*`）。
+3. 同步 `packages/shared/src/changelog.test.ts` 中的最新优先版本清单
+   （把新版本加到首位），然后运行
+   `pnpm --filter @pi-desktop/shared test`，确认目录对齐（版本集合与亮点
+   条数）仍然通过。
+4. 版本线发生变化（`0.10.x` → `0.11.x`）时更新 `README.md` 与
+   `README.zh-CN.md`；当本次发布交付了用户可见行为，使亮点、下载、快速上手、
+   状态或参与开发章节的描述不再准确时同样要更新。两个语言版本保持结构一致，
+   英文是事实来源，中文版链接 `docs/zh-CN/` 镜像。
+5. 运行预检并修复所有报告的位置：
+   `node scripts/check-release-docs.mjs [version]`。`scripts/release.mjs` 在升
+   版本后运行同一检查，未通过时拒绝提交或打标签；`--skip-docs-check` 仅用于
+   明确的非发布性升版本。
+6. 提交文档更新，使被打标签的提交同时包含该版本的说明与准确的版本描述
+   （单独提交或与升版本提交相邻）。
+7. GitHub Release 正文仍可对网页使用 `generate_release_notes: true`；它们
+   仅限网页，**不是**应用内说明的来源。
+
+打标签前清单：
+
+- [ ] `packages/shared/src/changelog.ts` 含有即将打标签版本的 EN + zh-CN 条目
+- [ ] 各语言的亮点条数一致
+- [ ] 共享更新日志测试通过
+- [ ] `README.md` 与 `README.zh-CN.md` 声明当前版本线，且没有被本次发布
+      推翻的描述
+- [ ] `node scripts/check-release-docs.mjs` 在发布提交上通过
+- [ ] `release.mjs` / 打标签仅在文档提交进入发布分支后执行
 
 ### 4. 2 构建/打包
 
@@ -198,6 +218,39 @@ Electron 目标布局。
 优化前解压的常规文件总数为 559,355,716 字节
 (533.4 MiB)。审计后的包小了 307,630,906 字节，减少了 55.0%
 减少。其策划的渲染器输出为 14.1 MiB，低于 20.5 MiB。
+
+#### 渲染器产物预算
+
+渲染器包有三项长期控制。其中任意一项回退，都会在上面的表格中表现为渲染器
+体积增长，并且必须在发布前给出解释：
+
+- **压缩是显式开启的。** `electron-vite` 对渲染器预设硬性默认
+  `minify: false`（与原生 Vite 不同），因此
+  `apps/desktop/electron.vite.config.ts` 设置了 `minify: "esbuild"`。移除它会
+  让产出的 JS 体积悄然翻倍。
+- **旧字体格式被剔除。** `pi-drop-legacy-font-fallbacks` 插件会在 Vite 把
+  `woff` 与 `truetype` 的 `src` 条目注册为资源之前移除它们。随包的 Chromium
+  普遍支持 `woff2`，这些字形只会被产出而永远不会被使用。
+- **品牌标识按渲染器尺寸提供。** `src/assets/brand/logo-{light,dark}.png` 是
+  渲染器资源；`build/icon_1024.png` 与 `build/logo_dark.png` 是
+  electron-builder 的安装包图标，渲染器不得引用。
+
+应用这三项控制后于 2026-08-26 测得的渲染器产物，对照同一棵树在 `v0.10.8`
+的状态：
+
+| 渲染器分组 | 之前 | 之后 |
+|---|---:|---:|
+| JavaScript（120 个 chunk） | 12.53 MiB | 7.72 MiB |
+| `woff2` | 15.71 MiB | 15.71 MiB |
+| `woff` + `ttf` 旧格式回退（40 个文件） | 0.78 MiB | 0 |
+| PNG 品牌资源 | 1.23 MiB | 0.27 MiB |
+| CSS | 0.42 MiB | 0.35 MiB |
+| **`out/renderer` 合计** | **31 MiB** | **24 MiB** |
+
+余下体积主要来自两款随包 CJK 字体（`lxgw-wenkai.woff2` 7.6 MiB、
+`noto-sans-sc.woff2` 7.4 MiB）。它们故意不做子集化：ADR 0083 §2 在每个字体栈
+末尾追加 `Noto Sans SC`，以保证中文在离线状态下依然可读，而子集化会丢掉用户
+提供内容中的字形。压缩它们需要修订 ADR，而不是改构建配置。
 
 在干净的轮廓上手动烟雾 (`PI_DESKTOP_DATA_DIR=$(mktemp -d)`)：
 

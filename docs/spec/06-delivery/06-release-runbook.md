@@ -72,15 +72,27 @@ when macOS `iconutil` is available, without overwriting the canonical source.
 
 ## 4. Release steps
 
-### 4.1 Mandatory in-app changelog gate (D164)
+### 4.1 Mandatory release version-surface gate (D164 + D200)
 
 **Every product release that bumps a stable app version and cuts a tag MUST
-update the dual-locale in-app product changelog first.** Tagging a stable
-version without matching EN + zh-CN entries in
-`packages/shared/src/changelog.ts` is a **release process failure**: packaged
-builds cannot show "what's new" without a network fetch, and GitHub
+first update every version-bearing surface: the dual-locale in-app product
+changelog and the version numbers stated in project documentation.** Tagging a
+stable version while any surface still describes an older version is a
+**release process failure**: packaged builds cannot show "what's new" without a
+network fetch, the READMEs advertise a stale release line, and GitHub
 auto-generated release bodies are **not** a substitute (extends D120 /
 ADR 0022).
+
+Surfaces in scope:
+
+| Surface | Requirement |
+|---|---|
+| `packages/shared/src/changelog.ts` | Newest-first EN + zh-CN entries for the version, matching highlight counts |
+| `packages/shared/src/changelog.test.ts` | Version added at the top of the newest-first list |
+| `package.json`, `apps/*/package.json`, `packages/*/package.json`, `docs/package.json` | Same version (`docs` is a third workspace root, not under `apps`/`packages`) |
+| `Cargo.toml` `[workspace.package]`, `Cargo.lock` `host-core` | Same version |
+| `packages/shared/src/protocol.ts` `APP_VERSION` | Same version |
+| `README.md`, `README.zh-CN.md` | Status section states the current `<major>.<minor>.x` release line; toolchain, command, and roadmap claims still true |
 
 Blocking steps:
 
@@ -98,9 +110,18 @@ Blocking steps:
    `packages/shared/src/changelog.test.ts` (add the new version at the top),
    then run `pnpm --filter @pi-desktop/shared test` and confirm catalog
    alignment (version sets + highlight counts) still passes.
-4. Commit the catalog update so the tagged commit contains notes for that
-   version (alone or adjacent to the version bump).
-5. GitHub Release bodies may still use `generate_release_notes: true` for the
+4. Update `README.md` and `README.zh-CN.md` when the release line changes
+   (`0.10.x` → `0.11.x`) and whenever the release ships user-visible behavior
+   the Highlights, Download, Getting started, Status, or Development sections
+   now describe incorrectly. Both locales stay structurally in sync; English is
+   the source of truth and the zh-CN file links the `docs/zh-CN/` mirrors.
+5. Run the preflight and fix every reported surface:
+   `node scripts/check-release-docs.mjs [version]`. `scripts/release.mjs` runs
+   the same check after bumping and refuses to commit or tag while it fails;
+   `--skip-docs-check` exists only for a deliberate non-release bump.
+6. Commit the documentation updates so the tagged commit contains notes and
+   accurate version claims for that version (alone or adjacent to the bump).
+7. GitHub Release bodies may still use `generate_release_notes: true` for the
    web page; they remain web-only and are **not** the in-app notes source.
 
 Pre-tag checklist:
@@ -109,8 +130,11 @@ Pre-tag checklist:
       about to be tagged
 - [ ] Highlight counts match across locales
 - [ ] Shared changelog tests pass
-- [ ] `release.mjs` / tag runs only after the catalog commit is on the release
-      branch
+- [ ] `README.md` and `README.zh-CN.md` state the current release line and
+      contain no claims the release invalidates
+- [ ] `node scripts/check-release-docs.mjs` passes on the release commit
+- [ ] `release.mjs` / tag runs only after the documentation commit is on the
+      release branch
 
 ### 4.2 Build / package
 
