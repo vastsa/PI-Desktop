@@ -238,6 +238,25 @@ export function assistantTurnMessages(
   );
 }
 
+/**
+ * The rows these entries actually render, in transcript order.
+ *
+ * The minimap resolves a click by finding the marker's `data-minimap-id` node in
+ * the scroller, so it must be built from the mounted entries rather than from
+ * every loaded message (D261). Fed the full set while the transcript window
+ * withholds older rows, it would draw dashes whose click target does not exist
+ * and jump nowhere.
+ */
+export function transcriptEntryMessages(
+  entries: readonly TranscriptEntry[],
+): UiMessage[] {
+  return entries.flatMap((entry) => {
+    if (entry.kind === "message") return [entry.message];
+    if (entry.kind === "assistant-turn") return assistantTurnMessages(entry);
+    return [];
+  });
+}
+
 export function assistantTurnTools(entry: AssistantTurnEntry): UiMessage[] {
   return entry.parts.flatMap((part) =>
     part.kind === "activity"

@@ -60,6 +60,12 @@ import {
   reduceTranscriptScroll,
 } from "../lib/transcript-scroll";
 import {
+  growTranscriptWindow,
+  reduceTranscriptWindow,
+  TRANSCRIPT_INITIAL_MOUNT,
+  TRANSCRIPT_WINDOW_MIN,
+} from "../lib/transcript-window";
+import {
   assistantTurnContent,
   assistantTurnMessages,
   assistantTurnResponseDuration,
@@ -70,6 +76,7 @@ import {
   buildTranscriptEntries,
   messageThinking as thinkingText,
   subagentRunsEqual,
+  transcriptEntryMessages,
   type AssistantActivityItem,
   type AssistantTurnEntry,
   type SubagentRun,
@@ -2168,6 +2175,12 @@ export const ChatTranscript = memo(function ChatTranscript({
   const prependHeightRef = useRef<number | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [showJump, setShowJump] = useState(false);
+  // Steady-state cap on mounted history rows (D261). Grows when the user
+  // reaches the top of the window; reset per session below.
+  const [windowSize, setWindowSize] = useState(TRANSCRIPT_WINDOW_MIN);
+  // Read by `reachTop`, which must stay referentially stable for the scroll
+  // listener; the projection it describes is only known later in this render.
+  const historyLengthRef = useRef(0);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     const el = scrollRef.current;
@@ -2269,6 +2282,29 @@ export const ChatTranscript = memo(function ChatTranscript({
     void onLoadOlder().finally(() => setLoadingOlder(false));
   }, [hasMoreBefore, loadingOlder, onLoadOlder]);
 
+  /**
+   * Reaching the top escalates in two stages (D261): mount more of what is
+   * already loaded, and only fetch an older page once the window covers all of
+   * it. Both stages anchor the viewport the same way, because both change
+   * scrollHeight above the rows the user is reading.
+   */
+  const reachTop = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const grown = growTranscriptWindow(windowSize, historyLengthRef.current);
+    if (grown !== windowSize) {
+      // Mounting rows above the viewport changes scrollHeight exactly the way a
+      // fetched page does, so it takes the same anchor.
+      prependHeightRef.current = el.scrollHeight;
+      setWindowSize(grown);
+      return;
+    }
+    loadOlder();
+  }, [loadOlder, windowSize]);
+
+  // Anchors the viewport whenever rows appear above it — a fetched older page
+  // (`messages.length`) or a grown mounted window (`windowSize`, D261). Both add
+  // height above the reading position, so both are corrected here before paint.
   useLayoutEffect(() => {
     const previousHeight = prependHeightRef.current;
     if (previousHeight === null) return;
@@ -2279,11 +2315,12 @@ export const ChatTranscript = memo(function ChatTranscript({
     if (delta <= 0) return;
     el.scrollTop += delta;
     lastScrollTopRef.current = el.scrollTop;
-  }, [messages.length]);
+  }, [messages.length, windowSize]);
 
   useEffect(() => {
     prependHeightRef.current = null;
     setLoadingOlder(false);
+    setWindowSize(TRANSCRIPT_WINDOW_MIN);
   }, [sessionId]);
 
   // Follow the stream only while the user is pinned to the bottom; a manual
@@ -2291,7 +2328,7 @@ export const ChatTranscript = memo(function ChatTranscript({
   const handleScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
-    if (el.scrollTop <= 120) loadOlder();
+    if (el.scrollTop <= 120) reachTop();
     const wasPinned = pinnedRef.current;
     const transition = reduceTranscriptScroll({
       previousScrollTop: lastScrollTopRef.current,
@@ -2328,7 +2365,7 @@ export const ChatTranscript = memo(function ChatTranscript({
       pinnedRef.current = transition.pinned;
       setShowJump(transition.showJump);
     }
-  }, [cancelFollowScroll, loadOlder, scheduleFollowScroll]);
+  }, [cancelFollowScroll, reachTop, scheduleFollowScroll]);
 
   // Send / retry / regenerate always re-pins follow mode so the new prompt and
   // its stream stay in view, even if the user had scrolled up through history.
@@ -2389,24 +2426,33 @@ export const ChatTranscript = memo(function ChatTranscript({
     () => buildTranscriptEntries(renderedMessages, renderedCompactions),
     [renderedMessages, renderedCompactions],
   );
-  const allHistoryEntries = entries.slice(0, -1);
+  // Memoized so a re-render that changed no message (jump pill, loading row,
+  // window growth) hands `TranscriptHistory` the same array, letting its
+  // comparator bail on identity instead of walking every mounted row.
+  const allHistoryEntries = useMemo(() => entries.slice(0, -1), [entries]);
   const tailEntry = entries.at(-1);
+  // Published for `reachTop`, which is declared above this projection but only
+  // runs from a scroll event, long after this render committed.
+  historyLengthRef.current = allHistoryEntries.length;
 
   // Progressive hydration: on session switch, mount only the bottom portion of
   // the transcript in the first commit (what fits the viewport), then expand to
-  // the full history after paint, with a spacer holding the scroll height.
+  // the steady-state window after paint, with a spacer holding the scroll height.
   //
   // The gate has to be derived during render, not set from an effect. With
   // `useState(true)` the switch rendered the *whole* history first, and only then
   // did a layout effect cut it back to the budget before expanding again - so a
   // long session built its entire DOM, discarded it, and rebuilt it, which is the
   // opposite of what bounding the first commit is for.
-  const INITIAL_RENDER_BUDGET = 15;
+  //
+  // The expansion target is the mounted window (D261), not the whole history: a
+  // paged-in session used to end up with every row mounted for good, retaining
+  // its Markdown and highlighting for rows nobody was looking at.
   const hydratedSessionRef = useRef(sessionId);
   const [hydrationTick, setHydrationTick] = useState(0);
   const hydrationBounded =
     hydratedSessionRef.current !== sessionId &&
-    allHistoryEntries.length > INITIAL_RENDER_BUDGET;
+    allHistoryEntries.length > TRANSCRIPT_INITIAL_MOUNT;
   // The bounded commit and the expansion must show the transcript at the same
   // place. A spacer sized from a per-entry guess cannot match the rows it stands
   // in for, so the expansion moved the visible text by the estimate error - the
@@ -2434,9 +2480,21 @@ export const ChatTranscript = memo(function ChatTranscript({
     // expansion is still queued re-evaluates instead of keeping a stale frame.
   }, [hydrationBounded, hydrationTick, sessionId]);
 
-  const historyEntries = hydrationBounded
-    ? allHistoryEntries.slice(-INITIAL_RENDER_BUDGET)
-    : allHistoryEntries;
+  const transcriptWindow = reduceTranscriptWindow({
+    historyLength: allHistoryEntries.length,
+    windowSize,
+    initialCommit: hydrationBounded,
+  });
+  // Memoized so unrelated re-renders (jump pill, loading row) hand
+  // `TranscriptHistory` the same array and it can bail on identity instead of
+  // walking every mounted row.
+  const historyEntries = useMemo(
+    () =>
+      transcriptWindow.bounded
+        ? allHistoryEntries.slice(-transcriptWindow.mounted)
+        : allHistoryEntries,
+    [allHistoryEntries, transcriptWindow.bounded, transcriptWindow.mounted],
+  );
 
   // Runs in the same layout phase the expansion commits in, before the browser
   // paints it, so mounting the remaining history cannot move the rows the user
@@ -2457,6 +2515,19 @@ export const ChatTranscript = memo(function ChatTranscript({
     scrollToBottom,
     sessionId,
   ]);
+
+  // The minimap must describe the mounted rows, not every loaded message: it
+  // resolves a click by looking up the marker's node in the scroller, so a dash
+  // for a withheld row would jump nowhere (D261).
+  const minimapMessages = useMemo(
+    () =>
+      transcriptWindow.bounded
+        ? transcriptEntryMessages(
+            tailEntry ? [...historyEntries, tailEntry] : historyEntries,
+          )
+        : visible,
+    [historyEntries, tailEntry, transcriptWindow.bounded, visible],
+  );
 
   const lastEntry = entries[entries.length - 1];
   const lastTurnPart =
@@ -2485,7 +2556,7 @@ export const ChatTranscript = memo(function ChatTranscript({
 
   return (
     <div className="thread-wrap" ref={wrapRef}>
-      <ConversationMinimap scrollRef={scrollRef} messages={visible} />
+      <ConversationMinimap scrollRef={scrollRef} messages={minimapMessages} />
       <div
         className="thread-scroll"
         ref={scrollRef}

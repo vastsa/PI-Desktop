@@ -64,7 +64,13 @@ test("stream rendering avoids duplicate frame state and coalesces following", ()
   assert.match(transcript, /const TranscriptHistory = memo/);
   assert.match(transcript, /const TranscriptTail = memo/);
   assert.match(transcript, /function transcriptEntryEqual/);
-  assert.match(transcript, /const allHistoryEntries = entries\.slice\(0, -1\)/);
+  // Memoized on `entries`: a re-render that changed no message must hand
+  // `TranscriptHistory` the same array so its comparator bails on identity
+  // instead of deep-walking every mounted row (D261).
+  assert.match(
+    transcript,
+    /const allHistoryEntries = useMemo\(\(\) => entries\.slice\(0, -1\), \[entries\]\)/,
+  );
   assert.match(transcript, /<TranscriptHistory entries=\{historyEntries\}/);
   assert.match(transcript, /<TranscriptTail[\s\S]*?entry=\{tailEntry\}/);
   assert.match(transcript, /activityGroupPropsEqual/);
@@ -171,9 +177,19 @@ test("session switch bounds the first transcript commit instead of rebuilding it
     /const hydrationBounded =\s*hydratedSessionRef\.current !== sessionId &&/,
     "the gate must be derived from the rendered session, not stored state",
   );
+  // The first commit is bounded by the initial mount budget, and the expansion
+  // target is the steady-state window rather than the whole history (D261).
   assert.match(
     hydration,
-    /historyEntries = hydrationBounded\s*\?\s*allHistoryEntries\.slice\(-INITIAL_RENDER_BUDGET\)/,
+    /allHistoryEntries\.length > TRANSCRIPT_INITIAL_MOUNT/,
+  );
+  assert.match(
+    hydration,
+    /const transcriptWindow = reduceTranscriptWindow\(\{[\s\S]*?initialCommit: hydrationBounded,/,
+  );
+  assert.match(
+    hydration,
+    /transcriptWindow\.bounded\s*\?\s*allHistoryEntries\.slice\(-transcriptWindow\.mounted\)/,
   );
   // No layout effect may flip the gate; that is what caused the extra commits.
   // (A layout effect that only re-anchors scrolling after the expansion is fine;
@@ -197,7 +213,7 @@ test("session-switch hydration expands without moving the transcript", () => {
   // transcript jumping up and down like a page flip on every session switch.
   assert.doesNotMatch(
     transcript,
-    /INITIAL_RENDER_BUDGET\) \* \d+/,
+    /TRANSCRIPT_INITIAL_MOUNT\) \* \d+/,
     "the hydration spacer must not derive its height from a per-entry estimate",
   );
   assert.doesNotMatch(
