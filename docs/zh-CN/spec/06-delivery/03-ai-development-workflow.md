@@ -153,7 +153,7 @@
 | 用户体验变化 | 相关 `04-ux/` 规范 | — | — | 新的UI场景 | — |
 | 仅规格更新 | 规范本身 | — | — | — | — |
 | 杂务（部门、工具） | — | — | 如果模具决定 | — | — |
-| **应用程序版本发布/稳定标签** | `06-delivery/06-release-runbook.md`（标记前 `packages/shared/src/changelog.ts` 中的强制双区域设置目录） | — | 如果发布政策发生变化 | 确认 E2E-067B 仍然准确 | 如果里程碑船 |
+| **应用程序版本发布/稳定标签** | `06-delivery/06-release-runbook.md`（打标签前的强制版本面门禁：双语 `packages/shared/src/changelog.ts` 及其测试清单、全部工作区/Cargo/`APP_VERSION` 版本号，以及 `README.md` + `README.zh-CN.md` 中的版本线） | — | 如果发布政策发生变化 | 确认 E2E-067B 仍然准确 | 如果里程碑船 |
 
 ---
 
@@ -304,12 +304,15 @@ git worktree prune
 
 ### 发布/版本标签门
 
-当更改是**稳定应用程序版本发布**（版本提升+标签）时，
-完成的定义还需要双区域设置应用内变更日志条目
-对于 `packages/shared/src/changelog.ts` 中的该版本（EN + zh-CN，
-对齐的突出显示计数）**之前**标签，每
-[06-release-runbook.md §4.1](/zh-CN/spec/06-delivery/06-release-runbook#41-mandatory-in-app-changelog-gate-d164)
-和D164。 GitHub 发行说明并不能替代。
+当更改是**稳定应用程序版本发布**（版本提升 + 标签）时，完成的定义还要求在
+打标签**之前**，所有带版本号的位置都描述新版本：`packages/shared/src/changelog.ts`
+中的双语应用内变更日志条目（EN + zh-CN，亮点条数一致）及其
+`changelog.test.ts` 清单、每个工作区 `package.json`（含 `docs/package.json`）、
+Cargo 工作区版本与 `host-core` 锁文件条目、`APP_VERSION`，以及 `README.md` +
+`README.zh-CN.md` 中声明的版本线。`node scripts/check-release-docs.mjs` 必须
+通过；`scripts/release.mjs` 会执行它，未通过则拒绝打标签。参见
+[06-release-runbook.md §4.1](/zh-CN/spec/06-delivery/06-release-runbook#4-1-强制发布版本面门禁-d164-d260)、
+D164 与 D260。 GitHub 发行说明并不能替代。
 
 ---
 
@@ -332,6 +335,7 @@ git worktree prune
 | 提交 CI 应重建的生成工件 | 回购膨胀、合并冲突 |
 | 在一次提交中混合多个逻辑更改而没有明确的消息 | 历史粒度的损失 |
 | 在不更新 `packages/shared/src/changelog.ts` 的情况下标记稳定的应用程序版本（EN + zh-CN） | 违反 D164/发布操作手册；该版本的应用内新增功能为空 |
+| 在 `README.md` / `README.zh-CN.md` 仍声明旧版本线时标记稳定版本，或用 `--skip-docs-check` 绕过 `scripts/check-release-docs.mjs` | 违反 D260/发布操作手册；已发布文档宣传的版本与实际发布不符 |
 
 ---
 

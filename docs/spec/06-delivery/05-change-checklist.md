@@ -127,11 +127,17 @@ documentation-only work or non-release chores.
 - [ ] Bullets are short user-facing product notes (not raw PR/commit lists).
 - [ ] Pre-release-only versions are omitted from the product catalog unless
       product explicitly ships in-app notes for that channel.
+- [ ] `packages/shared/src/changelog.test.ts` lists the new version first.
 - [ ] `pnpm --filter @pi-desktop/shared test` passes catalog alignment.
-- [ ] Catalog commit is on the release branch **before**
+- [ ] `README.md` and `README.zh-CN.md` state the current
+      `<major>.<minor>.x` release line and contain no toolchain, command,
+      Highlights, or roadmap claim the release invalidates.
+- [ ] `node scripts/check-release-docs.mjs` passes (version surfaces,
+      dual-locale catalog, README release line).
+- [ ] Documentation commit is on the release branch **before**
       `node scripts/release.mjs <version> --tag` / `git tag v<version>`.
 - [ ] GitHub auto-generated release body is treated as web-only, not the
-      in-app source ([06-release-runbook.md §4.1](06-release-runbook.md#41-mandatory-in-app-changelog-gate-d164)).
+      in-app source ([06-release-runbook.md §4.1](06-release-runbook.md#41-mandatory-release-version-surface-gate-d164--d260)).
 
 ---
 

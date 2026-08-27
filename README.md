@@ -158,7 +158,7 @@ node scripts/release.mjs 0.11.0 --tag      # bump versions + commit + tag v0.11.
 git push origin <branch> v0.11.0           # Release workflow builds & publishes
 ```
 
-The [release runbook](docs/spec/06-delivery/06-release-runbook.md#41-mandatory-release-version-surface-gate-d164--d200)
+The [release runbook](docs/spec/06-delivery/06-release-runbook.md#41-mandatory-release-version-surface-gate-d164--d260)
 lists the full gate.
 
 ### Documentation

@@ -130,11 +130,16 @@
 - [ ] 项目符号是面向用户的简短产品注释（不是原始 PR/commit 列表）。
 - [ ] 产品目录中省略仅预发布版本，除非
       产品明确为该频道提供应用内注释。
+- [ ] `packages/shared/src/changelog.test.ts` 将新版本列在首位。
 - [ ] `pnpm --filter @pi-desktop/shared test` 通过目录对齐。
-- [ ] 目录提交位于发布分支**之前**
+- [ ] `README.md` 与 `README.zh-CN.md` 声明当前 `<major>.<minor>.x` 版本线，
+      且不含被本次发布推翻的工具链、命令、亮点或路线图描述。
+- [ ] `node scripts/check-release-docs.mjs` 通过（版本面、双语目录、
+      README 版本线）。
+- [ ] 文档提交位于发布分支**之前**
       `node scripts/release.mjs <version> --tag` / `git tag v<version>`。
 - [ ] GitHub 自动生成的发布正文被视为仅限 Web，而不是
-      应用内源（[06-release-runbook.md §4.1](/zh-CN/spec/06-delivery/06-release-runbook#41-mandatory-in-app-changelog-gate-d164)）。
+      应用内源（[06-release-runbook.md §4.1](/zh-CN/spec/06-delivery/06-release-runbook#4-1-强制发布版本面门禁-d164-d260)）。
 
 ---
 

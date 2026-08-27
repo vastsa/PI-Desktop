@@ -2209,6 +2209,30 @@ PI-Desktop 图标；两个表面都不会暴露库存 Electron 名称或图标�
 - **状态**：单位覆盖（`auto-update.test.mjs`、`changelog.test.ts`）；
   打包的UI场景草稿
 
+#### E2E-067C：发布版本面预检拦截不一致的标签（D260）
+
+- **先决条件**：工作树处于当前稳定版本且干净。候选版本
+  尚未创建发布标签。
+- **步骤**： 1) 在一致的工作树上运行
+  `node scripts/check-release-docs.mjs`。 2) 每次只回退一个位置——先删除
+  `en` 中最新的变更日志条目，再删除 `zh-CN` 中的条目，然后修改亮点条数
+  使两个语言不一致，接着把 `docs/package.json` 改回旧版本，最后让两个
+  README 仍声明上一个 `<major>.<minor>.x` 版本线——每次回退后重新运行预检。
+  3) 在仍有一个位置未修复时运行
+  `node scripts/release.mjs <next-version> --tag`。 4) 恢复所有位置，重新运行
+  预检，并再次执行发布命令。
+- **预期**：一致的工作树报告已对齐并以 0 退出。每次回退都会按名称报告
+  出错文件与期望版本，并以非零码退出。存在未修复位置时，`release.mjs`
+  会升版本号但既不创建发布提交也不创建标签，并说明文档检查失败。恢复后
+  预检通过，发布命令继续提交并打标签。`--skip-docs-check` 只跳过该检查，
+  并被记录为非发布用途。
+- **链接规格**：`06-delivery/06-release-runbook.md` §4.1、
+  `06-delivery/05-change-checklist.md`、`06-delivery/03-ai-development-workflow.md`、
+  `08-meta/decisions-log.md`（D164、D260）
+- **验收**：质量（发布流程）
+- **里程碑**：M5
+- **状态**：脚本覆盖（`scripts/check-release-docs.mjs`）；手动发布演练草稿
+
 #### E2E-068：将对话分叉为独立会话
 
 - **先决条件**：空闲项目对话有用户、助理、

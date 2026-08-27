@@ -72,7 +72,7 @@ when macOS `iconutil` is available, without overwriting the canonical source.
 
 ## 4. Release steps
 
-### 4.1 Mandatory release version-surface gate (D164 + D200)
+### 4.1 Mandatory release version-surface gate (D164 + D260)
 
 **Every product release that bumps a stable app version and cuts a tag MUST
 first update every version-bearing surface: the dual-locale in-app product

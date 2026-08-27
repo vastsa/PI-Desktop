@@ -153,7 +153,7 @@ node scripts/release.mjs 0.11.0 --tag      # 升版本 + 提交 + 打 v0.11.0 �
 git push origin <branch> v0.11.0           # Release 工作流自动构建并发布
 ```
 
-完整门禁见[发布操作手册](docs/zh-CN/spec/06-delivery/06-release-runbook.md#4-1-强制发布版本面门禁-d164-d200)。
+完整门禁见[发布操作手册](docs/zh-CN/spec/06-delivery/06-release-runbook.md#4-1-强制发布版本面门禁-d164-d260)。
 
 ### 文档
 

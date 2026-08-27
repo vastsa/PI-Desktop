@@ -7,7 +7,7 @@
  *   node scripts/release.mjs <version> --tag    # bump + commit (only bumped files) + tag v<version>
  *
  * BEFORE running this for a stable release, update every version-bearing
- * document (D164 + D200, docs/spec/06-delivery/06-release-runbook.md section 4.1):
+ * document (D164 + D260, docs/spec/06-delivery/06-release-runbook.md section 4.1):
  *   - packages/shared/src/changelog.ts (EN + zh-CN entries for <version>,
  *     matching highlight counts) and its newest-first list in changelog.test.ts
  *   - the release line stated in README.md and README.zh-CN.md
@@ -82,7 +82,7 @@ if (changed.length === 0) {
 }
 
 // Version surfaces, the dual-locale changelog, and the README release line must
-// agree before a tag exists (D200). Bumping files is reversible; a tag is not.
+// agree before a tag exists (D260). Bumping files is reversible; a tag is not.
 if (!skipDocsCheck) {
   try {
     execFileSync(process.execPath, [path.join(root, "scripts/check-release-docs.mjs"), version], {
