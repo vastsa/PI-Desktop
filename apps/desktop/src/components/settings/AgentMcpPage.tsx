@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   GLOBAL_SCOPE,
@@ -9,23 +9,31 @@ import {
 import { api } from "../../lib/api";
 import { useAppStore } from "../../stores/app-store";
 import {
-  AgentCapabilityIntro,
-  AgentCapabilitySection,
+  AgentCapabilityPage,
   AgentProjectPicker,
   CapabilityButton,
   CapabilityEmpty,
+  CapabilityGroupHeader,
+  CapabilityPanel,
+  CapabilityRow,
+  CapabilityRowMenu,
   CapabilityToggle,
+  CapabilityToolbar,
+  matchesCapabilitySearch,
   projectDisplayName,
   useAgentProjects,
+  useArmedDelete,
+  type CapabilityFilter,
+  type CapabilityMenuItem,
 } from "./AgentCapabilityLayout";
 import {
   draftFromRecord,
+  draftToInput,
   emptyMcpDraft,
   McpEditorSheet,
   type McpDraft,
-  draftToInput,
 } from "../extensions/McpEditorSheet";
-import { IconPencil, IconPlus, IconServer, IconTerminal } from "../icons";
+import { IconPencil, IconPlay, IconPlus, IconServer, IconTerminal, IconTrash } from "../icons";
 import { cx } from "../ui";
 
 const GLOBAL_MCP_PATH = "~/.agents/servers";
@@ -41,77 +49,11 @@ function statusFor(
   return statuses.find((status) => status.serverId === server.id);
 }
 
-function McpRow({
-  server,
-  status,
-  onEdit,
-  onToggle,
-  busy,
-  disabled,
-}: {
-  server: McpServerRecord;
-  status?: McpServerStatus;
-  onEdit: () => void;
-  onToggle: () => void;
-  busy: boolean;
-  disabled?: boolean;
-}) {
-  const { t } = useTranslation();
-  const name = server.label || server.id;
-  const target = server.transport === "http" ? server.url : server.command;
-  return (
-    <div className={cx("agent-capability-row", !server.enabled && "is-off")} role="listitem">
-      <span className={cx("agent-capability-glyph", status && `is-${status.state}`)} aria-hidden="true">
-        {server.transport === "http" ? <IconServer size={16} /> : <IconTerminal size={16} />}
-      </span>
-      <div className="agent-capability-copy">
-        <div className="agent-capability-row-title">
-          <span className="agent-capability-name">{name}</span>
-          <span className="agent-capability-badge">
-            {server.transport === "http"
-              ? t("settings.transportHttp")
-              : t("settings.transportStdio")}
-          </span>
-          {status && status.state !== "idle" ? (
-            <span className={cx("agent-capability-badge", "is-status", `is-${status.state}`)}>
-              <span className="agent-capability-status-dot" aria-hidden="true" />
-              {status.state === "ready"
-                ? t("extensions.mcp.toolCount", { count: status.toolCount })
-                : t(`extensions.mcp.state.${status.state}`)}
-            </span>
-          ) : null}
-        </div>
-        <code className="agent-capability-command" title={target || server.id}>
-          {target || server.id}
-        </code>
-        <p
-          className="agent-capability-description"
-          title={server.description || t("settings.noCapabilityDescription")}
-        >
-          {server.description || t("settings.noCapabilityDescription")}
-        </p>
-      </div>
-      <div className="agent-capability-row-actions">
-        <button
-          type="button"
-          className="settings-icon-button agent-capability-edit"
-          aria-label={t("settings.editMcpOf", { name })}
-          title={t("settings.editMcp")}
-          disabled={disabled || busy}
-          onClick={onEdit}
-        >
-          <IconPencil size={15} />
-        </button>
-        <CapabilityToggle
-          checked={server.enabled}
-          busy={busy}
-          label={t("settings.toggleCapability", { name })}
-          onChange={onToggle}
-        />
-      </div>
-    </div>
-  );
-}
+type McpEditorState = {
+  draft: McpDraft;
+  editing: McpServerRecord | null;
+  level: AgentCapabilityLevel;
+};
 
 export function AgentMcpPage() {
   const { t } = useTranslation();
@@ -121,16 +63,22 @@ export function AgentMcpPage() {
   const [projectServers, setProjectServers] = useState<McpServerRecord[]>([]);
   const [statuses, setStatuses] = useState<McpServerStatus[]>([]);
   const [loading, setLoading] = useState(true);
-  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [filter, setFilter] = useState<CapabilityFilter>("all");
+  const [search, setSearch] = useState("");
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [editor, setEditor] = useState<McpEditorState | null>(null);
+  const [saving, setSaving] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
-  const [editor, setEditor] = useState<{
-    draft: McpDraft;
-    editing: McpServerRecord | null;
-    level: AgentCapabilityLevel;
-  } | null>(null);
+  const { armed, setArmed } = useArmedDelete();
+  // Skeletons belong to the first paint only; later reloads dim the list instead
+  // of tearing it down, so toggling a server never blinks the page away.
+  const hydrated = useRef(false);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    if (hydrated.current) setRefreshing(true);
+    else setLoading(true);
     try {
       const [global, project] = await Promise.all([
         api.listMcpServers({
@@ -139,11 +87,15 @@ export function AgentMcpPage() {
         }),
         selectedProjectPath
           ? api.listMcpServers({ level: "project", projectPath: selectedProjectPath })
-          : Promise.resolve({ servers: [] as McpServerRecord[], statuses: [] as McpServerStatus[] }),
+          : Promise.resolve({
+              servers: [] as McpServerRecord[],
+              statuses: [] as McpServerStatus[],
+            }),
       ]);
       setGlobalServers(global.servers ?? []);
       setProjectServers(project.servers ?? []);
       setStatuses([...(global.statuses ?? []), ...(project.statuses ?? [])]);
+      hydrated.current = true;
     } catch (error) {
       showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
       setGlobalServers([]);
@@ -151,6 +103,7 @@ export function AgentMcpPage() {
       setStatuses([]);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [selectedProjectPath, showToast]);
 
@@ -166,8 +119,26 @@ export function AgentMcpPage() {
     };
   }, [load]);
 
-  const openCreate = (level: AgentCapabilityLevel) => {
-    if (level === "project" && !selectedProjectPath) {
+  const rowKey = (level: AgentCapabilityLevel, id: string) => `${level}:${id}`;
+  const levelQuery = (level: AgentCapabilityLevel) => ({
+    level,
+    ...(selectedProjectPath ? { projectPath: selectedProjectPath } : {}),
+  });
+
+  const patchRow = (
+    level: AgentCapabilityLevel,
+    id: string,
+    patch: Partial<McpServerRecord>,
+  ) => {
+    const setter = level === "global" ? setGlobalServers : setProjectServers;
+    setter((rows) => rows.map((row) => (row.id === id ? { ...row, ...patch } : row)));
+  };
+
+  /** New servers land at whichever level the filter is pointing at. */
+  const targetLevel: AgentCapabilityLevel = filter === "project" ? "project" : "global";
+
+  const openCreate = () => {
+    if (targetLevel === "project" && !selectedProjectPath) {
       showToast(t("settings.selectProjectFirst"), { variant: "error" });
       return;
     }
@@ -175,16 +146,17 @@ export function AgentMcpPage() {
       draft: {
         ...emptyMcpDraft(),
         scope:
-          level === "global"
+          targetLevel === "global"
             ? GLOBAL_SCOPE
             : { mode: "projects", projects: [selectedProjectPath!] },
       },
       editing: null,
-      level,
+      level: targetLevel,
     });
   };
 
   const openEdit = (server: McpServerRecord, level: AgentCapabilityLevel) => {
+    setMenuFor(null);
     setEditor({ draft: draftFromRecord(server), editing: server, level });
   };
 
@@ -203,11 +175,9 @@ export function AgentMcpPage() {
       showToast(t("settings.mcpDuplicate"), { variant: "error" });
       return;
     }
-    setBusyKey("save");
+    setSaving(true);
     try {
-      await api.upsertMcpServer(
-        draftToInput(editor.draft, { level: editor.level, projectPath }),
-      );
+      await api.upsertMcpServer(draftToInput(editor.draft, { level: editor.level, projectPath }));
       await load();
       showToast(
         t(editor.editing ? "settings.mcpSaved" : "settings.mcpAdded", {
@@ -219,46 +189,46 @@ export function AgentMcpPage() {
     } catch (error) {
       showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
     } finally {
-      setBusyKey(null);
+      setSaving(false);
     }
   };
 
   const toggle = async (server: McpServerRecord, level: AgentCapabilityLevel) => {
-    const key = `${level}:${server.id}`;
-    if (busyKey) return;
-    setBusyKey(key);
+    const key = rowKey(level, server.id);
+    if (busyId) return;
+    const next = !server.enabled;
+    setBusyId(key);
+    // Flip locally first: the host is the authority, but a round-trip of latency
+    // on a switch reads as a broken control.
+    patchRow(level, server.id, { enabled: next });
     try {
-      await api.setMcpServerEnabled(server.id, !server.enabled, {
-        level,
-        ...(selectedProjectPath ? { projectPath: selectedProjectPath } : {}),
-      });
-      await load();
+      await api.setMcpServerEnabled(server.id, next, levelQuery(level));
       showToast(
-        t(server.enabled ? "settings.capabilityDisabled" : "settings.capabilityEnabled", {
+        t(next ? "settings.capabilityEnabled" : "settings.capabilityDisabled", {
           name: server.label || server.id,
         }),
         { variant: "success" },
       );
     } catch (error) {
+      patchRow(level, server.id, { enabled: server.enabled });
       showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
     } finally {
-      setBusyKey(null);
+      setBusyId(null);
     }
   };
 
-  const testConnection = async () => {
-    if (!editor?.editing || testingId) return;
-    const serverId = editor.editing.id;
-    setTestingId(serverId);
+  const testConnection = async (server: McpServerRecord, level: AgentCapabilityLevel) => {
+    if (testingId) return;
+    setTestingId(server.id);
     try {
-      const result = await api.testMcpServer(serverId, {
-        level: editor.level,
-        ...(editor.level === "project" && selectedProjectPath
+      const result = await api.testMcpServer(server.id, {
+        level,
+        ...(level === "project" && selectedProjectPath
           ? { projectPath: selectedProjectPath }
           : {}),
       });
       setStatuses((current) => [
-        ...current.filter((status) => status.serverId !== serverId),
+        ...current.filter((status) => status.serverId !== server.id),
         result.status,
       ]);
       if (result.status.state === "ready") {
@@ -266,9 +236,7 @@ export function AgentMcpPage() {
           variant: "success",
         });
       } else if (result.status.state === "failed") {
-        showToast(result.status.message || t("extensions.mcp.testFailed"), {
-          variant: "error",
-        });
+        showToast(result.status.message || t("extensions.mcp.testFailed"), { variant: "error" });
       }
     } catch (error) {
       showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
@@ -277,22 +245,43 @@ export function AgentMcpPage() {
     }
   };
 
-  const renderRows = (rows: readonly McpServerRecord[], level: AgentCapabilityLevel) =>
-    rows.length === 0 ? (
-      <CapabilityEmpty message={t("settings.mcpEmpty")} icon={<IconServer size={18} />} />
-    ) : (
-      rows.map((server) => (
-        <McpRow
-          key={server.id}
-          server={server}
-          status={statusFor(statuses, server)}
-          busy={loading || busyKey !== null}
-          disabled={loading || busyKey !== null}
-          onEdit={() => openEdit(server, level)}
-          onToggle={() => void toggle(server, level)}
-        />
-      ))
-    );
+  const remove = async (server: McpServerRecord, level: AgentCapabilityLevel) => {
+    const key = rowKey(level, server.id);
+    setBusyId(key);
+    try {
+      await api.removeMcpServer(server.id, levelQuery(level));
+      await load();
+      showToast(t("settings.capabilityDeleted", { name: server.label || server.id }), {
+        variant: "success",
+      });
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
+    } finally {
+      setBusyId(null);
+      setArmed(null);
+    }
+  };
+
+  const visible = useMemo(() => {
+    const match = (server: McpServerRecord) =>
+      matchesCapabilitySearch(
+        search,
+        server.label,
+        server.id,
+        server.description,
+        server.transport === "http" ? server.url : server.command,
+      );
+    return {
+      global: globalServers.filter(match),
+      project: projectServers.filter(match),
+    };
+  }, [globalServers, projectServers, search]);
+
+  const counts = {
+    all: visible.global.length + visible.project.length,
+    global: visible.global.length,
+    project: visible.project.length,
+  };
 
   const projectName = useMemo(
     () =>
@@ -301,77 +290,206 @@ export function AgentMcpPage() {
     [options, selectedProjectPath],
   );
 
-  return (
-    <div className="agent-capability-page">
-      <AgentCapabilityIntro
-        description={t("settings.mcpDescription")}
-        note={t("settings.capabilityPriority")}
-      />
-      <AgentCapabilitySection
-        title={t("settings.globalLevel")}
-        path={GLOBAL_MCP_PATH}
-        scope="global"
-        description={t("settings.globalScopeDescription")}
-        count={globalServers.length}
-        action={
-          <CapabilityButton
-            variant="primary"
-            disabled={loading}
-            busy={busyKey !== null}
-            onClick={() => openCreate("global")}
-          >
-            <IconPlus size={14} />
-            {t("settings.addMcp")}
-          </CapabilityButton>
-        }
-        loading={loading}
-        empty={t("settings.loadingCapabilities")}
-      >
-        {renderRows(globalServers, "global")}
-      </AgentCapabilitySection>
-
-      <AgentCapabilitySection
-        title={t("settings.projectLevel")}
-        path={projectMcpPath(selectedProjectPath)}
-        scope="project"
-        description={t("settings.projectScopeDescription")}
-        count={projectServers.length}
-        action={
+  const renderRow = (server: McpServerRecord, level: AgentCapabilityLevel) => {
+    const key = rowKey(level, server.id);
+    const name = server.label || server.id;
+    const status = statusFor(statuses, server);
+    const busy = busyId === key;
+    const testing = testingId === server.id;
+    const isArmed = armed === key;
+    const items: CapabilityMenuItem[] = [
+      {
+        key: "test",
+        label: t("extensions.mcp.test"),
+        icon: <IconPlay size={14} />,
+        disabled: testing,
+        onSelect: () => {
+          setMenuFor(null);
+          void testConnection(server, level);
+        },
+      },
+      {
+        key: "remove",
+        label: isArmed ? t("settings.capabilityRemoveConfirm") : t("extensions.mcp.remove"),
+        icon: <IconTrash size={14} />,
+        danger: true,
+        onSelect: () => {
+          if (isArmed) {
+            setMenuFor(null);
+            void remove(server, level);
+          } else {
+            setArmed(key);
+          }
+        },
+      },
+    ];
+    return (
+      <CapabilityRow
+        key={key}
+        glyph={server.transport === "http" ? <IconServer size={16} /> : <IconTerminal size={16} />}
+        glyphState={status?.state}
+        name={name}
+        off={!server.enabled}
+        menuOpen={menuFor === key}
+        command={server.transport === "http" ? server.url : server.command}
+        badges={
           <>
+            <span className="agent-capability-badge is-level">
+              {level === "global"
+                ? t("settings.capabilityFilterGlobal")
+                : t("settings.capabilityFilterProject")}
+            </span>
+            <span className="agent-capability-badge">
+              {server.transport === "http"
+                ? t("settings.transportHttp")
+                : t("settings.transportStdio")}
+            </span>
+            {status && status.state !== "idle" ? (
+              <span className={cx("agent-capability-badge", "is-status", `is-${status.state}`)}>
+                <span className="agent-capability-status-dot" aria-hidden="true" />
+                {status.state === "ready"
+                  ? t("extensions.mcp.toolCount", { count: status.toolCount })
+                  : t(`extensions.mcp.state.${status.state}`)}
+              </span>
+            ) : null}
+          </>
+        }
+        description={server.description || t("settings.noCapabilityDescription")}
+        actions={
+          <>
+            <button
+              type="button"
+              className="settings-icon-button"
+              aria-label={t("settings.editMcpOf", { name })}
+              title={t("settings.editMcp")}
+              disabled={busy}
+              onClick={() => openEdit(server, level)}
+            >
+              <IconPencil size={15} />
+            </button>
+            <CapabilityRowMenu
+              label={t("extensions.mcp.rowActions", { name })}
+              items={items}
+              disabled={busy}
+              open={menuFor === key}
+              onOpenChange={(open) => {
+                setMenuFor(open ? key : null);
+                if (!open) setArmed(null);
+              }}
+            />
+            <CapabilityToggle
+              checked={server.enabled}
+              busy={busy || testing}
+              label={t("settings.toggleCapability", { name })}
+              onChange={() => void toggle(server, level)}
+            />
+          </>
+        }
+      />
+    );
+  };
+
+  const showGlobal = filter !== "project";
+  const showProject = filter !== "global";
+  const addButton = (
+    <CapabilityButton
+      variant="primary"
+      title={
+        targetLevel === "project"
+          ? t("settings.capabilityCreateInProject")
+          : t("settings.capabilityCreateInGlobal")
+      }
+      onClick={openCreate}
+    >
+      <IconPlus size={14} />
+      {t("settings.addMcp")}
+    </CapabilityButton>
+  );
+
+  return (
+    <AgentCapabilityPage
+      description={t("settings.mcpDescription")}
+      note={t("settings.capabilityPriority")}
+      toolbar={
+        <CapabilityToolbar
+          filter={filter}
+          onFilterChange={setFilter}
+          counts={counts}
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder={t("extensions.mcp.searchPlaceholder")}
+          projectPicker={
             <AgentProjectPicker
               value={selectedProjectPath}
               options={options}
               label={t("settings.selectProject")}
-              disabled={loading || busyKey !== null}
               onChange={setSelectedProjectPath}
             />
-            <CapabilityButton
-              variant="primary"
-              disabled={!selectedProjectPath || loading}
-              busy={busyKey !== null}
-              onClick={() => openCreate("project")}
-            >
-              <IconPlus size={14} />
-              {t("settings.addMcp")}
-            </CapabilityButton>
-          </>
-        }
+          }
+          actions={addButton}
+        />
+      }
+    >
+      <CapabilityPanel
         loading={loading}
-        empty={t("settings.loadingCapabilities")}
+        refreshing={refreshing}
+        loadingLabel={t("settings.loadingCapabilities")}
       >
-        {!selectedProjectPath ? (
-          <CapabilityEmpty message={t("settings.selectProjectFirst")} />
+        {counts.all === 0 && search.trim() ? (
+          <CapabilityEmpty
+            message={t("settings.capabilityNoMatches")}
+            hint={t("settings.capabilityNoMatchesHint")}
+            icon={<IconServer size={18} />}
+          />
         ) : (
-          renderRows(projectServers, "project")
+          <>
+            {showGlobal ? (
+              <>
+                <CapabilityGroupHeader
+                  label={t("settings.globalLevel")}
+                  path={GLOBAL_MCP_PATH}
+                  count={visible.global.length}
+                />
+                {visible.global.length === 0 ? (
+                  <CapabilityEmpty
+                    message={t("settings.mcpEmpty")}
+                    icon={<IconServer size={18} />}
+                    action={addButton}
+                  />
+                ) : (
+                  visible.global.map((server) => renderRow(server, "global"))
+                )}
+              </>
+            ) : null}
+            {showProject ? (
+              <>
+                <CapabilityGroupHeader
+                  label={t("settings.projectLevel")}
+                  path={projectMcpPath(selectedProjectPath)}
+                  count={visible.project.length}
+                />
+                {!selectedProjectPath ? (
+                  <CapabilityEmpty message={t("settings.selectProjectFirst")} />
+                ) : visible.project.length === 0 ? (
+                  <CapabilityEmpty
+                    message={t("settings.mcpEmpty")}
+                    icon={<IconServer size={18} />}
+                  />
+                ) : (
+                  visible.project.map((server) => renderRow(server, "project"))
+                )}
+              </>
+            ) : null}
+          </>
         )}
-      </AgentCapabilitySection>
+      </CapabilityPanel>
 
       {editor ? (
         <McpEditorSheet
           draft={editor.draft}
           setDraft={(draft) => setEditor((current) => (current ? { ...current, draft } : current))}
           editing={editor.editing}
-          saving={busyKey === "save"}
+          saving={saving}
           status={editor.editing ? statusFor(statuses, editor.editing) : undefined}
           testing={testingId === editor.editing?.id}
           projects={[]}
@@ -379,12 +497,14 @@ export function AgentMcpPage() {
           managementLevel={editor.level}
           managementProjectName={projectName}
           onClose={() => {
-            if (!busyKey && !testingId) setEditor(null);
+            if (!saving && !testingId) setEditor(null);
           }}
           onSave={() => void save()}
-          onTest={() => void testConnection()}
+          onTest={() => {
+            if (editor.editing) void testConnection(editor.editing, editor.level);
+          }}
         />
       ) : null}
-    </div>
+    </AgentCapabilityPage>
   );
 }
