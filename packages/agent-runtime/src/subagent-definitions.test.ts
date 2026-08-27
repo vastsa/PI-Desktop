@@ -3,6 +3,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  DEFAULT_SUBAGENT_IDLE_TIMEOUT_SECONDS,
   MAX_SUBAGENT_PROVIDERS,
   subagentCanMutate,
   type SubagentDefinition,
@@ -45,8 +46,10 @@ describe("builtin subagent documents", () => {
     const explorer = definitions.find((definition) => definition.name === "explorer")!;
     expect(explorer.tools).toEqual(["Read", "Glob", "Grep", "Bash"]);
     expect(subagentCanMutate(explorer)).toBe(true);
-    expect(explorer.maxTurns).toBeUndefined();
-    expect(explorer.idleTimeoutSeconds).toBe(600);
+    expect(explorer.maxTurns).toBe(60);
+    expect(explorer.idleTimeoutSeconds).toBe(
+      DEFAULT_SUBAGENT_IDLE_TIMEOUT_SECONDS,
+    );
     expect(explorer.maxDurationSeconds).toBe(21_600);
     expect(definitions[2].tools).toContain("Bash");
   });
