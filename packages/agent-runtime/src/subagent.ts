@@ -525,18 +525,11 @@ export class SubagentRun {
       this.armIdleTimer();
       return;
     }
-    if (
-      event.type !== "turn_start" &&
-      event.type !== "message_start" &&
-      event.type !== "message_update" &&
-      event.type !== "message_end" &&
-      event.type !== "tool_execution_update"
-    ) {
-      return;
-    }
-    // Tool updates count as activity, but the timer remains paused until the
-    // corresponding execution_end. All listed model lifecycle events reset
-    // idle time.
+    // Every other event is a sign of life, down to a single streamed token
+    // arriving as `message_update`. The idle watchdog measures silence, not
+    // slowness: a delegate that keeps streaming never trips it, however long
+    // its turn takes. The timer stays paused while a tool runs, so this only
+    // re-arms once the last execution ended.
     if (this.activeToolExecutions.size === 0) this.armIdleTimer();
   }
 
