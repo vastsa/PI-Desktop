@@ -1,4 +1,4 @@
-# ADR 0126: Transcript Layout Index and Identity-Based Truncation
+# ADR 0127: Transcript Layout Index and Identity-Based Truncation
 
 - Status: Accepted
 - Date: 2026-08-26
