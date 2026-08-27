@@ -6,11 +6,16 @@
  *   node scripts/release.mjs <version>          # bump files only
  *   node scripts/release.mjs <version> --tag    # bump + commit (only bumped files) + tag v<version>
  *
- * BEFORE running this for a stable release: update the dual-locale in-app
- * product changelog in packages/shared/src/changelog.ts (EN + zh-CN entries
- * for <version>, matching highlight counts). Required by D164 and
- * docs/spec/06-delivery/06-release-runbook.md section 4.1. GitHub auto-generated
- * release bodies are web-only and are not a substitute.
+ * BEFORE running this for a stable release, update every version-bearing
+ * document (D164 + D200, docs/spec/06-delivery/06-release-runbook.md section 4.1):
+ *   - packages/shared/src/changelog.ts (EN + zh-CN entries for <version>,
+ *     matching highlight counts) and its newest-first list in changelog.test.ts
+ *   - the release line stated in README.md and README.zh-CN.md
+ * GitHub auto-generated release bodies are web-only and are not a substitute.
+ *
+ * This script runs `scripts/check-release-docs.mjs <version>` after bumping and
+ * refuses to tag while any surface disagrees. Use --skip-docs-check only for a
+ * deliberate non-release bump.
  *
  * Pushing the tag triggers .github/workflows/release.yml, which builds the
  * macOS / Windows / Linux installers and publishes them to a GitHub Release:
@@ -25,9 +30,12 @@ import path from "node:path";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const version = process.argv[2];
 const doTag = process.argv.includes("--tag");
+const skipDocsCheck = process.argv.includes("--skip-docs-check");
 
 if (!version || !/^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$/.test(version)) {
-  console.error("Usage: node scripts/release.mjs <version> [--tag]   e.g. 0.2.0 or 0.2.0-beta.1");
+  console.error(
+    "Usage: node scripts/release.mjs <version> [--tag] [--skip-docs-check]   e.g. 0.11.0 or 0.11.0-beta.1",
+  );
   process.exit(1);
 }
 
@@ -44,6 +52,8 @@ function bumpPackageJson(relPath) {
 }
 
 bumpPackageJson("package.json");
+// `docs` is a third workspace root (pnpm-workspace.yaml), not under apps/packages.
+bumpPackageJson("docs/package.json");
 for (const group of ["apps", "packages"]) {
   for (const dir of readdirSync(path.join(root, group), { withFileTypes: true })) {
     if (dir.isDirectory()) bumpPackageJson(path.join(group, dir.name, "package.json"));
@@ -67,9 +77,25 @@ for (const [relPath, pattern] of [
 
 if (changed.length === 0) {
   console.log(`Everything is already at ${version}; nothing to do.`);
-  process.exit(0);
+} else {
+  console.log(`Bumped to ${version}:\n  ${changed.join("\n  ")}`);
 }
-console.log(`Bumped to ${version}:\n  ${changed.join("\n  ")}`);
+
+// Version surfaces, the dual-locale changelog, and the README release line must
+// agree before a tag exists (D200). Bumping files is reversible; a tag is not.
+if (!skipDocsCheck) {
+  try {
+    execFileSync(process.execPath, [path.join(root, "scripts/check-release-docs.mjs"), version], {
+      cwd: root,
+      stdio: "inherit",
+    });
+  } catch {
+    console.error("\nRelease documentation check failed; not committing or tagging.");
+    process.exit(1);
+  }
+}
+
+if (changed.length === 0) process.exit(0);
 
 const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
 const tag = `v${version}`;
