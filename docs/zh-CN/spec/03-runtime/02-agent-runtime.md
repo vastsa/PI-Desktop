@@ -467,22 +467,40 @@ Frontmatter 新增 `permission: inherit | ask | accept-edits | auto`（默认
   `minCompleted` 可以在前 N 个完成时提前收敛。已结算的委托立即返回，
   因此按 id 重读报告代价很低。合并结果上限为 `MAX_TASKWAIT_RESULT_CHARS`
   （50k）。`timeoutSeconds` 默认 600 秒并被夹到 900 秒：等待会阻塞回合，
-  所以这个上限决定了会话最长能看起来卡住多久。超时不是失败 —— 它返回已完成
-  的报告和一句“再调一次”的提示 —— 因此低上限只花一次往返，却换来可响应的
-  停止。
+  所以这个上限决定了会话最长能看起来卡住多久。到点不是失败 —— 委托仍在继续
+  工作，等待会返回已完成的报告、说明这一点并提示再调一次 —— 因此低上限只花
+  一次往返，却换来可响应的停止。发现真正卡死的委托是空闲看门狗的职责，不是
+  这个超时的职责，所以空闲默认值刻意比它更短。
 - `TaskList()` — 报告会话的每个委托及其状态。
 - `TaskStop(delegationIds?)` — 停止正在运行的委托（默认全部）；被停止的
   委托读作 `stopped`。
 
-**委托循环。** `SubagentRun` 是同一 sidecar 中的第二个 pi `Agent`
-使用定义的系统提示进行处理，其（可能已固定）
-provider/model，其声明的工具，与主机连接相同。它运行在
-`maxTurns`（默认 24，最大 80）和相同的有界提供程序重试策略
-作为家长。其状态为 `completed`、`truncated`、`failed`、`aborted` 和
-`stopped`；四个终态通过 `TaskWait` 呈现，其文本是
-报告（绑定到 `MAX_SUBAGENT_REPORT_CHARS`，12k）及其详细信息
-携带 `delegationId`、`agent`、`status`、`turns`、`toolCalls`，以及失败时的
-`error`。
+**委托循环。** `SubagentRun` 是同一 sidecar 进程中的第二个 pi `Agent`，
+使用该定义的系统提示、其（可能已固定的）provider/model、其声明的工具，
+以及与父级相同的主机连接，并遵循与父级相同的有界提供程序重试策略。
+`maxTurns` 是可选的按定义兜底（最大 80）；省略、`none` 或 `0` 表示不限轮数。
+内置委托各自声明与其工作量相称的值 —— `explorer` 60、`code-reviewer` 50、
+`test-runner` 40、`fixer` 80 —— 因此始终无法收敛的委托会以 `truncated`
+连同其部分报告结束，而不是一直跑到时长上限。其状态为 `completed`、
+`truncated`、`failed`、`aborted`、`timed_out` 以及仅存在于注册表的
+`stopped`；终态通过 `TaskWait` 呈现，其文本是报告（上限为
+`MAX_SUBAGENT_REPORT_CHARS`，12k），其 details 携带 `delegationId`、`agent`、
+`status`、`turns`、`toolCalls`，以及失败或超时时的 `error`。
+
+**委托看门狗。** 每次运行都有 300 秒空闲超时和 21,600 秒（6 小时）总时长
+上限。定义可以用 `idle-timeout`（夹到 10–21,600 秒）和 `max-duration`
+（夹到 60–21,600 秒）覆盖它们；非数值会告警并使用默认值。
+
+空闲超时限制的是*静默*，不是缓慢。任何 agent 事件都算活动，哪怕只是一个
+以 `message_update` 到达的流式 token，因此持续产出的委托无论单轮跑多久都
+不会被判超时。空闲计时器还会从 `tool_execution_start` 暂停到对应的
+`tool_execution_end`，所以长时间的构建或测试命令也不会让它到点，而时长
+计时器在工具执行期间继续计时。只有在整个窗口内完全没有事件的委托才被视为
+卡死。由于该窗口衡量的是静默而非工作量，默认值依据实测的提供程序延迟设定：
+委托从最后一个流式 token 到下一次响应开始之间是静默的，而这段等待实测
+p99.9 为 174 秒。300 秒默认值留有余量，同时明显低于 `TaskWait` 的 600 秒
+默认值，因此卡死的委托会在单次等待内结算为 `timed_out`，而不是占住父级
+一整个窗口甚至更久。
 
 **模型引脚。** Frontmatter 中的 `model: <provider>/<model>` 已解决一次
 每次在 Electron main 中启动，其中凭证和 pi 目录都存在，针对

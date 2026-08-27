@@ -512,9 +512,12 @@ core set rather than the on-demand catalog of §7.1:
   Settled delegations return immediately, so re-reading a report by id is
   cheap. The joined result is bounded to `MAX_TASKWAIT_RESULT_CHARS` (50k).
   `timeoutSeconds` defaults to 600 and is clamped to 900: the wait blocks the
-  turn, so the ceiling is what bounds how long a session can look hung. A
-  timeout is not a failure — it returns the finished reports plus a note to
-  call again — so a low ceiling costs one round-trip and keeps Stop responsive.
+  turn, so the ceiling is what bounds how long a session can look hung. Expiry
+  is not a failure — the delegates keep running and the wait returns the
+  finished reports plus a note saying so and to call again — so a low ceiling
+  costs one round-trip and keeps Stop responsive. Detecting a hung delegate is
+  the idle watchdog's job, not this timeout's, which is why the idle default is
+  deliberately shorter than this one.
 - `TaskList()` — reports every delegation of the session with status.
 - `TaskStop(delegationIds?)` — stops running delegations (defaults to all);
   stopped delegations read as `stopped`.
@@ -524,8 +527,11 @@ process with the definition's system prompt, its (possibly pinned)
 provider/model, its declared tools, and the same host connection. It runs under
 the same bounded provider retry policy as the parent. `maxTurns` is an optional
 per-definition backstop (maximum 80); omitted, `none`, or `0` means unlimited
-turns. The built-in `explorer` declares `Read`, `Glob`, `Grep`, and `Bash`,
-while `code-reviewer` remains read-only. Its statuses are `completed`,
+turns. The built-ins declare one sized to their job — `explorer` 60,
+`code-reviewer` 50, `test-runner` 40, `fixer` 80 — so a delegate that loops
+without converging ends as `truncated` with its partial report instead of
+running until the duration limit. The built-in `explorer` declares `Read`,
+`Glob`, `Grep`, and `Bash`, while `code-reviewer` remains read-only. Its statuses are `completed`,
 `truncated`, `failed`, `aborted`, `timed_out` and the registry-only `stopped`;
 the terminal ones surface through `TaskWait`, whose text is
 the report (bounded to `MAX_SUBAGENT_REPORT_CHARS`, 12k) and whose details
@@ -535,15 +541,28 @@ settled, `turns`, `toolCalls` and, on failure or timeout, `error`. `startedAt` a
 truth for renderer delegation duration; the immediate `Task` tool-call
 duration only covers starting the background work.
 
-**Delegate watchdogs.** Every run has a 600-second idle timeout and a
+**Delegate watchdogs.** Every run has a 300-second idle timeout and a
 21,600-second (6-hour) total duration limit. A definition may override them
 with `idle-timeout` (clamped to 10–21,600 seconds) and `max-duration` (clamped
-to 60–21,600 seconds); non-numeric values warn and use the defaults. Activity
-is any `turn_start`, `message_start`, `message_update`, `message_end`,
-`tool_execution_start`, `tool_execution_update`, or `tool_execution_end`
-event. The idle timer is paused from `tool_execution_start` until its matching
-`tool_execution_end`, while the duration timer continues through tool
-execution. Idle expiry returns `timed_out` with `SUBAGENT_IDLE_TIMEOUT`, and
+to 60–21,600 seconds); non-numeric values warn and use the defaults.
+
+The idle timeout bounds *silence*, not slowness. Every agent event counts as
+activity, down to one streamed token arriving as `message_update`, so a
+delegate that keeps producing output never trips it however long its turn runs.
+The idle timer is additionally paused from `tool_execution_start` until its
+matching `tool_execution_end`, so a long build or test command cannot expire it
+either, while the duration timer continues through tool execution. Only a
+delegate that emits nothing at all for the whole window is treated as hung.
+Because the window measures dead air rather than work, the default is sized
+from observed provider latency rather than from how long work may take: a
+delegate is silent from its last streamed token until its next response
+begins, and that wait has been measured at 174 seconds at p99.9. The
+300-second default clears that with margin while staying well below the
+600-second `TaskWait` default, so a stuck delegate settles as `timed_out`
+within a single wait instead of holding the parent for a full window and
+beyond.
+
+Idle expiry returns `timed_out` with `SUBAGENT_IDLE_TIMEOUT`, and
 duration expiry returns `timed_out` with `SUBAGENT_DURATION_TIMEOUT`; both
 include the latest partial assistant output when available and abort the
 delegate immediately. Fatal provider/stream errors, parent aborts, and

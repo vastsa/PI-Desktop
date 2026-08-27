@@ -2221,7 +2221,8 @@ D193, and D194.
 - Decision D254 replaces the default subagent turn cap with a 600-second idle
   watchdog and a 21,600-second total-duration ceiling. The idle timer resets
   for turn, message, and tool lifecycle events and pauses during tool
-  execution; the duration timer includes tool execution.
+  execution; the duration timer includes tool execution. (Amended by D260: the
+  idle default is now 300 seconds and every agent event resets the timer.)
 - A timeout returns `timed_out` with `SUBAGENT_IDLE_TIMEOUT` or
   `SUBAGENT_DURATION_TIMEOUT`, preserving the latest partial assistant output
   where available. Fatal provider errors, parent aborts, and explicit
@@ -2229,7 +2230,8 @@ D193, and D194.
 - `maxTurns` is now optional (`none`, `0`, and omission mean unlimited), with
   explicit values capped at 80. Definitions may override the watchdogs via
   `idle-timeout` and `max-duration` within their documented bounds; invalid
-  values warn and fall back to defaults.
+  values warn and fall back to defaults. (Amended by D260: the builtins each
+  declare an explicit backstop rather than running unlimited.)
 - Builtin `explorer` gains `Bash` for bounded repository inspection while
   `code-reviewer` remains read-only. Shared status types, runtime timing,
   delegation topology, i18n, and E2E coverage expose the new timeout outcome.
@@ -2311,3 +2313,29 @@ D193, and D194.
   remain terminal. No IPC, storage, host protocol, or provider-config change.
 - See ADR 0128, `03-runtime/02-agent-runtime.md` §5d,
   `03-runtime/08-error-codes.md`, E2E-096, and E2E-149.
+
+## 2026-08-27 — The subagent idle watchdog bounds silence, not slowness
+
+- Decision D260 amends D254. Every agent event re-arms the idle timer, a single
+  streamed token arriving as `message_update` included, so the watchdog fires
+  only on total unresponsiveness. A delegate that keeps producing output is
+  never idle-terminated however slow its turn is, and the pause across tool
+  execution is unchanged.
+- Because the window now measures dead air rather than work, the default idle
+  timeout drops from 600 to 300 seconds, sized from the measured 174-second
+  p99.9 wait between a delegate's last streamed token and its next response
+  rather than from how long work may take. It must stay below the 600-second
+  `TaskWait` default so a genuinely stuck delegate settles as `timed_out`
+  within one wait instead of holding the parent for a full window and beyond.
+  The 21,600-second duration ceiling and the 10–21,600 override bounds are
+  unchanged.
+- `TaskWait` expiry now reports "Still running after Ns" and states that this
+  is not a failure and the delegates keep working, so the parent stops reading
+  an ordinary unfinished wait as a failed delegation.
+- The builtins gain a turn backstop sized to their job — `explorer` 60,
+  `code-reviewer` 50, `test-runner` 40, `fixer` 80 — replacing unlimited turns,
+  so a delegate that loops without converging ends as `truncated` with its
+  partial report rather than running to the duration ceiling.
+- No IPC, storage, host protocol, or provider-config change. See ADR 0129,
+  `03-runtime/02-agent-runtime.md` §5f, `03-runtime/08-error-codes.md`, and
+  E2E-155.

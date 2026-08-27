@@ -380,6 +380,48 @@ describe("SubagentRun watchdogs", () => {
     }
   });
 
+  it("keeps a slow but streaming delegate alive past the idle window", async () => {
+    vi.useFakeTimers();
+    try {
+      const { run } = createRun({
+        definition: definition({
+          idleTimeoutSeconds: 10,
+          maxDurationSeconds: 600,
+        }),
+      });
+      const { abort } = holdAgent(run, () => {
+        run.handleEvent({ type: "turn_start" });
+        run.handleEvent({
+          type: "message_start",
+          message: assistantMessage({ content: [{ type: "text", text: "a" }] }),
+        });
+      });
+
+      const resultPromise = run.run();
+      // One streamed token every 9s, with no other event between them: slow,
+      // but never silent for a full idle window.
+      let text = "a";
+      for (let tick = 0; tick < 6; tick += 1) {
+        await vi.advanceTimersByTimeAsync(9_000);
+        text += "a";
+        run.handleEvent({
+          type: "message_update",
+          message: assistantMessage({ content: [{ type: "text", text }] }),
+          assistantMessageEvent: { type: "text_delta", delta: "a" },
+        });
+      }
+      expect(abort).not.toHaveBeenCalled();
+
+      // Silence alone trips it.
+      await vi.advanceTimersByTimeAsync(10_000);
+      const result = await resultPromise;
+      expect(result.status).toBe("timed_out");
+      expect(result.error?.code).toBe("SUBAGENT_IDLE_TIMEOUT");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("pauses the idle watchdog while a tool is executing", async () => {
     vi.useFakeTimers();
     try {

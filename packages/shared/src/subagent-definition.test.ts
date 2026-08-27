@@ -334,8 +334,8 @@ Read it.`);
         DEFAULT_SUBAGENT_MAX_DURATION_SECONDS,
       );
       expect(invalidTimeouts.warnings).toEqual([
-        'ignoring invalid `idle-timeout` "never" (using 600)',
-        'ignoring invalid `max-duration` "1.5h" (using 21600)',
+        `ignoring invalid \`idle-timeout\` "never" (using ${DEFAULT_SUBAGENT_IDLE_TIMEOUT_SECONDS})`,
+        `ignoring invalid \`max-duration\` "1.5h" (using ${DEFAULT_SUBAGENT_MAX_DURATION_SECONDS})`,
       ]);
     }
   });

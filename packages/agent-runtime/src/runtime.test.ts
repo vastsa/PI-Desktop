@@ -79,7 +79,10 @@ vi.mock("./subagent.js", async (importOriginal) => {
     },
   };
 });
-import { MAX_SUBAGENT_CONCURRENCY } from "@pi-desktop/shared";
+import {
+  DEFAULT_SUBAGENT_IDLE_TIMEOUT_SECONDS,
+  MAX_SUBAGENT_CONCURRENCY,
+} from "@pi-desktop/shared";
 import type {
   ContextCompactionRecord,
   ContextCompactionSettings,
@@ -4568,7 +4571,7 @@ describe("DesktopAgentRuntime subagents", () => {
       toolCalls: 1,
       error: {
         code: "SUBAGENT_IDLE_TIMEOUT",
-        message: "The subagent produced no activity for 600 seconds.",
+        message: `The subagent produced no activity for ${DEFAULT_SUBAGENT_IDLE_TIMEOUT_SECONDS} seconds.`,
       },
     };
     const third = await task.execute("task-3", {

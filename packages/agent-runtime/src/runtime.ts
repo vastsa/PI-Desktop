@@ -226,9 +226,11 @@ const MAX_RETAINED_DELEGATIONS = 100;
 /**
  * `TaskWait` blocks the turn, and the model picks the timeout, so the ceiling
  * is what bounds how long a session can look hung with no way to intervene.
- * A timeout is not a failure — it returns the finished reports plus a note to
- * call again — so a shorter ceiling costs one cheap round-trip and buys the
- * user a responsive Stop.
+ * Expiry is not a failure — the delegates keep running and the wait returns the
+ * finished reports plus a note to call again — so a shorter ceiling costs one
+ * cheap round-trip and buys the user a responsive Stop. A hung delegate is not
+ * this timeout's job: `DEFAULT_SUBAGENT_IDLE_TIMEOUT_SECONDS` is deliberately
+ * shorter, so real silence settles as `timed_out` inside one wait.
  */
 const TASKWAIT_DEFAULT_TIMEOUT_SECONDS = 600;
 const TASKWAIT_MAX_TIMEOUT_SECONDS = 900;
@@ -2814,7 +2816,7 @@ Delegation rules:
             record.result?.report ?? `(${record.status} without a report)`,
         }));
         const note = timedOut
-          ? `Timed out after ${timeoutSeconds}s with ${results.filter((r) => r.status !== "running").length}/${targets.length} finished. Call TaskWait again with the remaining delegationIds, or TaskList to see progress.`
+          ? `Still running after ${timeoutSeconds}s: ${results.filter((r) => r.status !== "running").length}/${targets.length} finished. This is not a failure and the unfinished delegates keep working — call TaskWait again with the remaining delegationIds, or TaskList to see progress.`
           : mode === "any"
             ? `Converged after ${results.filter((r) => r.status !== "running").length} of ${targets.length} finished.`
             : undefined;
