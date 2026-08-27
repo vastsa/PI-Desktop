@@ -34,22 +34,42 @@ test("agent settings have three independent destinations and extensions have two
   assert.doesNotMatch(pluginsPage, /plugins-(?:tab|panel)-(?:mcp|skills|subagents)/);
 });
 
-test("skills and MCP use stacked global/project sections with a selectable project", () => {
+test("skills and MCP filter one list by level instead of stacking two sections", () => {
   for (const source of [skills, mcp]) {
     assert.match(source, /useAgentProjects\(\)/);
     assert.match(source, /AgentProjectPicker/);
     assert.match(source, /level: "global"/);
     assert.match(source, /level: "project"/);
+    // One toolbar, one panel, group headers inside it — not a section per level.
+    assert.match(source, /<CapabilityToolbar/);
+    assert.match(source, /<CapabilityPanel/);
+    assert.match(source, /CapabilityGroupHeader/);
+    assert.match(source, /useState<CapabilityFilter>\("all"\)/);
+    assert.match(source, /const showGlobal = filter !== "project"/);
+    assert.match(source, /const showProject = filter !== "global"/);
   }
-  assert.match(layout, /AgentCapabilitySection/);
-  assert.doesNotMatch(layout, /AgentCapabilityColumn/);
+  assert.doesNotMatch(layout, /AgentCapabilitySection|AgentCapabilityColumn/);
   assert.match(layout, /agent-capability-list/);
-  assert.match(layout, /count !== undefined/);
-  assert.doesNotMatch(subagents, /AgentProjectPicker|projectPath/);
-  assert.match(subagents, /scope="global"/);
-  assert.match(subagents, /count=\{subagents\.length\}/);
+  assert.match(layout, /role="radiogroup"/);
+  assert.match(layout, /settings\.capabilityFilterAll/);
+  // Subagents are global-only, so they get no level filter and no project.
+  assert.doesNotMatch(subagents, /AgentProjectPicker|projectPath|CapabilityFilter/);
+  assert.match(subagents, /settings\.globalOnly/);
   assert.match(subagents, /t\("settings\.subagentsEmpty"\)/);
   assert.doesNotMatch(subagents, /settings\.subagents\.empty|t\("subagents\.empty"\)/);
+});
+
+test("one search field covers the page and every row carries its level", () => {
+  for (const source of [skills, mcp, subagents]) {
+    assert.match(source, /matchesCapabilitySearch\(/);
+    assert.match(source, /settings\.capabilityNoMatches/);
+  }
+  assert.match(layout, /agent-capability-search-clear/);
+  assert.match(layout, /settings\.clearSearch/);
+  for (const source of [skills, mcp]) {
+    assert.match(source, /agent-capability-badge is-level/);
+  }
+  assert.match(styles, /\.agent-capability-badge\.is-level\s*\{/);
 });
 
 test("capability lists flow at natural height with skeleton loading", () => {
@@ -66,30 +86,106 @@ test("capability lists flow at natural height with skeleton loading", () => {
 });
 
 test("capability surfaces use the shared settings hierarchy", () => {
-  assert.match(layout, /AgentCapabilityIntro/);
-  assert.match(layout, /settings-panel agent-capability-panel/);
+  assert.match(layout, /AgentCapabilityPage/);
+  assert.match(layout, /settings-panel/);
   assert.match(styles, /\.agent-capability-intro-description\s*\{/);
   assert.match(styles, /\.agent-capability-intro-note\s*\{/);
-  assert.match(styles, /\.agent-scope-title\s*\{[\s\S]*?font-weight:\s*var\(--font-weight-strong\)/);
-  assert.match(styles, /\.agent-scope-meta code\s*\{[\s\S]*?font-family:\s*var\(--font-mono\)/);
+  assert.match(styles, /\.agent-capability-group-label\s*\{[\s\S]*?font-weight:\s*var\(--font-weight-strong\)/);
+  assert.match(styles, /\.agent-capability-group-path\s*\{[\s\S]*?font-family:\s*var\(--font-mono\)/);
   assert.doesNotMatch(styles, /\.agent-capability-empty\s*\{[\s\S]*?dashed/);
   assert.match(styles, /\.settings-icon-button\s*\{/);
 });
 
-test("capability scope headers move actions below the title when narrow", () => {
-  assert.match(styles, /\.agent-scope-title\s*\{[\s\S]*?white-space:\s*nowrap/);
+test("the capability toolbar stacks when narrow", () => {
+  assert.match(styles, /\.agent-capability-group-label\s*\{[\s\S]*?white-space:\s*nowrap/);
   assert.match(
     styles,
-    /@media \(max-width:\s*720px\)[\s\S]*?\.agent-scope-head[\s\S]*?flex-direction:\s*column/,
+    /@media \(max-width:\s*720px\)[\s\S]*?\.agent-capability-toolbar[\s\S]*?flex-direction:\s*column/,
   );
 });
 
-test("capability updates disable competing controls and expose state", () => {
+test("a busy row does not lock the page and a refresh does not flash skeletons", () => {
   assert.match(layout, /settings\.capabilityCount/);
   assert.match(layout, /aria-busy=\{busy \|\| undefined\}/);
   assert.match(styles, /\.settings-toggle:focus-visible/);
-  assert.match(skills, /busy=\{busyKey !== null\}/);
-  assert.match(mcp, /disabled=\{loading \|\| busyKey !== null\}/);
+  for (const source of [skills, mcp, subagents]) {
+    // Busy is scoped to the row that is working, never to the whole list.
+    assert.match(source, /busy=\{busy/);
+    assert.doesNotMatch(source, /disabled=\{loading \|\| busy/);
+    // Skeletons are first paint only; later loads dim the rows they already have.
+    assert.match(source, /hydrated = useRef\(false\)/);
+    assert.match(source, /if \(hydrated\.current\) setRefreshing\(true\)/);
+    assert.match(source, /refreshing=\{refreshing\}/);
+  }
+  assert.match(styles, /\.agent-capability-panel\.is-refreshing \.agent-capability-list\s*\{/);
+  assert.match(layout, /settings\.capabilityRefreshing/);
+});
+
+test("toggling a capability flips locally and reverts only if the host refuses", () => {
+  const cases = [
+    [skills, "setUserSkillEnabled"],
+    [mcp, "setMcpServerEnabled"],
+    [subagents, "setUserSubagentEnabled"],
+  ];
+  for (const [source, method] of cases) {
+    const toggle = source.slice(
+      source.indexOf("const toggle = async"),
+      source.indexOf("const toggle = async") + 1400,
+    );
+    assert.notEqual(toggle, "", `${method} toggle should be present`);
+    assert.match(toggle, /enabled: next/);
+    assert.match(toggle, new RegExp(`api\\.${method}`));
+    // Success needs no reload: the local patch already matches what the host did.
+    assert.doesNotMatch(toggle.slice(0, toggle.indexOf("catch")), /await load\(\)/);
+    assert.match(toggle, /catch[\s\S]*?enabled: (?:skill|server|subagent)\.enabled/);
+  }
+});
+
+test("each capability page can create, edit, and delete without leaving settings", () => {
+  assert.match(skills, /api\.createUserSkill/);
+  assert.match(skills, /api\.updateUserSkill/);
+  assert.match(skills, /api\.removeUserSkill/);
+  assert.match(skills, /api\.revealUserSkill/);
+  assert.match(skills, /<SkillEditorSheet/);
+  assert.match(subagents, /api\.createUserSubagent/);
+  assert.match(subagents, /api\.updateUserSubagent/);
+  assert.match(subagents, /api\.removeUserSubagent/);
+  assert.match(subagents, /api\.revealSubagent/);
+  assert.match(subagents, /<SubagentEditorSheet/);
+  assert.match(mcp, /api\.upsertMcpServer/);
+  assert.match(mcp, /api\.removeMcpServer/);
+  // Destructive row actions arm first and say so before they fire.
+  for (const source of [skills, mcp, subagents]) {
+    assert.match(source, /useArmedDelete\(\)/);
+    assert.match(source, /settings\.capabilityRemoveConfirm/);
+    assert.match(source, /danger: true/);
+  }
+  assert.match(layout, /DELETE_CONFIRM_MS/);
+  assert.match(styles, /\.agent-capability-menu button\.danger\s*\{/);
+});
+
+test("row actions stay quiet until the row is engaged, but not on touch", () => {
+  assert.match(
+    styles,
+    /\.agent-capability-row-actions > \.settings-icon-button[\s\S]{0,200}?opacity:\s*0;/,
+  );
+  assert.match(styles, /\.agent-capability-row:hover \.agent-capability-row-actions/);
+  assert.match(styles, /\.agent-capability-row:focus-within \.agent-capability-row-actions/);
+  assert.match(styles, /\.agent-capability-row\.menu-open \.agent-capability-row-actions/);
+  assert.match(styles, /@media \(hover: none\)[\s\S]*?opacity:\s*1/);
+});
+
+test("revealing a skill carries the level so project skills resolve", () => {
+  const api = read("../src/lib/api.ts");
+  assert.match(api, /revealUserSkill:\s*\(id: string, query\?: Partial<AgentCapabilityQuery>\)/);
+  assert.match(api, /IPC\.invoke\.skillReveal, \{ id, \.\.\.query \}/);
+  const handler = electron.slice(
+    electron.indexOf("handle(\n    IPC.invoke.skillReveal"),
+    electron.indexOf("handle(IPC.invoke.skillRemove"),
+  );
+  assert.match(handler, /typeof payload === "string" \? \{ id: payload \} : payload/);
+  assert.match(handler, /host\.call<\{ skill: UserSkillRecord \| null \}>\("skills\.read", request\)/);
+  assert.match(skills, /api\.revealUserSkill\(skill\.id, levelQuery\(level\)\)/);
 });
 
 test("skill import is one native file and is copied through the host", () => {

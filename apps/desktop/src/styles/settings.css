@@ -1066,17 +1066,18 @@
 }
 /* -------------------------------------------------------------------------
  * Settings > Agent capability destinations (Skills / MCP / Subagents).
- * Each scope renders as a standard Settings card block: a quiet heading row
- * (scope title, description, resolved path, localized count, actions) above
- * the shared elevated panel. Rows follow the provider-row rhythm, lists flow
- * at natural height, and loading/empty states reuse the same row anatomy.
+ * One workbench per page: a description line, a single toolbar (level filter
+ * with counts, one search field, project picker, primary actions), then one
+ * elevated panel whose rows are divided by level group headers. Rows follow
+ * the provider-row rhythm, lists flow at natural height, and loading/empty
+ * states reuse the same row anatomy.
  */
 
 .agent-capability-page {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 22px;
+  gap: 14px;
 }
 
 /* One quiet line: page description plus the scope-priority note. */
@@ -1086,7 +1087,7 @@
   flex-wrap: wrap;
   align-items: baseline;
   gap: 2px 10px;
-  margin: -12px 0 -6px;
+  margin: -12px 0 0;
   padding: 0 1px;
 }
 
@@ -1115,100 +1116,197 @@
   content: "·";
 }
 
-/* Scope section: heading row + shared elevated panel. */
-.agent-scope {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.agent-scope-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  min-width: 0;
-  padding: 0 2px;
-}
-
-.agent-scope-head-copy {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.agent-scope-title-line {
-  display: flex;
-  min-width: 0;
-  align-items: baseline;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.agent-scope-title {
-  margin: 0;
-  color: var(--ds-text-primary);
-  font-size: var(--text-md-plus);
-  font-weight: var(--font-weight-strong);
-  letter-spacing: var(--tracking-tight);
-  line-height: var(--leading-tight);
-  white-space: nowrap;
-}
-
-.agent-scope-desc {
-  overflow: hidden;
-  color: var(--ds-text-muted);
-  font-size: var(--text-sm);
-  line-height: var(--leading-tight);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.agent-scope-meta {
+/* One toolbar owns filtering, search, the project, and the primary actions. */
+.agent-capability-toolbar {
   display: flex;
   min-width: 0;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+  padding: 0 1px;
 }
 
-.agent-scope-meta code {
-  min-width: 0;
-  max-width: 100%;
-  overflow: hidden;
+/* Level filter, demoted from page sections to a segmented control. */
+.agent-capability-segment {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--radius-md-plus);
+  background: var(--ds-bg-chip);
+  padding: 2px;
+}
+
+.agent-capability-segment-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  padding: 4px 10px;
   color: var(--ds-text-muted);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--leading-normal);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background var(--motion-duration-fast) var(--motion-ease-out),
+    color var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.agent-capability-segment-btn:hover {
+  color: var(--ds-text-secondary);
+}
+
+.agent-capability-segment-btn.active {
+  background: var(--ds-bg-elevated-opaque, var(--ds-bg-primary));
+  box-shadow: 0 0 0 0.5px var(--ds-border-subtle);
+  color: var(--ds-text-primary);
+}
+
+.agent-capability-segment-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 22%, transparent);
+}
+
+.agent-capability-segment-count {
+  color: var(--ds-text-faint);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-capability-segment-btn.active .agent-capability-segment-count {
+  color: var(--ds-text-muted);
+}
+
+/* One search field for the whole page, not one per level. */
+.agent-capability-search-wrap {
+  display: inline-flex;
+  min-width: 0;
+  flex: 1 1 180px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--radius-full);
+  background: var(--ds-bg-chip);
+  padding: 0 10px;
+  color: var(--ds-text-faint);
+  transition:
+    border-color var(--motion-duration-fast) var(--motion-ease-out),
+    box-shadow var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.agent-capability-search-wrap:focus-within {
+  border-color: color-mix(in oklab, var(--ds-accent) 45%, var(--ds-border-default));
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 16%, transparent);
+}
+
+.agent-capability-search {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  background: transparent;
+  padding: 5px 0;
+  color: var(--ds-text-primary);
+  font-family: inherit;
+  font-size: var(--text-sm);
+}
+
+.agent-capability-search::placeholder {
+  color: var(--ds-text-faint);
+}
+
+.agent-capability-search:focus-visible {
+  outline: none;
+}
+
+/* The platform's own search affordances would double the clear button. */
+.agent-capability-search::-webkit-search-cancel-button,
+.agent-capability-search::-webkit-search-decoration {
+  appearance: none;
+}
+
+.agent-capability-search-clear {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--ds-bg-hover);
+  color: var(--ds-text-muted);
+  cursor: pointer;
+  transition: color var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.agent-capability-search-clear:hover {
+  color: var(--ds-text-primary);
+}
+
+.agent-capability-toolbar-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* A reload that already has rows dims them instead of tearing them down. */
+.agent-capability-panel.is-refreshing .agent-capability-list {
+  opacity: 0.6;
+  transition: opacity var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+/* Level divider inside the panel: which level, where it lives, how many. */
+.agent-capability-group {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid var(--ds-border-subtle);
+  background: var(--ds-bg-chip);
+  padding: 7px 14px;
+}
+
+.agent-capability-group:first-child {
+  border-top: 0;
+}
+
+.agent-capability-group-label {
+  flex: 0 0 auto;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-2xs);
+  font-weight: var(--font-weight-strong);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.agent-capability-group-path {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--ds-text-faint);
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.agent-scope-count {
-  display: inline-flex;
+.agent-capability-group-count {
   flex: 0 0 auto;
-  align-items: center;
-  gap: 8px;
+  border-radius: var(--radius-full);
+  background: var(--ds-bg-elevated-opaque, var(--ds-bg-primary));
+  padding: 1px 7px;
   color: var(--ds-text-muted);
-  font-size: var(--text-2xs);
+  font-size: var(--text-3xs);
   font-variant-numeric: tabular-nums;
   line-height: var(--leading-normal);
-  white-space: nowrap;
-}
-
-.agent-scope-count::before {
-  color: var(--ds-text-faint);
-  content: "·";
-}
-
-.agent-scope-actions {
-  display: flex;
-  min-width: 0;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  padding-top: 1px;
 }
 
 /* Natural-height list inside the shared Settings panel surface. */
@@ -1301,6 +1399,13 @@
   white-space: nowrap;
 }
 
+/* A row scrolled away from its group header still says which level it is. */
+.agent-capability-badge.is-level {
+  border: 1px solid var(--ds-border-subtle);
+  background: transparent;
+  color: var(--ds-text-faint);
+}
+
 /* Connection state is the only place capability rows carry color. */
 .agent-capability-status-dot {
   width: 5px;
@@ -1372,6 +1477,101 @@
   flex: 0 0 auto;
   align-items: center;
   gap: 4px;
+}
+
+/*
+ * Edit and the overflow menu stay quiet until the row is engaged; the switch is
+ * always visible because enablement is the state the list is read for.
+ */
+.agent-capability-row-actions > .settings-icon-button,
+.agent-capability-row-actions .agent-capability-menu-wrap {
+  opacity: 0;
+  transition: opacity var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.agent-capability-row:hover .agent-capability-row-actions > .settings-icon-button,
+.agent-capability-row:hover .agent-capability-row-actions .agent-capability-menu-wrap,
+.agent-capability-row:focus-within .agent-capability-row-actions > .settings-icon-button,
+.agent-capability-row:focus-within .agent-capability-row-actions .agent-capability-menu-wrap,
+.agent-capability-row.menu-open .agent-capability-row-actions > .settings-icon-button,
+.agent-capability-row.menu-open .agent-capability-row-actions .agent-capability-menu-wrap {
+  opacity: 1;
+}
+
+/* Without hover there is nothing to reveal them with. */
+@media (hover: none) {
+  .agent-capability-row-actions > .settings-icon-button,
+  .agent-capability-row-actions .agent-capability-menu-wrap {
+    opacity: 1;
+  }
+}
+
+.agent-capability-row.menu-open {
+  background: var(--ds-bg-hover);
+}
+
+.agent-capability-menu-wrap {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.agent-capability-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 30;
+  display: flex;
+  min-width: 168px;
+  flex-direction: column;
+  gap: 2px;
+  border-radius: var(--radius-md-plus);
+  background: var(--ds-bg-elevated-opaque, var(--ds-bg-primary));
+  padding: 5px;
+  box-shadow:
+    0 0 0 0.5px var(--ds-border-default),
+    0 12px 32px rgb(0 0 0 / 20%);
+}
+
+.agent-capability-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  padding: 6px 8px;
+  color: var(--ds-text-primary);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.agent-capability-menu button:hover:not(:disabled),
+.agent-capability-menu button:focus-visible {
+  background: var(--ds-bg-hover);
+}
+
+.agent-capability-menu button:disabled {
+  color: var(--ds-text-faint);
+  cursor: default;
+}
+
+.agent-capability-menu button.danger {
+  color: var(--ds-error);
+}
+
+.agent-capability-menu button.danger:hover:not(:disabled),
+.agent-capability-menu button.danger:focus-visible {
+  background: color-mix(in oklab, var(--ds-error) 12%, transparent);
+}
+
+.agent-capability-menu button svg {
+  flex: 0 0 auto;
+  opacity: 0.75;
 }
 
 .settings-icon-button {
@@ -1570,6 +1770,22 @@
   color: var(--ds-text-faint);
 }
 
+.agent-capability-empty-message {
+  color: var(--ds-text-secondary);
+}
+
+.agent-capability-empty-hint {
+  max-width: 44ch;
+  color: var(--ds-text-faint);
+  font-size: var(--text-sm);
+  line-height: var(--leading-compact);
+}
+
+/* An empty level is a place to start, not a dead end. */
+.agent-capability-empty-action {
+  margin-top: 3px;
+}
+
 @keyframes agent-capability-shimmer {
   0%,
   100% {
@@ -1593,29 +1809,51 @@
 }
 
 @media (max-width: 720px) {
-  .agent-scope-head {
+  .agent-capability-toolbar {
     align-items: stretch;
     flex-direction: column;
     gap: 10px;
   }
 
-  .agent-scope-actions {
-    justify-content: flex-start;
-    flex-wrap: wrap;
+  .agent-capability-segment {
+    justify-content: space-between;
   }
 
-  .agent-scope-actions:has(.agent-capability-project-picker) {
-    align-items: stretch;
+  .agent-capability-segment-btn {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .agent-capability-search-wrap {
+    flex: 0 0 auto;
   }
 
   .agent-capability-project-picker {
     min-width: min(100%, 220px);
+  }
+
+  .agent-capability-toolbar-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    margin-left: 0;
+  }
+
+  /* Row copy needs the width more than the group path does. */
+  .agent-capability-group-path {
+    display: none;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .agent-capability-row,
   .agent-capability-glyph,
+  .agent-capability-segment-btn,
+  .agent-capability-search-wrap,
+  .agent-capability-search-clear,
+  .agent-capability-menu button,
+  .agent-capability-panel.is-refreshing .agent-capability-list,
+  .agent-capability-row-actions > .settings-icon-button,
+  .agent-capability-row-actions .agent-capability-menu-wrap,
   .agent-capability-project-picker select,
   .agent-capability-skeleton-glyph,
   .agent-capability-skeleton-line,
