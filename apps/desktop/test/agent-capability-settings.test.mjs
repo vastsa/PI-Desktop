@@ -96,6 +96,55 @@ test("capability surfaces use the shared settings hierarchy", () => {
   assert.match(styles, /\.settings-icon-button\s*\{/);
 });
 
+test("the workbench reuses the shared segmented control instead of a third copy", () => {
+  assert.match(layout, /"settings-segment", "agent-capability-segment"|settings-segment agent-capability-segment/);
+  assert.match(layout, /"settings-segment-item"/);
+  // providers.css defines the shared segment and imports after settings.css, so
+  // a bare local class would silently lose. Every local override must compound.
+  for (const decl of [
+    /\.settings-segment\.agent-capability-segment\s*\{/,
+    /\.settings-segment-item\.agent-capability-segment-btn\s*\{/,
+  ]) {
+    assert.match(styles, decl);
+  }
+  assert.doesNotMatch(styles, /^\.agent-capability-segment\s*\{/m);
+  assert.doesNotMatch(styles, /^\.agent-capability-segment-btn\s*\{/m);
+});
+
+test("capability elevation is theme-relative and meaningful text is not faint", () => {
+  const block = styles.slice(
+    styles.indexOf(".agent-capability-page"),
+    styles.indexOf(".agent-mcp-scope"),
+  );
+  assert.ok(block.length > 0, "capability style block not found");
+  // --ds-bg-elevated-opaque is an absolute gray: #ffffff in light and #282828 in
+  // dark. On the group strip that read as white-on-white, then *below* its own
+  // strip in dark. Relative mixes invert with the theme instead.
+  assert.match(
+    block,
+    /\.agent-capability-group-count\s*\{[\s\S]*?background:\s*color-mix\(in oklab, var\(--ds-text-primary\)/,
+  );
+  // The floating menu is the one place the absolute token is right, and it needs
+  // a dark override because #282828 does not detach from a #212121 panel.
+  assert.match(styles, /:root\[data-theme="dark"\] \.agent-capability-menu\s*\{/);
+  // --ds-text-faint is #afafaf, ~2.2:1 on white. The level badge, resolved path,
+  // and command string are content, so they use the muted tier.
+  for (const rule of [
+    /\.agent-capability-badge\.is-level\s*\{[\s\S]*?color:\s*var\(--ds-text-muted\)/,
+    /\.agent-capability-group-path\s*\{[\s\S]*?color:\s*var\(--ds-text-muted\)/,
+    /\.agent-capability-command\s*\{[\s\S]*?color:\s*var\(--ds-text-muted\)/,
+  ]) {
+    assert.match(block, rule);
+  }
+  // Live handshake tint follows .ext-row-glyph, and being switched off clears it.
+  assert.match(block, /\.agent-capability-glyph\.is-ready\s*\{[\s\S]*?var\(--ds-success\)/);
+  assert.match(
+    block,
+    /\.agent-capability-row\.is-off \.agent-capability-glyph\s*\{[\s\S]*?background:\s*transparent/,
+  );
+  assert.match(block, /\.agent-capability-row:not\(\.is-off\):hover \.agent-capability-glyph/);
+});
+
 test("the capability toolbar stacks when narrow", () => {
   assert.match(styles, /\.agent-capability-group-label\s*\{[\s\S]*?white-space:\s*nowrap/);
   assert.match(

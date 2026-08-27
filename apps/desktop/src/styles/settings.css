@@ -1116,8 +1116,14 @@
   content: "·";
 }
 
-/* One toolbar owns filtering, search, the project, and the primary actions. */
+/*
+  One toolbar owns filtering, search, the project, and the primary actions. The
+  four controls come from four places, so the row height is stated once here
+  rather than derived from each one's padding.
+*/
 .agent-capability-toolbar {
+  --agent-capability-control-height: 32px;
+
   display: flex;
   min-width: 0;
   align-items: center;
@@ -1126,45 +1132,31 @@
   padding: 0 1px;
 }
 
-/* Level filter, demoted from page sections to a segmented control. */
-.agent-capability-segment {
-  display: inline-flex;
+/*
+  Level filter, demoted from page sections to a segmented control. It is the
+  shared `.settings-segment`, which already carries both theme pairs; only the
+  toolbar-scale sizing and the trailing count are local.
+*/
+.settings-segment.agent-capability-segment {
+  height: var(--agent-capability-control-height);
   flex: 0 0 auto;
-  align-items: center;
-  gap: 2px;
-  border: 1px solid var(--ds-border-subtle);
-  border-radius: var(--radius-md-plus);
-  background: var(--ds-bg-chip);
-  padding: 2px;
 }
 
-.agent-capability-segment-btn {
+/*
+  Compound selector on purpose: providers.css imports after this file, so a bare
+  `.agent-capability-segment-btn` would lose to `.settings-segment-item` and
+  these declarations would silently do nothing.
+*/
+.settings-segment-item.agent-capability-segment-btn {
   display: inline-flex;
+  height: 100%;
   align-items: center;
   gap: 6px;
-  border: 0;
-  border-radius: var(--radius-md);
-  background: transparent;
-  padding: 4px 10px;
-  color: var(--ds-text-muted);
+  padding: 0 11px;
   font-size: var(--text-sm);
   font-weight: var(--font-weight-medium);
-  line-height: var(--leading-normal);
-  cursor: pointer;
+  line-height: var(--leading-none);
   white-space: nowrap;
-  transition:
-    background var(--motion-duration-fast) var(--motion-ease-out),
-    color var(--motion-duration-fast) var(--motion-ease-out);
-}
-
-.agent-capability-segment-btn:hover {
-  color: var(--ds-text-secondary);
-}
-
-.agent-capability-segment-btn.active {
-  background: var(--ds-bg-elevated-opaque, var(--ds-bg-primary));
-  box-shadow: 0 0 0 0.5px var(--ds-border-subtle);
-  color: var(--ds-text-primary);
 }
 
 .agent-capability-segment-btn:focus-visible {
@@ -1182,34 +1174,51 @@
   color: var(--ds-text-muted);
 }
 
-/* One search field for the whole page, not one per level. */
+/*
+  One search field for the whole page, not one per level. Fill and focus follow
+  `.plugins-search` so both searches read as the same control; the ring lives on
+  the wrapper because the clear button sits inside it.
+*/
 .agent-capability-search-wrap {
   display: inline-flex;
+  height: var(--agent-capability-control-height);
   min-width: 0;
   flex: 1 1 180px;
+  max-width: 320px;
   align-items: center;
   gap: 6px;
-  border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-full);
-  background: var(--ds-bg-chip);
-  padding: 0 10px;
-  color: var(--ds-text-faint);
+  background: color-mix(in oklab, var(--ds-text-primary) 5%, transparent);
+  padding: 0 11px;
+  color: var(--ds-text-muted);
+  box-shadow: 0 0 0 0.5px var(--ds-border-default);
   transition:
-    border-color var(--motion-duration-fast) var(--motion-ease-out),
+    background var(--motion-duration-fast) var(--motion-ease-out),
     box-shadow var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 .agent-capability-search-wrap:focus-within {
-  border-color: color-mix(in oklab, var(--ds-accent) 45%, var(--ds-border-default));
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 16%, transparent);
+  background: color-mix(in oklab, var(--ds-text-primary) 7%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--ds-accent) 45%, transparent);
+}
+
+:root[data-theme="light"] .agent-capability-search-wrap {
+  background: #f3f3f3;
+  box-shadow: none;
+}
+
+:root[data-theme="light"] .agent-capability-search-wrap:focus-within {
+  background: #ffffff;
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--ds-accent) 35%, transparent);
 }
 
 .agent-capability-search {
   min-width: 0;
+  height: 100%;
   flex: 1;
   border: 0;
   background: transparent;
-  padding: 5px 0;
+  padding: 0;
   color: var(--ds-text-primary);
   font-family: inherit;
   font-size: var(--text-sm);
@@ -1229,31 +1238,46 @@
   appearance: none;
 }
 
+/* Quiet until pointed at, like `.plugins-search-clear`. */
 .agent-capability-search-clear {
   display: inline-flex;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
   border: 0;
   border-radius: var(--radius-full);
-  background: var(--ds-bg-hover);
+  background: transparent;
   color: var(--ds-text-muted);
   cursor: pointer;
-  transition: color var(--motion-duration-fast) var(--motion-ease-out);
+  transition:
+    background var(--motion-duration-fast) var(--motion-ease-out),
+    color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 .agent-capability-search-clear:hover {
+  background: color-mix(in oklab, var(--ds-text-primary) 10%, transparent);
   color: var(--ds-text-primary);
 }
 
+/*
+  `Button size="sm"` is shorter than the filter and search, so the actions
+  stretch to the shared control height here instead of the shared `.btn`
+  changing size for every other page that uses it.
+*/
 .agent-capability-toolbar-actions {
   display: flex;
+  height: var(--agent-capability-control-height);
   flex: 0 0 auto;
-  align-items: center;
+  align-items: stretch;
   gap: 8px;
   margin-left: auto;
+}
+
+.agent-capability-toolbar-actions > .btn {
+  padding-top: 0;
+  padding-bottom: 0;
 }
 
 /* A reload that already has rows dims them instead of tearing them down. */
@@ -1287,21 +1311,27 @@
   white-space: nowrap;
 }
 
+/* The resolved path is the answer to "where does this land", so keep it read‑able. */
 .agent-capability-group-path {
   min-width: 0;
   flex: 1;
   overflow: hidden;
-  color: var(--ds-text-faint);
+  color: var(--ds-text-muted);
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/*
+  Relative elevation, not `--ds-bg-elevated-opaque`: that token is an absolute
+  gray, so on this strip it read as white-on-white in light mode and *below*
+  the strip in dark mode. Mixing against the text color inverts with the theme.
+*/
 .agent-capability-group-count {
   flex: 0 0 auto;
   border-radius: var(--radius-full);
-  background: var(--ds-bg-elevated-opaque, var(--ds-bg-primary));
+  background: color-mix(in oklab, var(--ds-text-primary) 8%, transparent);
   padding: 1px 7px;
   color: var(--ds-text-muted);
   font-size: var(--text-3xs);
@@ -1357,6 +1387,44 @@
   color: var(--ds-text-secondary);
 }
 
+/*
+  Live handshake state tints the glyph, following `.ext-row-glyph`. Only MCP
+  passes a state; skills and subagents leave the glyph quiet.
+*/
+.agent-capability-glyph.is-ready {
+  background: color-mix(in oklab, var(--ds-success) 14%, transparent);
+  color: var(--ds-success);
+}
+
+.agent-capability-glyph.is-connecting {
+  background: color-mix(in oklab, var(--ds-warning) 14%, transparent);
+  color: var(--ds-warning);
+}
+
+.agent-capability-glyph.is-failed {
+  background: color-mix(in oklab, var(--ds-error) 14%, transparent);
+  color: var(--ds-error);
+}
+
+/* A tinted glyph must not survive the row being switched off. */
+.agent-capability-row.is-off .agent-capability-glyph {
+  background: transparent;
+  color: var(--ds-text-muted);
+}
+
+/* Hover must not repaint a tint the row being off has just taken away. */
+.agent-capability-row:not(.is-off):hover .agent-capability-glyph.is-ready {
+  color: var(--ds-success);
+}
+
+.agent-capability-row:not(.is-off):hover .agent-capability-glyph.is-failed {
+  color: var(--ds-error);
+}
+
+.agent-capability-row:not(.is-off):hover .agent-capability-glyph.is-connecting {
+  color: var(--ds-warning);
+}
+
 .agent-capability-copy {
   display: flex;
   min-width: 0;
@@ -1399,11 +1467,15 @@
   white-space: nowrap;
 }
 
-/* A row scrolled away from its group header still says which level it is. */
+/*
+  A row scrolled away from its group header still says which level it is, so it
+  is real content: `--ds-border-default` and `muted` rather than the faint tier,
+  which lands near 2.3:1 on white.
+*/
 .agent-capability-badge.is-level {
-  border: 1px solid var(--ds-border-subtle);
+  border: 1px solid var(--ds-border-default);
   background: transparent;
-  color: var(--ds-text-faint);
+  color: var(--ds-text-muted);
 }
 
 /* Connection state is the only place capability rows carry color. */
@@ -1448,7 +1520,7 @@
 .agent-capability-command {
   max-width: 100%;
   overflow: hidden;
-  color: var(--ds-text-faint);
+  color: var(--ds-text-muted);
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
   text-overflow: ellipsis;
@@ -1531,6 +1603,18 @@
   box-shadow:
     0 0 0 0.5px var(--ds-border-default),
     0 12px 32px rgb(0 0 0 / 20%);
+}
+
+/*
+  The menu floats over a `#212121` panel, and the shared elevated gray is only
+  `#282828` — too close to read as detached. Light mode keeps the plain white
+  surface, where the ring and drop shadow already separate it.
+*/
+:root[data-theme="dark"] .agent-capability-menu {
+  background: color-mix(in oklab, var(--gray-0) 8%, var(--gray-800));
+  box-shadow:
+    0 0 0 0.5px var(--ds-border-strong),
+    0 12px 32px rgb(0 0 0 / 44%);
 }
 
 .agent-capability-menu button {
@@ -1644,7 +1728,7 @@
 .agent-capability-project-picker select {
   min-width: 0;
   width: 100%;
-  height: 30px;
+  height: var(--agent-capability-control-height, 32px);
   appearance: none;
   border: 1px solid var(--ds-border-default);
   border-radius: var(--radius-sm);
@@ -1832,10 +1916,18 @@
     min-width: min(100%, 220px);
   }
 
+  /* Wrapped actions need their own heights back. */
   .agent-capability-toolbar-actions {
+    height: auto;
+    align-items: center;
     justify-content: flex-start;
     flex-wrap: wrap;
     margin-left: 0;
+  }
+
+  .agent-capability-toolbar-actions > .btn {
+    padding-top: 7px;
+    padding-bottom: 7px;
   }
 
   /* Row copy needs the width more than the group path does. */
@@ -1847,7 +1939,9 @@
 @media (prefers-reduced-motion: reduce) {
   .agent-capability-row,
   .agent-capability-glyph,
-  .agent-capability-segment-btn,
+  /* Compound: providers.css imports later and sets a transition on the shared
+     segment item, which a bare class here would not override. */
+  .settings-segment-item.agent-capability-segment-btn,
   .agent-capability-search-wrap,
   .agent-capability-search-clear,
   .agent-capability-menu button,

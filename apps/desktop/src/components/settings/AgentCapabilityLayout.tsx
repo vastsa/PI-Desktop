@@ -270,7 +270,7 @@ export function CapabilityToolbar({
     <div className="agent-capability-toolbar">
       {filter && onFilterChange && segments.length > 0 ? (
         <div
-          className="agent-capability-segment"
+          className="settings-segment agent-capability-segment"
           role="radiogroup"
           aria-label={t("settings.capabilityFilterLabel")}
         >
@@ -281,6 +281,7 @@ export function CapabilityToolbar({
               role="radio"
               aria-checked={filter === segment.id}
               className={cx(
+                "settings-segment-item",
                 "agent-capability-segment-btn",
                 filter === segment.id && "active",
               )}
