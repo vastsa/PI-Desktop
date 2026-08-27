@@ -1287,11 +1287,25 @@ Renderer: `apps/desktop/src/components/Markdown.tsx` + `apps/desktop/src/lib/shi
   far-offscreen rows skip layout and paint, and offscreen Mermaid diagrams defer
   loading and layout until they approach the viewport.
 - **Bounded first commit**: activating a session whose history exceeds the
-  initial render budget mounts only the newest entries in that commit, with a
-  spacer holding the remaining scroll height, and expands to the full history on
-  the next frame. The gate is derived during render from the session being
-  painted; deciding it from an effect instead makes the switch mount the whole
-  history, discard it, and rebuild it.
+  initial mount budget mounts only the newest entries in that commit, with a
+  spacer holding the remaining scroll height, and expands to the steady-state
+  window on the next frame. The gate is derived during render from the session
+  being painted; deciding it from an effect instead makes the switch mount the
+  whole history, discard it, and rebuild it.
+- **Bounded mounted history**: the mounted history is a trailing window over the
+  loaded history, not all of it. Reaching the top escalates in two stages —
+  mount more of what is already loaded, and fetch an older page only once the
+  window covers all of it. Both stages add height above the reading position, so
+  both take the same pre-paint scroll anchor. The window resets per session, and
+  the spacer stays scoped to the first commit: a permanent spacer under the
+  steady-state window would make the user scroll a blank viewport to reach the
+  growth trigger. `content-visibility` alone does not bound this cost — it skips
+  layout and paint for offscreen rows while retaining their React trees, Markdown
+  ASTs, and highlighting tokens.
+- **Minimap describes mounted rows**: the minimap resolves a click by finding the
+  marker's `data-minimap-id` node inside the scroller, so its markers are built
+  from the mounted entries. Built from every loaded message while the window
+  withholds older rows, it would draw dashes whose click target does not exist.
 - **Minimap hover cost**: dash magnification is applied by writing a custom
   property per dash, and dash centers are measured in a separate read-only pass.
   Reading a dash's geometry inside the same loop that writes to it forces one
