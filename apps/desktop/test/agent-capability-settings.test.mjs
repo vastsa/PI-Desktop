@@ -113,6 +113,19 @@ test("the workbench reuses the shared segmented control instead of a third copy"
   assert.doesNotMatch(styles, /^\s*\.agent-capability-segment-btn\s*\{/m);
 });
 
+test("the empty state dresses its own glyph, not the icon in its CTA button", () => {
+  // The empty state can carry a create button, and that button carries an icon.
+  // As a descendant selector this rule also turned that 14px glyph into a 34px
+  // faint chip with its own background, which hid the icon and stretched the
+  // button. Direct child only.
+  assert.match(styles, /\.agent-capability-empty > svg\s*\{/);
+  assert.doesNotMatch(styles, /\.agent-capability-empty svg\s*\{/);
+  // The pages that pass a CTA into the empty state are the ones that regressed.
+  for (const page of [mcp, subagents]) {
+    assert.match(page, /action=\{addButton\}|action=\{[a-zA-Z]*[Bb]utton\}/);
+  }
+});
+
 test("toolbar buttons carry their own compact geometry", () => {
   // `Button size="sm"` is inert app-wide: its utilities are in Tailwind's
   // `utilities` layer and every partial here is unlayered, so `.btn` wins. A

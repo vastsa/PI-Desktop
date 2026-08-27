@@ -1846,7 +1846,12 @@
   text-align: center;
 }
 
-.agent-capability-empty svg {
+/*
+  Direct child only. As a descendant selector this also dressed the icon inside
+  the empty state's own CTA button as a 34px faint chip, which ate the glyph and
+  stretched the button.
+*/
+.agent-capability-empty > svg {
   width: 34px;
   height: 34px;
   padding: 8px;
