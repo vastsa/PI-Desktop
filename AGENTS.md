@@ -197,15 +197,28 @@ Requirements:
 
 ## Stable Release Rule
 
-Before creating a stable application version tag, ensure the version has both English and Simplified Chinese entries in:
+Before creating a stable application version tag, update every place that states a version, not only the changelog:
 
 ```text
-packages/shared/src/changelog.ts
+packages/shared/src/changelog.ts        # newest-first EN + zh-CN entries
+packages/shared/src/changelog.test.ts   # newest-first version list
+package.json, apps/*, packages/*, docs/ # workspace package versions
+Cargo.toml, Cargo.lock                  # workspace + host-core versions
+packages/shared/src/protocol.ts         # APP_VERSION
+README.md, README.zh-CN.md              # current <major>.<minor>.x release line
 ```
+
+Verify with the preflight before tagging; `scripts/release.mjs` runs the same check and refuses to tag while any surface disagrees:
+
+```bash
+pnpm check:release-docs
+```
+
+READMEs are release surfaces. When a release changes user-visible behavior, refresh the affected Highlights, Download, Getting started, Status, or Development claims in both locales; English is the source of truth and the Chinese file links the `docs/zh-CN/` mirrors.
 
 See:
 
-* [Release runbook](docs/spec/06-delivery/06-release-runbook.md#41-mandatory-in-app-changelog-gate-d164)
+* [Release runbook](docs/spec/06-delivery/06-release-runbook.md#41-mandatory-release-version-surface-gate-d164--d260)
 
 ## Completion Checklist
 
@@ -215,6 +228,7 @@ See:
 * [ ] All development occurred inside that worktree
 * [ ] No other agent's branch or worktree was modified
 * [ ] Relevant specs and E2E scenarios were updated
+* [ ] For a stable version bump: every version surface and both READMEs were updated and `node scripts/check-release-docs.mjs` passed
 * [ ] Targeted validation passed or was documented as unnecessary
 * [ ] No secrets, local data, or unrelated changes are included
 * [ ] All logical changes were committed

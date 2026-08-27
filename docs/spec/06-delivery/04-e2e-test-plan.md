@@ -2526,6 +2526,33 @@ Each scenario is documented in this format:
 - **Status**: Unit-covered (`auto-update.test.mjs`, `changelog.test.ts`);
   packaged UI scenario Draft
 
+#### E2E-067C: Release version-surface preflight blocks a misaligned tag (D260)
+
+- **Preconditions**: A clean worktree at the current stable version. No release
+  tag has been created for the candidate version.
+- **Steps**: 1) Run `node scripts/check-release-docs.mjs` on the aligned tree.
+  2) Regress one surface at a time — remove the newest changelog entry from
+  `en`, then from `zh-CN`, then change a highlight count so the locales differ,
+  then set `docs/package.json` to an older version, then leave the READMEs
+  stating the previous `<major>.<minor>.x` release line — and rerun the
+  preflight after each. 3) Run `node scripts/release.mjs <next-version> --tag`
+  with one surface still regressed. 4) Restore every surface, rerun the
+  preflight, and repeat the release command.
+- **Expected**: The aligned tree reports alignment and exits 0. Each regression
+  is reported by name with the offending file and expected version, and exits
+  non-zero. With a regressed surface, `release.mjs` bumps files but creates
+  neither the release commit nor the tag, and says the documentation check
+  failed. After restoration the preflight passes and the release command
+  proceeds to commit and tag. `--skip-docs-check` bypasses only the check and
+  is documented as non-release use.
+- **Specs linked**: `06-delivery/06-release-runbook.md` §4.1,
+  `06-delivery/05-change-checklist.md`, `06-delivery/03-ai-development-workflow.md`,
+  `08-meta/decisions-log.md` (D164, D260)
+- **Acceptance**: Quality (release process)
+- **Milestone**: M5
+- **Status**: Script-covered (`scripts/check-release-docs.mjs`); manual release
+  rehearsal Draft
+
 #### E2E-068: Fork a conversation into an independent session
 
 - **Preconditions**: An idle project conversation has user, assistant,

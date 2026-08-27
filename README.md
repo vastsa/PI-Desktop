@@ -28,15 +28,17 @@ There is no account, no subscription, and no cloud in the middle: you connect th
 
 ## Highlights
 
-- **Any model, your keys.** Anthropic, OpenAI, or anything that speaks an OpenAI-compatible API — hosted relays as well as local gateways like Ollama or LM Studio. Model IDs are free-form (no hardcoded allowlist), with per-model context window, output limit, temperature, and thinking-mode controls.
+- **Any model, your keys.** Anthropic, OpenAI, or anything that speaks an OpenAI-compatible API — hosted relays as well as local gateways like Ollama or LM Studio. Model IDs are free-form (no hardcoded allowlist), with per-model context window, output limit, temperature, and reasoning controls. Configure several models per provider and switch between them from the composer, or sign in to a vendor account with OAuth and keep more than one account per vendor.
 - **Agent, Plan, and Goal modes.** Agent mode reads, edits, and runs commands to get things done. Plan has the same agent inspect the project and submit an immutable implementation checkpoint for approval. Goal lets the agent agree on an outcome and acceptance criteria, then continue autonomously after approval.
 - **You approve every change.** File writes and shell commands ask first, with session-scoped grants and a configurable default policy. Unanswered prompts deny by default.
-- **A real workbench.** Review the agent's edits as message-scoped diffs with guarded rollback, inspect command output in the transcript, preview a local app in a browser, and browse project files — all in a side panel, without leaving the conversation.
-- **Projects and sessions.** Sessions are grouped by project in a multi-project sidebar, with pinning, archiving, sorting, branching, notifications, and throwaway scratch sessions.
+- **Background subagents.** Delegate separable work — wide searches, multi-file implementation, adversarial review — to built-in or your own subagents that run in their own context and report back, with a bounded concurrency cap.
+- **A real workbench.** Review the agent's edits as message-scoped diffs with guarded rollback, inspect command output in the transcript, preview a local app in a browser, and browse project files — all in side panels, including views that plugins contribute.
+- **Projects and sessions.** Sessions are grouped by project in a multi-project sidebar, with pinning, archiving, sorting, branching, notifications, paged history, and throwaway scratch sessions that keep their own isolated workspace.
 - **Local-first and private.** Transcripts live on disk as plain JSONL with a SQLite index — easy to back up, grep, or delete. API keys go into the OS keychain. Logs stay local; there is no telemetry.
-- **Agent capabilities beyond plugins.** Manage standalone MCP servers, Skills, and global Subagents from Settings → Agent, with project-scoped Skills and MCP overrides. The Extensions page is reserved for installed plugins and the marketplace. Plugins can add commands, panels, agent tools, skills, themes, MCP servers, resident services, and a message bus; the local/official marketplace and `.piplug` package workflow are available today.
-- **A fast daily workflow.** Use slash commands and `@` file references, paste files into session scratch, stage the next turn while an answer streams, search plugins globally with Option/Alt+Space, and create manual or recurring task prompts.
-- **Comfortable to live in.** English and 简体中文, light/dark/system and plugin themes, command palette, onboarding checklist, local notifications, context checkpoints, and update notifications for packaged builds.
+- **Agent capabilities beyond plugins.** Manage standalone MCP servers, Skills, and global Subagents from Settings → Agent, with project-scoped Skills and MCP overrides. The Extensions page is reserved for installed plugins and the marketplace. Plugins can add commands, panels, work-panel views, agent tools, skills, themes, MCP servers, resident services, and a message bus; the local/official marketplace and `.piplug` package workflow are available today.
+- **A fast daily workflow.** Use slash commands and `@` file references, paste files into session scratch, queue the next prompt while a turn is still running, enhance a draft prompt in one shot, search everything globally with Option/Alt+Space, and create manual or recurring task prompts.
+- **Resilient runs.** Transient provider failures and rate limits are retried with bounded backoff, and an interrupted answer can be continued instead of restarted.
+- **Comfortable to live in.** English and 简体中文, light/dark/system and plugin themes, a global search and command surface, a pickable UI font with bundled OFL faces, tray and close-behavior choices, onboarding checklist, local notifications, context checkpoints, and in-app release notes with update alerts for packaged builds.
 
 Plugin APIs and panels are permission-gated and run out-of-process. Plugin code is still user-trusted code rather than a complete OS sandbox, so review permissions and only install plugins you trust.
 
@@ -98,13 +100,13 @@ The full picture lives in the [architecture spec](docs/spec/02-architecture/01-a
 
 ## Status & roadmap
 
-PI-Desktop is an early preview under active development. The current 0.5.x line ships the app shell, streaming agent runtime, Agent/Plan/Goal contracts, workspace tools with permissions, the workbench, projects and sessions, imports, agent capability management (MCP/Skills/Subagents), extensions (plugins), context checkpoints, notifications, and cross-platform packaging with update checks.
+PI-Desktop is an early preview under active development. The current 0.10.x line ships the app shell, streaming agent runtime, Agent/Plan/Goal contracts, workspace tools with permissions, the workbench, projects and sessions, imports, agent capability management (MCP/Skills/Subagents), background subagent delegation, multiple models and OAuth accounts per provider, extensions (plugins) with a marketplace, context checkpoints, notifications, in-app release notes, and cross-platform packaging with update delivery.
 
-Still in progress: signed and notarized macOS builds, native Windows/Linux qualification, a stronger plugin sandbox and publisher-signature path, and full UI-driven E2E coverage. See the [milestones](docs/spec/06-delivery/01-mvp-milestones.md) and the [project board](docs/project/BOARD.md).
+Still in progress: signed and notarized macOS builds (blocked on Apple Developer credentials — the signing lane itself is scripted), Windows/Linux installer-upgrade and rollback qualification, a stronger plugin sandbox and publisher-signature path, and full UI-driven E2E coverage. See the [milestones](docs/spec/06-delivery/01-mvp-milestones.md) and the [project board](docs/project/BOARD.md).
 
 ## Development
 
-Prerequisites: Node.js `>=22.19`, pnpm `>=10` (the repository uses pnpm 11), and a stable Rust toolchain.
+Prerequisites: Node.js `>=22.19` (CI and release builds use Node 24, matching the Node that Electron bundles), pnpm `>=10` (the repository pins pnpm 11), and a stable Rust toolchain.
 
 ```bash
 # build the Rust host core
@@ -130,16 +132,34 @@ pnpm test:e2e:plan-ui
 pnpm test:e2e:boot
 pnpm test:e2e:supervision
 pnpm test:e2e:subagents
+
+# checks CI runs
+pnpm typecheck
+pnpm lint
+pnpm test            # JS unit tests + cargo test -p host-core
+
+# documentation site (VitePress)
+pnpm docs:dev
+pnpm docs:check      # English/Chinese spec parity
 ```
 
 CI runs JS build / typecheck / lint / unit tests plus `cargo test` for
 code-related pull requests and pushes to `main`; documentation-only changes are
-skipped. Releases are cut by tag:
+skipped.
+
+Releases are cut by tag. Bumping a stable version means updating every
+version-bearing surface first — the dual-locale in-app changelog, its test
+list, and the release line quoted in both READMEs. `scripts/release.mjs` runs
+that check and refuses to tag while anything disagrees:
 
 ```bash
-node scripts/release.mjs 0.2.0 --tag   # bump versions + commit + tag v0.2.0
-git push origin main v0.2.0            # Release workflow builds & publishes
+pnpm check:release-docs                    # verify the current tree is aligned
+node scripts/release.mjs 0.11.0 --tag      # bump versions + commit + tag v0.11.0
+git push origin <branch> v0.11.0           # Release workflow builds & publishes
 ```
+
+The [release runbook](docs/spec/06-delivery/06-release-runbook.md#41-mandatory-release-version-surface-gate-d164--d260)
+lists the full gate.
 
 ### Documentation
 
@@ -151,6 +171,7 @@ git push origin main v0.2.0            # Release workflow builds & publishes
 - [Architecture](docs/spec/02-architecture/01-architecture.md)
 - [UI information architecture](docs/spec/04-ux/01-ui-ia.md)
 - [E2E test plan](docs/spec/06-delivery/04-e2e-test-plan.md)
+- [Release runbook](docs/spec/06-delivery/06-release-runbook.md)
 - [Plugin system](docs/spec/07-plugins/01-plugin-system.md)
 - [ADRs](docs/adr/) · [Milestones](docs/spec/06-delivery/01-mvp-milestones.md) · [Agent guide](AGENTS.md)
 

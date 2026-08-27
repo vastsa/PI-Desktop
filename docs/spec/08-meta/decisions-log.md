@@ -325,6 +325,7 @@ section mirrors only marketplace/catalog items still blocking nothing.
 | ID | Topic | Decision | Rationale |
 |---|---|---|---|
 | D126 | Three-platform release delivery (lifts D010) | **Tag builds publish every artifact the matrix produces to the GitHub Release: macOS dmg/zip (arm64), Windows NSIS x64, Linux AppImage + deb (x64), each with blockmaps and the platform's `latest*.yml` electron-updater feed. Publishing the feeds activates D120's in-app update lanes for Windows NSIS and Linux AppImage; macOS stays in notify-and-link mode until a signed channel is qualified. The NSIS artifact name is pinned space-free (`PI-Desktop-Setup-${version}.${ext}`) because GitHub asset URLs mangle spaces. D010's macOS-only scope is lifted per the baseline-bump rule (baseline `0.4.7`); the release pipeline itself was qualified end-to-end on v0.1.1-rc.1/v0.1.1.** | The pipeline builds and validates all three platforms on every tag anyway; keeping installers as expiring Actions artifacts (90-day retention) withheld them from users without adding safety. Publishing the update feeds is the point of shipping: platforms with in-app lanes update silently, and future platform regressions surface through real installs instead of unused artifacts. |
+| D260 | Release documentation is a version surface | **A stable version bump must update every version-bearing surface before the tag: the dual-locale in-app changelog and its test list, every workspace `package.json` including `docs/package.json` (a third workspace root `scripts/release.mjs` previously skipped), the Cargo workspace version and `host-core` lockfile entry, `APP_VERSION`, and the `<major>.<minor>.x` release line stated in `README.md` and `README.zh-CN.md`. `scripts/check-release-docs.mjs` verifies all of them; `scripts/release.mjs` runs it after bumping and refuses to commit or tag while any surface disagrees, with `--skip-docs-check` reserved for deliberate non-release bumps. Extends D164.** | The in-app changelog gate alone left published documentation behind: the READMEs still advertised the `0.5.x` line at `0.10.8`, and `docs/package.json` sat at `0.5.8`. A tag is irreversible, so the check runs before the tag exists rather than as review etiquette. |
 
 ## V. Extension activation decisions
 
@@ -2276,6 +2277,19 @@ D193, and D194.
   RPC, no storage or schema change. Every capability-state, precedence, and
   `.agents` path rule from D193 / D194 / D202 is unchanged.
 - See ADR 0126, `04-ux/06-settings-ia.md`, and E2E-103.
+
+## 2026-08-27 — Release documentation is a version surface (D260)
+
+- Stable app version bumps / tags **must** update every version-bearing
+  surface before the tag: the dual-locale changelog and its test list, all
+  workspace package versions (including the previously skipped
+  `docs/package.json`), the Cargo workspace + `host-core` lockfile versions,
+  `APP_VERSION`, and the release line stated in `README.md` /
+  `README.zh-CN.md` (D260, extends D164).
+- `scripts/check-release-docs.mjs` verifies the whole set; `scripts/release.mjs`
+  invokes it after bumping and refuses to commit or tag on failure.
+- Codified in the release runbook §4.1, AI development workflow matrix +
+  Definition of Done + forbidden practices, change checklist, and `AGENTS.md`.
 
 ## 2026-08-26 — Transient provider failures share a bounded retry budget
 

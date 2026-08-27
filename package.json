@@ -27,6 +27,7 @@
     "test:e2e:supervision": "node scripts/e2e-supervision.mjs",
     "test:e2e:subagents": "node scripts/e2e-subagents.mjs",
     "check:marketplace": "node scripts/check-marketplace-catalog.mjs",
+    "check:release-docs": "node scripts/check-release-docs.mjs",
     "docs:dev": "pnpm --filter @pi-desktop/docs dev",
     "docs:build": "pnpm --filter @pi-desktop/docs build",
     "docs:preview": "pnpm --filter @pi-desktop/docs preview",

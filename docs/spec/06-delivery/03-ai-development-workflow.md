@@ -172,7 +172,7 @@ Which change types require which doc updates.
 | UX change | Related `04-ux/` spec | — | — | New UI scenario | — |
 | Spec-only update | The spec itself | — | — | — | — |
 | Chore (deps, tooling) | — | — | If tooling decision | — | — |
-| **App version release / stable tag** | `06-delivery/06-release-runbook.md` (mandatory dual-locale catalog in `packages/shared/src/changelog.ts` before tag) | — | If release policy changes | Confirm E2E-067B still accurate | If milestone ship |
+| **App version release / stable tag** | `06-delivery/06-release-runbook.md` (mandatory version-surface gate before tag: dual-locale `packages/shared/src/changelog.ts`, its test list, all workspace/Cargo/`APP_VERSION` versions, and the release line in `README.md` + `README.zh-CN.md`) | — | If release policy changes | Confirm E2E-067B still accurate | If milestone ship |
 
 ---
 
@@ -324,11 +324,16 @@ A change is **Done** when all of the following are true:
 ### Release / version-tag gate
 
 When the change is a **stable app version release** (version bump + tag),
-Definition of Done also requires the dual-locale in-app changelog entry
-for that version in `packages/shared/src/changelog.ts` (EN + zh-CN,
-aligned highlight counts) **before** the tag, per
-[06-release-runbook.md §4.1](06-release-runbook.md#41-mandatory-in-app-changelog-gate-d164)
-and D164. GitHub release notes are not a substitute.
+Definition of Done also requires, **before** the tag, that every
+version-bearing surface describes the new version: the dual-locale in-app
+changelog entry in `packages/shared/src/changelog.ts` (EN + zh-CN, aligned
+highlight counts) with its `changelog.test.ts` list, every workspace
+`package.json` (including `docs/package.json`), the Cargo workspace version and
+`host-core` lockfile entry, `APP_VERSION`, and the release line stated in
+`README.md` + `README.zh-CN.md`. `node scripts/check-release-docs.mjs` must
+pass; `scripts/release.mjs` runs it and refuses to tag otherwise. See
+[06-release-runbook.md §4.1](06-release-runbook.md#41-mandatory-release-version-surface-gate-d164--d260),
+D164, and D260. GitHub release notes are not a substitute.
 
 ---
 
@@ -351,6 +356,7 @@ and D164. GitHub release notes are not a substitute.
 | Committing generated artifacts that CI should rebuild | Repo bloat, merge conflicts |
 | Mixing multiple logical changes in one commit without clear message | Loss of history granularity |
 | Tagging a stable app release without updating `packages/shared/src/changelog.ts` (EN + zh-CN) | Violates D164 / release runbook; in-app What's new is empty for that version |
+| Tagging a stable app release while `README.md` / `README.zh-CN.md` still state an older release line, or bypassing `scripts/check-release-docs.mjs` with `--skip-docs-check` | Violates D260 / release runbook; published documentation advertises a version the release no longer matches |
 
 ---
 
