@@ -529,7 +529,12 @@ export const api = {
   ) => invoke(IPC.invoke.skillSetEnabled, { id, enabled, ...query }),
   setUserSkillScope: (id: string, scope: ActivationScope) =>
     invoke(IPC.invoke.skillSetScope, { id, scope }),
-  revealUserSkill: (id: string) => invoke(IPC.invoke.skillReveal, id),
+  /**
+   * Level and project must travel with the id: a project skill has no global
+   * counterpart to fall back to, so resolving by id alone would miss it.
+   */
+  revealUserSkill: (id: string, query?: Partial<AgentCapabilityQuery>) =>
+    invoke(IPC.invoke.skillReveal, { id, ...query }),
 
   // --- Subagents the user owns ----------------------------------------------
   listUserSubagents: (query?: Pick<AgentCapabilityQuery, "level">) =>

@@ -7378,15 +7378,23 @@ function registerIpc() {
     },
   );
 
-  /** Show a skill document in the OS file manager. */
-  handle(IPC.invoke.skillReveal, async (id: string) => {
-    if (!host) throw new Error("host unavailable");
-    const res = await host.call<{ skill: UserSkillRecord | null }>("skills.read", { id });
-    const path = res.skill?.path;
-    if (!path) throw new Error("skill not found");
-    shell.showItemInFolder(stripWinLongPrefix(path));
-    return { ok: true };
-  });
+  /**
+   * Show a skill document in the OS file manager. The level and project travel
+   * with the id because `skills.read` falls back to the global directory when
+   * they are absent, which never resolves a project-only document.
+   */
+  handle(
+    IPC.invoke.skillReveal,
+    async (payload: string | ({ id: string } & Partial<AgentCapabilityQuery>)) => {
+      if (!host) throw new Error("host unavailable");
+      const request = typeof payload === "string" ? { id: payload } : payload;
+      const res = await host.call<{ skill: UserSkillRecord | null }>("skills.read", request);
+      const path = res.skill?.path;
+      if (!path) throw new Error("skill not found");
+      shell.showItemInFolder(stripWinLongPrefix(path));
+      return { ok: true };
+    },
+  );
 
   // --- Subagents the user owns ----------------------------------------------
 

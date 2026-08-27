@@ -198,32 +198,50 @@ system while preserving their different data ownership:
   Light and dark themes use the shared Settings surface, typography, borders,
   and semantic tokens; capability pages do not introduce a separate color
   system.
-- Skills and MCP render Global and Project scope as stacked Settings card
-  blocks in one column. Each block has a quiet heading row — scope title with
-  its scope description, then the resolved `.agents` path and localized count
-  as a muted meta line — above the standard elevated Settings panel. Actions
-  sit right-aligned in the heading row; Project scope also carries the
-  selected-project picker there. Subagents has no project picker because it is
-  global-only and uses one full-width block.
-- Lists flow at natural page height like every other Settings surface; the
-  page scrolls as one document instead of nesting fixed-height scroll wells.
-  Rows follow the provider-row rhythm: a quiet muted icon, name, optional
-  source/transport badges, single-line description, and an always visible
-  enablement switch. MCP rows keep the resolved command in mono between name
-  and description, keep Edit visible as a Settings icon action, and express
-  connection state only through a small status dot inside the state badge —
-  the only color on an otherwise monochrome row. Disabled rows dim their icon
-  and copy while keeping the switch fully legible.
-- Initial loads and project changes render skeleton rows that mirror the real
-  row anatomy; scope actions and row controls are disabled while the
-  capability state is being refreshed so a second click cannot race the host
-  update. The localized count remains available to assistive technology, and
-  pending switches retain a busy state until the refresh replaces them with
-  the latest result. Empty states are quiet centered glyph-and-copy blocks
-  inside the panel without a decorative frame.
-- Scope labels stay on one line. When the viewport is narrow, the heading row
-  stacks and actions wrap below the scope title so project controls cannot
-  squeeze or wrap the title.
+- Each page is one workbench, not a stack of per-level sections (D257): a
+  single toolbar above a single elevated panel. The toolbar carries the level
+  filter as a segmented control with live counts (All / Global / Project), one
+  search field with a clear affordance, the selected-project picker, and the
+  page's primary actions right-aligned. Subagents omits the filter and the
+  picker because it is global-only, keeping only search and its actions.
+- The level filter narrows which groups the panel renders; it never hides the
+  toolbar or moves the actions. New capabilities are created at the level the
+  filter points at — Global under All or Global, Project under Project — and
+  the primary action's tooltip names that destination so the choice is never
+  implicit. Choosing Project without a selected project reports that instead
+  of failing silently.
+- Inside the panel, each level is a group header row — level name, resolved
+  `.agents` path in mono, localized count — followed by its rows. Lists flow
+  at natural page height like every other Settings surface; the page scrolls
+  as one document instead of nesting fixed-height scroll wells.
+- Rows follow the provider-row rhythm: a quiet muted icon, name, a level badge
+  plus any source/transport badges, single-line description, optional mono meta
+  (MCP target, subagent tool grant), then the row actions. Every row carries
+  its own level badge so a row scrolled away from its group header still says
+  where it lives. MCP expresses connection state only through a small status
+  dot inside the state badge — the only color on an otherwise monochrome row.
+  Disabled rows dim their icon and copy while keeping the switch fully legible.
+- Row actions are Edit, an overflow menu, and the enablement switch. Edit and
+  the overflow menu stay quiet until the row is hovered, focused, or has its
+  menu open; the switch is always visible because enablement is the state the
+  list is read for. Without hover the quiet actions are always shown. The
+  overflow menu holds the level-aware destructive and out-of-app actions —
+  Reveal and Remove for skills and subagents, Test connection and Remove for
+  MCP — and Remove arms on first press, relabels to ask for confirmation, and
+  disarms on its own if the menu is dismissed or left alone.
+- Skeleton rows appear on first paint only. A later refresh keeps the rows it
+  already has and dims the list instead, announcing the refresh to assistive
+  technology, so toggling a switch never replaces the list with skeletons.
+  Enablement flips locally first and reverts only if the host refuses, and
+  busy state is scoped to the row that is working — one pending request never
+  disables the rest of the page. Empty states are quiet centered
+  glyph-and-copy blocks inside the panel; an empty level offers the same
+  primary action rather than being a dead end, and a search with no matches
+  says so and suggests widening the level filter.
+- When the viewport is narrow the toolbar stacks: the segmented control spans
+  the width with evenly divided segments, search sits below it, and the
+  actions wrap left-aligned. Group headers drop the resolved path so row copy
+  keeps the width.
 
 ### Instructions (`instructions` tab)
 - Edit the global instruction Markdown used by every PI-Desktop Agent session.
@@ -355,6 +373,22 @@ system while preserving their different data ownership:
 20. Command shell selection persists a platform-valid catalog ID, exposes
     status only when it adds information (default, unavailable, fallback, or no
     effective shell), and never authorizes a stale ID/dialect
+21. Skills, MCP, and Subagents each render one toolbar above one panel; the
+    level filter changes which groups appear without hiding the toolbar or the
+    primary actions, and the counts on the segments agree with the rows the
+    panel renders under the active search
+22. Each capability page can create, edit, and delete a capability without
+    leaving Settings; new capabilities land at the level the filter points at,
+    the primary action names that destination, and choosing a project level
+    with no selected project reports it instead of failing silently
+23. Removing a capability requires two presses of the same menu item, the
+    second press labelled as the confirmation, and the arming lapses on its own
+    if the menu is dismissed
+24. Revealing a project-level skill opens that project's file, not a global
+    file of the same id
+25. Toggling one capability leaves every other row interactive, does not
+    replace the list with skeletons, and restores the previous switch position
+    if the host rejects the change
 
 ## 5. Basics chrome metrics
 

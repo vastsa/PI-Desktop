@@ -127,7 +127,7 @@ test("Settings exposes three independent Agent capability destinations", () => {
   assert.match(settingsPageSrc, /tab === "skills" && <AgentSkillsPage \/>/);
   assert.match(settingsPageSrc, /tab === "mcp" && <AgentMcpPage \/>/);
   assert.match(settingsPageSrc, /tab === "subagents" && <AgentSubagentsPage \/>/);
-  assert.match(settingsComponents.get("AgentCapabilityLayout.tsx"), /AgentCapabilitySection/);
+  assert.match(settingsComponents.get("AgentCapabilityLayout.tsx"), /AgentCapabilityPage/);
   assert.match(settingsComponents.get("AgentCapabilityLayout.tsx"), /agent-capability-list/);
   for (const name of ["AgentSkillsPage.tsx", "AgentMcpPage.tsx"]) {
     const source = settingsComponents.get(name);
@@ -179,7 +179,10 @@ test("project records shadow global records before disabled records are filtered
 test("subagents are global-only and use the agents root", () => {
   const page = settingsComponents.get("AgentSubagentsPage.tsx");
   assert.match(page, /GLOBAL_SUBAGENTS_PATH = "~\/\.agents\/subagents"/);
-  assert.doesNotMatch(page, /AgentProjectPicker|projectPath|add/i);
+  // Global-only means no level to pick and no project to resolve against. It no
+  // longer means read-only: authoring lives here now (D257).
+  assert.doesNotMatch(page, /AgentProjectPicker|projectPath/);
+  assert.match(page, /level: "global"/);
   assert.match(electronMainSrc, /IPC\.invoke\.subagentList/);
   assert.match(hostCapabilitySources, /capability_dir\(CapabilityLevel::Global, None, "subagents"\)/);
 });

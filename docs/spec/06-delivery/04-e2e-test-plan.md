@@ -4425,48 +4425,85 @@ Each scenario is documented in this format:
   1. Open Settings > Agent and verify Skills, MCP, and Subagents are three
      independent navigation destinations. Open Extensions and verify that only
      Installed and Marketplace tabs are present.
-  2. Open Skills. Confirm the global block shows `~/.agents/skills`, the project
-     block shows project A's `.agents/skills`, both blocks stack in one column
-     at natural page height, and the project picker changes the selected
-     project. While the project data refreshes, confirm the block shows
-     skeleton rows and the picker/import/switch controls cannot be activated a
-     second time.
-  3. Toggle a global skill off while project A is selected. Confirm the row is
-     dimmed, a toast names the skill, and the global document remains unchanged.
-     Switch to project B and confirm the global skill remains enabled there.
-  4. Put a same-name project skill in A and disable it. Confirm the effective
+  2. Open Skills. Confirm one toolbar sits above one panel, the panel shows a
+     global group header rooted at `~/.agents/skills` and a project group header
+     rooted at project A's `.agents/skills`, both flow in one column at natural
+     page height, and the project picker changes the selected project. On first
+     paint confirm skeleton rows appear; on a later refresh confirm the rows
+     already on screen stay and the list dims instead.
+  3. Exercise the level filter and the search field. Confirm All / Global /
+     Project carry counts that agree with the rendered rows, that selecting a
+     level hides the other group without hiding the toolbar or its actions, that
+     search narrows both groups and its counts, that clearing the search
+     restores every row, and that a search with no matches reports it and
+     suggests widening the filter.
+  4. Toggle a global skill off while project A is selected. Confirm the switch
+     flips immediately without the list reverting to skeletons, the row is
+     dimmed, a toast names the skill, every other row stays interactive while
+     the request is in flight, and the global document remains unchanged. Switch
+     to project B and confirm the global skill remains enabled there. Force a
+     host rejection and confirm the switch returns to its previous position.
+  5. Create a skill from the page. With the filter on Global confirm the primary
+     action names the global destination and the new document lands in
+     `~/.agents/skills`; with the filter on Project confirm it names the project
+     and lands in project A. With Project selected and no project chosen,
+     confirm the attempt reports it instead of failing silently. Edit the new
+     skill, save, and confirm the body round-trips.
+  6. From a project skill's overflow menu choose Reveal and confirm the project
+     file is revealed, not a global file of the same id. Choose Remove and
+     confirm the first press only arms and relabels the item, the second press
+     deletes, and dismissing the menu disarms it.
+  7. Put a same-name project skill in A and disable it. Confirm the effective
      runtime catalog does not fall back to the global skill; the project record
      shadows first and filtering happens second.
-  5. Use the project Import action to choose exactly one Markdown file. Confirm
-     it is physically copied to `<project A>/.agents/skills`, appears immediately,
+  8. Use the Import action to choose exactly one Markdown file. Confirm it is
+     physically copied to the level the filter points at, appears immediately,
      and a second file cannot be selected in the same picker invocation.
-  6. Open MCP. Add a project server and a global server, edit the project server,
-     and test an existing connection. Confirm the modal locks the id while
-     editing, rejects a same-level duplicate id or label, and reports ready or
-     failed through the row and toast.
-  7. Delete a skill or MCP file outside the app, reload its page, and confirm the
-     row disappears and its local state has no orphaned entry. Confirm deleting
-     a global file also removes its project overrides.
-  8. Open Subagents. Confirm it is one global-only block rooted at
-     `~/.agents/subagents`, with no project picker or project-level controls.
-     Confirm the block header has the global scope title and item count, and
-     an empty directory resolves `settings.subagentsEmpty` to localized
-     empty-state copy rather than displaying a raw translation key.
+  9. Open MCP. Add a project server and a global server, edit the project server,
+     and test an existing connection from the row's overflow menu. Confirm the
+     modal locks the id while editing, rejects a same-level duplicate id or
+     label, and reports ready or failed through the row badge and a toast.
+     Delete a server through the same two-press menu action and confirm its file
+     is gone.
+  10. Delete a skill or MCP file outside the app, reload its page, and confirm the
+      row disappears and its local state has no orphaned entry. Confirm deleting
+      a global file also removes its project overrides.
+  11. Open Subagents. Confirm it is one global-only panel rooted at
+      `~/.agents/subagents`, with no level filter, no project picker, and no
+      project-level controls. Confirm the group header carries the global level
+      label and item count, that create/edit/delete/reveal all work from the
+      page, that leaving the turn limit empty writes a definition with no
+      `maxTurns`, and that an empty directory resolves
+      `settings.subagentsEmpty` to localized empty-state copy rather than
+      displaying a raw translation key.
+  12. Narrow the window to the toolbar's stacking breakpoint. Confirm the
+      segmented control spans the width, search moves below it, actions wrap
+      left-aligned, group headers drop the resolved path, and the page gains no
+      horizontal overflow. With a pointer that cannot hover, confirm the row's
+      edit and overflow controls are visible without hovering.
 - **Expected**:
   - The three Settings pages use no tabs for switching capabilities, flow at
     natural page height for empty and populated states, support dark and light
     themes, and begin with quiet page-specific descriptions plus
-    project-over-global scope copy where relevant. Each global/project scope is
-    presented as a standard Settings card block with a scope title, resolved
-    `.agents` path, scope description, localized count, and actions grouped in
-    the heading row; scope labels remain single-line, with actions wrapping
-    below the title when the viewport is narrow. The rows use quiet capability
-    icons, localized badges, descriptions, and persistent enablement switches.
-    Loading renders skeleton rows with the same anatomy, pending updates keep a
-    busy switch state and disable competing controls until the host refresh
-    completes, and counts are exposed to assistive technology. Empty states
-    stay centered inside the panel without a decorative frame, and the blocks
-    stack in one column without introducing a capability-specific color system.
+    project-over-global scope copy where relevant. Each page is one toolbar
+    above one panel: the toolbar carries the level filter with live counts, one
+    search field with a clear affordance, the project picker, and the primary
+    actions; the panel divides levels with group headers naming the level, its
+    resolved `.agents` path, and a localized count. Rows use quiet capability
+    icons, a level badge plus localized source/transport badges, descriptions,
+    and persistent enablement switches; edit and the overflow menu stay quiet
+    until the row is hovered, focused, or has its menu open, and are always
+    visible where hover is unavailable. Skeleton rows appear on first paint
+    only, later refreshes dim the rows already on screen and announce the
+    refresh, busy state is confined to the row with the in-flight request, and
+    counts are exposed to assistive technology. Empty states stay centered
+    inside the panel without a decorative frame and offer the page's primary
+    action, and no capability-specific color system is introduced.
+  - Create, edit, and delete are available for all three capabilities without
+    leaving Settings. New capabilities land at the level the filter points at,
+    destructive actions require two presses of the same relabelled menu item,
+    and revealing a project-level skill opens that project's file rather than a
+    global file sharing its id.
   - Capability files contain configuration/frontmatter only; enablement is
     persisted in the app-local `agent-capabilities` state files.
   - Project records shadow global records by id or name even when disabled,
@@ -4475,8 +4512,9 @@ Each scenario is documented in this format:
     removed by scanning rather than represented as a pending row.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md` §12a–§12d,
   `03-runtime/02-agent-runtime.md` §5f, `04-ux/01-ui-ia.md` §3.5–§3.6,
+  `04-ux/06-settings-ia.md` §2 (Agent capability destinations), §4.21–§4.25,
   `07-plugins/01-plugin-system.md` §12.2–§12.3,
-  `08-meta/decisions-log.md` (D193, D194, D202), ADR 0112
+  `08-meta/decisions-log.md` (D193, D194, D202, D257), ADR 0112, ADR 0126
 - **Acceptance**: D (workspace), E (tools & permissions), F (persistence),
   Quality
 - **Milestone**: M6+
