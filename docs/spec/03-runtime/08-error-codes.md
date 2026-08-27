@@ -74,7 +74,7 @@ does not turn temporary thread pressure into a host process exit.
 | `STREAM_FAILED` | yes | provider stream was terminated, closed prematurely, or otherwise ended before a complete response; up to four same-turn retries may precede the terminal event |
 | `EMPTY_MODEL_RESPONSE` | yes | the model ended its turn with no tool call and no visible text twice: once as streamed, once after the automatic re-run (spec 02-agent-runtime §5e) |
 | `PROMPT_ENHANCEMENT_EMPTY` | no | the one-shot enhancement model returned no text |
-| `SUBAGENT_IDLE_TIMEOUT` | no | a delegate produced no lifecycle or tool activity for its configured idle window |
+| `SUBAGENT_IDLE_TIMEOUT` | no | a delegate emitted no agent event at all for its configured idle window, with the timer paused across tool execution |
 | `SUBAGENT_DURATION_TIMEOUT` | no | a delegate exceeded its configured total runtime, including tool execution |
 
 ### 3.3 Workspace / tools / permissions

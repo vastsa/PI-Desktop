@@ -1,9 +1,16 @@
 # ADR 0119: Event-Driven Subagent Timeouts
 
-- Status: Accepted for implementation
+- Status: Accepted for implementation; amended by ADR 0129
 - Date: 2026-08-24
 - Deciders: PI-Desktop core
-- Related: D254, ADR 0062 (bounded subagents), ADR 0089 (background delegation)
+- Related: D254, ADR 0062 (bounded subagents), ADR 0089 (background delegation),
+  ADR 0129 (idle bounds silence, not slowness)
+
+> **Amended by ADR 0129.** The event allow-list in decision 2 is superseded:
+> every `AgentEvent` now re-arms the idle timer, and the idle default is 300
+> seconds rather than 600. The built-ins named in decision 4 as unlimited now
+> carry turn backstops. The rejection of "use only idle time" below concerns
+> dropping the total-duration ceiling, which ADR 0129 keeps.
 
 ## Context
 

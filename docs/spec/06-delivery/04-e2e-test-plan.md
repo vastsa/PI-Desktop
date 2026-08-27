@@ -6351,15 +6351,25 @@ This test plan spec is accepted when:
   the delegation topology. 3) Run a delegate whose Bash call remains active
   past the idle window and confirm it is not idle-terminated. 4) Let a tool
   execution cross the total-duration limit. 5) Repeat with explicit
-  `maxTurns`, invalid timeout frontmatter, and `maxTurns: none`.
+  `maxTurns`, invalid timeout frontmatter, and `maxTurns: none`. 6) Stream one
+  `message_update` token per interval longer than the idle window would allow
+  in silence, with no other event between them, and confirm the delegate is
+  never idle-terminated. 7) Let a `TaskWait` expire while its delegate is still
+  streaming and read the note the parent receives.
 - **Expected**: Unlimited delegates run past 20 turns; idle expiry returns
   `timed_out` with `SUBAGENT_IDLE_TIMEOUT`, duration expiry returns
   `timed_out` with `SUBAGENT_DURATION_TIMEOUT`, and both preserve the latest
   partial report. Tool execution pauses only the idle timer, not total
   duration. Explicit `maxTurns` still returns `truncated`; invalid timeout
-  values warn and use defaults; `none` is unlimited. The UI shows “Timed out” /
-  “已超时” with the warning outcome styling, and Explorer's catalog includes
-  `Bash` while code-reviewer remains read-only.
+  values warn and use defaults; `none` is unlimited. A delegate that only ever
+  streams tokens keeps running indefinitely: any agent event re-arms the idle
+  timer, so the watchdog fires on silence alone and slow streaming is never
+  mistaken for a hang. `TaskWait` expiry reports “Still running after Ns” and
+  states that this is not a failure and the delegates keep working, and the
+  builtin turn backstops (`explorer` 60, `code-reviewer` 50, `test-runner` 40,
+  `fixer` 80) end a non-converging delegate as `truncated` with its partial
+  report. The UI shows “Timed out” / “已超时” with the warning outcome styling,
+  and Explorer's catalog includes `Bash` while code-reviewer remains read-only.
 - **Specs linked**: `03-runtime/02-agent-runtime.md` §5f,
   `03-runtime/08-error-codes.md`, `03-runtime/09-logging-and-observability.md`,
   ADR 0119, decisions-log D254
