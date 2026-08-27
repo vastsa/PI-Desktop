@@ -142,3 +142,4 @@ Each ADR includes:
 | 0125 | Renderer-derived brand marks and minified renderer output | Accepted |
 | 0126 | Agent capability workbench | Accepted |
 | 0127 | Transcript layout index and identity-based truncation | Accepted |
+| 0128 | Share one bounded budget for transient provider failures | Accepted |

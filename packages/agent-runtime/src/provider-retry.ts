@@ -19,11 +19,50 @@ export const PROVIDER_RATE_LIMIT_INITIAL_DELAY_MS = 2_000;
 export const PROVIDER_RATE_LIMIT_JITTER_FACTOR = 0.25;
 /** Keep a provider outage bounded even when it sends an unusably long delay. */
 export const PROVIDER_RATE_LIMIT_MAX_DELAY_MS = 30_000;
-/** Preserve pi-ai's short setup retry for non-rate-limit transient failures. */
-export const PROVIDER_SETUP_RETRY_INITIAL_DELAY_MS = 500;
+/**
+ * Non-rate-limit transient failures wait 1s, 2s, 4s, then 8s. The schedule is
+ * deliberately plain doubling so an upstream outage is given visibly more room
+ * on each attempt while the whole sequence stays under 15 seconds.
+ */
+export const PROVIDER_SETUP_RETRY_INITIAL_DELAY_MS = 1_000;
 export const PROVIDER_SETUP_MAX_RETRY_DELAY_MS = 8_000;
+/**
+ * Retries allowed after the first non-rate-limit transient failure, for five
+ * provider attempts in total. Upstream gateway faults (502/503/504, dropped
+ * sockets) routinely need more than one attempt, so they share one bounded
+ * logical-turn budget the way rate limits do instead of getting a single retry
+ * per phase.
+ */
+export const PROVIDER_TRANSIENT_MAX_RETRIES = 4;
 
 export type ProviderRetryPhase = "request" | "stream";
+
+/**
+ * Error codes that may claim the shared non-429 transient budget. Codes outside
+ * this set stay terminal even when `retriable` is set, because they are
+ * repaired by a different recovery path than re-sending the same request.
+ */
+const TRANSIENT_RETRY_CODES = new Set([
+  "NETWORK_ERROR",
+  "TIMEOUT",
+  "STREAM_FAILED",
+  "PROVIDER_ERROR",
+]);
+
+/** Whether a classified error may claim the shared non-429 transient budget. */
+export function isTransientProviderRetryCode(code: string): boolean {
+  return TRANSIENT_RETRY_CODES.has(code);
+}
+
+/**
+ * Statuses whose response headers can carry a usable retry delay. Gateway 5xx
+ * and 408/409 responses often ship `Retry-After`, so keeping their headers lets
+ * a transient retry honor server pacing instead of guessing a backoff.
+ */
+export function carriesRetryDelayHeaders(status: number | undefined): boolean {
+  if (status === undefined) return false;
+  return status === 429 || status === 408 || status === 409 || status >= 500;
+}
 
 export type ProviderResponseSnapshot = {
   status: number;
@@ -90,9 +129,42 @@ function headerValue(
   return entry?.[1];
 }
 
-function boundedServerDelay(value: number): number {
+function boundedServerDelay(
+  value: number,
+  maxDelayMs = PROVIDER_RATE_LIMIT_MAX_DELAY_MS,
+): number {
   if (!Number.isFinite(value)) return 0;
-  return Math.min(PROVIDER_RATE_LIMIT_MAX_DELAY_MS, Math.max(0, Math.ceil(value)));
+  return Math.min(maxDelayMs, Math.max(0, Math.ceil(value)));
+}
+
+/**
+ * Read the server's requested delay in OpenCode's order of precedence:
+ * provider milliseconds, `Retry-After` seconds, then `Retry-After` HTTP-date.
+ * Returns undefined when no usable header is present.
+ */
+function serverRetryDelayMs(
+  headers: Readonly<Record<string, string>> | undefined,
+  maxDelayMs: number,
+  now: number,
+): number | undefined {
+  const retryAfterMs = headerValue(headers, "retry-after-ms");
+  if (retryAfterMs !== undefined && retryAfterMs.trim() !== "") {
+    const parsed = Number.parseFloat(retryAfterMs);
+    if (!Number.isNaN(parsed)) return boundedServerDelay(parsed, maxDelayMs);
+  }
+
+  const retryAfter = headerValue(headers, "retry-after");
+  if (retryAfter !== undefined && retryAfter.trim() !== "") {
+    const seconds = Number.parseFloat(retryAfter);
+    if (!Number.isNaN(seconds)) {
+      return boundedServerDelay(seconds * 1_000, maxDelayMs);
+    }
+    const dateMs = Date.parse(retryAfter) - now;
+    if (!Number.isNaN(dateMs)) {
+      return boundedServerDelay(dateMs, maxDelayMs);
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -106,23 +178,12 @@ export function providerRateLimitDelayMs(
   now = Date.now(),
   random = Math.random(),
 ): number {
-  const retryAfterMs = headerValue(headers, "retry-after-ms");
-  if (retryAfterMs !== undefined && retryAfterMs.trim() !== "") {
-    const parsed = Number.parseFloat(retryAfterMs);
-    if (!Number.isNaN(parsed)) return boundedServerDelay(parsed);
-  }
-
-  const retryAfter = headerValue(headers, "retry-after");
-  if (retryAfter !== undefined && retryAfter.trim() !== "") {
-    const seconds = Number.parseFloat(retryAfter);
-    if (!Number.isNaN(seconds)) {
-      return boundedServerDelay(seconds * 1_000);
-    }
-    const dateMs = Date.parse(retryAfter) - now;
-    if (!Number.isNaN(dateMs)) {
-      return boundedServerDelay(dateMs);
-    }
-  }
+  const serverDelay = serverRetryDelayMs(
+    headers,
+    PROVIDER_RATE_LIMIT_MAX_DELAY_MS,
+    now,
+  );
+  if (serverDelay !== undefined) return serverDelay;
 
   const safeAttempt = Math.max(1, Math.floor(attempt));
   const base = PROVIDER_RATE_LIMIT_INITIAL_DELAY_MS * 2 ** (safeAttempt - 1);
@@ -133,18 +194,34 @@ export function providerRateLimitDelayMs(
   );
 }
 
-/** The non-429 setup retry retains pi-ai's short exponential shape. */
+/**
+ * Plain doubling: 1s, 2s, 4s, 8s per attempt. A gateway that states its own
+ * `Retry-After` wins outright, so an upstream 502/503 burst clears by waiting
+ * as long as the server asked, capped so a bad header cannot hold the turn.
+ *
+ * `random` is accepted for signature compatibility with the rate-limit delay
+ * and is intentionally unused: a predictable schedule is easier to reason about
+ * for a single failed request, and the retries are not synchronized across
+ * sessions the way a rate-limit burst is.
+ */
 export function providerSetupRetryDelayMs(
   attempt: number,
-  random = Math.random(),
+  random?: number,
+  headers?: Readonly<Record<string, string>>,
+  now = Date.now(),
 ): number {
+  void random;
+  const serverDelay = serverRetryDelayMs(
+    headers,
+    PROVIDER_SETUP_MAX_RETRY_DELAY_MS,
+    now,
+  );
+  // A server-stated delay wins outright, including one shorter than the
+  // caller's floor: the gateway knows when it will be ready again.
+  if (serverDelay !== undefined) return serverDelay;
   const safeAttempt = Math.max(1, Math.floor(attempt));
   const base = PROVIDER_SETUP_RETRY_INITIAL_DELAY_MS * 2 ** (safeAttempt - 1);
-  const jitter = Math.min(1, Math.max(0, random));
-  return Math.min(
-    PROVIDER_SETUP_MAX_RETRY_DELAY_MS,
-    Math.ceil(base * (1 - PROVIDER_RATE_LIMIT_JITTER_FACTOR * jitter)),
-  );
+  return Math.min(PROVIDER_SETUP_MAX_RETRY_DELAY_MS, base);
 }
 
 export function delayWithAbort(
@@ -305,7 +382,11 @@ export function createProviderRetryStream(
               retry.attempt,
               controller.headers(),
             )
-          : providerSetupRetryDelayMs(retry.attempt);
+          : providerSetupRetryDelayMs(
+              retry.attempt,
+              undefined,
+              controller.headers(),
+            );
       controller.onRetry?.({
         error: retry.error,
         phase: "request",

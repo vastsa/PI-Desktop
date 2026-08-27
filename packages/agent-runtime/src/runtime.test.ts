@@ -10,6 +10,8 @@ import {
   type RuntimeProviderConfig,
 } from "./runtime.js";
 import type { ProjectInstructions } from "./project-instructions.js";
+import { classifyAgentError } from "./agent-errors.js";
+import { PROVIDER_TRANSIENT_MAX_RETRIES } from "./provider-retry.js";
 /**
  * The delegate loop itself is covered in `subagent.test.ts`; here only the
  * `Task` wiring around it is under test, so `SubagentRun` is replaced by a
@@ -2461,6 +2463,49 @@ describe("DesktopAgentRuntime assistant thinking events", () => {
     await runtime.dispose();
   });
 
+  it("shares one bounded transient budget across setup and stream phases", async () => {
+    const runtime = createRuntime({ onEvent: vi.fn() });
+    const claim = (runtime as any).claimProviderRetry.bind(runtime);
+    const gateway502 = classifyAgentError(
+      'OpenAI API error (502): {"type":"api_error","message":"Upstream API request failed."}',
+    );
+    expect(gateway502).toMatchObject({ code: "PROVIDER_ERROR", retriable: true });
+
+    // A gateway fault that moves between phases draws from one counter.
+    expect(claim(gateway502, "request")).toBe(1);
+    expect(claim(gateway502, "stream")).toBe(2);
+    expect(claim(gateway502, "request")).toBe(3);
+    expect(claim(gateway502, "stream")).toBe(4);
+    // Four retries after the initial attempt, then the failure is terminal.
+    expect(PROVIDER_TRANSIENT_MAX_RETRIES).toBe(4);
+    expect(claim(gateway502, "request")).toBeUndefined();
+
+    (runtime as any).resetRunRecoveryState();
+    // A mid-stream 502 is now retried; it used to be excluded outright.
+    expect(claim(gateway502, "stream")).toBe(1);
+
+    (runtime as any).resetRunRecoveryState();
+    // The 429 budget stays separate and is not drained by transient failures.
+    const rateLimited = classifyAgentError("429: too many requests");
+    expect(claim(gateway502, "request")).toBe(1);
+    expect(claim(rateLimited, "request")).toBe(1);
+    expect(claim(rateLimited, "stream")).toBe(2);
+
+    (runtime as any).resetRunRecoveryState();
+    // Permanent failures never claim a retry, whatever the phase.
+    for (const message of [
+      "401: invalid api key",
+      "404: unknown model",
+      "413: context length exceeded",
+      "400: invalid request body",
+    ]) {
+      expect(claim(classifyAgentError(message), "request")).toBeUndefined();
+      expect(claim(classifyAgentError(message), "stream")).toBeUndefined();
+    }
+
+    await runtime.dispose();
+  });
+
   it("retries a mid-stream rate-limit (429) failure in the same turn", async () => {
     const onEvent = vi.fn();
     const runtime = createRuntime({ onEvent });
@@ -2550,6 +2595,85 @@ describe("DesktopAgentRuntime assistant thinking events", () => {
         }),
       }),
     );
+
+    await runtime.dispose();
+  });
+
+  it("replays repeated mid-stream 502s in place and surfaces only the exhausted failure", async () => {
+    const onEvent = vi.fn();
+    const runtime = createRuntime({ onEvent });
+    const agent = (runtime as any).agent;
+    const handleAgentEvent = (runtime as any).handleAgentEvent.bind(runtime);
+    const gatewayMessage = (timestamp: number) => ({
+      role: "assistant",
+      content: [{ type: "text", text: "partial response" }],
+      api: "openai-completions",
+      provider: "local",
+      model: "local-model",
+      usage: {
+        input: 1,
+        output: 1,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 2,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "error",
+      errorMessage:
+        'OpenAI API error (502): {"type":"api_error","message":"Upstream API request failed."}',
+      timestamp,
+    });
+
+    agent.prompt = vi.fn(async () => {
+      agent.state.messages = [
+        { role: "user", content: "hello", timestamp: 1 },
+        gatewayMessage(2),
+      ];
+      await handleAgentEvent({ type: "message_start", message: gatewayMessage(2) });
+      await handleAgentEvent({ type: "message_end", message: gatewayMessage(2) });
+      await handleAgentEvent({ type: "turn_end" });
+      await handleAgentEvent({ type: "agent_end", messages: [] });
+    });
+    agent.waitForIdle = vi.fn(async () => undefined);
+    let continues = 0;
+    agent.continue = vi.fn(async () => {
+      continues += 1;
+      const failed = gatewayMessage(2 + continues);
+      agent.state.messages = [
+        { role: "user", content: "hello", timestamp: 1 },
+        failed,
+      ];
+      await handleAgentEvent({ type: "agent_start" });
+      await handleAgentEvent({ type: "turn_start" });
+      await handleAgentEvent({
+        type: "message_start",
+        message: { role: "assistant", content: [] },
+      });
+      await handleAgentEvent({ type: "message_end", message: failed });
+      await handleAgentEvent({ type: "turn_end" });
+      await handleAgentEvent({ type: "agent_end", messages: [] });
+    });
+
+    vi.useFakeTimers();
+    try {
+      const prompt = runtime.prompt("hello", "user-1");
+      await vi.runAllTimersAsync();
+      await prompt;
+    } finally {
+      vi.useRealTimers();
+    }
+
+    const events = onEvent.mock.calls.map(([envelope]) => (envelope as any).event);
+    // Four retries after the initial attempt, then the failure is surfaced.
+    expect(continues).toBe(PROVIDER_TRANSIENT_MAX_RETRIES);
+    expect(events.filter((event) => event.type === "message_start")).toHaveLength(1);
+    expect(events.filter((event) => event.type === "agent_end")).toHaveLength(1);
+    const errors = events.filter((event) => event.type === "error");
+    expect(errors).toHaveLength(1);
+    expect(errors[0].error).toMatchObject({
+      code: "PROVIDER_ERROR",
+      details: { retryAttempt: PROVIDER_TRANSIENT_MAX_RETRIES, phase: "stream" },
+    });
 
     await runtime.dispose();
   });

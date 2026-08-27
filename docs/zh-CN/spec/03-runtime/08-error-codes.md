@@ -69,12 +69,12 @@ stdio 与 Tokio 的动态阻塞池隔离，因此后一种情况
 | `TURN_NOT_FOUND` | 不 | 使 id 无效 |
 | `TURN_ABORTED` | 不 | 回合被 user/system 中止 |
 | `MODEL_NOT_CONFIGURED` | 不 | 未选择可用模型，或提供商因未知而拒绝所选模型 |
-| `PROVIDER_ERROR` | 是的 | 上游提供商故障 |
+| `PROVIDER_ERROR` | 是的 | 上游提供商故障；可重试的故障（5xx 网关）最多获得四次同回合重试，格式错误的 400/422 请求是终止的 |
 | `PROVIDER_UNAUTHORIZED` | 不 | bad/missing 提供商凭证 |
 | `PROVIDER_RATE_LIMITED` | 是的 | 供应商费率有限 |
 | `CONTEXT_TOO_LARGE` | 不 | 恢复后 prompt/context 仍超出安全模型预算、发生第二个提供程序溢出或禁用自动恢复 |
 | `CONTEXT_COMPACTION_FAILED` | 不 | 自动保留尾部恢复无法准备、持久或适合检查点，或手动检查点摘要生成/持久追加失败；受保护的下一个提供程序请求不会启动 |
-| `STREAM_FAILED` | 是的 | 提供程序流在完整响应之前终止、提前关闭或以其他方式结束；一次同回合重试可能会在终止事件之前发生 |
+| `STREAM_FAILED` | 是的 | 提供程序流在完整响应之前终止、提前关闭或以其他方式结束；最多四次同回合重试可能会在终止事件之前发生 |
 | `EMPTY_MODEL_RESPONSE` | 是的 | 模型在没有工具调用且没有可见文本的情况下结束了两次：一次是流式传输，一次是在自动重新运行后（规范 02-agent-runtime §5e） |
 
 ### 3. 3 工作空间/工具/权限
@@ -208,8 +208,18 @@ Node sidecar 将提供商 SDK 错误映射到：
 - `STREAM_FAILED`
 
 精确的 `terminated` 提供商消息和等效的过早流关闭
-消息映射到 `STREAM_FAILED`。响应后瞬态故障可能是
-运行时重试一次；第二次失败仍然是致命的。
+消息映射到 `STREAM_FAILED`。请求设置阶段或响应后的
+`PROVIDER_RATE_LIMITED` 使用共享的运行时预算：初始尝试之后最多五次重试，
+且设置和流式传输失败一起计数。非 429 瞬时故障——`STREAM_FAILED`、
+`NETWORK_ERROR`、`TIMEOUT` 以及可重试的 `PROVIDER_ERROR`（例如上游网关
+502/503/504）——共享它们自己的有界预算：初始尝试之后最多四次重试，同样
+跨请求设置和流式传输一起计数，并且与 429 预算相互独立。两个预算都是
+可中止的。429 路径在客户端退避之前先遵循 `retry-after-ms`、`retry-after`
+秒和 HTTP 日期标头，并将等待上限设为 30 秒；非 429 路径应用相同的优先级，
+上限为 8 秒，在其他情况下依次等待 1 秒、2 秒、4 秒，然后是 8 秒。只有失败
+的请求会被重放；会话及其工具状态保持不变。来自格式错误的 400/422 请求的
+不可重试 `PROVIDER_ERROR` 永远不会进入任何预算。预算耗尽后的失败仍然是
+致命的。
 
 ### 权限超时
 UI/host 超时在内部发出 `PERMISSION_TIMEOUT`，工具结果向代理显示为拒绝 (`TOOL_DENIED`)。
