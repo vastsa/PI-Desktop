@@ -2700,13 +2700,18 @@ Each scenario is documented in this format:
   scrolls to it. After a window resize, and after the composer grows under a
   multi-line draft, magnification still tracks the cursor against the dashes' new
   positions rather than their old ones. Returning to the session paints its newest turn
-  without a visible rebuild of the earlier history.
+  without a visible rebuild of the earlier history. Switching back and forth
+  repeatedly, the transcript text never jumps or scrolls up and down after the
+  first painted frame: the newest turn stays where it first appeared while the
+  earlier history mounts behind it. Scrolling up during the switch keeps the
+  chosen position instead of being pulled back to the bottom.
 - **Specs linked**: `04-ux/08-component-spec.md`
 - **Acceptance**: C (chat stream), Quality
 - **Milestone**: M5
 - **Status**: Unit-covered (`interaction-performance.test.mjs`
   `minimap hover magnification never measures geometry per dash`,
   `session switch bounds the first transcript commit instead of rebuilding it`,
+  `session-switch hydration expands without moving the transcript`,
   `minimap re-measures dash centers when the rail's own box changes`);
   UI scenario Draft
 

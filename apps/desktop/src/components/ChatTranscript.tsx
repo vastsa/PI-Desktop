@@ -2407,12 +2407,24 @@ export const ChatTranscript = memo(function ChatTranscript({
   const hydrationBounded =
     hydratedSessionRef.current !== sessionId &&
     allHistoryEntries.length > INITIAL_RENDER_BUDGET;
-
+  // The bounded commit and the expansion must show the transcript at the same
+  // place. A spacer sized from a per-entry guess cannot match the rows it stands
+  // in for, so the expansion moved the visible text by the estimate error - the
+  // reported page-flip jitter on a session switch. The spacer now only reserves
+  // enough height to make the bottom reachable, and the expansion re-pins the
+  // exact bottom in the same layout phase it commits in.
+  //
+  // The "needs re-anchoring" flag is derived from which session was bounded, not
+  // written during render: StrictMode double-renders and abandoned concurrent
+  // renders would otherwise leave a plain boolean ref set and re-bottom a
+  // transcript the user had scrolled up in.
+  const boundedSessionRef = useRef<string | undefined | null>(null);
   useEffect(() => {
     if (!hydrationBounded) {
       hydratedSessionRef.current = sessionId;
       return;
     }
+    boundedSessionRef.current = sessionId;
     const frame = requestAnimationFrame(() => {
       hydratedSessionRef.current = sessionId;
       setHydrationTick((tick) => tick + 1);
@@ -2425,6 +2437,26 @@ export const ChatTranscript = memo(function ChatTranscript({
   const historyEntries = hydrationBounded
     ? allHistoryEntries.slice(-INITIAL_RENDER_BUDGET)
     : allHistoryEntries;
+
+  // Runs in the same layout phase the expansion commits in, before the browser
+  // paints it, so mounting the remaining history cannot move the rows the user
+  // is already looking at. A user who scrolled up during the bounded frame keeps
+  // their position: only a still-pinned transcript is re-bottomed.
+  useLayoutEffect(() => {
+    if (hydrationBounded || boundedSessionRef.current !== sessionId) return;
+    boundedSessionRef.current = null;
+    if (!pinnedRef.current) return;
+    cancelFollowScroll();
+    scrollToBottom();
+    // `sessionId` is a dependency so a session that is left before its expansion
+    // lands drops the pending re-anchor instead of applying it to the next one.
+  }, [
+    cancelFollowScroll,
+    hydrationBounded,
+    hydrationTick,
+    scrollToBottom,
+    sessionId,
+  ]);
 
   const lastEntry = entries[entries.length - 1];
   const lastTurnPart =
@@ -2471,13 +2503,11 @@ export const ChatTranscript = memo(function ChatTranscript({
             {loadingOlder ? t("chat.loadingEarlierMessages") : null}
           </div>
           {hydrationBounded ? (
-            <div
-              className="transcript-hydration-spacer"
-              aria-hidden
-              style={{
-                minHeight: `${(allHistoryEntries.length - INITIAL_RENDER_BUDGET) * 60}px`,
-              }}
-            />
+            // One viewport of slack, not a per-entry estimate. The spacer exists
+            // so the bounded commit can still scroll to its bottom; sizing it
+            // from a guessed row height made the expansion correct that guess in
+            // view, which is exactly the jitter this avoids.
+            <div className="transcript-hydration-spacer" aria-hidden />
           ) : null}
           <TranscriptHistory entries={historyEntries} isRunning={isRunning} />
           {tailEntry ? (

@@ -176,16 +176,59 @@ test("session switch bounds the first transcript commit instead of rebuilding it
     /historyEntries = hydrationBounded\s*\?\s*allHistoryEntries\.slice\(-INITIAL_RENDER_BUDGET\)/,
   );
   // No layout effect may flip the gate; that is what caused the extra commits.
-  assert.doesNotMatch(hydration, /useLayoutEffect/);
+  // (A layout effect that only re-anchors scrolling after the expansion is fine;
+  // what must not come back is a layout effect deciding what to mount.)
+  const hydrationGate = hydration.slice(
+    0,
+    hydration.indexOf("const historyEntries ="),
+  );
+  assert.doesNotMatch(hydrationGate, /useLayoutEffect/);
   assert.doesNotMatch(transcript, /setHydrated\(/);
-  // The spacer holds scroll height for exactly the entries left unmounted.
+  // The spacer only makes the bounded bottom reachable.
   assert.match(
     transcript,
     /\{hydrationBounded \? \([\s\S]*?transcript-hydration-spacer/,
   );
+});
+
+test("session-switch hydration expands without moving the transcript", () => {
+  // A spacer sized per unmounted entry cannot match the rows it stands in for.
+  // Mounting the real history then corrected that guess on screen, which is the
+  // transcript jumping up and down like a page flip on every session switch.
+  assert.doesNotMatch(
+    transcript,
+    /INITIAL_RENDER_BUDGET\) \* \d+/,
+    "the hydration spacer must not derive its height from a per-entry estimate",
+  );
+  assert.doesNotMatch(
+    transcript,
+    /transcript-hydration-spacer[\s\S]{0,200}?minHeight/,
+    "spacer height belongs to CSS, not to an inline per-entry computation",
+  );
+
+  // Re-pinning must happen in the layout phase of the expansion commit, before
+  // paint - a passive effect leaves one visible frame at the wrong offset.
+  const rebottom = transcript.match(
+    /useLayoutEffect\(\(\) => \{\n\s*if \(hydrationBounded \|\| boundedSessionRef\.current !== sessionId\) return;([\s\S]*?)\n  \}, \[/,
+  )?.[1];
+  assert.ok(rebottom, "the hydration expansion must re-anchor in a layout effect");
+  assert.match(rebottom, /boundedSessionRef\.current = null/);
+  assert.match(rebottom, /scrollToBottom\(\)/);
+  // A user who scrolled up during the bounded frame keeps their position.
+  assert.match(rebottom, /if \(!pinnedRef\.current\) return/);
+
+  // The pending-re-anchor flag must not be written during render: StrictMode
+  // double-renders and abandoned concurrent renders would set it for a commit
+  // that never happens, re-bottoming a transcript the user had scrolled up in.
+  assert.doesNotMatch(
+    transcript,
+    /if \(hydrationBounded\) boundedSessionRef\.current/,
+    "the pending re-anchor must be recorded from an effect, not during render",
+  );
   assert.match(
     transcript,
-    /allHistoryEntries\.length - INITIAL_RENDER_BUDGET\) \* 60/,
+    /boundedSessionRef\.current = sessionId;\n\s*const frame = requestAnimationFrame/,
+    "the flag is armed in the same effect that queues the expansion",
   );
 });
 
