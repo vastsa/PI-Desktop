@@ -81,7 +81,8 @@ separate cancellation path.
 8. start pi turn with the resolved session configuration and effective
    thinking level; HTTP 429 setup and stream failures use the runtime-owned
    silent five-retry budget, while other transient transport/provider failures
-   keep their existing bounded setup or same-turn recovery (D127, D186, D245)
+   share a runtime-owned bounded four-retry budget across the setup and stream
+   phases (D127, D186, D245, D258)
 9. stream normalized answer and thinking events to UI
 10. on tool calls, delegate to Rust host bridge with the durable `sessionId`;
     host resolves the session-bound workspace root
@@ -127,8 +128,8 @@ server or calculated value is capped at 30 seconds. The runtime captures the
 failed response status and headers from fetch because pi-ai's ordinary response
 callback only covers an established response.
 
-Non-429 transient failures share their own bounded logical-turn budget of three
-retries after the initial attempt, for four provider attempts total. The budget
+Non-429 transient failures share their own bounded logical-turn budget of four
+retries after the initial attempt, for five provider attempts total. The budget
 is shared by request setup and stream delivery, so a fault that moves between
 phases cannot reset or multiply it, and it is separate from the 429 budget. It
 admits exactly `NETWORK_ERROR`, `TIMEOUT`, `STREAM_FAILED`, and retryable
@@ -141,11 +142,17 @@ stays terminal.
 The non-429 delay honors the server first: `retry-after-ms`, `retry-after`
 seconds, then `retry-after` HTTP-date, capped at 8 seconds. Captured headers are
 retained for every status that can carry a usable delay (429, 408, 409, and
-5xx), not for 429 alone. Without a usable header the delay keeps its exponential
-shape and grows per attempt, and the mid-stream replay keeps its 750 ms floor.
-The floor applies only to a calculated backoff: a server-stated delay wins
-outright, including one shorter than the floor, and the 8-second cap always wins
-over the floor.
+5xx), not for 429 alone. Without a usable header the wait is a plain doubling
+schedule of 1, 2, 4, then 8 seconds, identical in the request and stream phases
+so a fault that moves between them keeps one predictable rhythm. The schedule is
+deterministic — no jitter — because it paces one failed request rather than a
+synchronized rate-limit burst. A server-stated delay wins outright, including one
+shorter than the scheduled wait.
+
+Only the failed request is replayed. The session, its transcript, and its tool
+state are untouched: the failed assistant is removed from the next model context
+and the same visible message id is reused, so a retry never restarts the turn or
+re-runs a completed tool call.
 Each retry is silent and abortable. The main session, builtin subagents, and
 one-shot composer enhancement use the same codes, budget size, and precedence.
 
@@ -154,7 +161,7 @@ When the 429 budget is exhausted, the final assistant error and lifecycle
 `AppError.details` when available: `phase` (`request` or `stream`),
 `providerStatus`, `providerCode`, `providerWaitMs`, `streamMs`, and
 `retryAttempt`. For a persistent 429, `retryAttempt` is `5`; for a persistent
-non-429 transient failure it is `3`. Credentials and unrestricted response
+non-429 transient failure it is `4`. Credentials and unrestricted response
 bodies never enter the event or log.
 
 ### 5e. Silent-turn recovery

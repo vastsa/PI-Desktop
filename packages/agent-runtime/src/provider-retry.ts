@@ -19,16 +19,21 @@ export const PROVIDER_RATE_LIMIT_INITIAL_DELAY_MS = 2_000;
 export const PROVIDER_RATE_LIMIT_JITTER_FACTOR = 0.25;
 /** Keep a provider outage bounded even when it sends an unusably long delay. */
 export const PROVIDER_RATE_LIMIT_MAX_DELAY_MS = 30_000;
-/** Preserve pi-ai's short setup retry for non-rate-limit transient failures. */
-export const PROVIDER_SETUP_RETRY_INITIAL_DELAY_MS = 500;
+/**
+ * Non-rate-limit transient failures wait 1s, 2s, 4s, then 8s. The schedule is
+ * deliberately plain doubling so an upstream outage is given visibly more room
+ * on each attempt while the whole sequence stays under 15 seconds.
+ */
+export const PROVIDER_SETUP_RETRY_INITIAL_DELAY_MS = 1_000;
 export const PROVIDER_SETUP_MAX_RETRY_DELAY_MS = 8_000;
 /**
- * Retries allowed after the first non-rate-limit transient failure. Upstream
- * gateway faults (502/503/504, dropped sockets) routinely need more than one
- * attempt, so they share one bounded logical-turn budget the way rate limits
- * do instead of getting a single retry per phase.
+ * Retries allowed after the first non-rate-limit transient failure, for five
+ * provider attempts in total. Upstream gateway faults (502/503/504, dropped
+ * sockets) routinely need more than one attempt, so they share one bounded
+ * logical-turn budget the way rate limits do instead of getting a single retry
+ * per phase.
  */
-export const PROVIDER_TRANSIENT_MAX_RETRIES = 3;
+export const PROVIDER_TRANSIENT_MAX_RETRIES = 4;
 
 export type ProviderRetryPhase = "request" | "stream";
 
@@ -190,18 +195,22 @@ export function providerRateLimitDelayMs(
 }
 
 /**
- * The non-429 transient retry keeps pi-ai's short exponential shape, but a
- * gateway that states its own `Retry-After` wins: an upstream 502/503 burst
- * clears by waiting as long as the server asked, capped so a bad header cannot
- * hold the turn.
+ * Plain doubling: 1s, 2s, 4s, 8s per attempt. A gateway that states its own
+ * `Retry-After` wins outright, so an upstream 502/503 burst clears by waiting
+ * as long as the server asked, capped so a bad header cannot hold the turn.
+ *
+ * `random` is accepted for signature compatibility with the rate-limit delay
+ * and is intentionally unused: a predictable schedule is easier to reason about
+ * for a single failed request, and the retries are not synchronized across
+ * sessions the way a rate-limit burst is.
  */
 export function providerSetupRetryDelayMs(
   attempt: number,
-  random = Math.random(),
+  random?: number,
   headers?: Readonly<Record<string, string>>,
   now = Date.now(),
-  minDelayMs = 0,
 ): number {
+  void random;
   const serverDelay = serverRetryDelayMs(
     headers,
     PROVIDER_SETUP_MAX_RETRY_DELAY_MS,
@@ -212,14 +221,7 @@ export function providerSetupRetryDelayMs(
   if (serverDelay !== undefined) return serverDelay;
   const safeAttempt = Math.max(1, Math.floor(attempt));
   const base = PROVIDER_SETUP_RETRY_INITIAL_DELAY_MS * 2 ** (safeAttempt - 1);
-  const jitter = Math.min(1, Math.max(0, random));
-  return Math.min(
-    PROVIDER_SETUP_MAX_RETRY_DELAY_MS,
-    Math.max(
-      minDelayMs,
-      Math.ceil(base * (1 - PROVIDER_RATE_LIMIT_JITTER_FACTOR * jitter)),
-    ),
-  );
+  return Math.min(PROVIDER_SETUP_MAX_RETRY_DELAY_MS, base);
 }
 
 export function delayWithAbort(

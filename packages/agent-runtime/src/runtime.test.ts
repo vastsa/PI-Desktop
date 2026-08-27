@@ -11,6 +11,7 @@ import {
 } from "./runtime.js";
 import type { ProjectInstructions } from "./project-instructions.js";
 import { classifyAgentError } from "./agent-errors.js";
+import { PROVIDER_TRANSIENT_MAX_RETRIES } from "./provider-retry.js";
 /**
  * The delegate loop itself is covered in `subagent.test.ts`; here only the
  * `Task` wiring around it is under test, so `SubagentRun` is replaced by a
@@ -2474,7 +2475,10 @@ describe("DesktopAgentRuntime assistant thinking events", () => {
     expect(claim(gateway502, "request")).toBe(1);
     expect(claim(gateway502, "stream")).toBe(2);
     expect(claim(gateway502, "request")).toBe(3);
-    expect(claim(gateway502, "stream")).toBeUndefined();
+    expect(claim(gateway502, "stream")).toBe(4);
+    // Four retries after the initial attempt, then the failure is terminal.
+    expect(PROVIDER_TRANSIENT_MAX_RETRIES).toBe(4);
+    expect(claim(gateway502, "request")).toBeUndefined();
 
     (runtime as any).resetRunRecoveryState();
     // A mid-stream 502 is now retried; it used to be excluded outright.
@@ -2660,15 +2664,15 @@ describe("DesktopAgentRuntime assistant thinking events", () => {
     }
 
     const events = onEvent.mock.calls.map(([envelope]) => (envelope as any).event);
-    // Three retries after the initial attempt, then the failure is surfaced.
-    expect(continues).toBe(3);
+    // Four retries after the initial attempt, then the failure is surfaced.
+    expect(continues).toBe(PROVIDER_TRANSIENT_MAX_RETRIES);
     expect(events.filter((event) => event.type === "message_start")).toHaveLength(1);
     expect(events.filter((event) => event.type === "agent_end")).toHaveLength(1);
     const errors = events.filter((event) => event.type === "error");
     expect(errors).toHaveLength(1);
     expect(errors[0].error).toMatchObject({
       code: "PROVIDER_ERROR",
-      details: { retryAttempt: 3, phase: "stream" },
+      details: { retryAttempt: PROVIDER_TRANSIENT_MAX_RETRIES, phase: "stream" },
     });
 
     await runtime.dispose();

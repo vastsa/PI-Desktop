@@ -197,7 +197,6 @@ function runtimeAttachmentFromMessage(
 // pi-ai's adapter retry is disabled here so setup and mid-stream 429s share
 // one runtime-owned budget instead of multiplying nested retry loops.
 const PROVIDER_REQUEST_MAX_RETRIES = 0;
-const PROVIDER_STREAM_RETRY_BACKOFF_MS = 750;
 const MAX_MUTATION_RECOVERY_FAILURES = 2;
 const BASH_PATCH_FAILURE_KEY = "__bash_patch_command__";
 /**
@@ -3425,16 +3424,13 @@ Delegation rules:
               retryAttempt || this.providerRateLimitRetryAttempt,
               this.providerRetryHeaders,
             )
-          : // Later attempts back off further so a flapping upstream is not
-            // hammered at a fixed interval. The mid-stream floor only applies
-            // to the calculated backoff; a server-stated delay wins outright,
-            // even a shorter one.
+          : // The same 1s/2s/4s/8s schedule as a setup retry, so a fault that
+            // moves between phases keeps one predictable rhythm. A
+            // server-stated delay still wins outright.
             providerSetupRetryDelayMs(
               retryAttempt,
               undefined,
               this.providerRetryHeaders,
-              undefined,
-              PROVIDER_STREAM_RETRY_BACKOFF_MS,
             );
       await delayWithAbort(delayMs, this.providerRetryAbort.signal);
       if (this.disposed) throw new Error("runtime disposed");

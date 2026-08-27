@@ -66,12 +66,12 @@ does not turn temporary thread pressure into a host process exit.
 | `TURN_NOT_FOUND` | no | turn id invalid |
 | `TURN_ABORTED` | no | turn aborted by user/system |
 | `MODEL_NOT_CONFIGURED` | no | no usable model selected, or provider rejects the selected model as unknown |
-| `PROVIDER_ERROR` | yes | upstream provider failure; a retryable one (5xx gateway) gets up to three same-turn retries, a malformed 400/422 request is terminal |
+| `PROVIDER_ERROR` | yes | upstream provider failure; a retryable one (5xx gateway) gets up to four same-turn retries, a malformed 400/422 request is terminal |
 | `PROVIDER_UNAUTHORIZED` | no | bad/missing provider credentials |
 | `PROVIDER_RATE_LIMITED` | yes | provider rate limited; runtime silently retries up to five times across setup/stream before the terminal event |
 | `CONTEXT_TOO_LARGE` | no | prompt/context still exceeds the safe model budget after recovery, the second provider overflow occurred, or automatic recovery is disabled |
 | `CONTEXT_COMPACTION_FAILED` | no | automatic retained-tail recovery could not prepare, persist, or fit a checkpoint, or manual checkpoint summary generation / durable append failed; the guarded next provider request does not start |
-| `STREAM_FAILED` | yes | provider stream was terminated, closed prematurely, or otherwise ended before a complete response; up to three same-turn retries may precede the terminal event |
+| `STREAM_FAILED` | yes | provider stream was terminated, closed prematurely, or otherwise ended before a complete response; up to four same-turn retries may precede the terminal event |
 | `EMPTY_MODEL_RESPONSE` | yes | the model ended its turn with no tool call and no visible text twice: once as streamed, once after the automatic re-run (spec 02-agent-runtime §5e) |
 | `PROMPT_ENHANCEMENT_EMPTY` | no | the one-shot enhancement model returned no text |
 | `SUBAGENT_IDLE_TIMEOUT` | no | a delegate produced no lifecycle or tool activity for its configured idle window |
@@ -216,12 +216,14 @@ messages map to `STREAM_FAILED`. A request-setup or post-response
 initial attempt, with setup and stream failures counting together. Non-429
 transient failures — `STREAM_FAILED`, `NETWORK_ERROR`, `TIMEOUT`, and retryable
 `PROVIDER_ERROR` such as an upstream gateway 502/503/504 — share their own
-bounded budget of three retries after the initial attempt, also counted together
+bounded budget of four retries after the initial attempt, also counted together
 across setup and stream, and separate from the 429 budget. Both budgets are
 abortable. The 429 path honors `retry-after-ms`, `retry-after` seconds, and
 HTTP-date headers before client backoff and caps a wait at 30 seconds; the
-non-429 path applies the same precedence with an 8-second cap. A non-retryable
-`PROVIDER_ERROR` from a malformed 400/422 request never enters either budget.
+non-429 path applies the same precedence with an 8-second cap and otherwise
+waits 1, 2, 4, then 8 seconds. Only the failed request is replayed; the session
+and its tool state are untouched. A non-retryable `PROVIDER_ERROR` from a
+malformed 400/422 request never enters either budget.
 
 ### Permission timeout
 UI/host timeout emits `PERMISSION_TIMEOUT` internally, tool result presented as denied (`TOOL_DENIED`) to agent.

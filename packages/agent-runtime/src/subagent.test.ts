@@ -8,6 +8,7 @@ import {
 } from "./subagent.js";
 import type { RuntimeProviderConfig } from "./provider-binding.js";
 import { classifyAgentError } from "./agent-errors.js";
+import { PROVIDER_TRANSIENT_MAX_RETRIES } from "./provider-retry.js";
 
 const provider: RuntimeProviderConfig = {
   id: "local",
@@ -464,7 +465,9 @@ describe("SubagentRun watchdogs", () => {
     expect(claim(gateway502, "stream")).toBe(1);
     expect(claim(gateway502, "request")).toBe(2);
     expect(claim(gateway502, "stream")).toBe(3);
-    expect(claim(gateway502, "request")).toBeUndefined();
+    expect(claim(gateway502, "request")).toBe(4);
+    expect(PROVIDER_TRANSIENT_MAX_RETRIES).toBe(4);
+    expect(claim(gateway502, "stream")).toBeUndefined();
 
     const { run: fresh } = createRun();
     const freshClaim = (error: unknown, phase: string) =>

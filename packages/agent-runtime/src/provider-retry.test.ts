@@ -10,6 +10,7 @@ import {
   createProviderRetryStream,
   delayWithAbort,
   isTransientProviderRetryCode,
+  PROVIDER_TRANSIENT_MAX_RETRIES,
   providerRateLimitDelayMs,
   providerSetupRetryDelayMs,
 } from "./provider-retry.js";
@@ -366,10 +367,20 @@ describe("bounded transient provider retry", () => {
     expect(carriesRetryDelayHeaders(undefined)).toBe(false);
   });
 
-  it("prefers a gateway Retry-After over exponential setup backoff", () => {
-    expect(providerSetupRetryDelayMs(1, 0)).toBe(500);
-    expect(providerSetupRetryDelayMs(2, 0)).toBe(1_000);
-    expect(providerSetupRetryDelayMs(3, 0)).toBe(2_000);
+  it("waits 1s, 2s, 4s, then 8s across the four transient retries", () => {
+    expect(PROVIDER_TRANSIENT_MAX_RETRIES).toBe(4);
+    expect(providerSetupRetryDelayMs(1)).toBe(1_000);
+    expect(providerSetupRetryDelayMs(2)).toBe(2_000);
+    expect(providerSetupRetryDelayMs(3)).toBe(4_000);
+    expect(providerSetupRetryDelayMs(4)).toBe(8_000);
+    // The schedule is deterministic: the unused random argument cannot shift it.
+    expect(providerSetupRetryDelayMs(2, 0)).toBe(2_000);
+    expect(providerSetupRetryDelayMs(2, 1)).toBe(2_000);
+    // Beyond the budget the cap holds.
+    expect(providerSetupRetryDelayMs(20)).toBe(8_000);
+  });
+
+  it("prefers a gateway Retry-After over the fixed backoff schedule", () => {
     expect(providerSetupRetryDelayMs(1, 0, { "retry-after-ms": "1250" })).toBe(1250);
     expect(providerSetupRetryDelayMs(1, 0, { "retry-after": "2" })).toBe(2_000);
     expect(
@@ -377,23 +388,14 @@ describe("bounded transient provider retry", () => {
     ).toBe(5_000);
     // A hostile or stale header cannot hold the turn past the non-429 cap.
     expect(providerSetupRetryDelayMs(1, 0, { "retry-after": "600" })).toBe(8_000);
-    expect(providerSetupRetryDelayMs(20, 0)).toBe(8_000);
   });
 
-  it("applies the mid-stream floor only to calculated backoff", () => {
-    const floor = 750;
-    // Without a header the floor raises the short first-attempt backoff.
-    expect(providerSetupRetryDelayMs(1, 0, undefined, undefined, floor)).toBe(750);
-    // Later attempts already exceed the floor and keep their own value.
-    expect(providerSetupRetryDelayMs(2, 0, undefined, undefined, floor)).toBe(1_000);
-    // A server that asks for a shorter wait wins over the floor.
-    expect(
-      providerSetupRetryDelayMs(1, 0, { "retry-after-ms": "100" }, undefined, floor),
-    ).toBe(100);
-    // The floor never overrides the non-429 cap either.
-    expect(
-      providerSetupRetryDelayMs(1, 0, undefined, undefined, 99_000),
-    ).toBe(8_000);
+  it("lets a server ask for a shorter wait than the schedule", () => {
+    // A gateway that says it is ready sooner is believed, and a stale or
+    // hostile value still cannot exceed the cap.
+    expect(providerSetupRetryDelayMs(1, 0, { "retry-after-ms": "100" })).toBe(100);
+    expect(providerSetupRetryDelayMs(4, 0, { "retry-after-ms": "250" })).toBe(250);
+    expect(providerSetupRetryDelayMs(1, 0, { "retry-after": "600" })).toBe(8_000);
   });
 
   it("retries repeated pre-stream 502s until the shared budget is spent", async () => {
@@ -406,7 +408,7 @@ describe("bounded transient provider retry", () => {
       {},
       () => {
         attempts += 1;
-        return attempts < 4
+        return attempts <= PROVIDER_TRANSIENT_MAX_RETRIES
           ? failedStream({
               errorMessage:
                 'OpenAI API error (502): {"type":"api_error","message":"Upstream API request failed."}',
@@ -416,7 +418,7 @@ describe("bounded transient provider retry", () => {
       {
         claim: (error) => {
           if (!isTransientProviderRetryCode(error.code)) return undefined;
-          if (claims.length >= 3) return undefined;
+          if (claims.length >= PROVIDER_TRANSIENT_MAX_RETRIES) return undefined;
           const attempt = claims.length + 1;
           claims.push({ code: error.code, attempt });
           return attempt;
@@ -432,11 +434,11 @@ describe("bounded transient provider retry", () => {
     const events: string[] = [];
     for await (const event of stream) events.push(event.type);
 
-    // Three retries after the initial attempt, so four provider attempts.
-    expect(attempts).toBe(4);
-    expect(claims.map((claim) => claim.attempt)).toEqual([1, 2, 3]);
+    // Four retries after the initial attempt, so five provider attempts.
+    expect(attempts).toBe(5);
+    expect(claims.map((claim) => claim.attempt)).toEqual([1, 2, 3, 4]);
     expect(claims.every((claim) => claim.code === "PROVIDER_ERROR")).toBe(true);
-    expect(delays).toHaveLength(3);
+    expect(delays).toEqual([1_000, 2_000, 4_000, 8_000]);
     // No intermediate error event reaches the consumer.
     expect(events).toEqual(["start", "done"]);
     expect((await stream.result()).stopReason).toBe("stop");
@@ -456,7 +458,8 @@ describe("bounded transient provider retry", () => {
         });
       },
       {
-        claim: () => (attempts <= 3 ? attempts : undefined),
+        claim: () =>
+          attempts <= PROVIDER_TRANSIENT_MAX_RETRIES ? attempts : undefined,
         headers: () => undefined,
         status: () => 502,
         sleep: async () => undefined,
@@ -466,7 +469,7 @@ describe("bounded transient provider retry", () => {
     const events: string[] = [];
     for await (const event of stream) events.push(event.type);
 
-    expect(attempts).toBe(4);
+    expect(attempts).toBe(5);
     expect(events).toEqual(["error"]);
     const result = await stream.result();
     expect(result.stopReason).toBe("error");

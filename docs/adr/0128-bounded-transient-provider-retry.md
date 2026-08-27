@@ -31,7 +31,7 @@ an explicit `Retry-After` were retried on a fixed 750 ms mid-stream timer or a
 ## Decision
 
 1. Non-429 transient provider failures share one bounded logical-turn budget of
-   three retries after the initial attempt, for four provider attempts total.
+   four retries after the initial attempt, for five provider attempts total.
    The budget is shared by request setup and stream delivery, so a fault that
    moves between phases cannot reset or multiply it.
 2. The budget admits exactly `NETWORK_ERROR`, `TIMEOUT`, `STREAM_FAILED`, and
@@ -42,23 +42,29 @@ an explicit `Retry-After` were retried on a fixed 750 ms mid-stream timer or a
    then `retry-after` HTTP-date take precedence over client backoff, capped at
    8 seconds for the non-429 path. Captured response headers are retained for
    any status that can carry a usable delay (429, 408, 409, and 5xx) instead of
-   429 alone. Without a usable header the delay keeps its exponential shape and
-   grows per attempt; the mid-stream replay keeps its 750 ms floor.
+   429 alone. Without a usable header the wait is a plain doubling schedule of
+   1, 2, 4, then 8 seconds, identical in both phases and deterministic (no
+   jitter), because it paces one failed request rather than a synchronized
+   rate-limit burst.
 4. The main session, builtin subagents, and one-shot composer enhancement use
    the same codes, the same budget size, and the same delay precedence.
 5. Retries stay silent and abortable, and 429 keeps its own separate five-retry
    budget from ADR 0091. The two budgets do not draw from each other.
 6. Exhaustion emits one terminal assistant error and one lifecycle error, with
-   `retryAttempt: 3` for a persistent non-429 transient failure.
+   `retryAttempt: 4` for a persistent non-429 transient failure.
+7. Only the failed request is replayed. The session, transcript, and tool state
+   are untouched: the failed assistant leaves the next model context and its
+   visible message id is reused, so a retry never restarts the turn or re-runs a
+   completed tool call.
 
 ## Consequences
 
 - A short upstream 502/503/504 burst recovers without an error card, whether it
   lands before headers or mid-stream.
-- A persistent upstream outage stays bounded and visible: four attempts, at most
-  three backoffs, and an individual wait capped at 8 seconds.
-- Worst-case latency before a terminal non-429 error grows, bounded by three
-  waits instead of one.
+- A persistent upstream outage stays bounded and visible: five attempts, at most
+  four backoffs totalling 15 seconds, and an individual wait capped at 8 seconds.
+- Worst-case latency before a terminal non-429 error grows, bounded by four
+  waits (15 seconds of backoff) instead of one.
 - Gateways that state their own pacing are respected, while malformed or
   excessive header values cannot hold a turn.
 - The three provider entry points can no longer drift into different transient
