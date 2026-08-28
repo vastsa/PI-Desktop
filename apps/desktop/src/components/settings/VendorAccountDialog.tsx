@@ -9,6 +9,7 @@ import { ModelConfigCard } from "./ModelConfigCard";
 import { ModelMultiSelect } from "./ModelMultiSelect";
 import {
   fallbackModelDraft,
+  isCatalogModel,
   modelDraftFromInfo,
   normalizeApiStyle,
   type ProviderModelDraft,
@@ -80,8 +81,10 @@ export function VendorAccountDialog({
   );
   const customIds = useMemo(
     () => Array.from(new Set([
-      ...customModelIds.filter((id) => discoveredById.get(id)?.source !== "bundled"),
-      ...form.models.filter((model) => model.source !== "catalog" && discoveredById.get(model.id)?.source !== "bundled").map((model) => model.id),
+      ...customModelIds.filter((id) => !isCatalogModel(discoveredById.get(id))),
+      ...form.models
+        .filter((model) => model.source !== "catalog" && !isCatalogModel(discoveredById.get(model.id)))
+        .map((model) => model.id),
     ])),
     [customModelIds, discoveredById, form.models],
   );
@@ -154,7 +157,14 @@ export function VendorAccountDialog({
         </div>
         {form.models.length > 0 ? <section className="provider-model-config-section" aria-labelledby="vendor-model-config-title">
           <div className="provider-model-config-heading"><h4 id="vendor-model-config-title">{t("settings.modelConfigurations")}</h4><span className="provider-model-config-count">{form.models.length}</span></div>
-          <div className="provider-model-card-list">{form.models.map((binding, index) => <ModelConfigCard key={binding.id} binding={binding} metadata={discoveredById.get(binding.id)} initiallyExpanded={index === 0} source={discoveredById.get(binding.id)?.source === "bundled" || binding.source === "catalog" ? "catalog" : "custom"} sourceLabel={t("settings.builtInCatalog")} customSourceLabel={t("settings.customModel")} visionLabel={t("settings.vision")} textOnlyLabel={t("settings.textOnly")} reasoningLabel={t("settings.reasoning")} contextWindowLabel={t("settings.contextWindow")} contextWindowShortLabel={t("settings.contextWindowShort")} maxOutputLabel={t("settings.maxOutput")} maxOutputShortLabel={t("settings.maxOutputShort")} supportedThinkingLabel={t("settings.supportedThinkingLevels")} defaultThinkingLabel={t("settings.defaultThinkingLevel")} disabledThinkingLabel={t("settings.notSupported")} disabledThinkingHint={t("settings.thinkingDisabledHint")} levelLabels={levelLabels} removeLabel={t("settings.removeModel")} onChange={(update) => updateModel(binding.id, update)} onRemove={() => toggleModel(modelInfoForDraft(binding, discovered))} />)}</div>
+          <div className="provider-model-card-list">{form.models.map((binding, index) => {
+            const metadata = discoveredById.get(binding.id);
+            const source = isCatalogModel(metadata) || binding.source === "catalog" ? "catalog" : "custom";
+            const sourceLabel = metadata?.catalogSource === "models.dev"
+              ? t("settings.modelsDevCatalog")
+              : t("settings.builtInCatalog");
+            return <ModelConfigCard key={binding.id} binding={binding} metadata={metadata} initiallyExpanded={index === 0} source={source} sourceLabel={sourceLabel} customSourceLabel={t("settings.customModel")} visionLabel={t("settings.vision")} textOnlyLabel={t("settings.textOnly")} reasoningLabel={t("settings.reasoning")} contextWindowLabel={t("settings.contextWindow")} contextWindowShortLabel={t("settings.contextWindowShort")} maxOutputLabel={t("settings.maxOutput")} maxOutputShortLabel={t("settings.maxOutputShort")} supportedThinkingLabel={t("settings.supportedThinkingLevels")} defaultThinkingLabel={t("settings.defaultThinkingLevel")} disabledThinkingLabel={t("settings.notSupported")} disabledThinkingHint={t("settings.thinkingDisabledHint")} levelLabels={levelLabels} removeLabel={t("settings.removeModel")} onChange={(update) => updateModel(binding.id, update)} onRemove={() => toggleModel(modelInfoForDraft(binding, discovered))} />;
+          })}</div>
         </section> : null}
         <div className="provider-dialog-actions"><Button variant="ghost" disabled={saving} onClick={onClose}>{t("settings.cancel")}</Button><Button variant="primary" disabled={saving || !form.name.trim() || !form.modelId.trim() || form.models.length === 0} onClick={() => onSave(form)}>{saving ? t("settings.saving") : t("settings.saveVendorAccount")}</Button></div>
       </div>

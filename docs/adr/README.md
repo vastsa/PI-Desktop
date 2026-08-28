@@ -147,3 +147,4 @@ Each ADR includes:
 | 0130 | Bounded mounted transcript window | Accepted |
 | 0131 | Spill large composer text pastes into session scratch | Accepted |
 | 0132 | Attribute cross-display window moves to the user | Accepted |
+| 0133 | Use models.dev as the primary model catalog with pi-ai fallback | Accepted |

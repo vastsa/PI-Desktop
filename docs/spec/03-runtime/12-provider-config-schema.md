@@ -104,9 +104,10 @@ Tables (canonical DDL in [04-data-storage](04-data-storage.md) §4.3–4.4, §4.
 `compatibility.supportsReasoning` and
 `compatibility.supportedThinkingLevels` remain readable for stored-record and
 older-client compatibility, but Electron main ignores them during runtime
-model resolution. The public provider shape is enriched from the exact pi-ai
-model record instead. Unknown free-form models expose `supportsReasoning=false`
-and `supportedThinkingLevels=["off"]`. The raw secret and internal compatibility
+model resolution. The public provider shape is enriched from the matching
+models.dev model first and the exact pi-ai model as fallback. Unknown free-form
+models expose `supportsReasoning=false` and
+`supportedThinkingLevels=["off"]`. The raw secret and internal compatibility
 JSON remain hidden.
 
 `authKind: "oauth"` marks a vendor-account row (ADR 0095, D237, D240): the credential
@@ -182,7 +183,8 @@ Vendor accounts), not by the custom-provider dialog. The list is derived at
 runtime from `models.getProviders().filter(p => p.auth.oauth)`, so it tracks
 pi-ai rather than this table; every login creates a separate row, and
 `baseUrl`, `apiStyle`, and `defaultModelId` are filled in from that account's
-own catalog after login.
+own catalog after login. Matching models.dev records provide initial binding
+metadata, with the authenticated pi-ai record filling any missing fields.
 
 | vendorKey | subscription | typical apiStyle | login shape |
 |---|---|---|---|
@@ -205,6 +207,8 @@ type ModelCatalogCacheRecord = {
   capabilities: string[]
   contextWindow?: number
   source: "bundled" | "discovered" | "user"
+  /** Renderer annotation: which known catalog supplied metadata. */
+  catalogSource?: "models.dev" | "pi-ai"
   updatedAt: string
   raw?: unknown
 }
@@ -291,16 +295,17 @@ The canonical DDL lives in [04-data-storage](04-data-storage.md) (D086). Summary
 ### `providers.listModels`
 - renderer IPC in: `{ providerId, source?: "cache"|"refresh" }`; `cache`
   returns the durable catalog without provider network access, while `refresh`
-  runs discovery in Electron main
+  loads models.dev first and then runs pi-ai/provider fallback in Electron main
 - host RPC in: `{ providerId?: string }`; reads only the Rust-owned `models`
   table
 - for an `authKind: "oauth"` row Electron main reads the authenticated catalog
   (`models.getAvailable`, which applies the vendor's own `filterModels`, so a
   Copilot account lists what its subscription includes) instead of calling
   `/models`; each returned model carries the apiStyle its wire API implies
-- out: `{ models: ModelCatalogItem[] }`; each model carries pi-resolved
-  `reasoning` capability and `supportedThinkingLevels`. Cached capability tags
-  and legacy provider fields cannot override the pi model record.
+- out: `{ models: ModelCatalogItem[] }`; each model carries metadata from
+  models.dev when matched, or the pi-ai fallback, including `reasoning`,
+  `supportedThinkingLevels`, limits, and capability tags. Cached claims and
+  legacy provider fields cannot override either catalog record.
 
 ### `providers.cacheModels` (internal host RPC)
 - in: `{ providerId, models: DiscoveredModelInput[] }`

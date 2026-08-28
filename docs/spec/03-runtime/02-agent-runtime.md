@@ -66,9 +66,10 @@ separate cancellation path.
 1. load the durable session and reject a missing session
 2. resolve that session's mode/provider/model and project binding (app/current
    workspace defaults are legacy fallback only)
-3. resolve the complete pi-ai model record for that exact provider/model and
-   clamp the durable session thinking level to pi's nearest supported value;
-   an unknown free-form id uses the explicit generic fallback
+3. resolve models.dev metadata for the exact provider/API URL and model first,
+   then fall back to the complete pi-ai model record and clamp the durable
+   session thinking level to that catalog's nearest supported value; an ID
+   unknown to both catalogs uses the explicit generic fallback
 4. validate model/secret availability
 5. reject if session busy; the renderer queues a user-facing next prompt and
    does not call this path until the current session reaches `agent_end`
@@ -635,10 +636,10 @@ MVP UI always includes at least:
 
 Runtime responsibilities:
 - resolve `(providerId, modelId)`
-- resolve and serialize the complete pi-ai model record, or label the model as
-  an unknown generic fallback
-- resolve model reasoning capability and effective thinking level from that
-  same record
+- resolve models.dev metadata first, then serialize the complete pi-ai fallback
+  record, or label the model as an unknown generic fallback
+- resolve model reasoning capability and effective thinking level from the
+  selected catalog record
 - fetch secrets via host (never cache raw secrets in logs)
 - translate vendor failures into provider AppError codes
 - stream tokens/events to orchestrator

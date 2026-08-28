@@ -19,7 +19,7 @@ export type ModelCapabilities = {
   supportedThinkingLevels: ThinkingLevel[];
 };
 
-/** Whether the resolved pi-ai model accepts image input blocks. */
+/** Whether the pi-ai fallback model accepts image input blocks. */
 export function resolveVisionCapability(input: ModelCapabilityInput): boolean {
   return findCatalogModel(input)?.input.includes("image") ?? false;
 }
@@ -106,6 +106,42 @@ function isOfficialCatalogProvider(provider: string): boolean {
 type CatalogModel = ReturnType<
   ReturnType<typeof builtinModels>["getModels"]
 >[number];
+
+export type PiCatalogModelSummary = {
+  modelId: string;
+  displayName: string;
+};
+
+/**
+ * List the pi-ai models for a known native provider. This is intentionally a
+ * fallback catalog: models.dev is preferred by Electron main, while unknown
+ * custom providers continue to use their own endpoint discovery.
+ */
+const PI_PROVIDER_ALIASES: Record<string, string[]> = {
+  togetherai: ["together"],
+  "fireworks-ai": ["fireworks"],
+  "kimi-for-coding": ["kimi-coding"],
+  azure: ["azure-openai-responses"],
+  vercel: ["vercel-ai-gateway"],
+};
+
+export function listPiCatalogModels(input: {
+  vendorKey?: string;
+  apiStyle?: string;
+}): PiCatalogModelSummary[] {
+  const vendorKey = input.vendorKey?.trim().toLowerCase();
+  if (!vendorKey || vendorKey === "custom") return [];
+  const providerKeys = new Set([vendorKey, ...(PI_PROVIDER_ALIASES[vendorKey] ?? [])]);
+  const api = wireApiForStyle(input.apiStyle);
+  return getBuiltinCatalog()
+    .getModels()
+    .filter(
+      (model) =>
+        providerKeys.has(model.provider.trim().toLowerCase()) && model.api === api,
+    )
+    .map((model) => ({ modelId: model.id, displayName: model.name || model.id }))
+    .sort((a, b) => a.modelId.localeCompare(b.modelId));
+}
 
 /** Prefer the catalog entry carrying the richest model-specific semantics. */
 function catalogInfoScore(model: CatalogModel): number {

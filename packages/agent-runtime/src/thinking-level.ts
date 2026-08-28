@@ -5,9 +5,9 @@ export type ThinkingCapabilitySet = {
   supportedThinkingLevels: readonly ThinkingLevel[];
 };
 
-/** Serializable pi-ai model metadata resolved in Electron main. */
+/** Serializable model metadata resolved in Electron main from models.dev or pi-ai. */
 export type PiModelConfig = {
-  source: "pi";
+  source: "pi" | "models.dev";
   name: string;
   baseUrl: string;
   reasoning: boolean;

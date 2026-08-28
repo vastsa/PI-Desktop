@@ -125,6 +125,11 @@ export type VendorOAuthDeps = {
   ) => void;
   /** Test seam: build the pi-ai collection without touching the real flows. */
   createModels?: (credentials: CredentialStore) => MutableModels;
+  /** Optional primary-catalog overrides for a newly signed-in model binding. */
+  modelBindingFor?: (input: {
+    vendorKey: string;
+    option: OAuthModelOption;
+  }) => Promise<Partial<ModelBinding> | undefined>;
   newId?: () => string;
 };
 
@@ -448,15 +453,20 @@ export class VendorOAuth {
       const binding = await this.bindingFor(session.providerId, option.modelId).catch(
         () => undefined,
       );
+      const catalogBinding = await this.deps.modelBindingFor?.({
+        vendorKey: session.vendorId,
+        option,
+      }).catch(() => undefined);
       const levels: ThinkingLevel[] = [
-        ...(binding?.supportedThinkingLevels ?? ["off"]),
+        ...(catalogBinding?.thinkingLevels ?? binding?.supportedThinkingLevels ?? ["off"]),
       ];
       modelBindings.push({
         id: option.modelId,
-        contextWindow: binding?.modelConfig.contextWindow || 128_000,
-        maxTokens: binding?.modelConfig.maxTokens || 8_192,
+        contextWindow: catalogBinding?.contextWindow ?? binding?.modelConfig.contextWindow ?? 128_000,
+        maxTokens: catalogBinding?.maxTokens ?? binding?.modelConfig.maxTokens ?? 8_192,
         thinkingLevels: levels,
-        defaultThinkingLevel: levels.includes("medium") ? "medium" : levels[0] ?? null,
+        defaultThinkingLevel: catalogBinding?.defaultThinkingLevel
+          ?? (levels.includes("medium") ? "medium" : levels[0] ?? null),
       });
     }
     await this.deps.call("providers.update", {

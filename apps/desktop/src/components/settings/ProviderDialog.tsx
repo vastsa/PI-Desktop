@@ -15,6 +15,7 @@ import {
   CUSTOM_API_STYLE_OPTIONS,
   fallbackModelDraft,
   fixedProviderFieldsForApiStyle,
+  isCatalogModel,
   modelDraftFromInfo,
   type ApiStyle,
   type ProviderForm,
@@ -83,13 +84,13 @@ export function ProviderDialog({
       Array.from(
         new Set([
           ...customModelIds.filter(
-            (id) => discoveredById.get(id)?.source !== "bundled",
+            (id) => !isCatalogModel(discoveredById.get(id)),
           ),
           ...form.models
             .filter(
               (model) =>
                 model.source !== "catalog" &&
-                discoveredById.get(model.id)?.source !== "bundled",
+                !isCatalogModel(discoveredById.get(model.id)),
             )
             .map((model) => model.id),
         ]),
@@ -299,7 +300,10 @@ export function ProviderDialog({
             <div className="provider-model-card-list">
               {form.models.map((binding, index) => {
                 const metadata = discoveredById.get(binding.id);
-                const source = metadata?.source === "bundled" || binding.source === "catalog" ? "catalog" : "custom";
+                const source = isCatalogModel(metadata) || binding.source === "catalog" ? "catalog" : "custom";
+                const sourceLabel = metadata?.catalogSource === "models.dev"
+                  ? t("settings.modelsDevCatalog")
+                  : t("settings.builtInCatalog");
                 return (
                   <ModelConfigCard
                     key={binding.id}
@@ -307,7 +311,7 @@ export function ProviderDialog({
                     metadata={metadata}
                     initiallyExpanded={index === 0}
                     source={source}
-                    sourceLabel={t("settings.builtInCatalog")}
+                    sourceLabel={sourceLabel}
                     customSourceLabel={t("settings.customModel")}
                     visionLabel={t("settings.vision")}
                     textOnlyLabel={t("settings.textOnly")}

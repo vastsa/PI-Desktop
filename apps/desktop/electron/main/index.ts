@@ -96,6 +96,7 @@ import {
 } from "@pi-desktop/shared";
 import {
   clampThinkingLevel,
+  listPiCatalogModels,
   resolvePiModelConfig,
   resolvePiModelConfigForModelDraft,
   resolveVisionCapability,
@@ -144,6 +145,11 @@ import { Logger } from "./logger";
 import { collectWorkspaceDiff } from "./git-diff";
 import { BrowserPane, resolveLocalFile } from "./browser-view";
 import { discoverProviderModels } from "./model-discovery";
+import {
+  ModelsDevCatalog,
+  modelInfoFromModelsDev,
+  piModelConfigFromModelsDev,
+} from "./models-dev-catalog";
 import { OAUTH_AUTH_KIND, VendorOAuth } from "./oauth";
 import { listDir, readWorkspaceFile, resolveWithinRoot } from "./fs-panel";
 import { getWorkspaceFileIndex } from "./fs-index";
@@ -865,6 +871,8 @@ const updater = new AppUpdaterController({
  * this process; the renderer sees progress events and the sidecar sees only
  * resolved request auth.
  */
+const modelsDevCatalog = new ModelsDevCatalog();
+
 const vendorOAuth = new VendorOAuth({
   call: <T,>(method: string, params?: unknown): Promise<T> => {
     if (!host) throw new Error("host unavailable");
@@ -873,6 +881,29 @@ const vendorOAuth = new VendorOAuth({
   emit: (event) => sendToRenderer(IPC.event.providersOauth, event),
   openExternal: (url) => shell.openExternal(url),
   log: (level, message, data) => logger.app("provider", level, message, { data }),
+  modelBindingFor: async ({ vendorKey, option }) => {
+    await modelsDevCatalog.ensureLoaded();
+    const model = modelsDevCatalog.findModel({
+      vendorKey,
+      baseUrl: option.baseUrl,
+      modelId: option.modelId,
+    });
+    if (!model) return undefined;
+    return {
+      ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
+      ...(model.maxTokens ? { maxTokens: model.maxTokens } : {}),
+      ...(model.reasoningPublished
+        ? {
+            thinkingLevels: model.reasoning ? [...model.thinkingLevels] : [],
+            defaultThinkingLevel: model.reasoning
+              ? model.thinkingLevels.includes("medium")
+                ? "medium"
+                : model.thinkingLevels[0] ?? null
+              : null,
+          }
+        : {}),
+    };
+  },
 });
 
 type RuntimeProvider = {
@@ -898,6 +929,17 @@ type RuntimeSession = {
   modelId?: string;
 };
 
+function modelsDevModelFor(
+  provider: RuntimeProvider,
+  modelId: string,
+) {
+  return modelsDevCatalog.findModel({
+    vendorKey: provider.vendorKey,
+    baseUrl: provider.baseUrl,
+    modelId,
+  });
+}
+
 function enrichProvider<T extends RuntimeProvider>(
   provider: T,
   selectedModelId?: string,
@@ -905,24 +947,32 @@ function enrichProvider<T extends RuntimeProvider>(
   const modelId =
     selectedModelId || provider.modelId || provider.models?.[0]?.id || provider.defaultModelId || "";
   const storedModel = provider.models?.find((model) => model.id === modelId);
+  const modelsDevModel = modelsDevModelFor(provider, modelId);
   const capabilities = storedModel
     ? {
         supportsReasoning: storedModel.thinkingLevels.length > 0,
         supportedThinkingLevels: [...storedModel.thinkingLevels],
       }
-    : resolveThinkingCapabilities({
-        vendorKey: provider.vendorKey || "custom",
-        modelId,
-        apiStyle: provider.apiStyle,
-      });
+    : modelsDevModel
+      ? {
+          supportsReasoning: modelsDevModel.reasoning,
+          supportedThinkingLevels: [...modelsDevModel.thinkingLevels],
+        }
+      : resolveThinkingCapabilities({
+          vendorKey: provider.vendorKey || "custom",
+          modelId,
+          apiStyle: provider.apiStyle,
+        });
   return {
     ...provider,
     ...capabilities,
-    supportsVision: resolveVisionCapability({
-      vendorKey: provider.vendorKey || "custom",
-      modelId,
-      apiStyle: provider.apiStyle,
-    }),
+    supportsVision: modelsDevModel
+      ? modelsDevModel.input.includes("image")
+      : resolveVisionCapability({
+          vendorKey: provider.vendorKey || "custom",
+          modelId,
+          apiStyle: provider.apiStyle,
+        }),
   };
 }
 
@@ -969,7 +1019,8 @@ function validateSettingsWrite<T>(settings: T): T {
   return settings;
 }
 
-function enrichProviderList<T extends RuntimeProvider>(result: { providers: T[] }) {
+async function enrichProviderList<T extends RuntimeProvider>(result: { providers: T[] }) {
+  await modelsDevCatalog.ensureLoaded();
   return {
     ...result,
     providers: result.providers.map((provider) => enrichProvider(provider)),
@@ -990,24 +1041,32 @@ function enrichSession<T extends RuntimeSession>(
     };
   }
   const storedModel = provider.models?.find((model) => model.id === session.modelId);
+  const modelsDevModel = modelsDevModelFor(provider, session.modelId);
   const capabilities = storedModel
     ? {
         supportsReasoning: storedModel.thinkingLevels.length > 0,
         supportedThinkingLevels: [...storedModel.thinkingLevels],
       }
-    : resolveThinkingCapabilities({
-        vendorKey: provider.vendorKey || "custom",
-        modelId: session.modelId,
-        apiStyle: provider.apiStyle,
-      });
+    : modelsDevModel
+      ? {
+          supportsReasoning: modelsDevModel.reasoning,
+          supportedThinkingLevels: [...modelsDevModel.thinkingLevels],
+        }
+      : resolveThinkingCapabilities({
+          vendorKey: provider.vendorKey || "custom",
+          modelId: session.modelId,
+          apiStyle: provider.apiStyle,
+        });
   return {
     ...session,
     ...capabilities,
-    supportsVision: resolveVisionCapability({
-      vendorKey: provider.vendorKey || "custom",
-      modelId: session.modelId,
-      apiStyle: provider.apiStyle,
-    }),
+    supportsVision: modelsDevModel
+      ? modelsDevModel.input.includes("image")
+      : resolveVisionCapability({
+          vendorKey: provider.vendorKey || "custom",
+          modelId: session.modelId,
+          apiStyle: provider.apiStyle,
+        }),
   };
 }
 
@@ -1211,6 +1270,7 @@ async function resolveAgentRuntimeLaunch(
   } = {},
 ) {
   if (!host) throw new Error("host unavailable");
+  await modelsDevCatalog.ensureLoaded();
   const commandShell = (await resolveEffectiveCommandShell()).effective!;
   const providers = await host.call<{ providers: RuntimeProvider[] }>(
     "providers.list",
@@ -1257,9 +1317,9 @@ async function resolveAgentRuntimeLaunch(
       errorCode: ErrorCodes.MODEL_NOT_CONFIGURED,
     });
   }
-  // The wire api, endpoint and metadata of a vendor model come from the
-  // signed-in collection, not the builtin catalog: one account can span wire
-  // APIs and a gateway's catalog is not in the builtin one at all.
+  // The authenticated collection owns a vendor account's available models and
+  // wire endpoint. Metadata uses models.dev first, then the signed-in pi-ai
+  // record, because one account can span wire APIs and gateway catalogs.
   const vendorBinding = isVendorAccount
     ? await vendorOAuth
         .bindingFor(provider.id, modelId)
@@ -1281,15 +1341,19 @@ async function resolveAgentRuntimeLaunch(
         storedModel?.defaultThinkingLevel,
     ),
   );
-  const resolvedModelConfig =
+  const apiStyle = vendorBinding?.apiStyle ?? provider.apiStyle;
+  const baseUrl = vendorBinding?.baseUrl ?? provider.baseUrl;
+  const piModelConfig =
     vendorBinding?.modelConfig ??
     resolvePiModelConfig({
       vendorKey: provider.vendorKey || "custom",
       modelId,
       apiStyle: provider.apiStyle,
     });
-  const apiStyle = vendorBinding?.apiStyle ?? provider.apiStyle;
-  const baseUrl = vendorBinding?.baseUrl ?? provider.baseUrl;
+  const modelsDevModel = modelsDevModelFor(provider, modelId);
+  const resolvedModelConfig = modelsDevModel
+    ? piModelConfigFromModelsDev(modelsDevModel, piModelConfig, baseUrl)
+    : piModelConfig;
   const modelConfig = resolvedModelConfig
     ? {
         ...resolvedModelConfig,
@@ -5680,6 +5744,7 @@ function registerIpc() {
       "providers.create",
       input,
     );
+    await modelsDevCatalog.ensureLoaded();
     return { ...result, provider: enrichProvider(result.provider) };
   });
   handle(IPC.invoke.providersUpdate, async (input: unknown) => {
@@ -5688,6 +5753,7 @@ function registerIpc() {
       "providers.update",
       input,
     );
+    await modelsDevCatalog.ensureLoaded();
     return result.provider
       ? { ...result, provider: enrichProvider(result.provider) }
       : result;
@@ -5809,6 +5875,10 @@ function registerIpc() {
         : undefined;
       const baseUrl = (req.baseUrl ?? provider?.baseUrl ?? "").trim();
       const apiStyle = req.apiStyle ?? provider?.apiStyle ?? "chat_completions";
+      // Cache hydration must stay fast; the renderer already requests a live
+      // refresh after it has painted the cached list. Live requests load the
+      // shared models.dev snapshot once and then use pi-ai as fallback.
+      if (req.source !== "cache") await modelsDevCatalog.ensureLoaded();
       const decorate = (
         model: {
           modelId: string;
@@ -5823,69 +5893,119 @@ function registerIpc() {
         // its own rather than the row's.
         modelApiStyle: string = apiStyle,
       ) => {
-        const capabilities = new Set(model.capabilities ?? ["text"]);
-        capabilities.add("text");
         const modelRef = {
           vendorKey: provider?.vendorKey || "custom",
           modelId: model.modelId,
           apiStyle: modelApiStyle,
         };
+        const modelsDevModel = modelsDevCatalog.findModel({
+          vendorKey: modelRef.vendorKey,
+          baseUrl,
+          modelId: model.modelId,
+        });
+        const modelsDevInfo = modelsDevModel
+          ? modelInfoFromModelsDev(modelsDevModel, provider?.id ?? "")
+          : undefined;
         const piModel = resolvePiModelConfig(modelRef);
-        // Settings model additions may use a different wire style from the
-        // vendor's first-party catalog record. Use only the official vendor
-        // metadata for those defaults; runtime resolution above remains
-        // api-aware and is intentionally unchanged.
+        // When models.dev has the model, its catalog fields are authoritative.
+        // pi-ai remains the fallback for missing records and can still supply
+        // adapter-specific metadata used by the sidecar.
         const draftModel = resolvePiModelConfigForModelDraft(modelRef);
-        const thinking = draftModel
+        const thinking = modelsDevModel?.reasoningPublished
           ? {
-              supportsReasoning: draftModel.reasoning,
-              supportedThinkingLevels: draftModel.reasoning
-                ? draftModel.thinkingLevelMap
-                  ? THINKING_LEVELS.filter(
-                      (level) => draftModel.thinkingLevelMap?.[level] != null,
-                    )
-                  : (["low", "medium", "high"] as ThinkingLevel[])
-                : (["off"] as ThinkingLevel[]),
+              supportsReasoning: modelsDevModel.reasoning,
+              supportedThinkingLevels: modelsDevModel.thinkingLevels,
             }
-          : {
-              supportsReasoning: false,
-              supportedThinkingLevels: ["off"] as ThinkingLevel[],
-            };
+          : draftModel
+            ? {
+                supportsReasoning: draftModel.reasoning,
+                supportedThinkingLevels: draftModel.reasoning
+                  ? draftModel.thinkingLevelMap
+                    ? THINKING_LEVELS.filter(
+                        (level) => draftModel.thinkingLevelMap?.[level] != null,
+                      )
+                    : (["low", "medium", "high"] as ThinkingLevel[])
+                  : (["off"] as ThinkingLevel[]),
+              }
+            : piModel
+              ? resolveThinkingCapabilities(modelRef)
+              : {
+                  supportsReasoning: false,
+                  supportedThinkingLevels: ["off"] as ThinkingLevel[],
+                };
         const catalogThinkingLevels: ThinkingLevel[] = thinking.supportsReasoning
-          ? thinking.supportedThinkingLevels
+          ? [...thinking.supportedThinkingLevels]
           : [];
+        const capabilities = new Set(
+          modelsDevInfo?.capabilities ?? model.capabilities ?? ["text"],
+        );
+        capabilities.add("text");
         if (thinking.supportsReasoning) capabilities.add("reasoning");
         else capabilities.delete("reasoning");
-        // Renderer discovery is advisory. Only an authoritative pi-ai model
-        // record (builtin or authenticated vendor catalog) may enable vision
-        // transport; unknown/custom models remain on the safe fallback.
-        if (
-          piModel?.input.includes("image") ||
-          model.input?.includes("image")
-        ) {
-          capabilities.add("vision");
-        } else {
-          capabilities.delete("vision");
-        }
+        const modelInput = modelsDevModel?.inputPublished
+          ? modelsDevModel.input
+          : piModel?.input ?? modelsDevModel?.input ?? model.input;
+        if (modelInput?.includes("image")) capabilities.add("vision");
+        else capabilities.delete("vision");
+        const catalogSource = modelsDevModel
+          ? ("models.dev" as const)
+          : draftModel || piModel
+            ? ("pi-ai" as const)
+            : undefined;
         return {
           modelId: model.modelId,
-          displayName: model.displayName,
+          displayName: modelsDevModel?.displayNamePublished
+            ? modelsDevInfo?.displayName ?? model.displayName
+            : piModel?.name ?? draftModel?.name ?? model.displayName,
           providerId: provider?.id ?? "",
-          // Keep the model picker and context inspector aligned with the
-          // official pi-ai metadata used to prefill newly added models.
-          // Provider discovery often returns only ids, so its context window
-          // may be absent; an unknown/non-official model intentionally falls
-          // through to modelDraftFromInfo's fixed defaults.
-          contextWindow: draftModel?.contextWindow,
+          contextWindow:
+            modelsDevInfo?.contextWindow ?? draftModel?.contextWindow ?? model.contextWindow,
           capabilities: [...capabilities],
           supportedThinkingLevels: catalogThinkingLevels,
-          maxTokens: draftModel?.maxTokens,
+          maxTokens: modelsDevInfo?.maxTokens ?? draftModel?.maxTokens ?? model.maxTokens,
           reasoning: thinking.supportsReasoning,
-          ...(draftModel?.thinkingLevelMap
+          ...(draftModel?.thinkingLevelMap && !modelsDevModel
             ? { thinkingLevelMap: { ...draftModel.thinkingLevelMap } }
             : {}),
-          source: draftModel || piModel ? ("bundled" as const) : model.source ?? ("discovered" as const),
+          ...(catalogSource ? { catalogSource } : {}),
+          source: modelsDevModel
+            ? ("discovered" as const)
+            : draftModel || piModel
+              ? ("bundled" as const)
+              : model.source ?? ("discovered" as const),
         };
+      };
+
+      const cacheForCurrentProvider = async (models: unknown[]) => {
+        if (!provider || req.source === "cache") return;
+        const savedBaseUrl = (provider.baseUrl ?? "").trim().replace(/\/+$/, "");
+        const requestBaseUrl = baseUrl.replace(/\/+$/, "");
+        const usesSavedEndpoint =
+          requestBaseUrl === savedBaseUrl &&
+          apiStyle === (provider.apiStyle ?? "chat_completions");
+        if (!usesSavedEndpoint) return;
+        try {
+          const latestProvider = (await listRuntimeProviders()).find(
+            (candidate) => candidate.id === provider.id,
+          );
+          const endpointStillCurrent =
+            (latestProvider?.baseUrl ?? "").trim().replace(/\/+$/, "") ===
+              requestBaseUrl &&
+            (latestProvider?.apiStyle ?? "chat_completions") === apiStyle;
+          if (endpointStillCurrent) {
+            await host!.call("providers.cacheModels", {
+              providerId: provider.id,
+              models,
+            });
+          }
+        } catch (e) {
+          logger.app("provider", "warn", "model cache update failed", {
+            data: {
+              providerId: provider.id,
+              error: e instanceof Error ? e.message : String(e),
+            },
+          });
+        }
       };
 
       // A signed-in vendor account has no key to probe /models with, and pi-ai
@@ -5959,6 +6079,33 @@ function registerIpc() {
         return { models: fallback, source: "fallback" as const };
       }
 
+      // models.dev is the primary catalog. It is provider-scoped by vendor key
+      // first and by API URL second, so a compatible custom endpoint can use
+      // the same metadata without exposing a credential to the catalog.
+      const modelsDevModels = modelsDevCatalog.modelsForProvider({
+        vendorKey: provider?.vendorKey,
+        baseUrl,
+        providerId: provider?.id ?? "",
+      });
+      if (modelsDevModels.length > 0) {
+        const models = modelsDevModels.map((model) => decorate(model));
+        await cacheForCurrentProvider(models);
+        return { models, source: "remote" as const };
+      }
+
+      // pi-ai is the local fallback catalog for known native providers. Custom
+      // providers without a matching fallback continue to their own endpoint.
+      const piModels = listPiCatalogModels({
+        vendorKey: provider?.vendorKey,
+        apiStyle,
+      });
+      if (piModels.length > 0) {
+        return {
+          models: piModels.map((model) => decorate(model)),
+          source: "fallback" as const,
+        };
+      }
+
       // Dialog edits can omit the key to reuse the stored secret; the raw key
       // never travels back to the renderer either way.
       let apiKey = req.apiKey ?? "";
@@ -5974,36 +6121,7 @@ function registerIpc() {
           const discovered = await discoverProviderModels({ baseUrl, apiKey, apiStyle });
           if (discovered.length > 0) {
             const models = discovered.map((model) => decorate(model));
-            const savedBaseUrl = (provider?.baseUrl ?? "").trim().replace(/\/+$/, "");
-            const requestBaseUrl = baseUrl.replace(/\/+$/, "");
-            const usesSavedEndpoint =
-              !!provider &&
-              requestBaseUrl === savedBaseUrl &&
-              apiStyle === (provider.apiStyle ?? "chat_completions");
-            if (usesSavedEndpoint) {
-              try {
-                const latestProvider = (await listRuntimeProviders()).find(
-                  (candidate) => candidate.id === provider.id,
-                );
-                const endpointStillCurrent =
-                  (latestProvider?.baseUrl ?? "").trim().replace(/\/+$/, "") ===
-                    requestBaseUrl &&
-                  (latestProvider?.apiStyle ?? "chat_completions") === apiStyle;
-                if (endpointStillCurrent) {
-                  await host.call("providers.cacheModels", {
-                    providerId: provider.id,
-                    models,
-                  });
-                }
-              } catch (e) {
-                logger.app("provider", "warn", "model cache update failed", {
-                  data: {
-                    providerId: provider.id,
-                    error: e instanceof Error ? e.message : String(e),
-                  },
-                });
-              }
-            }
+            await cacheForCurrentProvider(models);
             return { models, source: "remote" as const };
           }
         } catch (e) {
