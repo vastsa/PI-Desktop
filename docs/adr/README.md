@@ -143,3 +143,4 @@ Each ADR includes:
 | 0126 | Agent capability workbench | Accepted |
 | 0127 | Transcript layout index and identity-based truncation | Accepted |
 | 0128 | Share one bounded budget for transient provider failures | Accepted |
+| 0131 | Spill large composer text pastes into session scratch | Accepted |

@@ -190,6 +190,7 @@ export const en = {
     captureAppshot: "Capture screenshot",
     filesAttached: "Added {{count}} item(s) to the draft",
     filesPasted: "Saved {{count}} pasted file(s) to the session scratch folder",
+    largeTextPasted: "Saved large pasted text as @{{name}}",
     appshotSoon: "Screenshot capture is coming soon",
     slashMenu: "Commands",
     slashGroupTemplates: "Prompt templates",
@@ -661,6 +662,10 @@ export const en = {
     noResults: "No matching settings",
     enterToSend: "Enter to send",
     enterToSendDesc: "When off, press ⌘/Ctrl+Enter to send.",
+    largePasteThreshold: "Large paste threshold",
+    largePasteThresholdDesc:
+      "Text-only pastes longer than this many characters become a temporary session file.",
+    largePasteThresholdSaveError: "Couldn't save the paste threshold.",
     modeDesc: "Default mode for new sessions.",
     modeAgent: "Agent",
     modePlan: "Plan",

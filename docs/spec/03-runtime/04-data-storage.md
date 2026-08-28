@@ -980,6 +980,12 @@ truncating at a guessed position.
   remains available for recovery.
   Legacy `planApprovalPermissionMode` is removed from the app settings JSON
   during migration; all unrelated settings remain intact.
+
+The `largePasteThreshold` app setting is additive JSON rather than a database
+schema field. Host settings reads normalize a missing, malformed, or
+out-of-range value to 600, and settings writes validate the integer range of
+1–1,000,000. Existing databases therefore gain the default lazily without a
+destructive migration or a second settings store.
 - Plan and Goal artifacts are never reconstructed from transcript content. On
   startup,
   one transaction marks every `pending` approval and every `queued` or

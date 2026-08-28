@@ -141,16 +141,18 @@ export type { WorkPanelTab } from "../lib/work-panel-tabs";
 function promptAttachmentsFromDraft(
   references: ComposerDraftSnapshot["fileReferences"],
 ): AgentPromptAttachment[] {
-  return references.map((reference) => ({
-    path: reference.path,
-    name: reference.name,
-    kind:
-      reference.kind ??
-      (/\.(avif|bmp|gif|heic|jpe?g|png|tiff?|webp)$/i.test(reference.path)
-        ? "image"
-        : "file"),
-    ...(reference.mimeType ? { mimeType: reference.mimeType } : {}),
-  }));
+  return references
+    .filter((reference) => !reference.token)
+    .map((reference) => ({
+      path: reference.path,
+      name: reference.name,
+      kind:
+        reference.kind ??
+        (/\.(avif|bmp|gif|heic|jpe?g|png|tiff?|webp)$/i.test(reference.path)
+          ? "image"
+          : "file"),
+      ...(reference.mimeType ? { mimeType: reference.mimeType } : {}),
+    }));
 }
 
 function promptAttachmentsFromMessage(

@@ -362,6 +362,10 @@ fn thinking_level_param(params: &Value) -> Result<Option<String>, JsonRpcError> 
     Ok(Some(level.to_string()))
 }
 
+const DEFAULT_LARGE_PASTE_THRESHOLD: i64 = 600;
+const MIN_LARGE_PASTE_THRESHOLD: i64 = 1;
+const MAX_LARGE_PASTE_THRESHOLD: i64 = 1_000_000;
+
 fn normalize_settings_value(mut value: Value) -> Value {
     if let Some(object) = value.as_object_mut() {
         object.remove("planApprovalPermissionMode");
@@ -376,6 +380,18 @@ fn normalize_settings_value(mut value: Value) -> Value {
             object.insert(
                 "defaultCommandShell".into(),
                 Value::String(tools::shell::default_shell_id().into()),
+            );
+        }
+        let valid_large_paste_threshold = object
+            .get("largePasteThreshold")
+            .and_then(Value::as_i64)
+            .is_some_and(|threshold| {
+                (MIN_LARGE_PASTE_THRESHOLD..=MAX_LARGE_PASTE_THRESHOLD).contains(&threshold)
+            });
+        if !valid_large_paste_threshold {
+            object.insert(
+                "largePasteThreshold".into(),
+                Value::Number(DEFAULT_LARGE_PASTE_THRESHOLD.into()),
             );
         }
     }
@@ -407,6 +423,24 @@ fn validate_settings_value(value: &Value) -> Result<(), JsonRpcError> {
     let Some(object) = value.as_object() else {
         return Ok(());
     };
+    if let Some(threshold_value) = object.get("largePasteThreshold") {
+        let Some(threshold) = threshold_value.as_i64() else {
+            return Err(rpc_err(
+                1002,
+                "largePasteThreshold must be an integer",
+                "INVALID_PARAMS",
+            ));
+        };
+        if !(MIN_LARGE_PASTE_THRESHOLD..=MAX_LARGE_PASTE_THRESHOLD).contains(&threshold) {
+            return Err(rpc_err(
+                1002,
+                format!(
+                    "largePasteThreshold must be between {MIN_LARGE_PASTE_THRESHOLD} and {MAX_LARGE_PASTE_THRESHOLD}"
+                ),
+                "INVALID_PARAMS",
+            ));
+        }
+    }
     let Some(shell_value) = object.get("defaultCommandShell") else {
         return Ok(());
     };
@@ -1045,6 +1079,7 @@ async fn handle_request(
                     "defaultCommandShell": tools::shell::default_shell_id(),
                     "theme": "dark",
                     "enterToSend": true,
+                    "largePasteThreshold": DEFAULT_LARGE_PASTE_THRESHOLD,
                     "contextCompaction": {
                         "enabled": true,
                         "reserveTokens": 16384,
@@ -3697,6 +3732,33 @@ mod tests {
         assert_eq!(
             settings["defaultCommandShell"],
             crate::tools::shell::default_shell_id()
+        );
+        assert_eq!(settings["largePasteThreshold"], 600);
+
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "largePasteThreshold": 801 }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let updated = handle_request(state.clone(), "settings.get", json!({}), tx.clone())
+            .await
+            .unwrap();
+        assert_eq!(updated["largePasteThreshold"], 801);
+
+        let invalid_threshold = handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "largePasteThreshold": 0 }),
+            tx.clone(),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(
+            invalid_threshold.data.unwrap()["errorCode"],
+            "INVALID_PARAMS"
         );
 
         let invalid = handle_request(

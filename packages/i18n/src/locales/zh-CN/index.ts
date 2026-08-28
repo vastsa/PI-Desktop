@@ -184,6 +184,7 @@ export const zhCN = {
     captureAppshot: "截取屏幕",
     filesAttached: "已将 {{count}} 项加入草稿",
     filesPasted: "已将 {{count}} 个粘贴文件保存到会话临时目录",
+    largeTextPasted: "已将大段粘贴文本保存为 @{{name}}",
     appshotSoon: "截图功能即将推出",
     slashMenu: "指令",
     slashGroupTemplates: "提示词模板",
@@ -654,6 +655,10 @@ export const zhCN = {
     noResults: "没有匹配的设置项",
     enterToSend: "回车发送",
     enterToSendDesc: "关闭后，使用 ⌘/Ctrl+Enter 发送。",
+    largePasteThreshold: "大段文本粘贴阈值",
+    largePasteThresholdDesc:
+      "纯文本粘贴超过此字符数后，会转换为当前会话的临时文件。",
+    largePasteThresholdSaveError: "无法保存粘贴阈值。",
     modeDesc: "新建会话时的默认模式。",
     modeAgent: "智能体",
     modePlan: "规划",

@@ -50,11 +50,8 @@ test("composer renders removable leaf-name references and serializes paths on se
     composer,
     /serializeComposerFileReferences\(value, activeFileReferences\)/,
   );
-  assert.match(composer, /sendPrompt\(content, draftSnapshot\(value\)\)/);
-  assert.match(
-    composer,
-    /content\.slice\(content\.search\(\/\\s\/\) \+ 1\)\.trim\(\)/,
-  );
+  assert.match(composer, /sendPrompt\(inlineContent, draftSnapshot\(value\)\)/);
+  assert.match(composer, /serializeInlineComposerFileReferences\(/);
   assert.match(composer, /current\.filter\(/);
   assert.match(
     composerStyles,

@@ -1926,8 +1926,11 @@ reasoning-level control.
 
 - Pasting one or more OS clipboard files or images saves their bytes into the
   originating session's scratch directory and adds a compact leaf-name
-  reference above the textarea; text-only paste keeps the browser's native
-  textarea behavior (D197, D209, ADR 0059, ADR 0070)
+  reference above the textarea. A text-only paste at or below the configured
+  `largePasteThreshold` keeps the browser's native textarea behavior; a paste
+  above it is saved as UTF-8 in the session's scratch `pasted/` directory and
+  inserts an inline temporary-file token at the paste position (D197, D209,
+  D262, ADR 0059, ADR 0070, ADR 0131)
 - The compact chips retain structured kind/name/MIME metadata while keeping
   the textarea free of binary data. The selected model's exact pi-ai
   capability controls dispatch: eligible images become transient visual input
@@ -1936,7 +1939,7 @@ reasoning-level control.
   There are no visual previews in MVP.
 - No voice input
 
-### 11.8 Slash commands, @ file references, and clipboard files (D123–D125, D197, D209, ADR 0024, ADR 0059, ADR 0070)
+### 11.8 Slash commands, @ file references, and clipboard files (D123–D125, D197, D209, D262, ADR 0024, ADR 0059, ADR 0070, ADR 0131)
 
 The composer owns an inline autocomplete menu — one component serving two
 modes. Focus never leaves the textarea (D125).
@@ -1978,11 +1981,13 @@ Anatomy:
 - Accepting commands and directories inserts text (`/name ` / `@dir/`);
   accepting a completed file creates a renderer-owned reference. Immediately
   before dispatch, ordinary references serialize in stable order after the
-  visible draft as complete `@path` text using D124's quoting. Pasted file
-  references travel as structured attachments; main selects image blocks or
-  path fallbacks from the exact model capability. Reference-only drafts are
-  sendable. Builtin/plugin dispatch still bypasses the model-ready gate when no
-  prompt text or file reference is sent.
+  visible draft as complete `@path` text using D124's quoting. A generated
+  large-paste token is resolved in place to its canonical scratch path exactly
+  once; it is not also sent as a structured attachment or appended basename.
+  Pasted OS file/image references continue to travel as structured attachments;
+  main selects image blocks or path fallbacks from the exact model capability.
+  Reference-only drafts are sendable. Builtin/plugin dispatch still bypasses
+  the model-ready gate when no prompt text or file reference is sent.
 - The Agent/Plan/Goal mode aliases can prefix a prompt in the same draft:
   `/agent-mode <prompt>`, `/plan-mode <prompt>`, and `/goal-mode <prompt>` apply
   the mode first, then send `<prompt>` plus any serialized references through
@@ -2006,10 +2011,15 @@ Anatomy:
   image bytes under `attachments/<sha256>` and sends visual input only when the
   selected pi-ai model accepts images and the 20 MiB inline bound is met;
   otherwise it appends a safe `@path` fallback. Removing a chip does not delete
-  scratch bytes. Pasting files counts as input, so the home composer
-  materializes the startup-only home draft into a durable session before saving
-  when no active session is available. The scratch lifecycle removes pasted
-  files with the session and never dirties the workspace git tree.
+  scratch bytes. A text-only paste longer than `largePasteThreshold` follows
+  the same bounded session bridge with generated `text/plain` UTF-8 bytes,
+  inserts `@<sanitized-name>` plus a trailing space at the original selection,
+  and keeps its canonical path mapping in the renderer draft. The default
+  threshold is 600 characters and is persisted in app settings. Pasting either
+  files or oversized text counts as input, so the home composer materializes the
+  startup-only home draft into a durable session before saving when no active
+  session is available. The scratch lifecycle removes pasted files with the
+  session and never dirties the workspace git tree.
 - Reference chips wrap within the prompt area, expose the canonical path in
   their tooltip and accessible name, and provide a focus-visible localized
   remove button that restores textarea focus. Duplicate leaf labels remain

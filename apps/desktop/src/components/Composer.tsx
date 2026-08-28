@@ -18,8 +18,10 @@ import type {
 import {
   fileReferenceLabel,
   highestSupportedThinkingLevel,
+  normalizeLargePasteThreshold,
   PERMISSION_MODES,
   serializeComposerFileReferences,
+  serializeInlineComposerFileReferences,
 } from "@pi-desktop/shared";
 import { materializeDraftSession, useAppStore } from "../stores/app-store";
 import type { ComposerDraftSnapshot } from "../lib/composer-smart-stop";
@@ -68,6 +70,7 @@ type ComposerFileReference = {
   name: string;
   kind: "image" | "file";
   mimeType?: string;
+  token?: string;
 };
 
 function isImageFilePath(path: string): boolean {
@@ -78,7 +81,11 @@ function createFileReference(
   path: string,
   preferredName?: string,
   sessionId = "",
-  metadata?: { kind?: "image" | "file"; mimeType?: string },
+  metadata?: {
+    kind?: "image" | "file";
+    mimeType?: string;
+    token?: string;
+  },
 ): ComposerFileReference {
   composerFileReferenceSequence += 1;
   return {
@@ -88,6 +95,7 @@ function createFileReference(
     name: fileReferenceLabel(path, preferredName),
     kind: metadata?.kind ?? (isImageFilePath(path) ? "image" : "file"),
     ...(metadata?.mimeType ? { mimeType: metadata.mimeType } : {}),
+    ...(metadata?.token ? { token: metadata.token } : {}),
   };
 }
 
@@ -342,6 +350,13 @@ export function Composer({
   const activeFileReferences = fileReferences.filter(
     (fileReference) => fileReference.sessionId === referenceSessionId,
   );
+  const activeInlineFileReferences = activeFileReferences.filter(
+    (fileReference) =>
+      Boolean(fileReference.token && value.includes(fileReference.token)),
+  );
+  const activeChipFileReferences = activeFileReferences.filter(
+    (fileReference) => !fileReference.token,
+  );
   const placeholderKey =
     variant === "home"
       ? placeholderIndex === 0
@@ -353,7 +368,8 @@ export function Composer({
   const placeholderText = t(placeholderKey);
   const placeholderPaused =
     value.length > 0 ||
-    activeFileReferences.length > 0 ||
+    activeChipFileReferences.length > 0 ||
+    activeInlineFileReferences.length > 0 ||
     composing ||
     (inputFocused && !placeholderFocusPauseReleasedRef.current);
 
@@ -392,11 +408,12 @@ export function Composer({
         text: valueRef.current,
         fileReferences: fileReferencesRef.current
           .filter((fileReference) => fileReference.sessionId === previousKey)
-          .map(({ path, name, kind, mimeType }) => ({
+          .map(({ path, name, kind, mimeType, token }) => ({
             path,
             name,
             kind,
             ...(mimeType ? { mimeType } : {}),
+            ...(token ? { token } : {}),
           })),
       });
       draftKeyRef.current = draftKey;
@@ -427,11 +444,12 @@ export function Composer({
       text: valueRef.current,
       fileReferences: fileReferences
         .filter((fileReference) => fileReference.sessionId === referenceSessionId)
-        .map(({ path, name, kind, mimeType }) => ({
+        .map(({ path, name, kind, mimeType, token }) => ({
           path,
           name,
           kind,
           ...(mimeType ? { mimeType } : {}),
+          ...(token ? { token } : {}),
         })),
     });
   }, [draftKey, fileReferences, referenceSessionId]);
@@ -453,8 +471,10 @@ export function Composer({
 
   useEffect(() => {
     // Relative autocomplete references belong to the workspace that produced
-    // them. Never carry hidden canonical paths into another project.
-    setFileReferences([]);
+    // them. Session scratch references remain valid across project switches.
+    setFileReferences((current) =>
+      current.filter((fileReference) => Boolean(fileReference.token)),
+    );
   }, [workspacePath]);
 
   useEffect(() => {
@@ -701,7 +721,14 @@ export function Composer({
     !!modelId &&
     (provider.hasSecret || provider.authKind === "none");
   const enterToSend = settings?.enterToSend ?? true;
-  const hasDraftContent = Boolean(value.trim() || activeFileReferences.length);
+  const largePasteThreshold = normalizeLargePasteThreshold(
+    settings?.largePasteThreshold,
+  );
+  const hasDraftContent = Boolean(
+    value.trim() ||
+      activeChipFileReferences.length ||
+      activeInlineFileReferences.length,
+  );
 
   useEffect(() => {
     if (!modelThinkingOpen || modelThinkingView !== "model") return;
@@ -891,12 +918,17 @@ export function Composer({
 
   const draftSnapshot = (text: string): ComposerDraftSnapshot => ({
     text: text.trim(),
-    fileReferences: activeFileReferences.map(({ path, name, kind, mimeType }) => ({
-      path,
-      name,
-      kind,
-      ...(mimeType ? { mimeType } : {}),
-    })),
+    fileReferences: activeFileReferences
+      .filter((fileReference) =>
+        !fileReference.token || text.includes(fileReference.token),
+      )
+      .map(({ path, name, kind, mimeType, token }) => ({
+        path,
+        name,
+        kind,
+        ...(mimeType ? { mimeType } : {}),
+        ...(token ? { token } : {}),
+      })),
   });
 
   const enhancePrompt = async () => {
@@ -908,6 +940,7 @@ export function Composer({
       sourceText.trim().startsWith("/") ||
       !modelReady ||
       sendBlocked ||
+      activeInlineFileReferences.length > 0 ||
       enhancingPrompt
     ) {
       return;
@@ -985,7 +1018,10 @@ export function Composer({
   };
 
   const submit = async () => {
-    const content = value.trim();
+    const inlineContent = serializeInlineComposerFileReferences(
+      value,
+      activeFileReferences,
+    );
     const serializedContent = serializeComposerFileReferences(value, activeFileReferences);
     if (!serializedContent || sendBlocked) return;
     invalidatePromptEnhancement();
@@ -1021,7 +1057,10 @@ export function Composer({
                 ? ""
                 : visibleDraft.slice(visibleCommandEnd).trim();
             const accepted = await sendPrompt(
-              content.slice(content.search(/\s/) + 1).trim(),
+              serializeInlineComposerFileReferences(
+                visibleCommandBody,
+                activeFileReferences,
+              ),
               draftSnapshot(visibleCommandBody),
             );
             if (accepted) clearDraftForKey(submittedDraftKey);
@@ -1051,13 +1090,117 @@ export function Composer({
       }
     }
     if (!modelReady) return;
-    const accepted = await sendPrompt(content, draftSnapshot(value));
+    const accepted = await sendPrompt(inlineContent, draftSnapshot(value));
     if (accepted) clearDraftForKey(submittedDraftKey);
   };
 
   const pasteClipboardFiles = async (event: ClipboardEvent<HTMLTextAreaElement>) => {
     if (inputBlocked) return;
     const files = clipboardFiles(event.clipboardData);
+    const text = event.clipboardData.getData("text/plain");
+    const textLength = Array.from(text).length;
+    const isLargeTextPaste = !files.length && textLength > largePasteThreshold;
+    if (isLargeTextPaste) {
+      event.preventDefault();
+      const selectionStart = event.currentTarget.selectionStart ?? cursor;
+      const selectionEnd = event.currentTarget.selectionEnd ?? selectionStart;
+      const sourceSessionId = activeSessionId;
+      const sourceDraftKey = draftKey;
+      const sourceValue = valueRef.current;
+      const sourceReferenceSessionId = sourceSessionId ?? "";
+      setPasting(true);
+      try {
+        let sessionId = sourceSessionId;
+        if (!sessionId) {
+          // Large text is real input: persist the draft so the file has a
+          // durable session owner before it is written.
+          sessionId = (await materializeDraftSession()) ?? "";
+        }
+        if (!sessionId) throw new Error("session unavailable");
+
+        const bytes = new TextEncoder().encode(text);
+        const data = bytes.buffer.slice(
+          bytes.byteOffset,
+          bytes.byteOffset + bytes.byteLength,
+        ) as ArrayBuffer;
+        const name = `pasted-text-${crypto.randomUUID().slice(0, 8)}.txt`;
+        const result = await api.pasteFiles(sessionId, [
+          { name, mimeType: "text/plain", data },
+        ]);
+        const pasted = result.files[0];
+        if (!pasted) throw new Error("temporary paste file was not created");
+
+        const displayName = pasted.name || name;
+        const token = `@${displayName}`;
+        const nextValue =
+          sourceValue.slice(0, selectionStart) +
+          token +
+          " " +
+          sourceValue.slice(selectionEnd);
+        const previousReferences = fileReferencesRef.current
+          .filter((fileReference) => fileReference.sessionId === sourceReferenceSessionId)
+          .map(({ path, name: referenceName, kind, mimeType, token: referenceToken }) => ({
+            path,
+            name: referenceName,
+            kind,
+            ...(mimeType ? { mimeType } : {}),
+            ...(referenceToken ? { token: referenceToken } : {}),
+          }));
+        const nextSnapshot: ComposerDraftSnapshot = {
+          text: nextValue,
+          fileReferences: [
+            ...previousReferences,
+            {
+              path: pasted.path,
+              name: displayName,
+              kind: "file",
+              mimeType: pasted.mimeType,
+              token,
+            },
+          ],
+        };
+        // Materialization can change the active session while the IPC call is
+        // in flight. Cache the result by its durable target rather than
+        // allowing a late response to contaminate another session's draft.
+        draftCacheRef.current.set(sessionId, nextSnapshot);
+        const currentSessionId = useAppStore.getState().activeSessionId;
+        if (currentSessionId === sessionId) {
+          setValue(nextValue);
+          setFileReferences(
+            nextSnapshot.fileReferences.map((fileReference) =>
+              createFileReference(
+                fileReference.path,
+                fileReference.name,
+                sessionId,
+                fileReference,
+              ),
+            ),
+          );
+          setCursor(selectionStart + token.length + 1);
+          requestAnimationFrame(() => {
+            const el = ref.current;
+            if (!el) return;
+            el.focus();
+            const nextCursor = selectionStart + token.length + 1;
+            el.setSelectionRange(nextCursor, nextCursor);
+          });
+        } else if (sourceDraftKey === HOME_DRAFT_KEY) {
+          // The home slot is intentionally not reused after materialization;
+          // keep it empty while the new session owns the converted draft.
+          draftCacheRef.current.delete(HOME_DRAFT_KEY);
+        }
+        showToast(t("chat.largeTextPasted", { name: displayName }), {
+          variant: "success",
+        });
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : String(error), {
+          variant: "error",
+        });
+      } finally {
+        setPasting(false);
+      }
+      return;
+    }
     if (!files.length) return;
 
     event.preventDefault();
@@ -1251,13 +1394,13 @@ export function Composer({
             <ComposerAutocomplete ac={composerAc} onAccept={acceptCompletion} />
           ) : null}
           <div className="composer-input-wrap">
-            {activeFileReferences.length ? (
+            {activeChipFileReferences.length ? (
               <div
                 className="composer-file-references"
                 role="list"
                 aria-label={t("chat.fileReferences")}
               >
-                {activeFileReferences.map((fileReference) => (
+                {activeChipFileReferences.map((fileReference) => (
                   <div
                     key={fileReference.id}
                     className="composer-file-reference"
@@ -1284,7 +1427,7 @@ export function Composer({
                       })}
                       disabled={inputBlocked}
                       onClick={() => {
-                        if (activeFileReferences.length === 1) {
+                        if (activeChipFileReferences.length === 1) {
                           placeholderFocusPauseReleasedRef.current = true;
                         }
                         setFileReferences((current) =>
@@ -1320,6 +1463,13 @@ export function Composer({
                   invalidatePromptEnhancement();
                   placeholderFocusPauseReleasedRef.current = nextValue.length === 0;
                   setValue(nextValue);
+                  setFileReferences((current) =>
+                    current.filter(
+                      (fileReference) =>
+                        !fileReference.token ||
+                        nextValue.includes(fileReference.token),
+                    ),
+                  );
                   setCursor(e.target.selectionStart ?? nextValue.length);
                 }}
                 onSelect={(e) => {
@@ -1347,11 +1497,11 @@ export function Composer({
                   if (
                     e.key === "Backspace" &&
                     value.length === 0 &&
-                    activeFileReferences.length
+                    activeChipFileReferences.length
                   ) {
                     e.preventDefault();
-                    const lastReference = activeFileReferences.at(-1);
-                    if (activeFileReferences.length === 1) {
+                    const lastReference = activeChipFileReferences.at(-1);
+                    if (activeChipFileReferences.length === 1) {
                       placeholderFocusPauseReleasedRef.current = true;
                     }
                     setFileReferences((current) =>
@@ -1739,6 +1889,7 @@ export function Composer({
                   value.trim().startsWith("/") ||
                   !modelReady ||
                   sendBlocked ||
+                  activeInlineFileReferences.length > 0 ||
                   enhancingPrompt
                 }
                 onClick={() => void enhancePrompt()}

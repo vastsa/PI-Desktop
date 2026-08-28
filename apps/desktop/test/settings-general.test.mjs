@@ -95,6 +95,9 @@ test("Basics and AI tabs expose their respective app and AI controls", () => {
   assert.match(aiSource, /settings\.defaultsTitle/);
   assert.match(aiSource, /CommandShellRow/);
   assert.match(aiSource, /enterToSend: !settings\.enterToSend/);
+  assert.match(aiSource, /LargePasteThresholdRow/);
+  assert.match(settingsPageSource, /largePasteThreshold/);
+  assert.match(settingsPageSource, /saveSettings\(\{ largePasteThreshold: next \}\)/);
   assert.doesNotMatch(settingsPageSource, /commandShellConfigured/);
   assert.match(
     aiSource,
@@ -105,6 +108,7 @@ test("Basics and AI tabs expose their respective app and AI controls", () => {
 
 test("language persists as part of shared app settings", () => {
   assert.match(sharedTypesSource, /language\?: "auto" \| "en" \| "zh-CN"/);
+  assert.match(sharedTypesSource, /largePasteThreshold\?: number/);
 });
 
 test("basics gates developer tools behind a persisted developer mode", () => {

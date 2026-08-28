@@ -24,6 +24,23 @@ export type ComposerTrigger = {
   tokenEnd: number;
 };
 
+export const DEFAULT_LARGE_PASTE_THRESHOLD = 600;
+export const MIN_LARGE_PASTE_THRESHOLD = 1;
+export const MAX_LARGE_PASTE_THRESHOLD = 1_000_000;
+
+/** Normalize the user-configured text-paste threshold at the renderer edge. */
+export function normalizeLargePasteThreshold(value: unknown): number {
+  if (
+    typeof value !== "number" ||
+    !Number.isInteger(value) ||
+    value < MIN_LARGE_PASTE_THRESHOLD ||
+    value > MAX_LARGE_PASTE_THRESHOLD
+  ) {
+    return DEFAULT_LARGE_PASTE_THRESHOLD;
+  }
+  return value;
+}
+
 const WHITESPACE = new Set([" ", "\t", "\n", "\r"]);
 /** Characters that end the token scan-back, per pi's autocomplete. */
 const DELIMITERS = new Set([" ", "\t", "\n", "\r", '"', "'", "="]);
@@ -125,16 +142,37 @@ export function fileReferenceLabel(path: string, preferredName?: string): string
  */
 export function serializeComposerFileReferences(
   draft: string,
-  references: ReadonlyArray<{ path: string }>,
+  references: ReadonlyArray<{ path: string; token?: string }>,
 ): string {
-  const content = draft.trim();
+  const content = serializeInlineComposerFileReferences(draft, references);
   const paths = references
+    .filter((reference) => !reference.token)
     .map((reference) => formatFileInsert(reference.path, "file"))
     .join("")
     .trim();
   if (!content) return paths;
   if (!paths) return content;
   return `${content}\n${paths}`;
+}
+
+/**
+ * Resolve only inline generated tokens. Chip references remain separate
+ * attachments and are appended by Electron main when the model needs a path.
+ */
+export function serializeInlineComposerFileReferences(
+  draft: string,
+  references: ReadonlyArray<{ path: string; token?: string }>,
+): string {
+  let content = draft;
+  for (const reference of references) {
+    const token = reference.token?.trim();
+    if (!token || !content.includes(token)) continue;
+    content = content.replace(
+      token,
+      formatFileInsert(reference.path, "file").trim(),
+    );
+  }
+  return content.trim();
 }
 
 /** Replace the trigger token with `insert`, returning the new draft+cursor. */

@@ -65,6 +65,7 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.mode",
       "settings.commandShell",
       "settings.enterToSend",
+      "settings.largePasteThreshold",
     ],
   },
   {

@@ -651,6 +651,8 @@ sidecar 用于显示每秒输出令牌的流时间。 `ToolTokenUsage`
 - 提供商列表（无秘密明文）
 - 默认模型
 - 从主机 shell 目录中保留 `defaultCommandShell`
+- 持久化的 `largePasteThreshold`（大段纯文本 Composer 粘贴使用）；主机将缺失值
+  读取为 600，并接受 1 至 1,000,000 的整数
 - 权限策略切换
 - UI 首选项，包括可选的 `AppSettings.keybindings` 覆盖键控
   通过共享快捷操作 ID；值使用便携式 `Mod+Shift+Key`

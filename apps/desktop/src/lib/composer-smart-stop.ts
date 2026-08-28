@@ -3,6 +3,8 @@ export type ComposerDraftFileReference = {
   name: string;
   kind?: "image" | "file";
   mimeType?: string;
+  /** Visible inline token for a generated large-text paste reference. */
+  token?: string;
 };
 
 export type ComposerDraftSnapshot = {

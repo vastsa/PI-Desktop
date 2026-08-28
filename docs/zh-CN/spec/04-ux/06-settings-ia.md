@@ -62,7 +62,8 @@
 - **权限**卡：全局权限模式控制
   （询问/接受编辑/自动）控制代理如何自主行动。
 - **默认项**卡：主机支持的默认运行模式（Agent / Plan / Goal）、
-  命令 Shell 选择和回车发送控制。
+  命令 Shell 选择、回车发送控制和大段文本粘贴阈值。该阈值决定纯文本粘贴何时
+  转为会话临时文件，默认值为 600 个字符，接受 1 至 1,000,000 的整数。
 - **默认项**卡中的**命令 Shell**行：主机发现的本机 PowerShell 目录，
   cmd、Git Bash 和 ID 为 `windows-powershell`、`cmd`、`git-bash` 的 Bash 和
   `bash`（如果支持）。选定的 `defaultCommandShell` 持续存在

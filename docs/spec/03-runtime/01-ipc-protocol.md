@@ -726,6 +726,8 @@ Non-sensitive config that can be returned to the UI:
 - provider list (without secret plaintext)
 - default model
 - persisted `defaultCommandShell` from the host shell catalog
+- persisted `largePasteThreshold` for oversized text-only composer pastes;
+  host reads missing values as 600 and accepts integers from 1 through 1,000,000
 - permission policy toggles
 - UI preferences, including optional `AppSettings.keybindings` overrides keyed
   by the shared shortcut action ids; values use portable `Mod+Shift+Key`

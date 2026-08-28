@@ -5,7 +5,9 @@ import {
   fileReferenceLabel,
   formatCommandInsert,
   formatFileInsert,
+  normalizeLargePasteThreshold,
   serializeComposerFileReferences,
+  serializeInlineComposerFileReferences,
 } from "./composer-trigger.js";
 
 describe("detectTrigger — slash mode", () => {
@@ -181,5 +183,37 @@ describe("compact file references", () => {
         { path: "test/index.ts" },
       ]),
     ).toBe("@src/index.ts @test/index.ts");
+  });
+
+  it("resolves generated inline tokens in place and leaves chip references separate", () => {
+    expect(
+      serializeInlineComposerFileReferences("before @pasted-text.txt after", [
+        { path: "/tmp/session/pasted/pasted-text.txt", token: "@pasted-text.txt" },
+      ]),
+    ).toBe("before @/tmp/session/pasted/pasted-text.txt after");
+    expect(
+      serializeComposerFileReferences("before @pasted-text.txt after", [
+        { path: "/tmp/session/pasted/pasted-text.txt", token: "@pasted-text.txt" },
+        { path: "src/a.ts" },
+      ]),
+    ).toBe(
+      "before @/tmp/session/pasted/pasted-text.txt after\n@src/a.ts",
+    );
+  });
+
+  it("does not serialize an inline reference after its token is removed", () => {
+    expect(
+      serializeComposerFileReferences("the token was removed", [
+        { path: "/tmp/session/pasted/pasted-text.txt", token: "@pasted-text.txt" },
+      ]),
+    ).toBe("the token was removed");
+  });
+
+  it("normalizes large-paste thresholds to the supported range", () => {
+    expect(normalizeLargePasteThreshold(undefined)).toBe(600);
+    expect(normalizeLargePasteThreshold(600)).toBe(600);
+    expect(normalizeLargePasteThreshold(0)).toBe(600);
+    expect(normalizeLargePasteThreshold(1_000_001)).toBe(600);
+    expect(normalizeLargePasteThreshold(601)).toBe(601);
   });
 });

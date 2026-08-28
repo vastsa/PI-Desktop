@@ -24,7 +24,8 @@ test("composer cycles view-specific welcome and slash-command placeholders", () 
   assert.match(composer, /placeholder=\{placeholderText\}/);
   assert.match(composer, /className="composer-placeholder"/);
   assert.match(composer, /value\.length > 0/);
-  assert.match(composer, /activeFileReferences\.length > 0/);
+  assert.match(composer, /activeChipFileReferences\.length > 0/);
+  assert.match(composer, /activeInlineFileReferences\.length > 0/);
   assert.match(composer, /composing/);
   assert.match(composer, /inputFocused/);
   assert.match(composer, /placeholderFocusPauseReleasedRef/);

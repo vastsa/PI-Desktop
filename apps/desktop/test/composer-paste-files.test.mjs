@@ -15,8 +15,15 @@ const [composer, api, main, saver, protocol, sidecar] = await Promise.all([
   read("../../../packages/agent-runtime/src/sidecar.ts"),
 ]);
 
-test("composer keeps text paste native and materializes clipboard files", () => {
+test("composer converts oversized text paste and materializes clipboard files", () => {
   assert.match(composer, /onPaste=\{pasteClipboardFiles\}/);
+  assert.match(composer, /const text = event\.clipboardData\.getData\("text\/plain"\)/);
+  assert.match(composer, /const textLength = Array\.from\(text\)\.length/);
+  assert.match(composer, /!files\.length && textLength > largePasteThreshold/);
+  assert.match(composer, /const name = `pasted-text-\$\{crypto\.randomUUID\(\)\.slice\(0, 8\)\}\.txt`/);
+  assert.match(composer, /mimeType: "text\/plain"/);
+  assert.match(composer, /const token = `@\$\{displayName\}`/);
+  assert.match(composer, /draftCacheRef\.current\.set\(sessionId, nextSnapshot\)/);
   assert.match(composer, /if \(!files\.length\) return;/);
   assert.match(composer, /event\.preventDefault\(\);/);
   assert.match(composer, /file\.arrayBuffer\(\)/);
@@ -95,6 +102,34 @@ test("paste results separate display names from unique storage paths", async () 
       [1, 2, 3],
     );
     assert.deepEqual(Array.from(await readFile(files[1].path)), [4, 5]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("large pasted text is preserved byte-for-byte in session scratch", async () => {
+  const { saveComposerPasteFiles } = await import(
+    "../electron/main/composer-paste.ts"
+  );
+  const root = await mkdtemp(join(tmpdir(), "pi-composer-paste-text-"));
+  const text = "第一行\nsecond line — exact bytes\n";
+  try {
+    const [file] = await saveComposerPasteFiles(root, "session-text", [
+      {
+        name: "pasted-text-1234abcd.txt",
+        mimeType: "text/plain",
+        data: new TextEncoder().encode(text).buffer,
+      },
+    ]);
+
+    assert.equal(file.name, "pasted-text-1234abcd.txt");
+    assert.equal(file.kind, "file");
+    assert.equal(file.mimeType, "text/plain");
+    assert.equal(
+      Buffer.from(await readFile(file.path)).toString("utf8"),
+      text,
+    );
+    assert.match(file.path, /scratch[\\/]session-text[\\/]pasted[\\/]/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

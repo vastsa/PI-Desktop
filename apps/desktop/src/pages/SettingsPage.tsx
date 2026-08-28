@@ -9,6 +9,11 @@ import type {
   GlobalPermissionMode,
   ShortcutPlatform,
 } from "@pi-desktop/shared";
+import {
+  MAX_LARGE_PASTE_THRESHOLD,
+  MIN_LARGE_PASTE_THRESHOLD,
+  normalizeLargePasteThreshold,
+} from "@pi-desktop/shared";
 import { useAppStore } from "../stores/app-store";
 import { api } from "../lib/api";
 import type { ImportCandidate } from "../lib/api";
@@ -20,7 +25,7 @@ import {
   groupImportCandidates,
   type ImportGroupBy,
 } from "../lib/import-groups";
-import { Badge, Button, Select, cx } from "../components/ui";
+import { Badge, Button, Input, Select, cx } from "../components/ui";
 import {
   SETTINGS_NAV,
   SETTINGS_NAV_GROUP_LABELS,
@@ -232,6 +237,80 @@ function CommandShellRow({
         {saveError ? (
           <span className="settings-command-shell-state error" role="status">
             {t("settings.commandShellSaveError")}
+          </span>
+        ) : null}
+      </div>
+    </SettingsRow>
+  );
+}
+
+function LargePasteThresholdRow({
+  settings,
+  saveSettings,
+}: {
+  settings: AppSettings;
+  saveSettings: (patch: Partial<AppSettings>) => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const currentThreshold = normalizeLargePasteThreshold(
+    settings.largePasteThreshold,
+  );
+  const [draft, setDraft] = useState(String(currentThreshold));
+  const [saveError, setSaveError] = useState(false);
+
+  useEffect(() => {
+    setDraft(String(currentThreshold));
+  }, [currentThreshold]);
+
+  const commit = async () => {
+    const parsed = Number(draft.trim());
+    const next =
+      Number.isInteger(parsed) &&
+      parsed >= MIN_LARGE_PASTE_THRESHOLD &&
+      parsed <= MAX_LARGE_PASTE_THRESHOLD
+        ? parsed
+        : currentThreshold;
+    setDraft(String(next));
+    if (next === currentThreshold) {
+      setSaveError(false);
+      return;
+    }
+    setSaveError(false);
+    try {
+      await saveSettings({ largePasteThreshold: next });
+    } catch {
+      setDraft(String(currentThreshold));
+      setSaveError(true);
+    }
+  };
+
+  return (
+    <SettingsRow
+      title={t("settings.largePasteThreshold")}
+      description={t("settings.largePasteThresholdDesc")}
+    >
+      <div className="settings-number-control">
+        <Input
+          type="number"
+          min={MIN_LARGE_PASTE_THRESHOLD}
+          max={MAX_LARGE_PASTE_THRESHOLD}
+          step={1}
+          inputMode="numeric"
+          value={draft}
+          aria-label={t("settings.largePasteThreshold")}
+          aria-invalid={saveError}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={() => void commit()}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              event.currentTarget.blur();
+            }
+          }}
+        />
+        {saveError ? (
+          <span className="settings-command-shell-state error" role="status">
+            {t("settings.largePasteThresholdSaveError")}
           </span>
         ) : null}
       </div>
@@ -1218,6 +1297,10 @@ export function SettingsPage() {
                     <span className="settings-toggle-thumb" />
                   </button>
                 </SettingsRow>
+                <LargePasteThresholdRow
+                  settings={settings}
+                  saveSettings={saveSettings}
+                />
               </SettingsCard>
             </div>
           )}

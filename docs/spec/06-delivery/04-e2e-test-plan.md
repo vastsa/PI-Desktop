@@ -4254,12 +4254,13 @@ Each scenario is documented in this format:
 #### E2E-102: Composer file and image paste keeps structured attachment metadata
 
 - **Preconditions**: The app is running with an Agent session in a project and
-  a home composer available. The OS clipboard contains a text snippet, one or
-  more local files (including a filename with whitespace), and an image in
-  separate paste attempts. Record the app data directory and the session id.
+  a home composer available. The OS clipboard contains a text snippet no
+  longer than the configured large-paste threshold, one or more local files
+  (including a filename with whitespace), and an image in separate paste
+  attempts. Record the app data directory and the session id.
 - **Steps**:
-  1. Paste text-only into the composer and confirm the text is inserted by the
-     native textarea path.
+  1. Paste text-only within the configured threshold and confirm the text is
+     inserted by the native textarea path.
   2. Paste one local file, then paste multiple files including a spaced name.
   3. Paste an image from the OS screenshot/clipboard provider.
   4. Inspect the draft before sending: confirm each materialized item is a
@@ -4271,7 +4272,9 @@ Each scenario is documented in this format:
   6. Delete the session, then confirm its scratch directory and pasted files
      are removed.
 - **Expected**:
-  - Text-only paste remains native and is not routed through the file bridge.
+  - Text-only paste within the configured threshold remains native and is not
+    routed through the file bridge. Oversized text behavior is covered by
+    E2E-102g.
   - Each file/image is saved with a sanitized, UUID-backed unique name under
     the session scratch root, while its chip shows only the sanitized original
     leaf name. Duplicate leaf names remain separate references.
@@ -4468,6 +4471,56 @@ Each scenario is documented in this format:
 - **Milestone**: M5
 - **Status**: Unit-covered; full UI journey Draft (do not run E2E locally unless
   explicitly requested)
+
+#### E2E-102g: Large text paste becomes an inline session-scratch reference
+
+- **Preconditions**: The app is running with an Agent session in a project and
+  a home composer available. The large paste threshold is first left at its
+  default, then changed to a small test value. Record the app data directory,
+  session id, and a multiline Unicode text fixture.
+- **Steps**:
+  1. Open Settings → AI → Defaults and confirm the large paste threshold is
+     600. Set it to a deterministic lower value, save it, then return to the
+     composer.
+  2. Paste text exactly at the threshold and confirm native textarea behavior;
+     paste text one character above it at the beginning, middle, and end of
+     drafts, including multiline and Unicode content.
+  3. Inspect the draft after each oversized paste: confirm the exact prefix and
+     suffix remain, a generated `@temporary-name` plus a space appears at the
+     original selection, the textarea does not contain the scratch absolute
+     path, and the composer reports its busy/error state correctly during the
+     transfer.
+  4. Inspect the session `scratch/<sessionId>/pasted/` file bytes, send the
+     mixed draft, and inspect the renderer request, persisted user message,
+     and agent-readable path. Switch projects and sessions before sending a
+     cached draft, then remove the generated token and confirm it is no longer
+     dispatched.
+  5. Delete the owning session and confirm its temporary paste files are
+     removed.
+- **Expected**:
+  - The threshold is persisted as an AI default, defaults to 600 on older
+    settings, and accepts only integer values from 1 through 1,000,000.
+  - Text at or below the threshold remains native. Text above it is saved
+    byte-for-byte as UTF-8 `text/plain` under the owning session's scratch
+    `pasted/` directory, without changing the project or creating an artifact.
+  - The inline token is inserted at the exact paste selection, including in the
+    middle of a multiline draft. Dispatch resolves its canonical path in place
+    exactly once; it is neither appended as a basename nor duplicated as an
+    attachment. Removing or editing out the token removes that mapping.
+  - Session switching, project switching, unanswered Stop restoration, and
+    session deletion respect the existing session ownership and cleanup rules.
+- **Specs linked**: `04-ux/06-settings-ia.md`,
+  `04-ux/07-ui-design-system.md` §8.1, `04-ux/08-component-spec.md` §11.7–11.8,
+  `04-ux/09-interaction-patterns.md` §8a,
+  `03-runtime/01-ipc-protocol.md` §8,
+  `03-runtime/04-data-storage.md` §7, `08-meta/decisions-log.md` (D262),
+  ADR 0059, ADR 0070, ADR 0131
+- **Acceptance**: C (conversation & stream), E (tools & permissions),
+  F (persistence), Quality
+- **Milestone**: M5
+- **Status**: Unit-covered (`composer-trigger.test.ts`,
+  `apps/desktop/test/composer-paste-files.test.mjs`); full UI journey Draft
+  (do not run E2E locally unless explicitly requested)
 
 #### E2E-103: Settings Agent pages manage file-backed capabilities
 
@@ -4904,10 +4957,10 @@ Each scenario is documented in this format:
 |---|---|
 | A — App startup | E2E-001, E2E-002, E2E-003, E2E-004, E2E-067, E2E-076, E2E-079, E2E-092, E2E-097, E2E-143, E2E-150 |
 | B — Model config | E2E-005, E2E-006, E2E-007, E2E-038, E2E-050, E2E-052, E2E-055, E2E-066, E2E-080, E2E-082, E2E-102c, E2E-102d, E2E-102e, E2E-151, E2E-154 |
-| C — Conversation & stream | E2E-008, E2E-008a, E2E-009, E2E-010, E2E-011, E2E-011a, E2E-011b, E2E-011d, E2E-011e, E2E-031, E2E-040, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-052, E2E-053, E2E-054, E2E-055, E2E-059, E2E-059a, E2E-060c, E2E-060d, E2E-061, E2E-061a, E2E-062, E2E-064, E2E-065, E2E-068, E2E-071, E2E-073, E2E-074, E2E-075, E2E-081, E2E-083, E2E-084, E2E-086, E2E-087, E2E-088, E2E-088b, E2E-089, E2E-090, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-106, E2E-109, E2E-111, E2E-114, E2E-116, E2E-117, E2E-118, E2E-119, E2E-120, E2E-121, E2E-AGENTS-001, E2E-142, E2E-144, E2E-145, E2E-146, E2E-147, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159 |
+| C — Conversation & stream | E2E-008, E2E-008a, E2E-009, E2E-010, E2E-011, E2E-011a, E2E-011b, E2E-011d, E2E-011e, E2E-031, E2E-040, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-052, E2E-053, E2E-054, E2E-055, E2E-059, E2E-059a, E2E-060c, E2E-060d, E2E-061, E2E-061a, E2E-062, E2E-064, E2E-065, E2E-068, E2E-071, E2E-073, E2E-074, E2E-075, E2E-081, E2E-083, E2E-084, E2E-086, E2E-087, E2E-088, E2E-088b, E2E-089, E2E-090, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102g, E2E-106, E2E-109, E2E-111, E2E-114, E2E-116, E2E-117, E2E-118, E2E-119, E2E-120, E2E-121, E2E-AGENTS-001, E2E-142, E2E-144, E2E-145, E2E-146, E2E-147, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159 |
 | D — Workspace | E2E-012, E2E-013, E2E-022B, E2E-024I, E2E-047, E2E-049, E2E-057, E2E-058, E2E-060, E2E-068, E2E-075, E2E-078, E2E-153, E2E-158 |
-| E — Tools & permissions | E2E-008a, E2E-014, E2E-015, E2E-016, E2E-017, E2E-018, E2E-019, E2E-024I, E2E-024K, E2E-040, E2E-049, E2E-074, E2E-093, E2E-097, E2E-099, E2E-100, E2E-101, E2E-102, E2E-102d, E2E-102e, E2E-103, E2E-105, E2E-106, E2E-107, E2E-111, E2E-112, E2E-113, E2E-114, E2E-115, E2E-116, E2E-119, E2E-121, E2E-122, E2E-142, E2E-145, E2E-147, E2E-155, E2E-158 |
-| F — Persistence | E2E-020, E2E-021, E2E-036, E2E-037, E2E-038, E2E-040, E2E-042, E2E-047, E2E-048, E2E-051, E2E-054, E2E-056, E2E-061, E2E-062, E2E-064, E2E-066, E2E-068, E2E-071, E2E-072, E2E-073, E2E-082, E2E-084, E2E-096, E2E-098, E2E-102, E2E-102b, E2E-102c, E2E-102d, E2E-103, E2E-AGENTS-001, E2E-061a, E2E-073a, E2E-104, E2E-106, E2E-107, E2E-108, E2E-109, E2E-110, E2E-112, E2E-118, E2E-119, E2E-120, E2E-121, E2E-123, E2E-142, E2E-146, E2E-148, E2E-151, E2E-158 |
+| E — Tools & permissions | E2E-008a, E2E-014, E2E-015, E2E-016, E2E-017, E2E-018, E2E-019, E2E-024I, E2E-024K, E2E-040, E2E-049, E2E-074, E2E-093, E2E-097, E2E-099, E2E-100, E2E-101, E2E-102, E2E-102d, E2E-102e, E2E-102g, E2E-103, E2E-105, E2E-106, E2E-107, E2E-111, E2E-112, E2E-113, E2E-114, E2E-115, E2E-116, E2E-119, E2E-121, E2E-122, E2E-142, E2E-145, E2E-147, E2E-155, E2E-158 |
+| F — Persistence | E2E-020, E2E-021, E2E-036, E2E-037, E2E-038, E2E-040, E2E-042, E2E-047, E2E-048, E2E-051, E2E-054, E2E-056, E2E-061, E2E-062, E2E-064, E2E-066, E2E-068, E2E-071, E2E-072, E2E-073, E2E-082, E2E-084, E2E-096, E2E-098, E2E-102, E2E-102b, E2E-102c, E2E-102d, E2E-102g, E2E-103, E2E-AGENTS-001, E2E-061a, E2E-073a, E2E-104, E2E-106, E2E-107, E2E-108, E2E-109, E2E-110, E2E-112, E2E-118, E2E-119, E2E-120, E2E-121, E2E-123, E2E-142, E2E-146, E2E-148, E2E-151, E2E-158 |
 | G — Plugins | E2E-022, E2E-022A, E2E-022B, E2E-022C, E2E-023, E2E-024, E2E-024B, E2E-024C, E2E-024D, E2E-024E, E2E-024W, E2E-024F, E2E-024G, E2E-024H, E2E-024I, E2E-024J, E2E-024K, E2E-024L, E2E-024M, E2E-024N, E2E-024O, E2E-024P, E2E-025, E2E-026, E2E-105, E2E-117, E2E-120, E2E-122, E2E-123, E2E-024Q, E2E-148, E2E-152, E2E-153 |
 | H — Diagnostics | E2E-027, E2E-031, E2E-034, E2E-042, E2E-096, E2E-098, E2E-104, E2E-107, E2E-108, E2E-109, E2E-110, E2E-113, E2E-115, E2E-116, E2E-118, E2E-121, E2E-146, E2E-155, E2E-159 |
 | Security | E2E-028, E2E-029, E2E-030, E2E-024J, E2E-024K, E2E-024M, E2E-049, E2E-068, E2E-086, E2E-102c, E2E-102d, E2E-102e, E2E-105, E2E-106, E2E-107, E2E-108, E2E-109, E2E-110, E2E-112, E2E-113, E2E-115, E2E-116, E2E-117, E2E-119, E2E-121, E2E-122, E2E-123, E2E-142, E2E-148, E2E-151, E2E-153, E2E-158 |

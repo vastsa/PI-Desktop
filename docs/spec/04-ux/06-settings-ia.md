@@ -69,7 +69,10 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
 - **Permissions** card: the global permission-mode control
   (ask / accept-edits / auto) that governs how autonomously the agent acts.
 - **Defaults** card: the host-backed default operating mode (Agent / Plan / Goal),
-  command shell selection, and Enter-to-send control.
+  command shell selection, Enter-to-send control, and the large text paste
+  threshold. The threshold controls when a text-only paste becomes a temporary
+  session-scratch file; it defaults to 600 characters and accepts integer values
+  from 1 through 1,000,000.
 - The **Command shell** row in Defaults uses the host-discovered catalog of native PowerShell,
   cmd, Git Bash, and Bash with IDs `windows-powershell`, `cmd`, `git-bash`, and
   `bash` where supported. The selected `defaultCommandShell` persists across

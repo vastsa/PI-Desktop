@@ -721,6 +721,16 @@ canonical path is tooltip/accessibility metadata and never textarea body copy,
 including after unanswered smart-stop restoration. Dispatch and persisted user
 messages still carry the canonical path required by D124.
 
+Large text pastes use a second presentation: text-only input at or below the
+configured `largePasteThreshold` remains native textarea content, while input
+above it is written as UTF-8 under the active session's scratch `pasted/`
+directory. The textarea receives a generated `@<temporary-name>` token at the
+paste caret, including when pasted in the middle of an existing draft. The
+renderer keeps the token-to-canonical-path mapping out of the visible text and
+resolves that token exactly once immediately before dispatch. The threshold is
+an AI → Defaults setting, defaults to 600 characters, and applies only to
+text-only pastes; clipboard files and images retain their chip presentation.
+
 ## 8.2 Composer runtime controls
 
 The composer renders only controls connected to the active pi session:

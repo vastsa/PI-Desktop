@@ -847,7 +847,7 @@ When drag/drop is implemented, these patterns should apply:
 - Cancel drag with Escape
 - Drag feedback: opacity 0.5 on source, accent outline on target
 
-## 8a. Composer autocomplete and clipboard files (D123–D125, D197)
+## 8a. Composer autocomplete and clipboard files (D123–D125, D197, D262, ADR 0131)
 
 ### 8a.1 Triggers
 
@@ -870,13 +870,23 @@ When drag/drop is implemented, these patterns should apply:
 ### 8a.2 Reference chips and clipboard files
 
 - A paste containing one or more OS `File` objects is intercepted in the
-  textarea; text-only paste stays native.
+  textarea. Text-only paste stays native when its character count is at or
+  below the persisted `largePasteThreshold` (default 600); text-only paste
+  above the threshold is intercepted and converted into a temporary session
+  file reference.
 - While bytes are being transferred, the textarea is read-only and exposes
   `aria-busy="true"`; the send and autocomplete controls are disabled.
 - Electron main saves bounded bytes under the originating session's scratch
   root and returns unique absolute paths plus sanitized original leaf names.
   The composer leaves visible text unchanged, appends leaf-name reference
   chips in clipboard order, then restores the textarea selection and focus.
+- For an oversized text-only paste, the renderer sends the exact UTF-8
+  `text/plain` bytes through the same session bridge, inserts a generated
+  `@<temporary-name>` token plus a space at the original selection, and keeps a
+  token-to-canonical-path mapping in the draft. The token remains inline in the
+  textarea rather than becoming a chip; dispatch replaces it in place exactly
+  once with the canonical scratch path. Pasting in the middle of a draft keeps
+  both the prefix and suffix intact.
 - If the home composer has no active session, it creates or reuses one before
   writing. Failure leaves the existing draft unchanged and shows the error in
   the normal toast surface.
@@ -888,9 +898,11 @@ When drag/drop is implemented, these patterns should apply:
   canonical relative or absolute paths and existing whitespace quoting.
   Pasted references are submitted as structured attachments so the main
   process can choose visual input or the same path fallback from the exact
-  model capability. Successful dispatch clears both; failed or rejected
-  dispatch retains both. References are session-scoped and never cross a
-  workspace change.
+  model capability. Inline large-paste references are resolved in the visible
+  draft instead of being appended or sent as duplicate attachments.
+  Successful dispatch clears both; failed or rejected dispatch retains both.
+  References are session-scoped and scratch references survive a workspace
+  switch while their owning session remains available.
 - When an image reference is active, Composer shows one compact live status
   line. It names visual transport for a model whose pi-ai `input` includes
   `image`, and names the file-path fallback for unknown/non-vision models.

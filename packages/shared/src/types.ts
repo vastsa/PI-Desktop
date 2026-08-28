@@ -872,6 +872,8 @@ export type AppSettings = {
    */
   fontFamily?: string;
   enterToSend: boolean;
+  /** Text length above which a plain-text paste becomes a session file reference. */
+  largePasteThreshold?: number;
   /**
    * @deprecated No longer read. Compaction derives its budgets from the model
    * window instead of exposing knobs; persisted values are ignored so a

@@ -80,6 +80,7 @@ import {
   defaultCommandShellForPlatform,
   IPC,
   isCommandShellId,
+  normalizeLargePasteThreshold,
   normalizeMode,
 } from "@pi-desktop/shared";
 
@@ -167,12 +168,16 @@ export function normalizeSettings(settings: AppSettings): AppSettings {
       ? (settings as { defaultCommandShell: AppSettings["defaultCommandShell"] })
           .defaultCommandShell
       : defaultCommandShellForPlatform(window.piDesktop?.platform ?? ""),
+    largePasteThreshold: normalizeLargePasteThreshold(
+      (settings as { largePasteThreshold?: unknown }).largePasteThreshold,
+    ),
   };
 }
 
 export function validateSettingsWrite(settings: AppSettings): AppSettings {
   const value = settings as AppSettings & {
     defaultCommandShell?: unknown;
+    largePasteThreshold?: unknown;
   };
   if (
     Object.prototype.hasOwnProperty.call(value, "defaultCommandShell") &&
@@ -180,6 +185,15 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
   ) {
     throw Object.assign(new Error("defaultCommandShell is invalid"), {
       errorCode: "COMMAND_SHELL_INVALID",
+    });
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(value, "largePasteThreshold") &&
+    normalizeLargePasteThreshold(value.largePasteThreshold) !==
+      value.largePasteThreshold
+  ) {
+    throw Object.assign(new Error("largePasteThreshold is invalid"), {
+      errorCode: "INVALID_PARAMS",
     });
   }
   return settings;

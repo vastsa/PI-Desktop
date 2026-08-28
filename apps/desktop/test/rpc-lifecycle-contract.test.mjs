@@ -173,6 +173,8 @@ test("settings writes validate without applying read defaults", () => {
   assert.match(mainSource, /hasOwnProperty\.call\(value, "defaultCommandShell"\)/);
   assert.match(mainSource, /COMMAND_SHELL_INVALID/);
   assert.match(apiSource, /hasOwnProperty\.call\(value, "defaultCommandShell"\)/);
+  assert.match(apiSource, /normalizeLargePasteThreshold/);
+  assert.match(apiSource, /hasOwnProperty\.call\(value, "largePasteThreshold"\)/);
   assert.doesNotMatch(mainSource, /planApprovalPermissionMode/);
   assert.doesNotMatch(apiSource, /planApprovalPermissionMode/);
 });

@@ -208,6 +208,7 @@ Gold source: local Codex electron captures; latest row wins where rows conflict.
 | D137 | Glyph-only message toolbars; edit means edit-the-prompt | **Message toolbars carry icons only: the label lives in a CSS hover/focus tooltip (`data-tip`) plus `aria-label`, never as a visible chip caption (worded buttons stay only on error surfaces). Edit moves off the assistant answer onto the user turn: it opens the prompt in an inline textarea (slash turns seed the typed `command` form so the resend re-expands the template) and saving replays the D105/D109 regenerate path with the new text in the same session — the replaced prompt and its whole answer tail are archived as a revision, so the existing `current / total` pager walks back to the original. Editing the assistant's own text and its fork-into-a-child-session variant (D134) are dropped; Fork stays as the explicit divergence action.** | Four worded chips under every answer read as a sentence and crowded the transcript; and the useful correction is almost always "I asked it wrong", which users expect to re-run in place with history intact (ChatGPT semantics) rather than to hand-edit the model's words in a new session |
 | D165 | Safe lazy Mermaid diagrams in assistant answers | **A completed `mermaid` fence in assistant answer prose renders as a theme-aware SVG after entering the near-viewport band. Partial stream fences and all thinking prose stay source code. The renderer dynamically loads official Mermaid, serializes its global theme renders, caps source at 20,000 characters and edges at 500, locks strict/no-HTML/no-link configuration, and applies a second SVG-profile sanitizer. Invalid or oversized diagrams fall back to visible copyable source; the diagram toolbar toggles source and copies it.** | Diagrams improve architecture and flow explanations, but parsing partial streams or every offscreen historical fence would undermine direct-stream and fast-session-switch behavior. Strict bounded local rendering adds the capability without a new protocol, network, or Electron privilege boundary. |
 | D261 | The mounted transcript is a window, not the loaded history | **Refine ADR 0120 / D258 in the renderer: the mounted history is a trailing window over the loaded history — 15 rows in the first commit after a session switch, a 60-row steady state, grown 40 rows at a time. Reaching the top escalates in two stages: grow the window while it is partial, and call `loadOlder` only once the window covers all loaded history. Window growth and a fetched page take the same pre-paint scroll anchor, because both add height above the reading position. The window resets per session and is clamped to the loaded history, so a stale budget from the previous session cannot over-mount. The hydration spacer stays scoped to the first commit. The conversation minimap is built from the mounted entries rather than from every loaded message. No IPC, storage, host protocol, or pagination change.** | ADR 0120 bounded what crossed the IPC boundary and D258 bounded the cost of locating a page, but the renderer still mounted every row it had ever paged in and kept it mounted for the life of the session. `content-visibility: auto` skips layout and paint for those rows while retaining their React trees, Markdown ASTs, and Shiki token arrays — the wrong resource on a low-memory Windows machine, where the reported symptom was the chat area getting progressively less responsive in a long session. Windowing bounds retained memory and per-frame reconciliation together; feeding the minimap the full set would have drawn dashes whose click target no longer exists. |
+| D262 | Spill large composer text pastes into session scratch | **Text-only composer pastes at or below the persisted `largePasteThreshold` remain native textarea input; the default is 600 characters and valid values are integers from 1 through 1,000,000. Above the threshold, the renderer sends exact UTF-8 `text/plain` bytes through the existing session paste bridge, Electron stores them under `<data_dir>/scratch/<sessionId>/pasted/`, and the Composer inserts a generated `@<temporary-name> ` token at the original selection. The renderer retains a session-scoped token-to-canonical-path mapping, resolves it in place exactly once before dispatch, and excludes it from duplicate attachment/fallback serialization. Existing clipboard file/image chips and bridge bounds remain unchanged; no workspace, artifact-store, host-protocol, or schema change.** | Very large native pastes are hard to edit and visually overwhelm the composer, while the existing session scratch flow already provides bounded, isolated storage and canonical path semantics without dirtying a project (ADR 0131).** |
 
 ## M. Agent runtime decisions
 
@@ -2366,3 +2367,24 @@ D193, and D194.
   only reaches mounted rows.
 - No IPC, storage, host protocol, or pagination change. See ADR 0130,
   `04-ux/08-component-spec.md` §8, and E2E-159.
+
+## 2026-08-28 — Large text pastes become session-scratch references (D262)
+
+- Text-only pastes at or below the persisted `largePasteThreshold` remain
+  native textarea input; the default is 600 characters and valid values are
+  integers from 1 through 1,000,000.
+- Larger text is transferred as exact UTF-8 `text/plain` bytes through the
+  existing paste bridge and stored under the owning session's
+  `<data_dir>/scratch/<sessionId>/pasted/` directory. The Composer inserts a
+  generated `@<temporary-name> ` token at the original caret/selection and
+  keeps its canonical path mapping in the renderer draft, including cached and
+  unanswered smart-Stop snapshots.
+- Dispatch resolves the generated token in place exactly once. It is not
+  appended as a basename, sent as a duplicate structured attachment, or
+  written into the workspace. Existing clipboard file/image chip behavior and
+  scratch cleanup remain unchanged.
+- The setting is an additive app-settings JSON field; host normalization gives
+  older settings the default without a database migration. See ADR 0131,
+  `04-ux/06-settings-ia.md`, `04-ux/07-ui-design-system.md` §8.1,
+  `04-ux/08-component-spec.md` §11.7–11.8,
+  `04-ux/09-interaction-patterns.md` §8a, and E2E-102g.
