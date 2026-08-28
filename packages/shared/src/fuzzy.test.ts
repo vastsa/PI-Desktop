@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { compareMatches, fuzzyMatchCommand, fuzzyMatchPath } from "./fuzzy.js";
+import {
+  compareMatches,
+  fuzzyMatchCommand,
+  fuzzyMatchPath,
+  selectBestMatches,
+} from "./fuzzy.js";
 
 describe("fuzzyMatchPath", () => {
   it("matches everything on an empty query", () => {
@@ -74,5 +79,42 @@ describe("compareMatches", () => {
       "src/ab.ts",
       "src/bb.ts",
     ]);
+  });
+});
+
+describe("selectBestMatches", () => {
+  // Score ties are the interesting case: they force the length and lexical
+  // tiebreakers, which is where a bounded insertion could diverge from a sort.
+  const candidates = Array.from({ length: 240 }, (_, i) => ({
+    text: `${"d".repeat(i % 5)}src/mod-${String(i % 60).padStart(2, "0")}.ts`,
+    score: [0, 10, 40, 60, 80][i % 5]!,
+  }));
+  const key = (candidate: { score: number; text: string }) => candidate;
+  const sorted = [...candidates].sort(compareMatches);
+
+  it("matches a full sort truncated to the limit", () => {
+    for (const limit of [1, 3, 7, 50, 239]) {
+      expect(selectBestMatches(candidates, limit, key)).toEqual(
+        sorted.slice(0, limit),
+      );
+    }
+  });
+
+  it("keeps the same order when the input order changes", () => {
+    const reversed = [...candidates].reverse();
+    expect(selectBestMatches(reversed, 12, key).map((c) => c.text)).toEqual(
+      [...reversed].sort(compareMatches).slice(0, 12).map((c) => c.text),
+    );
+  });
+
+  it("returns nothing for a non-positive limit", () => {
+    expect(selectBestMatches(candidates, 0, key)).toEqual([]);
+    expect(selectBestMatches(candidates, -1, key)).toEqual([]);
+  });
+
+  it("returns every candidate in sorted order past the candidate count", () => {
+    expect(selectBestMatches(candidates, candidates.length + 10, key)).toEqual(
+      sorted,
+    );
   });
 });

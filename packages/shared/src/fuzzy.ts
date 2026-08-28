@@ -125,3 +125,41 @@ export function compareMatches(
   if (a.text.length !== b.text.length) return a.text.length - b.text.length;
   return a.text < b.text ? -1 : a.text > b.text ? 1 : 0;
 }
+
+/**
+ * Keep only the `limit` best candidates, sorting that bounded set instead of
+ * the whole match list. The composer filters up to the whole workspace file
+ * index on every keystroke but shows a fixed handful of rows, so a full sort
+ * over every match is work the menu throws away.
+ *
+ * Insertion into a bounded buffer preserves the exact `compareMatches` order of
+ * the returned rows: once the buffer is full a candidate worse than the current
+ * worst kept row is rejected with a single comparison, which is the common case.
+ */
+export function selectBestMatches<T>(
+  candidates: Iterable<T>,
+  limit: number,
+  key: (candidate: T) => { score: number; text: string },
+): T[] {
+  if (limit <= 0) return [];
+  const kept: T[] = [];
+  const keys: Array<{ score: number; text: string }> = [];
+  for (const candidate of candidates) {
+    const candidateKey = key(candidate);
+    if (
+      kept.length === limit &&
+      compareMatches(candidateKey, keys[kept.length - 1]!) >= 0
+    ) {
+      continue;
+    }
+    let at = kept.length;
+    while (at > 0 && compareMatches(candidateKey, keys[at - 1]!) < 0) at -= 1;
+    kept.splice(at, 0, candidate);
+    keys.splice(at, 0, candidateKey);
+    if (kept.length > limit) {
+      kept.pop();
+      keys.pop();
+    }
+  }
+  return kept;
+}
