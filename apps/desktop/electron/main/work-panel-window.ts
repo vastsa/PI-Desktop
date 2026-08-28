@@ -42,18 +42,38 @@ export function baseWindowBounds(
   };
 }
 
+/**
+ * Why the window sits on a display other than the one whose work area
+ * produced the last applied bounds.
+ *
+ * - `none`: same display. Native deltas are the user's own move or resize.
+ * - `os-adjusted`: the OS re-fitted bounds we asked for, or the display
+ *   topology changed under us. The base bounds we planned from are still the
+ *   user's intent and must survive so returning to a roomy display can
+ *   restore the full reservation.
+ * - `user-moved`: the user dragged the window across a display boundary. The
+ *   current position is the new intent; reusing the previous base bounds would
+ *   teleport the window back to the old display's coordinates.
+ */
+export type DisplayTransition = "none" | "os-adjusted" | "user-moved";
+
 export function reconcileBaseWindowBounds({
   baseBounds,
   lastAppliedBounds,
   currentBounds,
-  displayChanged,
+  displayTransition,
+  reservation,
 }: {
   baseBounds: WindowBounds;
   lastAppliedBounds: WindowBounds;
   currentBounds: WindowBounds;
-  displayChanged: boolean;
+  displayTransition: DisplayTransition;
+  reservation: WorkPanelReservationState;
 }): WindowBounds {
-  if (displayChanged) return { ...baseBounds };
+  if (displayTransition === "os-adjusted") return { ...baseBounds };
+  if (displayTransition === "user-moved") {
+    return baseWindowBounds(currentBounds, reservation);
+  }
 
   return {
     x: baseBounds.x + currentBounds.x - lastAppliedBounds.x,
@@ -66,6 +86,32 @@ export function reconcileBaseWindowBounds({
       0,
       baseBounds.height + currentBounds.height - lastAppliedBounds.height,
     ),
+  };
+}
+
+/**
+ * Moves a rect so its origin lies inside a work area, never changing its size.
+ * Used to normalize base bounds after the user drags the window to another
+ * display, so the reservation is planned from a position that exists on the
+ * target display.
+ *
+ * Size is deliberately preserved even when the rect is larger than the work
+ * area: base bounds are the user's intent under ADR 0122 and must stay
+ * restorable when the window returns to a roomier display. Shrinking here would
+ * be persisted and could never be undone. An oversized rect is pinned to the
+ * work area's top-left instead, and `planWorkPanelReservation` still caps the
+ * width it adds on top.
+ */
+export function clampBoundsOriginToWorkArea(
+  bounds: WindowBounds,
+  workArea: WindowBounds,
+): WindowBounds {
+  const maximumX = workArea.x + workArea.width - bounds.width;
+  const maximumY = workArea.y + workArea.height - bounds.height;
+  return {
+    ...bounds,
+    x: Math.round(Math.max(workArea.x, Math.min(bounds.x, maximumX))),
+    y: Math.round(Math.max(workArea.y, Math.min(bounds.y, maximumY))),
   };
 }
 

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   baseWindowBounds,
+  clampBoundsOriginToWorkArea,
   displayWorkAreaKey,
   emptyWorkPanelReservationState,
   parseWorkPanelReservationWidth,
@@ -80,7 +81,8 @@ test("native resizing changes the base chat width without changing the panel res
     baseBounds: base,
     lastAppliedBounds: opened.bounds,
     currentBounds: nativelyResizedBounds,
-    displayChanged: false,
+    displayTransition: "none",
+    reservation: opened.reservation,
   });
   assert.deepEqual(resizedBase, { x: 700, y: 80, width: 1150, height: 800 });
 
@@ -142,7 +144,8 @@ test("display reconciliation preserves base bounds after the OS adjusts outer bo
     baseBounds: base,
     lastAppliedBounds: opened.bounds,
     currentBounds: osAdjustedBounds,
-    displayChanged: true,
+    displayTransition: "os-adjusted",
+    reservation: opened.reservation,
   });
   const constrained = planWorkPanelReservation({
     baseBounds: preservedBase,
@@ -181,7 +184,8 @@ test("same-display native move and left-edge resize update persistent base bound
       baseBounds: base,
       lastAppliedBounds: opened.bounds,
       currentBounds: movedAndResized,
-      displayChanged: false,
+      displayTransition: "none",
+      reservation: opened.reservation,
     }),
     { x: 150, y: 100, width: 950, height: 840 },
   );
@@ -197,9 +201,177 @@ test("same-display observation uses the last actual outer bounds as its baseline
       baseBounds: base,
       lastAppliedBounds: constrainedActual,
       currentBounds: userResized,
-      displayChanged: false,
+      displayTransition: "none",
+      reservation: emptyWorkPanelReservationState(),
     }),
     { x: 100, y: 80, width: 1250, height: 800 },
+  );
+});
+
+// Second display to the right of `workArea`, as in the issue-18 report.
+const rightWorkArea = { x: 1920, y: 0, width: 1920, height: 1080 };
+
+test("dragging the window to another display adopts the dropped position", () => {
+  const base = { x: 700, y: 80, width: 1000, height: 800 };
+  const opened = planWorkPanelReservation({
+    baseBounds: base,
+    workArea,
+    requestedWidth: 420,
+  });
+  // The user dragged the whole window onto the right-hand display.
+  const droppedBounds = {
+    ...opened.bounds,
+    x: 2400,
+    y: 300,
+  };
+
+  const adopted = reconcileBaseWindowBounds({
+    baseBounds: base,
+    lastAppliedBounds: opened.bounds,
+    currentBounds: droppedBounds,
+    displayTransition: "user-moved",
+    reservation: opened.reservation,
+  });
+
+  // Base bounds follow the drop, minus the reservation that is still applied.
+  assert.deepEqual(adopted, { x: 2600, y: 300, width: 1000, height: 800 });
+
+  const replanned = planWorkPanelReservation({
+    baseBounds: adopted,
+    workArea: rightWorkArea,
+    requestedWidth: 420,
+  });
+
+  // The window keeps the position the user chose; only the reservation-induced
+  // shift moves it, and it stays on the display it was dropped on.
+  assert.deepEqual(replanned.bounds, {
+    x: 2420,
+    y: 300,
+    width: 1420,
+    height: 800,
+  });
+  assert.ok(replanned.bounds.x >= rightWorkArea.x);
+  assert.ok(
+    replanned.bounds.x + replanned.bounds.width <=
+      rightWorkArea.x + rightWorkArea.width,
+  );
+  assert.deepEqual(baseWindowBounds(replanned.bounds, replanned.reservation), adopted);
+});
+
+test("a cross-display drag never replans from the previous display's origin", () => {
+  const base = { x: 700, y: 80, width: 1200, height: 800 };
+  const opened = planWorkPanelReservation({
+    baseBounds: base,
+    workArea,
+    requestedWidth: 420,
+  });
+  const droppedBounds = { ...opened.bounds, x: 2100, y: 250 };
+
+  const userMoved = planWorkPanelReservation({
+    baseBounds: reconcileBaseWindowBounds({
+      baseBounds: base,
+      lastAppliedBounds: opened.bounds,
+      currentBounds: droppedBounds,
+      displayTransition: "user-moved",
+      reservation: opened.reservation,
+    }),
+    workArea: rightWorkArea,
+    requestedWidth: 420,
+  });
+  const osAdjusted = planWorkPanelReservation({
+    baseBounds: reconcileBaseWindowBounds({
+      baseBounds: base,
+      lastAppliedBounds: opened.bounds,
+      currentBounds: droppedBounds,
+      displayTransition: "os-adjusted",
+      reservation: opened.reservation,
+    }),
+    workArea: rightWorkArea,
+    requestedWidth: 420,
+  });
+
+  // The regression: treating the drag as an OS adjustment replans from the left
+  // display's x, which the target work area then clamps to its left edge. That
+  // is the jump users saw on pointer release (issue #18).
+  assert.equal(osAdjusted.bounds.x, rightWorkArea.x);
+  // Attributed to the user, the window stays where it was dropped, shifted only
+  // by the reservation needed to fit the target work area.
+  assert.equal(userMoved.bounds.x, 2220);
+  assert.notEqual(userMoved.bounds.x, osAdjusted.bounds.x);
+  assert.ok(
+    userMoved.bounds.x + userMoved.bounds.width <=
+      rightWorkArea.x + rightWorkArea.width,
+  );
+});
+
+test("normalizing a dropped window moves its origin without resizing it", () => {
+  // Dropped across the boundary between the two displays.
+  assert.deepEqual(
+    clampBoundsOriginToWorkArea(
+      { x: 1700, y: 900, width: 1000, height: 800 },
+      rightWorkArea,
+    ),
+    { x: 1920, y: 280, width: 1000, height: 800 },
+  );
+  // A window that already fits is returned unchanged.
+  assert.deepEqual(
+    clampBoundsOriginToWorkArea(
+      { x: 2000, y: 100, width: 1000, height: 800 },
+      rightWorkArea,
+    ),
+    { x: 2000, y: 100, width: 1000, height: 800 },
+  );
+  // Base bounds are user intent under ADR 0122, so a rect larger than the work
+  // area keeps its size and is pinned to the top-left. Shrinking it here would
+  // be persisted and could never be restored on a roomier display.
+  assert.deepEqual(
+    clampBoundsOriginToWorkArea(
+      { x: 2000, y: 100, width: 2400, height: 1200 },
+      rightWorkArea,
+    ),
+    { x: 1920, y: 0, width: 2400, height: 1200 },
+  );
+});
+
+test("a drag onto a smaller display keeps the base size restorable", () => {
+  const smallWorkArea = { x: 1920, y: 0, width: 1280, height: 800 };
+  const base = { x: 100, y: 80, width: 1600, height: 900 };
+  const opened = planWorkPanelReservation({
+    baseBounds: base,
+    workArea,
+    requestedWidth: 420,
+  });
+  const droppedBounds = { ...opened.bounds, x: 2000, y: 60 };
+
+  const adopted = reconcileBaseWindowBounds({
+    baseBounds: base,
+    lastAppliedBounds: opened.bounds,
+    currentBounds: droppedBounds,
+    displayTransition: "user-moved",
+    reservation: opened.reservation,
+  });
+  const normalized = clampBoundsOriginToWorkArea(adopted, smallWorkArea);
+
+  // The small display cannot supply the reservation, but the base size the user
+  // chose survives, so returning to the large display restores it in full.
+  assert.equal(normalized.width, 1600);
+  assert.equal(normalized.height, 900);
+  const constrained = planWorkPanelReservation({
+    baseBounds: normalized,
+    workArea: smallWorkArea,
+    requestedWidth: 420,
+  });
+  assert.equal(constrained.reservation.width, 0);
+
+  const restored = planWorkPanelReservation({
+    baseBounds: baseWindowBounds(constrained.bounds, constrained.reservation),
+    workArea,
+    requestedWidth: 420,
+  });
+  assert.equal(restored.reservation.width, 320);
+  assert.equal(
+    baseWindowBounds(restored.bounds, restored.reservation).width,
+    1600,
   );
 });
 
