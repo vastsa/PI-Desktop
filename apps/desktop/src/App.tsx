@@ -945,6 +945,92 @@ function AppShell() {
         );
         useAppStore.setState({ messages: messages as any });
       },
+      seedDelegationRows: (count = 3) => {
+        // Capture-only delegation fixture. One `Task` and a two-`Task` fan-out
+        // in the same transcript, so the scene shows that a lone delegation now
+        // gets the same card as a fan-out; count 0 restores the empty
+        // transcript.
+        if (!(window as any).__PI_CAPTURE__) return;
+        if (count <= 0) {
+          useAppStore.setState({ messages: [] });
+          return;
+        }
+        const base = Date.parse("2026-08-14T09:00:00Z");
+        const delegation = (
+          index: number,
+          agent: string,
+          description: string,
+          status: string,
+          runtimeMs: number,
+        ) => ({
+          id: `capture-task-${index}`,
+          role: "tool" as const,
+          content: "",
+          createdAt: new Date(base + index * 60_000).toISOString(),
+          toolName: "Task",
+          toolCallId: `capture-call-${index}`,
+          toolStatus: status === "running" ? "running" : "success",
+          toolArgs: { agent, description, task: description },
+          toolResult: {
+            details: {
+              delegationId: `capture-delegation-${index}`,
+              status,
+              // A running node ticks from `startedAt`, so a fixed fixture start
+              // would render the days since the fixture date. Settled nodes take
+              // their runtime from the pair.
+              ...(status === "running"
+                ? {}
+                : {
+                    startedAt: base + index * 60_000,
+                    completedAt: base + index * 60_000 + runtimeMs,
+                  }),
+              turns: 4,
+              toolCalls: 9,
+            },
+          },
+        });
+        const delegateRow = (index: number, agent: string, path: string) => ({
+          id: `capture-task-${index}-step`,
+          role: "tool" as const,
+          content: "",
+          createdAt: new Date(base + index * 60_000 + 5_000).toISOString(),
+          toolName: "Read",
+          toolCallId: `capture-call-${index}-step`,
+          toolStatus: "success" as const,
+          toolArgs: { file_path: path },
+          parentToolCallId: `capture-call-${index}`,
+          agentName: agent,
+        });
+        const messages = [
+          {
+            id: "capture-task-user-0",
+            role: "user" as const,
+            content: "帮我审一下 store 的改动",
+            createdAt: new Date(base - 30_000).toISOString(),
+            status: "complete" as const,
+          },
+          delegation(0, "code-reviewer", "check the store diff", "completed", 32_000),
+          delegateRow(0, "code-reviewer", "apps/desktop/src/stores/app-store.ts"),
+          {
+            id: "capture-task-answer-0",
+            role: "assistant" as const,
+            content: "审阅完成：队列按 id 丢弃请求，没有发现回归。",
+            createdAt: new Date(base + 40_000).toISOString(),
+            status: "complete" as const,
+          },
+          {
+            id: "capture-task-user-1",
+            role: "user" as const,
+            content: "再并行看下 runtime 和 shared",
+            createdAt: new Date(base + 55_000).toISOString(),
+            status: "complete" as const,
+          },
+          delegation(1, "code-reviewer", "audit agent-runtime", "completed", 48_000),
+          delegateRow(1, "code-reviewer", "packages/agent-runtime/src/runtime.ts"),
+          delegation(2, "explorer", "map the shared protocol", "running", 0),
+        ];
+        useAppStore.setState({ messages: messages as any });
+      },
       seedPlugins: (count = 4) => {
         // Capture-only plugins fixture (plugins index scenes); count 0 clears.
         // One sample per row group so the D169 bands are all exercised, and one
