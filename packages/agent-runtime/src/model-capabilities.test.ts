@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   clampThinkingLevel,
+  listPiCatalogModels,
   resolvePiModelConfig,
   resolvePiModelConfigForModelDraft,
   resolveThinkingCapabilities,
@@ -10,6 +11,17 @@ import {
 import type { ThinkingLevel } from "@pi-desktop/shared";
 
 describe("pi-ai model resolution", () => {
+  it("lists known native models for the Electron fallback catalog", () => {
+    const models = listPiCatalogModels({
+      vendorKey: "anthropic",
+      apiStyle: "anthropic_messages",
+    });
+    expect(models.length).toBeGreaterThan(0);
+    expect(models.some((model) => model.modelId === "claude-opus-4-7")).toBe(true);
+    expect(listPiCatalogModels({ vendorKey: "togetherai", apiStyle: "chat_completions" }).length).toBeGreaterThan(0);
+    expect(listPiCatalogModels({ vendorKey: "custom", apiStyle: "chat_completions" })).toEqual([]);
+  });
+
   it("uses pi-ai input metadata as the vision capability source", () => {
     expect(
       resolveVisionCapability({

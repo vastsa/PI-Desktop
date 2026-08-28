@@ -84,7 +84,9 @@ export function useProviderModels(
           apiStyle,
         });
         if (requestSeq.current !== requestId) return;
-        if (result.source === "remote" && result.models.length > 0) {
+        if (result.models.length > 0) {
+          // A local pi-ai fallback is still a usable model list; only an empty
+          // result should surface the unavailable hint while retaining cache.
           setState({ status: "ready", models: result.models });
         } else {
           setState({ status: "error", models: cachedModels });

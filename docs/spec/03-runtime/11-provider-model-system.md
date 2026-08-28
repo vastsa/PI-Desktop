@@ -40,9 +40,10 @@ Settings / UI
       ├─ openai-compatible provider
       └─ custom provider definitions
   → ModelCatalogService
-      ├─ bundled catalog snapshot
-      ├─ runtime discovery (where supported)
-      └─ refresh from pi model data / remote catalog source
+      ├─ models.dev remote catalog (primary)
+      ├─ pi-ai bundled catalog (fallback)
+      ├─ runtime discovery (custom/dynamic fallback)
+      └─ Rust-owned provider cache
 ```
 
 ## 4. Provider types
@@ -71,7 +72,9 @@ allowlist.
 
 ## 5. Built-in vendor matrix (ship intent)
 
-> Exact availability depends on pi-ai support at pin version; product must expose all supported ones and keep OpenAI-compatible path open for the rest.
+> Exact availability follows the models.dev catalog when it has a provider record;
+> pi-ai remains the local fallback, and the product keeps the OpenAI-compatible
+> path open for providers absent from both catalogs.
 
 ### Tier A — always exposed in UI
 - OpenAI
@@ -115,30 +118,36 @@ Any vendor not listed but reachable by:
 PI-Desktop must not permanently restrict users to a short fixed model list.
 
 ### 6.2 Catalog responsibilities
-1. **pi-ai's bundled catalog** is the sole runtime metadata source for known
-   models.
-2. **Runtime-native discovery** and the durable cache provide selection and
-   offline availability, but never rewrite known-model runtime semantics.
-3. **User-defined model ids** remain selectable; ids absent from pi use the
-   explicit generic fallback.
-4. **pi-ai upgrades** refresh the authoritative model metadata snapshot.
-   The current pin is `@earendil-works/pi-ai` / `pi-agent-core` **^0.82.1+**.
-   That snapshot includes **Claude Opus 5** (`claude-opus-5` and provider-native
-   aliases such as Bedrock inference profiles and OpenRouter
-   `anthropic/claude-opus-5`) with 1M context, adaptive thinking, and the
-   published thinking-level map. Free-form gateway ids that match those catalog
-   entries resolve through the same D136 path; ids still absent from the pin
-   remain on the generic non-reasoning fallback.
-5. For image transport, pi-ai's `input` list is equally authoritative:
-   `input.includes("image")` is the only signal that enables visual blocks.
-   Renderer discovery, cached `vision` badges, and user-entered capability
+1. **models.dev** (`https://models.dev/api.json`) is the primary remote catalog
+   for known providers and models. Electron main fetches it with a bounded
+   timeout, parses only the documented provider/model fields, and never sends
+   provider credentials to the catalog.
+2. **pi-ai's bundled catalog** is the local fallback when models.dev is
+   unavailable or has no matching provider/model. Its complete model snapshot
+   remains available for adapter-specific compatibility and native provider
+   coverage.
+3. **Runtime-native/provider discovery** and the Rust-owned cache remain
+   supplemental for custom or account-specific endpoints. They never replace
+   a matching models.dev field; a configured free-form model ID is always kept
+   selectable.
+4. The source precedence for a known configured provider/model is:
+   `models.dev` → `pi-ai` → provider endpoint discovery → generic defaults.
+   models.dev matches the provider key first and a normalized API URL second;
+   pi-ai uses the exact API-aware provider/model lookup and its bounded aliases.
+5. For image transport, models.dev `modalities.input` is authoritative when
+   present; pi-ai `input` is the fallback. `image` is the only signal that
+   enables visual blocks. Renderer discovery, cached badges, and user-entered
    claims cannot promote an unknown model. The fallback is a path reference so
    the normal file-tool workflow remains available.
-6. The Settings provider dialog has a separate model-add enrichment path for
-   initial context/output/thinking defaults. It searches only official
-   first-party provider records and ignores `apiStyle` for that UI-only lookup;
-   gateway/reseller records cannot provide those defaults. Runtime
-   `resolvePiModelConfig` and `resolveThinkingCapabilities` remain API-aware.
+6. The Settings provider dialog uses the same precedence for initial
+   context/output/thinking defaults. A models.dev model's `limit.context`,
+   `limit.output`, `modalities`, `reasoning_options`, `tool_call`, and
+   `structured_output` are mapped to the shared `ModelInfo`; the canonical
+   thinking-level mapping is defined in `models-dev-catalog.ts`.
+7. User-edited `ModelBinding` values remain explicit provider configuration:
+   they control the selected binding's request limits and enabled thinking
+   levels, while the catalog controls defaults and capability metadata.
+   Unknown free-form IDs use the generic text-only, non-reasoning defaults.
 
 ### 6.3 Model families to cover
 Catalog and custom model entry must support common capability classes:
@@ -233,8 +242,8 @@ type ThinkingLevel =
 The compatibility fields above are retained as a persisted-schema compatibility
 surface for older clients. PI-Desktop no longer reads them as runtime model
 overrides. Reasoning support and supported thinking levels come from the
-resolved pi-ai model record; unknown free-form ids expose no inferred
-reasoning capability.
+resolved models.dev record, then the pi-ai fallback record; unknown free-form
+ids expose no inferred reasoning capability.
 
 The provider dialog persists one `ModelBinding` for every selected model. The
 first binding is the effective model for current conversations and legacy
@@ -321,6 +330,7 @@ type ModelDescriptor = {
   modelId: string
   displayName: string
   source: "bundled" | "discovered" | "user"
+  catalogSource?: "models.dev" | "pi-ai"
   capabilities: Array<"text" | "tools" | "vision" | "reasoning" | "json">
   contextWindow?: number
   maxOutputTokens?: number
@@ -342,8 +352,9 @@ type ModelDescriptor = {
 - edit a vendor account's non-secret label and default model
 - enable/disable provider
 - test connection
-- do not expose reasoning, thinking-level, context-window, output-limit,
-  temperature, or compatibility overrides for a selected model
+- select multiple models and edit each binding's context window, output limit,
+  and enabled thinking levels; catalog metadata supplies the initial values
+- do not expose raw catalog compatibility internals or provider secrets
 
 ### Model selector
 - search all models across enabled providers
@@ -369,23 +380,28 @@ When starting a turn with `(providerId, modelId)`:
    (never log it; missing → `PROVIDER_SECRET_MISSING`); for an `oauth` row skip
    this entirely and launch with an empty key, because auth is resolved per
    request (§8a)
-4. resolve the complete pi-ai model record by exact vendor/id or a compatible
-   gateway alias with a separator-bounded suffix
-5. when resolved, copy pi's name, reasoning flag, thinking-level map, input
-   modes, pricing, context window, output limit, headers, and compatibility
-   verbatim; when unresolved, accept the raw model id with the generic
-   text-only, non-reasoning fallback
-6. derive vision transport only from the resolved record's `input` list;
-   discovery/cache/user capability claims cannot promote an unresolved model
-7. clamp the session thinking level against pi's supported levels and build the
-   runtime provider adapter by replacing only provider/model identity, selected
-   API adapter, auth, and an explicitly configured endpoint URL
+4. resolve the models.dev record by matched provider key/API URL and exact model
+   id; if absent, resolve the complete pi-ai model record by exact vendor/id or
+   a compatible gateway alias with a separator-bounded suffix
+5. when models.dev resolves the model, use its name, reasoning flag, thinking
+   options, input modes, pricing, context window, and output limit; retain
+   pi-ai's adapter-specific compatibility fields when available. Otherwise use
+   the complete pi-ai snapshot; when both catalogs miss, accept the raw model
+   id with the generic text-only, non-reasoning fallback
+6. derive vision transport from models.dev `modalities.input` when present and
+   from pi-ai `input` otherwise; discovery/cache/user capability claims cannot
+   promote an unresolved model
+7. clamp the session thinking level against the selected catalog's supported
+   levels and build the runtime provider adapter by replacing only
+   provider/model identity, selected API adapter, auth, and an explicitly
+   configured endpoint URL
 8. execute stream with abort handle and separate answer/thinking events
 9. translate vendor errors into shared `AppError` codes (§15)
 
-If the model is not in pi's catalog, still allow it when the user explicitly
-enters a model id and the provider accepts unknown ids. Cached/discovered
-capability fields do not promote that fallback into a known runtime model.
+If the model is absent from both models.dev and pi-ai, still allow it when the
+user explicitly enters a model id and the provider accepts unknown ids.
+Cached/discovered capability fields do not promote that fallback into a known
+runtime model.
 
 ## 12. Compatibility tiers
 
@@ -400,12 +416,14 @@ UI may show tier hints, but must not hard-block unknown models by default.
 
 ## 13. Refresh & update policy
 
-1. App ships with bundled catalog snapshot
-2. User can click **Refresh model catalog**
-3. Refresh may update:
-   - discovered models for providers with list APIs
-   - bundled catalog via app update channel
-4. Refresh failure must not wipe existing catalog
+1. Electron main loads the models.dev catalog once per process with a bounded
+   timeout
+2. User/provider refreshes revalidate models.dev before provider-specific
+   discovery
+3. If models.dev is unavailable, use the pinned pi-ai catalog, then provider
+   endpoint discovery, then the persisted configured bindings
+4. Refresh failure must not wipe the Rust-owned provider cache or the last
+   successful models.dev snapshot
 
 ## 14. Local / offline model support
 

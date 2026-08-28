@@ -88,7 +88,13 @@ function fakeModels(credentials, { login, models: configuredModels } = {}) {
       baseUrl: "https://api.anthropic.com",
       input: ["text"],
       reasoning: true,
-      thinkingLevelMap: { low: "low", medium: "medium", high: "high" },
+      thinkingLevelMap: {
+        off: null,
+        minimal: null,
+        low: "low",
+        medium: "medium",
+        high: "high",
+      },
       cost: { input: 0, output: 0 },
       contextWindow: 200_000,
       maxTokens: 16_384,
@@ -162,6 +168,7 @@ function harness(options = {}) {
       stores.push(store);
       return fakeModels(store, options);
     },
+    modelBindingFor: options.modelBindingFor,
     newId: () => `id-${++counter}`,
   });
   // The store the module handed pi-ai, so a test can drive it the way a token
@@ -260,6 +267,42 @@ test("a completed login stores the credential and configures the row", async () 
       providerId: row.id,
       accountLabel: "Anthropic (Claude Pro/Max)",
       connected: true,
+    },
+  ]);
+});
+
+test("OAuth model bindings prefer primary catalog fields and fall back per field", async () => {
+  const { host, events, oauth } = harness({
+    modelBindingFor: async ({ option }) =>
+      option.modelId === "claude-opus-5"
+        ? {
+            contextWindow: 250_000,
+            maxTokens: 20_000,
+            thinkingLevels: ["medium"],
+            defaultThinkingLevel: "medium",
+          }
+        : option.modelId === "claude-haiku-5"
+          ? { contextWindow: 150_000 }
+          : undefined,
+  });
+  const { loginId } = await oauth.start("anthropic");
+  const prompt = await waitFor(events, "prompt");
+  assert.equal(oauth.respond({ loginId, promptId: prompt.request.promptId, value: "abc" }), true);
+  const done = await waitFor(events, "done");
+  assert.deepEqual(host.providers.get(done.providerId).models, [
+    {
+      id: "claude-opus-5",
+      contextWindow: 250_000,
+      maxTokens: 20_000,
+      thinkingLevels: ["medium"],
+      defaultThinkingLevel: "medium",
+    },
+    {
+      id: "claude-haiku-5",
+      contextWindow: 150_000,
+      maxTokens: 8_192,
+      thinkingLevels: ["off"],
+      defaultThinkingLevel: "off",
     },
   ]);
 });

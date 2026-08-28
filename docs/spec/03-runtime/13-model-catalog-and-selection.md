@@ -73,10 +73,15 @@ If user selects model tagged without tools while in Agent mode:
 
 `providers.refreshModels`:
 
-1. query runtime-supported discovery endpoints
-2. merge into catalog cache
-3. keep user-defined models
-4. return counts: added/updated/failed providers
+1. load the shared models.dev catalog from `https://models.dev/api.json`
+2. use the matching models.dev provider/model records as the primary result
+3. fall back to the local pi-ai catalog when the remote catalog is unavailable
+   or has no matching provider
+4. use a provider discovery endpoint for custom/account-specific models that
+   neither catalog exposes
+5. merge the result into the Rust-owned provider cache and keep user-defined
+   models
+6. return counts: added/updated/failed providers
 
 The desktop uses stale-while-revalidate for configured providers:
 
@@ -84,7 +89,8 @@ The desktop uses stale-while-revalidate for configured providers:
    renderer bootstrap
 2. render that catalog immediately in the composer picker and saved-provider
    edit dialog
-3. perform at most one live refresh per provider per renderer lifetime
+3. perform at most one live models.dev/provider refresh per provider per
+   renderer lifetime
 4. merge a successful response into SQLite and replace the renderer snapshot
 5. reset the renderer refresh marker after provider configuration changes so
    the next picker open revalidates the endpoint
@@ -98,8 +104,9 @@ If refresh fails / offline:
 - allow custom model id
 - still allow providers with known model ids
 - when a saved provider cache is empty or partial, append every configured
-  model binding before applying pi-ai metadata decoration so multi-model
-  settings remain editable and per-model capability state stays aligned
+  model binding before applying models.dev metadata decoration, then the
+  pi-ai fallback, so multi-model settings remain editable and per-model
+  capability state stays aligned
 
 ## 8. Catalog item schema
 
@@ -125,6 +132,8 @@ type ModelCatalogItem = {
   supportedThinkingLevels?: Array<
     "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"
   >
+  /** Which known catalog supplied metadata for this row. */
+  catalogSource?: "models.dev" | "pi-ai"
 }
 ```
 
@@ -134,12 +143,16 @@ When UI/search requests models for picker:
 
 1. recent models for enabled providers
 2. user-defined models
-3. discovered/refreshed cache
-4. bundled snapshot
-5. always include "custom model id" entry action
+3. models.dev records for the matching provider/API URL
+4. pi-ai bundled records when models.dev is unavailable or has no match
+5. provider discovery/cache for custom or account-specific models
+6. always include "custom model id" entry action
 
 Deduplicate by `(providerId, modelId)` with priority:
-`user > discovered > bundled > recent-only`.
+`user > models.dev > pi-ai > provider-discovered > recent-only`. The
+`catalogSource` field records whether a known row came from models.dev or
+pi-ai; a provider cache stores only the existing normalized cache fields and is
+re-decorated from the current catalog on the next read.
 
 ### 9.1 Conversation Composer scope
 
@@ -179,15 +192,16 @@ Warnings are non-blocking unless execution is impossible.
 
 ### 11.1 Reasoning capability resolution
 
-1. Resolve pi catalog metadata for the exact `(vendorKey, modelId)` or a
-   separator-bounded compatible-gateway alias.
-2. The complete pi model record is authoritative; cached/discovered model
-   capabilities and legacy provider overrides cannot replace its reasoning
-   flag or thinking-level map.
-3. A free-form id absent from pi is an unknown generic model and exposes only
-   `off`; the UI cannot promote it to reasoning-capable.
-4. The Composer renders the selector only when the resolved pi model supports
-   reasoning and lists only the resolved `supportedThinkingLevels`.
+1. Resolve models.dev metadata for the matching provider/API URL and exact
+   `modelId`; when absent, resolve the pi-ai catalog record for the exact
+   `(vendorKey, modelId)` or a separator-bounded compatible-gateway alias.
+2. The resolved models.dev record is authoritative for `reasoning` and
+   `reasoning_options`; the complete pi-ai record is the fallback. Cached/
+   discovered capability claims cannot replace either catalog record.
+3. A free-form id absent from both catalogs is an unknown generic model and
+   exposes only `off`; the UI cannot promote it to reasoning-capable.
+4. The Composer renders the selector only when the selected catalog says the
+   model supports reasoning and lists only its supported canonical levels.
 5. If a stored/requested level is unavailable, choose the nearest supported
    level by scanning upward first and then downward. Non-reasoning models
    always resolve to `off`.
@@ -196,12 +210,13 @@ Warnings are non-blocking unless execution is impossible.
 
 ### 11.2 Vision capability resolution
 
-1. Resolve the same exact pi model record used to build the sidecar provider.
-2. Mark the model `vision` only when `input.includes("image")` is true.
-3. A discovered, cached, or user-defined capability flag may remain useful as
-   selection metadata, but it cannot promote an unknown runtime model to image
-   transport. Unknown/custom models therefore show the path-fallback status in
-   Composer.
+1. Resolve models.dev `modalities.input` for the matching exact model first;
+   use the same exact pi-ai model record as fallback.
+2. Mark the model `vision` only when the selected record includes `image` input.
+3. A provider endpoint, cached, or user-defined capability flag may remain
+   useful as selection metadata, but it cannot promote an unknown model to
+   image transport. Unknown/custom models therefore show the path-fallback
+   status in Composer.
 4. The main process prepares pasted images as content-addressed refs. A
    vision-capable model receives images within the 20 MiB app-side inline
    bound as transient image blocks; other cases receive a safe `@path`.
@@ -209,21 +224,18 @@ Warnings are non-blocking unless execution is impossible.
 ### 11.3 Settings model-add metadata
 
 When the provider dialog adds a discovered model, its initial context window,
-output limit, and thinking defaults use a separate official-vendor lookup:
+output limit, capability badges, and thinking defaults use this lookup:
 
-1. A provider-vendor exact match is preferred when `vendorKey` maps to an
-   official pi-ai provider.
-2. Otherwise, exact and separator-bounded prefix matches search only official
-   providers: OpenAI, OpenAI Codex, Anthropic, DeepSeek, Google, xAI, Mistral,
-   MiniMax, Moonshot/Kimi, Z.AI, Qwen token-plan, Xiaomi token-plan, and
-   AntLing. Gateway, reseller, and subscription-proxy records do not supply
-   these defaults.
-3. This lookup ignores the configured `apiStyle`, so an OpenAI-compatible Chat
-   Completions provider can still prefill a model registered by pi-ai under
-   Responses.
-4. A miss leaves the fields unset so `modelDraftFromInfo` supplies the fixed
-   generic defaults. This is a settings-only enrichment path; runtime
-   `resolvePiModelConfig` and `resolveThinkingCapabilities` remain API-aware.
+1. A matching models.dev provider is preferred by `vendorKey`, then by
+   normalized provider API URL; its exact model record supplies the fields.
+2. When models.dev is unavailable or has no match, the pinned pi-ai catalog
+   supplies the same fields for a known native provider/model.
+3. A provider endpoint may add custom/account-specific IDs, but cannot replace
+   metadata from either catalog. A free-form miss receives the fixed generic
+   defaults from `modelDraftFromInfo`.
+4. The lookup does not send API keys to models.dev. Runtime model resolution
+   uses the same precedence while retaining pi-ai adapter compatibility data
+   when models.dev does not publish it.
 
 ## 12. Refresh strategy
 
@@ -232,11 +244,12 @@ output limit, and thinking defaults use a separate official-vendor lookup:
 - no aggressive background polling in MVP
 - refresh failures keep previous cache and surface non-fatal error
 
-Electron decorates cached and freshly discovered model rows with pi-ai model
-metadata when one exists. Runtime model resolution remains API-aware, while
-the settings add flow uses the official-vendor enrichment in §11.3 for initial
-model bindings. Provider discovery remains the fallback for models absent from
-the applicable pi-ai catalog path.
+Electron decorates cached and freshly returned model rows with models.dev
+metadata when its provider/model match exists, then pi-ai metadata as fallback.
+Runtime model resolution remains API-aware and preserves pi-ai adapter
+compatibility fields where models.dev has no equivalent. Provider discovery
+remains the fallback for custom/account-specific models absent from both
+catalogs.
 
 ## 13. Search behavior
 
@@ -257,8 +270,13 @@ the applicable pi-ai catalog path.
 - [ ] session model change applies to next turn only
 - [ ] a new session defaults a reasoning-capable inherited model to its highest
       published thinking level and otherwise defaults to `off`
-- [ ] reasoning selector is capability-gated and pi-published sparse level
-      sets clamp the same way in Composer, Electron main, and the pi sidecar
-- [ ] provider settings and cached discovery cannot override a known pi model
+- [ ] reasoning selector is capability-gated and models.dev-published sparse
+      levels (or the pi-ai fallback levels) clamp the same way in Composer,
+      Electron main, and the pi sidecar
+- [ ] models.dev metadata wins for a matching provider/model and pi-ai is used
+      when the remote record is unavailable or missing
+- [ ] provider settings and cached discovery cannot replace known catalog
+      capabilities; explicit binding edits remain persisted configuration
 - [ ] unknown free-form models remain runnable without invented capabilities
-- [ ] pinned pi-ai ^0.82.1+ resolves `claude-opus-5` (and gateway-compatible aliases) to the published 1M-context adaptive-thinking record without desktop overrides
+- [ ] models.dev and pi-ai fallback records resolve the same configured model
+      without sending provider credentials to the remote catalog

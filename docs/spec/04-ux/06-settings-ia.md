@@ -155,16 +155,17 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
     source, capabilities, and token limits visible at a glance, and expands
     in place for edits. The first row starts expanded so the form remains
     discoverable; additional rows stay collapsed to keep large model sets
-    scannable. Built-in model metadata from pi-ai pre-fills the row; custom
-    models use the runtime fallback values and remain editable. The portaled
+    scannable. models.dev metadata pre-fills known rows; pi-ai is the local
+    fallback when the remote catalog is unavailable, and custom models use the
+    runtime fallback values. The portaled
     option list can scroll without dismissing the picker; scrolling an
     outside settings container dismisses it before the trigger can become
     detached. Search results keep a dedicated no-match state instead of
     reusing the search placeholder.
   - each model option and configuration row shows a compact text/vision
-    capability state. Vision is derived from the exact pi-ai model record and
-    is display-only; discovery or a user-entered ID cannot promote an unknown
-    model to image transport.
+    capability state. Vision is derived from models.dev when its exact record
+    matches, then from the exact pi-ai model record; provider discovery or a
+    user-entered ID cannot promote an unknown model to image transport.
   - model discovery is debounced after a valid endpoint, key, or API style
     change, including no-auth/local endpoints; the picker remains usable with
     free-form custom model IDs when discovery is unavailable

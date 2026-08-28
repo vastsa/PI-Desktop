@@ -40,7 +40,7 @@ export type RuntimeProviderConfig = {
   apiStyle?: string;
   supportsReasoning: boolean;
   supportedThinkingLevels: ThinkingLevel[];
-  /** Complete model metadata resolved from pi-ai by Electron main. */
+  /** Complete model metadata resolved from models.dev or pi-ai by Electron main. */
   modelConfig?: PiModelConfig;
   /**
    * Vendor-account auth, resolved once per request by Electron main.

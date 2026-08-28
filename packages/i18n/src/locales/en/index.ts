@@ -785,6 +785,7 @@ export const en = {
     modelAlreadyAdded: "Model already added",
     modelConfigurations: "Model settings",
     builtInCatalog: "pi-ai",
+    modelsDevCatalog: "models.dev",
     removeModel: "Remove model",
     contextWindow: "Context window",
     contextWindowShort: "ctx",

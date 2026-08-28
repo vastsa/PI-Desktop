@@ -85,8 +85,12 @@ const THINKING_ORDER: readonly ThinkingLevel[] = [
   "max",
 ];
 
+export function isCatalogModel(model: ModelInfo | null | undefined): boolean {
+  return model?.source === "bundled" || model?.catalogSource === "models.dev" || model?.catalogSource === "pi-ai";
+}
+
 export function modelSource(model: ModelInfo): "catalog" | "custom" {
-  return model.source === "bundled" ? "catalog" : "custom";
+  return isCatalogModel(model) ? "catalog" : "custom";
 }
 
 export function modelDraftFromInfo(model: ModelInfo): ProviderModelDraft {

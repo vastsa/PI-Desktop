@@ -836,6 +836,8 @@ export type ModelInfo = {
   capabilities: Array<"text" | "tools" | "vision" | "reasoning" | "json">;
   supportedThinkingLevels?: ThinkingLevel[];
   source: "bundled" | "discovered" | "user";
+  /** Metadata catalog that supplied this row, when it is a known model. */
+  catalogSource?: "models.dev" | "pi-ai";
 };
 
 /**

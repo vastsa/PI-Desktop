@@ -13,11 +13,14 @@
 | Rust async | tokio | stable | host services |
 | Host RPC | stdio JSON-RPC (NDJSON) | frozen (D001) | Electron main ↔ Rust host |
 | Agent engine | `@earendil-works/pi-agent-core` | ^0.82.1+ | agent loop |
-| Model API | `@earendil-works/pi-ai` | ^0.82.1+ | providers |
+| Model API | `@earendil-works/pi-ai` | ^0.82.1+ | provider adapters and local catalog fallback |
+| Model catalog | `https://models.dev/api.json` | remote, bounded fetch | primary provider/model metadata catalog |
 
-> Pin **^0.82.1+** is required for Claude Opus 5 catalog metadata
-> (`claude-opus-5`, 1M context, adaptive thinking). Earlier 0.82.0 builds
-> treated that id as an unknown free-form model.
+> Pin **^0.82.1+** remains required for pi-ai adapter compatibility and its
+> fallback catalog. models.dev supplies the primary current model metadata.
+> The pin also remains useful for adapter compatibility and native models that
+> models.dev does not publish.
+
 | Node runtime | Node.js | `>= 22.19` | pi requirement |
 | DB | SQLite | Rust host-core via `rusqlite` | sessions/settings |
 | Packaging | electron-builder | stable | macOS arm64, Windows x64, and Linux x64 release lanes |

@@ -1164,8 +1164,8 @@ Single message render — either user (plaintext) or assistant (markdown streami
   explanatory estimate note are intentionally omitted from the default view.
   Generation speed is a completed-turn value in tokens per second and is not
   updated while a response is streaming. The context-window total uses the
-  same `pi-ai` model metadata as the agent sidecar, while unknown models fall
-  back to the provider catalog or the default window. The panel is portaled to
+  same models.dev model metadata as the agent sidecar when available, then the
+  pi-ai fallback; unknown models use the provider catalog or default window. The panel is portaled to
   the document body as a fixed viewport overlay, flips above or below the
   trigger, clamps to viewport margins, and repositions on transcript scrolling
   or window resize so no transcript clipping ancestor can hide it (D103, D184,
@@ -1961,10 +1961,11 @@ reasoning-level control.
   inserts an inline temporary-file token at the paste position (D197, D209,
   D262, ADR 0059, ADR 0070, ADR 0131)
 - The compact chips retain structured kind/name/MIME metadata while keeping
-  the textarea free of binary data. The selected model's exact pi-ai
-  capability controls dispatch: eligible images become transient visual input
-  for a model whose `input` includes `image`; non-vision, unknown, and
-  oversized images use the existing canonical `@<path>` file-tool fallback.
+  the textarea free of binary data. The selected model's models.dev
+  capability controls dispatch when its exact record matches; the exact pi-ai
+  record is the fallback. Eligible images become transient visual input for a
+  model whose selected catalog `input` includes `image`; non-vision, unknown,
+  and oversized images use the existing canonical `@<path>` file-tool fallback.
   There are no visual previews in MVP.
 - No voice input
 

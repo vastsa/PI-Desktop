@@ -776,6 +776,7 @@ export const zhCN = {
     modelAlreadyAdded: "该模型已添加",
     modelConfigurations: "模型设置",
     builtInCatalog: "pi-ai",
+    modelsDevCatalog: "models.dev",
     removeModel: "移除模型",
     contextWindow: "上下文窗口",
     contextWindowShort: "上下文",
