@@ -100,14 +100,17 @@ test("installed row controls share one aligned rail and explain icon actions", (
   assert.match(section, /\.plugins-icon-btn\[data-tip\]:focus-visible::after/);
 });
 
-// The 46px titlebar band floats over the destination pages: it is a native drag
-// rectangle, and on Windows/Linux the renderer-drawn window controls own the
-// conversation pane's rightmost 120px. The plugins page is the one destination page with controls in
-// that corner (header actions, detail-sheet close), so both must clear the band.
-test("plugins page keeps its top-right controls clear of the window controls", () => {
+// The 46px titlebar band floats over the destination pages on every platform: it
+// is an opaque absolute .main-titlebar and a native drag rectangle, and on
+// Windows/Linux the renderer-drawn window controls own the conversation pane's
+// rightmost 120px. The page header lives in that band, so the frame must reserve
+// it on macOS too or the title row paints underneath. The plugins page is the one
+// destination page with controls in that corner (header actions, detail-sheet
+// close), so both must clear the band.
+test("plugins page keeps its header clear of the titlebar band on every platform", () => {
   assert.match(
     stylesSource,
-    /:root\[data-platform="win32"\] \.page-frame,\s*:root\[data-platform="linux"\] \.page-frame\s*\{[^}]*padding-top:\s*calc\(var\(--ds-toolbar-height\) \+ 8px\)/,
+    /:root\[data-platform="win32"\] \.page-frame,\s*:root\[data-platform="linux"\] \.page-frame,\s*:root\[data-platform="darwin"\] \.page-frame\s*\{[^}]*padding-top:\s*calc\(var\(--ds-toolbar-height\) \+ 8px\)/,
   );
 
   const section = pluginsSection(stylesSource);

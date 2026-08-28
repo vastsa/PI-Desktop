@@ -550,6 +550,28 @@ Each scenario is documented in this format:
 - **Milestone**: M2
 - **Status**: Draft
 
+#### E2E-087a: Destination page headers clear the titlebar band on macOS
+
+- **Preconditions**: macOS build; at least one plugin installed.
+- **Steps**: 1) Open the Plugins route with the window at its default size.
+  2) Inspect the top of the page: the "Plugins" title row, its primary action,
+  and the overflow menu button. 3) Scroll the page to the top and confirm no
+  page content is hidden behind the 46px band. 4) Repeat on the Scheduled and
+  Pull requests routes. 5) Open a plugin's detail sheet and inspect its head.
+- **Expected**: The page header renders fully below the frameless drag band on
+  macOS as it already does on Windows/Linux: the title row is not clipped, and
+  the Installed / Marketplace segmented control and search field sit at their
+  intended offset instead of at the window's top edge. `.page-frame` reserves
+  `--ds-toolbar-height` plus an 8px buffer on darwin, win32, and linux alike.
+  The plugin detail sheet stacks above the band (`z-index: 60`) and keeps its
+  own head at the top edge, with its close button opting out of the drag
+  rectangle.
+- **Specs linked**: `04-ux/08-component-spec.md` (§2.3 Layout)
+- **Acceptance**: C (UI), Quality
+- **Milestone**: M2
+- **Status**: Source-level regression covered
+  (`apps/desktop/test/plugins-page-style.test.mjs`); full UI scenario Draft
+
 #### E2E-088: Composer Agent/Plan/Goal chip updates the session
 
 - **Preconditions**: Chat route active; a session selected.

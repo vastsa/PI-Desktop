@@ -2488,3 +2488,24 @@ D193, and D194.
   still derived on both live and reload from the persisted `parentToolCallId` /
   `agentName` attribution. See ADR 0062 §6, `04-ux/08-component-spec.md` §9.9,
   and E2E-119.
+
+## 2026-08-28 — The titlebar band is reserved on every platform (D266)
+
+- Decision D266 fixes a macOS-only regression on the destination pages. The
+  46px band at the top of the main pane is an opaque, absolutely positioned
+  `.main-titlebar`, so scrolling route content passes underneath it on every
+  platform. Only `win32` and `linux` padded `.page-frame` for it, and that
+  reservation was framed as a window-controls concern — macOS draws its traffic
+  lights natively, so darwin looked exempt.
+- It was not. The band is opaque regardless of who draws the window controls, so
+  on macOS it covered the Plugins page header: the title row was clipped and the
+  Installed / Marketplace segmented control sat at the window's top edge.
+- `.page-frame` now reserves `--ds-toolbar-height` plus an 8px buffer on darwin
+  as well, matching what `.thread-content` already did for the transcript on all
+  three platforms. The fix covers Plugins, Scheduled, and Pull requests, since
+  they share the frame.
+- Surfaces that stack above the band keep their current treatment: the plugin
+  detail sheet renders at `z-index: 60` and still starts at the top edge, with
+  only `win32` / `linux` dropping below the band to clear the window controls.
+- Renderer CSS only: no IPC, storage, host protocol, or component-structure
+  change. See `04-ux/08-component-spec.md` §2.3 and E2E-087a.

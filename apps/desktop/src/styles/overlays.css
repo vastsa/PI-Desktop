@@ -720,15 +720,16 @@
   padding: 28px 28px 48px;
 }
 
-/* Frameless Windows/Linux paint the window controls in the conversation pane's
- * rightmost 120px of the 46px titlebar band, which floats over destination
- * pages. The band includes an 8px visual buffer before the 112px control hit
- * targets. A page
- * header keeps its actions in that top-right corner, so start the frame below
- * the band — the same reservation .thread-content makes for the transcript —
- * instead of letting minimize/maximize/close sit on top of them. */
+/* The 46px titlebar band floats over destination pages on every platform: it is
+ * an opaque absolute .main-titlebar. On frameless Windows/Linux it also paints
+ * the window controls in the conversation pane's rightmost 120px — a 112px
+ * control strip behind an 8px visual buffer. A page header keeps its title and
+ * actions in that top band, so start the frame below it — the same reservation
+ * .thread-content makes for the transcript — instead of letting the band cover
+ * the header or the window controls sit on top of its actions. */
 :root[data-platform="win32"] .page-frame,
-:root[data-platform="linux"] .page-frame {
+:root[data-platform="linux"] .page-frame,
+:root[data-platform="darwin"] .page-frame {
   padding-top: calc(var(--ds-toolbar-height) + 8px);
 }
 
