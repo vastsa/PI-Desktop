@@ -44,6 +44,7 @@ import {
   type OAuthRespondInput,
   type OAuthStartResult,
   type OAuthVendor,
+  type ModelBinding,
   type ThinkingLevel,
 } from "@pi-desktop/shared";
 
@@ -429,10 +430,9 @@ export class VendorOAuth {
     provider: Provider,
     accountLabel: string,
   ): Promise<void> {
-    let chosen: OAuthModelOption | undefined;
+    let options: OAuthModelOption[] = [];
     try {
-      const options = await this.listModels(session.providerId);
-      chosen = options[0];
+      options = await this.listModels(session.providerId);
     } catch (error) {
       // A catalog that will not load is not worth failing a good login over;
       // the row stays selectable and the model picker retries later.
@@ -441,13 +441,31 @@ export class VendorOAuth {
         message: error instanceof Error ? error.message : String(error),
       });
     }
+    const chosen = options[0];
     const apiStyle = chosen?.apiStyle;
+    const modelBindings: ModelBinding[] = [];
+    for (const option of options) {
+      const binding = await this.bindingFor(session.providerId, option.modelId).catch(
+        () => undefined,
+      );
+      const levels: ThinkingLevel[] = [
+        ...(binding?.supportedThinkingLevels ?? ["off"]),
+      ];
+      modelBindings.push({
+        id: option.modelId,
+        contextWindow: binding?.modelConfig.contextWindow || 128_000,
+        maxTokens: binding?.modelConfig.maxTokens || 8_192,
+        thinkingLevels: levels,
+        defaultThinkingLevel: levels.includes("medium") ? "medium" : levels[0] ?? null,
+      });
+    }
     await this.deps.call("providers.update", {
       id: session.providerId,
       name: provider.auth.oauth?.name || provider.name,
       authKind: OAUTH_AUTH_KIND,
       oauthAccountLabel: accountLabel,
       baseUrl: chosen?.baseUrl ?? provider.baseUrl,
+      ...(modelBindings.length > 0 ? { models: modelBindings } : {}),
       ...(apiStyle
         ? {
             apiStyle,

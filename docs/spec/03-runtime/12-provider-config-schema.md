@@ -118,7 +118,10 @@ are not offered in the custom-provider dialog because neither works against a
 hand-typed base URL with a pasted key. A vendor row's style is not fixed by the
 vendor: GitHub Copilot serves Anthropic, Chat Completions, and Responses
 models, so the style follows the selected model and is rewritten on each model
-change. `config_json.oauth.accountLabel` holds the non-secret display label for
+change. The vendor account editor uses the same multi-model binding controls as
+an AI service: authenticated catalog models and custom IDs can be selected,
+and each binding persists its context window, max output tokens, thinking levels,
+and default thinking level in `models`. `config_json.oauth.accountLabel` holds the non-secret display label for
 the signed-in account.
 Each successful login creates a new row even when another row has the same
 `vendorKey`; the row id scopes the credential and runtime binding. The vendor
