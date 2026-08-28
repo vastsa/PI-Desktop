@@ -22,6 +22,14 @@ const toolDisplaySource = await readFile(
   new URL("../src/lib/tool-display.ts", import.meta.url),
   "utf8",
 );
+const englishCatalogSource = await readFile(
+  new URL("../../../packages/i18n/src/locales/en/index.ts", import.meta.url),
+  "utf8",
+);
+const chineseCatalogSource = await readFile(
+  new URL("../../../packages/i18n/src/locales/zh-CN/index.ts", import.meta.url),
+  "utf8",
+);
 
 test("a delegation card reads its outcome from the lifecycle rows", () => {
   // `Task` returns as soon as the delegate starts, so its own payload says
@@ -132,10 +140,12 @@ test("the nested run is visibly one level inside the call", () => {
   assert.match(messagesCss, /\.tool-row-agent \{/);
 });
 
-test("parallel Task rows render as one accessible delegation topology", () => {
+test("every Task row renders as one accessible delegation topology", () => {
+  // One delegation gets the same card as a fan-out: the compact row hid the
+  // outcome, runtime and step count the card states outright.
   assert.match(
     transcriptSource,
-    /const hasSubagentTopology = delegateItems\.length > 1/,
+    /const hasSubagentTopology = delegateItems\.length > 0/,
   );
   assert.match(
     transcriptSource,
@@ -148,6 +158,36 @@ test("parallel Task rows render as one accessible delegation topology", () => {
   assert.match(transcriptSource, /className="subagent-topology-node-header"/);
   assert.match(transcriptSource, /aria-expanded=\{open\}/);
   assert.match(transcriptSource, /aria-controls=\{hasDetails \? detailsId : undefined\}/);
+});
+
+test("the aggregate label counts, so a lone delegation is not called plural", () => {
+  assert.match(
+    transcriptSource,
+    /: "chat\.subagentsFinished",\n(?:\s*\/\/[^\n]*\n)*\s*\{ count: subagentSummary\.total \},/,
+  );
+  for (const [locale, source] of [
+    ["en", englishCatalogSource],
+    ["zh-CN", chineseCatalogSource],
+  ]) {
+    for (const key of [
+      "subagentsWorking",
+      "subagentsFinished",
+      "subagentsFinishedWithIssues",
+      "subagentsFinishedWithWarnings",
+    ]) {
+      assert.match(source, new RegExp(`\\n\\s*${key}_one: "`), `${locale} ${key}_one`);
+      assert.match(
+        source,
+        new RegExp(`\\n\\s*${key}_other: "`),
+        `${locale} ${key}_other`,
+      );
+      // A bare key would win over the plural forms and bring the plural copy
+      // back for a single delegation.
+      assert.doesNotMatch(source, new RegExp(`\\n\\s*${key}: "`), `${locale} ${key}`);
+    }
+  }
+  assert.match(englishCatalogSource, /subagentsWorking_one: "Subagent working"/);
+  assert.match(englishCatalogSource, /subagentsWorking_other: "Subagents working"/);
 });
 
 test("the topology uses semantic low-noise surfaces and responsive connectors", () => {
