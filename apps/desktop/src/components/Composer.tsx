@@ -309,6 +309,10 @@ export function Composer({
   const [value, setValue] = useState("");
   const [fileReferences, setFileReferences] = useState<ComposerFileReference[]>([]);
   const [cursor, setCursor] = useState(0);
+  // `onSelect` fires on every caret move, so an unchanged cursor must not
+  // re-render the composer or re-run autocomplete trigger detection.
+  const updateCursor = (next: number) =>
+    setCursor((current) => (current === next ? current : next));
   const [composing, setComposing] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
@@ -337,6 +341,7 @@ export function Composer({
   const enhancementRequestRef = useRef<symbol | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
   const dockRef = useRef<HTMLDivElement>(null);
+  const publishedDockHeightRef = useRef(-1);
   const draftKey = draftKeyForSession(activeSessionId);
   const draftCacheRef = useRef(new Map<string, ComposerDraftSnapshot>());
   const draftKeyRef = useRef(draftKey);
@@ -472,9 +477,10 @@ export function Composer({
   useEffect(() => {
     // Relative autocomplete references belong to the workspace that produced
     // them. Session scratch references remain valid across project switches.
-    setFileReferences((current) =>
-      current.filter((fileReference) => Boolean(fileReference.token)),
-    );
+    setFileReferences((current) => {
+      const next = current.filter((fileReference) => Boolean(fileReference.token));
+      return next.length === current.length ? current : next;
+    });
   }, [workspacePath]);
 
   useEffect(() => {
@@ -518,15 +524,23 @@ export function Composer({
   }, [prefill]);
 
   const textareaMetricsRef = useRef<{ lineHeight: number; verticalChrome: number } | null>(null);
+  // What this effect last wrote. Typing inside one row leaves the box exactly
+  // as it was, and re-writing an unchanged height would still wake the dock
+  // ResizeObserver below, which republishes a document-wide custom property.
+  const appliedHeightRef = useRef<number | null>(null);
+  const appliedOverflowRef = useRef<string | null>(null);
   // Invalidate cached metrics when the variant changes or a theme switch
   // alters CSS custom properties (font-size, line-height, padding).
-  useEffect(() => { textareaMetricsRef.current = null; }, [variant]);
+  useEffect(() => {
+    textareaMetricsRef.current = null;
+    appliedHeightRef.current = null;
+    appliedOverflowRef.current = null;
+  }, [variant]);
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
     // Measure wrapped visual lines, not newline characters. The draft starts
     // at one optical row, grows through seven rows, then scrolls internally.
-    el.style.height = "auto";
     // Cache line-height and vertical chrome — they change only with CSS, never
     // during normal typing.
     let metrics = textareaMetricsRef.current;
@@ -545,12 +559,36 @@ export function Composer({
     const maxHeight = Math.ceil(
       metrics.lineHeight * COMPOSER_MAX_VISIBLE_ROWS + metrics.verticalChrome,
     );
-    const next = Math.max(
-      COMPOSER_MIN_HEIGHT_PX,
-      Math.min(el.scrollHeight, maxHeight),
-    );
-    el.style.height = `${next}px`;
-    el.style.overflowY = el.scrollHeight > maxHeight ? "auto" : "hidden";
+    // Trust the height already applied only if it is still on the element.
+    const applied =
+      appliedHeightRef.current !== null &&
+      el.style.height === `${appliedHeightRef.current}px`
+        ? appliedHeightRef.current
+        : null;
+    // Read the content at the height already applied: as long as it overflows
+    // that box, this single reading is the full content height, which is all
+    // the height and overflow decisions need.
+    let content = applied === null ? -1 : el.scrollHeight;
+    if (
+      applied === null ||
+      (content <= el.clientHeight && applied > COMPOSER_MIN_HEIGHT_PX)
+    ) {
+      // Deliberate measurement probe: only `height: auto` reveals that the
+      // draft now needs fewer rows than the box still shows. It must never
+      // stay applied, so the computed height is always written back below.
+      el.style.height = "auto";
+      content = el.scrollHeight;
+    }
+    const next = Math.max(COMPOSER_MIN_HEIGHT_PX, Math.min(content, maxHeight));
+    const overflowY = content > maxHeight ? "auto" : "hidden";
+    if (appliedHeightRef.current !== next || el.style.height !== `${next}px`) {
+      el.style.height = `${next}px`;
+      appliedHeightRef.current = next;
+    }
+    if (appliedOverflowRef.current !== overflowY) {
+      el.style.overflowY = overflowY;
+      appliedOverflowRef.current = overflowY;
+    }
   }, [value]);
 
   useEffect(() => {
@@ -908,11 +946,12 @@ export function Composer({
     if (currentKey !== key) return;
     placeholderFocusPauseReleasedRef.current = true;
     setValue("");
-    setFileReferences((current) =>
-      current.filter(
+    setFileReferences((current) => {
+      const next = current.filter(
         (fileReference) => fileReference.sessionId !== key,
-      ),
-    );
+      );
+      return next.length === current.length ? current : next;
+    });
     setCursor(0);
   };
 
@@ -1298,11 +1337,15 @@ export function Composer({
   useEffect(() => {
     const el = dockRef.current;
     if (!el) return;
+    // Setting a custom property on documentElement invalidates style for the
+    // whole document, so an unchanged dock height must not be republished.
     const publish = () => {
-      const h = el.getBoundingClientRect().height;
+      const h = Math.round(el.getBoundingClientRect().height);
+      if (h === publishedDockHeightRef.current) return;
+      publishedDockHeightRef.current = h;
       document.documentElement.style.setProperty(
         "--composer-dock-height",
-        `${Math.round(h)}px`,
+        `${h}px`,
       );
     };
     publish();
@@ -1463,22 +1506,26 @@ export function Composer({
                   invalidatePromptEnhancement();
                   placeholderFocusPauseReleasedRef.current = nextValue.length === 0;
                   setValue(nextValue);
-                  setFileReferences((current) =>
-                    current.filter(
+                  // `filter` allocates even when it drops nothing, and a new
+                  // array identity per keystroke re-runs the draft-cache
+                  // serialization effect that keys off it.
+                  setFileReferences((current) => {
+                    const next = current.filter(
                       (fileReference) =>
                         !fileReference.token ||
                         nextValue.includes(fileReference.token),
-                    ),
-                  );
-                  setCursor(e.target.selectionStart ?? nextValue.length);
+                    );
+                    return next.length === current.length ? current : next;
+                  });
+                  updateCursor(e.target.selectionStart ?? nextValue.length);
                 }}
                 onSelect={(e) => {
-                  setCursor(e.currentTarget.selectionStart ?? 0);
+                  updateCursor(e.currentTarget.selectionStart ?? 0);
                 }}
                 onCompositionStart={() => setComposing(true)}
                 onCompositionEnd={(e) => {
                   setComposing(false);
-                  setCursor(e.currentTarget.selectionStart ?? 0);
+                  updateCursor(e.currentTarget.selectionStart ?? 0);
                 }}
                 onFocus={() => {
                   placeholderFocusPauseReleasedRef.current = false;

@@ -5447,6 +5447,10 @@ This test plan spec is accepted when:
   scrolls internally instead of growing the composer further.
 - Delete back to one line or submit the draft; the textarea contracts to its
   one-line default.
+- With a large workspace open and the `@` file menu filtering, type sustained
+  text; the caret keeps up with typing without visible stalls and the menu's
+  row order is unchanged. Growth through seven lines, internal scrolling past
+  the seventh, and contraction on delete or submit behave as above (D264).
 
 ### US-UI-56 Codex transcript tool activity
 - In light and dark themes, tool calls use transparent compact activity rows,

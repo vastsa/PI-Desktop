@@ -1836,6 +1836,10 @@ reasoning-level control.
 - Auto-grow: textarea measures wrapped visual lines, starts at one visible
   line, expands through seven lines, then scrolls internally; deleting content
   shrinks it back to one line
+- Resize writes are idempotent (D264): an unchanged height performs no DOM
+  write, so `--composer-dock-height` is not republished and the document's
+  style is not invalidated while typing inside one row. The `height: auto`
+  measurement probe is taken only when the box may need to shrink.
 - Draft text and file-reference chips are retained in renderer memory per
   session. Switching sessions saves the source draft and restores the target
   draft; an uncached target and every newly created session start empty. The

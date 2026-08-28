@@ -8,6 +8,7 @@ import {
   formatFileInsert,
   fuzzyMatchCommand,
   fuzzyMatchPath,
+  selectBestMatches,
   type ComposerCommand,
   type ComposerTrigger,
   type FsIndexEntry,
@@ -89,15 +90,12 @@ function filterFiles(entries: FsIndexEntry[], query: string): AutocompleteItem[]
     const match = fuzzyMatchPath(query, entry.path, entry.kind);
     if (match) matched.push({ entry, match });
   }
-  matched.sort((a, b) =>
-    compareMatches(
-      { score: a.match.score, text: a.entry.path },
-      { score: b.match.score, text: b.entry.path },
-    ),
-  );
-  return matched
-    .slice(0, MAX_FILE_ITEMS)
-    .map(({ entry, match }) => ({ kind: "path", entry, match }));
+  // The index can hold thousands of entries while the menu shows at most
+  // MAX_FILE_ITEMS, so only the bounded top slice is ever ordered.
+  return selectBestMatches(matched, MAX_FILE_ITEMS, ({ entry, match }) => ({
+    score: match.score,
+    text: entry.path,
+  })).map(({ entry, match }) => ({ kind: "path", entry, match }));
 }
 
 /**
