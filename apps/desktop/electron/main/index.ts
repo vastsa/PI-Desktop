@@ -3098,6 +3098,39 @@ async function createWindow() {
               `void window.__PI_DESKTOP__?.seedRunRows?.(0)`,
             );
             await new Promise((r) => setTimeout(r, 250));
+            // Every delegation is a card, a lone one included: seed one `Task`
+            // and a two-`Task` fan-out so the scene shows the two read alike.
+            await mainWindow!.webContents.executeJavaScript(
+              `void window.__PI_DESKTOP__?.seedDelegationRows?.(3)`,
+            );
+            await new Promise((r) => setTimeout(r, 400));
+            await mainWindow!.webContents.executeJavaScript(`
+              (() => {
+                for (const header of document.querySelectorAll(".tool-activity-header")) {
+                  if (header.getAttribute("aria-expanded") !== "true") {
+                    header.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+                  }
+                }
+                document
+                  .querySelector(".tool-activity-group.has-subagents")
+                  ?.scrollIntoView({ block: "start" });
+              })()
+            `);
+            await new Promise((r) => setTimeout(r, 450));
+            await shot("pi-delegation-cards");
+            await mainWindow!.webContents.executeJavaScript(
+              `window.__PI_DESKTOP__?.setThemeAttr("dark")`,
+            );
+            await new Promise((r) => setTimeout(r, 350));
+            await shot("pi-delegation-cards-dark");
+            await mainWindow!.webContents.executeJavaScript(
+              `window.__PI_DESKTOP__?.setThemeAttr("light")`,
+            );
+            await new Promise((r) => setTimeout(r, 250));
+            await mainWindow!.webContents.executeJavaScript(
+              `void window.__PI_DESKTOP__?.seedDelegationRows?.(0)`,
+            );
+            await new Promise((r) => setTimeout(r, 250));
             await openPanelArtifact("browser");
             await new Promise((r) => setTimeout(r, 400));
             await shot("pi-panel-browser");

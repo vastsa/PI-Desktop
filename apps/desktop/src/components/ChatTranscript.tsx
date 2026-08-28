@@ -1350,7 +1350,11 @@ const ActivityGroup = memo(function ActivityGroup({
   const { t } = useTranslation();
   const detailsId = useId();
   const delegateItems = items.filter(isDelegationActivityItem);
-  const hasSubagentTopology = delegateItems.length > 1;
+  // One delegation reads the same as five: the card is how a delegation is
+  // presented, not a treatment reserved for fan-out. A lone `Task` rendered as
+  // an ordinary tool row hid the outcome, runtime and step count that the card
+  // states outright, and made the same work look like two different features.
+  const hasSubagentTopology = delegateItems.length > 0;
   // `Task` rows only ever say "running"; the turn's TaskWait/TaskList/TaskStop
   // rows carry how each delegate actually ended (ADR 0089). When the lifecycle
   // tool is in a different activity part (the agent emitted text between Task
@@ -1404,6 +1408,9 @@ const ActivityGroup = memo(function ActivityGroup({
             : subagentSummary.warnings > 0
               ? "chat.subagentsFinishedWithWarnings"
               : "chat.subagentsFinished",
+        // A card is now drawn for a lone delegation too, so the aggregate line
+        // has to be able to say "Subagent working" and not only the plural.
+        { count: subagentSummary.total },
       )
     : isActive
       ? t(thinkingNow || onlyThinking ? "chat.thinkingFor" : "chat.processingFor", {

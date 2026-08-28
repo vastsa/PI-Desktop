@@ -1,14 +1,14 @@
 # ADR 0062: Bounded Subagents Behind a Task Tool
 
 - Status: Accepted for implementation (definition roots amended by ADR 0112;
-  timeout policy amended by ADR 0119)
+  timeout policy amended by ADR 0119; delegation presentation amended by D265)
 - Date: 2026-08-06
 - Deciders: PI-Desktop core
 - Related: D201, ADR 0041 (persistence outbox), ADR 0048 (lazy per-turn tool
   activation), ADR 0053 (plan checkpoint and execution epoch), D123 (prompt
   template documents), D138 (session-scoped inline permission requests),
   D198 (contract modes), ADR 0112 (capability roots and Settings IA), ADR 0119
-  (event-driven subagent timeouts)
+  (event-driven subagent timeouts), D265 (one delegation reads as a card too)
 
 ## Context
 
@@ -137,9 +137,8 @@ them one level in; the turn stream and the minimap see only the parent's rows.
 The report is printed once: in the `Task` body when the delegate produced no
 answer row, as the nested answer row otherwise.
 
-A single `Task` keeps that compact row. When an activity group contains two or
-more `Task` calls, the renderer replaces the independent rows with one
-delegation summary. Its header derives agent count, settled count, elapsed time
+Every `Task` call in an activity group is drawn as a delegation summary, a lone
+one included (D265). Its header derives agent count, settled count, elapsed time
 and aggregate status from those same tool messages; its expanded body renders a
 one-level main-agent-to-delegate topology. Each delegate node retains the
 original row disclosure, brief, report, counters and nested steps. Live fan-out

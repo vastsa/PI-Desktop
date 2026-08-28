@@ -342,12 +342,19 @@ export const zhCN = {
     subagentCoordinating_one: "正在协调 {{count}} 个委派任务",
     subagentCoordinating_other: "正在协调 {{count}} 个委派任务",
     subagentTopology: "委派任务",
-    subagentsWorking: "Subagents 正在工作",
-    subagentsFinished: "Subagents 已完成",
-    subagentsFinishedWithIssues: "Subagents 完成，但存在问题",
-    subagentsFinishedWithWarnings: "Subagents 完成，但存在警告",
+    // Chinese has one plural category, so `_one` never resolves and `_other`
+    // has to carry every count. The noun is left unmarked instead of carrying
+    // an English "s" that a card for a single delegation would contradict.
+    subagentsWorking_one: "Subagent 正在工作",
+    subagentsWorking_other: "Subagent 正在工作",
+    subagentsFinished_one: "Subagent 已完成",
+    subagentsFinished_other: "Subagent 已完成",
+    subagentsFinishedWithIssues_one: "Subagent 完成，但存在问题",
+    subagentsFinishedWithIssues_other: "Subagent 完成，但存在问题",
+    subagentsFinishedWithWarnings_one: "Subagent 完成，但存在警告",
+    subagentsFinishedWithWarnings_other: "Subagent 完成，但存在警告",
     subagentCount_one: "{{count}} 个 Subagent",
-    subagentCount_other: "{{count}} 个 Subagents",
+    subagentCount_other: "{{count}} 个 Subagent",
     subagentFinishedCount: "已完成 {{finished}}/{{total}}",
     subagentStatus: {
       running: "运行中",

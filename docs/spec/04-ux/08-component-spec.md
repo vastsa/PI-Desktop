@@ -1449,15 +1449,28 @@ twice.
 - No cross-row activity grouping until turn boundaries are available to the
   transcript component
 
-### 9.9 Delegation rows and fan-out topology (D201, ADR 0062)
+### 9.9 Delegation cards and fan-out topology (D201, D265, ADR 0062)
 
-A `Task` call is a ToolCallRow like any other, with the `delegate` action icon
-and one extra header element: a quiet chip naming the delegate it ran, taken
-from the rows it produced or, before any arrived, from the call's own `agent`
-argument. The row hint is the call's short `description`.
+A `Task` call is presented as a node of a delegation card, not as a compact tool
+row — one delegation reads the same as a fan-out (D265). The node names the
+delegate it ran, taken from the rows it produced or, before any arrived, from
+the call's own `agent` argument, and carries the call's short `description`. The
+`delegate` action icon and the agent chip remain the treatment for the
+lifecycle rows (`TaskWait`/`TaskList`/`TaskStop`), which are ordinary tool rows.
 
 ```text
-└─ [bot] Delegated  code-reviewer  check the store diff   [›]
+[flow] Subagent completed   1 subagent · 1/1 finished · 40s        [›]
+  ┌────────────────┐    ┌───────────────────────────────────────────┐
+  │ (◎) Main agent │────│ [bot] code-reviewer      Completed · 32s  │
+  │ Coordinating 1 │    │ check the store diff                      │
+  │ delegated task │    │ 3 steps                             [›]   │
+  └────────────────┘    └───────────────────────────────────────────┘
+```
+
+Opening a node reveals the blocks the call carries, then the delegate's own rows:
+
+```text
+└─ [bot] code-reviewer  check the store diff   Completed · 32s   [›]
    ├─ task                                        [copy]
    │  Review the changes in src/stores for …
    ├─ Details
@@ -1473,14 +1486,14 @@ argument. The row hint is the call's short `description`.
 - Block order is brief in, report out, counters last: the `task` argument as an
   `input` block, the report as the output block, then a `Details` block holding
   the counters pi handed back — `status`, `turns`, `toolCalls`, and `usage` when
-  present. `agent` is omitted because the header chip already shows it, and an
+  present. `agent` is omitted because the node title already shows it, and an
   `error` is rendered as the leading error block, not as a counter. The
   delegate's own rows follow the whole body, so the summary reads before the
   detail.
 - A failed delegation shows its error instead of an empty report.
 - The delegate's rows render inside a `.subagent-run` block, indented behind a
   hairline rail, headed by the agent name and a step count. They collapse with
-  the `Task` row, so a transcript at rest reads as one line per delegation.
+  the node, so a transcript at rest reads as one card per activity group.
 - Nesting is one level deep by construction: a delegate has no `Task` tool.
 - Delegate rows are ordinary rows inside that block — tool rows with their own
   disclosures, thinking rows, and answer rows — so no new presentation is needed
@@ -1494,10 +1507,11 @@ argument. The row hint is the call's short `description`.
 - Runs are rebuilt from the message list on every render, so group memoization
   compares them by row identity and length rather than by object identity —
   otherwise a streaming delegate would freeze at its first row.
-- A single `Task` keeps the compact row above. Two or more `Task` calls in one
-  activity group become one full-width delegation card rather than unrelated
-  rows. Its header presents aggregate state, the number of subagents, the
-  settled/total count and elapsed time; it keeps the standard disclosure caret.
+- Every `Task` call in an activity group becomes one full-width delegation card
+  rather than a compact tool row, a lone delegation included (D265). Its header
+  presents aggregate state, the number of subagents, the settled/total count and
+  elapsed time; it keeps the standard disclosure caret. The aggregate state is
+  count-aware, so a single delegation is not announced in the plural.
 - The expanded card renders a low-noise dotted canvas with one main-agent root
   connected to the `Task` nodes in parent-row order. The runtime exposes no
   delegate dependencies and forbids nested `Task`, so the renderer must not

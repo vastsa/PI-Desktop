@@ -209,6 +209,7 @@ Gold source: local Codex electron captures; latest row wins where rows conflict.
 | D165 | Safe lazy Mermaid diagrams in assistant answers | **A completed `mermaid` fence in assistant answer prose renders as a theme-aware SVG after entering the near-viewport band. Partial stream fences and all thinking prose stay source code. The renderer dynamically loads official Mermaid, serializes its global theme renders, caps source at 20,000 characters and edges at 500, locks strict/no-HTML/no-link configuration, and applies a second SVG-profile sanitizer. Invalid or oversized diagrams fall back to visible copyable source; the diagram toolbar toggles source and copies it.** | Diagrams improve architecture and flow explanations, but parsing partial streams or every offscreen historical fence would undermine direct-stream and fast-session-switch behavior. Strict bounded local rendering adds the capability without a new protocol, network, or Electron privilege boundary. |
 | D261 | The mounted transcript is a window, not the loaded history | **Refine ADR 0120 / D258 in the renderer: the mounted history is a trailing window over the loaded history — 15 rows in the first commit after a session switch, a 60-row steady state, grown 40 rows at a time. Reaching the top escalates in two stages: grow the window while it is partial, and call `loadOlder` only once the window covers all loaded history. Window growth and a fetched page take the same pre-paint scroll anchor, because both add height above the reading position. The window resets per session and is clamped to the loaded history, so a stale budget from the previous session cannot over-mount. The hydration spacer stays scoped to the first commit. The conversation minimap is built from the mounted entries rather than from every loaded message. No IPC, storage, host protocol, or pagination change.** | ADR 0120 bounded what crossed the IPC boundary and D258 bounded the cost of locating a page, but the renderer still mounted every row it had ever paged in and kept it mounted for the life of the session. `content-visibility: auto` skips layout and paint for those rows while retaining their React trees, Markdown ASTs, and Shiki token arrays — the wrong resource on a low-memory Windows machine, where the reported symptom was the chat area getting progressively less responsive in a long session. Windowing bounds retained memory and per-frame reconciliation together; feeding the minimap the full set would have drawn dashes whose click target no longer exists. |
 | D262 | Spill large composer text pastes into session scratch | **Text-only composer pastes at or below the persisted `largePasteThreshold` remain native textarea input; the default is 600 characters and valid values are integers from 1 through 1,000,000. Above the threshold, the renderer sends exact UTF-8 `text/plain` bytes through the existing session paste bridge, Electron stores them under `<data_dir>/scratch/<sessionId>/pasted/`, and the Composer inserts a generated `@<temporary-name> ` token at the original selection. The renderer retains a session-scoped token-to-canonical-path mapping, resolves it in place exactly once before dispatch, and excludes it from duplicate attachment/fallback serialization. Existing clipboard file/image chips and bridge bounds remain unchanged; no workspace, artifact-store, host-protocol, or schema change.** | Very large native pastes are hard to edit and visually overwhelm the composer, while the existing session scratch flow already provides bounded, isolated storage and canonical path semantics without dirtying a project (ADR 0131).** |
+| D265 | One delegation reads as a card, like a fan-out | **Amends D201 / ADR 0062 in the renderer: every `Task` call in an activity group renders as a full-width delegation card — main-agent root, connector, one node per delegate — a lone delegation included, instead of falling back to a compact tool row. The aggregate header takes a count, so a single delegation is not announced in the plural: English gains `_one` forms and Chinese, which has one plural category, drops the English plural marker. Nothing else about the card changes, and no IPC, storage, host-protocol, or delegation-runtime change is implied.** | Reserving the card for two or more delegates made the same work look like two different features, and the single case — the common one — was the one that lost the outcome, the recorded runtime and the delegate's step count (ADR 0062 §6). |
 
 ## M. Agent runtime decisions
 
@@ -2467,3 +2468,23 @@ D193, and D194.
   Behavior is unchanged: identical menu rows and order, the same 28px one-line
   floor, and the same seven-row cap. See `04-ux/08-component-spec.md` §11.5 and
   US-UI-55.
+
+## 2026-08-28 — One delegation reads as a card, like a fan-out (D265)
+
+- Decision D265 amends D201 / ADR 0062 in the renderer. That decision reserved
+  the delegation card for two or more `Task` calls in one activity group and
+  left a lone `Task` as a compact tool row. The same work therefore looked like
+  two different features, and the single case — the common one — was the one
+  that lost the outcome, the recorded runtime and the delegate's step count.
+- Every `Task` call in an activity group now renders as a delegation card: root
+  node, connector, one node per delegate. Nothing else about the card changes,
+  so the aggregate header, the live-open-once rule, the node disclosures and the
+  print-the-report-once rule carry over unchanged.
+- The aggregate header is count-aware. English gains `_one` forms for the four
+  status labels; Chinese has a single plural category, so its `_other` forms
+  carry every count and drop the English plural marker that made a one-node card
+  say "1 个 Subagents".
+- No IPC, storage, host protocol, or delegation-runtime change: the card is
+  still derived on both live and reload from the persisted `parentToolCallId` /
+  `agentName` attribution. See ADR 0062 §6, `04-ux/08-component-spec.md` §9.9,
+  and E2E-119.
