@@ -23,6 +23,19 @@ export type ChangelogEntry = {
 
 const enEntries: ChangelogEntry[] = [
   {
+    version: "0.10.9",
+    date: "2026-08-28",
+    highlights: [
+      "Manage skills, subagents, and MCP servers from one capability workbench in Settings, with level filters, search, and confirmed removal.",
+      "Keep the capability workbench and the settings top band legible in both themes, with correctly sized toolbar and empty-state controls.",
+      "Keep long conversations responsive while scrolling, switching sessions, and hovering the minimap, without the transcript jumping into place.",
+      "Load every transcript line written by older builds instead of showing a past session as empty.",
+      "Cut the transcript at the message you chose when regenerating or resending an edit, and always list a forked session in the sidebar.",
+      "Judge subagent liveness by any response, cap each builtin subagent's turns, and report an expired wait as still running instead of failed.",
+      "Retry a transient provider failure up to four times with 1/2/4/8s waits on one shared budget per turn, and report the real attempt mid-stream.",
+    ],
+  },
+  {
     version: "0.10.8",
     date: "2026-08-26",
     highlights: [
@@ -456,6 +469,19 @@ const enEntries: ChangelogEntry[] = [
 ];
 
 const zhCNEntries: ChangelogEntry[] = [
+  {
+    version: "0.10.9",
+    date: "2026-08-28",
+    highlights: [
+      "在设置中通过统一的能力工作台管理技能、子智能体与 MCP 服务，支持层级筛选、搜索与二次确认删除。",
+      "让能力工作台与设置顶栏在浅色和深色主题下都清晰一致，工具栏与空状态控件尺寸正确。",
+      "长会话在滚动、切换会话与悬停缩略图时保持流畅，转录内容不再跳动。",
+      "完整加载旧版本写入的转录行，历史会话不再显示为空。",
+      "重新生成或编辑重发时按所选消息截断转录，并确保分叉会话始终出现在侧边栏中。",
+      "以任意响应判断子智能体是否存活，为每个内置子智能体设置回合上限，等待超时报告为仍在运行而非失败。",
+      "服务商请求出现临时失败时，按 1/2/4/8 秒等待重试最多四次并共用同一回合预算，流式过程中报告真实的重试次数。",
+    ],
+  },
   {
     version: "0.10.8",
     date: "2026-08-26",
