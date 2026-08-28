@@ -204,6 +204,15 @@ combined model × reasoning selection (§11).
   `--ds-toolbar-height`. Windows/Linux keep the same `--ds-window-controls-width`
   reservation so the right boundary and native controls stay aligned when the
   route or work panel changes.
+- Band reservation is platform-independent (D266). The band is opaque and
+  absolutely positioned, so scrolling route content passes underneath it on
+  every platform, macOS included. Every route surface that starts its own
+  content at the top edge reserves the band: the transcript
+  (`.thread-content`) and the destination-page frame (`.page-frame`, shared by
+  Plugins, Scheduled, and Pull requests) both pad by `--ds-toolbar-height`.
+  Without that reservation a page header renders behind the band and its title
+  row is clipped. Only surfaces that stack above the band (the plugin detail
+  sheet at `z-index: 60`) may skip it.
 
 ### 2.4 States
 
