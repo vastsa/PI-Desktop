@@ -259,7 +259,7 @@ let workPanelBaseBounds: WindowBounds | null = null;
 let workPanelLastAppliedBounds: WindowBounds | null = null;
 // Set while a native `move` stream is unaccounted for, which is what separates
 // a display change the user caused by dragging from one the OS imposed on
-// bounds we asked for (D262). A flag rather than a deadline: attribution must
+// bounds we asked for (D263). A flag rather than a deadline: attribution must
 // not depend on how long the main process took to reach the classification.
 let workPanelUserMovePending = false;
 let host: HostProcess | null = null;
@@ -2029,7 +2029,7 @@ function observedWorkPanelBaseBounds(
 /**
  * Classifies a display change. A user drag is the only transition that follows
  * a native move stream, so a pending move is the signal that separates it from
- * an OS re-fit (D262). Without that split, dragging a window to another display
+ * an OS re-fit (D263). Without that split, dragging a window to another display
  * replanned the reservation from the previous display's base bounds and snapped
  * the window back (issue #18).
  */
@@ -2457,7 +2457,7 @@ async function createWindow() {
   // A native `move` stream is a drag in progress. Re-planning bounds mid-drag
   // fights the window server and lands as a jump on pointer release, so the
   // move path only marks the user-move window and defers reconciliation until
-  // the stream goes quiet (D262, issue #18).
+  // the stream goes quiet (D263, issue #18).
   //
   // The retire deadline only bounds how long an unconsumed marker can linger;
   // it never decides attribution, which the flag itself owns.
@@ -2490,7 +2490,7 @@ async function createWindow() {
   );
   // A topology change is the OS acting, not the user dragging. Drop any pending
   // drag attribution first so a display removed right after a move is not
-  // mistaken for one (D262).
+  // mistaken for one (D263).
   const reconcileDisplayTopology = () => {
     workPanelUserMovePending = false;
     reconcileWorkPanelDisplay();
@@ -2685,7 +2685,7 @@ async function createWindow() {
     // An OS re-fit keeps the remembered base so a later return to a roomy
     // display restores it. Same-display moves and user cross-display drags are
     // both real intent, so they advance the base and get persisted; otherwise
-    // relaunch would reopen the window on the display the user left (D262).
+    // relaunch would reopen the window on the display the user left (D263).
     if (displayTransition !== "os-adjusted") {
       workPanelBaseBounds = bounds;
       workPanelLastAppliedBounds = { ...normalBounds };

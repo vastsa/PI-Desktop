@@ -143,4 +143,7 @@ Each ADR includes:
 | 0126 | Agent capability workbench | Accepted |
 | 0127 | Transcript layout index and identity-based truncation | Accepted |
 | 0128 | Share one bounded budget for transient provider failures | Accepted |
+| 0129 | The subagent idle watchdog bounds silence, not slowness | Accepted for implementation |
+| 0130 | Bounded mounted transcript window | Accepted |
 | 0131 | Spill large composer text pastes into session scratch | Accepted |
+| 0132 | Attribute cross-display window moves to the user | Accepted |

@@ -265,7 +265,7 @@ test("work panel resizing is independent from the chat viewport", () => {
   assert.doesNotMatch(panelSource, /\.sidebar, \.sidebar-rail/);
   assert.match(globalStyles, /\.main-pane \{[^}]*min-width:\s*0;/s);
   assert.match(mainSource, /displayWorkAreaKey/);
-  // D262: a native move stream is a drag, so the move path only marks the
+  // D263: a native move stream is a drag, so the move path only marks the
   // user-move window and defers display reconciliation until it settles.
   assert.match(mainSource, /window\.on\("move", noteUserWindowMove\)/);
   assert.doesNotMatch(
@@ -331,7 +331,7 @@ test("native window and work panel resizing have independent owners", () => {
     /baseWindowBounds\([\s\S]*window\.getNormalBounds\(\)[\s\S]*workPanelReservation/,
   );
   assert.match(persistenceBlock, /writeWindowState\(bounds\)/);
-  // D262: a cross-display drag advances the persisted base and its display key,
+  // D263: a cross-display drag advances the persisted base and its display key,
   // and is normalized into the target work area, because a maximized window
   // makes this the only consumer of the drag.
   assert.match(persistenceBlock, /classifyDisplayTransition\(nextDisplayKey\)/);

@@ -2388,3 +2388,43 @@ D193, and D194.
   `04-ux/06-settings-ia.md`, `04-ux/07-ui-design-system.md` §8.1,
   `04-ux/08-component-spec.md` §11.7–11.8,
   `04-ux/09-interaction-patterns.md` §8a, and E2E-102g.
+
+## 2026-08-28 — A cross-display drag is user intent, not an OS adjustment (D263)
+
+- Decision D263 amends D255 / ADR 0122 in Main. The work-panel reservation is
+  planned from remembered base bounds and reconciled against the last rect Main
+  applied. That reconcile treated every display change as one `displayChanged`
+  boolean and reused the remembered base bounds, which is right for an OS re-fit
+  and wrong for a window the user dragged to another display.
+- Reported as issue #18 and reproducible on every release from 0.10.0: dragging
+  the window across a display boundary made it jump on pointer release. The
+  reconcile was wired to each native `move`, so it ran mid-drag and re-planned
+  from the origin display's base bounds; the target work area then clamped that
+  x to its edge and kept the old display's y. Panel state was irrelevant — a
+  closed panel requests width 0 but still re-plans and calls `setBounds`.
+- The boolean becomes a `DisplayTransition` of `none`, `os-adjusted`, or
+  `user-moved`. `os-adjusted` preserves ADR 0122 verbatim so a constrained
+  display keeps the user's intent and a roomy one restores the full reservation.
+  `user-moved` derives base bounds from where the window now is, with only the
+  origin normalized into the target display's work area. The size is kept even
+  on a smaller display, because base bounds are the restorable intent under ADR
+  0122 and a shrink would be persisted with no way back; the reservation absorbs
+  the shortfall instead.
+- Attribution keys off an unaccounted native `move` stream rather than a
+  deadline, because Electron exposes no drag-begin/drag-end pair for native
+  moves and a deadline would make correctness depend on main-process
+  scheduling and on maximized windows that defer geometry. The `move` handler
+  only marks the pending drag and defers reconciliation until the stream goes
+  quiet, so Main never fights the window server mid-drag. Display topology
+  events clear the marker first, so a hotplug right after a drag stays
+  OS-owned.
+- The same misattribution had been writing stale coordinates to
+  `window-state.json`, reopening the window on the display the user had left. A
+  `user-moved` transition now advances the remembered display key and persists,
+  normalized the same way as the reservation path because a maximized window
+  defers geometry and leaves the save as the drag's only consumer, while
+  `os-adjusted` still refuses to. An unconsumed marker is retired on a deadline
+  so it cannot leak into a later OS display change. A forced Stage Manager recovery clears
+  the pending attribution because it is not user intent.
+- No IPC, storage, or host protocol change; `window/setWorkPanelReservation`
+  keeps its shape. See ADR 0132, `03-runtime/01-ipc-protocol.md`, and E2E-160.

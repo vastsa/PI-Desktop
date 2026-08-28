@@ -1245,7 +1245,15 @@ remember the latest target but defer geometry; returning to normal reconciles
 it once against the restored base bounds and current work area. If the window
 manager first compresses or relocates the outer window during a display or
 work-area transition, reconciliation preserves the last confirmed base bounds;
-returning to a roomier work area restores the original chat width. Renderer code
+returning to a roomier work area restores the original chat width. That
+preservation applies to window-manager adjustments only. A cross-display change
+that arrives while the user is dragging the window is attributed to the user
+(D263, ADR 0132): the dropped position becomes the new base bounds, with only
+its origin normalized into the target display work area, and it is the position
+persisted for relaunch. The base size is preserved even when the target work
+area is narrower, so `reserved` shrinks rather than the window. Main defers this
+reconciliation until the native move stream settles, so no reservation geometry
+is applied mid-drag. Renderer code
 sets this target only for the currently visible session: background artifacts
 cannot change visible reservation geometry.
 
