@@ -43,8 +43,25 @@ site may load Google Fonts during development or deployment, but the content
 and search index are generated locally by VitePress.
 
 `pnpm docs:check` verifies that every English specification has a matching
-Chinese Markdown file with a heading and canonical-source notice. The VitePress
-production build then validates the rendered routes and internal links.
+Chinese Markdown file, and that the companion satisfies all of:
+
+1. a top-level heading,
+2. Chinese characters somewhere in the body,
+3. the `[英文源规格](/spec/<path>)` canonical-source link,
+4. no leftover untranslated-placeholder token (the gate greps for it as a
+   bare substring, so this page cannot quote it verbatim),
+5. the same table shape as the English page — the count of `|` cells, row by
+   row,
+6. the same number of fenced code blocks as the English page.
+
+Conditions 5 and 6 make the gate structural rather than cosmetic: a Chinese page
+that drops a table row or a code block is reported even when its prose reads
+complete. That is also why the gate is not yet wired into CI — several
+companions predate it and are structurally behind their English sources, so
+`docs:check` currently exits non-zero on `main`. Treat a failure as a list of
+mirrors to finish, and do not add a new English specification without its
+companion. The VitePress production build separately validates the rendered
+routes and internal links.
 
 ## Content rules
 

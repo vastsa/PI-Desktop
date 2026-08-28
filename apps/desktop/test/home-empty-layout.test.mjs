@@ -47,8 +47,14 @@ test("empty home uses a single scrollable stack instead of dual-grow portals", (
 });
 
 test("empty home keeps the primary task surface focused", () => {
-  const emptyStart = chatSurface.indexOf("{!hasTranscript ? (");
+  // Anchor on the empty-state element itself rather than on the shape of the
+  // surrounding ternary: the session-loading skeleton (D262) turned
+  // `{!hasTranscript ? (` into `) : !hasTranscript ? (`, and a branch added
+  // later would break a source-text anchor again.
+  const emptyStart = chatSurface.indexOf('data-testid="home-empty"');
+  assert.notEqual(emptyStart, -1, "empty home block must exist");
   const emptyEnd = chatSurface.indexOf("<ChatTranscript", emptyStart);
+  assert.notEqual(emptyEnd, -1, "transcript branch must follow the empty block");
   const emptyBlock = chatSurface.slice(emptyStart, emptyEnd);
   const onboardingAt = emptyBlock.indexOf("<OnboardingChecklist />");
   const composerAt = emptyBlock.indexOf("home-composer-wrap");
@@ -86,8 +92,11 @@ test("empty home keeps the composer in a bottom region", () => {
 });
 
 test("home and docked composers share one width envelope", () => {
+  // Match the base rule, not the first selector that merely ends in the same
+  // class: `.chat-surface.session-switching > .home-composer-wrap` (D262) now
+  // appears earlier in the sheet.
   const homeComposer =
-    styles.match(/\.home-composer-wrap\s*\{[^}]*\}/)?.[0] ?? "";
+    styles.match(/(?:^|\})\s*\.home-composer-wrap\s*\{[^}]*\}/)?.[0] ?? "";
   const dockedComposer =
     styles.match(/\.composer-dock-docked\s*\{[^}]*\}/)?.[0] ?? "";
   const homeStack =
