@@ -320,6 +320,7 @@ section mirrors only marketplace/catalog items still blocking nothing.
 | D151 | Send re-pins transcript follow | **Starting a turn via send, retry, or regenerate always re-pins transcript follow mode, hides the jump-to-latest pill, and scrolls to the bottom before new content arrives. Manual scroll during a turn still pauses follow; the jump control remains the only non-turn way to resume. This refines D071 without restoring forced scroll on every token.** | Users who scroll up to inspect history still expect the next prompt they send to land at the latest exchange; leaving follow paused after send hid the new turn behind the jump pill. |
 | D152 | Direct runtime stream rendering | **Assistant content renders each runtime stream chunk directly through the incremental Markdown block cache. The renderer does not add a requestAnimationFrame typewriter state loop. KaTeX's Vite-inlined fonts remain local-only assets and are admitted by the narrow `font-src 'self' data:` CSP directive.** | The duplicate animation loop could trip React's nested-update guard during sustained streams, while the previous CSP blocked bundled math fonts and produced console errors. |
 | D153 | Reasoning sessions default to maximum thinking | **A newly created session whose inherited default model supports reasoning starts at the highest canonical entry in that model's pi-published `supportedThinkingLevels`. Non-reasoning models and missing capability metadata start at `off`; existing sessions retain their durable choice. This refines D096 without adding a provider override.** | Reasoning-capable models should use their strongest available effort by default while preserving explicit per-session choices and pi-ai's model authority. |
+| D264 | Composer typing avoids full sorts and redundant DOM writes | **The `@` file menu picks its visible rows with a bounded top-K selection over the match list instead of sorting every match; the selection returns exactly the row set and order a full sort produced, and the small, kind-grouped command list keeps its full sort. Composer auto-resize and `--composer-dock-height` publication are idempotent: an unchanged height performs no DOM write and no document-wide style invalidation, and the `height: auto` measurement probe is taken only when the box may need to shrink. Growth through seven rows, internal scrolling past the seventh, and contraction on delete or submit are unchanged. Draft file-reference state and the cursor keep their identity and value when a keystroke changes neither, so the draft-cache serialization effect and autocomplete trigger detection stop re-running per keystroke. No IPC, storage, host-protocol, or schema change.** | With a large workspace and the `@` menu open, every keystroke paid a full sort over the whole 8000-entry file index to show 50 rows, plus a forced synchronous reflow from the measurement probe, while a fresh `fileReferences` array identity per keystroke re-ran the draft-cache serialization effect. The cost was typing latency, not correctness; ordering equivalence with the full sort is covered by unit tests. |
 
 
 ## T. Release delivery decisions
@@ -2428,3 +2429,41 @@ D193, and D194.
   the pending attribution because it is not user intent.
 - No IPC, storage, or host protocol change; `window/setWorkPanelReservation`
   keeps its shape. See ADR 0132, `03-runtime/01-ipc-protocol.md`, and E2E-160.
+
+## 2026-08-28 — Composer typing is a measured latency path (D264)
+
+- Per-keystroke lag in the chat composer had three measured causes, all on the
+  typing path and none of them a correctness bug. With the `@` menu open, each
+  keystroke fuzzy-matched up to the whole workspace file index (8000 entries)
+  and then fully sorted every match to display 50 rows; a bounded top-K
+  selection now returns the same rows in the same order for 0.25–0.78 ms per
+  keystroke instead of 2.4–3.0 ms. `filterCommands` keeps its full sort: the
+  command list is small and its comparison is grouped by command kind, where a
+  top-K pass buys nothing.
+- The auto-resize effect forced a `height: auto` measurement probe on every
+  keystroke, and each probe is a synchronous reflow. The probe cannot simply be
+  dropped, because it is the only reading that reveals the draft now needs
+  fewer rows: at a fixed applied height an overflowing box reports that height,
+  not the content's. That is also why reading at the applied height is
+  equivalent while the content overflows — the single `scrollHeight` reading is
+  then the full content height. The probe is therefore reserved for the case
+  where the box may need to shrink: applied height above the minimum and
+  content no longer filling it.
+- Republishing an unchanged `--composer-dock-height` is not free. The property
+  lives on `document.documentElement`, so every `setProperty` invalidates style
+  for the whole document, including the transcript. Skipping the write when the
+  rounded height is unchanged keeps typing inside one row off that path, and
+  height and `overflowY` are written only when the computed value differs from
+  what was last applied.
+- The remaining cost was React identity churn. `Array.prototype.filter`
+  allocates even when it drops nothing, so the reference filters now return the
+  existing array unchanged and the draft-cache serialization effect keyed on
+  `fileReferences` stops re-running per keystroke; the same no-op guard covers
+  the `workspacePath` effect and `clearDraftForKey`. `setCursor` ignores an
+  unchanged value because `onSelect` fires on every caret move, which had made
+  plain arrow-key navigation re-render the composer and re-run autocomplete
+  trigger detection.
+- No IPC, storage, host protocol, or schema change, and no new dependency.
+  Behavior is unchanged: identical menu rows and order, the same 28px one-line
+  floor, and the same seven-row cap. See `04-ux/08-component-spec.md` §11.5 and
+  US-UI-55.
