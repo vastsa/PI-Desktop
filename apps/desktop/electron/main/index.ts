@@ -160,6 +160,7 @@ import { AppUpdaterController } from "./updater";
 import { en, resolveLocale, zhCN } from "@pi-desktop/i18n";
 import {
   baseWindowBounds,
+  clampBoundsOriginToWorkArea,
   displayWorkAreaKey,
   emptyWorkPanelReservationState,
   parseWorkPanelReservationWidth,
@@ -167,6 +168,7 @@ import {
   reconcileBaseWindowBounds,
   WORK_PANEL_MAX_WIDTH,
   WORK_PANEL_MIN_WIDTH,
+  type DisplayTransition,
   type WindowBounds,
   type WorkPanelReservationState,
 } from "./work-panel-window";
@@ -255,6 +257,11 @@ let workPanelDisplayKey: string | null = null;
 // Base bounds are persistable; last-applied bounds isolate later native deltas.
 let workPanelBaseBounds: WindowBounds | null = null;
 let workPanelLastAppliedBounds: WindowBounds | null = null;
+// Set while a native `move` stream is unaccounted for, which is what separates
+// a display change the user caused by dragging from one the OS imposed on
+// bounds we asked for (D262). A flag rather than a deadline: attribution must
+// not depend on how long the main process took to reach the classification.
+let workPanelUserMovePending = false;
 let host: HostProcess | null = null;
 let sidecar: AgentSidecar | null = null;
 let quitting = false;
@@ -2005,7 +2012,7 @@ function workPanelMinimumWindowWidth() {
 
 function observedWorkPanelBaseBounds(
   currentBounds: WindowBounds,
-  displayChanged: boolean,
+  displayTransition: DisplayTransition,
 ) {
   if (!workPanelBaseBounds || !workPanelLastAppliedBounds) {
     return baseWindowBounds(currentBounds, workPanelReservation);
@@ -2014,8 +2021,23 @@ function observedWorkPanelBaseBounds(
     baseBounds: workPanelBaseBounds,
     lastAppliedBounds: workPanelLastAppliedBounds,
     currentBounds,
-    displayChanged,
+    displayTransition,
+    reservation: workPanelReservation,
   });
+}
+
+/**
+ * Classifies a display change. A user drag is the only transition that follows
+ * a native move stream, so a pending move is the signal that separates it from
+ * an OS re-fit (D262). Without that split, dragging a window to another display
+ * replanned the reservation from the previous display's base bounds and snapped
+ * the window back (issue #18).
+ */
+function classifyDisplayTransition(nextDisplayKey: string): DisplayTransition {
+  if (workPanelDisplayKey === null || nextDisplayKey === workPanelDisplayKey) {
+    return "none";
+  }
+  return workPanelUserMovePending ? "user-moved" : "os-adjusted";
 }
 
 function applyWorkPanelReservation(): WorkPanelReservationState {
@@ -2033,14 +2055,22 @@ function applyWorkPanelReservation(): WorkPanelReservationState {
   const display = screen.getDisplayMatching(currentBounds);
   const workArea = display.workArea;
   const nextDisplayKey = displayWorkAreaKey(display.id, workArea);
-  const displayChanged =
-    workPanelDisplayKey !== null && nextDisplayKey !== workPanelDisplayKey;
-  const baseBounds = observedWorkPanelBaseBounds(
+  const displayTransition = classifyDisplayTransition(nextDisplayKey);
+  const observedBase = observedWorkPanelBaseBounds(
     currentBounds,
-    displayChanged,
+    displayTransition,
   );
+  // A dragged-in base came from the target display's own coordinates, but the
+  // window can still straddle the boundary at drop time. Normalize it to the
+  // target work area so the plan below never reads an off-display origin.
+  const baseBounds =
+    displayTransition === "user-moved"
+      ? clampBoundsOriginToWorkArea(observedBase, workArea)
+      : observedBase;
   workPanelBaseBounds = baseBounds;
   workPanelDisplayKey = nextDisplayKey;
+  // The drag has now been accounted for on its target display.
+  if (displayTransition === "user-moved") workPanelUserMovePending = false;
   const next = planWorkPanelReservation({
     baseBounds,
     workArea,
@@ -2279,6 +2309,7 @@ async function createWindow() {
   workPanelDisplayKey = null;
   workPanelBaseBounds = null;
   workPanelLastAppliedBounds = null;
+  workPanelUserMovePending = false;
   const savedState = await readWindowState();
   mainWindow = new BrowserWindow({
     ...(savedState ?? { width: 1200, height: 800 }),
@@ -2422,21 +2453,58 @@ async function createWindow() {
     if (nextDisplayKey === workPanelDisplayKey) return;
     scheduleWorkPanelReservation();
   };
+
+  // A native `move` stream is a drag in progress. Re-planning bounds mid-drag
+  // fights the window server and lands as a jump on pointer release, so the
+  // move path only marks the user-move window and defers reconciliation until
+  // the stream goes quiet (D262, issue #18).
+  //
+  // The retire deadline only bounds how long an unconsumed marker can linger;
+  // it never decides attribution, which the flag itself owns.
+  const WORK_PANEL_USER_MOVE_RETIRE_MS = 2000;
+  let workPanelSettleExpiryTimer: NodeJS.Timeout | null = null;
+  const WORK_PANEL_MOVE_SETTLE_MS = 220;
+  let workPanelMoveSettleTimer: NodeJS.Timeout | null = null;
+  const noteUserWindowMove = () => {
+    workPanelUserMovePending = true;
+    if (workPanelMoveSettleTimer) clearTimeout(workPanelMoveSettleTimer);
+    workPanelMoveSettleTimer = setTimeout(() => {
+      workPanelMoveSettleTimer = null;
+      reconcileWorkPanelDisplay();
+      // The flag must outlive reconciliation far enough for the debounced state
+      // save to still see the drag, but it must not survive into a later,
+      // unrelated OS display change. `applyWorkPanelReservation` defers geometry
+      // for a maximized or fullscreen window and never consumes the flag, so the
+      // save deadline is the backstop that always retires it.
+      if (workPanelSettleExpiryTimer) clearTimeout(workPanelSettleExpiryTimer);
+      workPanelSettleExpiryTimer = setTimeout(() => {
+        workPanelSettleExpiryTimer = null;
+        workPanelUserMovePending = false;
+      }, WORK_PANEL_USER_MOVE_RETIRE_MS);
+    }, WORK_PANEL_MOVE_SETTLE_MS);
+  };
   const initialDisplay = screen.getDisplayMatching(window.getBounds());
   workPanelDisplayKey = displayWorkAreaKey(
     initialDisplay.id,
     initialDisplay.workArea,
   );
-  screen.on("display-metrics-changed", reconcileWorkPanelDisplay);
-  screen.on("display-added", reconcileWorkPanelDisplay);
-  screen.on("display-removed", reconcileWorkPanelDisplay);
+  // A topology change is the OS acting, not the user dragging. Drop any pending
+  // drag attribution first so a display removed right after a move is not
+  // mistaken for one (D262).
+  const reconcileDisplayTopology = () => {
+    workPanelUserMovePending = false;
+    reconcileWorkPanelDisplay();
+  };
+  screen.on("display-metrics-changed", reconcileDisplayTopology);
+  screen.on("display-added", reconcileDisplayTopology);
+  screen.on("display-removed", reconcileDisplayTopology);
 
   browserPane.setWindow(window);
   pluginViews.setWindow(window);
   window.on("closed", () => {
-    screen.removeListener("display-metrics-changed", reconcileWorkPanelDisplay);
-    screen.removeListener("display-added", reconcileWorkPanelDisplay);
-    screen.removeListener("display-removed", reconcileWorkPanelDisplay);
+    screen.removeListener("display-metrics-changed", reconcileDisplayTopology);
+    screen.removeListener("display-added", reconcileDisplayTopology);
+    screen.removeListener("display-removed", reconcileDisplayTopology);
     if (workPanelReconcileTimer) {
       clearTimeout(workPanelReconcileTimer);
       workPanelReconcileTimer = null;
@@ -2555,6 +2623,9 @@ async function createWindow() {
       workPanelBaseBounds = { ...restoredBounds };
       workPanelLastAppliedBounds = { ...restoredBounds };
       workPanelReservation = emptyWorkPanelReservationState();
+      // A forced recovery is not user intent; drop any pending drag attribution
+      // so the reservation replan below is treated as an OS-owned adjustment.
+      workPanelUserMovePending = false;
       applyWorkPanelReservation();
       // Brief pin only when actively recovering from a shelf.
       if (shelved || electronTiny) {
@@ -2589,7 +2660,7 @@ async function createWindow() {
   window.on("restore", () => ensureStableBounds(false));
   window.on("resize", scheduleBoundsCheck);
   window.on("move", scheduleBoundsCheck);
-  window.on("move", reconcileWorkPanelDisplay);
+  window.on("move", noteUserWindowMove);
 
   // Persist last good user bounds so relaunch restores them.
   let saveTimer: NodeJS.Timeout | null = null;
@@ -2598,15 +2669,30 @@ async function createWindow() {
     const normalBounds = window.getNormalBounds();
     const display = screen.getDisplayMatching(normalBounds);
     const nextDisplayKey = displayWorkAreaKey(display.id, display.workArea);
-    const displayChanged =
-      workPanelDisplayKey !== null && nextDisplayKey !== workPanelDisplayKey;
-    const bounds =
+    const displayTransition = classifyDisplayTransition(nextDisplayKey);
+    const observedBase =
       workPanelBaseBounds && workPanelLastAppliedBounds
-        ? observedWorkPanelBaseBounds(normalBounds, displayChanged)
+        ? observedWorkPanelBaseBounds(normalBounds, displayTransition)
         : baseWindowBounds(window.getNormalBounds(), workPanelReservation);
-    if (!displayChanged) {
+    // Normalize the same way the reservation path does. A maximized or
+    // fullscreen window makes `applyWorkPanelReservation` defer geometry, so
+    // this can be the first and only consumer of a cross-display drag; without
+    // it, a rect straddling the boundary would be what relaunch restores.
+    const bounds =
+      displayTransition === "user-moved"
+        ? clampBoundsOriginToWorkArea(observedBase, display.workArea)
+        : observedBase;
+    // An OS re-fit keeps the remembered base so a later return to a roomy
+    // display restores it. Same-display moves and user cross-display drags are
+    // both real intent, so they advance the base and get persisted; otherwise
+    // relaunch would reopen the window on the display the user left (D262).
+    if (displayTransition !== "os-adjusted") {
       workPanelBaseBounds = bounds;
       workPanelLastAppliedBounds = { ...normalBounds };
+      if (displayTransition === "user-moved") {
+        workPanelDisplayKey = nextDisplayKey;
+        workPanelUserMovePending = false;
+      }
     }
     if (bounds.width >= WINDOW_MIN_WIDTH && bounds.height >= WINDOW_MIN_HEIGHT) {
       writeWindowState(bounds);
@@ -2698,6 +2784,14 @@ async function createWindow() {
   window.on("closed", () => {
     if (boundsTimer) clearTimeout(boundsTimer);
     if (saveTimer) clearTimeout(saveTimer);
+    if (workPanelMoveSettleTimer) {
+      clearTimeout(workPanelMoveSettleTimer);
+      workPanelMoveSettleTimer = null;
+    }
+    if (workPanelSettleExpiryTimer) {
+      clearTimeout(workPanelSettleExpiryTimer);
+      workPanelSettleExpiryTimer = null;
+    }
     clearInterval(boundsWatchdog);
   });
 

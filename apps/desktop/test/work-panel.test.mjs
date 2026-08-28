@@ -265,7 +265,27 @@ test("work panel resizing is independent from the chat viewport", () => {
   assert.doesNotMatch(panelSource, /\.sidebar, \.sidebar-rail/);
   assert.match(globalStyles, /\.main-pane \{[^}]*min-width:\s*0;/s);
   assert.match(mainSource, /displayWorkAreaKey/);
-  assert.match(mainSource, /window\.on\("move", reconcileWorkPanelDisplay\)/);
+  // D262: a native move stream is a drag, so the move path only marks the
+  // user-move window and defers display reconciliation until it settles.
+  assert.match(mainSource, /window\.on\("move", noteUserWindowMove\)/);
+  assert.doesNotMatch(
+    mainSource,
+    /window\.on\("move", reconcileWorkPanelDisplay\)/,
+  );
+  assert.match(mainSource, /workPanelUserMovePending = true/);
+  // Attribution must not depend on main-process scheduling.
+  assert.doesNotMatch(mainSource, /workPanelUserMoveUntil/);
+  const moveHandler =
+    mainSource.match(/const noteUserWindowMove = \(\) => \{[\s\S]*?\n  \};/)?.[0] ??
+    "";
+  assert.match(moveHandler, /workPanelUserMovePending = true/);
+  assert.match(moveHandler, /reconcileWorkPanelDisplay\(\)/);
+  assert.match(moveHandler, /WORK_PANEL_MOVE_SETTLE_MS/);
+  // Topology events are OS-owned and must drop a pending drag attribution.
+  assert.match(
+    mainSource,
+    /const reconcileDisplayTopology = \(\) => \{\s*workPanelUserMovePending = false;/,
+  );
   for (const event of [
     "display-metrics-changed",
     "display-added",
@@ -311,6 +331,16 @@ test("native window and work panel resizing have independent owners", () => {
     /baseWindowBounds\([\s\S]*window\.getNormalBounds\(\)[\s\S]*workPanelReservation/,
   );
   assert.match(persistenceBlock, /writeWindowState\(bounds\)/);
+  // D262: a cross-display drag advances the persisted base and its display key,
+  // and is normalized into the target work area, because a maximized window
+  // makes this the only consumer of the drag.
+  assert.match(persistenceBlock, /classifyDisplayTransition\(nextDisplayKey\)/);
+  assert.match(persistenceBlock, /displayTransition !== "os-adjusted"/);
+  assert.match(persistenceBlock, /workPanelDisplayKey = nextDisplayKey/);
+  assert.match(
+    persistenceBlock,
+    /displayTransition === "user-moved"\s*\?\s*clampBoundsOriginToWorkArea/,
+  );
   assert.match(mainSource, /window\.on\("close", \(event\) =>/);
   assert.match(mainSource, /persistNormalWindowState\(\)/);
 });
