@@ -3988,16 +3988,18 @@ Each scenario is documented in this format:
   1. Prompt a turn in which the assistant emits two `Task` calls — `scout` and
      `pinned` — in one message. Observe the delegation card while both run and
      after each one settles; collapse it, then expand each node.
-  2. Prompt a turn in which two `fixer` delegates each edit a different file, and
+  2. Prompt a turn whose assistant message emits a single `Task` call — `scout`
+     — and compare its presentation with step 1's.
+  3. Prompt a turn in which two `fixer` delegates each edit a different file, and
      answer only the first permission card.
-  3. Answer the second card, then prompt a third turn where two `fixer`
+  4. Answer the second card, then prompt a third turn where two `fixer`
      delegates edit the **same** file.
-  4. Start a fan-out and press Stop while one card is on screen and another is
+  5. Start a fan-out and press Stop while one card is on screen and another is
      queued.
-  5. Prompt a `Task` call naming `broken`, then one naming an agent that does not
+  6. Prompt a `Task` call naming `broken`, then one naming an agent that does not
      exist, then one whose definition pins an unconfigured provider.
-  6. Switch the session to Plan, then to Goal, and inspect the tool catalog.
-  7. Reload the session and re-expand the delegation card and every `Task`
+  7. Switch the session to Plan, then to Goal, and inspect the tool catalog.
+  8. Reload the session and re-expand the delegation card and every `Task`
      node.
 - **Expected**:
   - Both delegates in step 1 run concurrently, and `pinned` streams on its own
@@ -4005,8 +4007,11 @@ Each scenario is documented in this format:
   - The two `Task` calls in step 1 form one full-width delegation card. While
     active it opens once and its header updates the subagent and settled counts;
     after settlement it keeps the user's expansion choice and reports aggregate
-    success, warning, or issue state plus elapsed time. A single `Task` still
-    uses the compact one-line row.
+    success, warning, or issue state plus elapsed time.
+  - The lone `Task` in step 2 draws the same card with a single delegate node —
+    same root, connector, outcome, runtime and step count — and never the
+    compact one-line tool row (D265). Its aggregate line is worded for one
+    subagent, so no locale reads "1 个 Subagents" or "Subagents working".
   - The expanded card shows one main-agent root connected to `scout` and
     `pinned` in parent-row order, with no invented edge between delegates. Each
     node shows its agent, short description, explicit outcome, duration and step
@@ -4020,7 +4025,7 @@ Each scenario is documented in this format:
     the number waiting behind it. Answering it reveals the next card, and neither
     answer resolves the other request.
   - `scout` cannot call `Edit` or `Write` at all; `fixer` can. Same-file edits in
-    step 3 apply in a defined order and neither loses the other's write.
+    step 4 apply in a defined order and neither loses the other's write.
   - Stop denies both the shown and the queued request, and both delegates end
     `aborted` in text and icon inside their own `Task` nodes — the parent turn
     ends once and the aggregate card settles with a warning.
@@ -4035,7 +4040,7 @@ Each scenario is documented in this format:
 - **Specs linked**: `03-runtime/02-agent-runtime.md` §5f/§7.2b/§8,
   `03-runtime/03-tools-and-permissions.md` §10.2,
   `03-runtime/04-data-storage.md` §4.7a, `04-ux/03-permission-ux.md` §6a,
-  `04-ux/08-component-spec.md` §9.9, ADR 0062, decisions-log D201
+  `04-ux/08-component-spec.md` §9.9, ADR 0062, decisions-log D201, D265
 - **Acceptance**: C (conversation), E (tools & permissions), F (persistence),
   Security, Quality
 - **Milestone**: M6
@@ -4048,9 +4053,11 @@ Each scenario is documented in this format:
   (queue order, id-matched removal, tool-call removal, abort denying the queue,
   card copy), `subagent-wiring.test.mjs` (main-process discovery and model pins)
   and `subagent-transcript.test.mjs` + `assistant-turns.test.mjs` (nesting,
-  single report print, memoization), plus `subagent-topology.test.mjs`
-  (delegate detection, structured outcomes and aggregate counts). Full
-  multi-provider fan-out and rendered topology interaction remain manual.
+  single report print, memoization, the card gate that admits a lone delegation
+  and the count-aware aggregate copy in both locales), plus
+  `subagent-topology.test.mjs` (delegate detection, structured outcomes and
+  aggregate counts). Full multi-provider fan-out and rendered topology
+  interaction remain manual.
 
 #### E2E-145: Tool results read as structured blocks, never JSON
 
