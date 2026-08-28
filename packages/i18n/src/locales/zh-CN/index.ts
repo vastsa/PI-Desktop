@@ -213,6 +213,7 @@ export const zhCN = {
     abort: "停止",
     stopGenerating: "停止生成",
     running: "正在处理…",
+    loadingSession: "正在加载会话…",
     loadingEarlierMessages: "正在加载更早的消息…",
     copy: "复制",
     copied: "已复制",

@@ -219,6 +219,7 @@ export const en = {
     abort: "Stop",
     stopGenerating: "Stop generating",
     running: "Working…",
+    loadingSession: "Loading conversation…",
     loadingEarlierMessages: "Loading earlier messages…",
     copy: "Copy",
     copied: "Copied",

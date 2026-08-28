@@ -5,7 +5,7 @@ import { loadStyles } from "./helpers/styles.mjs";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-const [store, sidebar, chatSurface, transcript, api, main, styles] =
+const [store, sidebar, chatSurface, transcript, api, main, styles, skeleton] =
   await Promise.all([
     read("../src/stores/app-store.ts"),
     read("../src/components/Sidebar.tsx"),
@@ -14,6 +14,7 @@ const [store, sidebar, chatSurface, transcript, api, main, styles] =
     read("../src/lib/api.ts"),
     read("../electron/main/index.ts"),
     loadStyles(),
+    read("../src/components/SessionLoadingSkeleton.tsx"),
   ]);
 
 test("session reads use a bounded tail and load older pages on demand", () => {
@@ -68,14 +69,17 @@ test("sidebar owns feedback and prefetch while store owns workspace alignment", 
   assert.doesNotMatch(projectSelection, /await selectProject\(|activateProject\(/);
 });
 
-test("changed session trees render through a stable deferred busy frame", () => {
+test("changed session trees render through a transcript-shaped skeleton", () => {
   assert.match(chatSurface, /useDeferredValue\(activeSessionId\)/);
-  assert.match(chatSurface, /previousTranscriptViewRef/);
+  assert.doesNotMatch(chatSurface, /previousTranscriptViewRef/);
   assert.match(chatSurface, /aria-busy=\{sessionSwitching\}/);
   assert.match(chatSurface, /session-switch-progress/);
-  assert.match(styles, /\.chat-surface\.session-switching[\s\S]*?pointer-events: none/);
+  assert.match(chatSurface, /<SessionLoadingSkeleton \/>/);
+  assert.match(skeleton, /data-testid="session-loading-skeleton"/);
+  assert.match(styles, /\.session-loading-skeleton[\s\S]*?animation: session-loading-skeleton-in/);
+  assert.match(styles, /\.session-loading-skeleton-line[\s\S]*?animation: session-loading-skeleton-pulse 900ms/);
   assert.match(
     styles,
-    /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.session-switch-progress > span[\s\S]*?animation: none/,
+    /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.session-loading-skeleton-line[\s\S]*?animation: none[\s\S]*?\.session-switch-progress > span[\s\S]*?animation: none/,
   );
 });

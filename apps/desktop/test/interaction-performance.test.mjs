@@ -150,6 +150,7 @@ test("session activation pins the latest record before the first paint", () => {
     /<ChatTranscript[\s\S]*?sessionId=\{transcriptView\.sessionId\}/,
   );
   assert.match(chatSurface, /useDeferredValue\(activeSessionId\)/);
+  assert.match(chatSurface, /<SessionLoadingSkeleton \/>/);
 
   const activationEffect = transcript.match(
     /useLayoutEffect\(\(\) => \{([\s\S]*?)\n  \}, \[cancelFollowScroll, sessionId, scrollToBottom\]\);/,

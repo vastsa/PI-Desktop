@@ -221,12 +221,13 @@ may be retained while exactly one workspace supplies the visible shell context.
   transcript IO run in parallel. A monotonic navigation generation permits only
   the newest selection to project the visible workspace, transcript, run state,
   navigation history, and work-panel context.
-- A warm transcript snapshot may be presented after workspace alignment and is
-  always revalidated. A cold or React-deferred switch keeps the previous
-  complete transcript as a dimmed, non-interactive stable frame with a thin
-  progress track and `aria-busy`; it never combines the destination session id
-  with the previous session's messages. Once ready, the destination paints at
-  its final record without a top-of-history or empty-home flash.
+- A warm transcript snapshot is revalidated in parallel. While selection or
+  React preparation is pending, the main pane shows a transcript-shaped
+  skeleton, keeps it non-interactive with a thin progress track and
+  `aria-busy`, and never combines the destination session id with the previous
+  session's messages. The composer keeps the destination shape while loading.
+  Once ready, the destination paints at its final record without a
+  top-of-history or empty-home flash.
 - Selecting a project-scoped conversation activates its project as part of the
   store-owned selection transaction. Selecting a Temporary conversation clears
   the visible workspace. Project-scoped new-session actions pass their target

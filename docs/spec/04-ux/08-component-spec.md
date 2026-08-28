@@ -90,8 +90,8 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
   parallel; navigation generations ensure that only the newest selection can
   project session, workspace, messages, and work-panel context.
 - While a destination transcript is resolving or React is preparing its heavy
-  Markdown tree, `ChatSurface` retains the previous complete transcript as a
-  non-interactive stable frame, exposes `aria-busy`, and shows a 2px progress
+  Markdown tree, `ChatSurface` replaces the main content with a
+  transcript-shaped skeleton, exposes `aria-busy`, and shows a 2px progress
   track. The destination transcript replaces it atomically at the bottom; a
   stale transcript is never relabeled with the destination session id.
 - Settings, Plugins, Pull requests, and Scheduled are route-level lazy modules.
@@ -322,7 +322,9 @@ visually distinct from list content.
   disclosure hit area): activate its path when necessary, then toggle only
   that project's conversation group; retain the other project groups
 - Click session: activate its bound project when necessary, switch the active
-  session, and show the last message on the first painted frame. Session
+  session, and show the last message on the first painted frame. While the
+  destination transcript is loading, the main pane shows a transcript-shaped
+  skeleton and never exposes the previous session's messages. Session
   activation resets any manual-scroll state inherited from the previous
   transcript and must not flash the new transcript's top or an old scroll
   position before settling at the bottom.
@@ -965,7 +967,7 @@ storage but compose into one assistant turn until the next user message.
 | State | Behavior |
 |---|---|
 | Session activation | Re-pin and position at the last record during layout, before the transcript's first painted frame |
-| Session transition | Previous complete view remains stable and non-interactive until the deferred destination tree is ready; current stream updates are not deferred |
+| Session transition | Transcript-shaped skeleton remains visible and non-interactive until the deferred destination tree is ready; current stream updates are not deferred |
 | Streaming | New tokens append; auto-scroll only while pinned to bottom |
 | Turn start | Send / retry / regenerate re-pins follow mode and jumps to bottom |
 | Thinking-only streaming | Transcript opens; disclosure stays open; no empty answer bubble or duplicate Working row |

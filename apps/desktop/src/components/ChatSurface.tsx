@@ -1,10 +1,11 @@
-import { memo, useDeferredValue, useEffect, useMemo, useRef } from "react";
+import { memo, useDeferredValue, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { ChatTranscript } from "./ChatTranscript";
 import { Composer } from "./Composer";
 import { HomeMascotLogo } from "./HomeMascotLogo";
 import { IconX } from "./icons";
 import { OnboardingChecklist } from "./OnboardingChecklist";
+import { SessionLoadingSkeleton } from "./SessionLoadingSkeleton";
 import { useAppStore } from "../stores/app-store";
 import { headPermission, sessionPermissions } from "../lib/pending-permissions";
 import { headAsk } from "../lib/pending-asks";
@@ -26,10 +27,10 @@ function projectName(path?: string | null, name?: string | null) {
 /**
  * Top-level chat page surface.
  *
- * Manages the session-switching transition (D247): while a new session is
- * loading, the previous transcript stays visible at reduced opacity with a
- * progress indicator, preventing the "flash" of blank content. Once the new
- * messages arrive (via deferred sessionId), the transcript swaps atomically.
+ * Manages the session-switching transition: while a new session is loading,
+ * the previous transcript is replaced by a transcript-shaped skeleton so stale
+ * messages cannot flash before the destination commits. Once the new messages
+ * arrive, the transcript swaps atomically.
  *
  * Also reads all store state needed by the inner ChatTranscript and Composer,
  * isolating them from direct store subscriptions that would cause extraneous
@@ -39,6 +40,7 @@ export const ChatSurface = memo(function ChatSurface() {
   const { t } = useTranslation();
   const activeSessionId = useAppStore((state) => state.activeSessionId);
   const selectingSessionId = useAppStore((state) => state.selectingSessionId);
+  const sessions = useAppStore((state) => state.sessions);
   const messages = useAppStore((state) => state.messages);
   const sessionHistory = useAppStore((state) => state.sessionHistory);
   const loadOlderMessages = useAppStore((state) => state.loadOlderMessages);
@@ -101,13 +103,11 @@ export const ChatSurface = memo(function ChatSurface() {
     return { before, after };
   }, [t]);
 
-  // Session-switch orchestration (D247):
-  // While the new session loads, keep showing the previous transcript at
-  // reduced opacity. useDeferredValue(activeSessionId) keeps the old view
-  // alive for one deferred frame, then swaps atomically when the new session
-  // messages commit. This prevents the "flash of blank/wrong content" that
-  // occurs when sessionId and messages update across two React commits.
-  const currentTranscriptView = useMemo(
+  // Keep the loading frame mounted until both the store selection and React's
+  // deferred session identity have settled. This makes the skeleton the only
+  // visible frame between two session transcripts.
+  const deferredSessionId = useDeferredValue(activeSessionId);
+  const transcriptView = useMemo(
     () => ({
       sessionId: activeSessionId,
       messages,
@@ -127,21 +127,9 @@ export const ChatSurface = memo(function ChatSurface() {
       queuedPermissions,
     ],
   );
-  const deferredSessionId = useDeferredValue(activeSessionId);
-  const previousTranscriptViewRef = useRef(currentTranscriptView);
-  const transcriptView =
-    deferredSessionId === activeSessionId
-      ? currentTranscriptView
-      : previousTranscriptViewRef.current;
   const sessionSwitching =
     Boolean(selectingSessionId) ||
-    transcriptView.sessionId !== activeSessionId;
-
-  useEffect(() => {
-    if (deferredSessionId === activeSessionId) {
-      previousTranscriptViewRef.current = currentTranscriptView;
-    }
-  }, [activeSessionId, currentTranscriptView, deferredSessionId]);
+    deferredSessionId !== activeSessionId;
 
   const hasTranscript =
     Boolean(transcriptView.pendingPermission) ||
@@ -154,6 +142,12 @@ export const ChatSurface = memo(function ChatSurface() {
       if (message.role === "assistant") return hasContent || hasThinking;
       return hasContent || message.role === "tool";
     });
+  const loadingSession = sessions.find(
+    (session) => session.id === (selectingSessionId ?? activeSessionId),
+  );
+  const loadingHasTranscript = loadingSession
+    ? loadingSession.messageCount > 0
+    : hasTranscript;
 
   return (
     <div
@@ -161,11 +155,20 @@ export const ChatSurface = memo(function ChatSurface() {
       aria-busy={sessionSwitching}
     >
       {sessionSwitching ? (
-        <div className="session-switch-progress" aria-hidden>
-          <span />
-        </div>
-      ) : null}
-      {!hasTranscript ? (
+        <>
+          <div className="session-switch-progress" aria-hidden>
+            <span />
+          </div>
+          <SessionLoadingSkeleton />
+          {loadingHasTranscript ? (
+            <StableComposer variant="docked" />
+          ) : (
+            <div className="home-composer-wrap">
+              <StableComposer variant="home" />
+            </div>
+          )}
+        </>
+      ) : !hasTranscript ? (
         <div
           className="home-main-content"
           data-testid="home-empty"
