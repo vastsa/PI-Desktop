@@ -23,6 +23,14 @@ const dialogSource = await readFile(
   new URL("../src/components/settings/ProviderDialog.tsx", import.meta.url),
   "utf8",
 );
+const vendorDialogSource = await readFile(
+  new URL("../src/components/settings/VendorAccountDialog.tsx", import.meta.url),
+  "utf8",
+);
+const vendorAccountsSource = await readFile(
+  new URL("../src/components/settings/VendorAccountsSection.tsx", import.meta.url),
+  "utf8",
+);
 const styles = await loadStyles();
 
 test("model configuration surfaces pi-ai vision and reasoning state per model", () => {
@@ -63,6 +71,13 @@ test("model picker exposes a clear empty state and focusable list contract", () 
   assert.match(pickerSource, /title=\{model\.modelId\}/);
   assert.match(styles, /\.provider-model-multi-option:focus-visible/);
   assert.match(styles, /overscroll-behavior: contain/);
+});
+
+test("vendor account settings expose and persist the full model configuration", () => {
+  assert.match(vendorDialogSource, /ModelMultiSelect/);
+  assert.match(vendorDialogSource, /ModelConfigCard/);
+  assert.match(vendorDialogSource, /models: ProviderModelDraft\[\]/);
+  assert.match(vendorAccountsSource, /models,\n      \}\);/);
 });
 
 test("model settings keep a compact, non-floating card treatment", () => {

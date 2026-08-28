@@ -4809,9 +4809,10 @@ Each scenario is documented in this format:
   confirm one connected account row and one OAuth provider row appear. 3) Use
   Add account again, pick Anthropic again, and complete a second login with a
   different account; confirm two account rows and two provider ids. 4) Edit
-  the first account, change its display name and default model, save, and
-  confirm the row shows the account label once while the Defaults selector
-  reflects the edited model and each option shows only one provider name,
+  the first account, change its display name, select multiple catalog/custom
+  models, configure context window, max output tokens, and thinking levels for
+  one model, then save; confirm the row shows the account label once while the
+  Defaults selector reflects the edited model and each option shows only one provider name,
   without an appended account label or model ID. Before saving, focus the
   default-model field and confirm the authenticated suggestions open as an
   app-styled list with aligned model IDs/display names, that typing filters it,
@@ -4835,9 +4836,8 @@ Each scenario is documented in this format:
   `secret:provider:<providerId>:oauth` ref and row-scoped pi-ai collection;
   resolving one account never returns the other account's token. The model list
   is the authenticated catalog (a Copilot account lists only what its
-  subscription includes), not a `/models` probe. The account editor updates
-  only non-secret label/model fields, and Test connection resolves that exact
-  account. Both turns run without a
+  subscription includes), not a `/models` probe. The account editor updates only non-secret label/model fields and the full
+  per-model bindings, and Test connection resolves that exact account. Both turns run without a
   pasted key and reuse the same warm runtime — the launch payload carries
   `apiKey: ""` and each request resolves auth through `provider.resolveAuth`,
   which Electron main answers locally and refuses with `PROVIDER_NOT_BOUND` for

@@ -66,7 +66,7 @@ function fakeHost() {
  * fall back to a pasted code — and persists through the injected store, so the
  * test exercises the credential path rather than mocking it away.
  */
-function fakeModels(credentials, { login } = {}) {
+function fakeModels(credentials, { login, models: configuredModels } = {}) {
   const provider = {
     id: "anthropic",
     name: "Anthropic",
@@ -79,7 +79,7 @@ function fakeModels(credentials, { login } = {}) {
       },
     },
   };
-  const models = [
+  const models = configuredModels ?? [
     {
       id: "claude-opus-5",
       name: "Claude Opus 5",
@@ -87,6 +87,23 @@ function fakeModels(credentials, { login } = {}) {
       provider: "anthropic",
       baseUrl: "https://api.anthropic.com",
       input: ["text"],
+      reasoning: true,
+      thinkingLevelMap: { low: "low", medium: "medium", high: "high" },
+      cost: { input: 0, output: 0 },
+      contextWindow: 200_000,
+      maxTokens: 16_384,
+    },
+    {
+      id: "claude-haiku-5",
+      name: "Claude Haiku 5",
+      api: "anthropic-messages",
+      provider: "anthropic",
+      baseUrl: "https://api.anthropic.com",
+      input: ["text"],
+      reasoning: false,
+      cost: { input: 0, output: 0 },
+      contextWindow: 128_000,
+      maxTokens: 8_192,
     },
   ];
   return {
@@ -94,6 +111,9 @@ function fakeModels(credentials, { login } = {}) {
     getProvider: (id) => (id === provider.id ? provider : undefined),
     refresh: async () => ({ aborted: false, errors: new Map() }),
     getAvailable: async () => models,
+    getModel: (providerId, modelId) => providerId === provider.id
+      ? models.find((model) => model.id === modelId)
+      : undefined,
     login:
       login ??
       (async (_id, _type, interaction) => {
@@ -208,6 +228,22 @@ test("a completed login stores the credential and configures the row", async () 
   assert.equal(row.protocol, "anthropic");
   assert.equal(row.defaultModelId, "claude-opus-5");
   assert.equal(row.oauthAccountLabel, "Anthropic (Claude Pro/Max)");
+  assert.deepEqual(row.models, [
+    {
+      id: "claude-opus-5",
+      contextWindow: 200_000,
+      maxTokens: 16_384,
+      thinkingLevels: ["low", "medium", "high"],
+      defaultThinkingLevel: "medium",
+    },
+    {
+      id: "claude-haiku-5",
+      contextWindow: 128_000,
+      maxTokens: 8_192,
+      thinkingLevels: ["off"],
+      defaultThinkingLevel: "off",
+    },
+  ]);
 
   // The credential lands under the provider-scoped OAuth ref, never the api key.
   const stored = JSON.parse(host.secrets.get(secretRefForProviderOauth(row.id)));
