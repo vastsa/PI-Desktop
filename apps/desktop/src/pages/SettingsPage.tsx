@@ -51,7 +51,7 @@ import {
   IconSparkles,
   IconSun,
 } from "../components/icons";
-import { ProvidersSection } from "../components/settings/ProvidersSection";
+import { ModelConfigPage } from "../components/settings/ModelConfigPage";
 import { KeyboardShortcutsSection } from "../components/settings/KeyboardShortcutsSection";
 import { FontFamilyRow } from "../components/settings/FontFamilyRow";
 import { ReleaseNotesDialog } from "../components/ReleaseNotesDialog";
@@ -1315,7 +1315,7 @@ export function SettingsPage() {
             </div>
           )}
 
-          {tab === "agent" && <ProvidersSection />}
+          {tab === "agent" && <ModelConfigPage />}
 
           {tab === "skills" && <AgentSkillsPage />}
 

@@ -132,12 +132,11 @@ export function VendorAccountsSection() {
     if (!entry || !provider || !form.name.trim() || !form.modelId.trim()) return;
     setSavingAccount(true);
     try {
-      const models = form.models.map(({ source: _source, ...binding }) => binding);
       await api.updateProvider({
         id: provider.id,
         oauthAccountLabel: form.name.trim(),
         defaultModelId: form.modelId.trim(),
-        models,
+        models: form.models,
       });
       if (settings?.defaultProviderId === provider.id) {
         await api.setSettings({
