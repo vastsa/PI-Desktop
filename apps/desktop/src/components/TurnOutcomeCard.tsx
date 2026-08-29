@@ -9,12 +9,6 @@ type TurnOutcomeCardProps = {
   result?: AgentTurnResult;
 };
 
-function focusComposer() {
-  requestAnimationFrame(() => {
-    document.querySelector<HTMLTextAreaElement>(".composer-input")?.focus();
-  });
-}
-
 function latestTurnMessages(messages: UiMessage[]) {
   let lastUserIndex = -1;
   for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -31,7 +25,7 @@ export function TurnOutcomeCard({
   result,
 }: TurnOutcomeCardProps) {
   const { t } = useTranslation();
-  const retryLastPrompt = useAppStore((state) => state.retryLastPrompt);
+  const sendPrompt = useAppStore((state) => state.sendPrompt);
 
   if (!result || result.status === "completed") return null;
 
@@ -72,11 +66,10 @@ export function TurnOutcomeCard({
         <button
           type="button"
           className="copy-btn primary"
-          onClick={() => void retryLastPrompt()}
+          onClick={() =>
+            void sendPrompt(t("chat.continueUnfinishedTaskPrompt"))
+          }
         >
-          {t("chat.retry")}
-        </button>
-        <button type="button" className="copy-btn" onClick={focusComposer}>
           {t("chat.resultContinue")}
         </button>
       </div>

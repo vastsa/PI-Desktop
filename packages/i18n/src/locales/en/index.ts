@@ -291,6 +291,7 @@ export const en = {
     resultNeedsAttention: "This task needs attention",
     resultFailedBody: "The turn stopped before it was complete. Your work is still here.",
     resultContinue: "Continue",
+    continueUnfinishedTaskPrompt: "Continue the user's unfinished task.",
     resultSteps_one: "1 step",
     resultSteps_other: "{{count}} steps",
     reviewChangeShow: "Show {{status}} changes for {{path}} ({{additions}} additions, {{deletions}} deletions)",

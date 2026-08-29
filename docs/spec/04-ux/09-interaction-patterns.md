@@ -506,9 +506,11 @@ may be retained while exactly one workspace supplies the visible shell context.
   or a guessed spinner state. Completed turns do not add a success card; their
   existing transcript and message-scoped review cards remain the completion
   evidence.
-- Failure copy states that the existing work remains available. Retry resends
-  the latest user prompt through the existing retry path; Continue returns
-  focus to the composer without changing the transcript.
+- Failure copy states that the existing work remains available. The card has
+  exactly one **Continue** action and no **Regenerate** action. Continue appends
+  the current locale's continuation prompt (`Continue the user's unfinished
+  task.` / `继续用户未完成的任务`) to the same session and starts a new turn without
+  truncating the failed turn or its completed work.
 - Aborted turns do not render a failure card. Starting a new turn clears the
   previous card, and background-session results remain scoped until that
   session is selected.

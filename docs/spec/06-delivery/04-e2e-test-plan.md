@@ -3584,8 +3584,10 @@ Each scenario is documented in this format:
     are capped at 30 seconds and the wait is abortable.
   - Exhaustion emits one terminal `PROVIDER_RATE_LIMITED` assistant error and
     lifecycle event with `retryAttempt: 5` and `providerStatus: 429`; no sixth
-    retry occurs. The manual action is localized as **Continue** rather than
-    generic **Retry**, and it still re-sends the latest prompt.
+    retry occurs. The outcome card exposes one localized **Continue** action and
+    no **Regenerate** action. Activating it appends the localized continuation
+    prompt (`Continue the user's unfinished task.` / `继续用户未完成的任务`) to the
+    same session and starts the next turn without discarding the failed turn.
   - The subagent uses the same five-retry budget and one visible child bubble;
     its final report is failed only after the budget is exhausted, while
     intermediate 429s never become a parent-visible error report.
@@ -5600,10 +5602,10 @@ This test plan spec is accepted when:
 
 ### US-UI-60c Compact assistant error card
 - Trigger a retriable provider/model failure in the transcript in light and dark themes.
-- Expect the assistant error to use a restrained inline surface with a thin error rail. The localized summary, stable code, details disclosure, and Retry action share one compact header; the card does not render a second bottom action row.
+- Expect the assistant error to use a restrained inline surface with a thin error rail. The localized summary, stable code, and details disclosure share one compact header; the card does not render a second bottom action row.
 - Confirm the details remain expanded on first render, keep the redacted provider response and provider/model IDs, and expose an icon-only copy control with an accessible label/tooltip. On a narrow window, the header actions wrap without horizontal overflow.
-- For a terminal `PROVIDER_RATE_LIMITED` (including HTTP 429), expect the action label to be localized as **Continue** while retaining the existing path that resends the latest prompt.
-- Click the action and expect the existing retry path to resend the latest prompt.
+- For a terminal `PROVIDER_RATE_LIMITED` (including HTTP 429), expect the TurnOutcomeCard to expose exactly one localized **Continue** action and no **Regenerate** action.
+- Click **Continue** and expect the app to append the localized continuation prompt (`Continue the user's unfinished task.` / `继续用户未完成的任务`) to the same session and start the next turn without truncating the failed turn.
 
 
 ### US-UI-61 Assistant context summary + retry (D103, D184, D244)

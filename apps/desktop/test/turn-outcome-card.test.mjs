@@ -20,15 +20,26 @@ test("terminal agent events retain a session-scoped result for the transcript", 
   assert.match(transcript, /<TurnOutcomeCard[\s\S]*?result=\{latestTurnResult\}/);
 });
 
-test("outcome card only exposes failure recovery actions", () => {
+test("outcome card exposes one localized continuation action", () => {
+  const sendPrompt = store.slice(
+    store.indexOf("sendPrompt: async"),
+    store.indexOf("compactContext: async"),
+  );
   assert.match(outcome, /data-testid="turn-outcome-card"/);
   assert.match(outcome, /result\.status === "completed"/);
   assert.doesNotMatch(outcome, /resultComplete/);
   assert.match(outcome, /resultNeedsAttention/);
   assert.match(outcome, /resultSteps/);
-  assert.match(outcome, /retryLastPrompt/);
-  assert.match(outcome, /focusComposer/);
+  assert.equal((outcome.match(/<button/g) ?? []).length, 1);
+  assert.match(outcome, /sendPrompt\(t\("chat\.continueUnfinishedTaskPrompt"\)\)/);
+  assert.match(outcome, /t\("chat\.resultContinue"\)/);
+  assert.doesNotMatch(outcome, /retryLastPrompt/);
+  assert.doesNotMatch(outcome, /focusComposer/);
+  assert.doesNotMatch(outcome, /t\("chat\.retry"\)/);
   assert.doesNotMatch(outcome, /toolWorkPanelTab/);
+  assert.match(sendPrompt, /await api\.prompt\(\{[\s\S]*?sessionId,[\s\S]*?content,/);
+  assert.match(sendPrompt, /latestTurnResults: withoutRecordKey/);
+  assert.doesNotMatch(sendPrompt, /truncateFromMessageId/);
   assert.match(styles, /\.turn-outcome-card\s*\{/);
   assert.match(styles, /\.turn-outcome-card\.failed\s*\{/);
 });

@@ -20,6 +20,17 @@ test("shell status and crash copy stay user-facing", () => {
   assert.equal(chinese["status.hostOk"], "已连接");
 });
 
+test("failed turns expose a localized continuation prompt", () => {
+  assert.equal(
+    english["chat.continueUnfinishedTaskPrompt"],
+    "Continue the user's unfinished task.",
+  );
+  assert.equal(
+    chinese["chat.continueUnfinishedTaskPrompt"],
+    "继续用户未完成的任务",
+  );
+});
+
 test("common setup and marketplace copy avoid developer jargon", () => {
   assert.equal(
     english["chat.emptyHint"],

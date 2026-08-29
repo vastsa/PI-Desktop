@@ -516,7 +516,7 @@ Primary chat area containing ChatTranscript and Composer. Scrollable, center of 
 | ChatTranscript (scrollable, flex-1)  |
 |   MessageBubble (user/assistant)     |
 |   ToolCallCard                       |
-|   TurnOutcomeCard                    |
+|   TurnOutcomeCard (one Continue)     |
 |   InlineReviewCard · M App.tsx +8 −2 |
 |   PermissionCard                     |
 |   ...                                |
@@ -530,6 +530,10 @@ Primary chat area containing ChatTranscript and Composer. Scrollable, center of 
 
 - Background: bg-primary
 - Max content width: 720px (messages), centered
+- A failed TurnOutcomeCard exposes one primary **Continue** action and no
+  regenerate action. It appends the current locale's continuation prompt to the
+  same session and starts a new turn, preserving the failed turn and completed
+  work in the transcript.
 - Scroll behavior: auto-scroll to bottom on new message while pinned; the first
   upward manual movement pauses auto-scroll without a snap-back; send / retry /
   regenerate re-pins and positions the latest content during the layout phase,
@@ -565,7 +569,7 @@ Primary chat area containing ChatTranscript and Composer. Scrollable, center of 
 | Empty | Restrained hero + optional onboarding checklist in a scrollable content region, with a bottom-reserved home composer and no starter-card or contextual quick-action layer (D111/D204/D206) |
 | Streaming | Auto-scroll follows while pinned; new tokens append |
 | Active progress | Immediately after send, before the first assistant or tool event, a compact localized `Working…` status with elapsed time appears inline. It yields to concrete thinking, tool, and answer rows, while a permission card owns the approval state; no large generic progress card is rendered. |
-| Turn outcome | After a failed turn, a session-scoped recovery card summarizes the interruption and tool evidence. Completed turns use the existing transcript and message-scoped InlineReviewCard without an extra success card; failed turns can retry without losing the transcript. |
+| Turn outcome | After a failed turn, a session-scoped recovery card summarizes the interruption and tool evidence. Completed turns use the existing transcript and message-scoped InlineReviewCard without an extra success card; failed turns can continue through one localized prompt without losing the transcript. |
 | Session switch | The newly activated session paints at its latest record. Bounded first commit and full-history expansion show the same position: no post-paint height correction may shift the visible rows, in either direction |
 | Turn start (send / retry / regenerate) | Re-pins and positions the latest content before paint, even if the user had scrolled up; the later persisted user-message event does not flash the transcript at its top, and the composer collapse / indicator layout clamps during the send never release follow mode |
 | Idle (after stream) | Auto-scroll unlocked; user can scroll freely |
@@ -585,9 +589,10 @@ Primary chat area containing ChatTranscript and Composer. Scrollable, center of 
   no starter-card or contextual quick-action layer between the hero and
   composer.
 - The failed-turn recovery card is a labelled `role="status"` region with
-  explicit text actions. It uses icon geometry plus text, never color alone;
-  Retry preserves the existing prompt and Continue returns focus to the
-  composer. Completed turns do not render this card.
+  one explicit **Continue** action. It uses icon geometry plus text, never color
+  alone. Continue sends the current locale's continuation prompt as a new user
+  turn in the same session; no Regenerate action is present. Completed turns do
+  not render this card.
 
 ### 4.6 MVP constraints
 
