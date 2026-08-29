@@ -99,6 +99,7 @@ Agent，在 Plan 中不可见。主机返回 `PLUGIN_DISABLED_IN_PLAN`
 | 许可 | 英文副本 | zh-CN 示例 |
 |---|---|---|
 | `fs.read` | Read the files it lists | 读取它列出的文件 |
+| `clipboard.read` | Read the current clipboard and retained history | 读取当前剪贴板和保留的历史 |
 | `fs.write` | Modify the files it lists | 修改它列出的文件 |
 | `fs.delete` | Delete the files it lists, to the trash | 删除它列出的文件（进回收站） |
 | `notify` | 显示应用内和本机通知 | 显示应用内和系统通知 |

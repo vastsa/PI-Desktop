@@ -122,6 +122,12 @@ base URL 与粘贴的密钥工作。厂商行的样式不由厂商固定：GitHu
 | 工作室 | openai_兼容 | 无 | 是的 |
 | 定制 | openai_兼容 | api_key_and_base_url | 是的 |
 
+### 固定 API 风格预设
+
+| apiStyle | 提供商类型 | authKind | 名称 | baseUrl |
+|---|---|---|---|---|
+| `opencode_go` | `openai_compatible` | `api_key_and_base_url` | `OpenCode Go` | `https://opencode.ai/zen/go/v1` |
+
 ### 厂商账户预设
 
 这些行由登录创建（设置 → 模型配置 → 厂商账户），而不是由自定义提供商

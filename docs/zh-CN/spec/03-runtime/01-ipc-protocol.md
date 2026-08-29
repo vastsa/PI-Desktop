@@ -71,7 +71,7 @@ type AppError = {
 
 ## 5. Agent API
 
-### 5. 1提示
+### 5.1 提示
 
 ```ts
 type AgentPromptRequest = {
@@ -145,7 +145,30 @@ Root 用户轮次可能包括 `revisionRootId`、`revisionCount` 和
 附件可供性保持隐藏，直到 main、sidecar、pi 模型
 功能和持久性都会消耗有效负载。
 
-### 5. 2 中止
+### 5.2 在下一个回合边界停止
+
+```ts
+type AgentStopRequest = {
+ sessionId: string;
+ turnId?: string;
+};
+
+type AgentStopResponse = {
+ requested: boolean;
+};
+```
+
+`pi-desktop/agent/stop` 为活动运行时请求一次优雅停止。sidecar 在当前助手
+响应和已完成的工具批次之后评估这个一次性请求，也就是它本来会发起下一次
+模型请求的同一个边界。当前的持久回合随后发出 `agent_end` 并被终结为
+`completed`；该请求不会中止提供商流、取消正在运行的工具，也不会开启第二个
+并发回合。空闲会话返回 `requested: false`。
+
+渲染器按会话持有可移除的、仅存于内存的排队提示词列表。它只在排队项的
+**立即发送** 操作时调用该渠道，并在终止事件之后通过常规的 `agent/prompt`
+流程释放该项。
+
+### 5.3 中止
 
 ```ts
 type AgentAbortRequest = {
@@ -159,7 +182,7 @@ type AgentAbortRequest = {
 渲染器的 session/turn-scoped 预序列化快照；现有的
 转录重写会删除发送的行而不更改协议版本。
 
-### 5. 3 紧凑型（协议 v9）
+### 5.4 紧凑型（协议 v9）
 
 ```ts
 type AgentCompactRequest = { sessionId: string };
@@ -171,7 +194,7 @@ type AgentCompactResponse = { accepted: boolean };
 缺少 provider/session 配置无法通过正常的 `AppError`
 信封；主动转向或压实返回 `AGENT_BUSY`。
 
-### 5. 4 Plan 和 Goal 检查点批准
+### 5.5 Plan 和 Goal 检查点批准
 
 合同批准与工具许可是分开的。 Plan 和 Goal 分享此内容
 整个表面； `kind` 是唯一的鉴别器 (**D198**)。渲染器接收
@@ -323,7 +346,7 @@ Electron 将每个主机 `plans.changed` 通知原封不动地转发到
 主机拥有的截止日期失败，并出现稳定的 Plan/Goal 批准错误。没有
 请求更改操作。
 
-### 5. 5 获取状态
+### 5.5 获取状态
 
 ```ts
 type AgentStatus = {
@@ -1229,6 +1252,22 @@ Electron main 验证 `sessionId` 是否解析为持久主机会话，
 消息。
 无效会话和 malformed/oversized 负载失败并出现 IPC 错误，并且
 该操作无法写入工作区。
+
+### prompt/enhance
+
+```ts
+prompt/enhance({
+  sessionId?: string | null;
+  draft: string;
+  providerId?: string;
+  modelId?: string;
+  thinkingLevel?: ThinkingLevel;
+}) -> { enhancedDraft: string }
+```
+
+这是一次独立的一次性补全，没有会话历史、工具或附件。Electron main 负责解析
+提供商/模型和凭据，因此渲染器永远拿不到密钥。空草稿、斜杠命令草稿、缺失模型
+以及提供商失败都返回通用的 `Result` 错误包络。
 
 ## 14. 错误代码 — 初始注册表（可扩展）
 

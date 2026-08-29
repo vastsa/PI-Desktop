@@ -16,3 +16,4 @@
 | [09-交互模式.md](/zh-CN/spec/04-ux/09-interaction-patterns) | 交互模式（键盘、流式传输、中止、折叠） |
 | [10-workbuddy-benchmark-ux.md](/zh-CN/spec/04-ux/10-workbuddy-benchmark-ux) | WorkBuddy 基准演练 + adopt/adapt/reject 提案 |
 | [11-asktool-question-card.md](/zh-CN/spec/04-ux/11-asktool-question-card) | 内联多问题卡 |
+| [12-prompt-enhancement.md](/zh-CN/spec/04-ux/12-prompt-enhancement) | 输入框一次性提示词增强 |

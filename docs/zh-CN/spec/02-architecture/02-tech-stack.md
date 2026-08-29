@@ -17,6 +17,7 @@
 | 主机 RPC | stdio JSON-RPC (NDJSON) | 冷冻（D001） | Electron 主 ↔ Rust 主机 |
 | Agent 引擎 | `@earendil-works/pi-agent-core` | ^0.82.1+ | 代理循环 |
 | 模型 API | `@earendil-works/pi-ai` | ^0.82.1+ | 提供商 |
+| 模型目录 | `https://models.dev/api.json` | 随发版内置的快照 + 进程内刷新 | 唯一的提供商/模型元数据来源 |
 
 > Claude Opus 5 目录元数据需要 Pin **^0.82.1+**
 >（`claude-opus-5`，1M 上下文，适应性思维）。早期的 0.82.0 版本
