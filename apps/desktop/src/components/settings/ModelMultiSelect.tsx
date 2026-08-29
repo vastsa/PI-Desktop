@@ -231,6 +231,12 @@ export function ModelMultiSelect({
                     <span className="sr-only">{visionLabel}</span>
                   </span>
                 ) : null}
+                {model.modalities?.input.includes("pdf") ? (
+                  <span className="provider-model-capability-badge" title="PDF">
+                    <span aria-hidden="true">PDF</span>
+                    <span className="sr-only">PDF</span>
+                  </span>
+                ) : null}
               </button>
             );
           })

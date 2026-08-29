@@ -190,7 +190,9 @@ Warnings are non-blocking unless execution is impossible.
 ### 11.1 Reasoning capability resolution
 
 1. Resolve the models.dev metadata for the matching provider/API URL and exact
-   `modelId`.
+   `modelId`. Matching also accepts a catalog vendor prefix when the configured
+   provider uses an unprefixed ID (for example `deepseek-v4` matches
+   `deepseek/deepseek-v4` only under the matching provider identity).
 2. The models.dev record is authoritative for `reasoning` and
    `reasoning_options`; cached/provider capability claims cannot replace it.
 3. A free-form ID absent from models.dev is an unknown generic model and

@@ -189,6 +189,45 @@ test("models.dev parsing retains every model in a provider", () => {
   assert.equal(provider.models.at(-1)?.modelId, "model-0626");
 });
 
+test("matches vendor-prefixed models when the catalog provider key is a gateway", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-models-dev-provider-match-"));
+  const catalogPath = join(dir, "api.json");
+  await writeFile(
+    catalogPath,
+    JSON.stringify({
+      gateway: {
+        name: "Gateway",
+        api: "https://gateway.example/v1",
+        models: {
+          "deepseek/deepseek-v4": {
+            id: "deepseek/deepseek-v4",
+            name: "DeepSeek V4",
+            modalities: { input: ["text", "image", "pdf"], output: ["text"] },
+            limit: { context: 128_000, output: 16_000 },
+          },
+        },
+      },
+    }),
+    "utf8",
+  );
+  try {
+    const catalog = new ModelsDevCatalog({ catalogPath });
+    assert.equal(await catalog.ensureLoaded(), true);
+    const match = catalog.findModel({
+      vendorKey: "deepseek",
+      modelId: "deepseek-v4",
+    });
+    assert.equal(match?.modelId, "deepseek/deepseek-v4");
+    assert.deepEqual(match?.modalities.input, ["text", "image", "pdf"]);
+    assert.equal(
+      catalog.modelsForProvider({ vendorKey: "deepseek", providerId: "row" }).length,
+      1,
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("models.dev reasoning options map to canonical levels", () => {
   assert.deepEqual(
     thinkingLevelsFromModelsDev(true, [{

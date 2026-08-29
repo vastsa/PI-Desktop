@@ -64,7 +64,9 @@ async function refreshBundledModelsDevCatalog() {
   ) {
     throw new Error("models.dev response contains no provider model records");
   }
-  const content = `${text.trimEnd()}\n`;
+  // Store a deterministic minified snapshot: it keeps every models.dev field
+  // while avoiding formatting churn and reducing the packaged resource size.
+  const content = `${JSON.stringify(body)}\n`;
   const current = existsSync(modelsDevCatalogPath)
     ? readFileSync(modelsDevCatalogPath, "utf8")
     : "";

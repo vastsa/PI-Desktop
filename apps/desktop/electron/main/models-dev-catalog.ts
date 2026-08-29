@@ -427,6 +427,36 @@ function normalizedProviderKey(value: string | undefined): string {
   return (value ?? "").trim().toLowerCase().replace(/_/g, "-");
 }
 
+function normalizedModelId(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function modelIdMatches(candidate: string, requested: string): boolean {
+  const left = normalizedModelId(candidate);
+  const right = normalizedModelId(requested);
+  return left === right || left.endsWith(`/${right}`) || right.endsWith(`/${left}`);
+}
+
+function modelVendorPrefixes(model: ModelsDevModel): string[] {
+  const prefixes = new Set<string>();
+  const add = (value: unknown) => {
+    if (typeof value !== "string") return;
+    const normalized = normalizedProviderKey(value);
+    if (normalized) prefixes.add(normalized);
+  };
+  add(model.providerKey);
+  add(model.provider);
+  const slash = model.modelId.indexOf("/");
+  if (slash > 0) add(model.modelId.slice(0, slash));
+  return [...prefixes];
+}
+
+function modelMatchesProvider(model: ModelsDevModel, vendorKey?: string): boolean {
+  const candidates = new Set(providerKeyCandidates(vendorKey));
+  if (candidates.size === 0 || candidates.has("custom")) return false;
+  return modelVendorPrefixes(model).some((prefix) => candidates.has(prefix));
+}
+
 const KNOWN_PROVIDER_BASE_URLS: Record<string, string[]> = {
   openai: ["https://api.openai.com/v1"],
   anthropic: ["https://api.anthropic.com"],
@@ -715,18 +745,47 @@ export class ModelsDevCatalog {
   }
 
   findModel(input: { vendorKey?: string; baseUrl?: string; modelId: string }): ModelsDevModel | undefined {
-    const provider = this.providerFor(input);
-    const modelId = input.modelId.trim().toLowerCase();
-    const model = provider?.models.find((candidate) => candidate.modelId.toLowerCase() === modelId);
-    return model && isTextAgentModel(model) ? model : undefined;
+    const requested = normalizedModelId(input.modelId);
+    if (!requested) return undefined;
+    const preferredProvider = this.providerFor(input);
+    const providers = preferredProvider
+      ? [preferredProvider, ...[...this.providers.values()].filter((item) => item !== preferredProvider)]
+      : [...this.providers.values()];
+    const candidates: Array<{ model: ModelsDevModel; score: number }> = [];
+    for (const provider of providers) {
+      for (const model of provider.models) {
+        if (!isTextAgentModel(model) || !modelIdMatches(model.modelId, requested)) continue;
+        let score = model.modelId.toLowerCase() === requested ? 20 : 10;
+        if (provider === preferredProvider) score += 100;
+        if (apiMatches(input.baseUrl, provider.api)) score += 80;
+        if (modelMatchesProvider(model, input.vendorKey)) score += 60;
+        candidates.push({ model, score });
+      }
+    }
+    candidates.sort((left, right) =>
+      right.score - left.score || left.model.modelId.length - right.model.modelId.length,
+    );
+    return candidates[0]?.model;
   }
 
   modelsForProvider(input: { vendorKey?: string; baseUrl?: string; providerId: string }): ModelInfo[] {
-    const provider = this.providerFor(input);
-    return provider
-      ? provider.models
-          .filter(isTextAgentModel)
-          .map((model) => modelInfoFromModelsDev(model, input.providerId))
-      : [];
+    const preferredProvider = this.providerFor(input);
+    const providers = preferredProvider
+      ? [preferredProvider]
+      : [...this.providers.values()].filter((provider) =>
+          provider.models.some((model) => modelMatchesProvider(model, input.vendorKey)),
+        );
+    const seen = new Set<string>();
+    return providers.flatMap((provider) =>
+      provider.models
+        .filter((model) => {
+          const key = normalizedModelId(model.modelId);
+          if (!isTextAgentModel(model) || seen.has(key)) return false;
+          if (!preferredProvider && !modelMatchesProvider(model, input.vendorKey)) return false;
+          seen.add(key);
+          return true;
+        })
+        .map((model) => modelInfoFromModelsDev(model, input.providerId)),
+    );
   }
 }

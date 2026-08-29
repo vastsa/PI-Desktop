@@ -40,7 +40,11 @@ cost tiers. Those fields need one stable owner and a local offline snapshot.
    `structured_output`, `temperature`, `knowledge`, `release_date`,
    `last_updated`, `modalities.input/output`, `open_weights`, `limit.context`
    / `input` / `output`, `cost` including audio/reasoning/cache/tier prices,
-   `interleaved`, `status`, `experimental`, and `provider`.
+   `interleaved`, `status`, `experimental`, and `provider`. Provider/model
+   matching accepts the configured vendor key, normalized API URL, catalog
+   provider identity, and unambiguous vendor-prefixed IDs; an unprefixed
+   configured ID can match a `vendor/model` catalog ID without changing the
+   user-visible ID.
 5. The runtime passes the models.dev `ModelConfig` to pi-ai's selected wire
    adapter. pi-ai remains an implementation dependency for request
    serialization, OAuth login/account availability, and stream handling only;
@@ -55,8 +59,10 @@ levels (`none` → `off`), map `toggle`/`budget_tokens` to `off` + `medium`, and
 use `low`/`medium`/`high` when a reasoning record has no usable level list.
 Input and output modality arrays retain `text`, `image`, `audio`, `video`, and
 `pdf`; the current text agent picker excludes models that cannot accept and
-produce text, while the raw local snapshot keeps those records for future
-surfaces.
+produce text, while the raw bundled snapshot keeps those records for future
+surfaces. Image attachments use the transient image block supported by pi-ai;
+PDF capability is surfaced from the catalog, but PDF files remain bounded file
+references until a transport with native PDF blocks is available.
 
 ## Consequences
 

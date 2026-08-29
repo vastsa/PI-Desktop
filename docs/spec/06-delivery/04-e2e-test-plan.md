@@ -2383,10 +2383,13 @@ Each scenario is documented in this format:
 - **Expected**: The matching models.dev record is authoritative, including its
   `limit`, `modalities`, `reasoning_options`, `tool_call`,
   `structured_output`, dates, and cost fields; no provider secret is sent to
-  the catalog. A provider-discovered or explicitly configured ID absent from
-  models.dev remains runnable with the generic text-only, non-reasoning shape;
-  pi-ai supplies only the selected wire adapter, OAuth flow, and account model
-  availability.
+  the catalog. Vendor-prefixed records match providers whose configured model
+  ID omits the prefix when the vendor/API identity is unambiguous. A PDF-capable
+  model shows PDF in its modality metadata; PDF attachments remain bounded file
+  references until the selected transport exposes a native PDF block. A
+  provider-discovered or explicitly configured ID absent from models.dev remains
+  runnable with the generic text-only, non-reasoning shape; pi-ai supplies only
+  the selected wire adapter, OAuth flow, and account model availability.
 - **Specs linked**: `02-architecture/02-tech-stack.md`,
   `03-runtime/11-provider-model-system.md`,
   `03-runtime/13-model-catalog-and-selection.md`, ADR 0134

@@ -128,10 +128,13 @@ PI-Desktop must not permanently restrict users to a short fixed model list.
    replaces only the in-memory catalog for the current process. A failed fetch
    keeps the last valid in-memory catalog and never writes user data.
 3. **Runtime/provider discovery** and the Rust-owned cache supply model IDs for
-   custom, local, or authenticated account-specific endpoints. They cannot
-   invent or replace model metadata. A configured free-form ID remains
-   selectable with the generic text-only, non-reasoning shape when it is absent
-   from models.dev.
+   custom, local, or authenticated account-specific endpoints. Provider matching
+   accepts the configured vendor key, normalized API URL, models.dev provider
+   identity, and vendor-prefixed IDs such as `deepseek/deepseek-v4`; a provider
+   model ID without the catalog prefix is matched to the exact unprefixed
+   suffix only when the provider identity is unambiguous. They cannot invent or
+   replace model metadata. A configured free-form ID remains selectable with
+   the generic text-only, non-reasoning shape when it is absent from models.dev.
 4. The models.dev record maps `id`, `name`, `description`, `family`,
    `attachment`, `reasoning`, `reasoning_options`, `tool_call`,
    `structured_output`, `temperature`, `knowledge`, `release_date`,
@@ -143,7 +146,11 @@ PI-Desktop must not permanently restrict users to a short fixed model list.
    pricing, modalities, reasoning, or other model configuration.
 6. Input and output modality arrays retain `text`, `image`, `audio`, `video`,
    and `pdf`. The text agent picker exposes models that can handle text while
-   preserving all raw records in the local file for future surfaces.
+   preserving all raw records in the file for future surfaces. Image input is
+   sent as a transient image content block only when the model accepts image
+   input. PDF capability is surfaced and retained in model metadata; because
+   pi-ai 0.84 has no native PDF content block, PDF attachments remain bounded
+   file references rather than being incorrectly encoded as images.
 7. User-edited `ModelBinding` values remain explicit provider configuration:
    they control selected request limits and enabled thinking levels, while
    models.dev controls published defaults and capability metadata.
