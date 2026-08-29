@@ -1,6 +1,16 @@
 import { readFile } from "node:fs/promises";
-import { modelIdsMatch } from "@pi-desktop/shared";
+import {
+  MODEL_FILTERS,
+  apiStyleForAdapter,
+  modelIdsMatch,
+  modelMatchesFilters,
+} from "@pi-desktop/shared";
 import type {
+  CatalogProviderPreset,
+  ModelFilter,
+  ModelSearchInput,
+  ModelSearchOutput,
+  ModelSearchResult,
   ModelCost,
   ModelCostTier,
   ModelExperimentalMetadata,
@@ -43,6 +53,12 @@ export type ModelsDevProvider = {
   providerKey: string;
   name: string;
   api?: string;
+  /** Published adapter package, the most reliable wire-API signal. */
+  npm?: string;
+  /** Published environment variable names that carry this provider's key. */
+  env: string[];
+  /** Provider documentation URL, when published. */
+  doc?: string;
   models: ModelsDevModel[];
 };
 
@@ -104,6 +120,17 @@ function asRecord(value: unknown): JsonRecord | null {
 
 function nonEmptyString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function stringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [
+    ...new Set(
+      value
+        .map((entry) => nonEmptyString(entry))
+        .filter((entry): entry is string => entry !== undefined),
+    ),
+  ];
 }
 
 function publishedMetadata(value: unknown): ModelProviderMetadata | undefined {
@@ -431,6 +458,9 @@ export function parseModelsDevCatalog(body: unknown): ModelsDevProvider[] {
         providerKey,
         name: nonEmptyString(provider.name) ?? providerKey,
         ...(nonEmptyString(provider.api) ? { api: nonEmptyString(provider.api) } : {}),
+        ...(nonEmptyString(provider.npm) ? { npm: nonEmptyString(provider.npm) } : {}),
+        env: stringArray(provider.env),
+        ...(nonEmptyString(provider.doc) ? { doc: nonEmptyString(provider.doc) } : {}),
         models,
       });
     }
@@ -530,7 +560,12 @@ function providerKeyCandidates(value: string | undefined): string[] {
   return [...new Set([key, ...(PROVIDER_ALIASES[key] ?? [])])].filter(Boolean);
 }
 
-function normalizedApiUrl(value: string | undefined): string | undefined {
+/**
+ * Canonical form of a provider base URL: lowercase origin without a trailing
+ * slash and without the trailing API version segment, so a row configured with
+ * `.../v1` still matches the documented models.dev endpoint.
+ */
+export function normalizedApiUrl(value: string | undefined): string | undefined {
   const raw = nonEmptyString(value);
   if (!raw) return undefined;
   try {
@@ -544,7 +579,8 @@ function normalizedApiUrl(value: string | undefined): string | undefined {
   }
 }
 
-function apiMatches(left: string | undefined, right: string | undefined): boolean {
+/** Whether two base URLs address the same provider endpoint. */
+export function apiMatches(left: string | undefined, right: string | undefined): boolean {
   const normalizedLeft = normalizedApiUrl(left);
   const normalizedRight = normalizedApiUrl(right);
   return Boolean(normalizedLeft && normalizedRight && normalizedLeft === normalizedRight);
@@ -684,6 +720,88 @@ export function modelConfigFromModelsDev(
     config.catalogProvider = model.provider;
   }
   return config;
+}
+
+/** Default number of search rows returned when the caller does not ask. */
+export const MODEL_SEARCH_DEFAULT_LIMIT = 200;
+/** Hard upper bound so one IPC round trip cannot serialize the whole catalog. */
+export const MODEL_SEARCH_MAX_LIMIT = 500;
+
+/**
+ * Relevance of one published record for a query. Higher sorts first; `undefined`
+ * means the record does not match at all and must be dropped. An empty query
+ * matches everything at score 0, so ordering falls back to recency.
+ */
+function searchScore(model: ModelsDevModel, query: string): number | undefined {
+  if (!query) return 0;
+  const modelId = model.modelId.toLowerCase();
+  if (modelId === query) return 100;
+  if (modelId.startsWith(query)) return 80;
+  if (modelId.includes(query)) return 60;
+  if (model.displayName.toLowerCase().includes(query)) return 40;
+  if (model.family?.toLowerCase().includes(query)) return 20;
+  if (model.providerName.toLowerCase().includes(query)) return 10;
+  return undefined;
+}
+
+/**
+ * Recency key used as the search tiebreak. models.dev publishes ISO dates, so
+ * plain string comparison orders them; records without a date sort last.
+ */
+function recencyKey(model: ModelsDevModel): string {
+  return model.lastUpdated ?? model.releaseDate ?? "";
+}
+
+/** Coerce an untrusted IPC payload into a search request. */
+export function coerceModelSearchInput(payload: unknown): ModelSearchInput {
+  const record = asRecord(payload) ?? {};
+  const rawLimit = record.limit;
+  const limit =
+    typeof rawLimit === "number" && Number.isFinite(rawLimit)
+      ? Math.min(MODEL_SEARCH_MAX_LIMIT, Math.max(1, Math.floor(rawLimit)))
+      : MODEL_SEARCH_DEFAULT_LIMIT;
+  const filters = (Array.isArray(record.filters) ? record.filters : []).filter(
+    (entry): entry is ModelFilter =>
+      typeof entry === "string" && (MODEL_FILTERS as readonly string[]).includes(entry),
+  );
+  return {
+    ...(nonEmptyString(record.query) ? { query: nonEmptyString(record.query) } : {}),
+    ...(nonEmptyString(record.providerKey)
+      ? { providerKey: nonEmptyString(record.providerKey) }
+      : {}),
+    ...(nonEmptyString(record.providerId)
+      ? { providerId: nonEmptyString(record.providerId) }
+      : {}),
+    ...(filters.length > 0 ? { filters: [...new Set(filters)] } : {}),
+    limit,
+  };
+}
+
+/** One configured provider row, reduced to the fields preset matching needs. */
+export type ConfiguredProviderRow = {
+  id: string;
+  vendorKey?: string;
+  baseUrl?: string;
+};
+
+/**
+ * Mark presets the user has already configured. A row claims a preset by vendor
+ * key or by pointing at the same documented endpoint, so a row created with a
+ * custom vendor key still resolves to its catalog provider.
+ */
+export function presetsWithConfiguredProviders(
+  presets: readonly CatalogProviderPreset[],
+  rows: readonly ConfiguredProviderRow[],
+): CatalogProviderPreset[] {
+  return presets.map((preset) => {
+    const presetKey = normalizedProviderKey(preset.providerKey);
+    const row = rows.find(
+      (candidate) =>
+        normalizedProviderKey(candidate.vendorKey) === presetKey ||
+        apiMatches(candidate.baseUrl, preset.baseUrl),
+    );
+    return row ? { ...preset, configuredProviderId: row.id } : preset;
+  });
 }
 
 export class ModelsDevCatalog {
@@ -840,5 +958,87 @@ export class ModelsDevCatalog {
         })
         .map((model) => modelInfoFromModelsDev(model, input.providerId)),
     );
+  }
+
+  /**
+   * Every published provider that can serve a text agent, offered as a setup
+   * preset. Providers with the most usable models come first so the mainstream
+   * choices surface before niche gateways. The caller marks which presets are
+   * already configured; the catalog knows nothing about provider rows.
+   */
+  presets(): CatalogProviderPreset[] {
+    const presets: CatalogProviderPreset[] = [];
+    for (const provider of this.providers.values()) {
+      const modelCount = provider.models.filter(isTextAgentModel).length;
+      if (modelCount === 0) continue;
+      presets.push({
+        providerKey: provider.providerKey,
+        name: provider.name,
+        ...(provider.api ? { baseUrl: provider.api } : {}),
+        apiStyle: apiStyleForAdapter(provider.npm),
+        envVars: [...provider.env],
+        ...(provider.doc ? { doc: provider.doc } : {}),
+        modelCount,
+      });
+    }
+    return presets.sort(
+      (left, right) =>
+        right.modelCount - left.modelCount || left.name.localeCompare(right.name),
+    );
+  }
+
+  /**
+   * Search the in-memory snapshot. Ranking is query relevance first, then
+   * recency, so the default empty query answers "what can I use today" instead
+   * of an alphabetical wall of retired models.
+   */
+  searchModels(input: ModelSearchInput): ModelSearchOutput {
+    if (!this.loaded) return { results: [], total: 0, degraded: true };
+    const query = (input.query ?? "").trim().toLowerCase();
+    const requestedKey = normalizedProviderKey(input.providerKey);
+    const providers = requestedKey
+      ? [...this.providers.values()].filter(
+          (provider) => normalizedProviderKey(provider.providerKey) === requestedKey,
+        )
+      : [...this.providers.values()];
+    const matches: Array<{ result: ModelSearchResult; recency: string }> = [];
+    for (const provider of providers) {
+      for (const model of provider.models) {
+        if (!isTextAgentModel(model)) continue;
+        const score = searchScore(model, query);
+        if (score === undefined) continue;
+        const info = modelInfoFromModelsDev(model, provider.providerKey);
+        if (!modelMatchesFilters(info, input.filters)) continue;
+        matches.push({
+          result: {
+            providerKey: provider.providerKey,
+            providerName: provider.name,
+            model: info,
+            score,
+          },
+          recency: recencyKey(model),
+        });
+      }
+    }
+    matches.sort(
+      (left, right) =>
+        right.result.score - left.result.score ||
+        right.recency.localeCompare(left.recency) ||
+        left.result.model.modelId.localeCompare(right.result.model.modelId),
+    );
+    const limit = Math.min(
+      MODEL_SEARCH_MAX_LIMIT,
+      Math.max(1, Math.floor(input.limit ?? MODEL_SEARCH_DEFAULT_LIMIT)),
+    );
+    return {
+      results: matches.slice(0, limit).map((entry) => entry.result),
+      total: matches.length,
+      degraded: false,
+    };
+  }
+
+  /** models.dev provider key for a configured row, when the catalog knows it. */
+  providerKeyForRow(input: { vendorKey?: string; baseUrl?: string }): string | undefined {
+    return this.providerFor(input)?.providerKey;
   }
 }

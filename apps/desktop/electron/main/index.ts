@@ -147,8 +147,10 @@ import { BrowserPane, resolveLocalFile } from "./browser-view";
 import { discoverProviderModels } from "./model-discovery";
 import {
   ModelsDevCatalog,
+  coerceModelSearchInput,
   modelConfigFromModelsDev,
   modelInfoFromModelsDev,
+  presetsWithConfiguredProviders,
 } from "./models-dev-catalog";
 import { OAUTH_AUTH_KIND, VendorOAuth } from "./oauth";
 import { listDir, readWorkspaceFile, resolveWithinRoot } from "./fs-panel";
@@ -5706,6 +5708,42 @@ function registerIpc() {
   handle(IPC.invoke.providersRefreshModelCatalog, async () => {
     const refreshed = await modelsDevCatalog.refresh();
     return { refreshed, status: modelsDevCatalog.getStatus() };
+  });
+  // Setup presets come straight from the bundled models.dev snapshot; the only
+  // local knowledge added here is which presets already have a provider row.
+  handle(IPC.invoke.providersCatalogPresets, async () => {
+    await modelsDevCatalog.ensureLoaded();
+    const rows = (await listRuntimeProviders(true)).map((provider) => ({
+      id: provider.id,
+      ...(provider.vendorKey ? { vendorKey: provider.vendorKey } : {}),
+      ...(provider.baseUrl ? { baseUrl: provider.baseUrl } : {}),
+    }));
+    return {
+      presets: presetsWithConfiguredProviders(modelsDevCatalog.presets(), rows),
+      status: modelsDevCatalog.getStatus(),
+    };
+  });
+  handle(IPC.invoke.providersSearchModels, async (payload: unknown) => {
+    const request = coerceModelSearchInput(payload);
+    await modelsDevCatalog.ensureLoaded();
+    // A configured row is not a catalog key, so resolve it first. An unknown
+    // row falls through to an unrestricted search rather than an empty list.
+    let providerKey = request.providerKey;
+    if (!providerKey && request.providerId) {
+      const row = (await listRuntimeProviders(true)).find(
+        (provider) => provider.id === request.providerId,
+      );
+      providerKey = row
+        ? modelsDevCatalog.providerKeyForRow({
+            ...(row.vendorKey ? { vendorKey: row.vendorKey } : {}),
+            ...(row.baseUrl ? { baseUrl: row.baseUrl } : {}),
+          })
+        : undefined;
+    }
+    return modelsDevCatalog.searchModels({
+      ...request,
+      ...(providerKey ? { providerKey } : {}),
+    });
   });
   handle(IPC.invoke.providersCreate, async (input: unknown) => {
     if (!host) throw new Error("host unavailable");

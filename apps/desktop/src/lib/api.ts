@@ -1,5 +1,8 @@
 import type {
   ActivationScope,
+  CatalogProviderPreset,
+  ModelSearchInput,
+  ModelSearchOutput,
   AgentCapabilityQuery,
   AgentEventEnvelope,
   AgentCompactRequest,
@@ -359,6 +362,23 @@ export const api = {
         lastError?: string;
       };
     }>(IPC.invoke.providersRefreshModelCatalog),
+  /** models.dev provider presets for the setup flow, plus snapshot status. */
+  catalogPresets: () =>
+    invoke<{
+      presets: CatalogProviderPreset[];
+      status: {
+        loaded: boolean;
+        source: "bundled" | "remote" | "empty";
+        catalogPath: string;
+        fetchedAt?: string;
+        providerCount: number;
+        modelCount: number;
+        lastError?: string;
+      };
+    }>(IPC.invoke.providersCatalogPresets),
+  /** Search the bundled models.dev snapshot; never contacts the provider. */
+  searchCatalogModels: (input: ModelSearchInput) =>
+    invoke<ModelSearchOutput>(IPC.invoke.providersSearchModels, input),
   /** Vendor catalog plus every locally configured account for each vendor. */
   listOauthVendors: () =>
     invoke<{ vendors: OAuthVendor[] }>(IPC.invoke.providersOauthVendors),
