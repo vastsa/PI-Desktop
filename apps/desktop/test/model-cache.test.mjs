@@ -10,8 +10,8 @@ const storeSource = await readFile(
   new URL("../src/stores/app-store.ts", import.meta.url),
   "utf8",
 );
-const catalogBrowserSource = await readFile(
-  new URL("../src/components/settings/ModelCatalogBrowser.tsx", import.meta.url),
+const providerModelsSource = await readFile(
+  new URL("../src/components/settings/useProviderModels.ts", import.meta.url),
   "utf8",
 );
 
@@ -43,10 +43,11 @@ test("renderer hydrates cached models before refreshing the provider", () => {
   assert.match(storeSource, /Keep the cached catalog/);
 });
 
-test("the catalog browser keeps the last result set while revalidating", () => {
-  // Results are only replaced when the newest request commits, so typing does
-  // not blank the list between keystrokes.
-  assert.match(catalogBrowserSource, /if \(requestSeq\.current !== requestId\) return;/);
-  assert.match(catalogBrowserSource, /loading && results\.length === 0/);
-  assert.match(catalogBrowserSource, /setDegraded\(true\)/);
+test("the setup form keeps cached models visible while revalidating", () => {
+  // Editing paints the cached list, then the live probe replaces it. A failed
+  // or empty probe must not blank the rows the user was looking at.
+  assert.match(providerModelsSource, /requestSeq/);
+  assert.match(providerModelsSource, /source: "cache"/);
+  assert.match(providerModelsSource, /status: "error"/);
+  assert.match(providerModelsSource, /cachedModels/);
 });

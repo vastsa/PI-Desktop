@@ -36,7 +36,7 @@ const settingsSource = (
     [
       "../src/components/settings/ModelConfigPage.tsx",
       "../src/components/settings/ProviderSetupDialog.tsx",
-      "../src/components/settings/ModelCatalogBrowser.tsx",
+      "../src/components/settings/useProviderModels.ts",
     ].map((path) => readFile(new URL(path, import.meta.url), "utf8")),
   )
 ).join("\n");
@@ -210,7 +210,7 @@ test("thinking-only assistant streams open the transcript surface", () => {
 });
 
 test("provider settings persist model-local limits and thinking configuration", () => {
-  assert.match(settingsSource, /ModelCatalogBrowser/);
+  assert.match(settingsSource, /useProviderModels/);
   assert.match(settingsSource, /bindingFromModelInfo/);
   assert.match(settingsSource, /THINKING_LEVELS\.map/);
   assert.match(settingsSource, /supportedThinkingLevels/);

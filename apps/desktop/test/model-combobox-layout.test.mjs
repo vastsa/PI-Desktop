@@ -11,16 +11,15 @@ const read = (rel) => readFile(new URL(rel, import.meta.url), "utf8");
  * out of a dialog or repositioned on scroll.
  */
 test("model picking no longer depends on a portalled floating menu", async () => {
-  const browser = await read("../src/components/settings/ModelCatalogBrowser.tsx");
+  const setup = await read("../src/components/settings/ProviderSetupDialog.tsx");
   const vendorDialog = await read("../src/components/settings/VendorAccountDialog.tsx");
   const styles = await loadStyles();
 
-  assert.doesNotMatch(browser, /createPortal/);
-  assert.doesNotMatch(browser, /MenuPosition/);
+  assert.doesNotMatch(setup, /createPortal/);
+  assert.doesNotMatch(setup, /MenuPosition/);
   assert.doesNotMatch(vendorDialog, /flowMenu/);
   assert.doesNotMatch(styles, /provider-model-combo-flow/);
 
-  // The list is a plain in-flow scroll container instead.
-  assert.match(browser, /className="model-catalog-list"/);
-  assert.match(styles, /\.model-catalog-list\s*\{[\s\S]*?overflow-y: auto;/);
+  // The live model list is a plain in-flow scroll container instead.
+  assert.match(styles, /overflow-y: auto;/);
 });

@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { modelIdsMatch } from "@pi-desktop/shared";
+import { apiStyleForAdapter, modelIdsMatch } from "@pi-desktop/shared";
 
 import {
   MODELS_DEV_API_URL,
@@ -385,4 +385,61 @@ test("a failed settings refresh preserves the bundled snapshot in memory", async
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+/*
+  The published `npm` / `env` / `doc` fields survive parsing because the setup
+  form still derives the wire API from the adapter package and still points the
+  user at the provider's own docs. Migrated here when the catalog-search suite
+  was removed with the browsable-catalog UI.
+*/
+test("parsed providers keep the published npm, env and doc fields", () => {
+  const providers = parseModelsDevCatalog({
+    anthropic: {
+      id: "anthropic",
+      name: "Anthropic",
+      npm: "@ai-sdk/anthropic",
+      api: "https://api.anthropic.com",
+      doc: "https://docs.anthropic.com",
+      env: ["ANTHROPIC_API_KEY"],
+      models: {
+        "claude-opus-4.6": {
+          id: "claude-opus-4.6",
+          name: "Claude 4.6 Opus",
+          modalities: { input: ["text"], output: ["text"] },
+          limit: { context: 200000, output: 64000 },
+        },
+      },
+    },
+    "openrouter-lite": {
+      id: "openrouter-lite",
+      name: "OpenRouter Lite",
+      npm: "@ai-sdk/openai-compatible",
+      models: {
+        "some-model": {
+          id: "some-model",
+          name: "Some Model",
+          modalities: { input: ["text"], output: ["text"] },
+        },
+      },
+    },
+  });
+  const anthropic = providers.find((item) => item.providerKey === "anthropic");
+  assert.equal(anthropic.npm, "@ai-sdk/anthropic");
+  assert.equal(anthropic.doc, "https://docs.anthropic.com");
+  assert.deepEqual(anthropic.env, ["ANTHROPIC_API_KEY"]);
+  assert.equal(anthropic.api, "https://api.anthropic.com");
+  const gateway = providers.find((item) => item.providerKey === "openrouter-lite");
+  assert.deepEqual(gateway.env, [], "a provider without env vars parses to an empty list");
+  assert.equal(gateway.doc, undefined);
+});
+
+test("the wire API style is derived from the published adapter package", () => {
+  assert.equal(apiStyleForAdapter("@ai-sdk/anthropic"), "anthropic_messages");
+  assert.equal(apiStyleForAdapter("@ai-sdk/google-vertex/anthropic"), "anthropic_messages");
+  assert.equal(apiStyleForAdapter("@ai-sdk/google"), "google_generative_ai");
+  assert.equal(apiStyleForAdapter("@ai-sdk/openai"), "responses");
+  // The long tail of gateways is OpenAI-compatible chat completions.
+  assert.equal(apiStyleForAdapter("@ai-sdk/openai-compatible"), "chat_completions");
+  assert.equal(apiStyleForAdapter(undefined), "chat_completions");
 });
