@@ -1,0 +1,112 @@
+/**
+ * Layout contract for the provider setup dialog.
+ *
+ * The first single-form version stacked credentials, the discovered models, the
+ * chosen models and the custom-model row into one tall column, which read as an
+ * undifferentiated list. These assertions pin the two-pane arrangement that
+ * replaced it: credentials as one compact band, then picking on the left and
+ * reviewing on the right, each scrolling inside a fixed-height dialog.
+ */
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+import { loadStyles } from "./helpers/styles.mjs";
+
+const setupSource = await readFile(
+  new URL("../src/components/settings/ProviderSetupDialog.tsx", import.meta.url),
+  "utf8",
+);
+const styles = await loadStyles();
+
+/** Declaration block for exactly one selector, so matches cannot span rules. */
+function block(selector) {
+  const at = styles.indexOf(`${selector} {`);
+  assert.notEqual(at, -1, `${selector} is not defined`);
+  return styles.slice(at, styles.indexOf("}", at));
+}
+
+test("the dialog is a fixed-height shell so it cannot grow with the model count", () => {
+  const dialog = block(".provider-setup-dialog");
+  assert.match(dialog, /height: min\(720px, calc\(100vh - 64px\)\)/);
+  assert.match(dialog, /width: min\(1040px, calc\(100vw - 48px\)\)/);
+});
+
+test("credentials sit on one row instead of three stacked fields", () => {
+  assert.match(setupSource, /className="provider-setup-credentials"/);
+  assert.match(setupSource, /className="provider-setup-fields"/);
+  const fields = block(".provider-setup-fields");
+  assert.match(fields, /display: grid/);
+  // Three columns: name, base URL, key.
+  assert.match(fields, /grid-template-columns:\s*minmax\(0, 0\.8fr\) minmax\(0, 1\.4fr\) minmax\(0, 1fr\)/);
+  // The old single-column wrapper is gone.
+  assert.doesNotMatch(setupSource, /className="provider-setup-form"/);
+  assert.doesNotMatch(styles, /\.provider-setup-form\s*\{/);
+});
+
+test("picking and reviewing models are two side-by-side panes", () => {
+  assert.match(setupSource, /className="provider-setup-panes"/);
+  const panes = block(".provider-setup-panes");
+  assert.match(panes, /display: grid/);
+  assert.match(panes, /grid-template-columns:\s*minmax\(0, 1fr\) minmax\(0, 1fr\)/);
+  assert.match(panes, /min-height: 0/);
+  // The available list must come before the chosen list in reading order.
+  assert.ok(
+    setupSource.indexOf('className="provider-models"') <
+      setupSource.indexOf('className="provider-chosen"'),
+    "the service's list should precede the chosen list",
+  );
+});
+
+test("each pane is a self-contained panel that scrolls its own list", () => {
+  for (const selector of [".provider-models", ".provider-chosen"]) {
+    const pane = block(selector);
+    assert.match(pane, /min-height: 0/);
+    assert.match(pane, /border: 1px solid var\(--ds-border-subtle\)/);
+    assert.match(pane, /border-radius: var\(--radius-md\)/);
+    // The divider that separated the old stacked sections would now cut across
+    // the grid, so it must be gone.
+    assert.doesNotMatch(pane, /border-top: 1px solid/);
+  }
+  for (const selector of [".provider-models-list", ".provider-chosen-list"]) {
+    const list = block(selector);
+    assert.match(list, /flex: 1/);
+    assert.match(list, /min-height: 0/);
+    assert.match(list, /overflow-y: auto/);
+    assert.match(list, /overscroll-behavior: contain/);
+    // Filling the pane replaces the old fixed pixel cap.
+    assert.doesNotMatch(list, /max-height/);
+  }
+});
+
+test("the custom-model row stays pinned under the chosen list", () => {
+  const custom = block(".provider-custom-model");
+  assert.match(custom, /flex: none/);
+  assert.match(custom, /border-top: 1px solid var\(--ds-border-subtle\)/);
+});
+
+test("empty panes hold their height instead of collapsing", () => {
+  for (const selector of [".provider-models-placeholder", ".provider-chosen-empty"]) {
+    const empty = block(selector);
+    assert.match(empty, /flex: 1/);
+    assert.match(empty, /align-items: center/);
+  }
+});
+
+test("the panes stack again before the dialog gets too narrow to read", () => {
+  const at = styles.indexOf("@media (max-width: 940px)");
+  assert.notEqual(at, -1, "missing the two-pane fallback breakpoint");
+  const query = styles.slice(at, styles.indexOf("@media", at + 10));
+  assert.match(query, /\.provider-setup-panes\s*\{\s*grid-template-columns: minmax\(0, 1fr\)/);
+  assert.match(query, /\.provider-setup-fields\s*\{\s*grid-template-columns: minmax\(0, 1fr\)/);
+  // A stacked dialog must be allowed to size to its content again.
+  assert.match(query, /\.provider-setup-dialog\s*\{[\s\S]*?height: auto/);
+});
+
+test("the vendor account dialog keeps its stacked treatment", () => {
+  // It has no discovery pane to pair with, so it must not lose its divider to
+  // the two-pane rules the provider dialog needs.
+  const chosen = block(".vendor-account-chosen");
+  assert.match(chosen, /border-top: 1px solid var\(--ds-border-subtle\)/);
+  const list = block(".vendor-account-chosen-list");
+  assert.match(list, /max-height: min\(240px, 30vh\)/);
+});
