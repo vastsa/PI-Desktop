@@ -604,8 +604,11 @@ function resultBlocks(
       // reports on subagents. Its body is the roster the runtime returned, as
       // a named table rather than the raw `delegations[]` JSON (D268).
       if (delegationLifecycleKind(message.toolName)) {
+        // The joined reports are bounded at 50k chars by the runtime, which is
+        // far too much for a `note`: an output block scrolls within a fixed
+        // height and carries a copy button (D271).
         const text = envelopeTextOf(message);
-        if (text) blocks.push({ kind: "note", role: "notice", text });
+        if (text) blocks.push(codeBlock("output", text, "markdown"));
         const roster = rosterRows(details);
         if (roster) blocks.push(roster);
         break;

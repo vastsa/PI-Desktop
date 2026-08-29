@@ -221,3 +221,36 @@ test("the topology uses semantic low-noise surfaces and responsive connectors", 
   );
   assert.match(messagesCss, /\.subagent-topology-node-header:focus-visible/);
 });
+
+test("a delegate's rows scroll in place instead of growing the page (D271)", () => {
+  // The rows live in their own scroll container, not on `.subagent-run`: the
+  // collapse rail is absolutely positioned outside that element's padding box,
+  // so an overflow there would clip the rail away.
+  assert.match(transcriptSource, /className="subagent-run-rows"/);
+  // The scroll area is named by the run heading beside it rather than by a
+  // duplicated label string.
+  assert.match(
+    transcriptSource,
+    /className="subagent-run-rows"[\s\S]*?role="group"[\s\S]*?tabIndex=\{0\}[\s\S]*?aria-labelledby=\{headingId\}/,
+  );
+  assert.match(
+    transcriptSource,
+    /className="subagent-run-heading" id=\{headingId\}/,
+  );
+  assert.match(
+    messagesCss,
+    /\.subagent-run-rows \{[^}]*max-height: min\(420px, 48dvh\)/,
+  );
+  assert.match(messagesCss, /\.subagent-run-rows \{[^}]*overflow-y: auto/);
+  assert.match(
+    messagesCss,
+    /\.subagent-run-rows \{[^}]*overscroll-behavior-y: contain/,
+  );
+  // A keyboard user can reach the scroll area the pointer already can.
+  assert.match(messagesCss, /\.subagent-run-rows:focus-visible \{/);
+  // `.subagent-run` itself must stay unclipped so the rail survives.
+  assert.doesNotMatch(messagesCss, /\.subagent-run \{[^}]*overflow/);
+  // Every field table is bounded too, so a long roster scrolls as well.
+  assert.match(messagesCss, /\.tool-fields \{[^}]*max-height: 260px/);
+  assert.match(messagesCss, /\.tool-fields \{[^}]*overflow: auto/);
+});

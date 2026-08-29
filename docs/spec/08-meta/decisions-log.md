@@ -215,6 +215,7 @@ Gold source: local Codex electron captures; latest row wins where rows conflict.
 | D265 | One delegation reads as a card, like a fan-out | **Amends D201 / ADR 0062 in the renderer: every `Task` call in an activity group renders as a full-width delegation card — main-agent root, connector, one node per delegate — a lone delegation included, instead of falling back to a compact tool row. The aggregate header takes a count, so a single delegation is not announced in the plural: English gains `_one` forms and Chinese, which has one plural category, drops the English plural marker. Nothing else about the card changes, and no IPC, storage, host-protocol, or delegation-runtime change is implied.** | Reserving the card for two or more delegates made the same work look like two different features, and the single case — the common one — was the one that lost the outcome, the recorded runtime and the delegate's step count (ADR 0062 §6). 
 | D269 | History continuation keeps the conversation outline reachable | **Amend D108 / D261 / ADR 0130 in the renderer: when loaded rows are withheld above the mounted window or the host reports an older page, the conversation outline remains present with one dotted earlier-history continuation even if the mounted tail has fewer than two markers or does not overflow. The continuation runs the same two-stage grow-then-fetch path and ordinary message dashes still come only from mounted rows, so every message dash has a real DOM target. The transcript's top loading boundary is observed as well as checked on scroll; while that boundary remains visible after an underfilled tail, a fetched-but-withheld page, or a window transition, history advances again without waiting for a native scroll event. Once no earlier history remains, D108's two-marker-plus-overflow visibility rule applies unchanged. No IPC, storage, host protocol, or pagination change.** | A bounded tail can contain one tool-heavy turn that collapses below one viewport, and fetching an older page can leave every new row outside the trailing mounted window. Neither transition necessarily changes `scrollTop`, so the scroll-only trigger stranded older history and left the outline absent. An explicit continuation represents unavailable navigation honestly, while boundary visibility closes the progress loop without inventing phantom message markers or eagerly loading the whole transcript. |
 | D270 | One model picker for both credential kinds | **Refines D237 / D240 in the renderer: the model picker is one shared renderer component rendered by both the AI service dialog and the vendor account dialog. A vendor account therefore gets the same discovered model list, the same `ModelBinding` shape, the same per-model context-window and max-output editing, the same published thinking-level chips, and the same save-time narrowing of each binding to the levels the resolved models.dev record publishes. Only the left pane heading differs between the two dialogs. Renderer only: no IPC, storage, host-protocol, or provider-config schema change is implied, and no ADR is required.** | The two surfaces were copies of one picker, and the copy silently lost the advanced controls and the narrowing, so a vendor-account binding could keep a thinking level the runtime discards while the dialog kept counting it as enabled. One component makes the guarantee structural instead of a convention two files had to remember. |
+| D271 | An expanded delegate run scrolls in place | **Refines D201 / D268 / ADR 0062 in the renderer: a delegate's nested rows render in a bounded `.subagent-run-rows` scroll area of `min(420px, 48dvh)` with `overscroll-behavior-y: contain`, placed on that inner wrapper rather than on `.subagent-run` so the absolutely positioned collapse rail is not clipped. The run heading stays outside the scroll area and the area is a labelled, focusable group. `fields` tables gain the same 260px cap the other detail blocks already had, and a lifecycle row's joined reports render as a bounded `output` block instead of an unbounded note. Presentation only: no IPC, storage, host-protocol, or runtime change.** | Expanding one delegation could add dozens of rows in a single commit — a delegate that made forty tool calls grew the transcript by forty rows — so the reading position jumped and the parent's own next row was pushed out of view. `fields` was the one detail block with no height limit, and D268 had routed up to 50k characters of joined reports into a `note`, which has none either. |
 
 ## M0. Model catalog decisions
 
@@ -2499,6 +2500,25 @@ D193, and D194.
   Behavior is unchanged: identical menu rows and order, the same 28px one-line
   floor, and the same seven-row cap. See `04-ux/08-component-spec.md` §11.5 and
   US-UI-55.
+
+## 2026-08-29 — An expanded delegate run scrolls in place (D271)
+
+- Decision D271 refines D201 / D268 / ADR 0062 in the renderer. Opening one
+  delegation node inlined the delegate's entire run into the parent transcript,
+  so a delegate that made forty tool calls added forty rows at once.
+- Three unbounded surfaces were involved. `.subagent-run` had no height limit,
+  `.tool-fields` was the only detail block without the 260px cap that
+  `.tool-row-content`, `.tool-file-list` and `.tool-match-list` already carried,
+  and D268 had routed the joined `TaskWait` reports — bounded at 50k characters
+  by the runtime — into a `note`, which has no cap either.
+- The scroll deliberately sits on a new inner `.subagent-run-rows` wrapper
+  rather than on `.subagent-run`: the collapse rail is absolutely positioned at
+  `left: -8px`, outside the run's padding box, so an `overflow` on the run would
+  have clipped the rail that marks the delegate-context boundary. The heading
+  stays outside the scroll area so the attribution cannot scroll away from the
+  rows it labels.
+- The scroll area is a labelled, focusable `role="group"`, because a pointer
+  user could scroll it and a keyboard user could not otherwise reach it.
 
 ## 2026-08-29 — A lifecycle row is a subagent row (D268)
 

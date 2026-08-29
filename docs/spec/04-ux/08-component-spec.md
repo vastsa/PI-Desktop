@@ -1481,7 +1481,7 @@ twice.
 - No cross-row activity grouping until turn boundaries are available to the
   transcript component
 
-### 9.9 Delegation cards and fan-out topology (D201, D265, D269, ADR 0062)
+### 9.9 Delegation cards and fan-out topology (D201, D265, D268, D271, ADR 0062)
 
 A `Task` call is presented as a node of a delegation card, not as a compact tool
 row — one delegation reads the same as a fan-out (D265). The node names the
@@ -1556,6 +1556,22 @@ Opening a node reveals the blocks the call carries, then the delegate's own rows
 - The delegate's rows render inside a `.subagent-run` block, indented behind a
   hairline rail, headed by the agent name and a step count. They collapse with
   the node, so a transcript at rest reads as one card per activity group.
+- **An expanded run scrolls in place rather than growing the transcript**
+  (D271). A delegate that made forty tool calls would otherwise add forty rows
+  the moment its node opens, pushing the reading position and the parent's next
+  row out of view. The rows sit in a bounded `.subagent-run-rows` scroll area,
+  `min(420px, 48dvh)` tall, with `overscroll-behavior-y: contain` so reaching
+  its end does not start scrolling the transcript behind it. The scroll lives on
+  that inner wrapper, never on `.subagent-run`, because the collapse rail is
+  positioned outside the run's padding box and an overflow there would clip it.
+  The run heading stays outside the scroll area, so the attribution cannot
+  scroll away from the rows it labels, and the area is a labelled, focusable
+  group so a keyboard reader can scroll what the pointer can.
+- Every detail block is bounded the same way: `fields` tables cap at 260px like
+  `content`, file lists and match lists, so a long roster or a plugin payload
+  with thirty keys scrolls instead of stretching the page. A lifecycle row's
+  joined reports render as an `output` block — bounded and copyable — rather
+  than as a note, which has no height limit.
 - Nesting is one level deep by construction: a delegate has no `Task` tool.
 - Delegate rows are ordinary rows inside that block — tool rows with their own
   disclosures, thinking rows, and answer rows — so no new presentation is needed
