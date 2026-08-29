@@ -360,7 +360,11 @@ type ModelDescriptor = {
 - test connection
 - select multiple models and edit each binding's context window, output limit,
   and enabled thinking levels; catalog metadata supplies the initial values for
-  both API providers and signed-in vendor accounts
+  both API providers and signed-in vendor accounts. A binding may only enable
+  levels the resolved models.dev record publishes, because the runtime
+  intersects the binding with that published set before it builds a request;
+  offering the full canonical ladder here would let a user enable a level the
+  Composer reasoning menu never renders
 - keep model cards compact by default, expand metadata/configuration on demand,
   and keep dialog actions outside the independently scrollable content
 - do not expose raw catalog compatibility internals or provider secrets

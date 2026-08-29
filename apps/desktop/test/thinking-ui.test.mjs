@@ -212,7 +212,7 @@ test("thinking-only assistant streams open the transcript surface", () => {
 test("provider settings persist model-local limits and thinking configuration", () => {
   assert.match(settingsSource, /useProviderModels/);
   assert.match(settingsSource, /bindingFromModelInfo/);
-  assert.match(settingsSource, /THINKING_LEVELS\.map/);
+  assert.match(settingsSource, /levelChoices\.map/);
   assert.match(settingsSource, /supportedThinkingLevels/);
   assert.match(settingsSource, /contextWindow/);
   assert.match(settingsSource, /maxTokens/);
@@ -225,4 +225,23 @@ test("main forwards the complete models.dev model record to the sidecar", () => 
   assert.doesNotMatch(mainSource, /resolvePiModelConfig/);
   assert.match(mainSource, /\.\.\.\(modelConfig \? \{ modelConfig \} : \{\}\)/);
   assert.doesNotMatch(mainSource, /modelCompat/);
+});
+
+test("settings offers exactly the thinking levels the composer can render", () => {
+  // The Composer renders the published levels a model exposes, so the dialog
+  // must not offer the full canonical ladder: a level enabled here but dropped
+  // by the runtime made the two counts disagree.
+  assert.match(settingsSource, /publishedThinkingLevels/);
+  assert.doesNotMatch(settingsSource, /THINKING_LEVELS\.map/);
+  assert.match(
+    settingsSource,
+    /publishedLevelsById[\s\S]*?publishedThinkingLevels\(row\.info\)/,
+  );
+  assert.match(settingsSource, /settings\.thinkingDisabledHint/);
+  // Stored bindings are narrowed to the published set before they are saved.
+  assert.match(
+    settingsSource,
+    /bindingsToPersist[\s\S]*?const thinkingLevels = binding\.thinkingLevels\.filter/,
+  );
+  assert.match(settingsSource, /models: persisted/);
 });

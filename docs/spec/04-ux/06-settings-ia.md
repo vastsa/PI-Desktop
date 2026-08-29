@@ -168,9 +168,15 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   - model discovery is debounced after a valid endpoint, key, or API style
     change, including no-auth/local endpoints; the picker remains usable with
     free-form custom model IDs when discovery is unavailable
-  - thinking chips follow canonical order. Removing the current default falls
-    back to the first enabled level; no enabled levels disable the default
-    selector and show the model's thinking-disabled hint
+  - thinking chips offer exactly the levels the resolved models.dev record
+    publishes, in canonical order, so the count a user enables here equals the
+    count the Composer reasoning menu renders for that model. A row whose model
+    publishes no reasoning shows the thinking-disabled hint instead of chips.
+    A stored binding is narrowed to the published set when the dialog saves,
+    while a row whose model is currently undiscoverable keeps its stored levels.
+    Removing the current default falls back to the first enabled level; no
+    enabled levels disable the default selector and show the model's
+    thinking-disabled hint
   - selecting the **OpenCode Go** API style applies the fixed name
     **OpenCode Go** and endpoint `https://opencode.ai/zen/go/v1`; those two
     fields remain visible but read-only, the API key remains editable, and

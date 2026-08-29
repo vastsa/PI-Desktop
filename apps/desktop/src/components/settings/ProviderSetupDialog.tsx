@@ -10,10 +10,10 @@ import { useMemo, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   API_STYLES,
-  THINKING_LEVELS,
   bindingForCustomModel,
   bindingFromModelInfo,
   formatTokenCount,
+  publishedThinkingLevels,
   type CatalogApiStyle,
   type ModelBinding,
   type ModelInfo,
@@ -138,6 +138,20 @@ export function ProviderSetupDialog({
     [models],
   );
 
+  /**
+   * Thinking levels a configured model may actually be given. The runtime
+   * intersects a binding with the published levels before it builds a request,
+   * so enabling anything outside this list would be discarded there and the
+   * Composer reasoning menu would offer fewer entries than this dialog did.
+   */
+  const publishedLevelsById = useMemo(() => {
+    const byId = new Map<string, ThinkingLevel[]>();
+    for (const row of rows) {
+      byId.set(row.id.toLowerCase(), publishedThinkingLevels(row.info));
+    }
+    return byId;
+  }, [rows]);
+
   const toggleModel = (row: ModelRow) =>
     setModels((current) => {
       const wanted = row.id.toLowerCase();
@@ -197,10 +211,40 @@ export function ProviderSetupDialog({
     }
   };
 
+  /**
+   * Persist only levels the model publishes. A binding stored before the model
+   * was known — or before its published levels changed — can still carry an
+   * unsupported level, which the runtime would drop while this dialog kept
+   * counting it as enabled.
+   */
+  const bindingsToPersist = useMemo(
+    () =>
+      models.map((binding) => {
+        const choices = publishedLevelsById.get(binding.id.toLowerCase());
+        // An unknown row (discovery is offline) must not erase stored levels.
+        if (!choices) return binding;
+        const thinkingLevels = binding.thinkingLevels.filter((level) =>
+          choices.includes(level),
+        );
+        if (thinkingLevels.length === binding.thinkingLevels.length) return binding;
+        return {
+          ...binding,
+          thinkingLevels,
+          defaultThinkingLevel:
+            binding.defaultThinkingLevel &&
+            thinkingLevels.includes(binding.defaultThinkingLevel)
+              ? binding.defaultThinkingLevel
+              : (thinkingLevels[0] ?? null),
+        };
+      }),
+    [models, publishedLevelsById],
+  );
+
   const save = async () => {
     const providerName = name.trim();
     const providerBaseUrl = baseUrl.trim();
     if (!providerName || !providerBaseUrl || models.length === 0) return;
+    const persisted = bindingsToPersist;
     setSaving(true);
     setError("");
     try {
@@ -209,14 +253,14 @@ export function ProviderSetupDialog({
           id: provider.id,
           name: providerName,
           baseUrl: providerBaseUrl,
-          defaultModelId: models[0]?.id,
-          models,
+          defaultModelId: persisted[0]?.id,
+          models: persisted,
           apiStyle,
           // An empty key on edit means "keep the stored one", so the secret is
           // only sent when the user actually typed a new value.
           ...(apiKey ? { secretValue: apiKey } : {}),
         });
-        onSaved(result.provider ?? provider, models);
+        onSaved(result.provider ?? provider, persisted);
       } else {
         const result = await api.createProvider({
           name: providerName,
@@ -228,12 +272,12 @@ export function ProviderSetupDialog({
           protocol: "openai_compatible",
           baseUrl: providerBaseUrl,
           authKind: "api_key_and_base_url",
-          defaultModelId: models[0]?.id,
-          models,
+          defaultModelId: persisted[0]?.id,
+          models: persisted,
           secretValue: apiKey || undefined,
           apiStyle,
         });
-        onSaved(result.provider, models);
+        onSaved(result.provider, persisted);
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -452,7 +496,10 @@ export function ProviderSetupDialog({
                 <div className="provider-chosen-empty">{t("settings.noModelsChosen")}</div>
               ) : (
                 <ul className="provider-chosen-list">
-                  {models.map((binding) => (
+                  {models.map((binding) => {
+                    const levelChoices =
+                      publishedLevelsById.get(binding.id.toLowerCase()) ?? [];
+                    return (
                     <li className="provider-chosen-row" key={binding.id}>
                       <div className="provider-chosen-row-head">
                         <span className="provider-chosen-row-id font-mono">{binding.id}</span>
@@ -521,7 +568,12 @@ export function ProviderSetupDialog({
                             {t("settings.supportedThinkingLevels")}
                           </span>
                           <div className="provider-chosen-thinking-chips">
-                            {THINKING_LEVELS.map((level) => {
+                            {levelChoices.length === 0 ? (
+                              <span className="provider-chosen-thinking-empty">
+                                {t("settings.thinkingDisabledHint")}
+                              </span>
+                            ) : null}
+                            {levelChoices.map((level) => {
                               const on = binding.thinkingLevels.includes(level);
                               return (
                                 <button
@@ -553,7 +605,8 @@ export function ProviderSetupDialog({
                         </div>
                       </div>
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
               )}
 
