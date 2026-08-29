@@ -8,6 +8,18 @@ export type ConversationMinimapMarker = {
 
 export const CONVERSATION_MINIMAP_PREVIEW_MAX_CHARS = 280;
 
+export function shouldRenderConversationMinimap({
+  markerCount,
+  overflows,
+  hasEarlier,
+}: {
+  markerCount: number;
+  overflows: boolean;
+  hasEarlier: boolean;
+}): boolean {
+  return hasEarlier || (markerCount >= 2 && overflows);
+}
+
 function appendPreview(current: string, next: string): string {
   if (!next || current.length >= CONVERSATION_MINIMAP_PREVIEW_MAX_CHARS) {
     return current;

@@ -201,7 +201,10 @@ test("the transcript bounds mounted history and escalates at the top", () => {
   );
   // Reaching the top mounts more of what is loaded first, and only fetches an
   // older page once the window already covers it.
-  assert.match(transcript, /if \(el\.scrollTop <= 120\) reachTop\(\)/);
+  assert.match(
+    transcript,
+    /if \(el\.scrollTop <= HISTORY_REVEAL_THRESHOLD_PX\) reachTop\(\)/,
+  );
   const reachTop = transcript.match(
     /const reachTop = useCallback\(\(\) => \{([\s\S]*?)\n  \}, \[loadOlder, windowSize\]\);/,
   )?.[1];
@@ -229,18 +232,39 @@ test("the window resets per session so a switch cannot inherit a budget", () => 
   );
 });
 
-test("the minimap describes mounted rows so every dash is reachable", () => {
-  // The minimap resolves a click by finding the marker's node in the scroller,
-  // so a dash for a withheld row would jump nowhere.
+test("the minimap keeps message dashes reachable and represents withheld history explicitly", () => {
+  // Message dashes still resolve to mounted DOM nodes. Older loaded/unloaded
+  // history is one honest continuation control, never a phantom message dash.
   assert.match(minimap, /querySelectorAll<HTMLElement>\("\[data-minimap-id\]"\)/);
-  assert.match(
-    transcript,
-    /<ConversationMinimap scrollRef=\{scrollRef\} messages=\{minimapMessages\} \/>/,
-  );
+  assert.match(transcript, /messages=\{minimapMessages\}/);
+  assert.match(transcript, /hasEarlier=\{hasEarlierHistory\}/);
+  assert.match(transcript, /onRevealEarlier=\{revealEarlierHistory\}/);
   assert.match(
     transcript,
     /transcriptWindow\.bounded\s*\?\s*transcriptEntryMessages\(/,
   );
+  assert.match(
+    transcript,
+    /const hasEarlierHistory = transcriptWindow\.hiddenAbove > 0 \|\| hasMoreBefore/,
+  );
+});
+
+test("a visible history boundary advances without waiting for a scroll event", () => {
+  assert.match(transcript, /ref=\{historyBoundaryRef\}/);
+  assert.match(transcript, /new IntersectionObserver\(/);
+  assert.match(transcript, /advanceIfHistoryBoundaryVisible\(\);/);
+  // An IntersectionObserver does not re-notify while the boundary stays visible,
+  // so window growth (which changes neither the intersection nor messages.length)
+  // must re-run the effect or a still-underfilled transcript advances once and
+  // stalls with loaded rows unmounted.
+  assert.match(
+    transcript,
+    /hasEarlierHistory,[\s\S]*?hydrationTick,[\s\S]*?loadingOlder,[\s\S]*?messages\.length,[\s\S]*?reachTop,[\s\S]*?sessionId,[\s\S]*?transcriptWindow\.hiddenAbove,/,
+  );
+  // Escalation is bounded per run: one growth step or one page request, and the
+  // effect only re-runs when that step actually changed the projection.
+  assert.match(transcript, /root\.scrollTop > HISTORY_REVEAL_THRESHOLD_PX/);
+  assert.match(transcript, /observer\.disconnect\(\)/);
 });
 
 test("the hydration spacer stays scoped to the first commit", () => {

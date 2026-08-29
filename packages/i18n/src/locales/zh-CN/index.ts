@@ -217,6 +217,7 @@ export const zhCN = {
     running: "正在处理…",
     loadingSession: "正在加载会话…",
     loadingEarlierMessages: "正在加载更早的消息…",
+    showEarlierMessages: "显示更早的消息",
     copy: "复制",
     copied: "已复制",
     copyDiagramSource: "复制图表源码",

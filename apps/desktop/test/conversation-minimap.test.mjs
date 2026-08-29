@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   CONVERSATION_MINIMAP_PREVIEW_MAX_CHARS,
   buildConversationMinimapMarkers,
+  shouldRenderConversationMinimap,
 } from "../src/lib/conversation-minimap.ts";
 
 function message(id, role, content) {
@@ -13,6 +14,47 @@ function message(id, role, content) {
     createdAt: "2026-07-28T00:00:00.000Z",
   };
 }
+
+test("keeps the outline available while earlier history is outside the mounted window", () => {
+  assert.equal(
+    shouldRenderConversationMinimap({
+      markerCount: 0,
+      overflows: false,
+      hasEarlier: true,
+    }),
+    true,
+  );
+});
+
+test("keeps the completed one-page outline hidden", () => {
+  assert.equal(
+    shouldRenderConversationMinimap({
+      markerCount: 4,
+      overflows: false,
+      hasEarlier: false,
+    }),
+    false,
+  );
+});
+
+test("shows a completed outline only with enough markers and overflow", () => {
+  assert.equal(
+    shouldRenderConversationMinimap({
+      markerCount: 2,
+      overflows: true,
+      hasEarlier: false,
+    }),
+    true,
+  );
+  assert.equal(
+    shouldRenderConversationMinimap({
+      markerCount: 1,
+      overflows: true,
+      hasEarlier: false,
+    }),
+    false,
+  );
+});
 
 test("uses one assistant marker for all response fragments in a user turn", () => {
   const markers = buildConversationMinimapMarkers([

@@ -2177,6 +2177,8 @@ function CompactionRow({ mark }: { mark: ContextCompactionMark }) {
 }
 
 
+const HISTORY_REVEAL_THRESHOLD_PX = 120;
+
 export const ChatTranscript = memo(function ChatTranscript({
   sessionId,
   messages,
@@ -2223,6 +2225,7 @@ export const ChatTranscript = memo(function ChatTranscript({
   const scrollRef = useRef<HTMLDivElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const historyBoundaryRef = useRef<HTMLDivElement>(null);
   const pinnedRef = useRef(true);
   const lastScrollTopRef = useRef(0);
   const lastScrollGestureAtRef = useRef(-Infinity);
@@ -2384,7 +2387,7 @@ export const ChatTranscript = memo(function ChatTranscript({
   const handleScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
-    if (el.scrollTop <= 120) reachTop();
+    if (el.scrollTop <= HISTORY_REVEAL_THRESHOLD_PX) reachTop();
     const wasPinned = pinnedRef.current;
     const transition = reduceTranscriptScroll({
       previousScrollTop: lastScrollTopRef.current,
@@ -2584,6 +2587,90 @@ export const ChatTranscript = memo(function ChatTranscript({
         : visible,
     [historyEntries, tailEntry, transcriptWindow.bounded, visible],
   );
+  const hasEarlierHistory = transcriptWindow.hiddenAbove > 0 || hasMoreBefore;
+
+  const revealEarlierHistory = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (el.scrollTop <= HISTORY_REVEAL_THRESHOLD_PX) {
+      reachTop();
+      return;
+    }
+    cancelFollowScroll();
+    pinnedRef.current = false;
+    setShowJump(true);
+    const reduceMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    el.scrollTo({
+      top: 0,
+      behavior: reduceMotion ? "auto" : "smooth",
+    });
+  }, [cancelFollowScroll, reachTop]);
+
+  // D268: history progression follows the visible top boundary, not only a
+  // native scroll event. A tail page can collapse to less than one viewport,
+  // and a fetched page can initially sit outside the mounted window; neither
+  // case changes scrollTop, so the old scroll-only trigger could strand both
+  // the earlier transcript and the minimap. Re-observing after each window/page
+  // transition keeps advancing until the boundary leaves the near-top band or
+  // no earlier history remains.
+  useEffect(() => {
+    const root = scrollRef.current;
+    const boundary = historyBoundaryRef.current;
+    if (!root || !boundary || !hasEarlierHistory) return;
+    let frame = 0;
+    const advanceIfHistoryBoundaryVisible = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        if (
+          scrollRef.current !== root ||
+          root.scrollTop > HISTORY_REVEAL_THRESHOLD_PX
+        ) {
+          return;
+        }
+        reachTop();
+      });
+    };
+
+    // Covers an underfilled tail immediately, including environments without
+    // IntersectionObserver; the observer then owns subsequent visibility changes.
+    advanceIfHistoryBoundaryVisible();
+    if (typeof IntersectionObserver === "undefined") {
+      return () => cancelAnimationFrame(frame);
+    }
+    const observer = new IntersectionObserver(
+      (records) => {
+        if (records.some((record) => record.isIntersecting)) {
+          advanceIfHistoryBoundaryVisible();
+        }
+      },
+      {
+        root,
+        rootMargin: `${HISTORY_REVEAL_THRESHOLD_PX}px 0px 0px 0px`,
+      },
+    );
+    observer.observe(boundary);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+    // `hiddenAbove` is a dependency because an IntersectionObserver does not
+    // re-notify while the boundary stays continuously visible: growing the
+    // window changes neither `messages.length` nor the intersection state, so
+    // without it a still-underfilled transcript would advance exactly once and
+    // then stall with loaded rows unmounted. Each re-run performs one bounded
+    // growth step, so the escalation stays monotonic and terminates when the
+    // window covers the loaded history or the boundary leaves the band.
+  }, [
+    hasEarlierHistory,
+    hydrationTick,
+    loadingOlder,
+    messages.length,
+    reachTop,
+    sessionId,
+    transcriptWindow.hiddenAbove,
+  ]);
 
   const lastEntry = entries[entries.length - 1];
   const lastTurnPart =
@@ -2612,7 +2699,13 @@ export const ChatTranscript = memo(function ChatTranscript({
 
   return (
     <div className="thread-wrap" ref={wrapRef}>
-      <ConversationMinimap scrollRef={scrollRef} messages={minimapMessages} />
+      <ConversationMinimap
+        scrollRef={scrollRef}
+        messages={minimapMessages}
+        hasEarlier={hasEarlierHistory}
+        loadingEarlier={loadingOlder}
+        onRevealEarlier={revealEarlierHistory}
+      />
       <div
         className="thread-scroll"
         ref={scrollRef}
@@ -2622,6 +2715,7 @@ export const ChatTranscript = memo(function ChatTranscript({
       >
         <div className="thread-content" ref={contentRef}>
           <div
+            ref={historyBoundaryRef}
             className="transcript-history-loading"
             role="status"
             aria-live="polite"
