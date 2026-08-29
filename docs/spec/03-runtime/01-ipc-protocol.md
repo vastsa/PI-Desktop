@@ -145,11 +145,10 @@ that shell change, while an omitted or idempotent shell field does not.
 source path only; it never sends binary data. Electron main validates the path
 against the session scratch/project roots, persists image bytes in the
 content-addressed attachment store, and derives the exact model transport from
-the models.dev record when matched, or the pi-ai fallback record. A known
-model whose selected catalog input includes `image` receives eligible images as
-transient pi-ai image blocks. Unknown/non-vision models and
-images above the 20 MiB inline bound receive a safe `@path` fallback. Main
-uses streamed hashing and file copying for images above that bound, and the
+the models.dev record. A known model whose models.dev input includes `image`
+receives eligible images as transient pi-ai image blocks. Unknown/non-vision
+models and images above the 20 MiB inline bound receive a safe `@path` fallback.
+Main uses streamed hashing and file copying for images above that bound, and the
 sidecar uses the same bounded-read rule when rebuilding history. The durable
 user message stores `content` plus attachment metadata/ref, never base64.
 Invalid attachment paths fail with `PATH_OUTSIDE_WORKSPACE`.
@@ -166,9 +165,8 @@ Root user turns may include `revisionRootId`, `revisionCount`, and
 The sidecar receives only the prepared attachment subset needed for the
 current turn. On a vision runtime, persisted image refs are hydrated from the
 session-bound attachment/scratch roots when history is rebuilt; oversized or
-unavailable images remain path fallbacks. This keeps renderer, main, sidecar,
-models.dev/pi-ai catalogs, and host persistence on one capability-aware
-contract.
+unavailable images remain path fallbacks. This keeps renderer, main, sidecar, the models.dev catalog, and host
+persistence on one capability-aware contract.
 
 ### 5.2 stop at the next turn boundary
 
@@ -614,12 +612,11 @@ session from a session whose title still looks untitled; title text is not a
 session-state signal.
 
 Electron main enriches session list/get/create/fork/configure results with
-effective reasoning capability from the models.dev record for that session's
-exact provider/API URL and model, or the pi-ai record when models.dev is
-unavailable/missing. Missing metadata from both catalogs yields
-`supportsReasoning: false` and `off`; cached discovery and legacy provider
-claims do not replace catalog semantics. The Rust host remains authoritative
-only for the durable `thinkingLevel`.
+effective reasoning capability from the local models.dev record for that
+session's exact provider/API URL and model. An ID absent from the snapshot gets
+`supportsReasoning: false` and `off`; cached/provider claims do not replace
+catalog semantics. The Rust host remains authoritative only for the durable
+`thinkingLevel`.
 
 The global plugin launcher uses Electron-only allowlisted channels:
 

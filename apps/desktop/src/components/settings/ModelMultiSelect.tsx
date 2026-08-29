@@ -198,6 +198,9 @@ export function ModelMultiSelect({
             const isSelected = selected.has(model.modelId);
             const isCustom = custom.has(model.modelId) || model.source === "user";
             const context = compactContextWindow(model.contextWindow);
+            const modalitySummary = model.modalities
+              ? `${model.modalities.input.join(",")} → ${model.modalities.output.join(",")}`
+              : null;
             const supportsVision = model.capabilities.includes("vision");
             return (
               <button
@@ -219,6 +222,7 @@ export function ModelMultiSelect({
                 {isCustom ? <span className="provider-model-custom-badge">{customLabel}</span> : null}
                 <span className="provider-model-multi-meta">
                   {context ? `${context} · ` : ""}
+                  {modalitySummary ? `${modalitySummary} · ` : ""}
                   {model.reasoning ? reasoningLabel : ""}
                 </span>
                 {supportsVision ? (

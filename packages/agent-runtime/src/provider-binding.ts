@@ -27,7 +27,8 @@ import {
   OPENCODE_GO_BASE_URL,
   type ThinkingLevel,
 } from "@pi-desktop/shared";
-import type { PiModelConfig } from "./thinking-level.js";
+import { genericModelConfig } from "./model-capabilities.js";
+import type { ModelConfig } from "./thinking-level.js";
 
 export type RuntimeProviderConfig = {
   id: string;
@@ -40,8 +41,8 @@ export type RuntimeProviderConfig = {
   apiStyle?: string;
   supportsReasoning: boolean;
   supportedThinkingLevels: ThinkingLevel[];
-  /** Complete model metadata resolved from models.dev or pi-ai by Electron main. */
-  modelConfig?: PiModelConfig;
+  /** Complete model metadata resolved from models.dev by Electron main. */
+  modelConfig?: ModelConfig;
   /**
    * Vendor-account auth, resolved once per request by Electron main.
    *
@@ -127,14 +128,7 @@ export function buildProviderModel(
   const catalog = provider.modelConfig;
   const catalogModel = catalog
     ? (({ source: _source, ...model }) => model)(catalog)
-    : {
-        name: provider.modelId,
-        reasoning: false,
-        input: ["text" as const],
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-        contextWindow: DEFAULT_CONTEXT_WINDOW,
-        maxTokens: DEFAULT_MAX_TOKENS,
-      };
+    : genericModelConfig(provider.modelId, provider.baseUrl ?? binding.defaultBaseUrl);
   return {
     ...catalogModel,
     id: provider.modelId,

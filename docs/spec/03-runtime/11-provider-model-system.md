@@ -6,7 +6,7 @@ PI-Desktop must support **all major market model vendors and models** that users
 
 Strategy:
 
-> **Universal provider coverage via pi-ai + OpenAI-compatible escape hatch + refreshable model catalogs.**
+> **Universal provider coverage via models.dev model metadata + pi-ai transport adapters + OpenAI-compatible escape hatch.**
 
 We do **not** re-implement every vendor SDK ourselves.  
 We standardize on pi’s multi-provider layer and add product-level configuration, catalog, and UX.
@@ -40,9 +40,8 @@ Settings / UI
       ├─ openai-compatible provider
       └─ custom provider definitions
   → ModelCatalogService
-      ├─ models.dev remote catalog (primary)
-      ├─ pi-ai bundled catalog (fallback)
-      ├─ runtime discovery (custom/dynamic fallback)
+      ├─ models.dev snapshot (sole model metadata source)
+      ├─ runtime/provider discovery (IDs only for custom/dynamic models)
       └─ Rust-owned provider cache
 ```
 
@@ -72,9 +71,9 @@ allowlist.
 
 ## 5. Built-in vendor matrix (ship intent)
 
-> Exact availability follows the models.dev catalog when it has a provider record;
-> pi-ai remains the local fallback, and the product keeps the OpenAI-compatible
-> path open for providers absent from both catalogs.
+> Model metadata follows the bundled/in-memory models.dev catalog. Provider adapters remain
+> available through pi-ai, and the OpenAI-compatible path stays open for models
+> that models.dev does not list.
 
 ### Tier A — always exposed in UI
 - OpenAI
@@ -118,36 +117,36 @@ Any vendor not listed but reachable by:
 PI-Desktop must not permanently restrict users to a short fixed model list.
 
 ### 6.2 Catalog responsibilities
-1. **models.dev** (`https://models.dev/api.json`) is the primary remote catalog
-   for known providers and models. Electron main fetches it with a bounded
-   timeout, parses only the documented provider/model fields, and never sends
-   provider credentials to the catalog.
-2. **pi-ai's bundled catalog** is the local fallback when models.dev is
-   unavailable or has no matching provider/model. Its complete model snapshot
-   remains available for adapter-specific compatibility and native provider
-   coverage.
-3. **Runtime-native/provider discovery** and the Rust-owned cache remain
-   supplemental for custom or account-specific endpoints. They never replace
-   a matching models.dev field; a configured free-form model ID is always kept
-   selectable.
-4. The source precedence for a known configured provider/model is:
-   `models.dev` → `pi-ai` → provider endpoint discovery → generic defaults.
-   models.dev matches the provider key first and a normalized API URL second;
-   pi-ai uses the exact API-aware provider/model lookup and its bounded aliases.
-5. For image transport, models.dev `modalities.input` is authoritative when
-   present; pi-ai `input` is the fallback. `image` is the only signal that
-   enables visual blocks. Renderer discovery, cached badges, and user-entered
-   claims cannot promote an unknown model. The fallback is a path reference so
-   the normal file-tool workflow remains available.
-6. The Settings provider dialog uses the same precedence for initial
-   context/output/thinking defaults. A models.dev model's `limit.context`,
-   `limit.output`, `modalities`, `reasoning_options`, `tool_call`, and
-   `structured_output` are mapped to the shared `ModelInfo`; the canonical
-   thinking-level mapping is defined in `models-dev-catalog.ts`.
+1. **models.dev** (`https://models.dev/api.json`) is the sole model metadata
+   source. Electron main reads the checked-in release resource at
+   `apps/desktop/resources/models.dev/api.json` in development and the
+   packaged `resources/models.dev/api.json` path in released builds. It never
+   sends provider credentials to the catalog.
+2. The checked-in snapshot is refreshed by `scripts/release.mjs` before a
+   release tag is created. At runtime, Settings → Model configuration may
+   explicitly refetch `https://models.dev/api.json`; a successful response
+   replaces only the in-memory catalog for the current process. A failed fetch
+   keeps the last valid in-memory catalog and never writes user data.
+3. **Runtime/provider discovery** and the Rust-owned cache supply model IDs for
+   custom, local, or authenticated account-specific endpoints. They cannot
+   invent or replace model metadata. A configured free-form ID remains
+   selectable with the generic text-only, non-reasoning shape when it is absent
+   from models.dev.
+4. The models.dev record maps `id`, `name`, `description`, `family`,
+   `attachment`, `reasoning`, `reasoning_options`, `tool_call`,
+   `structured_output`, `temperature`, `knowledge`, `release_date`,
+   `last_updated`, `modalities.input/output`, `open_weights`,
+   `limit.context/input/output`, `cost`, `interleaved`, `status`,
+   `experimental`, and `provider` into the shared model surfaces.
+5. pi-ai remains only the request/OAuth implementation layer. Its bundled model
+   catalog and model capability functions are not read for names, limits,
+   pricing, modalities, reasoning, or other model configuration.
+6. Input and output modality arrays retain `text`, `image`, `audio`, `video`,
+   and `pdf`. The text agent picker exposes models that can handle text while
+   preserving all raw records in the local file for future surfaces.
 7. User-edited `ModelBinding` values remain explicit provider configuration:
-   they control the selected binding's request limits and enabled thinking
-   levels, while the catalog controls defaults and capability metadata.
-   Unknown free-form IDs use the generic text-only, non-reasoning defaults.
+   they control selected request limits and enabled thinking levels, while
+   models.dev controls published defaults and capability metadata.
 
 ### 6.3 Model families to cover
 Catalog and custom model entry must support common capability classes:
@@ -242,8 +241,8 @@ type ThinkingLevel =
 The compatibility fields above are retained as a persisted-schema compatibility
 surface for older clients. PI-Desktop no longer reads them as runtime model
 overrides. Reasoning support and supported thinking levels come from the
-resolved models.dev record, then the pi-ai fallback record; unknown free-form
-ids expose no inferred reasoning capability.
+resolved models.dev record; unknown free-form ids use the generic shape and
+expose no inferred reasoning capability.
 
 The provider dialog persists one `ModelBinding` for every selected model. The
 first binding is the effective model for current conversations and legacy
@@ -330,7 +329,7 @@ type ModelDescriptor = {
   modelId: string
   displayName: string
   source: "bundled" | "discovered" | "user"
-  catalogSource?: "models.dev" | "pi-ai"
+  catalogSource?: "models.dev"
   capabilities: Array<"text" | "tools" | "vision" | "reasoning" | "json">
   contextWindow?: number
   maxOutputTokens?: number
@@ -381,27 +380,23 @@ When starting a turn with `(providerId, modelId)`:
    this entirely and launch with an empty key, because auth is resolved per
    request (§8a)
 4. resolve the models.dev record by matched provider key/API URL and exact model
-   id; if absent, resolve the complete pi-ai model record by exact vendor/id or
-   a compatible gateway alias with a separator-bounded suffix
-5. when models.dev resolves the model, use its name, reasoning flag, thinking
-   options, input modes, pricing, context window, and output limit; retain
-   pi-ai's adapter-specific compatibility fields when available. Otherwise use
-   the complete pi-ai snapshot; when both catalogs miss, accept the raw model
-   id with the generic text-only, non-reasoning fallback
-6. derive vision transport from models.dev `modalities.input` when present and
-   from pi-ai `input` otherwise; discovery/cache/user capability claims cannot
-   promote an unresolved model
-7. clamp the session thinking level against the selected catalog's supported
-   levels and build the runtime provider adapter by replacing only
-   provider/model identity, selected API adapter, auth, and an explicitly
-   configured endpoint URL
+   id
+5. copy its complete model configuration — name, description, family,
+   attachment/reasoning/tool/structured-output/temperature flags, knowledge and
+   release dates, input/output modalities, weights, status, interleaving,
+   limits, cost data, and thinking options — into the runtime model snapshot;
+   when absent, use the generic text-only, non-reasoning shape
+6. derive vision transport from models.dev `modalities.input`; provider
+   discovery/cache/user capability claims cannot promote an unresolved model
+7. clamp the session thinking level against models.dev's supported levels and
+   build the runtime provider adapter by replacing only provider/model identity,
+   selected API adapter, auth, and an explicitly configured endpoint URL
 8. execute stream with abort handle and separate answer/thinking events
 9. translate vendor errors into shared `AppError` codes (§15)
 
-If the model is absent from both models.dev and pi-ai, still allow it when the
-user explicitly enters a model id and the provider accepts unknown ids.
-Cached/discovered capability fields do not promote that fallback into a known
-runtime model.
+If the model is absent from models.dev, still allow it when the user explicitly
+enters a model id and the provider accepts unknown ids. Cached/provider
+capability fields do not promote that fallback into a known runtime model.
 
 ## 12. Compatibility tiers
 
@@ -416,14 +411,18 @@ UI may show tier hints, but must not hard-block unknown models by default.
 
 ## 13. Refresh & update policy
 
-1. Electron main loads the models.dev catalog once per process with a bounded
-   timeout
-2. User/provider refreshes revalidate models.dev before provider-specific
-   discovery
-3. If models.dev is unavailable, use the pinned pi-ai catalog, then provider
-   endpoint discovery, then the persisted configured bindings
-4. Refresh failure must not wipe the Rust-owned provider cache or the last
-   successful models.dev snapshot
+1. Electron main reads the bundled release resource before serving model
+   metadata: `apps/desktop/resources/models.dev/api.json` in development and
+   `resources/models.dev/api.json` in packaged builds.
+2. `scripts/release.mjs` fetches `https://models.dev/api.json`, validates it,
+   and atomically replaces the checked-in resource before creating a release
+   tag.
+3. Settings → Model configuration can force a remote refresh at any time; a
+   successful response updates only the current process's in-memory catalog.
+4. Provider endpoint discovery supplies IDs only for models absent from the
+   bundled/in-memory models.dev snapshot; unknown IDs use generic metadata.
+5. Refresh failure must not wipe the bundled file, Rust-owned provider cache, or
+   configured bindings.
 
 ## 14. Local / offline model support
 

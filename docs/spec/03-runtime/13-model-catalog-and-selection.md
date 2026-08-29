@@ -71,29 +71,26 @@ If user selects model tagged without tools while in Agent mode:
 
 ## 6. Refresh behavior
 
-`providers.refreshModels`:
+The bundled `apps/desktop/resources/models.dev/api.json` snapshot is the
+startup baseline. It is refreshed by `scripts/release.mjs` before a release tag
+is created; application startup does not fetch or write a catalog. Settings
+invokes the Electron-only `providers.refreshModelCatalog` channel to refetch
+`https://models.dev/api.json`; a successful response replaces only the
+current process's in-memory models.dev catalog and never writes user data.
 
-1. load the shared models.dev catalog from `https://models.dev/api.json`
-2. use the matching models.dev provider/model records as the primary result
-3. fall back to the local pi-ai catalog when the remote catalog is unavailable
-   or has no matching provider
-4. use a provider discovery endpoint for custom/account-specific models that
-   neither catalog exposes
-5. merge the result into the Rust-owned provider cache and keep user-defined
-   models
-6. return counts: added/updated/failed providers
+Provider model loading remains stale-while-revalidate:
 
-The desktop uses stale-while-revalidate for configured providers:
-
-1. hydrate each saved provider's last catalog from Rust-owned SQLite during
-   renderer bootstrap
-2. render that catalog immediately in the composer picker and saved-provider
-   edit dialog
-3. perform at most one live models.dev/provider refresh per provider per
-   renderer lifetime
-4. merge a successful response into SQLite and replace the renderer snapshot
-5. reset the renderer refresh marker after provider configuration changes so
-   the next picker open revalidates the endpoint
+1. `source: "cache"` hydrates a saved provider's normalized discovery rows from
+   Rust-owned SQLite without provider network access.
+2. The renderer can show those rows immediately in the Composer and provider
+   dialog.
+3. `source: "refresh"` uses the bundled/in-memory models.dev catalog first and
+   probes a provider endpoint only to discover IDs that models.dev does not
+   expose.
+4. Successful provider discovery may update the Rust-owned normalized cache;
+   it cannot replace a matching models.dev record or its metadata.
+5. Configured `ModelBinding` IDs are retained when discovery is partial or
+   unavailable, and an ID absent from models.dev receives generic metadata.
 
 ## 7. Offline behavior
 
@@ -104,9 +101,10 @@ If refresh fails / offline:
 - allow custom model id
 - still allow providers with known model ids
 - when a saved provider cache is empty or partial, append every configured
-  model binding before applying models.dev metadata decoration, then the
-  pi-ai fallback, so multi-model settings remain editable and per-model
-  capability state stays aligned
+  model binding before applying models.dev metadata decoration, so multi-model
+  settings remain editable and per-model capability state stays aligned
+- if the bundled release snapshot is absent or invalid during an offline
+  release, keep the configured IDs visible with generic text-only metadata
 
 ## 8. Catalog item schema
 
@@ -133,7 +131,7 @@ type ModelCatalogItem = {
     "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"
   >
   /** Which known catalog supplied metadata for this row. */
-  catalogSource?: "models.dev" | "pi-ai"
+  catalogSource?: "models.dev"
 }
 ```
 
@@ -144,15 +142,14 @@ When UI/search requests models for picker:
 1. recent models for enabled providers
 2. user-defined models
 3. models.dev records for the matching provider/API URL
-4. pi-ai bundled records when models.dev is unavailable or has no match
-5. provider discovery/cache for custom or account-specific models
-6. always include "custom model id" entry action
+4. provider discovery/cache for custom or account-specific models
+5. always include "custom model id" entry action
 
 Deduplicate by `(providerId, modelId)` with priority:
-`user > models.dev > pi-ai > provider-discovered > recent-only`. The
-`catalogSource` field records whether a known row came from models.dev or
-pi-ai; a provider cache stores only the existing normalized cache fields and is
-re-decorated from the current catalog on the next read.
+`user > models.dev > provider-discovered > recent-only`. The `catalogSource`
+field records a models.dev match; a provider cache stores only normalized
+selection fields and is re-decorated from the local raw catalog on the next
+read.
 
 ### 9.1 Conversation Composer scope
 
@@ -192,15 +189,13 @@ Warnings are non-blocking unless execution is impossible.
 
 ### 11.1 Reasoning capability resolution
 
-1. Resolve models.dev metadata for the matching provider/API URL and exact
-   `modelId`; when absent, resolve the pi-ai catalog record for the exact
-   `(vendorKey, modelId)` or a separator-bounded compatible-gateway alias.
-2. The resolved models.dev record is authoritative for `reasoning` and
-   `reasoning_options`; the complete pi-ai record is the fallback. Cached/
-   discovered capability claims cannot replace either catalog record.
-3. A free-form id absent from both catalogs is an unknown generic model and
+1. Resolve the models.dev metadata for the matching provider/API URL and exact
+   `modelId`.
+2. The models.dev record is authoritative for `reasoning` and
+   `reasoning_options`; cached/provider capability claims cannot replace it.
+3. A free-form ID absent from models.dev is an unknown generic model and
    exposes only `off`; the UI cannot promote it to reasoning-capable.
-4. The Composer renders the selector only when the selected catalog says the
+4. The Composer renders the selector only when the models.dev record says the
    model supports reasoning and lists only its supported canonical levels.
 5. If a stored/requested level is unavailable, choose the nearest supported
    level by scanning upward first and then downward. Non-reasoning models
@@ -210,9 +205,9 @@ Warnings are non-blocking unless execution is impossible.
 
 ### 11.2 Vision capability resolution
 
-1. Resolve models.dev `modalities.input` for the matching exact model first;
-   use the same exact pi-ai model record as fallback.
-2. Mark the model `vision` only when the selected record includes `image` input.
+1. Resolve models.dev `modalities.input` for the matching exact model.
+2. Mark the model `vision` only when the models.dev record includes `image`
+   input.
 3. A provider endpoint, cached, or user-defined capability flag may remain
    useful as selection metadata, but it cannot promote an unknown model to
    image transport. Unknown/custom models therefore show the path-fallback
@@ -228,14 +223,11 @@ output limit, capability badges, and thinking defaults use this lookup:
 
 1. A matching models.dev provider is preferred by `vendorKey`, then by
    normalized provider API URL; its exact model record supplies the fields.
-2. When models.dev is unavailable or has no match, the pinned pi-ai catalog
-   supplies the same fields for a known native provider/model.
-3. A provider endpoint may add custom/account-specific IDs, but cannot replace
-   metadata from either catalog. A free-form miss receives the fixed generic
-   defaults from `modelDraftFromInfo`.
-4. The lookup does not send API keys to models.dev. Runtime model resolution
-   uses the same precedence while retaining pi-ai adapter compatibility data
-   when models.dev does not publish it.
+2. A provider endpoint may add custom/account-specific IDs, but cannot replace
+   models.dev metadata. A free-form miss receives the fixed generic defaults
+   from `modelDraftFromInfo`.
+3. The lookup does not send API keys to models.dev. Runtime model resolution
+   uses the same models.dev record and the selected pi-ai transport adapter.
 
 ## 12. Refresh strategy
 
@@ -244,12 +236,11 @@ output limit, capability badges, and thinking defaults use this lookup:
 - no aggressive background polling in MVP
 - refresh failures keep previous cache and surface non-fatal error
 
-Electron decorates cached and freshly returned model rows with models.dev
-metadata when its provider/model match exists, then pi-ai metadata as fallback.
-Runtime model resolution remains API-aware and preserves pi-ai adapter
-compatibility fields where models.dev has no equivalent. Provider discovery
-remains the fallback for custom/account-specific models absent from both
-catalogs.
+Electron decorates cached and freshly returned model rows from the local
+models.dev snapshot. Runtime model resolution passes the same full models.dev
+configuration to the selected pi-ai transport adapter. Provider discovery
+remains an ID-only fallback for custom/account-specific models absent from the
+snapshot.
 
 ## 13. Search behavior
 
@@ -271,12 +262,11 @@ catalogs.
 - [ ] a new session defaults a reasoning-capable inherited model to its highest
       published thinking level and otherwise defaults to `off`
 - [ ] reasoning selector is capability-gated and models.dev-published sparse
-      levels (or the pi-ai fallback levels) clamp the same way in Composer,
-      Electron main, and the pi sidecar
-- [ ] models.dev metadata wins for a matching provider/model and pi-ai is used
-      when the remote record is unavailable or missing
+      levels clamp the same way in Composer, Electron main, and the pi sidecar
+- [ ] models.dev metadata wins for a matching provider/model; an ID absent from
+      it uses the generic shape while pi-ai supplies only transport/OAuth
 - [ ] provider settings and cached discovery cannot replace known catalog
       capabilities; explicit binding edits remain persisted configuration
 - [ ] unknown free-form models remain runnable without invented capabilities
-- [ ] models.dev and pi-ai fallback records resolve the same configured model
-      without sending provider credentials to the remote catalog
+- [ ] a models.dev record and an unknown generic record resolve through the same
+      selected transport without sending provider credentials to the remote catalog

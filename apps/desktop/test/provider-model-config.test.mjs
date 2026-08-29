@@ -31,15 +31,28 @@ const vendorAccountsSource = await readFile(
   new URL("../src/components/settings/VendorAccountsSection.tsx", import.meta.url),
   "utf8",
 );
+const providersSource = await readFile(
+  new URL("../src/components/settings/ProvidersSection.tsx", import.meta.url),
+  "utf8",
+);
 const styles = await loadStyles();
 
-test("model configuration surfaces pi-ai vision and reasoning state per model", () => {
+test("model configuration surfaces models.dev metadata per model", () => {
   assert.match(cardSource, /metadata\?: ModelInfo \| null/);
+  assert.match(cardSource, /metadata\?\.modalities/);
+  assert.match(cardSource, /provider-model-modalities/);
   assert.match(cardSource, /capabilities\.includes\("vision"\)/);
   assert.match(cardSource, /visionLabel/);
   assert.match(cardSource, /reasoningLabel/);
+  assert.match(pickerSource, /model\.modalities/);
   assert.match(pickerSource, /model\.capabilities\.includes\("vision"\)/);
   assert.match(pickerSource, /visionLabel/);
+});
+
+test("settings can refresh models.dev in memory without replacing the release snapshot", () => {
+  assert.match(providersSource, /api\.refreshModelCatalog\(\)/);
+  assert.match(providersSource, /refreshingCatalog/);
+  assert.match(providersSource, /refreshModelCatalog/);
 });
 
 test("model discovery also probes no-auth and local endpoints", () => {

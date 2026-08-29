@@ -104,11 +104,10 @@ Tables (canonical DDL in [04-data-storage](04-data-storage.md) §4.3–4.4, §4.
 `compatibility.supportsReasoning` and
 `compatibility.supportedThinkingLevels` remain readable for stored-record and
 older-client compatibility, but Electron main ignores them during runtime
-model resolution. The public provider shape is enriched from the matching
-models.dev model first and the exact pi-ai model as fallback. Unknown free-form
-models expose `supportsReasoning=false` and
-`supportedThinkingLevels=["off"]`. The raw secret and internal compatibility
-JSON remain hidden.
+model resolution. The public provider shape is enriched from the local
+models.dev snapshot. Unknown free-form models expose
+`supportsReasoning=false` and `supportedThinkingLevels=["off"]`. The raw secret
+and internal compatibility JSON remain hidden.
 
 `authKind: "oauth"` marks a vendor-account row (ADR 0095, D237, D240): the credential
 is an OAuth grant under `secret:provider:<id>:oauth` rather than a pasted key,
@@ -183,8 +182,8 @@ Vendor accounts), not by the custom-provider dialog. The list is derived at
 runtime from `models.getProviders().filter(p => p.auth.oauth)`, so it tracks
 pi-ai rather than this table; every login creates a separate row, and
 `baseUrl`, `apiStyle`, and `defaultModelId` are filled in from that account's
-own catalog after login. Matching models.dev records provide initial binding
-metadata, with the authenticated pi-ai record filling any missing fields.
+own catalog after login. Matching models.dev records provide the binding
+metadata; an account model absent from the snapshot remains generic.
 
 | vendorKey | subscription | typical apiStyle | login shape |
 |---|---|---|---|
@@ -207,14 +206,28 @@ type ModelCatalogCacheRecord = {
   capabilities: string[]
   contextWindow?: number
   source: "bundled" | "discovered" | "user"
-  /** Renderer annotation: which known catalog supplied metadata. */
-  catalogSource?: "models.dev" | "pi-ai"
+  /** Renderer annotation for a row resolved from the bundled models.dev snapshot. */
+  catalogSource?: "models.dev"
   updatedAt: string
   raw?: unknown
 }
 ```
 
-## 5. IPC / host methods (provider domain)
+## 5. Bundled models.dev snapshot
+
+The raw public catalog is checked into the release resource at
+`apps/desktop/resources/models.dev/api.json` and packaged at
+`resources/models.dev/api.json`. `scripts/release.mjs` fetches and validates
+`https://models.dev/api.json`, then atomically replaces the checked-in file
+before creating a release tag. Electron main reads this bundled snapshot at
+startup without network I/O. Settings → Model configuration can refetch the
+URL, but a successful response updates only the current process's in-memory
+catalog; it never writes the packaged resource or a user cache. Cache reads
+never send provider credentials to models.dev. The Rust `models` table continues
+to store only normalized provider selection rows; it does not need a schema
+change for the raw snapshot.
+
+## 6. IPC / host methods (provider domain)
 
 - `providers.list`
 - `providers.get`
@@ -295,17 +308,17 @@ The canonical DDL lives in [04-data-storage](04-data-storage.md) (D086). Summary
 ### `providers.listModels`
 - renderer IPC in: `{ providerId, source?: "cache"|"refresh" }`; `cache`
   returns the durable catalog without provider network access, while `refresh`
-  loads models.dev first and then runs pi-ai/provider fallback in Electron main
+  reads the local models.dev snapshot and runs provider endpoint discovery only for IDs absent from it
 - host RPC in: `{ providerId?: string }`; reads only the Rust-owned `models`
   table
 - for an `authKind: "oauth"` row Electron main reads the authenticated catalog
   (`models.getAvailable`, which applies the vendor's own `filterModels`, so a
   Copilot account lists what its subscription includes) instead of calling
   `/models`; each returned model carries the apiStyle its wire API implies
-- out: `{ models: ModelCatalogItem[] }`; each model carries metadata from
-  models.dev when matched, or the pi-ai fallback, including `reasoning`,
-  `supportedThinkingLevels`, limits, and capability tags. Cached claims and
-  legacy provider fields cannot override either catalog record.
+- out: `{ models: ModelCatalogItem[] }`; each known model carries the complete
+  models.dev metadata including `reasoning`, `supportedThinkingLevels`, limits,
+  modalities, output types, and capability tags. Cached/provider claims cannot
+  override the local catalog record.
 
 ### `providers.cacheModels` (internal host RPC)
 - in: `{ providerId, models: DiscoveredModelInput[] }`

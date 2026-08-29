@@ -37,6 +37,10 @@ describe("Plan protocol contracts", () => {
     expect(IPC_WHITELIST.has(IPC.invoke.scheduledUpdate)).toBe(true);
     expect(IPC_WHITELIST.has(IPC.invoke.scheduledDelete)).toBe(true);
     expect(IPC_WHITELIST.has(IPC.invoke.scheduledRun)).toBe(true);
+    expect(IPC.invoke.providersRefreshModelCatalog).toBe(
+      "pi-desktop/providers/refreshModelCatalog",
+    );
+    expect(IPC_WHITELIST.has(IPC.invoke.providersRefreshModelCatalog)).toBe(true);
   });
 
   it("exposes the vendor-account OAuth channels through the preload whitelist", () => {

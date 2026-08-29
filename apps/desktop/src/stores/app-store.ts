@@ -3928,8 +3928,9 @@ async function persistSessionAndSelect(
   const defaultProvider = state.providers.find(
     (provider) => provider.id === settings?.defaultProviderId,
   );
-  // New reasoning sessions start at the strongest level published by pi.
-  // Missing capability metadata remains the conservative off fallback.
+  // New reasoning sessions start at the strongest level published by
+  // models.dev for the inherited model. Missing capability metadata remains
+  // the conservative off fallback.
   const defaultThinkingLevel = defaultProvider?.supportsReasoning
     ? highestSupportedThinkingLevel(defaultProvider.supportedThinkingLevels)
     : "off";

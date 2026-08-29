@@ -36,6 +36,14 @@
   font-weight: var(--font-weight-medium);
 }
 
+.provider-section-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .provider-add-btn-inner {
   display: inline-flex;
   align-items: center;
@@ -506,6 +514,16 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 4px;
+}
+
+.provider-model-modalities {
+  max-width: min(360px, 100%);
+  overflow: hidden;
+  color: var(--ds-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .provider-model-card-summary {

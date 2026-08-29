@@ -5,6 +5,7 @@ import { useAppStore } from "../../stores/app-store";
 import { api } from "../../lib/api";
 import { Badge, Button, cx } from "../ui";
 import {
+  IconConfig,
   IconPencil,
   IconPlug,
   IconPlus,
@@ -58,6 +59,7 @@ export function ProvidersSection() {
   const [saving, setSaving] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [refreshingCatalog, setRefreshingCatalog] = useState(false);
   // Two-step delete: first click arms the button, second click deletes.
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -218,6 +220,27 @@ export function ProvidersSection() {
     }
   };
 
+  const refreshModelCatalog = async () => {
+    setRefreshingCatalog(true);
+    try {
+      const result = await api.refreshModelCatalog();
+      await refreshProviders();
+      if (result.refreshed) {
+        showToast(t("settings.modelCatalogUpdated"), { variant: "success" });
+      } else {
+        showToast(result.status.lastError || t("settings.modelCatalogUpdateFailed"), {
+          variant: "error",
+        });
+      }
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error), {
+        variant: "error",
+      });
+    } finally {
+      setRefreshingCatalog(false);
+    }
+  };
+
   const testProvider = async (provider: ProviderPublic) => {
     setTestingId(provider.id);
     try {
@@ -289,12 +312,23 @@ export function ProvidersSection() {
       <section className="settings-card-block">
         <div className="provider-section-head">
           <h3 className="settings-card-heading">{t("settings.providers")}</h3>
-          <Button variant="primary" onClick={openAdd}>
-            <span className="provider-add-btn-inner">
-              <IconPlus size={14} />
-              <span>{t("settings.addProvider")}</span>
-            </span>
-          </Button>
+          <div className="provider-section-head-actions">
+            <Button
+              variant="secondary"
+              disabled={refreshingCatalog}
+              onClick={() => void refreshModelCatalog()}
+              title={t("settings.refreshModelCatalog")}
+            >
+              <IconConfig size={14} />
+              <span>{refreshingCatalog ? t("settings.refreshingModelCatalog") : t("settings.refreshModelCatalog")}</span>
+            </Button>
+            <Button variant="primary" onClick={openAdd}>
+              <span className="provider-add-btn-inner">
+                <IconPlus size={14} />
+                <span>{t("settings.addProvider")}</span>
+              </span>
+            </Button>
+          </div>
         </div>
 
         {dialogFor !== null ? (

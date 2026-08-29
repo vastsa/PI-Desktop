@@ -13,13 +13,11 @@
 | Rust async | tokio | stable | host services |
 | Host RPC | stdio JSON-RPC (NDJSON) | frozen (D001) | Electron main ↔ Rust host |
 | Agent engine | `@earendil-works/pi-agent-core` | ^0.82.1+ | agent loop |
-| Model API | `@earendil-works/pi-ai` | ^0.82.1+ | provider adapters and local catalog fallback |
-| Model catalog | `https://models.dev/api.json` | remote, bounded fetch | primary provider/model metadata catalog |
+| Model API | `@earendil-works/pi-ai` | ^0.82.1+ | provider adapters, OAuth, and stream handling |
+| Model catalog | `https://models.dev/api.json` | bundled release snapshot + process-local refresh | sole provider/model metadata source |
 
-> Pin **^0.82.1+** remains required for pi-ai adapter compatibility and its
-> fallback catalog. models.dev supplies the primary current model metadata.
-> The pin also remains useful for adapter compatibility and native models that
-> models.dev does not publish.
+> pi-ai is not consulted for model names, capabilities, limits, modalities,
+> thinking levels, or prices. It remains the request transport dependency.
 
 | Node runtime | Node.js | `>= 22.19` | pi requirement |
 | DB | SQLite | Rust host-core via `rusqlite` | sessions/settings |

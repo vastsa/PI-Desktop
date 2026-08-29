@@ -1164,8 +1164,8 @@ Single message render — either user (plaintext) or assistant (markdown streami
   explanatory estimate note are intentionally omitted from the default view.
   Generation speed is a completed-turn value in tokens per second and is not
   updated while a response is streaming. The context-window total uses the
-  same models.dev model metadata as the agent sidecar when available, then the
-  pi-ai fallback; unknown models use the provider catalog or default window. The panel is portaled to
+  same local models.dev model metadata as the agent sidecar; unknown models use
+  the provider's generic default window. The panel is portaled to
   the document body as a fixed viewport overlay, flips above or below the
   trigger, clamps to viewport margins, and repositions on transcript scrolling
   or window resize so no transcript clipping ancestor can hide it (D103, D184,
@@ -1962,10 +1962,11 @@ reasoning-level control.
   D262, ADR 0059, ADR 0070, ADR 0131)
 - The compact chips retain structured kind/name/MIME metadata while keeping
   the textarea free of binary data. The selected model's models.dev
-  capability controls dispatch when its exact record matches; the exact pi-ai
-  record is the fallback. Eligible images become transient visual input for a
-  model whose selected catalog `input` includes `image`; non-vision, unknown,
-  and oversized images use the existing canonical `@<path>` file-tool fallback.
+  capability controls dispatch when its exact models.dev record matches;
+  unknown IDs use the generic conservative shape. Eligible images become
+  transient visual input for a model whose models.dev `input` includes `image`;
+  non-vision, unknown, and oversized images use the existing canonical
+  `@<path>` file-tool fallback.
   There are no visual previews in MVP.
 - No voice input
 
@@ -2039,7 +2040,7 @@ Anatomy:
   displays the leaf name, keeps the structured reference in session-scoped
   transient state, and submits it separately from visible text. Main stores
   image bytes under `attachments/<sha256>` and sends visual input only when the
-  selected pi-ai model accepts images and the 20 MiB inline bound is met;
+  selected models.dev model accepts images and the 20 MiB inline bound is met;
   otherwise it appends a safe `@path` fallback. Removing a chip does not delete
   scratch bytes. A text-only paste longer than `largePasteThreshold` follows
   the same bounded session bridge with generated `text/plain` UTF-8 bytes,
@@ -2393,7 +2394,8 @@ groups, select candidates, and start an explicit import.
 Modern model-configuration surface for adding OpenAI-compatible providers,
 reviewing readiness, and managing connection/default behavior without a dense
 form dump. Vendor-account identity and default-model editing live in the same
-surface, while model parameters remain owned by pi-ai.
+surface, while model metadata remains owned by models.dev and transport
+compatibility remains owned by pi-ai.
 
 ### 19.2 Anatomy
 1. **Defaults card** — default provider/model selector; each native option

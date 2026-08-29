@@ -825,19 +825,87 @@ export type OAuthRespondInput = {
   value?: string;
 };
 
+export const MODEL_MODALITIES = ["text", "image", "audio", "video", "pdf"] as const;
+export type ModelModality = (typeof MODEL_MODALITIES)[number];
+
+export type ModelReasoningOption = {
+  type: string;
+  values?: Array<string | null>;
+  min?: number;
+  max?: number;
+};
+
+export type ModelInterleaved = boolean | { field?: string };
+
+export type ModelModalities = {
+  input: readonly ModelModality[];
+  output: readonly ModelModality[];
+};
+
+export type ModelLimit = {
+  context?: number;
+  input?: number;
+  output?: number;
+};
+
+export type ModelCostTier = {
+  input?: number;
+  output?: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+  tier?: { type?: string; size?: number };
+};
+
+export type ModelCost = {
+  input?: number;
+  output?: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+  reasoning?: number;
+  inputAudio?: number;
+  outputAudio?: number;
+  contextOver200k?: {
+    input?: number;
+    output?: number;
+    cacheRead?: number;
+    cacheWrite?: number;
+  };
+  tiers?: ModelCostTier[];
+};
+
 export type ModelInfo = {
   modelId: string;
   displayName: string;
   providerId: string;
+  description?: string;
+  family?: string;
+  attachment?: boolean;
+  reasoning?: boolean;
+  reasoningOptions?: ModelReasoningOption[];
+  thinkingLevelMap?: Partial<Record<ThinkingLevel, string | null>>;
+  toolCall?: boolean;
+  structuredOutput?: boolean;
+  temperature?: boolean;
+  knowledge?: string;
+  releaseDate?: string;
+  lastUpdated?: string;
+  modalities?: ModelModalities;
+  openWeights?: boolean;
+  limit?: ModelLimit;
+  cost?: ModelCost;
+  interleaved?: ModelInterleaved;
+  status?: string;
+  experimental?: boolean;
+  /** Provider-local upstream name when models.dev publishes one. */
+  provider?: string;
+  /** Convenience values retained for existing UI and cache consumers. */
   contextWindow?: number;
   maxTokens?: number;
-  reasoning?: boolean;
-  thinkingLevelMap?: Partial<Record<ThinkingLevel, string | null>>;
-  capabilities: Array<"text" | "tools" | "vision" | "reasoning" | "json">;
+  capabilities: Array<"text" | "tools" | "vision" | "reasoning" | "json" | "audio" | "video" | "pdf">;
   supportedThinkingLevels?: ThinkingLevel[];
   source: "bundled" | "discovered" | "user";
   /** Metadata catalog that supplied this row, when it is a known model. */
-  catalogSource?: "models.dev" | "pi-ai";
+  catalogSource?: "models.dev";
 };
 
 /**

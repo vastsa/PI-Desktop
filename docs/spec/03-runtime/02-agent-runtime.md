@@ -66,10 +66,10 @@ separate cancellation path.
 1. load the durable session and reject a missing session
 2. resolve that session's mode/provider/model and project binding (app/current
    workspace defaults are legacy fallback only)
-3. resolve models.dev metadata for the exact provider/API URL and model first,
-   then fall back to the complete pi-ai model record and clamp the durable
-   session thinking level to that catalog's nearest supported value; an ID
-   unknown to both catalogs uses the explicit generic fallback
+3. resolve the complete models.dev metadata record for the exact provider/API
+   URL and model and clamp the durable session thinking level to its nearest
+   supported value; an ID absent from the snapshot uses the explicit generic
+   fallback
 4. validate model/secret availability
 5. reject if session busy; the renderer queues a user-facing next prompt and
    does not call this path until the current session reaches `agent_end`
@@ -415,16 +415,17 @@ criterion-by-criterion report of what was met and the evidence observed.
 
 - Canonical levels are `off`, `minimal`, `low`, `medium`, `high`, `xhigh`,
   and `max`.
-- Pi's generated model catalog is authoritative for reasoning support,
-  thinking-level mapping, limits, input modes, pricing, headers, and adapter
-  compatibility for every resolved known model.
+- The bundled models.dev release snapshot is authoritative for published
+  reasoning support, thinking-level mapping, limits, input/output modalities,
+  pricing, and other model metadata. pi-ai remains responsible for request
+  serialization and adapter compatibility.
 - Provider configuration cannot override known-model semantics. Unknown
   free-form ids remain runnable through a generic text-only, non-reasoning
   model and therefore expose only `off`.
-- Unsupported requested levels use pi's nearest-supported-level rule: scan
-  upward first, then downward. A non-reasoning provider always resolves to
-  `off`.
-- Vision support is resolved from the same pi model record: only
+- Unsupported requested levels use the selected models.dev model's
+  nearest-supported-level rule: scan upward first, then downward. A
+  non-reasoning provider always resolves to `off`.
+- Vision support is resolved from the same models.dev record: only
   `input.includes("image")` enables image transport. Unknown/custom model ids
   remain conservative text/path models even when discovery metadata claims
   `vision`.
@@ -571,7 +572,7 @@ explicit `maxTurns` retain their existing `failed`, `aborted`, and `truncated`
 outcomes.
 
 **Model pins.** `model: <provider>/<model>` in the frontmatter is resolved once
-per launch in Electron main, where credentials and the pi catalog live, against
+per launch in Electron main, where credentials and the models.dev snapshot live, against
 provider id, vendor key or display name, and capped at
 `MAX_SUBAGENT_PROVIDERS` (8) distinct providers. An unresolvable pin is omitted
 from the binding map on purpose; the runtime turns the missing entry into a tool
@@ -636,10 +637,10 @@ MVP UI always includes at least:
 
 Runtime responsibilities:
 - resolve `(providerId, modelId)`
-- resolve models.dev metadata first, then serialize the complete pi-ai fallback
-  record, or label the model as an unknown generic fallback
+- resolve and serialize the complete models.dev record, or label an absent ID
+  with the unknown generic fallback
 - resolve model reasoning capability and effective thinking level from the
-  selected catalog record
+  models.dev record
 - fetch secrets via host (never cache raw secrets in logs)
 - translate vendor failures into provider AppError codes
 - stream tokens/events to orchestrator

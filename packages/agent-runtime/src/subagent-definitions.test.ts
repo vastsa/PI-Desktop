@@ -15,6 +15,10 @@ import {
   subagentDefinitionDir,
   type SubagentProviderSource,
 } from "./subagent-definitions.js";
+import {
+  capabilitiesFromModelConfig,
+  genericModelConfig,
+} from "./model-capabilities.js";
 
 describe("builtin subagent documents", () => {
   it("parse into read-only delegates plus a write-capable fixer", async () => {
@@ -223,6 +227,20 @@ describe("resolveSubagentProviders", () => {
       ],
       providers,
       getSecret,
+      resolveModel: async (provider, modelId) => {
+        const modelConfig = {
+          ...genericModelConfig(modelId, provider.baseUrl ?? ""),
+          source: "models.dev" as const,
+          reasoning: provider.vendorKey === "anthropic",
+          supportedThinkingLevels: provider.vendorKey === "anthropic"
+            ? (["low", "medium", "high"] as const)
+            : [],
+        };
+        return {
+          modelConfig,
+          capabilities: capabilitiesFromModelConfig(modelConfig),
+        };
+      },
     });
 
     expect(diagnostics).toEqual([]);
@@ -238,9 +256,9 @@ describe("resolveSubagentProviders", () => {
     expect(haiku.modelId).toBe("claude-haiku-4-5");
     expect(haiku.apiKey).toBe("sk-test");
     expect(haiku.apiStyle).toBe("anthropic_messages");
-    // Capabilities come from the pinned model, not the session's.
+    // Capabilities come from the main-supplied models.dev record, not the session's.
     expect(haiku.supportsReasoning).toBe(true);
-    expect(haiku.modelConfig?.source).toBe("pi");
+    expect(haiku.modelConfig?.source).toBe("models.dev");
     // An `authKind: none` provider needs no secret.
     expect(resolved["local ollama/qwen3"].apiKey).toBe("");
   });

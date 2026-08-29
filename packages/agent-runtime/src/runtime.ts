@@ -110,7 +110,7 @@ import {
   composeModeSystemPrompt,
   DEFAULT_RUNTIME_SYSTEM_PROMPT,
 } from "./mode-prompts.js";
-import { clampThinkingLevel, type PiModelConfig } from "./thinking-level.js";
+import { clampThinkingLevel } from "./thinking-level.js";
 import type { ProjectInstructions } from "./project-instructions.js";
 import { projectInstructionsPrompt } from "./project-instructions-prompt.js";
 import {

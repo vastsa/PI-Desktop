@@ -25,22 +25,23 @@ import {
   type SubagentDefinition,
 } from "@pi-desktop/shared";
 import {
-  resolvePiModelConfig,
-  resolveThinkingCapabilities,
+  capabilitiesFromModelConfig,
+  genericModelConfig,
 } from "./model-capabilities.js";
 import type { RuntimeProviderConfig } from "./provider-binding.js";
-import type { PiModelConfig, ThinkingCapabilitySet } from "./thinking-level.js";
+import type { ModelConfig, ThinkingCapabilitySet } from "./thinking-level.js";
 
 /**
  * What a signed-in vendor account says about one of its models. Resolved by
- * Electron main against the authenticated pi-ai collection, because the
- * builtin catalog knows neither a gateway's dynamic model list nor which wire
- * API a given account serves a model over.
+ * Electron main against the authenticated account collection. The account
+ * collection supplies availability and wire identity; model configuration is
+ * always supplied by the models.dev snapshot or the generic unknown-model
+ * shape.
  */
 export type VendorModelBinding = ThinkingCapabilitySet & {
   apiStyle: string;
   baseUrl: string;
-  modelConfig: PiModelConfig;
+  modelConfig: ModelConfig;
 };
 
 /** Global directory for user-owned definitions; project roots are not consulted. */
@@ -339,6 +340,11 @@ export async function resolveSubagentProviders(input: {
     provider: SubagentProviderSource,
     modelId: string,
   ) => Promise<VendorModelBinding | undefined>;
+  /** Resolve non-OAuth model metadata from Electron's models.dev snapshot. */
+  resolveModel?: (
+    provider: SubagentProviderSource,
+    modelId: string,
+  ) => Promise<{ modelConfig: ModelConfig; capabilities: ThinkingCapabilitySet } | undefined>;
 }): Promise<{
   providers: Record<string, RuntimeProviderConfig>;
   diagnostics: string[];
@@ -396,18 +402,16 @@ export async function resolveSubagentProviders(input: {
         continue;
       }
     }
-    const capabilities = binding ?? resolveThinkingCapabilities({
-      vendorKey: provider.vendorKey || "custom",
-      modelId: pin.modelId,
-      apiStyle: provider.apiStyle,
-    });
+    const resolvedModel = !isVendorAccount
+      ? await input.resolveModel?.(provider, pin.modelId)
+      : undefined;
     const modelConfig =
       binding?.modelConfig ??
-      resolvePiModelConfig({
-        vendorKey: provider.vendorKey || "custom",
-        modelId: pin.modelId,
-        apiStyle: provider.apiStyle,
-      });
+      resolvedModel?.modelConfig ??
+      genericModelConfig(pin.modelId, binding?.baseUrl ?? provider.baseUrl ?? "");
+    const capabilities = binding ??
+      resolvedModel?.capabilities ??
+      capabilitiesFromModelConfig(modelConfig);
     const apiStyle = binding?.apiStyle ?? provider.apiStyle;
     resolved[key] = {
       id: provider.id,

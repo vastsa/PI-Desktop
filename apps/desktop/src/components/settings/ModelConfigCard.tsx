@@ -73,6 +73,10 @@ export function ModelConfigCard({
   const [expanded, setExpanded] = useState(initiallyExpanded ?? false);
   const levels = orderedLevels(binding.thinkingLevels);
   const supportsVision = metadata?.capabilities.includes("vision") === true;
+  const modalities = metadata?.modalities;
+  const modalitiesLabel = modalities
+    ? `in: ${modalities.input.join(", ")} · out: ${modalities.output.join(", ")}`
+    : undefined;
   const summaryLabel = `${contextWindowLabel}: ${formatTokens(binding.contextWindow)}; ${maxOutputLabel}: ${formatTokens(binding.maxTokens)}`;
 
   const toggleLevel = (level: ThinkingLevel) => {
@@ -114,6 +118,11 @@ export function ModelConfigCard({
                     <IconSparkles size={11} aria-hidden="true" />
                     {reasoningLabel}
                   </Badge>
+                ) : null}
+                {modalitiesLabel ? (
+                  <span className="provider-model-modalities" title={modalitiesLabel}>
+                    {modalitiesLabel}
+                  </span>
                 ) : null}
               </span>
             </span>

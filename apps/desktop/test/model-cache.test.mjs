@@ -19,16 +19,19 @@ test("saved provider discovery persists models in the host catalog", () => {
   assert.match(mainSource, /req\.source === "cache"/);
   assert.match(mainSource, /"providers\.listModels"/);
   assert.match(mainSource, /"providers\.cacheModels"/);
+  assert.match(mainSource, /catalogPath: app\.isPackaged/);
+  assert.match(mainSource, /resources", "models\.dev", "api\.json"/);
+  assert.match(mainSource, /modelsDevCatalog\.loadLocal\(\)/);
+  assert.match(mainSource, /modelsDevCatalog\.refresh\(\)/);
   assert.match(mainSource, /const modelsDevModel = modelsDevCatalog\.findModel/);
-  assert.match(mainSource, /const piModel = resolvePiModelConfig\(modelRef\)/);
-  assert.match(mainSource, /const draftModel = resolvePiModelConfigForModelDraft\(modelRef\)/);
-  assert.match(mainSource, /modelsDevInfo\?\.contextWindow/);
-  assert.match(mainSource, /listPiCatalogModels/);
-  assert.match(mainSource, /models\.dev is the primary catalog/);
+  assert.match(mainSource, /modelConfigFromModelsDev/);
+  assert.match(mainSource, /genericModelConfig/);
+  assert.match(mainSource, /providersRefreshModelCatalog/);
+  assert.doesNotMatch(mainSource, /modelsDevCatalog\.persist/);
   assert.match(mainSource, /usesSavedEndpoint/);
   assert.match(mainSource, /endpointStillCurrent/);
   assert.match(mainSource, /for \(const binding of provider\.models \?\? \[\]\)/);
-  assert.match(mainSource, /per-model vision\/reasoning state/);
+  assert.match(mainSource, /models\.dev or generic[\s\S]*per-model state/);
 });
 
 test("renderer hydrates cached models before refreshing the provider", () => {

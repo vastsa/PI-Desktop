@@ -182,7 +182,7 @@ Each scenario is documented in this format:
 
 - **Preconditions**: App running; no provider configured.
 - **Steps**: 1) Open Settings → Model configuration and open the add-provider dialog. 2) Enter a name, base URL, API key, and API format. 3) Wait for model discovery, open the custom multi-select picker, search for a returned model, and select two models. 4) Confirm two compact configuration rows appear with independent context/output summaries and source badges; expand the second row and confirm its fields are independent. 5) Add a free-form model ID; confirm it is inserted into the option list, selected automatically, and uses 128,000 / 8,192 / no-thinking defaults. 6) Deselect and reselect the custom option; confirm the option remains available. 7) Expand one row, change its numeric fields, blur them, and confirm thousands separators. 8) Select several thinking chips, change the default, remove the default chip, and confirm fallback to the canonical first remaining level. Remove every chip and confirm the default select is disabled with the thinking-disabled hint; select one chip and confirm it re-enables. 9) Save.
-- **Expected**: The picker supports search, live count, external/Escape/resize dismissal, and immediate row add/remove. A query with no matches shows a dedicated empty state. Scrolling the option list keeps the picker open; scrolling an outside settings container dismisses it before the trigger can become detached. Selected model bindings render as compact rows with ID, source, capabilities, and token-limit summaries; the first row is expanded and additional rows are collapsed until opened, while expanding one row leaves the others unchanged. Each returned model shows the models.dev-derived text/vision state when its catalog record matches, otherwise the pi-ai fallback state; an unknown custom ID stays text-only. The provider appears as an AI service row with secret badge; key stored securely (not in plaintext config); `models` contains both selected bindings and the first binding remains the current default for existing conversation flows.
+- **Expected**: The picker supports search, live count, external/Escape/resize dismissal, and immediate row add/remove. A query with no matches shows a dedicated empty state. Scrolling the option list keeps the picker open; scrolling an outside settings container dismisses it before the trigger can become detached. Selected model bindings render as compact rows with ID, source, capabilities, and token-limit summaries; the first row is expanded and additional rows are collapsed until opened, while expanding one row leaves the others unchanged. Each returned model shows the models.dev-derived text/vision state when its catalog record matches, otherwise the generic text-only state; an unknown custom ID stays text-only. The provider appears as an AI service row with secret badge; key stored securely (not in plaintext config); `models` contains both selected bindings and the first binding remains the current default for existing conversation flows.
 - **Specs linked**: `03-runtime/11-provider-model-system.md`, `03-runtime/12-provider-config-schema.md`, `03-runtime/14-secrets-storage.md`, `04-ux/06-settings-ia.md`
 - **Acceptance**: B (multi-model provider configuration, save key)
 - **Milestone**: M2
@@ -2352,13 +2352,14 @@ Each scenario is documented in this format:
   endpoint. 5) Open the Composer model menu and wait for refresh fallback.
   6) Reconnect only the provider endpoint with one custom model, then reopen
   the picker.
-- **Expected**: The first picker open renders the prior Rust-owned cache without
-  starting from an empty list. When models.dev is unavailable, the pinned pi-ai
-  catalog supplies known native models; a custom provider then falls back to its
-  own endpoint and finally the configured bindings. Offline refresh preserves
-  every cached/configured entry. A successful models.dev/provider result updates
-  the renderer and persists normalized cache fields to Rust-owned SQLite;
-  user-defined bindings remain unchanged after another restart.
+- **Expected**: The first picker open renders the configured/provider cache
+  without starting from an empty list. On restart, the bundled models.dev
+  release snapshot is used without network access. A failed Settings refresh
+  preserves that in-memory snapshot; a custom provider then falls back to its
+  endpoint only for IDs absent from models.dev and finally the configured
+  bindings. Offline refresh preserves every cached/configured entry. A
+  successful provider discovery may persist normalized IDs to Rust-owned SQLite,
+  but it cannot replace models.dev metadata or user-defined bindings.
 - **Specs linked**: `03-runtime/04-data-storage.md`,
   `03-runtime/12-provider-config-schema.md`,
   `03-runtime/13-model-catalog-and-selection.md`, `04-ux/08-component-spec.md`
@@ -2367,26 +2368,28 @@ Each scenario is documented in this format:
 - **Status**: Unit-covered (`providers::tests`, `model-cache.test.mjs`,
   `models-dev-catalog.test.mjs`); full restart/offline UI scenario Draft
 
-#### E2E-080: Models.dev model metadata with pi-ai fallback
+#### E2E-080: Models.dev metadata and generic unknown models
 
-- **Preconditions**: A provider/model exists in the models.dev fixture and the
-  same provider has a corresponding pi-ai model; a second fixture removes the
-  remote catalog while leaving pi-ai available.
+- **Preconditions**: A provider/model exists in the models.dev fixture with
+  limits, modalities, and reasoning options. A second fixture contains a
+  provider-discovered model ID absent from models.dev.
 - **Steps**: 1) Open the provider model picker and select the fixture model.
-  2) Confirm its models.dev name, context/output limits, capability badges, and
-  thinking levels. 3) Start a short turn and inspect the sidecar model
-  snapshot/request metadata. 4) Repeat with models.dev unavailable and inspect
-  the same model through the pi-ai fallback. 5) Repeat with an ID absent from
-  both catalogs.
-- **Expected**: The matching models.dev record is used first, including its
-  `limit`, `modalities`, `reasoning_options`, `tool_call`, and
-  `structured_output` fields; no provider secret is sent to the catalog. When
-  the remote record cannot be loaded, pi-ai supplies the known model and its
-  adapter compatibility data. An ID absent from both catalogs remains runnable
-  with the generic text-only, non-reasoning fallback.
+  2) Confirm its models.dev name, context/output limits, capability badges,
+  modalities, cost fields, and thinking levels. 3) Start a short turn and
+  inspect the sidecar model snapshot/request metadata. 4) Use Settings → Model
+  configuration to force a models.dev refresh and confirm the new record is
+  visible without changing the bundled file or writing a user cache. 5) Repeat
+  with an ID absent from models.dev.
+- **Expected**: The matching models.dev record is authoritative, including its
+  `limit`, `modalities`, `reasoning_options`, `tool_call`,
+  `structured_output`, dates, and cost fields; no provider secret is sent to
+  the catalog. A provider-discovered or explicitly configured ID absent from
+  models.dev remains runnable with the generic text-only, non-reasoning shape;
+  pi-ai supplies only the selected wire adapter, OAuth flow, and account model
+  availability.
 - **Specs linked**: `02-architecture/02-tech-stack.md`,
   `03-runtime/11-provider-model-system.md`,
-  `03-runtime/13-model-catalog-and-selection.md`, ADR 0027, ADR 0133, D136
+  `03-runtime/13-model-catalog-and-selection.md`, ADR 0134
 - **Acceptance**: B (model config), C (conversation & stream), Security
 - **Milestone**: M5
 - **Status**: Unit-covered (`model-capabilities.test.ts`,
@@ -4397,11 +4400,10 @@ Each scenario is documented in this format:
 #### E2E-102c: Vision-capable models receive pasted images as image input
 
 - **Preconditions**: A deterministic vision-capable models.dev model whose
-  resolved record contains `modalities.input: ["text", "image"]`; if the
-  remote catalog is unavailable, the equivalent pi-ai fallback record contains
-  `input: ["text", "image"]`; an Agent session; one pasted PNG
-  and one text prompt. Capture the renderer request, main-to-sidecar payload,
-  provider request, durable transcript, and `<data_dir>/attachments/`.
+  resolved record contains `modalities.input: ["text", "image"]`; an Agent
+  session; one pasted PNG and one text prompt. Capture the renderer request,
+  main-to-sidecar payload, provider request, durable transcript, and
+  `<data_dir>/attachments/`.
 - **Steps**:
   1. Select the vision-capable model and paste the PNG into Composer.
   2. Confirm the PNG appears as a removable image chip above the textarea and
@@ -4411,9 +4413,9 @@ Each scenario is documented in this format:
   5. Reload the session and ask a follow-up about the same image.
 - **Expected**:
   - The model picker/session capability state comes from the exact models.dev
-    record, or the pi-ai fallback when models.dev is unavailable, and Composer
-    shows the image as a removable chip without a separate
-    explanatory status row.
+    record, and Composer shows the image as a removable chip without a
+    separate explanatory status row. If a remote refresh fails, the bundled
+    release snapshot remains authoritative for the process.
   - Main writes one content-addressed image blob and sends the sidecar a
     transient image attachment; the provider adapter emits an image content
     block/data URL, not only `@<scratch-path>` text.
@@ -4966,28 +4968,28 @@ Each scenario is documented in this format:
   `bundled_plugins_refresh_from_disk_but_keep_user_state`; the packaged journey
   is Draft (do not run E2E locally unless explicitly requested)
 
-#### E2E-154: Model additions use models.dev metadata with pi-ai fallback
+#### E2E-154: Model additions use models.dev metadata and generic unknown IDs
 
 - **Preconditions**: A custom provider dialog matches a models.dev provider/API
   URL and exposes at least two model records with limits, modalities, and
-  reasoning options. A deterministic fixture can make models.dev unavailable
-  while leaving the pinned pi-ai catalog available.
+  reasoning options. A deterministic fixture also exposes a provider-discovered
+  ID absent from models.dev.
 - **Steps**:
   1. Select two models from the models.dev list and inspect their names,
      context/output limits, capability badges, source labels, and thinking
      chips. 2. Save the provider and start a session; confirm the request keeps
-     the provider's configured base URL/API style. 3. Repeat model loading with
-     models.dev unavailable and confirm a matching pi-ai model is offered with
-     its local metadata. 4. Add a model absent from both catalogs and inspect
-     its generic fallback card.
+     the provider's configured base URL/API style. 3. Force a Settings catalog
+     refresh and confirm it refetches models.dev without changing the bundled
+     release file or writing a user cache. 4. Add an ID absent from models.dev
+     and inspect its generic fallback card.
 - **Expected**: models.dev fields prefill known model bindings and remain the
-  primary metadata source. Provider keys are never included in the fixed
-  models.dev request. When the remote catalog fails or has no match, pi-ai
-  supplies known native model metadata; custom/account-specific endpoint
-  discovery remains available after that fallback. An unknown ID receives the
-  fixed generic defaults without invented reasoning or vision capability.
+  sole metadata source. Provider keys are never included in the fixed
+  models.dev request. Provider discovery remains available only to supply
+  custom/account-specific IDs; those IDs receive the generic text-only,
+  non-reasoning defaults. pi-ai supplies the selected transport and OAuth/account
+  availability, not model metadata.
 - **Specs linked**: `03-runtime/11-provider-model-system.md` §6.2,
-  `03-runtime/13-model-catalog-and-selection.md` §11.1–§12, ADR 0133
+  `03-runtime/13-model-catalog-and-selection.md` §11.1–§12, ADR 0134
 - **Acceptance**: B (model config), C (conversation & stream), Security
 - **Milestone**: M6+
 - **Status**: Unit/source-contract covered; full provider-dialog journey Draft

@@ -95,12 +95,11 @@ import {
   type WindowControlAction,
 } from "@pi-desktop/shared";
 import {
+  capabilitiesFromModelConfig,
   clampThinkingLevel,
-  listPiCatalogModels,
-  resolvePiModelConfig,
-  resolvePiModelConfigForModelDraft,
-  resolveVisionCapability,
-  resolveThinkingCapabilities,
+  genericModelConfig,
+  modelConfigWithBinding,
+  visionFromModelConfig,
   expandSlashInvocation,
   enhancePromptDraft,
   loadComposerTemplates,
@@ -147,8 +146,8 @@ import { BrowserPane, resolveLocalFile } from "./browser-view";
 import { discoverProviderModels } from "./model-discovery";
 import {
   ModelsDevCatalog,
+  modelConfigFromModelsDev,
   modelInfoFromModelsDev,
-  piModelConfigFromModelsDev,
 } from "./models-dev-catalog";
 import { OAUTH_AUTH_KIND, VendorOAuth } from "./oauth";
 import { listDir, readWorkspaceFile, resolveWithinRoot } from "./fs-panel";
@@ -871,7 +870,11 @@ const updater = new AppUpdaterController({
  * this process; the renderer sees progress events and the sidecar sees only
  * resolved request auth.
  */
-const modelsDevCatalog = new ModelsDevCatalog();
+const modelsDevCatalog = new ModelsDevCatalog({
+  catalogPath: app.isPackaged
+    ? join(process.resourcesPath, "models.dev", "api.json")
+    : join(app.getAppPath(), "resources", "models.dev", "api.json"),
+});
 
 const vendorOAuth = new VendorOAuth({
   call: <T,>(method: string, params?: unknown): Promise<T> => {
@@ -881,28 +884,16 @@ const vendorOAuth = new VendorOAuth({
   emit: (event) => sendToRenderer(IPC.event.providersOauth, event),
   openExternal: (url) => shell.openExternal(url),
   log: (level, message, data) => logger.app("provider", level, message, { data }),
-  modelBindingFor: async ({ vendorKey, option }) => {
+  modelConfigFor: async ({ vendorKey, option }) => {
     await modelsDevCatalog.ensureLoaded();
     const model = modelsDevCatalog.findModel({
       vendorKey,
       baseUrl: option.baseUrl,
       modelId: option.modelId,
     });
-    if (!model) return undefined;
-    return {
-      ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
-      ...(model.maxTokens ? { maxTokens: model.maxTokens } : {}),
-      ...(model.reasoningPublished
-        ? {
-            thinkingLevels: model.reasoning ? [...model.thinkingLevels] : [],
-            defaultThinkingLevel: model.reasoning
-              ? model.thinkingLevels.includes("medium")
-                ? "medium"
-                : model.thinkingLevels[0] ?? null
-              : null,
-          }
-        : {}),
-    };
+    return model
+      ? modelConfigFromModelsDev(model, option.baseUrl)
+      : genericModelConfig(option.modelId, option.baseUrl);
   },
 });
 
@@ -948,31 +939,19 @@ function enrichProvider<T extends RuntimeProvider>(
     selectedModelId || provider.modelId || provider.models?.[0]?.id || provider.defaultModelId || "";
   const storedModel = provider.models?.find((model) => model.id === modelId);
   const modelsDevModel = modelsDevModelFor(provider, modelId);
-  const capabilities = storedModel
-    ? {
-        supportsReasoning: storedModel.thinkingLevels.length > 0,
-        supportedThinkingLevels: [...storedModel.thinkingLevels],
-      }
-    : modelsDevModel
-      ? {
-          supportsReasoning: modelsDevModel.reasoning,
-          supportedThinkingLevels: [...modelsDevModel.thinkingLevels],
-        }
-      : resolveThinkingCapabilities({
-          vendorKey: provider.vendorKey || "custom",
-          modelId,
-          apiStyle: provider.apiStyle,
-        });
+  const catalogModelConfig = modelsDevModel
+    ? modelConfigFromModelsDev(modelsDevModel, provider.baseUrl)
+    : undefined;
+  const modelConfig = catalogModelConfig
+    ? modelConfigWithBinding(catalogModelConfig, storedModel)
+    : undefined;
+  const capabilities = modelConfig
+    ? capabilitiesFromModelConfig(modelConfig)
+    : capabilitiesFromModelConfig(genericModelConfig(modelId, provider.baseUrl ?? ""));
   return {
     ...provider,
     ...capabilities,
-    supportsVision: modelsDevModel
-      ? modelsDevModel.input.includes("image")
-      : resolveVisionCapability({
-          vendorKey: provider.vendorKey || "custom",
-          modelId,
-          apiStyle: provider.apiStyle,
-        }),
+    supportsVision: modelConfig ? visionFromModelConfig(modelConfig) : false,
   };
 }
 
@@ -1042,31 +1021,19 @@ function enrichSession<T extends RuntimeSession>(
   }
   const storedModel = provider.models?.find((model) => model.id === session.modelId);
   const modelsDevModel = modelsDevModelFor(provider, session.modelId);
-  const capabilities = storedModel
-    ? {
-        supportsReasoning: storedModel.thinkingLevels.length > 0,
-        supportedThinkingLevels: [...storedModel.thinkingLevels],
-      }
-    : modelsDevModel
-      ? {
-          supportsReasoning: modelsDevModel.reasoning,
-          supportedThinkingLevels: [...modelsDevModel.thinkingLevels],
-        }
-      : resolveThinkingCapabilities({
-          vendorKey: provider.vendorKey || "custom",
-          modelId: session.modelId,
-          apiStyle: provider.apiStyle,
-        });
+  const catalogModelConfig = modelsDevModel
+    ? modelConfigFromModelsDev(modelsDevModel, provider.baseUrl)
+    : undefined;
+  const modelConfig = catalogModelConfig
+    ? modelConfigWithBinding(catalogModelConfig, storedModel)
+    : undefined;
+  const capabilities = modelConfig
+    ? capabilitiesFromModelConfig(modelConfig)
+    : capabilitiesFromModelConfig(genericModelConfig(session.modelId, provider.baseUrl ?? ""));
   return {
     ...session,
     ...capabilities,
-    supportsVision: modelsDevModel
-      ? modelsDevModel.input.includes("image")
-      : resolveVisionCapability({
-          vendorKey: provider.vendorKey || "custom",
-          modelId: session.modelId,
-          apiStyle: provider.apiStyle,
-        }),
+    supportsVision: modelConfig ? visionFromModelConfig(modelConfig) : false,
   };
 }
 
@@ -1317,9 +1284,9 @@ async function resolveAgentRuntimeLaunch(
       errorCode: ErrorCodes.MODEL_NOT_CONFIGURED,
     });
   }
-  // The authenticated collection owns a vendor account's available models and
-  // wire endpoint. Metadata uses models.dev first, then the signed-in pi-ai
-  // record, because one account can span wire APIs and gateway catalogs.
+  // The authenticated collection owns a vendor account's available model IDs
+  // and wire endpoint. models.dev owns metadata; one account can span multiple
+  // wire APIs and gateway catalogs.
   const vendorBinding = isVendorAccount
     ? await vendorOAuth
         .bindingFor(provider.id, modelId)
@@ -1331,8 +1298,16 @@ async function resolveAgentRuntimeLaunch(
       { errorCode: ErrorCodes.MODEL_NOT_CONFIGURED },
     );
   }
-  const thinkingCapabilities = vendorBinding ?? enrichProvider(provider, modelId);
   const storedModel = provider.models?.find((model) => model.id === modelId);
+  const apiStyle = vendorBinding?.apiStyle ?? provider.apiStyle;
+  const baseUrl = vendorBinding?.baseUrl ?? provider.baseUrl;
+  const modelsDevModel = modelsDevModelFor(provider, modelId);
+  const catalogModelConfig = vendorBinding?.modelConfig ??
+    (modelsDevModel
+      ? modelConfigFromModelsDev(modelsDevModel, baseUrl)
+      : genericModelConfig(modelId, baseUrl ?? ""));
+  const modelConfig = modelConfigWithBinding(catalogModelConfig, storedModel);
+  const thinkingCapabilities = capabilitiesFromModelConfig(modelConfig);
   const thinkingLevel = clampThinkingLevel(
     thinkingCapabilities,
     normalizeThinkingLevel(
@@ -1341,42 +1316,6 @@ async function resolveAgentRuntimeLaunch(
         storedModel?.defaultThinkingLevel,
     ),
   );
-  const apiStyle = vendorBinding?.apiStyle ?? provider.apiStyle;
-  const baseUrl = vendorBinding?.baseUrl ?? provider.baseUrl;
-  const piModelConfig =
-    vendorBinding?.modelConfig ??
-    resolvePiModelConfig({
-      vendorKey: provider.vendorKey || "custom",
-      modelId,
-      apiStyle: provider.apiStyle,
-    });
-  const modelsDevModel = modelsDevModelFor(provider, modelId);
-  const resolvedModelConfig = modelsDevModel
-    ? piModelConfigFromModelsDev(modelsDevModel, piModelConfig, baseUrl)
-    : piModelConfig;
-  const modelConfig = resolvedModelConfig
-    ? {
-        ...resolvedModelConfig,
-        ...(storedModel
-          ? {
-              contextWindow: storedModel.contextWindow,
-              maxTokens: storedModel.maxTokens,
-              reasoning: storedModel.thinkingLevels.length > 0,
-            }
-          : {}),
-      }
-    : storedModel
-      ? {
-          source: "pi" as const,
-          name: modelId,
-          baseUrl: baseUrl ?? "",
-          reasoning: storedModel.thinkingLevels.length > 0,
-          input: ["text"] as Array<"text" | "image">,
-          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-          contextWindow: storedModel.contextWindow,
-          maxTokens: storedModel.maxTokens,
-        }
-      : undefined;
   const projectPath =
     typeof session.projectPath === "string" && session.projectPath.trim()
       ? session.projectPath.trim()
@@ -1416,8 +1355,8 @@ async function resolveAgentRuntimeLaunch(
   ];
   // Subagents (ADR 0062): definitions are re-read per launch so editing
   // `~/.agents/subagents` or the registry takes effect on the next prompt, and every
-  // pinned model is resolved here because credentials and the pi catalog live on
-  // this side. The user's own definitions (D202) are scope-filtered like the
+  // pinned model is resolved here because credentials and the models.dev catalog
+  // live on this side. The user's own definitions (D202) are scope-filtered like the
   // skills above; a delegate the model can see is one it will try to call.
   const subagentCatalog = await loadSubagentDefinitions(projectPath, {
     userDocuments: await activeUserSubagentDocuments(projectPath),
@@ -1429,6 +1368,20 @@ async function resolveAgentRuntimeLaunch(
       (await host!.call<{ value?: string }>("providers.getSecret", { id })).value,
     resolveVendorBinding: (pinned, pinnedModelId) =>
       vendorOAuth.bindingFor(pinned.id, pinnedModelId),
+    resolveModel: async (pinned, pinnedModelId) => {
+      const model = modelsDevCatalog.findModel({
+        vendorKey: pinned.vendorKey,
+        baseUrl: pinned.baseUrl,
+        modelId: pinnedModelId,
+      });
+      const modelConfig = model
+        ? modelConfigFromModelsDev(model, pinned.baseUrl)
+        : genericModelConfig(pinnedModelId, pinned.baseUrl ?? "");
+      return {
+        modelConfig,
+        capabilities: capabilitiesFromModelConfig(modelConfig),
+      };
+    },
   });
   const subagentDiagnostics = [
     ...subagentCatalog.diagnostics,
@@ -1520,6 +1473,10 @@ async function listRuntimeProviders(includeDisabled = true) {
     "providers.list",
     { includeDisabled },
   );
+  // Model capability enrichment is synchronous after this one process-scoped
+  // load. A version change triggers one remote refresh; otherwise the local
+  // api.json snapshot is reused.
+  await modelsDevCatalog.ensureLoaded();
   return result.providers;
 }
 
@@ -5738,6 +5695,10 @@ function registerIpc() {
   handle(IPC.invoke.providersList, async () => {
     return enrichProviderList({ providers: await listRuntimeProviders() });
   });
+  handle(IPC.invoke.providersRefreshModelCatalog, async () => {
+    const refreshed = await modelsDevCatalog.refresh();
+    return { refreshed, status: modelsDevCatalog.getStatus() };
+  });
   handle(IPC.invoke.providersCreate, async (input: unknown) => {
     if (!host) throw new Error("host unavailable");
     const result = await host.call<{ provider: RuntimeProvider }>(
@@ -5869,7 +5830,11 @@ function registerIpc() {
     ) => {
       if (!host) throw new Error("host unavailable");
       const req = typeof input === "string" ? { providerId: input } : input ?? {};
-      const providers = await listRuntimeProviders();
+      const providers = req.source === "cache"
+        ? (await host.call<{ providers: RuntimeProvider[] }>("providers.list", {
+            includeDisabled: true,
+          })).providers
+        : await listRuntimeProviders();
       const provider = req.providerId
         ? providers.find((p) => p.id === req.providerId)
         : undefined;
@@ -5877,8 +5842,12 @@ function registerIpc() {
       const apiStyle = req.apiStyle ?? provider?.apiStyle ?? "chat_completions";
       // Cache hydration must stay fast; the renderer already requests a live
       // refresh after it has painted the cached list. Live requests load the
-      // shared models.dev snapshot once and then use pi-ai as fallback.
-      if (req.source !== "cache") await modelsDevCatalog.ensureLoaded();
+      // shared models.dev snapshot once; cache reads use only local files.
+      if (req.source === "cache") {
+        await modelsDevCatalog.loadLocal();
+      } else {
+        await modelsDevCatalog.ensureLoaded();
+      }
       const decorate = (
         model: {
           modelId: string;
@@ -5893,86 +5862,43 @@ function registerIpc() {
         // its own rather than the row's.
         modelApiStyle: string = apiStyle,
       ) => {
-        const modelRef = {
-          vendorKey: provider?.vendorKey || "custom",
-          modelId: model.modelId,
-          apiStyle: modelApiStyle,
-        };
         const modelsDevModel = modelsDevCatalog.findModel({
-          vendorKey: modelRef.vendorKey,
+          vendorKey: provider?.vendorKey || "custom",
           baseUrl,
           modelId: model.modelId,
         });
-        const modelsDevInfo = modelsDevModel
+        const catalogModelConfig = modelsDevModel
+          ? modelConfigFromModelsDev(modelsDevModel, baseUrl)
+          : genericModelConfig(model.modelId, baseUrl);
+        const storedModel = provider?.models?.find((binding) => binding.id === model.modelId);
+        const modelConfig = modelConfigWithBinding(catalogModelConfig, storedModel);
+        const capabilities = capabilitiesFromModelConfig(modelConfig);
+        const info = modelsDevModel
           ? modelInfoFromModelsDev(modelsDevModel, provider?.id ?? "")
-          : undefined;
-        const piModel = resolvePiModelConfig(modelRef);
-        // When models.dev has the model, its catalog fields are authoritative.
-        // pi-ai remains the fallback for missing records and can still supply
-        // adapter-specific metadata used by the sidecar.
-        const draftModel = resolvePiModelConfigForModelDraft(modelRef);
-        const thinking = modelsDevModel?.reasoningPublished
-          ? {
-              supportsReasoning: modelsDevModel.reasoning,
-              supportedThinkingLevels: modelsDevModel.thinkingLevels,
-            }
-          : draftModel
-            ? {
-                supportsReasoning: draftModel.reasoning,
-                supportedThinkingLevels: draftModel.reasoning
-                  ? draftModel.thinkingLevelMap
-                    ? THINKING_LEVELS.filter(
-                        (level) => draftModel.thinkingLevelMap?.[level] != null,
-                      )
-                    : (["low", "medium", "high"] as ThinkingLevel[])
-                  : (["off"] as ThinkingLevel[]),
-              }
-            : piModel
-              ? resolveThinkingCapabilities(modelRef)
-              : {
-                  supportsReasoning: false,
-                  supportedThinkingLevels: ["off"] as ThinkingLevel[],
-                };
-        const catalogThinkingLevels: ThinkingLevel[] = thinking.supportsReasoning
-          ? [...thinking.supportedThinkingLevels]
-          : [];
-        const capabilities = new Set(
-          modelsDevInfo?.capabilities ?? model.capabilities ?? ["text"],
-        );
-        capabilities.add("text");
-        if (thinking.supportsReasoning) capabilities.add("reasoning");
-        else capabilities.delete("reasoning");
-        const modelInput = modelsDevModel?.inputPublished
-          ? modelsDevModel.input
-          : piModel?.input ?? modelsDevModel?.input ?? model.input;
-        if (modelInput?.includes("image")) capabilities.add("vision");
-        else capabilities.delete("vision");
-        const catalogSource = modelsDevModel
-          ? ("models.dev" as const)
-          : draftModel || piModel
-            ? ("pi-ai" as const)
-            : undefined;
+          : {
+              modelId: model.modelId,
+              displayName: model.displayName,
+              providerId: provider?.id ?? "",
+              modalities: modelConfig.modalities,
+              reasoning: false,
+              capabilities: ["text"] as Array<"text" | "tools" | "vision" | "reasoning" | "json">,
+              supportedThinkingLevels: [] as ThinkingLevel[],
+              source: model.source ?? ("discovered" as const),
+            };
+        const infoCapabilities = new Set(info.capabilities);
+        if (capabilities.supportsReasoning) infoCapabilities.add("reasoning");
+        else infoCapabilities.delete("reasoning");
         return {
+          ...info,
           modelId: model.modelId,
-          displayName: modelsDevModel?.displayNamePublished
-            ? modelsDevInfo?.displayName ?? model.displayName
-            : piModel?.name ?? draftModel?.name ?? model.displayName,
+          displayName: info.displayName || modelConfig.name,
           providerId: provider?.id ?? "",
-          contextWindow:
-            modelsDevInfo?.contextWindow ?? draftModel?.contextWindow ?? model.contextWindow,
-          capabilities: [...capabilities],
-          supportedThinkingLevels: catalogThinkingLevels,
-          maxTokens: modelsDevInfo?.maxTokens ?? draftModel?.maxTokens ?? model.maxTokens,
-          reasoning: thinking.supportsReasoning,
-          ...(draftModel?.thinkingLevelMap && !modelsDevModel
-            ? { thinkingLevelMap: { ...draftModel.thinkingLevelMap } }
-            : {}),
-          ...(catalogSource ? { catalogSource } : {}),
-          source: modelsDevModel
-            ? ("discovered" as const)
-            : draftModel || piModel
-              ? ("bundled" as const)
-              : model.source ?? ("discovered" as const),
+          contextWindow: modelConfig.contextWindow,
+          maxTokens: modelConfig.maxTokens,
+          capabilities: [...infoCapabilities],
+          reasoning: capabilities.supportsReasoning,
+          supportedThinkingLevels: [...capabilities.supportedThinkingLevels],
+          ...(modelsDevModel ? { catalogSource: "models.dev" as const } : {}),
         };
       };
 
@@ -6011,7 +5937,7 @@ function registerIpc() {
       // A signed-in vendor account has no key to probe /models with, and pi-ai
       // already knows which models the account may use (Copilot narrows the
       // list to the subscription).
-      if (provider?.authKind === OAUTH_AUTH_KIND) {
+      if (req.source !== "cache" && provider?.authKind === OAUTH_AUTH_KIND) {
         try {
           const options = await vendorOAuth.listModels(provider.id);
           if (options.length > 0) {
@@ -6020,8 +5946,7 @@ function registerIpc() {
                 decorate(
                   {
                     modelId: option.modelId,
-                    displayName: option.displayName,
-                    input: option.input,
+                    displayName: option.modelId,
                   },
                   option.apiStyle,
                 ),
@@ -6050,8 +5975,8 @@ function registerIpc() {
           }>;
         }>("providers.listModels", { providerId: provider.id });
         // Keep every configured binding visible when the endpoint cache is
-        // partial or empty. Decorating these ids through pi-ai preserves the
-        // per-model vision/reasoning state for offline editing too.
+        // partial or empty. Decorating these ids through models.dev or generic
+        // defaults preserves the per-model state for offline editing too.
         const cachedById = new Map(cached.models.map((model) => [model.modelId, model]));
         for (const binding of provider.models ?? []) {
           if (!cachedById.has(binding.id)) {
@@ -6079,30 +6004,15 @@ function registerIpc() {
         return { models: fallback, source: "fallback" as const };
       }
 
-      // models.dev is the primary catalog. It is provider-scoped by vendor key
-      // first and by API URL second, so a compatible custom endpoint can use
-      // the same metadata without exposing a credential to the catalog.
-      const modelsDevModels = modelsDevCatalog.modelsForProvider({
+      const catalogModels = modelsDevCatalog.modelsForProvider({
         vendorKey: provider?.vendorKey,
         baseUrl,
         providerId: provider?.id ?? "",
       });
-      if (modelsDevModels.length > 0) {
-        const models = modelsDevModels.map((model) => decorate(model));
-        await cacheForCurrentProvider(models);
-        return { models, source: "remote" as const };
-      }
-
-      // pi-ai is the local fallback catalog for known native providers. Custom
-      // providers without a matching fallback continue to their own endpoint.
-      const piModels = listPiCatalogModels({
-        vendorKey: provider?.vendorKey,
-        apiStyle,
-      });
-      if (piModels.length > 0) {
+      if (catalogModels.length > 0) {
         return {
-          models: piModels.map((model) => decorate(model)),
-          source: "fallback" as const,
+          models: catalogModels.map((model) => decorate(model)),
+          source: "remote" as const,
         };
       }
 
@@ -8028,6 +7938,10 @@ app.whenReady().then(async () => {
   // not race the renderer allocation just because backend startup was slow.
   prewarmPluginLauncher();
   registerIpc();
+  // Load the local model snapshot immediately. A changed APP_VERSION marks the
+  // snapshot stale, so every release performs one bounded update without
+  // blocking the first window; Settings can force the same refresh on demand.
+  void modelsDevCatalog.ensureLoaded();
   applyPluginLauncherShortcut();
   updater.startAutoCheck();
   let bootError: unknown = null;

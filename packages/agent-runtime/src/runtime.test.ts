@@ -104,7 +104,7 @@ const provider: RuntimeProviderConfig = {
   supportsReasoning: true,
   supportedThinkingLevels: ["off", "low", "medium", "high"],
   modelConfig: {
-    source: "pi",
+    source: "generic",
     name: "Local Catalog Model",
     baseUrl: "https://catalog.invalid/v1",
     reasoning: true,
@@ -1821,13 +1821,13 @@ describe("DesktopAgentRuntime thinking configuration", () => {
     await runtime.dispose();
   });
 
-  it("applies the complete pi model record while preserving endpoint identity", async () => {
+  it("applies the complete models.dev model record while preserving endpoint identity", async () => {
     const mimo: RuntimeProviderConfig = {
       ...provider,
       modelId: "mimo-v2.5-pro-think",
       supportedThinkingLevels: ["off", "high"],
       modelConfig: {
-        source: "pi",
+        source: "models.dev",
         name: "MiMo-V2.5-Pro",
         baseUrl: "https://api.xiaomimimo.com/v1",
         reasoning: true,
@@ -1873,7 +1873,7 @@ describe("DesktopAgentRuntime thinking configuration", () => {
       modelId: "claude-opus-4-6",
       supportedThinkingLevels: ["off", "minimal", "low", "medium", "high", "max"],
       modelConfig: {
-        source: "pi",
+        source: "models.dev",
         name: "Claude Opus 4.6",
         baseUrl: "https://api.anthropic.com",
         reasoning: true,
@@ -1895,7 +1895,7 @@ describe("DesktopAgentRuntime thinking configuration", () => {
     await runtime.dispose();
   });
 
-  it("recreates the runtime when the pi model record changes", async () => {
+  it("recreates the runtime when the models.dev model record changes", async () => {
     const mimo: RuntimeProviderConfig = {
       ...provider,
       modelConfig: {

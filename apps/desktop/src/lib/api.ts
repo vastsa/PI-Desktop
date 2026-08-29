@@ -345,6 +345,20 @@ export const api = {
       source: "cache" | "remote" | "fallback";
       error?: string;
     }>(IPC.invoke.providersListModels, input),
+  /** Force-refresh models.dev for the running process; release snapshots are bundled. */
+  refreshModelCatalog: () =>
+    invoke<{
+      refreshed: boolean;
+      status: {
+        loaded: boolean;
+        source: "bundled" | "remote" | "empty";
+        catalogPath: string;
+        fetchedAt?: string;
+        providerCount: number;
+        modelCount: number;
+        lastError?: string;
+      };
+    }>(IPC.invoke.providersRefreshModelCatalog),
   /** Vendor catalog plus every locally configured account for each vendor. */
   listOauthVendors: () =>
     invoke<{ vendors: OAuthVendor[] }>(IPC.invoke.providersOauthVendors),

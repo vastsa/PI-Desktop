@@ -168,7 +168,7 @@ function harness(options = {}) {
       stores.push(store);
       return fakeModels(store, options);
     },
-    modelBindingFor: options.modelBindingFor,
+    modelConfigFor: options.modelConfigFor,
     newId: () => `id-${++counter}`,
   });
   // The store the module handed pi-ai, so a test can drive it the way a token
@@ -238,10 +238,10 @@ test("a completed login stores the credential and configures the row", async () 
   assert.deepEqual(row.models, [
     {
       id: "claude-opus-5",
-      contextWindow: 200_000,
-      maxTokens: 16_384,
-      thinkingLevels: ["low", "medium", "high"],
-      defaultThinkingLevel: "medium",
+      contextWindow: 128_000,
+      maxTokens: 8_192,
+      thinkingLevels: ["off"],
+      defaultThinkingLevel: "off",
     },
     {
       id: "claude-haiku-5",
@@ -271,20 +271,25 @@ test("a completed login stores the credential and configures the row", async () 
   ]);
 });
 
-test("OAuth model bindings prefer primary catalog fields and fall back per field", async () => {
-  const { host, events, oauth } = harness({
-    modelBindingFor: async ({ option }) =>
-      option.modelId === "claude-opus-5"
-        ? {
-            contextWindow: 250_000,
-            maxTokens: 20_000,
-            thinkingLevels: ["medium"],
-            defaultThinkingLevel: "medium",
-          }
-        : option.modelId === "claude-haiku-5"
-          ? { contextWindow: 150_000 }
-          : undefined,
+test("OAuth model configuration comes from the supplied models.dev snapshot", async () => {
+  const modelConfigFor = async ({ option }) => ({
+    source: "models.dev",
+    name: option.modelId === "claude-opus-5" ? "Claude 4.6 Opus" : "Claude Haiku 5",
+    baseUrl: option.baseUrl,
+    reasoning: option.modelId === "claude-opus-5",
+    supportedThinkingLevels: option.modelId === "claude-opus-5" ? ["low", "medium", "high"] : [],
+    modalities: { input: ["text", "image"], output: ["text"] },
+    limit: {
+      context: option.modelId === "claude-opus-5" ? 250_000 : 150_000,
+      input: option.modelId === "claude-opus-5" ? 250_000 : 150_000,
+      output: option.modelId === "claude-opus-5" ? 20_000 : 8_192,
+    },
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    input: ["text", "image"],
+    contextWindow: option.modelId === "claude-opus-5" ? 250_000 : 150_000,
+    maxTokens: option.modelId === "claude-opus-5" ? 20_000 : 8_192,
   });
+  const { host, events, oauth } = harness({ modelConfigFor });
   const { loginId } = await oauth.start("anthropic");
   const prompt = await waitFor(events, "prompt");
   assert.equal(oauth.respond({ loginId, promptId: prompt.request.promptId, value: "abc" }), true);
@@ -294,7 +299,7 @@ test("OAuth model bindings prefer primary catalog fields and fall back per field
       id: "claude-opus-5",
       contextWindow: 250_000,
       maxTokens: 20_000,
-      thinkingLevels: ["medium"],
+      thinkingLevels: ["low", "medium", "high"],
       defaultThinkingLevel: "medium",
     },
     {

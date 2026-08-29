@@ -8,6 +8,8 @@
  *
  * BEFORE running this for a stable release, update every version-bearing
  * document (D164 + D260, docs/spec/06-delivery/06-release-runbook.md section 4.1):
+ *   - apps/desktop/resources/models.dev/api.json is refreshed from models.dev
+ *     and committed with the release tag
  *   - packages/shared/src/changelog.ts (EN + zh-CN entries for <version>,
  *     matching highlight counts) and its newest-first list in changelog.test.ts
  *   - the release line stated in README.md and README.zh-CN.md
@@ -22,7 +24,7 @@
  *
  *   git push origin <branch> v<version>
  */
-import { readdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync, existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -40,6 +42,58 @@ if (!version || !/^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$/.test(version)) {
 }
 
 const changed = [];
+const modelsDevCatalogRelPath = "apps/desktop/resources/models.dev/api.json";
+const modelsDevCatalogPath = path.join(root, modelsDevCatalogRelPath);
+
+async function refreshBundledModelsDevCatalog() {
+  const response = await fetch("https://models.dev/api.json", {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) {
+    throw new Error(`models.dev request failed (${response.status})`);
+  }
+  const text = await response.text();
+  const body = JSON.parse(text);
+  if (
+    !body ||
+    Array.isArray(body) ||
+    typeof body !== "object" ||
+    !Object.values(body).some(
+      (provider) => provider && typeof provider === "object" && provider.models,
+    )
+  ) {
+    throw new Error("models.dev response contains no provider model records");
+  }
+  const content = `${text.trimEnd()}\n`;
+  const current = existsSync(modelsDevCatalogPath)
+    ? readFileSync(modelsDevCatalogPath, "utf8")
+    : "";
+  if (current === content) return;
+  mkdirSync(path.dirname(modelsDevCatalogPath), { recursive: true });
+  const tempPath = `${modelsDevCatalogPath}.tmp-${process.pid}`;
+  try {
+    writeFileSync(tempPath, content, "utf8");
+    renameSync(tempPath, modelsDevCatalogPath);
+  } catch (error) {
+    try {
+      unlinkSync(tempPath);
+    } catch {
+      // The original error is more useful than best-effort cleanup failure.
+    }
+    throw error;
+  }
+  changed.push(modelsDevCatalogRelPath);
+}
+
+// Refresh the checked-in model catalog before changing version surfaces. The
+// release commit must contain the exact public snapshot used by the artifacts;
+// unlike user settings, this path is never written at runtime.
+try {
+  await refreshBundledModelsDevCatalog();
+} catch (error) {
+  console.error(`Could not refresh ${modelsDevCatalogRelPath}: ${error.message}`);
+  process.exit(1);
+}
 
 function bumpPackageJson(relPath) {
   const file = path.join(root, relPath);

@@ -18,7 +18,7 @@
 
 import { randomUUID } from "node:crypto";
 
-import { getSupportedThinkingLevels, InMemoryModelsStore } from "@earendil-works/pi-ai";
+import { InMemoryModelsStore } from "@earendil-works/pi-ai";
 import type {
   Api,
   AuthEvent,
@@ -34,7 +34,9 @@ import type {
 import { registerBunOAuthFlows } from "@earendil-works/pi-ai/bun-oauth";
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import {
-  piModelConfigFromModel,
+  capabilitiesFromModelConfig,
+  genericModelConfig,
+  type ModelConfig,
   type VendorModelBinding,
 } from "@pi-desktop/agent-runtime";
 import {
@@ -102,13 +104,11 @@ export type OAuthProviderRow = {
   defaultModelId?: string;
 };
 
-/** A model offered by a signed-in vendor, with the row fields it implies. */
+/** A model ID offered by a signed-in account and its required wire identity. */
 export type OAuthModelOption = {
   modelId: string;
-  displayName: string;
   apiStyle: string;
   baseUrl: string;
-  input: Array<"text" | "image">;
 };
 
 export type VendorOAuthDeps = {
@@ -125,11 +125,11 @@ export type VendorOAuthDeps = {
   ) => void;
   /** Test seam: build the pi-ai collection without touching the real flows. */
   createModels?: (credentials: CredentialStore) => MutableModels;
-  /** Optional primary-catalog overrides for a newly signed-in model binding. */
-  modelBindingFor?: (input: {
+  /** Model configuration is supplied by the main-process models.dev catalog. */
+  modelConfigFor?: (input: {
     vendorKey: string;
     option: OAuthModelOption;
-  }) => Promise<Partial<ModelBinding> | undefined>;
+  }) => Promise<ModelConfig | undefined>;
   newId?: () => string;
 };
 
@@ -353,10 +353,8 @@ export class VendorOAuth {
   private optionFor(model: Model<Api>): OAuthModelOption {
     return {
       modelId: model.id,
-      displayName: model.name || model.id,
       apiStyle: apiStyleForWireApi(model.api),
       baseUrl: model.baseUrl,
-      input: [...model.input],
     };
   }
 
@@ -382,15 +380,17 @@ export class VendorOAuth {
       model = account.models.getModel(account.vendorId, modelId);
     }
     if (!model) return undefined;
-    const levels: ThinkingLevel[] = model.reasoning
-      ? [...(getSupportedThinkingLevels(model) as ThinkingLevel[])]
-      : ["off"];
+    const option = this.optionFor(model);
+    const modelConfig = await this.deps.modelConfigFor?.({
+      vendorKey: account.vendorId,
+      option,
+    }).catch(() => undefined) ?? genericModelConfig(modelId, model.baseUrl);
+    const capabilities = capabilitiesFromModelConfig(modelConfig);
     return {
-      apiStyle: apiStyleForWireApi(model.api),
-      baseUrl: model.baseUrl,
-      modelConfig: piModelConfigFromModel(model),
-      supportsReasoning: model.reasoning === true,
-      supportedThinkingLevels: levels,
+      apiStyle: option.apiStyle,
+      baseUrl: option.baseUrl,
+      modelConfig,
+      ...capabilities,
     };
   }
 
@@ -453,20 +453,13 @@ export class VendorOAuth {
       const binding = await this.bindingFor(session.providerId, option.modelId).catch(
         () => undefined,
       );
-      const catalogBinding = await this.deps.modelBindingFor?.({
-        vendorKey: session.vendorId,
-        option,
-      }).catch(() => undefined);
-      const levels: ThinkingLevel[] = [
-        ...(catalogBinding?.thinkingLevels ?? binding?.supportedThinkingLevels ?? ["off"]),
-      ];
+      const levels = binding?.supportedThinkingLevels ?? ["off"];
       modelBindings.push({
         id: option.modelId,
-        contextWindow: catalogBinding?.contextWindow ?? binding?.modelConfig.contextWindow ?? 128_000,
-        maxTokens: catalogBinding?.maxTokens ?? binding?.modelConfig.maxTokens ?? 8_192,
-        thinkingLevels: levels,
-        defaultThinkingLevel: catalogBinding?.defaultThinkingLevel
-          ?? (levels.includes("medium") ? "medium" : levels[0] ?? null),
+        contextWindow: binding?.modelConfig.contextWindow ?? 128_000,
+        maxTokens: binding?.modelConfig.maxTokens ?? 8_192,
+        thinkingLevels: [...levels],
+        defaultThinkingLevel: levels.includes("medium") ? "medium" : levels[0] ?? null,
       });
     }
     await this.deps.call("providers.update", {

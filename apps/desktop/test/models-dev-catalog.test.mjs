@@ -1,216 +1,309 @@
 import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 import {
   MODELS_DEV_API_URL,
   ModelsDevCatalog,
+  modelConfigFromModelsDev,
   modelInfoFromModelsDev,
-  piModelConfigFromModelsDev,
   parseModelsDevCatalog,
   thinkingLevelsFromModelsDev,
 } from "../electron/main/models-dev-catalog.ts";
 
 const catalogFixture = {
-  togetherai: {
-    name: "Together AI",
-    api: "https://api.together.test/v1",
+  anthropic: {
+    name: "Anthropic",
     models: {
-      "reasoner-v2": {
-        id: "reasoner-v2",
-        name: "Reasoner V2",
+      "claude-opus-4.6": {
+        id: "claude-opus-4.6",
+        name: "Claude 4.6 Opus",
+        description: "High-end Claude for difficult coding, planning, and slower expert reasoning",
+        family: "claude-opus",
+        attachment: true,
         reasoning: true,
-        reasoning_options: [{ type: "effort", values: ["none", "high", "max"] }],
+        reasoning_options: [{
+          type: "effort",
+          values: ["low", "medium", "high", "xhigh", "max"],
+        }],
         tool_call: true,
         structured_output: true,
-        modalities: { input: ["text", "image"], output: ["text"] },
-        limit: { context: 200_000, output: 16_000 },
-        cost: { input: 1.2, output: 3.4, cache_read: 0.2 },
-      },
-      "toggle-v2": {
-        id: "toggle-v2",
-        reasoning: true,
-        reasoning_options: [{ type: "toggle" }],
-        modalities: { input: ["text"], output: ["text"] },
+        temperature: true,
+        knowledge: "2025-05-31",
+        release_date: "2026-02-05",
+        last_updated: "2026-03-13",
+        modalities: {
+          input: ["text", "image", "pdf"],
+          output: ["text"],
+        },
+        open_weights: false,
+        limit: {
+          context: 1_000_000,
+          input: 1_000_000,
+          output: 128_000,
+        },
+        cost: {
+          input: 5,
+          output: 25,
+          cache_read: 0.5,
+          cache_write: 6.25,
+          reasoning: 25,
+          input_audio: 7,
+          output_audio: 28,
+          tiers: [{
+            input: 10,
+            output: 37.5,
+            cache_read: 1,
+            tier: { type: "context", size: 200_000 },
+          }],
+          context_over_200k: {
+            input: 10,
+            output: 37.5,
+            cache_read: 1,
+            cache_write: 12.5,
+          },
+        },
+        interleaved: { field: "reasoning_content" },
+        status: "stable",
+        experimental: false,
+        provider: "anthropic",
       },
       "audio-only": {
         id: "audio-only",
         modalities: { input: ["audio"], output: ["text"] },
       },
-      "audio-output": {
-        id: "audio-output",
-        modalities: { input: ["text"], output: ["audio"] },
-      },
-      "metadata-sparse": {
-        id: "metadata-sparse",
-      },
-    },
-  },
-  openai: {
-    name: "OpenAI",
-    models: {
-      "gpt-test": {
-        id: "gpt-test",
-        modalities: { input: ["text"], output: ["text"] },
-      },
+      "metadata-sparse": { id: "metadata-sparse" },
     },
   },
 };
 
-test("models.dev records normalize limits, capabilities, and sparse thinking levels", () => {
+function responseFor(body, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+test("models.dev records retain all published model parameters and modalities", () => {
   const [provider] = parseModelsDevCatalog(catalogFixture);
-  assert.equal(provider.providerKey, "togetherai");
-  assert.equal(provider.models.length, 3, "audio-only entries are not chat models");
+  assert.equal(provider.providerKey, "anthropic");
+  assert.equal(provider.models.length, 3, "raw parsing keeps non-text records too");
 
-  const reasoner = provider.models.find((model) => model.modelId === "reasoner-v2");
-  assert.deepEqual(reasoner, {
-    providerKey: "togetherai",
-    providerName: "Together AI",
-    providerApi: "https://api.together.test/v1",
-    modelId: "reasoner-v2",
-    displayName: "Reasoner V2",
-    displayNamePublished: true,
-    reasoning: true,
-    reasoningPublished: true,
-    thinkingLevels: ["off", "high", "max"],
-    input: ["text", "image"],
-    inputPublished: true,
-    capabilities: ["text", "tools", "vision", "reasoning", "json"],
-    contextWindow: 200_000,
-    maxTokens: 16_000,
-    cost: { input: 1.2, output: 3.4, cacheRead: 0.2 },
+  const model = provider.models.find((item) => item.modelId === "claude-opus-4.6");
+  assert.equal(model.providerApi, undefined);
+  assert.equal(model.displayName, "Claude 4.6 Opus");
+  assert.equal(model.description, "High-end Claude for difficult coding, planning, and slower expert reasoning");
+  assert.equal(model.family, "claude-opus");
+  assert.equal(model.attachment, true);
+  assert.equal(model.reasoning, true);
+  assert.deepEqual(model.reasoningOptions, [{
+    type: "effort",
+    values: ["low", "medium", "high", "xhigh", "max"],
+  }]);
+  assert.deepEqual(model.modalities, {
+    input: ["text", "image", "pdf"],
+    output: ["text"],
   });
-
-  const info = modelInfoFromModelsDev(reasoner, "provider-row");
-  assert.deepEqual(info, {
-    modelId: "reasoner-v2",
-    displayName: "Reasoner V2",
-    providerId: "provider-row",
-    contextWindow: 200_000,
-    maxTokens: 16_000,
-    reasoning: true,
-    supportedThinkingLevels: ["off", "high", "max"],
-    capabilities: ["text", "tools", "vision", "reasoning", "json"],
-    source: "discovered",
-    catalogSource: "models.dev",
+  assert.deepEqual(model.limit, {
+    context: 1_000_000,
+    input: 1_000_000,
+    output: 128_000,
   });
+  assert.deepEqual(model.cost, {
+    input: 5,
+    output: 25,
+    cacheRead: 0.5,
+    cacheWrite: 6.25,
+    reasoning: 25,
+    inputAudio: 7,
+    outputAudio: 28,
+    tiers: [{
+      input: 10,
+      output: 37.5,
+      cacheRead: 1,
+      tier: { type: "context", size: 200_000 },
+    }],
+    contextOver200k: {
+      input: 10,
+      output: 37.5,
+      cacheRead: 1,
+      cacheWrite: 12.5,
+    },
+  });
+  assert.deepEqual(model.interleaved, { field: "reasoning_content" });
+  assert.equal(model.status, "stable");
+  assert.equal(model.experimental, false);
+  assert.equal(model.provider, "anthropic");
 
-  const config = piModelConfigFromModelsDev(
-    reasoner,
-    {
-      source: "pi",
-      name: "Old name",
-      baseUrl: "https://fallback.example",
-      reasoning: false,
-      input: ["text"],
-      cost: { input: 9, output: 10, cacheRead: 1, cacheWrite: 2 },
-      contextWindow: 64_000,
-      maxTokens: 4_000,
-      compat: { thinkingFormat: "deepseek" },
-    },
-    "https://api.together.test/v1",
-  );
-  assert.deepEqual(
-    {
-      source: config.source,
-      name: config.name,
-      baseUrl: config.baseUrl,
-      reasoning: config.reasoning,
-      input: config.input,
-      contextWindow: config.contextWindow,
-      maxTokens: config.maxTokens,
-      cost: config.cost,
-      compat: config.compat,
-    },
-    {
-      source: "models.dev",
-      name: "Reasoner V2",
-      baseUrl: "https://api.together.test/v1",
-      reasoning: true,
-      input: ["text", "image"],
-      contextWindow: 200_000,
-      maxTokens: 16_000,
-      cost: { input: 1.2, output: 3.4, cacheRead: 0.2, cacheWrite: 2 },
-      compat: { thinkingFormat: "deepseek" },
-    },
-  );
+  const info = modelInfoFromModelsDev(model, "provider-row");
+  assert.equal(info.providerId, "provider-row");
+  assert.equal(info.contextWindow, 1_000_000);
+  assert.equal(info.maxTokens, 128_000);
+  assert.ok(info.capabilities.includes("text"));
+  assert.ok(info.capabilities.includes("tools"));
+  assert.ok(info.capabilities.includes("vision"));
+  assert.ok(info.capabilities.includes("pdf"));
+  assert.ok(info.capabilities.includes("reasoning"));
+  assert.ok(info.capabilities.includes("json"));
+  assert.equal(info.catalogSource, "models.dev");
 
-  const sparse = provider.models.find((model) => model.modelId === "metadata-sparse");
-  const sparseConfig = piModelConfigFromModelsDev(
-    sparse,
-    {
-      source: "pi",
-      name: "Pi fallback name",
-      baseUrl: "https://fallback.example",
-      reasoning: true,
-      input: ["text", "image"],
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextWindow: 77_000,
-      maxTokens: 7_000,
-    },
-    undefined,
+  const config = modelConfigFromModelsDev(model, "https://api.anthropic.com");
+  assert.equal(config.source, "models.dev");
+  assert.equal(config.name, "Claude 4.6 Opus");
+  assert.equal(config.contextWindow, 1_000_000);
+  assert.equal(config.maxTokens, 128_000);
+  assert.deepEqual(config.input, ["text", "image"]);
+  assert.deepEqual(config.modalities, info.modalities);
+  assert.deepEqual(config.supportedThinkingLevels, ["low", "medium", "high", "xhigh", "max"]);
+  assert.deepEqual(config.thinkingLevelMap, {
+    low: "low",
+    medium: "medium",
+    high: "high",
+    xhigh: "xhigh",
+    max: "max",
+  });
+  assert.equal(config.cost.reasoning, 25);
+  assert.equal(config.cost.inputAudio, 7);
+  assert.equal(config.cost.outputAudio, 28);
+  assert.equal(config.cost.tiers?.[0]?.tier?.size, 200_000);
+  assert.equal(config.interleaved?.field, "reasoning_content");
+
+  const sparse = provider.models.find((item) => item.modelId === "metadata-sparse");
+  assert.equal(sparse.reasoningPublished, false);
+  assert.equal(sparse.modalitiesPublished, false);
+});
+
+test("models.dev parsing retains every model in a provider", () => {
+  const models = Object.fromEntries(
+    Array.from({ length: 627 }, (_, index) => [
+      `model-${String(index).padStart(4, "0")}`,
+      { id: `model-${String(index).padStart(4, "0")}` },
+    ]),
   );
-  assert.equal(sparseConfig.name, "Pi fallback name");
-  assert.equal(sparseConfig.reasoning, true);
-  assert.deepEqual(sparseConfig.input, ["text", "image"]);
-  assert.equal(sparseConfig.contextWindow, 77_000);
-  assert.equal(sparseConfig.maxTokens, 7_000);
+  const [provider] = parseModelsDevCatalog({
+    provider: { name: "Provider", models },
+  });
+  assert.equal(provider.models.length, 627);
+  assert.equal(provider.models.at(-1)?.modelId, "model-0626");
 });
 
 test("models.dev reasoning options map to canonical levels", () => {
   assert.deepEqual(
-    thinkingLevelsFromModelsDev(true, [
-      { type: "effort", values: ["max", "low", "none", "invalid"] },
-    ]),
+    thinkingLevelsFromModelsDev(true, [{
+      type: "effort",
+      values: ["max", "low", "none", "invalid"],
+    }]),
     ["off", "low", "max"],
   );
   assert.deepEqual(thinkingLevelsFromModelsDev(true, [{ type: "toggle" }]), ["off", "medium"]);
-  assert.deepEqual(thinkingLevelsFromModelsDev(true, [{ type: "budget_tokens" }]), ["off", "medium"]);
+  assert.deepEqual(thinkingLevelsFromModelsDev(true, [{ type: "budget_tokens", min: 1024 }]), ["off", "medium"]);
   assert.deepEqual(thinkingLevelsFromModelsDev(true, []), ["low", "medium", "high"]);
   assert.deepEqual(thinkingLevelsFromModelsDev(false, [{ type: "effort", values: ["high"] }]), []);
 });
 
-test("catalog matching prefers vendor aliases and accepts API version suffixes", async () => {
-  const calls = [];
-  const catalog = new ModelsDevCatalog(async (url) => {
-    calls.push(url);
-    return new Response(JSON.stringify(catalogFixture), {
-      headers: { "content-type": "application/json" },
+test("the application loads the bundled release snapshot without network access", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-models-dev-release-"));
+  const catalogPath = join(dir, "api.json");
+  await writeFile(catalogPath, JSON.stringify(catalogFixture), "utf8");
+  let calls = 0;
+  try {
+    const catalog = new ModelsDevCatalog({
+      catalogPath,
+      fetchImpl: async () => {
+        calls += 1;
+        throw new Error("startup must not fetch");
+      },
     });
-  });
-  assert.equal(await catalog.ensureLoaded(), true);
-  assert.deepEqual(calls, [MODELS_DEV_API_URL]);
-
-  const byAlias = catalog.modelsForProvider({
-    vendorKey: "together",
-    baseUrl: "https://unrelated.example/v1",
-    providerId: "row-1",
-  });
-  assert.equal(byAlias.length, 3);
-  assert.equal(byAlias[0].providerId, "row-1");
-
-  const byUrl = catalog.findModel({
-    vendorKey: "custom",
-    baseUrl: "https://api.together.test/v1/",
-    modelId: "reasoner-v2",
-  });
-  assert.equal(byUrl?.displayName, "Reasoner V2");
-
-  const byKnownNativeUrl = catalog.modelsForProvider({
-    vendorKey: "custom",
-    baseUrl: "https://api.openai.com/v1",
-    providerId: "row-2",
-  });
-  assert.deepEqual(byKnownNativeUrl.map((model) => model.modelId), ["gpt-test"]);
-
-  // Concurrent/duplicate reads reuse the successful snapshot.
-  assert.equal(await catalog.ensureLoaded(), true);
-  assert.equal(calls.length, 1);
+    assert.equal(await catalog.ensureLoaded(), true);
+    assert.equal(calls, 0);
+    assert.equal(catalog.getStatus().source, "bundled");
+    assert.equal(catalog.getStatus().catalogPath, catalogPath);
+    assert.equal(
+      catalog.findModel({ vendorKey: "anthropic", modelId: "claude-opus-4.6" })?.family,
+      "claude-opus",
+    );
+    assert.equal(
+      catalog.modelsForProvider({ vendorKey: "anthropic", providerId: "row" }).length,
+      2,
+      "only text-capable models enter the agent picker",
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
-test("catalog fetch failures leave the pi-ai fallback path available", async () => {
-  const catalog = new ModelsDevCatalog(async () => {
-    throw new Error("offline");
-  });
-  assert.equal(await catalog.ensureLoaded(), false);
-  assert.equal(catalog.modelsForProvider({ vendorKey: "together", providerId: "row" }).length, 0);
+test("Settings refresh always refetches models.dev and only updates memory", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-models-dev-refresh-"));
+  const catalogPath = join(dir, "api.json");
+  await writeFile(catalogPath, JSON.stringify(catalogFixture), "utf8");
+  const refreshedFixture = {
+    ...catalogFixture,
+    anthropic: {
+      ...catalogFixture.anthropic,
+      models: {
+        ...catalogFixture.anthropic.models,
+        "new-model": {
+          id: "new-model",
+          name: "New Model",
+          modalities: { input: ["text"], output: ["text"] },
+          limit: { context: 64_000, output: 4_000 },
+        },
+      },
+    },
+  };
+  const calls = [];
+  try {
+    const catalog = new ModelsDevCatalog({
+      catalogPath,
+      fetchImpl: async (url, options) => {
+        calls.push({ url, options });
+        return responseFor(refreshedFixture);
+      },
+    });
+    assert.equal(await catalog.ensureLoaded(), true);
+    assert.equal(calls.length, 0);
+    assert.equal(await catalog.refresh(), true);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, MODELS_DEV_API_URL);
+    assert.deepEqual(calls[0].options.headers, { Accept: "application/json" });
+    assert.equal(
+      catalog.findModel({ vendorKey: "anthropic", modelId: "new-model" })?.displayName,
+      "New Model",
+    );
+    assert.deepEqual(
+      JSON.parse(await readFile(catalogPath, "utf8")),
+      catalogFixture,
+      "settings refresh must not write the bundled release resource",
+    );
+    assert.equal(await catalog.refresh(), true, "a second settings refresh is also remote");
+    assert.equal(calls.length, 2);
+    assert.equal(catalog.getStatus().source, "remote");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a failed settings refresh preserves the bundled snapshot in memory", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-models-dev-failure-"));
+  const catalogPath = join(dir, "api.json");
+  await writeFile(catalogPath, JSON.stringify(catalogFixture), "utf8");
+  try {
+    const catalog = new ModelsDevCatalog({
+      catalogPath,
+      fetchImpl: async () => {
+        throw new Error("offline");
+      },
+    });
+    assert.equal(await catalog.ensureLoaded(), true);
+    assert.equal(await catalog.refresh(), false);
+    assert.equal(
+      catalog.findModel({ vendorKey: "anthropic", modelId: "claude-opus-4.6" })?.family,
+      "claude-opus",
+    );
+    assert.match(catalog.getStatus().lastError, /offline/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });

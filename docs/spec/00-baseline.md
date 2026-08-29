@@ -2,7 +2,7 @@
 
 - Baseline Version: `0.4.16`
 - Date: `2026-08-14`
-- Status: `Frozen for implementation details (Plan checkpoint artifact + approval/execution startup fence + protocol v9 + schema v10 + selectable shell catalog + icon-free composer prompt row + turn-boundary context checkpoint compaction + session-scoped work panel + models.dev model catalog with pi-ai fallback + provider/runtime safety + M5 hardening + settings IA + project archive + sidebar organization + app update delivery + three-platform release + Extensions page density and theme-readable actions + custom global UI font)`
+- Status: `Frozen for implementation details (Plan checkpoint artifact + approval/execution startup fence + protocol v9 + schema v10 + selectable shell catalog + icon-free composer prompt row + turn-boundary context checkpoint compaction + session-scoped work panel + models.dev model catalog with a bundled release snapshot + provider/runtime safety + M5 hardening + settings IA + project archive + sidebar organization + app update delivery + three-platform release + Extensions page density and theme-readable actions + custom global UI font)`
 - Language policy: **English-first**
 - Backend policy: **Rust host core + pi agent sidecar**
 
@@ -24,10 +24,12 @@
 > and Linux x64.
 > `0.4.8` moves the durable Projects index out of the home sidebar and into
 > Settings as the fifth **Project archive** destination through D133 / ADR 0026.
-> `0.4.9` makes the pinned pi-ai catalog authoritative for known-model
-> metadata and removes desktop-owned model parameter overrides through D136 /
-> ADR 0027. The current catalog amendment uses models.dev as the remote primary
-> source and retains pi-ai as the local fallback through ADR 0133 / D266.
+> `0.4.9` made the pinned pi-ai catalog authoritative for known-model metadata
+> and removed desktop-owned model parameter overrides through D136 / ADR 0027.
+> ADR 0133 / D266 first introduced models.dev as a remote primary; ADR 0134
+> supersedes that fallback design and makes models.dev the sole metadata source
+> with a checked-in release snapshot. pi-ai remains the transport, OAuth, and
+> account-availability layer.
 > `0.4.10` replaces destructive work-panel clearing on conversation switches
 > with runtime session-scoped contexts through D142 / ADR 0028.
 > `0.4.11` adopts turn-boundary model-context checkpoint compaction through
@@ -112,7 +114,7 @@
 32. Observability MVP: **local logs only**
 33. Error model: **shared AppError code registry**
 34. Provider coverage: **universal via pi-ai native + OpenAI-compatible + custom**
-35. Model policy: **no closed allowlist; models.dev remote catalog first, pi-ai fallback, and free-form model IDs**
+35. Model policy: **no closed allowlist; models.dev release catalog, generic unknown IDs, and free-form model IDs**
 36. Provider storage: **Rust SQLite configs + OS secret store references**
 37. Secrets backend: **safeStorage primary + encrypted file fallback**
 38. Workspace ignore: **denylist + defaults + `.pi-desktopignore`**

@@ -112,6 +112,10 @@
       {
         "from": "resources/plugins",
         "to": "plugins"
+      },
+      {
+        "from": "resources/models.dev",
+        "to": "models.dev"
       }
     ],
     "mac": {

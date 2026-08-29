@@ -86,7 +86,7 @@ const THINKING_ORDER: readonly ThinkingLevel[] = [
 ];
 
 export function isCatalogModel(model: ModelInfo | null | undefined): boolean {
-  return model?.source === "bundled" || model?.catalogSource === "models.dev" || model?.catalogSource === "pi-ai";
+  return model?.source === "bundled" || model?.catalogSource === "models.dev";
 }
 
 export function modelSource(model: ModelInfo): "catalog" | "custom" {

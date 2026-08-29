@@ -1,31 +1,54 @@
-import type { ThinkingLevel } from "@pi-desktop/shared";
+import type {
+  ModelCost,
+  ModelInterleaved,
+  ModelLimit,
+  ModelModalities,
+  ModelReasoningOption,
+  ThinkingLevel,
+} from "@pi-desktop/shared";
 
 export type ThinkingCapabilitySet = {
   supportsReasoning: boolean;
   supportedThinkingLevels: readonly ThinkingLevel[];
 };
 
-/** Serializable model metadata resolved in Electron main from models.dev or pi-ai. */
-export type PiModelConfig = {
-  source: "pi" | "models.dev";
+/**
+ * Serializable model metadata resolved in Electron main from models.dev.
+ * pi-ai consumes this record through its selected transport adapter but does
+ * not provide model names, limits, modalities, thinking levels, or prices.
+ */
+export type ModelConfig = {
+  source: "models.dev" | "generic";
   name: string;
   baseUrl: string;
+  description?: string;
+  family?: string;
+  attachment?: boolean;
   reasoning: boolean;
+  reasoningOptions?: ModelReasoningOption[];
+  supportedThinkingLevels?: readonly ThinkingLevel[];
   thinkingLevelMap?: Partial<Record<ThinkingLevel, string | null>>;
-  input: Array<"text" | "image">;
-  cost: {
+  toolCall?: boolean;
+  structuredOutput?: boolean;
+  temperature?: boolean;
+  knowledge?: string;
+  releaseDate?: string;
+  lastUpdated?: string;
+  modalities?: ModelModalities;
+  openWeights?: boolean;
+  limit?: ModelLimit;
+  cost?: ModelCost & {
     input: number;
     output: number;
     cacheRead: number;
     cacheWrite: number;
-    tiers?: Array<{
-      inputTokensAbove: number;
-      input: number;
-      output: number;
-      cacheRead: number;
-      cacheWrite: number;
-    }>;
   };
+  interleaved?: ModelInterleaved;
+  status?: string;
+  experimental?: boolean;
+  provider?: string;
+  /** Adapter-facing subset; models.dev modalities remain complete above. */
+  input: Array<"text" | "image">;
   contextWindow: number;
   maxTokens: number;
   headers?: Record<string, string>;
@@ -42,10 +65,7 @@ const THINKING_LEVELS: ThinkingLevel[] = [
   "max",
 ];
 
-/**
- * Apply pi-ai's nearest-supported-level rule without loading the full model
- * catalog into the sidecar runtime path.
- */
+/** Apply the canonical nearest-supported-level rule to catalog metadata. */
 export function clampThinkingLevel(
   capabilities: ThinkingCapabilitySet,
   requested: ThinkingLevel,

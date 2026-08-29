@@ -115,6 +115,7 @@ export const IPC = {
     providersDelete: "pi-desktop/providers/delete",
     providersTest: "pi-desktop/providers/testConnection",
     providersListModels: "pi-desktop/providers/listModels",
+    providersRefreshModelCatalog: "pi-desktop/providers/refreshModelCatalog",
     providersOauthVendors: "pi-desktop/providers/oauth/vendors",
     providersOauthStart: "pi-desktop/providers/oauth/start",
     providersOauthRespond: "pi-desktop/providers/oauth/respond",

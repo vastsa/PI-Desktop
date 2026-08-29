@@ -160,13 +160,13 @@ test("new sessions default to the strongest level of a reasoning model", () => {
 
 test("main resolves reasoning from each session's exact selected model", () => {
   assert.match(mainSource, /function enrichSession/);
-  assert.match(mainSource, /modelId:\s*session\.modelId/);
+  assert.match(mainSource, /modelsDevModelFor\(provider, session\.modelId\)/);
   assert.match(mainSource, /sessions:\s*result\.sessions\.map/);
-  assert.match(mainSource, /enrichProvider\(provider, modelId\)/);
-  // Discovered models are stamped with reasoning capability per model id.
-  assert.match(mainSource, /thinking\.supportsReasoning/);
-  assert.match(mainSource, /capabilities\.add\("reasoning"\)/);
-  assert.match(mainSource, /capabilities\.delete\("reasoning"\)/);
+  assert.match(mainSource, /modelConfigFromModelsDev\(modelsDevModel, provider\.baseUrl\)/);
+  // models.dev records stamp reasoning capability per exact model id.
+  assert.match(mainSource, /capabilitiesFromModelConfig\(modelConfig\)/);
+  assert.match(mainSource, /supportsReasoning/);
+  assert.doesNotMatch(mainSource, /resolvePiModelConfig/);
 });
 
 test("transcript keeps assistant thinking in a separate disclosure", () => {
@@ -219,8 +219,9 @@ test("provider settings persist model-local limits and thinking configuration", 
   assert.match(settingsSource, /models/);
 });
 
-test("main forwards the complete pi model record to the sidecar", () => {
-  assert.match(mainSource, /resolvePiModelConfig/);
+test("main forwards the complete models.dev model record to the sidecar", () => {
+  assert.match(mainSource, /modelConfigFromModelsDev/);
+  assert.doesNotMatch(mainSource, /resolvePiModelConfig/);
   assert.match(mainSource, /\.\.\.\(modelConfig \? \{ modelConfig \} : \{\}\)/);
   assert.doesNotMatch(mainSource, /modelCompat/);
 });

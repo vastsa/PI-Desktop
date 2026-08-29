@@ -57,7 +57,25 @@ for (const [relPath, pattern, label] of [
   if (found !== version) fail(relPath, `${label} is ${found ?? "missing"}, expected ${version}`);
 }
 
-// 2. Dual-locale in-app changelog. Import the real catalog rather than parsing
+// 2. Bundled models.dev snapshot.
+const modelsDevCatalogPath = "apps/desktop/resources/models.dev/api.json";
+try {
+  const catalog = JSON.parse(read(modelsDevCatalogPath));
+  if (
+    !catalog ||
+    Array.isArray(catalog) ||
+    typeof catalog !== "object" ||
+    !Object.values(catalog).some(
+      (provider) => provider && typeof provider === "object" && provider.models,
+    )
+  ) {
+    fail(modelsDevCatalogPath, "contains no provider model records");
+  }
+} catch (error) {
+  fail(modelsDevCatalogPath, `could not parse bundled catalog: ${error.message}`);
+}
+
+// 3. Dual-locale in-app changelog. Import the real catalog rather than parsing
 // it: Node strips the TypeScript types, so wrapped or concatenated highlight
 // strings are counted as the app sees them.
 let catalogs = null;
