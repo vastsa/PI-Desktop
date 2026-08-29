@@ -12,7 +12,7 @@ const settingsSearchSource = await readFile(
   "utf8",
 );
 const providersSource = await readFile(
-  new URL("../src/components/settings/ProvidersSection.tsx", import.meta.url),
+  new URL("../src/components/settings/ModelConfigPage.tsx", import.meta.url),
   "utf8",
 );
 const pluginsPageSource = await readFile(
@@ -149,26 +149,32 @@ test("model configuration keeps model defaults; AI owns app behavior defaults", 
 });
 
 test("default model selector shows only one provider name per option", () => {
+  // The picker is a listbox of structured rows now, not concatenated <option>
+  // labels. The rule it still has to honour: a row names its provider once and
+  // never restates that name through a display name or an account label.
   const defaultModelOption =
     providersSource.match(
-      /providers\.filter\(providerReady\)\.map\(\(p\) => \([\s\S]*?<\/option>/,
-  )?.[0] ?? "";
-  assert.match(defaultModelOption, /\{p\.name\}/);
-  assert.doesNotMatch(
-    defaultModelOption,
-    /providerDisplayName|defaultModelId|oauthAccountLabel/,
-  );
+      /readyProviders\.map\(\(provider\) => \{[\s\S]*?<\/li>/,
+    )?.[0] ?? "";
+  assert.notEqual(defaultModelOption, "");
+  assert.match(defaultModelOption, /model-default-option-name">\{provider\.name\}/);
+  assert.equal(defaultModelOption.match(/\{provider\.name\}/g)?.length, 1);
+  assert.doesNotMatch(defaultModelOption, /providerDisplayName|oauthAccountLabel/);
 });
 
 test("model configuration separates AI services from independently removable vendor accounts", () => {
   assert.match(providersSource, /authKind !== OAUTH_AUTH_KIND/);
-  assert.match(providersSource, /p\.hasSecret \|\| p\.hasOauth/);
+  assert.match(
+    providersSource,
+    /provider\.hasSecret \|\| provider\.hasOauth \|\| provider\.authKind === "none"/,
+  );
   assert.doesNotMatch(providersSource, /provider-config-hero/);
   assert.doesNotMatch(providersSource, /settings-section-subtitle/);
   assert.match(vendorAccountsSource, /api\.deleteOauthAccount\(account\.providerId\)/);
   assert.match(vendorAccountsSource, /api\.updateProvider\(/);
   assert.match(vendorAccountsSource, /oauthAccountLabel: form\.name\.trim\(\)/);
   assert.match(vendorAccountsSource, /defaultModelId: form\.modelId\.trim\(\)/);
+  assert.match(vendorAccountsSource, /models: form\.models/);
   assert.match(vendorAccountsSource, /api\.testProvider\(provider\.id\)/);
   assert.match(vendorAccountsSource, /VendorAccountDialog/);
   assert.match(
@@ -182,8 +188,9 @@ test("model configuration separates AI services from independently removable ven
   assert.doesNotMatch(vendorAccountsSource, /vendor-card/);
   assert.match(stylesSource, /\.provider-row\.vendor-account-row\.is-disconnected/);
   assert.doesNotMatch(stylesSource, /\.vendor-card-list/);
-  assert.match(vendorAccountDialogSource, /defaultModel/);
-  assert.match(vendorAccountDialogSource, /useProviderModels/);
+  // Both credential kinds now pick models through the same catalog browser.
+  assert.match(vendorAccountDialogSource, /ModelCatalogBrowser/);
+  assert.match(vendorAccountDialogSource, /modelId: models\[0\]\.id/);
   assert.match(vendorAccountsSource, /providerIsReady/);
   assert.match(vendorAccountsSource, /defaultProviderId: next\?\.id \?\? ""/);
   assert.match(vendorAccountsSource, /useAppStore\.setState\(\{ settings: nextSettings \}\)/);

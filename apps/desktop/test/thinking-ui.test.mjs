@@ -34,9 +34,9 @@ const topbarSource = await readFile(
 const settingsSource = (
   await Promise.all(
     [
-      "../src/components/settings/ProvidersSection.tsx",
-      "../src/components/settings/ProviderDialog.tsx",
-      "../src/components/settings/provider-form.ts",
+      "../src/components/settings/ModelConfigPage.tsx",
+      "../src/components/settings/ProviderSetupDialog.tsx",
+      "../src/components/settings/ModelCatalogBrowser.tsx",
     ].map((path) => readFile(new URL(path, import.meta.url), "utf8")),
   )
 ).join("\n");
@@ -210,8 +210,9 @@ test("thinking-only assistant streams open the transcript surface", () => {
 });
 
 test("provider settings persist model-local limits and thinking configuration", () => {
-  assert.match(settingsSource, /ModelMultiSelect/);
-  assert.match(settingsSource, /ModelConfigCard/);
+  assert.match(settingsSource, /ModelCatalogBrowser/);
+  assert.match(settingsSource, /bindingFromModelInfo/);
+  assert.match(settingsSource, /THINKING_LEVELS\.map/);
   assert.match(settingsSource, /supportedThinkingLevels/);
   assert.match(settingsSource, /contextWindow/);
   assert.match(settingsSource, /maxTokens/);

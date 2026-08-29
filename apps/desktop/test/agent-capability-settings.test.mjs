@@ -92,7 +92,9 @@ test("capability surfaces use the shared settings hierarchy", () => {
   assert.match(styles, /\.agent-capability-intro-note\s*\{/);
   assert.match(styles, /\.agent-capability-group-label\s*\{[\s\S]*?font-weight:\s*var\(--font-weight-strong\)/);
   assert.match(styles, /\.agent-capability-group-path\s*\{[\s\S]*?font-family:\s*var\(--font-mono\)/);
-  assert.doesNotMatch(styles, /\.agent-capability-empty\s*\{[\s\S]*?dashed/);
+  // Scoped to the rule block: [\s\S] would run past the closing brace and
+  // match a "dashed" belonging to any later stylesheet in the cascade.
+  assert.doesNotMatch(styles, /\.agent-capability-empty\s*\{[^}]*dashed/);
   assert.match(styles, /\.settings-icon-button\s*\{/);
 });
 
