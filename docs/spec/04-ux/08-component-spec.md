@@ -2471,10 +2471,12 @@ compatibility remains owned by pi-ai.
    account dialog and selected from Defaults
 3. **Providers head** — section title + primary Add provider action; its
    button treatment matches Add account
-4. **Dialogs** — vendor-account edit dialog with name/default model, plus the
-   provider dialog with connection fields (name, base URL, API style, API key),
-   a fixed-position searchable multi-select model picker, free-form custom
-   model entry, and a compact configuration list. Each selected model is a
+4. **Dialogs** — both the vendor-account edit dialog and the provider dialog
+   render the same model picker component (D270): the account dialog carries the
+   account label plus that picker, and the provider dialog adds the connection
+   fields (name, base URL, API style, API key). In both, the picker is a
+   fixed-position searchable multi-select model picker with free-form custom
+   model entry and a compact configuration list. Each selected model is a
    scannable row with its ID, source, capabilities, and token limits; the row
    expands in place to expose context window, max output, seven thinking-level
    chips, and a constrained default-thinking select. The first row starts
@@ -2487,7 +2489,7 @@ compatibility remains owned by pi-ai.
 |---|---|
 | Empty | Defaults shows No default; empty panels expose their primary add actions |
 | Populated | Accounts and AI services list their rows; add/edit flows open modal dialogs |
-| Account editor | Name and default model are editable; model suggestions come from the authenticated account catalog when available, using the shared searchable combobox with aligned IDs/display names, keyboard selection, free-form IDs, and a fixed collision-aware suggestion layer that does not change dialog layout or get clipped by dialog overflow |
+| Account editor | The account label plus the shared model picker (D270): the account's models, per-model limits, and thinking levels are all editable here, with suggestions coming from the authenticated account's entitlements when available, free-form IDs still accepted, and the picker's fixed layers not changing dialog layout or getting clipped by dialog overflow |
 | Default provider | Card gets subtle accent wash + default badge; Make default hidden |
 | Secret missing | Warning badge "No API key"; test may fail closed |
 | Busy row | Test/update/delete actions disabled for that card |
@@ -2507,7 +2509,7 @@ compatibility remains owned by pi-ai.
   the secret, sets the first configured model as the legacy/default model for
   older consumers, and refreshes the list
 - Test connection calls `providers.testConnection` and toasts success/failure
-- Edit account saves `oauthAccountLabel` and `defaultModelId` through `providers.update`; when the account is the global default, its model selection updates with it
+- Edit account saves `oauthAccountLabel`, `defaultModelId`, and the full `models: ModelBinding[]` narrowed to published thinking levels through `providers.update`, exactly like the provider dialog; the account's default model remains the head binding, and when the account is the global default, its model selection updates with it
 - Test connection on an account resolves that account's OAuth authorization and toasts success/failure
 - Context, output, thinking-level, and default-thinking edits persist per model
   through `providers.create` / `providers.update`; runtime callers continue to

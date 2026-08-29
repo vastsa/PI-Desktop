@@ -190,7 +190,8 @@ test("model configuration separates AI services from independently removable ven
   assert.doesNotMatch(stylesSource, /\.vendor-card-list/);
   // Both credential kinds now pick from the same live, service-provided list.
   assert.match(vendorAccountDialogSource, /useProviderModels/);
-  assert.match(vendorAccountDialogSource, /modelId: models\[0\]\.id/);
+  assert.match(vendorAccountDialogSource, /<ModelSelectionPanes/);
+  assert.match(vendorAccountDialogSource, /modelId: persisted\[0\]\.id/);
   assert.match(vendorAccountsSource, /providerIsReady/);
   assert.match(vendorAccountsSource, /defaultProviderId: next\?\.id \?\? ""/);
   assert.match(vendorAccountsSource, /useAppStore\.setState\(\{ settings: nextSettings \}\)/);

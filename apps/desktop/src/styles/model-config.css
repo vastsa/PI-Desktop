@@ -348,15 +348,6 @@
   background: var(--ds-bg-inset);
 }
 
-/* The vendor-account dialog still stacks, so it keeps the divider. */
-.vendor-account-chosen {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding-top: 12px;
-  border-top: 1px solid var(--ds-border-subtle);
-}
-
 .provider-chosen-head {
   display: flex;
   align-items: center;
@@ -364,12 +355,6 @@
   flex: none;
   padding: 7px 8px;
   border-bottom: 1px solid var(--ds-border-subtle);
-}
-
-.vendor-account-chosen-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 
 .provider-chosen-title {
@@ -382,16 +367,7 @@
   text-transform: uppercase;
 }
 
-.vendor-account-chosen-title {
-  margin: 0;
-  color: var(--ds-text-primary);
-  font-size: var(--text-md);
-  font-weight: var(--font-weight-semibold);
-  line-height: var(--leading-tight);
-}
-
-.provider-chosen-count,
-.vendor-account-chosen-count {
+.provider-chosen-count {
   padding: 1px 6px;
   border-radius: var(--radius-full);
   background: var(--ds-bg-chip);
@@ -415,16 +391,6 @@
   text-align: center;
 }
 
-.vendor-account-chosen-empty {
-  padding: 14px 10px;
-  border: 1px dashed var(--ds-border-subtle);
-  border-radius: var(--radius-xs);
-  color: var(--ds-text-faint);
-  font-size: var(--text-2xs);
-  line-height: var(--leading-relaxed);
-  text-align: center;
-}
-
 .provider-chosen-list {
   flex: 1;
   display: flex;
@@ -438,34 +404,9 @@
   list-style: none;
 }
 
-.vendor-account-chosen-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: 0;
-  padding: 0;
-  max-height: min(240px, 30vh);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  list-style: none;
-}
-
 .provider-chosen-row {
   border-radius: var(--radius-3xs);
   background: var(--ds-bg-inset);
-}
-
-.vendor-account-chosen-row {
-  border: 1px solid var(--ds-border-subtle);
-  border-radius: var(--radius-xs);
-  background: var(--ds-bg-secondary);
-}
-
-.vendor-account-chosen-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
 }
 
 .provider-chosen-row-head {
@@ -475,8 +416,7 @@
   padding: 4px 6px;
 }
 
-.provider-chosen-row-id,
-.vendor-account-chosen-row-id {
+.provider-chosen-row-id {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -487,8 +427,7 @@
   white-space: nowrap;
 }
 
-.provider-chosen-row-limits,
-.vendor-account-chosen-row-limits {
+.provider-chosen-row-limits {
   flex: none;
   color: var(--ds-text-faint);
   font-size: var(--text-3xs);
@@ -514,14 +453,12 @@
 }
 
 .provider-chosen-advanced-toggle:focus-visible,
-.provider-chosen-remove:focus-visible,
-.vendor-account-chosen-remove:focus-visible {
+.provider-chosen-remove:focus-visible {
   outline: 2px solid var(--ds-accent-soft);
   outline-offset: 1px;
 }
 
-.provider-chosen-remove,
-.vendor-account-chosen-remove {
+.provider-chosen-remove {
   flex: none;
   display: inline-flex;
   align-items: center;
@@ -535,8 +472,7 @@
   cursor: pointer;
 }
 
-.provider-chosen-remove:hover,
-.vendor-account-chosen-remove:hover {
+.provider-chosen-remove:hover {
   background: var(--ds-bg-hover);
   color: var(--ds-text-primary);
 }
@@ -613,19 +549,13 @@
   border-top: 1px solid var(--ds-border-subtle);
 }
 
-.vendor-account-custom-model {
-  padding-top: 4px;
-}
-
-.provider-custom-model-row,
-.vendor-account-custom-model-row {
+.provider-custom-model-row {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.provider-custom-model-row > :first-child,
-.vendor-account-custom-model-row > :first-child {
+.provider-custom-model-row > :first-child {
   flex: 1;
   min-width: 0;
 }
@@ -636,8 +566,9 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  width: min(880px, calc(100vw - 48px));
-  max-height: min(760px, calc(100vh - 64px));
+  /* Same box as the service dialog: it renders the same two model panes. */
+  width: min(1040px, calc(100vw - 48px));
+  height: min(720px, calc(100vh - 64px));
   padding: 16px;
 }
 
@@ -1006,7 +937,8 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .provider-setup-dialog {
+  .provider-setup-dialog,
+  .vendor-account-dialog {
     height: auto;
     max-height: min(760px, calc(100vh - 64px));
   }
