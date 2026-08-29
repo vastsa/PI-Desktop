@@ -593,8 +593,9 @@ test("a lifecycle row's body is a named roster, not raw JSON (D268)", () => {
     },
   });
 
-  // The joined reports lead, then one readable line per subagent.
-  assert.deepEqual(roles(blocks), ["notice", "details"]);
+  // The joined reports lead, then one readable line per subagent. The reports
+  // are an output block, so they scroll inside a bounded height (D271).
+  assert.deepEqual(roles(blocks), ["output", "details"]);
   assert.deepEqual(byRole(blocks, "details").rows, [
     { label: "explorer", value: "completed · 3s · 6 turns" },
     { label: "fixer", value: "running" },

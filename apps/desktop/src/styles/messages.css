@@ -2233,6 +2233,37 @@
   padding: 2px 0 4px 12px;
 }
 
+/*
+ * A delegate's whole run is nested inside the parent's transcript, so an
+ * `explorer` that made forty tool calls would otherwise add forty rows to the
+ * page the moment its node is expanded — the reader loses their place and the
+ * parent's own next row is pushed out of view. The rows scroll in place
+ * instead, tall enough to read several at once and capped against the viewport
+ * so a short window does not turn the run into a slit.
+ *
+ * The scroll sits on this wrapper rather than on `.subagent-run` because the
+ * collapse rail is absolutely positioned at `left: -8px`, outside the padding
+ * box: an `overflow` on the parent would clip the rail away.
+ */
+.subagent-run-rows {
+  max-height: min(420px, 48vh);
+  max-height: min(420px, 48dvh);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+
+.subagent-run-rows:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--ds-accent) 58%, transparent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* The heading sits outside the scroll area, so it already stays with the run
+   and needs no sticky positioning: the attribution can never scroll away from
+   the rows it labels. */
 .subagent-run-heading {
   display: flex;
   min-height: 22px;
@@ -2456,15 +2487,23 @@
   white-space: pre-wrap;
 }
 
-/* Scalar payload entries (plugin tools, argument previews). */
+/* Scalar payload entries (plugin tools, argument previews). Bounded like every
+   other detail block (`.tool-row-content`, `.tool-file-list`): a roster of ten
+   delegates or a payload with thirty fields must not push the reading position
+   down the page. */
 .tool-fields {
   display: grid;
+  max-height: 260px;
   margin: 0;
+  overflow: auto;
+  overscroll-behavior-y: contain;
   border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-md);
   background: color-mix(in oklab, var(--ds-text-primary) 2.5%, transparent);
   padding: 6px 10px;
   gap: 2px;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
 }
 
 .tool-field {

@@ -1150,6 +1150,7 @@ function SubagentRunRows({
   onCollapse: () => void;
 }) {
   const { t } = useTranslation();
+  const headingId = useId();
   if (run.items.length === 0) return null;
   return (
     <div className="subagent-run">
@@ -1157,7 +1158,7 @@ function SubagentRunRows({
         label={t("chat.collapseDetails")}
         onCollapse={onCollapse}
       />
-      <div className="subagent-run-heading">
+      <div className="subagent-run-heading" id={headingId}>
         <IconBot size={13} aria-hidden />
         <span>
           {agentName
@@ -1168,31 +1169,41 @@ function SubagentRunRows({
           {t("chat.processingSteps", { count: run.items.length })}
         </span>
       </div>
-      {run.items.map((item) =>
-        item.kind === "tool" ? (
-          <Fragment key={item.message.id}>
-            <ToolRow message={item.message} />
-            <ReviewChangeCard message={item.message} />
-          </Fragment>
-        ) : item.kind === "thinking" ? (
-          <ThinkingRow
-            key={`thinking-${item.message.id}`}
-            message={item.message}
-            streaming={item.message.status === "streaming"}
-          />
-        ) : (
-          <div className="subagent-answer" key={`answer-${item.message.id}`}>
-            {item.message.content ? (
-              <div className="prose-chat">
-                <Markdown source={item.message.content} />
-              </div>
-            ) : null}
-            {item.message.error ? (
-              <AssistantErrorMessage message={item.message} />
-            ) : null}
-          </div>
-        ),
-      )}
+      {/* The rows scroll inside the run rather than growing the transcript
+        * (D271). Labelled and focusable so a keyboard reader can reach the
+        * scroll area the pointer can already use. */}
+      <div
+        className="subagent-run-rows"
+        role="group"
+        tabIndex={0}
+        aria-labelledby={headingId}
+      >
+        {run.items.map((item) =>
+          item.kind === "tool" ? (
+            <Fragment key={item.message.id}>
+              <ToolRow message={item.message} />
+              <ReviewChangeCard message={item.message} />
+            </Fragment>
+          ) : item.kind === "thinking" ? (
+            <ThinkingRow
+              key={`thinking-${item.message.id}`}
+              message={item.message}
+              streaming={item.message.status === "streaming"}
+            />
+          ) : (
+            <div className="subagent-answer" key={`answer-${item.message.id}`}>
+              {item.message.content ? (
+                <div className="prose-chat">
+                  <Markdown source={item.message.content} />
+                </div>
+              ) : null}
+              {item.message.error ? (
+                <AssistantErrorMessage message={item.message} />
+              ) : null}
+            </div>
+          ),
+        )}
+      </div>
     </div>
   );
 }
