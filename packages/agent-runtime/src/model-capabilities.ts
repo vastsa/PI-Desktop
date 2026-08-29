@@ -1,4 +1,9 @@
-import type { ModelBinding, ModelInfo, ThinkingLevel } from "@pi-desktop/shared";
+import type {
+  ModelBinding,
+  ModelInfo,
+  ModelModality,
+  ThinkingLevel,
+} from "@pi-desktop/shared";
 import type { ModelConfig, ThinkingCapabilitySet } from "./thinking-level.js";
 
 export {
@@ -60,7 +65,16 @@ export function capabilitiesFromModelInfo(model?: ModelInfo | null): ModelCapabi
  */
 export function modelConfigWithBinding(
   model: ModelConfig,
-  binding?: Pick<ModelBinding, "contextWindow" | "maxTokens" | "thinkingLevels"> | null,
+  binding?:
+    | Pick<
+        ModelBinding,
+        | "contextWindow"
+        | "maxTokens"
+        | "thinkingLevels"
+        | "supportsImages"
+        | "supportsDocuments"
+      >
+    | null,
 ): ModelConfig {
   if (!binding) return model;
   const published = capabilitiesFromModelConfig(model);
@@ -73,6 +87,46 @@ export function modelConfigWithBinding(
     maxTokens: binding.maxTokens,
     reasoning: published.supportsReasoning && enabledThinkingLevels.length > 0,
     supportedThinkingLevels: enabledThinkingLevels,
+    ...modalityOverride(model, binding),
+  };
+}
+
+/**
+ * Apply the binding's attachment overrides to the adapter-facing modality
+ * arrays. Unlike thinking levels these are not narrowed to what models.dev
+ * published: a self-hosted or proxied endpoint routinely accepts images the
+ * catalog entry does not mention, and refusing the override would leave the user
+ * with a switch that does nothing. `null`/absent still follows the catalog.
+ */
+function modalityOverride(
+  model: ModelConfig,
+  binding: Pick<ModelBinding, "supportsImages" | "supportsDocuments">,
+): Partial<ModelConfig> {
+  const images = binding.supportsImages;
+  const documents = binding.supportsDocuments;
+  if (typeof images !== "boolean" && typeof documents !== "boolean") return {};
+  const publishedInput = model.modalities?.input ?? [];
+  const nextInput = new Set<ModelModality>(publishedInput);
+  if (typeof images === "boolean") {
+    if (images) nextInput.add("image");
+    else nextInput.delete("image");
+  }
+  if (typeof documents === "boolean") {
+    if (documents) nextInput.add("pdf");
+    else nextInput.delete("pdf");
+  }
+  nextInput.add("text");
+  const input = [...nextInput];
+  return {
+    modalities: {
+      input,
+      output: model.modalities?.output ?? ["text"],
+    },
+    // The adapter subset carries only what pi-ai can encode as a content block.
+    input: input.filter(
+      (modality): modality is "text" | "image" =>
+        modality === "text" || modality === "image",
+    ),
   };
 }
 

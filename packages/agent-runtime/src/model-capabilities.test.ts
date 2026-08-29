@@ -107,3 +107,78 @@ describe("main-supplied model capabilities", () => {
     expect(clampThinkingLevel(capabilities, "max")).toBe("high");
   });
 });
+
+describe("binding attachment capability overrides", () => {
+  const baseBinding = {
+    contextWindow: 200_000,
+    maxTokens: 32_000,
+    thinkingLevels: ["medium"] as ThinkingLevel[],
+  };
+
+  it("follows the published modalities when no override is stored", () => {
+    const config = modelConfigWithBinding(knownModel(), {
+      ...baseBinding,
+      supportsImages: null,
+      supportsDocuments: null,
+    });
+    expect(config.modalities?.input).toEqual(["text", "image", "pdf"]);
+    expect(visionFromModelConfig(config)).toBe(true);
+  });
+
+  it("turns image transport off for a vision model the user opted out of", () => {
+    const config = modelConfigWithBinding(knownModel(), {
+      ...baseBinding,
+      supportsImages: false,
+    });
+    expect(config.modalities?.input).not.toContain("image");
+    expect(config.input).not.toContain("image");
+    expect(visionFromModelConfig(config)).toBe(false);
+  });
+
+  it("grants image transport to a model the catalog calls text-only", () => {
+    // A proxied endpoint routinely accepts input its catalog entry omits, so the
+    // override is applied rather than narrowed to the published capability.
+    const textOnly = {
+      ...genericModelConfig("proxy-model", "https://proxy.test/v1"),
+      modalities: { input: ["text"] as const, output: ["text"] as const },
+    };
+    const config = modelConfigWithBinding(textOnly, {
+      ...baseBinding,
+      supportsImages: true,
+    });
+    expect(config.modalities?.input).toContain("image");
+    expect(config.input).toContain("image");
+    expect(visionFromModelConfig(config)).toBe(true);
+  });
+
+  it("records a document override without adding an untransportable modality to the adapter subset", () => {
+    const config = modelConfigWithBinding(knownModel(), {
+      ...baseBinding,
+      supportsDocuments: false,
+    });
+    expect(config.modalities?.input).not.toContain("pdf");
+    // pi-ai has no PDF content block, so the adapter subset never carried it.
+    expect(config.input).toEqual(["text", "image"]);
+  });
+
+  it("keeps text input even when every override is off", () => {
+    const config = modelConfigWithBinding(knownModel(), {
+      ...baseBinding,
+      supportsImages: false,
+      supportsDocuments: false,
+    });
+    expect(config.modalities?.input).toEqual(["text"]);
+    expect(config.input).toEqual(["text"]);
+  });
+
+  it("leaves limits and thinking narrowing untouched by a capability override", () => {
+    const config = modelConfigWithBinding(knownModel(), {
+      ...baseBinding,
+      thinkingLevels: ["medium", "off"] as ThinkingLevel[],
+      supportsImages: true,
+    });
+    expect(config.contextWindow).toBe(200_000);
+    expect(config.maxTokens).toBe(32_000);
+    expect(config.supportedThinkingLevels).toEqual(["medium"]);
+  });
+});
