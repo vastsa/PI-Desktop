@@ -14,7 +14,9 @@ import {
   bindingForCustomModel,
   bindingFromModelInfo,
   formatTokenCount,
+  modelMatchesFilter,
   publishedThinkingLevels,
+  sortThinkingLevels,
   type ModelBinding,
   type ModelInfo,
   type ThinkingLevel,
@@ -116,20 +118,24 @@ export function useModelSelection(
       models.map((binding) => {
         const choices = publishedLevelsById.get(binding.id.toLowerCase());
         // An unknown row (discovery is offline) must not erase stored levels.
-        if (!choices) return binding;
-        const thinkingLevels = binding.thinkingLevels.filter((level) =>
-          choices.includes(level),
-        );
-        if (thinkingLevels.length === binding.thinkingLevels.length) return binding;
-        return {
-          ...binding,
-          thinkingLevels,
-          defaultThinkingLevel:
-            binding.defaultThinkingLevel &&
-            thinkingLevels.includes(binding.defaultThinkingLevel)
-              ? binding.defaultThinkingLevel
-              : (thinkingLevels[0] ?? null),
-        };
+        const thinkingLevels = choices
+          ? binding.thinkingLevels.filter((level) => choices.includes(level))
+          : binding.thinkingLevels;
+        // Canonical order, because this is the same order the panel offers the
+        // default in: picking the first entry of an insertion-ordered list here
+        // would save a different default than the one the user was shown.
+        const enabled = sortThinkingLevels(thinkingLevels);
+        const defaultThinkingLevel =
+          binding.defaultThinkingLevel && enabled.includes(binding.defaultThinkingLevel)
+            ? binding.defaultThinkingLevel
+            : (enabled[0] ?? null);
+        if (
+          thinkingLevels.length === binding.thinkingLevels.length &&
+          defaultThinkingLevel === binding.defaultThinkingLevel
+        ) {
+          return binding;
+        }
+        return { ...binding, thinkingLevels, defaultThinkingLevel };
       }),
     [models, publishedLevelsById],
   );
@@ -180,6 +186,14 @@ export function ModelSelectionPanes({
     () => new Set(models.map((binding) => binding.id.toLowerCase())),
     [models],
   );
+
+  // Published records for the chosen rows, so the capability switches can show
+  // what models.dev says before the user overrides it.
+  const infoById = useMemo(() => {
+    const byId = new Map<string, ModelInfo>();
+    for (const row of rows) if (row.info) byId.set(row.id.toLowerCase(), row.info);
+    return byId;
+  }, [rows]);
 
   const toggleModel = (row: ModelRow) =>
     setModels((current) => {
@@ -311,6 +325,19 @@ export function ModelSelectionPanes({
               const levelChoices =
                 publishedLevelsById.get(binding.id.toLowerCase()) ??
                 binding.thinkingLevels;
+              // The default is chosen among the levels this binding enables, not
+              // among everything the model publishes: offering a disabled level
+              // would store a default the runtime immediately clamps away.
+              const enabledLevels = sortThinkingLevels(
+                binding.thinkingLevels.filter((level) => levelChoices.includes(level)),
+              );
+              const info = infoById.get(binding.id.toLowerCase());
+              const publishedImages = info
+                ? modelMatchesFilter(info, "vision")
+                : undefined;
+              const publishedDocuments = info
+                ? modelMatchesFilter(info, "pdf")
+                : undefined;
               return (
                 <li className="provider-chosen-row" key={binding.id}>
                   <div className="provider-chosen-row-head">
@@ -406,7 +433,7 @@ export function ModelSelectionPanes({
                                     binding.defaultThinkingLevel as ThinkingLevel,
                                   )
                                     ? binding.defaultThinkingLevel
-                                    : (next[0] ?? null),
+                                    : (sortThinkingLevels(next)[0] ?? null),
                                 });
                               }}
                             >
@@ -415,6 +442,60 @@ export function ModelSelectionPanes({
                           );
                         })}
                       </div>
+                      {enabledLevels.length > 1 ? (
+                        <label className="provider-chosen-thinking-default">
+                          <span className="provider-chosen-thinking-label">
+                            {t("settings.defaultThinkingLevel")}
+                          </span>
+                          <select
+                            className="provider-chosen-thinking-select"
+                            value={
+                              binding.defaultThinkingLevel &&
+                              enabledLevels.includes(binding.defaultThinkingLevel)
+                                ? binding.defaultThinkingLevel
+                                : (enabledLevels[0] ?? "")
+                            }
+                            onChange={(event) =>
+                              updateBinding(binding.id, {
+                                defaultThinkingLevel: event.target
+                                  .value as ThinkingLevel,
+                              })
+                            }
+                          >
+                            {enabledLevels.map((level) => (
+                              <option key={level} value={level}>
+                                {t(`thinkingLevel.${level}`)}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : null}
+                    </div>
+                    <div className="provider-chosen-capabilities">
+                      <span className="provider-chosen-thinking-label">
+                        {t("settings.modelCapabilities")}
+                      </span>
+                      <div className="provider-chosen-capability-rows">
+                        <CapabilityToggle
+                          label={t("settings.imageInput")}
+                          published={publishedImages}
+                          value={binding.supportsImages}
+                          onChange={(next) =>
+                            updateBinding(binding.id, { supportsImages: next })
+                          }
+                        />
+                        <CapabilityToggle
+                          label={t("settings.documentInput")}
+                          published={publishedDocuments}
+                          value={binding.supportsDocuments}
+                          onChange={(next) =>
+                            updateBinding(binding.id, { supportsDocuments: next })
+                          }
+                        />
+                      </div>
+                      <span className="provider-chosen-capability-hint">
+                        {t("settings.documentInputHint")}
+                      </span>
                     </div>
                   </div>
                 </li>
@@ -451,6 +532,56 @@ export function ModelSelectionPanes({
           </Field>
         </div>
       </div>
+    </div>
+  );
+}
+
+type CapabilityToggleProps = {
+  label: string;
+  /** What models.dev publishes, or undefined when the model is not described. */
+  published: boolean | undefined;
+  /** Stored override: `true`/`false` explicit, `null`/undefined follows. */
+  value: boolean | null | undefined;
+  onChange: (next: boolean | null) => void;
+};
+
+/**
+ * One attachment capability as a three-state control.
+ *
+ * Two states would not be enough: a binding that merely mirrors the catalog must
+ * keep following it, so a later models.dev correction still reaches the model,
+ * while an explicit answer must survive that same correction. The checkbox holds
+ * the effective value and a reset link drops back to "follow published".
+ */
+function CapabilityToggle({ label, published, value, onChange }: CapabilityToggleProps) {
+  const { t } = useTranslation();
+  const overridden = typeof value === "boolean";
+  const effective = overridden ? value : (published ?? false);
+  return (
+    <div className="provider-chosen-capability">
+      <label className="provider-chosen-capability-label">
+        <input
+          type="checkbox"
+          checked={effective}
+          onChange={(event) => onChange(event.target.checked)}
+        />
+        <span>{label}</span>
+      </label>
+      {overridden ? (
+        <button
+          type="button"
+          className="provider-chosen-capability-reset"
+          onClick={() => onChange(null)}
+        >
+          {t("settings.followPublished")}
+        </button>
+      ) : (
+        <span className="provider-chosen-capability-state">
+          {published === undefined
+            ? t("settings.capabilityUnknown")
+            : t("settings.capabilityPublished")}
+        </span>
+      )}
     </div>
   );
 }
