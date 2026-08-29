@@ -242,28 +242,19 @@ export function ProjectsPage() {
 
   // One pass derives the summary counters and the rendered sections together, so
   // the header totals can never disagree with the list below them.
-  const { groups, sessionCounts, stats } = useMemo(() => {
+  const { groups, sessionCounts } = useMemo(() => {
     const buckets: Record<GroupId, typeof filtered> = {
       pinned: [],
       projects: [],
       archived: [],
     };
     const counts = new Map<string, number>();
-    const retainedKeys = new Set(
-      openProjectPaths.map((path) => normalizeProjectPath(path)).filter(Boolean),
-    );
-    let archivedTotal = 0;
-    let openTotal = 0;
-    let sessionTotal = 0;
     for (const project of items) {
-      if (project.archived === true) archivedTotal += 1;
-      else if (retainedKeys.has(normalizeProjectPath(project.path))) openTotal += 1;
       let matched = 0;
       for (const session of sessions) {
         if (sessionMatchesProject(session, project.path)) matched += 1;
       }
       counts.set(project.path, matched);
-      sessionTotal += matched;
     }
     for (const project of filtered) {
       const bucket: GroupId =
@@ -281,14 +272,8 @@ export function ProjectsPage() {
         (group) => group.rows.length > 0,
       ),
       sessionCounts: counts,
-      stats: {
-        total: items.length,
-        open: openTotal,
-        archived: archivedTotal,
-        sessions: sessionTotal,
-      },
     };
-  }, [filtered, items, locale, openProjectPaths, sessions, sort]);
+  }, [filtered, items, locale, sessions, sort]);
 
   const activate = async (path: string): Promise<boolean> => {
     try {
@@ -388,36 +373,36 @@ export function ProjectsPage() {
     void openProject().then(() => setRecents(loadRecentProjects()));
 
   const searching = query.trim().length > 0;
-  const summary: Array<{ key: string; labelKey: string; value: number }> = [
-    { key: "total", labelKey: "project.statProjects", value: stats.total },
-    { key: "open", labelKey: "project.statOpen", value: stats.open },
-    { key: "archived", labelKey: "project.statArchived", value: stats.archived },
-    { key: "sessions", labelKey: "project.statSessions", value: stats.sessions },
-  ];
-
   return (
     <div className="settings-stack settings-project-archive">
-      <section className="projects-hero">
-        <div className="projects-hero-top">
-          <p className="projects-hero-desc">{t("project.archiveSubtitle")}</p>
-          <Button variant="primary" onClick={addProject}>
-            <IconPlus size={14} />
-            {t("project.add")}
-          </Button>
-        </div>
-        <dl className="projects-hero-stats">
-          {summary.map((cell) => (
-            <div key={cell.key} className="projects-stat">
-              <dt className="projects-stat-label">{t(cell.labelKey)}</dt>
-              <dd className="projects-stat-value">{cell.value}</dd>
-            </div>
-          ))}
-        </dl>
-      </section>
+      <div className="projects-intro">
+        <p className="projects-intro-desc">{t("project.archiveSubtitle")}</p>
+      </div>
 
       <div className="projects-toolbar">
+        <div
+          className="settings-segment projects-sort"
+          role="group"
+          aria-label={t("project.sortBy")}
+        >
+          {(["recent", "name"] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              className={cx(
+                "settings-segment-item",
+                "projects-sort-btn",
+                sort === mode && "active",
+              )}
+              aria-pressed={sort === mode}
+              onClick={() => setSort(mode)}
+            >
+              {t(mode === "recent" ? "project.sortRecent" : "project.sortName")}
+            </button>
+          ))}
+        </div>
         <div className="projects-search-wrap">
-          <IconSearch size={14} />
+          <IconSearch size={13} aria-hidden="true" />
           <input
             ref={searchRef}
             className="projects-search"
@@ -450,28 +435,19 @@ export function ProjectsPage() {
             </button>
           ) : null}
         </div>
-        <div className="projects-toolbar-end">
-          {searching ? (
-            <span className="projects-result-count" aria-live="polite">
-              {t("project.resultCount", {
-                count: filtered.length,
-                total: items.length,
-              })}
-            </span>
-          ) : null}
-          <div className="projects-sort" role="group" aria-label={t("project.sortBy")}>
-            {(["recent", "name"] as const).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                className={cx("projects-sort-btn", sort === mode && "active")}
-                aria-pressed={sort === mode}
-                onClick={() => setSort(mode)}
-              >
-                {t(mode === "recent" ? "project.sortRecent" : "project.sortName")}
-              </button>
-            ))}
-          </div>
+        {searching ? (
+          <span className="projects-result-count" aria-live="polite">
+            {t("project.resultCount", {
+              count: filtered.length,
+              total: items.length,
+            })}
+          </span>
+        ) : null}
+        <div className="projects-toolbar-actions">
+          <Button variant="primary" onClick={addProject}>
+            <IconPlus size={14} />
+            {t("project.add")}
+          </Button>
         </div>
       </div>
 
@@ -500,17 +476,16 @@ export function ProjectsPage() {
           )}
         </div>
       ) : (
-        groups.map((group) => (
-          <section key={group.id} className="projects-group">
-            <header className="projects-group-head">
-              <h3 className="projects-group-label">{t(GROUP_LABEL_KEYS[group.id])}</h3>
-              <span className="projects-group-count">{group.rows.length}</span>
-            </header>
-            <div
-              className="settings-panel projects-list"
-              role="list"
-              aria-label={t(GROUP_LABEL_KEYS[group.id])}
-            >
+        <div className="settings-panel projects-list">
+          {groups.map((group) => (
+            <section key={group.id} className="projects-group" aria-labelledby={`projects-group-${group.id}`}>
+              <div className="projects-group-head">
+                <h3 className="projects-group-label" id={`projects-group-${group.id}`}>
+                  {t(GROUP_LABEL_KEYS[group.id])}
+                </h3>
+                <span className="projects-group-count">{group.rows.length}</span>
+              </div>
+              <div className="projects-group-rows" role="list">
               {group.rows.map((project) => {
                 const active =
                   normalizeProjectPath(workspace?.path) ===
@@ -815,9 +790,10 @@ export function ProjectsPage() {
                   </div>
                 );
               })}
-            </div>
-          </section>
-        ))
+              </div>
+            </section>
+          ))}
+        </div>
       )}
       {instructionsFor ? (
         <ProjectInstructionsDialog

@@ -24,6 +24,12 @@ const appSource = await readFile(
   "utf8",
 );
 const projectsStyleSource = await loadStyles();
+// The archive partial on its own: `loadStyles` inlines the whole cascade, so
+// assertions that a rule is *gone* have to look at the file that owned it.
+const projectsPartialSource = await readFile(
+  new URL("../src/styles/projects.css", import.meta.url),
+  "utf8",
+);
 
 test("settings owns the project archive destination", () => {
   assert.match(settingsSearchSource, /id: "projects"/);
@@ -62,24 +68,21 @@ test("project archive is no longer a standalone app page", () => {
   assert.doesNotMatch(appSource, /page === "projects"/);
 });
 
-test("project archive renders the overview, toolbar, and grouped index bands", () => {
-  // Overview banner: four counters derived from the same pass as the list.
-  assert.match(projectsPageSource, /projects-hero-stats/);
-  for (const labelKey of [
-    "project.statProjects",
-    "project.statOpen",
-    "project.statArchived",
-    "project.statSessions",
-  ]) {
-    assert.match(projectsPageSource, new RegExp(labelKey.replace(".", "\\.")));
-  }
+test("project archive renders the intro, toolbar, and grouped index", () => {
+  // One quiet description line and no counter run: the per-group counts in the
+  // panel are the only totals the destination shows.
+  assert.match(projectsPageSource, /projects-intro-desc/);
+  assert.match(projectsPageSource, /project\.archiveSubtitle/);
+  // The counter run is gone, so its markup and its four label keys are retired.
+  assert.doesNotMatch(projectsPageSource, /projects-intro-stat/);
+  assert.doesNotMatch(projectsPageSource, /project\.stat[A-Z]/);
 
   // Toolbar: clearable search with a live match count plus a sort control.
   assert.match(projectsPageSource, /projects-search-clear/);
   assert.match(projectsPageSource, /project\.clearSearch/);
   assert.match(projectsPageSource, /projects-result-count[^]*aria-live="polite"/);
   assert.match(projectsPageSource, /project\.resultCount/);
-  assert.match(projectsPageSource, /projects-sort/);
+  assert.match(projectsPageSource, /"settings-segment projects-sort"/);
   assert.match(projectsPageSource, /aria-pressed=\{sort === mode\}/);
   assert.match(projectsPageSource, /project\.sortRecent/);
   assert.match(projectsPageSource, /project\.sortName/);
@@ -94,6 +97,18 @@ test("project archive renders the overview, toolbar, and grouped index bands", (
   assert.match(projectsPageSource, /archived: "project\.groupArchived"/);
   assert.match(projectsPageSource, /projects-group-count/);
   assert.match(projectsPageSource, /projects-empty/);
+
+  // One workbench: the groups are strips inside a single elevated panel.
+  assert.equal(
+    projectsPageSource.match(/settings-panel projects-list/g)?.length,
+    1,
+  );
+  // Each group keeps its name in the accessibility tree and owns the list role,
+  // so the strip never becomes a non-listitem child of a list.
+  assert.match(projectsPageSource, /aria-labelledby=\{`projects-group-\$\{group\.id\}`\}/);
+  assert.match(projectsPageSource, /<h3 className="projects-group-label"/);
+  assert.match(projectsPageSource, /className="projects-group-rows" role="list"/);
+  assert.doesNotMatch(projectsPageSource, /projects-group-head" role="presentation"/);
 });
 
 test("pinned projects use a distinct star glyph", () => {
@@ -113,9 +128,14 @@ test("project archive row menu closes on escape and outside press", () => {
 });
 
 test("project archive styles group archived rows instead of hiding them", () => {
-  assert.match(projectsStyleSource, /\.projects-hero-stats\s*\{/);
+  assert.match(projectsStyleSource, /\.projects-intro-desc\s*\{/);
   assert.match(projectsStyleSource, /\.projects-sort-btn\.active\s*\{/);
   assert.match(projectsStyleSource, /\.projects-group-head\s*\{/);
   assert.doesNotMatch(projectsStyleSource, /\.projects-row-block\.archived\s*\{\s*display:\s*none/);
   assert.doesNotMatch(projectsStyleSource, /\.projects-row-block\.archived\s*\{\s*opacity/);
+
+  // The decorative hero card is gone: no hero rules and no gradient fill.
+  assert.doesNotMatch(projectsPartialSource, /projects-hero/);
+  assert.doesNotMatch(projectsPartialSource, /projects-stat/);
+  assert.doesNotMatch(projectsPartialSource, /linear-gradient/);
 });

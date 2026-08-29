@@ -1,148 +1,185 @@
 /*
-  Settings → Project archive — overview banner and counters, search and sort
-  toolbar, pinned/active/archived groups, project rows and their detail pane.
+  Settings → Project archive — one quiet description line, one toolbar (sort,
+  search, add project), and one elevated panel whose pinned / projects /
+  archived groups are in-panel header strips carrying their own counts, plus
+  the project rows and their expanded detail pane.
 */
 
 /* ---------- Settings → Project archive ---------- */
 .settings-project-archive {
-  gap: 20px;
+  gap: 14px;
 }
 
-/* Overview banner: one line of intent, the primary action, and live counters. */
-.projects-hero {
-  border-radius: var(--radius-lg);
-  padding: 18px 20px 16px;
-  background: linear-gradient(
-    180deg,
-    color-mix(in oklab, var(--ds-text-primary) 4.5%, transparent),
-    color-mix(in oklab, var(--ds-text-primary) 2%, transparent)
-  );
-  box-shadow: 0 0 0 0.5px var(--ds-border-default);
-}
-
-:root[data-theme="light"] .projects-hero {
-  background: linear-gradient(180deg, #ffffff, #fbfbfb);
-  box-shadow: 0 0 0 0.5px color-mix(in oklab, #1a1c1f 9%, transparent);
-}
-
-.projects-hero-top {
+/* One quiet description line, same as `.agent-capability-intro` on the sibling
+   capability pages. The panel below carries the per-group counts. */
+.projects-intro {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 20px;
+  max-width: 92ch;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  margin: -12px 0 0;
+  padding: 0 1px;
 }
 
-.projects-hero-desc {
+.projects-intro-desc {
   margin: 0;
-  max-width: 62ch;
   color: var(--ds-text-secondary);
-  font-size: var(--text-sm-plus);
+  font-size: var(--text-md);
   line-height: var(--leading-body);
 }
 
-.projects-hero-stats {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin: 16px 0 0;
-}
-
-.projects-stat {
-  display: flex;
-  flex-direction: column-reverse;
-  gap: 3px;
-  padding: 2px 16px;
-  min-width: 0;
-  border-left: 1px solid var(--ds-border-subtle);
-}
-
-.projects-stat:first-child {
-  padding-left: 0;
-  border-left: 0;
-}
-
-.projects-stat-value {
-  margin: 0;
-  color: var(--ds-text-primary);
-  font-size: var(--text-xl);
-  font-weight: var(--font-weight-strong);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: var(--tracking-tighter);
-  line-height: var(--leading-none);
-}
-
-.projects-stat-label {
-  color: var(--ds-text-muted);
-  font-size: var(--text-3xs);
-  font-weight: var(--font-weight-medium);
-  letter-spacing: var(--tracking-wide);
-  text-transform: uppercase;
-}
-
-/* Toolbar: search on the left, result count + sort segmented control right. */
+/*
+  One toolbar owns sort, search, the live match count, and the primary action.
+  The controls come from three places, so the row height is stated once here
+  rather than derived from each one's padding.
+*/
 .projects-toolbar {
+  --projects-control-height: 32px;
+
   display: flex;
+  min-width: 0;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
   flex-wrap: wrap;
+  padding: 0 1px;
 }
 
-.projects-search-wrap {
-  position: relative;
+.projects-toolbar-actions {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
-  flex: 1 1 220px;
-  max-width: 360px;
+  gap: 8px;
+  margin-left: auto;
 }
 
-.projects-search-wrap > svg {
-  position: absolute;
-  left: 11px;
+/*
+  The shared `.btn` runs a step larger than this toolbar's controls, so state
+  the toolbar geometry here rather than resizing the shared button everywhere.
+*/
+.projects-toolbar-actions > .btn {
+  min-height: var(--projects-control-height);
+  padding: 5px 11px;
+  font-size: var(--text-sm);
+}
+
+.projects-result-count {
   color: var(--ds-text-muted);
-  pointer-events: none;
+  font-size: var(--text-xs-plus);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
-.projects-search {
-  width: 100%;
-  height: 32px;
-  border: 0;
+/*
+  Sort is the shared `.settings-segment`, which already carries both theme
+  pairs; only the toolbar-scale sizing is local.
+*/
+.settings-segment.projects-sort {
+  height: var(--projects-control-height);
+  flex: 0 0 auto;
+}
+
+/*
+  Compound selector on purpose: providers.css defines `.settings-segment-item`
+  and imports after this file, so a bare `.projects-sort-btn` would lose the
+  cascade and these declarations would silently do nothing.
+*/
+.settings-segment-item.projects-sort-btn {
+  display: inline-flex;
+  height: 100%;
+  align-items: center;
+  gap: 6px;
+  padding: 0 11px;
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--leading-none);
+  white-space: nowrap;
+}
+
+.projects-sort-btn.active {
+  color: var(--ds-text-primary);
+}
+
+.projects-sort-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 22%, transparent);
+}
+
+/*
+  One search field for the whole index. The ring lives on the wrapper because
+  the clear button sits inside it, matching `.agent-capability-search-wrap`.
+*/
+.projects-search-wrap {
+  display: inline-flex;
+  height: var(--projects-control-height);
+  min-width: 0;
+  flex: 1 1 180px;
+  max-width: 320px;
+  align-items: center;
+  gap: 6px;
   border-radius: var(--radius-full);
   background: color-mix(in oklab, var(--ds-text-primary) 5%, transparent);
-  color: var(--ds-text-primary);
-  padding: 0 30px 0 31px;
-  font-size: var(--text-md);
-  outline: none;
+  padding: 0 11px;
+  color: var(--ds-text-muted);
   box-shadow: 0 0 0 0.5px var(--ds-border-default);
   transition:
-    box-shadow var(--motion-duration-fast) var(--motion-ease-out),
-    background var(--motion-duration-fast) var(--motion-ease-out);
+    background var(--motion-duration-fast) var(--motion-ease-out),
+    box-shadow var(--motion-duration-fast) var(--motion-ease-out);
 }
 
-.projects-search:focus-visible {
+.projects-search-wrap:focus-within {
   background: color-mix(in oklab, var(--ds-text-primary) 7%, transparent);
   box-shadow: 0 0 0 1px color-mix(in oklab, var(--ds-accent) 45%, transparent);
 }
 
-:root[data-theme="light"] .projects-search {
+:root[data-theme="light"] .projects-search-wrap {
   background: #f3f3f3;
   box-shadow: none;
 }
 
-:root[data-theme="light"] .projects-search:focus-visible {
+:root[data-theme="light"] .projects-search-wrap:focus-within {
   background: #ffffff;
   box-shadow: 0 0 0 1px color-mix(in oklab, var(--ds-accent) 35%, transparent);
 }
 
+.projects-search-wrap > svg {
+  flex: 0 0 auto;
+}
+
+.projects-search {
+  min-width: 0;
+  height: 100%;
+  flex: 1;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--ds-text-primary);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  outline: none;
+}
+
+.projects-search::placeholder {
+  color: var(--ds-text-faint);
+}
+
+.projects-search:focus-visible {
+  outline: none;
+}
+
+/* Quiet until pointed at. */
 .projects-search-clear {
-  position: absolute;
-  right: 6px;
   display: inline-flex;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  border: 0;
   border-radius: var(--radius-full);
+  background: transparent;
   color: var(--ds-text-muted);
+  cursor: pointer;
   transition:
     background var(--motion-duration-fast) var(--motion-ease-out),
     color var(--motion-duration-fast) var(--motion-ease-out);
@@ -153,94 +190,54 @@
   color: var(--ds-text-primary);
 }
 
-.projects-toolbar-end {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: 0 0 auto;
-}
-
-.projects-result-count {
-  color: var(--ds-text-muted);
-  font-size: var(--text-xs-plus);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.projects-sort {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  padding: 2px;
-  border-radius: var(--radius-full);
-  background: color-mix(in oklab, var(--ds-text-primary) 5%, transparent);
-  box-shadow: 0 0 0 0.5px var(--ds-border-subtle);
-}
-
-.projects-sort-btn {
-  display: inline-flex;
-  align-items: center;
-  height: 24px;
-  padding: 0 11px;
-  border-radius: var(--radius-full);
-  color: var(--ds-text-muted);
-  font-size: var(--text-xs-plus);
-  font-weight: var(--font-weight-medium);
-  white-space: nowrap;
-  transition:
-    background var(--motion-duration-fast) var(--motion-ease-out),
-    color var(--motion-duration-fast) var(--motion-ease-out);
-}
-
-.projects-sort-btn:hover {
-  color: var(--ds-text-primary);
-}
-
-.projects-sort-btn.active {
-  background: var(--ds-bg-elevated-opaque, var(--ds-bg-primary));
-  color: var(--ds-text-primary);
-  box-shadow: 0 0 0 0.5px var(--ds-border-default), 0 1px 2px rgba(0, 0, 0, 0.12);
-}
-
-/* Always-visible sections: Pinned, Projects, Archived. */
-.projects-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
-}
-
+/* Group divider inside the panel: Pinned, Projects, Archived — and how many. */
 .projects-group-head {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: 8px;
-  padding: 0 2px;
+  border-top: 1px solid var(--ds-border-subtle);
+  background: var(--ds-bg-chip);
+  padding: 7px 14px;
+}
+
+/* First strip sits flush with the panel's own top edge. */
+.projects-group:first-child .projects-group-head {
+  border-top: 0;
 }
 
 .projects-group-label {
-  margin: 0;
-  color: var(--ds-text-muted);
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-medium);
+  flex: 0 0 auto;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-2xs);
+  font-weight: var(--font-weight-strong);
   letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .projects-group-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 16px;
-  padding: 0 5px;
+  flex: 0 0 auto;
   border-radius: var(--radius-full);
-  background: color-mix(in oklab, var(--ds-text-primary) 7%, transparent);
+  background: color-mix(in oklab, var(--ds-text-primary) 8%, transparent);
+  padding: 1px 7px;
   color: var(--ds-text-muted);
   font-size: var(--text-3xs);
   font-variant-numeric: tabular-nums;
+  line-height: var(--leading-normal);
 }
 
 .projects-list {
+  min-width: 0;
+}
+
+/*
+  Each group is a labelled section wrapping its own `role="list"`, so the strip
+  stays out of the list's required-children contract while the rows keep their
+  group name in the accessibility tree.
+*/
+.projects-group,
+.projects-group-rows {
   min-width: 0;
 }
 
@@ -251,6 +248,11 @@
 
 .projects-row-block + .projects-row-block {
   border-top: 1px solid var(--ds-border-subtle);
+}
+
+/* The strip already draws the divider above the group's first row. */
+.projects-group-rows > .projects-row-block:first-child {
+  border-top: 0;
 }
 
 .projects-row-block:hover,
@@ -278,8 +280,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  min-height: 62px;
-  padding: 8px 12px 8px 6px;
+  padding: 9px 14px 9px 8px;
 }
 
 .projects-expand,
@@ -337,8 +338,8 @@
 
 .projects-glyph {
   display: inline-flex;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-md);
@@ -513,8 +514,14 @@
   background: var(--ds-border-subtle);
 }
 
+/*
+  Left padding keeps the session list under the project name column, not under
+  the glyph. The pane is a sibling of `.projects-row`, so the offset is measured
+  from the row block's own edge and nothing is subtracted: row padding 8 +
+  expand 26 + row gap 6 + name-button padding 6 + glyph 28 + name gap 11 = 85.
+*/
 .projects-row-detail {
-  padding: 0 14px 14px 55px;
+  padding: 0 14px 14px 85px;
 }
 
 .projects-detail-header {
@@ -600,56 +607,74 @@
   color: var(--ds-text-muted);
 }
 
+/* Quiet in-panel empty state: centered glyph + copy, no decorative frame. */
 .projects-empty {
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding: 44px 20px;
+  justify-content: center;
+  gap: 9px;
+  padding: 38px 20px;
+  color: var(--ds-text-muted);
+  font-size: var(--text-sm-plus);
   text-align: center;
 }
 
 .projects-empty-icon {
   display: inline-flex;
+  width: 34px;
+  height: 34px;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
-  margin-bottom: 4px;
-  border-radius: var(--radius-full);
-  background: color-mix(in oklab, var(--ds-text-primary) 7%, transparent);
-  color: var(--ds-text-muted);
+  border-radius: var(--radius-md);
+  background: var(--ds-bg-chip);
+  color: var(--ds-text-faint);
+  margin-bottom: 0;
 }
 
 .projects-empty-title {
-  color: var(--ds-text-primary);
-  font-size: var(--text-base-plus);
-  font-weight: var(--font-weight-strong);
+  color: var(--ds-text-secondary);
+  font-size: var(--text-md);
+  font-weight: var(--font-weight-medium);
 }
 
 .projects-empty-body {
   margin: 0 auto;
   max-width: 44ch;
-  color: var(--ds-text-muted);
-  font-size: var(--text-md);
-  line-height: var(--leading-body);
+  color: var(--ds-text-faint);
+  font-size: var(--text-sm);
+  line-height: var(--leading-compact);
 }
 
 .projects-empty .btn {
-  margin-top: 10px;
+  margin-top: 3px;
 }
 
-/* Narrow content panes stack the counters and let the toolbar wrap. */
-@media (max-width: 1180px) {
-  .projects-hero-stats {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    row-gap: 14px;
+/* Narrow content panes stack the toolbar instead of wrapping it mid-row. */
+@media (max-width: 720px) {
+  .projects-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
   }
 
-  .projects-stat:nth-child(3) {
-    padding-left: 0;
-    border-left: 0;
+  /* Compound for the same reason as above: providers.css imports later. */
+  .settings-segment.projects-sort {
+    justify-content: space-between;
+  }
+
+  .settings-segment-item.projects-sort-btn {
+    flex: 1;
+    justify-content: center;
   }
 
   .projects-search-wrap {
+    flex: 0 0 auto;
     max-width: none;
+  }
+
+  /* Stacked toolbar: actions lead their own row instead of trailing the search. */
+  .projects-toolbar-actions {
+    margin-left: 0;
   }
 }

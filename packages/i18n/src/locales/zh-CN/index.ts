@@ -906,10 +906,6 @@ export const zhCN = {
     resultCount_other: "{{total}} 个项目中的 {{count}} 个",
     archiveSubtitle:
       "这里汇总了打开过的所有文件夹及其对话。可以激活项目、置顶常用项目，也可以归档其余项目而不丢失历史记录。",
-    statProjects: "项目",
-    statOpen: "已打开",
-    statArchived: "已归档",
-    statSessions: "会话",
     groupPinned: "已置顶",
     groupProjects: "全部项目",
     groupArchived: "已归档",

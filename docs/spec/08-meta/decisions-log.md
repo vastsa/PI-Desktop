@@ -114,7 +114,8 @@ Gold source: local Codex electron captures; latest row wins where rows conflict.
 | D073 | Full renderer i18n coverage | **Every user-visible renderer string flows through i18next (`en` source of truth, `zh-CN` via `satisfies EnglishCatalog`): ContextPanel/CommandPalette/PermissionDialog wired; toast/aria/title/placeholder literals keyed; session default titles come from `i18n.t` with a shared case-insensitive `isDefaultSessionTitle` matcher covering legacy titles across locales; proper nouns (VS Code, Finder) and native language names stay untranslated** | Six components bypassed i18n entirely; default-title matching was duplicated in store and Sidebar and missed zh "新对话" |
 | D131 | Empty home without suggestion cards | *(starter-grid clause amended by D205, then superseded by D206)* **The empty chat home temporarily rendered only the hero, optional first-run checklist, and composer; the original four Explore / Build / Review / Fix cards, their colored glyphs, and their prompt-prefill actions were removed. This superseded D049/D067 and the original card-specific clauses of D111 while retaining its single scrollable flow layout.** | The direct composer remained the primary task entry; removing the original decorative starter row addressed noisy card treatment. D205 briefly reintroduced a quieter, non-submitting developer grid before D206 returned the empty state to direct entry. |
 | D133 | Project index moves to Settings archive | *(five-destination count/order superseded by D166; flat-list presentation superseded by D168)* **The home sidebar no longer has a standalone Projects destination. Settings adds Project archive (zh-CN: 项目归档) after Import and before Info, bringing the compact directory to Basics / Model configuration / Import / Project archive / Info. The archive reuses the durable Projects index and always includes archived records, with search, add, activate, task expansion, pin, archive/restore, and close actions. Project and session groups remain in the home sidebar for active work. Global search exposes the archive as a Settings result, not a standalone page. This supersedes the standalone-destination clauses of D042/D066 and D090's four-destination limit without changing project storage or activation semantics.** | Active project work already lives in retained sidebar groups; moving historical project management into Settings reduces primary navigation while keeping recovery and archive controls discoverable. |
-| D168 | Project archive presentation redesign | **Project archive renders three stacked bands: an overview banner (intent sentence, primary Add project, and four derived counters for projects, open, archived, sessions), a toolbar (search with clear affordance and live match count, plus a Recent/Name sort segmented control), and a grouped index whose always-visible sections run Pinned / All projects / Archived with per-section counts, one settings panel per section, and hairline row separators. Rows carry a disclosure control, glyph, name with Active/Open/pinned/Archived tags, one meta line (shortened monospace path, branch, session count), relative last-active time, and hover/focus-revealed New task plus row menu; the menu groups create/edit above pin, archive/restore, and destructive Close, and dismisses on Escape or outside press. Archived rows are grouped and softened, never hidden or filtered, so D133's no-visibility-toggle rule still holds. This supersedes D133's flat-list presentation without changing project storage, search matching, session batching, or activation semantics.** | The flat single-list archive gave equal weight to pinned, working, and archived records and hid its disclosure and row actions behind hover, so scanning a long durable index meant reading every row. Grouping with derived counters and an explicit sort makes state legible at a glance while keeping archived history permanently reachable. |
+| D168 | Project archive presentation redesign | *(band layout and per-section panels superseded by D267)* **Project archive renders three stacked bands: an overview banner (intent sentence, primary Add project, and four derived counters for projects, open, archived, sessions), a toolbar (search with clear affordance and live match count, plus a Recent/Name sort segmented control), and a grouped index whose always-visible sections run Pinned / All projects / Archived with per-section counts, one settings panel per section, and hairline row separators. Rows carry a disclosure control, glyph, name with Active/Open/pinned/Archived tags, one meta line (shortened monospace path, branch, session count), relative last-active time, and hover/focus-revealed New task plus row menu; the menu groups create/edit above pin, archive/restore, and destructive Close, and dismisses on Escape or outside press. Archived rows are grouped and softened, never hidden or filtered, so D133's no-visibility-toggle rule still holds. This supersedes D133's flat-list presentation without changing project storage, search matching, session batching, or activation semantics.** | The flat single-list archive gave equal weight to pinned, working, and archived records and hid its disclosure and row actions behind hover, so scanning a long durable index meant reading every row. Grouping with derived counters and an explicit sort makes state legible at a glance while keeping archived history permanently reachable. |
+| D267 | Project archive is one workbench, not three bands | **Revise D168's band layout: Settings → Project archive renders the D257 one-workbench composition — a quiet intro line carrying only the page description, one toolbar (Recent/Name sort on the shared `settings-segment` primitive, search with clear affordance and live match count, primary Add project), and one settings panel whose always-visible Pinned / All projects / Archived groups are non-interactive in-panel header strips with per-section counts instead of one panel per section. The decorative gradient hero band is removed together with the four page-level overview counters it carried, retiring the `project.statProjects`, `project.statOpen`, `project.statArchived`, and `project.statSessions` keys; the per-group counts on the panel's header strips are now the only totals. The external uppercase section labels are removed as well; row geometry matches the capability rows (32px controls, 14px list gap, 28px row glyph). Beyond dropping the four retired counter keys this is presentation only: D168's row anatomy, row menu grouping, search matching, session batching, activation semantics, and accessibility semantics are unchanged, and no ADR is required.** | D168's overview banner used a decorative gradient and `--text-xl` counter tiles, which the design system forbids, and its per-section panels repeated the same elevated frame three times. Demoting the counters to an inline run kept the clutter without earning it: every total they showed is already legible from the per-group strip counts, so restating them above the toolbar duplicated numbers and gave the destination a header no sibling page has. Dropping them leaves the durable index looking and behaving like the agent capability pages. |
 
 ## E. M5 hardening decisions (0.4.0)
 
@@ -628,7 +629,7 @@ section mirrors only marketplace/catalog items still blocking nothing.
 - Persisted wider widths remain valid, and the 720px maximum is unchanged.
 - Decision D167; supersedes the width clamp in D154/D163 and ADR 0033 §4.
 
-## 2026-07-31 — Project archive presentation redesign
+## 2026-07-31 — Project archive presentation redesign (bands superseded by D267)
 
 - Settings → Project archive is rebuilt as three bands: an overview banner with
   four derived counters, a search + Recent/Name sort toolbar, and a grouped
@@ -641,7 +642,10 @@ section mirrors only marketplace/catalog items still blocking nothing.
   destination still has no visibility toggle (D133). Project storage, search
   matching, batch-of-eight session reveal, and activation semantics are
   unchanged.
-- Decision D168; supersedes D133's flat-list presentation.
+- Decision D168; supersedes D133's flat-list presentation. D267 later replaced
+  the overview banner and the per-section panels with one quiet description line
+  and one panel, retiring the four page-level counters; the row anatomy and
+  grouping rules carry over, and the per-group counts remain on the strips.
 
 ## 2026-07-31 — Plugins page redesign (presentation amended by D196)
 
@@ -2532,3 +2536,30 @@ D193, and D194.
   only `win32` / `linux` dropping below the band to clear the window controls.
 - Renderer CSS only: no IPC, storage, host protocol, or component-structure
   change. See `04-ux/08-component-spec.md` §2.3 and E2E-087a.
+
+## 2026-08-29 — The project archive is one workbench, not three bands (D267)
+
+- Decision D267 revises D168's presentation for Settings → Project archive and
+  adopts the D257 one-workbench composition already used by Skills / MCP /
+  Subagents: a quiet intro line, one toolbar, one panel.
+- The overview banner is gone. It was a decorative gradient card holding four
+  `--text-xl` counter tiles, which the design system forbids outright. The four
+  page-level counters go with it: every total they carried is already legible
+  from the per-group strip counts in the panel, so restating them above the
+  toolbar duplicated numbers and gave the destination a header no sibling page
+  has. This retires D168's overview-counter requirement along with the
+  `project.statProjects`, `project.statOpen`, `project.statArchived`, and
+  `project.statSessions` keys, which are removed from both catalogs. The intro
+  is now one quiet description line, matching the capability pages.
+- The three per-section panels become one panel: Pinned / All projects /
+  Archived are non-interactive in-panel header strips with their counts, so the
+  page has one elevated frame and no heading nested inside the list. The
+  bespoke sort pill reuses the shared segmented-control primitive, and row
+  geometry matches the capability rows (32px controls, 14px list gap, a 28px
+  row glyph); the external uppercase section labels are dropped.
+- Beyond the four retired counter keys this is presentation only: row anatomy,
+  row menu grouping, search matching, the batch-of-eight session reveal,
+  activation semantics, and accessibility semantics are all unchanged. No IPC,
+  storage, host protocol, or component-ownership change, so no ADR is required.
+- See `04-ux/06-settings-ia.md`, `04-ux/07-ui-design-system.md`, E2E-038, and
+  US-UI-23.

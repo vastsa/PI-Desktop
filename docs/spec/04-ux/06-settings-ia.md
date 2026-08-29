@@ -264,16 +264,26 @@ system while preserving their different data ownership:
   the destination still has no visibility toggle
 - Supports project search, add, activate, project-session expansion, pin,
   archive/restore, and close
-- Layout is three stacked bands (D168):
-  1. **Overview banner** — one sentence of intent, the primary Add project
-     action, and four live counters (projects, open, archived, sessions) whose
-     totals are derived from the same pass that builds the list below
-  2. **Toolbar** — search field with a clear affordance and a match count while
-     searching, plus a two-option sort segmented control (Recent, Name)
-  3. **Grouped index** — always-visible sections in the order Pinned, All
-     projects, Archived; each section shows its label and row count and renders
-     its rows inside one settings panel with hairline separators. Empty sections
-     are omitted
+- The destination is one workbench, not a stack of bands (D267, revising D168):
+  a quiet intro line above a single toolbar above a single elevated panel. It
+  reuses the same composition, control height, and row rhythm as the agent
+  capability pages (D257) and adds no page-specific chrome.
+  1. **Intro line** — one quiet description line, the same shape as the
+     capability pages' intro. The destination shows no page-level totals: there
+     is no hero block, decorative gradient, counter banner, or inline counter
+     run. The per-group counts on the panel's header strips are the only totals,
+     so a number is never repeated in two places
+  2. **Toolbar** — one row carrying the Recent/Name sort as the shared
+     segmented control, the search field with a clear affordance and a match
+     count while searching, and the primary Add project action right-aligned
+  3. **Panel** — one settings panel holds every group. The always-visible
+     sections run Pinned, All projects, Archived as non-interactive in-panel
+     header strips, each carrying its label and row count. Every section is a
+     labelled region wrapping its own list, so the strip is never a non-list
+     child of a list and each row keeps its group name in the accessibility
+     tree; rows follow with hairline separators. Empty sections are omitted,
+     and an index with no rows renders one quiet in-panel empty state instead
+     of the panel groups
 - Row anatomy: disclosure control, color glyph, project name with state tags
   (Active, Open, pinned tag, Archived), one meta line carrying the shortened
   monospace path, branch, and session count, a relative last-active time, and a
@@ -353,10 +363,12 @@ system while preserving their different data ownership:
     the page does not gain horizontal overflow
 12. Project archive always exposes archived records and can restore them without
     duplicating the index in the app shell
-13. Project archive renders the overview counters, search + sort toolbar, and the
-    Pinned / All projects / Archived sections; the counters agree with the
-    rendered row counts, sorting reorders rows inside every section without
-    hiding any, and clearing the search restores the complete index
+13. Project archive renders one quiet description line — no hero, banner, or
+    page-level counter run — above one search + sort toolbar and one panel
+    containing the Pinned / All projects / Archived group strips; each strip's
+    count agrees with its rendered rows, sorting reorders rows inside every
+    section without hiding any, and clearing the search restores the complete
+    index
 14. Info renders disabled, checking, up-to-date, available, downloading,
     downloaded, and error update states without adding another destination
 15. Native select option lists remain readable in both light and dark themes,

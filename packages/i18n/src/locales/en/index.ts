@@ -915,10 +915,6 @@ export const en = {
     resultCount_other: "{{count}} of {{total}} projects",
     archiveSubtitle:
       "Every folder you've opened, with its chats. Activate a project, pin the ones you live in, or archive the rest without losing history.",
-    statProjects: "Projects",
-    statOpen: "Open",
-    statArchived: "Archived",
-    statSessions: "Sessions",
     groupPinned: "Pinned",
     groupProjects: "All projects",
     groupArchived: "Archived",

@@ -1080,7 +1080,12 @@ Full component contract and usage rules: [08-component-spec.md §17](08-componen
 - **Project archive**: the D066 Codex index table (search / expand / actions)
   is embedded in Settings with no duplicate page title or outer page padding;
   the earlier standalone Projects destination and card grid (D042) are
-  superseded by D133
+  superseded by D133. Per D267 the destination is composed exactly like the
+  agent capability pages (D257): a quiet description-only intro line, one
+  toolbar (sort segment, search, primary action), and one elevated panel whose
+  Pinned / All projects / Archived groups are in-panel header strips carrying
+  the only counts on the page. It has no hero block, no decorative gradient,
+  and no page-level counter run
 - **Settings**: full-page Codex shell per D063/D090/D133/D166 (275px compact
   eight-destination rail, `#f4f4f4` light, elevated content cards, Back to app);
   per D092, the content cards fill the pane width available from the current
