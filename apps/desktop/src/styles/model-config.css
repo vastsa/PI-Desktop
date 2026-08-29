@@ -47,7 +47,19 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
+  flex: none;
+}
+
+/*
+  The dialog's actions sit in the header rather than a footer bar. Cancel is
+  first so the corner-most control is Save's neighbour, not Save itself.
+*/
+.provider-setup-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
 }
 
 .provider-setup-title {
@@ -56,30 +68,6 @@
   font-size: var(--text-base-plus);
   font-weight: var(--font-weight-semibold);
   line-height: var(--leading-tight);
-}
-
-.provider-setup-close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border: 0;
-  border-radius: var(--radius-2xs);
-  background: transparent;
-  color: var(--ds-text-muted);
-  cursor: pointer;
-  transition: background 120ms ease, color 120ms ease;
-}
-
-.provider-setup-close:hover {
-  background: var(--ds-bg-hover);
-  color: var(--ds-text-primary);
-}
-
-.provider-setup-close:focus-visible {
-  outline: 2px solid var(--ds-accent-soft);
-  outline-offset: 1px;
 }
 
 /* Only the body scrolls, so the head and actions stay reachable. */
@@ -135,27 +123,12 @@
   line-height: var(--leading-relaxed);
 }
 
-.provider-setup-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding-top: 12px;
-  border-top: 1px solid var(--ds-border-subtle);
-}
-
-.provider-setup-actions-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
 /* ----------------------------------------------------- credential fields */
 
 .provider-credential-test {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
@@ -1002,12 +975,13 @@
     width: 100%;
   }
 
-  .provider-setup-actions {
-    flex-direction: column;
-    align-items: stretch;
+  /* Header actions wrap under the title rather than crowding it. */
+  .provider-setup-head {
+    flex-wrap: wrap;
   }
 
-  .provider-setup-actions-right {
+  .provider-setup-head-actions {
+    width: 100%;
     justify-content: flex-end;
   }
 
@@ -1022,7 +996,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .provider-setup-close,
   .model-default-option {
     transition: none;
   }

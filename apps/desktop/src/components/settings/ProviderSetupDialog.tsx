@@ -307,18 +307,41 @@ export function ProviderSetupDialog({
           <h3 id="provider-setup-title" className="provider-setup-title">
             {editing ? t("settings.editProviderTitle") : t("settings.addProviderTitle")}
           </h3>
-          <button
-            type="button"
-            className="provider-setup-close"
-            aria-label={t("settings.cancel")}
-            disabled={saving}
-            onClick={onClose}
-          >
-            <IconClose size={16} />
-          </button>
+          {/*
+            The dialog's actions live here instead of a footer bar, so Save sits
+            where the close affordance used to be. Cancel keeps the leftmost slot
+            of the group so a stray click near the corner discards rather than
+            saves, and Escape still closes the dialog.
+          */}
+          <div className="provider-setup-head-actions">
+            {provider ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={testing || saving}
+                onClick={() => void testConnection()}
+              >
+                {testing ? t("settings.testing") : t("settings.testConnection")}
+              </Button>
+            ) : null}
+            <Button variant="ghost" size="sm" disabled={saving} onClick={onClose}>
+              {t("settings.cancel")}
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={!canSave}
+              onClick={() => void save()}
+            >
+              {saving ? t("settings.saving") : t("settings.saveProvider")}
+            </Button>
+          </div>
         </div>
 
         <div className="provider-setup-body">
+          {/* A save failure belongs next to the fields, not under the panes. */}
+          {error ? <div className="provider-setup-error">{error}</div> : null}
+
           <div className="provider-setup-credentials">
             <div className="provider-setup-fields">
               <Field label={t("settings.name")}>
@@ -370,18 +393,9 @@ export function ProviderSetupDialog({
               </Field>
             </div>
 
-            {provider ? (
+            {testResult ? (
               <div className="provider-credential-test">
-                <Button
-                  variant="secondary"
-                  disabled={testing}
-                  onClick={() => void testConnection()}
-                >
-                  {testing ? t("settings.testing") : t("settings.testConnection")}
-                </Button>
-                {testResult ? (
-                  <span className="provider-credential-test-result">{testResult}</span>
-                ) : null}
+                <span className="provider-credential-test-result">{testResult}</span>
               </div>
             ) : null}
           </div>
@@ -574,18 +588,6 @@ export function ProviderSetupDialog({
           </div>
         </div>
 
-        {error ? <div className="provider-setup-error">{error}</div> : null}
-
-        <div className="provider-setup-actions">
-          <div className="provider-setup-actions-right">
-            <Button variant="ghost" disabled={saving} onClick={onClose}>
-              {t("settings.cancel")}
-            </Button>
-            <Button variant="primary" disabled={!canSave} onClick={() => void save()}>
-              {saving ? t("settings.saving") : t("settings.saveProvider")}
-            </Button>
-          </div>
-        </div>
       </div>
     </div>
   );

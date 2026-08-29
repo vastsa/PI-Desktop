@@ -82,6 +82,47 @@ test("pane titles are section labels, not competing headings", () => {
   assert.match(block(".provider-setup-title"), /font-size: var\(--text-base-plus\)/);
 });
 
+test("the dialog's actions live in the header, not in a footer bar", () => {
+  assert.match(setupSource, /className="provider-setup-head-actions"/);
+  // The bare X is replaced by a labelled Cancel.
+  assert.doesNotMatch(setupSource, /className="provider-setup-close"/);
+  assert.doesNotMatch(styles, /\.provider-setup-close\b/);
+  assert.doesNotMatch(setupSource, /className="provider-setup-actions"/);
+  assert.doesNotMatch(styles, /\.provider-setup-actions\b/);
+
+  const head = setupSource.slice(
+    setupSource.indexOf('className="provider-setup-head-actions"'),
+    setupSource.indexOf('className="provider-setup-body"'),
+  );
+  // Test connection only applies to a provider that already exists.
+  assert.match(head, /provider \? \(/);
+  assert.match(head, /settings\.testConnection/);
+  assert.match(head, /settings\.cancel/);
+  assert.match(head, /settings\.saveProvider/);
+  // Cancel precedes Save, so the corner-most control is not the destructive one.
+  assert.ok(
+    head.indexOf('settings.cancel') < head.indexOf('settings.saveProvider'),
+    "Cancel should sit before Save in the header group",
+  );
+  // Save stays gated on a valid form.
+  assert.match(head, /disabled=\{!canSave\}/);
+});
+
+test("the connection test reports its result next to the fields", () => {
+  // The button moved to the header; its outcome stays where the inputs are.
+  const body = setupSource.slice(setupSource.indexOf('className="provider-setup-body"'));
+  assert.match(body, /provider-credential-test-result/);
+  assert.doesNotMatch(body, /settings\.testConnection/);
+});
+
+test("a save error appears next to the fields it refers to", () => {
+  const bodyStart = setupSource.indexOf('className="provider-setup-body"');
+  const credentials = setupSource.indexOf('className="provider-setup-credentials"');
+  const errorLine = setupSource.indexOf('className="provider-setup-error"');
+  assert.ok(errorLine > bodyStart && errorLine < credentials,
+    "the error line should open the body, above the credential grid");
+});
+
 test("picking and reviewing models are two side-by-side panes", () => {
   assert.match(setupSource, /className="provider-setup-panes"/);
   const panes = block(".provider-setup-panes");
