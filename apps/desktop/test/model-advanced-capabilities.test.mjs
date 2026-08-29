@@ -18,6 +18,14 @@ const catalogSource = await readFile(
   new URL("../../../packages/shared/src/model-catalog.ts", import.meta.url),
   "utf8",
 );
+const mainSource = await readFile(
+  new URL("../electron/main/index.ts", import.meta.url),
+  "utf8",
+);
+const sidecarSource = await readFile(
+  new URL("../../../packages/agent-runtime/src/sidecar.ts", import.meta.url),
+  "utf8",
+);
 const styles = await loadStyles();
 
 test("advanced settings choose the default thinking level among the enabled ones", () => {
@@ -31,22 +39,35 @@ test("advanced settings choose the default thinking level among the enabled ones
   assert.match(pickerSource, /enabledLevels\.length > 1 \?/);
 });
 
-test("advanced settings expose three-state image and document overrides", () => {
+test("the capability checkboxes show and follow the published value", () => {
   assert.match(pickerSource, /settings\.imageInput/);
   assert.match(pickerSource, /settings\.documentInput/);
   assert.match(pickerSource, /supportsImages: next/);
   assert.match(pickerSource, /supportsDocuments: next/);
-  // "Follow the catalog" must stay representable, so the reset writes null
-  // rather than freezing the current effective value into a boolean.
-  assert.match(pickerSource, /onChange\(null\)/);
-  assert.match(pickerSource, /settings\.followPublished/);
-  assert.match(pickerSource, /const overridden = typeof value === "boolean"/);
+  // Agreeing with models.dev stores "follow the catalog" instead of an
+  // equal-valued override, so a later catalog correction still lands and no
+  // separate reset control is needed.
   assert.match(
     pickerSource,
-    /const effective = overridden \? value : \(published \?\? false\)/,
+    /onChange\(event\.target\.checked === published \? null : event\.target\.checked\)/,
   );
-  // The panel states how PDFs actually travel instead of implying inline bytes.
-  assert.match(pickerSource, /settings\.documentInputHint/);
+  assert.match(
+    pickerSource,
+    /const effective = typeof value === "boolean" \? value : published/,
+  );
+  // The published baseline is models.dev, never the stored override.
+  assert.match(pickerSource, /modelMatchesFilter\(info, "vision"\) : false/);
+  assert.match(pickerSource, /modelMatchesFilter\(info, "pdf"\) : false/);
+});
+
+test("the capability row carries no explanatory copy or extra controls", () => {
+  // The panel is a dense list of per-model rows; a hint paragraph and a reset
+  // link per capability crowded it without telling the user anything the
+  // checkbox state does not already say.
+  assert.doesNotMatch(pickerSource, /documentInputHint/);
+  assert.doesNotMatch(pickerSource, /followPublished/);
+  assert.doesNotMatch(pickerSource, /capabilityPublished|capabilityUnknown/);
+  assert.doesNotMatch(styles, /provider-chosen-capability-(reset|state|hint)/);
 });
 
 test("capability overrides reach the transport modality arrays", () => {
@@ -63,21 +84,34 @@ test("capability overrides reach the transport modality arrays", () => {
 
 test("the capability controls and default selector are styled", () => {
   assert.match(styles, /\.provider-chosen-capability-rows \{/);
-  assert.match(styles, /\.provider-chosen-capability-reset \{/);
+  assert.match(styles, /\.provider-chosen-capability \{/);
   assert.match(styles, /\.provider-chosen-thinking-select \{/);
-  // Keyboard users must see focus on both new controls.
   assert.match(styles, /\.provider-chosen-thinking-select:focus-visible \{/);
-  assert.match(styles, /\.provider-chosen-capability-reset:focus-visible \{/);
 });
 
-const mainSource = await readFile(
-  new URL("../electron/main/index.ts", import.meta.url),
-  "utf8",
-);
-const sidecarSource = await readFile(
-  new URL("../../../packages/agent-runtime/src/sidecar.ts", import.meta.url),
-  "utf8",
-);
+test("a configured model keeps its published record when discovery omits it", () => {
+  // The checkboxes read models.dev through this record. The live branch used to
+  // return only what the endpoint listed, so a configured model the service no
+  // longer advertises lost its capabilities and both boxes read as unpublished.
+  assert.match(mainSource, /const withConfiguredBindings =/);
+  const unions = mainSource.match(/withConfiguredBindings\(/g) ?? [];
+  assert.ok(unions.length >= 3, `expected 3+ union sites, saw ${unions.length}`);
+  // Discovery stays the authority on what the service offers: only the rows it
+  // returned are cached as discovered.
+  const liveReturn = mainSource.slice(
+    mainSource.indexOf("await cacheForCurrentProvider(models);"),
+  );
+  assert.match(liveReturn.slice(0, 260), /models: withConfiguredBindings\(models\)/);
+});
+
+test("the published record is not shaped by the stored override", () => {
+  // ModelInfo.modalities is the baseline the panel compares against. Applying
+  // the binding to it would make an override its own justification.
+  assert.match(
+    mainSource,
+    /modalities: catalogModelConfig\.modalities \?\? \{ input: \["text"\], output: \["text"\] \}/,
+  );
+});
 
 test("every image gate reads the override-shaped model config", () => {
   // Five independent reads used to answer "can this model see an image": the two
