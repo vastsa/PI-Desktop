@@ -97,6 +97,12 @@ test("model settings keep a compact, non-floating card treatment", () => {
   assert.match(cardSource, /initiallyExpanded\?: boolean/);
   assert.match(cardSource, /aria-expanded=\{expanded\}/);
   assert.match(cardSource, /hidden=\{!expanded\}/);
+  assert.match(dialogSource, /initiallyExpanded=\{false\}/);
+  assert.match(vendorDialogSource, /initiallyExpanded=\{false\}/);
+  assert.doesNotMatch(dialogSource, /initiallyExpanded=\{index === 0\}/);
+  assert.doesNotMatch(vendorDialogSource, /initiallyExpanded=\{index === 0\}/);
+  assert.match(styles, /.provider-model-selection-grid\s*\{[\s\S]*?grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(styles, /.provider-model-card-list\s*\{[\s\S]*?max-height: min\(320px, 36vh\);[\s\S]*?overflow-y: auto;/);
   assert.match(styles, /.provider-model-card-list\s*\{[\s\S]*?border-radius: var\(--radius-md-plus\)/);
   assert.match(styles, /.provider-model-card-summary\s*\{/);
   assert.match(styles, /.provider-model-card-details\s*\{/);

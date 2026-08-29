@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  modelIdsMatch,
   OPENCODE_GO_API_STYLE,
   THINKING_LEVELS,
   type ModelInfo,
@@ -24,9 +25,10 @@ import {
 import { useProviderModels } from "./useProviderModels";
 
 function modelInfoForDraft(draft: ProviderModelDraft, discovered: ModelInfo[]): ModelInfo {
-  return (
-    discovered.find((model) => model.modelId === draft.id) ?? {
-      modelId: draft.id,
+  const metadata = discovered.find((model) => modelIdsMatch(model.modelId, draft.id));
+  if (metadata) return { ...metadata, modelId: draft.id };
+  return {
+    modelId: draft.id,
       displayName: draft.id,
       providerId: "",
       contextWindow: draft.contextWindow,
@@ -245,48 +247,50 @@ export function ProviderDialog({
               autoFocus={isOpenCodeGo}
             />
           </Field>
-          <Field label={t("settings.selectModels")} hint={modelsStatusHint}>
-            <ModelMultiSelect
-              models={optionModels}
-              selectedIds={selectedIds}
-              customModelIds={customIds}
-              loading={models.status === "loading"}
-              placeholder={t("settings.selectModelsPlaceholder")}
-              selectedLabel={(count) => t("settings.nModelsSelected", { n: count })}
-              searchPlaceholder={t("settings.searchModelId")}
-              noMatchesHint={t("settings.noModelMatches")}
-              emptyHint={t("settings.modelsEmptyHint")}
-              fetchingLabel={t("settings.modelsFetching")}
-              customLabel={t("settings.customModel")}
-              reasoningLabel={t("settings.reasoning")}
-              visionLabel={t("settings.vision")}
-              onToggle={toggleModel}
-            />
-          </Field>
-          <Field label={t("settings.customModel")} hint={customModelError || undefined}>
-            <div className="provider-custom-model-row">
-              <Input
-                value={customModelId}
-                onChange={(event) => {
-                  setCustomModelId(event.target.value);
-                  if (customModelError) setCustomModelError("");
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    addCustomModel();
-                  }
-                }}
-                placeholder={t("settings.customModelPlaceholder")}
-                className="font-mono text-sm-plus"
-                spellCheck={false}
+          <div className="provider-model-selection-grid">
+            <Field label={t("settings.selectModels")} hint={modelsStatusHint}>
+              <ModelMultiSelect
+                models={optionModels}
+                selectedIds={selectedIds}
+                customModelIds={customIds}
+                loading={models.status === "loading"}
+                placeholder={t("settings.selectModelsPlaceholder")}
+                selectedLabel={(count) => t("settings.nModelsSelected", { n: count })}
+                searchPlaceholder={t("settings.searchModelId")}
+                noMatchesHint={t("settings.noModelMatches")}
+                emptyHint={t("settings.modelsEmptyHint")}
+                fetchingLabel={t("settings.modelsFetching")}
+                customLabel={t("settings.customModel")}
+                reasoningLabel={t("settings.reasoning")}
+                visionLabel={t("settings.vision")}
+                onToggle={toggleModel}
               />
-              <Button variant="secondary" onClick={addCustomModel}>
-                <IconPlus size={14} />
-                {t("settings.addCustomModel")}
-              </Button>
-            </div>
-          </Field>
+            </Field>
+            <Field label={t("settings.customModel")} hint={customModelError || undefined}>
+              <div className="provider-custom-model-row">
+                <Input
+                  value={customModelId}
+                  onChange={(event) => {
+                    setCustomModelId(event.target.value);
+                    if (customModelError) setCustomModelError("");
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      addCustomModel();
+                    }
+                  }}
+                  placeholder={t("settings.customModelPlaceholder")}
+                  className="font-mono text-sm-plus"
+                  spellCheck={false}
+                />
+                <Button variant="secondary" onClick={addCustomModel}>
+                  <IconPlus size={14} />
+                  {t("settings.addCustomModel")}
+                </Button>
+              </div>
+            </Field>
+          </div>
         </div>
 
         {form.models.length > 0 ? (
@@ -298,7 +302,7 @@ export function ProviderDialog({
               <span className="provider-model-config-count">{form.models.length}</span>
             </div>
             <div className="provider-model-card-list">
-              {form.models.map((binding, index) => {
+              {form.models.map((binding) => {
                 const metadata = discoveredById.get(binding.id);
                 const source = isCatalogModel(metadata) || binding.source === "catalog" ? "catalog" : "custom";
                 const sourceLabel = metadata?.catalogSource === "models.dev"
@@ -309,7 +313,7 @@ export function ProviderDialog({
                     key={binding.id}
                     binding={binding}
                     metadata={metadata}
-                    initiallyExpanded={index === 0}
+                    initiallyExpanded={false}
                     source={source}
                     sourceLabel={sourceLabel}
                     customSourceLabel={t("settings.customModel")}

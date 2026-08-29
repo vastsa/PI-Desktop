@@ -77,7 +77,7 @@ export function ModelConfigCard({
   const modalitiesLabel = modalities
     ? `in: ${modalities.input.join(", ")} · out: ${modalities.output.join(", ")}`
     : undefined;
-  const summaryLabel = `${contextWindowLabel}: ${formatTokens(binding.contextWindow)}; ${maxOutputLabel}: ${formatTokens(binding.maxTokens)}`;
+  const summaryLabel = `${contextWindowLabel}: ${compactTokens(binding.contextWindow)}; ${maxOutputLabel}: ${compactTokens(binding.maxTokens)}`;
 
   const toggleLevel = (level: ThinkingLevel) => {
     const next = levels.includes(level)

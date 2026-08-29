@@ -145,25 +145,27 @@ export function VendorAccountDialog({
         </div>
         <div className="provider-form-grid vendor-account-form-grid">
           <Field label={t("settings.name")}><Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} autoFocus /></Field>
-          <Field label={t("settings.selectModels")} hint={models.status === "error" ? t("settings.modelsFetchHint") : undefined}>
-            <ModelMultiSelect models={optionModels} selectedIds={form.models.map((model) => model.id)} customModelIds={customIds} loading={models.status === "loading"} placeholder={t("settings.selectModelsPlaceholder")} selectedLabel={(count) => t("settings.nModelsSelected", { n: count })} searchPlaceholder={t("settings.searchModelId")} noMatchesHint={t("settings.noModelMatches")} emptyHint={t("settings.modelsEmptyHint")} fetchingLabel={t("settings.modelsFetching")} customLabel={t("settings.customModel")} reasoningLabel={t("settings.reasoning")} visionLabel={t("settings.vision")} onToggle={toggleModel} />
-          </Field>
           <Field label={t("settings.defaultModel")}>
             <ModelCombobox value={form.modelId} models={optionModels} loading={models.status === "loading"} loadingLabel={t("settings.modelsLoading")} placeholder={t("settings.searchOrEnterModel")} onChange={(modelId) => setForm((current) => ({ ...current, modelId }))} />
           </Field>
-          <Field label={t("settings.customModel")} hint={customModelError || undefined}>
-            <div className="provider-custom-model-row"><Input value={customModelId} onChange={(event) => { setCustomModelId(event.target.value); if (customModelError) setCustomModelError(""); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addCustomModel(); } }} placeholder={t("settings.customModelPlaceholder")} className="font-mono text-sm-plus" spellCheck={false} /><Button variant="secondary" onClick={addCustomModel}><IconPlus size={14} />{t("settings.addCustomModel")}</Button></div>
-          </Field>
+          <div className="provider-model-selection-grid">
+            <Field label={t("settings.selectModels")} hint={models.status === "error" ? t("settings.modelsFetchHint") : undefined}>
+              <ModelMultiSelect models={optionModels} selectedIds={form.models.map((model) => model.id)} customModelIds={customIds} loading={models.status === "loading"} placeholder={t("settings.selectModelsPlaceholder")} selectedLabel={(count) => t("settings.nModelsSelected", { n: count })} searchPlaceholder={t("settings.searchModelId")} noMatchesHint={t("settings.noModelMatches")} emptyHint={t("settings.modelsEmptyHint")} fetchingLabel={t("settings.modelsFetching")} customLabel={t("settings.customModel")} reasoningLabel={t("settings.reasoning")} visionLabel={t("settings.vision")} onToggle={toggleModel} />
+            </Field>
+            <Field label={t("settings.customModel")} hint={customModelError || undefined}>
+              <div className="provider-custom-model-row"><Input value={customModelId} onChange={(event) => { setCustomModelId(event.target.value); if (customModelError) setCustomModelError(""); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addCustomModel(); } }} placeholder={t("settings.customModelPlaceholder")} className="font-mono text-sm-plus" spellCheck={false} /><Button variant="secondary" onClick={addCustomModel}><IconPlus size={14} />{t("settings.addCustomModel")}</Button></div>
+            </Field>
+          </div>
         </div>
         {form.models.length > 0 ? <section className="provider-model-config-section" aria-labelledby="vendor-model-config-title">
           <div className="provider-model-config-heading"><h4 id="vendor-model-config-title">{t("settings.modelConfigurations")}</h4><span className="provider-model-config-count">{form.models.length}</span></div>
-          <div className="provider-model-card-list">{form.models.map((binding, index) => {
+          <div className="provider-model-card-list">{form.models.map((binding) => {
             const metadata = discoveredById.get(binding.id);
             const source = isCatalogModel(metadata) || binding.source === "catalog" ? "catalog" : "custom";
             const sourceLabel = metadata?.catalogSource === "models.dev"
               ? t("settings.modelsDevCatalog")
               : t("settings.builtInCatalog");
-            return <ModelConfigCard key={binding.id} binding={binding} metadata={metadata} initiallyExpanded={index === 0} source={source} sourceLabel={sourceLabel} customSourceLabel={t("settings.customModel")} visionLabel={t("settings.vision")} textOnlyLabel={t("settings.textOnly")} reasoningLabel={t("settings.reasoning")} contextWindowLabel={t("settings.contextWindow")} contextWindowShortLabel={t("settings.contextWindowShort")} maxOutputLabel={t("settings.maxOutput")} maxOutputShortLabel={t("settings.maxOutputShort")} supportedThinkingLabel={t("settings.supportedThinkingLevels")} defaultThinkingLabel={t("settings.defaultThinkingLevel")} disabledThinkingLabel={t("settings.notSupported")} disabledThinkingHint={t("settings.thinkingDisabledHint")} levelLabels={levelLabels} removeLabel={t("settings.removeModel")} onChange={(update) => updateModel(binding.id, update)} onRemove={() => toggleModel(modelInfoForDraft(binding, discovered))} />;
+            return <ModelConfigCard key={binding.id} binding={binding} metadata={metadata} initiallyExpanded={false} source={source} sourceLabel={sourceLabel} customSourceLabel={t("settings.customModel")} visionLabel={t("settings.vision")} textOnlyLabel={t("settings.textOnly")} reasoningLabel={t("settings.reasoning")} contextWindowLabel={t("settings.contextWindow")} contextWindowShortLabel={t("settings.contextWindowShort")} maxOutputLabel={t("settings.maxOutput")} maxOutputShortLabel={t("settings.maxOutputShort")} supportedThinkingLabel={t("settings.supportedThinkingLevels")} defaultThinkingLabel={t("settings.defaultThinkingLevel")} disabledThinkingLabel={t("settings.notSupported")} disabledThinkingHint={t("settings.thinkingDisabledHint")} levelLabels={levelLabels} removeLabel={t("settings.removeModel")} onChange={(update) => updateModel(binding.id, update)} onRemove={() => toggleModel(modelInfoForDraft(binding, discovered))} />;
           })}</div>
         </section> : null}
         <div className="provider-dialog-actions"><Button variant="ghost" disabled={saving} onClick={onClose}>{t("settings.cancel")}</Button><Button variant="primary" disabled={saving || !form.name.trim() || !form.modelId.trim() || form.models.length === 0} onClick={() => onSave(form)}>{saving ? t("settings.saving") : t("settings.saveVendorAccount")}</Button></div>
