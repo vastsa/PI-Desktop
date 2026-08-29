@@ -25,6 +25,7 @@ import {
   IconServer,
   IconTrash,
 } from "../icons";
+import { AnchoredMenu } from "./AnchoredMenu";
 import { defaultModelIdOf, displayedDefaultModelId } from "./default-model";
 import { ProviderSetupDialog } from "./ProviderSetupDialog";
 import { VendorAccountsSection } from "./VendorAccountsSection";
@@ -285,41 +286,53 @@ export function ModelConfigPage() {
                 )}
               </div>
             </div>
-            <Button
-              variant="secondary"
-              disabled={readyProviders.length === 0}
-              onClick={() => setPickingDefault((current) => !current)}
-              aria-expanded={pickingDefault}
+            <AnchoredMenu
+              className="model-default-anchor"
+              open={pickingDefault}
+              onClose={() => setPickingDefault(false)}
+              menuClassName="model-default-menu"
+              label={t("settings.changeDefaultModel")}
+              align="end"
+              trigger={(ref) => (
+                <Button
+                  ref={ref}
+                  variant="secondary"
+                  disabled={readyProviders.length === 0}
+                  onClick={() => setPickingDefault((current) => !current)}
+                  aria-haspopup="listbox"
+                  aria-expanded={pickingDefault}
+                >
+                  {t("settings.changeDefaultModel")}
+                </Button>
+              )}
             >
-              {t("settings.changeDefaultModel")}
-            </Button>
+              <ul className="model-default-list">
+                {readyProviders.map((provider) => {
+                  const isCurrent = provider.id === settings.defaultProviderId;
+                  return (
+                    <li key={provider.id}>
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={isCurrent}
+                        className={cx("model-default-option", isCurrent && "is-current")}
+                        disabled={busyId === provider.id}
+                        onClick={() => void setDefaultProvider(provider)}
+                      >
+                        <span className="model-default-option-check" aria-hidden>
+                          {isCurrent ? <IconCheck size={12} /> : null}
+                        </span>
+                        <span className="model-default-option-name">{provider.name}</span>
+                        <span className="model-default-option-model font-mono">
+                          {defaultModelIdOf(provider)}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </AnchoredMenu>
           </div>
-
-          {pickingDefault ? (
-            <ul className="model-default-picker" aria-label={t("settings.changeDefaultModel")}>
-              {readyProviders.map((provider) => {
-                const isCurrent = provider.id === settings.defaultProviderId;
-                return (
-                  <li key={provider.id}>
-                    <button
-                      type="button"
-                      className={cx("model-default-option", isCurrent && "is-current")}
-                      disabled={busyId === provider.id}
-                      onClick={() => void setDefaultProvider(provider)}
-                    >
-                      <span className="model-default-option-check" aria-hidden>
-                        {isCurrent ? <IconCheck size={12} /> : null}
-                      </span>
-                      <span className="model-default-option-name">{provider.name}</span>
-                      <span className="model-default-option-model font-mono">
-                        {defaultModelIdOf(provider)}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : null}
         </div>
       </section>
 

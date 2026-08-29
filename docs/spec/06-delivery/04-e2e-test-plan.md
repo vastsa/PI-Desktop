@@ -5388,9 +5388,13 @@ This test plan spec is accepted when:
   account management with add/edit dialogs, and card-based AI service management
   with an add-provider dialog. The Defaults card insets its row like every other
   settings row, so the "Default model" label and the provider - model id line
-  clear the panel frame with no clipped glyph and no overlap; the Change trigger
-  keeps its width while a long model id wraps, and expanding the picker keeps its
-  divider spanning the panel.
+  clear the panel frame with no clipped glyph and no overlap, and the Change
+  trigger keeps its width while a long model id wraps. Change opens a floating
+  listbox anchored to it: the card's height never changes, the list scrolls once
+  the configured services exceed its bounded height, it flips above the trigger
+  near the viewport bottom, it is not clipped by the settings panel, and Escape,
+  an outside press, or scrolling the trigger out of view closes it while focus
+  returns to Change.
 - Plugin load/enable/disable/uninstall remains available from the app shell's
   independent Extensions destination; its Marketplace tab also owns the
   official/mirror/custom catalog source picker, so Settings has no duplicate

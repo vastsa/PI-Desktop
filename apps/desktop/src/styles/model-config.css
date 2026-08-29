@@ -709,10 +709,6 @@
   padding: 14px 16px;
 }
 
-/* The trigger keeps its width so a long model id wraps instead of squeezing it. */
-.model-default-row > .btn {
-  flex: none;
-}
 
 .model-default-copy {
   display: flex;
@@ -760,14 +756,48 @@
   line-height: var(--leading-relaxed);
 }
 
-.model-default-picker {
+/*
+  Picking a default is a floating menu, not an in-place expansion: the card kept
+  growing with every configured service. The surface portals to document.body as
+  a fixed layer because `.settings-panel` clips its overflow, and it bounds its
+  own height so a long service list scrolls instead of running off-screen.
+*/
+.model-default-anchor {
+  position: relative;
+  flex: none;
+}
+
+.model-default-menu {
+  position: fixed;
+  z-index: 60;
+  width: min(340px, calc(100vw - 48px));
+  max-height: min(360px, calc(100vh - 160px));
+  padding: 6px;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--ds-bg-elevated-opaque);
+  box-shadow: var(--ds-shadow-dialog);
+  color: var(--ds-text-primary);
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Revealed only once measured: an unplaced menu would flash at the origin. */
+.model-default-menu.is-open {
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
+}
+
+.model-default-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   margin: 0;
-  /* The divider spans the panel, so it stays outside the row inset. */
-  padding: 8px;
-  border-top: 1px solid var(--ds-border-subtle);
+  padding: 0;
   list-style: none;
 }
 
@@ -776,7 +806,7 @@
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 6px 8px;
+  padding: 7px 8px;
   border: 0;
   border-radius: var(--radius-xs);
   background: transparent;
