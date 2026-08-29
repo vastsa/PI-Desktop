@@ -13,44 +13,53 @@ Therefore:
 
 ## 2. Selection UX
 
-Model configuration is **catalog-first**: the user picks a published provider
-and its models from the models.dev snapshot, and every limit and capability is
-adopted from the published record. Typing a base URL, choosing a wire API or
-entering token counts by hand are all escape hatches, never the default path.
+Model configuration is **discovery-first**: the AI service is the authority on
+which models it serves, so the service's own endpoint is asked first and
+models.dev is used only to enrich what came back. The bundled catalog is never
+presented as a browsable list of every published model — a deployment does not
+necessarily host everything its vendor publishes, and a key is not necessarily
+entitled to it.
 
-### Settings: staged provider setup
+### Settings: one provider form
 
-`ProviderSetupDialog` runs three stages instead of one dense form:
+`ProviderSetupDialog` is a single form, not a wizard:
 
-1. **Provider** — searchable list of `CatalogProviderPreset` cards derived from
-   models.dev (`providers.catalogPresets`). Each card shows the published name,
-   its model count and whether a provider row already exists for it. One
-   explicit “Custom / OpenAI-compatible endpoint” card ends the list.
-2. **Credential** — base URL prefilled from the preset's published `api`, an
-   API-key field, the published `env` variable names as a hint and a link to the
-   published `doc`. The wire API is derived from the preset's published `npm`
-   adapter (`apiStyleForAdapter`) and is only editable inside **Advanced**.
-3. **Models** — the shared `ModelCatalogBrowser`, then the chosen bindings.
-   Context window, output limit and thinking levels come from
-   `bindingFromModelInfo`; per-model overrides live behind a per-row
-   **Advanced** disclosure.
+- **Name**, **Base URL** and **API Key** are all on screen at once. An empty key
+  when editing means “keep the stored one”; `secretValue` is only sent when the
+  user typed something.
+- The models section lists what the service returned. `useProviderModels`
+  debounces edits by 600 ms, guards against out-of-order replies with a
+  monotonic request sequence, and needs no API key so local and no-auth
+  gateways still resolve. A saved provider paints its cached list immediately
+  and then replaces it with the live answer.
+- Filtering that list is client-side: it is a short live list, not a catalog, so
+  no host search is involved.
+- Context window, output limit and thinking levels come from
+  `bindingFromModelInfo` over the enriched record; per-model overrides live
+  behind a per-row **Advanced** disclosure.
+- The wire API is derived from the provider's published `npm` adapter
+  (`apiStyleForAdapter`) and is only editable inside **Advanced**.
+- A custom model ID is always accepted, so a gateway without a `/models` route
+  stays usable.
 
-### Model catalog browser
+### Discovery precedence
 
-One component serves both API-key providers and OAuth vendor accounts, so the
-two paths no longer duplicate the model-picking UI. Two panes:
+`providers.listModels` resolves in this order, and the order is load-bearing:
 
-- **List** — search box, AND-combined capability filter chips
-  (`MODEL_FILTERS`: reasoning / vision / tools / attachments), and result rows
-  grouped by provider showing display name, model id, provider name, compact
-  context window and per-million cost. Keyboard: arrows move, Enter toggles,
-  Escape returns focus to the search box.
-- **Detail** — the published models.dev record for the active row as a
-  definition list: description, family, modalities, published limits, cost,
-  knowledge cutoff, release and update dates, reasoning options and the
-  tool-call / structured-output / temperature / attachment / open-weights flags.
-  Published metadata is presented as readable fields, never as a raw JSON dump.
+1. The stored secret is resolved, so an edit needs no retyped key.
+2. `discoverProviderModels` asks the service (`/models` or the per-style
+   equivalent). A non-empty answer wins, is enriched per model through
+   `modelsDevCatalog.findModel`, is written back to the model cache, and is
+   reported as `source: "remote"`.
+3. Only if the endpoint published nothing usable —no route, an auth error, or an
+   empty list— does `modelsForProvider` supply the vendor's published models,
+   reported as `source: "catalog"` together with any discovery error so the UI
+   can say the service did not answer. This result is **not** cached, so a
+   catalog guess never becomes indistinguishable from a real probe.
+4. Last resort: the provider's configured model, `source: "fallback"`.
 
+An OAuth vendor account skips step 2 — it has no key to probe with, and pi-ai
+already knows which models the subscription allows.
 ### Advanced
 - “Use custom model ID”
 - “Refresh catalog”
@@ -247,10 +256,10 @@ Warnings are non-blocking unless execution is impossible.
 
 ### 11.3 Settings model-add metadata
 
-When the setup dialog adds a catalog model, its initial context window, output
-limit, capability badges and thinking defaults come from `bindingFromModelInfo`
-over the published record, so the common path needs no manual token entry. The
-lookup is:
+When the setup form adds a model the service returned, its initial context
+window, output limit, capability badges and thinking defaults come from
+`bindingFromModelInfo` over the enriched record, so the common path needs no
+manual token entry. The enrichment lookup is:
 
 1. A matching models.dev provider is preferred by `vendorKey`, then by
    normalized provider API URL; its exact model record supplies the fields.
@@ -275,45 +284,34 @@ snapshot.
 
 ## 13. Search behavior
 
-`providers.searchModels` scores the models.dev snapshot in the main process and
-returns `ModelSearchOutput` (`results`, `total` before limiting, `degraded` when
-no snapshot is loaded). Scoring is case-insensitive on the trimmed query:
+There is no catalog search channel. The models a user chooses from are the ones
+their service returned, and that list is short enough to filter in the renderer:
+the provider form matches the typed text against model id and display name with
+a plain case-insensitive substring test.
 
-| match | score |
-| --- | --- |
-| exact model id | 100 |
-| model id prefix | 80 |
-| model id substring | 60 |
-| display-name substring | 40 |
-| family substring | 20 |
-| provider-name substring | 10 |
+The Composer picker likewise searches the **configured** models only, matching
+model id, display name, published family and provider name
+(`composerModelMatchesQuery`).
 
-Rules:
-
-- non-matching models are excluded; an empty query keeps every candidate
-- ties break on published recency (`lastUpdated`, then `releaseDate`, newest
-  first, missing last), then on model id ascending, so the default list shows
-  current models rather than alphabetical noise
-- capability filters are AND (`modelMatchesFilters`)
-- `providerKey` restricts to one published provider; `providerId` names a
-  configured row and is resolved to its catalog provider before searching
-- `limit` defaults to 200 and is clamped to 1..500
-- only text-capable models are candidates
-
-The Composer picker searches the **configured** models only, matching model id,
-display name, published family and provider name (`composerModelMatchesQuery`).
-
+Model ids are compared case-insensitively wherever a chosen model is matched
+against a returned one, so a hand-typed `GPT-5` and a published `gpt-5` are the
+same model to the check mark, the toggle and the duplicate guard.
 ## 14. Acceptance criteria
 
-- [ ] provider setup starts from published models.dev presets, and the wire API
-      is derived from the published adapter instead of being asked for
-- [ ] adding a catalog model requires no manual context-window or output-token
-      entry; overrides stay available behind a per-model Advanced disclosure
-- [ ] the API-key path and the OAuth vendor-account path use the same model
-      catalog browser
-- [ ] the detail pane renders published metadata as readable fields, not as raw
-      JSON
-- [ ] search finds models across multiple providers
+- [ ] the model list a user chooses from is the one their service returned; the
+      bundled catalog is never offered as a browsable list of every published
+      model
+- [ ] the catalog is consulted only when the endpoint publishes nothing usable,
+      and that result is reported as `catalog`, is not cached, and carries the
+      discovery error
+- [ ] adding an AI service is one form, with no stages to step through, and the
+      wire API is derived from the published adapter instead of being asked for
+- [ ] adding a discovered model requires no manual context-window or
+      output-token entry; overrides stay behind a per-model Advanced disclosure
+- [ ] the API-key path and the OAuth vendor-account path use the same live model
+      list and the same binding shape
+- [ ] an unsaved provider can be probed from the form before it is persisted,
+      and a saved one reuses its stored secret without a retyped key
 - [ ] custom model id path works without catalog hit
 - [ ] recent models surface in the picker
 - [ ] refresh merges into cache and picker (never destructively replaces)
