@@ -509,111 +509,111 @@ export function ProviderSetupDialog({
                       publishedLevelsById.get(binding.id.toLowerCase()) ??
                       binding.thinkingLevels;
                     return (
-                    <li className="provider-chosen-row" key={binding.id}>
-                      <div className="provider-chosen-row-head">
-                        <span className="provider-chosen-row-id font-mono">{binding.id}</span>
-                        <span className="provider-chosen-row-limits">
-                          {formatTokenCount(binding.contextWindow)} ·{" "}
-                          {formatTokenCount(binding.maxTokens)}
-                        </span>
-                        <button
-                          type="button"
-                          className="provider-chosen-advanced-toggle"
-                          aria-expanded={expandedModelId === binding.id}
-                          onClick={() =>
-                            setExpandedModelId((current) =>
-                              current === binding.id ? null : binding.id,
-                            )
-                          }
-                        >
-                          {t("settings.advanced")}
-                        </button>
-                        <button
-                          type="button"
-                          className="provider-chosen-remove"
-                          aria-label={t("settings.removeModel")}
-                          title={t("settings.removeModel")}
-                          onClick={() =>
-                            setModels((current) =>
-                              current.filter((entry) => entry.id !== binding.id),
-                            )
-                          }
-                        >
-                          <IconClose size={12} />
-                        </button>
-                      </div>
-                      <div
-                        className="provider-chosen-row-body"
-                        hidden={expandedModelId !== binding.id}
-                      >
-                        <div className="provider-chosen-limits">
-                          <Field label={t("settings.contextWindow")}>
-                            <Input
-                              type="number"
-                              min={1}
-                              value={binding.contextWindow}
-                              onChange={(event) =>
-                                updateBinding(binding.id, {
-                                  contextWindow: Number(event.target.value) || 0,
-                                })
-                              }
-                            />
-                          </Field>
-                          <Field label={t("settings.maxOutput")}>
-                            <Input
-                              type="number"
-                              min={1}
-                              value={binding.maxTokens}
-                              onChange={(event) =>
-                                updateBinding(binding.id, {
-                                  maxTokens: Number(event.target.value) || 0,
-                                })
-                              }
-                            />
-                          </Field>
-                        </div>
-                        <div className="provider-chosen-thinking">
-                          <span className="provider-chosen-thinking-label">
-                            {t("settings.supportedThinkingLevels")}
+                      <li className="provider-chosen-row" key={binding.id}>
+                        <div className="provider-chosen-row-head">
+                          <span className="provider-chosen-row-id font-mono">{binding.id}</span>
+                          <span className="provider-chosen-row-limits">
+                            {formatTokenCount(binding.contextWindow)} ·{" "}
+                            {formatTokenCount(binding.maxTokens)}
                           </span>
-                          <div className="provider-chosen-thinking-chips">
-                            {levelChoices.length === 0 ? (
-                              <span className="provider-chosen-thinking-empty">
-                                {t("settings.thinkingDisabledHint")}
-                              </span>
-                            ) : null}
-                            {levelChoices.map((level) => {
-                              const on = binding.thinkingLevels.includes(level);
-                              return (
-                                <button
-                                  key={level}
-                                  type="button"
-                                  className={cx("provider-thinking-chip", on && "selected")}
-                                  aria-pressed={on}
-                                  onClick={() => {
-                                    const next: ThinkingLevel[] = on
-                                      ? binding.thinkingLevels.filter(
-                                          (entry) => entry !== level,
+                          <button
+                            type="button"
+                            className="provider-chosen-advanced-toggle"
+                            aria-expanded={expandedModelId === binding.id}
+                            onClick={() =>
+                              setExpandedModelId((current) =>
+                                current === binding.id ? null : binding.id,
+                              )
+                            }
+                          >
+                            {t("settings.advanced")}
+                          </button>
+                          <button
+                            type="button"
+                            className="provider-chosen-remove"
+                            aria-label={t("settings.removeModel")}
+                            title={t("settings.removeModel")}
+                            onClick={() =>
+                              setModels((current) =>
+                                current.filter((entry) => entry.id !== binding.id),
+                              )
+                            }
+                          >
+                            <IconClose size={12} />
+                          </button>
+                        </div>
+                        <div
+                          className="provider-chosen-row-body"
+                          hidden={expandedModelId !== binding.id}
+                        >
+                          <div className="provider-chosen-limits">
+                            <Field label={t("settings.contextWindow")}>
+                              <Input
+                                type="number"
+                                min={1}
+                                value={binding.contextWindow}
+                                onChange={(event) =>
+                                  updateBinding(binding.id, {
+                                    contextWindow: Number(event.target.value) || 0,
+                                  })
+                                }
+                              />
+                            </Field>
+                            <Field label={t("settings.maxOutput")}>
+                              <Input
+                                type="number"
+                                min={1}
+                                value={binding.maxTokens}
+                                onChange={(event) =>
+                                  updateBinding(binding.id, {
+                                    maxTokens: Number(event.target.value) || 0,
+                                  })
+                                }
+                              />
+                            </Field>
+                          </div>
+                          <div className="provider-chosen-thinking">
+                            <span className="provider-chosen-thinking-label">
+                              {t("settings.supportedThinkingLevels")}
+                            </span>
+                            <div className="provider-chosen-thinking-chips">
+                              {levelChoices.length === 0 ? (
+                                <span className="provider-chosen-thinking-empty">
+                                  {t("settings.thinkingDisabledHint")}
+                                </span>
+                              ) : null}
+                              {levelChoices.map((level) => {
+                                const on = binding.thinkingLevels.includes(level);
+                                return (
+                                  <button
+                                    key={level}
+                                    type="button"
+                                    className={cx("provider-thinking-chip", on && "selected")}
+                                    aria-pressed={on}
+                                    onClick={() => {
+                                      const next: ThinkingLevel[] = on
+                                        ? binding.thinkingLevels.filter(
+                                            (entry) => entry !== level,
+                                          )
+                                        : [...binding.thinkingLevels, level];
+                                      updateBinding(binding.id, {
+                                        thinkingLevels: next,
+                                        defaultThinkingLevel: next.includes(
+                                          binding.defaultThinkingLevel as ThinkingLevel,
                                         )
-                                      : [...binding.thinkingLevels, level];
-                                    updateBinding(binding.id, {
-                                      thinkingLevels: next,
-                                      defaultThinkingLevel: next.includes(
-                                        binding.defaultThinkingLevel as ThinkingLevel,
-                                      )
-                                        ? binding.defaultThinkingLevel
-                                        : (next[0] ?? null),
-                                    });
-                                  }}
-                                >
-                                  {t(`thinkingLevel.${level}`)}
-                                </button>
-                              );
-                            })}
+                                          ? binding.defaultThinkingLevel
+                                          : (next[0] ?? null),
+                                      });
+                                    }}
+                                  >
+                                    {t(`thinkingLevel.${level}`)}
+                                  </button>
+                                );
+                              })}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </li>
+                      </li>
                     );
                   })}
                 </ul>
