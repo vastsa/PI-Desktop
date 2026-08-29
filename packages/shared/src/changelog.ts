@@ -33,6 +33,7 @@ const enEntries: ChangelogEntry[] = [
       "Keep the conversation outline reachable while history still loads, and see a skeleton instead of an empty list while sessions load.",
       "Paste a large block of text into the composer and have it spill into a session file, with typing kept off the reflow path.",
       "Keep a window where you dropped it when dragging across displays, and keep the titlebar band reserved on macOS destination pages.",
+      "Lose fewer turns to rejected file and search tool calls, and to a command timeout given in milliseconds.",
     ],
   },
   {
@@ -493,6 +494,7 @@ const zhCNEntries: ChangelogEntry[] = [
       "历史仍在加载时也能访问会话大纲，会话列表加载过程中显示骨架屏而不是空列表。",
       "向输入框粘贴大段文本时自动转存为会话文件，同时保持输入不触发重排。",
       "跨显示器拖拽窗口后保留放下的位置，macOS 目标页面继续保留标题栏区域。",
+      "文件与搜索工具调用被拒、以及命令超时按毫秒给出时，不再白费一个回合。",
     ],
   },
   {

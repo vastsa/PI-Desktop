@@ -95,6 +95,21 @@ their activation, so directory discovery activates `Glob` through `ToolSearch`
 for that prompt instead of guessing a file name or calling `Read` on a
 directory.
 
+The runtime accepts one alias per canonical argument name and folds it away
+before the host sees the call (D273):
+
+| Tool | Canonical | Accepted alias |
+|---|---|---|
+| `Read` / `Write` / `Edit` / `BrowserPreview` | `path` | `file_path` |
+| `Glob` / `Grep` | `pattern` | `query` |
+
+Both spellings are optional in the schema and the runtime requires exactly one;
+a call naming neither fails with `INVALID_ARGUMENT`. When a call carries both,
+the canonical name wins. `Bash.timeout` accepts up to 3600000 in the schema so a
+millisecond value validates: a value of at least 1000 is read as milliseconds and
+converted to seconds, then clamped to the honoured 300-second ceiling. A value
+between 301 and 999 is still rejected as an out-of-range seconds value.
+
 - For a durable `sessionId`, `workspaceRoot` is resolved from that session's
   persisted project binding. A path-less temporary session instead binds its
   `workspaceRoot` to `<data_dir>/scratch/<sessionId>`. Neither root is read

@@ -876,7 +876,9 @@ describe("DesktopAgentRuntime configuration matching", () => {
     expect((bash.parameters as any).properties.timeout).toMatchObject({
       type: "number",
       minimum: 1,
-      maximum: 300,
+      // Accepts a millisecond value so the runtime can read it as seconds; the
+      // honoured ceiling stays 300 seconds (D273).
+      maximum: 3_600_000,
     });
     expect(runtimeMatches(runtime, { commandShell: powershell })).toBe(true);
     expect(runtimeMatches(runtime, { commandShell })).toBe(false);
@@ -947,6 +949,102 @@ describe("DesktopAgentRuntime configuration matching", () => {
       ).rejects.toMatchObject({ errorCode: "INVALID_ARGUMENT" });
     }
     expect(host.call).toHaveBeenCalledTimes(2);
+    await runtime.dispose();
+  });
+
+  it("reads a millisecond Bash timeout as seconds and clamps it to the ceiling", async () => {
+    const host = {
+      call: vi.fn().mockResolvedValue({ ok: true, content: "done" }),
+    };
+    const runtime = createRuntime({ host });
+    const bash = (runtime as any).agent.state.tools.find(
+      (tool: any) => tool.name === "Bash",
+    );
+
+    await bash.execute("bash-ms", { command: "printf ms", timeout: 120_000 });
+    expect(host.call).toHaveBeenLastCalledWith(
+      "tools.execute",
+      expect.objectContaining({ timeoutMs: 120_000 }),
+    );
+
+    // Above the ceiling once converted: honour the intent, apply the cap.
+    await bash.execute("bash-ms-over", {
+      command: "printf over",
+      timeout: 1_800_000,
+    });
+    expect(host.call).toHaveBeenLastCalledWith(
+      "tools.execute",
+      expect.objectContaining({ timeoutMs: 300_000 }),
+    );
+
+    // Just over the cap is a seconds value that overshot, not milliseconds.
+    await expect(
+      bash.execute("bash-over-cap", { command: "printf cap", timeout: 301 }),
+    ).rejects.toMatchObject({ errorCode: "INVALID_ARGUMENT" });
+
+    expect(host.call).toHaveBeenCalledTimes(2);
+    await runtime.dispose();
+  });
+
+  it("accepts aliased tool argument names and folds them onto the canonical ones", async () => {
+    const host = {
+      call: vi.fn().mockImplementation(async (method: string) =>
+        method === "project.instructions.resolve"
+          ? { entries: [] }
+          : { ok: true, content: "done" },
+      ),
+    };
+    const runtime = createRuntime({ host });
+    // Read the catalog, not the active set: Glob and Grep are deferred tools
+    // and are only activated on demand.
+    const tool = (name: string) => (runtime as any).toolCatalog.get(name);
+
+    for (const name of ["Read", "Write", "Edit"]) {
+      expect((tool(name).parameters as any).properties.file_path).toMatchObject({
+        type: "string",
+      });
+    }
+    for (const name of ["Glob", "Grep"]) {
+      expect((tool(name).parameters as any).properties.query).toMatchObject({
+        type: "string",
+      });
+    }
+
+    const lastExecute = () =>
+      host.call.mock.calls
+        .filter((call: unknown[]) => call[0] === "tools.execute")
+        .at(-1)![1] as Record<string, unknown>;
+
+    await tool("Read").execute("read-alias", {
+      file_path: "src/a.ts",
+      limit: 10,
+    });
+    expect(lastExecute()).toMatchObject({
+      toolName: "Read",
+      args: { path: "src/a.ts", limit: 10 },
+    });
+
+    await tool("Grep").execute("grep-alias", { query: "foo", path: "src" });
+    expect(lastExecute()).toMatchObject({
+      toolName: "Grep",
+      args: { pattern: "foo", path: "src" },
+    });
+
+    // The canonical name wins when a call somehow carries both.
+    await tool("Read").execute("read-both", {
+      path: "src/canonical.ts",
+      file_path: "src/alias.ts",
+    });
+    expect(lastExecute()).toMatchObject({ args: { path: "src/canonical.ts" } });
+
+    // Neither spelling present still fails, and before any host execution.
+    await expect(
+      tool("Read").execute("read-missing", { limit: 5 }),
+    ).rejects.toMatchObject({ errorCode: "INVALID_ARGUMENT" });
+    expect(
+      host.call.mock.calls.filter((call: unknown[]) => call[0] === "tools.execute"),
+    ).toHaveLength(3);
+
     await runtime.dispose();
   });
 

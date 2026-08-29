@@ -727,6 +727,29 @@ function safeJson(value: unknown): string {
 
 const MIN_COMMAND_TIMEOUT_SECONDS = 1;
 const MAX_COMMAND_TIMEOUT_SECONDS = 300;
+/**
+ * Schema ceiling for `Bash.timeout`, not an honoured duration. It has to admit
+ * the millisecond values models actually send — one local month topped out at
+ * 1_800_000 — so the runtime can read the intent as seconds and clamp it to
+ * {@link MAX_COMMAND_TIMEOUT_SECONDS} (D273). An hour is the round bound above
+ * every value observed.
+ */
+const MAX_ACCEPTED_COMMAND_TIMEOUT = 3_600_000;
+/**
+ * Argument names models reach for instead of ours, mapped to the canonical
+ * name. Every strong model has `file_path`/`query` burned in from pretraining
+ * and sends them regardless of what the schema says, so the schema accepts both
+ * spellings and {@link normalizeToolParams} folds the alias away before the
+ * host sees the call (D273).
+ */
+const TOOL_PARAM_ALIASES: Record<string, Record<string, string>> = {
+  Read: { file_path: "path" },
+  Write: { file_path: "path" },
+  Edit: { file_path: "path" },
+  BrowserPreview: { file_path: "path" },
+  Glob: { query: "pattern" },
+  Grep: { query: "pattern" },
+};
 const TOOL_OUTPUT_UPDATE_THROTTLE_MS = 100;
 const MAX_TOOL_PROGRESS_CHARS = 64 * 1024;
 const TOOL_PROGRESS_TRUNCATION_MARKER =
@@ -781,6 +804,85 @@ function commandShellToolDescription(
     "An optional timeout from 1 to 300 seconds may be supplied; without it, the command defaults to a 60-second timeout.",
     ...(scratchDir ? [`The session scratch directory is ${scratchDir}.`] : []),
   ].join(" ");
+}
+
+/**
+ * A canonical argument that an alias can stand in for. It has to be optional in
+ * the schema — the alias satisfies it — so {@link requireAliasedParams} enforces
+ * "exactly one spelling" after {@link normalizeToolParams} has run.
+ */
+function pathParam(description: string) {
+  return Type.Optional(Type.String({ description }));
+}
+
+/** The alias spelling of `canonical`, accepted but never advertised as first choice. */
+function aliasParam(canonical: string) {
+  return Type.Optional(
+    Type.String({ description: `Alias for \`${canonical}\`.` }),
+  );
+}
+
+/**
+ * Fails a call that named neither the canonical argument nor its alias. Without
+ * this the now-optional canonical argument would reach the host as `undefined`
+ * and surface as a confusing host-side error instead of a schema one.
+ */
+function requireAliasedParams(toolName: string, params: unknown): void {
+  const aliases = TOOL_PARAM_ALIASES[toolName];
+  if (!aliases || !isRecord(params)) return;
+  for (const canonical of new Set(Object.values(aliases))) {
+    if (params[canonical] !== undefined) continue;
+    throw Object.assign(
+      new Error(
+        `Invalid arguments for ${toolName}: \`${canonical}\` is required`,
+      ),
+      { errorCode: "INVALID_ARGUMENT" },
+    );
+  }
+}
+
+/**
+ * Folds aliased argument names onto the canonical ones and reads a Bash
+ * `timeout` that arrived in milliseconds as seconds (D273). Both rewrites are
+ * silent: the call succeeds as the model intended rather than costing a turn on
+ * a validation error the model cannot see. Returns `params` unchanged when
+ * there is nothing to rewrite so the common path allocates nothing.
+ */
+function normalizeToolParams(toolName: string, params: unknown): unknown {
+  if (!isRecord(params)) return params;
+  const aliases = TOOL_PARAM_ALIASES[toolName];
+  // Only a value of at least 1000 reads as milliseconds. Something like 301 is
+  // far more likely a seconds value that overshot the cap, and rewriting it to
+  // 0.301s would be worse than the error it currently earns.
+  const timeoutIsMs =
+    toolName === "Bash" &&
+    typeof params.timeout === "number" &&
+    Number.isFinite(params.timeout) &&
+    params.timeout >= 1000;
+  const aliased = aliases
+    ? Object.keys(aliases).filter((alias) => params[alias] !== undefined)
+    : [];
+  if (aliased.length === 0 && !timeoutIsMs) return params;
+  const next = { ...params };
+  for (const alias of aliased) {
+    const canonical = aliases![alias];
+    // The canonical spelling wins if a call carries both; either way the alias
+    // is dropped so the host and the transcript never see it.
+    if (next[canonical] === undefined) next[canonical] = next[alias];
+    delete next[alias];
+  }
+  if (timeoutIsMs) {
+    // A timeout above the 300-second ceiling is only ever milliseconds: the
+    // schema rejects it as seconds, so there is no reading to preserve.
+    next.timeout = Math.min(
+      MAX_COMMAND_TIMEOUT_SECONDS,
+      Math.max(
+        MIN_COMMAND_TIMEOUT_SECONDS,
+        Math.round((params.timeout as number) / 1000),
+      ),
+    );
+  }
+  return next;
 }
 
 function commandTimeoutMs(params: unknown): number {
@@ -1709,10 +1811,10 @@ Delegation rules:
     // stopped being readable.
     const parameters: Record<string, Parameters<typeof Type.Object>[0]> = {
       Read: {
-        path: Type.String({
-          description:
-            "Existing regular file only, never a directory; workspace-relative or explicitly approved.",
-        }),
+        path: pathParam(
+          "Existing regular file only, never a directory; workspace-relative or explicitly approved.",
+        ),
+        file_path: aliasParam("path"),
         offset: Type.Optional(
           Type.Number({ minimum: 0, description: "0-based line offset; defaults to 0." }),
         ),
@@ -1720,9 +1822,13 @@ Delegation rules:
           Type.Number({ minimum: 1, description: "Maximum lines to return; defaults to 500." }),
         ),
       },
-      BrowserPreview: { path: Type.String() },
+      BrowserPreview: {
+        path: pathParam("File to preview; workspace-relative."),
+        file_path: aliasParam("path"),
+      },
       Glob: {
-        pattern: Type.String({ description: "Glob pattern, for example **/*.ts." }),
+        pattern: pathParam("Glob pattern, for example **/*.ts."),
+        query: aliasParam("pattern"),
         path: Type.Optional(
           Type.String({
             description:
@@ -1734,7 +1840,8 @@ Delegation rules:
         ),
       },
       Grep: {
-        pattern: Type.String({ description: "Rust-compatible regex matched per line." }),
+        pattern: pathParam("Rust-compatible regex matched per line."),
+        query: aliasParam("pattern"),
         path: Type.Optional(
           Type.String({
             description:
@@ -1756,9 +1863,14 @@ Delegation rules:
         ),
         caseInsensitive: Type.Optional(Type.Boolean()),
       },
-      Write: { path: Type.String(), content: Type.String() },
+      Write: {
+        path: pathParam("File to write; workspace-relative."),
+        file_path: aliasParam("path"),
+        content: Type.String(),
+      },
       Edit: {
-        path: Type.String(),
+        path: pathParam("File to edit; workspace-relative."),
+        file_path: aliasParam("path"),
         old_string: Type.String(),
         new_string: Type.String(),
       },
@@ -1767,7 +1879,10 @@ Delegation rules:
         timeout: Type.Optional(
           Type.Number({
             minimum: MIN_COMMAND_TIMEOUT_SECONDS,
-            maximum: MAX_COMMAND_TIMEOUT_SECONDS,
+            // The honoured ceiling is 300 seconds, but models routinely send
+            // milliseconds; a wider schema bound lets the runtime read the
+            // intent instead of burning the turn (D273).
+            maximum: MAX_ACCEPTED_COMMAND_TIMEOUT,
             description:
               "Optional command timeout in seconds from 1 to 300; defaults to 60 seconds.",
           }),
@@ -2047,13 +2162,19 @@ Delegation rules:
         parameters: Type.Object(
           parameters[toolName] ?? { command: Type.String() },
         ),
-        execute: (toolCallId, params, signal, onUpdate) =>
-          PATH_MUTATING_TOOLS.has(toolName)
+        // Normalizing here, above the write lock, means every consumer below
+        // this line — the lock key, the host call, the transcript record — sees
+        // canonical argument names only (D273).
+        execute: async (toolCallId, rawParams, signal, onUpdate) => {
+          const params = normalizeToolParams(toolName, rawParams);
+          requireAliasedParams(toolName, params);
+          return PATH_MUTATING_TOOLS.has(toolName)
             ? this.writeLocks.run(
                 isRecord(params) ? String(params.path ?? "") : "",
                 () => run(toolCallId, params, signal, onUpdate),
               )
-            : run(toolCallId, params, signal, onUpdate),
+            : run(toolCallId, params, signal, onUpdate);
+        },
       };
     };
 

@@ -217,6 +217,7 @@ Gold source: local Codex electron captures; latest row wins where rows conflict.
 | D270 | One model picker for both credential kinds | **Refines D237 / D240 in the renderer: the model picker is one shared renderer component rendered by both the AI service dialog and the vendor account dialog. A vendor account therefore gets the same discovered model list, the same `ModelBinding` shape, the same per-model context-window and max-output editing, the same published thinking-level chips, and the same save-time narrowing of each binding to the levels the resolved models.dev record publishes. Only the left pane heading differs between the two dialogs. Renderer only: no IPC, storage, host-protocol, or provider-config schema change is implied, and no ADR is required.** | The two surfaces were copies of one picker, and the copy silently lost the advanced controls and the narrowing, so a vendor-account binding could keep a thinking level the runtime discards while the dialog kept counting it as enabled. One component makes the guarantee structural instead of a convention two files had to remember. |
 | D271 | An expanded delegate run scrolls in place | **Refines D201 / D268 / ADR 0062 in the renderer: a delegate's nested rows render in a bounded `.subagent-run-rows` scroll area of `min(420px, 48dvh)` with `overscroll-behavior-y: contain`, placed on that inner wrapper rather than on `.subagent-run` so the absolutely positioned collapse rail is not clipped. The run heading stays outside the scroll area and the area is a labelled, focusable group. `fields` tables gain the same 260px cap the other detail blocks already had, and a lifecycle row's joined reports render as a bounded `output` block instead of an unbounded note. Presentation only: no IPC, storage, host-protocol, or runtime change.** | Expanding one delegation could add dozens of rows in a single commit — a delegate that made forty tool calls grew the transcript by forty rows — so the reading position jumped and the parent's own next row was pushed out of view. `fields` was the one detail block with no height limit, and D268 had routed up to 50k characters of joined reports into a `note`, which has none either. |
 | D272 | Quitting stops plugins as a shutdown, not as a crash | **Refines spec 07 §3.1 in the main process: `before-quit` calls `PluginRuntime.disposeAll()` instead of `disposeWatchers()`. It marks every loaded plugin as disposing and cancels its pending restarts before anything else, disposes watchers, then stops services and runs `onUnload` in parallel — 1.5s per plugin, 3s for the whole sequence, after which the children are killed. `onPluginCrash` no longer sends its own toast, since the runtime already raised one on that path. Main process only: no IPC, storage, host-protocol, or manifest change, and no ADR is required.** | Quit left the plugin children to be killed by the process teardown, and an unmarked exit is indistinguishable from a crash: `handleChildExit`'s `disposing` guard never applied, so every quit logged `PLUGIN_CRASHED` per plugin at `exitCode: 0`, toasted "stopped unexpectedly" twice, and scheduled restarts into a closing app. 613 of 633 crash reports in one local log were this, which is what made the real crashes hard to see. |
+| D273 | A model's habitual argument name is accepted, not corrected | **Refines spec 03 §4 in the agent runtime: `Read`/`Write`/`Edit`/`BrowserPreview` accept `file_path` beside `path`, and `Glob`/`Grep` accept `query` beside `pattern`. Both spellings are optional in the schema so either validates; the runtime folds the alias onto the canonical name before the write lock, the host call, and the transcript, requires exactly one of the pair, and lets the canonical name win when both arrive. `Bash.timeout` widens its schema maximum to 3600000 so a millisecond value validates, and the runtime reads a value of at least 1000 as milliseconds, clamped to the honoured 300-second ceiling, while 301 to 999 stays an out-of-range seconds value. Runtime only: no IPC, storage, or host-protocol change, and host-core's schemas are unchanged.** | Argument names are pretraining habits, not instructions a schema can correct. 852 of 1679 failed tool calls in one local month were a parameter-name miss, 724 of them `Read` sent with `file_path`, which alone was 87% of `Read`'s failures and put its error rate at 11%. Another 69 were a `timeout` in milliseconds. Each cost a turn on an error the model could not see itself making. |
 
 ## M0. Model catalog decisions
 
@@ -2694,3 +2695,37 @@ D193, and D194.
   ADR is required. Plugins gain one guarantee they did not have — `onUnload` runs
   on quit — and the user stops seeing failure toasts on every clean exit.
 - See `07-plugins/05-plugin-lifecycle.md` §3.1.
+
+## 2026-08-30 — A model's habitual argument name is accepted, not corrected (D273)
+
+- Decision D273 refines spec 03 §4 in the agent runtime. The tool schemas named
+  `path` and `pattern`; models sent `file_path` and `query` anyway.
+- The numbers made it a design problem rather than a model problem. Of 1679
+  failed tool calls in one local month, 852 were a parameter-name miss. 724 of
+  those were `Read` called with `file_path` — 87% of every `Read` failure, and
+  enough on its own to put `Read`'s error rate at 11%. `Write` (55), `Edit` (56),
+  `Grep` (13), and `Glob` (4) repeated the pattern with the same two aliases.
+- An argument name is a pretraining habit, not something a description can talk a
+  model out of. The rejection also came from the validator before the call
+  reached the host, so the turn was spent on an error the model had no way to
+  anticipate and, from its side, no reason to expect.
+- `Read`, `Write`, `Edit`, and `BrowserPreview` now accept `file_path` beside
+  `path`; `Glob` and `Grep` accept `query` beside `pattern`. Both spellings are
+  optional in the schema so either one validates, and the runtime folds the alias
+  onto the canonical name before anything downstream sees it — the write-lock
+  key, the `tools.execute` args, and the persisted transcript carry canonical
+  names only, so nothing below this line learns two spellings. Exactly one of
+  each pair is required; the canonical name wins when both arrive.
+- `Bash.timeout` had a second version of the same problem: 69 failures were a
+  timeout in milliseconds (600000, 900000, 1800000) against a field capped at 300
+  seconds. The schema maximum widens to 3600000 — above the largest value
+  observed, 1_800_000 — so a millisecond value validates at all, and the runtime
+  reads a value of at least 1000 as milliseconds, clamped to the honoured
+  300-second ceiling. The threshold
+  is 1000 rather than 300 deliberately: something like 301 is far more likely a
+  seconds value that overshot the cap, and rewriting it to 0.301s would be worse
+  than the error it earns today.
+- Runtime only: no IPC, storage, or host-protocol change. host-core's schemas and
+  its argument parsing are untouched, because the runtime normalizes above them
+  and `tools.list` has no other consumer.
+- See `03-runtime/03-tools-and-permissions.md` §4.
