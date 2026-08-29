@@ -100,7 +100,7 @@ The full picture lives in the [architecture spec](docs/spec/02-architecture/01-a
 
 ## Status & roadmap
 
-PI-Desktop is an early preview under active development. The current 0.10.x line ships the app shell, streaming agent runtime, Agent/Plan/Goal contracts, workspace tools with permissions, the workbench, projects and sessions, imports, agent capability management (MCP/Skills/Subagents), background subagent delegation, multiple models and OAuth accounts per provider, extensions (plugins) with a marketplace, context checkpoints, notifications, in-app release notes, and cross-platform packaging with update delivery.
+PI-Desktop is an early preview under active development. The current 0.11.x line ships the app shell, streaming agent runtime, Agent/Plan/Goal contracts, workspace tools with permissions, the workbench, projects and sessions, imports, agent capability management (MCP/Skills/Subagents), background subagent delegation, discovery-driven provider setup with a models.dev-backed model catalog, multiple models and OAuth accounts per provider, extensions (plugins) with a marketplace, context checkpoints, notifications, in-app release notes, and cross-platform packaging with update delivery.
 
 Still in progress: signed and notarized macOS builds (blocked on Apple Developer credentials — the signing lane itself is scripted), Windows/Linux installer-upgrade and rollback qualification, a stronger plugin sandbox and publisher-signature path, and full UI-driven E2E coverage. See the [milestones](docs/spec/06-delivery/01-mvp-milestones.md) and the [project board](docs/project/BOARD.md).
 

@@ -23,6 +23,19 @@ export type ChangelogEntry = {
 
 const enEntries: ChangelogEntry[] = [
   {
+    version: "0.11.0",
+    date: "2026-08-30",
+    highlights: [
+      "Set up a provider in one discovery-driven form that asks the AI service for its own models before falling back to the bundled catalog.",
+      "Pick a model from a searchable list that shows capability badges and context size, sourced from the models.dev catalog.",
+      "Override attachment capabilities and the default thinking level per model binding, and see only the thinking levels a model publishes.",
+      "Read a lone subagent delegation as its own card with lifecycle rows, and scroll an expanded delegate run instead of stretching the transcript.",
+      "Keep the conversation outline reachable while history still loads, and see a skeleton instead of an empty list while sessions load.",
+      "Paste a large block of text into the composer and have it spill into a session file, with typing kept off the reflow path.",
+      "Keep a window where you dropped it when dragging across displays, and keep the titlebar band reserved on macOS destination pages.",
+    ],
+  },
+  {
     version: "0.10.9",
     date: "2026-08-28",
     highlights: [
@@ -469,6 +482,19 @@ const enEntries: ChangelogEntry[] = [
 ];
 
 const zhCNEntries: ChangelogEntry[] = [
+  {
+    version: "0.11.0",
+    date: "2026-08-30",
+    highlights: [
+      "通过单一的自动发现表单配置服务商：优先向 AI 服务索取其自有模型列表，失败时回退到内置目录。",
+      "在可搜索的模型列表中选择模型，直接查看来自 models.dev 目录的能力标签与上下文长度。",
+      "为每个模型绑定单独覆盖附件能力与默认思考级别，并且只显示该模型实际公开的思考级别。",
+      "单个子智能体委派以独立卡片呈现并展示生命周期行，展开的委派运行内部滚动而不再拉长转录。",
+      "历史仍在加载时也能访问会话大纲，会话列表加载过程中显示骨架屏而不是空列表。",
+      "向输入框粘贴大段文本时自动转存为会话文件，同时保持输入不触发重排。",
+      "跨显示器拖拽窗口后保留放下的位置，macOS 目标页面继续保留标题栏区域。",
+    ],
+  },
   {
     version: "0.10.9",
     date: "2026-08-28",

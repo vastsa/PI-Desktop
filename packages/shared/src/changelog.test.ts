@@ -22,9 +22,10 @@ describe("changelog catalog", () => {
 
   it("lists stable releases from 0.1.1 newest-first without pre-releases", () => {
     const versions = CHANGELOG.en.map((e) => e.version);
-    expect(versions[0]).toBe("0.10.9");
+    expect(versions[0]).toBe("0.11.0");
     expect(versions.at(-1)).toBe(STABLE_FROM);
     expect(versions).toEqual([
+      "0.11.0",
       "0.10.9",
       "0.10.8",
       "0.10.7",
