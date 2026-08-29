@@ -18,6 +18,7 @@ const setupSource = await read("../src/components/settings/ProviderSetupDialog.t
 const hookSource = await read("../src/components/settings/useProviderModels.ts");
 const pageSource = await read("../src/components/settings/ModelConfigPage.tsx");
 const vendorDialogSource = await read("../src/components/settings/VendorAccountDialog.tsx");
+const pickerSource = await read("../src/components/settings/ModelSelectionPanes.tsx");
 const vendorAccountsSource = await read("../src/components/settings/VendorAccountsSection.tsx");
 const apiSource = await read("../src/lib/api.ts");
 const catalogContractSource = await read("../../../packages/shared/src/model-catalog.ts");
@@ -80,10 +81,10 @@ test("token limits are adopted from the published record, never typed by default
   assert.match(catalogContractSource, /export function bindingFromModelInfo/);
   assert.match(catalogContractSource, /CATALOG_DEFAULT_CONTEXT_WINDOW/);
   assert.match(catalogContractSource, /CATALOG_DEFAULT_MAX_TOKENS/);
-  assert.match(setupSource, /bindingFromModelInfo\(/);
-  assert.match(vendorDialogSource, /bindingFromModelInfo\(/);
+  // Both dialogs adopt them through the one shared picker (D269).
+  assert.match(pickerSource, /bindingFromModelInfo\(/);
   // Numeric overrides stay behind the per-row disclosure.
-  assert.match(setupSource, /expandedModelId/);
+  assert.match(pickerSource, /expandedModelId/);
 });
 
 test("the API format stays derived rather than asked for", () => {
@@ -98,17 +99,52 @@ test("both credential kinds share one live list and one binding shape", () => {
   assert.match(setupSource, /useProviderModels/);
   assert.match(vendorDialogSource, /useProviderModels/);
   assert.match(vendorDialogSource, /models: ModelBinding\[\]/);
-  assert.match(vendorDialogSource, /modelId: models\[0\]\.id/);
+  // The account's default model is still the head binding, taken from the
+  // narrowed list the picker hands back rather than from raw state.
+  assert.match(vendorDialogSource, /modelId: persisted\[0\]\.id/);
   assert.match(vendorAccountsSource, /models: form\.models/);
   assert.doesNotMatch(vendorAccountsSource, /source: _source/);
 });
 
-test("model ids are matched case-insensitively across picking and hand entry", () => {
+test("one picker component serves the service dialog and the account dialog", () => {
+  // The two surfaces were copies, and the copy lost the advanced controls and
+  // the save-time narrowing (D269). Neither dialog may grow its own picker back.
   for (const source of [setupSource, vendorDialogSource]) {
-    assert.match(source, /toLowerCase\(\)/);
-    assert.match(source, /bindingForCustomModel\(/);
-    assert.match(source, /settings\.modelAlreadyAdded/);
+    assert.match(source, /ModelSelectionPanes/);
+    assert.match(source, /useModelSelection\(/);
+    assert.doesNotMatch(source, /provider-models-list/);
+    assert.doesNotMatch(source, /provider-chosen-list/);
+    assert.doesNotMatch(source, /visibleRows/);
+    assert.doesNotMatch(source, /addCustomModel/);
+    assert.doesNotMatch(source, /toggleModel/);
   }
+  // Only the heading of the discovered list differs between them.
+  assert.match(setupSource, /listTitle=\{t\("settings\.serviceModels"\)\}/);
+  assert.match(vendorDialogSource, /listTitle=\{t\("settings\.accountModels"\)\}/);
+});
+
+test("the shared picker owns the advanced per-model controls for both kinds", () => {
+  assert.match(pickerSource, /provider-chosen-advanced-toggle/);
+  assert.match(pickerSource, /settings\.contextWindow/);
+  assert.match(pickerSource, /settings\.maxOutput/);
+  assert.match(pickerSource, /provider-chosen-thinking-chips/);
+  assert.match(pickerSource, /publishedThinkingLevels/);
+  assert.match(pickerSource, /bindingsToPersist/);
+});
+
+test("a vendor account saves the narrowed bindings, not raw state", () => {
+  // A level the resolved record does not publish is discarded by the runtime,
+  // so an account must not persist one either.
+  assert.match(vendorDialogSource, /selection\.bindingsToPersist/);
+  assert.match(vendorDialogSource, /models: persisted/);
+  assert.doesNotMatch(vendorDialogSource, /models: models \}/);
+});
+
+test("model ids are matched case-insensitively across picking and hand entry", () => {
+  // One picker, so one matching rule for both credential kinds.
+  assert.match(pickerSource, /toLowerCase\(\)/);
+  assert.match(pickerSource, /bindingForCustomModel\(/);
+  assert.match(pickerSource, /settings\.modelAlreadyAdded/);
 });
 
 test("editing the default provider re-syncs the default model id", () => {

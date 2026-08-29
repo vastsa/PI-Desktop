@@ -12,10 +12,12 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { loadStyles } from "./helpers/styles.mjs";
 
-const setupSource = await readFile(
-  new URL("../src/components/settings/ProviderSetupDialog.tsx", import.meta.url),
-  "utf8",
-);
+const read = (rel) => readFile(new URL(rel, import.meta.url), "utf8");
+
+const setupSource = await read("../src/components/settings/ProviderSetupDialog.tsx");
+const vendorDialogSource = await read("../src/components/settings/VendorAccountDialog.tsx");
+// The panes themselves live in the picker both dialogs render (D269).
+const pickerSource = await read("../src/components/settings/ModelSelectionPanes.tsx");
 const styles = await loadStyles();
 
 /** Declaration block for exactly one selector, so matches cannot span rules. */
@@ -49,13 +51,13 @@ test("the API format is the fourth field, not a disclosure of its own", () => {
   assert.doesNotMatch(setupSource, /advancedOpen/);
   const fieldsBlock = setupSource.slice(
     setupSource.indexOf('className="provider-setup-fields"'),
-    setupSource.indexOf('className="provider-setup-panes"'),
+    setupSource.indexOf("<ModelSelectionPanes"),
   );
   assert.match(fieldsBlock, /settings\.apiStyle"/);
   assert.match(fieldsBlock, /settings\.apiStyleDerived/);
   assert.match(fieldsBlock, /API_STYLES\.map/);
   // The per-model Advanced disclosure is a different control and stays.
-  assert.match(setupSource, /provider-chosen-advanced-toggle/);
+  assert.match(pickerSource, /provider-chosen-advanced-toggle/);
 });
 
 test("list rows carry no box of their own inside a bordered pane", () => {
@@ -124,16 +126,16 @@ test("a save error appears next to the fields it refers to", () => {
 });
 
 test("picking and reviewing models are two side-by-side panes", () => {
-  assert.match(setupSource, /className="provider-setup-panes"/);
+  assert.match(pickerSource, /className="provider-setup-panes"/);
   const panes = block(".provider-setup-panes");
   assert.match(panes, /display: grid/);
   assert.match(panes, /grid-template-columns:\s*minmax\(0, 1fr\) minmax\(0, 1fr\)/);
   assert.match(panes, /min-height: 0/);
   // The available list must come before the chosen list in reading order.
   assert.ok(
-    setupSource.indexOf('className="provider-models"') <
-      setupSource.indexOf('className="provider-chosen"'),
-    "the service's list should precede the chosen list",
+    pickerSource.indexOf('className="provider-models"') <
+      pickerSource.indexOf('className="provider-chosen"'),
+    "the credential's list should precede the chosen list",
   );
 });
 
@@ -178,15 +180,22 @@ test("the panes stack again before the dialog gets too narrow to read", () => {
   const query = styles.slice(at, styles.indexOf("@media", at + 10));
   assert.match(query, /\.provider-setup-panes\s*\{\s*grid-template-columns: minmax\(0, 1fr\)/);
   assert.match(query, /\.provider-setup-fields\s*\{\s*grid-template-columns: minmax\(0, 1fr\)/);
-  // A stacked dialog must be allowed to size to its content again.
-  assert.match(query, /\.provider-setup-dialog\s*\{[\s\S]*?height: auto/);
+  // A stacked dialog must be allowed to size to its content again, and both
+  // dialogs host the same panes, so both need that release.
+  assert.match(
+    query,
+    /\.provider-setup-dialog,\s*\n\s*\.vendor-account-dialog\s*\{[\s\S]*?height: auto/,
+  );
 });
 
-test("the vendor account dialog keeps its stacked treatment", () => {
-  // It has no discovery pane to pair with, so it must not lose its divider to
-  // the two-pane rules the provider dialog needs.
-  const chosen = block(".vendor-account-chosen");
-  assert.match(chosen, /border-top: 1px solid var\(--ds-border-subtle\)/);
-  const list = block(".vendor-account-chosen-list");
-  assert.match(list, /max-height: min\(240px, 30vh\)/);
+test("the vendor account dialog hosts the same panes in the same shell", () => {
+  // It renders the shared picker (D269), so it needs the provider dialog's box
+  // rather than the narrower stacked one it used while it had its own copy.
+  const dialog = block(".vendor-account-dialog");
+  assert.match(dialog, /width: min\(1040px, calc\(100vw - 48px\)\)/);
+  assert.match(dialog, /height: min\(720px, calc\(100vh - 64px\)\)/);
+  assert.match(vendorDialogSource, /<ModelSelectionPanes/);
+  // The duplicated chosen-pane and custom-model rules are retired with it.
+  assert.doesNotMatch(styles, /\.vendor-account-chosen/);
+  assert.doesNotMatch(styles, /\.vendor-account-custom-model/);
 });
