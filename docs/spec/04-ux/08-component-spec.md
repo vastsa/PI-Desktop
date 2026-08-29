@@ -204,7 +204,7 @@ combined model × reasoning selection (§11).
   `--ds-toolbar-height`. Windows/Linux keep the same `--ds-window-controls-width`
   reservation so the right boundary and native controls stay aligned when the
   route or work panel changes.
-- Band reservation is platform-independent (D266). The band is opaque and
+- Band reservation is platform-independent (D268). The band is opaque and
   absolutely positioned, so scrolling route content passes underneath it on
   every platform, macOS included. Every route surface that starts its own
   content at the top edge reserves the band: the transcript
@@ -1463,14 +1463,44 @@ twice.
 - No cross-row activity grouping until turn boundaries are available to the
   transcript component
 
-### 9.9 Delegation cards and fan-out topology (D201, D265, ADR 0062)
+### 9.9 Delegation cards and fan-out topology (D201, D265, D268, ADR 0062)
 
 A `Task` call is presented as a node of a delegation card, not as a compact tool
 row — one delegation reads the same as a fan-out (D265). The node names the
 delegate it ran, taken from the rows it produced or, before any arrived, from
-the call's own `agent` argument, and carries the call's short `description`. The
-`delegate` action icon and the agent chip remain the treatment for the
-lifecycle rows (`TaskWait`/`TaskList`/`TaskStop`), which are ordinary tool rows.
+the call's own `agent` argument, and carries the call's short `description`.
+
+The lifecycle rows (`TaskWait`/`TaskList`/`TaskStop`) stay compact tool rows —
+they are not topology nodes and must not inflate the subagent counts — but they
+are presented as subagent rows rather than as generic tool calls (D268). A
+lifecycle row is called with delegation ids, which read as bare UUIDs, so it
+never summarizes from its own arguments:
+
+```text
+└─ [bot] Waited for subagents  2 subagents  explorer, fixer   Failed  [›]
+   ├─ Notice
+   │  ## explorer (d1) — completed …
+   └─ Details
+      explorer     completed · 3s · 6 turns
+      fixer        failed
+```
+
+- **Its summary is the roster it reports on**, by agent name, read from
+  `details.delegations[]` (`TaskWait`/`TaskList`) or `details.stopped[]`
+  (`TaskStop`). A repeated agent is counted (`explorer ×2`) rather than listed
+  twice, and a subagent count chip sits beside the label.
+- **Its status badge rolls up that roster** using the same
+  `chat.subagentStatus.*` vocabulary as a topology node: anything still running
+  keeps the row running, a `failed`/`denied` member outranks a completed
+  sibling, and otherwise a non-completed member (truncated, timed out, stopped)
+  is surfaced ahead of `completed`.
+- **Its label names the action on subagents**, not "Delegated": only `Task`
+  delegates. The row carries the `delegate` bot icon in the subagent accent so
+  it scans as belonging with the card it reports on.
+- **Its body is the roster as a named table**, one line per subagent with status,
+  runtime and turns, led by the joined reports as a notice — never the raw
+  `delegations[]` JSON. A lifecycle row has no brief of its own, so the ids it
+  was called with do not reappear as an argument block.
 
 ```text
 [flow] Subagent completed   1 subagent · 1/1 finished · 40s        [›]

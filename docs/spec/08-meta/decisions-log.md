@@ -211,6 +211,7 @@ Gold source: local Codex electron captures; latest row wins where rows conflict.
 | D261 | The mounted transcript is a window, not the loaded history | **Refine ADR 0120 / D258 in the renderer: the mounted history is a trailing window over the loaded history — 15 rows in the first commit after a session switch, a 60-row steady state, grown 40 rows at a time. Reaching the top escalates in two stages: grow the window while it is partial, and call `loadOlder` only once the window covers all loaded history. Window growth and a fetched page take the same pre-paint scroll anchor, because both add height above the reading position. The window resets per session and is clamped to the loaded history, so a stale budget from the previous session cannot over-mount. The hydration spacer stays scoped to the first commit. The conversation minimap is built from the mounted entries rather than from every loaded message. No IPC, storage, host protocol, or pagination change.** | ADR 0120 bounded what crossed the IPC boundary and D258 bounded the cost of locating a page, but the renderer still mounted every row it had ever paged in and kept it mounted for the life of the session. `content-visibility: auto` skips layout and paint for those rows while retaining their React trees, Markdown ASTs, and Shiki token arrays — the wrong resource on a low-memory Windows machine, where the reported symptom was the chat area getting progressively less responsive in a long session. Windowing bounds retained memory and per-frame reconciliation together; feeding the minimap the full set would have drawn dashes whose click target no longer exists. |
 | D262 | Spill large composer text pastes into session scratch | **Text-only composer pastes at or below the persisted `largePasteThreshold` remain native textarea input; the default is 600 characters and valid values are integers from 1 through 1,000,000. Above the threshold, the renderer sends exact UTF-8 `text/plain` bytes through the existing session paste bridge, Electron stores them under `<data_dir>/scratch/<sessionId>/pasted/`, and the Composer inserts a generated `@<temporary-name> ` token at the original selection. The renderer retains a session-scoped token-to-canonical-path mapping, resolves it in place exactly once before dispatch, and excludes it from duplicate attachment/fallback serialization. Existing clipboard file/image chips and bridge bounds remain unchanged; no workspace, artifact-store, host-protocol, or schema change.** | Very large native pastes are hard to edit and visually overwhelm the composer, while the existing session scratch flow already provides bounded, isolated storage and canonical path semantics without dirtying a project (ADR 0131).** |
 | D265 | One delegation reads as a card, like a fan-out | **Amends D201 / ADR 0062 in the renderer: every `Task` call in an activity group renders as a full-width delegation card — main-agent root, connector, one node per delegate — a lone delegation included, instead of falling back to a compact tool row. The aggregate header takes a count, so a single delegation is not announced in the plural: English gains `_one` forms and Chinese, which has one plural category, drops the English plural marker. Nothing else about the card changes, and no IPC, storage, host-protocol, or delegation-runtime change is implied.** | Reserving the card for two or more delegates made the same work look like two different features, and the single case — the common one — was the one that lost the outcome, the recorded runtime and the delegate's step count (ADR 0062 §6). |
+| D268 | A lifecycle row is a subagent row | **Refines D201 / D265 / ADR 0062 and ADR 0089 in the renderer: the delegation lifecycle rows (`TaskWait`/`TaskList`/`TaskStop`) stay compact tool rows and stay out of the topology counts, but are presented as subagent rows. They summarize from the roster the runtime returned — agent names read from `details.delegations[]` or `details.stopped[]`, a repeat counted rather than listed twice — never from their own `delegationIds` argument; their badge rolls that roster up using the existing `chat.subagentStatus.*` vocabulary; their label names the action taken on subagents instead of "Delegated"; and their body is the roster as a named table led by the joined reports, instead of the raw `delegations[]` JSON. No IPC, storage, host-protocol, or delegation-runtime change is implied.** | The lifecycle rows carry the settled outcome the `Task` card cannot know (ADR 0089), yet they rendered as generic tool calls whose summary was a bare UUID and whose body was a JSON dump — the least readable part of a feature whose card is otherwise the most readable. Reading the roster it already returns costs nothing and makes the whole delegation scan as one thing. |
 
 ## M0. Model catalog decisions
 
@@ -2495,6 +2496,30 @@ D193, and D194.
   Behavior is unchanged: identical menu rows and order, the same 28px one-line
   floor, and the same seven-row cap. See `04-ux/08-component-spec.md` §11.5 and
   US-UI-55.
+
+## 2026-08-29 — A lifecycle row is a subagent row (D268)
+
+- Decision D268 refines D201 / D265 / ADR 0062 and ADR 0089 in the renderer.
+  D265 made every `Task` call a full-width delegation card, but left the three
+  lifecycle rows (`TaskWait`/`TaskList`/`TaskStop`) as generic tool rows. Those
+  rows are the only place a settled outcome appears — `Task` returns the moment
+  the delegate starts and says `running` forever — so they were simultaneously
+  the most informative and the least readable part of a delegation.
+- The visible defects were narrow. A lifecycle row is called with delegation
+  ids, so `getToolSummary` printed a bare UUID list; its result payload had no
+  per-tool mapping, so the body fell back to pretty-printed `delegations[]`
+  JSON; and its label read "Delegated", which is what `Task` does, not what a
+  wait or a stop does.
+- The fix reads the roster the runtime already returns. `details.delegations[]`
+  (`TaskWait`/`TaskList`) and `details.stopped[]` (`TaskStop`) carry the agent
+  name, status and registry timestamps, which is exactly what a reader needs:
+  the row summarizes by agent name with repeats counted, badges a rolled-up
+  status from the shared `chat.subagentStatus.*` vocabulary, and renders the
+  roster as a named field table led by the joined reports.
+- Deliberately unchanged: a lifecycle row is still **not** a topology node and
+  still must not inflate the subagent counts (`isDelegationActivityItem`), the
+  runtime and its `delegationId` contract are untouched, and no IPC, storage or
+  host-protocol surface moves. This is presentation only.
 
 ## 2026-08-28 — One delegation reads as a card, like a fan-out (D265)
 
