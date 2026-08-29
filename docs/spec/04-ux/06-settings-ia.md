@@ -172,8 +172,11 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
     publishes, in canonical order, so the count a user enables here equals the
     count the Composer reasoning menu renders for that model. A row whose model
     publishes no reasoning shows the thinking-disabled hint instead of chips.
-    A stored binding is narrowed to the published set when the dialog saves,
-    while a row whose model is currently undiscoverable keeps its stored levels.
+    A stored binding is narrowed to the published set when the dialog saves.
+    A row the catalog does not describe — a hand-typed ID, a vendor-account
+    model, or an endpoint that went quiet — has no published list: it shows the
+    levels already enabled and is saved unchanged, so discovery being
+    unavailable can never erase configuration.
     Removing the current default falls back to the first enabled level; no
     enabled levels disable the default selector and show the model's
     thinking-disabled hint

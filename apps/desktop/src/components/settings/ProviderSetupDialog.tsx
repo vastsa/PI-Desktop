@@ -147,6 +147,11 @@ export function ProviderSetupDialog({
   const publishedLevelsById = useMemo(() => {
     const byId = new Map<string, ThinkingLevel[]>();
     for (const row of rows) {
+      // A row with no published record is a hand-typed id, a vendor account
+      // model the catalog does not list, or an endpoint that went quiet. Those
+      // stay out of the map entirely: an absent entry means "unknown", which
+      // preserves the stored levels, while an empty entry would erase them.
+      if (!row.info) continue;
       byId.set(row.id.toLowerCase(), publishedThinkingLevels(row.info));
     }
     return byId;
@@ -497,8 +502,12 @@ export function ProviderSetupDialog({
               ) : (
                 <ul className="provider-chosen-list">
                   {models.map((binding) => {
+                    // An unknown row has no published list to offer, so it shows
+                    // what is already enabled rather than claiming the model has
+                    // no thinking support.
                     const levelChoices =
-                      publishedLevelsById.get(binding.id.toLowerCase()) ?? [];
+                      publishedLevelsById.get(binding.id.toLowerCase()) ??
+                      binding.thinkingLevels;
                     return (
                     <li className="provider-chosen-row" key={binding.id}>
                       <div className="provider-chosen-row-head">

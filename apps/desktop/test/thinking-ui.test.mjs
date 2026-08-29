@@ -244,4 +244,12 @@ test("settings offers exactly the thinking levels the composer can render", () =
     /bindingsToPersist[\s\S]*?const thinkingLevels = binding\.thinkingLevels\.filter/,
   );
   assert.match(settingsSource, /models: persisted/);
+  // A row the catalog does not describe stays out of the published map, so an
+  // offline endpoint or a hand-typed id cannot erase stored levels.
+  assert.match(settingsSource, /if \(!row\.info\) continue;/);
+  assert.match(
+    settingsSource,
+    /publishedLevelsById\.get\(binding\.id\.toLowerCase\(\)\) \?\?\s*\n?\s*binding\.thinkingLevels/,
+  );
+  assert.match(settingsSource, /if \(!choices\) return binding;/);
 });
