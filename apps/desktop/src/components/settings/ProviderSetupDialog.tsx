@@ -67,7 +67,6 @@ export function ProviderSetupDialog({
   const [apiStyle, setApiStyle] = useState<CatalogApiStyle>(
     (provider?.apiStyle as CatalogApiStyle) ?? "chat_completions",
   );
-  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [models, setModels] = useState<ModelBinding[]>(provider?.models ?? []);
   const [modelQuery, setModelQuery] = useState("");
   const [customModelId, setCustomModelId] = useState("");
@@ -353,6 +352,22 @@ export function ProviderSetupDialog({
                 />
               </Field>
 
+              {/*
+                Derived from the endpoint, but a plain fourth field: a whole
+                disclosure for one select was more chrome than the setting.
+              */}
+              <Field label={t("settings.apiStyle")} hint={t("settings.apiStyleDerived")}>
+                <Select
+                  value={apiStyle}
+                  onChange={(event) => setApiStyle(event.target.value as CatalogApiStyle)}
+                >
+                  {API_STYLES.map((style) => (
+                    <option key={style} value={style}>
+                      {t(API_STYLE_LABEL_KEYS[style])}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
             </div>
 
             {provider ? (
@@ -557,28 +572,6 @@ export function ProviderSetupDialog({
               </div>
             </div>
           </div>
-
-          <details
-            className="provider-advanced"
-            open={advancedOpen}
-            onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}
-          >
-            <summary className="provider-advanced-summary">{t("settings.advanced")}</summary>
-            <div className="provider-advanced-body">
-              <Field label={t("settings.apiStyle")} hint={t("settings.apiStyleDerived")}>
-                <Select
-                  value={apiStyle}
-                  onChange={(event) => setApiStyle(event.target.value as CatalogApiStyle)}
-                >
-                  {API_STYLES.map((style) => (
-                    <option key={style} value={style}>
-                      {t(API_STYLE_LABEL_KEYS[style])}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-            </div>
-          </details>
         </div>
 
         {error ? <div className="provider-setup-error">{error}</div> : null}

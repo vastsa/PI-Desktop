@@ -105,10 +105,14 @@
   flex: none;
 }
 
+/*
+  Name / Base URL on the first row, API key / API format on the second: four
+  peer fields in a 2x2, rather than a 3-up row plus a disclosure below it.
+*/
 .provider-setup-fields {
   display: grid;
-  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.4fr) minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
   align-items: start;
 }
 
@@ -161,35 +165,6 @@
   line-height: var(--leading-relaxed);
 }
 
-.provider-advanced {
-  border-top: 1px solid var(--ds-border-subtle);
-  padding-top: 10px;
-}
-
-.provider-advanced-summary {
-  color: var(--ds-text-muted);
-  font-size: var(--text-2xs);
-  font-weight: var(--font-weight-medium);
-  line-height: var(--leading-normal);
-  cursor: pointer;
-}
-
-.provider-advanced-summary:hover {
-  color: var(--ds-text-primary);
-}
-
-.provider-advanced-summary:focus-visible {
-  outline: 2px solid var(--ds-accent-soft);
-  outline-offset: 2px;
-}
-
-.provider-advanced-body {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding-top: 10px;
-}
-
 /* ------------------------------------------------- live model list */
 
 /* The service's own answer, so this is a short checkbox list, not a catalog. */
@@ -200,12 +175,10 @@
 .provider-models {
   display: flex;
   flex-direction: column;
-  gap: 8px;
   min-height: 0;
-  padding: 10px;
   border: 1px solid var(--ds-border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--ds-bg-secondary);
+  border-radius: var(--radius-sm);
+  background: var(--ds-bg-inset);
 }
 
 /* A hairline under each pane header separates the title from its list. */
@@ -215,16 +188,18 @@
   gap: 8px;
   flex: none;
   flex-wrap: wrap;
-  padding-bottom: 8px;
+  padding: 7px 8px;
   border-bottom: 1px solid var(--ds-border-subtle);
 }
 
 .provider-models-title {
   margin: 0;
-  color: var(--ds-text-primary);
-  font-size: var(--text-md);
+  color: var(--ds-text-secondary);
+  font-size: var(--text-2xs);
   font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--tracking-wide);
   line-height: var(--leading-tight);
+  text-transform: uppercase;
 }
 
 .provider-models-state {
@@ -238,13 +213,19 @@
   align-items: center;
   gap: 6px;
   margin-left: auto;
-  padding: 0 8px;
-  min-height: 28px;
-  min-width: 180px;
-  border: 1px solid var(--ds-border-default);
-  border-radius: var(--radius-sm);
-  background: var(--ds-bg-inset);
-  color: var(--ds-text-muted);
+  padding: 0 7px;
+  min-height: 24px;
+  min-width: 150px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-2xs);
+  background: var(--ds-bg-chip);
+  color: var(--ds-text-faint);
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.provider-models-search-wrap:focus-within {
+  border-color: var(--ds-border-strong);
+  background: var(--ds-bg-primary);
 }
 
 .provider-models-search-wrap:focus-within {
@@ -267,6 +248,7 @@
 }
 
 .provider-models-note {
+  margin: 0 8px;
   padding: 6px 8px;
   border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-xs);
@@ -298,26 +280,41 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 0;
   margin: 0;
-  padding: 0;
+  padding: 3px;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   list-style: none;
 }
 
+/*
+  These rows live inside an already-bordered pane, so they carry no box of
+  their own — a hairline between them reads as a list instead of a stack of
+  little cards.
+*/
 .provider-models-row {
-  border: 1px solid var(--ds-border-subtle);
-  border-radius: var(--radius-xs);
-  background: var(--ds-bg-secondary);
+  border-radius: var(--radius-3xs);
+}
+
+.provider-models-row + .provider-models-row {
+  border-top: 1px solid var(--ds-border-subtle);
+}
+
+.provider-models-row:hover {
+  background: var(--ds-bg-hover);
+}
+
+.provider-models-row:has(.provider-models-check:checked) {
+  background: var(--ds-bg-active);
 }
 
 .provider-models-row-label {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 8px;
-  padding: 6px 8px;
+  padding: 5px 7px;
   cursor: pointer;
 }
 
@@ -372,12 +369,10 @@
 .provider-chosen {
   display: flex;
   flex-direction: column;
-  gap: 8px;
   min-height: 0;
-  padding: 10px;
   border: 1px solid var(--ds-border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--ds-bg-secondary);
+  border-radius: var(--radius-sm);
+  background: var(--ds-bg-inset);
 }
 
 /* The vendor-account dialog still stacks, so it keeps the divider. */
@@ -392,9 +387,9 @@
 .provider-chosen-head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex: none;
-  padding-bottom: 8px;
+  padding: 7px 8px;
   border-bottom: 1px solid var(--ds-border-subtle);
 }
 
@@ -404,7 +399,16 @@
   gap: 8px;
 }
 
-.provider-chosen-title,
+.provider-chosen-title {
+  margin: 0;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-2xs);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--tracking-wide);
+  line-height: var(--leading-tight);
+  text-transform: uppercase;
+}
+
 .vendor-account-chosen-title {
   margin: 0;
   color: var(--ds-text-primary);
@@ -452,9 +456,9 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 3px;
   margin: 0;
-  padding: 0;
+  padding: 3px;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -473,7 +477,11 @@
   list-style: none;
 }
 
-.provider-chosen-row,
+.provider-chosen-row {
+  border-radius: var(--radius-3xs);
+  background: var(--ds-bg-inset);
+}
+
 .vendor-account-chosen-row {
   border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-xs);
@@ -490,8 +498,8 @@
 .provider-chosen-row-head {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
+  gap: 6px;
+  padding: 4px 6px;
 }
 
 .provider-chosen-row-id,
@@ -622,7 +630,7 @@
 
 .provider-custom-model {
   flex: none;
-  padding-top: 8px;
+  padding: 8px;
   border-top: 1px solid var(--ds-border-subtle);
 }
 

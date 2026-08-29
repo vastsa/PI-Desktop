@@ -31,16 +31,55 @@ test("the dialog is a fixed-height shell so it cannot grow with the model count"
   assert.match(dialog, /width: min\(1040px, calc\(100vw - 48px\)\)/);
 });
 
-test("credentials sit on one row instead of three stacked fields", () => {
+test("credentials are a 2x2 grid of four peer fields", () => {
   assert.match(setupSource, /className="provider-setup-credentials"/);
   assert.match(setupSource, /className="provider-setup-fields"/);
   const fields = block(".provider-setup-fields");
   assert.match(fields, /display: grid/);
-  // Three columns: name, base URL, key.
-  assert.match(fields, /grid-template-columns:\s*minmax\(0, 0\.8fr\) minmax\(0, 1\.4fr\) minmax\(0, 1fr\)/);
+  assert.match(fields, /grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
   // The old single-column wrapper is gone.
   assert.doesNotMatch(setupSource, /className="provider-setup-form"/);
   assert.doesNotMatch(styles, /\.provider-setup-form\s*\{/);
+});
+
+test("the API format is the fourth field, not a disclosure of its own", () => {
+  // One select did not justify a whole collapsible section.
+  assert.doesNotMatch(setupSource, /<details/);
+  assert.doesNotMatch(setupSource, /provider-advanced/);
+  assert.doesNotMatch(setupSource, /advancedOpen/);
+  const fieldsBlock = setupSource.slice(
+    setupSource.indexOf('className="provider-setup-fields"'),
+    setupSource.indexOf('className="provider-setup-panes"'),
+  );
+  assert.match(fieldsBlock, /settings\.apiStyle"/);
+  assert.match(fieldsBlock, /settings\.apiStyleDerived/);
+  assert.match(fieldsBlock, /API_STYLES\.map/);
+  // The per-model Advanced disclosure is a different control and stays.
+  assert.match(setupSource, /provider-chosen-advanced-toggle/);
+});
+
+test("list rows carry no box of their own inside a bordered pane", () => {
+  // Double borders were what made the dialog look coarse.
+  const row = block(".provider-models-row");
+  assert.doesNotMatch(row, /border: 1px solid/);
+  assert.match(styles, /\.provider-models-row \+ \.provider-models-row\s*\{\s*border-top: 1px solid/);
+  const chosen = block(".provider-chosen-row");
+  assert.doesNotMatch(chosen, /border: 1px solid/);
+  // The panes themselves read as wells, not as raised cards.
+  for (const selector of [".provider-models", ".provider-chosen"]) {
+    assert.match(block(selector), /background: var\(--ds-bg-inset\)/);
+  }
+});
+
+test("pane titles are section labels, not competing headings", () => {
+  for (const selector of [".provider-models-title", ".provider-chosen-title"]) {
+    const title = block(selector);
+    assert.match(title, /font-size: var\(--text-2xs\)/);
+    assert.match(title, /text-transform: uppercase/);
+    assert.match(title, /color: var\(--ds-text-secondary\)/);
+  }
+  // The dialog title stays the one prominent heading.
+  assert.match(block(".provider-setup-title"), /font-size: var\(--text-base-plus\)/);
 });
 
 test("picking and reviewing models are two side-by-side panes", () => {
@@ -62,7 +101,7 @@ test("each pane is a self-contained panel that scrolls its own list", () => {
     const pane = block(selector);
     assert.match(pane, /min-height: 0/);
     assert.match(pane, /border: 1px solid var\(--ds-border-subtle\)/);
-    assert.match(pane, /border-radius: var\(--radius-md\)/);
+    assert.match(pane, /border-radius: var\(--radius-sm\)/);
     // The divider that separated the old stacked sections would now cut across
     // the grid, so it must be gone.
     assert.doesNotMatch(pane, /border-top: 1px solid/);
