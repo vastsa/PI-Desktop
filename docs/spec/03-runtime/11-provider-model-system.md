@@ -169,6 +169,20 @@ PI-Desktop must not permanently restrict users to a short fixed model list.
    Enabling image input turns on the transient image content block; enabling PDF
    input records the capability but does not change the encoding, since pi-ai
    0.84 has no PDF content block and PDFs stay bounded file references.
+10. The settings checkboxes show the effective answer against the published
+    baseline, and setting one back to the published value stores "follow the
+    catalog" rather than an equal-valued override. Agreeing with models.dev is
+    therefore the reset, and no separate reset control or per-capability
+    explanatory copy is required.
+11. `ModelInfo.modalities` is the published record the settings surface compares
+    against, so a stored binding must not shape it. Limits, reasoning and
+    thinking levels are still resolved through the binding; only the modality
+    arrays stay as models.dev published them.
+12. A model the user has configured keeps its published record even when live
+    discovery no longer lists it, so its capabilities remain visible and
+    editable. Only ids already present in the provider's `models` are re-added,
+    never the catalog at large, and only the rows discovery actually returned
+    are written to the model cache.
 
 ### 6.3 Model families to cover
 Catalog and custom model entry must support common capability classes:

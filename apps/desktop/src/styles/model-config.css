@@ -541,50 +541,12 @@
 .provider-chosen-capability {
   display: flex;
   align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.provider-chosen-capability-label {
-  display: flex;
-  align-items: center;
   gap: 5px;
+  min-width: 0;
   color: var(--ds-text-primary);
   font-size: var(--text-3xs);
   line-height: var(--leading-normal);
   cursor: pointer;
-}
-
-.provider-chosen-capability-state {
-  color: var(--ds-text-faint);
-  font-size: var(--text-3xs);
-  line-height: var(--leading-normal);
-}
-
-.provider-chosen-capability-reset {
-  border: 0;
-  padding: 0;
-  background: transparent;
-  color: var(--ds-text-muted);
-  font-size: var(--text-3xs);
-  line-height: var(--leading-normal);
-  text-decoration: underline;
-  cursor: pointer;
-}
-
-.provider-chosen-capability-reset:hover {
-  color: var(--ds-text-primary);
-}
-
-.provider-chosen-capability-reset:focus-visible {
-  outline: 2px solid var(--ds-accent-soft);
-  outline-offset: 1px;
-}
-
-.provider-chosen-capability-hint {
-  color: var(--ds-text-faint);
-  font-size: var(--text-3xs);
-  line-height: var(--leading-normal);
 }
 
 .provider-chosen-thinking-chips {

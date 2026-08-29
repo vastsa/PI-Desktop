@@ -331,13 +331,12 @@ export function ModelSelectionPanes({
               const enabledLevels = sortThinkingLevels(
                 binding.thinkingLevels.filter((level) => levelChoices.includes(level)),
               );
+              // models.dev is the baseline the checkboxes show and compare
+              // against. A model the catalog does not describe publishes
+              // nothing, so both boxes start clear and any tick is an override.
               const info = infoById.get(binding.id.toLowerCase());
-              const publishedImages = info
-                ? modelMatchesFilter(info, "vision")
-                : undefined;
-              const publishedDocuments = info
-                ? modelMatchesFilter(info, "pdf")
-                : undefined;
+              const publishedImages = info ? modelMatchesFilter(info, "vision") : false;
+              const publishedDocuments = info ? modelMatchesFilter(info, "pdf") : false;
               return (
                 <li className="provider-chosen-row" key={binding.id}>
                   <div className="provider-chosen-row-head">
@@ -493,9 +492,6 @@ export function ModelSelectionPanes({
                           }
                         />
                       </div>
-                      <span className="provider-chosen-capability-hint">
-                        {t("settings.documentInputHint")}
-                      </span>
                     </div>
                   </div>
                 </li>
@@ -538,50 +534,34 @@ export function ModelSelectionPanes({
 
 type CapabilityToggleProps = {
   label: string;
-  /** What models.dev publishes, or undefined when the model is not described. */
-  published: boolean | undefined;
+  /** What models.dev publishes for this model. */
+  published: boolean;
   /** Stored override: `true`/`false` explicit, `null`/undefined follows. */
   value: boolean | null | undefined;
   onChange: (next: boolean | null) => void;
 };
 
 /**
- * One attachment capability as a three-state control.
+ * One attachment capability as a plain checkbox showing the effective answer.
  *
- * Two states would not be enough: a binding that merely mirrors the catalog must
- * keep following it, so a later models.dev correction still reaches the model,
- * while an explicit answer must survive that same correction. The checkbox holds
- * the effective value and a reset link drops back to "follow published".
+ * The three stored states stay, but they need no third control: ticking the box
+ * back to what models.dev publishes stores "follow the catalog" rather than an
+ * equal-valued override, so agreeing with the catalog is the reset. That keeps a
+ * later catalog correction flowing through without asking the user to
+ * understand the distinction.
  */
 function CapabilityToggle({ label, published, value, onChange }: CapabilityToggleProps) {
-  const { t } = useTranslation();
-  const overridden = typeof value === "boolean";
-  const effective = overridden ? value : (published ?? false);
+  const effective = typeof value === "boolean" ? value : published;
   return (
-    <div className="provider-chosen-capability">
-      <label className="provider-chosen-capability-label">
-        <input
-          type="checkbox"
-          checked={effective}
-          onChange={(event) => onChange(event.target.checked)}
-        />
-        <span>{label}</span>
-      </label>
-      {overridden ? (
-        <button
-          type="button"
-          className="provider-chosen-capability-reset"
-          onClick={() => onChange(null)}
-        >
-          {t("settings.followPublished")}
-        </button>
-      ) : (
-        <span className="provider-chosen-capability-state">
-          {published === undefined
-            ? t("settings.capabilityUnknown")
-            : t("settings.capabilityPublished")}
-        </span>
-      )}
-    </div>
+    <label className="provider-chosen-capability">
+      <input
+        type="checkbox"
+        checked={effective}
+        onChange={(event) =>
+          onChange(event.target.checked === published ? null : event.target.checked)
+        }
+      />
+      <span>{label}</span>
+    </label>
   );
 }
