@@ -2802,7 +2802,12 @@ export const useAppStore = create<AppState>((set, get) => ({
           source: "refresh",
         });
         if (generation !== providerModelsGeneration) return;
-        if (refreshed.source === "remote" && refreshed.models.length > 0) {
+        // A catalog-derived list is still a usable answer for an endpoint that
+        // publishes no /models route, so it commits like a remote one.
+        if (
+          (refreshed.source === "remote" || refreshed.source === "catalog") &&
+          refreshed.models.length > 0
+        ) {
           set((state) => ({
             providerModels: {
               ...state.providerModels,

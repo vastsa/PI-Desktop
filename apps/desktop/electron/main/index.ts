@@ -147,10 +147,8 @@ import { BrowserPane, resolveLocalFile } from "./browser-view";
 import { discoverProviderModels } from "./model-discovery";
 import {
   ModelsDevCatalog,
-  coerceModelSearchInput,
   modelConfigFromModelsDev,
   modelInfoFromModelsDev,
-  presetsWithConfiguredProviders,
 } from "./models-dev-catalog";
 import { OAUTH_AUTH_KIND, VendorOAuth } from "./oauth";
 import { listDir, readWorkspaceFile, resolveWithinRoot } from "./fs-panel";
@@ -5709,41 +5707,11 @@ function registerIpc() {
     const refreshed = await modelsDevCatalog.refresh();
     return { refreshed, status: modelsDevCatalog.getStatus() };
   });
-  // Setup presets come straight from the bundled models.dev snapshot; the only
-  // local knowledge added here is which presets already have a provider row.
-  handle(IPC.invoke.providersCatalogPresets, async () => {
+  // Status only: the snapshot is bundled with the release and this reports what
+  // is loaded, so the settings footer never has to browse the catalog.
+  handle(IPC.invoke.providersModelCatalogStatus, async () => {
     await modelsDevCatalog.ensureLoaded();
-    const rows = (await listRuntimeProviders(true)).map((provider) => ({
-      id: provider.id,
-      ...(provider.vendorKey ? { vendorKey: provider.vendorKey } : {}),
-      ...(provider.baseUrl ? { baseUrl: provider.baseUrl } : {}),
-    }));
-    return {
-      presets: presetsWithConfiguredProviders(modelsDevCatalog.presets(), rows),
-      status: modelsDevCatalog.getStatus(),
-    };
-  });
-  handle(IPC.invoke.providersSearchModels, async (payload: unknown) => {
-    const request = coerceModelSearchInput(payload);
-    await modelsDevCatalog.ensureLoaded();
-    // A configured row is not a catalog key, so resolve it first. An unknown
-    // row falls through to an unrestricted search rather than an empty list.
-    let providerKey = request.providerKey;
-    if (!providerKey && request.providerId) {
-      const row = (await listRuntimeProviders(true)).find(
-        (provider) => provider.id === request.providerId,
-      );
-      providerKey = row
-        ? modelsDevCatalog.providerKeyForRow({
-            ...(row.vendorKey ? { vendorKey: row.vendorKey } : {}),
-            ...(row.baseUrl ? { baseUrl: row.baseUrl } : {}),
-          })
-        : undefined;
-    }
-    return modelsDevCatalog.searchModels({
-      ...request,
-      ...(providerKey ? { providerKey } : {}),
-    });
+    return { status: modelsDevCatalog.getStatus() };
   });
   handle(IPC.invoke.providersCreate, async (input: unknown) => {
     if (!host) throw new Error("host unavailable");
@@ -6050,18 +6018,6 @@ function registerIpc() {
         return { models: fallback, source: "fallback" as const };
       }
 
-      const catalogModels = modelsDevCatalog.modelsForProvider({
-        vendorKey: provider?.vendorKey,
-        baseUrl,
-        providerId: provider?.id ?? "",
-      });
-      if (catalogModels.length > 0) {
-        return {
-          models: catalogModels.map((model) => decorate(model)),
-          source: "remote" as const,
-        };
-      }
-
       // Dialog edits can omit the key to reuse the stored secret; the raw key
       // never travels back to the renderer either way.
       let apiKey = req.apiKey ?? "";
@@ -6071,6 +6027,14 @@ function registerIpc() {
         });
         apiKey = secret.value ?? "";
       }
+
+      /*
+        The service itself is the authority on which models it serves, so the
+        live endpoint is asked first and models.dev is only consulted to enrich
+        what came back (`decorate` above). Asking the catalog first would offer
+        every published model for the vendor, including ones this deployment
+        does not host and ones the key is not entitled to.
+      */
       let discoveryError: string | undefined;
       if (baseUrl) {
         try {
@@ -6087,7 +6051,23 @@ function registerIpc() {
           });
         }
       }
-      // Fallback: the provider's configured model, so pickers stay usable
+
+      // The endpoint published nothing usable (no /models route, an auth error,
+      // or an empty list). The catalog is the fallback, not the primary source.
+      const catalogModels = modelsDevCatalog.modelsForProvider({
+        vendorKey: provider?.vendorKey,
+        baseUrl,
+        providerId: provider?.id ?? "",
+      });
+      if (catalogModels.length > 0) {
+        return {
+          models: catalogModels.map((model) => decorate(model)),
+          source: "catalog" as const,
+          ...(discoveryError ? { error: discoveryError } : {}),
+        };
+      }
+
+      // Last resort: the provider's configured model, so pickers stay usable
       // for gateways without a /models endpoint.
       const fallbackModelId = provider?.models?.[0]?.id ?? provider?.defaultModelId;
       const fallback = fallbackModelId

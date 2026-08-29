@@ -1,8 +1,5 @@
 import type {
   ActivationScope,
-  CatalogProviderPreset,
-  ModelSearchInput,
-  ModelSearchOutput,
   AgentCapabilityQuery,
   AgentEventEnvelope,
   AgentCompactRequest,
@@ -334,8 +331,16 @@ export const api = {
     ),
   deleteProvider: (id: string) => invoke(IPC.invoke.providersDelete, id),
   testProvider: (id: string) => invoke(IPC.invoke.providersTest, id),
-  /** Discover models from the provider's own endpoint. Saved providers pass
-   * providerId (stored secret is reused); the dialog may pass raw config. */
+  /**
+   * Discover models from the provider's own endpoint. Saved providers pass
+   * providerId (stored secret is reused); the setup form may pass raw config
+   * before the provider exists.
+   *
+   * `source` reports where the list came from: `remote` is the service's own
+   * answer, `catalog` means the endpoint published nothing and models.dev was
+   * used instead, `cache` is the local table, `fallback` is just the configured
+   * model id.
+   */
   listProviderModels: (input: {
     providerId?: string;
     baseUrl?: string;
@@ -345,7 +350,7 @@ export const api = {
   }) =>
     invoke<{
       models: ModelInfo[];
-      source: "cache" | "remote" | "fallback";
+      source: "cache" | "remote" | "catalog" | "fallback";
       error?: string;
     }>(IPC.invoke.providersListModels, input),
   /** Force-refresh models.dev for the running process; release snapshots are bundled. */
@@ -362,10 +367,9 @@ export const api = {
         lastError?: string;
       };
     }>(IPC.invoke.providersRefreshModelCatalog),
-  /** models.dev provider presets for the setup flow, plus snapshot status. */
-  catalogPresets: () =>
+  /** models.dev snapshot status for the settings footer; performs no network I/O. */
+  modelCatalogStatus: () =>
     invoke<{
-      presets: CatalogProviderPreset[];
       status: {
         loaded: boolean;
         source: "bundled" | "remote" | "empty";
@@ -375,10 +379,7 @@ export const api = {
         modelCount: number;
         lastError?: string;
       };
-    }>(IPC.invoke.providersCatalogPresets),
-  /** Search the bundled models.dev snapshot; never contacts the provider. */
-  searchCatalogModels: (input: ModelSearchInput) =>
-    invoke<ModelSearchOutput>(IPC.invoke.providersSearchModels, input),
+    }>(IPC.invoke.providersModelCatalogStatus),
   /** Vendor catalog plus every locally configured account for each vendor. */
   listOauthVendors: () =>
     invoke<{ vendors: OAuthVendor[] }>(IPC.invoke.providersOauthVendors),
