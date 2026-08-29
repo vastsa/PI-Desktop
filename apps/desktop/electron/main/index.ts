@@ -5907,11 +5907,41 @@ function registerIpc() {
           providerId: provider?.id ?? "",
           contextWindow: modelConfig.contextWindow,
           maxTokens: modelConfig.maxTokens,
+          // Published modalities, taken before the binding is applied. This
+          // record is what the settings panel compares its checkboxes against,
+          // so letting a stored override shape it would make the override its
+          // own justification and the panel could never show what models.dev
+          // actually says.
+          modalities: catalogModelConfig.modalities ?? { input: ["text"], output: ["text"] },
           capabilities: [...infoCapabilities],
           reasoning: capabilities.supportsReasoning,
           supportedThinkingLevels: [...capabilities.supportedThinkingLevels],
           ...(modelsDevModel ? { catalogSource: "models.dev" as const } : {}),
         };
+      };
+
+      /*
+        A configured model must carry its published record even when the live
+        endpoint no longer lists it, because the settings panel reads image and
+        PDF support from that record. Discovery stays the authority on what the
+        service offers — these ids are only the ones the user already configured,
+        never the catalog at large — so nothing new becomes selectable.
+      */
+      const withConfiguredBindings = <T extends { modelId: string }>(
+        discovered: readonly T[],
+      ): Array<T | ReturnType<typeof decorate>> => {
+        if (!provider?.models?.length) return [...discovered];
+        const seen = new Set(discovered.map((model) => model.modelId.toLowerCase()));
+        const extra = provider.models
+          .filter((binding) => !seen.has(binding.id.toLowerCase()))
+          .map((binding) =>
+            decorate({
+              modelId: binding.id,
+              displayName: binding.id,
+              source: "user" as const,
+            }),
+          );
+        return [...discovered, ...extra];
       };
 
       const cacheForCurrentProvider = async (models: unknown[]) => {
@@ -5954,13 +5984,15 @@ function registerIpc() {
           const options = await vendorOAuth.listModels(provider.id);
           if (options.length > 0) {
             return {
-              models: options.map((option) =>
-                decorate(
-                  {
-                    modelId: option.modelId,
-                    displayName: option.modelId,
-                  },
-                  option.apiStyle,
+              models: withConfiguredBindings(
+                options.map((option) =>
+                  decorate(
+                    {
+                      modelId: option.modelId,
+                      displayName: option.modelId,
+                    },
+                    option.apiStyle,
+                  ),
                 ),
               ),
               source: "remote" as const,
@@ -6039,8 +6071,13 @@ function registerIpc() {
           const discovered = await discoverProviderModels({ baseUrl, apiKey, apiStyle });
           if (discovered.length > 0) {
             const models = discovered.map((model) => decorate(model));
+            // Only what the endpoint actually served is cached; a configured id
+            // it never offered must not be recorded as discovered.
             await cacheForCurrentProvider(models);
-            return { models, source: "remote" as const };
+            return {
+              models: withConfiguredBindings(models),
+              source: "remote" as const,
+            };
           }
         } catch (e) {
           discoveryError = e instanceof Error ? e.message : String(e);
@@ -6059,7 +6096,9 @@ function registerIpc() {
       });
       if (catalogModels.length > 0) {
         return {
-          models: catalogModels.map((model) => decorate(model)),
+          models: withConfiguredBindings(
+            catalogModels.map((model) => decorate(model)),
+          ),
           source: "catalog" as const,
           ...(discoveryError ? { error: discoveryError } : {}),
         };

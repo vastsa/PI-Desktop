@@ -44,8 +44,11 @@ test("a catalog-derived list is reported as such, not as the service's answer", 
   assert.match(handler, /source: "catalog" as const/);
   const catalogReturn = handler.slice(handler.indexOf('source: "catalog" as const'));
   assert.match(catalogReturn.slice(0, 200), /discoveryError \? \{ error: discoveryError \}/);
-  // The live branch keeps its own distinct source value.
-  assert.match(handler, /await cacheForCurrentProvider\(models\);\s*\n\s*return \{ models, source: "remote" as const \}/);
+  // The live branch keeps its own distinct source value. What it returns may be
+  // widened with the user's configured bindings, but only the rows the endpoint
+  // actually served are cached, which the next test pins.
+  const liveReturn = handler.slice(handler.indexOf("await cacheForCurrentProvider(models);"));
+  assert.match(liveReturn.slice(0, 240), /source: "remote" as const/);
 });
 
 test("only a live answer is written back to the model cache", () => {
