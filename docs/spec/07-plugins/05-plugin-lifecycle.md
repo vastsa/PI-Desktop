@@ -41,7 +41,7 @@ discovered
 
 ## 3. Lifecycle hooks
 
-**Implemented today:** the runtime (`apps/desktop/electron/main/plugin-runtime.ts`) invokes `onLoad` (when a plugin is loaded on load/enable) and `onUnload` (dispatched into the plugin process on unload/disable/reload, 5s budget, then the process is stopped); unloading tears down the plugin's registered commands and tools. The other hooks below are declared in the API but not yet fired.
+**Implemented today:** the runtime (`apps/desktop/electron/main/plugin-runtime.ts`) invokes `onLoad` (when a plugin is loaded on load/enable) and `onUnload` (dispatched into the plugin process on unload/disable/reload/app quit, 5s budget — 1.5s on quit — then the process is stopped); unloading tears down the plugin's registered commands and tools. The other hooks below are declared in the API but not yet fired.
 
 **Planned:** once the full lifecycle lands, hooks fire in this order:
 
@@ -91,6 +91,21 @@ process. The supervisor then restarts the whole plugin:
 
 Manual enable / disable always wins over the supervisor: an explicit action
 clears the pending timer and the attempt counter.
+
+### App quit
+
+Quitting stops every plugin host **as a shutdown**, not as a crash. Each plugin
+is marked as disposing and its pending restarts are cancelled before anything
+else, then services stop and `onUnload` runs, in parallel across plugins.
+
+This is what separates the two exits: a host process that dies without being
+marked is reported as a crash, which means an error log, a "stopped
+unexpectedly" toast, and a supervisor scheduling restarts into an app that is
+closing. None of that may happen on a clean quit.
+
+The sequence is bounded — `onUnload` gets 1.5s per plugin and teardown 3s in
+total, after which the children are killed outright. A plugin's cleanup must
+never be the reason the app appears to hang on quit.
 
 ## 4. Enable / disable semantics
 

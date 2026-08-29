@@ -279,6 +279,14 @@ const HOST_API_ALLOWLIST = new Set([
 const PLUGIN_LOAD_TIMEOUT_MS = 15_000;
 /** Lifecycle hooks time out per spec 05 §3. */
 const PLUGIN_HOOK_TIMEOUT_MS = 5_000;
+/**
+ * The unload hook gets a shorter budget on quit than it does on an explicit
+ * unload: the user has asked the app to close, and no plugin's cleanup is worth
+ * holding that window open for the full hook timeout.
+ */
+const PLUGIN_SHUTDOWN_HOOK_TIMEOUT_MS = 1_500;
+/** Ceiling for tearing every plugin down, however many are loaded. */
+const PLUGIN_DISPOSE_ALL_TIMEOUT_MS = 3_000;
 /** Command palette invocations are user-facing; fail fast. */
 const PLUGIN_COMMAND_TIMEOUT_MS = 30_000;
 /** Kept under host-core's 120s tool budget so the plugin-side error wins. */
@@ -963,6 +971,61 @@ export class PluginRuntime {
   disposeWatchers(): void {
     this.watcher.disposeAll();
     this.devPlugins.clear();
+  }
+
+  /**
+   * Tear every plugin host down for app quit.
+   *
+   * Quitting kills the children either way; what this adds is that they go down
+   * *as a shutdown*. `disposing` is set before anything else so the exits that
+   * follow are not read as crashes — otherwise every quit ends in an error log,
+   * an "unexpectedly stopped" toast, and a supervisor scheduling restarts into a
+   * closing app.
+   *
+   * Plugins stop in parallel and the whole sequence is bounded: a wedged
+   * `onUnload` must never be the reason the app appears to hang on quit.
+   */
+  async disposeAll(): Promise<void> {
+    const loadedPlugins = [...this.loaded.values()];
+    // Mark first, in one pass: a child that dies while a sibling is still
+    // stopping must already be covered by the guard in `handleChildExit`.
+    for (const loaded of loadedPlugins) {
+      loaded.disposing = true;
+      this.cancelRestarts(loaded.manifest.id);
+    }
+    this.disposeWatchers();
+    await Promise.race([
+      Promise.allSettled(loadedPlugins.map((loaded) => this.disposePlugin(loaded))),
+      new Promise((resolve) => setTimeout(resolve, PLUGIN_DISPOSE_ALL_TIMEOUT_MS).unref?.()),
+    ]);
+    // Whatever survived the budget is killed outright; the app is going away.
+    for (const loaded of loadedPlugins) {
+      try {
+        loaded.child?.kill();
+      } catch {
+        // Already gone.
+      }
+    }
+    this.loaded.clear();
+    this.serviceStates.clear();
+  }
+
+  /** Stop one plugin's services and run its unload hook, for `disposeAll`. */
+  private async disposePlugin(loaded: LoadedPlugin): Promise<void> {
+    const pluginId = loaded.manifest.id;
+    await this.stopServices(loaded);
+    if (!loaded.child) return;
+    try {
+      await this.sendToChild(
+        loaded,
+        { t: "call", method: "lifecycle.unload", payload: {} },
+        PLUGIN_SHUTDOWN_HOOK_TIMEOUT_MS,
+      );
+    } catch {
+      // A stuck or already-dead child must never block quit.
+    }
+    this.rejectPending(loaded, apiError("PLUGIN_UNLOADED", `plugin unloaded: ${pluginId}`));
+    this.clearContributions(pluginId);
   }
 
   /**

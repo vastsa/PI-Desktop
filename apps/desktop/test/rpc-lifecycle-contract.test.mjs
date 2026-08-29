@@ -155,7 +155,10 @@ test("app quit waits for one idempotent teardown before allowing the follow-up q
     "host disposal must start before other application teardown",
   );
   assert.match(shutdownSource, /await hostShutdown/);
-  assert.match(shutdownSource, /await Promise\.allSettled\(\[pluginPanelShutdown, sidecarShutdown\]\)/);
+  assert.match(
+    shutdownSource,
+    /await Promise\.allSettled\(\[pluginPanelShutdown, pluginShutdown, sidecarShutdown\]\)/,
+  );
   assert.ok(
     shutdownSource.indexOf("shutdownComplete = true") <
       shutdownSource.indexOf("app.quit()"),

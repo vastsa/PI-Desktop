@@ -2667,3 +2667,30 @@ D193, and D194.
   save-time narrowing as AI services.
 - See `04-ux/06-settings-ia.md`, `04-ux/08-component-spec.md` §19,
   `03-runtime/11-provider-model-system.md` §10, and E2E-162.
+| D272 | Quitting stops plugins as a shutdown, not as a crash | **Refines spec 07 §3.1 in the main process: `before-quit` calls `PluginRuntime.disposeAll()` instead of `disposeWatchers()`. It marks every loaded plugin as disposing and cancels its pending restarts before anything else, disposes watchers, then stops services and runs `onUnload` in parallel — 1.5s per plugin, 3s for the whole sequence, after which the children are killed. `onPluginCrash` no longer sends its own toast, since the runtime already raised one on that path. Main process only: no IPC, storage, host-protocol, or manifest change, and no ADR is required.** | Quit left the plugin children to be killed by the process teardown, and an unmarked exit is indistinguishable from a crash: `handleChildExit`'s `disposing` guard never applied, so every quit logged `PLUGIN_CRASHED` per plugin at `exitCode: 0`, toasted "stopped unexpectedly" twice, and scheduled restarts into a closing app. 613 of 633 crash reports in one local log were this, which is what made the real crashes hard to see. |
+
+## 2026-08-30 — Quitting stops plugins as a shutdown, not as a crash (D272)
+
+- Decision D272 refines spec 07 §3.1 in the main process. `before-quit` disposed
+  the plugin *watchers* and left the host child processes to be killed by the
+  process teardown that followed.
+- An exit nobody announced is indistinguishable from a crash. Nothing set
+  `disposing`, so the guard at the top of `handleChildExit` never applied and a
+  normal quit ran the crash path per plugin: a `PLUGIN_CRASHED` error log at
+  `exitCode: 0`, a "stopped unexpectedly" toast, and `superviseCrash` scheduling
+  restarts into an app that was closing. The toast arrived twice, because the
+  runtime and the `onPluginCrash` handler each sent one for the same event.
+- The cost was diagnostic. In one local profile 613 of 633 crash reports were
+  this, all within five seconds of `app shutdown`, which left the 20 real ones
+  effectively invisible.
+- `disposeAll()` now owns quit: mark every plugin disposing and cancel its
+  pending restarts first, in one pass, so a child that dies while a sibling is
+  still stopping is already covered; dispose watchers; then stop services and run
+  `onUnload` in parallel across plugins. The sequence is bounded — 1.5s per
+  `onUnload` (shorter than the 5s an explicit unload gets, because the user has
+  asked the app to close) and 3s overall, after which the children are killed
+  outright. The duplicate toast in `onPluginCrash` is deleted.
+- Main process only: no IPC, storage, host-protocol, or manifest change, so no
+  ADR is required. Plugins gain one guarantee they did not have — `onUnload` runs
+  on quit — and the user stops seeing failure toasts on every clean exit.
+- See `07-plugins/05-plugin-lifecycle.md` §3.1.

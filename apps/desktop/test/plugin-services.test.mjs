@@ -224,6 +224,93 @@ test("unloading a plugin stops its service and drops the status row", async (t) 
   assert.ok(audits.some((a) => a.api === "plugin.service.stop" && a.ok));
 });
 
+test("quitting stops plugin hosts as a shutdown, not as a crash", async () => {
+  const { dir } = writeServicePlugin({
+    main: `${COUNTER_PRELUDE}
+      module.exports = {
+        async onLoad() {
+          pi.services.register({
+            id: "worker",
+            start: async () => { await pi.ui.showToast("started " + countStart()); },
+            stop: async () => { await pi.ui.showToast("stopped"); },
+          });
+        },
+        async onUnload() { await pi.ui.showToast("unloaded"); },
+      };
+    `,
+  });
+  const crashes = [];
+  const runtime = new PluginRuntime({
+    hostEntry: hostProcessEntry,
+    spawnProcess: forkPluginProcess,
+    onPluginCrash: (info) => crashes.push(info),
+  });
+
+  await runtime.loadFromPath(dir);
+  await runtime.disposeAll();
+
+  // The exits disposeAll causes must not surface as crashes: that is what used
+  // to put an error log and an "unexpectedly stopped" toast on every quit.
+  assert.deepEqual(crashes, []);
+  assert.deepEqual(runtime.drainToasts(), ["started 1", "stopped", "unloaded"]);
+  assert.deepEqual(runtime.getServiceStates(), []);
+  assert.deepEqual(runtime.listLoaded(), []);
+});
+
+test("quitting is not held open by a plugin that will not unload", async () => {
+  const { dir } = writeServicePlugin({
+    main: `${COUNTER_PRELUDE}
+      module.exports = {
+        async onLoad() {
+          pi.services.register({ id: "worker", start: async () => { countStart(); } });
+        },
+        // Never settles: the budget, not the plugin, has to end the wait.
+        onUnload() { return new Promise(() => {}); },
+      };
+    `,
+  });
+  const crashes = [];
+  const runtime = new PluginRuntime({
+    hostEntry: hostProcessEntry,
+    spawnProcess: forkPluginProcess,
+    onPluginCrash: (info) => crashes.push(info),
+  });
+
+  await runtime.loadFromPath(dir);
+  const startedAt = Date.now();
+  await runtime.disposeAll();
+
+  assert.ok(
+    Date.now() - startedAt < 6000,
+    `disposeAll waited ${Date.now() - startedAt}ms on a wedged onUnload`,
+  );
+  assert.deepEqual(crashes, []);
+  assert.deepEqual(runtime.listLoaded(), []);
+});
+
+test("app shutdown tears plugin hosts down", () => {
+  const shutdown = mainSrc.slice(
+    mainSrc.indexOf('logger.app("lifecycle", "info", "app shutdown")'),
+    mainSrc.indexOf("const releaseQuit"),
+  );
+  // Watchers alone left the child processes to be killed by the quit itself,
+  // which the runtime then read as a crash.
+  assert.match(shutdown, /plugins\.disposeAll\(\)/);
+  assert.doesNotMatch(shutdown, /plugins\.disposeWatchers\(\)/);
+  // Awaited, or the app can exit before the hosts have stopped.
+  assert.match(shutdown, /allSettled\(\[[^\]]*pluginShutdown/s);
+});
+
+test("a crash raises one toast, not one per reporting path", () => {
+  const handler = mainSrc.slice(
+    mainSrc.indexOf("onPluginCrash: ("),
+    mainSrc.indexOf("onServiceChange: ("),
+  );
+  // The runtime already toasts on this path; a second send duplicated it.
+  assert.doesNotMatch(handler, /IPC\.event\.toast/);
+  assert.match(runtimeSrc, /showToast\(`Plugin stopped unexpectedly/);
+});
+
 test("a crashed host process is restarted with backoff and the restart is counted", async (t) => {
   const { dir, startsFile } = writeServicePlugin({
     main: `${COUNTER_PRELUDE}

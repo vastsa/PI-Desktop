@@ -480,15 +480,14 @@ const plugins = new PluginRuntime({
   protectedPaths: () => [dataDir],
   // A plugin host process dying is contained: contributions are already
   // deregistered by the runtime, we only have to tell the user and the UI.
-  onPluginCrash: ({ pluginId, name, exitCode }) => {
+  onPluginCrash: ({ pluginId, exitCode }) => {
     logger.app("plugin", "error", "plugin host process crashed", {
       pluginId,
       code: "PLUGIN_CRASHED",
       data: { exitCode },
     });
-    sendToRenderer(IPC.event.toast, {
-      message: `Plugin stopped unexpectedly: ${name}`,
-    });
+    // No toast here: the runtime already raised one through `showToast` on the
+    // same code path, and a second identical message reads as two failures.
     // The view's page outlived the process behind its bridge, so it is a dead
     // surface. Drop it; the renderer re-opens it on the pluginChanged event if
     // the tab is still active and the plugin came back.
@@ -8123,7 +8122,10 @@ app.on("before-quit", (event) => {
     const pluginPanelShutdown = pluginPanels.closeAll();
     updater.dispose();
     logger.app("lifecycle", "info", "app shutdown");
-    plugins.disposeWatchers();
+    // Plugin hosts are stopped as a shutdown, not left for the process teardown
+    // to kill: an unannounced exit is indistinguishable from a crash, and would
+    // end every quit in error logs, toasts, and restarts into a closing app.
+    const pluginShutdown = plugins.disposeAll();
     userMcp.disposeAll();
     browserPane.dispose();
     pluginViews.dispose();
@@ -8134,7 +8136,7 @@ app.on("before-quit", (event) => {
     } catch (error) {
       logger.app("lifecycle", "warn", "host shutdown failed", { data: String(error) });
     }
-    await Promise.allSettled([pluginPanelShutdown, sidecarShutdown]);
+    await Promise.allSettled([pluginPanelShutdown, pluginShutdown, sidecarShutdown]);
   })();
 
   const releaseQuit = () => {

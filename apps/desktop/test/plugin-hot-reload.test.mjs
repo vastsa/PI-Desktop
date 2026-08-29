@@ -109,7 +109,11 @@ test("manual reload uses the registry path and refreshes the dev permission ceil
 
 test("watchers are released on teardown and reloads reach the renderer", () => {
   const quit = slice(mainSrc, 'app.on("before-quit"', "});");
-  assert.match(quit, /plugins\.disposeWatchers\(\)/);
+  // Quit tears the whole plugin subsystem down; watch disposal rides along
+  // inside it rather than being called on its own.
+  assert.match(quit, /plugins\.disposeAll\(\)/);
+  const disposeAll = slice(runtimeSrc, "async disposeAll(", "\n  }");
+  assert.match(disposeAll, /this\.disposeWatchers\(\)/);
   const reported = slice(mainSrc, "onPluginReloaded:", "\n  },");
   assert.match(reported, /IPC\.event\.toast/);
   assert.match(reported, /IPC\.event\.pluginChanged, \{ reason: "reload", pluginId \}/);
