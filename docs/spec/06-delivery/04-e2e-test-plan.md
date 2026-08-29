@@ -5386,7 +5386,11 @@ This test plan spec is accepted when:
   host-backed implementations exist.
 - Model configuration contains the default model selector, separate vendor
   account management with add/edit dialogs, and card-based AI service management
-  with an add-provider dialog.
+  with an add-provider dialog. The Defaults card insets its row like every other
+  settings row, so the "Default model" label and the provider - model id line
+  clear the panel frame with no clipped glyph and no overlap; the Change trigger
+  keeps its width while a long model id wraps, and expanding the picker keeps its
+  divider spanning the panel.
 - Plugin load/enable/disable/uninstall remains available from the app shell's
   independent Extensions destination; its Marketplace tab also owns the
   official/mirror/custom catalog source picker, so Settings has no duplicate

@@ -691,17 +691,27 @@
   gap: 6px;
 }
 
+/*
+  `.settings-panel` only draws the rounded frame and clips overflow, so the rows
+  inside own their inset. Without it the label and the provider name sit on the
+  border and lose their first glyph.
+*/
 .model-default-panel {
   display: flex;
   flex-direction: column;
-  gap: 10px;
 }
 
 .model-default-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 16px;
+  padding: 14px 16px;
+}
+
+/* The trigger keeps its width so a long model id wraps instead of squeezing it. */
+.model-default-row > .btn {
+  flex: none;
 }
 
 .model-default-copy {
@@ -709,6 +719,7 @@
   flex-direction: column;
   gap: 3px;
   min-width: 0;
+  flex: 1;
 }
 
 .model-default-label {
@@ -754,7 +765,8 @@
   flex-direction: column;
   gap: 4px;
   margin: 0;
-  padding: 8px 0 0;
+  /* The divider spans the panel, so it stays outside the row inset. */
+  padding: 8px;
   border-top: 1px solid var(--ds-border-subtle);
   list-style: none;
 }

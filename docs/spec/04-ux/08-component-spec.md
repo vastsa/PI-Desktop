@@ -2400,6 +2400,10 @@ compatibility remains owned by pi-ai.
 ### 19.2 Anatomy
 1. **Defaults card** — default provider/model selector; each native option
    shows the provider name only, without an account label or model ID appended;
+   the card's row carries the same 14px/16px inset as `.settings-row` because the
+   shared panel only draws the frame, so the label and value never touch the
+   rounded border, the Change trigger holds its width while a long model ID
+   wraps, and the picker's divider still spans the full panel;
    global operating mode, command shell, and Enter-to-send live in the Settings
    AI destination
 2. **Vendor accounts** — section title + primary Add account action and one
