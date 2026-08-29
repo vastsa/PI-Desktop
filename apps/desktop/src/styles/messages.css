@@ -2074,6 +2074,13 @@
   color: var(--ds-text-muted);
 }
 
+/* A lifecycle row is a subagent row (D268): it carries the same accent the
+   topology node's avatar uses, so scanning the transcript groups it with the
+   Task card it reports on rather than with the file tools around it. */
+.tool-row-icon.is-subagent {
+  color: var(--ds-accent);
+}
+
 .tool-row-caret {
   display: inline-flex;
   flex: none;
@@ -2128,6 +2135,10 @@
   font-size: var(--text-2xs);
   line-height: var(--leading-row);
   white-space: nowrap;
+}
+
+.tool-row-agent.is-count {
+  border-style: dashed;
 }
 
 .tool-row-summary {

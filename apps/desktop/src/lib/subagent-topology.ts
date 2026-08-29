@@ -1,6 +1,11 @@
 import type { UiMessage } from "@pi-desktop/shared";
 import type { AssistantActivityItem } from "./assistant-turns";
-import { getToolAction, isDelegationStartTool } from "./tool-display";
+import {
+  delegationLifecycleKind,
+  getToolAction,
+  isDelegationStartTool,
+  type DelegationLifecycleKind,
+} from "./tool-display";
 import { toolResultPayload } from "./tool-presentation";
 
 export type DelegationActivityItem = Extract<
@@ -145,6 +150,92 @@ export function collectDelegationStatuses(
     }
   }
   return statuses;
+}
+
+/** One subagent named on a lifecycle row's roster (ADR 0089). */
+export type DelegationRosterEntry = {
+  delegationId: string;
+  agentName: string;
+  status: SubagentOutcome;
+  durationMs?: number;
+};
+
+/**
+ * The subagents a lifecycle row reports on, in the order the runtime listed
+ * them.
+ *
+ * `TaskWait`/`TaskList` report `details.delegations[]` and `TaskStop` reports
+ * `details.stopped[]`; both carry the agent name and status, which is what a
+ * reader needs. Without this the row could only show its `delegationIds`
+ * argument, which is a list of bare UUIDs (D268).
+ */
+export function delegationRoster(
+  message: UiMessage,
+): DelegationRosterEntry[] {
+  if (!delegationLifecycleKind(message.toolName)) return [];
+  const payload = asRecord(toolResultPayload(message));
+  if (!payload) return [];
+  const entries = [
+    ...(Array.isArray(payload.delegations) ? payload.delegations : []),
+    ...(Array.isArray(payload.stopped) ? payload.stopped : []),
+  ];
+  const roster: DelegationRosterEntry[] = [];
+  for (const entry of entries) {
+    const record = asRecord(entry);
+    const delegationId = record?.delegationId;
+    if (typeof delegationId !== "string" || !delegationId) continue;
+    const agent = record?.agent;
+    const startedAt = timestamp(record?.startedAt);
+    const completedAt = timestamp(record?.completedAt);
+    roster.push({
+      delegationId,
+      agentName: typeof agent === "string" ? agent : "",
+      status: asDelegationStatus(record?.status) ?? "running",
+      ...(startedAt !== undefined && completedAt !== undefined
+        ? { durationMs: Math.max(0, completedAt - startedAt) }
+        : {}),
+    });
+  }
+  return roster;
+}
+
+/**
+ * What a lifecycle row should say in one line: the subagents it reports on, by
+ * name, deduplicated so a repeated agent is counted rather than listed twice.
+ */
+export function delegationRosterSummary(
+  roster: readonly DelegationRosterEntry[],
+): string {
+  if (roster.length === 0) return "";
+  const counts = new Map<string, number>();
+  for (const entry of roster) {
+    if (!entry.agentName) continue;
+    counts.set(entry.agentName, (counts.get(entry.agentName) ?? 0) + 1);
+  }
+  if (counts.size === 0) return "";
+  return [...counts.entries()]
+    .map(([name, count]) => (count > 1 ? `${name} ×${count}` : name))
+    .join(", ");
+}
+
+/** Roster status rolled up for the row's own badge. */
+export function delegationRosterOutcome(
+  roster: readonly DelegationRosterEntry[],
+): SubagentOutcome | null {
+  if (roster.length === 0) return null;
+  if (roster.some((entry) => entry.status === "running")) return "running";
+  const failed = roster.find(
+    (entry) => entry.status === "failed" || entry.status === "denied",
+  );
+  if (failed) return failed.status;
+  const warned = roster.find((entry) => entry.status !== "completed");
+  return warned ? warned.status : "completed";
+}
+
+export function lifecycleKindOf(
+  message: UiMessage,
+): DelegationLifecycleKind | null {
+  return delegationLifecycleKind(message.toolName);
 }
 
 export function subagentOutcome(

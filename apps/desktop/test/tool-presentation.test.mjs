@@ -570,3 +570,57 @@ test("a failed delegation shows the error, not an empty report", () => {
   // `error` is not a counter: the report above already says it.
   assert.equal(byRole(blocks, "details"), undefined);
 });
+
+test("a lifecycle row's body is a named roster, not raw JSON (D268)", () => {
+  const blocks = buildToolPresentation({
+    toolName: "TaskWait",
+    toolArgs: { delegationIds: ["d1", "d2"] },
+    toolResult: {
+      content: [{ type: "text", text: "## explorer (d1) — completed\nFound it." }],
+      details: {
+        delegations: [
+          {
+            delegationId: "d1",
+            agent: "explorer",
+            status: "completed",
+            startedAt: 1000,
+            completedAt: 4000,
+            turns: 6,
+          },
+          { delegationId: "d2", agent: "fixer", status: "running" },
+        ],
+      },
+    },
+  });
+
+  // The joined reports lead, then one readable line per subagent.
+  assert.deepEqual(roles(blocks), ["notice", "details"]);
+  assert.deepEqual(byRole(blocks, "details").rows, [
+    { label: "explorer", value: "completed · 3s · 6 turns" },
+    { label: "fixer", value: "running" },
+  ]);
+  // A lifecycle row has no brief of its own, so the ids it was called with do
+  // not come back as an argument block.
+  assert.equal(
+    blocks.some((block) => block.role === "input"),
+    false,
+  );
+});
+
+test("TaskStop renders its `stopped` roster the same way", () => {
+  const blocks = buildToolPresentation({
+    toolName: "TaskStop",
+    toolArgs: {},
+    toolResult: {
+      content: [{ type: "text", text: "Stopped 1 subagent." }],
+      details: {
+        stopped: [
+          { delegationId: "s1", agent: "test-runner", status: "stopped" },
+        ],
+      },
+    },
+  });
+  assert.deepEqual(byRole(blocks, "details").rows, [
+    { label: "test-runner", value: "stopped" },
+  ]);
+});

@@ -1,5 +1,10 @@
 import type { UiMessage } from "@pi-desktop/shared";
-import { getToolAction, getToolSummaryKey, type ToolAction } from "./tool-display";
+import {
+  delegationLifecycleKind,
+  getToolAction,
+  getToolSummaryKey,
+  type ToolAction,
+} from "./tool-display";
 import { reviewChangeFromMessage } from "./workspace-review";
 
 /*
@@ -168,6 +173,54 @@ function delegateReport(message: ToolPresentationMessage): string | null {
   const envelope = asRecord(raw);
   const text = envelope ? envelopeText(envelope) : null;
   return text && text.trim() ? text : null;
+}
+
+/** The envelope's own text, used for a lifecycle row's one-line summary. */
+function envelopeTextOf(message: ToolPresentationMessage): string | null {
+  const raw = message.toolResult;
+  if (typeof raw === "string") return raw.trim() ? raw.trim() : null;
+  const envelope = asRecord(raw);
+  const text = envelope ? envelopeText(envelope) : null;
+  return text && text.trim() ? text.trim() : null;
+}
+
+/**
+ * A lifecycle row's roster as field rows: one line per subagent, named, with
+ * its status and runtime. Without this the row falls back to a JSON dump of
+ * `delegations[]`, which is the least readable part of a delegation (D268).
+ */
+function rosterRows(
+  details: Record<string, unknown> | null,
+): ToolBlock | null {
+  if (!details) return null;
+  const entries = [
+    ...(Array.isArray(details.delegations) ? details.delegations : []),
+    ...(Array.isArray(details.stopped) ? details.stopped : []),
+  ];
+  const rows: ToolFieldRow[] = [];
+  for (const entry of entries) {
+    const record = asRecord(entry);
+    if (!record) continue;
+    const agent = typeof record.agent === "string" ? record.agent : "";
+    const status = typeof record.status === "string" ? record.status : "";
+    const startedAt = numberAt(record, "startedAt");
+    const completedAt = numberAt(record, "completedAt");
+    const seconds =
+      startedAt !== null && completedAt !== null
+        ? Math.max(0, Math.round((completedAt - startedAt) / 1000))
+        : null;
+    const turns = numberAt(record, "turns");
+    const parts = [
+      status,
+      seconds !== null ? `${seconds}s` : null,
+      turns !== null ? `${turns} turns` : null,
+    ].filter((part): part is string => Boolean(part));
+    rows.push({
+      label: agent || String(record.delegationId ?? ""),
+      value: parts.join(" · "),
+    });
+  }
+  return rows.length > 0 ? { kind: "fields", role: "details", rows } : null;
 }
 
 function countLines(text: string): number {
@@ -546,6 +599,16 @@ function resultBlocks(
       break;
     }
     case "delegate": {
+      // A lifecycle row (ADR 0089) has no brief and no report of its own: it
+      // reports on subagents. Its body is the roster the runtime returned, as
+      // a named table rather than the raw `delegations[]` JSON (D268).
+      if (delegationLifecycleKind(message.toolName)) {
+        const text = envelopeTextOf(message);
+        if (text) blocks.push({ kind: "note", role: "notice", text });
+        const roster = rosterRows(details);
+        if (roster) blocks.push(roster);
+        break;
+      }
       // A delegation reads as brief in, report out. The counters that pi hands
       // back (`turns`, `toolCalls`, `usage`) are a footer, and `agent` already
       // labels the row, so neither repeats here.

@@ -43,7 +43,11 @@ import {
 import {
   collectDelegationStatuses,
   collectDelegationTimings,
+  delegationRoster,
+  delegationRosterOutcome,
+  delegationRosterSummary,
   isDelegationActivityItem,
+  lifecycleKindOf,
   subagentOutcome,
   summarizeSubagentActivity,
   type DelegationActivityItem,
@@ -664,6 +668,23 @@ const TOOL_ACTION_KEYS: Record<ToolAction, string> = {
   use: "chat.toolUsed",
 };
 
+/**
+ * A lifecycle row says what it did to subagents, not that it "delegated":
+ * `Task` is the only call that delegates (ADR 0062, ADR 0089, D268).
+ */
+const LIFECYCLE_LABEL_KEYS: Record<"wait" | "list" | "stop", string> = {
+  wait: "chat.subagentWaited",
+  list: "chat.subagentListed",
+  stop: "chat.subagentStopped",
+};
+
+/** A wait in progress is the one lifecycle row that visibly takes time. */
+const LIFECYCLE_RUNNING_KEYS: Record<"wait" | "list" | "stop", string> = {
+  wait: "chat.subagentWaiting",
+  list: "chat.subagentListing",
+  stop: "chat.subagentStopping",
+};
+
 const TOOL_RUNNING_KEYS: Record<ToolAction, string> = {
   read: "chat.toolReading",
   list: "chat.toolListing",
@@ -803,7 +824,7 @@ function ToolRow({
     status === "running" ? TOOL_RUNNING_KEYS[action] : TOOL_ACTION_KEYS[action],
   );
   const rawName = getToolDisplayName(message.toolName) || t("chat.tool");
-  const summary = getToolSummary(message.toolName, message.toolArgs);
+  const argSummary = getToolSummary(message.toolName, message.toolArgs);
   const previewTarget = PREVIEWABLE_ACTIONS.has(action)
     ? getToolPreviewTarget(message.toolArgs, root)
     : null;
@@ -818,8 +839,17 @@ function ToolRow({
   // own rows all live in the body.
   const hasDetails = hasToolDetails(message) || Boolean(delegate);
   const chips = toolResultChips(message);
+  // A lifecycle row (ADR 0089) is about subagents, so it is presented as one:
+  // the agent names it reports on replace the bare delegation ids it was
+  // called with, and its badge rolls up their statuses (D268).
+  const lifecycle = action === "delegate" ? lifecycleKindOf(message) : null;
+  const roster = lifecycle ? delegationRoster(message) : [];
+  const rosterSummary = lifecycle ? delegationRosterSummary(roster) : "";
+  const rosterOutcome = lifecycle ? delegationRosterOutcome(roster) : null;
   const agentName =
-    action === "delegate" ? delegateAgentName(message, delegate) : "";
+    action === "delegate" && !lifecycle
+      ? delegateAgentName(message, delegate)
+      : "";
   // The delegate's last answer row is its report, so the body must not print
   // the same text a second time.
   const nestedReport = delegate?.items.some((item) => item.kind === "answer");
@@ -844,9 +874,15 @@ function ToolRow({
           : run === "ok"
             ? t("chat.toolCompleted")
             : "";
+  // A lifecycle row never falls back to its arguments: while it is still
+  // running it has no roster yet, and `delegationIds` would otherwise reach the
+  // head as a JSON blob of UUIDs (D268).
+  const summary = lifecycle ? rosterSummary : argSummary;
   const statusLabel = outcome
     ? t(`chat.subagentStatus.${outcome}`)
-    : run
+    : rosterOutcome
+      ? t(`chat.subagentStatus.${rosterOutcome}`)
+      : run
       ? runLabel
       : status === "running"
         ? t("chat.running")
@@ -974,14 +1010,27 @@ function ToolRow({
             title={summary || rawName}
             onClick={() => hasDetails && setOpen((value) => !value)}
           >
-            <span className="tool-row-icon">
+            <span
+              className={`tool-row-icon${lifecycle ? " is-subagent" : ""}`}
+            >
               <ToolActionIcon action={action} />
             </span>
             <span
               className={`tool-row-name ${status === "running" ? "running" : ""}`}
             >
-              {actionLabel}
+              {lifecycle
+                ? t(
+                    (status === "running"
+                      ? LIFECYCLE_RUNNING_KEYS
+                      : LIFECYCLE_LABEL_KEYS)[lifecycle],
+                  )
+                : actionLabel}
             </span>
+            {lifecycle && roster.length > 0 ? (
+              <span className="tool-row-agent is-count">
+                {t("chat.subagentCount", { count: roster.length })}
+              </span>
+            ) : null}
             {agentName ? (
               <span className="tool-row-agent" title={t("chat.subagentAgent")}>
                 {agentName}
