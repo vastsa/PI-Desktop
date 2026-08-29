@@ -8,7 +8,7 @@ function formatTokens(value: number): string {
   return value > 0 ? value.toLocaleString("en-US") : "";
 }
 
-function compactTokens(value: number): string {
+function compactTokens(value?: number): string {
   if (!value) return "—";
   if (value >= 1_000_000) return `${Math.round(value / 100_000) / 10}M`;
   if (value >= 1_000) return `${Math.round(value / 1_000)}k`;
@@ -24,9 +24,57 @@ function orderedLevels(levels: ThinkingLevel[]): ThinkingLevel[] {
   return THINKING_LEVELS.filter((level) => levels.includes(level));
 }
 
+export type ModelMetadataLabels = {
+  published: string;
+  description: string;
+  family: string;
+  input: string;
+  output: string;
+  limits: string;
+  provider: string;
+  reasoningOptions: string;
+  attachments: string;
+  tools: string;
+  structuredOutput: string;
+  temperature: string;
+  openWeights: string;
+  knowledge: string;
+  released: string;
+  updated: string;
+  pricing: string;
+  experimental: string;
+  enabled: string;
+  disabled: string;
+};
+
+function metadataValue(value: unknown): string | undefined {
+  if (typeof value === "string" || typeof value === "number") return String(value);
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  if (typeof record.npm === "string") return record.npm;
+  if (typeof record.field === "string") return record.field;
+  const keys = Object.keys(record);
+  return keys.length > 0 ? keys.slice(0, 3).join(", ") : undefined;
+}
+
+function costSummary(cost: ModelInfo["cost"]): string | undefined {
+  if (!cost) return undefined;
+  const entries = [
+    ["in", cost.input],
+    ["out", cost.output],
+    ["read", cost.cacheRead],
+    ["write", cost.cacheWrite],
+  ].filter(([, value]) => typeof value === "number");
+  return entries.length > 0
+    ? entries.map(([label, value]) => `${label} ${value}`).join(" · ")
+    : undefined;
+}
+
 export function ModelConfigCard({
   binding,
   metadata,
+  metadataLabels,
   initiallyExpanded,
   source,
   sourceLabel,
@@ -49,6 +97,7 @@ export function ModelConfigCard({
 }: {
   binding: ModelBinding;
   metadata?: ModelInfo | null;
+  metadataLabels: ModelMetadataLabels;
   initiallyExpanded?: boolean;
   source: "catalog" | "custom";
   sourceLabel: string;
@@ -71,13 +120,53 @@ export function ModelConfigCard({
 }) {
   const detailsId = useId();
   const [expanded, setExpanded] = useState(initiallyExpanded ?? false);
-  const levels = orderedLevels(binding.thinkingLevels);
+  const publishedLevels = metadata?.supportedThinkingLevels;
+  const availableLevels = metadata
+    ? orderedLevels(
+        publishedLevels?.length
+          ? publishedLevels
+          : metadata.reasoning
+            ? ["low", "medium", "high"]
+            : [],
+      )
+    : [...THINKING_LEVELS];
+  const levels = orderedLevels(binding.thinkingLevels).filter((level) =>
+    availableLevels.includes(level),
+  );
   const supportsVision = metadata?.capabilities.includes("vision") === true;
   const modalities = metadata?.modalities;
   const modalitiesLabel = modalities
     ? `in: ${modalities.input.join(", ")} · out: ${modalities.output.join(", ")}`
     : undefined;
   const summaryLabel = `${contextWindowLabel}: ${compactTokens(binding.contextWindow)}; ${maxOutputLabel}: ${compactTokens(binding.maxTokens)}`;
+  const metadataRows = metadata
+    ? [
+        [metadataLabels.family, metadata.family],
+        [metadataLabels.input, modalities?.input.join(", ")],
+        [metadataLabels.output, modalities?.output.join(", ")],
+        [metadataLabels.limits, metadata.limit
+          ? `ctx ${compactTokens(metadata.limit.context)} · in ${compactTokens(metadata.limit.input)} · out ${compactTokens(metadata.limit.output)}`
+          : undefined],
+        [metadataLabels.reasoningOptions, metadata.reasoningOptions
+          ?.map((option) => `${option.type}${option.values?.length ? `: ${option.values.join("/")}` : ""}`)
+          .join(" · ")],
+        [metadataLabels.knowledge, metadata.knowledge],
+        [metadataLabels.released, metadata.releaseDate],
+        [metadataLabels.updated, metadata.lastUpdated],
+        [metadataLabels.pricing, costSummary(metadata.cost)],
+        [metadataLabels.provider, metadataValue(metadata.provider)],
+        [metadataLabels.experimental, metadataValue(metadata.experimental)],
+      ].filter((row): row is [string, string] => typeof row[1] === "string" && row[1].length > 0)
+    : [];
+  const metadataFlags = metadata
+    ? [
+        [metadataLabels.attachments, metadata.attachment],
+        [metadataLabels.tools, metadata.toolCall],
+        [metadataLabels.structuredOutput, metadata.structuredOutput],
+        [metadataLabels.temperature, metadata.temperature],
+        [metadataLabels.openWeights, metadata.openWeights],
+      ].filter((row): row is [string, boolean] => typeof row[1] === "boolean")
+    : [];
 
   const toggleLevel = (level: ThinkingLevel) => {
     const next = levels.includes(level)
@@ -177,7 +266,7 @@ export function ModelConfigCard({
           <div className="provider-model-card-thinking-label">{supportedThinkingLabel}</div>
           <div className="provider-model-card-thinking-row">
             <div className="provider-thinking-chips" role="group" aria-label={supportedThinkingLabel}>
-              {THINKING_LEVELS.map((level) => {
+              {availableLevels.map((level) => {
                 const checked = levels.includes(level);
                 return (
                   <button
@@ -222,6 +311,36 @@ export function ModelConfigCard({
             <div className="provider-thinking-disabled-hint">{disabledThinkingHint}</div>
           ) : null}
         </div>
+        {metadata ? (
+          <details className="provider-model-card-metadata">
+            <summary>{metadataLabels.published}</summary>
+            <div className="provider-model-metadata-body">
+              {metadata.description ? (
+                <p className="provider-model-metadata-description">{metadata.description}</p>
+              ) : null}
+              {metadataFlags.length > 0 ? (
+                <div className="provider-model-metadata-flags" aria-label={metadataLabels.published}>
+                  {metadataFlags.map(([label, value]) => (
+                    <span key={label} className="provider-model-metadata-flag">
+                      <span>{label}</span>
+                      <strong>{value ? metadataLabels.enabled : metadataLabels.disabled}</strong>
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+              {metadataRows.length > 0 ? (
+                <dl className="provider-model-metadata-grid">
+                  {metadataRows.map(([label, value]) => (
+                    <div key={label} className="provider-model-metadata-row">
+                      <dt>{label}</dt>
+                      <dd>{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : null}
+            </div>
+          </details>
+        ) : null}
       </div>
 
     </article>

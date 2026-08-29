@@ -50,6 +50,7 @@ import {
   err,
   formatFileInsert,
   isActiveInProject,
+  modelIdsMatch,
   ok,
   parseMcpImport,
   type ActivationScope,
@@ -920,6 +921,13 @@ type RuntimeSession = {
   modelId?: string;
 };
 
+function bindingForModel(
+  provider: Pick<RuntimeProvider, "models">,
+  modelId: string,
+): ModelBinding | undefined {
+  return provider.models?.find((binding) => modelIdsMatch(binding.id, modelId));
+}
+
 function modelsDevModelFor(
   provider: RuntimeProvider,
   modelId: string,
@@ -937,7 +945,7 @@ function enrichProvider<T extends RuntimeProvider>(
 ): T & ThinkingCapabilities & { supportsVision: boolean } {
   const modelId =
     selectedModelId || provider.modelId || provider.models?.[0]?.id || provider.defaultModelId || "";
-  const storedModel = provider.models?.find((model) => model.id === modelId);
+  const storedModel = bindingForModel(provider, modelId);
   const modelsDevModel = modelsDevModelFor(provider, modelId);
   const catalogModelConfig = modelsDevModel
     ? modelConfigFromModelsDev(modelsDevModel, provider.baseUrl)
@@ -1019,7 +1027,7 @@ function enrichSession<T extends RuntimeSession>(
       supportedThinkingLevels: ["off"],
     };
   }
-  const storedModel = provider.models?.find((model) => model.id === session.modelId);
+  const storedModel = bindingForModel(provider, session.modelId);
   const modelsDevModel = modelsDevModelFor(provider, session.modelId);
   const catalogModelConfig = modelsDevModel
     ? modelConfigFromModelsDev(modelsDevModel, provider.baseUrl)
@@ -1298,7 +1306,7 @@ async function resolveAgentRuntimeLaunch(
       { errorCode: ErrorCodes.MODEL_NOT_CONFIGURED },
     );
   }
-  const storedModel = provider.models?.find((model) => model.id === modelId);
+  const storedModel = bindingForModel(provider, modelId);
   const apiStyle = vendorBinding?.apiStyle ?? provider.apiStyle;
   const baseUrl = vendorBinding?.baseUrl ?? provider.baseUrl;
   const modelsDevModel = modelsDevModelFor(provider, modelId);
@@ -5870,7 +5878,7 @@ function registerIpc() {
         const catalogModelConfig = modelsDevModel
           ? modelConfigFromModelsDev(modelsDevModel, baseUrl)
           : genericModelConfig(model.modelId, baseUrl);
-        const storedModel = provider?.models?.find((binding) => binding.id === model.modelId);
+        const storedModel = provider ? bindingForModel(provider, model.modelId) : undefined;
         const modelConfig = modelConfigWithBinding(catalogModelConfig, storedModel);
         const capabilities = capabilitiesFromModelConfig(modelConfig);
         const info = modelsDevModel

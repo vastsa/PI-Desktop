@@ -359,7 +359,10 @@ type ModelDescriptor = {
 - enable/disable provider
 - test connection
 - select multiple models and edit each binding's context window, output limit,
-  and enabled thinking levels; catalog metadata supplies the initial values
+  and enabled thinking levels; catalog metadata supplies the initial values for
+  both API providers and signed-in vendor accounts
+- keep model cards compact by default, expand metadata/configuration on demand,
+  and keep dialog actions outside the independently scrollable content
 - do not expose raw catalog compatibility internals or provider secrets
 
 ### Model selector

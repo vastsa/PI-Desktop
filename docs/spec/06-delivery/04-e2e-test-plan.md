@@ -182,7 +182,7 @@ Each scenario is documented in this format:
 
 - **Preconditions**: App running; no provider configured.
 - **Steps**: 1) Open Settings → Model configuration and open the add-provider dialog. 2) Enter a name, base URL, API key, and API format. 3) Wait for model discovery, open the custom multi-select picker, search for a returned model, and select two models. 4) Confirm two compact configuration rows appear with independent context/output summaries and source badges; expand the second row and confirm its fields are independent. 5) Add a free-form model ID; confirm it is inserted into the option list, selected automatically, and uses 128,000 / 8,192 / no-thinking defaults. 6) Deselect and reselect the custom option; confirm the option remains available. 7) Expand one row, change its numeric fields, blur them, and confirm thousands separators. 8) Select several thinking chips, change the default, remove the default chip, and confirm fallback to the canonical first remaining level. Remove every chip and confirm the default select is disabled with the thinking-disabled hint; select one chip and confirm it re-enables. 9) Save.
-- **Expected**: The picker supports search, live count, external/Escape/resize dismissal, and immediate row add/remove. A query with no matches shows a dedicated empty state. Scrolling the option list keeps the picker open; scrolling an outside settings container dismisses it before the trigger can become detached. Selected model bindings render as compact rows with ID, source, capabilities, and token-limit summaries; the first row is expanded and additional rows are collapsed until opened, while expanding one row leaves the others unchanged. Each returned model shows the models.dev-derived text/vision state when its catalog record matches, otherwise the generic text-only state; an unknown custom ID stays text-only. The provider appears as an AI service row with secret badge; key stored securely (not in plaintext config); `models` contains both selected bindings and the first binding remains the current default for existing conversation flows.
+- **Expected**: The picker supports search, live count, external/Escape/resize dismissal, and immediate row add/remove. A query with no matches shows a dedicated empty state. Scrolling the option list keeps the picker open; scrolling an outside settings container dismisses it before the trigger can become detached. Selected model bindings render as compact rows with ID, source, capabilities, and token-limit summaries; all rows start collapsed and any row can be expanded on demand without expanding the others, while the dialog keeps its action bar fixed below the independently scrollable content. Each returned model shows the models.dev-derived text/vision state when its catalog record matches, otherwise the generic text-only state; an unknown custom ID stays text-only. The provider appears as an AI service row with secret badge; key stored securely (not in plaintext config); `models` contains both selected bindings and the first binding remains the current default for existing conversation flows.
 - **Specs linked**: `03-runtime/11-provider-model-system.md`, `03-runtime/12-provider-config-schema.md`, `03-runtime/14-secrets-storage.md`, `04-ux/06-settings-ia.md`
 - **Acceptance**: B (multi-model provider configuration, save key)
 - **Milestone**: M2
@@ -4855,9 +4855,10 @@ Each scenario is documented in this format:
   is the authenticated catalog (a Copilot account lists only what its
   subscription includes), not a `/models` probe. Matching models.dev metadata
   supplies each newly logged-in binding's limits, modalities, and thinking
-  levels; missing remote fields fall back to the authenticated pi-ai record.
-  The account editor updates only non-secret label/model fields and the full
-  per-model bindings, and Test connection resolves that exact account. Both turns run without a
+  levels; an ID missing from models.dev uses the conservative generic
+  text-only/non-reasoning shape. The account editor updates only non-secret
+  label/model fields and the full per-model bindings, and Test connection
+  resolves that exact account. Both turns run without a
   pasted key and reuse the same warm runtime — the launch payload carries
   `apiKey: ""` and each request resolves auth through `provider.resolveAuth`,
   which Electron main answers locally and refuses with `PROVIDER_NOT_BOUND` for

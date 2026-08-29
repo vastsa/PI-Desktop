@@ -1,4 +1,4 @@
-import type { ModelInfo, ProviderPublic } from "@pi-desktop/shared";
+import { modelIdsMatch, type ModelInfo, type ProviderPublic } from "@pi-desktop/shared";
 
 type ConfiguredProvider = Pick<ProviderPublic, "id" | "models" | "defaultModelId">;
 
@@ -21,18 +21,18 @@ export function composerModelsForProvider(
   provider: ConfiguredProvider,
   discovered: readonly ModelInfo[] | undefined,
 ): ModelInfo[] {
-  const discoveredById = new Map(
-    (discovered ?? []).map((model) => [model.modelId, model]),
-  );
-
-  return configuredModelIds(provider).map(
-    (modelId) =>
-      discoveredById.get(modelId) ?? {
-        modelId,
-        displayName: modelId,
-        providerId: provider.id,
-        capabilities: ["text"],
-        source: "user",
-      },
-  );
+  return configuredModelIds(provider).map((modelId) => {
+    const metadata = (discovered ?? []).find((model) =>
+      modelIdsMatch(model.modelId, modelId),
+    );
+    return metadata
+      ? { ...metadata, modelId, providerId: provider.id }
+      : {
+          modelId,
+          displayName: modelId,
+          providerId: provider.id,
+          capabilities: ["text"],
+          source: "user" as const,
+        };
+  });
 }

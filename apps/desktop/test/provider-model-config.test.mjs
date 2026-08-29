@@ -42,6 +42,8 @@ test("model configuration surfaces models.dev metadata per model", () => {
   assert.match(cardSource, /metadata\?\.modalities/);
   assert.match(cardSource, /provider-model-modalities/);
   assert.match(cardSource, /capabilities\.includes\("vision"\)/);
+  assert.match(cardSource, /availableLevels/);
+  assert.match(cardSource, /publishedLevels/);
   assert.match(cardSource, /visionLabel/);
   assert.match(cardSource, /reasoningLabel/);
   assert.match(pickerSource, /model\.modalities/);
@@ -91,6 +93,10 @@ test("vendor account settings expose and persist the full model configuration", 
   assert.match(vendorDialogSource, /ModelConfigCard/);
   assert.match(vendorDialogSource, /models: ProviderModelDraft\[\]/);
   assert.match(vendorAccountsSource, /models,\n      \}\);/);
+  assert.match(
+    vendorDialogSource,
+    /<\/div>\s*<div className="provider-dialog-actions">[\s\S]*saveVendorAccount/,
+  );
 });
 
 test("model settings keep a compact, non-floating card treatment", () => {

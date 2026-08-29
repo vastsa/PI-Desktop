@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { modelIdsMatch } from "@pi-desktop/shared";
 
 import {
   MODELS_DEV_API_URL,
@@ -30,7 +31,7 @@ const catalogFixture = {
         }],
         tool_call: true,
         structured_output: true,
-        temperature: true,
+        temperature: false,
         knowledge: "2025-05-31",
         release_date: "2026-02-05",
         last_updated: "2026-03-13",
@@ -67,8 +68,8 @@ const catalogFixture = {
         },
         interleaved: { field: "reasoning_content" },
         status: "stable",
-        experimental: false,
-        provider: "anthropic",
+        experimental: { modes: { fast: { enabled: true } } },
+        provider: { npm: "@ai-sdk/anthropic" },
       },
       "audio-only": {
         id: "audio-only",
@@ -85,6 +86,13 @@ function responseFor(body, status = 200) {
     headers: { "content-type": "application/json" },
   });
 }
+
+test("model IDs match provider namespaces without matching model variants", () => {
+  assert.equal(modelIdsMatch("anthropic-claude-opus-5", "claude-opus-5"), true);
+  assert.equal(modelIdsMatch("anthropic/claude-opus-5", "claude-opus-5"), true);
+  assert.equal(modelIdsMatch("claude-opus-5@default", "claude-opus-5"), true);
+  assert.equal(modelIdsMatch("claude-opus-5-fast", "claude-opus-5"), false);
+});
 
 test("models.dev records retain all published model parameters and modalities", () => {
   const [provider] = parseModelsDevCatalog(catalogFixture);
@@ -134,8 +142,9 @@ test("models.dev records retain all published model parameters and modalities", 
   });
   assert.deepEqual(model.interleaved, { field: "reasoning_content" });
   assert.equal(model.status, "stable");
-  assert.equal(model.experimental, false);
-  assert.equal(model.provider, "anthropic");
+  assert.equal(model.temperature, false);
+  assert.deepEqual(model.experimental, { modes: { fast: { enabled: true } } });
+  assert.deepEqual(model.provider, { npm: "@ai-sdk/anthropic" });
 
   const info = modelInfoFromModelsDev(model, "provider-row");
   assert.equal(info.providerId, "provider-row");
@@ -147,7 +156,35 @@ test("models.dev records retain all published model parameters and modalities", 
   assert.ok(info.capabilities.includes("pdf"));
   assert.ok(info.capabilities.includes("reasoning"));
   assert.ok(info.capabilities.includes("json"));
+  assert.ok(info.capabilities.includes("attachments"));
+  assert.equal(info.capabilities.includes("temperature"), false);
   assert.equal(info.catalogSource, "models.dev");
+  assert.deepEqual(info.thinkingLevelMap, {
+    low: "low",
+    medium: "medium",
+    high: "high",
+    xhigh: "xhigh",
+    max: "max",
+  });
+  assert.deepEqual(info.provider, { npm: "@ai-sdk/anthropic" });
+  assert.deepEqual(info.experimental, { modes: { fast: { enabled: true } } });
+  assert.ok(
+    modelInfoFromModelsDev({ ...model, temperature: true }, "provider-row").capabilities.includes(
+      "temperature",
+    ),
+  );
+  const allModalities = {
+    input: ["text", "image", "audio", "video", "pdf"],
+    output: ["text", "image", "audio", "video", "pdf"],
+  };
+  const multimodalInfo = modelInfoFromModelsDev(
+    { ...model, modalities: allModalities },
+    "provider-row",
+  );
+  assert.deepEqual(multimodalInfo.modalities, allModalities);
+  for (const capability of ["vision", "audio", "video", "pdf"]) {
+    assert.ok(multimodalInfo.capabilities.includes(capability), capability);
+  }
 
   const config = modelConfigFromModelsDev(model, "https://api.anthropic.com");
   assert.equal(config.source, "models.dev");
@@ -165,6 +202,9 @@ test("models.dev records retain all published model parameters and modalities", 
     max: "max",
   });
   assert.equal(config.cost.reasoning, 25);
+  assert.deepEqual(config.provider, { npm: "@ai-sdk/anthropic" });
+  assert.deepEqual(config.catalogProvider, { npm: "@ai-sdk/anthropic" });
+  assert.deepEqual(config.experimental, { modes: { fast: { enabled: true } } });
   assert.equal(config.cost.inputAudio, 7);
   assert.equal(config.cost.outputAudio, 28);
   assert.equal(config.cost.tiers?.[0]?.tier?.size, 200_000);

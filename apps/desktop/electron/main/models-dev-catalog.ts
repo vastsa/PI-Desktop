@@ -1,12 +1,15 @@
 import { readFile } from "node:fs/promises";
+import { modelIdsMatch } from "@pi-desktop/shared";
 import type {
   ModelCost,
   ModelCostTier,
+  ModelExperimentalMetadata,
   ModelInfo,
   ModelInterleaved,
   ModelLimit,
   ModelModalities,
   ModelModality,
+  ModelProviderMetadata,
   ModelReasoningOption,
   ThinkingLevel,
 } from "@pi-desktop/shared";
@@ -71,8 +74,8 @@ export type ModelsDevModel = {
   cost?: ModelCost;
   interleaved?: ModelInterleaved;
   status?: string;
-  experimental?: boolean;
-  provider?: string;
+  experimental?: ModelExperimentalMetadata;
+  provider?: ModelProviderMetadata;
 };
 
 export type ModelsDevCatalogStatus = {
@@ -101,6 +104,16 @@ function asRecord(value: unknown): JsonRecord | null {
 
 function nonEmptyString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function publishedMetadata(value: unknown): ModelProviderMetadata | undefined {
+  if (typeof value === "string") return nonEmptyString(value);
+  return asRecord(value) ?? undefined;
+}
+
+function publishedExperimental(value: unknown): ModelExperimentalMetadata | undefined {
+  if (typeof value === "boolean") return value;
+  return asRecord(value) ?? undefined;
 }
 
 function nonNegativeNumber(value: unknown): number | undefined {
@@ -355,6 +368,8 @@ function modelFromRaw(
   const reasoning = raw.reasoning === true;
   const reasoningOptions = parseReasoningOptions(raw.reasoning_options);
   const limit = parseLimit(raw.limit);
+  const experimental = publishedExperimental(raw.experimental);
+  const providerMetadata = publishedMetadata(raw.provider);
   const displayName = nonEmptyString(raw.name) ?? modelId;
   const inputPublished = modalityResult.inputPublished;
   const outputPublished = modalityResult.outputPublished;
@@ -388,8 +403,8 @@ function modelFromRaw(
       ? { interleaved: parseInterleaved(raw.interleaved) }
       : {}),
     ...(nonEmptyString(raw.status) ? { status: nonEmptyString(raw.status) } : {}),
-    ...(typeof raw.experimental === "boolean" ? { experimental: raw.experimental } : {}),
-    ...(nonEmptyString(raw.provider) ? { provider: nonEmptyString(raw.provider) } : {}),
+    ...(experimental !== undefined ? { experimental } : {}),
+    ...(providerMetadata !== undefined ? { provider: providerMetadata } : {}),
   };
 }
 
@@ -431,11 +446,27 @@ function normalizedModelId(value: string): string {
   return value.trim().toLowerCase();
 }
 
-function modelIdMatches(candidate: string, requested: string): boolean {
-  const left = normalizedModelId(candidate);
-  const right = normalizedModelId(requested);
-  return left === right || left.endsWith(`/${right}`) || right.endsWith(`/${left}`);
-}
+const MODEL_VENDOR_PREFIXES = new Set([
+  "anthropic",
+  "amazon",
+  "aws",
+  "cohere",
+  "deepseek",
+  "deepseek-ai",
+  "gemini",
+  "google",
+  "meta",
+  "minimax",
+  "mistral",
+  "moonshot",
+  "moonshotai",
+  "openai",
+  "qwen",
+  "z-ai",
+  "zai",
+  "x-ai",
+  "xai",
+]);
 
 function modelVendorPrefixes(model: ModelsDevModel): string[] {
   const prefixes = new Set<string>();
@@ -445,9 +476,21 @@ function modelVendorPrefixes(model: ModelsDevModel): string[] {
     if (normalized) prefixes.add(normalized);
   };
   add(model.providerKey);
-  add(model.provider);
-  const slash = model.modelId.indexOf("/");
-  if (slash > 0) add(model.modelId.slice(0, slash));
+  if (typeof model.provider === "string") add(model.provider);
+  const providerRecord = typeof model.provider === "object" ? model.provider : undefined;
+  add(providerRecord?.id);
+  const npmProvider = nonEmptyString(providerRecord?.npm);
+  if (npmProvider) add(npmProvider.split("/").at(-1)?.replace(/^@ai-sdk-/, ""));
+  const modelId = normalizedModelId(model.modelId);
+  for (const prefix of MODEL_VENDOR_PREFIXES) {
+    if (
+      modelId.startsWith(`${prefix}/`) ||
+      modelId.startsWith(`${prefix}-`) ||
+      modelId.startsWith(`${prefix}.`)
+    ) {
+      prefixes.add(prefix);
+    }
+  }
   return [...prefixes];
 }
 
@@ -520,6 +563,8 @@ function adapterInput(modalities: ModelModalities): Array<"text" | "image"> {
 
 function capabilityList(model: ModelsDevModel): ModelInfo["capabilities"] {
   const capabilities = new Set<ModelInfo["capabilities"][number]>(["text"]);
+  if (model.attachment === true) capabilities.add("attachments");
+  if (model.temperature === true) capabilities.add("temperature");
   if (model.toolCall === true) capabilities.add("tools");
   if (model.reasoning) capabilities.add("reasoning");
   if (model.structuredOutput === true) capabilities.add("json");
@@ -543,6 +588,10 @@ export function modelInfoFromModelsDev(
 ): ModelInfo {
   const contextWindow = positiveInteger(model.limit.context);
   const maxTokens = positiveInteger(model.limit.output);
+  const thinkingLevelMap = thinkingLevelMapFromModelsDev(
+    model.reasoningOptions,
+    model.thinkingLevels,
+  );
   return {
     modelId: model.modelId,
     displayName: model.displayName,
@@ -552,6 +601,7 @@ export function modelInfoFromModelsDev(
     ...(model.attachment !== undefined ? { attachment: model.attachment } : {}),
     reasoning: model.reasoning,
     ...(model.reasoningOptions !== undefined ? { reasoningOptions: model.reasoningOptions } : {}),
+    ...(thinkingLevelMap !== undefined ? { thinkingLevelMap } : {}),
     ...(model.toolCall !== undefined ? { toolCall: model.toolCall } : {}),
     ...(model.structuredOutput !== undefined ? { structuredOutput: model.structuredOutput } : {}),
     ...(model.temperature !== undefined ? { temperature: model.temperature } : {}),
@@ -629,7 +679,10 @@ export function modelConfigFromModelsDev(
   if (model.interleaved !== undefined) config.interleaved = model.interleaved;
   if (model.status !== undefined) config.status = model.status;
   if (model.experimental !== undefined) config.experimental = model.experimental;
-  if (model.provider !== undefined) config.provider = model.provider;
+  if (model.provider !== undefined) {
+    config.provider = model.provider;
+    config.catalogProvider = model.provider;
+  }
   return config;
 }
 
@@ -726,14 +779,14 @@ export class ModelsDevCatalog {
   }
 
   private providerFor(input: { vendorKey?: string; baseUrl?: string }): ModelsDevProvider | undefined {
-    const candidates = new Set(providerKeyCandidates(input.vendorKey));
-    for (const provider of this.providers.values()) {
-      if (candidates.has(normalizedProviderKey(provider.providerKey))) return provider;
-    }
     const byApi = [...this.providers.values()].find((provider) =>
       apiMatches(input.baseUrl, provider.api),
     );
     if (byApi) return byApi;
+    const candidates = new Set(providerKeyCandidates(input.vendorKey));
+    for (const provider of this.providers.values()) {
+      if (candidates.has(normalizedProviderKey(provider.providerKey))) return provider;
+    }
     const knownKey = Object.entries(KNOWN_PROVIDER_BASE_URLS).find(([, urls]) =>
       urls.some((url) => apiMatches(input.baseUrl, url)),
     )?.[0];
@@ -754,7 +807,7 @@ export class ModelsDevCatalog {
     const candidates: Array<{ model: ModelsDevModel; score: number }> = [];
     for (const provider of providers) {
       for (const model of provider.models) {
-        if (!isTextAgentModel(model) || !modelIdMatches(model.modelId, requested)) continue;
+        if (!isTextAgentModel(model) || !modelIdsMatch(model.modelId, requested)) continue;
         let score = model.modelId.toLowerCase() === requested ? 20 : 10;
         if (provider === preferredProvider) score += 100;
         if (apiMatches(input.baseUrl, provider.api)) score += 80;

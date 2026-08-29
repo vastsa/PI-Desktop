@@ -29,16 +29,15 @@ function modelInfoForDraft(draft: ProviderModelDraft, discovered: ModelInfo[]): 
   if (metadata) return { ...metadata, modelId: draft.id };
   return {
     modelId: draft.id,
-      displayName: draft.id,
-      providerId: "",
-      contextWindow: draft.contextWindow,
-      maxTokens: draft.maxTokens,
-      reasoning: draft.thinkingLevels.length > 0,
-      supportedThinkingLevels: draft.thinkingLevels,
-      source: draft.source === "catalog" ? "bundled" : "user",
-      capabilities: draft.thinkingLevels.length > 0 ? ["text", "reasoning"] : ["text"],
-    }
-  );
+    displayName: draft.id,
+    providerId: "",
+    contextWindow: draft.contextWindow,
+    maxTokens: draft.maxTokens,
+    reasoning: draft.thinkingLevels.length > 0,
+    supportedThinkingLevels: draft.thinkingLevels,
+    source: draft.source === "catalog" ? "bundled" : "user",
+    capabilities: draft.thinkingLevels.length > 0 ? ["text", "reasoning"] : ["text"],
+  };
 }
 
 export function ProviderDialog({
@@ -77,41 +76,49 @@ export function ProviderDialog({
   }, [saving, onClose]);
 
   const selectedIds = form.models.map((model) => model.id);
-  const discoveredById = useMemo(
-    () => new Map(discovered.map((model) => [model.modelId, model])),
-    [discovered],
-  );
   const customIds = useMemo(
     () =>
       Array.from(
         new Set([
           ...customModelIds.filter(
-            (id) => !isCatalogModel(discoveredById.get(id)),
+            (id) => !discovered.some((model) => modelIdsMatch(model.modelId, id)),
           ),
           ...form.models
             .filter(
               (model) =>
                 model.source !== "catalog" &&
-                !isCatalogModel(discoveredById.get(model.id)),
+                !discovered.some((candidate) => modelIdsMatch(candidate.modelId, model.id)),
             )
             .map((model) => model.id),
         ]),
       ),
-    [customModelIds, discoveredById, form.models],
+    [customModelIds, discovered, form.models],
   );
   const optionModels = useMemo(() => {
     const byId = new Map<string, ModelInfo>();
     for (const id of customIds) {
+      const metadata = discovered.find((model) => modelIdsMatch(model.modelId, id));
       byId.set(
         id,
-        discoveredById.get(id) ?? modelInfoForDraft(fallbackModelDraft(id), []),
+        metadata
+          ? { ...metadata, modelId: id }
+          : modelInfoForDraft(fallbackModelDraft(id), []),
+      );
+    }
+    // Preserve the configured ID in the picker while borrowing the complete
+    // models.dev record when the provider uses an unprefixed alias.
+    for (const draft of form.models) {
+      if (byId.has(draft.id)) continue;
+      const metadata = discovered.find((model) => modelIdsMatch(model.modelId, draft.id));
+      byId.set(
+        draft.id,
+        metadata
+          ? { ...metadata, modelId: draft.id }
+          : modelInfoForDraft(draft, []),
       );
     }
     for (const model of discovered) {
       if (!byId.has(model.modelId)) byId.set(model.modelId, model);
-    }
-    for (const draft of form.models) {
-      if (!byId.has(draft.id)) byId.set(draft.id, modelInfoForDraft(draft, []));
     }
     return [...byId.values()];
   }, [customIds, discovered, form.models]);
@@ -157,6 +164,29 @@ export function ProviderDialog({
     {} as Record<ThinkingLevel, string>,
   );
 
+  const metadataLabels = {
+    published: t("settings.modelMetadata"),
+    description: t("settings.modelDescription"),
+    family: t("settings.modelFamily"),
+    input: t("settings.modelInput"),
+    output: t("settings.modelOutput"),
+    limits: t("settings.modelLimits"),
+    provider: t("settings.modelProvider"),
+    reasoningOptions: t("settings.modelReasoningOptions"),
+    attachments: t("settings.modelAttachments"),
+    tools: t("settings.modelTools"),
+    structuredOutput: t("settings.modelStructuredOutput"),
+    temperature: t("settings.modelTemperature"),
+    openWeights: t("settings.modelOpenWeights"),
+    knowledge: t("settings.modelKnowledge"),
+    released: t("settings.modelReleased"),
+    updated: t("settings.modelUpdated"),
+    pricing: t("settings.modelPricing"),
+    experimental: t("settings.modelExperimental"),
+    enabled: t("settings.modelEnabled"),
+    disabled: t("settings.modelDisabled"),
+  };
+
   const modelsStatusHint =
     models.status === "error" ? t("settings.modelsFetchHint") : undefined;
   const isOpenCodeGo = form.apiStyle === OPENCODE_GO_API_STYLE;
@@ -201,7 +231,8 @@ export function ProviderDialog({
           </button>
         </div>
 
-        <div className="provider-form-grid">
+        <div className="provider-dialog-body">
+          <div className="provider-form-grid">
           <Field label={t("settings.name")}>
             <Input
               value={form.name}
@@ -263,6 +294,10 @@ export function ProviderDialog({
                 customLabel={t("settings.customModel")}
                 reasoningLabel={t("settings.reasoning")}
                 visionLabel={t("settings.vision")}
+                attachmentsLabel={t("settings.modelAttachments")}
+                toolsLabel={t("settings.modelTools")}
+                structuredOutputLabel={t("settings.modelStructuredOutput")}
+                temperatureLabel={t("settings.modelTemperature")}
                 onToggle={toggleModel}
               />
             </Field>
@@ -303,7 +338,7 @@ export function ProviderDialog({
             </div>
             <div className="provider-model-card-list">
               {form.models.map((binding) => {
-                const metadata = discoveredById.get(binding.id);
+                const metadata = discovered.find((model) => modelIdsMatch(model.modelId, binding.id));
                 const source = isCatalogModel(metadata) || binding.source === "catalog" ? "catalog" : "custom";
                 const sourceLabel = metadata?.catalogSource === "models.dev"
                   ? t("settings.modelsDevCatalog")
@@ -313,6 +348,7 @@ export function ProviderDialog({
                     key={binding.id}
                     binding={binding}
                     metadata={metadata}
+                    metadataLabels={metadataLabels}
                     initiallyExpanded={false}
                     source={source}
                     sourceLabel={sourceLabel}
@@ -338,6 +374,7 @@ export function ProviderDialog({
             </div>
           </section>
         ) : null}
+        </div>
 
         <div className="provider-dialog-actions">
           <Button variant="ghost" disabled={saving} onClick={onClose}>

@@ -1,8 +1,10 @@
 import type {
   ModelCost,
+  ModelExperimentalMetadata,
   ModelInterleaved,
   ModelLimit,
   ModelModalities,
+  ModelProviderMetadata,
   ModelReasoningOption,
   ThinkingLevel,
 } from "@pi-desktop/shared";
@@ -45,8 +47,10 @@ export type ModelConfig = {
   };
   interleaved?: ModelInterleaved;
   status?: string;
-  experimental?: boolean;
-  provider?: string;
+  experimental?: ModelExperimentalMetadata;
+  provider?: ModelProviderMetadata;
+  /** Original models.dev provider metadata; kept separate from pi-ai's provider ID. */
+  catalogProvider?: ModelProviderMetadata;
   /** Adapter-facing subset; models.dev modalities remain complete above. */
   input: Array<"text" | "image">;
   contextWindow: number;

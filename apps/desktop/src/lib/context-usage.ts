@@ -1,3 +1,4 @@
+import { modelIdsMatch } from "@pi-desktop/shared";
 import type {
   MessageUsage,
   ModelInfo,
@@ -45,10 +46,10 @@ export function resolveContextWindow(
 ): number {
   const catalogModel = modelId
     ? providerId
-      ? providerModels[providerId]?.find((model) => model.modelId === modelId)
+      ? providerModels[providerId]?.find((model) => modelIdsMatch(model.modelId, modelId))
       : Object.values(providerModels)
           .flat()
-          .find((model) => model.modelId === modelId)
+          .find((model) => modelIdsMatch(model.modelId, modelId))
     : undefined;
   const catalogWindow = modelContextWindow(catalogModel);
   if (catalogWindow) return catalogWindow;

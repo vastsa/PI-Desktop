@@ -18,6 +18,7 @@ import type {
 import {
   fileReferenceLabel,
   highestSupportedThinkingLevel,
+  modelIdsMatch,
   normalizeLargePasteThreshold,
   PERMISSION_MODES,
   serializeComposerFileReferences,
@@ -232,7 +233,7 @@ export function thinkingProviderForModel(
   modelCatalog: readonly ModelInfo[] | undefined,
 ): ProviderPublic | null | undefined {
   if (!provider || !modelId) return provider;
-  const model = modelCatalog?.find((candidate) => candidate.modelId === modelId);
+  const model = modelCatalog?.find((candidate) => modelIdsMatch(candidate.modelId, modelId));
   if (!model) return provider;
 
   const supportsReasoning = model.capabilities.includes("reasoning");

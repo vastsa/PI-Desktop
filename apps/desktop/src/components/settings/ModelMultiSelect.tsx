@@ -37,6 +37,10 @@ export function ModelMultiSelect({
   customLabel,
   reasoningLabel,
   visionLabel,
+  attachmentsLabel,
+  toolsLabel,
+  structuredOutputLabel,
+  temperatureLabel,
   onToggle,
 }: {
   models: ModelInfo[];
@@ -52,6 +56,10 @@ export function ModelMultiSelect({
   customLabel: string;
   reasoningLabel: string;
   visionLabel: string;
+  attachmentsLabel: string;
+  toolsLabel: string;
+  structuredOutputLabel: string;
+  temperatureLabel: string;
   onToggle: (model: ModelInfo) => void;
 }) {
   const listId = useId();
@@ -202,6 +210,13 @@ export function ModelMultiSelect({
               ? `${model.modalities.input.join(",")} → ${model.modalities.output.join(",")}`
               : null;
             const supportsVision = model.capabilities.includes("vision");
+            const capabilitySummary = [
+              model.reasoning ? reasoningLabel : undefined,
+              model.capabilities.includes("attachments") ? attachmentsLabel : undefined,
+              model.capabilities.includes("tools") ? toolsLabel : undefined,
+              model.capabilities.includes("json") ? structuredOutputLabel : undefined,
+              model.capabilities.includes("temperature") ? temperatureLabel : undefined,
+            ].filter(Boolean).join(" · ");
             return (
               <button
                 key={model.modelId}
@@ -223,7 +238,7 @@ export function ModelMultiSelect({
                 <span className="provider-model-multi-meta">
                   {context ? `${context} · ` : ""}
                   {modalitySummary ? `${modalitySummary} · ` : ""}
-                  {model.reasoning ? reasoningLabel : ""}
+                  {capabilitySummary}
                 </span>
                 {supportsVision ? (
                   <span className="provider-model-capability-badge" title={visionLabel}>

@@ -185,6 +185,60 @@ export const THINKING_LEVELS = [
 ] as const;
 export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
 
+export type ModelProviderMetadata = string | Record<string, unknown>;
+export type ModelExperimentalMetadata = boolean | Record<string, unknown>;
+
+const MODEL_VENDOR_PREFIXES = new Set([
+  "anthropic",
+  "amazon",
+  "aws",
+  "cohere",
+  "deepseek",
+  "deepseek-ai",
+  "gemini",
+  "google",
+  "meta",
+  "minimax",
+  "mistral",
+  "moonshot",
+  "moonshotai",
+  "openai",
+  "qwen",
+  "z-ai",
+  "zai",
+  "x-ai",
+  "xai",
+]);
+
+/** Match a configured model ID with a namespaced models.dev ID. */
+export function modelIdsMatch(candidate: string, requested: string): boolean {
+  const left = candidate.trim().toLowerCase();
+  const right = requested.trim().toLowerCase();
+  if (!left || !right) return false;
+  if (left === right) return true;
+  if (left.endsWith(`/${right}`) || right.endsWith(`/${left}`)) return true;
+  // Some providers use `model@region` aliases; the base model remains the
+  // same published record for matching purposes.
+  if (left.startsWith(`${right}@`) || right.startsWith(`${left}@`)) return true;
+  for (const separator of ["-", "."] as const) {
+    const leftPrefix = left.split(`${separator}${right}`, 1)[0];
+    if (
+      left.startsWith(`${leftPrefix}${separator}${right}`) &&
+      MODEL_VENDOR_PREFIXES.has(leftPrefix)
+    ) {
+      return true;
+    }
+    const rightPrefix = right.split(`${separator}${left}`, 1)[0];
+    if (
+      right.startsWith(`${rightPrefix}${separator}${left}`) &&
+      MODEL_VENDOR_PREFIXES.has(rightPrefix)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /** Provider-local model settings persisted with the provider configuration. */
 export type ModelBinding = {
   id: string;
@@ -895,13 +949,25 @@ export type ModelInfo = {
   cost?: ModelCost;
   interleaved?: ModelInterleaved;
   status?: string;
-  experimental?: boolean;
-  /** Provider-local upstream name when models.dev publishes one. */
-  provider?: string;
+  /** Provider-local upstream metadata, including models.dev adapter details. */
+  provider?: ModelProviderMetadata;
+  /** Model metadata extension published by models.dev. */
+  experimental?: ModelExperimentalMetadata;
   /** Convenience values retained for existing UI and cache consumers. */
   contextWindow?: number;
   maxTokens?: number;
-  capabilities: Array<"text" | "tools" | "vision" | "reasoning" | "json" | "audio" | "video" | "pdf">;
+  capabilities: Array<
+    | "text"
+    | "tools"
+    | "vision"
+    | "reasoning"
+    | "json"
+    | "audio"
+    | "video"
+    | "pdf"
+    | "attachments"
+    | "temperature"
+  >;
   supportedThinkingLevels?: ThinkingLevel[];
   source: "bundled" | "discovered" | "user";
   /** Metadata catalog that supplied this row, when it is a known model. */
