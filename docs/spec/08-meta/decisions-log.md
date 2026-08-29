@@ -212,6 +212,8 @@ Gold source: local Codex electron captures; latest row wins where rows conflict.
 | D262 | Spill large composer text pastes into session scratch | **Text-only composer pastes at or below the persisted `largePasteThreshold` remain native textarea input; the default is 600 characters and valid values are integers from 1 through 1,000,000. Above the threshold, the renderer sends exact UTF-8 `text/plain` bytes through the existing session paste bridge, Electron stores them under `<data_dir>/scratch/<sessionId>/pasted/`, and the Composer inserts a generated `@<temporary-name> ` token at the original selection. The renderer retains a session-scoped token-to-canonical-path mapping, resolves it in place exactly once before dispatch, and excludes it from duplicate attachment/fallback serialization. Existing clipboard file/image chips and bridge bounds remain unchanged; no workspace, artifact-store, host-protocol, or schema change.** | Very large native pastes are hard to edit and visually overwhelm the composer, while the existing session scratch flow already provides bounded, isolated storage and canonical path semantics without dirtying a project (ADR 0131).** |
 | D265 | One delegation reads as a card, like a fan-out | **Amends D201 / ADR 0062 in the renderer: every `Task` call in an activity group renders as a full-width delegation card — main-agent root, connector, one node per delegate — a lone delegation included, instead of falling back to a compact tool row. The aggregate header takes a count, so a single delegation is not announced in the plural: English gains `_one` forms and Chinese, which has one plural category, drops the English plural marker. Nothing else about the card changes, and no IPC, storage, host-protocol, or delegation-runtime change is implied.** | Reserving the card for two or more delegates made the same work look like two different features, and the single case — the common one — was the one that lost the outcome, the recorded runtime and the delegate's step count (ADR 0062 §6). |
 | D268 | A lifecycle row is a subagent row | **Refines D201 / D265 / ADR 0062 and ADR 0089 in the renderer: the delegation lifecycle rows (`TaskWait`/`TaskList`/`TaskStop`) stay compact tool rows and stay out of the topology counts, but are presented as subagent rows. They summarize from the roster the runtime returned — agent names read from `details.delegations[]` or `details.stopped[]`, a repeat counted rather than listed twice — never from their own `delegationIds` argument; their badge rolls that roster up using the existing `chat.subagentStatus.*` vocabulary; their label names the action taken on subagents instead of "Delegated"; and their body is the roster as a named table led by the joined reports, instead of the raw `delegations[]` JSON. No IPC, storage, host-protocol, or delegation-runtime change is implied.** | The lifecycle rows carry the settled outcome the `Task` card cannot know (ADR 0089), yet they rendered as generic tool calls whose summary was a bare UUID and whose body was a JSON dump — the least readable part of a feature whose card is otherwise the most readable. Reading the roster it already returns costs nothing and makes the whole delegation scan as one thing. |
+| D265 | One delegation reads as a card, like a fan-out | **Amends D201 / ADR 0062 in the renderer: every `Task` call in an activity group renders as a full-width delegation card — main-agent root, connector, one node per delegate — a lone delegation included, instead of falling back to a compact tool row. The aggregate header takes a count, so a single delegation is not announced in the plural: English gains `_one` forms and Chinese, which has one plural category, drops the English plural marker. Nothing else about the card changes, and no IPC, storage, host-protocol, or delegation-runtime change is implied.** | Reserving the card for two or more delegates made the same work look like two different features, and the single case — the common one — was the one that lost the outcome, the recorded runtime and the delegate's step count (ADR 0062 §6). 
+| D269 | History continuation keeps the conversation outline reachable | **Amend D108 / D261 / ADR 0130 in the renderer: when loaded rows are withheld above the mounted window or the host reports an older page, the conversation outline remains present with one dotted earlier-history continuation even if the mounted tail has fewer than two markers or does not overflow. The continuation runs the same two-stage grow-then-fetch path and ordinary message dashes still come only from mounted rows, so every message dash has a real DOM target. The transcript's top loading boundary is observed as well as checked on scroll; while that boundary remains visible after an underfilled tail, a fetched-but-withheld page, or a window transition, history advances again without waiting for a native scroll event. Once no earlier history remains, D108's two-marker-plus-overflow visibility rule applies unchanged. No IPC, storage, host protocol, or pagination change.** | A bounded tail can contain one tool-heavy turn that collapses below one viewport, and fetching an older page can leave every new row outside the trailing mounted window. Neither transition necessarily changes `scrollTop`, so the scroll-only trigger stranded older history and left the outline absent. An explicit continuation represents unavailable navigation honestly, while boundary visibility closes the progress loop without inventing phantom message markers or eagerly loading the whole transcript. |
 
 ## M0. Model catalog decisions
 
@@ -2588,3 +2590,35 @@ D193, and D194.
   storage, host protocol, or component-ownership change, so no ADR is required.
 - See `04-ux/06-settings-ia.md`, `04-ux/07-ui-design-system.md`, E2E-038, and
   US-UI-23.
+
+## 2026-08-29 — History continuation keeps the conversation outline reachable (D269)
+
+- Decision D269 amends D108 / D261 / ADR 0130 in the renderer. D261 made the
+  mounted history a trailing window and fed the minimap the mounted entries so
+  no dash could point at a withheld row. That was correct about dashes, but it
+  left the outline with nothing to say about the history it was hiding, and
+  D108's visibility rule then removed the rail entirely whenever the mounted
+  tail had fewer than two markers or fit one viewport.
+- Two transitions make that reachable in normal use. A bounded tail can be one
+  tool-heavy turn that collapses below one viewport, and a fetched older page
+  can land entirely outside the trailing mounted window. Neither necessarily
+  changes `scrollTop`, and the only escalation trigger was a native scroll
+  event, so upward travel could stop with older history still on disk and no
+  rail to navigate with.
+- The outline now stays present while earlier history exists — withheld loaded
+  rows (`hiddenAbove > 0`) or an older host page (`hasMoreBefore`) — and carries
+  one dotted earlier-history continuation at its top. It is a real control, not
+  a message dash: it runs the same two-stage grow-then-fetch path, is disabled
+  and labeled while a page is loading, and never claims a message preview.
+  Ordinary message dashes are still built only from mounted rows, so D261's
+  reachability rule holds exactly.
+- Progress no longer depends on a scroll event. The transcript's existing top
+  loading row is the observed boundary: while it stays inside the near-top band
+  after an underfilled tail, a fetched-but-withheld page, or a window
+  transition, the transcript keeps escalating. The near-top scroll check is
+  unchanged and now shares one threshold constant with the observer.
+- Once no earlier history remains, D108's two-marker-plus-overflow rule applies
+  unchanged, so a completed short conversation still shows no rail. Renderer
+  only: no IPC, storage, host protocol, or pagination change, and the mounted
+  window budgets are untouched.
+- See `04-ux/08-component-spec.md` §7 and §8, ADR 0130, and E2E-159.

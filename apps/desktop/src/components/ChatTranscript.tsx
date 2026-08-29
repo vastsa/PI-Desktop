@@ -2608,7 +2608,7 @@ export const ChatTranscript = memo(function ChatTranscript({
     });
   }, [cancelFollowScroll, reachTop]);
 
-  // D268: history progression follows the visible top boundary, not only a
+  // D269: history progression follows the visible top boundary, not only a
   // native scroll event. A tail page can collapse to less than one viewport,
   // and a fetched page can initially sit outside the mounted window; neither
   // case changes scrollTop, so the old scroll-only trigger could strand both

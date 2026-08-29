@@ -31,7 +31,7 @@ test("session reads use a bounded tail and load older pages on demand", () => {
   );
   assert.match(transcript, /onLoadOlder\?: \(\) => Promise<void>/);
   // The near-top band is one named constant shared by the scroll check and the
-  // D268 boundary observer, so the two triggers cannot drift apart.
+  // D269 boundary observer, so the two triggers cannot drift apart.
   assert.match(transcript, /HISTORY_REVEAL_THRESHOLD_PX = 120/);
   assert.match(
     transcript,
