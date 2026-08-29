@@ -276,6 +276,42 @@
   font-weight: var(--font-weight-normal);
 }
 
+/* A model row carries its published capability markers and context window on
+   the same line as the name, so a model can be chosen on what it can do rather
+   than on its name alone. The meta cluster never squeezes the name: the name
+   truncates first and the markers keep their intrinsic width. */
+.composer-model-option-main {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.composer-model-option-meta {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+}
+
+.composer-model-option-badge {
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 0 4px;
+  color: var(--ds-text-faint);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-relaxed);
+  text-transform: lowercase;
+}
+
+.composer-model-option-ctx {
+  color: var(--ds-text-faint);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
 .composer-thinking-list .composer-plus-item > span {
   overflow: hidden;
   text-overflow: ellipsis;

@@ -17,6 +17,7 @@ import type {
 } from "@pi-desktop/shared";
 import {
   fileReferenceLabel,
+  formatTokenCount,
   highestSupportedThinkingLevel,
   modelIdsMatch,
   normalizeLargePasteThreshold,
@@ -31,7 +32,11 @@ import { isActivePlanExecution } from "../lib/plan-mode-state";
 import { headAsk, queuedAskCount } from "../lib/pending-asks";
 import type { QueuedPrompt } from "../lib/queued-prompts";
 import { runPaletteCommand } from "../lib/commands";
-import { composerModelsForProvider } from "../lib/composer-models";
+import {
+  composerModelBadges,
+  composerModelMatchesQuery,
+  composerModelsForProvider,
+} from "../lib/composer-models";
 import {
   resolveComposerCommand,
   useComposerAutocomplete,
@@ -736,11 +741,8 @@ export function Composer({
     ? modelGroups
         .map((group) => ({
           ...group,
-          models: group.models.filter(
-            (model) =>
-              model.modelId.toLowerCase().includes(modelQueryNeedle) ||
-              (model.displayName ?? "").toLowerCase().includes(modelQueryNeedle) ||
-              group.provider.name.toLowerCase().includes(modelQueryNeedle),
+          models: group.models.filter((model) =>
+            composerModelMatchesQuery(model, group.provider.name, modelQueryNeedle),
           ),
         }))
         .filter((group) => group.models.length > 0)
@@ -1858,7 +1860,39 @@ export function Composer({
                                             void selectModel(group.provider, model.modelId)
                                           }
                                         >
-                                          <span className="truncate">{optionTitle}</span>
+                                          <span className="composer-model-option-main">
+                                            <span className="truncate">
+                                              {optionTitle}
+                                            </span>
+                                            <span className="composer-model-option-meta">
+                                              {composerModelBadges(model).map(
+                                                (badge) => (
+                                                  <span
+                                                    key={badge}
+                                                    className="composer-model-option-badge"
+                                                    title={t(
+                                                      badge === "reasoning"
+                                                        ? "chat.modelBadgeReasoning"
+                                                        : "chat.modelBadgeVision",
+                                                    )}
+                                                  >
+                                                    {t(
+                                                      badge === "reasoning"
+                                                        ? "chat.modelBadgeReasoning"
+                                                        : "chat.modelBadgeVision",
+                                                    )}
+                                                  </span>
+                                                ),
+                                              )}
+                                              {model.contextWindow ? (
+                                                <span className="composer-model-option-ctx">
+                                                  {formatTokenCount(
+                                                    model.contextWindow,
+                                                  )}
+                                                </span>
+                                              ) : null}
+                                            </span>
+                                          </span>
                                           {active ? (
                                             <IconCheck
                                               size={14}
