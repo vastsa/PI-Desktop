@@ -34,8 +34,12 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  width: min(880px, calc(100vw - 48px));
-  max-height: min(760px, calc(100vh - 64px));
+  /*
+    Wide enough for two model panes side by side, and a fixed height so the
+    dialog never grows with the number of models: the panes scroll, not the page.
+  */
+  width: min(1040px, calc(100vw - 48px));
+  height: min(720px, calc(100vh - 64px));
   padding: 16px;
 }
 
@@ -81,9 +85,40 @@
 /* Only the body scrolls, so the head and actions stay reachable. */
 .provider-setup-body {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   min-height: 0;
+  /*
+    Kept scrollable for very short windows, but in the normal case the two
+    panes below own the scrolling and this container does not move.
+  */
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+/* Credentials read as one compact band, not as three stacked rows. */
+.provider-setup-credentials {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: none;
+}
+
+.provider-setup-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+/* Pick on the left, review on the right; both stretch to the same height. */
+.provider-setup-panes {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  min-height: 0;
 }
 
 .provider-setup-error {
@@ -112,13 +147,6 @@
 }
 
 /* ----------------------------------------------------- credential fields */
-
-.provider-setup-form {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  max-width: 520px;
-}
 
 .provider-credential-test {
   display: flex;
@@ -165,19 +193,30 @@
 /* ------------------------------------------------- live model list */
 
 /* The service's own answer, so this is a short checkbox list, not a catalog. */
+/*
+  Both panes are self-contained panels. The separating top border they used to
+  carry belonged to the stacked layout and would now cut across the grid.
+*/
 .provider-models {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding-top: 12px;
-  border-top: 1px solid var(--ds-border-subtle);
+  min-height: 0;
+  padding: 10px;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--ds-bg-secondary);
 }
 
+/* A hairline under each pane header separates the title from its list. */
 .provider-models-head {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: none;
   flex-wrap: wrap;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--ds-border-subtle);
 }
 
 .provider-models-title {
@@ -242,6 +281,10 @@
 }
 
 .provider-models-placeholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 14px 10px;
   border: 1px dashed var(--ds-border-subtle);
   border-radius: var(--radius-xs);
@@ -252,12 +295,13 @@
 }
 
 .provider-models-list {
+  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 4px;
   margin: 0;
   padding: 0;
-  max-height: min(260px, 34vh);
+  min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   list-style: none;
@@ -325,7 +369,18 @@
 
 /* --------------------------------------------------------- chosen models */
 
-.provider-chosen,
+.provider-chosen {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  padding: 10px;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--ds-bg-secondary);
+}
+
+/* The vendor-account dialog still stacks, so it keeps the divider. */
 .vendor-account-chosen {
   display: flex;
   flex-direction: column;
@@ -334,7 +389,15 @@
   border-top: 1px solid var(--ds-border-subtle);
 }
 
-.provider-chosen-head,
+.provider-chosen-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--ds-border-subtle);
+}
+
 .vendor-account-chosen-head {
   display: flex;
   align-items: center;
@@ -361,7 +424,20 @@
   line-height: var(--leading-relaxed);
 }
 
-.provider-chosen-empty,
+.provider-chosen-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 10px;
+  border: 1px dashed var(--ds-border-subtle);
+  border-radius: var(--radius-xs);
+  color: var(--ds-text-faint);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-relaxed);
+  text-align: center;
+}
+
 .vendor-account-chosen-empty {
   padding: 14px 10px;
   border: 1px dashed var(--ds-border-subtle);
@@ -372,7 +448,19 @@
   text-align: center;
 }
 
-.provider-chosen-list,
+.provider-chosen-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+}
+
 .vendor-account-chosen-list {
   display: flex;
   flex-direction: column;
@@ -532,7 +620,12 @@
   outline-offset: 1px;
 }
 
-.provider-custom-model,
+.provider-custom-model {
+  flex: none;
+  padding-top: 8px;
+  border-top: 1px solid var(--ds-border-subtle);
+}
+
 .vendor-account-custom-model {
   padding-top: 4px;
 }
@@ -873,6 +966,27 @@
 }
 
 /* ------------------------------------------------------------ responsive */
+
+@media (max-width: 940px) {
+  /* Two panes stop being readable before the dialog itself gets narrow. */
+  .provider-setup-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .provider-setup-panes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .provider-setup-dialog {
+    height: auto;
+    max-height: min(760px, calc(100vh - 64px));
+  }
+
+  .provider-models-list,
+  .provider-chosen-list {
+    max-height: min(240px, 30vh);
+  }
+}
 
 @media (max-width: 720px) {
   .provider-models-search-wrap {
