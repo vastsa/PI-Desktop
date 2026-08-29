@@ -202,6 +202,10 @@ function rosterRows(
     const record = asRecord(entry);
     if (!record) continue;
     const agent = typeof record.agent === "string" ? record.agent : "";
+    const id = typeof record.delegationId === "string" ? record.delegationId : "";
+    // An entry that names neither an agent nor a delegation would render as a
+    // blank table row, which reads as a rendering fault rather than as data.
+    if (!agent && !id) continue;
     const status = typeof record.status === "string" ? record.status : "";
     const startedAt = numberAt(record, "startedAt");
     const completedAt = numberAt(record, "completedAt");
@@ -215,10 +219,7 @@ function rosterRows(
       seconds !== null ? `${seconds}s` : null,
       turns !== null ? `${turns} turns` : null,
     ].filter((part): part is string => Boolean(part));
-    rows.push({
-      label: agent || String(record.delegationId ?? ""),
-      value: parts.join(" · "),
-    });
+    rows.push({ label: agent || id, value: parts.join(" · ") });
   }
   return rows.length > 0 ? { kind: "fields", role: "details", rows } : null;
 }

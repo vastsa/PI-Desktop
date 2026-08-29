@@ -624,3 +624,29 @@ test("TaskStop renders its `stopped` roster the same way", () => {
     { label: "test-runner", value: "stopped" },
   ]);
 });
+
+test("a malformed roster degrades instead of rendering blank rows", () => {
+  // A partial or hand-written payload must not crash the row or print a table
+  // row with no label and no value, which reads as a rendering fault.
+  const blocks = buildToolPresentation({
+    toolName: "TaskWait",
+    toolArgs: { delegationIds: ["x"] },
+    toolResult: {
+      details: {
+        delegations: [null, 5, "x", {}, { delegationId: "d", status: "running" }],
+      },
+    },
+  });
+  assert.deepEqual(byRole(blocks, "details").rows, [
+    { label: "d", value: "running" },
+  ]);
+  // A lifecycle row whose result has not arrived yet has nothing to expand,
+  // and must not fall back to printing the ids it was called with.
+  assert.deepEqual(
+    buildToolPresentation({
+      toolName: "TaskWait",
+      toolArgs: { delegationIds: ["x"] },
+    }),
+    [],
+  );
+});
