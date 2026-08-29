@@ -120,6 +120,12 @@ pub struct ModelBinding {
     #[serde(default)]
     pub thinking_levels: Vec<String>,
     pub default_thinking_level: Option<String>,
+    /// Attachment capability overrides. `None` follows the published catalog
+    /// capability, so a models.dev correction still reaches a saved binding.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supports_images: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supports_documents: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -213,6 +219,8 @@ fn normalize_model_bindings(bindings: &[ModelBinding]) -> Vec<ModelBinding> {
                 },
                 thinking_levels,
                 default_thinking_level,
+                supports_images: binding.supports_images,
+                supports_documents: binding.supports_documents,
             })
         })
         .collect()
@@ -228,6 +236,8 @@ fn legacy_model_binding(model_id: Option<String>) -> Vec<ModelBinding> {
                 max_tokens: DEFAULT_MAX_TOKENS,
                 thinking_levels: Vec::new(),
                 default_thinking_level: None,
+                supports_images: None,
+                supports_documents: None,
             }]
         })
         .unwrap_or_default()
@@ -1040,6 +1050,8 @@ mod tests {
                         max_tokens: 16_000,
                         thinking_levels: vec!["high".into(), "medium".into()],
                         default_thinking_level: Some("medium".into()),
+                        supports_images: Some(true),
+                        supports_documents: None,
                     },
                     ModelBinding {
                         id: "plain-model".into(),
@@ -1047,6 +1059,8 @@ mod tests {
                         max_tokens: 8_192,
                         thinking_levels: vec![],
                         default_thinking_level: None,
+                        supports_images: None,
+                        supports_documents: Some(false),
                     },
                 ]),
                 default_model_id: None,
@@ -1076,6 +1090,15 @@ mod tests {
             .unwrap();
         let config: serde_json::Value = serde_json::from_str(&raw).unwrap();
         assert_eq!(config["models"][0]["maxTokens"], 16_000);
+        // Attachment overrides are explicit configuration: an answered switch is
+        // persisted, while "follow the catalog" stays absent instead of being
+        // frozen into a false that a later catalog fix could not correct.
+        assert_eq!(config["models"][0]["supportsImages"], true);
+        assert!(config["models"][0].get("supportsDocuments").is_none());
+        assert_eq!(config["models"][1]["supportsDocuments"], false);
+        assert!(config["models"][1].get("supportsImages").is_none());
+        assert_eq!(provider.models[0].supports_images, Some(true));
+        assert_eq!(provider.models[1].supports_documents, Some(false));
 
         let legacy = create_provider(
             &db,

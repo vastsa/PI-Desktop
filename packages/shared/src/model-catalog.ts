@@ -55,7 +55,7 @@ export function apiStyleForAdapter(npm?: string | null): CatalogApiStyle {
 }
 
 /** One published capability a model row can be checked against. */
-export type ModelFilter = "reasoning" | "vision" | "tools" | "attachments";
+export type ModelFilter = "reasoning" | "vision" | "tools" | "attachments" | "pdf";
 
 /** Whether a published record satisfies a capability filter. */
 export function modelMatchesFilter(model: ModelInfo, filter: ModelFilter): boolean {
@@ -71,9 +71,36 @@ export function modelMatchesFilter(model: ModelInfo, filter: ModelFilter): boole
       return model.toolCall === true || model.capabilities.includes("tools");
     case "attachments":
       return model.attachment === true || model.capabilities.includes("attachments");
+    case "pdf":
+      return (
+        model.capabilities.includes("pdf") ||
+        (model.modalities?.input?.includes("pdf") ?? false)
+      );
     default:
       return false;
   }
+}
+
+/**
+ * Effective image input for a binding: the user override when set, otherwise the
+ * published capability. One helper so settings, the composer and the transport
+ * gate cannot drift into three different answers.
+ */
+export function bindingSupportsImages(
+  binding?: Pick<ModelBinding, "supportsImages"> | null,
+  model?: ModelInfo | null,
+): boolean {
+  if (typeof binding?.supportsImages === "boolean") return binding.supportsImages;
+  return model ? modelMatchesFilter(model, "vision") : false;
+}
+
+/** Effective document (PDF) input for a binding, override first. */
+export function bindingSupportsDocuments(
+  binding?: Pick<ModelBinding, "supportsDocuments"> | null,
+  model?: ModelInfo | null,
+): boolean {
+  if (typeof binding?.supportsDocuments === "boolean") return binding.supportsDocuments;
+  return model ? modelMatchesFilter(model, "pdf") : false;
 }
 
 const THINKING_ORDER: readonly ThinkingLevel[] = [
@@ -114,6 +141,10 @@ export function bindingFromModelInfo(model: ModelInfo): ModelBinding {
     defaultThinkingLevel: thinkingLevels.includes("medium")
       ? "medium"
       : (thinkingLevels[0] ?? null),
+    // Absent overrides keep following models.dev, so a catalog correction still
+    // reaches an already saved binding.
+    supportsImages: null,
+    supportsDocuments: null,
   };
 }
 
@@ -125,6 +156,8 @@ export function bindingForCustomModel(id: string): ModelBinding {
     maxTokens: CATALOG_DEFAULT_MAX_TOKENS,
     thinkingLevels: [],
     defaultThinkingLevel: null,
+    supportsImages: null,
+    supportsDocuments: null,
   };
 }
 

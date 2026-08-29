@@ -91,7 +91,9 @@ Tables (canonical DDL in [04-data-storage](04-data-storage.md) §4.3–4.4, §4.
           "defaultThinkingLevel": {
             "type": ["string", "null"],
             "enum": ["off", "minimal", "low", "medium", "high", "xhigh", "max", null]
-          }
+          },
+          "supportsImages": { "type": ["boolean", "null"] },
+          "supportsDocuments": { "type": ["boolean", "null"] }
         }
       }
     },

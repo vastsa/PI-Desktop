@@ -244,7 +244,7 @@ test("settings offers exactly the thinking levels the composer can render", () =
   // Stored bindings are narrowed to the published set before they are saved.
   assert.match(
     settingsSource,
-    /bindingsToPersist[\s\S]*?const thinkingLevels = binding\.thinkingLevels\.filter/,
+    /bindingsToPersist[\s\S]*?binding\.thinkingLevels\.filter\(\(level\) => choices\.includes\(level\)\)/,
   );
   assert.match(settingsSource, /models: persisted/);
   // A row the catalog does not describe stays out of the published map, so an
@@ -254,5 +254,10 @@ test("settings offers exactly the thinking levels the composer can render", () =
     settingsSource,
     /publishedLevelsById\.get\(binding\.id\.toLowerCase\(\)\) \?\?\s*\n?\s*binding\.thinkingLevels/,
   );
-  assert.match(settingsSource, /if \(!choices\) return binding;/);
+  // Discovery being offline leaves the stored levels alone rather than filtering
+  // them against an empty published set.
+  assert.match(
+    settingsSource,
+    /const thinkingLevels = choices\s*\n?\s*\?[\s\S]*?: binding\.thinkingLevels;/,
+  );
 });

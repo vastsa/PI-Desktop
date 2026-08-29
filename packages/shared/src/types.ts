@@ -246,6 +246,18 @@ export type ModelBinding = {
   maxTokens: number;
   thinkingLevels: ThinkingLevel[];
   defaultThinkingLevel: ThinkingLevel | null;
+  /**
+   * User override for image input. `null` or absent follows the published
+   * models.dev capability; `true` forces image transport on for an endpoint the
+   * catalog describes too narrowly, `false` keeps images out of the request.
+   */
+  supportsImages?: boolean | null;
+  /**
+   * User override for document (PDF) input, with the same three-state meaning.
+   * Documents are still transported as bounded file references, so this records
+   * the capability the model actually has rather than switching the encoding.
+   */
+  supportsDocuments?: boolean | null;
 };
 
 export type Risk = "low" | "medium" | "high";

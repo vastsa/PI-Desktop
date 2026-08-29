@@ -6724,3 +6724,35 @@ This test plan spec is accepted when:
   `04-ux/08-component-spec.md` §19, `03-runtime/11-provider-model-system.md`
   §10, `08-meta/decisions-log.md` (D270 refines D237/D240)
 - **Acceptance**: B (model config), Quality
+
+#### E2E-163: Advanced model settings own the default thinking level and attachment capabilities
+
+- **Preconditions**: One AI service with discoverable models, including a
+  reasoning-capable model that publishes at least three thinking levels, a
+  vision-capable model, and a model models.dev describes as text-only.
+- **Steps**: 1) Open Settings → Model configuration, edit the service and expand
+  a reasoning-capable model's Advanced disclosure. 2) Enable at least three
+  thinking levels and pick a default that is not the lowest enabled level, then
+  save. 3) Reopen the editor and read the default selector. 4) Disable the level
+  currently chosen as default and read the selector again. 5) Start a new session
+  on that model and open the composer reasoning menu. 6) Back in Advanced, on
+  the text-only model, turn Image input on, save, reopen and confirm the switch
+  reports itself as overridden. 7) Attach an image in a session on that model.
+  8) Use the follow-published reset on the same switch, save, and reopen.
+  9) Turn PDF input on for a model whose catalog entry omits it, save, and
+  attach a PDF.
+- **Expected**: The default thinking level is selectable among the levels the
+  binding enables and nothing else; it persists across reopen and is the level a
+  new session starts at. Disabling the chosen default moves it to a still-enabled
+  level rather than leaving a level the runtime would clamp away, and the
+  selector is absent when a binding enables one level or none. An answered
+  Image input switch overrides the published capability in both directions and
+  survives reopen, so a model the catalog calls text-only transports the attached
+  image as an image content block; the reset returns the binding to following
+  models.dev, which the switch reports rather than freezing the current value.
+  PDF input records the capability without changing transport: the PDF stays a
+  bounded file reference the model reads with its file tools, and the panel says
+  so instead of implying inline PDF bytes.
+- **Specs linked**: `03-runtime/11-provider-model-system.md` §6.2,
+  `03-runtime/12-provider-config-schema.md`, `04-ux/08-component-spec.md` §19
+- **Acceptance**: B (model config), Quality

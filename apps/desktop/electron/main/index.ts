@@ -947,19 +947,20 @@ function enrichProvider<T extends RuntimeProvider>(
     selectedModelId || provider.modelId || provider.models?.[0]?.id || provider.defaultModelId || "";
   const storedModel = bindingForModel(provider, modelId);
   const modelsDevModel = modelsDevModelFor(provider, modelId);
-  const catalogModelConfig = modelsDevModel
-    ? modelConfigFromModelsDev(modelsDevModel, provider.baseUrl)
-    : undefined;
-  const modelConfig = catalogModelConfig
-    ? modelConfigWithBinding(catalogModelConfig, storedModel)
-    : undefined;
-  const capabilities = modelConfig
-    ? capabilitiesFromModelConfig(modelConfig)
-    : capabilitiesFromModelConfig(genericModelConfig(modelId, provider.baseUrl ?? ""));
+  // The generic shape is the same fallback the launch path uses, so a model the
+  // catalog does not describe still reports the capabilities its binding
+  // overrides — otherwise a hand-typed id would advertise no image input here
+  // while the transport happily inlined one.
+  const modelConfig = modelConfigWithBinding(
+    modelsDevModel
+      ? modelConfigFromModelsDev(modelsDevModel, provider.baseUrl)
+      : genericModelConfig(modelId, provider.baseUrl ?? ""),
+    storedModel,
+  );
   return {
     ...provider,
-    ...capabilities,
-    supportsVision: modelConfig ? visionFromModelConfig(modelConfig) : false,
+    ...capabilitiesFromModelConfig(modelConfig),
+    supportsVision: visionFromModelConfig(modelConfig),
   };
 }
 
@@ -1029,19 +1030,16 @@ function enrichSession<T extends RuntimeSession>(
   }
   const storedModel = bindingForModel(provider, session.modelId);
   const modelsDevModel = modelsDevModelFor(provider, session.modelId);
-  const catalogModelConfig = modelsDevModel
-    ? modelConfigFromModelsDev(modelsDevModel, provider.baseUrl)
-    : undefined;
-  const modelConfig = catalogModelConfig
-    ? modelConfigWithBinding(catalogModelConfig, storedModel)
-    : undefined;
-  const capabilities = modelConfig
-    ? capabilitiesFromModelConfig(modelConfig)
-    : capabilitiesFromModelConfig(genericModelConfig(session.modelId, provider.baseUrl ?? ""));
+  const modelConfig = modelConfigWithBinding(
+    modelsDevModel
+      ? modelConfigFromModelsDev(modelsDevModel, provider.baseUrl)
+      : genericModelConfig(session.modelId, provider.baseUrl ?? ""),
+    storedModel,
+  );
   return {
     ...session,
-    ...capabilities,
-    supportsVision: modelConfig ? visionFromModelConfig(modelConfig) : false,
+    ...capabilitiesFromModelConfig(modelConfig),
+    supportsVision: visionFromModelConfig(modelConfig),
   };
 }
 
@@ -1444,7 +1442,7 @@ async function resolveAgentRuntimeLaunch(
         authKind: provider.authKind,
         apiStyle,
         supportsReasoning: thinkingCapabilities.supportsReasoning,
-        supportsVision: modelConfig?.input.includes("image") === true,
+        supportsVision: visionFromModelConfig(modelConfig),
         supportedThinkingLevels: [...thinkingCapabilities.supportedThinkingLevels],
         ...(modelConfig ? { modelConfig } : {}),
       },
@@ -6873,8 +6871,11 @@ function registerIpc() {
       }
     }
 
-    const supportsVision =
-      launch.sidecarParams.provider.modelConfig?.input.includes("image") === true;
+    // The binding's image override already shaped this modelConfig, so the
+    // transport gate and the settings switch cannot disagree.
+    const supportsVision = visionFromModelConfig(
+      launch.sidecarParams.provider.modelConfig,
+    );
     let preparedAttachments: PreparedPromptAttachment[];
     try {
       preparedAttachments = await preparePromptAttachments(

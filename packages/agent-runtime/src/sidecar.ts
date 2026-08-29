@@ -10,6 +10,7 @@ import { copyFile, mkdir, readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 import type { ModelAuth } from "@earendil-works/pi-ai";
 import { ParentHostProxy } from "./parent-host-proxy.js";
+import { visionFromModelConfig } from "./model-capabilities.js";
 import { classifyAgentError } from "./agent-errors.js";
 import {
   DesktopAgentRuntime,
@@ -179,7 +180,9 @@ async function hydrateAttachmentHistory(
   history: UiMessage[],
   params: RuntimeParams,
 ): Promise<UiMessage[]> {
-  const supportsVision = params.provider.modelConfig?.input.includes("image") === true;
+  // Same helper the live prompt path uses, on the same override-shaped config,
+  // so a replayed image is inlined exactly when a fresh one would be.
+  const supportsVision = visionFromModelConfig(params.provider.modelConfig);
   const roots = [
     params.scratchDir,
     params.projectPath,
