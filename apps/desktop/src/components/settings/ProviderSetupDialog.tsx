@@ -1,12 +1,12 @@
 /**
- * Staged provider setup: pick a models.dev preset, enter the credential, then
- * choose models from the catalog. Replaces the old single dense form.
+ * One form to add or edit an AI service.
  *
- * The API format is derived from the preset's published adapter and only
- * surfaces under "Advanced" for custom endpoints. Token limits come from
- * bindingFromModelInfo, so the common path needs no numeric entry at all.
+ * Name, base URL and key are entered together, and the model list comes from
+ * the service's own endpoint (`useProviderModels`) rather than from a browsable
+ * catalog. models.dev only enriches the rows the service returned, which is why
+ * context/output limits need no manual entry on the common path.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   API_STYLES,
@@ -15,20 +15,15 @@ import {
   bindingFromModelInfo,
   formatTokenCount,
   type CatalogApiStyle,
-  type CatalogProviderPreset,
   type ModelBinding,
   type ModelInfo,
   type ProviderPublic,
   type ThinkingLevel,
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
-import { Badge, Button, Field, Input, Select, cx } from "../ui";
-import { IconCheck, IconClose, IconExternal, IconPlus, IconSearch } from "../icons";
-import { ModelCatalogBrowser } from "./ModelCatalogBrowser";
-
-/** Ordered stages of the flow; the stepper renders them in this order. */
-const STAGES = ["provider", "credential", "models"] as const;
-export type ProviderSetupStage = (typeof STAGES)[number];
+import { Button, Field, Input, Select, cx } from "../ui";
+import { IconClose, IconPlus, IconSearch } from "../icons";
+import { useProviderModels } from "./useProviderModels";
 
 const API_STYLE_LABEL_KEYS: Record<CatalogApiStyle, string> = {
   chat_completions: "settings.apiStyleChatCompletions",
@@ -40,34 +35,32 @@ const API_STYLE_LABEL_KEYS: Record<CatalogApiStyle, string> = {
   opencode_go: "settings.apiStyleOpenCodeGo",
 };
 
-/** Sentinel preset for a hand-typed OpenAI-compatible endpoint. */
-const CUSTOM_PRESET_KEY = "__custom__";
-
 export type ProviderSetupDialogProps = {
-  /** Existing row being edited; absent starts at the preset grid. */
+  /** Existing row being edited; absent creates a new service. */
   provider?: ProviderPublic | null;
   onClose: () => void;
   /** Called after a successful create/update so the caller can refresh. */
   onSaved: (provider: ProviderPublic, models: ModelBinding[]) => void;
-  /** Injectable preset loader so tests can stub the catalog. */
-  loadPresets?: typeof api.catalogPresets;
+};
+
+/** One row of the model list: what the service returned, plus its binding. */
+type ModelRow = {
+  id: string;
+  displayName: string;
+  contextWindow?: number;
+  maxTokens?: number;
+  /** Published record when the service (or models.dev) described the model. */
+  info?: ModelInfo;
+  binding?: ModelBinding;
 };
 
 export function ProviderSetupDialog({
   provider,
   onClose,
   onSaved,
-  loadPresets = api.catalogPresets,
 }: ProviderSetupDialogProps) {
   const { t } = useTranslation();
   const editing = !!provider;
-  const [stage, setStage] = useState<ProviderSetupStage>(
-    editing ? "credential" : "provider",
-  );
-  const [presets, setPresets] = useState<CatalogProviderPreset[]>([]);
-  const [presetQuery, setPresetQuery] = useState("");
-  const [preset, setPreset] = useState<CatalogProviderPreset | null>(null);
-  const [custom, setCustom] = useState(false);
   const [name, setName] = useState(provider?.name ?? "");
   const [baseUrl, setBaseUrl] = useState(provider?.baseUrl ?? "");
   const [apiKey, setApiKey] = useState("");
@@ -76,6 +69,7 @@ export function ProviderSetupDialog({
   );
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [models, setModels] = useState<ModelBinding[]>(provider?.models ?? []);
+  const [modelQuery, setModelQuery] = useState("");
   const [customModelId, setCustomModelId] = useState("");
   const [customModelError, setCustomModelError] = useState("");
   const [expandedModelId, setExpandedModelId] = useState<string | null>(null);
@@ -84,28 +78,7 @@ export function ProviderSetupDialog({
   const [error, setError] = useState("");
   const [testResult, setTestResult] = useState("");
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const result = await loadPresets();
-        setPresets(result.presets);
-        if (provider) {
-          // Editing keeps the provider's own identity, but the preset supplies
-          // the catalog scope the model browser searches within.
-          const match = result.presets.find(
-            (entry) => entry.configuredProviderId === provider.id,
-          );
-          if (match) setPreset(match);
-          else setCustom(true);
-        }
-      } catch {
-        // A missing catalog only costs the preset grid; the custom endpoint
-        // path still works.
-        setPresets([]);
-        if (provider) setCustom(true);
-      }
-    })();
-  }, [loadPresets, provider]);
+  const discovery = useProviderModels(true, { baseUrl, apiKey, apiStyle }, provider);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -116,47 +89,68 @@ export function ProviderSetupDialog({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose, saving]);
 
-  const visiblePresets = useMemo(() => {
-    const needle = presetQuery.trim().toLowerCase();
-    if (!needle) return presets;
-    return presets.filter(
-      (entry) =>
-        entry.name.toLowerCase().includes(needle) ||
-        entry.providerKey.toLowerCase().includes(needle),
+  /**
+   * Rows are the models the service returned, plus any configured binding the
+   * current answer does not mention (a hand-typed id, or an endpoint that went
+   * quiet), so nothing already saved can silently disappear.
+   */
+  const rows = useMemo<ModelRow[]>(() => {
+    const byId = new Map<string, ModelRow>();
+    for (const model of discovery.models) {
+      byId.set(model.modelId.toLowerCase(), {
+        id: model.modelId,
+        displayName: model.displayName,
+        contextWindow: model.contextWindow ?? model.limit?.context,
+        maxTokens: model.maxTokens ?? model.limit?.output,
+        info: model,
+      });
+    }
+    for (const binding of models) {
+      const key = binding.id.toLowerCase();
+      const existing = byId.get(key);
+      if (existing) byId.set(key, { ...existing, binding });
+      else {
+        byId.set(key, {
+          id: binding.id,
+          displayName: binding.id,
+          contextWindow: binding.contextWindow,
+          maxTokens: binding.maxTokens,
+          binding,
+        });
+      }
+    }
+    return [...byId.values()];
+  }, [discovery.models, models]);
+
+  // The returned list is short and already local, so filtering is client-side:
+  // no host search and no debounced IPC round trip.
+  const visibleRows = useMemo(() => {
+    const needle = modelQuery.trim().toLowerCase();
+    if (!needle) return rows;
+    return rows.filter(
+      (row) =>
+        row.id.toLowerCase().includes(needle) ||
+        row.displayName.toLowerCase().includes(needle),
     );
-  }, [presetQuery, presets]);
+  }, [modelQuery, rows]);
 
-  /** A preset that publishes a base URL locks the field unless custom is chosen. */
-  const baseUrlLocked = !custom && !!preset?.baseUrl;
-  const selectedIds = models.map((binding) => binding.id);
+  const selected = useMemo(
+    () => new Set(models.map((binding) => binding.id.toLowerCase())),
+    [models],
+  );
 
-  const pickPreset = (entry: CatalogProviderPreset) => {
-    setPreset(entry);
-    setCustom(false);
-    setName(entry.name);
-    setBaseUrl(entry.baseUrl ?? "");
-    setApiStyle(entry.apiStyle);
-    setError("");
-    setStage("credential");
-  };
-
-  const pickCustom = () => {
-    setPreset(null);
-    setCustom(true);
-    setName("");
-    setBaseUrl("");
-    setApiStyle("chat_completions");
-    setAdvancedOpen(true);
-    setError("");
-    setStage("credential");
-  };
-
-  const toggleModel = (model: ModelInfo) =>
+  const toggleModel = (row: ModelRow) =>
     setModels((current) => {
-      const wanted = model.modelId.toLowerCase();
-      return current.some((binding) => binding.id.toLowerCase() === wanted)
-        ? current.filter((binding) => binding.id.toLowerCase() !== wanted)
-        : [...current, bindingFromModelInfo(model)];
+      const wanted = row.id.toLowerCase();
+      if (current.some((binding) => binding.id.toLowerCase() === wanted)) {
+        return current.filter((binding) => binding.id.toLowerCase() !== wanted);
+      }
+      // A discovered row arrives already enriched, so its published limits and
+      // thinking levels are adopted as-is.
+      return [
+        ...current,
+        row.info ? bindingFromModelInfo(row.info) : bindingForCustomModel(row.id),
+      ];
     });
 
   const updateBinding = (id: string, update: Partial<ModelBinding>) =>
@@ -219,13 +213,18 @@ export function ProviderSetupDialog({
           defaultModelId: models[0]?.id,
           models,
           apiStyle,
+          // An empty key on edit means "keep the stored one", so the secret is
+          // only sent when the user actually typed a new value.
           ...(apiKey ? { secretValue: apiKey } : {}),
         });
         onSaved(result.provider ?? provider, models);
       } else {
         const result = await api.createProvider({
           name: providerName,
-          vendorKey: preset?.providerKey ?? "custom",
+          // Only the main process knows how a base URL maps onto a models.dev
+          // provider key, and no renderer-safe mapping is exported; the host
+          // resolves the catalog identity from baseUrl when it enriches models.
+          vendorKey: "custom",
           type: "openai_compatible",
           protocol: "openai_compatible",
           baseUrl: providerBaseUrl,
@@ -244,19 +243,50 @@ export function ProviderSetupDialog({
     }
   };
 
-  const stageLabels: Record<ProviderSetupStage, string> = {
-    provider: t("settings.setupStageProvider"),
-    credential: t("settings.setupStageCredential"),
-    models: t("settings.setupStageModels"),
-  };
-  const stageIndex = STAGES.indexOf(stage);
-  const credentialReady = !!name.trim() && !!baseUrl.trim();
-  const canGoNext =
-    stage === "provider"
-      ? !!preset || custom
-      : stage === "credential"
-        ? credentialReady
-        : models.length > 0;
+  const canSave = !saving && !!name.trim() && !!baseUrl.trim() && models.length > 0;
+
+  const modelListBody =
+    discovery.status === "idle" ? (
+      <div className="provider-models-placeholder">{t("settings.modelsEmptyHint")}</div>
+    ) : rows.length === 0 ? (
+      <div className="provider-models-placeholder">
+        {discovery.status === "loading"
+          ? t("settings.modelsLoading")
+          : t("settings.modelsNoneFromService")}
+      </div>
+    ) : visibleRows.length === 0 ? (
+      <div className="provider-models-placeholder">{t("settings.noModelMatches")}</div>
+    ) : (
+      <ul className="provider-models-list">
+        {visibleRows.map((row) => {
+          const checked = selected.has(row.id.toLowerCase());
+          return (
+            <li className="provider-models-row" key={row.id}>
+              <label className="provider-models-row-label">
+                <input
+                  type="checkbox"
+                  className="provider-models-check"
+                  checked={checked}
+                  spellCheck={false}
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  onChange={() => toggleModel(row)}
+                />
+                <span className="provider-models-row-copy">
+                  <span className="provider-models-row-id font-mono">{row.id}</span>
+                  {row.displayName && row.displayName !== row.id ? (
+                    <span className="provider-models-row-name">{row.displayName}</span>
+                  ) : null}
+                </span>
+                <span className="provider-models-row-limits">
+                  {formatTokenCount(row.contextWindow)} · {formatTokenCount(row.maxTokens)}
+                </span>
+              </label>
+            </li>
+          );
+        })}
+      </ul>
+    );
 
   return (
     <div
@@ -289,361 +319,268 @@ export function ProviderSetupDialog({
           </button>
         </div>
 
-        <ol className="provider-setup-stepper">
-          {STAGES.map((entry, index) => (
-            <li
-              key={entry}
-              className={cx(
-                "provider-setup-step",
-                entry === stage && "is-current",
-                index < stageIndex && "is-done",
-              )}
-              aria-current={entry === stage ? "step" : undefined}
-            >
-              <span className="provider-setup-step-marker" aria-hidden>
-                {index < stageIndex ? <IconCheck size={11} /> : index + 1}
-              </span>
-              <span className="provider-setup-step-label">{stageLabels[entry]}</span>
-            </li>
-          ))}
-        </ol>
-
         <div className="provider-setup-body">
-          {stage === "provider" ? (
-            <div className="provider-preset-stage">
-              <div className="provider-preset-search-wrap">
-                <IconSearch size={14} aria-hidden />
+          <div className="provider-setup-form">
+            <Field label={t("settings.name")}>
+              <Input
+                value={name}
+                autoFocus
+                onChange={(event) => setName(event.target.value)}
+              />
+            </Field>
+
+            <Field label={t("settings.baseUrl")}>
+              <Input
+                value={baseUrl}
+                className="font-mono text-sm-plus"
+                placeholder="https://api.example.com/v1"
+                onChange={(event) => setBaseUrl(event.target.value)}
+              />
+            </Field>
+
+            <Field
+              label={t("settings.apiKey")}
+              hint={editing ? t("settings.apiKeyKeepHint") : t("settings.apiKeyHint")}
+            >
+              <Input
+                type="password"
+                value={apiKey}
+                placeholder="sk-…"
+                className="font-mono text-sm-plus"
+                autoComplete="off"
+                onChange={(event) => setApiKey(event.target.value)}
+              />
+            </Field>
+
+            {provider ? (
+              <div className="provider-credential-test">
+                <Button
+                  variant="secondary"
+                  disabled={testing}
+                  onClick={() => void testConnection()}
+                >
+                  {testing ? t("settings.testing") : t("settings.testConnection")}
+                </Button>
+                {testResult ? (
+                  <span className="provider-credential-test-result">{testResult}</span>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="provider-models">
+            <div className="provider-models-head">
+              <h4 className="provider-models-title">{t("settings.serviceModels")}</h4>
+              {discovery.status === "loading" ? (
+                <span className="provider-models-state">{t("settings.modelsLoading")}</span>
+              ) : null}
+              <div className="provider-models-search-wrap">
+                <IconSearch size={13} aria-hidden />
                 <input
-                  className="provider-preset-search"
-                  value={presetQuery}
-                  placeholder={t("settings.presetSearch")}
-                  aria-label={t("settings.presetSearch")}
-                  autoFocus
+                  className="provider-models-search"
+                  value={modelQuery}
+                  placeholder={t("settings.searchModelId")}
+                  aria-label={t("settings.searchModelId")}
                   spellCheck={false}
                   autoCorrect="off"
                   autoCapitalize="off"
                   autoComplete="off"
-                  onChange={(event) => setPresetQuery(event.target.value)}
+                  onChange={(event) => setModelQuery(event.target.value)}
                 />
               </div>
-              <div className="provider-preset-grid">
-                {visiblePresets.map((entry) => (
-                  <button
-                    key={entry.providerKey}
-                    type="button"
-                    className={cx(
-                      "provider-preset-card",
-                      preset?.providerKey === entry.providerKey && "is-selected",
-                    )}
-                    onClick={() => pickPreset(entry)}
-                  >
-                    <span className="provider-preset-card-name">{entry.name}</span>
-                    <span className="provider-preset-card-meta">
-                      {t("settings.presetModelCount", { count: entry.modelCount })}
-                    </span>
-                    {entry.configuredProviderId ? (
-                      <Badge tone="success">{t("settings.configured")}</Badge>
-                    ) : null}
-                  </button>
-                ))}
-                <button
-                  key={CUSTOM_PRESET_KEY}
-                  type="button"
-                  className={cx("provider-preset-card", "is-custom", custom && "is-selected")}
-                  onClick={pickCustom}
-                >
-                  <span className="provider-preset-card-name">
-                    {t("settings.presetCustomEndpoint")}
-                  </span>
-                  <span className="provider-preset-card-meta">
-                    {t("settings.presetCustomEndpointDesc")}
-                  </span>
-                </button>
+            </div>
+
+            {discovery.source === "catalog" ? (
+              <div className="provider-models-note">{t("settings.modelsFromCatalogNote")}</div>
+            ) : null}
+            {discovery.source === "fallback" ? (
+              <div className="provider-models-note">{t("settings.modelsFallbackNote")}</div>
+            ) : null}
+            {discovery.status === "error" ? (
+              <div className="provider-models-note is-error">
+                {discovery.error || t("settings.modelsFetchHint")}
               </div>
+            ) : null}
+
+            {modelListBody}
+          </div>
+
+          <div className="provider-chosen">
+            <div className="provider-chosen-head">
+              <h4 className="provider-chosen-title">{t("settings.modelConfigurations")}</h4>
+              <span className="provider-chosen-count">{models.length}</span>
             </div>
-          ) : null}
-
-          {stage === "credential" ? (
-            <div className="provider-credential-stage">
-              <Field label={t("settings.name")}>
-                <Input
-                  value={name}
-                  autoFocus
-                  onChange={(event) => setName(event.target.value)}
-                />
-              </Field>
-
-              {baseUrlLocked ? (
-                <Field label={t("settings.baseUrl")} hint={t("settings.baseUrlPublished")}>
-                  <div className="provider-credential-fixed font-mono">{baseUrl}</div>
-                </Field>
-              ) : (
-                <Field label={t("settings.baseUrl")}>
-                  <Input
-                    value={baseUrl}
-                    className="font-mono text-sm-plus"
-                    placeholder="https://api.example.com/v1"
-                    onChange={(event) => setBaseUrl(event.target.value)}
-                  />
-                </Field>
-              )}
-
-              <Field
-                label={t("settings.apiKey")}
-                hint={editing ? t("settings.apiKeyKeepHint") : t("settings.apiKeyHint")}
-              >
-                <Input
-                  type="password"
-                  value={apiKey}
-                  placeholder="sk-…"
-                  className="font-mono text-sm-plus"
-                  autoComplete="off"
-                  onChange={(event) => setApiKey(event.target.value)}
-                />
-              </Field>
-
-              {preset?.envVars?.length ? (
-                <div className="provider-credential-hint">
-                  {t("settings.presetEnvHint", { vars: preset.envVars.join(", ") })}
-                </div>
-              ) : null}
-
-              {preset?.doc ? (
-                <a
-                  className="provider-credential-doc"
-                  href={preset.doc}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  <IconExternal size={12} aria-hidden />
-                  <span>{t("settings.presetOpenDocs")}</span>
-                </a>
-              ) : null}
-
-              {provider ? (
-                <div className="provider-credential-test">
-                  <Button variant="secondary" disabled={testing} onClick={() => void testConnection()}>
-                    {testing ? t("settings.testing") : t("settings.testConnection")}
-                  </Button>
-                  {testResult ? (
-                    <span className="provider-credential-test-result">{testResult}</span>
-                  ) : null}
-                </div>
-              ) : null}
-
-              <details
-                className="provider-advanced"
-                open={advancedOpen}
-                onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}
-              >
-                <summary className="provider-advanced-summary">
-                  {t("settings.advanced")}
-                </summary>
-                <div className="provider-advanced-body">
-                  <Field label={t("settings.apiStyle")} hint={t("settings.apiStyleDerived")}>
-                    <Select
-                      value={apiStyle}
-                      onChange={(event) =>
-                        setApiStyle(event.target.value as CatalogApiStyle)
-                      }
-                    >
-                      {API_STYLES.map((style) => (
-                        <option key={style} value={style}>
-                          {t(API_STYLE_LABEL_KEYS[style])}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
-                </div>
-              </details>
-            </div>
-          ) : null}
-
-          {stage === "models" ? (
-            <div className="provider-models-stage">
-              <ModelCatalogBrowser
-                providerKey={custom ? undefined : preset?.providerKey}
-                providerId={custom ? undefined : provider?.id}
-                selectedIds={selectedIds}
-                footerActions={false}
-                onToggle={toggleModel}
-                onConfirm={() => void save()}
-                onCancel={onClose}
-              />
-
-              <div className="provider-chosen">
-                <div className="provider-chosen-head">
-                  <h4 className="provider-chosen-title">{t("settings.modelConfigurations")}</h4>
-                  <span className="provider-chosen-count">{models.length}</span>
-                </div>
-                {models.length === 0 ? (
-                  <div className="provider-chosen-empty">{t("settings.noModelsChosen")}</div>
-                ) : (
-                  <ul className="provider-chosen-list">
-                    {models.map((binding) => (
-                      <li className="provider-chosen-row" key={binding.id}>
-                        <div className="provider-chosen-row-head">
-                          <span className="provider-chosen-row-id font-mono">{binding.id}</span>
-                          <span className="provider-chosen-row-limits">
-                            {formatTokenCount(binding.contextWindow)} ·{" "}
-                            {formatTokenCount(binding.maxTokens)}
-                          </span>
-                          <button
-                            type="button"
-                            className="provider-chosen-advanced-toggle"
-                            aria-expanded={expandedModelId === binding.id}
-                            onClick={() =>
-                              setExpandedModelId((current) =>
-                                current === binding.id ? null : binding.id,
-                              )
-                            }
-                          >
-                            {t("settings.advanced")}
-                          </button>
-                          <button
-                            type="button"
-                            className="provider-chosen-remove"
-                            aria-label={t("settings.removeModel")}
-                            title={t("settings.removeModel")}
-                            onClick={() =>
-                              setModels((current) =>
-                                current.filter((entry) => entry.id !== binding.id),
-                              )
-                            }
-                          >
-                            <IconClose size={12} />
-                          </button>
-                        </div>
-                        <div
-                          className="provider-chosen-row-body"
-                          hidden={expandedModelId !== binding.id}
-                        >
-                          <div className="provider-chosen-limits">
-                            <Field label={t("settings.contextWindow")}>
-                              <Input
-                                type="number"
-                                min={1}
-                                value={binding.contextWindow}
-                                onChange={(event) =>
-                                  updateBinding(binding.id, {
-                                    contextWindow: Number(event.target.value) || 0,
-                                  })
-                                }
-                              />
-                            </Field>
-                            <Field label={t("settings.maxOutput")}>
-                              <Input
-                                type="number"
-                                min={1}
-                                value={binding.maxTokens}
-                                onChange={(event) =>
-                                  updateBinding(binding.id, {
-                                    maxTokens: Number(event.target.value) || 0,
-                                  })
-                                }
-                              />
-                            </Field>
-                          </div>
-                          <div className="provider-chosen-thinking">
-                            <span className="provider-chosen-thinking-label">
-                              {t("settings.supportedThinkingLevels")}
-                            </span>
-                            <div className="provider-chosen-thinking-chips">
-                              {THINKING_LEVELS.map((level) => {
-                                const on = binding.thinkingLevels.includes(level);
-                                return (
-                                  <button
-                                    key={level}
-                                    type="button"
-                                    className={cx("provider-thinking-chip", on && "selected")}
-                                    aria-pressed={on}
-                                    onClick={() => {
-                                      const next: ThinkingLevel[] = on
-                                        ? binding.thinkingLevels.filter(
-                                            (entry) => entry !== level,
-                                          )
-                                        : [...binding.thinkingLevels, level];
-                                      updateBinding(binding.id, {
-                                        thinkingLevels: next,
-                                        defaultThinkingLevel: next.includes(
-                                          binding.defaultThinkingLevel as ThinkingLevel,
-                                        )
-                                          ? binding.defaultThinkingLevel
-                                          : (next[0] ?? null),
-                                      });
-                                    }}
-                                  >
-                                    {t(`thinkingLevel.${level}`)}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-
-                <div className="provider-custom-model">
-                  <Field
-                    label={t("settings.customModel")}
-                    hint={customModelError || t("settings.customModelHint")}
-                  >
-                    <div className="provider-custom-model-row">
-                      <Input
-                        value={customModelId}
-                        placeholder={t("settings.customModelPlaceholder")}
-                        className="font-mono text-sm-plus"
-                        onChange={(event) => {
-                          setCustomModelId(event.target.value);
-                          if (customModelError) setCustomModelError("");
-                        }}
-                        onKeyDown={(event) => {
-                          if (event.key !== "Enter") return;
-                          event.preventDefault();
-                          addCustomModel();
-                        }}
-                      />
-                      <Button variant="secondary" onClick={addCustomModel}>
-                        <IconPlus size={14} />
-                        {t("settings.addCustomModel")}
-                      </Button>
+            {models.length === 0 ? (
+              <div className="provider-chosen-empty">{t("settings.noModelsChosen")}</div>
+            ) : (
+              <ul className="provider-chosen-list">
+                {models.map((binding) => (
+                  <li className="provider-chosen-row" key={binding.id}>
+                    <div className="provider-chosen-row-head">
+                      <span className="provider-chosen-row-id font-mono">{binding.id}</span>
+                      <span className="provider-chosen-row-limits">
+                        {formatTokenCount(binding.contextWindow)} ·{" "}
+                        {formatTokenCount(binding.maxTokens)}
+                      </span>
+                      <button
+                        type="button"
+                        className="provider-chosen-advanced-toggle"
+                        aria-expanded={expandedModelId === binding.id}
+                        onClick={() =>
+                          setExpandedModelId((current) =>
+                            current === binding.id ? null : binding.id,
+                          )
+                        }
+                      >
+                        {t("settings.advanced")}
+                      </button>
+                      <button
+                        type="button"
+                        className="provider-chosen-remove"
+                        aria-label={t("settings.removeModel")}
+                        title={t("settings.removeModel")}
+                        onClick={() =>
+                          setModels((current) =>
+                            current.filter((entry) => entry.id !== binding.id),
+                          )
+                        }
+                      >
+                        <IconClose size={12} />
+                      </button>
                     </div>
-                  </Field>
+                    <div
+                      className="provider-chosen-row-body"
+                      hidden={expandedModelId !== binding.id}
+                    >
+                      <div className="provider-chosen-limits">
+                        <Field label={t("settings.contextWindow")}>
+                          <Input
+                            type="number"
+                            min={1}
+                            value={binding.contextWindow}
+                            onChange={(event) =>
+                              updateBinding(binding.id, {
+                                contextWindow: Number(event.target.value) || 0,
+                              })
+                            }
+                          />
+                        </Field>
+                        <Field label={t("settings.maxOutput")}>
+                          <Input
+                            type="number"
+                            min={1}
+                            value={binding.maxTokens}
+                            onChange={(event) =>
+                              updateBinding(binding.id, {
+                                maxTokens: Number(event.target.value) || 0,
+                              })
+                            }
+                          />
+                        </Field>
+                      </div>
+                      <div className="provider-chosen-thinking">
+                        <span className="provider-chosen-thinking-label">
+                          {t("settings.supportedThinkingLevels")}
+                        </span>
+                        <div className="provider-chosen-thinking-chips">
+                          {THINKING_LEVELS.map((level) => {
+                            const on = binding.thinkingLevels.includes(level);
+                            return (
+                              <button
+                                key={level}
+                                type="button"
+                                className={cx("provider-thinking-chip", on && "selected")}
+                                aria-pressed={on}
+                                onClick={() => {
+                                  const next: ThinkingLevel[] = on
+                                    ? binding.thinkingLevels.filter(
+                                        (entry) => entry !== level,
+                                      )
+                                    : [...binding.thinkingLevels, level];
+                                  updateBinding(binding.id, {
+                                    thinkingLevels: next,
+                                    defaultThinkingLevel: next.includes(
+                                      binding.defaultThinkingLevel as ThinkingLevel,
+                                    )
+                                      ? binding.defaultThinkingLevel
+                                      : (next[0] ?? null),
+                                  });
+                                }}
+                              >
+                                {t(`thinkingLevel.${level}`)}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <div className="provider-custom-model">
+              <Field
+                label={t("settings.customModel")}
+                hint={customModelError || t("settings.customModelHint")}
+              >
+                <div className="provider-custom-model-row">
+                  <Input
+                    value={customModelId}
+                    placeholder={t("settings.customModelPlaceholder")}
+                    className="font-mono text-sm-plus"
+                    onChange={(event) => {
+                      setCustomModelId(event.target.value);
+                      if (customModelError) setCustomModelError("");
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter") return;
+                      event.preventDefault();
+                      addCustomModel();
+                    }}
+                  />
+                  <Button variant="secondary" onClick={addCustomModel}>
+                    <IconPlus size={14} />
+                    {t("settings.addCustomModel")}
+                  </Button>
                 </div>
-              </div>
+              </Field>
             </div>
-          ) : null}
+          </div>
+
+          <details
+            className="provider-advanced"
+            open={advancedOpen}
+            onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}
+          >
+            <summary className="provider-advanced-summary">{t("settings.advanced")}</summary>
+            <div className="provider-advanced-body">
+              <Field label={t("settings.apiStyle")} hint={t("settings.apiStyleDerived")}>
+                <Select
+                  value={apiStyle}
+                  onChange={(event) => setApiStyle(event.target.value as CatalogApiStyle)}
+                >
+                  {API_STYLES.map((style) => (
+                    <option key={style} value={style}>
+                      {t(API_STYLE_LABEL_KEYS[style])}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+          </details>
         </div>
 
         {error ? <div className="provider-setup-error">{error}</div> : null}
 
         <div className="provider-setup-actions">
-          <Button
-            variant="ghost"
-            disabled={saving || stageIndex === 0 || editing}
-            onClick={() => setStage(STAGES[Math.max(stageIndex - 1, 0)])}
-          >
-            {t("settings.back")}
-          </Button>
           <div className="provider-setup-actions-right">
             <Button variant="ghost" disabled={saving} onClick={onClose}>
               {t("settings.cancel")}
             </Button>
-            {stage === "models" ? (
-              <Button variant="primary" disabled={saving || !canGoNext} onClick={() => void save()}>
-                {saving ? t("settings.saving") : t("settings.saveProvider")}
-              </Button>
-            ) : (
-              <Button
-                variant="primary"
-                disabled={saving || !canGoNext}
-                onClick={() => setStage(STAGES[Math.min(stageIndex + 1, STAGES.length - 1)])}
-              >
-                {t("settings.next")}
-              </Button>
-            )}
+            <Button variant="primary" disabled={!canSave} onClick={() => void save()}>
+              {saving ? t("settings.saving") : t("settings.saveProvider")}
+            </Button>
           </div>
         </div>
       </div>

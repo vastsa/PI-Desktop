@@ -1,15 +1,14 @@
 /**
- * Shared contract for the models.dev-driven model configuration surface.
+ * Shared vocabulary for the model configuration surface.
  *
- * The desktop app treats models.dev as the single source of provider and model
- * metadata. This module owns the vocabulary both sides of the IPC boundary
- * agree on: what a catalog provider preset looks like, how a model search
- * request and its result rows are shaped, and how a published `npm` adapter
- * maps onto the wire API style the runtime speaks.
+ * A service's own endpoint is the source of truth for which models it serves;
+ * models.dev enriches those rows with published metadata. This module owns what
+ * both sides of the IPC boundary agree on: the wire API styles, how a published
+ * `npm` adapter maps onto one, how a published record becomes a persisted
+ * binding, and the shared capability and formatting helpers.
  *
  * Nothing here performs I/O, so the renderer, the Electron main process and the
- * tests share one implementation instead of re-deriving capability and
- * formatting rules per surface.
+ * tests share one implementation instead of re-deriving these rules per surface.
  */
 
 import type { ModelBinding, ModelInfo, ThinkingLevel } from "./types.js";
@@ -54,64 +53,8 @@ export function apiStyleForAdapter(npm?: string | null): CatalogApiStyle {
   return "chat_completions";
 }
 
-/** One provider published by models.dev, offered as a setup preset. */
-export type CatalogProviderPreset = {
-  /** models.dev provider key, e.g. `anthropic`. */
-  providerKey: string;
-  /** Display name published by models.dev. */
-  name: string;
-  /** Documented base URL, when models.dev publishes one. */
-  baseUrl?: string;
-  /** Wire style derived from the published adapter package. */
-  apiStyle: CatalogApiStyle;
-  /** Published environment variable names that hold this provider's key. */
-  envVars: readonly string[];
-  /** Provider documentation URL, when published. */
-  doc?: string;
-  /** Number of text-capable models available for this provider. */
-  modelCount: number;
-  /** Id of the already-configured provider row for this preset, when any. */
-  configuredProviderId?: string;
-};
-
-/** Capability filters offered by the model picker. */
-export const MODEL_FILTERS = ["reasoning", "vision", "tools", "attachments"] as const;
-
-export type ModelFilter = (typeof MODEL_FILTERS)[number];
-
-/** A model search request against the local models.dev snapshot. */
-export type ModelSearchInput = {
-  /** Free-text query matched against model id, display name and family. */
-  query?: string;
-  /** Restrict results to one models.dev provider key. */
-  providerKey?: string;
-  /** Restrict results to the catalog provider matching this configured row. */
-  providerId?: string;
-  /** Required capabilities; a model must satisfy every entry. */
-  filters?: readonly ModelFilter[];
-  /** Maximum rows to return. The host clamps this to a sane upper bound. */
-  limit?: number;
-};
-
-/** One result row from a model search. */
-export type ModelSearchResult = {
-  /** models.dev provider key that publishes this model. */
-  providerKey: string;
-  /** Display name of the publishing provider. */
-  providerName: string;
-  /** Complete published record, reused verbatim by the detail panel. */
-  model: ModelInfo;
-  /** Relevance score; higher sorts first. */
-  score: number;
-};
-
-export type ModelSearchOutput = {
-  results: ModelSearchResult[];
-  /** Total matches before `limit` was applied. */
-  total: number;
-  /** True when the snapshot could not be loaded, so results are empty. */
-  degraded: boolean;
-};
+/** One published capability a model row can be checked against. */
+export type ModelFilter = "reasoning" | "vision" | "tools" | "attachments";
 
 /** Whether a published record satisfies a capability filter. */
 export function modelMatchesFilter(model: ModelInfo, filter: ModelFilter): boolean {
@@ -130,14 +73,6 @@ export function modelMatchesFilter(model: ModelInfo, filter: ModelFilter): boole
     default:
       return false;
   }
-}
-
-/** Whether a record satisfies every requested filter. */
-export function modelMatchesFilters(
-  model: ModelInfo,
-  filters: readonly ModelFilter[] | undefined,
-): boolean {
-  return (filters ?? []).every((filter) => modelMatchesFilter(model, filter));
 }
 
 const THINKING_ORDER: readonly ThinkingLevel[] = [

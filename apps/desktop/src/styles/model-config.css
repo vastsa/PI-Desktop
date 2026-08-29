@@ -1,347 +1,16 @@
 /*
-  Redesigned model configuration surfaces.
+  Model configuration surfaces.
 
   Three surfaces share this file because they share one visual language:
-  the two-pane catalog browser (`.model-catalog`), the staged provider setup
-  dialog (`.provider-setup-*`), and the settings page that hosts both
-  (`.model-config-page`). Typography, radii and weights come from
-  styles/tokens.css only — scripts/check-style-tokens.mjs enforces that.
+  the single-form provider setup dialog (`.provider-setup-*` plus the live
+  `.provider-models-*` list), the vendor account dialog, and the settings page
+  that hosts both (`.model-config-page`). Typography, radii and weights come
+  from styles/tokens.css only — scripts/check-style-tokens.mjs enforces that.
 */
 
-/* ---------------------------------------------------------------- catalog */
+/* ------------------------------------------------- catalog status footer */
 
-.model-catalog {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-height: 0;
-}
-
-.model-catalog-panes {
-  display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
-  gap: 10px;
-  min-height: 0;
-}
-
-.model-catalog-search-pane {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
-  min-height: 0;
-}
-
-.model-catalog-search-wrap {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 10px;
-  min-height: 32px;
-  border: 1px solid var(--ds-border-default);
-  border-radius: var(--radius-sm);
-  background: var(--ds-bg-inset);
-  color: var(--ds-text-muted);
-}
-
-.model-catalog-search-wrap:focus-within {
-  border-color: var(--ds-border-strong);
-}
-
-.model-catalog-search {
-  flex: 1;
-  min-width: 0;
-  border: 0;
-  background: transparent;
-  outline: none;
-  color: var(--ds-text-primary);
-  font-size: var(--text-md);
-  line-height: var(--leading-normal);
-}
-
-.model-catalog-search::placeholder {
-  color: var(--ds-text-faint);
-}
-
-.model-catalog-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.model-catalog-filter {
-  padding: 3px 9px;
-  border: 1px solid var(--ds-border-subtle);
-  border-radius: var(--radius-full);
-  background: var(--ds-bg-chip);
-  color: var(--ds-text-muted);
-  font-size: var(--text-2xs);
-  font-weight: var(--font-weight-medium);
-  line-height: var(--leading-normal);
-  cursor: pointer;
-  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
-}
-
-.model-catalog-filter:hover {
-  background: var(--ds-bg-hover);
-  color: var(--ds-text-secondary);
-}
-
-.model-catalog-filter.is-on {
-  border-color: var(--ds-border-strong);
-  background: var(--ds-bg-active);
-  color: var(--ds-text-primary);
-}
-
-.model-catalog-filter:focus-visible {
-  outline: 2px solid var(--ds-accent-soft);
-  outline-offset: 1px;
-}
-
-.model-catalog-list {
-  flex: 1;
-  min-height: 200px;
-  max-height: min(340px, 42vh);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 4px;
-  border: 1px solid var(--ds-border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--ds-bg-inset);
-}
-
-.model-catalog-group + .model-catalog-group {
-  margin-top: 6px;
-}
-
-.model-catalog-group-head {
-  position: sticky;
-  top: -4px;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 5px 8px;
-  background: var(--ds-bg-inset);
-  color: var(--ds-text-faint);
-}
-
-.model-catalog-group-name {
-  font-size: var(--text-2xs);
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: var(--tracking-wide);
-  line-height: var(--leading-normal);
-  text-transform: uppercase;
-}
-
-.model-catalog-group-count {
-  font-size: var(--text-3xs);
-  font-variant-numeric: tabular-nums;
-  line-height: var(--leading-normal);
-}
-
-.model-catalog-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: var(--radius-xs);
-  cursor: pointer;
-  transition: background 100ms ease;
-}
-
-.model-catalog-row.is-active {
-  background: var(--ds-bg-hover);
-}
-
-.model-catalog-row.is-selected {
-  background: var(--ds-bg-active);
-}
-
-/* Reserved so selecting a row never shifts its text sideways. */
-.model-catalog-check {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  border: 1px solid var(--ds-border-default);
-  border-radius: var(--radius-3xs);
-  color: var(--ds-bg-inset);
-}
-
-.model-catalog-check.is-checked {
-  border-color: var(--ds-accent);
-  background: var(--ds-accent);
-}
-
-.model-catalog-row-copy {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-}
-
-.model-catalog-row-name,
-.model-catalog-row-id {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.model-catalog-row-name {
-  color: var(--ds-text-primary);
-  font-size: var(--text-md);
-  font-weight: var(--font-weight-medium);
-  line-height: var(--leading-tight);
-}
-
-.model-catalog-row-id {
-  color: var(--ds-text-faint);
-  font-size: var(--text-3xs);
-  line-height: var(--leading-tight);
-}
-
-.model-catalog-row-meta {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--ds-text-muted);
-  font-size: var(--text-3xs);
-  font-variant-numeric: tabular-nums;
-  line-height: var(--leading-normal);
-  text-align: right;
-}
-
-.model-catalog-meta-dot {
-  color: var(--ds-text-faint);
-}
-
-.model-catalog-placeholder {
-  padding: 24px 12px;
-  color: var(--ds-text-muted);
-  font-size: var(--text-sm);
-  line-height: var(--leading-relaxed);
-  text-align: center;
-}
-
-.model-catalog-count {
-  color: var(--ds-text-faint);
-  font-size: var(--text-3xs);
-  font-variant-numeric: tabular-nums;
-  line-height: var(--leading-normal);
-}
-
-/* Read-only published record; a labelled grid, never a JSON dump. */
-.model-catalog-detail-pane {
-  min-width: 0;
-  min-height: 200px;
-  max-height: min(340px, 42vh);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 12px;
-  border: 1px solid var(--ds-border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--ds-bg-secondary);
-}
-
-.model-catalog-detail {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.model-catalog-detail-head {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--ds-border-subtle);
-}
-
-.model-catalog-detail-name {
-  color: var(--ds-text-primary);
-  font-size: var(--text-base);
-  font-weight: var(--font-weight-semibold);
-  line-height: var(--leading-tight);
-}
-
-.model-catalog-detail-id {
-  color: var(--ds-text-muted);
-  font-size: var(--text-2xs);
-  line-height: var(--leading-tight);
-  overflow-wrap: anywhere;
-}
-
-.model-catalog-detail-provider {
-  color: var(--ds-text-faint);
-  font-size: var(--text-3xs);
-  line-height: var(--leading-normal);
-}
-
-.model-catalog-detail-desc {
-  margin: 0;
-  color: var(--ds-text-secondary);
-  font-size: var(--text-sm);
-  line-height: var(--leading-relaxed);
-}
-
-.model-catalog-detail-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  margin: 0;
-}
-
-.model-catalog-detail-row {
-  display: grid;
-  grid-template-columns: minmax(84px, 34%) minmax(0, 1fr);
-  gap: 10px;
-  padding: 4px 0;
-}
-
-.model-catalog-detail-row + .model-catalog-detail-row {
-  border-top: 1px solid var(--ds-border-subtle);
-}
-
-.model-catalog-detail-row dt {
-  color: var(--ds-text-faint);
-  font-size: var(--text-2xs);
-  line-height: var(--leading-relaxed);
-}
-
-.model-catalog-detail-row dd {
-  margin: 0;
-  color: var(--ds-text-primary);
-  font-size: var(--text-2xs);
-  line-height: var(--leading-relaxed);
-  overflow-wrap: anywhere;
-}
-
-.model-catalog-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.model-catalog-selected-count {
-  color: var(--ds-text-muted);
-  font-size: var(--text-2xs);
-  font-variant-numeric: tabular-nums;
-  line-height: var(--leading-normal);
-}
-
-.model-catalog-footer-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
+/* models.dev is the enrichment source, so the page only reports its snapshot. */
 .model-catalog-status {
   display: flex;
   align-items: center;
@@ -409,70 +78,7 @@
   outline-offset: 1px;
 }
 
-/* Three-step indicator with connectors between the markers. */
-.provider-setup-stepper {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.provider-setup-step {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--ds-text-faint);
-}
-
-.provider-setup-step + .provider-setup-step::before {
-  content: "";
-  width: 24px;
-  height: 1px;
-  background: var(--ds-border-default);
-}
-
-.provider-setup-step-marker {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  border: 1px solid var(--ds-border-default);
-  border-radius: var(--radius-full);
-  font-size: var(--text-3xs);
-  font-weight: var(--font-weight-semibold);
-  font-variant-numeric: tabular-nums;
-  line-height: var(--leading-none);
-}
-
-.provider-setup-step-label {
-  font-size: var(--text-2xs);
-  font-weight: var(--font-weight-medium);
-  line-height: var(--leading-normal);
-}
-
-.provider-setup-step.is-current {
-  color: var(--ds-text-primary);
-}
-
-.provider-setup-step.is-current .provider-setup-step-marker {
-  border-color: var(--ds-border-strong);
-  background: var(--ds-bg-active);
-}
-
-.provider-setup-step.is-done {
-  color: var(--ds-text-secondary);
-}
-
-.provider-setup-step.is-done .provider-setup-step-marker {
-  border-color: var(--ds-accent);
-  background: var(--ds-accent);
-  color: var(--ds-bg-inset);
-}
-
-/* Only the body scrolls, so the head, stepper and actions stay reachable. */
+/* Only the body scrolls, so the head and actions stay reachable. */
 .provider-setup-body {
   flex: 1;
   min-height: 0;
@@ -505,143 +111,13 @@
   gap: 8px;
 }
 
-/* ----------------------------------------------------- stage 1: presets */
+/* ----------------------------------------------------- credential fields */
 
-.provider-preset-stage {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.provider-preset-search-wrap {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 10px;
-  min-height: 32px;
-  border: 1px solid var(--ds-border-default);
-  border-radius: var(--radius-sm);
-  background: var(--ds-bg-inset);
-  color: var(--ds-text-muted);
-}
-
-.provider-preset-search-wrap:focus-within {
-  border-color: var(--ds-border-strong);
-}
-
-.provider-preset-search {
-  flex: 1;
-  min-width: 0;
-  border: 0;
-  background: transparent;
-  outline: none;
-  color: var(--ds-text-primary);
-  font-size: var(--text-md);
-  line-height: var(--leading-normal);
-}
-
-.provider-preset-search::placeholder {
-  color: var(--ds-text-faint);
-}
-
-.provider-preset-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
-  gap: 8px;
-}
-
-.provider-preset-card {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 3px;
-  padding: 10px;
-  border: 1px solid var(--ds-border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--ds-bg-secondary);
-  text-align: left;
-  cursor: pointer;
-  transition: background 120ms ease, border-color 120ms ease;
-}
-
-.provider-preset-card:hover {
-  border-color: var(--ds-border-default);
-  background: var(--ds-bg-tertiary);
-}
-
-.provider-preset-card.is-selected {
-  border-color: var(--ds-border-strong);
-  background: var(--ds-bg-active);
-}
-
-.provider-preset-card.is-custom {
-  border-style: dashed;
-}
-
-.provider-preset-card:focus-visible {
-  outline: 2px solid var(--ds-accent-soft);
-  outline-offset: 1px;
-}
-
-.provider-preset-card-name {
-  color: var(--ds-text-primary);
-  font-size: var(--text-md);
-  font-weight: var(--font-weight-medium);
-  line-height: var(--leading-tight);
-}
-
-.provider-preset-card-meta {
-  color: var(--ds-text-faint);
-  font-size: var(--text-3xs);
-  font-variant-numeric: tabular-nums;
-  line-height: var(--leading-normal);
-}
-
-/* -------------------------------------------------- stage 2: credential */
-
-.provider-credential-stage {
+.provider-setup-form {
   display: flex;
   flex-direction: column;
   gap: 12px;
   max-width: 520px;
-}
-
-.provider-credential-fixed {
-  padding: 6px 10px;
-  border: 1px solid var(--ds-border-subtle);
-  border-radius: var(--radius-xs);
-  background: var(--ds-bg-inset);
-  color: var(--ds-text-secondary);
-  font-size: var(--text-sm-plus);
-  line-height: var(--leading-normal);
-  overflow-wrap: anywhere;
-}
-
-.provider-credential-hint {
-  color: var(--ds-text-faint);
-  font-size: var(--text-2xs);
-  line-height: var(--leading-relaxed);
-}
-
-.provider-credential-doc {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  align-self: flex-start;
-  color: var(--ds-text-secondary);
-  font-size: var(--text-2xs);
-  line-height: var(--leading-normal);
-  text-decoration: none;
-}
-
-.provider-credential-doc:hover {
-  color: var(--ds-text-primary);
-  text-decoration: underline;
-}
-
-.provider-credential-doc:focus-visible {
-  outline: 2px solid var(--ds-accent-soft);
-  outline-offset: 2px;
 }
 
 .provider-credential-test {
@@ -686,13 +162,168 @@
   padding-top: 10px;
 }
 
-/* ------------------------------------------------------ stage 3: models */
+/* ------------------------------------------------- live model list */
 
-.provider-models-stage {
+/* The service's own answer, so this is a short checkbox list, not a catalog. */
+.provider-models {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ds-border-subtle);
 }
+
+.provider-models-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.provider-models-title {
+  margin: 0;
+  color: var(--ds-text-primary);
+  font-size: var(--text-md);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--leading-tight);
+}
+
+.provider-models-state {
+  color: var(--ds-text-faint);
+  font-size: var(--text-3xs);
+  line-height: var(--leading-normal);
+}
+
+.provider-models-search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding: 0 8px;
+  min-height: 28px;
+  min-width: 180px;
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--radius-sm);
+  background: var(--ds-bg-inset);
+  color: var(--ds-text-muted);
+}
+
+.provider-models-search-wrap:focus-within {
+  border-color: var(--ds-border-strong);
+}
+
+.provider-models-search {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  outline: none;
+  color: var(--ds-text-primary);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-normal);
+}
+
+.provider-models-search::placeholder {
+  color: var(--ds-text-faint);
+}
+
+.provider-models-note {
+  padding: 6px 8px;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--radius-xs);
+  background: var(--ds-bg-inset);
+  color: var(--ds-text-muted);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-relaxed);
+}
+
+.provider-models-note.is-error {
+  color: var(--ds-warning);
+}
+
+.provider-models-placeholder {
+  padding: 14px 10px;
+  border: 1px dashed var(--ds-border-subtle);
+  border-radius: var(--radius-xs);
+  color: var(--ds-text-faint);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-relaxed);
+  text-align: center;
+}
+
+.provider-models-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  max-height: min(260px, 34vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+}
+
+.provider-models-row {
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--radius-xs);
+  background: var(--ds-bg-secondary);
+}
+
+.provider-models-row-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+
+.provider-models-check {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  accent-color: var(--ds-accent);
+  cursor: pointer;
+}
+
+.provider-models-check:focus-visible {
+  outline: 2px solid var(--ds-accent-soft);
+  outline-offset: 1px;
+}
+
+.provider-models-row-copy {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.provider-models-row-id {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ds-text-primary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.provider-models-row-name {
+  flex: none;
+  color: var(--ds-text-muted);
+  font-size: var(--text-3xs);
+  line-height: var(--leading-normal);
+}
+
+.provider-models-row-limits {
+  flex: none;
+  color: var(--ds-text-faint);
+  font-size: var(--text-3xs);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--leading-normal);
+}
+
+/* --------------------------------------------------------- chosen models */
 
 .provider-chosen,
 .vendor-account-chosen {
@@ -1244,12 +875,9 @@
 /* ------------------------------------------------------------ responsive */
 
 @media (max-width: 720px) {
-  .model-catalog-panes {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .model-catalog-detail-pane {
-    max-height: min(220px, 30vh);
+  .provider-models-search-wrap {
+    margin-left: 0;
+    width: 100%;
   }
 
   .provider-setup-actions {
@@ -1272,9 +900,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .model-catalog-filter,
-  .model-catalog-row,
-  .provider-preset-card,
   .provider-setup-close,
   .model-default-option {
     transition: none;

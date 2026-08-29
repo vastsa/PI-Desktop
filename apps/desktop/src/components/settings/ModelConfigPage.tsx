@@ -1,6 +1,6 @@
 /**
- * Model configuration tab: default model, configured API providers, OAuth
- * vendor accounts, and the models.dev catalog status.
+ * Model configuration tab: default model, configured AI services, OAuth
+ * vendor accounts, and the models.dev enrichment snapshot status.
  *
  * Provider rows treat `models[0]` as the provider's default model, and editing
  * the default provider re-syncs `settings.defaultModelId` when that first
@@ -84,7 +84,7 @@ export function ModelConfigPage() {
   useEffect(() => {
     void (async () => {
       try {
-        const result = await api.catalogPresets();
+        const result = await api.modelCatalogStatus();
         setCatalogStatus(result.status);
       } catch {
         // The status line simply stays hidden when the catalog cannot report.
