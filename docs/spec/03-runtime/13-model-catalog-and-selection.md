@@ -36,7 +36,11 @@ entitled to it.
   no host search is involved.
 - Context window, output limit and thinking levels come from
   `bindingFromModelInfo` over the enriched record; per-model overrides live
-  behind a per-row **Advanced** disclosure.
+  behind a per-row **Advanced** disclosure. `publishedThinkingLevels` is the one
+  owner of "which levels this model may be given": the dialog offers exactly
+  that list, `bindingFromModelInfo` seeds from it, and the runtime intersects a
+  stored binding with it. A model that publishes no level list and no level map
+  but does claim reasoning falls back to `low`/`medium`/`high`.
 - The wire API is derived from the provider's published `npm` adapter
   (`apiStyleForAdapter`) and is only editable inside **Advanced**.
 - A custom model ID is always accepted, so a gateway without a `/models` route

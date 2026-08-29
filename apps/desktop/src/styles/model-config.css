@@ -574,6 +574,12 @@
   gap: 5px;
 }
 
+.provider-chosen-thinking-empty {
+  color: var(--ds-text-muted);
+  font-size: var(--text-3xs);
+  line-height: var(--leading-normal);
+}
+
 .provider-thinking-chip {
   min-height: 24px;
   padding: 2px 9px;

@@ -11,6 +11,7 @@
  * tests share one implementation instead of re-deriving these rules per surface.
  */
 
+import { publishedThinkingLevels } from "./thinking-levels.js";
 import type { ModelBinding, ModelInfo, ThinkingLevel } from "./types.js";
 
 /** Wire protocol a provider row speaks. Mirrors the runtime adapter list. */
@@ -101,15 +102,9 @@ export const CATALOG_DEFAULT_MAX_TOKENS = 8_192;
  * token entry; the user can still narrow them afterwards.
  */
 export function bindingFromModelInfo(model: ModelInfo): ModelBinding {
-  const thinkingLevels = sortThinkingLevels(
-    model.supportedThinkingLevels?.length
-      ? model.supportedThinkingLevels
-      : model.thinkingLevelMap
-        ? []
-        : model.reasoning === true
-          ? (["low", "medium", "high"] as ThinkingLevel[])
-          : [],
-  );
+  // One source for "which levels may be enabled" so a fresh binding can never
+  // hold a level the runtime would later discard.
+  const thinkingLevels = sortThinkingLevels(publishedThinkingLevels(model));
   return {
     id: model.modelId,
     contextWindow:
