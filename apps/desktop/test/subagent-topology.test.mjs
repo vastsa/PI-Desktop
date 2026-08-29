@@ -9,7 +9,11 @@ register(pathToFileURL(join(here, "helpers/ts-import-hooks.mjs")));
 const {
   collectDelegationStatuses,
   collectDelegationTimings,
+  delegationRoster,
+  delegationRosterOutcome,
+  delegationRosterSummary,
   isDelegationActivityItem,
+  lifecycleKindOf,
   subagentOutcome,
   summarizeSubagentActivity,
 } = await import("../src/lib/subagent-topology.ts");
@@ -181,4 +185,65 @@ test("summarizes partial fan-out without deduplicating repeated agent names", ()
     issues: 0,
     warnings: 0,
   });
+});
+
+test("a lifecycle row names the subagents it reports on (D268)", () => {
+  // Presentation parity with the Task card: the row was called with bare
+  // delegation ids, so its own arguments say nothing a reader can use. The
+  // roster the runtime returned is what names the subagents.
+  const wait = lifecycle("TaskWait", {
+    delegations: [
+      {
+        delegationId: "d1",
+        agent: "explorer",
+        status: "completed",
+        startedAt: 1000,
+        completedAt: 4000,
+      },
+      { delegationId: "d2", agent: "fixer", status: "failed" },
+    ],
+  });
+  assert.equal(lifecycleKindOf(wait.message), "wait");
+  const roster = delegationRoster(wait.message);
+  assert.deepEqual(roster, [
+    {
+      delegationId: "d1",
+      agentName: "explorer",
+      status: "completed",
+      durationMs: 3000,
+    },
+    { delegationId: "d2", agentName: "fixer", status: "failed" },
+  ]);
+  assert.equal(delegationRosterSummary(roster), "explorer, fixer");
+  // A failure in the roster outranks a completed sibling.
+  assert.equal(delegationRosterOutcome(roster), "failed");
+});
+
+test("a repeated agent is counted, not listed twice", () => {
+  const list = lifecycle("TaskList", {
+    delegations: [
+      { delegationId: "a", agent: "explorer", status: "completed" },
+      { delegationId: "b", agent: "explorer", status: "completed" },
+      { delegationId: "c", agent: "code-reviewer", status: "running" },
+    ],
+  });
+  const roster = delegationRoster(list.message);
+  assert.equal(delegationRosterSummary(roster), "explorer ×2, code-reviewer");
+  // Anything still running keeps the whole row reading as running.
+  assert.equal(delegationRosterOutcome(roster), "running");
+});
+
+test("TaskStop reads its roster from `stopped`, and Task has none", () => {
+  const stop = lifecycle("TaskStop", {
+    stopped: [{ delegationId: "s1", agent: "test-runner", status: "stopped" }],
+  });
+  assert.equal(lifecycleKindOf(stop.message), "stop");
+  assert.equal(delegationRosterSummary(delegationRoster(stop.message)), "test-runner");
+  assert.equal(delegationRosterOutcome(delegationRoster(stop.message)), "stopped");
+  // The start call is not a lifecycle row: it keeps the topology card.
+  const start = task("one", "running");
+  assert.equal(lifecycleKindOf(start.message), null);
+  assert.deepEqual(delegationRoster(start.message), []);
+  assert.equal(delegationRosterSummary([]), "");
+  assert.equal(delegationRosterOutcome([]), null);
 });

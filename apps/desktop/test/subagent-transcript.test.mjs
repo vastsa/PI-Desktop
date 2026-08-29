@@ -53,14 +53,32 @@ test("a delegation card reads its outcome from the lifecycle rows", () => {
   );
 });
 
-test("a lifecycle row summarizes by the delegation ids it was given", () => {
-  // `delegationIds` is a string array, and the summary lookup only accepted
-  // string values, so both spellings the keys carried were unreachable.
-  assert.match(toolDisplaySource, /delegate: \["description", "agent", "delegationIds"\]/);
+test("a lifecycle row summarizes by agent name, never by delegation id", () => {
+  // Superseded the `delegationIds` summary (D268): the ids a lifecycle row is
+  // called with are bare UUIDs, so the row reads the roster the runtime
+  // returned and names the subagents instead.
+  assert.match(toolDisplaySource, /delegate: \["description", "agent"\]/);
+  assert.doesNotMatch(toolDisplaySource, /"delegationIds"/);
   assert.doesNotMatch(toolDisplaySource, /"delegationids"/);
   assert.match(toolDisplaySource, /function summaryText\(value: unknown\): string/);
   assert.match(toolDisplaySource, /Array\.isArray\(value\) && value\.every\(/);
   assert.doesNotMatch(toolDisplaySource, /record\[key\] as string/);
+  // The roster is read from both payload shapes the lifecycle tools return.
+  assert.match(topologySource, /export function delegationRoster\(/);
+  assert.match(topologySource, /Array\.isArray\(payload\.stopped\)/);
+  // A repeated definition is counted rather than listed twice.
+  assert.match(topologySource, /count > 1 \? `\$\{name\} ×\$\{count\}` : name/);
+  // The row's badge rolls the roster up with the shared status vocabulary.
+  assert.match(
+    transcriptSource,
+    /rosterOutcome\s*\n?\s*\? t\(`chat\.subagentStatus\.\$\{rosterOutcome\}`\)/,
+  );
+  // A lifecycle row is presented as a subagent row, not as "Delegated".
+  assert.match(transcriptSource, /LIFECYCLE_RUNNING_KEYS\s*\n?\s*: LIFECYCLE_LABEL_KEYS\)\[lifecycle\]/);
+  // It never falls back to its own arguments, so a pending wait shows no ids.
+  assert.match(transcriptSource, /const summary = lifecycle \? rosterSummary : argSummary;/);
+  // ...and it is still not a topology node.
+  assert.match(topologySource, /if \(isDelegationActivityItem\(item\)\) continue;/);
 });
 
 test("a live delegate row keeps the attribution its stream carried", () => {

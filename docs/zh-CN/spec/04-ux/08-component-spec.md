@@ -1331,13 +1331,38 @@ pi-ai 结果信封携带 `details` 中的结构化有效负载并重复它
 - 在回合边界可供使用之前，不得进行跨行活动分组
   转录成分
 
-### 9. 9 委派卡片和扇出拓扑（D201、D265、ADR 0062）
+### 9. 9 委派卡片和扇出拓扑（D201、D265、D268、ADR 0062）
 
 `Task` 调用呈现为委派卡片中的一个节点，而不是紧凑的工具行 —— 单个委派
 与扇出读起来完全一致（D265）。节点标注它运行的子智能体：优先取自它产出
 的行，在任何行到达之前则取自调用自身的 `agent` 参数；节点还带上调用的
-简短 `description`。`delegate` 操作图标和智能体芯片保留给生命周期行
-（`TaskWait`/`TaskList`/`TaskStop`），它们仍是普通工具行。
+简短 `description`。
+
+生命周期行（`TaskWait`/`TaskList`/`TaskStop`）仍是紧凑工具行 —— 它们不是拓扑
+节点，也不得计入子智能体数量 —— 但呈现为子智能体行，而不是通用工具调用
+（D268）。生命周期行以委派 ID 作为参数，读起来只是一串裸 UUID，因此它绝不
+从自身参数生成摘要：
+
+```text
+└─ [bot] 等待子智能体  2 个 Subagent  explorer, fixer   失败   [›]
+   ├─ 提示
+   │  ## explorer (d1) — completed …
+   └─ 详情
+      explorer     completed · 3s · 6 turns
+      fixer        failed
+```
+
+- **摘要是它所报告的名册**，按子智能体名称，读自 `details.delegations[]`
+  （`TaskWait`/`TaskList`）或 `details.stopped[]`（`TaskStop`）。重复出现的
+  子智能体以计数呈现（`explorer ×2`），而不是列两遍；标签旁附子智能体数量芯片。
+- **状态徽标汇总该名册**，沿用与拓扑节点相同的 `chat.subagentStatus.*` 文案：
+  只要还有成员在运行，整行即为运行中；`failed`/`denied` 成员优先于已完成的
+  兄弟节点；否则未完成的成员（超出回合上限、超时、已停止）优先于 `completed`。
+- **标签说明它对子智能体做了什么**，而不是"已委派"：只有 `Task` 会委派。该行
+  以子智能体强调色显示 `delegate` 机器人图标，从而与它所报告的卡片归为一组。
+- **展开后的正文是名册构成的命名表格**，每个子智能体一行，含状态、运行时长和
+  回合数，前面是合并后的报告提示 —— 绝不是 `delegations[]` 原始 JSON。生命
+  周期行没有自己的任务简报，因此调用时使用的那些 ID 不会作为参数块再次出现。
 
 ```text
 [flow] Subagent completed   1 subagent · 1/1 finished · 40s        [›]

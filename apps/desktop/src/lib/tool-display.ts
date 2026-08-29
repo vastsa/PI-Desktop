@@ -20,9 +20,10 @@ const SUMMARY_KEYS: Record<ToolAction, string[]> = {
   fetch: ["url", "query"],
   fork: ["prompt", "task", "description", "name"],
   // `description` is the short label the model writes for the delegation; the
-  // `task` brief is a paragraph and belongs in the expanded detail. The
-  // lifecycle tools (ADR 0089) summarize by delegation id.
-  delegate: ["description", "agent", "delegationIds"],
+  // `task` brief is a paragraph and belongs in the expanded detail. A lifecycle
+  // tool (ADR 0089) carries only delegation ids, which read as bare UUIDs, so
+  // it summarizes from the agent names in its own result roster instead (D268).
+  delegate: ["description", "agent"],
   use: [
     "command",
     "cmd",
@@ -52,16 +53,43 @@ export function formatToolValue(value: unknown): string {
   }
 }
 
-/** The tool that STARTS a subagent (ADR 0062). The lifecycle tools of ADR 0089
- * (TaskWait/TaskList/TaskStop) drive an existing delegation and are not
- * delegation activity items themselves. */
-export function isDelegationStartTool(toolName?: string): boolean {
-  const bare = (toolName || "")
+function bareToolName(toolName?: string): string {
+  return (toolName || "")
     .split(".")
     .pop()!
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "");
+}
+
+/** The tool that STARTS a subagent (ADR 0062). The lifecycle tools of ADR 0089
+ * (TaskWait/TaskList/TaskStop) drive an existing delegation and are not
+ * delegation activity items themselves. */
+export function isDelegationStartTool(toolName?: string): boolean {
+  const bare = bareToolName(toolName);
   return bare === "task" || bare === "subagent";
+}
+
+/**
+ * Which lifecycle tool this row is (ADR 0089), or `null` for the `Task` start
+ * call and every non-delegation tool. The three lifecycle rows report on
+ * subagents rather than doing workspace work, so the transcript presents them
+ * as subagent rows rather than as generic tool calls (D268).
+ */
+export type DelegationLifecycleKind = "wait" | "list" | "stop";
+
+export function delegationLifecycleKind(
+  toolName?: string,
+): DelegationLifecycleKind | null {
+  switch (bareToolName(toolName)) {
+    case "taskwait":
+      return "wait";
+    case "tasklist":
+      return "list";
+    case "taskstop":
+      return "stop";
+    default:
+      return null;
+  }
 }
 
 export function getToolAction(toolName?: string): ToolAction {
@@ -73,17 +101,7 @@ export function getToolAction(toolName?: string): ToolAction {
   // Delegation (ADR 0062, ADR 0089) is matched on the exact name, minus any
   // provider namespace: a plugin tool called "CreateTask" is not a subagent
   // call and keeps its generic presentation.
-  const bare = (toolName || "")
-    .split(".")
-    .pop()!
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "");
-  if (
-    isDelegationStartTool(toolName) ||
-    bare === "taskwait" ||
-    bare === "tasklist" ||
-    bare === "taskstop"
-  ) {
+  if (isDelegationStartTool(toolName) || delegationLifecycleKind(toolName)) {
     return "delegate";
   }
   if (matches(["websearch", "searchquery", "fetch", "http", "browser"])) {
