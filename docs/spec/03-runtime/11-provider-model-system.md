@@ -152,8 +152,23 @@ PI-Desktop must not permanently restrict users to a short fixed model list.
    pi-ai 0.84 has no native PDF content block, PDF attachments remain bounded
    file references rather than being incorrectly encoded as images.
 7. User-edited `ModelBinding` values remain explicit provider configuration:
-   they control selected request limits and enabled thinking levels, while
-   models.dev controls published defaults and capability metadata.
+   they control selected request limits, enabled thinking levels, the default
+   thinking level applied to a new session, and the attachment capability
+   overrides, while models.dev controls published defaults and capability
+   metadata.
+8. `defaultThinkingLevel` is chosen from the levels the binding enables, so a
+   stored default can never be a level the runtime would clamp away. When a
+   binding enables one level or none, there is nothing to choose and the field
+   follows the enabled set.
+9. `supportsImages` and `supportsDocuments` are three-state overrides. Absent
+   or `null` follows the published models.dev modality, so a catalog correction
+   still reaches a saved binding; `true` or `false` is the user's explicit
+   answer and survives catalog changes. Unlike thinking levels these overrides
+   are not narrowed to the published capability, because a proxied or
+   self-hosted endpoint routinely accepts input its catalog entry omits.
+   Enabling image input turns on the transient image content block; enabling PDF
+   input records the capability but does not change the encoding, since pi-ai
+   0.84 has no PDF content block and PDFs stay bounded file references.
 
 ### 6.3 Model families to cover
 Catalog and custom model entry must support common capability classes:
