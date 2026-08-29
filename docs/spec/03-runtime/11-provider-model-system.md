@@ -364,7 +364,10 @@ type ModelDescriptor = {
   levels the resolved models.dev record publishes, because the runtime
   intersects the binding with that published set before it builds a request;
   offering the full canonical ladder here would let a user enable a level the
-  Composer reasoning menu never renders
+  Composer reasoning menu never renders. Both surfaces present this through the
+  same picker, so a vendor account editor offers the same per-binding editing
+  and applies the same narrowing to the published levels as an API provider
+  editor
 - keep model cards compact by default, expand metadata/configuration on demand,
   and keep dialog actions outside the independently scrollable content
 - do not expose raw catalog compatibility internals or provider secrets

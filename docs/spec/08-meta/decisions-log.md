@@ -214,6 +214,7 @@ Gold source: local Codex electron captures; latest row wins where rows conflict.
 | D268 | A lifecycle row is a subagent row | **Refines D201 / D265 / ADR 0062 and ADR 0089 in the renderer: the delegation lifecycle rows (`TaskWait`/`TaskList`/`TaskStop`) stay compact tool rows and stay out of the topology counts, but are presented as subagent rows. They summarize from the roster the runtime returned — agent names read from `details.delegations[]` or `details.stopped[]`, a repeat counted rather than listed twice — never from their own `delegationIds` argument; their badge rolls that roster up using the existing `chat.subagentStatus.*` vocabulary; their label names the action taken on subagents instead of "Delegated"; and their body is the roster as a named table led by the joined reports, instead of the raw `delegations[]` JSON. No IPC, storage, host-protocol, or delegation-runtime change is implied.** | The lifecycle rows carry the settled outcome the `Task` card cannot know (ADR 0089), yet they rendered as generic tool calls whose summary was a bare UUID and whose body was a JSON dump — the least readable part of a feature whose card is otherwise the most readable. Reading the roster it already returns costs nothing and makes the whole delegation scan as one thing. |
 | D265 | One delegation reads as a card, like a fan-out | **Amends D201 / ADR 0062 in the renderer: every `Task` call in an activity group renders as a full-width delegation card — main-agent root, connector, one node per delegate — a lone delegation included, instead of falling back to a compact tool row. The aggregate header takes a count, so a single delegation is not announced in the plural: English gains `_one` forms and Chinese, which has one plural category, drops the English plural marker. Nothing else about the card changes, and no IPC, storage, host-protocol, or delegation-runtime change is implied.** | Reserving the card for two or more delegates made the same work look like two different features, and the single case — the common one — was the one that lost the outcome, the recorded runtime and the delegate's step count (ADR 0062 §6). 
 | D269 | History continuation keeps the conversation outline reachable | **Amend D108 / D261 / ADR 0130 in the renderer: when loaded rows are withheld above the mounted window or the host reports an older page, the conversation outline remains present with one dotted earlier-history continuation even if the mounted tail has fewer than two markers or does not overflow. The continuation runs the same two-stage grow-then-fetch path and ordinary message dashes still come only from mounted rows, so every message dash has a real DOM target. The transcript's top loading boundary is observed as well as checked on scroll; while that boundary remains visible after an underfilled tail, a fetched-but-withheld page, or a window transition, history advances again without waiting for a native scroll event. Once no earlier history remains, D108's two-marker-plus-overflow visibility rule applies unchanged. No IPC, storage, host protocol, or pagination change.** | A bounded tail can contain one tool-heavy turn that collapses below one viewport, and fetching an older page can leave every new row outside the trailing mounted window. Neither transition necessarily changes `scrollTop`, so the scroll-only trigger stranded older history and left the outline absent. An explicit continuation represents unavailable navigation honestly, while boundary visibility closes the progress loop without inventing phantom message markers or eagerly loading the whole transcript. |
+| D270 | One model picker for both credential kinds | **Refines D237 / D240 in the renderer: the model picker is one shared renderer component rendered by both the AI service dialog and the vendor account dialog. A vendor account therefore gets the same discovered model list, the same `ModelBinding` shape, the same per-model context-window and max-output editing, the same published thinking-level chips, and the same save-time narrowing of each binding to the levels the resolved models.dev record publishes. Only the left pane heading differs between the two dialogs. Renderer only: no IPC, storage, host-protocol, or provider-config schema change is implied, and no ADR is required.** | The two surfaces were copies of one picker, and the copy silently lost the advanced controls and the narrowing, so a vendor-account binding could keep a thinking level the runtime discards while the dialog kept counting it as enabled. One component makes the guarantee structural instead of a convention two files had to remember. |
 
 ## M0. Model catalog decisions
 
@@ -2622,3 +2623,27 @@ D193, and D194.
   only: no IPC, storage, host protocol, or pagination change, and the mounted
   window budgets are untouched.
 - See `04-ux/08-component-spec.md` §7 and §8, ADR 0130, and E2E-159.
+
+## 2026-08-30 — One model picker for both credential kinds (D270)
+
+- Decision D270 refines D237 / D240 in the renderer. Settings → Model
+  configuration carried two copies of the same model picker: the AI service
+  dialog had the full one, and the vendor account dialog had a reduced copy of
+  it that had drifted.
+- The copy shared the list and the `ModelBinding` shape but had no Advanced
+  disclosure, so an account's per-model context window, max output and thinking
+  levels were not editable, and it had no save-time narrowing — an account could
+  persist a thinking level the runtime discards while the dialog kept counting
+  it as enabled.
+- One shared renderer component now owns row merging, filtering, selection, the
+  custom-model entry, the chosen pane, the Advanced disclosure and the
+  narrowing to the published level set. Both dialogs render it; only the left
+  pane heading differs, and the vendor dialog additionally passes its saving
+  state. The account dialog grows to the provider dialog's two-pane size and the
+  duplicated chosen-pane / custom-model CSS is deleted.
+- Renderer only: no IPC, host protocol, storage, or provider-config schema
+  change, so no ADR is required. The single user-visible change is that vendor
+  accounts now offer the same per-model advanced controls and receive the same
+  save-time narrowing as AI services.
+- See `04-ux/06-settings-ia.md`, `04-ux/08-component-spec.md` §19,
+  `03-runtime/11-provider-model-system.md` §10, and E2E-162.
