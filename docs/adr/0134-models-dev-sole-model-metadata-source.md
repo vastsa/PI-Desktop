@@ -106,7 +106,7 @@ Settings refresh remains an explicit remote action.
 - `apps/desktop/resources/models.dev/api.json` (bundled snapshot)
 - `apps/desktop/electron/main/models-dev-catalog.ts` (catalog parsing and refresh)
 - `apps/desktop/electron/main/index.ts` (main-process loading and IPC)
-- `apps/desktop/src/components/settings/ProvidersSection.tsx` (settings refresh action)
+- `apps/desktop/src/components/settings/ModelConfigPage.tsx` (settings refresh action)
 - `packages/agent-runtime/src/model-capabilities.ts`
 - `packages/agent-runtime/src/provider-binding.ts`
 - `docs/spec/03-runtime/11-provider-model-system.md`

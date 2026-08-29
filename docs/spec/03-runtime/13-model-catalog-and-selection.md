@@ -13,22 +13,49 @@ Therefore:
 
 ## 2. Selection UX
 
-### Model picker fields
-- search box
-- provider filter
-- capability filters: tools / vision / reasoning
-- sort: recent / provider / name
+Model configuration is **catalog-first**: the user picks a published provider
+and its models from the models.dev snapshot, and every limit and capability is
+adopted from the published record. Typing a base URL, choosing a wire API or
+entering token counts by hand are all escape hatches, never the default path.
 
-### Item display
-- model display name
-- model id
-- provider name
-- capability badges
-- optional context window
+### Settings: staged provider setup
+
+`ProviderSetupDialog` runs three stages instead of one dense form:
+
+1. **Provider** — searchable list of `CatalogProviderPreset` cards derived from
+   models.dev (`providers.catalogPresets`). Each card shows the published name,
+   its model count and whether a provider row already exists for it. One
+   explicit “Custom / OpenAI-compatible endpoint” card ends the list.
+2. **Credential** — base URL prefilled from the preset's published `api`, an
+   API-key field, the published `env` variable names as a hint and a link to the
+   published `doc`. The wire API is derived from the preset's published `npm`
+   adapter (`apiStyleForAdapter`) and is only editable inside **Advanced**.
+3. **Models** — the shared `ModelCatalogBrowser`, then the chosen bindings.
+   Context window, output limit and thinking levels come from
+   `bindingFromModelInfo`; per-model overrides live behind a per-row
+   **Advanced** disclosure.
+
+### Model catalog browser
+
+One component serves both API-key providers and OAuth vendor accounts, so the
+two paths no longer duplicate the model-picking UI. Two panes:
+
+- **List** — search box, AND-combined capability filter chips
+  (`MODEL_FILTERS`: reasoning / vision / tools / attachments), and result rows
+  grouped by provider showing display name, model id, provider name, compact
+  context window and per-million cost. Keyboard: arrows move, Enter toggles,
+  Escape returns focus to the search box.
+- **Detail** — the published models.dev record for the active row as a
+  definition list: description, family, modalities, published limits, cost,
+  knowledge cutoff, release and update dates, reasoning options and the
+  tool-call / structured-output / temperature / attachment / open-weights flags.
+  Published metadata is presented as readable fields, never as a raw JSON dump.
 
 ### Advanced
 - “Use custom model ID”
 - “Refresh catalog”
+- per-provider wire API override
+- per-model context window, output limit and thinking-level overrides
 
 ## 3. Recent models
 
@@ -220,14 +247,16 @@ Warnings are non-blocking unless execution is impossible.
 
 ### 11.3 Settings model-add metadata
 
-When the provider dialog adds a discovered model, its initial context window,
-output limit, capability badges, and thinking defaults use this lookup:
+When the setup dialog adds a catalog model, its initial context window, output
+limit, capability badges and thinking defaults come from `bindingFromModelInfo`
+over the published record, so the common path needs no manual token entry. The
+lookup is:
 
 1. A matching models.dev provider is preferred by `vendorKey`, then by
    normalized provider API URL; its exact model record supplies the fields.
 2. A provider endpoint may add custom/account-specific IDs, but cannot replace
    models.dev metadata. A free-form miss receives the fixed generic defaults
-   from `modelDraftFromInfo`.
+   from `bindingForCustomModel`.
 3. The lookup does not send API keys to models.dev. Runtime model resolution
    uses the same models.dev record and the selected pi-ai transport adapter.
 
@@ -246,13 +275,44 @@ snapshot.
 
 ## 13. Search behavior
 
-- case-insensitive match on displayName, modelId, provider name, vendorKey
-- capability filters are AND
-- provider filter is exact providerId
-- empty query shows recents + popular/bundled first
+`providers.searchModels` scores the models.dev snapshot in the main process and
+returns `ModelSearchOutput` (`results`, `total` before limiting, `degraded` when
+no snapshot is loaded). Scoring is case-insensitive on the trimmed query:
+
+| match | score |
+| --- | --- |
+| exact model id | 100 |
+| model id prefix | 80 |
+| model id substring | 60 |
+| display-name substring | 40 |
+| family substring | 20 |
+| provider-name substring | 10 |
+
+Rules:
+
+- non-matching models are excluded; an empty query keeps every candidate
+- ties break on published recency (`lastUpdated`, then `releaseDate`, newest
+  first, missing last), then on model id ascending, so the default list shows
+  current models rather than alphabetical noise
+- capability filters are AND (`modelMatchesFilters`)
+- `providerKey` restricts to one published provider; `providerId` names a
+  configured row and is resolved to its catalog provider before searching
+- `limit` defaults to 200 and is clamped to 1..500
+- only text-capable models are candidates
+
+The Composer picker searches the **configured** models only, matching model id,
+display name, published family and provider name (`composerModelMatchesQuery`).
 
 ## 14. Acceptance criteria
 
+- [ ] provider setup starts from published models.dev presets, and the wire API
+      is derived from the published adapter instead of being asked for
+- [ ] adding a catalog model requires no manual context-window or output-token
+      entry; overrides stay available behind a per-model Advanced disclosure
+- [ ] the API-key path and the OAuth vendor-account path use the same model
+      catalog browser
+- [ ] the detail pane renders published metadata as readable fields, not as raw
+      JSON
 - [ ] search finds models across multiple providers
 - [ ] custom model id path works without catalog hit
 - [ ] recent models surface in the picker
