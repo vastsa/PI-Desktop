@@ -429,9 +429,40 @@
   --dash-w: 8px;
 }
 
+.minimap-marker.history {
+  --dash-w: 13px;
+  --history-marker-color: var(--ds-border-strong);
+}
+
+.minimap-marker.history::before {
+  background: repeating-linear-gradient(
+    90deg,
+    var(--history-marker-color) 0 2px,
+    transparent 2px 4px
+  );
+}
+
 .minimap-marker:hover::before,
 .minimap-marker:focus-visible::before {
   background: var(--ds-text-secondary);
+}
+
+.minimap-marker.history:hover::before,
+.minimap-marker.history:focus-visible::before {
+  --history-marker-color: var(--ds-text-secondary);
+  background: repeating-linear-gradient(
+    90deg,
+    var(--history-marker-color) 0 2px,
+    transparent 2px 4px
+  );
+}
+
+.minimap-marker.history:disabled {
+  cursor: progress;
+}
+
+.minimap-marker.history:disabled::before {
+  opacity: 0.55;
 }
 
 .minimap-marker.active::before {

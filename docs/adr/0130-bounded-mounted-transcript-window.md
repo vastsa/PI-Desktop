@@ -3,8 +3,9 @@
 - Status: Accepted
 - Date: 2026-08-27
 - Deciders: PI-Desktop core
-- Related: D261, E2E-159, ADR 0120, ADR 0127, D247, D258,
+- Related: D261, D269, E2E-159, ADR 0120, ADR 0127, D247, D258, D108,
   `04-ux/08-component-spec.md`
+- Amended by: D269 (history continuation and boundary-driven escalation)
 
 ## Context
 
@@ -53,10 +54,23 @@ reference-equal, and that runs on every streamed token.
 5. The hydration spacer stays **scoped to the first commit**. It exists to make
    the bounded bottom reachable; kept under the steady-state window it would put
    a blank viewport between the user and the growth trigger.
-6. The conversation minimap is built from the **mounted entries**
-   (`transcriptEntryMessages`). It resolves a click by finding the marker's
-   `data-minimap-id` node inside the scroller, so markers for withheld rows would
-   render dashes that jump nowhere.
+6. The conversation minimap's **message dashes** are built from the **mounted
+   entries** (`transcriptEntryMessages`). It resolves a click by finding the
+   marker's `data-minimap-id` node inside the scroller, so message markers for
+   withheld rows would render dashes that jump nowhere.
+6a. **Amended by D269.** Withheld history is represented explicitly instead of
+   silently: while loaded rows sit above the window (`hiddenAbove > 0`) or the
+   host reports an older page (`hasMoreBefore`), the rail stays mounted and shows
+   one dotted earlier-history continuation, even when the mounted tail has fewer
+   than two message markers or does not overflow one viewport. The continuation
+   runs the same two-stage escalation as clause 2, so it is always actionable;
+   D108's two-marker-plus-overflow rule resumes once no earlier history remains.
+6b. **Amended by D269.** Escalation is driven by the visibility of the
+   transcript's top loading boundary as well as by the near-top scroll check,
+   using one shared threshold. An underfilled tail page, a fetched page whose rows
+   all fall outside the mounted window, and a window transition can each leave
+   `scrollTop` unchanged; without an observed boundary those states stalled
+   upward travel and left the outline hidden.
 7. The entry projection arrays are memoized on `entries`, so a re-render that
    changed no message hands `TranscriptHistory` a reference-equal array and its
    comparator bails on identity instead of deep-walking the mounted rows.

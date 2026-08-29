@@ -12,6 +12,7 @@ import { useTranslation } from "react-i18next";
 import type { UiMessage } from "@pi-desktop/shared";
 import {
   buildConversationMinimapMarkers,
+  shouldRenderConversationMinimap,
   type ConversationMinimapMarker,
 } from "../lib/conversation-minimap";
 
@@ -29,13 +30,20 @@ const POPOVER_SNAP = 24;
 const POPOVER_HEIGHT = 132;
 /* Hide the rail until content actually overflows one viewport. */
 const OVERFLOW_EPSILON_PX = 1;
+const EARLIER_HISTORY_MARKER_ID = "__earlier-history__";
 
 export const ConversationMinimap = memo(function ConversationMinimap({
   scrollRef,
   messages,
+  hasEarlier = false,
+  loadingEarlier = false,
+  onRevealEarlier,
 }: {
   scrollRef: RefObject<HTMLDivElement | null>;
   messages: UiMessage[];
+  hasEarlier?: boolean;
+  loadingEarlier?: boolean;
+  onRevealEarlier?: () => void;
 }) {
   const { t } = useTranslation();
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -59,8 +67,12 @@ export const ConversationMinimap = memo(function ConversationMinimap({
     [messages],
   );
   const markerIdentity = useMemo(
-    () => markers.map((marker) => marker.id).join("\u0000"),
-    [markers],
+    () =>
+      [
+        ...(hasEarlier ? [EARLIER_HISTORY_MARKER_ID] : []),
+        ...markers.map((marker) => marker.id),
+      ].join("\u0000"),
+    [hasEarlier, markers],
   );
   const markersRef = useRef(markers);
   markersRef.current = markers;
@@ -131,7 +143,13 @@ export const ConversationMinimap = memo(function ConversationMinimap({
     const el = scrollRef.current;
     if (!el) return;
     const offsets = cachedOffsetsRef.current;
-    if (offsets.length === 0) return;
+    if (offsets.length === 0) {
+      if (activeIdRef.current !== null) {
+        activeIdRef.current = null;
+        setActiveId(null);
+      }
+      return;
+    }
     const anchor = el.scrollTop + el.clientHeight * 0.3;
     // Binary search for the last offset <= anchor
     let lo = 0;
@@ -322,20 +340,50 @@ export const ConversationMinimap = memo(function ConversationMinimap({
 
   useEffect(() => () => cancelAnimationFrame(moveRaf.current), []);
 
-  if (markers.length < 2 || !overflows) return null;
+  if (
+    !shouldRenderConversationMinimap({
+      markerCount: markers.length,
+      overflows,
+      hasEarlier,
+    })
+  ) {
+    return null;
+  }
 
   const roleLabel = (role: ConversationMinimapMarker["role"]) =>
     role === "user" ? t("chat.userMessage") : t("chat.assistantMessage");
+  const earlierLabel = loadingEarlier
+    ? t("chat.loadingEarlierMessages")
+    : t("chat.showEarlierMessages");
 
   return (
     <nav
       className="minimap-rail"
       ref={railRef}
       aria-label={t("chat.minimap")}
-      style={{ "--minimap-marker-count": markers.length } as CSSProperties}
+      style={
+        {
+          "--minimap-marker-count": markers.length + Number(hasEarlier),
+        } as CSSProperties
+      }
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     >
+      {hasEarlier ? (
+        <button
+          type="button"
+          ref={(node) => {
+            if (node) markerEls.current.set(EARLIER_HISTORY_MARKER_ID, node);
+            else markerEls.current.delete(EARLIER_HISTORY_MARKER_ID);
+          }}
+          className={`minimap-marker history ${loadingEarlier ? "loading" : ""}`}
+          aria-label={earlierLabel}
+          title={earlierLabel}
+          aria-busy={loadingEarlier || undefined}
+          disabled={loadingEarlier || !onRevealEarlier}
+          onClick={onRevealEarlier}
+        />
+      ) : null}
       {markers.map((marker) => (
         <button
           key={marker.id}

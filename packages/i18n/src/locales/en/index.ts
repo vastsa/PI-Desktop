@@ -223,6 +223,7 @@ export const en = {
     running: "Working…",
     loadingSession: "Loading conversation…",
     loadingEarlierMessages: "Loading earlier messages…",
+    showEarlierMessages: "Show earlier messages",
     copy: "Copy",
     copied: "Copied",
     copyDiagramSource: "Copy diagram source",

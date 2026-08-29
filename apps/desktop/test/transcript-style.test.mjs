@@ -352,9 +352,11 @@ test("conversation minimap hides until content overflows one viewport", () => {
     minimapSource,
     /scrollHeight - el\.clientHeight > OVERFLOW_EPSILON_PX/,
   );
+  // D269: overflow still gates a fully loaded transcript, but withheld earlier
+  // history keeps the outline (and its continuation control) reachable.
   assert.match(
     minimapSource,
-    /if \(markers\.length < 2 \|\| !overflows\) return null;/,
+    /!shouldRenderConversationMinimap\(\{[\s\S]*?markerCount: markers\.length,[\s\S]*?overflows,[\s\S]*?hasEarlier,[\s\S]*?\}\)/,
   );
   assert.match(
     minimapSource,

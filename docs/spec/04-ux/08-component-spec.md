@@ -204,7 +204,7 @@ combined model × reasoning selection (§11).
   `--ds-toolbar-height`. Windows/Linux keep the same `--ds-window-controls-width`
   reservation so the right boundary and native controls stay aligned when the
   route or work panel changes.
-- Band reservation is platform-independent (D268). The band is opaque and
+- Band reservation is platform-independent (D269). The band is opaque and
   absolutely positioned, so scrolling route content passes underneath it on
   every platform, macOS included. Every route surface that starts its own
   content at the top edge reserves the band: the transcript
@@ -1015,7 +1015,14 @@ storage but compose into one assistant turn until the next user message.
 - Scroll the transcript: update the active minimap marker against an anchor
   near the upper third of the viewport
 - Show the minimap rail only while the transcript overflows one page; if
-  content fits the viewport, hide the rail even when two or more markers exist
+  content fits the viewport, hide the rail even when two or more markers exist.
+  Exception (D269): while earlier history is withheld above the mounted window or
+  an older page is still on the host, the rail stays visible with its
+  earlier-history continuation regardless of marker count and overflow
+- Click the earlier-history continuation: run the same grow-then-fetch
+  escalation as reaching the top. It is labeled and disabled while a page loads,
+  never shows a message preview, and disappears once the whole history is loaded
+  and mounted
 - Center the minimap stack inside the unobstructed vertical span below the
   46px titlebar and above the docked composer. As marker count grows, compress
   marker pitch and spacing so every marker remains inside that span rather
@@ -1056,8 +1063,9 @@ storage but compose into one assistant turn until the next user message.
 - No inline message branching tree; regenerate variants remain linear per user
   root turn. Session-level Create branch produces an independent conversation
   row instead of adding tree chrome inside the transcript.
-- The minimap renders only when at least two eligible turn markers exist **and**
-  the transcript content overflows one viewport (scrollHeight > clientHeight).
+- The minimap renders when at least two eligible turn markers exist **and** the
+  transcript content overflows one viewport (scrollHeight > clientHeight), or
+  whenever earlier history remains unmounted or unloaded (D269).
   Each visible user message creates one marker; all contentful assistant
   fragments until the next user message create one AI-response marker anchored
   to the first contentful fragment. Tool-only rows do not create markers or
@@ -1319,9 +1327,19 @@ Renderer: `apps/desktop/src/components/Markdown.tsx` + `apps/desktop/src/lib/shi
   layout and paint for offscreen rows while retaining their React trees, Markdown
   ASTs, and highlighting tokens.
 - **Minimap describes mounted rows**: the minimap resolves a click by finding the
-  marker's `data-minimap-id` node inside the scroller, so its markers are built
-  from the mounted entries. Built from every loaded message while the window
+  marker's `data-minimap-id` node inside the scroller, so its message markers are
+  built from the mounted entries. Built from every loaded message while the window
   withholds older rows, it would draw dashes whose click target does not exist.
+- **Withheld history is stated, not hidden** (D269): message dashes stay
+  mounted-only, and everything above the window is represented by one dotted
+  continuation control that triggers the same escalation. Without it the rail
+  disappeared exactly when navigation was most needed — a bounded tail holding a
+  single tool-heavy turn has fewer than two markers and often does not overflow.
+- **History advances on boundary visibility** (D269): the top loading row is
+  observed inside the scroller with the same near-top threshold the scroll handler
+  uses. An underfilled tail page, a page whose fetched rows all land outside the
+  mounted window, and a window transition can leave `scrollTop` untouched, so a
+  scroll-only trigger could never fire again.
 - **Minimap hover cost**: dash magnification is applied by writing a custom
   property per dash, and dash centers are measured in a separate read-only pass.
   Reading a dash's geometry inside the same loop that writes to it forces one
@@ -1463,7 +1481,7 @@ twice.
 - No cross-row activity grouping until turn boundaries are available to the
   transcript component
 
-### 9.9 Delegation cards and fan-out topology (D201, D265, D268, ADR 0062)
+### 9.9 Delegation cards and fan-out topology (D201, D265, D269, ADR 0062)
 
 A `Task` call is presented as a node of a delegation card, not as a compact tool
 row — one delegation reads the same as a fan-out (D265). The node names the
@@ -1472,7 +1490,7 @@ the call's own `agent` argument, and carries the call's short `description`.
 
 The lifecycle rows (`TaskWait`/`TaskList`/`TaskStop`) stay compact tool rows —
 they are not topology nodes and must not inflate the subagent counts — but they
-are presented as subagent rows rather than as generic tool calls (D268). A
+are presented as subagent rows rather than as generic tool calls (D269). A
 lifecycle row is called with delegation ids, which read as bare UUIDs, so it
 never summarizes from its own arguments:
 

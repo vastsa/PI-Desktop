@@ -6489,7 +6489,7 @@ This test plan spec is accepted when:
   `delegations[]` JSON. The delegation card still reports the number of `Task`
   calls only, so lifecycle rows never inflate the topology counts.
 - **Specs linked**: `04-ux/08-component-spec.md` §9.9,
-  `03-runtime/02-agent-runtime.md` §5f, ADR 0062, ADR 0089, decisions-log D268
+  `03-runtime/02-agent-runtime.md` §5f, ADR 0062, ADR 0089, decisions-log D269
 - **Acceptance**: C (conversation), Quality
 
 #### E2E-155: Subagent timeout policy preserves active work and reports expiry
@@ -6608,21 +6608,33 @@ This test plan spec is accepted when:
      and the jump-to-latest pill appears.
   6. Hover and click conversation minimap dashes at several heights, then switch
      to another session and back.
+  7. Activate a long session whose newest page collapses to less than one
+     viewport (one tool-heavy turn) and confirm the outline is present with its
+     earlier-history continuation, that clicking it reveals earlier turns, and
+     that it keeps advancing without a manual scroll gesture until the whole
+     history is loaded and mounted.
+  8. Confirm the continuation disappears once nothing earlier remains, and that a
+     short completed conversation that fits one viewport still shows no rail.
 - **Expected**: Mounted transcript rows stay bounded by the window rather than
   growing with how far back the user scrolled, so the recorded row count and heap
   usage after paging far back stay close to the values recorded before it.
   Upward travel is continuous: growing the window and fetching a page both keep
-  the viewport anchored to the row being read. Every minimap dash jumps to a real
-  row. Streaming stays smooth with the composer responsive, pinned-follow and
-  jump-to-latest behave as specified, and a session switch still paints at the
-  latest record.
-- **Specs linked**: `04-ux/08-component-spec.md` §8,
-  `03-runtime/04-data-storage.md`, ADR 0120, ADR 0127, ADR 0130
+  the viewport anchored to the row being read. Every minimap message dash jumps to
+  a real row. Streaming stays smooth with the composer responsive, pinned-follow
+  and jump-to-latest behave as specified, and a session switch still paints at the
+  latest record. Earlier history is never stranded: with rows withheld or an older
+  page pending, the outline stays available with an actionable earlier-history
+  continuation and keeps advancing when the top boundary remains visible, even
+  when the mounted tail does not overflow one viewport (D269). The continuation
+  and the rail disappear once the full history is loaded and mounted and the
+  transcript fits one page.
+- **Specs linked**: `04-ux/08-component-spec.md` §7 and §8,
+  `03-runtime/04-data-storage.md`, ADR 0120, ADR 0127, ADR 0130, D108, D269
 - **Acceptance**: C (conversation), H (diagnostics), Quality
 - **Milestone**: M6+
 - **Status**: Unit-covered (`transcript-window.test.mjs`,
-  `interaction-performance.test.mjs`); rendered desktop journey and the
-  low-memory Windows measurement pending
+  `conversation-minimap.test.mjs`, `interaction-performance.test.mjs`); rendered
+  desktop journey and the low-memory Windows measurement pending
 
 #### E2E-160: Dragging the window across displays keeps the dropped position
 
