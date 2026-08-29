@@ -25,6 +25,7 @@ import {
   IconServer,
   IconTrash,
 } from "../icons";
+import { defaultModelIdOf, displayedDefaultModelId } from "./default-model";
 import { ProviderSetupDialog } from "./ProviderSetupDialog";
 import { VendorAccountsSection } from "./VendorAccountsSection";
 
@@ -48,11 +49,6 @@ function hostFromBaseUrl(baseUrl?: string | null): string {
   } catch {
     return baseUrl.replace(/^https?:\/\//, "").split("/")[0] || baseUrl;
   }
-}
-
-/** The provider's own default model is the first entry of its binding list. */
-function defaultModelIdOf(provider: ProviderPublic): string | undefined {
-  return provider.models?.[0]?.id ?? provider.defaultModelId;
 }
 
 export function ModelConfigPage() {
@@ -117,7 +113,9 @@ export function ModelConfigPage() {
       await api.setSettings({
         ...settings,
         defaultProviderId: provider.id,
-        defaultModelId: defaultModelIdOf(provider) || settings.defaultModelId,
+        // Falling back to the old value here would point the new default at a
+        // model the selected provider does not serve.
+        defaultModelId: defaultModelIdOf(provider) ?? "",
       });
       await refreshProviders();
       showToast(t("settings.defaultUpdated"), { variant: "success" });
@@ -142,7 +140,7 @@ export function ModelConfigPage() {
         await api.setSettings({
           ...settings,
           defaultProviderId: saved.id,
-          defaultModelId: firstModelId || settings.defaultModelId,
+          defaultModelId: firstModelId ?? "",
         });
         showToast(t("settings.providerSaved"), { variant: "success" });
       } else {
@@ -272,9 +270,10 @@ export function ModelConfigPage() {
                       ·
                     </span>
                     <span className="model-default-model font-mono">
-                      {settings.defaultModelId ||
-                        defaultModelIdOf(defaultProvider) ||
-                        t("settings.noModel")}
+                      {displayedDefaultModelId(
+                        defaultProvider,
+                        settings.defaultModelId,
+                      ) || t("settings.noModel")}
                     </span>
                   </>
                 ) : (

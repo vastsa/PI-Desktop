@@ -112,15 +112,17 @@ test("model ids are matched case-insensitively across picking and hand entry", (
 });
 
 test("editing the default provider re-syncs the default model id", () => {
-  assert.match(
-    pageSource,
-    /defaultModelId: defaultModelIdOf\(provider\) \|\| settings\.defaultModelId/,
-  );
+  // Switching or creating a default must not carry over the previous
+  // provider's model id; default-model-display.test.mjs covers the resolvers.
+  assert.match(pageSource, /defaultModelId: defaultModelIdOf\(provider\) \?\? ""/);
+  assert.match(pageSource, /defaultModelId: firstModelId \?\? ""/);
   assert.match(
     pageSource,
     /settings\.defaultProviderId === saved\.id && firstModelId[\s\S]*defaultModelId: firstModelId/,
   );
-  assert.match(pageSource, /provider\.models\?\.\[0\]\?\.id/);
+  // The summary line must go through the ownership-aware resolver.
+  assert.match(pageSource, /displayedDefaultModelId\(/);
+  assert.doesNotMatch(pageSource, /\{settings\.defaultModelId \|\|/);
 });
 
 test("the rejected catalog-browser styles are gone from the cascade", () => {
