@@ -5,7 +5,7 @@ import { loadStyles } from "./helpers/styles.mjs";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-const [store, sidebar, chatSurface, transcript, api, main, styles, skeleton] =
+const [store, sidebar, chatSurface, transcript, api, main, styles] =
   await Promise.all([
     read("../src/stores/app-store.ts"),
     read("../src/components/Sidebar.tsx"),
@@ -14,7 +14,6 @@ const [store, sidebar, chatSurface, transcript, api, main, styles, skeleton] =
     read("../src/lib/api.ts"),
     read("../electron/main/index.ts"),
     loadStyles(),
-    read("../src/components/SessionLoadingSkeleton.tsx"),
   ]);
 
 test("session reads use a bounded tail and load older pages on demand", () => {
@@ -75,17 +74,20 @@ test("sidebar owns feedback and prefetch while store owns workspace alignment", 
   assert.doesNotMatch(projectSelection, /await selectProject\(|activateProject\(/);
 });
 
-test("changed session trees render through a transcript-shaped skeleton", () => {
+test("changed session trees keep one stable transcript boundary", () => {
   assert.match(chatSurface, /useDeferredValue\(activeSessionId\)/);
-  assert.doesNotMatch(chatSurface, /previousTranscriptViewRef/);
+  assert.match(chatSurface, /previousTranscriptViewRef/);
+  assert.match(chatSurface, /transcriptView\.sessionId !== activeSessionId/);
   assert.match(chatSurface, /aria-busy=\{sessionSwitching\}/);
   assert.match(chatSurface, /session-switch-progress/);
-  assert.match(chatSurface, /<SessionLoadingSkeleton \/>/);
-  assert.match(skeleton, /data-testid="session-loading-skeleton"/);
-  assert.match(styles, /\.session-loading-skeleton[\s\S]*?animation: session-loading-skeleton-in/);
-  assert.match(styles, /\.session-loading-skeleton-line[\s\S]*?animation: session-loading-skeleton-pulse 900ms/);
   assert.match(
     styles,
-    /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.session-loading-skeleton-line[\s\S]*?animation: none[\s\S]*?\.session-switch-progress > span[\s\S]*?animation: none/,
+    /\.chat-surface\.session-switching > \.thread-wrap[\s\S]*?pointer-events: none[\s\S]*?opacity: 0\.82/,
+  );
+  assert.doesNotMatch(chatSurface, /SessionLoadingSkeleton/);
+  assert.doesNotMatch(styles, /session-loading-skeleton/);
+  assert.match(
+    styles,
+    /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.session-switch-progress > span[\s\S]*?animation: none/,
   );
 });

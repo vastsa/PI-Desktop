@@ -1,11 +1,10 @@
-import { memo, useDeferredValue, useMemo } from "react";
+import { memo, useDeferredValue, useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { ChatTranscript } from "./ChatTranscript";
 import { Composer } from "./Composer";
 import { HomeMascotLogo } from "./HomeMascotLogo";
 import { IconX } from "./icons";
 import { OnboardingChecklist } from "./OnboardingChecklist";
-import { SessionLoadingSkeleton } from "./SessionLoadingSkeleton";
 import { useAppStore } from "../stores/app-store";
 import { headPermission, sessionPermissions } from "../lib/pending-permissions";
 import { headAsk } from "../lib/pending-asks";
@@ -28,9 +27,10 @@ function projectName(path?: string | null, name?: string | null) {
  * Top-level chat page surface.
  *
  * Manages the session-switching transition: while a new session is loading,
- * the previous transcript is replaced by a transcript-shaped skeleton so stale
- * messages cannot flash before the destination commits. Once the new messages
- * arrive, the transcript swaps atomically.
+ * the last settled transcript stays mounted as a dimmed, non-interactive frame
+ * until the deferred destination is ready. Keeping the transcript boundary
+ * alive avoids a skeleton-to-transcript remount, which otherwise makes the
+ * chat area flash and discards the transcript's scroll/hydration continuity.
  *
  * Also reads all store state needed by the inner ChatTranscript and Composer,
  * isolating them from direct store subscriptions that would cause extraneous
@@ -103,11 +103,7 @@ export const ChatSurface = memo(function ChatSurface() {
     return { before, after };
   }, [t]);
 
-  // Keep the loading frame mounted until both the store selection and React's
-  // deferred session identity have settled. This makes the skeleton the only
-  // visible frame between two session transcripts.
-  const deferredSessionId = useDeferredValue(activeSessionId);
-  const transcriptView = useMemo(
+  const currentTranscriptView = useMemo(
     () => ({
       sessionId: activeSessionId,
       messages,
@@ -127,9 +123,26 @@ export const ChatSurface = memo(function ChatSurface() {
       queuedPermissions,
     ],
   );
+
+  // React may render the active session identity before it has prepared the
+  // destination transcript. Keep the last settled view as the visible frame
+  // until that deferred identity catches up; this prevents old messages from
+  // being paired with a new session id for one paint.
+  const deferredSessionId = useDeferredValue(activeSessionId);
+  const previousTranscriptViewRef = useRef(currentTranscriptView);
+  const transcriptView =
+    deferredSessionId === activeSessionId
+      ? currentTranscriptView
+      : previousTranscriptViewRef.current;
   const sessionSwitching =
     Boolean(selectingSessionId) ||
-    deferredSessionId !== activeSessionId;
+    transcriptView.sessionId !== activeSessionId;
+
+  useEffect(() => {
+    if (deferredSessionId === activeSessionId) {
+      previousTranscriptViewRef.current = currentTranscriptView;
+    }
+  }, [activeSessionId, currentTranscriptView, deferredSessionId]);
 
   const hasTranscript =
     Boolean(transcriptView.pendingPermission) ||
@@ -142,33 +155,17 @@ export const ChatSurface = memo(function ChatSurface() {
       if (message.role === "assistant") return hasContent || hasThinking;
       return hasContent || message.role === "tool";
     });
-  const loadingSession = sessions.find(
-    (session) => session.id === (selectingSessionId ?? activeSessionId),
-  );
-  const loadingHasTranscript = loadingSession
-    ? loadingSession.messageCount > 0
-    : hasTranscript;
-
   return (
     <div
       className={`chat-surface route-surface${sessionSwitching ? " session-switching" : ""}`}
       aria-busy={sessionSwitching}
     >
       {sessionSwitching ? (
-        <>
-          <div className="session-switch-progress" aria-hidden>
-            <span />
-          </div>
-          <SessionLoadingSkeleton />
-          {loadingHasTranscript ? (
-            <StableComposer variant="docked" />
-          ) : (
-            <div className="home-composer-wrap">
-              <StableComposer variant="home" />
-            </div>
-          )}
-        </>
-      ) : !hasTranscript ? (
+        <div className="session-switch-progress" aria-hidden>
+          <span />
+        </div>
+      ) : null}
+      {!hasTranscript ? (
         <div
           className="home-main-content"
           data-testid="home-empty"

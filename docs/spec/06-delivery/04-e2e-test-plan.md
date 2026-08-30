@@ -343,12 +343,13 @@ Each scenario is documented in this format:
   or a stale jump-to-latest control. The latest clicked row responds immediately
   and its transcript request does not wait for superseded reads; only the final
   project/session/work-panel tuple commits. During cold/deferred loading the
-  previous transcript is replaced by a transcript-shaped skeleton and is
-  non-interactive under a thin busy indicator; the composer keeps the target
-  session's home/docked shape while loading. A warm revisit reuses the bounded
-  cache and revalidates. Reduced motion renders a static skeleton and progress
-  track and preserves the same stable destination without an animated traversal
-  through history.
+  previous transcript remains mounted, dimmed, and non-interactive under a thin
+  busy indicator; it is swapped atomically for the destination in the same
+  transcript boundary, and the composer keeps the settled home/docked shape
+  while loading. A warm revisit reuses the bounded cache and revalidates.
+  Reduced motion keeps the stable frame and progress track static and preserves
+  the same destination without a skeleton remount or animated traversal through
+  history.
 - **Specs linked**: `03-runtime/10-session-state-machine.md`,
   `04-ux/01-ui-ia.md`, `04-ux/08-component-spec.md`,
   `04-ux/09-interaction-patterns.md`

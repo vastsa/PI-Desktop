@@ -72,12 +72,9 @@
   transition: opacity var(--motion-duration-fast) var(--motion-ease-out);
 }
 
-.chat-surface.session-switching > .session-loading-skeleton {
-  pointer-events: none;
-}
-
-.chat-surface.session-switching > .composer-dock,
-.chat-surface.session-switching > .home-composer-wrap {
+.chat-surface.session-switching > .thread-wrap,
+.chat-surface.session-switching > .home-main-content,
+.chat-surface.session-switching > .composer-dock {
   pointer-events: none;
   opacity: 0.82;
 }
@@ -107,125 +104,7 @@
   }
 }
 
-/* The loading frame mirrors the transcript rhythm so navigation never exposes
- * a blank pane or stale messages while the destination session hydrates. */
-.session-loading-skeleton {
-  position: relative;
-  min-width: 0;
-  min-height: 0;
-  flex: 1;
-  color: var(--ds-text-muted);
-  animation: session-loading-skeleton-in var(--motion-duration-fast)
-    var(--motion-ease-out) both;
-}
-
-.session-loading-skeleton-scroll {
-  overflow: hidden;
-}
-
-.session-loading-skeleton-content {
-  display: flex;
-  min-height: 100%;
-  flex-direction: column;
-  justify-content: flex-end;
-  gap: 18px;
-}
-
-.session-loading-skeleton-group {
-  display: flex;
-  width: min(100%, 620px);
-  flex-direction: column;
-  gap: 9px;
-}
-
-.session-loading-skeleton-group.is-user {
-  align-self: flex-end;
-  width: min(68%, 520px);
-  align-items: flex-end;
-}
-
-.session-loading-skeleton-group.is-assistant {
-  align-self: flex-start;
-  width: min(86%, 620px);
-  align-items: flex-start;
-}
-
-.session-loading-skeleton-group.is-second-user {
-  margin-top: 4px;
-}
-
-.session-loading-skeleton-group.is-last-assistant {
-  margin-bottom: 4px;
-}
-
-.session-loading-skeleton-line {
-  display: block;
-  height: 11px;
-  border-radius: var(--radius-full);
-  background: color-mix(in oklab, var(--ds-text-primary) 8%, transparent);
-  animation: session-loading-skeleton-pulse 900ms var(--motion-ease-out) infinite;
-}
-
-.session-loading-skeleton-line.is-wide {
-  width: 92%;
-}
-
-.session-loading-skeleton-line.is-long {
-  width: 78%;
-}
-
-.session-loading-skeleton-line.is-medium {
-  width: 61%;
-}
-
-.session-loading-skeleton-line.is-short {
-  width: 38%;
-}
-
-.session-loading-skeleton-group:nth-child(2)
-  .session-loading-skeleton-line {
-  animation-delay: 120ms;
-}
-
-.session-loading-skeleton-group:nth-child(3)
-  .session-loading-skeleton-line {
-  animation-delay: 240ms;
-}
-
-.session-loading-skeleton-group:nth-child(4)
-  .session-loading-skeleton-line {
-  animation-delay: 360ms;
-}
-
-@keyframes session-loading-skeleton-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes session-loading-skeleton-pulse {
-  0%,
-  100% {
-    opacity: 0.55;
-  }
-  50% {
-    opacity: 0.9;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .session-loading-skeleton,
-  .session-loading-skeleton-line {
-    animation: none;
-  }
-
-  .session-loading-skeleton-line {
-    opacity: 0.65;
-  }
-
   .session-switch-progress > span {
     animation: none;
   }

@@ -222,12 +222,12 @@ may be retained while exactly one workspace supplies the visible shell context.
   the newest selection to project the visible workspace, transcript, run state,
   navigation history, and work-panel context.
 - A warm transcript snapshot is revalidated in parallel. While selection or
-  React preparation is pending, the main pane shows a transcript-shaped
-  skeleton, keeps it non-interactive with a thin progress track and
-  `aria-busy`, and never combines the destination session id with the previous
-  session's messages. The composer keeps the destination shape while loading.
-  Once ready, the destination paints at its final record without a
-  top-of-history or empty-home flash.
+  React preparation is pending, the main pane keeps the last settled transcript
+  mounted, dims it, disables interaction with a thin progress track, and sets
+  `aria-busy`; the destination session id is never paired with the previous
+  session's messages. The composer keeps the settled shape while loading. Once
+  ready, the destination swaps into that same render boundary at its final
+  record without a skeleton remount, top-of-history flash, or empty-home flash.
 - Selecting a project-scoped conversation activates its project as part of the
   store-owned selection transaction. Selecting a Temporary conversation clears
   the visible workspace. Project-scoped new-session actions pass their target

@@ -90,10 +90,12 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
   parallel; navigation generations ensure that only the newest selection can
   project session, workspace, messages, and work-panel context.
 - While a destination transcript is resolving or React is preparing its heavy
-  Markdown tree, `ChatSurface` replaces the main content with a
-  transcript-shaped skeleton, exposes `aria-busy`, and shows a 2px progress
-  track. The destination transcript replaces it atomically at the bottom; a
-  stale transcript is never relabeled with the destination session id.
+  Markdown tree, `ChatSurface` keeps the last settled transcript mounted as a
+  dimmed, non-interactive frame, exposes `aria-busy`, and shows a 2px progress
+  track. The destination transcript replaces that same render boundary
+  atomically at the bottom; the stale transcript is never relabeled with the
+  destination session id, and the switch never inserts a second skeleton-to-
+  transcript animation.
 - Settings, Plugins, Pull requests, and Scheduled are route-level lazy modules.
   Chat and shell chrome stay in the initial renderer bundle; first entry to a
   secondary destination shows a compact localized status indicator until its
@@ -332,9 +334,11 @@ visually distinct from list content.
   that project's conversation group; retain the other project groups
 - Click session: activate its bound project when necessary, switch the active
   session, and show the last message on the first painted frame. While the
-  destination transcript is loading, the main pane shows a transcript-shaped
-  skeleton and never exposes the previous session's messages. Session
-  activation resets any manual-scroll state inherited from the previous
+  destination transcript is loading, the last settled transcript stays mounted
+  and dimmed, with input disabled under a thin progress track. It is replaced
+  by the destination in the same render boundary, so no stale transcript is
+  relabeled and no skeleton-to-transcript remount flashes the chat area.
+  Session activation resets any manual-scroll state inherited from the previous
   transcript and must not flash the new transcript's top or an old scroll
   position before settling at the bottom.
 - Hovering a session row for 120ms or keyboard-focusing it starts one coalesced
@@ -981,7 +985,7 @@ storage but compose into one assistant turn until the next user message.
 | State | Behavior |
 |---|---|
 | Session activation | Re-pin and position at the last record during layout, before the transcript's first painted frame |
-| Session transition | Transcript-shaped skeleton remains visible and non-interactive until the deferred destination tree is ready; current stream updates are not deferred |
+| Session transition | The last settled transcript remains mounted, dimmed, and non-interactive under a thin progress track until the deferred destination tree is ready; the same transcript boundary then swaps to the destination, and current stream updates are not deferred |
 | Streaming | New tokens append; auto-scroll only while pinned to bottom |
 | Turn start | Send / retry / regenerate re-pins follow mode and jumps to bottom |
 | Thinking-only streaming | Transcript opens; disclosure stays open; no empty answer bubble or duplicate Working row |
