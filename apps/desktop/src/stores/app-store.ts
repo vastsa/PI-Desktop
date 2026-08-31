@@ -49,6 +49,13 @@ import {
   FORKED_SESSION_WINDOW,
 } from "../lib/session-fork";
 import { rememberProject, setProjectPinned } from "../lib/recent-projects";
+import {
+  RETAINED_SESSION_PANE_LIMIT,
+  clearSessionPanes,
+  recordPaneTranscript,
+  releaseSessionPane,
+  retainSessionPane,
+} from "../lib/session-panes";
 import { normalizeProjectPath, sessionMatchesProject } from "../lib/sidebar-session-groups";
 import {
   latestSessionOutcomes,
@@ -215,6 +222,7 @@ const WORK_PANEL_STORAGE_KEY = "pi.desktop.workPanel";
 const SESSION_TRANSCRIPT_CACHE_LIMIT = 20;
 export const SESSION_TRANSCRIPT_PAGE_SIZE = 100;
 export const SESSION_TRANSCRIPT_CONTENT_LIMIT = 64 * 1024;
+export { RETAINED_SESSION_PANE_LIMIT };
 // Preserve the original 320px tool-content minimum beside the 44px activity rail.
 export { WORK_PANEL_DEFAULT_WIDTH, WORK_PANEL_MIN_WIDTH };
 
@@ -493,6 +501,19 @@ export type AppState = {
   /** Latest user-selected session while its transcript/workspace is resolving. */
   selectingSessionId?: string;
   messages: UiMessage[];
+  /**
+   * Session ids whose panes stay mounted, most recently visible first and
+   * bounded by `RETAINED_SESSION_PANE_LIMIT` (ADR 0135). The head is the
+   * session the chat surface shows.
+   */
+  retainedSessionIds: string[];
+  /**
+   * Last transcript each retained pane painted. A pane reads the live
+   * `messages` projection while it owns the active session and falls back to
+   * this snapshot once another session takes over, so leaving a session cannot
+   * blank the pane the user is coming back to.
+   */
+  retainedTranscripts: Record<string, UiMessage[]>;
   /** Renderer-owned range metadata for the lazily loaded active transcript. */
   sessionHistory: Record<string, SessionHistoryWindow>;
   isRunning: boolean;
@@ -887,6 +908,7 @@ function commitForkedSession(
     return {
       ...switchWorkPanelSession(current, summary.id),
       ...shared,
+      ...retainSessionPane(current, summary.id, messages),
       activeSessionId: summary.id,
       messages,
       page: "chat" as const,
@@ -948,6 +970,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   workPanelFileRequest: null,
   projectSort: initialSidebarPreferences.projectSort,
   messages: [],
+  retainedSessionIds: [],
+  retainedTranscripts: {},
   sessionHistory: {},
   draftConfiguration: null,
   isRunning: false,
@@ -1132,6 +1156,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           const nextStack = [...stack, { page: "chat" as const }].slice(-50);
           return {
             ...switchWorkPanelSession(s, undefined),
+            ...clearSessionPanes(),
             activeSessionId: undefined,
             draftConfiguration: null,
             messages: [],
@@ -1322,6 +1347,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (!record) {
         set((s) => ({
           ...(s.activeSessionId === id ? {} : switchWorkPanelSession(s, id)),
+          ...retainSessionPane(s, id, messages),
           activeSessionId: id,
           selectingSessionId: revalidating ? id : undefined,
           messages,
@@ -1339,6 +1365,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         const nextStack = same ? stack : [...stack, entry].slice(-50);
         return {
           ...(s.activeSessionId === id ? {} : switchWorkPanelSession(s, id)),
+          ...retainSessionPane(s, id, messages),
           activeSessionId: id,
           selectingSessionId: revalidating ? id : undefined,
           messages,
@@ -1394,6 +1421,17 @@ export const useAppStore = create<AppState>((set, get) => ({
         contentLimit: SESSION_TRANSCRIPT_CONTENT_LIMIT,
       });
       let detail: Awaited<typeof detailPromise> | undefined;
+      // A retained pane already holds this session's painted transcript
+      // (ADR 0135). Reveal it before awaiting workspace alignment so a warm
+      // switch shows the destination on its first frame; the revalidated
+      // transcript lands in the same pane afterwards.
+      if (
+        get().retainedTranscripts[id] &&
+        get().activeSessionId !== id &&
+        summary
+      ) {
+        commitSelection(get().retainedTranscripts[id], true);
+      }
       if (summary) {
         if (!(await alignWorkspaceLatest(summary.projectPath))) return;
       } else {
@@ -2365,6 +2403,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         page: "chat" as const,
         ...(switchesVisibleProject && !preserveConversation
           ? {
+              ...clearSessionPanes(),
               activeSessionId: undefined,
               messages: [],
               isRunning: false,
@@ -2443,6 +2482,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           page: "chat" as const,
           ...(switchesVisibleProject
             ? {
+                ...clearSessionPanes(),
                 activeSessionId: undefined,
                 messages: [],
                 isRunning: false,
@@ -2476,6 +2516,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       ...(preserveConversation
         ? {}
         : {
+            ...clearSessionPanes(),
             activeSessionId: undefined,
             messages: [],
             isRunning: false,
@@ -2582,6 +2623,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const navStack =
         retainedNav.length > 0 ? retainedNav : [{ page: "chat" as const }];
       return {
+        ...releaseSessionPane(state, id),
         sessionMeta,
         sessions,
         runningSessions,
@@ -3821,6 +3863,32 @@ export const useAppStore = create<AppState>((set, get) => ({
   clearComposerPrefill: () => set({ composerPrefill: null }),
 }));
 
+/**
+ * Mirror the live transcript into the active session's retained snapshot
+ * (ADR 0135).
+ *
+ * `messages` is written from ~30 places (streaming events, edits, retries,
+ * revisions, smart stop). Keeping the snapshot in step here means none of them
+ * has to remember the pane, and the pane the user leaves keeps exactly what it
+ * last painted instead of the transcript it had when it was opened.
+ */
+useAppStore.subscribe((state, previous) => {
+  if (
+    state.messages === previous.messages &&
+    state.activeSessionId === previous.activeSessionId
+  ) {
+    return;
+  }
+  const id = state.activeSessionId;
+  if (!id) return;
+  if (state.retainedTranscripts[id] === state.messages) return;
+  useAppStore.setState((current) =>
+    current.activeSessionId === id
+      ? recordPaneTranscript(current, id, current.messages)
+      : {},
+  );
+});
+
 function drainQueuedPrompts(sessionId: string): Promise<void> {
   const active = queuedPromptDrains.get(sessionId);
   if (active) return active;
@@ -3974,6 +4042,7 @@ async function persistSessionAndSelect(
     const nextStack = [...stack, entry].slice(-50);
     return {
       ...switchWorkPanelSession(s, sessionId),
+      ...retainSessionPane(s, sessionId, initialMessages),
       activeSessionId: sessionId,
       draftConfiguration: null,
       messages: initialMessages,

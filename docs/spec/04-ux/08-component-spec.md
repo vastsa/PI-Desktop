@@ -89,13 +89,22 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
   renderer memory. Transcript IO and required workspace alignment may run in
   parallel; navigation generations ensure that only the newest selection can
   project session, workspace, messages, and work-panel context.
-- While a destination transcript is resolving or React is preparing its heavy
-  Markdown tree, `ChatSurface` keeps the last settled transcript mounted as a
-  dimmed, non-interactive frame, exposes `aria-busy`, and shows a 2px progress
-  track. The destination transcript replaces that same render boundary
-  atomically at the bottom; the stale transcript is never relabeled with the
-  destination session id, and the switch never inserts a second skeleton-to-
-  transcript animation.
+- `ChatSurface` mounts one `SessionPane` per retained session, keyed by session
+  id and bounded to three panes (the visible one plus the two most recent). Each
+  pane owns its transcript DOM, scroll position, and mounted-row window for its
+  lifetime, so a switch is a visibility swap rather than a rebuild. Inactive panes
+  stay mounted but are hidden with `visibility: hidden` +
+  `content-visibility: hidden` — never `display: none`, which would destroy the
+  layout box and its scroll offset — and are `aria-hidden` and non-interactive.
+  Evicting a pane makes its session behave like a cold open on the next visit.
+- A pane renders the store's live `messages` while its session is the active one
+  and its retained snapshot otherwise, so no pane can show another session's rows.
+  Deleting a session releases its pane and its snapshot.
+- While a destination with no retained pane is resolving, `ChatSurface` keeps the
+  visible pane on its own session, exposes `aria-busy`, and shows a 2px progress
+  track; the destination pane is revealed only once it has committed. A warm
+  destination is revealed with no busy affordance at all. Nothing is dimmed and no
+  skeleton-to-transcript animation is inserted (ADR 0135).
 - Settings, Plugins, Pull requests, and Scheduled are route-level lazy modules.
   Chat and shell chrome stay in the initial renderer bundle; first entry to a
   secondary destination shows a compact localized status indicator until its
@@ -332,15 +341,18 @@ visually distinct from list content.
 - Click the project directory row (chevron, folder, label, or remaining
   disclosure hit area): activate its path when necessary, then toggle only
   that project's conversation group; retain the other project groups
-- Click session: activate its bound project when necessary, switch the active
-  session, and show the last message on the first painted frame. While the
-  destination transcript is loading, the last settled transcript stays mounted
-  and dimmed, with input disabled under a thin progress track. It is replaced
-  by the destination in the same render boundary, so no stale transcript is
-  relabeled and no skeleton-to-transcript remount flashes the chat area.
-  Session activation resets any manual-scroll state inherited from the previous
-  transcript and must not flash the new transcript's top or an old scroll
-  position before settling at the bottom.
+- Click session: activate its bound project when necessary and switch the active
+  session. A destination that still has a retained pane (warm switch) is revealed
+  immediately with its own content and its own scroll position, so the first
+  painted frame is already correct — no dim, no skeleton, no transcript remount.
+  A destination with no retained pane (cold switch) leaves the currently visible
+  pane showing its own session until the destination commits; only a thin
+  progress track marks the wait, and the composer stays non-interactive until the
+  visible pane is the active session. No transcript is ever dimmed, and no stale
+  transcript is relabeled with the destination session id. First activation of a
+  session settles at its newest turn without flashing the transcript top; a
+  revisited pane returns to the position the user left, and a pane still pinned
+  re-anchors to the bottom (ADR 0135).
 - Hovering a session row for 120ms or keyboard-focusing it starts one coalesced
   transcript prefetch. Selection reuses an in-flight or recent cached result,
   revalidates it in the background, and never waits for an older superseded
@@ -550,14 +562,14 @@ Primary chat area containing ChatTranscript and Composer. Scrollable, center of 
   turn even when the bottom reserve changes mid-turn
 - Destination entry uses one short opacity/translate transition. Streaming
   updates occur inside the mounted surface and never replay this transition.
-- A session switch bounds its first transcript commit to the newest entries and
-  mounts the remaining history on the next frame. Both commits must present the
-  transcript at the same position: the placeholder that stands in for the
-  unmounted rows reserves only the scroll height needed to reach the bottom and
-  never estimates a total from a per-entry height, and the expansion re-anchors
-  the bottom during its own layout phase. Correcting a guessed height after paint
-  is visible as the transcript jumping, so it is not permitted. A user who
-  scrolls up during the bounded frame keeps that position.
+- A pane bounds its own first commit to the newest entries and mounts the
+  remaining history on the next frame. Because the first commit belongs to one
+  pane, it happens when that session is first opened, not on every switch back to
+  it. Both commits must present the transcript at the same position, and the
+  expansion re-anchors the bottom during its own layout phase; correcting a
+  guessed height after paint is visible as the transcript jumping, so it is not
+  permitted. A user who scrolls up during the bounded frame keeps that position,
+  and the pane keeps it across later switches.
 - The transcript's bottom reserve is **height-aware**, not a fixed gap. The
   docked composer measures its real rendered height (it grows with multi-line
   drafts) and publishes it as the `--composer-dock-height` custom property on
@@ -574,7 +586,7 @@ Primary chat area containing ChatTranscript and Composer. Scrollable, center of 
 | Streaming | Auto-scroll follows while pinned; new tokens append |
 | Active progress | Immediately after send, before the first assistant or tool event, a compact localized `Working…` status with elapsed time appears inline. It yields to concrete thinking, tool, and answer rows, while a permission card owns the approval state; no large generic progress card is rendered. |
 | Turn outcome | After a failed turn, a session-scoped recovery card summarizes the interruption and tool evidence. Completed turns use the existing transcript and message-scoped InlineReviewCard without an extra success card; failed turns can continue through one localized prompt without losing the transcript. |
-| Session switch | The newly activated session paints at its latest record. Bounded first commit and full-history expansion show the same position: no post-paint height correction may shift the visible rows, in either direction |
+| Session switch | A first-opened session paints at its latest record; a revisited pane paints at its own retained position. Bounded first commit and full-history expansion show the same position: no post-paint height correction may shift the visible rows, in either direction |
 | Turn start (send / retry / regenerate) | Re-pins and positions the latest content before paint, even if the user had scrolled up; the later persisted user-message event does not flash the transcript at its top, and the composer collapse / indicator layout clamps during the send never release follow mode |
 | Idle (after stream) | Auto-scroll unlocked; user can scroll freely |
 | Message-scoped review snapshot | Each successful workspace Write/Edit tool row is followed by one compact InlineReviewCard carrying that message's added/modified/deleted status and explicit addition/deletion totals. It renders as a single flat list row on the tool-row rhythm — disclosure caret, Git-style status letter (`A`/`M`/`D`), path, addition/deletion counts — with no card border, status rail, icon plate, or status pill; hover fill is the only row chrome, and a rolled-back change is struck through. Its hunks sit behind an expandable disclosure: every review card (inline and in the Review tab) is collapsed by default, and the user expands it on demand. The card remains after a Git commit, never becomes a bottom/global entry, and offers hash-guarded rollback without leaking into another session's transcript. |
@@ -984,8 +996,8 @@ storage but compose into one assistant turn until the next user message.
 
 | State | Behavior |
 |---|---|
-| Session activation | Re-pin and position at the last record during layout, before the transcript's first painted frame |
-| Session transition | The last settled transcript remains mounted, dimmed, and non-interactive under a thin progress track until the deferred destination tree is ready; the same transcript boundary then swaps to the destination, and current stream updates are not deferred |
+| Session activation | First activation re-pins and positions at the last record during layout, before the pane's first painted frame; a revisited pane restores its own retained scroll position instead |
+| Session transition | A warm destination pane is revealed immediately with its retained content and position. A cold destination leaves the visible pane on its own session under a thin progress track until it commits; nothing is dimmed, hidden panes stay mounted and inert, and current stream updates are not deferred |
 | Streaming | New tokens append; auto-scroll only while pinned to bottom |
 | Turn start | Send / retry / regenerate re-pins follow mode and jumps to bottom |
 | Thinking-only streaming | Transcript opens; disclosure stays open; no empty answer bubble or duplicate Working row |

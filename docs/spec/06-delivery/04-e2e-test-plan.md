@@ -338,16 +338,17 @@ Each scenario is documented in this format:
   have scoped groups and path-less sessions remain under Temporary; each
   transcript loads correctly; selecting Temporary clears project context and
   inherits no workspace access; both sessions remain persisted. Every session
-  activation paints its distinct final record at the transcript bottom without
-  first exposing the transcript top, the previous session's scroll position,
+  first activation paints its distinct final record at the transcript bottom
+  without first exposing the transcript top, another session's scroll position,
   or a stale jump-to-latest control. The latest clicked row responds immediately
   and its transcript request does not wait for superseded reads; only the final
-  project/session/work-panel tuple commits. During cold/deferred loading the
-  previous transcript remains mounted, dimmed, and non-interactive under a thin
-  busy indicator; it is swapped atomically for the destination in the same
-  transcript boundary, and the composer keeps the settled home/docked shape
-  while loading. A warm revisit reuses the bounded cache and revalidates.
-  Reduced motion keeps the stable frame and progress track static and preserves
+  project/session/work-panel tuple commits. On a cold switch the currently
+  visible pane keeps showing its own session under a thin progress track until
+  the destination commits, with the composer keeping its settled home/docked
+  shape but inert so no prompt can reach the session being left; no transcript is
+  dimmed at any point. A warm revisit reveals the retained pane immediately at
+  its own content and scroll position, then revalidates in place without a
+  visible change. Reduced motion keeps the progress track static and preserves
   the same destination without a skeleton remount or animated traversal through
   history.
 - **Specs linked**: `03-runtime/10-session-state-machine.md`,
@@ -607,9 +608,13 @@ Each scenario is documented in this format:
   already selected or created the durable empty row, and the first
   configuration action applies to that session without waiting for a message;
   no second click is required. Running turns and pending approvals still
-  disable the controls.
+  disable the controls. Behind that transition the chat area follows the
+  cold-switch rule: the currently visible pane keeps showing its own session
+  until the destination commits, the only wait affordance is the thin progress
+  track, nothing is dimmed, and prompt submission stays inert until the visible
+  pane is the active session, so a prompt cannot reach the session being left.
 - **Specs linked**: `04-ux/08-component-spec.md` (§11),
-  `04-ux/09-interaction-patterns.md` (§5A)
+  `04-ux/09-interaction-patterns.md` (§5A), ADR 0135
 - **Acceptance**: C (new project/session composer)
 - **Milestone**: M2
 - **Status**: Draft
@@ -2691,13 +2696,20 @@ Each scenario is documented in this format:
 - **Steps**: 1) Open the long session from the sidebar. 2) Observe the first
   painted frame and the scroll position. 3) Scroll to the top edge to page older
   history, repeatedly, until the first message is reached. 4) Switch to another
-  session and back. 5) Send a new prompt and let it complete.
+  session and back, recording the frame and offset on return. 5) Scroll up a
+  measured amount, switch away, and switch back again. 6) Send a new prompt and
+  let it complete.
 - **Expected**: The session opens at its newest turn without a blank or
   top-of-history frame, and opening it does not visibly slow down as the
   conversation grows. Each older page prepends without moving the message the
   user is reading. Paging back reaches the true first message with none skipped
-  or duplicated. Re-selection paints from cache. The new turn appends normally.
-- **Specs linked**: `03-runtime/04-data-storage.md`, `03-runtime/06-host-rpc-protocol.md`
+  or duplicated. Re-selection paints from the retained pane: the first frame back
+  is the same frame that was left, at the same scroll position, with no dim, no
+  blank or skeleton frame, and no rebuild of the rows. A pane the user had
+  scrolled up in returns to that measured offset rather than the bottom, and a
+  pane left pinned re-anchors to the bottom. The new turn appends normally.
+- **Specs linked**: `03-runtime/04-data-storage.md`,
+  `03-runtime/06-host-rpc-protocol.md`, ADR 0135
 - **Acceptance**: C (chat stream), F (persistence), Quality
 - **Milestone**: M5
 - **Status**: Unit-covered (`transcripts::tests::layout_window_reads_only_the_requested_tail`,
@@ -2739,13 +2751,13 @@ Each scenario is documented in this format:
   vertically while magnifying. The popover names the correct turn and clicking
   scrolls to it. After a window resize, and after the composer grows under a
   multi-line draft, magnification still tracks the cursor against the dashes' new
-  positions rather than their old ones. Returning to the session paints its newest turn
-  without a visible rebuild of the earlier history. Switching back and forth
-  repeatedly, the transcript text never jumps or scrolls up and down after the
-  first painted frame: the newest turn stays where it first appeared while the
-  earlier history mounts behind it. Scrolling up during the switch keeps the
-  chosen position instead of being pulled back to the bottom.
-- **Specs linked**: `04-ux/08-component-spec.md`
+  positions rather than their old ones. Returning to the session reveals its
+  retained pane at the position it was left, with no rebuild of the earlier
+  history and no dim. Switching back and forth repeatedly, the transcript text
+  never jumps or scrolls up and down after the first painted frame. Scrolling up
+  keeps the chosen position across later switches instead of being pulled back to
+  the bottom.
+- **Specs linked**: `04-ux/08-component-spec.md`, ADR 0135
 - **Acceptance**: C (chat stream), Quality
 - **Milestone**: M5
 - **Status**: Unit-covered (`interaction-performance.test.mjs`
@@ -2754,6 +2766,33 @@ Each scenario is documented in this format:
   `session-switch hydration expands without moving the transcript`,
   `minimap re-measures dash centers when the rail's own box changes`);
   UI scenario Draft
+
+#### E2E-071g: Retained session panes are bounded and evict the oldest
+
+- **Preconditions**: At least five sessions with distinct transcripts, each
+  longer than one viewport, so a scroll position and a final record identify each
+  one unambiguously.
+- **Steps**: 1) Open sessions A, B, and C in that order, scrolling each one up a
+  measured amount. 2) Switch back to A, then B, and confirm each returns to its
+  own offset. 3) Open D and then E, so A and B fall outside the retained budget.
+  4) Return to A. 5) Return to E, then D, and confirm they are still warm. 6)
+  Repeat the whole cycle once more and watch for a stuck progress track, an error
+  toast, or a blank chat area.
+- **Expected**: Only the visible pane and the two most recently visited ones are
+  retained; visiting beyond that budget evicts the oldest pane. A warm return
+  paints the retained frame and offset immediately. Returning to an evicted
+  session behaves exactly like a cold open: the visible pane stays on its own
+  session under the thin progress track, the composer is inert until the
+  destination commits, and the destination then paints at its newest turn with no
+  error, no empty frame, and no restored offset from before eviction. Nothing is
+  dimmed at any point, hidden panes stay non-interactive and out of the
+  accessibility tree, and repeated cycling neither leaks a growing number of
+  mounted transcripts nor leaves a pane showing another session's rows.
+- **Specs linked**: `04-ux/08-component-spec.md` §1.6 / §3.5 / §7,
+  `04-ux/09-interaction-patterns.md` §5, ADR 0130, ADR 0135
+- **Acceptance**: C (switch sessions), Quality
+- **Milestone**: M5
+- **Status**: Draft
 
 #### E2E-073: Icon-only message toolbars and editing a user prompt
 
@@ -6649,8 +6688,8 @@ This test plan spec is accepted when:
   Upward travel is continuous: growing the window and fetching a page both keep
   the viewport anchored to the row being read. Every minimap message dash jumps to
   a real row. Streaming stays smooth with the composer responsive, pinned-follow
-  and jump-to-latest behave as specified, and a session switch still paints at the
-  latest record. Earlier history is never stranded: with rows withheld or an older
+  and jump-to-latest behave as specified, and switching away and back paints the
+  retained pane at the position it was left. Earlier history is never stranded: with rows withheld or an older
   page pending, the outline stays available with an actionable earlier-history
   continuation and keeps advancing when the top boundary remains visible, even
   when the mounted tail does not overflow one viewport (D269). The continuation

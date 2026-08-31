@@ -53,8 +53,8 @@ test("empty home keeps the primary task surface focused", () => {
   // later would break a source-text anchor again.
   const emptyStart = chatSurface.indexOf('data-testid="home-empty"');
   assert.notEqual(emptyStart, -1, "empty home block must exist");
-  const emptyEnd = chatSurface.indexOf("<ChatTranscript", emptyStart);
-  assert.notEqual(emptyEnd, -1, "transcript branch must follow the empty block");
+  const emptyEnd = chatSurface.indexOf("<SessionPane", emptyStart);
+  assert.notEqual(emptyEnd, -1, "the pane branch must follow the empty block");
   const emptyBlock = chatSurface.slice(emptyStart, emptyEnd);
   const onboardingAt = emptyBlock.indexOf("<OnboardingChecklist />");
   const composerAt = emptyBlock.indexOf("home-composer-wrap");

@@ -5,10 +5,11 @@ import { loadStyles } from "./helpers/styles.mjs";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-const [app, chatSurface, transcript, minimap, composer, styles, store] =
+const [app, chatSurface, pane, transcript, minimap, composer, styles, store] =
   await Promise.all([
     read("../src/App.tsx"),
     read("../src/components/ChatSurface.tsx"),
+    read("../src/components/SessionPane.tsx"),
     read("../src/components/ChatTranscript.tsx"),
     read("../src/components/ConversationMinimap.tsx"),
     read("../src/components/Composer.tsx"),
@@ -55,7 +56,12 @@ test("stream rendering avoids duplicate frame state and coalesces following", ()
   assert.doesNotMatch(transcript, /setVisibleLen/);
   assert.match(transcript, /const scheduleFollowScroll = useCallback/);
   assert.match(transcript, /followFrameRef\.current !== 0/);
-  assert.match(transcript, /const renderedMessages = sessionSwitched \? messages : deferredMessages/);
+  // The pane's own first commit is never deferred: its content has to be in the
+  // commit that reveals it, or the reveal shows one empty frame (ADR 0135).
+  assert.match(
+    transcript,
+    /const renderedMessages = firstCommit \? messages : deferredMessages/,
+  );
   assert.match(transcript, /const \{ entries, visible \} = useMemo/);
   assert.match(
     transcript,
@@ -145,16 +151,15 @@ test("session activation pins the latest record before the first paint", () => {
     chatSurface,
     /const activeSessionId = useAppStore\(\(state\) => state\.activeSessionId\);/,
   );
-  assert.match(
-    chatSurface,
-    /<ChatTranscript[\s\S]*?sessionId=\{transcriptView\.sessionId\}/,
-  );
-  assert.match(chatSurface, /useDeferredValue\(activeSessionId\)/);
-  assert.match(chatSurface, /previousTranscriptViewRef/);
+  assert.match(chatSurface, /<SessionPane\s*key=\{id\}\s*sessionId=\{id\}/);
+  assert.match(pane, /sessionId=\{sessionId\}/);
   assert.doesNotMatch(chatSurface, /SessionLoadingSkeleton/);
 
+  // A pane belongs to one session for its lifetime, so activation is its own
+  // first layout: settle at the newest turn with no cross-session state to
+  // unwind, before the first paint.
   const activationEffect = transcript.match(
-    /useLayoutEffect\(\(\) => \{([\s\S]*?)\n  \}, \[cancelFollowScroll, sessionId, scrollToBottom\]\);/,
+    /useLayoutEffect\(\(\) => \{([\s\S]*?)\n  \}, \[cancelFollowScroll, scrollToBottom\]\);/,
   )?.[1];
   assert.ok(activationEffect);
   assert.match(activationEffect, /cancelFollowScroll\(\)/);
@@ -164,7 +169,21 @@ test("session activation pins the latest record before the first paint", () => {
   assert.doesNotMatch(activationEffect, /smooth/);
 });
 
-test("session switch bounds the first transcript commit instead of rebuilding it", () => {
+test("a revealed pane restores its own scroll position in the layout phase", () => {
+  // Captured on the way out and reapplied as the pane is revealed: a hidden
+  // scroller can be clamped while its content grows off screen, and a passive
+  // effect would leave one visible frame at the wrong offset (ADR 0135).
+  const revealEffect = transcript.match(
+    /useLayoutEffect\(\(\) => \{([\s\S]*?)\n  \}, \[cancelFollowScroll, paneVisible, scrollToBottom\]\);/,
+  )?.[1];
+  assert.ok(revealEffect, "the reveal must restore position in a layout effect");
+  assert.match(revealEffect, /retainedScrollTopRef\.current = el\.scrollTop/);
+  assert.match(revealEffect, /if \(pinnedRef\.current\) \{\s*scrollToBottom\(\);/);
+  assert.match(revealEffect, /el\.scrollTop = retained/);
+  assert.match(revealEffect, /lastScrollTopRef\.current = retained/);
+});
+
+test("a pane bounds its own first commit instead of rebuilding it", () => {
   // Progressive hydration must decide during render. Setting the gate from a
   // layout effect (`useState(true)` + `setHydrated(false)`) meant a switch
   // mounted the whole history, threw it away, and rebuilt it - three commits,
@@ -174,10 +193,13 @@ test("session switch bounds the first transcript commit instead of rebuilding it
     transcript.indexOf("const lastEntry = entries[entries.length - 1];"),
   );
   assert.ok(hydration.length > 0, "hydration block must exist");
+  // Scoped to this pane's own mount (ADR 0135): the instance belongs to one
+  // session, so the gate is local mount state rather than a comparison against
+  // whichever session was rendered last. It still must be derived during render.
   assert.match(
     hydration,
-    /const hydrationBounded =\s*hydratedSessionRef\.current !== sessionId &&/,
-    "the gate must be derived from the rendered session, not stored state",
+    /const hydrationBounded =\s*firstCommit &&/,
+    "the gate must be derived during render, not set from an effect",
   );
   // The first commit is bounded by the initial mount budget, and the expansion
   // target is the steady-state window rather than the whole history (D261).
@@ -209,10 +231,10 @@ test("session switch bounds the first transcript commit instead of rebuilding it
   );
 });
 
-test("session-switch hydration expands without moving the transcript", () => {
+test("first-commit hydration expands without moving the transcript", () => {
   // A spacer sized per unmounted entry cannot match the rows it stands in for.
   // Mounting the real history then corrected that guess on screen, which is the
-  // transcript jumping up and down like a page flip on every session switch.
+  // transcript jumping up and down like a page flip when a pane opens.
   assert.doesNotMatch(
     transcript,
     /TRANSCRIPT_INITIAL_MOUNT\) \* \d+/,
@@ -227,10 +249,10 @@ test("session-switch hydration expands without moving the transcript", () => {
   // Re-pinning must happen in the layout phase of the expansion commit, before
   // paint - a passive effect leaves one visible frame at the wrong offset.
   const rebottom = transcript.match(
-    /useLayoutEffect\(\(\) => \{\n\s*if \(hydrationBounded \|\| boundedSessionRef\.current !== sessionId\) return;([\s\S]*?)\n  \}, \[/,
+    /useLayoutEffect\(\(\) => \{\n\s*if \(hydrationBounded \|\| !boundedFirstCommitRef\.current\) return;([\s\S]*?)\n  \}, \[/,
   )?.[1];
   assert.ok(rebottom, "the hydration expansion must re-anchor in a layout effect");
-  assert.match(rebottom, /boundedSessionRef\.current = null/);
+  assert.match(rebottom, /boundedFirstCommitRef\.current = false/);
   assert.match(rebottom, /scrollToBottom\(\)/);
   // A user who scrolled up during the bounded frame keeps their position.
   assert.match(rebottom, /if \(!pinnedRef\.current\) return/);
@@ -240,12 +262,12 @@ test("session-switch hydration expands without moving the transcript", () => {
   // that never happens, re-bottoming a transcript the user had scrolled up in.
   assert.doesNotMatch(
     transcript,
-    /if \(hydrationBounded\) boundedSessionRef\.current/,
+    /if \(hydrationBounded\) boundedFirstCommitRef\.current/,
     "the pending re-anchor must be recorded from an effect, not during render",
   );
   assert.match(
     transcript,
-    /boundedSessionRef\.current = sessionId;\n\s*const frame = requestAnimationFrame/,
+    /boundedFirstCommitRef\.current = true;\n\s*const frame = requestAnimationFrame/,
     "the flag is armed in the same effect that queues the expansion",
   );
 });
