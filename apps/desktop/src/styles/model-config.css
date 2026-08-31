@@ -593,9 +593,22 @@
   outline-offset: 1px;
 }
 
+.provider-chosen-delegation {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.provider-chosen-delegation-hint {
+  color: var(--ds-text-muted);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-normal);
+}
+
 .provider-custom-model {
   flex: none;
   padding: 8px;
+  font-size: var(--text-sm);
   border-top: 1px solid var(--ds-border-subtle);
 }
 
