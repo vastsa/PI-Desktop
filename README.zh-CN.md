@@ -149,8 +149,8 @@ CI 会为涉及代码的 PR 和推送到 `main` 的提交运行 JS 构建 / 类�
 
 ```bash
 pnpm check:release-docs                    # 校验当前工作树是否一致
-node scripts/release.mjs 0.11.1 --tag      # 升版本 + 提交 + 打 v0.11.1 标签
-git push origin <branch> v0.11.1           # Release 工作流自动构建并发布
+node scripts/release.mjs 0.11.2 --tag      # 升版本 + 提交 + 打 v0.11.2 标签
+git push origin <branch> v0.11.2           # Release 工作流自动构建并发布
 ```
 
 完整门禁见[发布操作手册](docs/zh-CN/spec/06-delivery/06-release-runbook.md#4-1-强制发布版本面门禁-d164-d260)。
