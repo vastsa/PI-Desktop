@@ -6830,3 +6830,39 @@ This test plan spec is accepted when:
 - **Milestone**: M5
 - **Status**: Unit-covered (`packages/agent-runtime/src/runtime.test.ts`,
   `context-compaction.test.mjs`); provider/UI journey Draft
+
+#### E2E-165: Concurrent subagents coordinate through peer messages
+
+- **Preconditions**: Agent mode with two user subagent definitions that each
+  declare a working tool plus peer tools — one write-capable
+  (`tools: Read, Edit, PeerSend, PeerInbox`) and one read-only
+  (`tools: Read, Grep, PeerSend, PeerWait`). A third definition declares only
+  `PeerSend`. A fourth declares no peer tool.
+- **Steps**: 1) Start both peer-capable delegates in one assistant message and
+  let one claim a shared file with `PeerSend` while the other reads its inbox.
+  2) Have the read-only delegate call `PeerWait` for an answer the peer never
+  sends, and let the wait expire. 3) Send more than the 32-message inbox cap to
+  one delegate, then drain it. 4) Let one delegate settle while its peer is
+  parked in `PeerWait`. 5) Delegate to the peer-only definition. 6) Delegate to
+  the definition with no peer tool. 7) Inspect the parent's own tool list and
+  the reports the parent receives.
+- **Expected**: A directed send reaches only the named peer and a broadcast
+  reaches every other running delegate but never the sender; addressing is by
+  agent name and a send to a name that is not running returns a tool error
+  listing the running peers. An expired `PeerWait` returns empty and is not a
+  failure. Draining past the cap returns 32 messages with the oldest dropped and
+  the loss reported once, and a drained message is never returned twice. A
+  delegate settling wakes its peer's `PeerWait` immediately instead of holding it
+  to the timeout. The peer-only definition is refused at `Task` time with
+  "declares only peer messaging tools". The definition with no peer tool receives
+  no peer guidance and behaves exactly as before. `PeerSend`, `PeerInbox`, and
+  `PeerWait` never appear in the parent's tool list, no peer message appears in
+  the parent's model context, and peer tool calls appear in the transcript
+  attributed to the sending delegate under its `Task` row.
+- **Specs linked**: `03-runtime/02-agent-runtime.md` §5f.2,
+  `03-runtime/03-tools-and-permissions.md` §10.2,
+  `08-meta/decisions-log.md` (D277), ADR 0138
+- **Acceptance**: E (tools & permissions) + C (chat/stream) + Security
+- **Milestone**: M5
+- **Status**: Unit-covered (`packages/agent-runtime/src/subagent-mailbox.test.ts`,
+  `packages/agent-runtime/src/runtime.test.ts`); agent-facing journey Draft

@@ -59,6 +59,24 @@ export type SubagentDefinition = {
   filePath?: string;
 };
 
+/**
+ * Peer messaging tools a delegate may declare to talk to its concurrent
+ * siblings (D277, ADR 0138). They are opt-in per definition: silence means a
+ * delegate keeps the ADR 0062 isolation where the parent is the only
+ * integration point, so no existing definition changes behaviour.
+ *
+ * These are session-local coordination tools, not delegation tools: they carry
+ * text between running delegates and never expose delegation ids, the
+ * delegation registry, or the ability to start or stop a delegate.
+ */
+export const SUBAGENT_PEER_TOOLS = [
+  "PeerSend",
+  "PeerInbox",
+  "PeerWait",
+] as const;
+
+export type SubagentPeerTool = (typeof SUBAGENT_PEER_TOOLS)[number];
+
 /** Tools a definition may declare. Plugin, skill, mode and meta tools stay out
  * of reach: a delegate is a bounded file/search/shell worker, not a second
  * full session. */
@@ -70,6 +88,7 @@ export const SUBAGENT_ASSIGNABLE_TOOLS = [
   "Bash",
   "Edit",
   "Write",
+  ...SUBAGENT_PEER_TOOLS,
 ] as const;
 
 export type SubagentAssignableTool = (typeof SUBAGENT_ASSIGNABLE_TOOLS)[number];
@@ -154,6 +173,17 @@ export function isSubagentAssignableTool(
 
 export function isSubagentMutatingTool(value: string): boolean {
   return (SUBAGENT_MUTATING_TOOLS as readonly string[]).includes(value);
+}
+
+export function isSubagentPeerTool(value: string): value is SubagentPeerTool {
+  return (SUBAGENT_PEER_TOOLS as readonly string[]).includes(value);
+}
+
+/** Whether this delegate opted into peer messaging (D277). */
+export function subagentUsesPeerMessaging(
+  definition: SubagentDefinition,
+): boolean {
+  return definition.tools.some(isSubagentPeerTool);
 }
 
 /** Whether this delegate can change the workspace. */

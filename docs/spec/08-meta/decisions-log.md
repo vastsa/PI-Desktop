@@ -2771,3 +2771,34 @@ D193, and D194.
 - Renderer only: no IPC, storage, host-protocol, or runtime contract change. See
   ADR 0137, `04-ux/08-component-spec.md`, `04-ux/09-interaction-patterns.md`,
   E2E-011, E2E-071d, and E2E-071g.
+
+## 2026-08-31 — Concurrent subagents may message each other directly (D277)
+
+- Decision D277 extends D201 / ADR 0062 / ADR 0089 without amending them. A
+  session-scoped mailbox lets concurrent delegates exchange bounded text
+  through three opt-in tools — `PeerSend(to?, text)`, `PeerInbox()`, and
+  `PeerWait(timeoutSeconds?)` — declarable in a definition's `tools:` list.
+- It exists because the parent writes every brief before any delegate starts, so
+  it cannot always know the directions are independent. The path lock prevents a
+  torn write but not a stale premise, and relaying notes through a parent that
+  is blocked in `TaskWait` would spend the context delegation exists to protect.
+- Opt-in and default-off: no builtin declares a peer tool, so every existing
+  definition keeps ADR 0062 isolation. A definition declaring only peer tools
+  and no working tool is refused at `Task` time.
+- Addressing is by agent name, never delegation id; the sender is bound by the
+  runtime at spawn, so `from` is not a model input. Peer tools are built per
+  delegate and stay out of the session tool catalog, so the parent has no
+  second channel to its delegates.
+- Messages are in-process: no `permissionScope`, no host-core call, no tool
+  budget. Bounds are 2,000 characters per message, 32 messages per inbox
+  (oldest dropped, loss reported), 40 sends per run, and a 120-second
+  `PeerWait` ceiling below the 300-second idle watchdog. Draining is
+  destructive.
+- Peer traffic never enters the parent's model context, and a delegate is told
+  its report remains the only thing the parent reads. No cross-session
+  messaging, no messaging with the parent, no nested delegation, no durable
+  history.
+- Runtime and shared only: no IPC, storage, host-protocol, or renderer change,
+  and no `AgentEventEnvelope` change — a peer message is already a delegate tool
+  call attributed by `parentToolCallId` and `agentName`. See ADR 0138,
+  `03-runtime/02-agent-runtime.md` §5f.2, and E2E-165.

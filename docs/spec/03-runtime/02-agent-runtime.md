@@ -631,6 +631,78 @@ delegate may call), `04-data-storage.md` §4.7a (persisted attribution),
 `04-ux/03-permission-ux.md` §6a (more than one pending request) and
 `04-ux/08-component-spec.md` §9.9 (how a delegation reads).
 
+### 5f.2 Peer messaging between delegates (D277, ADR 0138)
+
+Concurrent delegates may exchange bounded text messages directly, without
+routing them through the parent. This is **opt-in per definition**: a definition
+that names no peer tool behaves exactly as before, and none of the four builtins
+name one.
+
+**Why it exists.** Delegates fan out on briefs the parent wrote before any of
+them started, so the parent cannot always know the directions are truly
+independent. Three failures follow from that and none are solvable by the path
+lock, which prevents a torn write but not a stale premise: two write-capable
+delegates discovering they need the same file, one delegate disproving an
+assumption every brief was written against, and one delegate about to search for
+a fact another already found. Routing coordination through the parent does not
+work either — the parent is blocked in `TaskWait`, `task` is write-once, and
+every relayed note would land in the context delegation exists to protect.
+
+**Tools.** Three names join the seven assignable tools and may appear in a
+definition's `tools:` list. They are built per delegate at spawn time and are
+deliberately **absent from the session tool catalog**, so the parent cannot
+reach them:
+
+- `PeerSend(to?, text)` — deliver a note to one running peer, or to every
+  running peer when `to` is omitted. A broadcast costs one send.
+- `PeerInbox()` — drain queued messages and list running peers. Never blocks;
+  returns empty when there is nothing.
+- `PeerWait(timeoutSeconds?)` — block until a message arrives, the timeout
+  expires, the last peer leaves, or the run aborts. Default 30s, ceiling 120s.
+
+**Addressing and identity.** Messages are addressed by **agent name**, never by
+delegation id: the name is the only identifier a delegate can know, and a
+delegation id would hand a worker a handle on the parent's registry. Each peer
+tool closes over the sending delegate's own name, supplied by the runtime at
+spawn, so `from` is not a model input — a delegate can neither spoof a sender
+nor read another agent's inbox.
+
+**Not a host call.** Peer messages are in-process. They carry no
+`permissionScope`, never reach host-core, consume no tool budget, and are not
+gated: there is no file, process, or network involved. `scopeDelegateTools`
+therefore does not wrap them.
+
+**Bounds.** A message is capped at 2,000 characters (longer text is truncated,
+not rejected); an inbox holds 32 messages and drops oldest-first, reporting the
+loss to the reader on its next read; a delegate may send 40 times per run; and
+`PeerWait` is capped at 120 seconds, deliberately below the 300-second idle
+watchdog so a delegate cannot expire itself waiting for an answer that never
+comes. Draining is destructive — once read, the delegate's own context holds
+the only copy.
+
+**Membership.** A delegate joins the mailbox when it starts and leaves when it
+settles; leaving wakes every waiter, so a delegate parked in `PeerWait` on an
+agent that just exited returns immediately rather than waiting out its timeout.
+Sending to a name that is not running is a tool error listing the peers that
+are, not a queued message.
+
+Agent names are **not unique**: the parent may run two delegations of one
+definition at once, and both answer to the same name. An inbox therefore
+reference-counts its live members. A second join neither resets the send count
+nor clears the queue — resetting would let a delegate refresh its own cap by
+having a twin start, and clearing would drop mail the first delegate had not
+read — and the name stops being addressable only when its last member leaves.
+
+**Boundaries preserved.** Peer traffic never enters the parent's model context;
+the parent still learns only what a report says, and a delegate's prompt says
+so. A definition that declares only peer tools and no working tool is refused at
+`Task` time. There is no cross-session messaging, no messaging with the parent,
+no nested delegation, and no durable peer history.
+
+**Transcript.** No new wire contract: a peer message is a tool call of the
+delegate that sent or read it, so it already appears attributed by
+`parentToolCallId` and `agentName` under the owning `Task` row.
+
 ## 6. Providers & models
 
 > Full policy: `11-provider-model-system.md`, `12-provider-config-schema.md`, `13-model-catalog-and-selection.md`.

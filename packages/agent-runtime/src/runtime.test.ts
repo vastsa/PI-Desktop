@@ -82,6 +82,7 @@ vi.mock("./subagent.js", async (importOriginal) => {
 import {
   DEFAULT_SUBAGENT_IDLE_TIMEOUT_SECONDS,
   MAX_SUBAGENT_CONCURRENCY,
+  SUBAGENT_PEER_TOOLS,
 } from "@pi-desktop/shared";
 import type {
   ContextCompactionRecord,
@@ -5029,6 +5030,153 @@ describe("DesktopAgentRuntime subagents", () => {
     expect(ids).toContain("user-1");
     expect(ids).toContain("assistant-parent");
     expect(ids).not.toContain("assistant-child");
+
+    await runtime.dispose();
+  });
+
+  // Peer messaging (D277, ADR 0138). The mailbox itself is covered in
+  // `subagent-mailbox.test.ts`; here only the runtime wiring is under test.
+  const coordinator: SubagentDefinition = {
+    name: "coordinator",
+    description: "Coordinate with peers while it works.",
+    tools: ["Read", "PeerSend", "PeerInbox", "PeerWait"],
+    maxTurns: 6,
+    prompt: "Claim a file before editing it.",
+    source: "builtin",
+  };
+  const talkerOnly: SubagentDefinition = {
+    name: "talker",
+    description: "Only knows how to message peers.",
+    tools: ["PeerSend"],
+    maxTurns: 6,
+    prompt: "Talk to the others.",
+    source: "user",
+    filePath: "/home/.agents/subagents/talker.md",
+  };
+
+  it("never exposes a peer tool to the parent agent", async () => {
+    const runtime = createRuntime({ subagents: [coordinator, talkerOnly] });
+    const catalog = (runtime as any).toolCatalog as Map<string, any>;
+    const parentToolNames = (
+      (runtime as any).agent.state.tools as Array<any>
+    ).map((tool) => tool.name);
+    const deferred = (runtime as any).deferredToolNames as Set<string>;
+
+    // The definitions declare all three, yet peer tools are built per delegate:
+    // the parent already owns delegation, so it must not message delegates.
+    for (const name of SUBAGENT_PEER_TOOLS) {
+      expect(catalog.has(name)).toBe(false);
+      expect(parentToolNames).not.toContain(name);
+      expect(deferred.has(name)).toBe(false);
+    }
+    expect(taskTool(runtime)).toBeDefined();
+
+    await runtime.dispose();
+  });
+
+  it("refuses a definition whose only tools are peer messaging tools", async () => {
+    const runtime = createRuntime({ subagents: [talkerOnly] });
+    subagentRuns.calls.length = 0;
+    const tool = taskTool(runtime);
+
+    const result = await tool.execute("task-1", {
+      agent: "talker",
+      task: "Tell the others what you found.",
+    });
+
+    expect(result.content[0].text).toContain(
+      "declares only peer messaging tools",
+    );
+    // Messaging alone cannot do work, so no delegate is started at all.
+    expect(subagentRuns.calls).toHaveLength(0);
+    await expect(
+      (runtime as any).agent.afterToolCall({ toolCall: { id: "task-1" } }),
+    ).resolves.toEqual({ isError: true });
+
+    await runtime.dispose();
+  });
+
+  it("hands a mixed definition its working tools plus its own peer tools", async () => {
+    const runtime = createRuntime({ subagents: [coordinator] });
+    subagentRuns.calls.length = 0;
+    subagentRuns.instances.length = 0;
+    subagentRuns.deferred = true;
+    subagentRuns.resolveRun = undefined;
+    const tool = taskTool(runtime);
+
+    const result = await tool.execute("task-1", {
+      agent: "coordinator",
+      task: "Edit src/app.ts and tell the others which file you own.",
+    });
+
+    expect(result.details).toMatchObject({
+      agent: "coordinator",
+      status: "running",
+    });
+    const delegationId = (result.details as any).delegationId as string;
+    expect(delegationId.length).toBeGreaterThan(0);
+    expect((runtime as any).delegations.get(delegationId).status).toBe(
+      "running",
+    );
+    expect(subagentRuns.calls).toHaveLength(1);
+    expect(
+      subagentRuns.calls[0].tools.map((entry: any) => entry.name),
+    ).toEqual(["Read", "PeerSend", "PeerInbox", "PeerWait"]);
+    // A running delegate is registered under its agent name, so a peer can
+    // address it.
+    expect((runtime as any).mailbox.peers("other")).toContain("coordinator");
+    await expect(
+      (runtime as any).agent.afterToolCall({ toolCall: { id: "task-1" } }),
+    ).resolves.toBeUndefined();
+
+    subagentRuns.resolveRun!({
+      agentName: "coordinator",
+      status: "completed",
+      report: "src/app.ts is mine.",
+      turns: 1,
+      toolCalls: 1,
+    });
+    await vi.waitFor(() => {
+      expect((runtime as any).delegations.get(delegationId).status).toBe(
+        "completed",
+      );
+    });
+    // A settled delegate leaves the mailbox, so a peer learns it is gone
+    // instead of queueing for a dead inbox.
+    expect((runtime as any).mailbox.peers("other")).not.toContain(
+      "coordinator",
+    );
+    subagentRuns.deferred = false;
+
+    await runtime.dispose();
+  });
+
+  it("adds the peer messaging guidance block only when a peer tool is declared", async () => {
+    const runtime = createRuntime({ subagents: [coordinator, explorer] });
+
+    const withPeers = (
+      (runtime as any).subagentGuidance(coordinator) as string[]
+    ).join("\n\n");
+    expect(withPeers).toContain("Peer messaging:");
+    expect(withPeers).toContain('you are "coordinator"');
+    expect(withPeers).toContain(
+      "Nobody else is running right now, so peer sends will have no recipient",
+    );
+    expect(withPeers).toContain("Never ask a peer to do your task");
+
+    const withoutPeers = (
+      (runtime as any).subagentGuidance(explorer) as string[]
+    ).join("\n\n");
+    expect(withoutPeers).not.toContain("Peer messaging:");
+
+    // Once a peer is running, the block names it rather than claiming nobody is.
+    (runtime as any).mailbox.join("reviewer");
+    const withRunningPeer = (
+      (runtime as any).subagentGuidance(coordinator) as string[]
+    ).join("\n\n");
+    expect(withRunningPeer).toContain(
+      "Running alongside you right now: reviewer.",
+    );
 
     await runtime.dispose();
   });
