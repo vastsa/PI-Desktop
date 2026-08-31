@@ -6834,34 +6834,34 @@ This test plan spec is accepted when:
 #### E2E-165: Concurrent subagents coordinate through peer messages
 
 - **Preconditions**: Agent mode with two user subagent definitions that each
-  declare a working tool plus peer tools — one write-capable
-  (`tools: Read, Edit, PeerSend, PeerInbox`) and one read-only
-  (`tools: Read, Grep, PeerSend, PeerWait`). A third definition declares only
-  `PeerSend`. A fourth declares no peer tool.
+  declare a working tool plus the `Peer` tool — one write-capable
+  (`tools: Read, Edit, Peer`) and one read-only
+  (`tools: Read, Grep, Peer`). A third definition declares only `Peer`.
+  A fourth declares no peer tool.
 - **Steps**: 1) Start both peer-capable delegates in one assistant message and
-  let one claim a shared file with `PeerSend` while the other reads its inbox.
-  2) Have the read-only delegate call `PeerWait` for an answer the peer never
-  sends, and let the wait expire. 3) Send more than the 32-message inbox cap to
-  one delegate, then drain it. 4) Let one delegate settle while its peer is
-  parked in `PeerWait`. 5) Delegate to the peer-only definition. 6) Delegate to
-  the definition with no peer tool. 7) Inspect the parent's own tool list and
-  the reports the parent receives.
+  let one claim a shared file with `Peer(action="send")` while the other reads
+  its inbox. 2) Have the read-only delegate call `Peer(action="wait")` for an
+  answer the peer never sends, and let the wait expire. 3) Send more than the
+  64-message inbox cap to one delegate, then drain it. 4) Let one delegate
+  settle while its peer is waiting. 5) Delegate to the `Peer`-only definition.
+  6) Delegate to the definition with no peer tool. 7) Inspect the parent's own
+  tool list and the reports the parent receives.
 - **Expected**: A directed send reaches only the named peer and a broadcast
   reaches every other running delegate but never the sender; addressing is by
   agent name and a send to a name that is not running returns a tool error
-  listing the running peers. An expired `PeerWait` returns empty and is not a
-  failure. Draining past the cap returns 32 messages with the oldest dropped and
+  listing the running peers. An expired `wait` returns empty and is not a
+  failure. Draining past the cap returns 64 messages with the oldest dropped and
   the loss reported once, and a drained message is never returned twice. A
-  delegate settling wakes its peer's `PeerWait` immediately instead of holding it
-  to the timeout. The peer-only definition is refused at `Task` time with
-  "declares only peer messaging tools". The definition with no peer tool receives
-  no peer guidance and behaves exactly as before. `PeerSend`, `PeerInbox`, and
-  `PeerWait` never appear in the parent's tool list, no peer message appears in
-  the parent's model context, and peer tool calls appear in the transcript
-  attributed to the sending delegate under its `Task` row.
+  delegate settling wakes its peer's pending `wait` immediately instead of
+  holding it to the timeout. The `Peer`-only definition is refused at `Task`
+  time with "declares only peer messaging tools". The definition with no peer
+  tool receives no peer guidance and behaves exactly as before. `Peer` never
+  appears in the parent's tool list, no peer message appears in the parent's
+  model context, and peer tool calls appear in the transcript attributed to the
+  sending delegate under its `Task` row.
 - **Specs linked**: `03-runtime/02-agent-runtime.md` §5f.2,
   `03-runtime/03-tools-and-permissions.md` §10.2,
-  `08-meta/decisions-log.md` (D277), ADR 0138
+  `08-meta/decisions-log.md` (D277), ADR 0138, ADR 0140
 - **Acceptance**: E (tools & permissions) + C (chat/stream) + Security
 - **Milestone**: M5
 - **Status**: Unit-covered (`packages/agent-runtime/src/subagent-mailbox.test.ts`,
@@ -6870,21 +6870,21 @@ This test plan spec is accepted when:
 #### E2E-165b: Multiple concurrent delegations of one definition exchange peer messages
 
 - **Preconditions**: Agent mode with one user subagent definition declaring
-  working tools plus peer tools (e.g.
-  `tools: Read, Glob, Grep, PeerSend, PeerInbox, PeerWait`).
+  working tools plus the `Peer` tool (e.g.
+  `tools: Read, Glob, Grep, Peer`).
 - **Steps**: 1) Delegate three concurrent instances of the same definition in
   one assistant message with distinct roles (e.g. "REST advocate", "GraphQL
   advocate", "Pragmatist"). 2) Each delegate broadcasts its opening position.
-  3) Each delegate calls `PeerInbox` and responds to the others. 4) One
-  delegate settles.
+  3) Each delegate calls `Peer(action="inbox")` and responds to the others.
+  4) One delegate settles.
 - **Expected**: Each delegation gets a unique peer id (e.g. "discussant",
   "discussant-2", "discussant-3") and its own mailbox inbox. A broadcast from
   one reaches the other two. Directed messages by peer id reach only the
   target. Peer ids appear in the system-prompt guidance given to each delegate
   (`you are "discussant-2"`). When one delegate settles, its peers see it
-  disappear from their `PeerInbox` peer list. No `no-peers` or
-  `unknown-peer` errors occur during normal operation.
-- **Specs linked**: `03-runtime/02-agent-runtime.md` §5f.2, ADR 0138
+  disappear from the peer list their next `Peer(action="inbox")` returns. No
+  `no-peers` or `unknown-peer` errors occur during normal operation.
+- **Specs linked**: `03-runtime/02-agent-runtime.md` §5f.2, ADR 0138, ADR 0140
 - **Acceptance**: E (tools & permissions) + C (chat/stream)
 - **Milestone**: M5
 - **Status**: Unit-covered (`packages/agent-runtime/src/subagent-mailbox.test.ts`,

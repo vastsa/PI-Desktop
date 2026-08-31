@@ -656,22 +656,23 @@ a fact another already found. Routing coordination through the parent does not
 work either — the parent is blocked in `TaskWait`, `task` is write-once, and
 every relayed note would land in the context delegation exists to protect.
 
-**Tools.** Three names join the seven assignable tools and may appear in a
-definition's `tools:` list. They are built per delegate at spawn time and are
+**Tools.** One `Peer` tool joins the seven assignable tools and may appear in a
+definition's `tools:` list. It is built per delegate at spawn time and is
 deliberately **absent from the session tool catalog**, so the parent cannot
-reach them:
+reach it. A required `action` parameter selects the operation:
 
-- `PeerSend(to?, text, topic?, inReplyTo?)` — deliver a note to one running
-  peer, or to every running peer when `to` is omitted. A broadcast costs one
-  send. `topic` (max 80 chars) tags a thread; `inReplyTo` references a prior
-  message's `seq` for threading.
-- `PeerInbox(from?)` — drain queued messages and list running peers. Never
-  blocks; returns empty when there is nothing. When `from` is given, only that
-  sender's messages are taken and others stay queued.
-- `PeerWait(timeoutSeconds?, from?)` — block until a message arrives, the
-  timeout expires, the last peer leaves, or the run aborts. Default 30s,
-  ceiling 120s. When `from` is given, only wakes for messages from that sender;
-  unrelated messages stay queued.
+- `Peer(action="send", to?, text, topic?, inReplyTo?)` — deliver a note to one
+  running peer, or to every running peer when `to` is omitted. A broadcast
+  costs one send. `topic` (max 80 chars) tags a thread; `inReplyTo` references
+  a prior message's `seq` for threading.
+- `Peer(action="inbox", from?)` — drain queued messages and list running peers.
+  Never blocks; returns empty when there is nothing. When `from` is given, only
+  that sender's messages are taken and others stay queued.
+- `Peer(action="wait", timeoutSeconds?, from?)` — block until a message
+  arrives, the timeout expires, the last peer leaves, or the run aborts.
+  Default 30s, ceiling 120s. When `from` is given, only wakes for messages from
+  that sender; unrelated messages stay queued. An omitted or unrecognised
+  `action` falls back to `inbox`, the read-only, never-blocking operation.
 
 **Addressing and identity.** Messages are addressed by **peer id**, never by
 delegation id: a delegation id would hand a worker a handle on the parent's
@@ -679,7 +680,7 @@ registry. When a definition is delegated once, its peer id equals its agent
 name; when multiple delegations of the same definition run concurrently (e.g.
 three "discussant" subagents in a roundtable), each gets a unique peer id by
 appending a numeric suffix ("discussant-2", "discussant-3") so they can address
-each other individually. Each peer tool closes over the delegate's own peer id,
+each other individually. The `Peer` tool closes over the delegate's own peer id,
 supplied by the runtime at spawn, so `from` is not a model input — a delegate
 can neither spoof a sender nor read another peer's inbox.
 
@@ -691,14 +692,14 @@ therefore does not wrap them.
 **Bounds.** A message is capped at 2,000 characters (longer text is truncated,
 not rejected); an inbox holds 64 messages and drops oldest-first, reporting the
 loss to the reader on its next read; a delegate may send 60 times per run; and
-`PeerWait` is capped at 120 seconds, deliberately below the 300-second idle
+a `wait` is capped at 120 seconds, deliberately below the 300-second idle
 watchdog so a delegate cannot expire itself waiting for an answer that never
 comes. Draining is destructive — once read, the delegate's own context holds
 the only copy.
 
 **Membership.** A delegate joins the mailbox when it starts and leaves when it
-settles; leaving wakes every waiter, so a delegate parked in `PeerWait` on an
-agent that just exited returns immediately rather than waiting out its timeout.
+settles; leaving wakes every waiter, so a delegate waiting on an agent that
+just exited returns immediately rather than waiting out its timeout.
 Sending to a name that is not running is a tool error listing the peers that
 are, not a queued message.
 
