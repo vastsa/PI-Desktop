@@ -613,6 +613,17 @@ function AssistantErrorMessage({ message }: { message: UiMessage }) {
             <IconChevronRight size={12} aria-hidden />
             {open ? t("chat.hideErrorDetails") : t("chat.showErrorDetails")}
           </button>
+          <button
+            type="button"
+            className="copy-btn primary"
+            onClick={() =>
+              void useAppStore
+                .getState()
+                .sendPrompt(t("chat.continueCurrentTaskPrompt"))
+            }
+          >
+            {t("errors.action.continue")}
+          </button>
           {configurationError ? (
             <button
               type="button"

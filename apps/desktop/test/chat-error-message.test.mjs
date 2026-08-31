@@ -21,7 +21,7 @@ test("provider failures stay in the transcript as structured assistant messages"
   assert.match(main, /failed && empty && !event\.message\.error/);
 });
 
-test("assistant error messages expose readable provider details without retry actions", async () => {
+test("assistant error messages expose readable provider details and one Continue action", async () => {
   const transcript = await read("src/components/ChatTranscript.tsx");
   const component = transcript.slice(
     transcript.indexOf("function AssistantErrorMessage"),
@@ -36,6 +36,8 @@ test("assistant error messages expose readable provider details without retry ac
   assert.match(component, /copyErrorDetails/);
   assert.doesNotMatch(component, /retryLastPrompt/);
   assert.doesNotMatch(component, /error\.retriable/);
-  assert.doesNotMatch(component, /errors\.action\.(continue|retry)/);
+  assert.doesNotMatch(component, /errors\.action\.retry/);
+  assert.match(component, /errors\.action\.continue/);
+  assert.match(component, /chat\.continueCurrentTaskPrompt/);
   assert.match(component, /setSettingsTab\("agent"\)/);
 });
