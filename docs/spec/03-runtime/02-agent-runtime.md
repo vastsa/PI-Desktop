@@ -240,11 +240,11 @@ For every pi loop turn:
    checkpoint, while manual compaction still reports
    `CONTEXT_COMPACTION_FAILED`
 5. successful generation or deterministic recovery first appends the
-   checkpoint through host-core, then installs its summary + retained tail as
-   the runtime context for the next provider request; a hard-boundary
-   checkpoint is re-estimated before it is persisted and again before
-   continuation, and cannot authorize the next request unless it is below the
-   hard budget
+   checkpoint through host-core, then installs its summary plus the applicable
+   retained tail as the runtime context for the next provider request; a
+   hard-boundary checkpoint is re-estimated before it is persisted and again
+   before continuation, and cannot authorize the next request unless it is
+   below the hard budget
 
 Checkpoint generation and installation are separate operations.
 `buildCheckpoint` runs the preparation, budget preflight, and summary request
@@ -253,20 +253,35 @@ re-estimates, appends through host-core, updates the active checkpoint, and
 emits `compaction_end`. The blocking path composes the two back to back.
 
 **What survives a checkpoint.** The model context after a compaction is the
-summary plus recent **user** messages only; assistant and tool messages are
+summary plus, at most, one **user** message; assistant and tool messages are
 dropped from model context and remain in the visible transcript. pi's
 `prepareCompaction` still chooses the cut point, so its turn-boundary and
 split-turn handling are preserved, but the runtime then folds the split-turn
 prefix and the recent tail back into the summary input, so the summary covers
-the whole compacted range and nothing crosses the boundary uncovered. The
-retained user messages are chosen newest-first from the compacted range plus the
-previous checkpoint's retained users, up to the retention limit below; the
-message that crosses that limit is truncated rather than dropped
-(`[checkpoint truncated: this message crossed the retained context budget]`),
-and the selection is restored to chronological order. Dropping an assistant
-message also drops its tool calls, so no orphaned tool call can reach the
-provider. The retained tail is re-estimated with the summary before persistence
-and before continuation, so an oversized request still cannot pass the guard.
+the whole compacted range and nothing crosses the boundary uncovered.
+
+The retention mode is selected from the lifecycle that requested compaction:
+
+- An `active_turn` checkpoint is created while the provider must continue the
+  current task after a tool result, a `toolUse` turn, or overflow recovery. It
+  carries only the latest user message from the compacted range, up to the
+  retention limit below; if that message crosses the limit it is truncated
+  rather than dropped (`[checkpoint truncated: this message crossed the
+  retained context budget]`).
+- A `completed_turn` checkpoint is created at a terminal turn boundary, before
+  a new user prompt, or for manual compaction. It carries no naked historical
+  user messages. The summary is authoritative for completed work, and the next
+  user prompt is the only new task after the checkpoint.
+- The `fresh_window` family remains the deliberate no-summary exception from
+  ADR 0064 and always carries an empty tail.
+
+The retained-tail mode is stored in the checkpoint's opaque `details` field so
+restart preserves the same task boundary. Checkpoints written before this
+field existed are normalized to their latest user message only. Dropping an
+assistant message also drops its tool calls, so no orphaned tool call can reach
+the provider. The retained tail is re-estimated with the summary before
+persistence and before continuation, so an oversized request still cannot pass
+the guard.
 
 **Two compaction families.** Both run the same lifecycle — budget
 re-estimation, host-core append, `compaction_end`, transcript row, warning:
@@ -296,17 +311,16 @@ capped at 25% of the context window, and a 5% safety margin. The reserve floor
 is itself capped at half the window. The cut-point target passed to pi is
 derived from the model window as 20% of the hard budget clamped to
 8,000–64,000 tokens, then capped at half the hard budget; it decides where the
-boundary falls, not what survives it. The user-message retention limit is
-20,000 tokens, capped at half the hard budget so retention alone cannot fill a
-small window and leave the summary no room. None of these values are
-configurable.
+boundary falls, not what survives it. The active-user retention limit is 20,000
+tokens, capped at half the hard budget so retention alone cannot fill a small
+window and leave the summary no room. None of these values are configurable.
 
 The incoming user prompt participates in budgeting before the first provider
 request. If normal compaction fails during an automatic threshold or overflow
 recovery, the runtime persists a short recovery checkpoint with the previous
-summary (when available) and an aggressively bounded recent tail. The
+summary (when available) and an aggressively bounded applicable tail. The
 complete transcript remains durable and visible, while the next model request
-receives only that recovery checkpoint and tail. The lifecycle event marks
+receives only that recovery checkpoint and applicable tail. The lifecycle event marks
 this as `fallback: "retained_tail"` so the renderer can show a warning rather
 than a false success. If the fallback cannot be prepared, persisted, or kept
 below the safe budget, the user row and an assistant error remain durable and

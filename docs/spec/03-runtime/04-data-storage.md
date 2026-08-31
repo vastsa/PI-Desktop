@@ -117,15 +117,19 @@ Rules:
   compaction that produced it. A record whose `throughMessageId` anchor no
   longer exists is dropped, per record, on read and on fork.
   `throughMessageId` is the durable transcript boundary;
-  `firstKeptMessageId` and `retainedTail` reproduce the summary + retained-user
-  context after restart. `retainedTail` holds user messages only, and the one
-  that crossed the retention limit is stored in marked, truncated form; the
-  original message lines stay complete and authoritative for UI/diagnostics. An
-  automatic compaction failure may store `details.fallback = "retained_tail"`
-  and a short recovery summary instead of an LLM-generated summary; the complete
-  transcript remains authoritative and the fallback tail is only a model-context
-  recovery view. `details` also carries the checkpoint generation and the
-  compaction family, both opaque to the host.
+  `firstKeptMessageId` and `retainedTail` reproduce the summary + applicable
+  context after restart. `retainedTail` holds at most the latest user message
+  for an active turn; a completed-turn checkpoint has an empty tail. The
+  `details.retainedTailMode` value (`active_turn` or `completed_turn`) preserves
+  that boundary, while legacy records are normalized to their latest user
+  message. If the active message crossed the retention limit it is stored in
+  marked, truncated form; the original message lines stay complete and
+  authoritative for UI/diagnostics. An automatic compaction failure may store
+  `details.fallback = "retained_tail"` and a short recovery summary instead of
+  an LLM-generated summary; the complete transcript remains authoritative and
+  the fallback tail is only a model-context recovery view. `details` also
+  carries the checkpoint generation and the compaction family, both opaque to
+  the host.
 - Writers append with flush + fsync (message durability ≈ WAL
   `synchronous=NORMAL`); full transcript rewrites (regenerate/edit, revision
   switch, import) go through a sibling temp file + atomic rename. A normal

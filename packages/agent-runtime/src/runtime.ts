@@ -664,6 +664,8 @@ function isPatchCommand(command: unknown): boolean {
 
 type CheckpointPersistResult = "persisted" | "oversized" | "failed";
 
+type CompactionRetentionMode = "active_turn" | "completed_turn";
+
 /**
  * A pi preparation plus the anchor the checkpoint is filed against.
  *
@@ -703,18 +705,27 @@ type CheckpointBuildFailure = {
 
 type CheckpointBuild = CheckpointBuildSuccess | CheckpointBuildFailure;
 
-function retainedTailForContext(value: unknown): AgentMessage[] | undefined {
+function compactionRetentionMode(details: unknown): CompactionRetentionMode {
+  // Checkpoints written before the task-boundary fix did not record whether
+  // their retained users belonged to an in-progress turn. Treat those
+  // records as active, but still reduce them to one latest user message so a
+  // restart cannot restore a sequence of executable-looking old requests.
+  return isRecord(details) && details.retainedTailMode === "completed_turn"
+    ? "completed_turn"
+    : "active_turn";
+}
+
+function retainedTailForContext(
+  value: unknown,
+  details?: unknown,
+): AgentMessage[] | undefined {
   if (!Array.isArray(value)) return undefined;
-  return value.filter(isRecord).map((message) => {
-    if (message.role !== "assistant") return message as unknown as AgentMessage;
-    // Provider usage describes the request before compaction. Reusing it in a
-    // restored retained tail makes the next budget calculation count the old
-    // full context again instead of the compacted context.
-    return {
-      ...message,
-      usage: usageToPi(undefined),
-    } as AgentMessage;
-  });
+  const messages = value
+    .filter(isRecord)
+    .filter((message) => message.role === "user") as unknown as AgentMessage[];
+  if (compactionRetentionMode(details) === "completed_turn") return [];
+  const latestUser = messages.at(-1);
+  return latestUser ? [latestUser] : [];
 }
 
 function safeJson(value: unknown): string {
@@ -1727,7 +1738,9 @@ Delegation rules:
       // pi 0.84 dereferences `retainedTail` unconditionally when it finds a
       // previous compaction entry, so a checkpoint restored without a usable
       // tail has to read as empty rather than absent.
-      retainedTail: retainedTailForContext(checkpoint.retainedTail) ?? [],
+      retainedTail:
+        retainedTailForContext(checkpoint.retainedTail, checkpoint.details) ??
+        [],
       details: checkpoint.details,
       usage: checkpoint.usage as Usage | undefined,
     };
@@ -3631,7 +3644,11 @@ Delegation rules:
       const messages = [...this.agent.state.messages];
       if (messages.at(-1)?.role === "assistant") messages.pop();
       this.agent.state.messages = messages;
-      const compacted = await this.runCompaction("overflow", true);
+      const compacted = await this.runCompaction(
+        "overflow",
+        true,
+        "active_turn",
+      );
       if (!compacted) {
         this.emit({
           type: "error",
@@ -3719,9 +3736,9 @@ Delegation rules:
   }
 
   /**
-   * Cap on the user messages a checkpoint carries forward. Codex uses a flat
-   * 20k; the clamp keeps a small model window from being filled by retention
-   * alone, which would leave the summary no room.
+ * Cap on the active user message a checkpoint carries forward. Codex uses a
+ * flat 20k; the clamp keeps a small model window from being filled by
+ * retention alone, which would leave the summary no room.
    */
   private retainedUserMessageBudget(budget: ContextBudget): number {
     return Math.max(
@@ -3736,7 +3753,9 @@ Delegation rules:
   /**
    * Prepare a checkpoint in Codex's shape: the summary covers every message
    * since the previous boundary, and the only messages carried past the
-   * boundary are recent user messages.
+   * boundary are the latest user message only when the provider is still
+   * continuing the same turn. A completed turn carries no naked historical
+   * user messages into the next task.
    *
    * pi's cut point is still what marks the boundary, but the split it produces
    * is folded back together (see `codexShapedPreparation`), so
@@ -3747,6 +3766,7 @@ Delegation rules:
     entries: Entry[],
     budget: ContextBudget,
     retainedUserTokens = this.retainedUserMessageBudget(budget),
+    retentionMode: CompactionRetentionMode = "completed_turn",
   ) {
     const prepared = prepareCompaction(entries, {
       enabled: this.compactionEnabled,
@@ -3756,7 +3776,11 @@ Delegation rules:
     if (!prepared.ok || !prepared.value) return prepared;
     return {
       ok: true as const,
-      value: this.codexShapedPreparation(prepared.value, retainedUserTokens),
+      value: this.codexShapedPreparation(
+        prepared.value,
+        retainedUserTokens,
+        retentionMode,
+      ),
     };
   }
 
@@ -3768,9 +3792,12 @@ Delegation rules:
    *   three are contiguous and ordered, so concatenating them loses nothing —
    *   and it is what makes dropping the tail safe: no message leaves the model
    *   context without the summary covering it.
-   * - The retained tail is rebuilt from user messages alone. Dropping assistant
-   *   messages also drops their `toolCall` blocks, and their results go with
-   *   them in the same pass, so no orphaned tool call can reach a provider.
+   * - The retained tail is rebuilt from the latest user message only when the
+   *   turn is still active. Completed turns retain no user messages: their
+   *   summary is authoritative, and the next prompt becomes the sole new
+   *   instruction after the checkpoint. Dropping assistant messages also drops
+   *   their `toolCall` blocks, and their results go with them in the same pass,
+   *   so no orphaned tool call can reach a provider.
    * - `firstKeptEntryId` points at the anchor the checkpoint is filed against.
    *   It is ours, not pi's (see `ShapedPreparation`): pi 0.84 takes its own
    *   boundary from the compaction entry, so this only feeds the persisted
@@ -3779,6 +3806,7 @@ Delegation rules:
   private codexShapedPreparation(
     preparation: CompactionPreparation,
     retainedUserTokens: number,
+    retentionMode: CompactionRetentionMode,
   ): ShapedPreparation {
     // pi 0.84 replays a previous checkpoint's `retainedTail` as virtual entries
     // at the head of the compactable range, so those messages already arrive in
@@ -3789,9 +3817,11 @@ Delegation rules:
       ...preparation.turnPrefixMessages,
       ...preparation.retainedTail,
     ];
-    const candidates = messagesToSummarize.filter(
-      (message): message is UserMessage => message.role === "user",
-    );
+    const latestUser = messagesToSummarize
+      .filter((message): message is UserMessage => message.role === "user")
+      .at(-1);
+    const candidates =
+      retentionMode === "active_turn" && latestUser ? [latestUser] : [];
     return {
       ...preparation,
       firstKeptEntryId: this.fullEntries.at(-1)?.id,
@@ -3815,7 +3845,7 @@ Delegation rules:
   }
 
   private async prepareNextTurn(
-    _turn: PrepareNextTurnContext,
+    turn: PrepareNextTurnContext,
     _signal?: AbortSignal,
   ): Promise<AgentLoopTurnUpdate> {
     let context = this.rebuiltAgentContext();
@@ -3835,7 +3865,16 @@ Delegation rules:
       return { context: this.withContextBudgetReminder(context, budget) };
     }
 
-    const compacted = await this.runCompaction("threshold", false);
+    const retentionMode: CompactionRetentionMode =
+      (turn.toolResults?.length ?? 0) > 0 ||
+      turn.message?.stopReason === "toolUse"
+        ? "active_turn"
+        : "completed_turn";
+    const compacted = await this.runCompaction(
+      "threshold",
+      false,
+      retentionMode,
+    );
     if (!compacted) {
       if (!hardLimitReached) return { context };
       // Continuing would immediately issue the provider request that this
@@ -3902,11 +3941,12 @@ Delegation rules:
   private async runCompaction(
     reason: ContextCompactionReason,
     willRetry: boolean,
+    retentionMode: CompactionRetentionMode = "completed_turn",
   ): Promise<boolean> {
     if (this.compactionInProgress) return false;
     this.compactionInProgress = true;
     try {
-      return await this.performCompaction(reason, willRetry);
+      return await this.performCompaction(reason, willRetry, retentionMode);
     } finally {
       this.compactionAbort = undefined;
       this.compactionInProgress = false;
@@ -3986,6 +4026,7 @@ Delegation rules:
     preparation: ShapedPreparation,
     throughMessageId: string,
     maxSummaryChars: number,
+    retentionMode: CompactionRetentionMode,
   ): ContextCompactionRecord {
     const previousSummary = preparation.previousSummary
       ? boundedText(
@@ -3993,11 +4034,15 @@ Delegation rules:
           Math.min(COMPACTION_FALLBACK_MAX_SUMMARY_CHARS, maxSummaryChars),
         )
       : "No previous context checkpoint is available.";
+    const continuation =
+      retentionMode === "active_turn"
+        ? "The provider is continuing the active turn. Use the one retained latest user request as the source of truth for that continuation."
+        : "The previous turn is complete. Treat this summary as historical context; the next user message is the only new task to execute.";
     const summary = [
       previousSummary,
       COMPACTION_FALLBACK_MARKER,
       "The automatic summary request did not complete. Older messages before this checkpoint are omitted from the next model request.",
-      "The complete transcript remains available in the session. Use the retained recent messages as the source of truth for immediate continuation.",
+      `The complete transcript remains available in the session. ${continuation}`,
     ].join("\n\n");
     return this.createCheckpoint(
       preparation,
@@ -4008,6 +4053,7 @@ Delegation rules:
         ...this.checkpointDetails(preparation),
         fallback: "retained_tail" satisfies ContextCompactionFallback,
         failureCode: "CONTEXT_COMPACTION_FAILED",
+        retainedTailMode: retentionMode,
       },
     );
   }
@@ -4020,6 +4066,7 @@ Delegation rules:
   private prepareFallbackCompactionInput(
     entries: Entry[],
     budget: ContextBudget,
+    retentionMode: CompactionRetentionMode = "completed_turn",
   ) {
     return this.prepareCompactionInput(
       entries,
@@ -4031,6 +4078,7 @@ Delegation rules:
           Math.floor(budget.hardLimit * COMPACTION_FALLBACK_KEEP_RECENT_RATIO),
         ),
       ),
+      retentionMode,
     );
   }
 
@@ -4115,8 +4163,13 @@ Delegation rules:
     entries: Entry[],
     budget: ContextBudget,
     preparation?: ShapedPreparation,
+    retentionMode: CompactionRetentionMode = "completed_turn",
   ): ShapedPreparation | undefined {
-    const fallbackInput = this.prepareFallbackCompactionInput(entries, budget);
+    const fallbackInput = this.prepareFallbackCompactionInput(
+      entries,
+      budget,
+      retentionMode,
+    );
     if (fallbackInput.ok && fallbackInput.value) return fallbackInput.value;
 
     // A persisted checkpoint can be the last entry when a new prompt pushes
@@ -4128,6 +4181,7 @@ Delegation rules:
     const sourceInput = this.prepareFallbackCompactionInput(
       entries.slice(0, -1),
       budget,
+      retentionMode,
     );
     if (!sourceInput.ok || !sourceInput.value) return preparation;
     return {
@@ -4143,6 +4197,7 @@ Delegation rules:
     willRetry: boolean,
     preparation: ShapedPreparation | undefined,
     failureMessage: string,
+    retentionMode: CompactionRetentionMode,
   ): Promise<boolean> {
     if (reason === "manual") {
       this.emitCompactionFailure(
@@ -4157,6 +4212,7 @@ Delegation rules:
       entries,
       budget,
       preparation,
+      retentionMode,
     );
     if (!fallbackPreparation) {
       this.emitCompactionFailure(reason, undefined, failureMessage);
@@ -4182,6 +4238,7 @@ Delegation rules:
           Math.floor(budget.hardLimit * 0.75),
         ),
       ),
+      retentionMode,
     );
     const persisted = await this.persistCheckpoint(
       checkpoint,
@@ -4221,11 +4278,19 @@ Delegation rules:
    * installation is what lets a failed build fall through to the retained-tail
    * recovery path without having already changed the session.
    */
-  private async buildCheckpoint(signal: AbortSignal): Promise<CheckpointBuild> {
+  private async buildCheckpoint(
+    signal: AbortSignal,
+    retentionMode: CompactionRetentionMode,
+  ): Promise<CheckpointBuild> {
     const entries = this.entriesWithCompaction();
     const context = buildSessionContext(entries);
     const budget = this.contextBudget(context.messages);
-    const preparation = this.prepareCompactionInput(entries, budget);
+    const preparation = this.prepareCompactionInput(
+      entries,
+      budget,
+      this.retainedUserMessageBudget(budget),
+      retentionMode,
+    );
     if (!preparation.ok || !preparation.value) {
       return {
         ok: false,
@@ -4305,6 +4370,7 @@ Delegation rules:
         {
           ...(isRecord(result.value.details) ? result.value.details : {}),
           strategy: "summary" satisfies CompactionStrategy,
+          retainedTailMode: retentionMode,
         },
       ),
     };
@@ -4350,6 +4416,7 @@ Delegation rules:
         {
           ...this.checkpointDetails(rollover),
           strategy: "fresh_window" satisfies CompactionStrategy,
+          retainedTailMode: "completed_turn" satisfies CompactionRetentionMode,
         },
       ),
     };
@@ -4365,6 +4432,7 @@ Delegation rules:
     build: CheckpointBuildSuccess,
     reason: ContextCompactionReason,
     willRetry: boolean,
+    retentionMode: CompactionRetentionMode,
   ): Promise<boolean> {
     const mustFitSafeBudget =
       reason === "overflow" || build.budget.tokens >= build.budget.hardLimit;
@@ -4384,18 +4452,20 @@ Delegation rules:
       willRetry,
       build.preparation,
       "The checkpoint did not reduce context below the safe request budget",
+      retentionMode,
     );
   }
 
   private async performCompaction(
     reason: ContextCompactionReason,
     willRetry: boolean,
+    retentionMode: CompactionRetentionMode,
   ): Promise<boolean> {
     this.emit({ type: "compaction_start", reason });
     this.compactionAbort = new AbortController();
     let build: CheckpointBuild;
     try {
-      build = await this.buildCheckpoint(this.compactionAbort.signal);
+      build = await this.buildCheckpoint(this.compactionAbort.signal, retentionMode);
     } finally {
       this.compactionAbort = undefined;
     }
@@ -4411,9 +4481,10 @@ Delegation rules:
         willRetry,
         build.preparation,
         build.message,
+        retentionMode,
       );
     }
-    return await this.installCheckpoint(build, reason, willRetry);
+    return await this.installCheckpoint(build, reason, willRetry, retentionMode);
   }
 
   async compactManually(): Promise<void> {

@@ -117,10 +117,12 @@ commit 不会删除历史审查证据。
   产生它的压实。 `throughMessageId` 锚点编号为 1 的记录
   读取和分叉时，每条记录的较长存在时间都会被删除。
   `throughMessageId` 是持久转录本边界；
-  `firstKeptMessageId` 和 `retainedTail` 重现摘要+保留用户
-  重启后的上下文。 `retainedTail` 仅保存用户消息，并且
-  超过保留限制的内容将以标记、截断的形式存储；的
-  UI/diagnostics 的原始消息行保持完整和权威。安
+  `firstKeptMessageId` 和 `retainedTail` 重现摘要+适用的
+  重启后的上下文。活动回合的 `retainedTail` 最多保存最新的用户消息；
+  已完成回合的检查点尾部为空。`details.retainedTailMode`（`active_turn` 或
+  `completed_turn`）持久化该边界；没有该字段的旧记录归一化为最新的用户消息。
+  活动消息超过保留限制时，将以标记、截断的形式存储；UI/diagnostics 的原始消息行
+  保持完整和权威。
   自动压缩失败可能会存储`details.fallback = "retained_tail"`
   以及简短的恢复摘要，而不是法学硕士生成的摘要；完整的
   成绩单仍然具有权威性，后备尾部只是模型上下文

@@ -150,3 +150,4 @@ Each ADR includes:
 | 0133 | Use models.dev as the primary model catalog with pi-ai fallback | Superseded by 0134 |
 | 0134 | Use models.dev as the sole model metadata source with a local snapshot | Accepted |
 | 0135 | Retry unchanged edited prompts | Accepted |
+| 0136 | Preserve the active task boundary across context compaction | Accepted |
