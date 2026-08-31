@@ -25,6 +25,10 @@ export type PeerMessage = {
   from: string;
   /** Recipient agent name, or `undefined` for a broadcast. */
   to?: string;
+  /** Optional topic tag for structured discussions. Free-form, max 80 chars. */
+  topic?: string;
+  /** Optional reference to an earlier message's seq, for threading. */
+  inReplyTo?: number;
   text: string;
   ts: number;
 };
@@ -36,17 +40,28 @@ export type PeerMessage = {
  * blow up a peer's context.
  */
 export const MAX_PEER_MESSAGE_CHARS = 2_000;
+export const MAX_PEER_TOPIC_CHARS = 80;
 /** Per-recipient queue depth. Oldest are dropped first, and the drop is
- * reported to the reader so a delegate is never silently lied to. */
-export const MAX_PEER_INBOX_MESSAGES = 32;
+ * reported to the reader so a delegate is never silently lied to. Sized for
+ * group discussions (e.g. 5 peers × 4 msgs/round × 3 rounds = 60). */
+export const MAX_PEER_INBOX_MESSAGES = 64;
+/** PLACEHOLDER_CAPS */
 /** Total sends one delegate may make in a run. A ceiling, not a budget to
- * spend: it exists so a loop cannot become an infinite conversation. */
-export const MAX_PEER_SENDS_PER_RUN = 40;
+ * spend: it exists so a loop cannot become an infinite conversation. Sized
+ * for multi-round group discussions with room for both directed and broadcast
+ * messages. */
+export const MAX_PEER_SENDS_PER_RUN = 60;
 /** Longest a `PeerWait` may block. Deliberately far below the delegate idle
  * watchdog (300s) so a delegate waiting for a peer that will never write
  * settles as its own timeout rather than tripping the watchdog. */
 export const MAX_PEER_WAIT_SECONDS = 120;
 export const DEFAULT_PEER_WAIT_SECONDS = 30;
+
+/** Filter options for draining and waiting. */
+export type PeerReadFilter = {
+  /** Only messages from this sender. */
+  from?: string;
+};
 
 type Inbox = {
   messages: PeerMessage[];
@@ -79,6 +94,8 @@ export class SubagentMailbox {
   private readonly inboxes = new Map<string, Inbox>();
   private readonly sendCounts = new Map<string, number>();
   private seq = 0;
+
+  /** PLACEHOLDER_METHODS */
 
   /**
    * Register a running delegate under its agent name.
@@ -113,8 +130,6 @@ export class SubagentMailbox {
   leave(agentName: string): void {
     const inbox = this.inboxes.get(agentName);
     if (!inbox) return;
-    // A twin of the same definition may still be running under this name. Wake
-    // its waiters so they re-check, but keep the name addressable.
     if (inbox.members > 1) {
       inbox.members -= 1;
       for (const wake of inbox.wakers) wake();
@@ -125,8 +140,6 @@ export class SubagentMailbox {
     inbox.wakers.clear();
     this.inboxes.delete(agentName);
     this.sendCounts.delete(agentName);
-    // Waiters elsewhere may be blocked on a message this agent will now never
-    // send; wake them so they re-evaluate their peer list.
     for (const other of this.inboxes.values()) {
       for (const wake of other.wakers) wake();
       other.wakers.clear();
@@ -138,12 +151,19 @@ export class SubagentMailbox {
     return [...this.inboxes.keys()].filter((name) => name !== self);
   }
 
+  /** PLACEHOLDER_SEND */
+
   /**
    * Deliver `text` to one peer, or to every other running peer when `to` is
    * omitted. A broadcast counts as one send against the sender's cap: the cost
    * being bounded is the sender's ability to loop, not the fan-out.
    */
-  send(from: string, to: string | undefined, text: string): PeerSendOutcome {
+  send(
+    from: string,
+    to: string | undefined,
+    text: string,
+    options?: { topic?: string; inReplyTo?: number },
+  ): PeerSendOutcome {
     const body = text.trim();
     if (!body) return { ok: false, reason: "empty" };
     const sent = this.sendCounts.get(from) ?? 0;
@@ -157,6 +177,8 @@ export class SubagentMailbox {
     if (targets.length === 0) return { ok: false, reason: "no-peers" };
 
     this.sendCounts.set(from, sent + 1);
+    const topic = options?.topic?.trim().slice(0, MAX_PEER_TOPIC_CHARS) || undefined;
+    const inReplyTo = options?.inReplyTo;
     const delivered: string[] = [];
     for (const target of targets) {
       const inbox = this.inboxes.get(target);
@@ -165,6 +187,8 @@ export class SubagentMailbox {
         seq: ++this.seq,
         from,
         ...(to ? { to } : {}),
+        ...(topic ? { topic } : {}),
+        ...(inReplyTo !== undefined ? { inReplyTo } : {}),
         text: body.slice(0, MAX_PEER_MESSAGE_CHARS),
         ts: Date.now(),
       });
@@ -175,61 +199,101 @@ export class SubagentMailbox {
         );
         inbox.dropped += 1;
       }
-      for (const wake of inbox.wakers) wake();
-      inbox.wakers.clear();
+      // Wake all current waiters. A filtered waiter may re-add itself if the
+      // message does not match its filter, so we copy the set before iterating
+      // and only delete the original entries, not re-registered ones.
+      const current = [...inbox.wakers];
+      for (const wake of current) {
+        inbox.wakers.delete(wake);
+        wake();
+      }
       delivered.push(target);
     }
     return { ok: true, delivered };
   }
 
   /**
-   * Take everything queued for `agentName`. Draining is destructive because
-   * the delegate's own context is now the only copy — keeping a second copy in
-   * the mailbox would only invite it to read the same message twice.
+   * Read messages for `agentName`, optionally filtered by sender.
+   *
+   * Draining is destructive for matched messages only: unmatched messages stay
+   * queued so a delegate reading messages from one specific peer does not lose
+   * messages from others. When no filter is given, all messages are taken.
    */
-  drain(agentName: string): { messages: PeerMessage[]; dropped: number } {
+  drain(
+    agentName: string,
+    filter?: PeerReadFilter,
+  ): { messages: PeerMessage[]; dropped: number } {
     const inbox = this.inboxes.get(agentName);
     if (!inbox) return { messages: [], dropped: 0 };
-    const messages = inbox.messages;
     const dropped = inbox.dropped;
-    inbox.messages = [];
     inbox.dropped = 0;
-    return { messages, dropped };
+    if (!filter?.from) {
+      const messages = inbox.messages;
+      inbox.messages = [];
+      return { messages, dropped };
+    }
+    const matched: PeerMessage[] = [];
+    const kept: PeerMessage[] = [];
+    for (const message of inbox.messages) {
+      if (message.from === filter.from) {
+        matched.push(message);
+      } else {
+        kept.push(message);
+      }
+    }
+    inbox.messages = kept;
+    return { messages: matched, dropped };
   }
 
-  /** True when `agentName` has something queued right now. */
-  hasMessages(agentName: string): boolean {
-    return (this.inboxes.get(agentName)?.messages.length ?? 0) > 0;
+  /** True when `agentName` has something queued, optionally from a sender. */
+  hasMessages(agentName: string, filter?: PeerReadFilter): boolean {
+    const inbox = this.inboxes.get(agentName);
+    if (!inbox || inbox.messages.length === 0) return false;
+    if (!filter?.from) return true;
+    return inbox.messages.some((m) => m.from === filter.from);
   }
+
+  /** PLACEHOLDER_WAIT */
 
   /**
-   * Resolve as soon as `agentName` has mail, the deadline passes, the run
-   * aborts, or the set of peers changes such that waiting is pointless.
+   * Resolve as soon as `agentName` has matching mail, the deadline passes, the
+   * run aborts, or the set of peers changes such that waiting is pointless.
    * Returns true when mail arrived.
    */
   waitForMessages(
     agentName: string,
     deadline: number,
     signal?: AbortSignal,
+    filter?: PeerReadFilter,
   ): Promise<boolean> {
-    if (this.hasMessages(agentName)) return Promise.resolve(true);
+    if (this.hasMessages(agentName, filter)) return Promise.resolve(true);
     const inbox = this.inboxes.get(agentName);
     if (!inbox) return Promise.resolve(false);
     if (signal?.aborted) return Promise.resolve(false);
     return new Promise<boolean>((resolve) => {
       let done = false;
-      const finish = () => {
+      const finish = (force?: boolean) => {
         if (done) return;
+        // When filtering by sender, a wakeup from an unrelated message should
+        // re-arm rather than resolving. Only resolve when the filter matches,
+        // the deadline expired, the signal aborted, or the inbox is gone.
+        if (!force && filter?.from && !this.hasMessages(agentName, filter)) {
+          // Re-register the waker for the next message arrival.
+          const currentInbox = this.inboxes.get(agentName);
+          if (currentInbox) currentInbox.wakers.add(wake);
+          return;
+        }
         done = true;
         clearTimeout(timer);
         inbox.wakers.delete(wake);
-        signal?.removeEventListener("abort", finish);
-        resolve(this.hasMessages(agentName));
+        signal?.removeEventListener("abort", onAbort);
+        resolve(this.hasMessages(agentName, filter));
       };
       const wake = () => finish();
+      const onAbort = () => finish(true);
       inbox.wakers.add(wake);
-      signal?.addEventListener("abort", finish, { once: true });
-      const timer = setTimeout(finish, Math.max(0, deadline - Date.now()));
+      signal?.addEventListener("abort", onAbort, { once: true });
+      const timer = setTimeout(() => finish(true), Math.max(0, deadline - Date.now()));
     });
   }
 
@@ -252,10 +316,15 @@ export function formatPeerMessages(
   if (messages.length === 0) {
     return "No peer messages.";
   }
-  const lines = messages.map(
-    (message) =>
-      `- [${message.seq}] from ${message.from}${message.to ? "" : " (broadcast)"}: ${message.text}`,
-  );
+  const lines = messages.map((message) => {
+    const parts: string[] = [`[${message.seq}]`];
+    parts.push(`from ${message.from}`);
+    if (!message.to) parts.push("(broadcast)");
+    if (message.topic) parts.push(`[${message.topic}]`);
+    if (message.inReplyTo !== undefined) parts.push(`(re: #${message.inReplyTo})`);
+    parts.push(`:  ${message.text}`);
+    return `- ${parts.join(" ")}`;
+  });
   if (dropped > 0) {
     lines.unshift(
       `[${dropped} earlier message${dropped === 1 ? "" : "s"} dropped: your inbox was full. Peers are told when they hit the cap, but treat this as missing context.]`,

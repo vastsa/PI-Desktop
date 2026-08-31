@@ -653,12 +653,17 @@ definition's `tools:` list. They are built per delegate at spawn time and are
 deliberately **absent from the session tool catalog**, so the parent cannot
 reach them:
 
-- `PeerSend(to?, text)` — deliver a note to one running peer, or to every
-  running peer when `to` is omitted. A broadcast costs one send.
-- `PeerInbox()` — drain queued messages and list running peers. Never blocks;
-  returns empty when there is nothing.
-- `PeerWait(timeoutSeconds?)` — block until a message arrives, the timeout
-  expires, the last peer leaves, or the run aborts. Default 30s, ceiling 120s.
+- `PeerSend(to?, text, topic?, inReplyTo?)` — deliver a note to one running
+  peer, or to every running peer when `to` is omitted. A broadcast costs one
+  send. `topic` (max 80 chars) tags a thread; `inReplyTo` references a prior
+  message's `seq` for threading.
+- `PeerInbox(from?)` — drain queued messages and list running peers. Never
+  blocks; returns empty when there is nothing. When `from` is given, only that
+  sender's messages are taken and others stay queued.
+- `PeerWait(timeoutSeconds?, from?)` — block until a message arrives, the
+  timeout expires, the last peer leaves, or the run aborts. Default 30s,
+  ceiling 120s. When `from` is given, only wakes for messages from that sender;
+  unrelated messages stay queued.
 
 **Addressing and identity.** Messages are addressed by **agent name**, never by
 delegation id: the name is the only identifier a delegate can know, and a
@@ -673,8 +678,8 @@ gated: there is no file, process, or network involved. `scopeDelegateTools`
 therefore does not wrap them.
 
 **Bounds.** A message is capped at 2,000 characters (longer text is truncated,
-not rejected); an inbox holds 32 messages and drops oldest-first, reporting the
-loss to the reader on its next read; a delegate may send 40 times per run; and
+not rejected); an inbox holds 64 messages and drops oldest-first, reporting the
+loss to the reader on its next read; a delegate may send 60 times per run; and
 `PeerWait` is capped at 120 seconds, deliberately below the 300-second idle
 watchdog so a delegate cannot expire itself waiting for an answer that never
 comes. Draining is destructive — once read, the delegate's own context holds
