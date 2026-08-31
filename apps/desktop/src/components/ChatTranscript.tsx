@@ -2200,6 +2200,7 @@ export const ChatTranscript = memo(function ChatTranscript({
   queuedPermissions = 0,
   askPending = false,
   planningState,
+  paneVisible = true,
 }: {
   sessionId: string | undefined;
   messages: UiMessage[];
@@ -2211,6 +2212,12 @@ export const ChatTranscript = memo(function ChatTranscript({
   queuedPermissions?: number;
   askPending?: boolean;
   planningState?: PlanningState;
+  /**
+   * Whether this instance's retained pane is the one on screen (ADR 0135). A
+   * hidden pane keeps its DOM and scroll offset but must not chase the stream
+   * or re-anchor, because its scroller has no visible viewport to correct.
+   */
+  paneVisible?: boolean;
 }) {
   const { t } = useTranslation();
   const latestTurnResult = useAppStore((state) =>
@@ -2320,21 +2327,59 @@ export const ChatTranscript = memo(function ChatTranscript({
     };
   }, [markScrollGesture]);
 
-  // A newly activated session must paint at its latest record. Reset any
-  // manual-scroll state inherited from the previous session and position the
-  // updated DOM during layout so no top-of-transcript frame can flash first.
+  // This instance belongs to one session for its whole lifetime (ADR 0135), so
+  // "activation" is its own first layout: settle at the newest turn before the
+  // first paint, with no cross-session state to unwind.
   useLayoutEffect(() => {
     cancelFollowScroll();
     pinnedRef.current = true;
     setShowJump(false);
     scrollToBottom();
-  }, [cancelFollowScroll, sessionId, scrollToBottom]);
+  }, [cancelFollowScroll, scrollToBottom]);
 
+  // Revisits restore this pane's own position. A hidden scroller can be clamped
+  // while its content grows off screen, so the offset is captured on the way out
+  // and reapplied during the layout phase that reveals the pane: a pane the user
+  // had scrolled up in returns to that offset, a pinned one returns to the
+  // bottom, and neither shows an intermediate frame.
+  const retainedScrollTopRef = useRef<number | null>(null);
+  const wasPaneVisibleRef = useRef(paneVisible);
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    const becameHidden = wasPaneVisibleRef.current && !paneVisible;
+    const becameVisible = !wasPaneVisibleRef.current && paneVisible;
+    // The transition is only consumed once there is a scroller to read or
+    // position. Committing it before this guard would swallow the edge and lose
+    // the offset a pane hidden before its scroller existed should return to.
+    if (!el) return;
+    wasPaneVisibleRef.current = paneVisible;
+    if (becameHidden) {
+      cancelFollowScroll();
+      retainedScrollTopRef.current = el.scrollTop;
+      return;
+    }
+    if (!becameVisible) return;
+    if (pinnedRef.current) {
+      scrollToBottom();
+      return;
+    }
+    const retained = retainedScrollTopRef.current;
+    if (retained === null) return;
+    el.scrollTop = retained;
+    lastScrollTopRef.current = retained;
+  }, [cancelFollowScroll, paneVisible, scrollToBottom]);
+
+  // A hidden pane must not chase its stream: its scroller has no visible
+  // viewport, and the measurements a follow scroll depends on are unreliable
+  // while it is out of view. It re-anchors when it is revealed instead.
+  const paneVisibleRef = useRef(paneVisible);
+  paneVisibleRef.current = paneVisible;
   const scheduleFollowScroll = useCallback(() => {
+    if (!paneVisibleRef.current) return;
     if (!pinnedRef.current || followFrameRef.current !== 0) return;
     followFrameRef.current = requestAnimationFrame(() => {
       followFrameRef.current = 0;
-      if (pinnedRef.current) scrollToBottom();
+      if (paneVisibleRef.current && pinnedRef.current) scrollToBottom();
     });
   }, [scrollToBottom]);
 
@@ -2342,6 +2387,8 @@ export const ChatTranscript = memo(function ChatTranscript({
 
   const loadOlder = useCallback(() => {
     const el = scrollRef.current;
+    // Paging is a reading gesture, so a hidden pane never initiates one.
+    if (!paneVisibleRef.current) return;
     if (!el || !hasMoreBefore || loadingOlder || !onLoadOlder) {
       return;
     }
@@ -2387,11 +2434,7 @@ export const ChatTranscript = memo(function ChatTranscript({
     lastScrollTopRef.current = el.scrollTop;
   }, [messages.length, windowSize]);
 
-  useEffect(() => {
-    prependHeightRef.current = null;
-    setLoadingOlder(false);
-    setWindowSize(TRANSCRIPT_WINDOW_MIN);
-  }, [sessionId]);
+
 
   // Follow the stream only while the user is pinned to the bottom; a manual
   // scroll up pauses following and surfaces the jump-to-latest pill.
@@ -2445,7 +2488,7 @@ export const ChatTranscript = memo(function ChatTranscript({
   useLayoutEffect(() => {
     const turnStarted = isRunning && !wasRunningRef.current;
     wasRunningRef.current = isRunning;
-    if (!turnStarted) return;
+    if (!turnStarted || !paneVisible) return;
     cancelFollowScroll();
     pinnedRef.current = true;
     setShowJump(false);
@@ -2454,6 +2497,7 @@ export const ChatTranscript = memo(function ChatTranscript({
   }, [
     cancelFollowScroll,
     isRunning,
+    paneVisible,
     scheduleFollowScroll,
     scrollToBottom,
   ]);
@@ -2481,17 +2525,15 @@ export const ChatTranscript = memo(function ChatTranscript({
   }, [scheduleFollowScroll]);
 
   // Streaming tokens are deferred so the full historical transcript tree does
-  // not rebuild at the same priority as the tail. However, session switches
-  // must paint the new messages immediately in the same commit as the sessionId
-  // change — otherwise the old content flashes for one deferred frame (D247).
-  const prevSessionIdRef = useRef(sessionId);
-  const sessionSwitched = prevSessionIdRef.current !== sessionId;
-  prevSessionIdRef.current = sessionId;
+  // not rebuild at the same priority as the tail. The pane's own first commit is
+  // never deferred: its content must be on screen in the commit that reveals it,
+  // otherwise the reveal shows one empty frame.
+  const firstCommitRef = useRef(true);
+  const firstCommit = firstCommitRef.current;
   const deferredMessages = useDeferredValue(messages);
   const deferredCompactions = useDeferredValue(compactions);
-  // On session switch use messages directly; during streaming use deferred.
-  const renderedMessages = sessionSwitched ? messages : deferredMessages;
-  const renderedCompactions = sessionSwitched ? compactions : deferredCompactions;
+  const renderedMessages = firstCommit ? messages : deferredMessages;
+  const renderedCompactions = firstCommit ? compactions : deferredCompactions;
   const { entries, visible } = useMemo(
     () => buildTranscriptEntries(renderedMessages, renderedCompactions),
     [renderedMessages, renderedCompactions],
@@ -2505,24 +2547,25 @@ export const ChatTranscript = memo(function ChatTranscript({
   // runs from a scroll event, long after this render committed.
   historyLengthRef.current = allHistoryEntries.length;
 
-  // Progressive hydration: on session switch, mount only the bottom portion of
-  // the transcript in the first commit (what fits the viewport), then expand to
-  // the steady-state window after paint, with a spacer holding the scroll height.
+  // Progressive hydration, now scoped to this pane's own first commit
+  // (ADR 0135): mount only the bottom portion of the transcript when the pane
+  // mounts, then expand to the steady-state window after paint, with a spacer
+  // holding the scroll height. Because the instance belongs to one session, the
+  // gate is plain local mount state rather than a comparison against whichever
+  // session was rendered last.
   //
-  // The gate has to be derived during render, not set from an effect. With
-  // `useState(true)` the switch rendered the *whole* history first, and only then
-  // did a layout effect cut it back to the budget before expanding again - so a
-  // long session built its entire DOM, discarded it, and rebuilt it, which is the
-  // opposite of what bounding the first commit is for.
+  // The gate has to be derived during render, not set from an effect. Deciding
+  // it from a layout effect mounted the *whole* history first and only then cut
+  // it back to the budget, so a long session built its entire DOM, discarded it,
+  // and rebuilt it, which is the opposite of what bounding the first commit is
+  // for.
   //
   // The expansion target is the mounted window (D261), not the whole history: a
   // paged-in session used to end up with every row mounted for good, retaining
   // its Markdown and highlighting for rows nobody was looking at.
-  const hydratedSessionRef = useRef(sessionId);
   const [hydrationTick, setHydrationTick] = useState(0);
   const hydrationBounded =
-    hydratedSessionRef.current !== sessionId &&
-    allHistoryEntries.length > TRANSCRIPT_INITIAL_MOUNT;
+    firstCommit && allHistoryEntries.length > TRANSCRIPT_INITIAL_MOUNT;
   // The bounded commit and the expansion must show the transcript at the same
   // place. A spacer sized from a per-entry guess cannot match the rows it stands
   // in for, so the expansion moved the visible text by the estimate error - the
@@ -2534,21 +2577,21 @@ export const ChatTranscript = memo(function ChatTranscript({
   // written during render: StrictMode double-renders and abandoned concurrent
   // renders would otherwise leave a plain boolean ref set and re-bottom a
   // transcript the user had scrolled up in.
-  const boundedSessionRef = useRef<string | undefined | null>(null);
+  const boundedFirstCommitRef = useRef(false);
   useEffect(() => {
     if (!hydrationBounded) {
-      hydratedSessionRef.current = sessionId;
+      firstCommitRef.current = false;
       return;
     }
-    boundedSessionRef.current = sessionId;
+    boundedFirstCommitRef.current = true;
     const frame = requestAnimationFrame(() => {
-      hydratedSessionRef.current = sessionId;
+      firstCommitRef.current = false;
       setHydrationTick((tick) => tick + 1);
     });
     return () => cancelAnimationFrame(frame);
-    // `hydrationTick` is a dependency so a session that switches again while its
-    // expansion is still queued re-evaluates instead of keeping a stale frame.
-  }, [hydrationBounded, hydrationTick, sessionId]);
+    // `hydrationTick` is a dependency so a pane whose expansion is still queued
+    // re-evaluates instead of holding a stale frame.
+  }, [hydrationBounded, hydrationTick]);
 
   const transcriptWindow = reduceTranscriptWindow({
     historyLength: allHistoryEntries.length,
@@ -2571,20 +2614,12 @@ export const ChatTranscript = memo(function ChatTranscript({
   // is already looking at. A user who scrolled up during the bounded frame keeps
   // their position: only a still-pinned transcript is re-bottomed.
   useLayoutEffect(() => {
-    if (hydrationBounded || boundedSessionRef.current !== sessionId) return;
-    boundedSessionRef.current = null;
+    if (hydrationBounded || !boundedFirstCommitRef.current) return;
+    boundedFirstCommitRef.current = false;
     if (!pinnedRef.current) return;
     cancelFollowScroll();
     scrollToBottom();
-    // `sessionId` is a dependency so a session that is left before its expansion
-    // lands drops the pending re-anchor instead of applying it to the next one.
-  }, [
-    cancelFollowScroll,
-    hydrationBounded,
-    hydrationTick,
-    scrollToBottom,
-    sessionId,
-  ]);
+  }, [cancelFollowScroll, hydrationBounded, hydrationTick, scrollToBottom]);
 
   // The minimap must describe the mounted rows, not every loaded message: it
   // resolves a click by looking up the marker's node in the scroller, so a dash
@@ -2630,6 +2665,11 @@ export const ChatTranscript = memo(function ChatTranscript({
     const root = scrollRef.current;
     const boundary = historyBoundaryRef.current;
     if (!root || !boundary || !hasEarlierHistory) return;
+    // A hidden pane's scroller is unrendered and reports `scrollTop === 0`,
+    // which reads as "at the top" and would page history for a session nobody is
+    // looking at. The pane re-evaluates when it is revealed, because
+    // `paneVisible` is a dependency of this effect.
+    if (!paneVisible) return;
     let frame = 0;
     const advanceIfHistoryBoundaryVisible = () => {
       cancelAnimationFrame(frame);
@@ -2678,6 +2718,7 @@ export const ChatTranscript = memo(function ChatTranscript({
     hydrationTick,
     loadingOlder,
     messages.length,
+    paneVisible,
     reachTop,
     sessionId,
     transcriptWindow.hiddenAbove,
@@ -2710,13 +2751,19 @@ export const ChatTranscript = memo(function ChatTranscript({
 
   return (
     <div className="thread-wrap" ref={wrapRef}>
-      <ConversationMinimap
-        scrollRef={scrollRef}
-        messages={minimapMessages}
-        hasEarlier={hasEarlierHistory}
-        loadingEarlier={loadingOlder}
-        onRevealEarlier={revealEarlierHistory}
-      />
+      {/* The minimap measures row positions against a rendered scroller. A
+        * hidden pane has none, so measuring there would cache junk offsets and
+        * reuse them on reveal. It is out of flow and re-measures on mount, so
+        * leaving it out while hidden costs nothing. */}
+      {paneVisible ? (
+        <ConversationMinimap
+          scrollRef={scrollRef}
+          messages={minimapMessages}
+          hasEarlier={hasEarlierHistory}
+          loadingEarlier={loadingOlder}
+          onRevealEarlier={revealEarlierHistory}
+        />
+      ) : null}
       <div
         className="thread-scroll"
         ref={scrollRef}

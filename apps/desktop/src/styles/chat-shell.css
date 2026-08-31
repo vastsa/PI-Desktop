@@ -66,17 +66,42 @@
   flex-direction: column;
 }
 
-.chat-surface > .thread-wrap,
-.chat-surface > .home-main-content,
-.chat-surface > .composer-dock {
-  transition: opacity var(--motion-duration-fast) var(--motion-ease-out);
+/* Retained session panes (ADR 0135). Every recently visited session keeps one
+ * pane stacked here; exactly one is visible. The stack is a single flex column
+ * so the visible pane fills the surface exactly as one transcript used to. */
+.session-panes {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
 }
 
-.chat-surface.session-switching > .thread-wrap,
-.chat-surface.session-switching > .home-main-content,
+.session-pane {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+/* A hidden pane keeps its layout box, and therefore its scroll offset, which is
+ * the whole point of retaining it: `display: none` would drop the box and reset
+ * every scroller inside it, so returning to the session would jump. It is taken
+ * out of the flow so it cannot claim height beside the visible pane, and
+ * `content-visibility` lets the engine skip rendering work for it. */
+.session-pane[data-visible="false"] {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+  content-visibility: hidden;
+  pointer-events: none;
+}
+
+/* A cold switch keeps the current pane fully legible: only the progress track
+ * marks the wait, and the composer is what goes inert, so a prompt cannot be
+ * sent to the session being left. */
 .chat-surface.session-switching > .composer-dock {
   pointer-events: none;
-  opacity: 0.82;
 }
 
 .session-switch-progress {
