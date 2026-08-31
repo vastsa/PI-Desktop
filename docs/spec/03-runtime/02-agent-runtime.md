@@ -673,12 +673,15 @@ reach them:
   ceiling 120s. When `from` is given, only wakes for messages from that sender;
   unrelated messages stay queued.
 
-**Addressing and identity.** Messages are addressed by **agent name**, never by
-delegation id: the name is the only identifier a delegate can know, and a
-delegation id would hand a worker a handle on the parent's registry. Each peer
-tool closes over the sending delegate's own name, supplied by the runtime at
-spawn, so `from` is not a model input — a delegate can neither spoof a sender
-nor read another agent's inbox.
+**Addressing and identity.** Messages are addressed by **peer id**, never by
+delegation id: a delegation id would hand a worker a handle on the parent's
+registry. When a definition is delegated once, its peer id equals its agent
+name; when multiple delegations of the same definition run concurrently (e.g.
+three "discussant" subagents in a roundtable), each gets a unique peer id by
+appending a numeric suffix ("discussant-2", "discussant-3") so they can address
+each other individually. Each peer tool closes over the delegate's own peer id,
+supplied by the runtime at spawn, so `from` is not a model input — a delegate
+can neither spoof a sender nor read another peer's inbox.
 
 **Not a host call.** Peer messages are in-process. They carry no
 `permissionScope`, never reach host-core, consume no tool budget, and are not
@@ -699,12 +702,11 @@ agent that just exited returns immediately rather than waiting out its timeout.
 Sending to a name that is not running is a tool error listing the peers that
 are, not a queued message.
 
-Agent names are **not unique**: the parent may run two delegations of one
-definition at once, and both answer to the same name. An inbox therefore
-reference-counts its live members. A second join neither resets the send count
-nor clears the queue — resetting would let a delegate refresh its own cap by
-having a twin start, and clearing would drop mail the first delegate had not
-read — and the name stops being addressable only when its last member leaves.
+Peer ids are **unique per running delegation** for definitions that declare peer
+tools. Each delegation receives its own inbox, so three concurrent "discussant"
+delegates see each other as separate peers and can exchange messages. A delegate
+with no peer tools still uses the definition name as its peer id (used only for
+`DelegationRecord` bookkeeping).
 
 **Boundaries preserved.** Peer traffic never enters the parent's model context;
 the parent still learns only what a report says, and a delegate's prompt says

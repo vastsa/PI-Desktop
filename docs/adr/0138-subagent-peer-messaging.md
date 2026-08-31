@@ -57,11 +57,13 @@ definition.
    - `PeerInbox()` — drain queued messages and list running peers; never blocks.
    - `PeerWait(timeoutSeconds?)` — block until a message arrives, the timeout
      expires, the last peer leaves, or the run aborts.
-3. **Addressing is by agent name, not delegation id.** An agent name is the only
-   identifier a delegate can know: it is told its own name and its peers' names
-   in its prompt, and it never sees the ids `Task` returned to the parent.
-   Exposing ids would hand a delegate a handle on the delegation registry, which
-   is the parent's alone.
+3. **Addressing is by peer id, not delegation id.** When a single delegation of
+   a definition runs, its peer id equals its agent name. When multiple
+   delegations of the same definition run concurrently (e.g. three "discussant"
+   roundtable participants), each gets a unique peer id by appending a numeric
+   suffix ("discussant-2", "discussant-3") so every peer is individually
+   addressable. Exposing delegation ids would hand a delegate a handle on the
+   delegation registry, which is the parent's alone.
 4. **The sender is bound at spawn time.** Each peer tool closes over the
    delegate's own agent name, supplied by the runtime, so `from` is not a model
    input and a delegate can neither spoof a sender nor read another inbox.
@@ -92,12 +94,13 @@ definition.
     leaves when it settles. Leaving wakes every waiter, so a delegate parked in
     `PeerWait` on an agent that just exited returns immediately instead of
     waiting out its timeout.
-13. **Agent names are reference-counted, not unique.** The parent may run two
-    delegations of one definition concurrently, and both are addressed by the
-    same name. An inbox therefore counts its live members: a second join neither
-    resets the send count — which would let a delegate refresh its own cap by
-    having a twin start — nor clears the queue, and the name stops being
-    addressable only when the last member leaves.
+13. **Peer ids are unique per concurrent delegation.** When a definition
+    declares peer tools, each delegation receives a unique peer id and its own
+    mailbox inbox. The first delegation keeps the bare name ("discussant");
+    subsequent concurrent delegations of the same definition get suffixed ids
+    ("discussant-2", "discussant-3"). This ensures every delegate can address
+    and be addressed individually, which is essential for multi-instance
+    patterns such as structured roundtable debates.
 
 No IPC, storage, host protocol, or renderer change. `AgentEventEnvelope` is
 untouched: peer messages are tool calls of the delegate that sent or read them,

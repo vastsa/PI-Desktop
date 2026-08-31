@@ -5180,4 +5180,73 @@ describe("DesktopAgentRuntime subagents", () => {
 
     await runtime.dispose();
   });
+
+  it("assigns unique peerIds to concurrent delegations of the same definition", async () => {
+    const discussant: SubagentDefinition = {
+      name: "discussant",
+      description: "Participate in a multi-agent roundtable.",
+      tools: ["Read", "PeerSend", "PeerInbox", "PeerWait"],
+      maxTurns: 6,
+      prompt: "Debate the topic.",
+      source: "user" as const,
+      filePath: "/home/.agents/subagents/discussant.md",
+    };
+    const runtime = createRuntime({ subagents: [discussant] });
+    subagentRuns.calls.length = 0;
+    subagentRuns.instances.length = 0;
+    subagentRuns.deferred = true;
+    subagentRuns.resolveRun = undefined;
+    const tool = taskTool(runtime);
+
+    // Launch three concurrent delegations of the same definition.
+    const result1 = await tool.execute("task-1", {
+      agent: "discussant",
+      task: "Role: REST advocate",
+    });
+    const result2 = await tool.execute("task-2", {
+      agent: "discussant",
+      task: "Role: GraphQL advocate",
+    });
+    const result3 = await tool.execute("task-3", {
+      agent: "discussant",
+      task: "Role: Pragmatist",
+    });
+
+    // All three should be running.
+    expect((result1.details as any).status).toBe("running");
+    expect((result2.details as any).status).toBe("running");
+    expect((result3.details as any).status).toBe("running");
+
+    const delegations = runtime as any;
+    const d1 = delegations.delegations.get((result1.details as any).delegationId);
+    const d2 = delegations.delegations.get((result2.details as any).delegationId);
+    const d3 = delegations.delegations.get((result3.details as any).delegationId);
+
+    // All share the same agentName but have unique peerIds.
+    expect(d1.agentName).toBe("discussant");
+    expect(d2.agentName).toBe("discussant");
+    expect(d3.agentName).toBe("discussant");
+    expect(new Set([d1.peerId, d2.peerId, d3.peerId]).size).toBe(3);
+
+    // Each peerId is in the mailbox and can see the other two as peers.
+    const mailbox = (runtime as any).mailbox;
+    expect(mailbox.peers(d1.peerId).sort()).toEqual(
+      [d2.peerId, d3.peerId].sort(),
+    );
+    expect(mailbox.peers(d2.peerId).sort()).toEqual(
+      [d1.peerId, d3.peerId].sort(),
+    );
+
+    // Messages between them should work.
+    const sendResult = mailbox.send(d1.peerId, d2.peerId, "I own the REST argument");
+    expect(sendResult.ok).toBe(true);
+
+    const drained = mailbox.drain(d2.peerId);
+    expect(drained.messages).toHaveLength(1);
+    expect(drained.messages[0].from).toBe(d1.peerId);
+    expect(drained.messages[0].text).toBe("I own the REST argument");
+
+    subagentRuns.deferred = false;
+    await runtime.dispose();
+  });
 });

@@ -262,6 +262,10 @@ export type DelegationStatus =
 export type DelegationRecord = {
   delegationId: string;
   agentName: string;
+  /** Unique identity for peer messaging.  Equals `agentName` for the first
+   * delegation of a definition; subsequent concurrent ones get a numeric
+   * suffix so each peer is individually addressable (e.g. "discussant-2"). */
+  peerId: string;
   status: DelegationStatus;
   startedAt: number;
   completedAt?: number;
@@ -2642,7 +2646,7 @@ Delegation rules:
    * collaboration rules are deliberately left out — a delegate has no user to
    * talk to, and its report format is set by `composeSubagentSystemPrompt`.
    */
-  private subagentGuidance(definition: SubagentDefinition): string[] {
+  private subagentGuidance(definition: SubagentDefinition, peerId?: string): string[] {
     const tools = new Set(definition.tools);
     const blocks: string[] = [];
     if (tools.has("Read") || tools.has("Grep") || tools.has("Glob")) {
@@ -2665,11 +2669,14 @@ Delegation rules:
     }
     if (subagentUsesPeerMessaging(definition)) {
       // Named peers, resolved at spawn time: a delegate cannot discover who is
-      // running any other way, and addressing is by agent name (D277).
-      const peers = this.mailbox.peers(definition.name);
+      // running any other way, and addressing is by peer id (D277).  When
+      // multiple delegates share a definition name, each gets a unique peerId
+      // so they can address each other individually.
+      const self = peerId ?? definition.name;
+      const peers = this.mailbox.peers(self);
       blocks.push(
         [
-          `Peer messaging: you are "${definition.name}" and other subagents may be working in this session at the same time. ${peers.length ? `Running alongside you right now: ${peers.join(", ")}.` : "Nobody else is running right now, so peer sends will have no recipient until one starts."}`,
+          `Peer messaging: you are "${self}" and other subagents may be working in this session at the same time. ${peers.length ? `Running alongside you right now: ${peers.join(", ")}.` : "Nobody else is running right now, so peer sends will have no recipient until one starts."}`,
           "Coordination is the point, not conversation: claim a file before editing it so two agents do not fight over it, correct a peer whose assumption you just disproved, and pass a fact that saves a peer a search. Never ask a peer to do your task, and never wait on a peer to finish yours.",
           "A peer may never reply. Messages are not interrupts — a peer reads them only when it checks — so treat every exchange as best effort and keep your own report self-contained. The main agent never sees peer traffic, so anything that matters must also be in your report.",
         ].join("\n\n"),
@@ -2695,6 +2702,25 @@ Delegation rules:
       content: [{ type: "text", text }],
       details: { error: text },
     };
+  }
+
+  /**
+   * Compute a unique peer identity for a new delegation.  The first delegation
+   * of a given definition keeps its bare name (e.g. "discussant"); each extra
+   * concurrent delegation of the same name gets a numeric suffix ("discussant-2",
+   * "discussant-3", …) so every peer is individually addressable in the mailbox.
+   */
+  private assignPeerId(agentName: string): string {
+    // Collect *all* running peerIds, not just those for the same definition,
+    // so a suffix like "discussant-2" never collides with a distinct definition
+    // that happens to be named "discussant-2".
+    const running = this.runningDelegations();
+    const taken = new Set(running.map(r => r.peerId));
+    if (!taken.has(agentName)) return agentName;
+    for (let i = 2; ; i++) {
+      const candidate = `${agentName}-${i}`;
+      if (!taken.has(candidate)) return candidate;
+    }
   }
 
   /**
@@ -2808,13 +2834,10 @@ Delegation rules:
           .filter((name) => !isSubagentPeerTool(name))
           .map((name) => this.toolCatalog.get(name))
           .filter((tool): tool is AgentTool => tool !== undefined);
-        // Peer tools are built per delegate rather than resolved from the
-        // catalog: they close over the delegate's own agent name, and they must
-        // never be reachable by the parent (D277).
-        const peerTools = definition.tools
-          .filter(isSubagentPeerTool)
-          .map((name) => this.buildPeerTool(name, definition.name));
-        if (tools.length === 0 && peerTools.length === 0) {
+        // Check whether peer tools are declared. They are built later, after
+        // the unique peerId is assigned, because they close over it (D277).
+        const hasPeerTools = definition.tools.some(isSubagentPeerTool);
+        if (tools.length === 0 && !hasPeerTools) {
           return this.subagentToolError(
             toolCallId,
             `The ${definition.name} subagent declares no tool available in this session.`,
@@ -2848,9 +2871,18 @@ Delegation rules:
         const completion = new Promise<void>((resolve) => {
           resolveCompletion = resolve;
         });
+        // Assign a unique peer identity *before* creating the record so that
+        // concurrent delegations of the same definition (e.g. three
+        // "discussant" subagents in a roundtable) each get their own mailbox
+        // inbox and can address each other individually.
+        const peerId =
+          hasPeerTools
+            ? this.assignPeerId(definition.name)
+            : definition.name;
         const record: DelegationRecord = {
           delegationId,
           agentName: definition.name,
+          peerId,
           status: "running",
           startedAt,
           completion,
@@ -2863,11 +2895,15 @@ Delegation rules:
         // Peer tools bypass `scopeDelegateTools`: they are in-process message
         // passing, never a host tool call, so there is no permission scope to
         // attach and nothing for host-core to gate.
+        // Rebuild peer tools to use the unique peerId, not definition.name.
+        const resolvedPeerTools = definition.tools
+          .filter(isSubagentPeerTool)
+          .map((name) => this.buildPeerTool(name, peerId));
         const scopedTools = [
           ...this.scopeDelegateTools(tools, definition),
-          ...peerTools,
+          ...resolvedPeerTools,
         ];
-        if (peerTools.length > 0) this.mailbox.join(definition.name);
+        if (resolvedPeerTools.length > 0) this.mailbox.join(peerId);
         new SubagentRun({
           definition,
           sessionId: this.sessionId,
@@ -2881,7 +2917,7 @@ Delegation rules:
           ),
           systemPrompt: composeSubagentSystemPrompt({
             definition,
-            guidance: this.subagentGuidance(definition),
+            guidance: this.subagentGuidance(definition, peerId),
           }),
           tools: scopedTools,
           onEvent: this.onEvent,
@@ -3165,10 +3201,10 @@ Delegation rules:
     // Leave the mailbox before waking waiters, so a peer blocked in `PeerWait`
     // on this agent re-evaluates against a peer list that no longer lists it
     // rather than waiting out its own timeout (D277). The mailbox is keyed by
-    // agent name and reference-counts its members, so a name stays addressable
-    // while a twin delegation of the same definition is still running. Calling
-    // it for a delegate that never joined is a no-op.
-    this.mailbox.leave(record.agentName);
+    // peerId (unique per delegation for peer-enabled agents), so each delegate
+    // has its own inbox. Calling leave for a delegate that never joined (no
+    // peer tools) is a no-op.
+    this.mailbox.leave(record.peerId);
     record.status =
       record.stopRequested && result.status === "aborted"
         ? "stopped"
