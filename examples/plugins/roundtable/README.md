@@ -11,7 +11,7 @@ peer messaging and converge on a well-reasoned conclusion.
   protocol, peer messaging patterns, and synthesis.
 - **Agent tool** (`roundtable_start`): Returns a detailed orchestration plan
   that the parent agent follows to set up and run the discussion using Task,
-  PeerSend/PeerInbox/PeerWait, and TaskWait.
+  the `Peer` tool, and TaskWait.
 
 ## Install (dev-load)
 
