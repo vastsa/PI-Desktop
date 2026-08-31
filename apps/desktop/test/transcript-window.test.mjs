@@ -15,9 +15,10 @@ import {
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-const [transcript, minimap] = await Promise.all([
+const [transcript, minimap, surface] = await Promise.all([
   read("../src/components/ChatTranscript.tsx"),
   read("../src/components/ConversationMinimap.tsx"),
+  read("../src/components/ChatSurface.tsx"),
 ]);
 
 function window(overrides = {}) {
@@ -225,11 +226,17 @@ test("mounting rows above the viewport is anchored like a fetched page", () => {
   );
 });
 
-test("the window resets per session so a switch cannot inherit a budget", () => {
-  assert.match(
+test("the window is owned per session pane, so no switch can inherit a budget", () => {
+  // With one retained pane per session (ADR 0135) the budget is per-instance
+  // state, which is what makes it session-scoped. The reset effect that used to
+  // unwind it on `sessionId` change must be gone: a pane that reset its own
+  // window would throw away the history the user had already paged in.
+  assert.match(transcript, /const \[windowSize, setWindowSize\] = useState\(TRANSCRIPT_WINDOW_MIN\)/);
+  assert.doesNotMatch(
     transcript,
-    /prependHeightRef\.current = null;\s*setLoadingOlder\(false\);\s*setWindowSize\(TRANSCRIPT_WINDOW_MIN\);\s*\}, \[sessionId\]\)/,
+    /setWindowSize\(TRANSCRIPT_WINDOW_MIN\);\s*\}, \[sessionId\]\)/,
   );
+  assert.match(surface, /<SessionPane\s*key=\{id\}/);
 });
 
 test("the minimap keeps message dashes reachable and represents withheld history explicitly", () => {

@@ -22,10 +22,11 @@ import {
 import { createNavigationIntentController } from "../src/lib/navigation-intent.ts";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
-const [appSource, chatSurfaceSource, composerSource, transcriptSource, cardSource, askCardSource, storeSource, browserSource, messageStyleSource] =
+const [appSource, chatSurfaceSource, sessionPaneSource, composerSource, transcriptSource, cardSource, askCardSource, storeSource, browserSource, messageStyleSource] =
   await Promise.all([
     read("../src/App.tsx"),
     read("../src/components/ChatSurface.tsx"),
+    read("../src/components/SessionPane.tsx"),
     read("../src/components/Composer.tsx"),
     read("../src/components/ChatTranscript.tsx"),
     read("../src/components/PermissionCard.tsx"),
@@ -149,7 +150,9 @@ test("asktool card is a stepwise, non-expiring composer question surface", () =>
   assert.match(composerSource, /<AskToolCard/);
   assert.match(composerSource, /headAsk\(s\.pendingAsks/);
   assert.doesNotMatch(transcriptSource, /AskToolCard/);
-  assert.match(chatSurfaceSource, /askPending=\{transcriptView\.askPending\}/);
+  // Each retained pane subscribes to its own session's ask queue (ADR 0135).
+  assert.match(sessionPaneSource, /askPending=\{askPending\}/);
+  assert.match(sessionPaneSource, /headAsk\(state\.pendingAsks, sessionId\)/);
   assert.match(storeSource, /event\.type === "asktool_request"/);
   assert.match(askCardSource, /current\.multiSelect/);
   assert.match(askCardSource, /customOption/);
@@ -172,13 +175,17 @@ test("permission approval is an inline transcript card, never a global dialog", 
   assert.doesNotMatch(appSource, /PermissionDialog/);
   assert.doesNotMatch(chatSurfaceSource, /PermissionDialog/);
   assert.doesNotMatch(appSource, /Boolean\(permission\)/);
+  // The surface still needs the visible session's head request to decide
+  // between the empty state and the panes; the card itself is rendered by the
+  // pane that owns the session (ADR 0135).
+  assert.match(chatSurfaceSource, /headPermission\(state\.pendingPermissions/);
   assert.match(
-    chatSurfaceSource,
-    /pendingPermission:\s*activePermission/,
+    sessionPaneSource,
+    /pendingPermission=\{pendingPermission\}/,
   );
   assert.match(
-    chatSurfaceSource,
-    /pendingPermission=\{transcriptView\.pendingPermission\}/,
+    sessionPaneSource,
+    /headPermission\(state\.pendingPermissions, sessionId\)/,
   );
   assert.match(transcriptSource, /key=\{pendingPermission\.requestId\}/);
   assert.match(transcriptSource, /permission=\{pendingPermission\}/);
@@ -195,11 +202,14 @@ test("permission approval is an inline transcript card, never a global dialog", 
 });
 
 test("the card names the delegate that asked and how many wait behind it", () => {
-  assert.match(chatSurfaceSource, /sessionPermissions\(/);
-  assert.match(chatSurfaceSource, /Math\.max\(0, queue\.length - 1\)/);
+  assert.match(sessionPaneSource, /sessionPermissions\(/);
   assert.match(
-    chatSurfaceSource,
-    /queuedPermissions=\{transcriptView\.queuedPermissions\}/,
+    sessionPaneSource,
+    /Math\.max\(0, sessionPermissions\(state\.pendingPermissions, sessionId\)\.length - 1\)/,
+  );
+  assert.match(
+    sessionPaneSource,
+    /queuedPermissions=\{queuedPermissions\}/,
   );
   assert.match(transcriptSource, /queued=\{queuedPermissions\}/);
   assert.match(cardSource, /t\("permission\.queued", \{ count: queued \}\)/);
