@@ -227,7 +227,7 @@ test("mounting rows above the viewport is anchored like a fetched page", () => {
 });
 
 test("the window is owned per session pane, so no switch can inherit a budget", () => {
-  // With one retained pane per session (ADR 0135) the budget is per-instance
+  // With one retained pane per session (ADR 0136) the budget is per-instance
   // state, which is what makes it session-scoped. The reset effect that used to
   // unwind it on `sessionId` change must be gone: a pane that reset its own
   // window would throw away the history the user had already paged in.

@@ -447,7 +447,7 @@ M5。
   并且在可见面板成为活动会话之前提示提交保持惰性，因此提示
   无法发往正在离开的会话。
 - **链接规格**：`04-ux/08-component-spec.md` (§11)，
-  `04-ux/09-interaction-patterns.md` (§5A)、ADR 0135
+  `04-ux/09-interaction-patterns.md` (§5A)、ADR 0136
 - **接受**：C（新 project/session 输入框）
 - **里程碑**：M2
 - **状态**：草案
@@ -2330,7 +2330,7 @@ PI-Desktop 图标；两个表面都不会暴露库存 Electron 名称或图标�
   循环既不会泄漏出越来越多的已挂载转录，也不会让某个面板显示另一个
   会话的行。
 - **链接规格**：`04-ux/08-component-spec.md` §1.6 / §3.5 / §7、
-  `04-ux/09-interaction-patterns.md` §5、ADR 0130、ADR 0135
+  `04-ux/09-interaction-patterns.md` §5、ADR 0130、ADR 0136
 - **接受**：C（切换会话），质量
 - **里程碑**：M5
 - **状态**：草案

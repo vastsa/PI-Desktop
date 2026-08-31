@@ -503,7 +503,7 @@ export type AppState = {
   messages: UiMessage[];
   /**
    * Session ids whose panes stay mounted, most recently visible first and
-   * bounded by `RETAINED_SESSION_PANE_LIMIT` (ADR 0135). The head is the
+   * bounded by `RETAINED_SESSION_PANE_LIMIT` (ADR 0136). The head is the
    * session the chat surface shows.
    */
   retainedSessionIds: string[];
@@ -1422,7 +1422,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
       let detail: Awaited<typeof detailPromise> | undefined;
       // A retained pane already holds this session's painted transcript
-      // (ADR 0135). Reveal it before awaiting workspace alignment so a warm
+      // (ADR 0136). Reveal it before awaiting workspace alignment so a warm
       // switch shows the destination on its first frame; the revalidated
       // transcript lands in the same pane afterwards.
       if (
@@ -3865,7 +3865,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
 /**
  * Mirror the live transcript into the active session's retained snapshot
- * (ADR 0135).
+ * (ADR 0136).
  *
  * `messages` is written from ~30 places (streaming events, edits, retries,
  * revisions, smart stop). Keeping the snapshot in step here means none of them

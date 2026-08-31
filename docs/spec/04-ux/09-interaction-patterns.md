@@ -238,7 +238,7 @@ may be retained while exactly one workspace supplies the visible shell context.
   indistinguishable from a first visit.
 - A first-opened session settles at its newest turn. A revisited pane returns to
   the offset the user left, and a pane still pinned re-anchors to the bottom;
-  activation no longer resets manual-scroll state for a revisit (ADR 0135).
+  activation no longer resets manual-scroll state for a revisit (ADR 0136).
 - Selecting a project-scoped conversation activates its project as part of the
   store-owned selection transaction. Selecting a Temporary conversation clears
   the visible workspace. Project-scoped new-session actions pass their target

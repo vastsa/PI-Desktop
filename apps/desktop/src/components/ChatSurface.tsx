@@ -26,7 +26,7 @@ function projectName(path?: string | null, name?: string | null) {
 /**
  * Top-level chat page surface.
  *
- * Holds the retained session panes (ADR 0135). Every session the user has
+ * Holds the retained session panes (ADR 0136). Every session the user has
  * visited recently keeps its own mounted `SessionPane`, bounded by
  * `RETAINED_SESSION_PANE_LIMIT`; switching reveals the destination pane and
  * hides the others, so no transcript is rebuilt and no frame is dimmed. Only a
