@@ -23,6 +23,17 @@ export type ChangelogEntry = {
 
 const enEntries: ChangelogEntry[] = [
   {
+    version: "0.11.3",
+    date: "2026-08-31",
+    highlights: [
+      "Assign each subagent its own model from a delegation catalog, or let it inherit the parent conversation's pick.",
+      "Let concurrent subagents message each other with topic-filtered, threaded peer messaging.",
+      "Run structured roundtable discussions where multiple subagents debate a topic across rounds and summarize the outcome.",
+      "Keep model configuration controls — delegation checkbox, custom model section, and font sizes — harmonized across panels.",
+      "Replace the delegation hint text with a cleaner icon tooltip.",
+    ],
+  },
+  {
     version: "0.11.2",
     date: "2026-08-31",
     highlights: [
@@ -494,6 +505,17 @@ const enEntries: ChangelogEntry[] = [
 ];
 
 const zhCNEntries: ChangelogEntry[] = [
+  {
+    version: "0.11.3",
+    date: "2026-08-31",
+    highlights: [
+      "为每个子智能体从委派目录中分配独立模型，或让它继承父会话的选择。",
+      "让并发子智能体通过主题筛选的线程化同伴消息互相通信。",
+      "运行结构化圆桌讨论，多个子智能体围绕一个话题跨轮次辩论并总结结果。",
+      "统一模型配置控件——委派复选框、自定义模型区块和字体大小——跨面板保持一致。",
+      "用更清晰的图标提示替代委派提示文字。",
+    ],
+  },
   {
     version: "0.11.2",
     date: "2026-08-31",
