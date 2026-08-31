@@ -5,7 +5,7 @@
  *
  * The design keeps the delegation boundaries of ADR 0062/0089 intact:
  * - The mailbox is owned by the session runtime, never by a delegate. A
- *   delegate only ever holds the three peer tools the runtime hands it, so it
+ *   delegate only ever holds the one `Peer` tool the runtime hands it, so it
  *   cannot enumerate, start, or stop delegations.
  * - Nothing here reaches the parent's model context. Peer traffic is delegate
  *   to delegate; the parent still learns only what a report says.
@@ -51,11 +51,24 @@ export const MAX_PEER_INBOX_MESSAGES = 64;
  * for multi-round group discussions with room for both directed and broadcast
  * messages. */
 export const MAX_PEER_SENDS_PER_RUN = 60;
-/** Longest a `PeerWait` may block. Deliberately far below the delegate idle
+/** Longest a wait may block. Deliberately far below the delegate idle
  * watchdog (300s) so a delegate waiting for a peer that will never write
  * settles as its own timeout rather than tripping the watchdog. */
 export const MAX_PEER_WAIT_SECONDS = 120;
 export const DEFAULT_PEER_WAIT_SECONDS = 30;
+
+/**
+ * Operations one `Peer` tool can perform (D277, ADR 0138). A delegate declares
+ * the single `Peer` tool; `action` picks the operation. Splitting them was the
+ * original three-tool design; folding them into one tool keeps the capability
+ * countable as a single tool without changing the mailbox semantics.
+ */
+export const PEER_ACTIONS = ["send", "inbox", "wait"] as const;
+export type PeerAction = (typeof PEER_ACTIONS)[number];
+
+export function isPeerAction(value: string): value is PeerAction {
+  return (PEER_ACTIONS as readonly string[]).includes(value);
+}
 
 /** Filter options for draining and waiting. */
 export type PeerReadFilter = {

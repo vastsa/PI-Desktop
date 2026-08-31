@@ -28,11 +28,12 @@ is a professional perspective such as "architect", "security-reviewer",
 will naturally produce productive disagreement. Three to five roles work well;
 more than five tends to produce noise without proportionally deeper insight.
 
-**Peer messaging.** Subagents communicate exclusively through the PeerSend,
-PeerInbox, and PeerWait tools. PeerSend delivers a message to a named peer or
-broadcasts it to all peers. PeerInbox retrieves messages that other peers have
-sent. PeerWait blocks until at least one new message arrives, which is useful
-when a subagent finishes its turn early and needs to wait for others.
+**Peer messaging.** Subagents communicate exclusively through the single `Peer`
+tool, choosing an `action` each call: `Peer(action="send")` delivers a message
+to a named peer or broadcasts it to all peers, `Peer(action="inbox")` retrieves
+messages that other peers have sent, and `Peer(action="wait")` blocks until at
+least one new message arrives, which is useful when a subagent finishes its turn
+early and needs to wait for others.
 
 **Rounds.** The discussion proceeds in a fixed number of rounds, typically three.
 Each round has a clear purpose: opening positions, iterative debate, and closing
@@ -54,28 +55,31 @@ Every subagent follows the same three-phase protocol.
 Each subagent states its initial position on the topic from its role's
 perspective. The opening statement should be concise and substantive: what does
 this role care about, what risks does it see, and what outcome does it favor?
-After composing the statement, the subagent uses PeerSend to broadcast it to
-all other participants. Then it calls PeerWait or PeerInbox to see the opening
-statements from others before proceeding to the discussion phase.
+After composing the statement, the subagent uses `Peer(action="send")` without
+`to` to broadcast it to all other participants. Then it calls
+`Peer(action="wait")` or `Peer(action="inbox")` to see the opening statements
+from others before proceeding to the discussion phase.
 
 ### Phase 2 — Discussion rounds
 
 For each discussion round (the total number is specified in the brief):
 
-1. Call PeerInbox to read all new messages from other participants.
+1. Call `Peer(action="inbox")` to read all new messages from other
+   participants.
 2. Identify the most important points, challenges, or questions directed at
    this role.
-3. Respond to those points substantively. Use PeerSend addressed to a specific
-   peer when responding directly to that peer's argument. Use a broadcast
-   PeerSend for observations relevant to the whole group.
+3. Respond to those points substantively. Use `Peer(action="send", to="<peer>")`
+   when responding directly to that peer's argument. Use a broadcast
+   `Peer(action="send")` for observations relevant to the whole group.
 4. Refine the role's position based on what was learned. If another
    participant's argument is convincing, say so explicitly and adjust.
 5. Avoid filler, narration, or restating points that have already been
    acknowledged. Every message should advance the discussion.
 
-Subagents should check PeerInbox at the start of every thinking cycle, not
-only at the formal round boundary. If a subagent finishes composing a response
-before others have sent theirs, it should call PeerWait to avoid busy-looping.
+Subagents should check `Peer(action="inbox")` at the start of every thinking
+cycle, not only at the formal round boundary. If a subagent finishes composing a
+response before others have sent theirs, it should call
+`Peer(action="wait")` to avoid busy-looping.
 
 ### Phase 3 — Closing round
 
@@ -85,9 +89,9 @@ Each subagent composes a final position summary that includes:
 - Key points from other participants that influenced this position.
 - Any unresolved concerns or risks the group did not fully address.
 
-The subagent broadcasts its closing summary via PeerSend, then returns its
-final report as the task result. The report is what the parent agent collects
-after calling TaskWait.
+The subagent broadcasts its closing summary via `Peer(action="send")`, then
+returns its final report as the task result. The report is what the parent
+agent collects after calling TaskWait.
 
 ## How the parent agent orchestrates
 
@@ -99,8 +103,8 @@ You do not participate in the discussion itself. Your responsibilities are:
    produce constructive friction.
 
 2. **Create subagent definitions.** For each role, create a temporary subagent
-   definition that includes PeerSend, PeerInbox, and PeerWait in its tool
-   list. The definition's system brief must contain:
+   definition that includes the `Peer` tool in its tool list. The definition's
+   system brief must contain:
    - The assigned role name.
    - The discussion topic.
    - The list of all other participants (by role name).
@@ -131,9 +135,9 @@ You do not participate in the discussion itself. Your responsibilities are:
   make a concrete point. Avoid long monologues; they slow down the round and
   make it harder for peers to respond to specific arguments.
 
-- **Check PeerInbox early and often.** A subagent that composes a long response
-  without reading incoming messages may address points that were already
-  conceded or miss a critical question.
+- **Check `Peer(action="inbox")` early and often.** A subagent that composes a
+  long response without reading incoming messages may address points that were
+  already conceded or miss a critical question.
 
 - **Claim resources before modifying them.** If the roundtable involves
   subagents that might touch shared resources (files, state), each subagent
@@ -163,5 +167,5 @@ Use the `roundtable_start` tool to generate the full orchestration plan. Pass
 the topic, optional role list, optional round count, and optional goal. The
 tool returns a detailed step-by-step instruction that you should follow to
 set up and run the roundtable. The tool does not start subagents itself; it
-gives you the plan and you execute it using Task, PeerSend, PeerInbox,
-PeerWait, and TaskWait.
+gives you the plan and you execute it using Task, the `Peer` tool, and
+TaskWait.

@@ -5039,7 +5039,7 @@ describe("DesktopAgentRuntime subagents", () => {
   const coordinator: SubagentDefinition = {
     name: "coordinator",
     description: "Coordinate with peers while it works.",
-    tools: ["Read", "PeerSend", "PeerInbox", "PeerWait"],
+    tools: ["Read", "Peer"],
     maxTurns: 6,
     prompt: "Claim a file before editing it.",
     source: "builtin",
@@ -5047,7 +5047,7 @@ describe("DesktopAgentRuntime subagents", () => {
   const talkerOnly: SubagentDefinition = {
     name: "talker",
     description: "Only knows how to message peers.",
-    tools: ["PeerSend"],
+    tools: ["Peer"],
     maxTurns: 6,
     prompt: "Talk to the others.",
     source: "user",
@@ -5062,7 +5062,7 @@ describe("DesktopAgentRuntime subagents", () => {
     ).map((tool) => tool.name);
     const deferred = (runtime as any).deferredToolNames as Set<string>;
 
-    // The definitions declare all three, yet peer tools are built per delegate:
+    // The definition declares the peer tool, yet it is built per delegate:
     // the parent already owns delegation, so it must not message delegates.
     for (const name of SUBAGENT_PEER_TOOLS) {
       expect(catalog.has(name)).toBe(false);
@@ -5121,7 +5121,7 @@ describe("DesktopAgentRuntime subagents", () => {
     expect(subagentRuns.calls).toHaveLength(1);
     expect(
       subagentRuns.calls[0].tools.map((entry: any) => entry.name),
-    ).toEqual(["Read", "PeerSend", "PeerInbox", "PeerWait"]);
+    ).toEqual(["Read", "Peer"]);
     // A running delegate is registered under its agent name, so a peer can
     // address it.
     expect((runtime as any).mailbox.peers("other")).toContain("coordinator");
@@ -5147,6 +5147,49 @@ describe("DesktopAgentRuntime subagents", () => {
       "coordinator",
     );
     subagentRuns.deferred = false;
+
+    await runtime.dispose();
+  });
+
+  it("exposes one Peer tool that dispatches send, inbox and wait by action", async () => {
+    const runtime = createRuntime({ subagents: [coordinator] });
+    const mailbox = (runtime as any).mailbox;
+    const peer = (runtime as any).buildPeerTool("researcher") as any;
+    expect(peer.name).toBe("Peer");
+    // A single tool carries the three operations; `action` is its only
+    // required parameter, so the model cannot blur the operations together.
+    expect(peer.parameters.required).toEqual(["action"]);
+
+    mailbox.join("researcher");
+    mailbox.join("reviewer");
+
+    // send delivers to one running peer, and only to that peer's inbox.
+    const sent = await peer.execute("call-send", {
+      action: "send",
+      to: "reviewer",
+      text: "I own src/a.ts",
+    });
+    expect(sent.content[0].text).toBe("Delivered to reviewer.");
+    expect(mailbox.drain("reviewer").messages).toHaveLength(1);
+    expect(mailbox.hasMessages("researcher")).toBe(false);
+
+    // Seed this delegate's own inbox from the other peer, then drain it.
+    mailbox.send("reviewer", "researcher", "Schema is set");
+    const inbox = await peer.execute("call-inbox", { action: "inbox" });
+    expect(inbox.details.action).toBe("inbox");
+    expect(inbox.content[0].text).toContain("Running peers:");
+    expect(inbox.content[0].text).toContain("Schema is set");
+    expect(inbox.details.messages).toHaveLength(1);
+
+    // wait with a short timeout returns empty when nobody writes, without
+    // blocking forever.
+    const waited = await peer.execute("call-wait", {
+      action: "wait",
+      timeoutSeconds: 1,
+    });
+    expect(waited.details.action).toBe("wait");
+    expect(waited.details.messages).toHaveLength(0);
+    expect(waited.details.timedOut).toBe(true);
 
     await runtime.dispose();
   });
@@ -5185,7 +5228,7 @@ describe("DesktopAgentRuntime subagents", () => {
     const discussant: SubagentDefinition = {
       name: "discussant",
       description: "Participate in a multi-agent roundtable.",
-      tools: ["Read", "PeerSend", "PeerInbox", "PeerWait"],
+      tools: ["Read", "Peer"],
       maxTurns: 6,
       prompt: "Debate the topic.",
       source: "user" as const,
@@ -5254,7 +5297,7 @@ describe("DesktopAgentRuntime subagents", () => {
     const discussant: SubagentDefinition = {
       name: "discussant",
       description: "Participate in a multi-agent roundtable.",
-      tools: ["Read", "PeerSend", "PeerInbox", "PeerWait"],
+      tools: ["Read", "Peer"],
       maxTurns: 6,
       prompt: "Debate the topic.",
       source: "user" as const,

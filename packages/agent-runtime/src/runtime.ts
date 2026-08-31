@@ -102,9 +102,11 @@ import { PathMutex } from "./path-lock.js";
 import {
   DEFAULT_PEER_WAIT_SECONDS,
   formatPeerMessages,
+  isPeerAction,
   MAX_PEER_MESSAGE_CHARS,
   MAX_PEER_SENDS_PER_RUN,
   MAX_PEER_WAIT_SECONDS,
+  PEER_ACTIONS,
   SubagentMailbox,
 } from "./subagent-mailbox.js";
 import {
@@ -1182,7 +1184,7 @@ export class DesktopAgentRuntime {
   /**
    * Peer mailbox shared by the delegates of this session (D277, ADR 0138).
    * Owned here rather than by any delegate, so a delegate can only reach it
-   * through the three peer tools the runtime hands it.
+   * through the single `Peer` tool the runtime hands it.
    */
   private mailbox = new SubagentMailbox();
   /** Serializes same-path mutations across the parent and its delegates. */
@@ -1343,7 +1345,7 @@ Use the Task tool when:
 - Implementation: a multi-file change with a complete, self-contained spec — delegate to fixer, which may write inside the workspace.
 - Context economy: wide searches, long logs, multi-file surveys whose intermediate output you do not need — explorer / test-runner.
 - Batch sharding: the same bounded job repeated over many independent targets.${this.subagents.some(subagentUsesPeerMessaging) ? `
-- Structured debate / roundtable: start one Task(\"discussant\") per perspective in the same assistant message. Each brief must state: the role name, the topic, the list of other participants (by peer id), the number of discussion rounds, and the protocol (open with PeerSend, read with PeerInbox/PeerWait, respond, then close). Never pack multiple roles into a single Task — each role must be its own delegate so they can debate through peer messaging.` : ""}
+- Structured debate / roundtable: start one Task(\"discussant\") per perspective in the same assistant message. Each brief must state: the role name, the topic, the list of other participants (by peer id), the number of discussion rounds, and the protocol (open with Peer send, read with Peer inbox/wait, respond, then close). Never pack multiple roles into a single Task — each role must be its own delegate so they can debate through peer messaging.` : ""}
 
 Delegation rules:
 - Task returns immediately with a delegation id. Do not sit idle: keep working on your own independent line, then converge with TaskWait (mode="any" + minCompleted to converge early) when you need results, TaskList to check progress, TaskStop to stop.
@@ -2678,6 +2680,7 @@ Delegation rules:
       blocks.push(
         [
           `Peer messaging: you are "${self}" and other subagents may be working in this session at the same time. ${peers.length ? `Running alongside you right now: ${peers.join(", ")}.` : "Nobody else is running right now, so peer sends will have no recipient until one starts."}`,
+          "Use the single Peer tool: Peer(action=send) delivers a note (omit `to` to broadcast), Peer(action=inbox) reads your queued messages without blocking, and Peer(action=wait) blocks until one arrives.",
           "Coordination is the point, not conversation: claim a file before editing it so two agents do not fight over it, correct a peer whose assumption you just disproved, and pass a fact that saves a peer a search. Never ask a peer to do your task, and never wait on a peer to finish yours.",
           "A peer may never reply. Messages are not interrupts — a peer reads them only when it checks — so treat every exchange as best effort and keep your own report self-contained. The main agent never sees peer traffic, so anything that matters must also be in your report.",
         ].join("\n\n"),
@@ -2896,10 +2899,11 @@ Delegation rules:
         // Peer tools bypass `scopeDelegateTools`: they are in-process message
         // passing, never a host tool call, so there is no permission scope to
         // attach and nothing for host-core to gate.
-        // Rebuild peer tools to use the unique peerId, not definition.name.
-        const resolvedPeerTools = definition.tools
-          .filter(isSubagentPeerTool)
-          .map((name) => this.buildPeerTool(name, peerId));
+        // Rebuild the single `Peer` tool bound to the unique peerId, not
+        // definition.name.
+        const resolvedPeerTools = definition.tools.some(isSubagentPeerTool)
+          ? [this.buildPeerTool(peerId)]
+          : [];
         const scopedTools = [
           ...this.scopeDelegateTools(tools, definition),
           ...resolvedPeerTools,
@@ -2980,56 +2984,83 @@ Delegation rules:
   }
 
   /**
-   * Build one peer messaging tool bound to `self` (D277, ADR 0138).
+   * Build the single `Peer` messaging tool bound to `self` (D277, ADR 0138,
+   * ADR 0140).
    *
-   * The tool closes over the delegate's own agent name, so a delegate cannot
-   * spoof a sender or read another agent's inbox: the name is supplied by the
-   * runtime at spawn time, never by the model. These tools are deliberately
-   * absent from `toolCatalog` — the parent already owns the delegation
-   * lifecycle and must not gain a second, weaker channel to its delegates.
+   * One tool carries the three peer operations — `send`, `inbox` and `wait` —
+   * selected by the required `action` parameter, so an opt-in delegate
+   * declares one tool instead of three. The tool closes over the delegate's
+   * own agent name, so a delegate cannot spoof a sender or read another
+   * agent's inbox: the name is supplied by the runtime at spawn time, never
+   * by the model. It is deliberately absent from `toolCatalog` — the parent
+   * already owns the delegation lifecycle and must not gain a second, weaker
+   * channel to its delegates.
    */
-  private buildPeerTool(name: string, self: string): AgentTool {
-    if (name === "PeerSend") return this.buildPeerSendTool(self);
-    if (name === "PeerInbox") return this.buildPeerInboxTool(self);
-    return this.buildPeerWaitTool(self);
-  }
-
-  /** `PeerSend`: hand a bounded note to one peer, or to all of them. */
-  private buildPeerSendTool(self: string): AgentTool {
+  private buildPeerTool(self: string): AgentTool {
     return {
-      name: "PeerSend",
-      label: "Peer Send",
+      name: "Peer",
+      label: "Peer",
       description: [
-        "Send a short note to another subagent running right now in this session. Omit `to` to reach every running peer.",
-        `Use it to coordinate, not to transfer data: claim a file before you edit it, warn a peer that a shared assumption is wrong, or pass a fact that saves the peer a search. Keep it under ${MAX_PEER_MESSAGE_CHARS} characters — a peer that needs a file reads the file.`,
-        "Peers only read their inbox when they call PeerInbox or PeerWait, so a note is not an interrupt and never a substitute for your own report. The main agent does not see peer messages.",
-        `You may send at most ${MAX_PEER_SENDS_PER_RUN} times in this run. Use \`topic\` to tag a thread, and \`inReplyTo\` to reference a specific message seq.`,
+        "Talk to another subagent running right now in this session. `action` picks the operation: `send` delivers a note, `inbox` reads your queued messages without blocking, `wait` blocks until one arrives.",
+        "Use `send` to coordinate, not to transfer data: claim a file before you edit it, warn a peer that a shared assumption is wrong, or pass a fact that saves the peer a search. Keep it under ${MAX_PEER_MESSAGE_CHARS} characters — a peer that needs a file reads the file. Omit `to` to reach every running peer.",
+        `You may send at most ${MAX_PEER_SENDS_PER_RUN} times in this run. Use \`topic\` to tag a thread and \`inReplyTo\` to reference a specific message seq.`,
+        "`inbox` clears the messages queued for you and lists the subagents running alongside you. Use `from` to read only messages from one peer — unmatched messages stay queued. Messages are removed once read, so keep anything that matters. Check it before you start work another peer may already own, and again before you write your report.",
+        `\`wait\` returns early with whatever is queued and returns empty if nothing arrives within \`timeoutSeconds\` (default ${DEFAULT_PEER_WAIT_SECONDS}, max ${MAX_PEER_WAIT_SECONDS}). Only wait when you are genuinely blocked on an answer you asked a peer for — a peer under no obligation to reply may never reply, and an empty wait is not a failure; proceed on your own and say so in your report. It also returns as soon as your last peer finishes, because nobody is left to write.`,
+        "Peers only read their inbox when they call `inbox` or `wait`, so a note is not an interrupt and never a substitute for your own report. The main agent does not see peer messages.",
       ].join("\n\n"),
       parameters: Type.Object({
+        action: Type.Union(
+          PEER_ACTIONS.map((value) => Type.Literal(value)),
+          {
+            description:
+              "Which operation to run: `send` a note to a peer, `inbox` read and clear your queued messages, or `wait` for one to arrive.",
+          },
+        ),
         to: Type.Optional(
           Type.String({
             description:
-              "Agent name of the recipient. Omit to broadcast to every running peer.",
+              "For `send`: agent name of the recipient. Omit to broadcast to every running peer.",
           }),
         ),
-        text: Type.String({
-          description: "The note. State the fact or the claim, not narration.",
-        }),
+        text: Type.Optional(
+          Type.String({
+            description: "For `send`: the note. State the fact or the claim, not narration.",
+          }),
+        ),
         topic: Type.Optional(
           Type.String({
             description:
-              "Short topic tag for threading, e.g. 'schema-design' or 'file-ownership'. Max 80 chars.",
+              "For `send`: short topic tag for threading, e.g. 'schema-design' or 'file-ownership'. Max 80 chars.",
           }),
         ),
         inReplyTo: Type.Optional(
           Type.Number({
             description:
-              "Seq number of the message you are replying to. Helps peers follow the thread.",
+              "For `send`: seq number of the message you are replying to. Helps peers follow the thread.",
+          }),
+        ),
+        from: Type.Optional(
+          Type.String({
+            description:
+              "For `inbox`/`wait`: only read or wait for messages from this sender; other messages stay queued.",
+          }),
+        ),
+        timeoutSeconds: Type.Optional(
+          Type.Number({
+            minimum: 1,
+            maximum: MAX_PEER_WAIT_SECONDS,
+            description: `For \`wait\`: max seconds to wait; defaults to ${DEFAULT_PEER_WAIT_SECONDS}.`,
           }),
         ),
       }),
       executionMode: "sequential",
-      execute: async (_toolCallId, params) => {
+      execute: async (_toolCallId, params, signal) => {
+        const action =
+          isRecord(params) &&
+          typeof params.action === "string" &&
+          isPeerAction(params.action)
+            ? params.action
+            : "inbox";
         const to =
           isRecord(params) && typeof params.to === "string" && params.to.trim()
             ? params.to.trim()
@@ -3037,108 +3068,66 @@ Delegation rules:
         const text =
           isRecord(params) && typeof params.text === "string" ? params.text : "";
         const topic =
-          isRecord(params) && typeof params.topic === "string" && params.topic.trim()
+          isRecord(params) &&
+          typeof params.topic === "string" &&
+          params.topic.trim()
             ? params.topic.trim()
             : undefined;
         const inReplyTo =
           isRecord(params) && typeof params.inReplyTo === "number"
             ? params.inReplyTo
             : undefined;
-        const outcome = this.mailbox.send(self, to, text, { topic, inReplyTo });
-        if (outcome.ok) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: `Delivered to ${outcome.delivered.join(", ")}.`,
-              },
-            ],
-            details: { delivered: outcome.delivered },
-          };
-        }
-        const peers = this.mailbox.peers(self);
-        const peerList = peers.length ? peers.join(", ") : "none";
-        const reason =
-          outcome.reason === "unknown-peer"
-            ? `No running peer named "${to}". Running peers: ${peerList}.`
-            : outcome.reason === "no-peers"
-              ? "No other subagent is running, so there is nobody to tell. Carry on and put this in your report instead."
-              : outcome.reason === "send-cap"
-                ? `You have used all ${MAX_PEER_SENDS_PER_RUN} peer sends for this run. Finish the work and put anything else in your report.`
-                : "A peer message needs non-empty text.";
-        return {
-          content: [{ type: "text", text: reason }],
-          details: { error: reason, peers },
-        };
-      },
-    };
-  }
-
-  /** `PeerInbox`: drain queued peer messages without blocking. */
-  private buildPeerInboxTool(self: string): AgentTool {
-    return {
-      name: "PeerInbox",
-      label: "Peer Inbox",
-      description:
-        "Read and clear the peer messages waiting for you, and list the subagents running alongside you. Returns immediately, empty or not. Use `from` to read only messages from one peer — unmatched messages stay queued. Messages are removed once read, so keep anything that matters. Check it before you start work another peer may already own, and again before you write your report.",
-      parameters: Type.Object({
-        from: Type.Optional(
-          Type.String({
-            description:
-              "Only drain messages from this sender; other messages stay queued.",
-          }),
-        ),
-      }),
-      executionMode: "sequential",
-      execute: async (_toolCallId, params) => {
         const from =
           isRecord(params) && typeof params.from === "string" && params.from.trim()
             ? params.from.trim()
             : undefined;
         const filter = from ? { from } : undefined;
-        const { messages, dropped } = this.mailbox.drain(self, filter);
-        const peers = this.mailbox.peers(self);
-        const peerLine = `Running peers: ${peers.length ? peers.join(", ") : "none"}.`;
-        return {
-          content: [
-            {
-              type: "text",
-              text: `${formatPeerMessages(messages, dropped)}\n\n${peerLine}`,
-            },
-          ],
-          details: { messages, dropped, peers },
-        };
-      },
-    };
-  }
 
-  /** `PeerWait`: block briefly until a peer writes. */
-  private buildPeerWaitTool(self: string): AgentTool {
-    return {
-      name: "PeerWait",
-      label: "Peer Wait",
-      description: [
-        `Wait until a peer message arrives, then read it. Returns early with whatever is queued, and returns empty if nothing arrives within \`timeoutSeconds\` (default ${DEFAULT_PEER_WAIT_SECONDS}, max ${MAX_PEER_WAIT_SECONDS}).`,
-        "Only wait when you are genuinely blocked on an answer you asked a peer for. A peer under no obligation to reply may never reply, and an empty wait is not a failure — proceed on your own and say so in your report. It also returns as soon as your last peer finishes, because nobody is left to write.",
-        "Use `from` to wait for a specific peer only; unmatched messages stay queued.",
-      ].join("\n\n"),
-      parameters: Type.Object({
-        timeoutSeconds: Type.Optional(
-          Type.Number({
-            minimum: 1,
-            maximum: MAX_PEER_WAIT_SECONDS,
-            description: `Max seconds to wait; defaults to ${DEFAULT_PEER_WAIT_SECONDS}.`,
-          }),
-        ),
-        from: Type.Optional(
-          Type.String({
-            description:
-              "Only wait for and drain messages from this sender.",
-          }),
-        ),
-      }),
-      executionMode: "sequential",
-      execute: async (_toolCallId, params, signal) => {
+        if (action === "send") {
+          const outcome = this.mailbox.send(self, to, text, { topic, inReplyTo });
+          if (outcome.ok) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Delivered to ${outcome.delivered.join(", ")}.`,
+                },
+              ],
+              details: { action, delivered: outcome.delivered },
+            };
+          }
+          const peers = this.mailbox.peers(self);
+          const peerList = peers.length ? peers.join(", ") : "none";
+          const reason =
+            outcome.reason === "unknown-peer"
+              ? `No running peer named "${to}". Running peers: ${peerList}.`
+              : outcome.reason === "no-peers"
+                ? "No other subagent is running, so there is nobody to tell. Carry on and put this in your report instead."
+                : outcome.reason === "send-cap"
+                  ? `You have used all ${MAX_PEER_SENDS_PER_RUN} peer sends for this run. Finish the work and put anything else in your report.`
+                  : "A peer message needs non-empty text.";
+          return {
+            content: [{ type: "text", text: reason }],
+            details: { action, error: reason, peers },
+          };
+        }
+
+        if (action === "inbox") {
+          const { messages, dropped } = this.mailbox.drain(self, filter);
+          const peers = this.mailbox.peers(self);
+          const peerLine = `Running peers: ${peers.length ? peers.join(", ") : "none"}.`;
+          return {
+            content: [
+              {
+                type: "text",
+                text: `${formatPeerMessages(messages, dropped)}\n\n${peerLine}`,
+              },
+            ],
+            details: { action, messages, dropped, peers },
+          };
+        }
+
+        // action === "wait"
         const timeoutSeconds =
           isRecord(params) && typeof params.timeoutSeconds === "number"
             ? Math.min(
@@ -3146,11 +3135,6 @@ Delegation rules:
                 MAX_PEER_WAIT_SECONDS,
               )
             : DEFAULT_PEER_WAIT_SECONDS;
-        const from =
-          isRecord(params) && typeof params.from === "string" && params.from.trim()
-            ? params.from.trim()
-            : undefined;
-        const filter = from ? { from } : undefined;
         await this.mailbox.waitForMessages(
           self,
           Date.now() + timeoutSeconds * 1000,
@@ -3165,7 +3149,13 @@ Delegation rules:
             : `${formatPeerMessages(messages, dropped)}\n\nRunning peers: ${peers.length ? peers.join(", ") : "none"}.`;
         return {
           content: [{ type: "text", text: body }],
-          details: { messages, dropped, peers, timedOut: messages.length === 0 },
+          details: {
+            action,
+            messages,
+            dropped,
+            peers,
+            timedOut: messages.length === 0,
+          },
         };
       },
     };
