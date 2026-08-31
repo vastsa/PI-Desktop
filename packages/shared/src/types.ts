@@ -258,6 +258,12 @@ export type ModelBinding = {
    * the capability the model actually has rather than switching the encoding.
    */
   supportsDocuments?: boolean | null;
+  /**
+   * Whether this model is available for AI-driven subagent delegation.
+   * When true, the model appears in the delegation model catalog so the
+   * parent agent can pick it at Task time. Defaults to false (opt-in).
+   */
+  availableForSubagents?: boolean;
 };
 
 export type Risk = "low" | "medium" | "high";

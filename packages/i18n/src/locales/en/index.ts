@@ -855,6 +855,8 @@ export const en = {
     imageInput: "Images",
     documentInput: "PDF",
     thinkingDisabledHint: "Thinking is disabled for this model",
+    availableForSubagents: "Available for AI delegation",
+    availableForSubagentsHint: "Allow AI to use this model when delegating tasks to subagents",
     notSupported: "Not supported",
     searchModelId: "Search model ID…",
     reasoning: "reasoning",

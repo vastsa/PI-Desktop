@@ -1388,6 +1388,70 @@ async function resolveAgentRuntimeLaunch(
       };
     },
   });
+  // Delegation model catalog: every model binding flagged
+  // `availableForSubagents` is pre-resolved so the system prompt can list
+  // them and the parent agent can pass them to `Task.model` without an
+  // extra RPC round-trip. Statically pinned entries from definitions take
+  // precedence — they were resolved above with stricter diagnostics.
+  for (const row of providers.providers) {
+    if (!row.enabled) continue;
+    for (const binding of row.models ?? []) {
+      if (!binding.availableForSubagents) continue;
+      const key = `${row.vendorKey ?? row.name}/${binding.id}`;
+      if (subagentBindings.providers[key]) continue; // already pinned
+      const isVendorAccount = row.authKind === OAUTH_AUTH_KIND;
+      let apiKey = "";
+      if (!isVendorAccount && row.authKind !== "none") {
+        try {
+          apiKey =
+            (
+              await host!.call<{ value?: string }>("providers.getSecret", {
+                id: row.id,
+              })
+            ).value ?? "";
+        } catch {
+          continue; // skip if secret unavailable
+        }
+        if (!apiKey) continue;
+      }
+      let mc;
+      let caps;
+      if (isVendorAccount) {
+        const vb = await vendorOAuth.bindingFor(row.id, binding.id);
+        if (!vb) continue;
+        mc =
+          vb.modelConfig ??
+          genericModelConfig(binding.id, vb.baseUrl ?? row.baseUrl ?? "");
+        caps = {
+          supportsReasoning: vb.supportsReasoning,
+          supportedThinkingLevels: [...vb.supportedThinkingLevels],
+        };
+      } else {
+        const model = modelsDevCatalog.findModel({
+          vendorKey: row.vendorKey,
+          baseUrl: row.baseUrl,
+          modelId: binding.id,
+        });
+        mc = model
+          ? modelConfigFromModelsDev(model, row.baseUrl)
+          : genericModelConfig(binding.id, row.baseUrl ?? "");
+        caps = capabilitiesFromModelConfig(mc);
+      }
+      subagentBindings.providers[key] = {
+        id: row.id,
+        name: row.name,
+        ...(row.baseUrl ? { baseUrl: row.baseUrl } : {}),
+        modelId: binding.id,
+        apiKey,
+        ...(row.authKind ? { authKind: row.authKind } : {}),
+        ...(row.apiStyle ? { apiStyle: row.apiStyle } : {}),
+        supportsReasoning: caps.supportsReasoning,
+        supportedThinkingLevels: [...caps.supportedThinkingLevels],
+        ...(mc ? { modelConfig: mc } : {}),
+      };
+    }
+  }
+
   const subagentDiagnostics = [
     ...subagentCatalog.diagnostics,
     ...subagentBindings.diagnostics,
@@ -4322,6 +4386,76 @@ async function startSidecar(): Promise<void> {
   s.setVendorAuthResolver(async ({ providerId }) =>
     vendorOAuth.resolveAuth(providerId),
   );
+  s.setSubagentModelResolver(async (key: string) => {
+    const slash = key.indexOf("/");
+    if (slash < 1) throw new Error("invalid model key");
+    const providerPart = key.slice(0, slash);
+    const modelId = key.slice(slash + 1);
+    if (!modelId) throw new Error("empty model id");
+
+    const allProviders = await listRuntimeProviders(false);
+    // Use the same matching logic as resolveSubagentProviders
+    const alias = providerPart.trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+    const provider =
+      allProviders.find((p) => p.id === providerPart) ||
+      allProviders.filter((p) => (p.vendorKey ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "") === alias)[0] ||
+      allProviders.filter((p) => p.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "") === alias)[0];
+    if (!provider) throw new Error(`no provider matches "${providerPart}"`);
+
+    // Check if the model has availableForSubagents enabled
+    const binding = provider.models?.find(
+      (m: any) => m.id === modelId || m.id.toLowerCase() === modelId.toLowerCase(),
+    );
+    if (!binding?.availableForSubagents) {
+      throw new Error(
+        `model "${modelId}" on provider "${provider.name}" is not enabled for delegation`,
+      );
+    }
+
+    const isVendorAccount = provider.authKind === OAUTH_AUTH_KIND;
+    let apiKey = "";
+    if (!isVendorAccount && provider.authKind !== "none") {
+      const secret = await host!.call<{ value?: string }>(
+        "providers.getSecret",
+        { id: provider.id },
+      );
+      apiKey = secret?.value ?? "";
+      if (!apiKey) throw new Error(`provider "${provider.name}" has no API key`);
+    }
+
+    await modelsDevCatalog.ensureLoaded();
+    let modelConfig;
+    let capabilities;
+    if (isVendorAccount) {
+      const vendorBinding = await vendorOAuth.bindingFor(provider.id, modelId);
+      if (!vendorBinding) throw new Error(`vendor "${provider.name}" does not offer "${modelId}"`);
+      modelConfig = vendorBinding.modelConfig ?? genericModelConfig(modelId, vendorBinding.baseUrl ?? provider.baseUrl ?? "");
+      capabilities = { supportsReasoning: vendorBinding.supportsReasoning, supportedThinkingLevels: [...vendorBinding.supportedThinkingLevels] };
+    } else {
+      const model = modelsDevCatalog.findModel({
+        vendorKey: provider.vendorKey,
+        baseUrl: provider.baseUrl,
+        modelId,
+      });
+      modelConfig = model
+        ? modelConfigFromModelsDev(model, provider.baseUrl)
+        : genericModelConfig(modelId, provider.baseUrl ?? "");
+      capabilities = capabilitiesFromModelConfig(modelConfig);
+    }
+
+    return {
+      id: provider.id,
+      name: provider.name,
+      ...(provider.baseUrl ? { baseUrl: provider.baseUrl } : {}),
+      modelId,
+      apiKey,
+      ...(provider.authKind ? { authKind: provider.authKind } : {}),
+      ...(provider.apiStyle ? { apiStyle: provider.apiStyle } : {}),
+      supportsReasoning: capabilities.supportsReasoning,
+      supportedThinkingLevels: [...capabilities.supportedThinkingLevels],
+      ...(modelConfig ? { modelConfig } : {}),
+    };
+  });
   // Agent-driven work panel preview (D100): open a workspace HTML file in
   // the embedded browser; live reload keeps it current through later edits.
   s.setLocalTool("BrowserPreview", async ({ args, sessionId }) => {

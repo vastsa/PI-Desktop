@@ -846,6 +846,8 @@ export const zhCN = {
     imageInput: "图片",
     documentInput: "PDF",
     thinkingDisabledHint: "该模型未启用思考",
+    availableForSubagents: "可供 AI 自动调度",
+    availableForSubagentsHint: "允许 AI 在委派子任务时自动选用此模型",
     notSupported: "不支持",
     searchModelId: "搜索模型 ID…",
     reasoning: "思考",

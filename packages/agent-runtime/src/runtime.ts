@@ -37,7 +37,7 @@ import {
   type Usage,
   type UserMessage,
 } from "@earendil-works/pi-ai";
-import { DEFAULT_COMMAND_TIMEOUT_MS } from "@pi-desktop/shared";
+import { DEFAULT_COMMAND_TIMEOUT_MS, OAUTH_AUTH_KIND } from "@pi-desktop/shared";
 import type {
   AgentEventEnvelope,
   AgentStatus,
@@ -1345,6 +1345,9 @@ Delegation rules:
 - Always fill Task's \`description\` so the user sees what each subagent is doing. Integrate findings and say which subagent produced what.
 - Never end the turn with subagents still running: wait for or stop them.
 - Never delegate what you can finish in a couple of tool calls, and never delegate anything that needs the user.`,
+            ...(this.subagentModelSummary()
+              ? [this.subagentModelSummary()!]
+              : []),
           ]
         : []),
       // Search-tool steering. Read/Grep/Glob are host-bounded and scopeable;
@@ -2564,6 +2567,76 @@ Delegation rules:
   }
 
   /**
+   * On-demand model resolution for Task-time model overrides. Asks Electron
+   * main to resolve a `providerId/modelId` key that was not statically pinned
+   * by any definition. The result is cached for the life of this runtime.
+   */
+  private async resolveSubagentModel(
+    key: string,
+  ): Promise<RuntimeProviderConfig | undefined> {
+    try {
+      const result = await (this.host as any).call(
+        "provider.resolveSubagentModel",
+        { key },
+      );
+      if (result && typeof result === "object" && "modelId" in result) {
+        const provider = result as RuntimeProviderConfig;
+        // Vendor-account (OAuth) providers need a resolveAuth callback so
+        // pi-ai can obtain short-lived credentials per request. The JSON-RPC
+        // result does not carry the callback, so we attach one that calls
+        // back to Electron main — the same pattern sidecar.ts uses at launch.
+        if (provider.authKind === OAUTH_AUTH_KIND) {
+          provider.resolveAuth = () =>
+            (this.host as any).call("provider.resolveAuth", {
+              sessionId: this.sessionId,
+              providerId: provider.id,
+            });
+        }
+        this.subagentProviders[key] = provider;
+        return provider;
+      }
+    } catch {
+      // Host does not support on-demand resolution or the key is invalid.
+    }
+    return undefined;
+  }
+
+  /**
+   * Keys the parent agent can pass as `Task.model`. Includes both statically
+   * pinned providers and the `availableModels` catalog injected at launch.
+   */
+  private availableSubagentModelKeys(): string[] {
+    return Object.keys(this.subagentProviders);
+  }
+
+  /**
+   * Build a markdown summary of models available for delegation, so the parent
+   * agent can make informed model choices for Task.model overrides.
+   */
+  private subagentModelSummary(): string | undefined {
+    const keys = Object.keys(this.subagentProviders);
+    if (keys.length === 0) return undefined;
+    const lines: string[] = [
+      "Available models for delegation (pass as `model` parameter on Task):\n",
+    ];
+    for (const key of keys) {
+      const provider = this.subagentProviders[key];
+      const reasoning = provider.supportsReasoning ? "reasoning" : "standard";
+      const levels = provider.supportedThinkingLevels?.length
+        ? provider.supportedThinkingLevels.join("/")
+        : "none";
+      lines.push(
+        `- \`${key}\` — ${provider.name}, ${reasoning}, thinking: ${levels}`,
+      );
+    }
+    lines.push(
+      "",
+      "Pick cheaper/faster models for simple searches and read-only reviews. Reserve expensive reasoning models for complex multi-step analysis.",
+    );
+    return lines.join("\n");
+  }
+
+  /**
    * Session facts a delegate needs and cannot discover: the shell dialect, the
    * scratch directory, and the project's own instruction chain. The parent's
    * collaboration rules are deliberately left out — a delegate has no user to
@@ -2664,6 +2737,12 @@ Delegation rules:
               "Short label for this delegation (3-6 words), shown to the user.",
           }),
         ),
+        model: Type.Optional(
+          Type.String({
+            description:
+              "Override the delegate's model for this run, e.g. 'anthropic/claude-sonnet-4-20250514'. Omit to use the subagent's default. Pick cheaper/faster models for simple searches; reserve expensive reasoning models for complex analysis.",
+          }),
+        ),
       }),
       // Set in `rebuildToolCatalog`, which owns every execution mode; repeated
       // here so the intent survives a tool built outside that path.
@@ -2689,15 +2768,41 @@ Delegation rules:
             `Delegating to ${definition.name} needs a non-empty \`task\` brief.`,
           );
         }
-        const provider = this.subagentProvider(definition);
-        if (!provider) {
-          // A pinned model that is not configured must not silently fall back
-          // to the session model: the definition asked for that model on
-          // purpose, and the parent can do the work itself instead.
-          return this.subagentToolError(
-            toolCallId,
-            `The ${definition.name} subagent pins ${definition.model?.providerId}/${definition.model?.modelId}, which is not configured in PI-Desktop. Do this work yourself or delegate to another subagent.`,
-          );
+        // Model override: Task.model > definition.model pin > session model.
+        const modelOverride =
+          isRecord(params) && typeof params.model === "string"
+            ? params.model.trim()
+            : "";
+        let provider: RuntimeProviderConfig | undefined;
+        if (modelOverride) {
+          provider = this.subagentProviders[modelOverride];
+          if (!provider) {
+            // On-demand resolution: ask Electron main for a provider the
+            // definitions did not statically pin but the user has configured.
+            try {
+              provider = await this.resolveSubagentModel(modelOverride);
+            } catch {
+              // Resolution failed; fall through to the error below.
+            }
+          }
+          if (!provider) {
+            const available = this.availableSubagentModelKeys();
+            const hint = available.length
+              ? ` Available: ${available.join(", ")}.`
+              : " No models are configured for delegation.";
+            return this.subagentToolError(
+              toolCallId,
+              `Model "${modelOverride}" is not available for delegation.${hint}`,
+            );
+          }
+        } else {
+          provider = this.subagentProvider(definition);
+          if (!provider) {
+            return this.subagentToolError(
+              toolCallId,
+              `The ${definition.name} subagent pins ${definition.model?.providerId}/${definition.model?.modelId}, which is not configured in PI-Desktop. Do this work yourself or delegate to another subagent.`,
+            );
+          }
         }
         const tools = definition.tools
           .filter((name) => !isSubagentPeerTool(name))

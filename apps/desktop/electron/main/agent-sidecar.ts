@@ -65,6 +65,7 @@ const HOST_PROXY_ALLOWED = new Set([
   "plans.abort",
   "project.instructions.resolve",
   "provider.resolveAuth",
+  "provider.resolveSubagentModel",
   "app.health",
 ]);
 
@@ -346,6 +347,39 @@ export class AgentSidecar {
     return this.vendorAuthResolver({ sessionId, providerId });
   }
 
+  /**
+   * On-demand subagent model resolution. The runtime calls this when the
+   * parent agent passes a `model` override on Task that was not statically
+   * pinned by any definition. Main resolves it against the user's configured
+   * providers and the models.dev catalog, respecting the
+   * `availableForSubagents` gate on each model binding.
+   */
+  private subagentModelResolver:
+    | ((key: string) => Promise<unknown>)
+    | null = null;
+
+  setSubagentModelResolver(
+    resolver: (key: string) => Promise<unknown>,
+  ): void {
+    this.subagentModelResolver = resolver;
+  }
+
+  private async resolveSubagentModel(
+    params: Record<string, unknown>,
+  ): Promise<unknown> {
+    if (!this.subagentModelResolver) {
+      throw new Error("subagent model resolver unavailable");
+    }
+    const key = String(params.key ?? "").trim();
+    if (!key || !key.includes("/")) {
+      throw Object.assign(
+        new Error("invalid model key; expected 'provider/model'"),
+        { code: -32602 },
+      );
+    }
+    return this.subagentModelResolver(key);
+  }
+
   private async onLine(line: string) {
     if (!line.trim()) return;
     let msg: any;
@@ -401,6 +435,13 @@ export class AgentSidecar {
         }
         if (method === "provider.resolveAuth") {
           const result = await this.resolveVendorAuth(params);
+          this.writeToChild(
+            JSON.stringify({ jsonrpc: "2.0", id: msg.id, result }) + "\n",
+          );
+          return;
+        }
+        if (method === "provider.resolveSubagentModel") {
+          const result = await this.resolveSubagentModel(params);
           this.writeToChild(
             JSON.stringify({ jsonrpc: "2.0", id: msg.id, result }) + "\n",
           );

@@ -493,6 +493,23 @@ export function ModelSelectionPanes({
                         />
                       </div>
                     </div>
+                    <div className="provider-chosen-delegation">
+                      <label className="provider-chosen-capability">
+                        <input
+                          type="checkbox"
+                          checked={binding.availableForSubagents ?? false}
+                          onChange={(event) =>
+                            updateBinding(binding.id, {
+                              availableForSubagents: event.target.checked || undefined,
+                            })
+                          }
+                        />
+                        <span>{t("settings.availableForSubagents")}</span>
+                      </label>
+                      <span className="provider-chosen-delegation-hint">
+                        {t("settings.availableForSubagentsHint")}
+                      </span>
+                    </div>
                   </div>
                 </li>
               );
