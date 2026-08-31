@@ -5249,4 +5249,29 @@ describe("DesktopAgentRuntime subagents", () => {
     subagentRuns.deferred = false;
     await runtime.dispose();
   });
+
+  it("includes roundtable delegation guidance when a peer-enabled subagent exists", async () => {
+    const discussant: SubagentDefinition = {
+      name: "discussant",
+      description: "Participate in a multi-agent roundtable.",
+      tools: ["Read", "PeerSend", "PeerInbox", "PeerWait"],
+      maxTurns: 6,
+      prompt: "Debate the topic.",
+      source: "user" as const,
+      filePath: "/home/.agents/subagents/discussant.md",
+    };
+    // With a peer-enabled subagent, the delegation section includes the roundtable pattern.
+    const withPeer = createRuntime({ subagents: [discussant, explorer] });
+    const promptWithPeer = (withPeer as any).agent.state.systemPrompt as string;
+    expect(promptWithPeer).toContain("Structured debate / roundtable");
+    expect(promptWithPeer).toContain("one Task per perspective");
+    expect(promptWithPeer).toContain("Never pack multiple roles into a single Task");
+    await withPeer.dispose();
+
+    // Without any peer-enabled subagent, the roundtable bullet is absent.
+    const withoutPeer = createRuntime({ subagents: [explorer] });
+    const promptWithoutPeer = (withoutPeer as any).agent.state.systemPrompt as string;
+    expect(promptWithoutPeer).not.toContain("Structured debate / roundtable");
+    await withoutPeer.dispose();
+  });
 });

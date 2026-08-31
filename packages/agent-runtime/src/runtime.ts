@@ -1342,7 +1342,8 @@ Use the Task tool when:
 - Adversarial review: after implementing a non-trivial change, delegate a read-only review of it to code-reviewer before you commit.
 - Implementation: a multi-file change with a complete, self-contained spec — delegate to fixer, which may write inside the workspace.
 - Context economy: wide searches, long logs, multi-file surveys whose intermediate output you do not need — explorer / test-runner.
-- Batch sharding: the same bounded job repeated over many independent targets.
+- Batch sharding: the same bounded job repeated over many independent targets.${this.subagents.some(subagentUsesPeerMessaging) ? `
+- Structured debate / roundtable: start one Task per perspective in the same assistant message, each with a distinct role brief. Each delegate uses PeerSend/PeerInbox/PeerWait to exchange arguments with the others; you collect the reports and synthesize. Never pack multiple roles into a single Task — each role must be its own delegate so they can debate through peer messaging.` : ""}
 
 Delegation rules:
 - Task returns immediately with a delegation id. Do not sit idle: keep working on your own independent line, then converge with TaskWait (mode="any" + minCompleted to converge early) when you need results, TaskList to check progress, TaskStop to stop.
