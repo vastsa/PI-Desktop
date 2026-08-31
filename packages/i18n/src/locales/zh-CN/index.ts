@@ -287,6 +287,7 @@ export const zhCN = {
     resultFailedBody: "这一轮在完成前停下了，但已有内容都还在。",
     resultContinue: "继续",
     continueUnfinishedTaskPrompt: "继续用户未完成的任务",
+    continueCurrentTaskPrompt: "继续当前任务",
     resultSteps_one: "1 个步骤",
     resultSteps_other: "{{count}} 个步骤",
     reviewChangeShow: "显示 {{path}} 的{{status}}改动（新增 {{additions}} 行，删除 {{deletions}} 行）",

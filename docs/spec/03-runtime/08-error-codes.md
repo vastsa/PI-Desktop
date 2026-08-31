@@ -258,8 +258,11 @@ provider ID, and model ID. Provider detail is capped at 600 characters and
 common credential/header values are redacted before event emission or
 persistence. When available, the details disclosure and timing logs may also
 show bounded `phase`, `providerStatus`, `providerCode`, `providerWaitMs`,
-`streamMs`, and `retryAttempt` fields. Manual retry remains available from the
-session-scoped failed-turn recovery card rather than the assistant error card.
+`streamMs`, and `retryAttempt` fields. The assistant error card offers a localized
+Continue action that resends the continuation prompt (`继续当前任务` /
+`Continue the current task`) in the same session without truncating the failed
+turn. Regenerate remains available from the session-scoped failed-turn recovery
+card rather than the assistant error card.
 
 ## 6. i18n key convention
 
