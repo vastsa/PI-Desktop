@@ -104,7 +104,7 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
   visible pane on its own session, exposes `aria-busy`, and shows a 2px progress
   track; the destination pane is revealed only once it has committed. A warm
   destination is revealed with no busy affordance at all. Nothing is dimmed and no
-  skeleton-to-transcript animation is inserted (ADR 0136).
+  skeleton-to-transcript animation is inserted (ADR 0137).
 - Settings, Plugins, Pull requests, and Scheduled are route-level lazy modules.
   Chat and shell chrome stay in the initial renderer bundle; first entry to a
   secondary destination shows a compact localized status indicator until its
@@ -352,7 +352,7 @@ visually distinct from list content.
   transcript is relabeled with the destination session id. First activation of a
   session settles at its newest turn without flashing the transcript top; a
   revisited pane returns to the position the user left, and a pane still pinned
-  re-anchors to the bottom (ADR 0136).
+  re-anchors to the bottom (ADR 0137).
 - Hovering a session row for 120ms or keyboard-focusing it starts one coalesced
   transcript prefetch. Selection reuses an in-flight or recent cached result,
   revalidates it in the background, and never waits for an older superseded

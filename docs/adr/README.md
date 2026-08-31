@@ -150,4 +150,4 @@ Each ADR includes:
 | 0133 | Use models.dev as the primary model catalog with pi-ai fallback | Superseded by 0134 |
 | 0134 | Use models.dev as the sole model metadata source with a local snapshot | Accepted |
 | 0135 | Retry unchanged edited prompts | Accepted |
-| 0136 | Retained session panes | Accepted (amends 0130 clauses 4/5) |
+| 0137 | Retained session panes | Accepted (amends 0130 clauses 4/5) |

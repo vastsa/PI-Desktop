@@ -614,7 +614,7 @@ Each scenario is documented in this format:
   track, nothing is dimmed, and prompt submission stays inert until the visible
   pane is the active session, so a prompt cannot reach the session being left.
 - **Specs linked**: `04-ux/08-component-spec.md` (§11),
-  `04-ux/09-interaction-patterns.md` (§5A), ADR 0136
+  `04-ux/09-interaction-patterns.md` (§5A), ADR 0137
 - **Acceptance**: C (new project/session composer)
 - **Milestone**: M2
 - **Status**: Draft
@@ -2709,7 +2709,7 @@ Each scenario is documented in this format:
   scrolled up in returns to that measured offset rather than the bottom, and a
   pane left pinned re-anchors to the bottom. The new turn appends normally.
 - **Specs linked**: `03-runtime/04-data-storage.md`,
-  `03-runtime/06-host-rpc-protocol.md`, ADR 0136
+  `03-runtime/06-host-rpc-protocol.md`, ADR 0137
 - **Acceptance**: C (chat stream), F (persistence), Quality
 - **Milestone**: M5
 - **Status**: Unit-covered (`transcripts::tests::layout_window_reads_only_the_requested_tail`,
@@ -2757,7 +2757,7 @@ Each scenario is documented in this format:
   never jumps or scrolls up and down after the first painted frame. Scrolling up
   keeps the chosen position across later switches instead of being pulled back to
   the bottom.
-- **Specs linked**: `04-ux/08-component-spec.md`, ADR 0136
+- **Specs linked**: `04-ux/08-component-spec.md`, ADR 0137
 - **Acceptance**: C (chat stream), Quality
 - **Milestone**: M5
 - **Status**: Unit-covered (`interaction-performance.test.mjs`
@@ -2789,7 +2789,7 @@ Each scenario is documented in this format:
   accessibility tree, and repeated cycling neither leaks a growing number of
   mounted transcripts nor leaves a pane showing another session's rows.
 - **Specs linked**: `04-ux/08-component-spec.md` §1.6 / §3.5 / §7,
-  `04-ux/09-interaction-patterns.md` §5, ADR 0130, ADR 0136
+  `04-ux/09-interaction-patterns.md` §5, ADR 0130, ADR 0137
 - **Acceptance**: C (switch sessions), Quality
 - **Milestone**: M5
 - **Status**: Draft

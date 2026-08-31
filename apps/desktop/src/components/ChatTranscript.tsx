@@ -2208,7 +2208,7 @@ export const ChatTranscript = memo(function ChatTranscript({
   askPending?: boolean;
   planningState?: PlanningState;
   /**
-   * Whether this instance's retained pane is the one on screen (ADR 0136). A
+   * Whether this instance's retained pane is the one on screen (ADR 0137). A
    * hidden pane keeps its DOM and scroll offset but must not chase the stream
    * or re-anchor, because its scroller has no visible viewport to correct.
    */
@@ -2322,7 +2322,7 @@ export const ChatTranscript = memo(function ChatTranscript({
     };
   }, [markScrollGesture]);
 
-  // This instance belongs to one session for its whole lifetime (ADR 0136), so
+  // This instance belongs to one session for its whole lifetime (ADR 0137), so
   // "activation" is its own first layout: settle at the newest turn before the
   // first paint, with no cross-session state to unwind.
   useLayoutEffect(() => {
@@ -2543,7 +2543,7 @@ export const ChatTranscript = memo(function ChatTranscript({
   historyLengthRef.current = allHistoryEntries.length;
 
   // Progressive hydration, now scoped to this pane's own first commit
-  // (ADR 0136): mount only the bottom portion of the transcript when the pane
+  // (ADR 0137): mount only the bottom portion of the transcript when the pane
   // mounts, then expand to the steady-state window after paint, with a spacer
   // holding the scroll height. Because the instance belongs to one session, the
   // gate is plain local mount state rather than a comparison against whichever

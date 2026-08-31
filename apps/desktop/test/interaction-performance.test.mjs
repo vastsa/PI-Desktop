@@ -57,7 +57,7 @@ test("stream rendering avoids duplicate frame state and coalesces following", ()
   assert.match(transcript, /const scheduleFollowScroll = useCallback/);
   assert.match(transcript, /followFrameRef\.current !== 0/);
   // The pane's own first commit is never deferred: its content has to be in the
-  // commit that reveals it, or the reveal shows one empty frame (ADR 0136).
+  // commit that reveals it, or the reveal shows one empty frame (ADR 0137).
   assert.match(
     transcript,
     /const renderedMessages = firstCommit \? messages : deferredMessages/,
@@ -172,7 +172,7 @@ test("session activation pins the latest record before the first paint", () => {
 test("a revealed pane restores its own scroll position in the layout phase", () => {
   // Captured on the way out and reapplied as the pane is revealed: a hidden
   // scroller can be clamped while its content grows off screen, and a passive
-  // effect would leave one visible frame at the wrong offset (ADR 0136).
+  // effect would leave one visible frame at the wrong offset (ADR 0137).
   const revealEffect = transcript.match(
     /useLayoutEffect\(\(\) => \{([\s\S]*?)\n  \}, \[cancelFollowScroll, paneVisible, scrollToBottom\]\);/,
   )?.[1];
@@ -193,7 +193,7 @@ test("a pane bounds its own first commit instead of rebuilding it", () => {
     transcript.indexOf("const lastEntry = entries[entries.length - 1];"),
   );
   assert.ok(hydration.length > 0, "hydration block must exist");
-  // Scoped to this pane's own mount (ADR 0136): the instance belongs to one
+  // Scoped to this pane's own mount (ADR 0137): the instance belongs to one
   // session, so the gate is local mount state rather than a comparison against
   // whichever session was rendered last. It still must be derived during render.
   assert.match(

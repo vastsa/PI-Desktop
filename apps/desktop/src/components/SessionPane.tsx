@@ -5,7 +5,7 @@ import { headPermission, sessionPermissions } from "../lib/pending-permissions";
 import { headAsk } from "../lib/pending-asks";
 
 /**
- * One retained conversation pane (ADR 0136).
+ * One retained conversation pane (ADR 0137).
  *
  * The chat surface mounts one of these per retained session and keys it on the
  * session id, so a pane's transcript DOM, scroll offset, and mounted-row window

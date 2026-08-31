@@ -38,7 +38,7 @@ test("session reads use a bounded tail and load older pages on demand", () => {
     transcript,
     /el\.scrollTop <= HISTORY_REVEAL_THRESHOLD_PX/,
   );
-  // Paging is wired per retained pane (ADR 0136), so each pane requests its own
+  // Paging is wired per retained pane (ADR 0137), so each pane requests its own
   // older pages rather than the surface requesting them for whichever session
   // happens to be active.
   assert.match(pane, /hasMoreBefore=\{hasMoreBefore\}/);
@@ -93,7 +93,7 @@ test("sidebar owns feedback and prefetch while store owns workspace alignment", 
 
 test("each retained session keeps its own mounted pane", () => {
   // One pane per retained session, keyed by session id, so a switch reveals an
-  // already-painted pane instead of re-pointing one transcript (ADR 0136).
+  // already-painted pane instead of re-pointing one transcript (ADR 0137).
   assert.match(
     chatSurface,
     /retainedSessionIds\.map\(\(id\) => \(\s*<SessionPane\s*key=\{id\}\s*sessionId=\{id\}\s*visible=\{id === visibleSessionId\}/,

@@ -2743,9 +2743,9 @@ D193, and D194.
 - Renderer and i18n only: no IPC, storage, host-protocol, or runtime contract
   change. See ADR 0135, `04-ux/08-component-spec.md`, and E2E-073.
 
-## 2026-08-31 — A visited session keeps its own mounted pane (D275)
+## 2026-08-31 — A visited session keeps its own mounted pane (D276)
 
-- Decision D275 amends D162 and ADR 0130 clauses 4–5. The chat surface mounts
+- Decision D276 amends D162 and ADR 0130 clauses 4–5. The chat surface mounts
   one pane per recently visited session, bounded to three, so switching is a
   visibility swap instead of re-pointing one transcript at different data.
 - A warm switch reveals the destination pane with its own scroll position on the
@@ -2755,5 +2755,5 @@ D193, and D194.
   pane's offset. Hidden panes keep their layout box, stay inert, and perform no
   follow scrolling, pagination, or measurement.
 - Renderer only: no IPC, storage, host-protocol, or runtime contract change. See
-  ADR 0136, `04-ux/08-component-spec.md`, `04-ux/09-interaction-patterns.md`,
+  ADR 0137, `04-ux/08-component-spec.md`, `04-ux/09-interaction-patterns.md`,
   E2E-011, E2E-071d, and E2E-071g.
