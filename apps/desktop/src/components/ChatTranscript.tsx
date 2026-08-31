@@ -1667,7 +1667,7 @@ const MessageRow = memo(function MessageRow({
   const editSeed = (isUser && message.command) || message.content || "";
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(editSeed);
-  const [savingEdit, setSavingEdit] = useState(false);
+  const [retryingEdit, setRetryingEdit] = useState(false);
   const copyLabel = t("chat.copy");
   const editLabel = t("chat.editMessage");
   const deleteLabel = t("chat.deleteMessage");
@@ -1682,17 +1682,12 @@ const MessageRow = memo(function MessageRow({
     setEditValue(editSeed);
     setEditing(false);
   };
-  const saveEdit = async () => {
+  const retryEdit = async () => {
     const next = editValue.trim();
-    if (savingEdit || (!next && !message.attachments?.length)) return;
-    // An unchanged prompt is not worth a regenerate branch.
-    if (next === editSeed.trim()) {
-      setEditing(false);
-      return;
-    }
-    setSavingEdit(true);
+    if (retryingEdit || (!next && !message.attachments?.length)) return;
+    setRetryingEdit(true);
     const saved = await editUserMessage(message.id, next, message.attachments);
-    setSavingEdit(false);
+    setRetryingEdit(false);
     if (saved) setEditing(false);
   };
   return (
@@ -1716,14 +1711,14 @@ const MessageRow = memo(function MessageRow({
                   spellCheck={false}
                   autoCorrect="off"
                   autoCapitalize="off"
-                  disabled={savingEdit}
+                  disabled={retryingEdit}
                   onChange={(event) => setEditValue(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key === "Escape") {
                       cancelEdit();
                     } else if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
                       event.preventDefault();
-                      void saveEdit();
+                      void retryEdit();
                     }
                   }}
                 />
@@ -1731,7 +1726,7 @@ const MessageRow = memo(function MessageRow({
                   <button
                     type="button"
                     className="copy-btn"
-                    disabled={savingEdit}
+                    disabled={retryingEdit}
                     onClick={cancelEdit}
                   >
                     {t("chat.cancelEdit")}
@@ -1739,10 +1734,10 @@ const MessageRow = memo(function MessageRow({
                   <button
                     type="button"
                     className="copy-btn primary"
-                    disabled={savingEdit || (!editValue.trim() && !message.attachments?.length)}
-                    onClick={() => void saveEdit()}
+                    disabled={retryingEdit || (!editValue.trim() && !message.attachments?.length)}
+                    onClick={() => void retryEdit()}
                   >
-                    {savingEdit ? t("chat.savingEdit") : t("chat.saveEdit")}
+                    {retryingEdit ? t("chat.retryingEdit") : t("chat.retryEdit")}
                   </button>
                 </div>
               </div>
