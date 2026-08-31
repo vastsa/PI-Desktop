@@ -5264,7 +5264,7 @@ describe("DesktopAgentRuntime subagents", () => {
     const withPeer = createRuntime({ subagents: [discussant, explorer] });
     const promptWithPeer = (withPeer as any).agent.state.systemPrompt as string;
     expect(promptWithPeer).toContain("Structured debate / roundtable");
-    expect(promptWithPeer).toContain("one Task per perspective");
+    expect(promptWithPeer).toContain('one Task("discussant") per perspective');
     expect(promptWithPeer).toContain("Never pack multiple roles into a single Task");
     await withPeer.dispose();
 
