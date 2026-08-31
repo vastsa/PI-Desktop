@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "id": "local.roundtable",
+  "name": { "en": "Roundtable Discussion", "zh-CN": "圆桌讨论" },
+  "version": "0.1.0",
+  "description": {
+    "en": "Run structured multi-agent roundtable discussions",
+    "zh-CN": "运行结构化的多代理圆桌讨论"
+  },
+  "main": "main.js",
+  "contributes": {
+    "skills": ["./skills/roundtable.md"],
+    "agentTools": [
+      {
+        "name": "roundtable_start",
+        "description": "Launch a multi-agent roundtable discussion on a given topic",
+        "risk": "low",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "topic": {
+              "type": "string",
+              "description": "The discussion topic or question"
+            },
+            "agents": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Agent roles/perspectives to include, e.g. ['architect', 'security-reviewer', 'ux-designer']"
+            },
+            "rounds": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5,
+              "description": "Number of discussion rounds (default 3)"
+            },
+            "goal": {
+              "type": "string",
+              "description": "What the discussion should produce, e.g. 'a consensus architecture decision'"
+            }
+          },
+          "required": ["topic"]
+        }
+      }
+    ]
+  },
+  "permissions": ["agent.prompt.inject", "agent.tool.register"],
+  "engines": {
+    "piDesktop": ">=0.1.0"
+  },
+  "activationEvents": ["onStartup"]
+}
