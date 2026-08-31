@@ -152,3 +152,4 @@ Each ADR includes:
 | 0135 | Retry unchanged edited prompts | Accepted |
 | 0136 | Preserve the active task boundary across context compaction | Accepted |
 | 0137 | Retained session panes | Accepted (amends 0130 clauses 4/5) |
+| 0138 | Subagent peer messaging | Accepted |

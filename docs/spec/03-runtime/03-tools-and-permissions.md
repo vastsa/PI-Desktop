@@ -506,13 +506,15 @@ is guidance, not the security boundary.
 one subagent definition. Plan and Goal are read-only contract negotiations, so a
 delegate with `Bash`, `Edit` or `Write` would drive straight through them.
 
-A definition declares the tools its delegate may call, drawn only from `Read`,
-`Glob`, `Grep`, `BrowserPreview`, `Bash`, `Edit` and `Write`. A definition that
-declares none gets `Read`, `Glob`, `Grep`; `tools: "*"` means all seven, which is
-still only those seven. An unrecognized name is dropped with a parse warning.
-Plugin tools, `Skill`, `ToolSearch`, `new_context`, the mode tools and `Task`
-itself are never assignable: a delegate is a bounded file/search/shell worker,
-not a second session.
+A definition declares the tools its delegate may call, drawn only from the seven
+working tools `Read`, `Glob`, `Grep`, `BrowserPreview`, `Bash`, `Edit` and
+`Write`, plus the three peer messaging tools `PeerSend`, `PeerInbox` and
+`PeerWait` (D277, §10.3). A definition that declares none gets `Read`, `Glob`,
+`Grep`; `tools: "*"` means all seven working tools and no peer tool, since peer
+messaging is opt-in by name. An unrecognized name is dropped with a parse
+warning. Plugin tools, `Skill`, `ToolSearch`, `new_context`, the mode tools and
+`Task` itself are never assignable: a delegate is a bounded file/search/shell
+worker, not a second session.
 
 A delegate's available tools are its definition's, never its session's. It
 cannot gain a tool because the parent has it, and a session cannot lend
@@ -544,6 +546,33 @@ card can say which delegate wants the call (see `04-ux/03-permission-ux.md`
 Session-scoped `allow-session` grants are still per `toolName` and per session:
 one delegate's approval of `Bash` applies to the whole session, including the
 parent and other delegates.
+
+### 10.3 Peer messaging tool scope (D277, ADR 0138)
+
+`PeerSend`, `PeerInbox` and `PeerWait` are the only assignable tools that are
+**not** host tool calls. They move text between running delegates of one session
+inside the sidecar, so they touch no file, process, or network, carry no
+`permissionScope`, never reach `tools.execute`, consume no tool budget, and are
+never audited as a host call. Nothing in §4, §5 or §6 applies to them because
+there is no resource to gate.
+
+Three scope rules hold instead:
+
+- They are built **per delegate at spawn** and are absent from the session tool
+  catalog, so the parent session can never call them. Delegation lifecycle
+  control stays with the parent's `Task`/`TaskWait`/`TaskList`/`TaskStop`.
+- The sender is **bound by the runtime**, not by the model: each tool closes over
+  its own delegate's agent name, so a delegate cannot spoof a sender or read
+  another delegate's inbox. Recipients are addressed by agent name; delegation
+  ids are never exposed to a delegate.
+- They are **opt-in per definition and default-off**. No builtin declares one. A
+  definition that declares peer tools but no working tool is refused when `Task`
+  runs, so messaging can never be a delegate's only capability.
+
+Message size, inbox depth, sends per run, and the `PeerWait` ceiling are bounded
+by the runtime (`02-agent-runtime.md` §5f.2). Peer traffic never enters the
+parent's model context; a delegate's report remains the only thing the parent
+reads.
 
 ## 11. Plugin Tools
 
