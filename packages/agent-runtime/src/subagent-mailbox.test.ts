@@ -86,17 +86,22 @@ describe("SubagentMailbox", () => {
     const mailbox = new SubagentMailbox();
     mailbox.join("a");
     mailbox.join("b");
+    mailbox.join("c");
 
-    for (let i = 0; i < MAX_PEER_INBOX_MESSAGES + 3; i += 1) {
-      mailbox.send("a", "b", `m${i}`);
+    // Send cap is per-sender, so split across two senders to exceed inbox.
+    const half = Math.ceil((MAX_PEER_INBOX_MESSAGES + 3) / 2);
+    for (let i = 0; i < half; i += 1) {
+      mailbox.send("a", "c", `a-${i}`);
+    }
+    for (let i = 0; i < MAX_PEER_INBOX_MESSAGES + 3 - half; i += 1) {
+      mailbox.send("b", "c", `b-${i}`);
     }
 
-    const drained = mailbox.drain("b");
+    const drained = mailbox.drain("c");
     expect(drained.messages).toHaveLength(MAX_PEER_INBOX_MESSAGES);
     expect(drained.dropped).toBe(3);
-    expect(drained.messages[0]?.text).toBe("m3");
     // Draining resets the loss counter so the next read is not double-warned.
-    expect(mailbox.drain("b").dropped).toBe(0);
+    expect(mailbox.drain("c").dropped).toBe(0);
   });
 
   it("caps total sends per run", () => {
@@ -112,8 +117,68 @@ describe("SubagentMailbox", () => {
       ok: false,
       reason: "send-cap",
     });
-    // The cap is per sender, not global.
     expect(mailbox.send("b", "a", "still fine").ok).toBe(true);
+  });
+
+  it("carries topic and inReplyTo through to the reader", () => {
+    const mailbox = new SubagentMailbox();
+    mailbox.join("a");
+    mailbox.join("b");
+
+    mailbox.send("a", "b", "schema v10", { topic: "schema-design", inReplyTo: 42 });
+
+    const msg = mailbox.drain("b").messages[0];
+    expect(msg?.topic).toBe("schema-design");
+    expect(msg?.inReplyTo).toBe(42);
+  });
+
+  it("truncates a topic longer than 80 characters", () => {
+    const mailbox = new SubagentMailbox();
+    mailbox.join("a");
+    mailbox.join("b");
+
+    mailbox.send("a", "b", "hi", { topic: "x".repeat(100) });
+
+    expect(mailbox.drain("b").messages[0]?.topic).toHaveLength(80);
+  });
+
+  it("drains selectively by sender when a from filter is given", () => {
+    const mailbox = new SubagentMailbox();
+    mailbox.join("a");
+    mailbox.join("b");
+    mailbox.join("c");
+    mailbox.send("a", "c", "from a");
+    mailbox.send("b", "c", "from b");
+    mailbox.send("a", "c", "also from a");
+
+    const { messages } = mailbox.drain("c", { from: "a" });
+
+    expect(messages).toHaveLength(2);
+    expect(messages[0]?.text).toBe("from a");
+    expect(messages[1]?.text).toBe("also from a");
+    // b's message is still queued
+    expect(mailbox.drain("c").messages).toHaveLength(1);
+    expect(mailbox.drain("c").messages).toHaveLength(0);
+  });
+
+  it("waits for a specific sender when filter is provided", async () => {
+    const mailbox = new SubagentMailbox();
+    mailbox.join("a");
+    mailbox.join("b");
+    mailbox.join("c");
+
+    const waiting = mailbox.waitForMessages("c", Date.now() + 5_000, undefined, { from: "b" });
+    // a's message should not wake the waiter
+    mailbox.send("a", "c", "not what you want");
+    // Give the event loop a tick
+    await new Promise((r) => setTimeout(r, 5));
+    // b's message should wake it
+    mailbox.send("b", "c", "this is it");
+
+    await expect(waiting).resolves.toBe(true);
+    const { messages } = mailbox.drain("c", { from: "b" });
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.text).toBe("this is it");
   });
 
   it("drains destructively so a message is never read twice", () => {
@@ -292,8 +357,10 @@ describe("formatPeerMessages", () => {
       0,
     );
 
-    expect(text).toContain("- [4] from explorer: directed");
-    expect(text).toContain("- [5] from explorer (broadcast): to everyone");
+    expect(text).toContain("[4] from explorer");
+    expect(text).toContain("directed");
+    expect(text).toContain("[5] from explorer (broadcast)");
+    expect(text).toContain("to everyone");
   });
 
   it("leads with the dropped-message warning", () => {
@@ -303,5 +370,16 @@ describe("formatPeerMessages", () => {
     );
 
     expect(text.split("\n")[0]).toContain("2 earlier messages dropped");
+  });
+
+  it("includes topic and inReplyTo in the formatted output", () => {
+    const text = formatPeerMessages(
+      [{ seq: 1, from: "a", to: "b", topic: "schema", inReplyTo: 5, text: "v10", ts: 0 }],
+      0,
+    );
+
+    expect(text).toContain("[schema]");
+    expect(text).toContain("(re: #5)");
+    expect(text).toContain("v10");
   });
 });

@@ -2861,7 +2861,7 @@ Delegation rules:
         "Send a short note to another subagent running right now in this session. Omit `to` to reach every running peer.",
         `Use it to coordinate, not to transfer data: claim a file before you edit it, warn a peer that a shared assumption is wrong, or pass a fact that saves the peer a search. Keep it under ${MAX_PEER_MESSAGE_CHARS} characters — a peer that needs a file reads the file.`,
         "Peers only read their inbox when they call PeerInbox or PeerWait, so a note is not an interrupt and never a substitute for your own report. The main agent does not see peer messages.",
-        `You may send at most ${MAX_PEER_SENDS_PER_RUN} times in this run.`,
+        `You may send at most ${MAX_PEER_SENDS_PER_RUN} times in this run. Use \`topic\` to tag a thread, and \`inReplyTo\` to reference a specific message seq.`,
       ].join("\n\n"),
       parameters: Type.Object({
         to: Type.Optional(
@@ -2873,6 +2873,18 @@ Delegation rules:
         text: Type.String({
           description: "The note. State the fact or the claim, not narration.",
         }),
+        topic: Type.Optional(
+          Type.String({
+            description:
+              "Short topic tag for threading, e.g. 'schema-design' or 'file-ownership'. Max 80 chars.",
+          }),
+        ),
+        inReplyTo: Type.Optional(
+          Type.Number({
+            description:
+              "Seq number of the message you are replying to. Helps peers follow the thread.",
+          }),
+        ),
       }),
       executionMode: "sequential",
       execute: async (_toolCallId, params) => {
@@ -2882,7 +2894,15 @@ Delegation rules:
             : undefined;
         const text =
           isRecord(params) && typeof params.text === "string" ? params.text : "";
-        const outcome = this.mailbox.send(self, to, text);
+        const topic =
+          isRecord(params) && typeof params.topic === "string" && params.topic.trim()
+            ? params.topic.trim()
+            : undefined;
+        const inReplyTo =
+          isRecord(params) && typeof params.inReplyTo === "number"
+            ? params.inReplyTo
+            : undefined;
+        const outcome = this.mailbox.send(self, to, text, { topic, inReplyTo });
         if (outcome.ok) {
           return {
             content: [
@@ -2918,11 +2938,23 @@ Delegation rules:
       name: "PeerInbox",
       label: "Peer Inbox",
       description:
-        "Read and clear the peer messages waiting for you, and list the subagents running alongside you. Returns immediately, empty or not. Messages are removed once read, so keep anything that matters. Check it before you start work another peer may already own, and again before you write your report.",
-      parameters: Type.Object({}),
+        "Read and clear the peer messages waiting for you, and list the subagents running alongside you. Returns immediately, empty or not. Use `from` to read only messages from one peer — unmatched messages stay queued. Messages are removed once read, so keep anything that matters. Check it before you start work another peer may already own, and again before you write your report.",
+      parameters: Type.Object({
+        from: Type.Optional(
+          Type.String({
+            description:
+              "Only drain messages from this sender; other messages stay queued.",
+          }),
+        ),
+      }),
       executionMode: "sequential",
-      execute: async () => {
-        const { messages, dropped } = this.mailbox.drain(self);
+      execute: async (_toolCallId, params) => {
+        const from =
+          isRecord(params) && typeof params.from === "string" && params.from.trim()
+            ? params.from.trim()
+            : undefined;
+        const filter = from ? { from } : undefined;
+        const { messages, dropped } = this.mailbox.drain(self, filter);
         const peers = this.mailbox.peers(self);
         const peerLine = `Running peers: ${peers.length ? peers.join(", ") : "none"}.`;
         return {
@@ -2946,6 +2978,7 @@ Delegation rules:
       description: [
         `Wait until a peer message arrives, then read it. Returns early with whatever is queued, and returns empty if nothing arrives within \`timeoutSeconds\` (default ${DEFAULT_PEER_WAIT_SECONDS}, max ${MAX_PEER_WAIT_SECONDS}).`,
         "Only wait when you are genuinely blocked on an answer you asked a peer for. A peer under no obligation to reply may never reply, and an empty wait is not a failure — proceed on your own and say so in your report. It also returns as soon as your last peer finishes, because nobody is left to write.",
+        "Use `from` to wait for a specific peer only; unmatched messages stay queued.",
       ].join("\n\n"),
       parameters: Type.Object({
         timeoutSeconds: Type.Optional(
@@ -2953,6 +2986,12 @@ Delegation rules:
             minimum: 1,
             maximum: MAX_PEER_WAIT_SECONDS,
             description: `Max seconds to wait; defaults to ${DEFAULT_PEER_WAIT_SECONDS}.`,
+          }),
+        ),
+        from: Type.Optional(
+          Type.String({
+            description:
+              "Only wait for and drain messages from this sender.",
           }),
         ),
       }),
@@ -2965,12 +3004,18 @@ Delegation rules:
                 MAX_PEER_WAIT_SECONDS,
               )
             : DEFAULT_PEER_WAIT_SECONDS;
+        const from =
+          isRecord(params) && typeof params.from === "string" && params.from.trim()
+            ? params.from.trim()
+            : undefined;
+        const filter = from ? { from } : undefined;
         await this.mailbox.waitForMessages(
           self,
           Date.now() + timeoutSeconds * 1000,
           signal,
+          filter,
         );
-        const { messages, dropped } = this.mailbox.drain(self);
+        const { messages, dropped } = this.mailbox.drain(self, filter);
         const peers = this.mailbox.peers(self);
         const body =
           messages.length === 0
