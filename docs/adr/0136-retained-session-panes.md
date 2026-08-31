@@ -1,4 +1,4 @@
-# ADR 0135: Retained Session Panes
+# ADR 0136: Retained Session Panes
 
 - Status: Accepted
 - Date: 2026-08-30

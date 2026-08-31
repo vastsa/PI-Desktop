@@ -104,7 +104,7 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
   visible pane on its own session, exposes `aria-busy`, and shows a 2px progress
   track; the destination pane is revealed only once it has committed. A warm
   destination is revealed with no busy affordance at all. Nothing is dimmed and no
-  skeleton-to-transcript animation is inserted (ADR 0135).
+  skeleton-to-transcript animation is inserted (ADR 0136).
 - Settings, Plugins, Pull requests, and Scheduled are route-level lazy modules.
   Chat and shell chrome stay in the initial renderer bundle; first entry to a
   secondary destination shows a compact localized status indicator until its
@@ -352,7 +352,7 @@ visually distinct from list content.
   transcript is relabeled with the destination session id. First activation of a
   session settles at its newest turn without flashing the transcript top; a
   revisited pane returns to the position the user left, and a pane still pinned
-  re-anchors to the bottom (ADR 0135).
+  re-anchors to the bottom (ADR 0136).
 - Hovering a session row for 120ms or keyboard-focusing it starts one coalesced
   transcript prefetch. Selection reuses an in-flight or recent cached result,
   revalidates it in the background, and never waits for an older superseded
@@ -1166,13 +1166,14 @@ Single message render — either user (plaintext) or assistant (markdown streami
   selected assistant response, requires an idle source, and leaves that
   source's transcript, live runtime, and provider cache state untouched (D134).
   Edit belongs to the user turn: it swaps the prompt bubble for a focused
-  inline textarea (Escape cancels, Cmd/Ctrl+Enter saves; slash turns seed the
-  typed `command` form so saving re-expands the template), widens the user
+  inline textarea (Escape cancels, Cmd/Ctrl+Enter retries; slash turns seed the
+  typed `command` form so retrying re-expands the template), widens the user
   column to the assistant reading width while open, and hides the action
-  toolbar. Saving runs the Regenerate path with the new text in the same
-  session, so the replaced prompt and its whole answer tail are archived as a
-  D109 revision and the pager walks back to the original exchange. An
-  unchanged prompt closes the editor without spending a turn (D137).
+  toolbar. The inline controls are localized Retry and Cancel actions. Retry
+  runs the Regenerate path with the current text in the same session, even when
+  the text is unchanged, so the replaced prompt and its whole answer tail are
+  archived as a D109 revision and the pager walks back to the original
+  exchange (D274).
 - Tool-mediated assistant output uses one visual turn from the preceding user
   message to the next user message. Intermediate provider message boundaries
   remain visible as ordered markdown fragments around activity disclosures but

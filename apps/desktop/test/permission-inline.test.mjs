@@ -150,7 +150,7 @@ test("asktool card is a stepwise, non-expiring composer question surface", () =>
   assert.match(composerSource, /<AskToolCard/);
   assert.match(composerSource, /headAsk\(s\.pendingAsks/);
   assert.doesNotMatch(transcriptSource, /AskToolCard/);
-  // Each retained pane subscribes to its own session's ask queue (ADR 0135).
+  // Each retained pane subscribes to its own session's ask queue (ADR 0136).
   assert.match(sessionPaneSource, /askPending=\{askPending\}/);
   assert.match(sessionPaneSource, /headAsk\(state\.pendingAsks, sessionId\)/);
   assert.match(storeSource, /event\.type === "asktool_request"/);
@@ -177,7 +177,7 @@ test("permission approval is an inline transcript card, never a global dialog", 
   assert.doesNotMatch(appSource, /Boolean\(permission\)/);
   // The surface still needs the visible session's head request to decide
   // between the empty state and the panes; the card itself is rendered by the
-  // pane that owns the session (ADR 0135).
+  // pane that owns the session (ADR 0136).
   assert.match(chatSurfaceSource, /headPermission\(state\.pendingPermissions/);
   assert.match(
     sessionPaneSource,

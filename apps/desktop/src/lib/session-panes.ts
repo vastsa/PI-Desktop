@@ -1,7 +1,7 @@
 import type { UiMessage } from "@pi-desktop/shared";
 
 /**
- * How many session panes stay mounted at once (ADR 0135): the visible one plus
+ * How many session panes stay mounted at once (ADR 0136): the visible one plus
  * the two most recently left. Each retained pane keeps its own transcript DOM,
  * scroll offset, and mounted-row window, so returning to it is a visibility
  * swap rather than a rebuild. The bound is what keeps that retention from

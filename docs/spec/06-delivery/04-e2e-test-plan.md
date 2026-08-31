@@ -614,7 +614,7 @@ Each scenario is documented in this format:
   track, nothing is dimmed, and prompt submission stays inert until the visible
   pane is the active session, so a prompt cannot reach the session being left.
 - **Specs linked**: `04-ux/08-component-spec.md` (§11),
-  `04-ux/09-interaction-patterns.md` (§5A), ADR 0135
+  `04-ux/09-interaction-patterns.md` (§5A), ADR 0136
 - **Acceptance**: C (new project/session composer)
 - **Milestone**: M2
 - **Status**: Draft
@@ -2709,7 +2709,7 @@ Each scenario is documented in this format:
   scrolled up in returns to that measured offset rather than the bottom, and a
   pane left pinned re-anchors to the bottom. The new turn appends normally.
 - **Specs linked**: `03-runtime/04-data-storage.md`,
-  `03-runtime/06-host-rpc-protocol.md`, ADR 0135
+  `03-runtime/06-host-rpc-protocol.md`, ADR 0136
 - **Acceptance**: C (chat stream), F (persistence), Quality
 - **Milestone**: M5
 - **Status**: Unit-covered (`transcripts::tests::layout_window_reads_only_the_requested_tail`,
@@ -2757,7 +2757,7 @@ Each scenario is documented in this format:
   never jumps or scrolls up and down after the first painted frame. Scrolling up
   keeps the chosen position across later switches instead of being pulled back to
   the bottom.
-- **Specs linked**: `04-ux/08-component-spec.md`, ADR 0135
+- **Specs linked**: `04-ux/08-component-spec.md`, ADR 0136
 - **Acceptance**: C (chat stream), Quality
 - **Milestone**: M5
 - **Status**: Unit-covered (`interaction-performance.test.mjs`
@@ -2789,7 +2789,7 @@ Each scenario is documented in this format:
   accessibility tree, and repeated cycling neither leaks a growing number of
   mounted transcripts nor leaves a pane showing another session's rows.
 - **Specs linked**: `04-ux/08-component-spec.md` §1.6 / §3.5 / §7,
-  `04-ux/09-interaction-patterns.md` §5, ADR 0130, ADR 0135
+  `04-ux/09-interaction-patterns.md` §5, ADR 0130, ADR 0136
 - **Acceptance**: C (switch sessions), Quality
 - **Milestone**: M5
 - **Status**: Draft
@@ -2800,8 +2800,8 @@ Each scenario is documented in this format:
   exchanges; one user turn was sent as a slash-template invocation.
 - **Steps**: 1) Hover a completed assistant row and a user row, then hover and
   keyboard-focus each action chip. 2) Choose Edit on the first user prompt. 3)
-  Press Escape, reopen Edit, save the prompt unchanged. 4) Reopen Edit, change
-  the text, and save with Cmd/Ctrl+Enter. 5) After the new answer completes,
+  Press Escape, reopen Edit, retry the prompt unchanged. 4) Reopen Edit, change
+  the text, and retry with Cmd/Ctrl+Enter. 5) After the new answer completes,
   use the `current / total` pager to return to the original exchange and
   forward again. 6) Reload the session. 7) Choose Edit on the slash-command
   turn and inspect the seeded text. 8) Try Edit while a turn is running.
@@ -2809,16 +2809,16 @@ Each scenario is documented in this format:
   appearing as a tooltip on hover and on keyboard focus; no chip renders
   caption text. The assistant toolbar offers Copy, Fork, Regenerate; the user
   toolbar offers the pager (when variants exist), Copy, Edit, Delete. Edit
-  replaces the prompt bubble with a wider inline textarea; Escape restores the
-  bubble unchanged, and an unchanged save closes the editor without starting a
-  turn. A changed save truncates the transcript from that prompt, streams a new
-  answer, and leaves a `current / total` pager on the user turn that restores
-  the original prompt with its full answer tail in place — surviving reload.
+  replaces the prompt bubble with a wider inline textarea with Retry and Cancel
+  controls; Escape or Cancel restores the bubble unchanged. Retry truncates the
+  transcript from that prompt and streams a new answer whether or not the text
+  changed, leaving a `current / total` pager on the user turn that restores the
+  original prompt with its full answer tail in place — surviving reload.
   The slash turn seeds the typed `/command` form and re-expands the template on
-  save. Edit is disabled while a turn is running.
+  retry. Edit is disabled while a turn is running.
 - **Specs linked**: `04-ux/08-component-spec.md`,
   `03-runtime/01-ipc-protocol.md`, `03-runtime/04-data-storage.md`,
-  `08-meta/decisions-log.md` (D137)
+  `08-meta/decisions-log.md` (D137, D274)
 - **Acceptance**: C (chat stream), F (persistence), Quality
 - **Milestone**: M5
 - **Status**: Unit-covered (`transcript-style.test.mjs`); full UI scenario Draft

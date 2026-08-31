@@ -23,6 +23,16 @@ export type ChangelogEntry = {
 
 const enEntries: ChangelogEntry[] = [
   {
+    version: "0.11.1",
+    date: "2026-08-31",
+    highlights: [
+      "Switch between recent conversations without the chat area flashing: each one keeps its own pane and reappears exactly as you left it, scroll position included.",
+      "Return to a conversation you had scrolled up in and land back at that spot, while a session opened for the first time still starts at its newest turn.",
+      "Keep reading the current conversation while a new one loads, instead of watching the transcript dim.",
+      "Retry an edited prompt even when you left the text unchanged.",
+    ],
+  },
+  {
     version: "0.11.0",
     date: "2026-08-30",
     highlights: [
@@ -483,6 +493,16 @@ const enEntries: ChangelogEntry[] = [
 ];
 
 const zhCNEntries: ChangelogEntry[] = [
+  {
+    version: "0.11.1",
+    date: "2026-08-31",
+    highlights: [
+      "在最近的会话之间切换不再闪屏：每个会话保留自己的面板，回来时与离开时完全一致，滚动位置也保留。",
+      "回到之前上翻过的会话会停在原来的位置，而首次打开的会话仍然定位到最新一轮。",
+      "新会话加载期间可以继续阅读当前会话，不再看到转录变暗。",
+      "即使没有改动文本，也能重试已编辑的提示。",
+    ],
+  },
   {
     version: "0.11.0",
     date: "2026-08-30",

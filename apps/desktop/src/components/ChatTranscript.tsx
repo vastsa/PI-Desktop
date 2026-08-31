@@ -1667,7 +1667,7 @@ const MessageRow = memo(function MessageRow({
   const editSeed = (isUser && message.command) || message.content || "";
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(editSeed);
-  const [savingEdit, setSavingEdit] = useState(false);
+  const [retryingEdit, setRetryingEdit] = useState(false);
   const copyLabel = t("chat.copy");
   const editLabel = t("chat.editMessage");
   const deleteLabel = t("chat.deleteMessage");
@@ -1682,17 +1682,12 @@ const MessageRow = memo(function MessageRow({
     setEditValue(editSeed);
     setEditing(false);
   };
-  const saveEdit = async () => {
+  const retryEdit = async () => {
     const next = editValue.trim();
-    if (savingEdit || (!next && !message.attachments?.length)) return;
-    // An unchanged prompt is not worth a regenerate branch.
-    if (next === editSeed.trim()) {
-      setEditing(false);
-      return;
-    }
-    setSavingEdit(true);
+    if (retryingEdit || (!next && !message.attachments?.length)) return;
+    setRetryingEdit(true);
     const saved = await editUserMessage(message.id, next, message.attachments);
-    setSavingEdit(false);
+    setRetryingEdit(false);
     if (saved) setEditing(false);
   };
   return (
@@ -1716,14 +1711,14 @@ const MessageRow = memo(function MessageRow({
                   spellCheck={false}
                   autoCorrect="off"
                   autoCapitalize="off"
-                  disabled={savingEdit}
+                  disabled={retryingEdit}
                   onChange={(event) => setEditValue(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key === "Escape") {
                       cancelEdit();
                     } else if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
                       event.preventDefault();
-                      void saveEdit();
+                      void retryEdit();
                     }
                   }}
                 />
@@ -1731,7 +1726,7 @@ const MessageRow = memo(function MessageRow({
                   <button
                     type="button"
                     className="copy-btn"
-                    disabled={savingEdit}
+                    disabled={retryingEdit}
                     onClick={cancelEdit}
                   >
                     {t("chat.cancelEdit")}
@@ -1739,10 +1734,10 @@ const MessageRow = memo(function MessageRow({
                   <button
                     type="button"
                     className="copy-btn primary"
-                    disabled={savingEdit || (!editValue.trim() && !message.attachments?.length)}
-                    onClick={() => void saveEdit()}
+                    disabled={retryingEdit || (!editValue.trim() && !message.attachments?.length)}
+                    onClick={() => void retryEdit()}
                   >
-                    {savingEdit ? t("chat.savingEdit") : t("chat.saveEdit")}
+                    {retryingEdit ? t("chat.retryingEdit") : t("chat.retryEdit")}
                   </button>
                 </div>
               </div>
@@ -2213,7 +2208,7 @@ export const ChatTranscript = memo(function ChatTranscript({
   askPending?: boolean;
   planningState?: PlanningState;
   /**
-   * Whether this instance's retained pane is the one on screen (ADR 0135). A
+   * Whether this instance's retained pane is the one on screen (ADR 0136). A
    * hidden pane keeps its DOM and scroll offset but must not chase the stream
    * or re-anchor, because its scroller has no visible viewport to correct.
    */
@@ -2327,7 +2322,7 @@ export const ChatTranscript = memo(function ChatTranscript({
     };
   }, [markScrollGesture]);
 
-  // This instance belongs to one session for its whole lifetime (ADR 0135), so
+  // This instance belongs to one session for its whole lifetime (ADR 0136), so
   // "activation" is its own first layout: settle at the newest turn before the
   // first paint, with no cross-session state to unwind.
   useLayoutEffect(() => {
@@ -2548,7 +2543,7 @@ export const ChatTranscript = memo(function ChatTranscript({
   historyLengthRef.current = allHistoryEntries.length;
 
   // Progressive hydration, now scoped to this pane's own first commit
-  // (ADR 0135): mount only the bottom portion of the transcript when the pane
+  // (ADR 0136): mount only the bottom portion of the transcript when the pane
   // mounts, then expand to the steady-state window after paint, with a spacer
   // holding the scroll height. Because the instance belongs to one session, the
   // gate is plain local mount state rather than a comparison against whichever
