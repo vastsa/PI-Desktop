@@ -526,7 +526,7 @@ export function ModelSelectionPanes({
               <Input
                 value={customModelId}
                 placeholder={t("settings.customModelPlaceholder")}
-                className="font-mono text-sm-plus"
+                className="font-mono text-sm"
                 onChange={(event) => {
                   setCustomModelId(event.target.value);
                   if (customModelError) setCustomModelError("");
