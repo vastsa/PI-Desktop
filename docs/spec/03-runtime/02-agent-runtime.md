@@ -2,7 +2,7 @@
 
 ## 1. Goal
 
-Applied decisions: **D002/D003/D008/D158/D189/D190/D193/D194**.
+Applied decisions: **D002/D003/D008/D158/D189/D190/D193/D194/D278**.
 
 
 Wrap pi into a product runtime that desktop layers can consume safely.
@@ -516,12 +516,20 @@ override.
 mode and only when the catalog is non-empty, and all four belong to the Agent
 core set rather than the on-demand catalog of §7.1:
 
-- `Task(agent, task, description?)` — validates its arguments (an unknown
-  `agent`, an empty `task`, an unresolvable model pin and a definition whose
-  tools are all unavailable each return a tool error explaining the failure
-  rather than throwing), starts the delegate **in the background**, and returns
-  immediately with a `delegationId`. Starting fails with a tool error when the
-  session already runs `MAX_SUBAGENT_CONCURRENCY` (10) delegates.
+- `Task(agent, task, description?, model?)` — validates its arguments (an
+  unknown `agent`, an empty `task`, an unresolvable model pin and a definition
+  whose tools are all unavailable each return a tool error explaining the
+  failure rather than throwing), starts the delegate **in the background**, and
+  returns immediately with a `delegationId`. Starting fails with a tool error
+  when the session already runs `MAX_SUBAGENT_CONCURRENCY` (10) delegates.
+
+  The `Task` tool accepts an optional `model` parameter
+  (`"provider/modelId"`) that overrides the delegate's model for that run.
+  Resolution priority: Task.model parameter → definition frontmatter pin →
+  session model. The parent agent sees a model summary in the system prompt
+  listing all models marked `availableForSubagents` in provider settings.
+  When a model key is not pre-resolved, the runtime asks Electron main to
+  resolve it on-demand via the `provider.resolveSubagentModel` RPC.
 - `TaskWait(delegationIds?, mode?, minCompleted?, timeoutSeconds?)` — converges
   on running delegations (defaults to all of them) and returns their reports;
   `mode: "any"` with `minCompleted` converges as soon as the first N settle.

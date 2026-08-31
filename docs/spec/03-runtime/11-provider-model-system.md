@@ -257,6 +257,7 @@ type ModelBinding = {
   maxTokens: number
   thinkingLevels: ThinkingLevel[]
   defaultThinkingLevel: ThinkingLevel | null
+  availableForSubagents?: boolean // opt-in for AI-driven delegation
 }
 
 type SelectedModelRef = {
@@ -286,6 +287,12 @@ runtime consumers. Conversation-level model switching and routing across the
 array remain future work. A legacy provider with only `defaultModelId` is
 materialized as one fallback binding on host read and upgraded to `models` on
 the next provider write.
+
+`ModelBinding.availableForSubagents` (boolean, default false): opt-in flag that
+makes the model available for AI-driven subagent delegation. When enabled, the
+model appears in the delegation catalog injected into the parent agent's system
+prompt. The parent agent can then select it via the Task tool's `model`
+parameter.
 
 ## 8. Secrets
 
