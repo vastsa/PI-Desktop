@@ -60,20 +60,19 @@ export type SubagentDefinition = {
 };
 
 /**
- * Peer messaging tools a delegate may declare to talk to its concurrent
- * siblings (D277, ADR 0138). They are opt-in per definition: silence means a
+ * Peer messaging tool a delegate may declare to talk to its concurrent
+ * siblings (D277, ADR 0138). It is opt-in per definition: silence means a
  * delegate keeps the ADR 0062 isolation where the parent is the only
  * integration point, so no existing definition changes behaviour.
  *
- * These are session-local coordination tools, not delegation tools: they carry
- * text between running delegates and never expose delegation ids, the
- * delegation registry, or the ability to start or stop a delegate.
+ * A single `Peer` tool carries the three operations a delegate needs — `send`,
+ * `inbox` and `wait` — selected by an `action` parameter, so the capability is
+ * counted and declared as one tool, not three. It is a session-local
+ * coordination tool, not a delegation tool: it carries text between running
+ * delegates and never exposes delegation ids, the delegation registry, or the
+ * ability to start or stop a delegate.
  */
-export const SUBAGENT_PEER_TOOLS = [
-  "PeerSend",
-  "PeerInbox",
-  "PeerWait",
-] as const;
+export const SUBAGENT_PEER_TOOLS = ["Peer"] as const;
 
 export type SubagentPeerTool = (typeof SUBAGENT_PEER_TOOLS)[number];
 
