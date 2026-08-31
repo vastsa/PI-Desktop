@@ -1166,13 +1166,14 @@ Single message render — either user (plaintext) or assistant (markdown streami
   selected assistant response, requires an idle source, and leaves that
   source's transcript, live runtime, and provider cache state untouched (D134).
   Edit belongs to the user turn: it swaps the prompt bubble for a focused
-  inline textarea (Escape cancels, Cmd/Ctrl+Enter saves; slash turns seed the
-  typed `command` form so saving re-expands the template), widens the user
+  inline textarea (Escape cancels, Cmd/Ctrl+Enter retries; slash turns seed the
+  typed `command` form so retrying re-expands the template), widens the user
   column to the assistant reading width while open, and hides the action
-  toolbar. Saving runs the Regenerate path with the new text in the same
-  session, so the replaced prompt and its whole answer tail are archived as a
-  D109 revision and the pager walks back to the original exchange. An
-  unchanged prompt closes the editor without spending a turn (D137).
+  toolbar. The inline controls are localized Retry and Cancel actions. Retry
+  runs the Regenerate path with the current text in the same session, even when
+  the text is unchanged, so the replaced prompt and its whole answer tail are
+  archived as a D109 revision and the pager walks back to the original
+  exchange (D274).
 - Tool-mediated assistant output uses one visual turn from the preceding user
   message to the next user message. Intermediate provider message boundaries
   remain visible as ordered markdown fragments around activity disclosures but

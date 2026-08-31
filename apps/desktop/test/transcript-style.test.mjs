@@ -186,6 +186,11 @@ test("editing a user prompt regenerates it and keeps the old branch reachable", 
   assert.match(transcriptSource, /editUserMessage\(message\.id, next, message\.attachments\)/);
   assert.match(transcriptSource, /className="message-edit-input selectable"/);
   assert.match(transcriptSource, /chat\.editMessage/);
+  assert.match(transcriptSource, /const retryEdit = async \(\)/);
+  assert.match(transcriptSource, /void retryEdit\(\)/);
+  assert.match(transcriptSource, /chat\.retryEdit/);
+  assert.match(transcriptSource, /chat\.retryingEdit/);
+  assert.doesNotMatch(transcriptSource, /next === editSeed\.trim\(\)/);
   assert.doesNotMatch(transcriptSource, /editAssistantMessage/);
   assert.doesNotMatch(storeSource, /editAssistantMessage/);
   // Slash prompts edit their typed form so the resend re-expands the template.
