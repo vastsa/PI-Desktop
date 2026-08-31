@@ -154,8 +154,8 @@ that check and refuses to tag while anything disagrees:
 
 ```bash
 pnpm check:release-docs                    # verify the current tree is aligned
-node scripts/release.mjs 0.11.1 --tag      # bump versions + commit + tag v0.11.1
-git push origin <branch> v0.11.1           # Release workflow builds & publishes
+node scripts/release.mjs 0.11.2 --tag      # bump versions + commit + tag v0.11.2
+git push origin <branch> v0.11.2           # Release workflow builds & publishes
 ```
 
 The [release runbook](docs/spec/06-delivery/06-release-runbook.md#41-mandatory-release-version-surface-gate-d164--d260)
