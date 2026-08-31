@@ -22,7 +22,7 @@ import {
   type ThinkingLevel,
 } from "@pi-desktop/shared";
 import { Button, Field, Input, cx } from "../ui";
-import { IconClose, IconPlus, IconSearch } from "../icons";
+import { IconClose, IconHelp, IconPlus, IconSearch } from "../icons";
 import type { ProviderModelsState } from "./useProviderModels";
 
 /** One row of the model list: what the service returned, plus its binding. */
@@ -506,8 +506,11 @@ export function ModelSelectionPanes({
                         />
                         <span>{t("settings.availableForSubagents")}</span>
                       </label>
-                      <span className="provider-chosen-delegation-hint">
-                        {t("settings.availableForSubagentsHint")}
+                      <span
+                        className="provider-chosen-delegation-help"
+                        data-tip={t("settings.availableForSubagentsHint")}
+                      >
+                        <IconHelp size={13} />
                       </span>
                     </div>
                   </div>

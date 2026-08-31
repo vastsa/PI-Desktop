@@ -595,14 +595,46 @@
 
 .provider-chosen-delegation {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  gap: 2px;
 }
 
-.provider-chosen-delegation-hint {
-  color: var(--ds-text-muted);
+.provider-chosen-delegation-help {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  color: var(--ds-text-faint);
+  cursor: help;
+  transition: color var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.provider-chosen-delegation-help:hover {
+  color: var(--ds-text-secondary);
+}
+
+.provider-chosen-delegation-help[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 5px);
+  left: 50%;
+  z-index: 8;
+  transform: translateX(-50%);
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--radius-sm);
+  background: var(--ds-bg-elevated-opaque);
+  box-shadow: var(--ds-shadow-composer);
+  padding: 3px 7px;
+  color: var(--ds-text-secondary);
   font-size: var(--text-2xs);
-  line-height: var(--leading-normal);
+  line-height: var(--leading-compact);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.provider-chosen-delegation-help[data-tip]:hover::after {
+  opacity: 1;
 }
 
 .provider-custom-model {
