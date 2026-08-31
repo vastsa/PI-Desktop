@@ -329,6 +329,42 @@ describe("SubagentMailbox", () => {
     expect(mailbox.peers("a")).toEqual([]);
   });
 
+  it("allows separate inboxes for unique peer identities of the same role", () => {
+    const mailbox = new SubagentMailbox();
+    // Simulates three "discussant" delegates with unique peer IDs.
+    mailbox.join("discussant");
+    mailbox.join("discussant-2");
+    mailbox.join("discussant-3");
+
+    // Each sees the other two as peers.
+    expect(mailbox.peers("discussant").sort()).toEqual(
+      ["discussant-2", "discussant-3"],
+    );
+    expect(mailbox.peers("discussant-2").sort()).toEqual(
+      ["discussant", "discussant-3"],
+    );
+
+    // A directed message reaches only its target.
+    const outcome = mailbox.send("discussant", "discussant-2", "I advocate REST");
+    expect(outcome).toEqual({ ok: true, delivered: ["discussant-2"] });
+    expect(mailbox.drain("discussant-2").messages[0]?.text).toBe("I advocate REST");
+    expect(mailbox.drain("discussant-3").messages).toHaveLength(0);
+
+    // A broadcast reaches all peers but not the sender.
+    mailbox.send("discussant-3", undefined, "My final summary");
+    expect(mailbox.drain("discussant").messages[0]?.text).toBe("My final summary");
+    expect(mailbox.drain("discussant-2").messages[0]?.text).toBe("My final summary");
+    expect(mailbox.drain("discussant-3").messages).toHaveLength(0);
+
+    // Leaving one does not affect the others.
+    mailbox.leave("discussant-2");
+    expect(mailbox.peers("discussant")).toEqual(["discussant-3"]);
+    expect(mailbox.send("discussant", "discussant-2", "still there?")).toEqual({
+      ok: false,
+      reason: "unknown-peer",
+    });
+  });
+
   it("keeps a monotonic sequence across recipients", () => {
     const mailbox = new SubagentMailbox();
     mailbox.join("a");

@@ -6867,6 +6867,29 @@ This test plan spec is accepted when:
 - **Status**: Unit-covered (`packages/agent-runtime/src/subagent-mailbox.test.ts`,
   `packages/agent-runtime/src/runtime.test.ts`); agent-facing journey Draft
 
+#### E2E-165b: Multiple concurrent delegations of one definition exchange peer messages
+
+- **Preconditions**: Agent mode with one user subagent definition declaring
+  working tools plus peer tools (e.g.
+  `tools: Read, Glob, Grep, PeerSend, PeerInbox, PeerWait`).
+- **Steps**: 1) Delegate three concurrent instances of the same definition in
+  one assistant message with distinct roles (e.g. "REST advocate", "GraphQL
+  advocate", "Pragmatist"). 2) Each delegate broadcasts its opening position.
+  3) Each delegate calls `PeerInbox` and responds to the others. 4) One
+  delegate settles.
+- **Expected**: Each delegation gets a unique peer id (e.g. "discussant",
+  "discussant-2", "discussant-3") and its own mailbox inbox. A broadcast from
+  one reaches the other two. Directed messages by peer id reach only the
+  target. Peer ids appear in the system-prompt guidance given to each delegate
+  (`you are "discussant-2"`). When one delegate settles, its peers see it
+  disappear from their `PeerInbox` peer list. No `no-peers` or
+  `unknown-peer` errors occur during normal operation.
+- **Specs linked**: `03-runtime/02-agent-runtime.md` §5f.2, ADR 0138
+- **Acceptance**: E (tools & permissions) + C (chat/stream)
+- **Milestone**: M5
+- **Status**: Unit-covered (`packages/agent-runtime/src/subagent-mailbox.test.ts`,
+  `packages/agent-runtime/src/runtime.test.ts`); agent-facing journey Draft
+
 #### E2E-166: Subagent model selection
 
 - **Preconditions**: Agent mode; at least one provider has a model binding with
