@@ -69,11 +69,13 @@ import {
   DEFAULT_SUBAGENT_PERMISSION,
   formatAskToolOutput,
   isCommandShellOption,
+  isSubagentPeerTool,
   isToolsOutputParams,
   MAX_SUBAGENT_CONCURRENCY,
   normalizeSubagentName,
   proposalKindForMode,
   subagentModelKey,
+  subagentUsesPeerMessaging,
   type ProposalKind,
   type SubagentPermission,
 } from "@pi-desktop/shared";
@@ -97,6 +99,14 @@ import {
   type RuntimeProviderConfig,
 } from "./provider-binding.js";
 import { PathMutex } from "./path-lock.js";
+import {
+  DEFAULT_PEER_WAIT_SECONDS,
+  formatPeerMessages,
+  MAX_PEER_MESSAGE_CHARS,
+  MAX_PEER_SENDS_PER_RUN,
+  MAX_PEER_WAIT_SECONDS,
+  SubagentMailbox,
+} from "./subagent-mailbox.js";
 import {
   composeSubagentSystemPrompt,
   SubagentRun,
@@ -1165,6 +1175,12 @@ export class DesktopAgentRuntime {
    * resolves the delegate's permission under it instead of the session mode.
    */
   private delegatePermissionScopes = new Map<string, SubagentPermission>();
+  /**
+   * Peer mailbox shared by the delegates of this session (D277, ADR 0138).
+   * Owned here rather than by any delegate, so a delegate can only reach it
+   * through the three peer tools the runtime hands it.
+   */
+  private mailbox = new SubagentMailbox();
   /** Serializes same-path mutations across the parent and its delegates. */
   private writeLocks = new PathMutex();
   /** Complete tool registry; only the active subset is sent to the provider. */
@@ -2574,6 +2590,18 @@ Delegation rules:
         `Write temporary and intermediate files into the session scratch directory \`${this.scratchDir}\` (in Bash: $PI_SCRATCH_DIR) using absolute paths, never into the workspace.`,
       );
     }
+    if (subagentUsesPeerMessaging(definition)) {
+      // Named peers, resolved at spawn time: a delegate cannot discover who is
+      // running any other way, and addressing is by agent name (D277).
+      const peers = this.mailbox.peers(definition.name);
+      blocks.push(
+        [
+          `Peer messaging: you are "${definition.name}" and other subagents may be working in this session at the same time. ${peers.length ? `Running alongside you right now: ${peers.join(", ")}.` : "Nobody else is running right now, so peer sends will have no recipient until one starts."}`,
+          "Coordination is the point, not conversation: claim a file before editing it so two agents do not fight over it, correct a peer whose assumption you just disproved, and pass a fact that saves a peer a search. Never ask a peer to do your task, and never wait on a peer to finish yours.",
+          "A peer may never reply. Messages are not interrupts — a peer reads them only when it checks — so treat every exchange as best effort and keep your own report self-contained. The main agent never sees peer traffic, so anything that matters must also be in your report.",
+        ].join("\n\n"),
+      );
+    }
     const projectPrompt = projectInstructionsPrompt(this.projectInstructions);
     if (projectPrompt) blocks.push(projectPrompt);
     return blocks;
@@ -2672,12 +2700,27 @@ Delegation rules:
           );
         }
         const tools = definition.tools
+          .filter((name) => !isSubagentPeerTool(name))
           .map((name) => this.toolCatalog.get(name))
           .filter((tool): tool is AgentTool => tool !== undefined);
-        if (tools.length === 0) {
+        // Peer tools are built per delegate rather than resolved from the
+        // catalog: they close over the delegate's own agent name, and they must
+        // never be reachable by the parent (D277).
+        const peerTools = definition.tools
+          .filter(isSubagentPeerTool)
+          .map((name) => this.buildPeerTool(name, definition.name));
+        if (tools.length === 0 && peerTools.length === 0) {
           return this.subagentToolError(
             toolCallId,
             `The ${definition.name} subagent declares no tool available in this session.`,
+          );
+        }
+        if (tools.length === 0) {
+          // Messaging alone cannot accomplish a task; a delegate with only peer
+          // tools would burn turns talking with nothing to report.
+          return this.subagentToolError(
+            toolCallId,
+            `The ${definition.name} subagent declares only peer messaging tools and no tool to do work with.`,
           );
         }
         const startedAt = Date.now();
@@ -2712,7 +2755,14 @@ Delegation rules:
         };
         this.delegations.set(delegationId, record);
 
-        const scopedTools = this.scopeDelegateTools(tools, definition);
+        // Peer tools bypass `scopeDelegateTools`: they are in-process message
+        // passing, never a host tool call, so there is no permission scope to
+        // attach and nothing for host-core to gate.
+        const scopedTools = [
+          ...this.scopeDelegateTools(tools, definition),
+          ...peerTools,
+        ];
+        if (peerTools.length > 0) this.mailbox.join(definition.name);
         new SubagentRun({
           definition,
           sessionId: this.sessionId,
@@ -2787,6 +2837,153 @@ Delegation rules:
     };
   }
 
+  /**
+   * Build one peer messaging tool bound to `self` (D277, ADR 0138).
+   *
+   * The tool closes over the delegate's own agent name, so a delegate cannot
+   * spoof a sender or read another agent's inbox: the name is supplied by the
+   * runtime at spawn time, never by the model. These tools are deliberately
+   * absent from `toolCatalog` — the parent already owns the delegation
+   * lifecycle and must not gain a second, weaker channel to its delegates.
+   */
+  private buildPeerTool(name: string, self: string): AgentTool {
+    if (name === "PeerSend") return this.buildPeerSendTool(self);
+    if (name === "PeerInbox") return this.buildPeerInboxTool(self);
+    return this.buildPeerWaitTool(self);
+  }
+
+  /** `PeerSend`: hand a bounded note to one peer, or to all of them. */
+  private buildPeerSendTool(self: string): AgentTool {
+    return {
+      name: "PeerSend",
+      label: "Peer Send",
+      description: [
+        "Send a short note to another subagent running right now in this session. Omit `to` to reach every running peer.",
+        `Use it to coordinate, not to transfer data: claim a file before you edit it, warn a peer that a shared assumption is wrong, or pass a fact that saves the peer a search. Keep it under ${MAX_PEER_MESSAGE_CHARS} characters — a peer that needs a file reads the file.`,
+        "Peers only read their inbox when they call PeerInbox or PeerWait, so a note is not an interrupt and never a substitute for your own report. The main agent does not see peer messages.",
+        `You may send at most ${MAX_PEER_SENDS_PER_RUN} times in this run.`,
+      ].join("\n\n"),
+      parameters: Type.Object({
+        to: Type.Optional(
+          Type.String({
+            description:
+              "Agent name of the recipient. Omit to broadcast to every running peer.",
+          }),
+        ),
+        text: Type.String({
+          description: "The note. State the fact or the claim, not narration.",
+        }),
+      }),
+      executionMode: "sequential",
+      execute: async (_toolCallId, params) => {
+        const to =
+          isRecord(params) && typeof params.to === "string" && params.to.trim()
+            ? params.to.trim()
+            : undefined;
+        const text =
+          isRecord(params) && typeof params.text === "string" ? params.text : "";
+        const outcome = this.mailbox.send(self, to, text);
+        if (outcome.ok) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Delivered to ${outcome.delivered.join(", ")}.`,
+              },
+            ],
+            details: { delivered: outcome.delivered },
+          };
+        }
+        const peers = this.mailbox.peers(self);
+        const peerList = peers.length ? peers.join(", ") : "none";
+        const reason =
+          outcome.reason === "unknown-peer"
+            ? `No running peer named "${to}". Running peers: ${peerList}.`
+            : outcome.reason === "no-peers"
+              ? "No other subagent is running, so there is nobody to tell. Carry on and put this in your report instead."
+              : outcome.reason === "send-cap"
+                ? `You have used all ${MAX_PEER_SENDS_PER_RUN} peer sends for this run. Finish the work and put anything else in your report.`
+                : "A peer message needs non-empty text.";
+        return {
+          content: [{ type: "text", text: reason }],
+          details: { error: reason, peers },
+        };
+      },
+    };
+  }
+
+  /** `PeerInbox`: drain queued peer messages without blocking. */
+  private buildPeerInboxTool(self: string): AgentTool {
+    return {
+      name: "PeerInbox",
+      label: "Peer Inbox",
+      description:
+        "Read and clear the peer messages waiting for you, and list the subagents running alongside you. Returns immediately, empty or not. Messages are removed once read, so keep anything that matters. Check it before you start work another peer may already own, and again before you write your report.",
+      parameters: Type.Object({}),
+      executionMode: "sequential",
+      execute: async () => {
+        const { messages, dropped } = this.mailbox.drain(self);
+        const peers = this.mailbox.peers(self);
+        const peerLine = `Running peers: ${peers.length ? peers.join(", ") : "none"}.`;
+        return {
+          content: [
+            {
+              type: "text",
+              text: `${formatPeerMessages(messages, dropped)}\n\n${peerLine}`,
+            },
+          ],
+          details: { messages, dropped, peers },
+        };
+      },
+    };
+  }
+
+  /** `PeerWait`: block briefly until a peer writes. */
+  private buildPeerWaitTool(self: string): AgentTool {
+    return {
+      name: "PeerWait",
+      label: "Peer Wait",
+      description: [
+        `Wait until a peer message arrives, then read it. Returns early with whatever is queued, and returns empty if nothing arrives within \`timeoutSeconds\` (default ${DEFAULT_PEER_WAIT_SECONDS}, max ${MAX_PEER_WAIT_SECONDS}).`,
+        "Only wait when you are genuinely blocked on an answer you asked a peer for. A peer under no obligation to reply may never reply, and an empty wait is not a failure — proceed on your own and say so in your report. It also returns as soon as your last peer finishes, because nobody is left to write.",
+      ].join("\n\n"),
+      parameters: Type.Object({
+        timeoutSeconds: Type.Optional(
+          Type.Number({
+            minimum: 1,
+            maximum: MAX_PEER_WAIT_SECONDS,
+            description: `Max seconds to wait; defaults to ${DEFAULT_PEER_WAIT_SECONDS}.`,
+          }),
+        ),
+      }),
+      executionMode: "sequential",
+      execute: async (_toolCallId, params, signal) => {
+        const timeoutSeconds =
+          isRecord(params) && typeof params.timeoutSeconds === "number"
+            ? Math.min(
+                Math.max(1, Math.floor(params.timeoutSeconds)),
+                MAX_PEER_WAIT_SECONDS,
+              )
+            : DEFAULT_PEER_WAIT_SECONDS;
+        await this.mailbox.waitForMessages(
+          self,
+          Date.now() + timeoutSeconds * 1000,
+          signal,
+        );
+        const { messages, dropped } = this.mailbox.drain(self);
+        const peers = this.mailbox.peers(self);
+        const body =
+          messages.length === 0
+            ? `No peer message arrived within ${timeoutSeconds}s. Running peers: ${peers.length ? peers.join(", ") : "none"}. Do not wait again for the same answer — continue on your own and note the missing input in your report.`
+            : `${formatPeerMessages(messages, dropped)}\n\nRunning peers: ${peers.length ? peers.join(", ") : "none"}.`;
+        return {
+          content: [{ type: "text", text: body }],
+          details: { messages, dropped, peers, timedOut: messages.length === 0 },
+        };
+      },
+    };
+  }
+
   /** Wrap a delegate's tools so each call carries the definition's permission
    * scope to host-core (ADR 0089). Keyed by tool call id, so concurrent
    * delegates with different scopes never cross over. */
@@ -2815,6 +3012,13 @@ Delegation rules:
     result: SubagentRunResult,
   ): void {
     if (record.status !== "running") return;
+    // Leave the mailbox before waking waiters, so a peer blocked in `PeerWait`
+    // on this agent re-evaluates against a peer list that no longer lists it
+    // rather than waiting out its own timeout (D277). The mailbox is keyed by
+    // agent name and reference-counts its members, so a name stays addressable
+    // while a twin delegation of the same definition is still running. Calling
+    // it for a delegate that never joined is a no-op.
+    this.mailbox.leave(record.agentName);
     record.status =
       record.stopRequested && result.status === "aborted"
         ? "stopped"
@@ -5228,6 +5432,9 @@ Delegation rules:
     this.disposed = true;
     this.resolvePendingAskTools();
     this.abortRunningDelegations();
+    // Release any delegate still parked in `PeerWait` so dispose does not have
+    // to wait out a peer timeout (D277).
+    this.mailbox.clear();
     this.pathInstructionClaims.clear();
     this.failedHostToolCalls.clear();
     this.mutationFailureCounts.clear();
