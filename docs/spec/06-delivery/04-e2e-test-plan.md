@@ -3256,7 +3256,8 @@ Each scenario is documented in this format:
   5. Repeat the hard-boundary turn with multiple parallel capped tool results in
      the compacted range.
   6. Restart the app, reopen the session, and send a follow-up that depends on
-     both summarized old work and the retained recent user messages.
+     summarized old work while verifying that completed prompts are not replayed
+     as naked historical user messages.
   7. Repeat with a provider fixture that returns Bedrock's
      `prompt is too long: N tokens > M maximum` once.
   8. Run a turn where the model calls `new_context` well below the hard budget.
@@ -3279,14 +3280,16 @@ Each scenario is documented in this format:
     request. The complete visible transcript is unchanged, and the continued
     task stays below the model-aware safe budget.
   - After a checkpoint the next provider request contains no assistant or tool
-    message from before the boundary — only the summary and recent user
-    messages, the oldest of which may carry the checkpoint-truncation marker —
-    and contains no tool call without its result. Expanding the original
-    transcript rows still shows their complete persisted results.
-  - Restart restores summary + retained user messages, and every earlier
-    compaction row is still drawn. A regenerate/fork before a checkpoint
-    boundary drops that record specifically; records anchored on surviving
-    messages are preserved/remapped.
+    message from before the boundary — only the summary and, while an active
+    turn continues, its latest user message, which may carry the
+    checkpoint-truncation marker. A completed-turn checkpoint has an empty
+    retained tail. The request contains no tool call without its result, and
+    expanding the original transcript rows still shows their complete
+    persisted results.
+  - Restart restores the summary and the recorded active/completed retention
+    mode, and every earlier compaction row is still drawn. A regenerate/fork
+    before a checkpoint boundary drops that record specifically; records
+    anchored on surviving messages are preserved/remapped.
   - The exact provider overflow removes only the failed assistant from model
     context, retries once after compaction, and does not loop on a second
     overflow.
@@ -3311,7 +3314,7 @@ Each scenario is documented in this format:
   `03-runtime/04-data-storage.md`, `03-runtime/06-host-rpc-protocol.md`,
   `04-ux/06-settings-ia.md`, `04-ux/08-component-spec.md`,
   `04-ux/09-interaction-patterns.md`, ADR 0030, ADR 0049, ADR 0061, ADR 0064,
-  D158, D203
+  ADR 0136, D158, D203, D275
 - **Acceptance**: C (chat/stream), F (persistence), Quality
 - **Milestone**: M5
 - **Status**: Partially automated (`runtime.test.ts`,
@@ -6800,3 +6803,30 @@ This test plan spec is accepted when:
 - **Specs linked**: `03-runtime/11-provider-model-system.md` §6.2,
   `03-runtime/12-provider-config-schema.md`, `04-ux/08-component-spec.md` §19
 - **Acceptance**: B (model config), Quality
+
+#### E2E-164: Context compaction preserves the active task boundary
+
+- **Preconditions**: A provider fixture can complete multiple sequential tasks,
+  trigger an automatic checkpoint at a terminal boundary, trigger an active-turn
+  checkpoint during a tool loop, and restart a session.
+- **Steps**:
+  1. Complete task A and task B in one session with distinct instructions and
+     visible completion replies.
+  2. Trigger a checkpoint after a completed turn, then send task C and capture
+     the next provider request context.
+  3. Trigger compaction while task D still has tool results or `toolUse`
+     pending, and capture the next provider request.
+  4. Restart and reopen the session, then send another prompt.
+- **Expected**: A completed-turn checkpoint has an empty retained tail; the next
+  request contains its summary plus task C and no bare A/B prompts. An active
+  checkpoint retains exactly the latest active user prompt, with no older user
+  prompts or pre-boundary assistant/tool messages. Restart honors
+  `retainedTailMode`, and legacy multi-user tails normalize to the latest user
+  message. The visible transcript remains complete and checkpoint rows remain.
+- **Specs linked**: `03-runtime/02-agent-runtime.md`,
+  `03-runtime/04-data-storage.md`, `03-runtime/16-tool-result-limits.md`,
+  `08-meta/decisions-log.md` (D275), ADR 0136
+- **Acceptance**: C (chat/stream), F (persistence), Quality
+- **Milestone**: M5
+- **Status**: Unit-covered (`packages/agent-runtime/src/runtime.test.ts`,
+  `context-compaction.test.mjs`); provider/UI journey Draft

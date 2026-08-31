@@ -3,7 +3,7 @@
 - Status: Accepted
 - Date: 2026-08-06
 - Deciders: PI-Desktop core
-- Amends: ADR 0061 / ADR 0030 / D158 / D200
+- Amends: ADR 0061 / ADR 0030 / D158 / D200; amended by ADR 0136
 
 ## Context
 
@@ -134,6 +134,10 @@ compaction controls and still ignores persisted `contextCompaction` values
   messages. `buildSessionContext()` in pi-agent-core emits
   `createCompactionSummaryMessage(summary)` before `entry.retainedTail`, and
   that order is not ours to choose. Both orders present the same content.
+- **Task boundary.** ADR 0136 narrows the retained tail: an active turn may
+  retain only its latest user message, while a completed-turn checkpoint has
+  an empty tail so the next prompt cannot be mistaken for a continuation of
+  completed work.
 - **`hardLimit` derivation.** Codex compacts at 90% of the window; we keep
   ADR 0030's "window − output reserve". Codex can afford the looser number
   because it has a separate full-window guard; we do not, and an oversized

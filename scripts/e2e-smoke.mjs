@@ -271,19 +271,36 @@ async function main() {
     });
     record("E2E-013-glob-tool", glob.ok === true && (glob.content?.count ?? 0) >= 2);
 
-    // path escape denied
-    const escape = await host.call("tools.execute", {
+    // External paths require an explicit denial before execution can report
+    // the sandbox result. This keeps the smoke harness aligned with the
+    // host's permission contract instead of leaving the request pending.
+    const escapeToolCallId = randomUUID();
+    const escapePending = host.call("tools.execute", {
       sessionId: session.session.id,
-      toolCallId: randomUUID(),
+      toolCallId: escapeToolCallId,
       toolName: "Read",
       args: { path: "../outside.txt" },
       mode: "agent",
     });
+    let escapePermission = null;
+    for (let i = 0; i < 100 && !escapePermission; i++) {
+      escapePermission = host.notifications.find(
+        (notification) =>
+          notification.method === "permissions.request" &&
+          notification.params?.toolCallId === escapeToolCallId,
+      );
+      if (!escapePermission) await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    if (escapePermission) {
+      await host.call("permissions.resolve", {
+        requestId: escapePermission.params.requestId,
+        decision: "deny",
+      });
+    }
+    const escape = await escapePending;
     record(
       "E2E-019-path-sandbox",
-      escape.ok === false &&
-        (escape.errorCode === "PATH_OUTSIDE_WORKSPACE" ||
-          escape.content?.code === "PATH_OUTSIDE_WORKSPACE"),
+      escapePermission !== null && escape.ok === false && escape.errorCode === "TOOL_DENIED",
       escape.errorCode || escape.content?.code,
     );
 

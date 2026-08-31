@@ -101,13 +101,15 @@ ignore files from applying — the same rule that lets `path` reach into
 - UI may offer “open full output in viewer” for Bash/Read later (post-MVP optional)
 - full raw output is not required to persist forever; session may store truncated form in MVP
 - the per-result host cap does not bound a parallel batch in aggregate, and it
-  does not need to during context compaction: a checkpoint retains only user
-  messages, so no tool result crosses the boundary at all (D203). Tool output
-  reaches the next context solely through the checkpoint summary.
-- the one message a checkpoint may truncate is the oldest retained user message,
-  the one that crosses the 20,000-token retention limit. It keeps a 75/25
-  head/tail share of its text with this marker in between, rather than being
-  dropped:
+  does not need to during context compaction: an active-turn checkpoint retains
+  only the latest user message while an active turn continues, and a
+  completed-turn checkpoint retains none, so no tool result crosses the
+  boundary at all (D203/D275). Completed turns carry no user message past the
+  boundary; tool output reaches the next context solely through the checkpoint
+  summary.
+- the one active user message a checkpoint may truncate crosses the 20,000-token
+  retention limit. It keeps a 75/25 head/tail share of its text with this marker
+  in between, rather than being dropped:
 
 ```text
 [checkpoint truncated: this message crossed the retained context budget]

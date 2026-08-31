@@ -2423,7 +2423,11 @@ describe("DesktopAgentRuntime assistant thinking events", () => {
     await runtime.prompt("hello", "user-1");
 
     expect((runtime as any).runCompaction).toHaveBeenCalledOnce();
-    expect((runtime as any).runCompaction).toHaveBeenCalledWith("overflow", true);
+    expect((runtime as any).runCompaction).toHaveBeenCalledWith(
+      "overflow",
+      true,
+      "active_turn",
+    );
     expect(agent.continue).toHaveBeenCalledOnce();
     expect((runtime as any).overflowRecoveryAttempted).toBe(true);
     await runtime.dispose();
@@ -3160,6 +3164,83 @@ describe("DesktopAgentRuntime compaction restore", () => {
     await runtime.dispose();
   });
 
+  it("does not replay completed user requests after a checkpoint", async () => {
+    const runtime = createRuntime({
+      history: [
+        {
+          id: "old-user",
+          role: "user",
+          content: "Implement fix A",
+          createdAt: "2026-07-28T00:00:00Z",
+          status: "complete",
+        },
+        {
+          id: "old-assistant",
+          role: "assistant",
+          content: "Fix A is complete.",
+          createdAt: "2026-07-28T00:00:01Z",
+          status: "complete",
+        },
+        {
+          id: "current-user",
+          role: "user",
+          content: "Implement fix B only; do not revisit fix A.",
+          createdAt: "2026-07-28T00:00:02Z",
+          status: "complete",
+        },
+        {
+          id: "current-assistant",
+          role: "assistant",
+          content: "Fix B is complete.",
+          createdAt: "2026-07-28T00:00:03Z",
+          status: "complete",
+        },
+      ],
+    });
+    const entries = (runtime as any).entriesWithCompaction();
+    const budget = (runtime as any).contextBudget(
+      entries.map((entry: any) => entry.message),
+    );
+    const preparation = (runtime as any).prepareCompactionInput(
+      entries,
+      budget,
+      20_000,
+      "completed_turn",
+    );
+
+    expect(preparation.value.retainedTail).toEqual([]);
+    const checkpoint = (runtime as any).createCheckpoint(
+      preparation.value,
+      "current-assistant",
+      "Fixes A and B are complete. Await the next requested fix.",
+      undefined,
+      { retainedTailMode: "completed_turn" },
+    );
+    const compacted = buildSessionContext(
+      (runtime as any).entriesWithCompaction(checkpoint),
+    ).messages;
+    const nextPrompt = {
+      role: "user",
+      content: "Implement fix C only. Do not revisit A or B.",
+      timestamp: 4,
+    };
+
+    expect(compacted.map((message: any) => message.role)).toEqual([
+      "compactionSummary",
+    ]);
+    expect([...compacted, nextPrompt].map((message: any) => message.role)).toEqual([
+      "compactionSummary",
+      "user",
+    ]);
+    expect(JSON.stringify([...compacted, nextPrompt])).not.toContain(
+      "Implement fix A",
+    );
+    expect(JSON.stringify([...compacted, nextPrompt])).toContain(
+      "Implement fix C only",
+    );
+    await runtime.dispose();
+  });
+
   it("does not reuse pre-compaction provider usage for the retained tail budget", async () => {
     const runtime = createRuntime({
       history: [
@@ -3346,7 +3427,11 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
 
     expect(hard.context.systemPrompt).not.toContain("<context_budget>");
     expect(runCompaction).toHaveBeenCalledOnce();
-    expect(runCompaction).toHaveBeenCalledWith("threshold", false);
+    expect(runCompaction).toHaveBeenCalledWith(
+      "threshold",
+      false,
+      "active_turn",
+    );
     const events = onEvent.mock.calls.map(([envelope]) => (envelope as any).event);
     expect(events.filter((event) => event.type === "turn_end")).toHaveLength(3);
     expect(events.some((event) => event.type === "agent_end")).toBe(false);
@@ -3380,7 +3465,11 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
       .mockResolvedValue(true);
 
     await (runtime as any).prepareNextTurn(nextTurn);
-    expect(runCompaction).toHaveBeenCalledWith("threshold", false);
+    expect(runCompaction).toHaveBeenCalledWith(
+      "threshold",
+      false,
+      "active_turn",
+    );
     expect((runtime as any).pendingModelCompaction).toBe(false);
 
     // The request is consumed, so the next boundary compacts nothing.
@@ -3492,7 +3581,12 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
     const budget = (runtime as any).contextBudget(
       entries.map((entry: any) => entry.message),
     );
-    const preparation = (runtime as any).prepareCompactionInput(entries, budget);
+    const preparation = (runtime as any).prepareCompactionInput(
+      entries,
+      budget,
+      20_000,
+      "active_turn",
+    );
 
     expect(preparation.ok).toBe(true);
     // Everything is summarized as one range, so nothing leaves the context
@@ -3506,19 +3600,20 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
     expect(preparation.value.firstKeptEntryId).toBe("large-tool-call");
     expect(
       preparation.value.retainedTail.map((message: any) => message.content),
-    ).toEqual(["old context", "inspect the log"]);
+    ).toEqual(["inspect the log"]);
 
     const checkpoint = (runtime as any).createCheckpoint(
       preparation.value,
       "large-tool-call",
       "Older work was summarized.",
+      undefined,
+      { retainedTailMode: "active_turn" },
     );
     const compacted = buildSessionContext(
       (runtime as any).entriesWithCompaction(checkpoint),
     ).messages;
     expect(compacted.map((message: any) => message.role)).toEqual([
       "compactionSummary",
-      "user",
       "user",
     ]);
     // No assistant message means no toolCall block, so no orphaned tool call can
@@ -3533,10 +3628,11 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
     await runtime.dispose();
   });
 
-  it("truncates the oldest retained user message instead of dropping it", async () => {
+  it("retains only the active user message and truncates it at the retention cap", async () => {
     const runtime = createRuntime();
-    // Four 8k-token user messages against the 20k retention cap: the two newest
-    // fit whole, the third crosses the budget, the oldest is out of reach.
+    // Historical user messages are summarized. The active prompt is retained
+    // only when the provider still needs another turn, and it is truncated if
+    // it alone crosses the 20k retention cap.
     const asks = ["oldest", "third", "second", "newest"].map(
       (label, index) => ({
         type: "message",
@@ -3545,7 +3641,7 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
         timestamp: `2026-07-30T00:00:0${index}Z`,
         message: {
           role: "user",
-          content: `${label}:${"x".repeat(32_000 - label.length - 1)}`,
+          content: `${label}:${"x".repeat(index === 3 ? 100_000 : 100)}`,
           timestamp: index + 1,
         },
       }),
@@ -3556,22 +3652,23 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
     const budget = (runtime as any).contextBudget(
       entries.map((entry: any) => entry.message),
     );
-    const preparation = (runtime as any).prepareCompactionInput(entries, budget);
+    const preparation = (runtime as any).prepareCompactionInput(
+      entries,
+      budget,
+      20_000,
+      "active_turn",
+    );
     const retained = preparation.value.retainedTail;
 
-    expect(retained).toHaveLength(3);
+    expect(retained).toHaveLength(1);
     expect(
       retained.reduce(
         (sum: number, message: any) => sum + estimateTokens(message),
         0,
       ),
     ).toBeLessThanOrEqual(20_000);
-    // Chronological order, oldest first, with only the boundary message cut.
-    expect(
-      retained.map((message: any) => message.content.slice(0, 6)),
-    ).toEqual(["third:", "second", "newest"]);
+    expect(retained[0].content.slice(0, 7)).toBe("newest:");
     expect(retained[0].content).toContain("[checkpoint truncated:");
-    expect(retained[1].content).not.toContain("[checkpoint truncated:");
     await runtime.dispose();
   });
 
@@ -3614,17 +3711,23 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
     const budget = (runtime as any).contextBudget(
       buildSessionContext(entries).messages,
     );
-    const preparation = (runtime as any).prepareCompactionInput(entries, budget);
+    const preparation = (runtime as any).prepareCompactionInput(
+      entries,
+      budget,
+      20_000,
+      "active_turn",
+    );
 
     // "anchor ask" is the message the previous checkpoint was filed against, so
     // it sits behind the boundary and "First summary." already covers it. pi
     // 0.84 starts the compactable range at the checkpoint entry (replaying its
     // retained tail as virtual entries) instead of walking back to the anchor,
     // so the one-entry overlap 0.82 produced is gone. What matters to this test
-    // still holds: the retained user message survives into the next tail.
+    // still holds: only the latest active user message survives into the next
+    // tail, so an older checkpoint tail cannot reintroduce another request.
     expect(
       preparation.value.retainedTail.map((message: any) => message.content),
-    ).toEqual(["remembered ask", "later ask"]);
+    ).toEqual(["later ask"]);
     await runtime.dispose();
   });
 
@@ -3697,7 +3800,12 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
     const budget = (runtime as any).contextBudget(
       entries.map((entry: any) => entry.message),
     );
-    const preparation = (runtime as any).prepareCompactionInput(entries, budget);
+    const preparation = (runtime as any).prepareCompactionInput(
+      entries,
+      budget,
+      20_000,
+      "active_turn",
+    );
     const retainedTail = preparation.value.retainedTail;
 
     expect(budget.tokens).toBeGreaterThan(budget.hardLimit);
@@ -3786,6 +3894,7 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
         details: expect.objectContaining({
           fallback: "retained_tail",
           failureCode: "CONTEXT_COMPACTION_FAILED",
+          retainedTailMode: "completed_turn",
         }),
       }),
     );

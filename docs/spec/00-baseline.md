@@ -38,8 +38,10 @@
 > fallback for automatic compaction failures. D200 / ADR 0061 derives the
 > budgets from the model window instead of settings and removes the compaction
 > settings. D203 / ADR 0064 then rebuilds the mechanism to match Codex:
-> compaction is inline only, a checkpoint carries the summary plus recent user
-> messages, the model-facing `new_context` tool and two budget reminders are
+> compaction is inline only, a checkpoint carries the summary plus the latest
+> active user message only while a turn continues; completed turns
+> carry no naked historical user messages. The model-facing `new_context` tool
+> and two budget reminders are
 > back, each compaction adds a transcript row and one warning, and a
 > no-summary rollover family exists behind an internal switch.
 > `0.4.12` standardizes home and thread-docked composer prompt rows without a
@@ -129,8 +131,9 @@
     `project.set`; tool roots remain bound to the originating session project**
 43. Context management: **pi-native checkpoint summaries in Codex's shape —
      inline compaction at the deterministic pre-request hard guard, the summary
-     plus recent user messages carried forward, durable host checkpoints, and
-     one overflow retry. The model can request a new window through
+     plus only the latest active user message while a turn continues (and no
+     naked historical user messages after a completed turn), durable host
+     checkpoints, and one overflow retry. The model can request a new window through
      `new_context`; every compaction adds a transcript row and one warning.
      No user-facing settings**
 44. Plan tools and policy: **Read / Glob / Grep / BrowserPreview / Bash plus

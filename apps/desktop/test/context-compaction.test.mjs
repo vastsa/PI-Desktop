@@ -76,7 +76,7 @@ test("the hard boundary is enforced by the host, with a model-side escape hatch"
   assert.match(runtime, /CONTEXT_COMPACTION_FAILED: unable to create a checkpoint/);
   assert.match(runtime, /checkpoint truncated: this message crossed the retained context budget/);
   assert.match(runtime, /pendingOverflow/);
-  assert.match(runtime, /runCompaction\("overflow", true\)/);
+  assert.match(runtime, /runCompaction\(\s*"overflow",\s*true,\s*"active_turn",?\s*\)/);
   assert.match(runtime, /fallback: "retained_tail"/);
   // Codex's tool, verbatim and parameterless, plus its two-tier reminder.
   assert.match(runtime, /CONTEXT_COMPACTION_TOOL_NAME = "new_context"/);
@@ -116,19 +116,23 @@ test("every checkpoint is durable, not just the newest one", () => {
   );
 });
 
-test("a checkpoint carries only recent user messages past the boundary", () => {
-  // Codex's shape: the summary covers the whole boundary range and the only
-  // messages that survive it are user messages, capped at 20k tokens.
+test("a checkpoint carries only the active user message past the boundary", () => {
+  // The summary covers the whole boundary range. An in-progress turn carries
+  // only its latest user message, while a completed turn carries no naked
+  // historical user messages into the next task.
   assert.match(runtime, /COMPACTION_RETAINED_USER_MESSAGE_MAX_TOKENS = 20_000/);
+  assert.match(runtime, /type CompactionRetentionMode = "active_turn" \| "completed_turn"/);
+  assert.match(runtime, /retainedTailMode: retentionMode/);
   assert.match(runtime, /private codexShapedPreparation\(/);
   assert.match(
     runtime,
     /const messagesToSummarize = \[\s*\.\.\.preparation\.messagesToSummarize,\s*\.\.\.preparation\.turnPrefixMessages,\s*\.\.\.preparation\.retainedTail,\s*\]/,
   );
   assert.match(runtime, /turnPrefixMessages: \[\],\s*isSplitTurn: false/);
+  assert.match(runtime, /const latestUser = messagesToSummarize[\s\S]*?\.at\(-1\)/);
   assert.match(
     runtime,
-    /\(message\): message is UserMessage => message\.role === "user"/,
+    /retentionMode === "active_turn" && latestUser \? \[latestUser\] : \[\]/,
   );
   // Newest-first selection with the boundary message truncated, not dropped.
   assert.match(runtime, /function selectRetainedUserMessages\(/);
@@ -165,7 +169,10 @@ test("compaction runs inline at the hard boundary, never ahead of it", () => {
   );
   // Generation stays separate from installation so a failed build can still
   // fall through to the retained-tail recovery path.
-  assert.match(runtime, /private async buildCheckpoint\(signal: AbortSignal\)/);
+  assert.match(
+    runtime,
+    /private async buildCheckpoint\(\s*signal: AbortSignal,\s*retentionMode: CompactionRetentionMode,?\s*\)/,
+  );
   assert.match(runtime, /private async installCheckpoint\(/);
 });
 
@@ -251,4 +258,3 @@ test("the transcript shows one row per compaction, the inspector the newest", ()
   assert.match(enLocale, /usageCompaction:/);
   assert.match(enLocale, /compactionRow:/);
 });
-

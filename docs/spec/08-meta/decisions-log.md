@@ -219,6 +219,7 @@ Gold source: local Codex electron captures; latest row wins where rows conflict.
 | D272 | Quitting stops plugins as a shutdown, not as a crash | **Refines spec 07 §3.1 in the main process: `before-quit` calls `PluginRuntime.disposeAll()` instead of `disposeWatchers()`. It marks every loaded plugin as disposing and cancels its pending restarts before anything else, disposes watchers, then stops services and runs `onUnload` in parallel — 1.5s per plugin, 3s for the whole sequence, after which the children are killed. `onPluginCrash` no longer sends its own toast, since the runtime already raised one on that path. Main process only: no IPC, storage, host-protocol, or manifest change, and no ADR is required.** | Quit left the plugin children to be killed by the process teardown, and an unmarked exit is indistinguishable from a crash: `handleChildExit`'s `disposing` guard never applied, so every quit logged `PLUGIN_CRASHED` per plugin at `exitCode: 0`, toasted "stopped unexpectedly" twice, and scheduled restarts into a closing app. 613 of 633 crash reports in one local log were this, which is what made the real crashes hard to see. |
 | D273 | A model's habitual argument name is accepted, not corrected | **Refines spec 03 §4 in the agent runtime: `Read`/`Write`/`Edit`/`BrowserPreview` accept `file_path` beside `path`, and `Glob`/`Grep` accept `query` beside `pattern`. Both spellings are optional in the schema so either validates; the runtime folds the alias onto the canonical name before the write lock, the host call, and the transcript, requires exactly one of the pair, and lets the canonical name win when both arrive. `Bash.timeout` widens its schema maximum to 3600000 so a millisecond value validates, and the runtime reads a value of at least 1000 as milliseconds, clamped to the honoured 300-second ceiling, while 301 to 999 stays an out-of-range seconds value. Runtime only: no IPC, storage, or host-protocol change, and host-core's schemas are unchanged.** | Argument names are pretraining habits, not instructions a schema can correct. 852 of 1679 failed tool calls in one local month were a parameter-name miss, 724 of them `Read` sent with `file_path`, which alone was 87% of `Read`'s failures and put its error rate at 11%. Another 69 were a `timeout` in milliseconds. Each cost a turn on an error the model could not see itself making. |
 | D274 | Retry an unchanged edited prompt | **Amends D137 in the renderer: confirming a valid user-prompt edit always dispatches the existing edit-resend/Regenerate path, even when the trimmed text matches the original. The inline controls are localized Retry and Cancel actions; Retry retains the existing revision archive, identity-based truncation, slash-command expansion, and attachment behavior. Renderer and i18n only: no IPC, storage, host-protocol, or runtime contract change.** | Treating an unchanged confirmation as a no-op made the “Edit and resend” action appear broken (issue #23), while the old Send label suggested a new ordinary prompt rather than replaying the selected turn. |
+| D275 | Preserve the active task boundary across context compaction | **Amends D203 / ADR 0064 in the agent runtime: checkpoints record opaque `details.retainedTailMode`. An active-turn checkpoint retains only the latest user message (up to the existing 20,000-token cap) when the provider must continue after a tool result, `toolUse`, or overflow recovery. A completed-turn checkpoint has an empty retained tail at terminal boundaries, before a new prompt, and for manual compaction; its summary is authoritative for completed work. Legacy records without the mode normalize to their latest user message. No visible transcript, storage schema, host ownership, or protocol shape changes.** | Keeping several recent user prompts while compacting away completion messages made the next prompt look like a continuation of an old task (issue #22). The boundary must be explicit at restore time while active tool loops still retain the prompt needed to continue. |
 
 ## M0. Model catalog decisions
 
@@ -2742,6 +2743,19 @@ D193, and D194.
   untouched.
 - Renderer and i18n only: no IPC, storage, host-protocol, or runtime contract
   change. See ADR 0135, `04-ux/08-component-spec.md`, and E2E-073.
+
+## 2026-08-31 — Preserve the active task boundary across context compaction (D275)
+
+- Decision D275 amends D203 / ADR 0064 in the agent runtime. Checkpoints now
+  persist an opaque `details.retainedTailMode` boundary.
+- While a provider must continue an active tool turn, the checkpoint retains
+  only the latest user message, bounded by the existing 20,000-token limit. At
+  a completed turn boundary, before a new prompt, or for manual compaction, it
+  retains no naked historical user messages; the summary is authoritative and
+  the next prompt is the new task.
+- Legacy checkpoints without the mode normalize to their latest user message.
+  The visible transcript, host-owned storage, and protocol shape are unchanged.
+  See ADR 0136, the runtime/storage/tool-result specs, and E2E-164.
 
 ## 2026-08-31 — A visited session keeps its own mounted pane (D276)
 
