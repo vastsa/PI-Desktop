@@ -221,13 +221,24 @@ may be retained while exactly one workspace supplies the visible shell context.
   transcript IO run in parallel. A monotonic navigation generation permits only
   the newest selection to project the visible workspace, transcript, run state,
   navigation history, and work-panel context.
-- A warm transcript snapshot is revalidated in parallel. While selection or
-  React preparation is pending, the main pane keeps the last settled transcript
-  mounted, dims it, disables interaction with a thin progress track, and sets
-  `aria-busy`; the destination session id is never paired with the previous
-  session's messages. The composer keeps the settled shape while loading. Once
-  ready, the destination swaps into that same render boundary at its final
-  record without a skeleton remount, top-of-history flash, or empty-home flash.
+- The chat surface retains one pane per session, keyed by session id and bounded
+  to three (the visible pane plus the two most recent). Hidden panes stay mounted
+  and inert — `visibility: hidden` plus `content-visibility: hidden`, never
+  `display: none`, which would discard their scroll offset — and each pane keeps
+  its own scroll position for its lifetime. Switching to a session that still has
+  a pane (warm) reveals it immediately with its retained content and position:
+  nothing is dimmed, no skeleton appears, no transcript remounts, and the
+  revalidated snapshot lands in the same pane without a visible change.
+- Switching to a session with no retained pane (cold) leaves the visible pane on
+  its own session until the destination commits. Only a thin progress track and
+  `aria-busy` mark the wait, the composer stays non-interactive so a prompt cannot
+  reach the session being left, and the destination session id is never paired
+  with another session's messages. The destination is then revealed at its final
+  record without a top-of-history or empty-home flash. An evicted session is
+  indistinguishable from a first visit.
+- A first-opened session settles at its newest turn. A revisited pane returns to
+  the offset the user left, and a pane still pinned re-anchors to the bottom;
+  activation no longer resets manual-scroll state for a revisit (ADR 0135).
 - Selecting a project-scoped conversation activates its project as part of the
   store-owned selection transaction. Selecting a Temporary conversation clears
   the visible workspace. Project-scoped new-session actions pass their target
@@ -470,10 +481,12 @@ may be retained while exactly one workspace supplies the visible shell context.
 
 ### 2.2 Auto-scroll
 
-- Opening a session resets follow mode and positions the transcript at its last
-  record before the browser paints the activated transcript. The activation
-  does not animate through history or expose the top or previous session's
-  scroll position.
+- Opening a session for the first time resets follow mode and positions the
+  transcript at its last record before the browser paints its pane. Revealing a
+  retained pane restores that pane's own follow state and offset instead: still
+  pinned re-anchors to the bottom, scrolled up returns to the same offset.
+  Neither path animates through history, and no pane may ever expose the
+  transcript top or another session's scroll position.
 - Auto-scroll to bottom on each new token group (throttled: check every 100ms, not every token)
 - The first upward manual scroll movement pauses auto-scroll immediately and
   cancels any pending follow frame; small trackpad deltas must not snap back to
