@@ -157,3 +157,4 @@ Each ADR includes:
 | 0141 | Make expanded sidebar width user-resizable | Accepted |
 | 0142 | Allow non-loopback HTTP MCP endpoints with explicit risk disclosure | Accepted |
 | 0144 | Allow user-configured thinking-level overrides | Accepted |
+| 0145 | Publish native macOS Intel artifacts | Accepted |

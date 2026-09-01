@@ -150,7 +150,7 @@ v8→v11 迁移是一个带有 WAL 检查点和精确的原子事务
 - [x] 长输出不会冻结 UI — 手册：M3（256KB/4000-line 截断）
 - [x] 按键操作显示 loading/running 状态 — 手动：M2
 - [x] 发布包没有重复的 renderer/runtime 依赖树 —
-  auto:desktop包合约+macOS arm64原生包审核：E2E-092
+  auto:desktop包合约+本机 macOS arm64/Intel x64 软件包审核：E2E-092
 - [ ] 打包启动和本地 renderer/runtime 功能仍然可用
   在每个本机目标上离线 — 草案：E2E-092
 

@@ -2911,3 +2911,16 @@ D193, and D194.
 - Rail labels may stay shorter than the descriptive selected-page title, such
   as Model configuration or Project archive, so the navigation stays aligned
   without removing context from the content pane.
+
+## 2026-09-01 — Native macOS Intel release lane (D285)
+
+- D285 extends D126 and ADR 0145. Tag builds now use `macos-15` for arm64 and
+  `macos-15-intel` for Intel x64, alongside the existing Windows x64 and Linux
+  x64 lanes.
+- The static macOS targets expose DMG and ZIP without a fixed architecture;
+  each native runner passes the matching electron-builder flag and builds the
+  Rust host sidecar locally. The workflow rejects a runner architecture that
+  does not match the matrix entry.
+- macOS updater feeds are renamed per architecture before artifact upload and
+  merged into one `latest-mac.yml` during publication. macOS remains
+  notify-and-link until a signed in-app channel is qualified.

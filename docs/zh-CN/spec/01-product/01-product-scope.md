@@ -56,7 +56,7 @@ MCP 服务器、常驻服务和消息总线集成。
 
 ## 4. 当前发货范围
 
-- 适用于 macOS arm64、Windows x64 和 Linux x64 发布通道的 Electron 桌面应用程序
+- 适用于 macOS arm64、Intel x64、Windows x64 和 Linux x64 发布通道的 Electron 桌面应用程序
 - 英文默认UI + i18n框架
 - 会议 create/switch/restore
 - 多提供商配置
@@ -133,6 +133,6 @@ Plan 和 Goal 是合约模式，而不是严格的只读安全配置文件：Bas
 | 平台 | MVP | 注释 |
 |---|---|---|
 | macOS 苹果芯片 | 已发表 | 初级开发及验收平台； signing/notarization 仍受凭证控制 |
-| macOS 英特尔 | 未包装 | 当前没有 x64 发行目标 |
+| macOS 英特尔 | 已发表 | 本机 x64 DMG/ZIP 发布通道；signing/notarization 仍受凭证控制 |
 | Windows x64 | 已发表 | NSIS 安装程序和应用内更新通道；本土资格继续 |
 | Linux x64 | 已发表 | AppImage 和 deb 包； AppImage更新通道；本土资格继续 |

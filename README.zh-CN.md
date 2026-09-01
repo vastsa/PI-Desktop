@@ -70,6 +70,7 @@ PI-Desktop 把 AI 编程智能体装进原生桌面应用：打开一个项目�
 | 平台 | 安装包 | 状态 |
 |---|---|---|
 | macOS（Apple Silicon） | `.dmg` / `.zip` | ✅ 随版本发布 |
+| macOS（Intel） | `.dmg` / `.zip` | ✅ 随版本发布 |
 | Windows（x64） | NSIS 安装程序 | ✅ 随版本发布，支持应用内更新 |
 | Linux（x64） | `.AppImage` / `.deb` | ✅ 随版本发布，AppImage 支持应用内更新 |
 

@@ -70,6 +70,7 @@ Grab the latest build from the [Releases page](https://github.com/vastsa/PI-Desk
 | Platform | Package | Status |
 |---|---|---|
 | macOS (Apple Silicon) | `.dmg` / `.zip` | ✅ Published with each release |
+| macOS (Intel) | `.dmg` / `.zip` | ✅ Published with each release |
 | Windows (x64) | NSIS installer | ✅ Published with each release; in-app auto-update |
 | Linux (x64) | `.AppImage` / `.deb` | ✅ Published with each release; AppImage auto-updates in-app |
 

@@ -90,7 +90,7 @@ Goal：用户可安装的本地扩展系统。
 Goal：日常可用的包。
 
 可交付成果：
-- 包装（macOS arm64、Windows x64 和 Linux x64 标签工件；D126）
+- 包装（macOS arm64、Intel x64、Windows x64 和 Linux x64 标签工件；D126/D285）
 - 设置抛光
 - logging/error 边界
 - 会话管理基础知识
@@ -180,8 +180,8 @@ E2E-108/E2E-109 覆盖主机重启中断且无重播。
 
 ## 释放约束
 
-标签版本发布 **macOS arm64、Windows x64 和 Linux x64** 工件
-（D126 解除了原始 D010 仅限 macOS 的限制）。
+标签版本发布 **macOS arm64、Intel x64、Windows x64 和 Linux x64** 工件
+（D126 解除了原始 D010 仅限 macOS 的限制；D285 增加了本机 Intel 通道）。
 
 ## 粗暴的努力（独奏）
 

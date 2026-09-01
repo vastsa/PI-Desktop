@@ -116,7 +116,7 @@ Replace with:
 
 ## 9. Acceptance criteria
 
-- [ ] set/has/delete works on macOS arm64 primary path
+- [ ] set/has/delete works on native macOS arm64 and Intel x64 paths
 - [ ] renderer never receives raw secret on provider list/get
 - [ ] runtime can fetch secret ephemerally for a turn
 - [ ] logs do not contain raw key material in normal failure tests

@@ -1,6 +1,7 @@
 # 06. Desktop Release Runbook
 
-> Scope: D126 tag artifacts for macOS arm64, Windows x64, and Linux x64;
+> Scope: D126/D285 tag artifacts for macOS arm64 and Intel x64, Windows x64,
+> and Linux x64;
 > macOS signing/notarization remains the detailed qualification lane below.
 > Cross-references: [milestones](01-mvp-milestones.md) · [process model](../03-runtime/07-process-model.md) · [security](../05-security/01-security.md)
 
@@ -47,7 +48,8 @@ when macOS `iconutil` is available, without overwriting the canonical source.
    - `MAC_SIGNING_IDENTITY` — e.g. `Developer ID Application: <Name> (<TEAMID>)`
    - `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` — required only
      for notarization; the script builds signed-but-unnotarized without them.
-3. Rust toolchain (arm64) and pnpm workspace installed.
+3. Rust toolchain and pnpm workspace installed. The Rust toolchain must run on
+   the native macOS runner: arm64 for Apple Silicon or x86_64 for Intel.
 
 ## 3. What the build ships
 
@@ -147,7 +149,11 @@ export APPLE_TEAM_ID=...
 scripts/release-macos.sh
 ```
 
-Artifacts land in `apps/desktop/release/` (DMG + blockmap).
+Artifacts land in `apps/desktop/release/` (DMG + ZIP + blockmaps).
+
+`scripts/release-macos.sh` defaults to the host architecture and accepts
+`MAC_ARCH=arm64` or `MAC_ARCH=x64` only when that architecture matches the
+host. This keeps the native Rust host sidecar and Electron package aligned.
 
 ### 4.3 GitHub tag workflow
 
@@ -165,6 +171,12 @@ runtime, verifying the host build, building the Desktop application once, and
 invoking electron-builder. This avoids a redundant Desktop build without
 changing the package scripts or release artifacts.
 
+The macOS matrix uses `macos-15` for arm64 and `macos-15-intel` for Intel x64.
+Each job verifies `uname -m`, passes the matching `--arm64` or `--x64` flag to
+electron-builder, and builds `pi-desktop-host-core` on that same native
+runner. The per-architecture `latest-mac.yml` files are renamed before upload;
+the publish job merges them into one feed after downloading both artifacts.
+
 DMG, ZIP, NSIS, AppImage, deb, blockmap, and updater feed outputs are already
 compressed or compression-insensitive. The workflow therefore uploads their
 temporary Actions artifacts with compression level zero before the publish job
@@ -175,11 +187,12 @@ assembles the GitHub Release.
 Run after every release build:
 
 ```bash
-APP="apps/desktop/release/mac-arm64/PI-Desktop.app"
-codesign -dv --verbose=2 "$APP"          # identity + hardened runtime flags
-codesign --verify --deep --strict "$APP" # signature integrity
-spctl -a -vv "$APP"                      # Gatekeeper assessment (notarized builds)
-xcrun stapler validate "$APP"            # notarization staple (if notarized)
+for APP in apps/desktop/release/mac-*/PI-Desktop.app; do
+  codesign -dv --verbose=2 "$APP"          # identity + hardened runtime flags
+  codesign --verify --deep --strict "$APP" # signature integrity
+  spctl -a -vv "$APP"                      # Gatekeeper assessment (notarized builds)
+  xcrun stapler validate "$APP"             # notarization staple (if notarized)
+done
 ```
 
 ### 5.1 Package footprint gate
@@ -283,25 +296,30 @@ Manual smoke on a clean profile (`PI_DESKTOP_DATA_DIR=$(mktemp -d)`):
    fallback/rendering, host health, and sidecar health continue to use packaged
    local assets.
 
-## 6. Windows/Linux release packages
+## 6. Native-runner release packages
 
-The repository exposes `dist:win` and `dist:linux` for native-runner builds.
-Each packaging command first runs `build:host-release`, then bundles the agent
-runtime and Electron app. D126 tag workflows publish these outputs and their
-electron-updater manifests. Run a target command on that target OS:
+The repository exposes native-runner commands for every release target. Each
+packaging command first runs `build:host-release`, then bundles the agent
+runtime and Electron app. D126/D285 tag workflows publish these outputs and
+their electron-updater manifests. Run a target command on that target OS:
 
 ```text
+macOS Apple Silicon: pnpm --filter @pi-desktop/desktop run dist:mac -- --arm64
+macOS Intel:         pnpm --filter @pi-desktop/desktop run dist:mac -- --x64
 Windows: pnpm --filter @pi-desktop/desktop dist:win
 Linux:   pnpm --filter @pi-desktop/desktop dist:linux
 ```
 
-The Windows package includes `bin/pi-desktop-host-core.exe`; Linux includes
-`bin/pi-desktop-host-core`. The Rust host is built on the native runner before
-packaging. Signing, rollback, and installer upgrade qualification remain release
-hardening work; publication itself is active under D126.
+The macOS packages include `bin/pi-desktop-host-core` built for their runner
+architecture; Windows includes `bin/pi-desktop-host-core.exe`; Linux includes
+`bin/pi-desktop-host-core`. Signing, rollback, and installer upgrade
+qualification remain release hardening work; publication is active under
+D126/D285.
 
 Native-runner output matrix:
 
+- macOS arm64: DMG and ZIP
+- macOS Intel x64: DMG and ZIP
 - Windows x64: NSIS installer
 - Linux x64: AppImage and deb
 

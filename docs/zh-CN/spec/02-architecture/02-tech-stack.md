@@ -24,7 +24,7 @@
 > 将该 id 视为未知的自由形式模型。
 | Node 运行时 | Node.js | `>= 22.19` | 圆周率要求 |
 | 数据库 | SQLite | Rust host-core 通过 `rusqlite` | sessions/settings |
-| 包装 | 电子制造商 | 稳定 | macOS arm64、Windows x64 和 Linux x64 释放通道 |
+| 包装 | 电子制造商 | 稳定 | macOS arm64、Intel x64、Windows x64 和 Linux x64 释放通道 |
 | 包管理器 | PNPM | 11.18.x | JS 单一仓库 |
 | Lint/test | 样式令牌检查器（`scripts/check-style-tokens.mjs`）+ vitest + 货物测试；一般 JS linter 仍然打开（biome vs oxlint） | 稳定 | 双堆栈质量 |
 | 架构 (TS) | 打字机 | 冷冻（D011） | 共享合约 |

@@ -67,7 +67,7 @@ M5。
 
 | 要求 | 详情 |
 |---|---|
-| 平台 | macOS arm64、Windows x64 和 Linux x64 发行目标 (D126) |
+| 平台 | macOS arm64、Intel x64、Windows x64 和 Linux x64 发行目标 (D126/D285) |
 | 公司简介 | 干净的 `~/.pi-desktop` 配置文件（无需事先配置） |
 | 固定装置 | 示例项目目录 (`examples/fixtures/sample-project/`) |
 | 示例插件 | 从本地路径加载 `examples/plugins/hello` |
@@ -125,7 +125,7 @@ M5。
 
 #### E2E-001：应用程序启动并显示主窗口
 
-- **先决条件**：macOS arm64；没有先前的 `~/.pi-desktop` 配置文件。对于
+- **先决条件**：macOS arm64 或 Intel x64；没有先前的 `~/.pi-desktop` 配置文件。对于
   开发通道、工作区包构建输出不存在或早于
   他们的 TypeScript 来源。
 - **步骤**：1) 启动 PI-Desktop。在开发通道中，使用 `pnpm dev`。
@@ -2964,8 +2964,8 @@ IPC 请求无法关闭。
 
 #### E2E-092：打包的运行时是独立的，没有重复的依赖项
 
-- **先决条件**：本机 macOS arm64、Windows x64 和 Linux x64 软件包
-  从干净的发布主机目录构建；干净的应用程序配置文件；
+- **先决条件**：本机 macOS arm64 和 Intel x64、Windows x64 及 Linux x64
+  软件包从干净的发布主机目录构建；干净的应用程序配置文件；
   提供英语和中文版本；可以禁用外部网络访问
   环回仍然可用；与 OpenAI 兼容的确定性环回
   夹具提供程序返回代码、KaTeX、Mermaid 和终端命令。
@@ -2976,13 +2976,20 @@ IPC 请求无法关闭。
   2. 检查 sidecar、主机、生产的 ASAR 和资源库存
      模块、源映射、tests/examples/declarations、Chromium 语言环境以及
      本机预构建目标。
-  3. 配置环回装置提供程序，禁用外部出口，然后
-从干净的配置文件启动。英文和简体切换
+  3. 对每个 macOS 软件包使用 `file`（或 `lipo -info`）检查应用程序
+     可执行文件和 `Resources/bin/pi-desktop-host-core`；确认 arm64 和
+     x86_64 软件包只包含声明的架构，且 Rust 主机与 Electron 应用一致。
+     确认发布目录包含 DMG、ZIP 和合并后的 `latest-mac.yml` 更新源。
+  4. 配置环回装置提供程序，禁用外部出口，然后
+     从干净的配置文件启动。英文和简体切换
      中文，要求确定性响应，渲染通用
      JavaScript/TypeScript、Python、Rust、shell、Mermaid 和未知语言
      栅栏加上 KaTeX 和美人鱼图，打开终端并验证主机
      和代理边车健康状况。
-- **预期**：该软件包仅包含一个捆绑代理 sidecar，即
+- **预期**：每个 macOS 软件包仅包含一个捆绑代理 sidecar、一个与声明
+  架构匹配的 Rust 主机，并且仅包含配置的 Chromium 区域设置包。发布
+  输出包含两个本机 macOS 架构、DMG/ZIP 工件和一个合并的更新源。该
+  软件包仅包含一个捆绑代理 sidecar，即
   目标本机 Rust 主机，并且仅配置了 Chromium 区域设置
   包。 Renderer 依赖关系通过 Vite 输出存在，而不是重复
   原始 `node_modules`；依赖源映射、测试、示例、声明、
@@ -4191,7 +4198,7 @@ IPC 请求无法关闭。
 - [ ] 可追溯性矩阵已完成（场景 ↔ 验收 ↔ 里程碑）。
 - [ ] 场景模板已定义，所有条目均遵循该模板。
 - [ ] AI 更新规则已记录并与工作流程规范交叉链接。
-- [ ] 环境要求符合基线（macOS arm64，干净的配置文件）。
+- [ ] 环境要求符合基线（本机 macOS arm64/Intel x64，干净的配置文件）。
 
 ## UI shell 视觉场景
 

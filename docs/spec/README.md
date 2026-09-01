@@ -91,5 +91,5 @@ docs/spec/
    shell identity
 10. Permission timeout 120s deny; Bash timeout 60s by default
 11. Local user-installable plugins (market later)
-12. Tag releases = macOS arm64, Windows x64, and Linux x64 (D126)
+12. Tag releases = macOS arm64 and Intel x64, Windows x64, and Linux x64 (D126/D285)
 13. Universal provider/model coverage (native + OpenAI-compatible + custom)

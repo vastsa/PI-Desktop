@@ -53,7 +53,7 @@ notifications, and run scheduled prompts manually or on a remembered cadence.
 
 ## 4. Current shipped scope
 
-- Electron desktop app for macOS arm64, Windows x64, and Linux x64 release lanes
+- Electron desktop app for macOS arm64 and Intel x64, Windows x64, and Linux x64 release lanes
 - English default UI + i18n framework
 - Session create/switch/restore
 - Multi-provider configuration
@@ -130,6 +130,6 @@ the internal `page = "chat"` route value; that value is not an operating mode.
 | Platform | MVP | Notes |
 |---|---|---|
 | macOS Apple Silicon | Published | Primary development and acceptance platform; signing/notarization remains credential-gated |
-| macOS Intel | Not packaged | No current x64 release target |
+| macOS Intel | Published | Native x64 DMG/ZIP release lane; signing/notarization remains credential-gated |
 | Windows x64 | Published | NSIS installer and in-app update lane; native qualification continues |
 | Linux x64 | Published | AppImage and deb packages; AppImage update lane; native qualification continues |

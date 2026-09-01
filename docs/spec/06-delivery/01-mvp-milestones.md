@@ -87,7 +87,7 @@ Status: **Complete except credential-gated macOS notarization**
 Goal: daily-usable package.
 
 Deliverables:
-- packaging (macOS arm64, Windows x64, and Linux x64 tag artifacts; D126)
+- packaging (macOS arm64 and Intel x64, Windows x64, and Linux x64 tag artifacts; D126/D285)
 - settings polish
 - logging/error boundaries
 - session management basics
@@ -177,8 +177,9 @@ Remaining work is tracked as product hardening rather than unstarted MVP scope:
 
 ## Release constraint
 
-Tag releases publish **macOS arm64, Windows x64, and Linux x64** artifacts
-(D126 lifts the original D010 macOS-only constraint).
+Tag releases publish **macOS arm64 and Intel x64, Windows x64, and Linux x64**
+artifacts (D126 lifts the original D010 macOS-only constraint; D285 adds the
+native Intel lane).
 
 ## Rough effort (solo)
 

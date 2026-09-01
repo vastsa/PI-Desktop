@@ -94,5 +94,5 @@ docs/spec/
    外壳身份
 10、权限超时120s拒绝； Bash 超时默认 60 秒
 11.本地用户可安装的插件（稍后上市）
-12. 标签版本 = macOS arm64、Windows x64 和 Linux x64 (D126)
+12. 标签版本 = macOS arm64、Intel x64、Windows x64 和 Linux x64 (D126/D285)
 13. 通用 provider/model 覆盖范围（原生 + OpenAI 兼容 + 定制）

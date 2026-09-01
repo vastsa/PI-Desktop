@@ -65,7 +65,7 @@ M5.
 
 | Requirement | Detail |
 |---|---|
-| Platform | macOS arm64, Windows x64, and Linux x64 release targets (D126) |
+| Platform | macOS arm64 and Intel x64, Windows x64, and Linux x64 release targets (D126/D285) |
 | Profile | Clean `~/.pi-desktop` profile (no prior config) |
 | Fixtures | Sample project directory (`examples/fixtures/sample-project/`) |
 | Sample plugin | `examples/plugins/hello` loaded from local path |
@@ -123,7 +123,7 @@ Each scenario is documented in this format:
 
 #### E2E-001: App launches and shows main window
 
-- **Preconditions**: macOS arm64; no prior `~/.pi-desktop` profile. For the
+- **Preconditions**: macOS arm64 or Intel x64; no prior `~/.pi-desktop` profile. For the
   development lane, workspace package build outputs are absent or older than
   their TypeScript sources.
 - **Steps**: 1) Launch PI-Desktop. In the development lane, use `pnpm dev`.
@@ -3495,8 +3495,9 @@ Each scenario is documented in this format:
 
 #### E2E-092: Packaged runtime is self-contained without duplicate dependencies
 
-- **Preconditions**: Native macOS arm64, Windows x64, and Linux x64 packages
-  built from clean release-host directories; a clean application profile;
+- **Preconditions**: Native macOS arm64 and Intel x64, Windows x64, and Linux
+  x64 packages built from clean release-host directories; a clean application
+  profile;
   English and zh-CN available; external network access can be disabled while
   loopback remains available; a deterministic loopback OpenAI-compatible
   fixture provider returns code, KaTeX, Mermaid, and a Bash command.
@@ -3507,24 +3508,31 @@ Each scenario is documented in this format:
   2. Inspect ASAR and resource inventories for sidecar, host, production
      modules, source maps, tests/examples/declarations, Chromium locales, and
      native prebuild targets.
-  3. Inspect the renderer output for its size controls: emitted JS is minified,
+  3. On each macOS package, run `file` (or `lipo -info`) against the app
+     executable and `Resources/bin/pi-desktop-host-core`; confirm arm64 and
+     x86_64 packages contain only their declared architecture and that the
+     Rust host matches the Electron app. Confirm the release directory has
+     both DMG and ZIP artifacts and one merged `latest-mac.yml` feed.
+  4. Inspect the renderer output for its size controls: emitted JS is minified,
      no `.woff` or `.ttf` files are present, the KaTeX `woff2` faces remain, and
      the brand marks are the renderer-sized `assets/brand/logo-*.png` rather
      than the 1024px installer icons.
-  4. Configure the loopback fixture provider, disable external egress, and
+  5. Configure the loopback fixture provider, disable external egress, and
      launch from a clean profile. Switch between English and Simplified
      Chinese, request the deterministic response, render common
      JavaScript/TypeScript, Python, Rust, shell, Mermaid, and unknown-language
      fences plus KaTeX and a Mermaid diagram, run the Bash fixture, and verify
      host and agent-sidecar health.
-  5. Confirm typography and branding survive the stripped font fallbacks: KaTeX
+  6. Confirm typography and branding survive the stripped font fallbacks: KaTeX
      math renders with its own faces, Chinese text in both the UI chrome and
      assistant output stays readable under each bundled font selection, and the
      sidebar plus startup-splash logos render crisply on a HiDPI display.
-- **Expected**: The package contains exactly one bundled agent sidecar, the
-  target-native Rust host, and only configured Chromium locale
-  packs. Renderer dependencies exist through Vite output rather than duplicate
-  raw `node_modules`; dependency source maps, tests, examples, declarations,
+- **Expected**: Each macOS package contains exactly one bundled agent sidecar,
+  one Rust host matching its declared architecture, and only configured
+  Chromium locale packs. The release output contains both native macOS
+  architectures, DMG/ZIP artifacts, and one merged updater feed. Renderer
+  dependencies exist through Vite output rather than duplicate raw
+  `node_modules`; dependency source maps, tests, examples, declarations,
   a second agent-runtime tree, and reliably excludable non-target native assets
   are absent. Curated Shiki grammars highlight locally while an unknown fence
   stays readable as plain text. The renderer ships minified chunks, carries no
@@ -5176,7 +5184,8 @@ This test plan spec is accepted when:
 - [ ] Traceability matrix is complete (scenarios ↔ acceptance ↔ milestones).
 - [ ] Scenario template is defined and all entries follow it.
 - [ ] AI update rules are documented and cross-linked to workflow spec.
-- [ ] Environment requirements match baseline (macOS arm64, clean profile).
+- [ ] Environment requirements match baseline (native macOS arm64/Intel x64,
+  clean profile).
 
 ## UI shell visual scenarios
 

@@ -28,6 +28,7 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 | [ADR 0137：保留的会话面板](/adr/0137-retained-session-panes) | 最近访问的会话各自保留一个已挂载的面板（上限三个），切换是可见性交换而不是重建转录 |
 | [ADR 0141：展开侧边栏宽度可调整](/adr/0141-sidebar-width-resize) | 展开侧边栏通过右边缘手柄调整 240–520px 宽度，并持久化首选值 |
 | [ADR 0142：允许非回环 HTTP MCP 端点](/adr/0142-allow-non-loopback-http-mcp) | 支持局域网 MCP，并明确提示明文连接风险，插件仍受网络白名单约束 |
+| [ADR 0145：发布本机 macOS Intel 工件](/adr/0145-native-macos-intel-release-lane) | 通过匹配的 macOS 原生运行器发布 arm64 与 Intel x64 DMG/ZIP，并合并更新源 |
 
 ## 什么时候看 ADR
 

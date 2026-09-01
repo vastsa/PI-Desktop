@@ -21,7 +21,7 @@
 
 | Node runtime | Node.js | `>= 22.19` | pi requirement |
 | DB | SQLite | Rust host-core via `rusqlite` | sessions/settings |
-| Packaging | electron-builder | stable | macOS arm64, Windows x64, and Linux x64 release lanes |
+| Packaging | electron-builder | stable | macOS arm64 and Intel x64, Windows x64, and Linux x64 release lanes |
 | Package manager | pnpm | 11.18.x | JS monorepo |
 | Lint/test | style-token checker (`scripts/check-style-tokens.mjs`) + vitest + cargo test; general JS linter still open (biome vs oxlint) | stable | dual stack quality |
 | Schema (TS) | typebox | frozen (D011) | shared contracts |

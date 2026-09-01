@@ -21,7 +21,7 @@ disagrees, so a green `check:release-docs` is a precondition, not a substitute.
 
 | Script | Alias | Purpose |
 |---|---|---|
-| `release-macos.sh` | `scripts/release-macos.sh` | Signed, and with Apple credentials notarized, local macOS lane. Injects `MAC_SIGNING_IDENTITY` through `-c.mac.identity` because the static electron-builder config stays `identity: null` |
+| `release-macos.sh` | `scripts/release-macos.sh` | Signed, and with Apple credentials notarized, local native macOS lane. Defaults to the host architecture; `MAC_ARCH=arm64` or `MAC_ARCH=x64` must match the host. Injects `MAC_SIGNING_IDENTITY` through `-c.mac.identity` because the static electron-builder config stays `identity: null` |
 | `make-icon.py` | `python3 scripts/make-icon.py` | Derive the package PNG, the macOS tray template, and the iconset/ICNS from the canonical PNG |
 | `clean-mascot-sprite.py` | `python3 scripts/clean-mascot-sprite.py` | Normalize the mascot sprite sheet |
 | `publish-screenshots.py` | `python3 scripts/publish-screenshots.py` | Publish documentation screenshots |
@@ -62,6 +62,7 @@ and on manual dispatch, skipping both when a change touches only `docs/**` or
 
 `.github/workflows/release.yml` builds on a `v*.*.*` tag. Each platform runner
 validates the tag against `apps/desktop/package.json` before packaging, then
-runs `dist:mac`, `dist:win`, or `dist:linux`; the publish job assembles the
-GitHub Release. See the
+runs the native `dist:mac`, `dist:win`, or `dist:linux` command; the macOS
+matrix covers arm64 and Intel x64 and the publish job assembles the GitHub
+Release. See the
 [release runbook](../docs/spec/06-delivery/06-release-runbook.md).

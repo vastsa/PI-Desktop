@@ -112,7 +112,7 @@ Renderer 使用接受 create/update 上的可选 `secretValue` 的提供程序�
 
 ## 9. 验收标准
 
-- [ ] set/has/delete 适用于 macOS arm64 主路径
+- [ ] set/has/delete 适用于本机 macOS arm64 和 Intel x64 路径
 - [ ] 渲染器永远不会收到提供商 list/get 上的原始机密
 - [ ] 运行时可以暂时获取一个回合的秘密
 - [ ] 日志在正常故障测试中不包含原始密钥材料

@@ -3,7 +3,7 @@
 > **翻译说明：** 本页是与 [英文源规格](/spec/06-delivery/06-release-runbook) 一一对应的机器辅助翻译。代码、协议字段和标识符保持原文；如翻译与英文源事实有歧义，以英文版本为准。
 
 
-> 范围：macOS arm64、Windows x64 和 Linux x64 的 D126 标记工件；
+> 范围：macOS arm64、Intel x64、Windows x64 和 Linux x64 的 D126/D285 标记工件；
 > macOS signing/notarization 保留下面的详细资格通道。
 > 交叉引用：[里程碑](/zh-CN/spec/06-delivery/01-mvp-milestones) · [进程模型](/zh-CN/spec/03-runtime/07-process-model) · [安全性](/zh-CN/spec/05-security/01-security)
 
@@ -50,7 +50,8 @@ PNG 通过 `BrandLogo`。 PNG 是规范的；
    - `MAC_SIGNING_IDENTITY` — 例如`Developer ID Application: <Name> (<TEAMID>)`
    - `APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD`、`APPLE_TEAM_ID` — 仅必需
      办理公证；该脚本在没有它们的情况下构建签名但未公证的。
-3. 安装 Rust 工具链 (arm64) 和 pnpm 工作区。
+3. 安装 Rust 工具链和 pnpm 工作区。Rust 必须在 macOS 本机运行器上运行：
+   Apple Silicon 使用 arm64，Intel 使用 x86_64。
 
 ## 3. 构建内容
 
@@ -141,7 +142,11 @@ export APPLE_TEAM_ID=...
 scripts/release-macos.sh
 ```
 
-工件落在 `apps/desktop/release/`（DMG + 块图）中。
+工件落在 `apps/desktop/release/`（DMG + ZIP + 块图）中。
+
+`scripts/release-macos.sh` 默认使用主机架构，也接受 `MAC_ARCH=arm64` 或
+`MAC_ARCH=x64`，但该值必须与主机匹配，以保持 Rust 本机主机和 Electron
+软件包的架构一致。
 
 ### 4. 3 GitHub 标签工作流程
 
@@ -159,6 +164,12 @@ GitHub Release 工作流程启动所有本机平台运行程序，无需
 调用电子构建器。这避免了多余的桌面构建，而无需
 更改包脚本或发布工件。
 
+macOS 矩阵使用 arm64 的 `macos-15` 和 Intel x64 的
+`macos-15-intel`。每个作业验证 `uname -m`，向 electron-builder 传入匹配
+的 `--arm64` 或 `--x64`，并在同一本机运行器上构建
+`pi-desktop-host-core`。每个架构的 `latest-mac.yml` 会在上传前重命名，
+发布作业下载两个工件后再合并为一个更新源。
+
 DMG、ZIP、NSIS、AppImage、deb、块图和更新程序提要输出已
 压缩或压缩不敏感。因此，工作流程会上传它们的
 发布作业之前压缩级别为零的临时操作工件
@@ -169,11 +180,12 @@ DMG、ZIP、NSIS、AppImage、deb、块图和更新程序提要输出已
 每次发布版本后运行：
 
 ```bash
-APP="apps/desktop/release/mac-arm64/PI-Desktop.app"
-codesign -dv --verbose=2 "$APP"          # identity + hardened runtime flags
-codesign --verify --deep --strict "$APP" # signature integrity
-spctl -a -vv "$APP"                      # Gatekeeper assessment (notarized builds)
-xcrun stapler validate "$APP"            # notarization staple (if notarized)
+for APP in apps/desktop/release/mac-*/PI-Desktop.app; do
+  codesign -dv --verbose=2 "$APP"          # identity + hardened runtime flags
+  codesign --verify --deep --strict "$APP" # signature integrity
+  spctl -a -vv "$APP"                      # Gatekeeper assessment (notarized builds)
+  xcrun stapler validate "$APP"             # notarization staple (if notarized)
+done
 ```
 
 ### 5. 1 封装封装门
@@ -273,25 +285,29 @@ project/Temporary 使用消息加会话图标创建控件。
    切换、语法高亮、shell 高亮、KaTeX、Mermaid fallback/rendering、
    主机运行状况和 sidecar 运行状况继续使用打包的本地资产。
 
-## 6. Windows/Linux 发布包
+## 6. 本机运行器发布包
 
-该存储库公开了用于本机运行程序构建的 `dist:win` 和 `dist:linux`。
+该存储库为每个发布目标公开本机运行器构建命令。
 每个打包命令首先运行 `build:host-release`，然后捆绑代理
-运行时和 Electron 应用程序。 D126 标签工作流程发布这些输出及其
+运行时和 Electron 应用程序。D126/D285 标签工作流程发布这些输出及其
 电子更新程序清单。在该目标操作系统上运行目标命令：
 
 ```text
+macOS Apple Silicon: pnpm --filter @pi-desktop/desktop run dist:mac -- --arm64
+macOS Intel:         pnpm --filter @pi-desktop/desktop run dist:mac -- --x64
 Windows: pnpm --filter @pi-desktop/desktop dist:win
 Linux:   pnpm --filter @pi-desktop/desktop dist:linux
 ```
 
-Windows 软件包包括 `bin/pi-desktop-host-core.exe`；Linux 包括
-`bin/pi-desktop-host-core`。Rust 主机必须在原生运行器上构建后再打包。
-签名、回滚和安装程序升级资质仍保持发布硬化工作；出版物本身在
-D126 下有效。
+macOS 软件包包括按本机架构构建的 `bin/pi-desktop-host-core`；Windows
+软件包包括 `bin/pi-desktop-host-core.exe`；Linux 包括
+`bin/pi-desktop-host-core`。签名、回滚和安装程序升级资质仍保持发布
+硬化工作；出版物本身在 D126/D285 下有效。
 
 Native-runner 输出矩阵：
 
+- macOS arm64：DMG 和 ZIP
+- macOS Intel x64：DMG 和 ZIP
 - Windows x64：NSIS 安装程序
 - Linux x64：AppImage 和 deb
 
