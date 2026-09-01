@@ -46,6 +46,15 @@ test("a provider with no bindings falls back to its stored default id", () => {
   assert.equal(providerOffersModel(p, "claude-opus-4.6"), true);
 });
 
+test("configured bindings outrank and constrain a stale legacy default", () => {
+  const p = provider({
+    models: [binding("gpt-5"), binding("")],
+    defaultModelId: "claude-opus-4.6",
+  });
+  assert.equal(defaultModelIdOf(p), "gpt-5");
+  assert.equal(providerOffersModel(p, "claude-opus-4.6"), false);
+});
+
 test("a global default belonging to another provider is not displayed", () => {
   // This was the bug: the row showed "Provider One · claude-opus-4.6" even
   // though Provider One only serves GPT models.

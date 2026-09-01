@@ -148,18 +148,15 @@ test("model configuration keeps model defaults; AI owns app behavior defaults", 
   assert.doesNotMatch(providersSource, /settings\.modeAgent/);
 });
 
-test("default model selector shows only one provider name per option", () => {
-  // The picker is a listbox of structured rows now, not concatenated <option>
-  // labels. The rule it still has to honour: a row names its provider once and
-  // never restates that name through a display name or an account label.
-  const defaultModelOption =
+test("default model selector shows every configured model under its provider", () => {
+  const defaultModelPicker =
     providersSource.match(
-      /readyProviders\.map\(\(provider\) => \{[\s\S]*?<\/li>/,
+      /defaultModelOptionsList\.map\(\(\{ provider, modelId \}\) => \{[\s\S]*?<\/li>/,
     )?.[0] ?? "";
-  assert.notEqual(defaultModelOption, "");
-  assert.match(defaultModelOption, /model-default-option-name">\{provider\.name\}/);
-  assert.equal(defaultModelOption.match(/\{provider\.name\}/g)?.length, 1);
-  assert.doesNotMatch(defaultModelOption, /providerDisplayName|oauthAccountLabel/);
+  assert.notEqual(defaultModelPicker, "");
+  assert.match(defaultModelPicker, /model-default-option-name">\{provider\.name\}/);
+  assert.match(defaultModelPicker, /model-default-option-model font-mono">[\s\S]*?\{modelId\}/);
+  assert.match(defaultModelPicker, /setDefaultModel\(provider, modelId\)/);
 });
 
 test("model configuration separates AI services from independently removable vendor accounts", () => {

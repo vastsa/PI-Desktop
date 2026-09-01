@@ -178,6 +178,17 @@ Each scenario is documented in this format:
 
 ### Provider & Key
 
+#### E2E-169: Default model picker selects a configured model
+
+- **Preconditions**: Two runnable providers exist; one provider has at least two configured model bindings.
+- **Steps**: Open Settings → Model configuration → Change default model, then select the second model under the provider.
+- **Expected**: The picker shows model-level entries (not only provider entries); the selected model is marked current, and a newly created session inherits that exact model and its owning provider.
+- **Specs linked**: `03-runtime/13-model-catalog-and-selection.md`
+- **Acceptance**: B (model selection)
+- **Milestone**: M6
+- **Status**: Documented; automation pending
+
+
 #### E2E-005: Add a provider and save API key
 
 - **Preconditions**: App running; no provider configured; the models.dev snapshot ships with the build.

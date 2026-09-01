@@ -147,10 +147,14 @@ test("model ids are matched case-insensitively across picking and hand entry", (
   assert.match(pickerSource, /settings\.modelAlreadyAdded/);
 });
 
-test("editing the default provider re-syncs the default model id", () => {
-  // Switching or creating a default must not carry over the previous
-  // provider's model id; default-model-display.test.mjs covers the resolvers.
-  assert.match(pageSource, /defaultModelId: defaultModelIdOf\(provider\) \?\? ""/);
+test("default model selection saves the exact model and provider", () => {
+  // The settings picker is model-level; provider rows still use their first
+  // model as a convenience action.
+  assert.match(pageSource, /const setDefaultModel = async \(provider: ProviderPublic, modelId: string\)/);
+  assert.match(pageSource, /defaultProviderId: provider.id,[\s\S]*defaultModelId: modelId/);
+  assert.match(pageSource, /onClick=\{\(\) => void setDefaultModel\(provider, modelId\)\}/);
+  assert.match(pageSource, /defaultModelOptionsList\.map/);
+  assert.match(pageSource, /provider\.id === settings\.defaultProviderId &&[\s\S]*modelIdsMatch/);
   assert.match(pageSource, /defaultModelId: firstModelId \?\? ""/);
   assert.match(
     pageSource,

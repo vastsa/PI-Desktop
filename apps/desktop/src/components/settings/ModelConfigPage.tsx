@@ -2,14 +2,15 @@
  * Model configuration tab: default model, configured AI services, OAuth
  * vendor accounts, and the models.dev enrichment snapshot status.
  *
- * Provider rows treat `models[0]` as the provider's default model, and editing
- * the default provider re-syncs `settings.defaultModelId` when that first
- * model changed.
+ * The default picker lists each configured model, while provider rows use
+ * `models[0]` as the provider's quick default. Editing the default provider
+ * re-syncs `settings.defaultModelId` when that first model changes.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   OAUTH_AUTH_KIND,
+  modelIdsMatch,
   type ModelBinding,
   type ProviderPublic,
 } from "@pi-desktop/shared";
@@ -26,7 +27,11 @@ import {
   IconTrash,
 } from "../icons";
 import { AnchoredMenu } from "./AnchoredMenu";
-import { defaultModelIdOf, displayedDefaultModelId } from "./default-model";
+import {
+  defaultModelIdOf,
+  defaultModelOptions,
+  displayedDefaultModelId,
+} from "./default-model";
 import { ProviderSetupDialog } from "./ProviderSetupDialog";
 import { VendorAccountsSection } from "./VendorAccountsSection";
 
@@ -100,6 +105,7 @@ export function ModelConfigPage() {
     [providers],
   );
   const readyProviders = providers.filter(providerReady);
+  const defaultModelOptionsList = defaultModelOptions(readyProviders);
 
   if (!settings) return null;
 
@@ -108,15 +114,13 @@ export function ModelConfigPage() {
   const editingProvider =
     setupFor ? providers.find((provider) => provider.id === setupFor) ?? null : null;
 
-  const setDefaultProvider = async (provider: ProviderPublic) => {
+  const setDefaultModel = async (provider: ProviderPublic, modelId: string) => {
     setBusyId(provider.id);
     try {
       await api.setSettings({
         ...settings,
         defaultProviderId: provider.id,
-        // Falling back to the old value here would point the new default at a
-        // model the selected provider does not serve.
-        defaultModelId: defaultModelIdOf(provider) ?? "",
+        defaultModelId: modelId,
       });
       await refreshProviders();
       showToast(t("settings.defaultUpdated"), { variant: "success" });
@@ -307,24 +311,26 @@ export function ModelConfigPage() {
               )}
             >
               <ul className="model-default-list">
-                {readyProviders.map((provider) => {
-                  const isCurrent = provider.id === settings.defaultProviderId;
+                {defaultModelOptionsList.map(({ provider, modelId }) => {
+                  const isCurrent =
+                    provider.id === settings.defaultProviderId &&
+                    modelIdsMatch(settings.defaultModelId, modelId);
                   return (
-                    <li key={provider.id}>
+                    <li key={`${provider.id}:${modelId}`}>
                       <button
                         type="button"
                         role="option"
                         aria-selected={isCurrent}
                         className={cx("model-default-option", isCurrent && "is-current")}
                         disabled={busyId === provider.id}
-                        onClick={() => void setDefaultProvider(provider)}
+                        onClick={() => void setDefaultModel(provider, modelId)}
                       >
                         <span className="model-default-option-check" aria-hidden>
                           {isCurrent ? <IconCheck size={12} /> : null}
                         </span>
                         <span className="model-default-option-name">{provider.name}</span>
                         <span className="model-default-option-model font-mono">
-                          {defaultModelIdOf(provider)}
+                          {modelId}
                         </span>
                       </button>
                     </li>
@@ -407,7 +413,9 @@ export function ModelConfigPage() {
                           size="sm"
                           variant="ghost"
                           disabled={rowBusy || !providerReady(provider)}
-                          onClick={() => void setDefaultProvider(provider)}
+                          onClick={() =>
+                            void setDefaultModel(provider, defaultModelIdOf(provider) ?? "")
+                          }
                         >
                           {t("settings.makeDefault")}
                         </Button>

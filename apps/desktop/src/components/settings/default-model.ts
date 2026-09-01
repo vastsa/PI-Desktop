@@ -9,9 +9,31 @@
  */
 import { modelIdsMatch, type ProviderPublic } from "@pi-desktop/shared";
 
-/** The provider's own default: the head of its binding list. */
+export type DefaultModelOption = {
+  provider: ProviderPublic;
+  modelId: string;
+};
+
+/** Expand runnable providers into the model choices they actually configure. */
+export function defaultModelOptions(
+  providers: readonly ProviderPublic[],
+): DefaultModelOption[] {
+  return providers.flatMap((provider) => {
+    const modelIds = (provider.models ?? [])
+      .map((binding) => binding.id.trim())
+      .filter(Boolean);
+    const ids = modelIds.length > 0 ? modelIds : [defaultModelIdOf(provider)?.trim() ?? ""];
+    return [...new Set(ids)].filter(Boolean).map((modelId) => ({ provider, modelId }));
+  });
+}
+
+/** The provider's own default: the first non-empty binding, then legacy fallback. */
 export function defaultModelIdOf(provider: ProviderPublic): string | undefined {
-  return provider.models?.[0]?.id ?? provider.defaultModelId;
+  return (
+    provider.models?.find((binding) => binding.id.trim())?.id.trim() ||
+    provider.defaultModelId?.trim() ||
+    undefined
+  );
 }
 
 /** True when the provider actually offers `modelId`. */
@@ -22,8 +44,12 @@ export function providerOffersModel(
   if (!modelId) return false;
   const bindings = provider.models ?? [];
   if (bindings.some((binding) => modelIdsMatch(binding.id, modelId))) return true;
-  // An OAuth row may carry only `defaultModelId` with no bindings yet.
-  return !!provider.defaultModelId && modelIdsMatch(provider.defaultModelId, modelId);
+  // A legacy/OAuth row may carry only `defaultModelId` with no bindings yet.
+  return (
+    bindings.length === 0 &&
+    !!provider.defaultModelId &&
+    modelIdsMatch(provider.defaultModelId, modelId)
+  );
 }
 
 /**
