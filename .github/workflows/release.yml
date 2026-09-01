@@ -7,9 +7,9 @@
 #   git push origin <branch> v0.2.0        # push → this workflow builds & publishes
 #
 # Builds installers for every platform defined in the electron-builder config
-# (macOS dmg arm64, Windows NSIS x64, Linux AppImage/deb x64), each with its
-# native pi-desktop-host-core Rust sidecar, and publishes all of them —
-# with their electron-updater latest*.yml feeds — to the GitHub Release (D126).
+# (macOS dmg/zip arm64 and x64, Windows NSIS x64, Linux AppImage/deb x64), each
+# with its native pi-desktop-host-core Rust sidecar, and publishes all of them —
+# with their electron-updater latest*.yml feeds — to the GitHub Release (D126/D285).
 
 name: Release
 
@@ -37,13 +37,30 @@ jobs:
       matrix:
         include:
           - name: macOS arm64
-            os: macos-latest
+            os: macos-15
+            arch: arm64
+            runner_arch: arm64
+            artifact: mac-arm64
+            platform: macos
+            dist: dist:mac
+          - name: macOS Intel x64
+            os: macos-15-intel
+            arch: x64
+            runner_arch: x86_64
+            artifact: mac-x64
+            platform: macos
             dist: dist:mac
           - name: Windows x64
             os: windows-latest
+            arch: x64
+            artifact: windows-x64
+            platform: windows
             dist: dist:win
           - name: Linux x64
             os: ubuntu-latest
+            arch: x64
+            artifact: linux-x64
+            platform: linux
             dist: dist:linux
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
@@ -52,6 +69,17 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v4
+
+      - name: Verify native macOS runner architecture
+        if: matrix.platform == 'macos'
+        run: |
+          set -euo pipefail
+          actual_arch="$(uname -m)"
+          expected_arch="${{ matrix.runner_arch }}"
+          if [ "$actual_arch" != "$expected_arch" ]; then
+            echo "::error::Expected $expected_arch runner, got $actual_arch."
+            exit 1
+          fi
 
       - name: Compare tag with apps/desktop/package.json
         if: startsWith(github.ref, 'refs/tags/v')
@@ -105,12 +133,18 @@ jobs:
       - name: Package installers (${{ matrix.dist }})
         # The dist scripts pass --publish never themselves: electron-builder
         # must not self-publish on tag builds (no token; softprops owns it).
-        run: pnpm --filter @pi-desktop/desktop run ${{ matrix.dist }}
+        # The explicit architecture keeps the package and native Rust sidecar
+        # aligned with the runner selected by this matrix entry.
+        run: pnpm --filter @pi-desktop/desktop run ${{ matrix.dist }} -- --${{ matrix.arch }}
+
+      - name: Disambiguate macOS update metadata
+        if: matrix.platform == 'macos'
+        run: mv apps/desktop/release/latest-mac.yml apps/desktop/release/latest-mac-${{ matrix.arch }}.yml
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: dist-${{ matrix.os }}
+          name: dist-${{ matrix.artifact }}
           if-no-files-found: error
           compression-level: 0
           path: |
@@ -137,10 +171,43 @@ jobs:
       - name: List artifacts
         run: ls -la dist/
 
+      - name: Merge macOS updater metadata
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          ruby <<'RUBY'
+          require "yaml"
+
+          paths = Dir["latest-mac-*.yml"].sort
+          expected_paths = ["latest-mac-arm64.yml", "latest-mac-x64.yml"]
+          abort "Expected both macOS updater feeds" unless paths == expected_paths
+
+          feeds = paths.map do |path|
+            YAML.safe_load(File.read(path), permitted_classes: [], aliases: false)
+          end
+          versions = feeds.map { |feed| feed.fetch("version") }.uniq
+          abort "macOS updater feeds disagree on version" unless versions.length == 1
+
+          files = feeds.flat_map { |feed| feed.fetch("files") }
+            .uniq { |file| file.fetch("url") }
+          zip = files.find { |file| file.fetch("url").end_with?(".zip") }
+          abort "macOS updater feeds contain no ZIP" if zip.nil?
+
+          merged = feeds.first.merge(
+            "version" => versions.first,
+            "files" => files,
+            "path" => zip.fetch("url"),
+            "sha512" => zip.fetch("sha512"),
+          )
+          File.write("latest-mac.yml", merged.to_yaml)
+          RUBY
+          rm latest-mac-arm64.yml latest-mac-x64.yml
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          # D126: all three desktop platforms ship from tag builds —
+          # D126/D285: all desktop platforms and both native macOS
+          # architectures ship from tag builds —
           # installers, blockmaps, and the latest*.yml feeds that drive
           # electron-updater on each platform (in-app for Windows NSIS and
           # Linux AppImage; macOS notifies until a signed channel lands).

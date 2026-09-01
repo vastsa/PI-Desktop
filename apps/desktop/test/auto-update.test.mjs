@@ -200,7 +200,7 @@ test("packaging publishes an electron-updater feed for GitHub Releases", () => {
   // GitHub asset URLs mangle spaces; keep the NSIS artifact name space-free.
   assert.equal(pkg.build.nsis.artifactName, "PI-Desktop-Setup-${version}.${ext}");
   // The upload step must carry every updater feed, and the release publishes
-  // all platforms unfiltered (D126).
+  // all platforms unfiltered (D126/D285).
   assert.match(releaseWorkflowSource, /release\/\*\.zip/);
   assert.match(releaseWorkflowSource, /release\/latest\*\.yml/);
   assert.match(releaseWorkflowSource, /files: dist\/\*/);

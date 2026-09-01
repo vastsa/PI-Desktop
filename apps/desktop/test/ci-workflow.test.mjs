@@ -11,6 +11,7 @@ const [
   i18nPackageSource,
   pluginSdkPackageSource,
   sharedPackageSource,
+  releaseMacScriptSource,
 ] = await Promise.all([
   read("../../../.github/workflows/ci.yml"),
   read("../../../.github/workflows/release.yml"),
@@ -18,6 +19,7 @@ const [
   read("../../../packages/i18n/package.json"),
   read("../../../packages/plugin-sdk/package.json"),
   read("../../../packages/shared/package.json"),
+  read("../../../scripts/release-macos.sh"),
 ]);
 
 test("CI skips documentation-only pushes and pull requests", () => {
@@ -82,4 +84,31 @@ test("release artifacts bypass redundant Actions compression", () => {
     releaseWorkflowSource,
     /uses: actions\/upload-artifact@v4[\s\S]*?compression-level: 0/,
   );
+});
+
+test("release matrix packages both native macOS architectures", () => {
+  assert.match(
+    releaseWorkflowSource,
+    /name: macOS arm64[\s\S]*?os: macos-15[\s\S]*?arch: arm64[\s\S]*?runner_arch: arm64/,
+  );
+  assert.match(
+    releaseWorkflowSource,
+    /name: macOS Intel x64[\s\S]*?os: macos-15-intel[\s\S]*?arch: x64[\s\S]*?runner_arch: x86_64/,
+  );
+  assert.match(
+    releaseWorkflowSource,
+    /run: pnpm --filter @pi-desktop\/desktop run \$\{\{ matrix\.dist \}\} -- --\$\{\{ matrix\.arch \}\}/,
+  );
+  assert.match(
+    releaseWorkflowSource,
+    /latest-mac-\$\{\{ matrix\.arch \}\}\.yml/,
+  );
+  assert.match(releaseWorkflowSource, /Merge macOS updater metadata[\s\S]*?ruby/);
+});
+
+test("the signed local macOS lane selects the native runner architecture", () => {
+  assert.match(releaseMacScriptSource, /DEFAULT_MAC_ARCH/);
+  assert.match(releaseMacScriptSource, /MAC_ARCH="\$\{MAC_ARCH:-\$DEFAULT_MAC_ARCH\}"/);
+  assert.match(releaseMacScriptSource, /must match the host/);
+  assert.match(releaseMacScriptSource, /electron-builder --mac "--\$\{MAC_ARCH\}"/);
 });

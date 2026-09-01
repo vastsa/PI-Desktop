@@ -169,6 +169,19 @@ test("packaging keeps only shipped locales and excludes non-runtime artifacts", 
   assert.doesNotMatch(JSON.stringify(packageJson.build), /node-pty/);
 });
 
+test("macOS targets follow the native architecture selected by the runner", () => {
+  const macTargets = packageJson.build.mac.target;
+  assert.deepEqual(
+    macTargets.map((entry) => entry.target),
+    ["dmg", "zip"],
+  );
+  assert.ok(
+    macTargets.every((entry) => entry.arch === undefined),
+    "macOS targets must not pin the package to Apple Silicon",
+  );
+  assert.doesNotMatch(packageJson.scripts["dist:mac"], /--(?:arm64|x64)/);
+});
+
 test("packaging does not include removed PTY native payload configuration", () => {
   assert.deepEqual(packageJson.build.asar, { smartUnpack: false });
   assert.equal(packageJson.build.asarUnpack, undefined);

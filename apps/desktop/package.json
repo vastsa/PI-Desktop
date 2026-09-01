@@ -121,16 +121,10 @@
     "mac": {
       "target": [
         {
-          "target": "dmg",
-          "arch": [
-            "arm64"
-          ]
+          "target": "dmg"
         },
         {
-          "target": "zip",
-          "arch": [
-            "arm64"
-          ]
+          "target": "zip"
         }
       ],
       "category": "public.app-category.developer-tools",
