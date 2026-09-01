@@ -1919,7 +1919,7 @@ reasoning-level control.
 | Idle (no model) | textarea active, send button disabled + tooltip "Configure a model first" | Agent link remains available in model menu |
 | Idle (ready) | textarea active, send button enabled | Send active |
 | Home/new-session initialization | textarea and mode/model × reasoning/permission triggers remain available while the durable empty session is loading; the session row is already present and the first configuration selection applies to that session | Configure the session, then send |
-| New session (reasoning model) | Combined model × reasoning chip shows the model and its highest published level | User may select any published level, including Off when supported |
+| New session (reasoning model) | Combined model × reasoning chip shows the model and its highest enabled level | User may select any level enabled in the model binding, including Off when enabled |
 | New session / switch while another session is running | textarea active, send button enabled for the destination session's own run state | Send active, Stop hidden unless the destination session itself is running with an empty draft |
 | Running | textarea and mode/model × reasoning/permission controls remain editable for the next turn; the single submit slot shows Stop for an empty draft and Send for a non-empty draft | Stop active when empty; Send active when non-empty; submitted prompts become queued |
 | Context checkpoint | Same as Running until durable checkpoint completion; intermediate `turn_end` does not reactivate controls. A retained-tail fallback remains Running and shows a warning toast | Same single-slot Stop/Send behavior as Running |
@@ -2009,9 +2009,11 @@ reasoning-level control.
   initial level immediately; the persisted session keeps the same exact-model
   capability after materialization.
 - A new session whose inherited default model supports reasoning starts with
-  Thinking enabled at that model's highest published level. Non-reasoning
-  models and missing capability metadata start at `off`; reopening or reusing
-  an existing session preserves its durable selection.
+  Thinking enabled at that model's highest enabled level. Published levels seed
+  a new binding; an explicit binding can opt into a level the catalog omits.
+  Non-reasoning models and missing capability metadata start at `off` until a
+  user enables a non-`off` level; reopening or reusing an existing session
+  preserves its durable selection.
 - The model menu lists only enabled, runnable providers with configured model
   bindings. Cached or freshly discovered rows may enrich those configured
   models, but unconfigured discovery results never appear in the conversation
@@ -2020,14 +2022,15 @@ reasoning-level control.
   `role="menu"`. Its root has exactly two `role="menuitem"` entries. The Model
   submenu has a search input and sticky provider headings, while the Reasoning
   level submenu starts with `Current model <model> supports these reasoning
-  levels` and lists only the provider's supported levels in canonical order.
+  levels` and lists the selected model binding's enabled levels in canonical
+  order.
   Rows use `role="menuitemradio"`, `aria-checked`, active-row styling, and a
   trailing check. Selecting a concrete model or level persists the complete
   session config, clears model filtering, and returns to the root without
   dismissing the menu. Closing and reopening always starts at the root.
-- Unknown Custom/OpenAI-compatible models remain at `off` until the provider
-  publishes capability metadata. The menu never invents a reasoning ladder or
-  exposes an Enable thinking action for an unknown model.
+- Unknown Custom/OpenAI-compatible models remain at `off` until the user
+  explicitly enables a level in Settings. The menu never auto-infers reasoning
+  support; after an explicit binding selection it renders the configured level.
 - Switching provider preserves an available level, otherwise uses the nearest
   supported level (upward first, then downward); a non-reasoning provider
   persists `off`.
@@ -2563,7 +2566,11 @@ compatibility remains owned by pi-ai.
   the secret, sets the first configured model as the legacy/default model for
   older consumers, and refreshes the list
 - Test connection calls `providers.testConnection` and toasts success/failure
-- Edit account saves `oauthAccountLabel`, `defaultModelId`, and the full `models: ModelBinding[]` narrowed to published thinking levels through `providers.update`, exactly like the provider dialog; the account's default model remains the head binding, and when the account is the global default, its model selection updates with it
+- Edit account saves `oauthAccountLabel`, `defaultModelId`, and the full
+  `models: ModelBinding[]` with explicit thinking selections through
+  `providers.update`, exactly like the provider dialog; the account's default
+  model remains the head binding, and when the account is the global default,
+  its model selection updates with it
 - Test connection on an account resolves that account's OAuth authorization and toasts success/failure
 - Context, output, thinking-level, and default-thinking edits persist per model
   through `providers.create` / `providers.update`; runtime callers continue to

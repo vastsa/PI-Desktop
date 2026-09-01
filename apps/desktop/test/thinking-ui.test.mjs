@@ -36,7 +36,7 @@ const settingsSource = (
     [
       "../src/components/settings/ModelConfigPage.tsx",
       "../src/components/settings/ProviderSetupDialog.tsx",
-      // The picker both credential kinds render owns the thinking chips (D269).
+      // The picker both credential kinds render owns the thinking chips (D270).
       "../src/components/settings/ModelSelectionPanes.tsx",
       "../src/components/settings/VendorAccountDialog.tsx",
       "../src/components/settings/useProviderModels.ts",
@@ -129,6 +129,9 @@ test("draft Composer thinking follows the exact model selected in its menu", () 
     /const providerModels = useAppStore\(\(s\) => s\.providerModels\)/,
   );
   assert.match(composerSource, /thinkingProviderForModel\(/);
+  assert.match(composerSource, /const binding = provider\.models\.find/);
+  assert.match(composerSource, /THINKING_LEVELS\.filter/);
+  assert.match(composerSource, /binding\.thinkingLevels\.includes/);
   assert.match(
     composerSource,
     /const selectedModelCatalog = provider \? providerModels\[provider\.id\]/,
@@ -230,34 +233,26 @@ test("main forwards the complete models.dev model record to the sidecar", () => 
   assert.doesNotMatch(mainSource, /modelCompat/);
 });
 
-test("settings offers exactly the thinking levels the composer can render", () => {
-  // The Composer renders the published levels a model exposes, so the dialog
-  // must not offer the full canonical ladder: a level enabled here but dropped
-  // by the runtime made the two counts disagree.
+test("settings offers the canonical thinking levels for explicit overrides", () => {
+  // Published levels still seed known-model bindings, but the catalog is not a
+  // gate: proxies and newly released models need the same opt-in controls.
   assert.match(settingsSource, /publishedThinkingLevels/);
-  assert.doesNotMatch(settingsSource, /THINKING_LEVELS\.map/);
+  assert.match(settingsSource, /THINKING_LEVELS/);
   assert.match(
     settingsSource,
     /publishedLevelsById[\s\S]*?publishedThinkingLevels\(row\.info\)/,
   );
-  assert.match(settingsSource, /settings\.thinkingDisabledHint/);
-  // Stored bindings are narrowed to the published set before they are saved.
-  assert.match(
+  assert.match(settingsSource, /settings\.thinkingManualOverrideHint/);
+  assert.match(settingsSource, /const levelChoices = THINKING_LEVELS/);
+  // Explicit selections, including levels absent from the catalog, survive
+  // save and are resolved by the runtime for the configured endpoint.
+  assert.doesNotMatch(
     settingsSource,
-    /bindingsToPersist[\s\S]*?binding\.thinkingLevels\.filter\(\(level\) => choices\.includes\(level\)\)/,
+    /binding\.thinkingLevels\.filter\(\(level\) => choices\.includes\(level\)\)/,
   );
   assert.match(settingsSource, /models: persisted/);
-  // A row the catalog does not describe stays out of the published map, so an
-  // offline endpoint or a hand-typed id cannot erase stored levels.
+  // A row the catalog does not describe stays out of the published map, while
+  // its editable choices remain the canonical ladder.
   assert.match(settingsSource, /if \(!row\.info\) continue;/);
-  assert.match(
-    settingsSource,
-    /publishedLevelsById\.get\(binding\.id\.toLowerCase\(\)\) \?\?\s*\n?\s*binding\.thinkingLevels/,
-  );
-  // Discovery being offline leaves the stored levels alone rather than filtering
-  // them against an empty published set.
-  assert.match(
-    settingsSource,
-    /const thinkingLevels = choices\s*\n?\s*\?[\s\S]*?: binding\.thinkingLevels;/,
-  );
+  assert.match(settingsSource, /const publishedLevels =/);
 });

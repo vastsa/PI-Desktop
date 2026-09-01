@@ -125,12 +125,12 @@ export const CATALOG_DEFAULT_MAX_TOKENS = 8_192;
 
 /**
  * Build the persisted binding for a published record. Published limits and
- * thinking levels are adopted as-is, so a freshly picked model needs no manual
- * token entry; the user can still narrow them afterwards.
+ * thinking levels seed a fresh binding, so a newly picked model needs no
+ * manual token entry; the user can still configure the endpoint explicitly.
  */
 export function bindingFromModelInfo(model: ModelInfo): ModelBinding {
-  // One source for "which levels may be enabled" so a fresh binding can never
-  // hold a level the runtime would later discard.
+  // Published levels seed a fresh binding. The user may add other canonical
+  // levels later when the endpoint supports more than the catalog reports.
   const thinkingLevels = sortThinkingLevels(publishedThinkingLevels(model));
   return {
     id: model.modelId,

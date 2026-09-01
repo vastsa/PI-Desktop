@@ -6061,7 +6061,6 @@ function registerIpc() {
           : genericModelConfig(model.modelId, baseUrl);
         const storedModel = provider ? bindingForModel(provider, model.modelId) : undefined;
         const modelConfig = modelConfigWithBinding(catalogModelConfig, storedModel);
-        const capabilities = capabilitiesFromModelConfig(modelConfig);
         const info = modelsDevModel
           ? modelInfoFromModelsDev(modelsDevModel, provider?.id ?? "")
           : {
@@ -6074,9 +6073,6 @@ function registerIpc() {
               supportedThinkingLevels: [] as ThinkingLevel[],
               source: model.source ?? ("discovered" as const),
             };
-        const infoCapabilities = new Set(info.capabilities);
-        if (capabilities.supportsReasoning) infoCapabilities.add("reasoning");
-        else infoCapabilities.delete("reasoning");
         return {
           ...info,
           modelId: model.modelId,
@@ -6090,9 +6086,9 @@ function registerIpc() {
           // own justification and the panel could never show what models.dev
           // actually says.
           modalities: catalogModelConfig.modalities ?? { input: ["text"], output: ["text"] },
-          capabilities: [...infoCapabilities],
-          reasoning: capabilities.supportsReasoning,
-          supportedThinkingLevels: [...capabilities.supportedThinkingLevels],
+          // ModelInfo is catalog metadata. Keep its published reasoning fields
+          // intact; Composer and runtime resolve the exact user binding when
+          // they need effective per-provider capabilities.
           ...(modelsDevModel ? { catalogSource: "models.dev" as const } : {}),
         };
       };

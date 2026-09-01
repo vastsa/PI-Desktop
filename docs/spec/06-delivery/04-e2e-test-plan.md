@@ -197,8 +197,8 @@ Each scenario is documented in this format:
 #### E2E-005: Add a provider and save API key
 
 - **Preconditions**: App running; no provider configured; the models.dev snapshot ships with the build.
-- **Steps**: 1) Open Settings → Model configuration and choose Add provider. 2) Confirm the dialog is ONE form with Name, Base URL and API Key all visible at once, and no stepper, no preset grid and no Next/Back buttons. 3) Enter a name and a base URL for a service that publishes a `/models` route, then paste an API key. 4) Confirm the models section fills with the models THAT SERVICE returned, not with every model its vendor publishes; confirm a model the deployment does not host is absent. 5) Type in the filter box and confirm the list narrows client-side with no network request per keystroke. 6) Confirm each row shows the models.dev-derived context/output for models the catalog knows, and that a model with no catalog match still lists with generic defaults. 7) Select two models with the checkboxes. 8) Expand Advanced on one chosen row, override its limits and toggle thinking chips; confirm the chips offered are exactly the levels that model publishes (a reasoning model with three published levels offers three chips, not the full seven-level ladder) and that a non-reasoning row offers no chips but the thinking-disabled hint instead; confirm the other row is unaffected. 9) Open the form-level Advanced and confirm the API format is present but pre-derived. 10) Add a free-form model ID the service did not return; confirm it is added with 128,000 / 8,192 / no-thinking defaults, and that re-adding the same ID in different letter case is rejected as already added. 11) Save.
-- **Expected**: The service is asked first and models.dev only enriches the answer. The number of thinking levels a row offers equals the number the Composer reasoning menu later renders for the same model, because both read the published level list. Discovery is debounced ~600 ms and a slow reply from an earlier keystroke never replaces a newer list; an unsaved provider is probed with the typed base URL and key before it exists. The user never types a token limit or picks an API format on the common path. Point a second provider at a base URL with no `/models` route and confirm the list falls back to the catalog, is labelled as coming from models.dev rather than the service, and still saves. The provider appears as a row with its host, model count and secret badge; the key is stored securely (not in plaintext config); `models` contains both bindings and `models[0]` remains the provider default.
+- **Steps**: 1) Open Settings → Model configuration and choose Add provider. 2) Confirm the dialog is ONE form with Name, Base URL and API Key all visible at once, and no stepper, no preset grid and no Next/Back buttons. 3) Enter a name and a base URL for a service that publishes a `/models` route, then paste an API key. 4) Confirm the models section fills with the models THAT SERVICE returned, not with every model its vendor publishes; confirm a model the deployment does not host is absent. 5) Type in the filter box and confirm the list narrows client-side with no network request per keystroke. 6) Confirm each row shows the models.dev-derived context/output for models the catalog knows, and that a model with no catalog match still lists with generic defaults. 7) Select two models with the checkboxes. 8) Expand Advanced on one chosen row, override its limits and toggle thinking chips; confirm all seven canonical levels are available, that published levels start selected for a known reasoning model, and that a non-reasoning or unknown row shows the same chips unselected with the manual-override hint; enable one level on that row and confirm the other row is unaffected. 9) Open the form-level Advanced and confirm the API format is present but pre-derived. 10) Add a free-form model ID the service did not return; confirm it is added with 128,000 / 8,192 / no-thinking defaults, then enable a thinking level if the endpoint supports it; confirm re-adding the same ID in different letter case is rejected as already added. 11) Save.
+- **Expected**: The service is asked first and models.dev only enriches the answer and seeds known-model defaults. The settings picker always offers the seven canonical thinking levels, and the Composer later renders the explicit levels saved in the same model binding; an empty or `off`-only binding resolves to `off`. Discovery is debounced ~600 ms and a slow reply from an earlier keystroke never replaces a newer list; an unsaved provider is probed with the typed base URL and key before it exists. The user never types a token limit or picks an API format on the common path. Point a second provider at a base URL with no `/models` route and confirm the list falls back to the catalog, is labelled as coming from models.dev rather than the service, and still saves. The provider appears as a row with its host, model count and secret badge; the key is stored securely (not in plaintext config); `models` contains both bindings and `models[0]` remains the provider default.
 - **Specs linked**: `03-runtime/11-provider-model-system.md`, `03-runtime/12-provider-config-schema.md`, `03-runtime/13-model-catalog-and-selection.md`, `03-runtime/14-secrets-storage.md`, `04-ux/06-settings-ia.md`
 - **Acceptance**: B (multi-model provider configuration, save key)
 - **Milestone**: M2
@@ -207,8 +207,8 @@ Each scenario is documented in this format:
 #### E2E-005A: Edit provider model bindings and migrate a legacy model
 
 - **Preconditions**: One provider saved with two model bindings; one fixture provider row exists with only the legacy `default_model_id` and no `config_json.models`.
-- **Steps**: 1) Reopen the saved provider; confirm the single form opens with its cached model list painted immediately, and that the API key field explains an unchanged key is kept. 2) Confirm the live probe then refreshes that list without a retyped key, because the stored secret is reused. 3) Confirm both existing bindings are still chosen and check-marked, with their limits, thinking chips and defaults intact. 4) Edit one row's limits and save. 5) Reopen the fixture provider and confirm its legacy model appears as one chosen row with 128,000 context, 8,192 max output and no thinking levels. 6) Save the fixture provider without changing the model. 7) Make the edited provider the global default, reopen it, remove its first model so a different binding becomes the head, and save. 8) Take the service offline or revoke the key, reopen the provider, and confirm the cached rows stay visible with the discovery error shown rather than an empty list.
-- **Expected**: Editing never drops an unmodified binding. A stored binding that still lists a level the model no longer publishes is shown and saved without that level, so the enabled count matches the Composer reasoning menu; a binding whose model discovery is unavailable keeps its stored levels untouched. Legacy read materializes one binding without losing the old model ID; the subsequent write stores `config_json.models` and keeps `defaultModelId` equal to the first binding for older readers. When the edited provider is the global default and its first model changed, `settings.defaultModelId` is re-synced to the new head binding. A failed live probe degrades to the cached list plus an error, never to a blank picker, and a catalog fallback is never written into the model cache.
+- **Steps**: 1) Reopen the saved provider; confirm the single form opens with its cached model list painted immediately, and that the API key field explains an unchanged key is kept. 2) Confirm the live probe then refreshes that list without a retyped key, because the stored secret is reused. 3) Confirm both existing bindings are still chosen and check-marked, with their limits, thinking chips and defaults intact. 4) Enable a level the fixture catalog does not publish, edit one row's limits and save. 5) Reopen the fixture provider and confirm its legacy model appears as one chosen row with 128,000 context, 8,192 max output and all seven thinking choices available but unselected. 6) Save the fixture provider without changing the model. 7) Make the edited provider the global default, reopen it, remove its first model so a different binding becomes the head, and save. 8) Take the service offline or revoke the key, reopen the provider, and confirm the cached rows stay visible with the discovery error shown rather than an empty list.
+- **Expected**: Editing never drops an unmodified binding. An explicitly enabled level remains saved even when the catalog does not publish it, so the Composer reads the same binding rather than silently narrowing it; a binding whose model discovery is unavailable keeps its stored levels untouched. Legacy read materializes one binding without losing the old model ID; the subsequent write stores `config_json.models` and keeps `defaultModelId` equal to the first binding for older readers. When the edited provider is the global default and its first model changed, `settings.defaultModelId` is re-synced to the new head binding. A failed live probe degrades to the cached list plus an error, never to a blank picker, and a catalog fallback is never written into the model cache.
 - **Specs linked**: `03-runtime/11-provider-model-system.md`, `03-runtime/12-provider-config-schema.md`, `03-runtime/13-model-catalog-and-selection.md`, ADR 0114
 - **Acceptance**: F (provider persistence and migration)
 - **Milestone**: M2
@@ -1770,13 +1770,14 @@ Each scenario is documented in this format:
   level text. The single anchored menu replaces its root
   with an in-place back row and submenu, never opens tabs or a second popover,
   and always reopens at the root. Model search filters sticky provider groups;
-  reasoning rows come only from the selected provider's sparse supported levels,
-  use radio semantics and a trailing check, and show the current model support
-  note. Selecting either value immediately updates the chip and root value,
-  clears model filtering, and keeps the menu open. A non-reasoning provider
-  clamps the durable level to `off` and does not expose an unsupported level.
-  Refreshing discovered model data cannot invent capabilities for the unknown
-  model. Before the first message creates a session, the Composer uses the
+  reasoning rows come from the selected model's explicit binding levels in
+  canonical order, use radio semantics and a trailing check, and show the
+  current model support note. Selecting either value immediately updates the
+  chip and root value, clears model filtering, and keeps the menu open. A
+  non-reasoning or unknown model starts at `off`, but an explicit Settings
+  binding can make its configured levels available; discovery never promotes it
+  automatically. Refreshing discovered model data cannot overwrite the binding.
+  Before the first message creates a session, the Composer uses the
   exact model selected in its model menu rather than the provider's default
   model; after materialization, the same exact-model capability remains in
   effect.
@@ -1807,13 +1808,16 @@ Each scenario is documented in this format:
 
 - **Preconditions**: Instrumented reasoning-capable provider with a sparse
   level set and request capture; one session configured above and below gaps.
-- **Steps**: 1) Select each available level and run a prompt. 2) Seed an
-  unsupported stored level and run again. 3) Repeat with a pi-catalogued
-  non-reasoning model.
+- **Steps**: 1) Select each enabled level and run a prompt. 2) Seed an
+  explicit binding level the catalog does not publish and run again. 3) Repeat
+  with a pi-catalogued non-reasoning model, first with no enabled level and then
+  after an explicit Settings opt-in.
 - **Expected**: Main resolves capability using the session's actual model id;
   Composer, main, sidecar, and pi use the same upward-first/downward-second
-  clamp; pi receives the effective level and the non-reasoning model receives
-  `off`. Model-specific request semantics, including adaptive thinking and
+  clamp over the binding's enabled set, without intersecting it with the
+  catalog. Pi receives the effective level, an empty or `off`-only binding
+  receives `off`, and an explicitly opted-in endpoint receives the configured
+  level. Model-specific request semantics, including adaptive thinking and
   whether `off` is expressible, match the pinned pi record without a desktop
   rewrite.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md`,
@@ -6880,10 +6884,10 @@ This test plan spec is accepted when:
   the same search, the same free-form custom-model entry, the same chosen pane,
   the same Advanced disclosure and the same chips — so the account editor is no
   longer missing the advanced controls. A level enabled on an account model
-  persists and reappears when the editor is reopened. Levels the resolved
-  models.dev record does not publish are dropped on save exactly as in the
-  service dialog, while a model with no published record keeps its stored levels
-  untouched. The account's default model stays the head binding.
+  persists and reappears when the editor is reopened, including a level the
+  catalog does not publish. A model with no published record keeps its explicit
+  levels and starts with all choices available for manual opt-in. The account's
+  default model stays the head binding.
 - **Specs linked**: `04-ux/06-settings-ia.md`,
   `04-ux/08-component-spec.md` §19, `03-runtime/11-provider-model-system.md`
   §10, `08-meta/decisions-log.md` (D270 refines D237/D240)
@@ -6916,7 +6920,9 @@ This test plan spec is accepted when:
   image as an image content block. Ticking a box back to the published value
   stores "follow the catalog" rather than an equal-valued override, so a later
   catalog correction still reaches the binding without any separate reset
-  control. PDF input records the capability without changing transport: the PDF
+  control. All seven canonical thinking chips remain available even when the
+  catalog publishes no reasoning support, so an endpoint can be opted in
+  explicitly. PDF input records the capability without changing transport: the PDF
   stays a bounded file reference the model reads with its file tools. Each
   capability is one checkbox with a short label and no per-row explanatory copy.
   A configured model absent from live discovery still shows its published

@@ -244,6 +244,7 @@ export type ModelBinding = {
   id: string;
   contextWindow: number;
   maxTokens: number;
+  /** Explicit endpoint levels; an empty or off-only set disables thinking. */
   thinkingLevels: ThinkingLevel[];
   defaultThinkingLevel: ThinkingLevel | null;
   /**

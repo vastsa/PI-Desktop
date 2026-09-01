@@ -4,13 +4,14 @@
  * An AI service and a vendor account differ in how they authenticate, not in
  * what choosing a model means: the same discovered list, the same binding
  * shape, the same per-model limits and thinking levels. While each dialog kept
- * its own copy the account editor silently lost the advanced controls and the
- * save-time narrowing, so the guarantee lives here once instead of in a
- * convention two files had to remember.
+ * its own copy the account editor silently lost the advanced controls, so the
+ * guarantee lives here once instead of in a convention two files had to
+ * remember.
  */
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  THINKING_LEVELS,
   bindingForCustomModel,
   bindingFromModelInfo,
   formatTokenCount,
@@ -41,15 +42,15 @@ export type ModelSelection = {
   models: ModelBinding[];
   publishedLevelsById: Map<string, ThinkingLevel[]>;
   /**
-   * What the caller must save: the chosen bindings with every level the model
-   * does not publish removed.
+   * What the caller must save: the chosen bindings with explicit thinking
+   * selections preserved, including manual overrides not listed by the catalog.
    */
   bindingsToPersist: ModelBinding[];
   setModels: (update: (current: ModelBinding[]) => ModelBinding[]) => void;
 };
 
 /**
- * Row merging, published levels and save-time narrowing for one binding list.
+ * Row merging and published-level metadata for one binding list.
  *
  * Rows are the models the credential offered, plus any configured binding the
  * current answer does not mention (a hand-typed id, or an endpoint that went
@@ -89,10 +90,9 @@ export function useModelSelection(
   }, [discovery.models, models]);
 
   /**
-   * Thinking levels a configured model may actually be given. The runtime
-   * intersects a binding with the published levels before it builds a request,
-   * so enabling anything outside this list would be discarded there and the
-   * Composer reasoning menu would offer fewer entries than this dialog did.
+   * Published thinking levels are kept separately from the editable binding.
+   * They seed newly added known models and explain the catalog baseline, but a
+   * user may explicitly configure any canonical level for a proxy or new model.
    */
   const publishedLevelsById = useMemo(() => {
     const byId = new Map<string, ThinkingLevel[]>();
@@ -108,23 +108,17 @@ export function useModelSelection(
   }, [rows]);
 
   /**
-   * Persist only levels the model publishes. A binding stored before the model
-   * was known — or before its published levels changed — can still carry an
-   * unsupported level, which the runtime would drop while the dialog kept
-   * counting it as enabled.
+   * Persist the user's explicit level set. The catalog is metadata and a
+   * provider endpoint may support a level that its published record omits.
    */
   const bindingsToPersist = useMemo(
     () =>
       models.map((binding) => {
-        const choices = publishedLevelsById.get(binding.id.toLowerCase());
-        // An unknown row (discovery is offline) must not erase stored levels.
-        const thinkingLevels = choices
-          ? binding.thinkingLevels.filter((level) => choices.includes(level))
-          : binding.thinkingLevels;
         // Canonical order, because this is the same order the panel offers the
         // default in: picking the first entry of an insertion-ordered list here
         // would save a different default than the one the user was shown.
-        const enabled = sortThinkingLevels(thinkingLevels);
+        const thinkingLevels = sortThinkingLevels(binding.thinkingLevels);
+        const enabled = thinkingLevels;
         const defaultThinkingLevel =
           binding.defaultThinkingLevel && enabled.includes(binding.defaultThinkingLevel)
             ? binding.defaultThinkingLevel
@@ -137,7 +131,7 @@ export function useModelSelection(
         }
         return { ...binding, thinkingLevels, defaultThinkingLevel };
       }),
-    [models, publishedLevelsById],
+    [models],
   );
 
   return { rows, models, publishedLevelsById, bindingsToPersist, setModels };
@@ -319,21 +313,13 @@ export function ModelSelectionPanes({
         ) : (
           <ul className="provider-chosen-list">
             {models.map((binding) => {
-              // An unknown row has no published list to offer, so it shows what
-              // is already enabled rather than claiming the model has no
-              // thinking support.
-              const levelChoices =
-                publishedLevelsById.get(binding.id.toLowerCase()) ??
-                binding.thinkingLevels;
-              // The default is chosen among the levels this binding enables, not
-              // among everything the model publishes: offering a disabled level
-              // would store a default the runtime immediately clamps away.
-              const enabledLevels = sortThinkingLevels(
-                binding.thinkingLevels.filter((level) => levelChoices.includes(level)),
-              );
-              // models.dev is the baseline the checkboxes show and compare
-              // against. A model the catalog does not describe publishes
-              // nothing, so both boxes start clear and any tick is an override.
+              // The catalog is a baseline, not a capability gate. Always show
+              // the canonical ladder so a proxy or newly released model can be
+              // configured before models.dev catches up.
+              const levelChoices = THINKING_LEVELS;
+              const publishedLevels =
+                publishedLevelsById.get(binding.id.toLowerCase()) ?? [];
+              const enabledLevels = sortThinkingLevels(binding.thinkingLevels);
               const info = infoById.get(binding.id.toLowerCase());
               const publishedImages = info ? modelMatchesFilter(info, "vision") : false;
               const publishedDocuments = info ? modelMatchesFilter(info, "pdf") : false;
@@ -407,9 +393,9 @@ export function ModelSelectionPanes({
                         {t("settings.supportedThinkingLevels")}
                       </span>
                       <div className="provider-chosen-thinking-chips">
-                        {levelChoices.length === 0 ? (
+                        {publishedLevels.length === 0 ? (
                           <span className="provider-chosen-thinking-empty">
-                            {t("settings.thinkingDisabledHint")}
+                            {t("settings.thinkingManualOverrideHint")}
                           </span>
                         ) : null}
                         {levelChoices.map((level) => {

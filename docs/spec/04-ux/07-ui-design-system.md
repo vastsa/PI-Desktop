@@ -780,10 +780,11 @@ The composer renders only controls connected to the active pi session:
 - File, photo, and appshot controls remain hidden until their payload contracts
   are implemented end to end.
 - The combined model × reasoning menu persists changes to the active session and
-  returns to its root after a selection. It renders exactly the levels published
-  by pi-ai for the selected provider/model. Unknown Custom/OpenAI-compatible
-  models expose no invented reasoning action or graded ladder. Changing provider
-  clamps or resets the durable session value before the next turn.
+  returns to its root after a selection. It renders the levels enabled by the
+  selected model binding; published catalog levels seed that binding, while
+  Settings can explicitly configure a level for an unknown or proxied model.
+  Unknown models do not gain reasoning automatically. Changing provider clamps
+  or resets the durable session value before the next turn.
 - The left-of-input Composer Agent/Plan/Goal chip is the sole active-session mode
   control and cycles Agent → Plan → Goal → Agent. The Composer-right combined
   chip owns model and reasoning changes; the top bar has no duplicate mode or

@@ -107,9 +107,10 @@ Tables (canonical DDL in [04-data-storage](04-data-storage.md) §4.3–4.4, §4.
 `compatibility.supportedThinkingLevels` remain readable for stored-record and
 older-client compatibility, but Electron main ignores them during runtime
 model resolution. The public provider shape is enriched from the local
-models.dev snapshot. Unknown free-form models expose
-`supportsReasoning=false` and `supportedThinkingLevels=["off"]`. The raw secret
-and internal compatibility JSON remain hidden.
+models.dev snapshot. Unknown free-form models initially expose
+`supportsReasoning=false` and `supportedThinkingLevels=["off"]`; Settings may
+still persist an explicit thinking-level binding for an endpoint that supports
+it. The raw secret and internal compatibility JSON remain hidden.
 
 `authKind: "oauth"` marks a vendor-account row (ADR 0095, D237, D240): the credential
 is an OAuth grant under `secret:provider:<id>:oauth` rather than a pasted key,
@@ -133,12 +134,16 @@ does not edit or delete OAuth rows; the Vendor accounts card calls
 `providers.delete` for the selected row.
 
 `models` is the provider's selected model binding array. Each binding owns its
-context/output limits and thinking configuration. `defaultModelId` remains a
+context/output limits and explicit thinking configuration. Published catalog
+levels seed a newly selected known model, but the binding may enable any
+canonical level so a proxy or newly released endpoint is configurable before
+the catalog is updated. `defaultModelId` remains a
 read compatibility field and is kept equal to the first binding when a new
 provider is saved. When an older record has only `defaultModelId`, the host
 materializes one binding on read with a 128,000 context window, 8,192 max
-output, no enabled thinking levels, and a null default. The next write stores
-the binding array in `config_json.models`.
+output, no enabled thinking levels, and a null default. The settings editor
+still renders all canonical choices for that legacy binding, and the next write
+stores the explicit binding array in `config_json.models`.
 
 `apiStyle: "opencode_go"` is a first-class OpenCode Go preset layered on the
 OpenAI-compatible provider type. It persists as its own style so the UI can

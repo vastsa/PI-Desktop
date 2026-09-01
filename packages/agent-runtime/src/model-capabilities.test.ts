@@ -78,24 +78,45 @@ describe("main-supplied model capabilities", () => {
     });
   });
 
-  it("applies binding limits and intersects enabled thinking levels", () => {
+  it("applies binding limits and preserves explicit thinking levels", () => {
     const configured = modelConfigWithBinding(knownModel(), {
       contextWindow: 64_000,
       maxTokens: 4_000,
-      thinkingLevels: ["off", "low", "max"],
+      thinkingLevels: ["off", "minimal", "low", "max"],
     });
     expect(configured.contextWindow).toBe(64_000);
     expect(configured.maxTokens).toBe(4_000);
     expect(configured.reasoning).toBe(true);
-    expect(configured.supportedThinkingLevels).toEqual(["low", "max"]);
+    expect(configured.supportedThinkingLevels).toEqual([
+      "off",
+      "minimal",
+      "low",
+      "max",
+    ]);
 
     const unknown = modelConfigWithBinding(genericModelConfig("unknown"), {
       contextWindow: 16_000,
       maxTokens: 2_000,
       thinkingLevels: ["high"],
     });
-    expect(unknown.reasoning).toBe(false);
-    expect(unknown.supportedThinkingLevels).toEqual([]);
+    expect(unknown.reasoning).toBe(true);
+    expect(unknown.supportedThinkingLevels).toEqual(["high"]);
+
+    const cataloguedNonReasoning = modelConfigWithBinding(
+      {
+        ...genericModelConfig("catalogued-chat"),
+        source: "models.dev" as const,
+        reasoning: false,
+        supportedThinkingLevels: [],
+      },
+      {
+        contextWindow: 16_000,
+        maxTokens: 2_000,
+        thinkingLevels: ["medium"],
+      },
+    );
+    expect(cataloguedNonReasoning.reasoning).toBe(true);
+    expect(cataloguedNonReasoning.supportedThinkingLevels).toEqual(["medium"]);
   });
 
   it("clamps sparse catalog capability lists using the nearest supported level", () => {
@@ -171,7 +192,7 @@ describe("binding attachment capability overrides", () => {
     expect(config.input).toEqual(["text"]);
   });
 
-  it("leaves limits and thinking narrowing untouched by a capability override", () => {
+  it("leaves limits and explicit thinking levels untouched by a capability override", () => {
     const config = modelConfigWithBinding(knownModel(), {
       ...baseBinding,
       thinkingLevels: ["medium", "off"] as ThinkingLevel[],
@@ -179,6 +200,6 @@ describe("binding attachment capability overrides", () => {
     });
     expect(config.contextWindow).toBe(200_000);
     expect(config.maxTokens).toBe(32_000);
-    expect(config.supportedThinkingLevels).toEqual(["medium"]);
+    expect(config.supportedThinkingLevels).toEqual(["off", "medium"]);
   });
 });

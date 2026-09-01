@@ -34,13 +34,14 @@ entitled to it.
   and then replaces it with the live answer.
 - Filtering that list is client-side: it is a short live list, not a catalog, so
   no host search is involved.
-- Context window, output limit and thinking levels come from
+- Context window, output limit and initial thinking levels come from
   `bindingFromModelInfo` over the enriched record; per-model overrides live
-  behind a per-row **Advanced** disclosure. `publishedThinkingLevels` is the one
-  owner of "which levels this model may be given": the dialog offers exactly
-  that list, `bindingFromModelInfo` seeds from it, and the runtime intersects a
-  stored binding with it. A model that publishes no level list and no level map
-  but does claim reasoning falls back to `low`/`medium`/`high`.
+  behind a per-row **Advanced** disclosure. `publishedThinkingLevels` describes
+  the catalog baseline and seeds known-model bindings. The dialog always offers
+  the seven canonical levels, including for unknown or non-reasoning records,
+  and the runtime uses the binding's explicit set. A model that publishes no
+  level list and no level map but does claim reasoning still seeds
+  `low`/`medium`/`high`.
 - The wire API is derived from the provider's published `npm` adapter
   (`apiStyleForAdapter`) and is only editable inside **Advanced**.
 - A custom model ID is always accepted, so a gateway without a `/models` route
@@ -94,12 +95,14 @@ Each session stores:
 
 Changing model or thinking level mid-session affects subsequent turns only.
 The stored thinking preference survives restart; the effective request level
-is capability-clamped for the selected model at execution time.
+is clamped against the selected model binding's enabled levels at execution
+time. An empty binding or a binding containing only `off` resolves to `off`.
 
 For a newly created session, the renderer resolves the app default provider's
-current default-model capability. A reasoning-capable model starts at the
-highest canonical level in its published `supportedThinkingLevels`; a
-non-reasoning model or missing capability metadata starts at `off`. This is a
+current default-model capability. A newly added known reasoning model starts at
+the highest enabled level seeded from its published `supportedThinkingLevels`;
+an explicit binding override is authoritative. A non-reasoning or unknown
+model starts at `off` until the user enables a non-`off` level. This is a
 creation default only and never rewrites an existing session's stored choice.
 
 ## 5. Capability warnings
@@ -216,8 +219,9 @@ App-level default:
 
 Session-level:
 - inherits app default at creation
-- initializes thinking to the highest level published by the inherited model
-  when it supports reasoning, otherwise `off`
+- initializes thinking to the highest level enabled by the inherited model's
+  binding; published levels seed a new binding, while an empty or `off`-only
+  binding starts at `off`
 - can override independently
 
 ## 11. Capability gating
@@ -237,17 +241,22 @@ Warnings are non-blocking unless execution is impossible.
    `modelId`. Matching also accepts a catalog vendor prefix when the configured
    provider uses an unprefixed ID (for example `deepseek-v4` matches
    `deepseek/deepseek-v4` only under the matching provider identity).
-2. The models.dev record is authoritative for `reasoning` and
+2. The models.dev record is authoritative for published `reasoning` and
    `reasoning_options`; cached/provider capability claims cannot replace it.
-3. A free-form ID absent from models.dev is an unknown generic model and
-   exposes only `off`; the UI cannot promote it to reasoning-capable.
-4. The Composer renders the selector only when the models.dev record says the
-   model supports reasoning and lists only its supported canonical levels.
-5. If a stored/requested level is unavailable, choose the nearest supported
-   level by scanning upward first and then downward. Non-reasoning models
-   always resolve to `off`.
-6. Changing to a non-reasoning provider persists `off`; no unsupported level
-   leaks into the next request.
+3. The provider's exact `ModelBinding.thinkingLevels` is authoritative for the
+   user's effective selection. It may explicitly enable a canonical level that
+   the catalog does not publish.
+4. A free-form ID absent from models.dev starts as an unknown generic model and
+   exposes only `off`; Settings can promote it only after an explicit binding
+   selection, never through discovery or an automatic inference.
+5. The Composer renders the effective binding levels in canonical order. If no
+   binding exists, it falls back to the published model levels and provider
+   defaults.
+6. If a stored/requested level is unavailable, choose the nearest enabled
+   binding level by scanning upward first and then downward. A binding with no
+   non-`off` level resolves to `off`.
+7. Changing to a provider/model with no enabled reasoning level persists `off`;
+   no unconfigured level leaks into the next request.
 
 ### 11.2 Vision capability resolution
 
@@ -328,9 +337,10 @@ same model to the check mark, the toggle and the duplicate guard.
 - [ ] capability badges visible
 - [ ] session model change applies to next turn only
 - [ ] a new session defaults a reasoning-capable inherited model to its highest
-      published thinking level and otherwise defaults to `off`
-- [ ] reasoning selector is capability-gated and models.dev-published sparse
-      levels clamp the same way in Composer, Electron main, and the pi sidecar
+      enabled thinking level and otherwise defaults to `off`
+- [ ] the settings picker always exposes the canonical thinking ladder;
+      published levels seed known models and explicit binding levels clamp the
+      same way in Composer, Electron main, and the pi sidecar
 - [ ] models.dev metadata wins for a matching provider/model; an ID absent from
       it uses the generic shape while pi-ai supplies only transport/OAuth
 - [ ] provider settings and cached discovery cannot replace known catalog

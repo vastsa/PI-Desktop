@@ -1,8 +1,9 @@
-import type {
-  ModelBinding,
-  ModelInfo,
-  ModelModality,
-  ThinkingLevel,
+import {
+  THINKING_LEVELS,
+  type ModelBinding,
+  type ModelInfo,
+  type ModelModality,
+  type ThinkingLevel,
 } from "@pi-desktop/shared";
 import type { ModelConfig, ThinkingCapabilitySet } from "./thinking-level.js";
 
@@ -59,9 +60,9 @@ export function capabilitiesFromModelInfo(model?: ModelInfo | null): ModelCapabi
 }
 
 /**
- * Apply explicit per-provider model settings without expanding published
- * capabilities. Limits come from the user's binding; thinking levels are the
- * intersection of that binding and the models.dev-supported levels.
+ * Apply explicit per-provider model settings. Limits and thinking levels come
+ * from the user's binding; the catalog only seeds a new binding and supplies
+ * the published baseline shown in metadata surfaces.
  */
 export function modelConfigWithBinding(
   model: ModelConfig,
@@ -77,15 +78,14 @@ export function modelConfigWithBinding(
     | null,
 ): ModelConfig {
   if (!binding) return model;
-  const published = capabilitiesFromModelConfig(model);
-  const enabledThinkingLevels = [...new Set(binding.thinkingLevels)].filter((level) =>
-    published.supportedThinkingLevels.includes(level),
+  const enabledThinkingLevels = THINKING_LEVELS.filter((level) =>
+    binding.thinkingLevels.includes(level),
   );
   return {
     ...model,
     contextWindow: binding.contextWindow,
     maxTokens: binding.maxTokens,
-    reasoning: published.supportsReasoning && enabledThinkingLevels.length > 0,
+    reasoning: enabledThinkingLevels.some((level) => level !== "off"),
     supportedThinkingLevels: enabledThinkingLevels,
     ...modalityOverride(model, binding),
   };

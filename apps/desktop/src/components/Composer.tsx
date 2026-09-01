@@ -230,7 +230,8 @@ export function thinkingLevelForProvider(
  *
  * Persisted sessions receive these exact capabilities from Electron main.
  * Before the first message creates a session, the provider row only describes
- * its default model, so use the selected catalog record when one is available.
+ * its default model, so use the selected catalog record and exact model
+ * binding when one is available.
  */
 export function thinkingProviderForModel(
   provider: ProviderPublic | null | undefined,
@@ -241,13 +242,20 @@ export function thinkingProviderForModel(
   const model = modelCatalog?.find((candidate) => modelIdsMatch(candidate.modelId, modelId));
   if (!model) return provider;
 
-  const supportsReasoning = model.capabilities.includes("reasoning");
+  const binding = provider.models.find((candidate) =>
+    modelIdsMatch(candidate.id, model.modelId),
+  );
+  const configuredLevels = binding
+    ? THINKING_LEVELS.filter((level) => binding.thinkingLevels.includes(level))
+    : undefined;
+  const supportsReasoning = configuredLevels
+    ? configuredLevels.some((level) => level !== "off")
+    : model.reasoning === true || model.capabilities.includes("reasoning");
   return {
     ...provider,
     supportsReasoning,
-    supportedThinkingLevels: supportsReasoning
-      ? (model.supportedThinkingLevels ?? provider.supportedThinkingLevels)
-      : ["off"],
+    supportedThinkingLevels:
+      configuredLevels ?? model.supportedThinkingLevels ?? provider.supportedThinkingLevels,
   };
 }
 
@@ -690,8 +698,8 @@ export function Composer({
             activeSession.supportedThinkingLevels ?? (["off"] as ThinkingLevel[]),
         }
       : catalogThinkingProvider;
-  // A draft without a session starts at the strongest level its inherited
-  // default model publishes, matching a freshly created reasoning session.
+  // A draft without a session starts at the strongest level enabled by its
+  // inherited model binding; published metadata seeds that binding on add.
   const draftThinkingLevel = thinkingProvider?.supportsReasoning
     ? highestSupportedThinkingLevel(thinkingProvider.supportedThinkingLevels)
     : "off";

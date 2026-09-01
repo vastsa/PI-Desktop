@@ -107,8 +107,8 @@ test("both credential kinds share one live list and one binding shape", () => {
 });
 
 test("one picker component serves the service dialog and the account dialog", () => {
-  // The two surfaces were copies, and the copy lost the advanced controls and
-  // the save-time narrowing (D269). Neither dialog may grow its own picker back.
+  // The two surfaces were copies, and the copy lost the advanced controls.
+  // Neither dialog may grow its own picker back.
   for (const source of [setupSource, vendorDialogSource]) {
     assert.match(source, /ModelSelectionPanes/);
     assert.match(source, /useModelSelection\(/);
@@ -132,9 +132,9 @@ test("the shared picker owns the advanced per-model controls for both kinds", ()
   assert.match(pickerSource, /bindingsToPersist/);
 });
 
-test("a vendor account saves the narrowed bindings, not raw state", () => {
-  // A level the resolved record does not publish is discarded by the runtime,
-  // so an account must not persist one either.
+test("a vendor account saves explicit bindings, not raw state", () => {
+  // The shared picker preserves explicit thinking levels, including a manual
+  // override not present in the catalog.
   assert.match(vendorDialogSource, /selection\.bindingsToPersist/);
   assert.match(vendorDialogSource, /models: persisted/);
   assert.doesNotMatch(vendorDialogSource, /models: models \}/);

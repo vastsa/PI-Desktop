@@ -21,17 +21,16 @@ export type PublishedThinkingSource = {
 /**
  * Levels a model actually publishes, in canonical order.
  *
- * The runtime intersects the user's enabled levels with this list before a
- * request is built, so a surface that offers levels to enable must offer
- * exactly these. Offering the full canonical ladder instead lets a user enable
- * a level the runtime then drops, which is why a binding could hold more
- * levels than the Composer reasoning menu renders.
+ * The list represents the levels published by the catalog. Settings uses it to
+ * seed known-model bindings and explain the catalog baseline; it is not a gate
+ * on explicit levels a user configures for a proxy or newly released model.
  */
 export function publishedThinkingLevels(
   model?: PublishedThinkingSource | null,
 ): ThinkingLevel[] {
   if (!model) return [];
-  // ADR 0114: no reasoning support is an empty list, never a token `off` entry.
+  // ADR 0114: no published reasoning support is an empty list, never a token
+  // `off` entry.
   // Capability projections spell a non-reasoning model as `["off"]`, which would
   // otherwise surface as one enableable level.
   if (model.reasoning === false) return [];

@@ -137,9 +137,10 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   - Edit account opens a dialog carrying the account label plus the same
     two-pane model picker the AI service dialog uses (D270): the account's
     discovered/entitled models on the left, the chosen bindings on the right
-    with per-model context window, max output, and published thinking-level
-    chips behind the Advanced disclosure, so model selection is identical for
-    both credential kinds. The account has no API key field and discovery
+    with per-model context window, max output, and seven thinking-level chips
+    behind the Advanced disclosure, so model selection is identical for both
+    credential kinds. Published levels seed known models; explicit selections
+    remain user-owned. The account has no API key field and discovery
     resolves the stored OAuth login instead. Saving updates the OAuth provider
     row and keeps the global default model in sync when that account is selected
   - Test connection resolves the account's OAuth authorization and reports a
@@ -171,18 +172,17 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   - model discovery is debounced after a valid endpoint, key, or API style
     change, including no-auth/local endpoints; the picker remains usable with
     free-form custom model IDs when discovery is unavailable
-  - thinking chips offer exactly the levels the resolved models.dev record
-    publishes, in canonical order, so the count a user enables here equals the
-    count the Composer reasoning menu renders for that model. A row whose model
-    publishes no reasoning shows the thinking-disabled hint instead of chips.
-    A stored binding is narrowed to the published set when the dialog saves.
-    A row the catalog does not describe — a hand-typed ID, a vendor-account
-    model, or an endpoint that went quiet — has no published list: it shows the
-    levels already enabled and is saved unchanged, so discovery being
-    unavailable can never erase configuration.
+  - thinking chips always render the seven canonical levels in canonical order.
+    Published levels seed known-model bindings, while a row with no published
+    reasoning shows all chips unselected with a concise manual-override hint.
+    This lets a compatible proxy or newly released model be enabled explicitly;
+    the saved binding, not the catalog, owns the effective selection. A row the
+    catalog does not describe — a hand-typed ID, a vendor-account model, or an
+    endpoint that went quiet — still keeps its stored selections, so discovery
+    being unavailable can never erase configuration.
     Removing the current default falls back to the first enabled level; no
     enabled levels disable the default selector and show the model's
-    thinking-disabled hint
+    manual-override hint
   - selecting the **OpenCode Go** API style applies the fixed name
     **OpenCode Go** and endpoint `https://opencode.ai/zen/go/v1`; those two
     fields remain visible but read-only, the API key remains editable, and

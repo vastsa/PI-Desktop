@@ -134,7 +134,9 @@ PI-Desktop must not permanently restrict users to a short fixed model list.
    model ID without the catalog prefix is matched to the exact unprefixed
    suffix only when the provider identity is unambiguous. They cannot invent or
    replace model metadata. A configured free-form ID remains selectable with
-   the generic text-only, non-reasoning shape when it is absent from models.dev.
+   the generic text-only, non-reasoning baseline when it is absent from
+   models.dev. Settings still permits an explicit thinking-level override for
+   an endpoint the catalog does not know yet.
 4. The models.dev record maps `id`, `name`, `description`, `family`,
    `attachment`, `reasoning`, `reasoning_options`, `tool_call`,
    `structured_output`, `temperature`, `knowledge`, `release_date`,
@@ -154,12 +156,14 @@ PI-Desktop must not permanently restrict users to a short fixed model list.
 7. User-edited `ModelBinding` values remain explicit provider configuration:
    they control selected request limits, enabled thinking levels, the default
    thinking level applied to a new session, and the attachment capability
-   overrides, while models.dev controls published defaults and capability
-   metadata.
-8. `defaultThinkingLevel` is chosen from the levels the binding enables, so a
-   stored default can never be a level the runtime would clamp away. When a
-   binding enables one level or none, there is nothing to choose and the field
-   follows the enabled set.
+   overrides. `models.dev` supplies published metadata and seeds the initial
+   thinking selection for a newly added known model; it is not a runtime gate
+   on a level the user explicitly enables for the endpoint.
+8. Settings renders the seven canonical thinking levels for every binding.
+   Published levels begin selected for a known reasoning model. A non-reasoning
+   or unknown model shows the same choices unselected, with a short manual
+   override note. `defaultThinkingLevel` is chosen from the levels the binding
+   enables, so a stored default is always part of the explicit set.
 9. `supportsImages` and `supportsDocuments` are three-state overrides. Absent
    or `null` follows the published models.dev modality, so a catalog correction
    still reaches a saved binding; `true` or `false` is the user's explicit
@@ -174,10 +178,11 @@ PI-Desktop must not permanently restrict users to a short fixed model list.
     catalog" rather than an equal-valued override. Agreeing with models.dev is
     therefore the reset, and no separate reset control or per-capability
     explanatory copy is required.
-11. `ModelInfo.modalities` is the published record the settings surface compares
-    against, so a stored binding must not shape it. Limits, reasoning and
-    thinking levels are still resolved through the binding; only the modality
-    arrays stay as models.dev published them.
+11. `ModelInfo` is the published record the settings surface compares against,
+    so a stored binding must not shape its capabilities or reasoning fields.
+    Effective limits, reasoning and thinking levels are resolved through the
+    exact binding; the effective transport modality arrays additionally apply
+    the explicit attachment overrides.
 12. A model the user has configured keeps its published record even when live
     discovery no longer lists it, so its capabilities remain visible and
     editable. Only ids already present in the provider's `models` are re-added,
@@ -277,9 +282,10 @@ type ThinkingLevel =
 
 The compatibility fields above are retained as a persisted-schema compatibility
 surface for older clients. PI-Desktop no longer reads them as runtime model
-overrides. Reasoning support and supported thinking levels come from the
-resolved models.dev record; unknown free-form ids use the generic shape and
-expose no inferred reasoning capability.
+overrides. `ModelInfo` reasoning support and supported thinking levels describe
+the resolved models.dev record; effective provider/session capability comes from
+the exact `ModelBinding`. Unknown free-form ids start with the generic shape and
+no inferred reasoning capability, but an explicit binding may opt into levels.
 
 The provider dialog persists one `ModelBinding` for every selected model. The
 first binding is the effective model for current conversations and legacy
@@ -396,14 +402,11 @@ type ModelDescriptor = {
 - test connection
 - select multiple models and edit each binding's context window, output limit,
   and enabled thinking levels; catalog metadata supplies the initial values for
-  both API providers and signed-in vendor accounts. A binding may only enable
-  levels the resolved models.dev record publishes, because the runtime
-  intersects the binding with that published set before it builds a request;
-  offering the full canonical ladder here would let a user enable a level the
-  Composer reasoning menu never renders. Both surfaces present this through the
-  same picker, so a vendor account editor offers the same per-binding editing
-  and applies the same narrowing to the published levels as an API provider
-  editor
+  both API providers and signed-in vendor accounts. The picker always exposes
+  the seven canonical levels: published levels seed known models, while any
+  explicit selection is retained for a proxy or newly released model. Both
+  surfaces present this through the same picker, so a vendor account editor
+  offers the same per-binding editing as an API provider editor
 - keep model cards compact by default, expand metadata/configuration on demand,
   and keep dialog actions outside the independently scrollable content
 - do not expose raw catalog compatibility internals or provider secrets
@@ -440,10 +443,12 @@ When starting a turn with `(providerId, modelId)`:
    limits, cost data, and thinking options — into the runtime model snapshot;
    when absent, use the generic text-only, non-reasoning shape
 6. derive vision transport from models.dev `modalities.input`; provider
-   discovery/cache/user capability claims cannot promote an unresolved model
-7. clamp the session thinking level against models.dev's supported levels and
-   build the runtime provider adapter by replacing only provider/model identity,
-   selected API adapter, auth, and an explicitly configured endpoint URL
+   discovery/cache claims cannot promote an unresolved model, while an explicit
+   attachment binding override can
+7. clamp the session thinking level against the exact binding's enabled levels
+   and build the runtime provider adapter by replacing only provider/model
+   identity, selected API adapter, auth, and an explicitly configured endpoint
+   URL
 8. execute stream with abort handle and separate answer/thinking events
 9. translate vendor errors into shared `AppError` codes (§15)
 
@@ -568,8 +573,9 @@ This is the **universal escape hatch** guaranteeing market coverage beyond nativ
       independently for turns, and removed one at a time; the sidecar never
       receives either refresh token
 - [ ] Session can switch model between turns
-- [ ] Reasoning-capable models expose only supported thinking levels and the
-      selected level reaches pi; unsupported providers resolve to `off`
+- [ ] Known reasoning levels seed a binding, while all seven canonical levels
+      remain explicitly selectable and the selected level reaches pi;
+      bindings with no non-`off` level resolve to `off`
 - [ ] Missing key/model blocks run with stable, actionable error codes
 - [ ] At least one local provider path (Ollama or LM Studio style) documented and testable
 - [ ] No product hard-limit like “only 3 vendors / 10 models”

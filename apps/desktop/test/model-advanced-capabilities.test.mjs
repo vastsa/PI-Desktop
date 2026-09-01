@@ -111,6 +111,15 @@ test("the published record is not shaped by the stored override", () => {
     mainSource,
     /modalities: catalogModelConfig\.modalities \?\? \{ input: \["text"\], output: \["text"\] \}/,
   );
+  const decorate = mainSource.slice(
+    mainSource.indexOf("const decorate ="),
+    mainSource.indexOf("const withConfiguredBindings"),
+  );
+  assert.doesNotMatch(decorate, /reasoning: capabilities\.supportsReasoning/);
+  assert.doesNotMatch(
+    decorate,
+    /supportedThinkingLevels: \[\.\.\.capabilities\.supportedThinkingLevels\]/,
+  );
 });
 
 test("every image gate reads the override-shaped model config", () => {
@@ -146,6 +155,10 @@ test("the offered default and the saved default use one order", () => {
   const orderings = pickerSource.match(/sortThinkingLevels\(/g) ?? [];
   assert.ok(orderings.length >= 3, `expected 3+ orderings, saw ${orderings.length}`);
   assert.match(pickerSource, /: \(sortThinkingLevels\(next\)\[0\] \?\? null\)/);
-  assert.match(pickerSource, /const enabled = sortThinkingLevels\(thinkingLevels\)/);
+  assert.match(
+    pickerSource,
+    /const thinkingLevels = sortThinkingLevels\(binding\.thinkingLevels\)/,
+  );
+  assert.match(pickerSource, /const enabled = thinkingLevels/);
   assert.match(pickerSource, /: \(enabled\[0\] \?\? null\)/);
 });
