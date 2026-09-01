@@ -24,7 +24,7 @@ test("the default model row carries the settings row inset", async () => {
   assert.doesNotMatch(panel[1], /padding:/);
 });
 
-test("the change trigger keeps its width while the model id wraps", async () => {
+test("the default summary and change action keep separate jobs", async () => {
   const styles = await loadStyles();
 
   const copy = styles.match(/\.model-default-copy \{([^}]*)\}/);
@@ -32,9 +32,22 @@ test("the change trigger keeps its width while the model id wraps", async () => 
   assert.match(copy[1], /flex: 1;/);
   assert.match(copy[1], /min-width: 0;/);
 
+  const row = styles.match(/\.model-default-row \{([^}]*)\}/);
+  assert.ok(row, ".model-default-row rule is missing");
+  assert.match(row[1], /display: grid;/);
+  assert.match(row[1], /grid-template-columns: minmax\(0, 1fr\) auto;/);
+
   const anchor = styles.match(/\.model-default-anchor \{([^}]*)\}/);
   assert.ok(anchor, ".model-default-anchor rule is missing");
   assert.match(anchor[1], /flex: none;/);
+
+  const source = await read("../src/components/settings/ModelConfigPage.tsx");
+  assert.match(source, /model-default-value/);
+  assert.match(source, /model-default-description/);
+  assert.match(source, /model-default-trigger-label/);
+  assert.match(source, /defaultModelDescription/);
+  assert.doesNotMatch(source, /model-default-trigger-provider/);
+  assert.doesNotMatch(source, /model-default-trigger-model/);
 });
 
 /**
@@ -53,8 +66,9 @@ test("picking a default opens a bounded floating menu, not an inline list", asyn
   // Fixed, because the settings panel clips its overflow.
   assert.match(menu[1], /position: fixed;/);
   assert.doesNotMatch(menu[1], /position: absolute;/);
-  assert.match(menu[1], /max-height: min\(360px, calc\(100vh - 160px\)\);/);
-  assert.match(menu[1], /overflow-y: auto;/);
+  assert.match(menu[1], /width: min\(380px, calc\(100vw - 32px\)\);/);
+  assert.match(menu[1], /max-height: min\(440px, calc\(100vh - 104px\)\);/);
+  assert.match(styles, /\.model-default-results\s*\{[^}]*overflow-y: auto;/s);
   // Hidden until measured, mirroring the font picker.
   assert.match(menu[1], /visibility: hidden;/);
   assert.match(styles, /\.model-default-menu\.is-open \{[^}]*visibility: visible;/);

@@ -154,9 +154,13 @@ test("default model selector shows every configured model under its provider", (
       /visibleDefaultModelOptions\.map\(\(\{ provider, modelId \}, index\) => \{[\s\S]*?<\/li>/,
     )?.[0] ?? "";
   assert.notEqual(defaultModelPicker, "");
-  assert.match(defaultModelPicker, /model-default-provider-group">\{provider\.name\}/);
+  assert.match(defaultModelPicker, /model-default-provider-group/);
+  assert.match(defaultModelPicker, /model-default-provider-mark/);
   assert.match(defaultModelPicker, /model-default-option-model font-mono">[\s\S]*?\{modelId\}/);
   assert.match(defaultModelPicker, /setDefaultModel\(provider, modelId\)/);
+  assert.match(providersSource, /model-default-trigger-label/);
+  assert.match(providersSource, /defaultModelDescription/);
+  assert.match(providersSource, /aria-label=\{`\$\{provider\.name\} · \$\{modelId\}`\}/);
   assert.match(providersSource, /placeholder=\{t\("settings\.defaultModelSearch"\)\}/);
   assert.match(providersSource, /model-default-results/);
   assert.match(stylesSource, /\.model-default-results\s*\{[\s\S]*?overflow-y: auto;/);

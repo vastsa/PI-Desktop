@@ -124,6 +124,7 @@ export function ModelConfigPage() {
     providers.find((provider) => provider.id === settings.defaultProviderId) ?? null;
   const editingProvider =
     setupFor ? providers.find((provider) => provider.id === setupFor) ?? null : null;
+  const defaultProviderReady = defaultProvider !== null && providerReady(defaultProvider);
 
   const setDefaultModel = async (provider: ProviderPublic, modelId: string) => {
     setBusyId(provider.id);
@@ -277,18 +278,39 @@ export function ModelConfigPage() {
         <div className="settings-panel model-default-panel">
           <div className="model-default-row">
             <div className="model-default-intro">
-              <div className="model-default-icon" aria-hidden>
-                <IconBot size={18} />
+              <div
+                className={cx("model-default-icon", defaultProviderReady && "is-ready")}
+                aria-hidden
+              >
+                <IconBot size={19} />
               </div>
               <div className="model-default-copy">
                 <div className="model-default-label">{t("settings.defaultModel")}</div>
-                <div className="model-default-description">
-                  {defaultProvider && providerReady(defaultProvider)
-                    ? t("settings.changeDefaultModel")
-                    : readyProviders.length === 0
-                      ? t("settings.defaultModelNone")
-                      : t("settings.noDefaultProvider")}
-                </div>
+                {defaultProviderReady ? (
+                  <>
+                    <div className="model-default-value">
+                      <span className="model-default-provider">{defaultProvider.name}</span>
+                      <span className="model-default-sep" aria-hidden>
+                        ·
+                      </span>
+                      <span className="model-default-model font-mono">
+                        {displayedDefaultModelId(defaultProvider, settings.defaultModelId) ||
+                          t("settings.noModel")}
+                      </span>
+                    </div>
+                    <div className="model-default-description">
+                      {t("settings.defaultModelDescription")}
+                    </div>
+                  </>
+                ) : (
+                  <div className="model-default-value">
+                    <span className="model-default-empty">
+                      {readyProviders.length === 0
+                        ? t("settings.defaultModelNone")
+                        : t("settings.noDefaultProvider")}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
             <AnchoredMenu
@@ -311,23 +333,8 @@ export function ModelConfigPage() {
                   aria-haspopup="listbox"
                   aria-expanded={pickingDefault}
                 >
-                  <span className="model-default-trigger-icon" aria-hidden>
-                    <IconBot size={15} />
-                  </span>
-                  <span className="model-default-trigger-copy">
-                    <span className="model-default-trigger-provider">
-                      {defaultProvider && providerReady(defaultProvider)
-                        ? defaultProvider.name
-                        : t("settings.defaultModel")}
-                    </span>
-                    <span className="model-default-trigger-model font-mono">
-                      {defaultProvider && providerReady(defaultProvider)
-                        ? displayedDefaultModelId(
-                            defaultProvider,
-                            settings.defaultModelId,
-                          ) || t("settings.noModel")
-                        : t("settings.noDefaultProvider")}
-                    </span>
+                  <span className="model-default-trigger-label">
+                    {t("settings.changeDefaultModel")}
                   </span>
                   <IconChevronDown className="model-default-trigger-chevron" size={14} aria-hidden />
                 </Button>
@@ -351,18 +358,27 @@ export function ModelConfigPage() {
                   {visibleDefaultModelOptions.map(({ provider, modelId }, index) => {
                     const isCurrent =
                       provider.id === settings.defaultProviderId &&
-                      modelIdsMatch(settings.defaultModelId, modelId);
+                      modelIdsMatch(settings.defaultModelId ?? "", modelId);
                     const previous = visibleDefaultModelOptions[index - 1];
                     const startsGroup = !previous || previous.provider.id !== provider.id;
                     return (
                       <li key={`${provider.id}:${modelId}`}>
                         {startsGroup ? (
-                          <div className="model-default-provider-group">{provider.name}</div>
+                          <div
+                            className={cx(
+                              "model-default-provider-group",
+                              index > 0 && "has-divider",
+                            )}
+                          >
+                            <span className="model-default-provider-mark" aria-hidden />
+                            <span>{provider.name}</span>
+                          </div>
                         ) : null}
                         <button
                           type="button"
                           role="option"
                           aria-selected={isCurrent}
+                          aria-label={`${provider.name} · ${modelId}`}
                           className={cx("model-default-option", isCurrent && "is-current")}
                           disabled={busyId === provider.id}
                           onClick={() => void setDefaultModel(provider, modelId)}
@@ -370,8 +386,8 @@ export function ModelConfigPage() {
                           <span className="model-default-option-check" aria-hidden>
                             {isCurrent ? <IconCheck size={12} /> : null}
                           </span>
-                          <span className="model-default-option-model font-mono">
-                            {modelId}
+                          <span className="model-default-option-copy">
+                            <span className="model-default-option-model font-mono">{modelId}</span>
                           </span>
                         </button>
                       </li>

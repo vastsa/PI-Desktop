@@ -723,22 +723,18 @@
   gap: 6px;
 }
 
-/*
-  `.settings-panel` only draws the rounded frame and clips overflow, so the rows
-  inside own their inset. Without it the label and the provider name sit on the
-  border and lose their first glyph.
-*/
+/* The panel draws the frame; this row owns the inset and the active-model layout. */
 .model-default-panel {
   display: flex;
   flex-direction: column;
 }
 
 .model-default-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  min-height: 82px;
+  gap: 24px;
+  min-height: 86px;
   padding: 14px 16px;
 }
 
@@ -746,19 +742,28 @@
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 11px;
+  gap: 14px;
 }
 
 .model-default-icon {
   display: inline-flex;
   flex: 0 0 auto;
-  width: 36px;
-  height: 36px;
+  width: 42px;
+  height: 42px;
   align-items: center;
   justify-content: center;
-  border: 1px solid color-mix(in oklab, var(--ds-accent) 25%, var(--ds-border-default));
-  border-radius: var(--radius-sm);
-  background: color-mix(in oklab, var(--ds-accent) 11%, var(--ds-bg-primary));
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--radius-md);
+  background: var(--ds-bg-chip);
+  color: var(--ds-text-muted);
+  transition: background var(--motion-duration-fast) var(--motion-ease-out),
+    border-color var(--motion-duration-fast) var(--motion-ease-out),
+    color var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.model-default-icon.is-ready {
+  border-color: color-mix(in oklab, var(--ds-accent) 30%, var(--ds-border-default));
+  background: color-mix(in oklab, var(--ds-accent) 10%, var(--ds-bg-primary));
   color: var(--ds-accent);
 }
 
@@ -767,20 +772,61 @@
   min-width: 0;
   flex: 1;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
 }
 
 .model-default-label {
+  color: var(--ds-text-muted);
+  font-size: var(--text-2xs);
+  font-weight: var(--font-weight-medium);
+  letter-spacing: var(--tracking-wide);
+  line-height: var(--leading-normal);
+  text-transform: uppercase;
+}
+
+.model-default-value {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.model-default-provider {
+  min-width: 0;
+  overflow: hidden;
   color: var(--ds-text-primary);
-  font-size: var(--text-sm-plus);
+  font-size: var(--text-md-plus);
   font-weight: var(--font-weight-semibold);
+  line-height: var(--leading-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-default-sep {
+  color: var(--ds-text-faint);
+  font-size: var(--text-sm);
+}
+
+.model-default-model {
+  min-width: 0;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-tight);
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.model-default-empty {
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
   line-height: var(--leading-tight);
 }
 
 .model-default-description {
   overflow: hidden;
   color: var(--ds-text-muted);
-  font-size: var(--text-xs-plus);
+  font-size: var(--text-2xs);
   line-height: var(--leading-tight);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -788,14 +834,19 @@
 
 .model-default-trigger {
   display: flex;
-  width: min(270px, 42vw);
-  min-height: 48px;
+  width: auto;
+  min-width: 86px;
+  min-height: 34px;
   align-items: center;
-  gap: 8px;
-  padding: 7px 9px;
+  gap: 7px;
+  padding: 6px 10px;
+  border-radius: var(--radius-2xs);
   border-color: var(--ds-border-default);
   background: var(--ds-bg-primary);
+  font-size: var(--text-xs-plus);
+  font-weight: var(--font-weight-medium);
   text-align: left;
+  white-space: nowrap;
 }
 
 .model-default-trigger:hover,
@@ -804,44 +855,8 @@
   background: var(--ds-bg-hover);
 }
 
-.model-default-trigger-icon {
-  display: inline-flex;
-  flex: 0 0 auto;
-  width: 27px;
-  height: 27px;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-xs);
-  background: var(--ds-bg-active);
-  color: var(--ds-accent);
-}
-
-.model-default-trigger-copy {
-  display: flex;
-  min-width: 0;
-  flex: 1;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.model-default-trigger-provider,
-.model-default-trigger-model {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.model-default-trigger-provider {
+.model-default-trigger-label {
   color: var(--ds-text-primary);
-  font-size: var(--text-xs-plus);
-  font-weight: var(--font-weight-semibold);
-  line-height: var(--leading-tight);
-}
-
-.model-default-trigger-model {
-  color: var(--ds-text-muted);
-  font-size: var(--text-2xs);
-  line-height: var(--leading-tight);
 }
 
 .model-default-trigger-chevron {
@@ -870,11 +885,11 @@
   z-index: 60;
   display: flex;
   flex-direction: column;
-  width: min(340px, calc(100vw - 32px));
-  max-height: min(400px, calc(100vh - 120px));
-  padding: 4px;
+  width: min(380px, calc(100vw - 32px));
+  max-height: min(440px, calc(100vh - 104px));
+  padding: 6px;
   border: 1px solid var(--ds-border-subtle);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: var(--ds-bg-elevated-opaque);
   box-shadow: var(--ds-shadow-composer);
   color: var(--ds-text-primary);
@@ -889,7 +904,7 @@
   align-items: center;
   gap: 6px;
   flex: none;
-  padding: 1px 5px 4px;
+  padding: 3px 7px 7px;
   color: var(--ds-text-faint);
   border-bottom: 1px solid var(--ds-border-subtle);
 }
@@ -913,7 +928,7 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
-  padding-top: 2px;
+  padding-top: 4px;
 }
 
 .model-default-results-meta {
@@ -941,7 +956,7 @@
 .model-default-list {
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 2px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -949,17 +964,19 @@
 
 .model-default-option {
   display: grid;
-  grid-template-columns: 16px minmax(0, 1fr);
-  grid-template-rows: auto auto;
-  column-gap: 6px;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 7px;
   width: 100%;
-  padding: 5px 7px;
+  min-height: 36px;
+  padding: 7px 8px;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: transparent;
   text-align: left;
   cursor: pointer;
-  transition: background 100ms ease, box-shadow 100ms ease;
+  transition: background var(--motion-duration-fast) var(--motion-ease-out),
+    box-shadow var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 .model-default-option:hover {
@@ -967,7 +984,7 @@
 }
 
 .model-default-option.is-current {
-  background: var(--ds-bg-active);
+  background: color-mix(in oklab, var(--ds-accent) 9%, transparent);
   box-shadow: inset 0 0 0 1px var(--ds-border-strong);
 }
 
@@ -981,28 +998,50 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  grid-row: 1 / -1;
   align-self: center;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   color: var(--ds-accent);
 }
 
 .model-default-provider-group {
-  padding: 5px 7px 2px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 8px 3px;
   color: var(--ds-text-faint);
   font-size: var(--text-3xs);
-  font-weight: var(--font-weight-normal);
+  font-weight: var(--font-weight-medium);
   letter-spacing: var(--tracking-wide);
   line-height: var(--leading-tight);
+}
+
+.model-default-provider-group.has-divider {
+  margin-top: 6px;
+  padding-top: 9px;
+  border-top: 1px solid var(--ds-border-subtle);
+}
+
+.model-default-provider-mark {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: var(--radius-full);
+  background: var(--ds-accent-soft);
+}
+
+.model-default-option-copy {
+  display: flex;
+  min-width: 0;
+  align-items: center;
 }
 
 .model-default-option-model {
   min-width: 0;
   overflow: hidden;
   color: var(--ds-text-primary);
-  font-size: var(--text-xs-plus);
-  font-weight: var(--font-weight-normal);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
   line-height: var(--leading-tight);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1188,14 +1227,18 @@
   }
 
   .model-default-row {
+    grid-template-columns: minmax(0, 1fr);
     align-items: stretch;
-    flex-direction: column;
     gap: 12px;
   }
 
   .model-default-trigger,
   .model-default-anchor {
     width: 100%;
+  }
+
+  .model-default-trigger {
+    justify-content: space-between;
   }
 }
 

@@ -2506,17 +2506,18 @@ surface, while model metadata remains owned by models.dev and transport
 compatibility remains owned by pi-ai.
 
 ### 19.2 Anatomy
-1. **Defaults card** — default provider/model selector; each native option
-   shows the provider name only, without an account label or model ID appended;
-   the card's row carries the same 14px/16px inset as `.settings-row` because the
+1. **Defaults card** — current default provider/model summary with a model icon,
+   provider name, exact model ID, and a short new-session hint; the separate
+   Change trigger is an action only and does not repeat the current value. The
+   card's row carries the same 14px/16px inset as `.settings-row` because the
    shared panel only draws the frame, so the label and value never touch the
-   rounded border, and the Change trigger holds its width while a long model ID
-   wraps. Change opens a floating listbox anchored to that trigger rather than
-   expanding the card in place: the surface portals to `document.body` as a fixed
-   layer so the panel's overflow cannot clip it, bounds its own height so many
-   configured services scroll instead of stretching the card, flips above the
-   trigger when there is no room below, and closes on Escape, an outside press,
-   or the trigger scrolling out of view;
+   rounded border. Change opens a floating listbox anchored to that trigger
+   rather than expanding the card in place: the surface portals to
+   `document.body` as a fixed layer so the panel's overflow cannot clip it,
+   groups model-level options by provider, marks the exact current entry, bounds
+   its own height so many configured models scroll instead of stretching the
+   card, flips above the trigger when there is no room below, and closes on
+   Escape, an outside press, or the trigger scrolling out of view;
    global operating mode, command shell, and Enter-to-send live in the Settings
    AI destination
 2. **Vendor accounts** — section title + primary Add account action and one

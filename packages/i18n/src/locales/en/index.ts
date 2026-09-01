@@ -738,6 +738,7 @@ export const en = {
     closeBehaviorSaveError: "Couldn't save the close behavior.",
     defaultsTitle: "Defaults",
     defaultModel: "Default model",
+    defaultModelDescription: "Used when starting a new session.",
     defaultModelNone: "No AI provider ready",
     defaultModelSearch: "Filter models",
     commandShell: "Command shell",
