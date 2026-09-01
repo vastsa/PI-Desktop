@@ -82,6 +82,11 @@ which keeps the capsule's safe band from becoming an empty spacer. Pages without
 the marker retain the additive legacy offset so older installed plugins remain
 usable while they migrate.
 
+When a plugin page uses a stable scrollbar gutter, it belongs on that page's
+content scroller only. The root `html`/`body` viewport must not reserve another
+gutter, because Windows' classic scrollbars make the duplicate visible as an
+empty rail outside the panel surface.
+
 ### 3.3 Product identity and marks
 
 The visible product identity is **PI-Desktop**, even where the shell borrows

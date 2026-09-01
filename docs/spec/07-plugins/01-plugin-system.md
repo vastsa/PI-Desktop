@@ -247,6 +247,10 @@ are reachable there) and CPU/memory limits.
   `data-pi-plugin-no-drag` are holes in that map, so they can receive pointer
   input while blank space remains draggable. The default `v2` contract remains
   strict for existing panels.
+- Stable scrollbar gutters belong on the panel's actual content scroller, not
+  on the root `html`/`body` viewport as well. Windows' classic scrollbar
+  rendering makes a duplicated root reservation visible as an empty right-side
+  rail outside the plugin surface.
 - The plugin owns its title, toolbar, and every other visible panel surface.
 - Render the host capsule in a closed preload-owned Shadow DOM so plugin CSS
   cannot restyle its controls
