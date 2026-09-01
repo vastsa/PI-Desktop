@@ -867,6 +867,9 @@ Sidebar width resizing is also implemented in MVP:
 - The focused handle supports ArrowLeft/ArrowRight in 16px steps plus Home and
   End. Keyboard changes commit immediately and expose `aria-valuenow` and a
   localized width description.
+- Hovering the sidebar body leaves the edge transparent. Hovering the handle
+  reveals a centered compact marker only; focus and active dragging keep the
+  marker visible without painting a full-height rail or shifting layout.
 - Collapsing the sidebar hides the handle but does not discard the preferred
   expanded width; re-expanding restores that width.
 

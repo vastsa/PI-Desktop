@@ -188,20 +188,31 @@
 
 .sidebar-resize-handle::after {
   position: absolute;
-  top: 0;
-  right: 3px;
-  bottom: 0;
-  width: 1px;
+  top: 50%;
+  right: 2px;
+  width: 2px;
+  height: 32px;
   content: "";
-  background: var(--ds-accent);
+  border-radius: var(--radius-full);
+  background: color-mix(in oklab, var(--ds-text-primary) 20%, transparent);
   opacity: 0;
+  transform: translateY(-50%);
   transition: opacity var(--motion-duration-fast) var(--motion-ease-out);
 }
 
-.sidebar:hover .sidebar-resize-handle::after,
+.sidebar-resize-handle:hover::after,
 .sidebar-resize-handle:focus-visible::after,
 .sidebar-resize-handle.is-resizing::after {
   opacity: 1;
+}
+
+.sidebar-resize-handle:focus-visible {
+  outline: none;
+}
+
+.sidebar-resize-handle:focus-visible::after,
+.sidebar-resize-handle.is-resizing::after {
+  background: var(--ds-accent);
 }
 
 :root[data-sidebar-resizing="true"],

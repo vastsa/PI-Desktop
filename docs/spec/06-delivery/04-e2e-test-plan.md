@@ -6818,13 +6818,15 @@ This test plan spec is accepted when:
      inspect the separator's current ARIA value.
   5. Start a resize, press Escape or cancel the pointer, then restart the app.
      Collapse and re-expand the sidebar as a separate check.
-- **Expected**: The handle is discoverable on hover/focus, has no native window
-  drag or text-selection side effect, and remains anchored to the press point.
-  MainChat follows the live width. Pointer release saves one clamped preferred
-  width; Escape/cancellation restores the starting width without saving it.
-  Keyboard changes commit immediately and expose localized width semantics.
-  The saved width survives relaunch and is restored after sidebar collapse;
-  collapse does not convert the preferred width into the icon-rail width.
+- **Expected**: The handle is discoverable on direct hover/focus without a
+  full-height white/accent rail when the sidebar body is hovered, has no native
+  window drag or text-selection side effect, and remains anchored to the press
+  point. MainChat follows the live width. Pointer release saves one clamped
+  preferred width; Escape/cancellation restores the starting width without
+  saving it. Keyboard changes commit immediately and expose localized width
+  semantics. The saved width survives relaunch and is restored after sidebar
+  collapse; collapse does not convert the preferred width into the icon-rail
+  width.
 - **Specs linked**: `04-ux/01-ui-ia.md`, `04-ux/07-ui-design-system.md`,
   `04-ux/08-component-spec.md`, `04-ux/09-interaction-patterns.md`,
   ADR 0141, D280

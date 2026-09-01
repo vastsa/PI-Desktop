@@ -464,6 +464,12 @@ thumb is dragged. This keeps the navigation tree visually quiet while
 preserving a discoverable control during interaction; chat, code, and settings
 scroll containers keep their own scrollbar treatments.
 
+The expanded sidebar's resize handle keeps its 8px hit area transparent when
+the sidebar surface is merely hovered. Direct handle hover reveals only a
+centered 32px semantic-ink marker; keyboard focus and active dragging may use
+the accent marker. The handle never paints a full-height hover rail or changes
+the sidebar layout.
+
 The profile menu is `280px` wide, opens `8px` above the footer, and uses the
 standard opaque elevated-menu surface, subtle border, and dialog shadow. Its
 first block repeats the local identity with the same glyph and two-line text,

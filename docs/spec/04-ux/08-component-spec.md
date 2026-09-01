@@ -59,6 +59,9 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
   the preferred width on release. `Escape`, pointer cancellation, and unmount
   restore the press-time width. The focused handle supports ArrowLeft/Right
   (16px steps), Home, and End, and exposes the current width through ARIA.
+  The 8px edge hit area stays transparent when the sidebar body is hovered;
+  direct handle hover reveals only a centered compact marker, while focus and
+  active dragging use the accent marker without changing layout.
 - Work panel collapse: sole control lives in the session pane titlebar top-right
   while the panel is open, with its outer edge flush against the divider
   between the session pane and work panel so the work-panel content header is
@@ -327,7 +330,7 @@ visually distinct from list content.
 | State | Behavior |
 |---|---|
 | Expanded | Full session titles visible |
-| Sidebar resizing | Right-edge handle is active; pointer movement previews width and release commits it |
+| Sidebar resizing | Right-edge handle is active; direct hover/focus reveals a compact marker, pointer movement previews width, and release commits it |
 | Collapsed | Icon rail — hover shows tooltip with session title |
 | Active session | Accent-blue outlined status ring plus active row background |
 | Selecting session | Destination row receives the active treatment immediately while transcript/workspace resolution continues |

@@ -35,3 +35,19 @@ test("sidebar width is shell-owned and the resize affordance is edge-anchored", 
   assert.match(globalStyles, /\.sidebar-resize-handle\s*\{[\s\S]*?right:\s*0;[\s\S]*?cursor:\s*col-resize/);
   assert.match(globalStyles, /\.sidebar-resize-handle\s*\{[\s\S]*?touch-action:\s*none/);
 });
+
+test("sidebar hover does not paint a full-height resize rail", () => {
+  const marker = globalStyles.match(
+    /\.sidebar-resize-handle::after\s*\{[^}]+\}/s,
+  )?.[0] ?? "";
+
+  assert.match(marker, /top:\s*50%/);
+  assert.match(marker, /height:\s*32px/);
+  assert.match(marker, /border-radius:\s*var\(--radius-full\)/);
+  assert.match(globalStyles, /\.sidebar-resize-handle:hover::after,/);
+  assert.doesNotMatch(globalStyles, /\.sidebar:hover\s+\.sidebar-resize-handle::after/);
+  assert.match(
+    globalStyles,
+    /\.sidebar-resize-handle:focus-visible\s*\{[^}]*outline:\s*none/s,
+  );
+});
