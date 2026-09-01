@@ -153,7 +153,7 @@ test("default model selection saves the exact model and provider", () => {
   assert.match(pageSource, /const setDefaultModel = async \(provider: ProviderPublic, modelId: string\)/);
   assert.match(pageSource, /defaultProviderId: provider.id,[\s\S]*defaultModelId: modelId/);
   assert.match(pageSource, /onClick=\{\(\) => void setDefaultModel\(provider, modelId\)\}/);
-  assert.match(pageSource, /defaultModelOptionsList\.map/);
+  assert.match(pageSource, /visibleDefaultModelOptions\.map/);
   assert.match(pageSource, /provider\.id === settings\.defaultProviderId &&[\s\S]*modelIdsMatch/);
   assert.match(pageSource, /defaultModelId: firstModelId \?\? ""/);
   assert.match(
