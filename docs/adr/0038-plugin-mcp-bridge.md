@@ -4,7 +4,8 @@
 - Date: 2026-07-31
 - Related: [Plugin manifest schema](../spec/07-plugins/02-plugin-manifest-schema.md),
   [Plugin security](../spec/07-plugins/04-plugin-security.md),
-  [ADR 0008](0008-plugin-runtime-isolation-target.md)
+  [ADR 0008](0008-plugin-runtime-isolation-target.md),
+  [ADR 0142](0142-allow-non-loopback-http-mcp.md)
 
 ## Context
 
@@ -50,8 +51,8 @@ differently.
    `{ "setting": "<key>" }` (D018). A stdio child receives `PATH`, temp/locale
    variables, `PI_PLUGIN_ID`, and the declared values — not the host
    environment, which holds provider keys. `command` must be a bare PATH name or
-   stay inside the plugin directory; `url` must be `https` unless the host is
-   loopback.
+   stay inside the plugin directory; `url` may use `http` or `https`, with
+   non-loopback HTTP subject to ADR 0142 and the plugin network allowlist.
 
 ## Consequences
 
@@ -72,7 +73,7 @@ differently.
 
 Rejected. Hosted MCP endpoints are common, and stdio-only would push plugin
 authors to wrap them in a local shim process — an extra process plus an
-unreviewable proxy, which is worse on both counts than a declared `https` URL.
+unreviewable proxy, which is worse on both counts than a declared HTTP(S) URL.
 
 ### A separate `type: "mcp"` plugin kind
 

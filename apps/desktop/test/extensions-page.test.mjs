@@ -166,7 +166,7 @@ test("MCP management reuses the modal and validates its locked id and transport 
   assert.match(sheet, /disabled=\{!!editing\}/);
   assert.match(sheet, /mcpDraftError/);
   assert.match(sheet, /command\.includes\("\.\."\)/);
-  assert.match(sheet, /isLoopbackMcpUrl/);
+  assert.match(sheet, /isNonLoopbackHttpMcpUrl/);
   assert.match(sheet, /role="dialog" aria-modal/);
 });
 

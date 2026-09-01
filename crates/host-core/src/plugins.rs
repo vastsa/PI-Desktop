@@ -2925,10 +2925,10 @@ fn is_bus_topic(value: &str, allow_wildcards: bool) -> bool {
 
 fn validate_mcp_url(id: &str, url: &str) -> Result<()> {
     let lower = url.trim().to_ascii_lowercase();
-    let (rest, plain_http) = if let Some(rest) = lower.strip_prefix("https://") {
-        (rest, false)
+    let rest = if let Some(rest) = lower.strip_prefix("https://") {
+        rest
     } else if let Some(rest) = lower.strip_prefix("http://") {
-        (rest, true)
+        rest
     } else {
         bail!("PLUGIN_INVALID: mcp server {id} url must use http or https");
     };
@@ -2950,9 +2950,6 @@ fn validate_mcp_url(id: &str, url: &str) -> Result<()> {
     };
     if host.is_empty() {
         bail!("PLUGIN_INVALID: mcp server {id} url is missing a host");
-    }
-    if plain_http && !is_loopback_host(host) {
-        bail!("PLUGIN_INVALID: mcp server {id} url must use https outside loopback");
     }
     Ok(())
 }
@@ -4038,7 +4035,7 @@ mod tests {
     }
 
     #[test]
-    fn remote_mcp_urls_must_use_https_outside_loopback() {
+    fn remote_mcp_urls_accept_non_loopback_http() {
         let dir = tempdir().unwrap();
         let remote = dir.path().join("remote");
         write_plugin(
@@ -4049,7 +4046,7 @@ mod tests {
             ),
             &[],
         );
-        assert!(read_manifest_err(&remote).contains("https outside loopback"));
+        assert!(PluginManager::read_manifest(&remote).is_ok());
 
         let credentials = dir.path().join("credentials");
         write_plugin(

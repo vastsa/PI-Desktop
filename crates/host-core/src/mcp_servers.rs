@@ -122,25 +122,6 @@ fn valid_header_key(key: &str) -> bool {
     first.is_ascii_alphanumeric() && key.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
 }
 
-fn is_loopback_host(host: &str) -> bool {
-    let host = host
-        .trim_start_matches('[')
-        .trim_end_matches(']')
-        .to_lowercase();
-    if host == "localhost" || host == "::1" || host == "0:0:0:0:0:0:0:1" {
-        return true;
-    }
-    let mut parts = host.split('.');
-    if parts.next() != Some("127") {
-        return false;
-    }
-    let rest = parts.collect::<Vec<_>>();
-    rest.len() == 3
-        && rest.iter().all(|part| {
-            !part.is_empty() && part.len() <= 3 && part.chars().all(|c| c.is_ascii_digit())
-        })
-}
-
 fn check_url(url: &str) -> Result<()> {
     let lower = url.trim().to_lowercase();
     let (scheme, rest) = lower
@@ -157,9 +138,7 @@ fn check_url(url: &str) -> Result<()> {
         bail!("MCP_INVALID: url must include a host");
     }
     match scheme {
-        "https" => Ok(()),
-        "http" if is_loopback_host(host) => Ok(()),
-        "http" => bail!("MCP_INVALID: url must use https outside loopback"),
+        "http" | "https" => Ok(()),
         _ => bail!("MCP_INVALID: url must use http or https"),
     }
 }
@@ -570,10 +549,12 @@ mod tests {
     }
 
     #[test]
-    fn validation_rejects_bad_ids_and_remote_http() {
+    fn validation_accepts_http_endpoints_and_rejects_bad_ids() {
         assert!(!valid_id("1files"));
         assert!(check_url("http://localhost:3000/mcp").is_ok());
-        assert!(check_url("http://example.com/mcp").is_err());
+        assert!(check_url("http://192.168.1.20:8080/mcp").is_ok());
+        assert!(check_url("https://example.com/mcp").is_ok());
+        assert!(check_url("ftp://example.com/mcp").is_err());
         let mut config = McpConfig {
             id: "files".into(),
             label: "Files".into(),

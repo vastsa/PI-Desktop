@@ -131,13 +131,7 @@ function isServerLike(root: Record<string, unknown>): boolean {
   );
 }
 
-/**
- * Whether an http endpoint is on this machine, and so may skip TLS.
- *
- * Mirrors `isLoopbackHost` in the plugin SDK and the same rule in host-core; it
- * lives here too because the MCP editor has to explain the constraint while the
- * user is still typing, and the renderer does not load the plugin SDK.
- */
+/** Whether an endpoint is on this machine, for UI risk messaging. */
 export function isLoopbackMcpUrl(url: string): boolean {
   let parsed: URL;
   try {
@@ -150,3 +144,13 @@ export function isLoopbackMcpUrl(url: string): boolean {
   return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
 }
 
+/** Whether a valid-looking endpoint uses unencrypted HTTP outside loopback. */
+export function isNonLoopbackHttpMcpUrl(url: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  return parsed.protocol === "http:" && !isLoopbackMcpUrl(url);
+}

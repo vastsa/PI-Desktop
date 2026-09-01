@@ -1318,10 +1318,10 @@ Each scenario is documented in this format:
 
 #### E2E-024K: Plugin MCP server tools reach the agent
 
-- **Preconditions**: A plugin declaring one `stdio` and one `http` MCP server against local stubs; `mcp.server.local` and `mcp.server.remote` granted; a settings key holding the stub credential.
+- **Preconditions**: A plugin declaring one `stdio` and one non-loopback HTTP MCP server against trusted local-network stubs; `mcp.server.local` and `mcp.server.remote` granted; the HTTP host is listed in `net.domains`; a settings key holding the stub credential.
 - **Steps**: 1) Enable the plugin and confirm no server process starts yet. 2) Ask the agent to call a discovered tool. 3) Inspect the stub's received environment/headers. 4) Make the stub fail a call and time one out. 5) Disable the plugin.
-- **Expected**: Servers connect lazily on first use; tools appear as `plugin_demo_*_<serverId>_<tool>` at `risk: "medium"` with per-call audit; the stdio child receives only the declared `env` values plus PATH/temp/locale, never host provider keys; failures and timeouts return tool errors without crashing the plugin or the host; disable disconnects both servers.
-- **Specs linked**: `07-plugins/02-plugin-manifest-schema.md`, `07-plugins/04-plugin-security.md` §8.1, ADR 0038, D176
+- **Expected**: Servers connect lazily on first use; tools appear as `plugin_demo_*_<serverId>_<tool>` at `risk: "medium"` with per-call audit; the stdio child receives only the declared `env` values plus PATH/temp/locale, never host provider keys; the non-loopback HTTP endpoint is accepted only because its host is declared, and its unencrypted transport is visible in review; a redirect to an undeclared host is blocked before the second request; failures and timeouts return tool errors without crashing the plugin or the host; disable disconnects both servers.
+- **Specs linked**: `07-plugins/02-plugin-manifest-schema.md`, `07-plugins/04-plugin-security.md` §8.1, ADR 0038, ADR 0142, D176, D281
 - **Acceptance**: G (MCP bridge) + E (tools & permissions) + Security
 - **Status**: Unit-covered (`plugin-mcp.test.mjs` stdio + HTTP stubs); agent-facing scenario Draft
 
@@ -4269,8 +4269,9 @@ Each scenario is documented in this format:
   A local stdio MCP server available on PATH. An Agent session per project.
 - **Steps**:
   1. Extensions → MCP → Import from JSON. Paste a `mcpServers` document holding
-     three servers: one valid stdio entry, one remote entry with `url` and no
-     `type`, and one stdio entry with no `command`.
+     three servers: one valid stdio entry, one remote HTTP entry at a trusted LAN
+     address such as `http://192.168.1.20:8080/mcp` with no `type`, and one stdio
+     entry with no `command`.
   2. Confirm the import, then open the imported stdio server and press Test
      connection.
   3. Leave the server at **Everywhere** and ask the agent in each project to
@@ -4285,7 +4286,8 @@ Each scenario is documented in this format:
      a new session.
 - **Expected**:
   - Two servers import; the third is listed as skipped with "a stdio server
-     requires command". The remote entry lands as `http` with its url intact.
+     requires command". The LAN HTTP entry lands as `http` with its url intact,
+     and the editor shows the unencrypted-connection warning.
   - Test reports connected with the tool names it found, and the row's glyph
      turns from connecting to ready.
   - While global, both sessions see `mcp_<serverId>_<tool>` names.

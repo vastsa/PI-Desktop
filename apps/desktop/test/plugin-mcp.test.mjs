@@ -366,6 +366,35 @@ test("an http failure is reported as HTTP_ERROR", async (t) => {
   });
 });
 
+test("an http redirect is rechecked before the next MCP request", async (t) => {
+  const requests = [];
+  const client = new McpServerClient({
+    pluginId: "com.example.remote",
+    rootPath: mkdtempSync(join(tmpdir(), "pi-mcp-http-")),
+    server: { id: "remote", transport: "http", url: "http://mcp.example.test/mcp" },
+    values: {},
+    fetchImpl: async (url, options) => {
+      requests.push({ url, options });
+      return new Response(null, {
+        status: 302,
+        headers: { location: "http://other.example.test/mcp" },
+      });
+    },
+    assertUrlAllowed: (url) => {
+      if (new URL(url).hostname !== "mcp.example.test") {
+        throw new Error(`endpoint not allowed: ${url}`);
+      }
+    },
+    connectTimeoutMs: 5_000,
+    callTimeoutMs: 5_000,
+  });
+  t.after(() => client.close());
+
+  await assert.rejects(client.connect(), /endpoint not allowed/);
+  assert.equal(requests.length, 1, "the redirected endpoint was not contacted");
+  assert.equal(requests[0].options.redirect, "manual");
+});
+
 test("the stdio environment carries no host secrets", () => {
   process.env.PI_LEAKED_SECRET = "must-not-cross";
   try {
@@ -395,6 +424,8 @@ test("the runtime gates mcp servers on their transport permission", () => {
   assert.match(register, /validateMcpServer\(raw\)/);
   assert.match(register, /"mcp\.server\.local"/);
   assert.match(register, /"mcp\.server\.remote"/);
+  assert.match(register, /assertUrlAllowed/);
+  assert.match(register, /plugin\.mcp\.redirect/);
   assert.match(register, /PERMISSION_DENIED/);
   assert.match(runtimeSrc, /MAX_MCP_SERVERS_PER_PLUGIN = 8/);
   // Credentials come from the plugin's own settings, never the host env.

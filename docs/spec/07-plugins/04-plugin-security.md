@@ -230,7 +230,11 @@ outbound path the host owns answers to it.
   `window.open`, which would otherwise mint a window outside the filtered session
 - **`pi.net.fetch`.** Checks the allowlist and follows redirects by hand, because
   an allowed host that 30x-es to an undeclared one would carry the request out
-- **Remote MCP endpoints.** Answer to the same list, not to their permission alone
+- **Remote MCP endpoints.** Answer to the same list, not to their permission alone.
+  HTTP endpoints may be on a trusted LAN, but plain HTTP is unencrypted and is
+  called out during configuration or plugin permission review. The MCP client
+  follows redirects manually, allows at most five HTTP(S) hops, and re-checks
+  the allowlist before every hop.
 
 An absent, empty, or malformed list means no egress at all, and a bare `*` is
 refused at install so nobody declares their way out. This is what makes a
@@ -252,8 +256,10 @@ manifest did not name:
   are refused at validation time. The child gets a minimal environment — only
   the declared `env` entries plus what the host needs to run a process.
 - `transport: "http"` reaches a remote endpoint (`mcp.server.remote`). The `url`
-  must be `https` unless the host is loopback. Tool arguments leave the machine,
-  which is why the permission copy says so plainly.
+  may use `http` or `https`; non-loopback HTTP is unencrypted and should only be
+  used on a trusted network. Plugin endpoints must also be covered by
+  `manifest.net.domains`. Tool arguments leave the machine, which is why the
+  permission copy says so plainly.
 - `env` and `headers` values resolve **only** from the plugin's own settings via
   `{ "setting": "<key>" }`. The host environment is never passed through, and a
   literal secret in the manifest is a review smell, not a supported pattern
@@ -288,8 +294,9 @@ The host should be able to:
    the providing plugin drops the app back to the `system` theme
 8. Publishing to an undeclared topic fails, and a publisher never receives its
    own message
-9. An MCP server declared with an absolute `command` or a plain-`http` remote
-   `url` fails manifest validation
+9. An MCP server declared with an absolute `command` fails manifest validation;
+   a non-loopback plain-HTTP URL is accepted only when its host is declared in
+   `manifest.net.domains` and the UI shows the unencrypted-connection warning
 10. A low-risk or granted plugin tool still fails closed in Plan
 
 

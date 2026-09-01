@@ -1769,6 +1769,8 @@ export class PluginRuntime {
         values: refs.values,
         audit: this.services.audit,
         ...this.services.mcp,
+        // Re-check every redirect, not only the manifest's initial endpoint.
+        assertUrlAllowed: (url) => this.assertEgress(loaded, url, "plugin.mcp.redirect"),
       });
       clients.push(client);
       let tools: Awaited<ReturnType<McpServerClient["connect"]>> = [];

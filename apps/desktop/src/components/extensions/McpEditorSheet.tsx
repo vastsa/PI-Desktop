@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   GLOBAL_SCOPE,
-  isLoopbackMcpUrl,
+  isNonLoopbackHttpMcpUrl,
   type AgentCapabilityLevel,
   resolveScope,
   type ActivationScope,
@@ -202,8 +202,7 @@ export function mcpDraftError(draft: McpDraft): string | null {
   } catch {
     return "extensions.mcp.errorUrlShape";
   }
-  if (parsed.protocol === "https:") return null;
-  if (parsed.protocol === "http:" && isLoopbackMcpUrl(url)) return null;
+  if (parsed.protocol === "http:" || parsed.protocol === "https:") return null;
   return "extensions.mcp.errorUrlScheme";
 }
 
@@ -293,6 +292,8 @@ export function McpEditorSheet({
     ],
     [],
   );
+  const insecureHttp =
+    draft.transport === "http" && isNonLoopbackHttpMcpUrl(draft.url.trim());
 
   return (
     <div
@@ -408,6 +409,11 @@ export function McpEditorSheet({
                   onChange={(event) => set("url", event.target.value)}
                 />
               </Field>
+              {insecureHttp ? (
+                <p className="ext-sheet-warning" role="note">
+                  {t("extensions.mcp.insecureHttpWarning")}
+                </p>
+              ) : null}
               <div className="ext-field-group">
                 <div className="ext-field-label">{t("extensions.mcp.headers")}</div>
                 <p className="ext-field-hint">{t("extensions.mcp.headersHint")}</p>

@@ -155,3 +155,4 @@ Each ADR includes:
 | 0138 | Subagent peer messaging | Accepted (amended by 0140) |
 | 0140 | Fold the three peer tools into one `Peer` tool | Accepted |
 | 0141 | Make expanded sidebar width user-resizable | Accepted |
+| 0142 | Allow non-loopback HTTP MCP endpoints with explicit risk disclosure | Accepted |

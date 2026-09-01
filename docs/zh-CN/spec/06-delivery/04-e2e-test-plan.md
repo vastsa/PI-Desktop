@@ -1053,10 +1053,10 @@ M5。
 
 #### E2E-024K：插件 MCP 服务器工具到达代理
 
-- **先决条件**：针对本地存根声明一个 `stdio` 和一个 `http` MCP 服务器的插件；已授予 `mcp.server.local` 和 `mcp.server.remote`；保存存根凭证的设置密钥。
+- **先决条件**：针对可信局域网存根声明一个 `stdio` 和一个非回环 HTTP MCP 服务器的插件；已授予 `mcp.server.local` 和 `mcp.server.remote`；HTTP 主机已列入 `net.domains`；保存存根凭证的设置密钥。
 - **步骤**： 1) 启用插件并确认尚未启动服务器进程。 2) 要求代理调用已发现的工具。 3) 检查存根收到的 environment/headers。 4) 使存根调用失败并超时。 5）禁用插件。
-- **预期**：服务器在首次使用时延迟连接；工具在 `risk: "medium"` 上显示为 `plugin_demo_*_<serverId>_<tool>`，并进行每次调用审核； stdio 子级仅接收声明的 `env` 值加上 PATH/temp/locale，从不接收主机提供程序密钥；失败和超时会返回工具错误，而不会导致插件或主机崩溃；禁用会断开两个服务器的连接。
-- **链接规格**：`07-plugins/02-plugin-manifest-schema.md`、`07-plugins/04-plugin-security.md` §8.1、ADR 0038、D176
+- **预期**：服务器在首次使用时延迟连接；工具在 `risk: "medium"` 上显示为 `plugin_demo_*_<serverId>_<tool>`，并进行每次调用审核；stdio 子级仅接收声明的 `env` 值加上 PATH/temp/locale，从不接收主机提供程序密钥；非回环 HTTP 端点只有在主机列入白名单后才会接受，未加密传输会在审查中显示；跳转到未声明主机时会在第二次请求前阻止；失败和超时会返回工具错误，而不会导致插件或主机崩溃；禁用会断开两个服务器的连接。
+- **链接规格**：`07-plugins/02-plugin-manifest-schema.md`、`07-plugins/04-plugin-security.md` §8.1、ADR 0038、ADR 0142、D176、D281
 - **接受**：G（MCP 桥）+ E（工具和权限）+ 安全
 - **状态**：单位覆盖（`plugin-mcp.test.mjs` stdio + HTTP 存根）；面向代理的场景草稿
 
@@ -3681,8 +3681,9 @@ IPC 请求无法关闭。
   PATH 上可用的本地 stdio MCP 服务器。每个项目一个 Agent 会话。
 - **步骤**：
   1. 扩展 → MCP → 从 JSON 导入。粘贴 `mcpServers` 文档持有
-     三台服务器：一个有效的 stdio 条目，一个带有 `url` 的远程条目，没有
-     `type`，以及一个没有 `command` 的 stdio 条目。
+     三台服务器：一个有效的 stdio 条目，一个指向可信局域网地址（例如
+     `http://192.168.1.20:8080/mcp`）且没有 `type` 的远程 HTTP 条目，以及一个
+     没有 `command` 的 stdio 条目。
   2.确认导入，然后打开导入的stdio服务器并按Test
      连接。
   3. 将服务器留在**Everywhere**，并要求每个项目中的代理
@@ -3697,7 +3698,8 @@ IPC 请求无法关闭。
      一个新的会话。
 - **预期**：
   - 导入两台服务器；第三个被列为跳过“stdio 服务器
-     需要指挥”。远程条目以 `http` 身份登陆，其 url 完好无损。
+     需要指挥”。局域网 HTTP 条目以 `http` 身份登陆，其 url 完好无损，编辑器
+     显示未加密连接警告。
   - 与其找到的工具名称以及行的字形相关的测试报告
      从连接状态变为就绪状态。
   - 虽然是全局的，但两个会话都会看到 `mcp_<serverId>_<tool>` 名称。

@@ -1304,7 +1304,7 @@ export type McpServerRecord = {
   command?: string;
   args?: string[];
   env?: Record<string, string>;
-  /** http: absolute endpoint; https unless the host is loopback. */
+  /** http: absolute endpoint; HTTP is allowed for local and LAN servers. */
   url?: string;
   headers?: Record<string, string>;
   enabled: boolean;

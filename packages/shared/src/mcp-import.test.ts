@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { isLoopbackMcpUrl, mcpImportId, parseMcpImport } from "./mcp-import.js";
+import {
+  isLoopbackMcpUrl,
+  isNonLoopbackHttpMcpUrl,
+  mcpImportId,
+  parseMcpImport,
+} from "./mcp-import.js";
 
 describe("parseMcpImport", () => {
   it("reads the mcpServers document every MCP README prints", () => {
@@ -127,5 +132,15 @@ describe("isLoopbackMcpUrl", () => {
     expect(isLoopbackMcpUrl("http://localhost.example.com")).toBe(false);
     expect(isLoopbackMcpUrl("http://127.0.0.1.example.com")).toBe(false);
     expect(isLoopbackMcpUrl("not a url")).toBe(false);
+  });
+});
+
+describe("isNonLoopbackHttpMcpUrl", () => {
+  it("identifies LAN HTTP endpoints for the security warning", () => {
+    expect(isNonLoopbackHttpMcpUrl("http://192.168.1.20:8080/mcp")).toBe(true);
+    expect(isNonLoopbackHttpMcpUrl("http://mcp.example.com/mcp")).toBe(true);
+    expect(isNonLoopbackHttpMcpUrl("http://127.0.0.1:8080/mcp")).toBe(false);
+    expect(isNonLoopbackHttpMcpUrl("https://mcp.example.com/mcp")).toBe(false);
+    expect(isNonLoopbackHttpMcpUrl("not a url")).toBe(false);
   });
 });

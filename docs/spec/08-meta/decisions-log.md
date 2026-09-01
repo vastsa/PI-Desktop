@@ -2853,3 +2853,17 @@ D193, and D194.
 - Sidebar collapse remains independent from the preferred expanded width. No
   IPC, native-window bounds, work-panel reservation, or project/session order
   contract changes. See ADR 0141 and E2E-168.
+
+## 2026-09-01 — Non-loopback HTTP MCP endpoints are supported (D281)
+
+- User-owned and plugin-declared MCP servers accept absolute `http://` and
+  `https://` URLs, including trusted LAN addresses. Unsupported schemes and
+  malformed URLs remain invalid.
+- The user MCP editor shows an explicit unencrypted-connection warning for
+  non-loopback HTTP. Plugin-declared endpoints still require
+  `mcp.server.remote` and a host covered by `manifest.net.domains`.
+- The MCP client turns off automatic redirects, limits the chain to five hops,
+  accepts only HTTP(S) targets, and re-checks the plugin egress policy for every
+  hop. A redirect to an undeclared host is blocked before the next request.
+- Marketplace catalog and package download rules remain unchanged: non-loopback
+  HTTP package downloads are still refused. See ADR 0142 and E2E-024K/E2E-100.

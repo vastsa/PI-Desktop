@@ -1386,7 +1386,8 @@ export const en = {
       "shell.openExternal": "Can open links in your default browser.",
       "ui.theme": "Adds a theme you can pick in Settings; only styling, no data.",
       "mcp.server.local": "Starts a program on this computer to serve extra agent tools.",
-      "mcp.server.remote": "Sends tool calls to a remote MCP endpoint the plugin declared.",
+      "mcp.server.remote":
+        "Sends tool calls to a remote MCP endpoint the plugin declared. The endpoint may use unencrypted HTTP.",
       "background.service": "Keeps a worker running while the plugin is enabled.",
       "bus.publish": "Can send messages on the topics it declared.",
       "bus.subscribe": "Can receive messages on the topics it declared.",
@@ -1486,7 +1487,9 @@ export const en = {
       envHint: "Passed only to this server. Values are hidden while you type.",
       addEnv: "Add variable",
       url: "Endpoint URL",
-      urlHint: "Must be https, unless it points at this computer.",
+      urlHint: "Use an http or https URL. HTTP is unencrypted, so use it only on a trusted network.",
+      insecureHttpWarning:
+        "This HTTP connection is not encrypted. Credentials and tool calls may be intercepted.",
       headers: "Headers",
       headersHint: "Sent with every request to this endpoint.",
       addHeader: "Add header",
@@ -1502,7 +1505,7 @@ export const en = {
       errorCommandDots: "The command can't contain '..'.",
       errorUrl: "A URL is required.",
       errorUrlShape: "That isn't a valid URL.",
-      errorUrlScheme: "Use https, or http only for an address on this computer.",
+      errorUrlScheme: "Use an http or https URL.",
     },
     skills: {
       title: "Skills",

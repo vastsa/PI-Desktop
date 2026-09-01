@@ -136,8 +136,8 @@ type PluginMcpServerContrib = {
  command?: string; // bare PATH name, or plugin-relative executable
  args?: string[];
  env?: Record<string, string | { setting: string }>;
- // http only
- url?: string; // https, or http when the host is loopback
+ // remote HTTP transport
+ url?: string; // absolute http(s) endpoint; HTTP may target a trusted LAN host
  headers?: Record<string, string | { setting: string }>;
 };
 
@@ -278,8 +278,9 @@ MVP may implement only:
    `light` or `dark`
 10. `mcpServers[]` must set exactly one transport's fields: `stdio` requires
    `command` (bare PATH name or plugin-relative, never absolute) and rejects
-   `url`/`headers`; `http` requires `url` (`https`, or `http` only for loopback)
-   and rejects `command`/`args`/`env`
+   `url`/`headers`; `http` requires an absolute `http` or `https` `url` and
+   rejects `command`/`args`/`env`. Non-loopback HTTP is unencrypted and must be
+   declared in `net.domains`.
 11. `bus.publish` entries must be concrete topics and `bus.subscribe` entries
    valid patterns (§5.1)
 12. A contribution that needs a permission fails validation when the permission

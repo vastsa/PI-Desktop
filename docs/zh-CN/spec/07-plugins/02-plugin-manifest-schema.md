@@ -134,8 +134,8 @@ type PluginMcpServerContrib = {
  command?: string; // bare PATH name, or plugin-relative executable
  args?: string[];
  env?: Record<string, string | { setting: string }>;
- // http only
- url?: string; // https, or http when the host is loopback
+ // 远程 HTTP 传输
+ url?: string; // 绝对 http(s) 端点；HTTP 可以指向可信的局域网主机
  headers?: Record<string, string | { setting: string }>;
 };
 
@@ -272,9 +272,9 @@ MVP 只能实现：
 9. `themes[].path` 必须存在且以 `.css` 结尾； `themes[].base` 可能只是
    `light` 或 `dark`
 10. `mcpServers[]` 必须准确设置一个传输字段：`stdio` 要求
-   `command`（裸路径名称或插件相对，从不绝对）并拒绝
-   `onStartup`/`onCommand:*`； `http` 需要 `url`（`https` 或 `http` 仅用于环回）
-   并拒绝 `onStartup`/`onCommand:*`/`schemaVersion`
+   `command`（裸路径名称或插件相对，从不绝对）并拒绝 `url`/`headers`；
+   `http` 需要绝对的 `http` 或 `https` `url`，并拒绝
+   `command`/`args`/`env`。非回环 HTTP 不加密，必须声明在 `net.domains` 中。
 11. `bus.publish` 条目必须是具体主题，`bus.subscribe` 条目必须是具体主题
    有效模式（§5.1）
 12. 需要权限的贡献在权限验证时失败

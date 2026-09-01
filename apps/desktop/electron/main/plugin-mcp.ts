@@ -10,6 +10,8 @@ export const MCP_CONNECT_TIMEOUT_MS = 10_000;
 export const MCP_CALL_TIMEOUT_MS = 100_000;
 /** A chatty server must not flood the model's tool list. */
 export const MAX_MCP_TOOLS_PER_SERVER = 64;
+/** Keep an MCP endpoint from bouncing requests through an unbounded chain. */
+const MAX_MCP_REDIRECTS = 5;
 /** `tools/list` pages to follow before giving up on a cursor loop. */
 const MAX_TOOL_PAGES = 8;
 /** Guard against a server streaming an unbounded line at us. */
@@ -214,6 +216,7 @@ function createHttpTransport(
     headers: Record<string, string>;
     timeoutMs: number;
     fetchImpl?: typeof fetch;
+    assertUrlAllowed?: (url: string) => void;
   },
   handlers: McpTransportHandlers,
 ): McpTransport {
@@ -230,19 +233,40 @@ function createHttpTransport(
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), options.timeoutMs);
       let response: Response;
+      let url = options.url;
       try {
-        response = await fetchImpl(options.url, {
-          method: "POST",
-          headers: {
-            ...options.headers,
-            "content-type": "application/json",
-            accept: "application/json, text/event-stream",
-            "mcp-protocol-version": MCP_PROTOCOL_VERSION,
-            ...(sessionId ? { "mcp-session-id": sessionId } : {}),
-          },
-          body: JSON.stringify(message),
-          signal: controller.signal,
-        });
+        for (let hop = 0; ; hop += 1) {
+          options.assertUrlAllowed?.(url);
+          response = await fetchImpl(url, {
+            method: "POST",
+            headers: {
+              ...options.headers,
+              "content-type": "application/json",
+              accept: "application/json, text/event-stream",
+              "mcp-protocol-version": MCP_PROTOCOL_VERSION,
+              ...(sessionId ? { "mcp-session-id": sessionId } : {}),
+            },
+            body: JSON.stringify(message),
+            redirect: "manual",
+            signal: controller.signal,
+          });
+          if (response.status < 300 || response.status > 399) break;
+          const location = response.headers.get("location");
+          if (!location) break;
+          if (hop >= MAX_MCP_REDIRECTS) {
+            throw mcpError("HTTP_REDIRECT", `too many redirects: ${options.url}`);
+          }
+          let nextUrl: URL;
+          try {
+            nextUrl = new URL(location, url);
+          } catch {
+            throw mcpError("HTTP_REDIRECT", `invalid redirect from ${url}`);
+          }
+          if (nextUrl.protocol !== "http:" && nextUrl.protocol !== "https:") {
+            throw mcpError("HTTP_REDIRECT", `unsupported redirect from ${url}`);
+          }
+          url = nextUrl.toString();
+        }
       } finally {
         clearTimeout(timer);
       }
@@ -287,6 +311,8 @@ export type McpServerClientOptions = {
   /** Test seams. */
   spawnImpl?: typeof nodeSpawn;
   fetchImpl?: typeof fetch;
+  /** Optional per-request policy, used to re-check plugin redirects. */
+  assertUrlAllowed?: (url: string) => void;
 };
 
 /**
@@ -436,6 +462,7 @@ export class McpServerClient {
         headers: this.opts.values,
         timeoutMs,
         fetchImpl: this.opts.fetchImpl,
+        assertUrlAllowed: this.opts.assertUrlAllowed,
       },
       handlers,
     );

@@ -1029,6 +1029,17 @@
   max-width: 30ch;
 }
 
+.ext-sheet-warning {
+  margin: -4px 0 0;
+  border: 1px solid color-mix(in oklab, var(--ds-warning) 35%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklab, var(--ds-warning) 10%, transparent);
+  padding: 8px 10px;
+  color: var(--ds-warning);
+  font-size: var(--text-xs-plus);
+  line-height: var(--leading-body);
+}
+
 .ext-sheet-error {
   margin: 0;
   border-top: 1px solid color-mix(in oklab, var(--ds-error) 30%, transparent);

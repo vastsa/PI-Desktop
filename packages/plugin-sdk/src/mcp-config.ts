@@ -9,7 +9,7 @@ export type McpValidationResult =
   | { ok: true; server: PluginMcpServerContrib }
   | { ok: false; error: string };
 
-/** Loopback endpoints may use plain http; everything else must be https. */
+/** Identify loopback hosts for callers that want to explain local endpoints. */
 export function isLoopbackHost(hostname: string): boolean {
   const host = hostname.replace(/^\[|\]$/g, "").toLowerCase();
   if (host === "localhost" || host === "::1" || host === "0:0:0:0:0:0:0:1") return true;
@@ -55,7 +55,8 @@ function checkRefRecord(
  * Validate one `contributes.mcpServers` entry.
  *
  * stdio servers may only name a bare executable or a plugin-relative one, and
- * remote servers must be https unless they target loopback.
+ * remote servers may use either HTTP or HTTPS; callers should warn about
+ * non-loopback HTTP because its requests are not encrypted.
  */
 export function validateMcpServer(raw: unknown): McpValidationResult {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
@@ -105,11 +106,7 @@ export function validateMcpServer(raw: unknown): McpValidationResult {
   } catch {
     return { ok: false, error: `${label} url is not a valid absolute url` };
   }
-  if (parsed.protocol === "http:") {
-    if (!isLoopbackHost(parsed.hostname)) {
-      return { ok: false, error: `${label} url must use https outside loopback` };
-    }
-  } else if (parsed.protocol !== "https:") {
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     return { ok: false, error: `${label} url must use http or https` };
   }
   const headerError = checkRefRecord(server.headers, MCP_HEADER_KEY, `${label} headers`);

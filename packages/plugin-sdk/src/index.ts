@@ -139,7 +139,7 @@ export type PluginMcpServerContrib = {
   args?: string[];
   /** stdio only: literal values, or `{ "setting": "<key>" }` to read plugin settings. */
   env?: Record<string, string | { setting: string }>;
-  /** http only: `https://` endpoint, or `http://` when the host is loopback. */
+  /** http only: an absolute `http://` or `https://` endpoint. */
   url?: string;
   headers?: Record<string, string | { setting: string }>;
 };

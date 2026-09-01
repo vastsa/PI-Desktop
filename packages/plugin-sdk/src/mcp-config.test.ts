@@ -62,11 +62,16 @@ describe("validateMcpServer (http)", () => {
     expect(result.ok).toBe(true);
   });
 
-  it("allows plain http only on loopback", () => {
+  it("allows plain http endpoints, including LAN servers", () => {
     expect(validateMcpServer({ id: "a", transport: "http", url: "http://127.0.0.1:3000" }).ok).toBe(
       true,
     );
-    expect(error({ id: "a", transport: "http", url: "http://example.com" })).toMatch(/https/);
+    expect(validateMcpServer({ id: "a", transport: "http", url: "http://192.168.1.20:8080/mcp" }).ok).toBe(
+      true,
+    );
+    expect(validateMcpServer({ id: "a", transport: "http", url: "http://example.com" }).ok).toBe(
+      true,
+    );
   });
 
   it("rejects unsupported protocols, bad urls and stdio-only fields", () => {
