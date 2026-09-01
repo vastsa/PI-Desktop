@@ -245,16 +245,16 @@ export function AgentSkillsPage() {
     }
   };
 
-  const importSkill = async () => {
-    if (targetLevel === "project" && !selectedProjectPath) {
+  const importSkill = async (level: AgentCapabilityLevel = targetLevel) => {
+    if (level === "project" && !selectedProjectPath) {
       showToast(t("settings.selectProjectFirst"), { variant: "error" });
       return;
     }
     setBusyId("import");
     try {
       const result = await api.importUserSkill({
-        level: targetLevel,
-        ...(targetLevel === "project" && selectedProjectPath
+        level,
+        ...(level === "project" && selectedProjectPath
           ? { projectPath: selectedProjectPath }
           : {}),
       });
@@ -385,6 +385,20 @@ export function AgentSkillsPage() {
     targetLevel === "project"
       ? t("settings.capabilityCreateInProject")
       : t("settings.capabilityCreateInGlobal");
+  const importButton = (level: AgentCapabilityLevel) => (
+    <CapabilityButton
+      busy={busyId === "import"}
+      title={
+        level === "project"
+          ? t("settings.capabilityImportToProject")
+          : t("settings.capabilityImportToGlobal")
+      }
+      onClick={() => void importSkill(level)}
+    >
+      <IconDownload size={14} />
+      {t("settings.importSkill")}
+    </CapabilityButton>
+  );
 
   return (
     <AgentCapabilityPage
@@ -407,24 +421,10 @@ export function AgentSkillsPage() {
             />
           }
           actions={
-            <>
-              <CapabilityButton
-                busy={busyId === "import"}
-                title={
-                  targetLevel === "project"
-                    ? t("settings.capabilityImportToProject")
-                    : t("settings.capabilityImportToGlobal")
-                }
-                onClick={() => void importSkill()}
-              >
-                <IconDownload size={14} />
-                {t("settings.importSkill")}
-              </CapabilityButton>
-              <CapabilityButton variant="primary" title={newSkillTitle} onClick={openCreate}>
-                <IconPlus size={14} />
-                {t("extensions.skills.add")}
-              </CapabilityButton>
-            </>
+            <CapabilityButton variant="primary" title={newSkillTitle} onClick={openCreate}>
+              <IconPlus size={14} />
+              {t("extensions.skills.add")}
+            </CapabilityButton>
           }
         />
       }
@@ -448,6 +448,7 @@ export function AgentSkillsPage() {
                   label={t("settings.globalLevel")}
                   path={GLOBAL_SKILLS_PATH}
                   count={visible.global.length}
+                  action={importButton("global")}
                 />
                 {visible.global.length === 0 ? (
                   <CapabilityEmpty
@@ -471,6 +472,7 @@ export function AgentSkillsPage() {
                   label={t("settings.projectLevel")}
                   path={projectSkillsPath(selectedProjectPath)}
                   count={visible.project.length}
+                  action={selectedProjectPath ? importButton("project") : undefined}
                 />
                 {!selectedProjectPath ? (
                   <CapabilityEmpty message={t("settings.selectProjectFirst")} />

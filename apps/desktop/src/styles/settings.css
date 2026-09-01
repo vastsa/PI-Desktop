@@ -1348,6 +1348,18 @@
   gray, so on this strip it read as white-on-white in light mode and *below*
   the strip in dark mode. Mixing against the text color inverts with the theme.
 */
+.agent-capability-group-action {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.agent-capability-group-action > .btn {
+  min-height: 26px;
+  padding: 3px 9px;
+  font-size: var(--text-2xs);
+}
+
 .agent-capability-group-count {
   flex: 0 0 auto;
   border-radius: var(--radius-full);

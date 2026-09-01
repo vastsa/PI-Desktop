@@ -72,6 +72,15 @@ test("one search field covers the page and every row carries its level", () => {
   assert.match(styles, /\.agent-capability-badge\.is-level\s*\{/);
 });
 
+test("skills keep the MCP-shaped toolbar and scope import actions in group headers", () => {
+  const toolbar = skills.slice(skills.indexOf("<CapabilityToolbar"), skills.indexOf("<CapabilityPanel"));
+  assert.match(toolbar, /actions=\{[\s\S]*?CapabilityButton variant="primary"/);
+  assert.doesNotMatch(toolbar, /importSkill|IconDownload|settings\.importSkill/);
+  assert.match(skills, /action=\{importButton\("global"\)\}/);
+  assert.match(skills, /action=\{selectedProjectPath \? importButton\("project"\) : undefined\}/);
+  assert.match(layout, /action\?: ReactNode/);
+});
+
 test("capability lists flow at natural height with skeleton loading", () => {
   assert.doesNotMatch(styles, /\.agent-capability-list\s*\{[^}]*?height:\s*\d+px/);
   assert.match(styles, /\.agent-capability-list\s*\{[\s\S]*?flex-direction:\s*column/);

@@ -358,10 +358,12 @@ export function CapabilityGroupHeader({
   label,
   path,
   count,
+  action,
 }: {
   label: string;
   path: string;
   count: number;
+  action?: ReactNode;
 }) {
   const { t } = useTranslation();
   return (
@@ -376,6 +378,7 @@ export function CapabilityGroupHeader({
       >
         {count}
       </span>
+      {action ? <span className="agent-capability-group-action">{action}</span> : null}
     </div>
   );
 }

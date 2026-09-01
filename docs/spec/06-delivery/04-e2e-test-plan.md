@@ -4677,9 +4677,11 @@ Each scenario is documented in this format:
   2. Open Skills. Confirm one toolbar sits above one panel, the panel shows a
      global group header rooted at `~/.agents/skills` and a project group header
      rooted at project A's `.agents/skills`, both flow in one column at natural
-     page height, and the project picker changes the selected project. On first
-     paint confirm skeleton rows appear; on a later refresh confirm the rows
-     already on screen stay and the list dims instead.
+     page height, and the project picker changes the selected project. Confirm
+     the Skills toolbar has the same single primary Add action as MCP; the
+     level-specific Import action is available in each Skills group header.
+     On first paint confirm skeleton rows appear; on a later refresh confirm
+     the rows already on screen stay and the list dims instead.
   3. Exercise the level filter and the search field. Confirm All / Global /
      Project carry counts that agree with the rendered rows, that selecting a
      level hides the other group without hiding the toolbar or its actions, that
