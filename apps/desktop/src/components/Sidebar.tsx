@@ -55,6 +55,7 @@ import {
 } from "../lib/sidebar-preferences";
 import { BrandLogo } from "./BrandLogo";
 import { NotificationCenter } from "./NotificationCenter";
+import { SessionRenameDialog } from "./SessionRenameDialog";
 import { useUpdateState } from "../lib/use-update-state";
 import {
   IconArchive,
@@ -71,6 +72,7 @@ import {
   IconMore,
   IconNewProject,
   IconPin,
+  IconPencil,
   IconSearch,
   IconSidebar,
   IconSettings,
@@ -238,6 +240,7 @@ export function Sidebar({
   const toggleSessionPinned = useAppStore((s) => s.toggleSessionPinned);
   const archiveSessionAction = useAppStore((s) => s.archiveSession);
   const restoreSession = useAppStore((s) => s.restoreSession);
+  const renameSession = useAppStore((s) => s.renameSession);
   const deleteSessionAction = useAppStore((s) => s.deleteSession);
   const setSessionSort = useAppStore((s) => s.setSessionSort);
   const setSessionArchiveVisibility = useAppStore((s) => s.setSessionArchiveVisibility);
@@ -254,6 +257,7 @@ export function Sidebar({
 
   const [sortOpen, setSortOpen] = useState(false);
   const [sessionMenu, setSessionMenu] = useState<string | null>(null);
+  const [renameFor, setRenameFor] = useState<SessionSummary | null>(null);
   const [projectMenu, setProjectMenu] = useState<string | null>(null);
   const [sectionMenu, setSectionMenu] = useState<"sessions" | "projects" | null>(null);
   const [menuPosition, setMenuPosition] = useState<{
@@ -1336,6 +1340,18 @@ export function Sidebar({
               ref={menuFirstItemRef}
               type="button"
               role="menuitem"
+              data-action="rename-session"
+              onClick={() => {
+                closeMenus(false);
+                setRenameFor(session);
+              }}
+            >
+              <IconPencil size={14} />
+              {t("nav.renameTask", { defaultValue: "Rename task" })}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
               data-action="toggle-session-pin"
               onClick={() => toggleSessionPin(session)}
             >
@@ -1706,6 +1722,14 @@ export function Sidebar({
       </div>
       {renderFloatingMenu()}
       {renderProjectPathTooltip()}
+      {renameFor ? (
+        <SessionRenameDialog
+          session={renameFor}
+          onClose={() => setRenameFor(null)}
+          onSave={(title) => renameSession(renameFor.id, title)}
+          onError={reportError}
+        />
+      ) : null}
       <div
         className={cx("sidebar-resize-handle no-drag", sidebarResizing && "is-resizing")}
         role="separator"

@@ -171,9 +171,10 @@ destination, chat as the home surface, tools and permissions inline.
   changes presentation priority; archive/restore hides or restores the group in
   the default view; close removes the retained tab without deleting or
   archiving project/session data.
-- **Conversation actions**: pin/unpin, archive/restore, and delete remain
-  separate actions. Archive never removes the transcript. Open folder is a
-  project action, not a conversation action.
+- **Conversation actions**: rename, pin/unpin, archive/restore, fork, and
+  delete remain separate actions. Rename edits the task label only; archive
+  never removes the transcript. Open folder is a project action, not a
+  conversation action.
 - **Sort**: user-facing modes are Recently updated, Created date, Oldest
   first, and Name. Pinned rows precede unpinned rows. A legacy persisted
   `manual` value remains readable but does not imply a drag-reorder gesture.

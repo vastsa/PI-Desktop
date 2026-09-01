@@ -1413,8 +1413,10 @@ async fn handle_request(
                 .get("title")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| rpc_err(1002, "title required", "INVALID_PARAMS"))?;
+            let title = sessions::normalize_session_title(title)
+                .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
             let st = state.lock().await;
-            let ok = sessions::rename_session(&st.db, id, title)
+            let ok = sessions::rename_session(&st.db, id, &title)
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             Ok(json!({ "ok": ok }))
         }

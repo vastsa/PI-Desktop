@@ -298,7 +298,7 @@ export const api = {
   openProjectFolder: (path: string) =>
     invoke<{ ok: boolean; path: string }>(IPC.invoke.projectOpenFolder, path),
   renameSession: (id: string, title: string) =>
-    invoke(IPC.invoke.sessionRename, id, title),
+    invoke<{ ok: boolean }>(IPC.invoke.sessionRename, id, title),
   configureSession: (
     id: string,
     config: Pick<SessionSummary, "mode" | "providerId" | "modelId"> &

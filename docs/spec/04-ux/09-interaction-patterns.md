@@ -183,6 +183,11 @@ may be retained while exactly one workspace supplies the visible shell context.
 
 #### Organization actions
 
+- **Rename** — the session row menu and Project archive task rows open the same
+  modal editor. Saving trims the title and persists 1–80 Unicode code points;
+  blank values are not submittable. The title is metadata only, so the task's
+  transcript, activity ordering, project binding, and empty-session state are
+  unchanged. Escape, Cancel, or clicking the scrim dismisses the editor.
 - **Pin** toggles presentation priority. Pinned projects/conversations appear
   before unpinned rows within the selected secondary order. In the sidebar, a
   pinned project replaces its Folder glyph with a filled accent Star so its

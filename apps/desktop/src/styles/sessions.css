@@ -362,6 +362,88 @@
   color: var(--ds-text-muted);
 }
 
+.session-rename-dialog-overlay {
+  z-index: 65;
+}
+
+.session-rename-dialog {
+  width: min(100%, 420px);
+}
+
+.session-rename-dialog-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.session-rename-dialog-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  color: var(--ds-text-primary);
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-strong);
+  line-height: var(--leading-heading);
+}
+
+.session-rename-dialog-title svg {
+  color: var(--ds-text-muted);
+}
+
+.session-rename-dialog-description {
+  margin: 5px 0 0;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-body);
+}
+
+.session-rename-dialog-close {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  color: var(--ds-text-secondary);
+}
+
+.session-rename-dialog-close:hover:not(:disabled) {
+  background: var(--ds-bg-hover);
+  color: var(--ds-text-primary);
+}
+
+.session-rename-dialog-label {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--ds-text-primary);
+  font-size: var(--text-sm-plus);
+  font-weight: var(--font-weight-medium);
+}
+
+.session-rename-dialog .field-input {
+  width: 100%;
+}
+
+.session-rename-dialog-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs-plus);
+}
+
+.session-rename-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+
 .sidebar-list-toolbar {
   position: relative;
   display: flex;

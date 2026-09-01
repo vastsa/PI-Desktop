@@ -13,6 +13,9 @@ use crate::transcripts::{self, CompactionRecord, MessageRecord, RevisionRecord};
 
 pub const MODES: [&str; 3] = ["plan", "goal", "agent"];
 
+/// Maximum number of Unicode scalar values accepted for a user-defined title.
+pub const MAX_SESSION_TITLE_CHARS: usize = 80;
+
 /// Compatibility normalization for v7 callers and imported records. The
 /// persisted operating profile is now always `plan`, `goal` or `agent`.
 pub fn normalize_mode(mode: Option<&str>) -> String {
@@ -1362,11 +1365,25 @@ pub fn delete_session(db: &Database, id: &str) -> Result<bool> {
     Ok(n > 0)
 }
 
+pub fn normalize_session_title(title: &str) -> Result<String> {
+    let title = title.trim();
+    if title.is_empty() {
+        return Err(anyhow!("session title must not be empty"));
+    }
+    if title.chars().count() > MAX_SESSION_TITLE_CHARS {
+        return Err(anyhow!(
+            "session title must be at most {MAX_SESSION_TITLE_CHARS} characters"
+        ));
+    }
+    Ok(title.to_string())
+}
+
 pub fn rename_session(db: &Database, id: &str, title: &str) -> Result<bool> {
+    let title = normalize_session_title(title)?;
     let n = db
         .conn()
-        .prepare_cached("UPDATE sessions SET title = ?1, updated_at = ?2 WHERE id = ?3")?
-        .execute(params![title, now_ms(), id])?;
+        .prepare_cached("UPDATE sessions SET title = ?1 WHERE id = ?2")?
+        .execute(params![title, id])?;
     Ok(n > 0)
 }
 
@@ -2334,6 +2351,48 @@ mod tests {
             None,
         )
         .is_err());
+    }
+
+    #[test]
+    fn rename_session_normalizes_title_without_touching_activity() {
+        let db = test_db();
+        let session = create_session(&db, Some("Original".into()), None, None, None, None).unwrap();
+        let before: i64 = db
+            .conn()
+            .query_row(
+                "SELECT updated_at FROM sessions WHERE id = ?1",
+                params![session.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert!(rename_session(&db, &session.id, "  Renamed task  ").unwrap());
+        let renamed = get_session(&db, &session.id).unwrap().unwrap();
+        assert_eq!(renamed.summary.title, "Renamed task");
+        let after: i64 = db
+            .conn()
+            .query_row(
+                "SELECT updated_at FROM sessions WHERE id = ?1",
+                params![session.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(after, before);
+
+        assert!(rename_session(
+            &db,
+            &session.id,
+            &"界".repeat(MAX_SESSION_TITLE_CHARS),
+        )
+        .is_ok());
+        assert!(rename_session(&db, &session.id, "   ").is_err());
+        assert!(rename_session(
+            &db,
+            &session.id,
+            &"x".repeat(MAX_SESSION_TITLE_CHARS + 1),
+        )
+        .is_err());
+        assert!(!rename_session(&db, "missing", "Valid").unwrap());
     }
 
     #[test]

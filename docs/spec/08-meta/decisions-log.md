@@ -2867,3 +2867,18 @@ D193, and D194.
   hop. A redirect to an undeclared host is blocked before the next request.
 - Marketplace catalog and package download rules remain unchanged: non-loopback
   HTTP package downloads are still refused. See ADR 0142 and E2E-024K/E2E-100.
+
+## 2026-09-01 — User-renamable task titles (D282)
+
+- A task name is session metadata and can be edited from the Sidebar session
+  overflow/right-click menu or the Project archive task row. Both entry points
+  open the same localized modal editor with focus management, Escape/Cancel
+  dismissal, and a 1–80 Unicode code-point input bound.
+- The existing `session.rename` IPC/RPC path validates and trims the title at
+  the host boundary, returning `INVALID_PARAMS` for blank or overlong values.
+  A successful rename updates only `sessions.title`; it does not update
+  `updated_at`, transcript data, message count, project binding, empty-session
+  state, or historical notification title snapshots.
+- A custom title continues to suppress first-prompt automatic title generation.
+  The current summary is projected consistently in the Sidebar, topbar, Project
+  archive, and search after save and after restart. See ADR 0143 and E2E-021a.

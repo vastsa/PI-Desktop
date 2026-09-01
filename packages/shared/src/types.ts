@@ -381,6 +381,9 @@ export type SubagentRunStatus =
   | "aborted"
   | "timed_out";
 
+/** Maximum number of Unicode code points accepted for a user-defined title. */
+export const MAX_SESSION_TITLE_LENGTH = 80;
+
 export type SessionSummary = {
   id: string;
   title: string;

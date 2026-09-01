@@ -935,6 +935,12 @@ SESSIONS                                      [msg+][↕]
   archive.
 - Selecting a temporary session clears the active workspace so session and
   tool context do not imply project access.
+- Rename opens a modal title editor from the session overflow menu or a
+  project-archive task row. The editor trims the value, limits it to 80
+  Unicode code points, focuses the field on open, traps focus, and supports
+  Escape to cancel. Saving updates the task label across the sidebar,
+  topbar, project archive, and search without changing transcript or recent
+  activity metadata.
 - Pin/archive actions update renderer presentation metadata; delete remains
   the explicit durable host operation.
 - Create branch snapshots the idle conversation's complete current transcript
@@ -950,6 +956,7 @@ SESSIONS                                      [msg+][↕]
   capped for narrow viewports. This includes the Sessions sort menu,
   session/project overflow menus, and section create menus.
 - Keyboard: arrow up/down, Enter to select
+- Rename: row menu or project-archive task action
 - Delete: row menu
 
 ### 6.5 Accessibility

@@ -237,7 +237,11 @@ reach this protocol — see [14-secrets-storage](14-secrets-storage.md) §10.
   deduplicated session index counter, and a window is served by seeking to its
   first selected line instead of scanning the history before it.
 - `session.delete`
-- `session.rename`
+- `session.rename({ id, title })` trims and validates the title at the host
+  boundary. It accepts 1–80 Unicode code points and returns `{ ok: boolean }`;
+  blank or overlong titles are `INVALID_PARAMS`. A successful rename changes
+  only session metadata and does not update `updated_at`, transcript content,
+  message count, or historical notification title snapshots.
 - `session.configure` — atomically persists `mode`, `providerId`, `modelId`,
   and optional `thinkingLevel` for the next pi turn; omitting/null
   `thinkingLevel` preserves the current value; invalid modes or levels return

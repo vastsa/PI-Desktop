@@ -660,7 +660,10 @@ Minimal interface:
   transcript or model context. `messageBefore` and `messageStart` are physical
   message-line positions in the transcript file, not deduplicated index counts.
 - `session/delete`
-- `session/rename`
+- `session/rename({ id, title }) -> { ok: boolean }` trims the title and
+  accepts 1–80 Unicode code points. Blank or overlong titles are rejected as
+  `INVALID_PARAMS`; a successful rename changes only session metadata and does
+  not alter transcript content, message count, or activity timestamps.
 - `session/importScan`
 - `session/importRun(candidates) -> { imported, skipped, failed }`
 

@@ -627,6 +627,7 @@ export type AppState = {
   toggleSessionArchived: (id: string) => void;
   archiveSession: (id: string) => void;
   restoreSession: (id: string) => void;
+  renameSession: (id: string, title: string) => Promise<void>;
   deleteSession: (id: string) => Promise<void>;
   setSessionSort: (sort: SessionSort) => void;
   setSessionArchiveVisibility: (show: boolean) => void;
@@ -2586,6 +2587,19 @@ export const useAppStore = create<AppState>((set, get) => ({
       ),
     }));
     persistCurrentSidebar(get);
+  },
+
+  renameSession: async (id, title) => {
+    if (!id) return;
+    const nextTitle = title.trim();
+    if (!nextTitle) throw new Error("Session title must not be empty");
+    const result = await api.renameSession(id, nextTitle);
+    if (!result.ok) throw new Error("Session not found");
+    set((state) => ({
+      sessions: state.sessions.map((session) =>
+        session.id === id ? { ...session, title: nextTitle } : session,
+      ),
+    }));
   },
 
   deleteSession: async (id) => {

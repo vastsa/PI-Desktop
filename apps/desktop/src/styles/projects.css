@@ -562,8 +562,18 @@
   gap: 2px;
 }
 
+.projects-detail-task-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  border-radius: var(--radius-2xs);
+}
+
 .projects-detail-task {
   display: flex;
+  min-width: 0;
+  flex: 1;
   align-items: center;
   gap: 9px;
   text-align: left;
@@ -605,6 +615,33 @@
 
 .projects-detail-task:hover .projects-detail-task-icon {
   color: var(--ds-text-muted);
+}
+
+.projects-detail-task-rename {
+  display: inline-flex;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-2xs);
+  color: var(--ds-text-muted);
+  opacity: 0;
+  transition:
+    background var(--motion-duration-fast) var(--motion-ease-out),
+    color var(--motion-duration-fast) var(--motion-ease-out),
+    opacity var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.projects-detail-task-row:hover .projects-detail-task-rename,
+.projects-detail-task-row:focus-within .projects-detail-task-rename,
+.projects-detail-task-rename:focus-visible {
+  opacity: 1;
+}
+
+.projects-detail-task-rename:hover {
+  background: var(--ds-bg-hover);
+  color: var(--ds-text-primary);
 }
 
 /* Quiet in-panel empty state: centered glyph + copy, no decorative frame. */

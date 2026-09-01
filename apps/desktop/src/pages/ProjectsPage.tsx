@@ -13,6 +13,7 @@ import {
   IconFileText,
   IconFolder,
   IconMore,
+  IconPencil,
   IconPin,
   IconPlus,
   IconSearch,
@@ -30,6 +31,7 @@ import {
   sessionMatchesProject,
 } from "../lib/sidebar-session-groups";
 import { ProjectInstructionsDialog } from "../components/ProjectInstructionsDialog";
+import { SessionRenameDialog } from "../components/SessionRenameDialog";
 
 const INITIAL_VISIBLE_SESSION_COUNT = 8;
 
@@ -107,6 +109,7 @@ export function ProjectsPage() {
   const selectSession = useAppStore((s) => s.selectSession);
   const setPage = useAppStore((s) => s.setPage);
   const setSettingsTab = useAppStore((s) => s.setSettingsTab);
+  const renameSession = useAppStore((s) => s.renameSession);
   const showToast = useAppStore((s) => s.showToast);
   const sessions = useAppStore((s) => s.sessions);
   const [recents, setRecents] = useState<RecentProject[]>(() => loadRecentProjects());
@@ -116,6 +119,7 @@ export function ProjectsPage() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [visibleSessionCounts, setVisibleSessionCounts] = useState<Record<string, number>>({});
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [renameFor, setRenameFor] = useState<SessionSummary | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const [instructionsFor, setInstructionsFor] = useState<{
@@ -733,27 +737,45 @@ export function ProjectsPage() {
                           <div className="projects-detail-empty">{t("project.noSessions")}</div>
                         ) : (
                           <div className="projects-detail-tasks">
-                            {visibleSessions.map((s) => (
-                              <button
-                                key={s.id}
-                                type="button"
-                                className="projects-detail-task"
-                                onClick={() => void openProjectSession(project.path, s.id)}
-                                title={s.title || s.id}
-                              >
-                                <IconChat size={13} className="projects-detail-task-icon" />
-                                <span className="projects-detail-task-title">
-                                  {s.title || s.id}
-                                </span>
-                                <span className="projects-detail-task-updated">
-                                  {formatUpdated(
-                                    sessionTimestamp(s.updatedAt),
-                                    locale,
-                                    t("project.updatedNever"),
-                                  )}
-                                </span>
-                              </button>
-                            ))}
+                            {visibleSessions.map((s) => {
+                              const title = s.title || s.id;
+                              return (
+                                <div
+                                  key={s.id}
+                                  className="projects-detail-task-row"
+                                  onContextMenu={(event) => {
+                                    event.preventDefault();
+                                    setRenameFor(s);
+                                  }}
+                                >
+                                  <button
+                                    type="button"
+                                    className="projects-detail-task"
+                                    onClick={() => void openProjectSession(project.path, s.id)}
+                                    title={title}
+                                  >
+                                    <IconChat size={13} className="projects-detail-task-icon" />
+                                    <span className="projects-detail-task-title">{title}</span>
+                                    <span className="projects-detail-task-updated">
+                                      {formatUpdated(
+                                        sessionTimestamp(s.updatedAt),
+                                        locale,
+                                        t("project.updatedNever"),
+                                      )}
+                                    </span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="projects-detail-task-rename"
+                                    aria-label={t("session.renameAction", { title })}
+                                    title={t("session.renameAction", { title })}
+                                    onClick={() => setRenameFor(s)}
+                                  >
+                                    <IconPencil size={13} aria-hidden />
+                                  </button>
+                                </div>
+                              );
+                            })}
                           </div>
                         )}
                         {hiddenSessionCount > 0 ? (
@@ -800,6 +822,18 @@ export function ProjectsPage() {
           project={instructionsFor}
           onClose={() => setInstructionsFor(null)}
           onSaved={() => showToast(t("project.instructionsSaved"), { variant: "success" })}
+          onError={(error) =>
+            showToast(error instanceof Error ? error.message : String(error), {
+              variant: "error",
+            })
+          }
+        />
+      ) : null}
+      {renameFor ? (
+        <SessionRenameDialog
+          session={renameFor}
+          onClose={() => setRenameFor(null)}
+          onSave={(title) => renameSession(renameFor.id, title)}
           onError={(error) =>
             showToast(error instanceof Error ? error.message : String(error), {
               variant: "error",

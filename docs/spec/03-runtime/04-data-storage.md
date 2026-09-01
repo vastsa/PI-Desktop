@@ -354,6 +354,11 @@ CREATE INDEX idx_sessions_project ON sessions(project_id) WHERE project_id IS NO
 - `last_seq` is exposed as `SessionSummary.messageCount`. Appends allocate the
   next ordinal and full transcript rewrites reseat it to the current message
   count, so zero is the durable empty-session predicate.
+- `title` is user-visible session metadata. The `session.rename` boundary trims
+  and validates it to 1–80 Unicode code points before persisting it. A manual
+  rename does not update `updated_at`, so changing a label cannot reorder
+  recent activity; transcript rows, message count, and session state remain
+  unchanged.
 - Import binds every non-empty normalized `projectPath` to `project_id`;
   path-less imports remain `NULL`. Re-importing a deterministic session id
   creates neither another session nor another project row.
