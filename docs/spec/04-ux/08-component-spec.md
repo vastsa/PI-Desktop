@@ -2506,13 +2506,11 @@ surface, while model metadata remains owned by models.dev and transport
 compatibility remains owned by pi-ai.
 
 ### 19.2 Anatomy
-1. **Defaults card** — current default provider/model summary with a model icon,
-   provider name, exact model ID, and a short new-session hint; the separate
-   Change trigger is an action only and does not repeat the current value. The
-   card's row carries the same 14px/16px inset as `.settings-row` because the
-   shared panel only draws the frame, so the label and value never touch the
-   rounded border. Change opens a floating listbox anchored to that trigger
-   rather than expanding the card in place: the surface portals to
+1. **Defaults card** — a compact settings row reusing the shared
+   14px/16px row geometry; the Default model label sits above the provider name
+   and exact model ID, while a quiet Change action opens the picker without
+   duplicating the current value. The floating listbox is anchored to that
+   action rather than expanding the card in place: the surface portals to
    `document.body` as a fixed layer so the panel's overflow cannot clip it,
    groups model-level options by provider, marks the exact current entry, bounds
    its own height so many configured models scroll instead of stretching the

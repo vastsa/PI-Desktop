@@ -109,10 +109,9 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
     while the focused frameless window retains an `Alt + Space` fallback
 
 ### Model configuration (`agent` tab)
-- **Defaults** card: a single current-model summary with a model icon, the
-  provider name, exact model ID, and a short new-session hint. A separate
-  Change trigger opens the picker, so the current value is readable without
-  mistaking the action for another model value. The picker groups model-level
+- **Defaults** card: a compact settings row shows the provider name and exact
+  model ID beneath the Default model label. A quiet Change action opens the
+  picker without duplicating the current value. The picker groups model-level
   options by provider, marks the exact current entry, and keeps its searchable
   list bounded. Account labels are not appended to model IDs. Global operating
   mode, command shell, and Enter-to-send are owned by the AI destination.

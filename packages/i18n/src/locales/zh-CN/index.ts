@@ -733,7 +733,6 @@ export const zhCN = {
     closeBehaviorSaveError: "无法保存关闭行为设置。",
     defaultsTitle: "默认项",
     defaultModel: "默认模型",
-    defaultModelDescription: "新会话默认使用的模型。",
     defaultModelNone: "还没有可用的 AI 服务",
     defaultModelSearch: "筛选模型",
     commandShell: "命令 Shell",

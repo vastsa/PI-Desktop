@@ -6,36 +6,33 @@ import { loadStyles } from "./helpers/styles.mjs";
 const read = (rel) => readFile(new URL(rel, import.meta.url), "utf8");
 
 /**
- * `.settings-panel` only draws the rounded frame and clips overflow, so every
- * panel body has to supply its own inset. The Defaults card regressed once
- * because `.model-default-panel` supplied none: the label and the provider name
- * were painted on the border and lost their first glyph.
+ * The shared settings row owns the inset inside the panel frame. Keeping this
+ * geometry shared prevents the default control from becoming a visually
+ * separate card.
  */
-test("the default model row carries the settings row inset", async () => {
+test("the default model control reuses the shared settings row geometry", async () => {
   const styles = await loadStyles();
+  const source = await read("../src/components/settings/ModelConfigPage.tsx");
 
-  const row = styles.match(/\.model-default-row \{([^}]*)\}/);
-  assert.ok(row, ".model-default-row rule is missing");
+  const row = styles.match(/\.settings-row \{([^}]*)\}/);
+  assert.ok(row, ".settings-row rule is missing");
+  assert.match(row[1], /gap: 24px;/);
   assert.match(row[1], /padding: 14px 16px;/);
-
-  const panel = styles.match(/\.model-default-panel \{([^}]*)\}/);
-  assert.ok(panel, ".model-default-panel rule is missing");
-  // The inset belongs to the rows so the picker's divider still spans the panel.
-  assert.doesNotMatch(panel[1], /padding:/);
+  assert.match(source, /className="settings-row model-default-row"/);
+  assert.match(source, /className="settings-row-copy model-default-copy"/);
+  assert.match(source, /className="settings-row-title model-default-label"/);
 });
 
-test("the default summary and change action keep separate jobs", async () => {
+test("the default summary stays compact and keeps its change action separate", async () => {
   const styles = await loadStyles();
 
   const copy = styles.match(/\.model-default-copy \{([^}]*)\}/);
   assert.ok(copy, ".model-default-copy rule is missing");
-  assert.match(copy[1], /flex: 1;/);
   assert.match(copy[1], /min-width: 0;/);
 
   const row = styles.match(/\.model-default-row \{([^}]*)\}/);
   assert.ok(row, ".model-default-row rule is missing");
-  assert.match(row[1], /display: grid;/);
-  assert.match(row[1], /grid-template-columns: minmax\(0, 1fr\) auto;/);
+  assert.match(row[1], /min-width: 0;/);
 
   const anchor = styles.match(/\.model-default-anchor \{([^}]*)\}/);
   assert.ok(anchor, ".model-default-anchor rule is missing");
@@ -43,11 +40,11 @@ test("the default summary and change action keep separate jobs", async () => {
 
   const source = await read("../src/components/settings/ModelConfigPage.tsx");
   assert.match(source, /model-default-value/);
-  assert.match(source, /model-default-description/);
-  assert.match(source, /model-default-trigger-label/);
-  assert.match(source, /defaultModelDescription/);
-  assert.doesNotMatch(source, /model-default-trigger-provider/);
-  assert.doesNotMatch(source, /model-default-trigger-model/);
+  assert.match(source, /settings-text-action model-default-trigger/);
+  assert.match(source, /variant="ghost"/);
+  assert.doesNotMatch(source, /model-default-icon|model-default-description/);
+  assert.doesNotMatch(source, /model-default-trigger-label|model-default-provider-mark/);
+  assert.doesNotMatch(source, /defaultModelDescription/);
 });
 
 /**
@@ -66,8 +63,8 @@ test("picking a default opens a bounded floating menu, not an inline list", asyn
   // Fixed, because the settings panel clips its overflow.
   assert.match(menu[1], /position: fixed;/);
   assert.doesNotMatch(menu[1], /position: absolute;/);
-  assert.match(menu[1], /width: min\(380px, calc\(100vw - 32px\)\);/);
-  assert.match(menu[1], /max-height: min\(440px, calc\(100vh - 104px\)\);/);
+  assert.match(menu[1], /width: min\(340px, calc\(100vw - 32px\)\);/);
+  assert.match(menu[1], /max-height: min\(400px, calc\(100vh - 120px\)\);/);
   assert.match(styles, /\.model-default-results\s*\{[^}]*overflow-y: auto;/s);
   // Hidden until measured, mirroring the font picker.
   assert.match(menu[1], /visibility: hidden;/);

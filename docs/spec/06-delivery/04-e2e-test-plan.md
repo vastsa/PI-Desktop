@@ -182,7 +182,11 @@ Each scenario is documented in this format:
 
 - **Preconditions**: Two runnable providers exist; one provider has at least two configured model bindings.
 - **Steps**: Open Settings → Model configuration → Change default model, then select the second model under the provider.
-- **Expected**: The Defaults card presents one current-model summary with a model icon, provider name, exact model ID, and a short new-session hint; its separate Change trigger does not repeat the current value. The picker groups model-level entries by provider, marks the exact current model, and a newly created session inherits that exact model and its owning provider.
+- **Expected**: The Defaults card presents a compact settings row with the
+  provider name and exact model ID beneath the Default model label; its quiet
+  Change action does not repeat the current value. The picker groups
+  model-level entries by provider, marks the exact current model, and a newly
+  created session inherits that exact model and its owning provider.
   Searching by provider or model filters locally, the result list scrolls without moving the settings card, and an unmatched query shows an empty state.
 - **Specs linked**: `03-runtime/13-model-catalog-and-selection.md`
 - **Acceptance**: B (model selection)
@@ -5486,15 +5490,15 @@ This test plan spec is accepted when:
   host-backed implementations exist.
 - Model configuration contains the default model selector, separate vendor
   account management with add/edit dialogs, and card-based AI service management
-  with an add-provider dialog. The Defaults card insets its row like every other
-  settings row, so the "Default model" label and the provider - model id line
-  clear the panel frame with no clipped glyph and no overlap; the row also shows
-  a short new-session hint while the Change trigger stays action-only. Change
-  opens a floating listbox anchored to it: the card's height never changes, the
-  model-level list is grouped by provider and scrolls once the configured models
-  exceed its bounded height, it flips above the trigger near the viewport
-  bottom, it is not clipped by the settings panel, and Escape, an outside press,
-  or scrolling the trigger out of view closes it while focus returns to Change.
+  with an add-provider dialog. The Defaults card reuses the compact geometry of
+  every other settings row: the "Default model" label sits above the provider -
+  model id line, and the quiet Change action remains separate from the current
+  value. Change opens a floating listbox anchored to it: the card's height
+  never changes, the model-level list is grouped by provider and scrolls once
+  the configured models exceed its bounded height, it flips above the trigger
+  near the viewport bottom, it is not clipped by the settings panel, and Escape,
+  an outside press, or scrolling the trigger out of view closes it while focus
+  returns to Change.
 - Plugin load/enable/disable/uninstall remains available from the app shell's
   independent Extensions destination; its Marketplace tab also owns the
   official/mirror/custom catalog source picker, so Settings has no duplicate

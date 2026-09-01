@@ -18,7 +18,6 @@ import { useAppStore } from "../../stores/app-store";
 import { api } from "../../lib/api";
 import { Badge, Button, Input, cx } from "../ui";
 import {
-  IconBot,
   IconCheck,
   IconChevronDown,
   IconConfig,
@@ -276,42 +275,31 @@ export function ModelConfigPage() {
           <h3 className="settings-card-heading">{t("settings.defaultsTitle")}</h3>
         </div>
         <div className="settings-panel model-default-panel">
-          <div className="model-default-row">
-            <div className="model-default-intro">
-              <div
-                className={cx("model-default-icon", defaultProviderReady && "is-ready")}
-                aria-hidden
-              >
-                <IconBot size={19} />
+          <div className="settings-row model-default-row">
+            <div className="settings-row-copy model-default-copy">
+              <div className="settings-row-title model-default-label">
+                {t("settings.defaultModel")}
               </div>
-              <div className="model-default-copy">
-                <div className="model-default-label">{t("settings.defaultModel")}</div>
-                {defaultProviderReady ? (
-                  <>
-                    <div className="model-default-value">
-                      <span className="model-default-provider">{defaultProvider.name}</span>
-                      <span className="model-default-sep" aria-hidden>
-                        ·
-                      </span>
-                      <span className="model-default-model font-mono">
-                        {displayedDefaultModelId(defaultProvider, settings.defaultModelId) ||
-                          t("settings.noModel")}
-                      </span>
-                    </div>
-                    <div className="model-default-description">
-                      {t("settings.defaultModelDescription")}
-                    </div>
-                  </>
-                ) : (
-                  <div className="model-default-value">
-                    <span className="model-default-empty">
-                      {readyProviders.length === 0
-                        ? t("settings.defaultModelNone")
-                        : t("settings.noDefaultProvider")}
-                    </span>
-                  </div>
-                )}
-              </div>
+              {defaultProviderReady ? (
+                <div className="settings-row-desc model-default-value">
+                  <span className="model-default-provider">{defaultProvider.name}</span>
+                  <span className="model-default-sep" aria-hidden>
+                    ·
+                  </span>
+                  <span className="model-default-model font-mono">
+                    {displayedDefaultModelId(defaultProvider, settings.defaultModelId) ||
+                      t("settings.noModel")}
+                  </span>
+                </div>
+              ) : (
+                <div className="settings-row-desc model-default-value">
+                  <span className="model-default-empty">
+                    {readyProviders.length === 0
+                      ? t("settings.defaultModelNone")
+                      : t("settings.noDefaultProvider")}
+                  </span>
+                </div>
+              )}
             </div>
             <AnchoredMenu
               className="model-default-anchor"
@@ -323,8 +311,8 @@ export function ModelConfigPage() {
               trigger={(ref) => (
                 <Button
                   ref={ref}
-                  className="model-default-trigger"
-                  variant="secondary"
+                  className="settings-text-action model-default-trigger"
+                  variant="ghost"
                   disabled={readyProviders.length === 0}
                   onClick={() => {
                     setDefaultModelQuery("");
@@ -333,10 +321,8 @@ export function ModelConfigPage() {
                   aria-haspopup="listbox"
                   aria-expanded={pickingDefault}
                 >
-                  <span className="model-default-trigger-label">
-                    {t("settings.changeDefaultModel")}
-                  </span>
-                  <IconChevronDown className="model-default-trigger-chevron" size={14} aria-hidden />
+                  {t("settings.changeDefaultModel")}
+                  <IconChevronDown className="model-default-trigger-chevron" size={13} aria-hidden />
                 </Button>
               )}
             >
@@ -370,8 +356,7 @@ export function ModelConfigPage() {
                               index > 0 && "has-divider",
                             )}
                           >
-                            <span className="model-default-provider-mark" aria-hidden />
-                            <span>{provider.name}</span>
+                            {provider.name}
                           </div>
                         ) : null}
                         <button
@@ -386,9 +371,7 @@ export function ModelConfigPage() {
                           <span className="model-default-option-check" aria-hidden>
                             {isCurrent ? <IconCheck size={12} /> : null}
                           </span>
-                          <span className="model-default-option-copy">
-                            <span className="model-default-option-model font-mono">{modelId}</span>
-                          </span>
+                          <span className="model-default-option-model font-mono">{modelId}</span>
                         </button>
                       </li>
                     );
