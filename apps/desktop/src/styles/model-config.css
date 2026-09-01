@@ -806,11 +806,11 @@
   flex-direction: column;
   width: min(340px, calc(100vw - 32px));
   max-height: min(400px, calc(100vh - 120px));
-  padding: 8px;
+  padding: 6px;
   border: 1px solid var(--ds-border-subtle);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   background: var(--ds-bg-elevated-opaque);
-  box-shadow: var(--ds-shadow-dialog);
+  box-shadow: var(--ds-shadow-composer);
   color: var(--ds-text-primary);
   opacity: 0;
   pointer-events: none;
@@ -823,7 +823,7 @@
   align-items: center;
   gap: 8px;
   flex: none;
-  padding: 2px 4px 8px;
+  padding: 2px 6px 6px;
   color: var(--ds-text-faint);
   border-bottom: 1px solid var(--ds-border-subtle);
 }
@@ -902,7 +902,7 @@
 
 .model-default-option.is-current {
   background: var(--ds-bg-active);
-  box-shadow: inset 2px 0 0 var(--ds-accent);
+  box-shadow: inset 0 0 0 1px var(--ds-border-strong);
 }
 
 .model-default-option:focus-visible {
@@ -922,15 +922,13 @@
   color: var(--ds-accent);
 }
 
-.model-default-option-name {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--ds-text-secondary);
+.model-default-provider-group {
+  padding: 8px 8px 4px;
+  color: var(--ds-text-faint);
   font-size: var(--text-3xs);
-  font-weight: var(--font-weight-normal);
+  font-weight: var(--font-weight-medium);
+  letter-spacing: 0.03em;
   line-height: var(--leading-tight);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .model-default-option-model {
@@ -938,7 +936,7 @@
   overflow: hidden;
   color: var(--ds-text-primary);
   font-size: var(--text-sm);
-  font-weight: var(--font-weight-medium);
+  font-weight: var(--font-weight-normal);
   line-height: var(--leading-tight);
   text-overflow: ellipsis;
   white-space: nowrap;

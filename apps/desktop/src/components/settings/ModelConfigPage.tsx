@@ -337,12 +337,17 @@ export function ModelConfigPage() {
                   <div className="model-default-no-results">{t("settings.noModelMatches")}</div>
                 ) : null}
                 <ul className="model-default-list">
-                  {visibleDefaultModelOptions.map(({ provider, modelId }) => {
+                  {visibleDefaultModelOptions.map(({ provider, modelId }, index) => {
                     const isCurrent =
                       provider.id === settings.defaultProviderId &&
                       modelIdsMatch(settings.defaultModelId, modelId);
+                    const previous = visibleDefaultModelOptions[index - 1];
+                    const startsGroup = !previous || previous.provider.id !== provider.id;
                     return (
                       <li key={`${provider.id}:${modelId}`}>
+                        {startsGroup ? (
+                          <div className="model-default-provider-group">{provider.name}</div>
+                        ) : null}
                         <button
                           type="button"
                           role="option"
@@ -357,7 +362,6 @@ export function ModelConfigPage() {
                           <span className="model-default-option-model font-mono">
                             {modelId}
                           </span>
-                          <span className="model-default-option-name">{provider.name}</span>
                         </button>
                       </li>
                     );
