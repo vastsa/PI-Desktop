@@ -733,7 +733,7 @@ export const zhCN = {
     defaultsTitle: "默认项",
     defaultModel: "默认模型",
     defaultModelNone: "还没有可用的 AI 服务",
-    defaultModelCount: "{{count}} 个模型",
+    defaultModelSearch: "筛选模型",
     commandShell: "命令 Shell",
     commandShellDesc: "智能体运行命令时使用的 Shell。",
     commandShellLoading: "正在加载 Shell…",

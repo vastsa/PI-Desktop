@@ -157,7 +157,7 @@ test("default model selector shows every configured model under its provider", (
   assert.match(defaultModelPicker, /model-default-option-name">\{provider\.name\}/);
   assert.match(defaultModelPicker, /model-default-option-model font-mono">[\s\S]*?\{modelId\}/);
   assert.match(defaultModelPicker, /setDefaultModel\(provider, modelId\)/);
-  assert.match(providersSource, /placeholder=\{t\("settings\.searchModels"\)\}/);
+  assert.match(providersSource, /placeholder=\{t\("settings\.defaultModelSearch"\)\}/);
   assert.match(providersSource, /model-default-results/);
   assert.match(stylesSource, /\.model-default-results\s*\{[\s\S]*?overflow-y: auto;/);
   assert.match(stylesSource, /scrollbar-gutter: stable/);

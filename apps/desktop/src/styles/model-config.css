@@ -804,8 +804,8 @@
   z-index: 60;
   display: flex;
   flex-direction: column;
-  width: min(380px, calc(100vw - 32px));
-  max-height: min(460px, calc(100vh - 120px));
+  width: min(340px, calc(100vw - 32px));
+  max-height: min(400px, calc(100vh - 120px));
   padding: 8px;
   border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-lg);
@@ -887,7 +887,7 @@
   grid-template-rows: auto auto;
   column-gap: 8px;
   width: 100%;
-  padding: 9px 8px;
+  padding: 7px 8px;
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -925,9 +925,9 @@
 .model-default-option-name {
   min-width: 0;
   overflow: hidden;
-  color: var(--ds-text-primary);
-  font-size: var(--text-sm);
-  font-weight: var(--font-weight-medium);
+  color: var(--ds-text-secondary);
+  font-size: var(--text-3xs);
+  font-weight: var(--font-weight-normal);
   line-height: var(--leading-tight);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -936,8 +936,9 @@
 .model-default-option-model {
   min-width: 0;
   overflow: hidden;
-  color: var(--ds-text-secondary);
-  font-size: var(--text-3xs);
+  color: var(--ds-text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
   line-height: var(--leading-tight);
   text-overflow: ellipsis;
   white-space: nowrap;

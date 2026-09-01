@@ -327,15 +327,12 @@ export function ModelConfigPage() {
                 <Input
                   value={defaultModelQuery}
                   onChange={(event) => setDefaultModelQuery(event.target.value)}
-                  placeholder={t("settings.searchModels")}
-                  aria-label={t("settings.searchModels")}
+                  placeholder={t("settings.defaultModelSearch")}
+                  aria-label={t("settings.defaultModelSearch")}
                   autoFocus
                 />
               </div>
               <div className="model-default-results" role="presentation">
-                <div className="model-default-results-meta">
-                  {t("settings.defaultModelCount", { count: visibleDefaultModelOptions.length })}
-                </div>
                 {visibleDefaultModelOptions.length === 0 ? (
                   <div className="model-default-no-results">{t("settings.noModelMatches")}</div>
                 ) : null}
@@ -357,10 +354,10 @@ export function ModelConfigPage() {
                           <span className="model-default-option-check" aria-hidden>
                             {isCurrent ? <IconCheck size={12} /> : null}
                           </span>
-                          <span className="model-default-option-name">{provider.name}</span>
                           <span className="model-default-option-model font-mono">
                             {modelId}
                           </span>
+                          <span className="model-default-option-name">{provider.name}</span>
                         </button>
                       </li>
                     );
