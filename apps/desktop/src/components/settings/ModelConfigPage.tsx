@@ -16,7 +16,7 @@ import {
 } from "@pi-desktop/shared";
 import { useAppStore } from "../../stores/app-store";
 import { api } from "../../lib/api";
-import { Badge, Button, cx } from "../ui";
+import { Badge, Button, Input, cx } from "../ui";
 import {
   IconCheck,
   IconConfig,
@@ -24,6 +24,7 @@ import {
   IconPlug,
   IconPlus,
   IconServer,
+  IconSearch,
   IconTrash,
 } from "../icons";
 import { AnchoredMenu } from "./AnchoredMenu";
@@ -67,6 +68,7 @@ export function ModelConfigPage() {
   // null = closed, "" = add flow, provider id = edit flow.
   const [setupFor, setSetupFor] = useState<string | null>(null);
   const [pickingDefault, setPickingDefault] = useState(false);
+  const [defaultModelQuery, setDefaultModelQuery] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [refreshingCatalog, setRefreshingCatalog] = useState(false);
@@ -106,6 +108,13 @@ export function ModelConfigPage() {
   );
   const readyProviders = providers.filter(providerReady);
   const defaultModelOptionsList = defaultModelOptions(readyProviders);
+  const visibleDefaultModelOptions = useMemo(() => {
+    const query = defaultModelQuery.trim().toLowerCase();
+    if (!query) return defaultModelOptionsList;
+    return defaultModelOptionsList.filter(({ provider, modelId }) =>
+      `${provider.name} ${modelId}`.toLowerCase().includes(query),
+    );
+  }, [defaultModelOptionsList, defaultModelQuery]);
 
   if (!settings) return null;
 
@@ -302,7 +311,10 @@ export function ModelConfigPage() {
                   ref={ref}
                   variant="secondary"
                   disabled={readyProviders.length === 0}
-                  onClick={() => setPickingDefault((current) => !current)}
+                  onClick={() => {
+                    setDefaultModelQuery("");
+                    setPickingDefault((current) => !current);
+                  }}
                   aria-haspopup="listbox"
                   aria-expanded={pickingDefault}
                 >
@@ -310,33 +322,51 @@ export function ModelConfigPage() {
                 </Button>
               )}
             >
-              <ul className="model-default-list">
-                {defaultModelOptionsList.map(({ provider, modelId }) => {
-                  const isCurrent =
-                    provider.id === settings.defaultProviderId &&
-                    modelIdsMatch(settings.defaultModelId, modelId);
-                  return (
-                    <li key={`${provider.id}:${modelId}`}>
-                      <button
-                        type="button"
-                        role="option"
-                        aria-selected={isCurrent}
-                        className={cx("model-default-option", isCurrent && "is-current")}
-                        disabled={busyId === provider.id}
-                        onClick={() => void setDefaultModel(provider, modelId)}
-                      >
-                        <span className="model-default-option-check" aria-hidden>
-                          {isCurrent ? <IconCheck size={12} /> : null}
-                        </span>
-                        <span className="model-default-option-name">{provider.name}</span>
-                        <span className="model-default-option-model font-mono">
-                          {modelId}
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
+              <div className="model-default-search">
+                <IconSearch size={14} aria-hidden />
+                <Input
+                  value={defaultModelQuery}
+                  onChange={(event) => setDefaultModelQuery(event.target.value)}
+                  placeholder={t("settings.searchModels")}
+                  aria-label={t("settings.searchModels")}
+                  autoFocus
+                />
+              </div>
+              <div className="model-default-results" role="presentation">
+                <div className="model-default-results-meta">
+                  {t("settings.defaultModelCount", { count: visibleDefaultModelOptions.length })}
+                </div>
+                {visibleDefaultModelOptions.length === 0 ? (
+                  <div className="model-default-no-results">{t("settings.noModelMatches")}</div>
+                ) : null}
+                <ul className="model-default-list">
+                  {visibleDefaultModelOptions.map(({ provider, modelId }) => {
+                    const isCurrent =
+                      provider.id === settings.defaultProviderId &&
+                      modelIdsMatch(settings.defaultModelId, modelId);
+                    return (
+                      <li key={`${provider.id}:${modelId}`}>
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={isCurrent}
+                          className={cx("model-default-option", isCurrent && "is-current")}
+                          disabled={busyId === provider.id}
+                          onClick={() => void setDefaultModel(provider, modelId)}
+                        >
+                          <span className="model-default-option-check" aria-hidden>
+                            {isCurrent ? <IconCheck size={12} /> : null}
+                          </span>
+                          <span className="model-default-option-name">{provider.name}</span>
+                          <span className="model-default-option-model font-mono">
+                            {modelId}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
             </AnchoredMenu>
           </div>
         </div>

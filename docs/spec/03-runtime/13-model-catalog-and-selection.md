@@ -209,6 +209,7 @@ models; saving a model binding is what makes it eligible for the Composer.
 App-level default:
 - first successfully tested provider + its default/recommended model
 - the Settings default-model picker lists every configured model under its provider; selecting an entry persists both the owning provider and that exact model ID
+- the picker supports local search across provider name and model ID; its result list scrolls within the floating surface and shows an explicit empty state when no model matches
 - if none configured, onboarding checklist requires provider setup before first agent run
 
 Session-level:

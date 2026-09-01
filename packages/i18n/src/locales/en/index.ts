@@ -738,6 +738,7 @@ export const en = {
     defaultsTitle: "Defaults",
     defaultModel: "Default model",
     defaultModelNone: "No AI provider ready",
+    defaultModelCount: "{{count}} models",
     commandShell: "Command shell",
     commandShellDesc: "Shell used for commands run by the agent.",
     commandShellLoading: "Loading shells…",

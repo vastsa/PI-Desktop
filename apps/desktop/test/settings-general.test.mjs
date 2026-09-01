@@ -151,12 +151,16 @@ test("model configuration keeps model defaults; AI owns app behavior defaults", 
 test("default model selector shows every configured model under its provider", () => {
   const defaultModelPicker =
     providersSource.match(
-      /defaultModelOptionsList\.map\(\(\{ provider, modelId \}\) => \{[\s\S]*?<\/li>/,
+      /visibleDefaultModelOptions\.map\(\(\{ provider, modelId \}\) => \{[\s\S]*?<\/li>/,
     )?.[0] ?? "";
   assert.notEqual(defaultModelPicker, "");
   assert.match(defaultModelPicker, /model-default-option-name">\{provider\.name\}/);
   assert.match(defaultModelPicker, /model-default-option-model font-mono">[\s\S]*?\{modelId\}/);
   assert.match(defaultModelPicker, /setDefaultModel\(provider, modelId\)/);
+  assert.match(providersSource, /placeholder=\{t\("settings\.searchModels"\)\}/);
+  assert.match(providersSource, /model-default-results/);
+  assert.match(stylesSource, /\.model-default-results\s*\{[\s\S]*?overflow-y: auto;/);
+  assert.match(stylesSource, /scrollbar-gutter: stable/);
 });
 
 test("model configuration separates AI services from independently removable vendor accounts", () => {
