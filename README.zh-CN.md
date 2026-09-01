@@ -202,30 +202,30 @@ PI-Desktop 的构建和设计参考了以下开源项目：
 
 这个项目是由下面这些模型共同创造的——没有唯一的天才，只有一支由 token 驱动的施工队。
 
-| 模型 | Token 总量 |
-| --- | ---: |
-| `gpt-5.6-sol` | 4,799,525,785 |
-| `gpt-5.4` | 4,213,269,324 |
-| `gpt-5.6-luna` | 3,980,161,792 |
-| `claude-opus-5` | 3,909,952,653 |
-| `gpt-5.5` | 3,800,382,171 |
-| `grok-4.5` | 1,947,736,115 |
-| `deepseek-v4-flash` | 329,790,234 |
-| `gpt-5.2-codex` | 320,983,170 |
-| `gpt-5.6-terra` | 274,107,085 |
-| `gpt-5.3-codex` | 255,366,945 |
-| `mimo-v2.5-pro` | 234,295,998 |
-| `gpt-5.1-codex-max` | 220,947,212 |
-| `gpt-5.1` | 142,533,699 |
-| `Unknown model` | 69,801,632 |
-| `claude-opus-4.6` | 55,223,768 |
-| `stealth/ox-alpha` | 22,954,876 |
-| `gpt-5.1-codex-mini` | 12,895,478 |
-| `mimo-v2.5-pro-think` | 11,246,210 |
-| `dots-3-note-prev` | 10,166,895 |
-| `gpt-5.1-codex` | 3,916,509 |
-| `mimo-v2.5` | 3,785,071 |
-| `grok-4.6` | 3,366,971 |
+| 厂商 | 模型 | Token 总量 |
+| --- | --- | ---: |
+| OpenAI | `gpt-5.6-sol` | 4,799,525,785 |
+| OpenAI | `gpt-5.4` | 4,213,269,324 |
+| OpenAI | `gpt-5.6-luna` | 3,980,161,792 |
+| Anthropic | `claude-opus-5` | 3,909,952,653 |
+| OpenAI | `gpt-5.5` | 3,800,382,171 |
+| xAI | `grok-4.5` | 1,947,736,115 |
+| DeepSeek | `deepseek-v4-flash` | 329,790,234 |
+| OpenAI | `gpt-5.2-codex` | 320,983,170 |
+| OpenAI | `gpt-5.6-terra` | 274,107,085 |
+| OpenAI | `gpt-5.3-codex` | 255,366,945 |
+| Xiaomi | `mimo-v2.5-pro` | 234,295,998 |
+| OpenAI | `gpt-5.1-codex-max` | 220,947,212 |
+| OpenAI | `gpt-5.1` | 142,533,699 |
+| — | `Unknown model` | 69,801,632 |
+| Anthropic | `claude-opus-4.6` | 55,223,768 |
+| 智谱 | `stealth/ox-alpha` | 22,954,876 |
+| OpenAI | `gpt-5.1-codex-mini` | 12,895,478 |
+| Xiaomi | `mimo-v2.5-pro-think` | 11,246,210 |
+| 小红书 | `dots-3-note-prev` | 10,166,895 |
+| OpenAI | `gpt-5.1-codex` | 3,916,509 |
+| Xiaomi | `mimo-v2.5` | 3,785,071 |
+| xAI | `grok-4.6` | 3,366,971 |
 
 **所列模型合计：** 24,622,409,593 tokens。
 ## 社区友链
