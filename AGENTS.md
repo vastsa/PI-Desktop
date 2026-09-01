@@ -10,6 +10,19 @@ Follow:
 
 * [Baseline](docs/spec/00-baseline.md)
 
+## AI-Generated Page Content
+
+AI-generated pages must not contain redundant explanatory text. Keep visible
+copy limited to the information and actions users need to complete the task:
+
+* Do not add filler introductions, repeated summaries, implementation notes,
+  or prose that merely explains an obvious control or layout.
+* Prefer concise labels, headings, helper text, and empty states; remove copy
+  that does not change a user's decision or clarify a non-obvious behavior.
+* Put rationale, usage guidance, and implementation detail in documentation
+  or code comments, not in the page UI, unless the user explicitly requests
+  explanatory content.
+
 ## Mandatory Isolated Development
 
 Every request must use its own dedicated branch and worktree.
