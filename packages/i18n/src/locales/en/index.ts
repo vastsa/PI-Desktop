@@ -870,8 +870,7 @@ export const en = {
     modelCapabilities: "Attachments",
     imageInput: "Images",
     documentInput: "PDF",
-    thinkingManualOverrideHint:
-      "Not listed by the catalog; enable a level only if the endpoint supports it.",
+    thinkingManualOverrideHint: "Not in catalog; enable if supported.",
     availableForSubagents: "Available for AI delegation",
     availableForSubagentsHint: "Allow AI to use this model when delegating tasks to subagents",
     notSupported: "Not supported",

@@ -180,6 +180,8 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
     catalog does not describe — a hand-typed ID, a vendor-account model, or an
     endpoint that went quiet — still keeps its stored selections, so discovery
     being unavailable can never erase configuration.
+    The label and optional hint sit above one compact grouped control; the
+    options wrap only when the pane is narrow.
     Removing the current default falls back to the first enabled level; no
     enabled levels disable the default selector and show the model's
     manual-override hint

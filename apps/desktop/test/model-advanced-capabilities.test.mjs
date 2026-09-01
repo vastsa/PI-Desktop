@@ -89,6 +89,28 @@ test("the capability controls and default selector are styled", () => {
   assert.match(styles, /\.provider-chosen-thinking-select:focus-visible \{/);
 });
 
+test("thinking levels use a compact accessible grouped control", () => {
+  assert.match(
+    pickerSource,
+    /className="provider-chosen-thinking-head">[\s\S]*?provider-chosen-thinking-hint[\s\S]*?<\/div>\s*<div[\s\S]*?className="provider-chosen-thinking-chips"/,
+  );
+  assert.match(pickerSource, /role="group"/);
+  assert.match(styles, /\.provider-chosen-thinking-head \{/);
+  assert.match(styles, /\.provider-chosen-thinking-hint \{/);
+  assert.match(
+    styles,
+    /\.provider-chosen-thinking-chips \{[\s\S]*?width: fit-content;[\s\S]*?max-width: 100%;/,
+  );
+  assert.match(
+    styles,
+    /\.provider-thinking-chip \{[\s\S]*?border: 0;[\s\S]*?transition:/,
+  );
+  assert.match(
+    styles,
+    /\.provider-thinking-chip:focus-visible \{[\s\S]*?outline:/,
+  );
+});
+
 test("a configured model keeps its published record when discovery omits it", () => {
   // The checkboxes read models.dev through this record. The live branch used to
   // return only what the endpoint listed, so a configured model the service no

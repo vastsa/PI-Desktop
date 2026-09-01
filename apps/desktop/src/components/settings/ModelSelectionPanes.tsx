@@ -389,15 +389,21 @@ export function ModelSelectionPanes({
                       </Field>
                     </div>
                     <div className="provider-chosen-thinking">
-                      <span className="provider-chosen-thinking-label">
-                        {t("settings.supportedThinkingLevels")}
-                      </span>
-                      <div className="provider-chosen-thinking-chips">
+                      <div className="provider-chosen-thinking-head">
+                        <span className="provider-chosen-thinking-label">
+                          {t("settings.supportedThinkingLevels")}
+                        </span>
                         {publishedLevels.length === 0 ? (
-                          <span className="provider-chosen-thinking-empty">
+                          <span className="provider-chosen-thinking-hint">
                             {t("settings.thinkingManualOverrideHint")}
                           </span>
                         ) : null}
+                      </div>
+                      <div
+                        className="provider-chosen-thinking-chips"
+                        role="group"
+                        aria-label={t("settings.supportedThinkingLevels")}
+                      >
                         {levelChoices.map((level) => {
                           const on = binding.thinkingLevels.includes(level);
                           return (

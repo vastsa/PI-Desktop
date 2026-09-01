@@ -861,7 +861,7 @@ export const zhCN = {
     modelCapabilities: "附件",
     imageInput: "图片",
     documentInput: "PDF",
-    thinkingManualOverrideHint: "目录未列出思考支持；仅在服务支持时启用。",
+    thinkingManualOverrideHint: "目录未标注，可手动开启",
     availableForSubagents: "可供 AI 自动调度",
     availableForSubagentsHint: "允许 AI 在委派子任务时自动选用此模型",
     notSupported: "不支持",

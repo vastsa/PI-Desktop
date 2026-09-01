@@ -2536,7 +2536,9 @@ compatibility remains owned by pi-ai.
    model entry and a compact configuration list. Each selected model is a
    scannable row with its ID, source, capabilities, and token limits; the row
    expands in place to expose context window, max output, seven thinking-level
-   chips, and a constrained default-thinking select. The first row starts
+   chips, and a constrained default-thinking select. The thinking label and
+   optional catalog hint sit above one compact, keyboard-operable grouped
+   control; its options wrap only when the pane is narrow. The first row starts
    expanded and additional rows start collapsed so large model sets do not
    become a wall of repeated forms.
 5. **Provider cards** — avatar initials, badges (default / secret state), host + first model, Test / Make default / Delete
