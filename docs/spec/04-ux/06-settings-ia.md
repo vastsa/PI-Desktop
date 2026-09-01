@@ -12,25 +12,29 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   band starts at the rail edge on the primary surface. The band must never paint
   the primary surface over the rail, which would show two colors in one top row.
   Interactive controls remain explicitly non-draggable
-- A compact navigation directory with icons, in this exact order:
-  1. **Basics** — Lucide `SlidersHorizontal` (appearance)
-  2. **全局 AI / AI** — Lucide `Sparkles` (permissions, defaults, command shell)
-  3. **Shortcuts** — Lucide `Keyboard` (keyboard shortcuts)
-  4. **Instructions** — Lucide `FileText` (global and project instruction files)
-  5. **Model configuration** — Lucide `Bot` (providers and default model)
-  6. **Import** — Lucide `Download` (bring sessions in from other tools)
-  7. **Project archive** — Lucide `Archive` (durable project index)
-  8. **Info** — Lucide `Info` (versions, logs, updates, developer)
+- A compact navigation directory with short, parallel labels and icons, in this
+  exact order:
+  1. **General / 常规** — Lucide `SlidersHorizontal` (appearance)
+  2. **AI** — Lucide `Sparkles` (permissions, defaults, command shell)
+  3. **Shortcuts / 快捷键** — Lucide `Keyboard` (keyboard shortcuts)
+  4. **Instructions / 指令** — Lucide `FileText` (global and project instruction files)
+  5. **Models / 模型** — Lucide `Bot` (providers and default model)
+  6. **Skills / 技能** — Lucide `BookOpen` (reusable agent instructions)
+  7. **MCP** — Lucide `Server` (agent connections)
+  8. **Subagents / 子智能体** — Lucide `Bot` (personal parallel agents)
+  9. **Import / 导入** — Lucide `Download` (bring sessions in from other tools)
+  10. **Projects / 项目** — Lucide `Archive` (durable project index)
+  11. **Info / 信息** — Lucide `Info` (versions, logs, updates, developer)
   Icons are decorative (`aria-hidden` via the SVG default) and stay monochrome
   with the rail label; do not reuse refresh/rotate glyphs here.
 - The directory remains a flat searchable list in the same exact order. For
   scanability, the destinations are shown in four titled visual clusters:
-  `Personal` / `个人` (Basics, AI, Shortcuts), `Agent` / `智能体` (Instructions,
-  Model configuration), `Workspace` / `工作区` (Import, Project archive), and
-  `About` / `关于` (Info). Headings are muted, non-interactive labels and use
-  whitespace for separation; no divider lines are rendered. These are visual
-  landmarks only, not a second navigation level. When search filters the
-  directory, empty clusters and their headings disappear.
+  `Preferences` / `偏好` (General, AI, Shortcuts), `Agent` / `智能体`
+  (Instructions, Models, Skills, MCP, Subagents), `Workspace` / `工作区`
+  (Import, Projects), and `System` / `系统` (Info). Headings are muted,
+  non-interactive labels and use whitespace for separation; no divider lines are
+  rendered. These are visual landmarks only, not a second navigation level.
+  When search filters the directory, empty clusters and their headings disappear.
 - No additional settings destinations or placeholder navigation rows are shown
 - Main content pane on primary surface with large section title + elevated
   rounded cards of rows. Its content uses the full width available after the
@@ -38,7 +42,7 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
 
 ## 2. Section contents
 
-### Basics
+### General
 - **Appearance** card:
   - **Theme**: three selectable preview cards (System / Light / Dark, System
     first) with a live mini-window mockup, a per-option description, and a
@@ -60,7 +64,7 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   - native select triggers and their opened option lists use the active theme's
     readable foreground/background pairing on macOS, Windows, and Linux; the
     shared native-select contract applies to every app surface
-- Platform-specific **Close behavior** remains in Basics because it changes
+- Platform-specific **Close behavior** remains in General because it changes
   application-window behavior rather than agent behavior.
 - File-open target, menu-bar behavior, and bottom-panel behavior are not
   rendered until their host-backed settings schemas and runtime effects exist.
@@ -338,7 +342,7 @@ system while preserving their different data ownership:
 
 ## 3. Navigation rules
 
-- Profile footer / command palette open Settings full page (default Basics)
+- Profile footer / command palette open Settings full page (default General)
 - Composer model menu and provider setup actions deep-link to the Providers
   card inside Agent
 - Plugin management remains available from the app shell's independent
@@ -353,14 +357,16 @@ system while preserving their different data ownership:
 ## 4. Acceptance
 
 1. Opening Settings hides the coding app sidebar (full-page takeover)
-2. Rail shows search + back and exactly Basics, 全局 AI/AI, Shortcuts,
-   Instructions, Model configuration, Import, Project archive, and Info in that
-   order
-3. Appearance is part of Basics and has no standalone rail destination
+2. Rail shows search + back and exactly General / 常规, AI, Shortcuts / 快捷键,
+   Instructions / 指令, Models / 模型, Skills / 技能, MCP,
+   Subagents / 子智能体, Import / 导入, Projects / 项目, and Info / 信息 in
+   that order. The rows are grouped under Preferences / 偏好, Agent / 智能体,
+   Workspace / 工作区, and System / 系统.
+3. Appearance is part of General and has no standalone rail destination
 4. Providers is part of Agent and has no standalone rail destination
 5. Plugins has no Settings destination; the app-shell Plugins page supports
    load, enable, disable, and uninstall
-6. Basics shows the host-backed Appearance card; the AI destination shows
+6. General shows the host-backed Appearance card; the AI destination shows
    Permissions and Defaults, including the Command shell row; the Shortcuts
    destination shows the Keyboard shortcuts card; Info shows the Developer card.
    No additional settings destinations are rendered
@@ -419,7 +425,7 @@ system while preserving their different data ownership:
     replace the list with skeletons, and restores the previous switch position
     if the host rejects the change
 
-## 5. Basics chrome metrics
+## 5. General chrome metrics
 
 The shell retains the Codex gold chrome while allowing the content pane to use
 the current window width:

@@ -2898,3 +2898,16 @@ D193, and D194.
   bindings resolve to `off`; there is no automatic reasoning inference. No IPC,
   storage, or host protocol change. See ADR 0144 and E2E-005/E2E-050/E2E-162/
   E2E-163.
+
+## 2026-09-01 — Settings rail uses a compact label scale (D284)
+
+- Settings navigation uses short, parallel destination labels: General, AI,
+  Shortcuts, Instructions, Models, Skills, MCP, Subagents, Import, Projects,
+  and Info. The Chinese locale uses the corresponding concise labels 常规、AI、
+  快捷键、指令、模型、技能、MCP、子智能体、导入、项目 and 信息.
+- Visual clusters are named Preferences, Agent, Workspace, and System
+  (偏好、智能体、工作区、系统). Destination IDs, order, search behavior, and
+  content ownership remain unchanged.
+- Rail labels may stay shorter than the descriptive selected-page title, such
+  as Model configuration or Project archive, so the navigation stays aligned
+  without removing context from the content pane.

@@ -217,10 +217,11 @@ MCP, Skills, and Subagents are not tabs or sections of Extensions.
 ### 3.6 Settings (full-page takeover)
 ### 3.6 Settings (full-page takeover)
 Settings replaces the whole shell (D063): back-to-app + search + a grouped
-settings rail. The Agent group contains independent Skills, MCP, and Subagents
-destinations alongside Instructions and Model configuration; selecting one
+settings rail with concise, parallel destination labels. The Agent group
+contains independent Skills, MCP, and Subagents destinations alongside
+Instructions and Model configuration; selecting one
 changes the page destination rather than a tab inside a shared capability panel.
-Appearance lives inside Basics; global AI behavior (permissions and context
+Appearance lives inside General; global AI behavior (permissions and context
 management) lives inside 全局 AI; keyboard shortcuts and global/project
 instructions have their own destinations; provider management lives inside
 Model configuration. Import scans supported local agent stores and presents

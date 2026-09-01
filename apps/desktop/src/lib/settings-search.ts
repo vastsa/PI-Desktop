@@ -18,18 +18,25 @@ export type SettingsTabId =
   | "projects"
   | "about";
 
-export type SettingsNavGroupId = "core" | "agent" | "workspace" | "about";
+export type SettingsNavGroupId =
+  | "preferences"
+  | "agent"
+  | "workspace"
+  | "system";
 
 export const SETTINGS_NAV_GROUP_LABELS: Record<SettingsNavGroupId, string> = {
-  core: "settings.groupPersonal",
+  preferences: "settings.groupPreferences",
   agent: "settings.groupAgent",
   workspace: "settings.groupWorkspace",
-  about: "settings.groupAbout",
+  system: "settings.groupSystem",
 };
 
 export type SettingsNavEntry = {
   id: SettingsTabId;
+  /** Short label used by the rail and settings search results. */
   labelKey: string;
+  /** Descriptive title used at the top of the selected settings page. */
+  titleKey: string;
   /** Visual-only rail grouping; search remains a flat destination index. */
   group: SettingsNavGroupId;
   /** i18n keys of the rows inside the tab; search matches their translations. */
@@ -39,8 +46,9 @@ export type SettingsNavEntry = {
 export const SETTINGS_NAV: SettingsNavEntry[] = [
   {
     id: "general",
-    labelKey: "settings.general",
-    group: "core",
+    labelKey: "settings.nav.general",
+    titleKey: "settings.general",
+    group: "preferences",
     keywordKeys: [
       "settings.appearance",
       "settings.theme",
@@ -53,8 +61,9 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
   },
   {
     id: "ai",
-    labelKey: "settings.ai",
-    group: "core",
+    labelKey: "settings.nav.ai",
+    titleKey: "settings.ai",
+    group: "preferences",
     keywordKeys: [
       "settings.permissions",
       "settings.permissionMode",
@@ -70,8 +79,9 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
   },
   {
     id: "shortcuts",
-    labelKey: "settings.shortcuts",
-    group: "core",
+    labelKey: "settings.nav.shortcuts",
+    titleKey: "settings.shortcuts",
+    group: "preferences",
     keywordKeys: [
       "settings.keyboard",
       "settings.shortcutAction.openSearch",
@@ -82,7 +92,8 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
   },
   {
     id: "instructions",
-    labelKey: "settings.instructions",
+    labelKey: "settings.nav.instructions",
+    titleKey: "settings.instructions",
     group: "agent",
     keywordKeys: [
       "settings.instructionsGlobal",
@@ -91,7 +102,8 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
   },
   {
     id: "agent",
-    labelKey: "settings.configuration",
+    labelKey: "settings.nav.models",
+    titleKey: "settings.configuration",
     group: "agent",
     keywordKeys: [
       "settings.providers",
@@ -104,7 +116,8 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
   },
   {
     id: "skills",
-    labelKey: "settings.skills",
+    labelKey: "settings.nav.skills",
+    titleKey: "settings.skills",
     group: "agent",
     keywordKeys: [
       "settings.skillsDescription",
@@ -124,7 +137,8 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
   },
   {
     id: "mcp",
-    labelKey: "settings.mcp",
+    labelKey: "settings.nav.mcp",
+    titleKey: "settings.mcp",
     group: "agent",
     keywordKeys: [
       "settings.mcpDescription",
@@ -143,7 +157,8 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
   },
   {
     id: "subagents",
-    labelKey: "settings.subagents",
+    labelKey: "settings.nav.subagents",
+    titleKey: "settings.subagents",
     group: "agent",
     keywordKeys: [
       "settings.subagentsDescription",
@@ -159,7 +174,8 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
   },
   {
     id: "import",
-    labelKey: "settings.import",
+    labelKey: "settings.nav.import",
+    titleKey: "settings.import",
     group: "workspace",
     keywordKeys: [
       "settings.importTitle",
@@ -170,7 +186,8 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
   },
   {
     id: "projects",
-    labelKey: "settings.projectArchive",
+    labelKey: "settings.nav.projects",
+    titleKey: "settings.projectArchive",
     group: "workspace",
     keywordKeys: [
       "project.title",
@@ -181,8 +198,9 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
   },
   {
     id: "about",
-    labelKey: "settings.about",
-    group: "about",
+    labelKey: "settings.nav.info",
+    titleKey: "settings.about",
+    group: "system",
     keywordKeys: [
       "settings.application",
       "settings.logs",

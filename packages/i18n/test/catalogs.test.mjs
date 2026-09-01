@@ -33,6 +33,61 @@ test("settings subagent empty-state copy uses a non-conflicting key", () => {
   assert.equal(typeof english["extensions.subagents.empty"], "string");
 });
 
+test("settings rail labels stay concise and parallel across locales", () => {
+  const english = flattenCatalog(en);
+  const chinese = flattenCatalog(zhCN);
+  const keys = [
+    "general",
+    "ai",
+    "shortcuts",
+    "instructions",
+    "models",
+    "skills",
+    "mcp",
+    "subagents",
+    "import",
+    "projects",
+    "info",
+  ].map((key) => `settings.nav.${key}`);
+
+  assert.deepEqual(
+    keys.map((key) => english[key]),
+    [
+      "General",
+      "AI",
+      "Shortcuts",
+      "Instructions",
+      "Models",
+      "Skills",
+      "MCP",
+      "Subagents",
+      "Import",
+      "Projects",
+      "Info",
+    ],
+  );
+  assert.deepEqual(
+    keys.map((key) => chinese[key]),
+    [
+      "常规",
+      "AI",
+      "快捷键",
+      "指令",
+      "模型",
+      "技能",
+      "MCP",
+      "子智能体",
+      "导入",
+      "项目",
+      "信息",
+    ],
+  );
+  assert.equal(english["settings.groupPreferences"], "Preferences");
+  assert.equal(chinese["settings.groupPreferences"], "偏好");
+  assert.equal(english["settings.groupSystem"], "System");
+  assert.equal(chinese["settings.groupSystem"], "系统");
+});
+
 test("import, project, and temporary-session copy is catalog-backed", () => {
   const english = flattenCatalog(en);
   for (const key of [

@@ -5479,13 +5479,15 @@ This test plan spec is accepted when:
 
 ### US-UI-44 Settings compact directory + merged sections
 - Open Settings light theme at ~1200×690.
-- Full-page shell: rail ~260px on `#f3f3f3`, main `#fff`; Back to app; search pill; Basics active pill with icon.
-- Rail order is exactly Basics, 全局 AI/AI, Shortcuts, Instructions, Model
-  configuration, Import, Project archive, and Info; the rows are grouped under
-  muted Personal / 个人, Agent / 智能体, Workspace / 工作区, and About / 关于
-  headings without divider lines, plugin duplicate, or placeholder
-  destinations.
-- Basics content: large title and an **Appearance** card with working
+- Full-page shell: rail ~260px on `#f3f3f3`, main `#fff`; Back to app; search pill; General active pill with icon.
+- Rail order is exactly General / 常规, AI, Shortcuts / 快捷键,
+  Instructions / 指令, Models / 模型, Skills / 技能, MCP,
+  Subagents / 子智能体, Import / 导入, Projects / 项目, and Info / 信息;
+  the rows are grouped under muted Preferences / 偏好, Agent / 智能体,
+  Workspace / 工作区, and System / 系统 headings without divider lines,
+  duplicate destinations, or placeholder rows. The selected page keeps its
+  descriptive title, such as Model configuration or Project archive.
+- General content: large title and an **Appearance** card with working
   system/light/dark controls. 全局 AI holds Permissions, Defaults, and the
   Command shell row; Context management has no settings card. Shortcuts holds
   the Keyboard shortcuts card.

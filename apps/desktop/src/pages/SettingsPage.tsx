@@ -65,6 +65,7 @@ type SettingsTab = ReturnType<typeof useAppStore.getState>["settingsTab"];
 type NavItem = {
   id: SettingsTab;
   labelKey: string;
+  titleKey: string;
   icon: ReactNode;
   group: SettingsNavGroupId;
   /** i18n keys of the rows inside the tab; search matches their translations. */
@@ -945,6 +946,7 @@ export function SettingsPage() {
     return SETTINGS_NAV.map((entry) => ({
       id: entry.id,
       labelKey: entry.labelKey,
+      titleKey: entry.titleKey,
       icon: iconFor[entry.id],
       group: entry.group,
       keywordKeys: entry.keywordKeys,
@@ -976,8 +978,8 @@ export function SettingsPage() {
     return [...groups.entries()].map(([id, items]) => ({ id, items }));
   }, [filteredItems]);
 
-  const activeLabel =
-    navItems.find((item) => item.id === tab)?.labelKey ?? "settings.title";
+  const activeTitleKey =
+    navItems.find((item) => item.id === tab)?.titleKey ?? "settings.title";
 
   return (
     <div className="settings-shell settings-shell-full">
@@ -1034,7 +1036,7 @@ export function SettingsPage() {
 
       <div className="settings-content">
         <div className="settings-content-inner">
-          <h1 className="settings-section-title">{t(activeLabel)}</h1>
+          <h1 className="settings-section-title">{t(activeTitleKey)}</h1>
 
           {tab === "general" && settings && (
             <div className="settings-stack">
