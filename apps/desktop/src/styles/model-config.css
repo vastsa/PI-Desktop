@@ -737,55 +737,121 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 20px;
+  min-height: 82px;
   padding: 14px 16px;
 }
 
+.model-default-intro {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 11px;
+}
+
+.model-default-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in oklab, var(--ds-accent) 25%, var(--ds-border-default));
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklab, var(--ds-accent) 11%, var(--ds-bg-primary));
+  color: var(--ds-accent);
+}
 
 .model-default-copy {
   display: flex;
-  flex-direction: column;
-  gap: 3px;
   min-width: 0;
   flex: 1;
+  flex-direction: column;
+  gap: 3px;
 }
 
 .model-default-label {
-  color: var(--ds-text-faint);
-  font-size: var(--text-2xs);
-  line-height: var(--leading-normal);
-}
-
-.model-default-value {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  flex-wrap: wrap;
-}
-
-.model-default-provider {
   color: var(--ds-text-primary);
-  font-size: var(--text-md);
-  font-weight: var(--font-weight-medium);
+  font-size: var(--text-sm-plus);
+  font-weight: var(--font-weight-semibold);
   line-height: var(--leading-tight);
 }
 
-.model-default-sep {
-  color: var(--ds-text-faint);
-}
-
-.model-default-model {
-  color: var(--ds-text-secondary);
-  font-size: var(--text-sm);
+.model-default-description {
+  overflow: hidden;
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs-plus);
   line-height: var(--leading-tight);
-  overflow-wrap: anywhere;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.model-default-empty {
-  color: var(--ds-text-faint);
-  font-size: var(--text-sm);
-  line-height: var(--leading-relaxed);
+.model-default-trigger {
+  display: flex;
+  width: min(270px, 42vw);
+  min-height: 48px;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border-color: var(--ds-border-default);
+  background: var(--ds-bg-primary);
+  text-align: left;
+}
+
+.model-default-trigger:hover,
+.model-default-trigger[aria-expanded="true"] {
+  border-color: color-mix(in oklab, var(--ds-accent) 55%, var(--ds-border-default));
+  background: var(--ds-bg-hover);
+}
+
+.model-default-trigger-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 27px;
+  height: 27px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-xs);
+  background: var(--ds-bg-active);
+  color: var(--ds-accent);
+}
+
+.model-default-trigger-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.model-default-trigger-provider,
+.model-default-trigger-model {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-default-trigger-provider {
+  color: var(--ds-text-primary);
+  font-size: var(--text-xs-plus);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--leading-tight);
+}
+
+.model-default-trigger-model {
+  color: var(--ds-text-muted);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-tight);
+}
+
+.model-default-trigger-chevron {
+  flex: 0 0 auto;
+  color: var(--ds-text-muted);
+  transition: transform var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.model-default-trigger[aria-expanded="true"] .model-default-trigger-chevron {
+  transform: rotate(180deg);
 }
 
 /*
@@ -855,7 +921,7 @@
   color: var(--ds-text-faint);
   font-size: var(--text-3xs);
   font-weight: var(--font-weight-medium);
-  letter-spacing: 0.02em;
+  letter-spacing: var(--tracking-wide);
 }
 
 .model-default-no-results {
@@ -927,7 +993,7 @@
   color: var(--ds-text-faint);
   font-size: var(--text-3xs);
   font-weight: var(--font-weight-normal);
-  letter-spacing: 0.02em;
+  letter-spacing: var(--tracking-wide);
   line-height: var(--leading-tight);
 }
 
@@ -1119,6 +1185,17 @@
 
   .model-provider-row-actions {
     align-self: flex-end;
+  }
+
+  .model-default-row {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .model-default-trigger,
+  .model-default-anchor {
+    width: 100%;
   }
 }
 

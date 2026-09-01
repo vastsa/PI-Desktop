@@ -182,7 +182,7 @@ Each scenario is documented in this format:
 
 - **Preconditions**: Two runnable providers exist; one provider has at least two configured model bindings.
 - **Steps**: Open Settings → Model configuration → Change default model, then select the second model under the provider.
-- **Expected**: The picker shows model-level entries (not only provider entries); the selected model is marked current, and a newly created session inherits that exact model and its owning provider.
+- **Expected**: The Defaults card presents a compact two-line trigger with a model icon, provider name, exact model ID, and disclosure chevron. The picker shows model-level entries (not only provider entries); the selected model is marked current, and a newly created session inherits that exact model and its owning provider.
   Searching by provider or model filters locally, the result list scrolls without moving the settings card, and an unmatched query shows an empty state.
 - **Specs linked**: `03-runtime/13-model-catalog-and-selection.md`
 - **Acceptance**: B (model selection)

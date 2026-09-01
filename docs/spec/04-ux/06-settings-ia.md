@@ -109,10 +109,13 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
     while the focused frameless window retains an `Alt + Space` fallback
 
 ### Model configuration (`agent` tab)
-- **Defaults** card: the default provider/model selector. Its native options
-  show the provider name only; account labels and model IDs are not appended to
-  the visible option label. Global operating mode, command shell, and
-  Enter-to-send are owned by the AI destination.
+- **Defaults** card: the default provider/model selector. The selector trigger
+  is a compact two-line summary with a model icon, provider name, exact model
+  ID, and a disclosure chevron; the surrounding row keeps the Default model
+  label and readiness hint separate from the control. Its native options show
+  the provider name only; account labels and model IDs are not appended to the
+  visible option label. Global operating mode, command shell, and Enter-to-send
+  are owned by the AI destination.
 - **Vendor accounts** card (D237/D240), between Defaults and Providers:
   - the card lists accounts, not vendors: one row per local OAuth provider row,
     including multiple rows for the same vendor. Its list surface uses the same

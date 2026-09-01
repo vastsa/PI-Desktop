@@ -18,7 +18,9 @@ import { useAppStore } from "../../stores/app-store";
 import { api } from "../../lib/api";
 import { Badge, Button, Input, cx } from "../ui";
 import {
+  IconBot,
   IconCheck,
+  IconChevronDown,
   IconConfig,
   IconPencil,
   IconPlug,
@@ -274,29 +276,19 @@ export function ModelConfigPage() {
         </div>
         <div className="settings-panel model-default-panel">
           <div className="model-default-row">
-            <div className="model-default-copy">
-              <div className="model-default-label">{t("settings.defaultModel")}</div>
-              <div className="model-default-value">
-                {defaultProvider && providerReady(defaultProvider) ? (
-                  <>
-                    <span className="model-default-provider">{defaultProvider.name}</span>
-                    <span className="model-default-sep" aria-hidden>
-                      ·
-                    </span>
-                    <span className="model-default-model font-mono">
-                      {displayedDefaultModelId(
-                        defaultProvider,
-                        settings.defaultModelId,
-                      ) || t("settings.noModel")}
-                    </span>
-                  </>
-                ) : (
-                  <span className="model-default-empty">
-                    {readyProviders.length === 0
+            <div className="model-default-intro">
+              <div className="model-default-icon" aria-hidden>
+                <IconBot size={18} />
+              </div>
+              <div className="model-default-copy">
+                <div className="model-default-label">{t("settings.defaultModel")}</div>
+                <div className="model-default-description">
+                  {defaultProvider && providerReady(defaultProvider)
+                    ? t("settings.changeDefaultModel")
+                    : readyProviders.length === 0
                       ? t("settings.defaultModelNone")
                       : t("settings.noDefaultProvider")}
-                  </span>
-                )}
+                </div>
               </div>
             </div>
             <AnchoredMenu
@@ -309,6 +301,7 @@ export function ModelConfigPage() {
               trigger={(ref) => (
                 <Button
                   ref={ref}
+                  className="model-default-trigger"
                   variant="secondary"
                   disabled={readyProviders.length === 0}
                   onClick={() => {
@@ -318,7 +311,25 @@ export function ModelConfigPage() {
                   aria-haspopup="listbox"
                   aria-expanded={pickingDefault}
                 >
-                  {t("settings.changeDefaultModel")}
+                  <span className="model-default-trigger-icon" aria-hidden>
+                    <IconBot size={15} />
+                  </span>
+                  <span className="model-default-trigger-copy">
+                    <span className="model-default-trigger-provider">
+                      {defaultProvider && providerReady(defaultProvider)
+                        ? defaultProvider.name
+                        : t("settings.defaultModel")}
+                    </span>
+                    <span className="model-default-trigger-model font-mono">
+                      {defaultProvider && providerReady(defaultProvider)
+                        ? displayedDefaultModelId(
+                            defaultProvider,
+                            settings.defaultModelId,
+                          ) || t("settings.noModel")
+                        : t("settings.noDefaultProvider")}
+                    </span>
+                  </span>
+                  <IconChevronDown className="model-default-trigger-chevron" size={14} aria-hidden />
                 </Button>
               )}
             >
