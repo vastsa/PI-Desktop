@@ -880,7 +880,12 @@ retain the fade-and-slide exit.
   release it after the exit animation, and divider commit updates the
   committed preferred width and active reservation. Native edges resize the
   window and reflow MainChat.
-- Width < 1040px or height < 700px is unsupported and prevented by Electron.
+- The outer shell keeps native edge/corner resizing enabled on every platform.
+  Frameless titlebar drag regions never replace the OS resize ownership. A
+  300ms stable-bounds settle window prevents recovery logic from competing with
+  a slow pointer gesture, and normal base bounds persist 600ms after the last
+  native resize/move event. Width < 1040px or height < 700px is unsupported and
+  prevented by Electron.
 
 ## 11. Component foundations
 

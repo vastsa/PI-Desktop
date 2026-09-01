@@ -62,8 +62,8 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
   window-control clearance because those controls occupy the work-panel header
   at the outer window edge.
 - Work panel resize: left-edge drag handle (§5.4)
-- Window resize: native edges change MainChat width only while an open work
-  panel keeps its committed width; responsive layout follows
+- Window resize: native edges and corners change MainChat width only while an
+  open work panel keeps its committed width; responsive layout follows
   [07-ui-design-system.md](07-ui-design-system.md) §10.1
 
 ### 1.5 Accessibility
@@ -751,7 +751,7 @@ workflow while rendering entirely inside the plugin's isolated page:
 | Open | Docked flex row right of the main pane; opened by an artifact or `Cmd/Ctrl + J` at a fixed committed width of 244–720px (default 280px). `Cmd/Ctrl + J` again collapses it, retaining the session context. Its flex allocation eases from zero to the committed width so MainChat reflows continuously, while a matching native reservation keeps the chat width stable when possible (ADR 0122). |
 | Multiple artifacts | The current-resource header keeps one readable label at the panel minimum; its bounded menu lists the tools first and then the transcript-opened resources in first-open order, with full-path tooltips and independent close controls |
 | Session switch | The destination session's retained open state, tabs, active tab, and Browser resource replace the previous session's panel context atomically; neither context is deleted |
-| Resizing | The left divider follows anchored pointer delta or keyboard input. Pointer changes preview once per animation frame and commit width plus reservation only on release; Escape, pointer cancellation, or lost capture restores both. Native window-edge resize changes MainChat only. |
+| Resizing | The left divider follows anchored pointer delta or keyboard input. Pointer changes preview once per animation frame and commit width plus reservation only on release; Escape, pointer cancellation, or lost capture restores both. Native window-edge/corner resize changes MainChat only. The Electron recovery watchdog waits for stable bounds so it cannot interrupt a slow gesture. |
 | No workspace | Each tab renders its own "open a project" empty state |
 | Open with no resource | `Cmd/Ctrl + J` reveals the panel without creating a tab, so the body renders the no-resource empty state: title, one line of copy, and the available Browser/plugin-view entries. Activating an entry creates or selects that singleton view. The body is not a `role="tabpanel"` here because no tab labels it. |
 | Constrained work area | The panel stays at its committed width; the native reservation is capped by the work area and MainChat absorbs the shortfall, possibly falling below its 360px target on small windows (ADR 0122) |

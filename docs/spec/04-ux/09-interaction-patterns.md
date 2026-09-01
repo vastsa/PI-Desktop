@@ -841,7 +841,10 @@ Work-panel width resizing is implemented in MVP:
   When the work area is too narrow, chat absorbs the unavoidable shortfall and
   may reflow below its 360px target.
 - Native window and sidebar resize never clamp or rewrite the panel. Native
-  edges resize MainChat by reflow only.
+  edges and corners resize MainChat by reflow only. The OS retains ownership of
+  the native hit regions; recovery logic waits for a 300ms stable-bounds window
+  and state persistence runs 600ms after the final resize/move event, so neither
+  can fight a slow edge drag or save an intermediate rectangle.
 - Maximized/fullscreen is unaffected; display/work-area changes reconcile the
   reservation against the current bounds. Ordinary movement within one
   unchanged work area does not reapply geometry. Persisted base bounds exclude

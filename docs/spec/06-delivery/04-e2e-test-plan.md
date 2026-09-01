@@ -6744,6 +6744,34 @@ This test plan spec is accepted when:
   adoption, previous-display replan regression, work-area clamping); the
   two-display desktop journey and the relaunch/hotplug legs are pending
 
+#### E2E-167: Native edge resize stays smooth and persists the settled bounds
+
+- **Preconditions**: PI-Desktop is open in a normal, non-maximized window on
+  macOS, Windows, or Linux. Run the case with the work panel closed and once
+  with it open at a committed width.
+- **Steps**:
+  1. Drag each reachable window edge and one corner slowly, including a brief
+     pause during the gesture, then release.
+  2. Confirm the window follows the pointer continuously and does not jump to
+     the default size or display edge while the pointer is down.
+  3. With the work panel open, resize from the outer edge and confirm the
+     conversation pane reflows while the panel width and divider preference do
+     not change.
+  4. Close and relaunch the app after the resize settles.
+- **Expected**: Native edge and corner hit regions remain available in frameless
+  chrome, the minimum size remains 1040×700, and the recovery watchdog does not
+  compete with a slow resize stream. The last settled base bounds reopen after
+  relaunch; temporary work-panel reservation width is not persisted as the
+  user's chat-window size.
+- **Specs linked**: `03-runtime/01-ipc-protocol.md`,
+  `04-ux/01-ui-ia.md`, `04-ux/07-ui-design-system.md`,
+  `04-ux/08-component-spec.md`, `04-ux/09-interaction-patterns.md`,
+  ADR 0029 / ADR 0122
+- **Acceptance**: A (app shell), F (persistence), Quality
+- **Milestone**: M6+
+- **Status**: Unit/source-contract covered; native desktop edge/corner journey
+  remains pending
+
 #### E2E-162: A vendor account and an AI service offer the same model picker
 
 - **Preconditions**: One signed-in vendor (OAuth) account and one API-key AI

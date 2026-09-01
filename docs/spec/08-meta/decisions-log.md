@@ -2825,3 +2825,17 @@ D193, and D194.
   the models.dev snapshot live.
 - See `03-runtime/02-agent-runtime.md` §5f,
   `03-runtime/11-provider-model-system.md` §7, and E2E-166.
+
+## 2026-09-01 — Native window edge resize settles before recovery (D279)
+
+- The main window keeps Electron's native edge and corner resize ownership on
+  every platform, including the frameless Windows/Linux shell, with the
+  existing 1040×700 minimum. Renderer drag regions do not replace OS hit
+  testing or introduce a second resize path.
+- Bounds recovery waits for a 300ms stable native bounds snapshot before it can
+  restore a tiny/shelved window. Normal base bounds remain debounced by 600ms
+  after the last resize/move event, while close still flushes the latest stable
+  state. A panel reservation's expected `setBounds` result is excluded from
+  cross-display user-move attribution.
+- No IPC, storage, host protocol, or renderer resize contract changes. This
+  refines D156/D163 and is covered by E2E-167.

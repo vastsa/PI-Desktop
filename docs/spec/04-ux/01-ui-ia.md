@@ -108,7 +108,11 @@ destination, chat as the home surface, tools and permissions inline.
   panel. Maximized/fullscreen is unaffected; moving between displays or
   changing a display work area reconciles the target normally. Persisted base
   bounds exclude temporary panel reservation. Background artifacts never
-  change the visible panel or reservation (D163, D255, ADR 0122).
+  change the visible panel or reservation (D163, D255, ADR 0122). The outer
+  window remains natively resizable from all OS edges and corners; its minimum
+  supported size is 1040×700. Native bounds recovery waits until the resize or
+  move stream is idle, and the last stable base bounds are persisted after a
+  short debounce so a slow drag cannot be overwritten mid-gesture.
   Replaces the former context-panel overlay; workspace/model/status info lives
   in the composer chips and Settings instead.
 - **Composer**: workspace-agnostic floating pill anchored to the conversation
