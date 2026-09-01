@@ -174,6 +174,7 @@ import {
   reconcileBaseWindowBounds,
   WORK_PANEL_MAX_WIDTH,
   WORK_PANEL_MIN_WIDTH,
+  windowBoundsEqual,
   type DisplayTransition,
   type WindowBounds,
   type WorkPanelReservationState,
@@ -238,6 +239,10 @@ if (!hasSingleInstanceLock) {
 
 const WINDOW_MIN_WIDTH = 1040;
 const WINDOW_MIN_HEIGHT = 700;
+// Native resize streams can pause briefly while the pointer crosses a display
+// scale boundary. Keep recovery out of that gesture and only run it after the
+// bounds have been stable for one short interaction window.
+const WINDOW_BOUNDS_SETTLE_MS = 300;
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -263,6 +268,10 @@ let workPanelDisplayKey: string | null = null;
 // Base bounds are persistable; last-applied bounds isolate later native deltas.
 let workPanelBaseBounds: WindowBounds | null = null;
 let workPanelLastAppliedBounds: WindowBounds | null = null;
+// A reservation changes native bounds intentionally. The next matching move
+// event belongs to that mutation, not to a user dragging the window between
+// displays.
+let expectedWorkPanelBounds: WindowBounds | null = null;
 // Set while a native `move` stream is unaccounted for, which is what separates
 // a display change the user caused by dragging from one the OS imposed on
 // bounds we asked for (D263). A flag rather than a deadline: attribution must
@@ -2176,12 +2185,14 @@ function applyWorkPanelReservation(): WorkPanelReservationState {
   if (next.bounds.width < currentBounds.width) {
     window.setMinimumSize(minimumWidth, WINDOW_MIN_HEIGHT);
   }
+  expectedWorkPanelBounds = next.bounds;
   window.setBounds(next.bounds, false);
   if (next.bounds.width >= currentBounds.width) {
     window.setMinimumSize(minimumWidth, WINDOW_MIN_HEIGHT);
   }
 
   const appliedBounds = window.getBounds();
+  expectedWorkPanelBounds = appliedBounds;
   workPanelLastAppliedBounds = { ...appliedBounds };
   workPanelReservation = {
     width: Math.max(0, appliedBounds.width - baseBounds.width),
@@ -2399,6 +2410,7 @@ async function createWindow() {
   workPanelDisplayKey = null;
   workPanelBaseBounds = null;
   workPanelLastAppliedBounds = null;
+  expectedWorkPanelBounds = null;
   workPanelUserMovePending = false;
   const savedState = await readWindowState();
   mainWindow = new BrowserWindow({
@@ -2408,6 +2420,9 @@ async function createWindow() {
     title: APP_NAME,
     backgroundColor: nativeTheme.shouldUseDarkColors ? "#181818" : "#ffffff",
     show: false,
+    // Keep native edge/corner resizing explicit. Frameless chrome owns the
+    // titlebar only; the OS remains responsible for the resize hit regions.
+    resizable: true,
     // One frameless look everywhere: macOS keeps inset traffic lights;
     // Windows/Linux hide native chrome entirely — the renderer draws its
     // own Codex-style window controls (see WindowControls.tsx).
@@ -2556,6 +2571,16 @@ async function createWindow() {
   const WORK_PANEL_MOVE_SETTLE_MS = 220;
   let workPanelMoveSettleTimer: NodeJS.Timeout | null = null;
   const noteUserWindowMove = () => {
+    if (!isLiveWindow()) return;
+    const currentBounds = window.getBounds();
+    if (
+      expectedWorkPanelBounds &&
+      windowBoundsEqual(currentBounds, expectedWorkPanelBounds)
+    ) {
+      expectedWorkPanelBounds = null;
+      return;
+    }
+    expectedWorkPanelBounds = null;
     workPanelUserMovePending = true;
     if (workPanelMoveSettleTimer) clearTimeout(workPanelMoveSettleTimer);
     workPanelMoveSettleTimer = setTimeout(() => {
@@ -2742,7 +2767,20 @@ async function createWindow() {
 
   const scheduleBoundsCheck = () => {
     if (boundsTimer) clearTimeout(boundsTimer);
-    boundsTimer = setTimeout(() => ensureStableBounds(false), 100);
+    if (!isLiveWindow()) return;
+    const scheduledBounds = window.getBounds();
+    boundsTimer = setTimeout(() => {
+      boundsTimer = null;
+      if (!isLiveWindow()) return;
+      // A slow native gesture may emit another resize/move just after the
+      // timer was armed. Never restore from a stale snapshot while that is
+      // happening; the latest event will arm a fresh settle window.
+      if (!windowBoundsEqual(window.getBounds(), scheduledBounds)) {
+        scheduleBoundsCheck();
+        return;
+      }
+      ensureStableBounds(false);
+    }, WINDOW_BOUNDS_SETTLE_MS);
   };
 
   window.on("show", () => ensureStableBounds(false));
@@ -2872,8 +2910,14 @@ async function createWindow() {
     }
   }, 1500);
   window.on("closed", () => {
-    if (boundsTimer) clearTimeout(boundsTimer);
-    if (saveTimer) clearTimeout(saveTimer);
+    if (boundsTimer) {
+      clearTimeout(boundsTimer);
+      boundsTimer = null;
+    }
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+    }
     if (workPanelMoveSettleTimer) {
       clearTimeout(workPanelMoveSettleTimer);
       workPanelMoveSettleTimer = null;
