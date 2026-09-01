@@ -179,11 +179,8 @@ export const en = {
     emptyTitle: "What can I help you build?",
     emptyTitleInProject: "What can we build in {{project}}?",
     emptyTitleTemporary: "What would you like to explore temporarily?",
-    emptySubtitle: "Start a task.",
     quickActionsTitle: "Quick actions",
     quickActionOpenProject: "Open a project",
-    emptySubtitleTemporary:
-      "This is a private scratch chat and will be discarded with this session.",
     emptyHint: "Add a provider and open a project to start.",
     placeholder: "Ask PI-Desktop to help with anything",
     placeholderHome: "Ask anything",

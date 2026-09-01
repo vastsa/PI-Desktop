@@ -19,7 +19,10 @@ test("empty home uses a single scrollable stack instead of dual-grow portals", (
   );
   assert.match(chatSurface, /className="home-scroll"/);
   assert.match(chatSurface, /className="home-stack-inner"/);
-  assert.match(chatSurface, /className="empty-hero-subtitle"/);
+  assert.doesNotMatch(
+    chatSurface,
+    /empty-hero-subtitle|emptySubtitle(?:Temporary)?/,
+  );
   assert.match(chatSurface, /<OnboardingChecklist \/>/);
   assert.match(chatSurface, /<div className="home-composer-wrap">/);
   assert.doesNotMatch(

@@ -48,7 +48,7 @@ test("startup splash motion respects reduced-motion and uses design tokens", () 
   );
 });
 
-test("crash and empty-home copy is catalog-backed in English and Chinese", () => {
+test("crash and empty-home title copy is catalog-backed in English and Chinese", () => {
   assert.match(english, /uiCrashed:\s*"Something went wrong with the interface"/);
   assert.match(chinese, /uiCrashed:\s*"界面出现了问题"/);
   assert.match(app, /i18n\.t\("app\.uiCrashed"\)/);
@@ -59,6 +59,4 @@ test("crash and empty-home copy is catalog-backed in English and Chinese", () =>
     chinese,
     /emptyTitleInProject:\s*"今天想在 \{\{project\}\} 里做点什么？"/,
   );
-  assert.match(chinese, /emptySubtitle:\s*"从一个任务开始，或者选择一个方向。"/);
-  assert.match(chinese, /emptySubtitleTemporary:\s*"这是一个独立的临时对话，会随本次会话一起丢弃。"/);
 });
