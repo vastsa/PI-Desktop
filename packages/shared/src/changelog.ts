@@ -23,6 +23,14 @@ export type ChangelogEntry = {
 
 const enEntries: ChangelogEntry[] = [
   {
+    version: "0.11.4",
+    date: "2026-09-01",
+    highlights: [
+      "Publish native macOS Intel DMG and ZIP installers alongside Apple Silicon builds.",
+      "Keep macOS updater feeds unified across both native architectures.",
+    ],
+  },
+  {
     version: "0.11.3",
     date: "2026-08-31",
     highlights: [
@@ -505,6 +513,14 @@ const enEntries: ChangelogEntry[] = [
 ];
 
 const zhCNEntries: ChangelogEntry[] = [
+  {
+    version: "0.11.4",
+    date: "2026-09-01",
+    highlights: [
+      "新增原生 macOS Intel DMG 与 ZIP 安装包，并与 Apple Silicon 版本同时发布。",
+      "统一两种原生架构的 macOS 更新源，应用内更新发现保持一致。",
+    ],
+  },
   {
     version: "0.11.3",
     date: "2026-08-31",
