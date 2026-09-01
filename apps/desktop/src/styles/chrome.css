@@ -163,6 +163,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
   background: var(--ds-bg-sidebar, var(--ds-bg-primary));
   /* Codex expanded shell: continuous sidebar/main edge (hairline only) */
   border-right: 1px solid color-mix(in oklab, var(--ds-text-primary) 4%, transparent);
@@ -172,6 +173,41 @@
    * making sidebar collapse feel like a layout jump.
    */
   animation: sidebar-in var(--motion-duration-normal) var(--motion-ease-out) both;
+}
+
+.sidebar-resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+}
+
+.sidebar-resize-handle::after {
+  position: absolute;
+  top: 0;
+  right: 3px;
+  bottom: 0;
+  width: 1px;
+  content: "";
+  background: var(--ds-accent);
+  opacity: 0;
+  transition: opacity var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.sidebar:hover .sidebar-resize-handle::after,
+.sidebar-resize-handle:focus-visible::after,
+.sidebar-resize-handle.is-resizing::after {
+  opacity: 1;
+}
+
+:root[data-sidebar-resizing="true"],
+:root[data-sidebar-resizing="true"] * {
+  cursor: col-resize !important;
+  user-select: none !important;
 }
 
 .sidebar.is-exiting {

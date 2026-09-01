@@ -32,6 +32,15 @@ export type SidebarPreferences = {
 };
 
 export const SIDEBAR_PREFERENCES_KEY = "pi.desktop.sidebarPreferences";
+export const SIDEBAR_WIDTH_KEY = "pi.desktop.sidebarWidth";
+export const SIDEBAR_WIDTH_MIN = 240;
+export const SIDEBAR_WIDTH_DEFAULT = 275;
+export const SIDEBAR_WIDTH_MAX = 520;
+
+export function clampSidebarWidth(value: number): number {
+  if (!Number.isFinite(value)) return SIDEBAR_WIDTH_DEFAULT;
+  return Math.round(Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, value)));
+}
 
 function storage(): Storage | null {
   try {
@@ -182,6 +191,15 @@ export function saveSidebarPreferences(value: SidebarPreferences): void {
     },
     openProjectPaths: cleanPaths(value.openProjectPaths),
   });
+}
+
+export function loadSidebarWidth(): number {
+  const value = read(SIDEBAR_WIDTH_KEY);
+  return typeof value === "number" ? clampSidebarWidth(value) : SIDEBAR_WIDTH_DEFAULT;
+}
+
+export function saveSidebarWidth(value: number): void {
+  write(SIDEBAR_WIDTH_KEY, clampSidebarWidth(value));
 }
 
 export function sessionIsPinned(id: string, meta: Record<string, SessionMeta>): boolean {

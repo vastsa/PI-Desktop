@@ -5,12 +5,12 @@
 > Interaction behavior: [09-interaction-patterns.md](09-interaction-patterns.md)
 
 
-> Shell layout is Codex-aligned: left thread sidebar (~275px), main transcript, floating bottom composer with runtime mode/permission/model controls, and a compact action-only top bar. Prefer neutral charcoal surfaces over blue-slate chrome.
+> Shell layout is Codex-aligned: left thread sidebar (240–520px, 275px by default), main transcript, floating bottom composer with runtime mode/permission/model controls, and a compact action-only top bar. Prefer neutral charcoal surfaces over blue-slate chrome.
 >
 > **Precedence rule**: where a metric or copy string below disagrees with a
 > Codex parity decision in [decisions-log §D](../08-meta/decisions-log.md)
 > (D034+), the decision log wins — it tracks the live gold captures. Known
-> updated values: sidebar ~275px (not 240px), toolbar 46px (not 44px),
+> updated values: sidebar 240–520px (275px default), toolbar 46px (not 44px),
 > composer placeholder per D094/D066, home empty stack and bottom composer per
 > D111/D204/D206,
 > Projects index table per D066/D133, settings full-page shell per D063 with the
@@ -30,7 +30,7 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
 ```text
 +------------------+------------------------------+------------------+
 | Sidebar          | MainChat                     | WorkPanel        |
-| (275px / 48px)   | (flex-1)                     | (244–720px /     |
+| (240–520px / 48px) | (flex-1)                   | (244–720px /     |
 |                  |                              |  hidden)         |
 +------------------+------------------------------+------------------+
 | Titlebar row: 46px, traffic lights at {x:16,y:16} (D034/D070)      |
@@ -54,6 +54,11 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
   `sidebar-in`, exit `sidebar-out` keyframes) that mirrors the work-panel dock:
   the aside stays in the tree through the exit keyframe, then unmounts
   (`is-exiting` flag + `animationend` guard, with a timeout fallback)
+- Sidebar width resize: the right-edge `separator` handle follows horizontal
+  pointer movement from the press position, clamps to 240–520px, and commits
+  the preferred width on release. `Escape`, pointer cancellation, and unmount
+  restore the press-time width. The focused handle supports ArrowLeft/Right
+  (16px steps), Home, and End, and exposes the current width through ARIA.
 - Work panel collapse: sole control lives in the session pane titlebar top-right
   while the panel is open, with its outer edge flush against the divider
   between the session pane and work panel so the work-panel content header is
@@ -73,8 +78,10 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
 
 ### 1.6 MVP constraints
 
-- Sidebar width is fixed; the work panel is the only adjustable auxiliary
-  column and is resized only from its own divider
+- Sidebar width is adjustable from its right-edge handle within 240–520px
+  (275px default), persists across launches, and remains independent from the
+  collapsed icon-rail state; the work panel remains adjustable from its own
+  divider
 - The main pane renders one active transcript and one selected workspace while
   the sidebar may retain several project tabs/groups
 - Sidebar and work-panel dock transitions animate their flex allocation as well
@@ -320,6 +327,7 @@ visually distinct from list content.
 | State | Behavior |
 |---|---|
 | Expanded | Full session titles visible |
+| Sidebar resizing | Right-edge handle is active; pointer movement previews width and release commits it |
 | Collapsed | Icon rail — hover shows tooltip with session title |
 | Active session | Accent-blue outlined status ring plus active row background |
 | Selecting session | Destination row receives the active treatment immediately while transcript/workspace resolution continues |
@@ -367,6 +375,10 @@ visually distinct from list content.
   release in Settings
 - Click Search or Collapse sidebar at the right of the header row to
   open global search or collapse the sidebar respectively
+- Drag the expanded sidebar's right edge to adjust its width. The main pane
+  reflows continuously, the press position remains anchored, and the final
+  width is saved on release. Focus the edge handle and use ArrowLeft/Right,
+  Home, or End for keyboard resizing; Escape cancels an active pointer resize.
 - While the work panel is open, click the session-pane top-right panel collapse
   control to hide the panel without deleting tabs; the work-panel header keeps
   only dynamic tabs

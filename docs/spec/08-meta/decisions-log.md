@@ -2839,3 +2839,17 @@ D193, and D194.
   cross-display user-move attribution.
 - No IPC, storage, host protocol, or renderer resize contract changes. This
   refines D156/D163 and is covered by E2E-167.
+
+## 2026-09-01 — Expanded sidebar width is user-resizable (D280)
+
+- The expanded sidebar owns a persisted preferred width with a `240..520px`
+  clamp and a `275px` default. The right-edge renderer handle previews width
+  from the pointer-down position, lets MainChat reflow continuously, and saves
+  only on pointer release.
+- The handle is a vertical ARIA separator. ArrowLeft/ArrowRight adjust it in
+  16px steps, Home and End select the bounds, and keyboard changes commit
+  immediately. Escape, pointer cancellation, lost ownership, and unmount roll
+  back an in-progress pointer gesture to its starting width.
+- Sidebar collapse remains independent from the preferred expanded width. No
+  IPC, native-window bounds, work-panel reservation, or project/session order
+  contract changes. See ADR 0141 and E2E-168.

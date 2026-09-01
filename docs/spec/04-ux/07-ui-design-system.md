@@ -848,7 +848,7 @@ Codex parity decisions (D034/D070) supersede any older value here.
 |---|---|---|
 | Titlebar row height | 46px | Codex toolbar rhythm (D034); traffic lights {x:16,y:16} |
 | Sidebar width (collapsed) | 48px | Icon-only rail |
-| Sidebar width (expanded) | ~275px | Codex sidebar width (D034/D070) |
+| Sidebar width (expanded) | `240px–520px` (default 275px) | Right-edge resize handle; persisted preferred width |
 | Main pane minimum readable width | 360px | Target while the native work-panel reservation can fit panel + chat; constrained windows reflow chat below it (D163, D255, ADR 0122) |
 | Work panel width (closed) | 0px | Hidden by default |
 | Work panel width (open) | `244px–720px` (default 280px), fixed at the committed width | the combined create trigger keeps the full panel width on content; the panel is an in-flow column backed by a matching temporary native reservation (D154/D163/D255, ADR 0122) |

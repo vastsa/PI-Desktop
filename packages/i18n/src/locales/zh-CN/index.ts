@@ -138,6 +138,8 @@ export const zhCN = {
     forward: "前进",
     collapseSidebar: "收起侧边栏",
     expandSidebar: "展开侧边栏",
+    resizeSidebar: "调整侧边栏宽度",
+    sidebarWidth: "侧边栏宽度：{{width}} 像素",
     sessionActions: "会话操作",
     sessionRunning: "进行中",
     sessionSelected: "已选中",

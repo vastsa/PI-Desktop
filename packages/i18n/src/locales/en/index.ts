@@ -143,6 +143,8 @@ export const en = {
     forward: "Forward",
     collapseSidebar: "Collapse sidebar",
     expandSidebar: "Expand sidebar",
+    resizeSidebar: "Resize sidebar",
+    sidebarWidth: "Sidebar width: {{width}} pixels",
     sessionActions: "Session actions",
     sessionRunning: "Working",
     sessionSelected: "Selected",

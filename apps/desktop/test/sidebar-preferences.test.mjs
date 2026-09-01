@@ -1,11 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  clampSidebarWidth,
   loadSidebarPreferences,
+  loadSidebarWidth,
   projectIsArchived,
   projectIsCollapsed,
   projectIsPinned,
   saveSidebarPreferences,
+  saveSidebarWidth,
+  SIDEBAR_WIDTH_DEFAULT,
+  SIDEBAR_WIDTH_MAX,
+  SIDEBAR_WIDTH_MIN,
   sortProjects,
   sortSessions,
 } from "../src/lib/sidebar-preferences.ts";
@@ -266,6 +272,46 @@ test("persists retained project paths and per-project collapse state", () => {
     assert.equal(loaded.projectSort, "name");
     assert.equal(loaded.sessionView.sort, "created");
     assert.equal(loaded.sessionView.archived, true);
+  } finally {
+    globalThis.localStorage = previousStorage;
+  }
+});
+
+test("clamps and persists the expanded sidebar width", () => {
+  assert.equal(clampSidebarWidth(Number.NaN), SIDEBAR_WIDTH_DEFAULT);
+  assert.equal(clampSidebarWidth(SIDEBAR_WIDTH_MIN - 1), SIDEBAR_WIDTH_MIN);
+  assert.equal(clampSidebarWidth(312.4), 312);
+  assert.equal(clampSidebarWidth(SIDEBAR_WIDTH_MAX + 1), SIDEBAR_WIDTH_MAX);
+
+  const values = new Map();
+  const previousStorage = globalThis.localStorage;
+  globalThis.localStorage = {
+    getItem(key) {
+      return values.get(key) ?? null;
+    },
+    setItem(key, value) {
+      values.set(key, String(value));
+    },
+    removeItem(key) {
+      values.delete(key);
+    },
+    clear() {
+      values.clear();
+    },
+    key() {
+      return null;
+    },
+    get length() {
+      return values.size;
+    },
+  };
+
+  try {
+    assert.equal(loadSidebarWidth(), SIDEBAR_WIDTH_DEFAULT);
+    saveSidebarWidth(SIDEBAR_WIDTH_MAX + 100);
+    assert.equal(loadSidebarWidth(), SIDEBAR_WIDTH_MAX);
+    saveSidebarWidth(SIDEBAR_WIDTH_MIN - 100);
+    assert.equal(loadSidebarWidth(), SIDEBAR_WIDTH_MIN);
   } finally {
     globalThis.localStorage = previousStorage;
   }

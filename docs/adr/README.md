@@ -154,3 +154,4 @@ Each ADR includes:
 | 0137 | Retained session panes | Accepted (amends 0130 clauses 4/5) |
 | 0138 | Subagent peer messaging | Accepted (amended by 0140) |
 | 0140 | Fold the three peer tools into one `Peer` tool | Accepted |
+| 0141 | Make expanded sidebar width user-resizable | Accepted |

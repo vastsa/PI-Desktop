@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type AnimationEvent as ReactAnimationEvent,
+  type CSSProperties,
   type ErrorInfo,
   type ReactNode,
 } from "react";
@@ -35,6 +36,11 @@ import type { ToastOptions } from "./stores/app-store";
 import { api } from "./lib/api";
 import { commitWorkPanelPresentation } from "./lib/work-panel-presentation";
 import { toolWorkPanelTab } from "./lib/work-panel-tabs";
+import {
+  clampSidebarWidth,
+  loadSidebarWidth,
+  saveSidebarWidth,
+} from "./lib/sidebar-preferences";
 import { StartupSplash } from "./components/StartupSplash";
 import { cx } from "./components/ui";
 import {
@@ -178,7 +184,16 @@ function AppShell() {
 
   const [searchOpen, setSearchOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(() => loadSidebarWidth());
   const [sidebarExiting, setSidebarExiting] = useState(false);
+  const handleSidebarWidthChange = useCallback((width: number) => {
+    setSidebarWidth(clampSidebarWidth(width));
+  }, []);
+  const handleSidebarWidthCommit = useCallback((width: number) => {
+    const nextWidth = clampSidebarWidth(width);
+    setSidebarWidth(nextWidth);
+    saveSidebarWidth(nextWidth);
+  }, []);
   // Stable identity: the keydown and native-menu handlers register once and
   // must never capture a stale `sidebarCollapsed`. A functional update keeps
   // the toggle symmetrical, so the second Cmd/Ctrl+B re-expands the sidebar.
@@ -1666,6 +1681,9 @@ function AppShell() {
               onOpenSearch={() => setSearchOpen(true)}
               onToggleSidebar={toggleSidebar}
               sidebarToggleShortcut={sidebarToggleShortcut}
+              sidebarWidth={sidebarWidth}
+              onWidthChange={handleSidebarWidthChange}
+              onWidthCommit={handleSidebarWidthCommit}
             />
           ) : null}
 
@@ -1766,6 +1784,7 @@ function AppShell() {
         sidebarCollapsed && "sidebar-collapsed",
         showSplash && "is-booting",
       )}
+      style={{ "--ds-sidebar-width": `${sidebarWidth}px` } as CSSProperties}
     >
       {shell}
       {splash}

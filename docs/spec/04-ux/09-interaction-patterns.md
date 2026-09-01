@@ -851,6 +851,20 @@ Work-panel width resizing is implemented in MVP:
   temporary reservation width and its x shift.
 - Background-session artifacts never update the visible panel or reservation.
 
+Sidebar width resizing is also implemented in MVP:
+
+- The expanded sidebar's right-edge `separator` handle anchors to the press
+  position and starting width, then previews a clamped width from `240px` to
+  `520px` while the main pane reflows.
+- Pointer release commits and persists the final width. Pointer cancellation,
+  lost component ownership, unmount, and Escape restore the press-time width
+  without changing the saved preference.
+- The focused handle supports ArrowLeft/ArrowRight in 16px steps plus Home and
+  End. Keyboard changes commit immediately and expose `aria-valuenow` and a
+  localized width description.
+- Collapsing the sidebar hides the handle but does not discard the preferred
+  expanded width; re-expanding restores that width.
+
 The following gestures remain reserved for future milestones:
 
 - Drag project/session items to assign manual order

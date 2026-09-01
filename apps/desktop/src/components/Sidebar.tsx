@@ -7,6 +7,7 @@ import {
   type AnimationEventHandler as ReactAnimationEventHandler,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 import { cx } from "./ui";
 
@@ -46,6 +47,11 @@ import type {
   ProjectMeta,
   SessionMeta,
   SessionSort,
+} from "../lib/sidebar-preferences";
+import {
+  clampSidebarWidth,
+  SIDEBAR_WIDTH_MAX,
+  SIDEBAR_WIDTH_MIN,
 } from "../lib/sidebar-preferences";
 import { BrandLogo } from "./BrandLogo";
 import { NotificationCenter } from "./NotificationCenter";
@@ -90,6 +96,20 @@ type ProjectPathTooltip = {
 };
 
 const VIEWPORT_PADDING = 8;
+const SIDEBAR_RESIZE_STEP = 16;
+
+type SidebarResizeState = {
+  pointerId: number;
+  startX: number;
+  startWidth: number;
+  currentWidth: number;
+  frame: number;
+  handle: HTMLDivElement;
+};
+
+function clearSidebarResizeStyles(): void {
+  document.documentElement.removeAttribute("data-sidebar-resizing");
+}
 
 function projectName(path: string, fallback?: string) {
   if (fallback?.trim()) return fallback.trim();
@@ -173,12 +193,18 @@ export function Sidebar({
   onOpenSearch,
   onToggleSidebar,
   sidebarToggleShortcut,
+  sidebarWidth,
+  onWidthChange,
+  onWidthCommit,
   className,
   onAnimationEnd,
 }: {
   onOpenSearch: () => void;
   onToggleSidebar: () => void;
   sidebarToggleShortcut: string;
+  sidebarWidth: number;
+  onWidthChange: (width: number) => void;
+  onWidthCommit: (width: number) => void;
   className?: string;
   onAnimationEnd?: ReactAnimationEventHandler<HTMLElement>;
 }) {
@@ -236,10 +262,110 @@ export function Sidebar({
   } | null>(null);
   const [projectPathTooltip, setProjectPathTooltip] = useState<ProjectPathTooltip | null>(null);
   const [expandedProjectSessions, setExpandedProjectSessions] = useState<Record<string, boolean>>({});
+  const [sidebarResizing, setSidebarResizing] = useState(false);
   const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const menuFirstItemRef = useRef<HTMLButtonElement | null>(null);
   const sessionPrefetchTimerRef = useRef<number | undefined>(undefined);
   const projectPathTimerRef = useRef<number | undefined>(undefined);
+  const sidebarResizeRef = useRef<SidebarResizeState | null>(null);
+
+  const finishSidebarResize = useCallback((cancelled: boolean) => {
+    const state = sidebarResizeRef.current;
+    if (!state) return;
+    if (cancelled) {
+      onWidthChange(state.startWidth);
+    } else {
+      onWidthChange(state.currentWidth);
+      onWidthCommit(state.currentWidth);
+    }
+    sidebarResizeRef.current = null;
+    if (state.frame) cancelAnimationFrame(state.frame);
+    clearSidebarResizeStyles();
+    if (state.handle.hasPointerCapture(state.pointerId)) {
+      state.handle.releasePointerCapture(state.pointerId);
+    }
+    setSidebarResizing(false);
+  }, [onWidthChange, onWidthCommit]);
+
+  const startSidebarResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || sidebarResizeRef.current) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.focus({ preventScroll: true });
+    const startWidth = clampSidebarWidth(sidebarWidth);
+    sidebarResizeRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startWidth,
+      currentWidth: startWidth,
+      frame: 0,
+      handle: event.currentTarget,
+    };
+    setSidebarResizing(true);
+    document.documentElement.setAttribute("data-sidebar-resizing", "true");
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }, [sidebarWidth]);
+
+  const moveSidebarResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    const state = sidebarResizeRef.current;
+    if (!state || state.pointerId !== event.pointerId) return;
+    const nextWidth = clampSidebarWidth(state.startWidth + event.clientX - state.startX);
+    state.currentWidth = nextWidth;
+    if (state.frame) return;
+    state.frame = requestAnimationFrame(() => {
+      if (sidebarResizeRef.current !== state) return;
+      state.frame = 0;
+      onWidthChange(state.currentWidth);
+    });
+  }, [onWidthChange]);
+
+  const endSidebarResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (sidebarResizeRef.current?.pointerId !== event.pointerId) return;
+    finishSidebarResize(false);
+  }, [finishSidebarResize]);
+
+  const cancelSidebarResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (sidebarResizeRef.current?.pointerId !== event.pointerId) return;
+    finishSidebarResize(true);
+  }, [finishSidebarResize]);
+
+  const handleSidebarResizeKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const currentWidth = clampSidebarWidth(sidebarWidth);
+    const nextWidth = event.key === "Home"
+      ? SIDEBAR_WIDTH_MIN
+      : event.key === "End"
+        ? SIDEBAR_WIDTH_MAX
+        : clampSidebarWidth(
+            currentWidth + (event.key === "ArrowRight" ? SIDEBAR_RESIZE_STEP : -SIDEBAR_RESIZE_STEP),
+          );
+    if (nextWidth === currentWidth) return;
+    onWidthCommit(nextWidth);
+  }, [onWidthCommit, sidebarWidth]);
+
+  useEffect(() => {
+    if (!sidebarResizing) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      finishSidebarResize(true);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [finishSidebarResize, sidebarResizing]);
+
+  useEffect(() => {
+    return () => {
+      const state = sidebarResizeRef.current;
+      if (!state) return;
+      if (state.frame) cancelAnimationFrame(state.frame);
+      onWidthChange(state.startWidth);
+      clearSidebarResizeStyles();
+      sidebarResizeRef.current = null;
+    };
+  }, [onWidthChange]);
 
   const showArchived = sessionView.archived;
   const sessionSort = sessionView.sort;
@@ -1580,6 +1706,23 @@ export function Sidebar({
       </div>
       {renderFloatingMenu()}
       {renderProjectPathTooltip()}
+      <div
+        className={cx("sidebar-resize-handle no-drag", sidebarResizing && "is-resizing")}
+        role="separator"
+        aria-orientation="vertical"
+        aria-label={t("nav.resizeSidebar")}
+        aria-valuemin={SIDEBAR_WIDTH_MIN}
+        aria-valuemax={SIDEBAR_WIDTH_MAX}
+        aria-valuenow={clampSidebarWidth(sidebarWidth)}
+        aria-valuetext={t("nav.sidebarWidth", { width: clampSidebarWidth(sidebarWidth) })}
+        tabIndex={0}
+        onPointerDown={startSidebarResize}
+        onPointerMove={moveSidebarResize}
+        onPointerUp={endSidebarResize}
+        onPointerCancel={cancelSidebarResize}
+        onLostPointerCapture={cancelSidebarResize}
+        onKeyDown={handleSidebarResizeKeyDown}
+      />
     </aside>
   );
 }
