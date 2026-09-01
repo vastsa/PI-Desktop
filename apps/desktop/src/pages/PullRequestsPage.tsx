@@ -59,7 +59,6 @@ export function PullRequestsPage() {
         <div className="page-header">
           <div>
             <h1 className="page-title">{t("pulls.title")}</h1>
-            <div className="page-subtitle">{t("pulls.subtitle")}</div>
           </div>
           <div className="flex gap-2">
             <Button variant="secondary" disabled={loading} onClick={() => void refresh()}>
@@ -114,9 +113,6 @@ export function PullRequestsPage() {
               <IconPullRequest size={20} />
             </div>
             <div className="text-base-plus font-medium">{t("pulls.emptyTitle")}</div>
-            <div className="mt-2 max-w-md text-md text-text-secondary">
-              {t("pulls.emptyBody")}
-            </div>
             <Button className="mt-5" variant="primary" onClick={() => void openProject()}>
               {t("project.open")}
             </Button>
@@ -127,11 +123,9 @@ export function PullRequestsPage() {
               <IconPullRequest size={20} />
             </div>
             <div className="text-base-plus font-medium">{t("pulls.emptyTitle")}</div>
-            <div className="mt-2 max-w-md text-md text-text-secondary">
-              {error && error !== "NO_WORKSPACE"
-                ? error
-                : t("pulls.emptyBodyWithProject", { project: workspace.name })}
-            </div>
+            {error && error !== "NO_WORKSPACE" ? (
+              <div className="mt-2 max-w-md text-md text-text-secondary">{error}</div>
+            ) : null}
           </Panel>
         ) : (
           <div className="dest-list">

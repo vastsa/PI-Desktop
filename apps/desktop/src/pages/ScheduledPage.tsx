@@ -47,7 +47,6 @@ export function ScheduledPage() {
         <div className="page-header">
           <div>
             <h1 className="page-title">{t("scheduled.title")}</h1>
-            <div className="page-subtitle">{t("scheduled.subtitle")}</div>
           </div>
         </div>
 
@@ -116,9 +115,6 @@ export function ScheduledPage() {
               <IconClock size={20} />
             </div>
             <div className="text-base-plus font-medium">{t("scheduled.emptyTitle")}</div>
-            <div className="mt-2 max-w-md text-md text-text-secondary">
-              {t("scheduled.emptyBody")}
-            </div>
           </Panel>
         ) : (
           <div className="dest-list">

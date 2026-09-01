@@ -200,8 +200,8 @@ export function CapabilityToggle({
  * description, the toolbar, and the single panel the rows live in.
  */
 export function AgentCapabilityPage({
-  description,
-  note,
+  description: _description,
+  note: _note,
   toolbar,
   children,
   className,
@@ -214,10 +214,6 @@ export function AgentCapabilityPage({
 }) {
   return (
     <div className={cx("agent-capability-page", className)}>
-      <div className="agent-capability-intro">
-        <p className="agent-capability-intro-description">{description}</p>
-        {note ? <p className="agent-capability-intro-note">{note}</p> : null}
-      </div>
       {toolbar}
       {children}
     </div>

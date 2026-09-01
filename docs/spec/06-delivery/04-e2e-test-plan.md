@@ -1452,6 +1452,15 @@ Each scenario is documented in this format:
 - **Milestone**: M4
 - **Status**: Draft
 
+#### E2E-024X: Page copy stays concise in both locales
+
+- **Preconditions**: App running with English and Simplified Chinese available; project archive, Scheduled, Pull requests, Extensions, and Agent capability destinations are reachable.
+- **Steps**: 1) Open each destination in English and inspect its header, toolbar, empty state, and primary action. 2) Switch to 简体中文 and repeat. 3) Trigger a permission, validation, destructive-action, or provider-error state.
+- **Expected**: Page headers do not repeat their title as explanatory subtitles; empty states use a concise title and action, with body text only when context or a required next step is necessary. Settings and capability pages omit prose that only explains obvious controls. Permission, security, validation, destructive-action, keyboard, scope, and error details remain visible in both locales.
+- **Specs linked**: `04-ux/01-ui-ia.md`, `04-ux/07-ui-design-system.md`
+- **Acceptance**: Quality (concise page copy)
+- **Status**: Unit-covered (`packages/i18n/test/user-facing-copy.test.mjs`); visual scenario Draft
+
 ### Security — No Secret Leakage
 
 #### E2E-027: Secrets not in logs for normal flows

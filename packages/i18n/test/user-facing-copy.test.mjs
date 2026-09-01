@@ -6,7 +6,7 @@ const english = flattenCatalog(en);
 const chinese = flattenCatalog(zhCN);
 
 test("shell status and crash copy stay user-facing", () => {
-  assert.equal(english["app.tagline"], "Your local AI coding partner");
+  assert.equal(english["app.tagline"], "Local AI coding partner");
   assert.equal(
     english["app.uiCrashed"],
     "Something went wrong with the interface",
@@ -34,7 +34,7 @@ test("failed turns expose a localized continuation prompt", () => {
 test("common setup and marketplace copy avoid developer jargon", () => {
   assert.equal(
     english["chat.emptyHint"],
-    "Add an AI provider, open a project, then send your first message.",
+    "Add a provider and open a project to start.",
   );
   assert.equal(english["nav.temporarySessions"], "Temporary chats");
   assert.equal(english["menu.refreshMarket"], "Refresh marketplace");
@@ -51,7 +51,7 @@ test("common setup and marketplace copy avoid developer jargon", () => {
   assert.equal(chinese["nav.temporarySessions"], "临时对话");
   assert.equal(chinese["settings.providers"], "AI 服务");
   assert.equal(chinese["menu.refreshMarket"], "刷新插件市场");
-  assert.equal(chinese["chat.emptyHint"], "添加 AI 模型服务、打开项目，然后发送第一条消息。");
+  assert.equal(chinese["chat.emptyHint"], "添加服务并打开项目即可开始。");
 });
 
 test("Plan mode and Auto permission copy stay explicit in both locales", () => {
@@ -77,4 +77,15 @@ test("Plan mode and Auto permission copy stay explicit in both locales", () => {
   assert.equal(chinese["plan.chooseApprovalMode"], "选择批准权限");
   assert.match(english["plan.autoWarning"], /may change files/);
   assert.match(chinese["plan.autoWarning"], /可能修改文件/);
+});
+
+test("page copy keeps actions and removes redundant explanatory paragraphs", () => {
+  assert.equal(english["project.archiveSubtitle"], "Opened folders and their chats.");
+  assert.equal(english["scheduled.emptyBody"], "Create a task above.");
+  assert.equal(english["panel.empty.body"], "Choose a tool or open a resource.");
+  assert.equal(chinese["project.archiveSubtitle"], "已打开的文件夹及其对话。");
+  assert.equal(chinese["scheduled.emptyBody"], "请在上方创建任务。");
+  assert.equal(chinese["panel.empty.body"], "选择工具或打开资源。");
+  assert.doesNotMatch(english["project.archiveSubtitle"], /without losing|Activate|archive the rest/);
+  assert.doesNotMatch(chinese["project.archiveSubtitle"], /可以|而不丢失/);
 });

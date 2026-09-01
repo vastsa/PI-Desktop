@@ -134,10 +134,10 @@ destination, chat as the home surface, tools and permissions inline.
 
 ### 3.1 Chat home (default)
 - Empty state: a restrained hero title ("What can I help you build?" — project name
-  becomes a dotted-underline button when a workspace is open), a short muted
-  supporting line, an optional first-run checklist, and a bottom-reserved
-  composer. Task entry starts directly in the composer; no developer starter
-  cards or contextual quick-action row are rendered (D204/D206).
+  becomes a dotted-underline button when a workspace is open), an optional
+  first-run checklist, and a bottom-reserved composer. Task entry starts
+  directly in the composer; no redundant supporting paragraph, developer
+  starter cards, or contextual quick-action row is rendered (D204/D206).
 - With transcript: message stream + tool disclosure rows (D071), a contextual
   message-scoped review card immediately after each successful workspace
   Write/Edit row, docked composer, and a session-scoped permission card inline.

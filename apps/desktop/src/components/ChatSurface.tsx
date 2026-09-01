@@ -170,13 +170,6 @@ export const ChatSurface = memo(function ChatSurface() {
                     t("chat.emptyTitle")
                   )}
                 </h1>
-                <p className="empty-hero-subtitle">
-                  {t(
-                    isTemporarySession
-                      ? "chat.emptySubtitleTemporary"
-                      : "chat.emptySubtitle",
-                  )}
-                </p>
               </div>
               <OnboardingChecklist />
             </div>

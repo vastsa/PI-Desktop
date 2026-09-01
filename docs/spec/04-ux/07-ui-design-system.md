@@ -30,7 +30,17 @@ The desktop shell targets a 1:1 visual match with the local Codex desktop client
 | **Motion as feedback** | Animations convey state change (streaming, loading, expand/collapse). Never decorative. |
 | **Keyboard-first** | Focus rings, tab order, and shortcut labels are primary UX, not afterthoughts. |
 
-### 3.1 Text selection
+### 3.1 AI-generated page copy
+
+AI-generated page surfaces use concise, task-oriented copy:
+
+- Keep visible text to labels, headings, actions, statuses, and helper text that changes a user decision or clarifies non-obvious behavior.
+- Do not add filler introductions, repeated summaries, implementation notes, or prose that merely explains an obvious control or layout.
+- Empty states default to a title and the next useful action. Keep body text only for required context, risk, error cause, or a non-obvious next step.
+- Preserve permission, security, validation, destructive-action, keyboard, path/scope, and error details even when they are longer.
+- Put rationale, usage guidance, and implementation detail in documentation or code comments rather than page UI unless the user requests it.
+
+### 3.2 Text selection
 
 PI-Desktop behaves like a desktop application shell, so accidental drag
 selection is suppressed for chrome by default. The selection contract is:
@@ -54,7 +64,7 @@ selection is suppressed for chrome by default. The selection contract is:
 - Focus-visible rings use `color-mix(in oklab, var(--ds-accent) 80%, transparent)`
   (no white wash that drifts off the neutral ramp).
 
-### 3.2 Locale-aware chrome labels
+### 3.3 Locale-aware chrome labels
 
 Section labels that use Latin micro-style (`text-transform: uppercase` +
 `letter-spacing: wide`) must relax under `:lang(zh-CN)`:
@@ -87,7 +97,7 @@ content scroller only. The root `html`/`body` viewport must not reserve another
 gutter, because Windows' classic scrollbars make the duplicate visible as an
 empty rail outside the panel surface.
 
-### 3.3 Product identity and marks
+### 3.4 Product identity and marks
 
 The visible product identity is **PI-Desktop**, even where the shell borrows
 Codex as a visual reference. The identity contract is deliberately small:
