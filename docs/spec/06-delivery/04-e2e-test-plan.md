@@ -6880,16 +6880,21 @@ This test plan spec is accepted when:
   output and thinking chips; cancel. 3) Edit the vendor account and do the same
   on one of its chosen models. 4) Toggle a thinking level on a reasoning-capable
   account model and save. 5) Reopen the account editor and read that model's
-  chips. 6) In the account editor, hand-type a custom model ID the catalog does
-  not publish, enable a thinking level on it, and save.
+  chips. 6) For an OpenAI Codex account, inspect `gpt-5.6-sol` (or another
+  account model also published under models.dev's `openai` provider) and confirm
+  its published context/output limits and reasoning levels are present. 7) In
+  the account editor, hand-type a custom model ID the catalog does not publish,
+  enable a thinking level on it, and save.
 - **Expected**: Both dialogs render the same picker — the same discovered list,
   the same search, the same free-form custom-model entry, the same chosen pane,
   the same Advanced disclosure and the same chips — so the account editor is no
   longer missing the advanced controls. A level enabled on an account model
   persists and reappears when the editor is reopened, including a level the
-  catalog does not publish. A model with no published record keeps its explicit
-  levels and starts with all choices available for manual opt-in. The account's
-  default model stays the head binding.
+  catalog does not publish. OpenAI Codex's `openai-codex` adapter key resolves
+  the matching `openai` models.dev record, so `gpt-5.6-sol` is not shown with
+  generic 128,000 / 8,192 / no-reasoning defaults. A model with no published
+  record keeps its explicit levels and starts with all choices available for
+  manual opt-in. The account's default model stays the head binding.
 - **Specs linked**: `04-ux/06-settings-ia.md`,
   `04-ux/08-component-spec.md` §19, `03-runtime/11-provider-model-system.md`
   §10, `08-meta/decisions-log.md` (D270 refines D237/D240)

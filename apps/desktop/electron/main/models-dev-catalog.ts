@@ -521,7 +521,7 @@ function modelMatchesProvider(model: ModelsDevModel, vendorKey?: string): boolea
 }
 
 const KNOWN_PROVIDER_BASE_URLS: Record<string, string[]> = {
-  openai: ["https://api.openai.com/v1"],
+  openai: ["https://api.openai.com/v1", "https://chatgpt.com/backend-api"],
   anthropic: ["https://api.anthropic.com"],
   google: ["https://generativelanguage.googleapis.com/v1beta"],
   mistral: ["https://api.mistral.ai/v1"],
@@ -531,6 +531,12 @@ const KNOWN_PROVIDER_BASE_URLS: Record<string, string[]> = {
 };
 
 const PROVIDER_ALIASES: Record<string, string[]> = {
+  // pi-ai names the ChatGPT subscription adapter `openai-codex`, while
+  // models.dev publishes its model metadata under `openai`. Keep the
+  // transport identity in provider config, but resolve metadata through the
+  // corresponding public catalog provider.
+  "openai-codex": ["openai", "openai-codex"],
+  "openai-codex-responses": ["openai", "openai-codex"],
   together: ["together", "togetherai"],
   "together-ai": ["together", "togetherai"],
   fireworks: ["fireworks", "fireworks-ai"],
@@ -724,6 +730,7 @@ export class ModelsDevCatalog {
   private readonly now: () => number;
   private readonly catalogPath: string;
   private localLoadAttempted = false;
+  private localLoadPromise: Promise<boolean> | undefined;
 
   constructor(options: ModelsDevCatalogOptions) {
     this.fetchImpl = options.fetchImpl ?? fetch;
@@ -734,21 +741,29 @@ export class ModelsDevCatalog {
 
   /** Load the bundled release snapshot; this never performs network I/O. */
   async loadLocal(): Promise<boolean> {
+    if (this.localLoadPromise) return this.localLoadPromise;
     if (this.localLoadAttempted) return this.loaded;
     this.localLoadAttempted = true;
+    this.localLoadPromise = (async () => {
+      try {
+        const raw = JSON.parse(await readFile(this.catalogPath, "utf8")) as unknown;
+        const parsed = parseModelsDevCatalog(raw);
+        if (parsed.length === 0) throw new Error("models.dev snapshot contained no providers");
+        this.providers = new Map(parsed.map((provider) => [provider.providerKey, provider]));
+        this.loaded = true;
+        this.source = "bundled";
+        this.lastError = undefined;
+      } catch (error) {
+        this.loaded = false;
+        this.lastError = error instanceof Error ? error.message : String(error);
+      }
+      return this.loaded;
+    })();
     try {
-      const raw = JSON.parse(await readFile(this.catalogPath, "utf8")) as unknown;
-      const parsed = parseModelsDevCatalog(raw);
-      if (parsed.length === 0) throw new Error("models.dev snapshot contained no providers");
-      this.providers = new Map(parsed.map((provider) => [provider.providerKey, provider]));
-      this.loaded = true;
-      this.source = "bundled";
-      this.lastError = undefined;
-    } catch (error) {
-      this.loaded = false;
-      this.lastError = error instanceof Error ? error.message : String(error);
+      return await this.localLoadPromise;
+    } finally {
+      this.localLoadPromise = undefined;
     }
-    return this.loaded;
   }
 
   /** Ensure the release snapshot is available without contacting the network. */

@@ -268,6 +268,75 @@ test("matches vendor-prefixed models when the catalog provider key is a gateway"
   }
 });
 
+test("maps the OpenAI Codex account to OpenAI models.dev metadata", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-models-dev-openai-codex-"));
+  const catalogPath = join(dir, "api.json");
+  await writeFile(
+    catalogPath,
+    JSON.stringify({
+      openai: {
+        name: "OpenAI",
+        models: {
+          "gpt-5.6-sol": {
+            id: "gpt-5.6-sol",
+            name: "GPT-5.6 Sol",
+            reasoning: true,
+            reasoning_options: [{
+              type: "effort",
+              values: ["none", "low", "medium", "high", "xhigh", "max"],
+            }],
+            modalities: { input: ["text", "image", "pdf"], output: ["text"] },
+            limit: { context: 1_050_000, output: 128_000 },
+          },
+        },
+      },
+    }),
+    "utf8",
+  );
+  try {
+    const catalog = new ModelsDevCatalog({ catalogPath });
+    assert.equal(await catalog.ensureLoaded(), true);
+
+    const input = {
+      vendorKey: "openai-codex",
+      baseUrl: "https://chatgpt.com/backend-api",
+      modelId: "gpt-5.6-sol",
+    };
+    const match = catalog.findModel(input);
+    assert.equal(match?.providerKey, "openai");
+    assert.equal(match?.reasoning, true);
+    assert.deepEqual(match?.thinkingLevels, [
+      "off",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+    ]);
+    assert.equal(match?.limit.context, 1_050_000);
+    assert.equal(match?.limit.output, 128_000);
+    assert.equal(catalog.providerKeyForRow(input), "openai");
+
+    const fallback = catalog.modelsForProvider({
+      vendorKey: input.vendorKey,
+      baseUrl: input.baseUrl,
+      providerId: "oauth-row",
+    });
+    assert.equal(fallback.length, 1);
+    assert.equal(fallback[0].modelId, "gpt-5.6-sol");
+    assert.deepEqual(fallback[0].supportedThinkingLevels, [
+      "off",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+    ]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("models.dev reasoning options map to canonical levels", () => {
   assert.deepEqual(
     thinkingLevelsFromModelsDev(true, [{
@@ -307,6 +376,25 @@ test("the application loads the bundled release snapshot without network access"
       catalog.modelsForProvider({ vendorKey: "anthropic", providerId: "row" }).length,
       2,
       "only text-capable models enter the agent picker",
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("concurrent catalog reads share the bundled snapshot load", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-models-dev-concurrent-load-"));
+  const catalogPath = join(dir, "api.json");
+  await writeFile(catalogPath, JSON.stringify(catalogFixture), "utf8");
+  try {
+    const catalog = new ModelsDevCatalog({ catalogPath });
+    const first = catalog.ensureLoaded();
+    const second = catalog.ensureLoaded();
+    assert.equal(await first, true);
+    assert.equal(await second, true);
+    assert.equal(
+      catalog.findModel({ vendorKey: "anthropic", modelId: "claude-opus-4.6" })?.family,
+      "claude-opus",
     );
   } finally {
     await rm(dir, { recursive: true, force: true });

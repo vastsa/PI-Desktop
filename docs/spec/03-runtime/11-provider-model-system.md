@@ -132,7 +132,10 @@ PI-Desktop must not permanently restrict users to a short fixed model list.
    accepts the configured vendor key, normalized API URL, models.dev provider
    identity, and vendor-prefixed IDs such as `deepseek/deepseek-v4`; a provider
    model ID without the catalog prefix is matched to the exact unprefixed
-   suffix only when the provider identity is unambiguous. They cannot invent or
+   suffix only when the provider identity is unambiguous. Native adapter keys
+   may use a catalog alias — for example, pi-ai's `openai-codex` ChatGPT
+   subscription adapter resolves model metadata through the `openai` record —
+   while the adapter keeps its own transport identity. They cannot invent or
    replace model metadata. A configured free-form ID remains selectable with
    the generic text-only, non-reasoning baseline when it is absent from
    models.dev. Settings still permits an explicit thinking-level override for
