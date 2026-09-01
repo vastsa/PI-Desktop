@@ -161,7 +161,7 @@
   gap: 8px;
   flex: none;
   flex-wrap: wrap;
-  padding: 7px 8px;
+  padding: 5px 7px;
   border-bottom: 1px solid var(--ds-border-subtle);
 }
 
@@ -806,7 +806,7 @@
   flex-direction: column;
   width: min(340px, calc(100vw - 32px));
   max-height: min(400px, calc(100vh - 120px));
-  padding: 6px;
+  padding: 4px;
   border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-md);
   background: var(--ds-bg-elevated-opaque);
@@ -821,17 +821,17 @@
 .model-default-search {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex: none;
-  padding: 2px 6px 6px;
+  padding: 1px 5px 4px;
   color: var(--ds-text-faint);
   border-bottom: 1px solid var(--ds-border-subtle);
 }
 
 .model-default-search input {
   min-width: 0;
-  height: 30px;
-  padding: 5px 0;
+  height: 26px;
+  padding: 3px 0;
   border: 0;
   background: transparent;
   box-shadow: none;
@@ -847,7 +847,7 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
-  padding-top: 4px;
+  padding-top: 2px;
 }
 
 .model-default-results-meta {
@@ -875,7 +875,7 @@
 .model-default-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 0;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -883,11 +883,11 @@
 
 .model-default-option {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
+  grid-template-columns: 16px minmax(0, 1fr);
   grid-template-rows: auto auto;
-  column-gap: 8px;
+  column-gap: 6px;
   width: 100%;
-  padding: 7px 8px;
+  padding: 5px 7px;
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -923,11 +923,11 @@
 }
 
 .model-default-provider-group {
-  padding: 8px 8px 4px;
+  padding: 5px 7px 2px;
   color: var(--ds-text-faint);
   font-size: var(--text-3xs);
-  font-weight: var(--font-weight-medium);
-  letter-spacing: 0.03em;
+  font-weight: var(--font-weight-normal);
+  letter-spacing: 0.02em;
   line-height: var(--leading-tight);
 }
 
@@ -935,7 +935,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--ds-text-primary);
-  font-size: var(--text-sm);
+  font-size: var(--text-xs-plus);
   font-weight: var(--font-weight-normal);
   line-height: var(--leading-tight);
   text-overflow: ellipsis;
