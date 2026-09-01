@@ -423,7 +423,7 @@ export function AgentSkillsPage() {
           actions={
             <CapabilityButton variant="primary" title={newSkillTitle} onClick={openCreate}>
               <IconPlus size={14} />
-              {t("extensions.skills.add")}
+              {t("settings.newSkill")}
             </CapabilityButton>
           }
         />

@@ -4678,8 +4678,9 @@ Each scenario is documented in this format:
      global group header rooted at `~/.agents/skills` and a project group header
      rooted at project A's `.agents/skills`, both flow in one column at natural
      page height, and the project picker changes the selected project. Confirm
-     the Skills toolbar has the same single primary Add action as MCP; the
-     level-specific Import action is available in each Skills group header.
+     the Skills toolbar has the same single primary action shape as MCP, with
+     the concise New label; the level-specific Import action is available in
+     each Skills group header.
      On first paint confirm skeleton rows appear; on a later refresh confirm
      the rows already on screen stay and the list dims instead.
   3. Exercise the level filter and the search field. Confirm All / Global /

@@ -75,6 +75,8 @@ test("one search field covers the page and every row carries its level", () => {
 test("skills keep the MCP-shaped toolbar and scope import actions in group headers", () => {
   const toolbar = skills.slice(skills.indexOf("<CapabilityToolbar"), skills.indexOf("<CapabilityPanel"));
   assert.match(toolbar, /actions=\{[\s\S]*?CapabilityButton variant="primary"/);
+  assert.match(toolbar, /settings\.newSkill/);
+  assert.doesNotMatch(toolbar, /extensions\.skills\.add/);
   assert.doesNotMatch(toolbar, /importSkill|IconDownload|settings\.importSkill/);
   assert.match(skills, /action=\{importButton\("global"\)\}/);
   assert.match(skills, /action=\{selectedProjectPath \? importButton\("project"\) : undefined\}/);
