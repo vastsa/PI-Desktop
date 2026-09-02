@@ -5,12 +5,29 @@ import {
   clampBoundsOriginToWorkArea,
   displayWorkAreaKey,
   emptyWorkPanelReservationState,
+  isWorkPanelOuterResizeEdge,
+  parseWorkPanelChatWidth,
   parseWorkPanelReservationWidth,
   planWorkPanelReservation,
   reconcileBaseWindowBounds,
 } from "../electron/main/work-panel-window.ts";
 
 const workArea = { x: 0, y: 0, width: 1920, height: 1080 };
+
+test("right-side native edges own panel width while other edges remain chat-owned", () => {
+  assert.equal(isWorkPanelOuterResizeEdge("right"), true);
+  assert.equal(isWorkPanelOuterResizeEdge("top-right"), true);
+  assert.equal(isWorkPanelOuterResizeEdge("bottom-right"), true);
+  assert.equal(isWorkPanelOuterResizeEdge("left"), false);
+  assert.equal(isWorkPanelOuterResizeEdge("bottom"), false);
+});
+
+test("chat resize IPC accepts only bounded integer widths", () => {
+  assert.equal(parseWorkPanelChatWidth({ width: 1040 }), 1040);
+  assert.equal(parseWorkPanelChatWidth({ width: 10000 }), 10000);
+  assert.equal(parseWorkPanelChatWidth({ width: 1039 }), null);
+  assert.equal(parseWorkPanelChatWidth({ width: 10000.5 }), null);
+});
 
 test("display work-area keys change with display geometry", () => {
   assert.equal(displayWorkAreaKey(1, workArea), "1:0:0:1920:1080");

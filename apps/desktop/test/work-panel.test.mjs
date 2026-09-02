@@ -103,7 +103,7 @@ test("work panel reserves native width and releases it after collapse", () => {
   // The panel remains a fixed-width in-flow shell sibling; its flex allocation
   // is animated with the dock so the main pane does not jump before motion.
   assert.match(globalStyles, /\.work-panel \{[^}]*flex: 0 0 var\(--work-panel-width\)/s);
-  assert.match(panelSource, /"--work-panel-width": `\$\{renderWidth\}px`/);
+  assert.match(panelSource, /"--work-panel-width": `\$\{renderPanelWidth\}px`/);
   assert.doesNotMatch(
     globalStyles.match(/\.work-panel \{[^}]*\}/s)?.[0] ?? "",
     /position:\s*absolute/,
@@ -180,7 +180,7 @@ test("work panel header exposes one unified menu with no duplicated entries", ()
   // them all.
   assert.match(
     panelSource,
-    /blocked=\{[\s\S]*exiting \|\| panelBlocked \|\| contextOpen \|\| dragWidth !== null[\s\S]*\}/,
+    /blocked=\{[\s\S]*exiting \|\| panelBlocked \|\| contextOpen \|\| isResizing[\s\S]*\}/,
   );
   assert.doesNotMatch(panelSource, /onContextMenu|createPortal|work-panel-tools-menu/);
   assert.match(
@@ -255,13 +255,14 @@ test("work panel starts closed with no tabs and persists width only", () => {
   assert.doesNotMatch(persistenceBlock, /workPanelContexts|tabs|open/);
 });
 
-test("work panel resizing is independent from the chat viewport", () => {
+test("work panel and chat resize targets stay independent", () => {
   assert.equal(MAIN_PANE_MIN_WIDTH, 360);
   assert.equal(WORK_PANEL_MIN_WIDTH, 244);
   assert.equal(WORK_PANEL_MAX_WIDTH, 720);
-  assert.match(panelSource, /clampWorkPanelWidth\(width\)/);
-  assert.match(panelSource, /workPanelWidthLimits\(\)/);
-  assert.doesNotMatch(panelSource, /workPanelWidthContext|viewportWidth|sidebarWidth/);
+  assert.match(panelSource, /renderPanelWidth = clampWorkPanelWidth\(nativePanelWidth \?\? width\)/);
+  assert.match(panelSource, /viewportWidth/);
+  assert.match(panelSource, /clampWorkPanelChatWidth/);
+  assert.match(panelSource, /api\.setWorkPanelChatWidth/);
   assert.doesNotMatch(panelSource, /\.sidebar, \.sidebar-rail/);
   assert.match(globalStyles, /\.main-pane \{[^}]*min-width:\s*0;/s);
   assert.match(mainSource, /displayWorkAreaKey/);
@@ -296,6 +297,9 @@ test("work panel resizing is independent from the chat viewport", () => {
   }
   assert.match(mainSource, /if \(nextDisplayKey === workPanelDisplayKey\) return/);
   assert.match(mainSource, /if \(isLiveWindow\(\)\) applyWorkPanelReservation\(\)/);
+  assert.match(mainSource, /window\.on\("will-resize"/);
+  assert.match(mainSource, /isWorkPanelOuterResizeEdge/);
+  assert.match(mainSource, /window\.on\("resized"/);
 });
 
 test("work panel reservation has a complete renderer-to-main IPC path", () => {
@@ -309,16 +313,30 @@ test("work panel reservation has a complete renderer-to-main IPC path", () => {
   );
   assert.match(mainSource, /IPC\.invoke\.windowSetWorkPanelReservation/);
   assert.match(mainSource, /planWorkPanelReservation/);
+  assert.match(
+    protocolSource,
+    /windowSetWorkPanelChatWidth:\s*"pi-desktop\/window\/setWorkPanelChatWidth"/,
+  );
+  assert.match(
+    protocolSource,
+    /windowWorkPanelResize:\s*"pi-desktop\/window\/event\/workPanelResize"/,
+  );
+  assert.match(apiSource, /setWorkPanelChatWidth/);
+  assert.match(apiSource, /onWorkPanelResize/);
+  assert.match(mainSource, /IPC\.invoke\.windowSetWorkPanelChatWidth/);
+  assert.match(mainSource, /IPC\.event\.windowWorkPanelResize/);
 });
 
-test("native window and work panel resizing have independent owners", () => {
-  assert.doesNotMatch(panelSource, /screenX|rightWindowEdgeDelta|ResizeAttributor/);
+test("native window and work panel resizing have explicit edge owners", () => {
+  assert.match(panelSource, /onWorkPanelResize/);
+  assert.match(panelSource, /setWidth\(clampWorkPanelWidth\(event\.panelWidth\)\)/);
   assert.doesNotMatch(
     storeSource,
     /windowResizeBy|panelWindowGrowth|expandWindowForPanel|shrinkWindowForPanel/,
   );
   assert.doesNotMatch(mainSource, /windowResizeBy|panelWindowWidthOffset/);
-  assert.doesNotMatch(mainSource, /rightWindowEdge|rightEdgeDelta|ResizeAttributor/);
+  assert.match(mainSource, /workPanelNativeResizeActive/);
+  assert.match(mainSource, /baseBounds\.width \+ WORK_PANEL_MIN_WIDTH/);
   assert.match(mainSource, /baseWindowBounds/);
   assert.match(mainSource, /workPanelReservation/);
   assert.match(mainSource, /window\.getNormalBounds\(\)/);
@@ -347,20 +365,22 @@ test("native window and work panel resizing have independent owners", () => {
 
 test("work panel separator exposes pointer and keyboard resizing", () => {
   assert.match(panelSource, /role="separator"/);
-  assert.match(panelSource, /aria-valuemin=\{widthLimits\.min\}/);
-  assert.match(panelSource, /aria-valuemax=\{widthLimits\.max\}/);
-  assert.match(panelSource, /aria-valuenow=\{Math\.round\(renderWidth\)\}/);
+  assert.match(panelSource, /aria-label=\{t\("panel\.resizeChat"\)\}/);
+  assert.match(panelSource, /aria-valuemin=\{WORK_PANEL_CHAT_MIN_WIDTH\}/);
+  assert.match(panelSource, /aria-valuemax=\{WORK_PANEL_CHAT_MAX_WIDTH\}/);
+  assert.match(panelSource, /aria-valuenow=\{Math\.round\(chatDragWidth \?\? chatWidth\)\}/);
   assert.match(panelSource, /tabIndex=\{0\}/);
   assert.match(panelSource, /startClientX:\s*e\.clientX/);
   assert.match(panelSource, /startWidth/);
-  assert.match(panelSource, /workPanelWidthFromPointer/);
+  assert.match(panelSource, /workPanelChatWidthFromPointer/);
+  assert.match(panelSource, /onPointerDown=\{onChatResizeStart\}/);
   assert.match(panelSource, /requestAnimationFrame/);
   assert.match(panelSource, /event\.key === "ArrowLeft"/);
   assert.match(panelSource, /event\.key === "ArrowRight"/);
   assert.match(panelSource, /event\.key === "Escape" && drag/);
-  assert.match(panelSource, /onPointerUp=\{onResizeCommit\}/);
-  assert.match(panelSource, /onPointerCancel=\{onResizeCancel\}/);
-  assert.match(panelSource, /onLostPointerCapture=\{onResizeCancel\}/);
+  assert.match(panelSource, /onPointerUp=\{onChatResizeCommit\}/);
+  assert.match(panelSource, /onPointerCancel=\{onChatResizeCancel\}/);
+  assert.match(panelSource, /onLostPointerCapture=\{onChatResizeCancel\}/);
   assert.match(panelSource, /data-work-panel-resizing/);
   assert.match(globalStyles, /\.work-panel-resize \{[^}]*width:\s*10px;/s);
   assert.match(globalStyles, /touch-action:\s*none/);

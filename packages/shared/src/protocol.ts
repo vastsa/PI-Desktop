@@ -198,6 +198,7 @@ export const IPC = {
     fsIndex: "pi-desktop/fs/index",
     windowSetWorkPanelReservation:
       "pi-desktop/window/setWorkPanelReservation",
+    windowSetWorkPanelChatWidth: "pi-desktop/window/setWorkPanelChatWidth",
     windowControl: "pi-desktop/window/control",
     closeBehaviorGet: "pi-desktop/window/closeBehavior/get",
     closeBehaviorSet: "pi-desktop/window/closeBehavior/set",
@@ -214,6 +215,7 @@ export const IPC = {
     browserPreview: "pi-desktop/browser/event/preview",
     windowMaximized: "pi-desktop/window/event/maximized",
     windowFullScreen: "pi-desktop/window/event/fullscreen",
+    windowWorkPanelResize: "pi-desktop/window/event/workPanelResize",
     menuCommand: "pi-desktop/menu/event/command",
     notificationChanged: "pi-desktop/notification/event/changed",
     notificationActivated: "pi-desktop/notification/event/activated",

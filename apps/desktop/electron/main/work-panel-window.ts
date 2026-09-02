@@ -21,6 +21,8 @@ export type WorkPanelReservationState = {
 
 export const WORK_PANEL_MIN_WIDTH = 244;
 export const WORK_PANEL_MAX_WIDTH = 720;
+export const WORK_PANEL_CHAT_MIN_WIDTH = 1040;
+export const WORK_PANEL_CHAT_MAX_WIDTH = 10000;
 
 export const emptyWorkPanelReservationState = (): WorkPanelReservationState => ({
   width: 0,
@@ -167,4 +169,24 @@ export function parseWorkPanelReservationWidth(input: unknown): number | null {
     return null;
   }
   return width;
+}
+
+export function parseWorkPanelChatWidth(input: unknown): number | null {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    return null;
+  }
+  const width = (input as { width?: unknown }).width;
+  if (
+    typeof width !== "number" ||
+    !Number.isSafeInteger(width) ||
+    width < WORK_PANEL_CHAT_MIN_WIDTH ||
+    width > WORK_PANEL_CHAT_MAX_WIDTH
+  ) {
+    return null;
+  }
+  return width;
+}
+
+export function isWorkPanelOuterResizeEdge(edge: unknown): boolean {
+  return edge === "right" || edge === "top-right" || edge === "bottom-right";
 }

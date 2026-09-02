@@ -717,6 +717,11 @@ export const api = {
       IPC.invoke.windowSetWorkPanelReservation,
       { width },
     ),
+  setWorkPanelChatWidth: (width: number) =>
+    invoke<{ requested: number; applied: number }>(
+      IPC.invoke.windowSetWorkPanelChatWidth,
+      { width },
+    ),
   windowControl: (action: WindowControlAction) =>
     invoke<{ maximized: boolean }>(IPC.invoke.windowControl, { action }),
   getCloseBehavior: () =>
@@ -744,6 +749,22 @@ export const api = {
     if (!window.piDesktop?.on) return () => undefined;
     return window.piDesktop.on(IPC.event.windowFullScreen, (payload) =>
       listener(payload as { fullScreen: boolean }),
+    );
+  },
+  onWorkPanelResize: (
+    listener: (event: {
+      phase: "preview" | "commit";
+      panelWidth: number;
+    }) => void,
+  ) => {
+    if (!window.piDesktop?.on) return () => undefined;
+    return window.piDesktop.on(IPC.event.windowWorkPanelResize, (payload) =>
+      listener(
+        payload as {
+          phase: "preview" | "commit";
+          panelWidth: number;
+        },
+      ),
     );
   },
   onMenuCommand: (listener: (command: AppMenuCommand) => void) => {

@@ -1106,6 +1106,7 @@ export const zhCN = {
     title: "工作面板",
     collapse: "收起工作面板",
     resize: "调整工作面板宽度",
+    resizeChat: "调整对话区宽度",
     tools: "工具",
     pluginViews: "插件视图",
     openItems: "打开的资源",

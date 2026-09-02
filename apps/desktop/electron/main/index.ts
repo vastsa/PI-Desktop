@@ -169,6 +169,8 @@ import {
   clampBoundsOriginToWorkArea,
   displayWorkAreaKey,
   emptyWorkPanelReservationState,
+  isWorkPanelOuterResizeEdge,
+  parseWorkPanelChatWidth,
   parseWorkPanelReservationWidth,
   planWorkPanelReservation,
   reconcileBaseWindowBounds,
@@ -243,6 +245,7 @@ const WINDOW_MIN_HEIGHT = 700;
 // scale boundary. Keep recovery out of that gesture and only run it after the
 // bounds have been stable for one short interaction window.
 const WINDOW_BOUNDS_SETTLE_MS = 300;
+const WORK_PANEL_NATIVE_RESIZE_SETTLE_MS = 180;
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -277,6 +280,8 @@ let expectedWorkPanelBounds: WindowBounds | null = null;
 // bounds we asked for (D263). A flag rather than a deadline: attribution must
 // not depend on how long the main process took to reach the classification.
 let workPanelUserMovePending = false;
+let workPanelNativeResizeActive = false;
+let setWorkPanelChatWidthForWindow: ((width: number) => number) | null = null;
 let host: HostProcess | null = null;
 let sidecar: AgentSidecar | null = null;
 let quitting = false;
@@ -2148,6 +2153,7 @@ function applyWorkPanelReservation(): WorkPanelReservationState {
   ) {
     return workPanelReservation;
   }
+  if (workPanelNativeResizeActive) return workPanelReservation;
 
   const window = mainWindow;
   const currentBounds = window.getBounds();
@@ -2181,7 +2187,8 @@ function applyWorkPanelReservation(): WorkPanelReservationState {
   );
 
   // Lower the minimum before a collapse; raise it after the expanded bounds
-  // exist. This keeps native edge gestures assigned to MainChat.
+  // exist. The native right edge has its own panel-resize path while the
+  // remaining native edges continue to update the base chat bounds.
   if (next.bounds.width < currentBounds.width) {
     window.setMinimumSize(minimumWidth, WINDOW_MIN_HEIGHT);
   }
@@ -2412,6 +2419,8 @@ async function createWindow() {
   workPanelLastAppliedBounds = null;
   expectedWorkPanelBounds = null;
   workPanelUserMovePending = false;
+  workPanelNativeResizeActive = false;
+  setWorkPanelChatWidthForWindow = null;
   const savedState = await readWindowState();
   mainWindow = new BrowserWindow({
     ...(savedState ?? { width: 1200, height: 800 }),
@@ -2469,6 +2478,219 @@ async function createWindow() {
       if (isLiveWindow()) applyWorkPanelReservation();
     }, 0);
   };
+
+  type NativeWorkPanelResize = {
+    baseBounds: WindowBounds;
+    initialBounds: WindowBounds;
+    settleTimer: NodeJS.Timeout | null;
+  };
+  let nativeWorkPanelResize: NativeWorkPanelResize | null = null;
+
+  const sendWorkPanelResize = (
+    phase: "preview" | "commit",
+    panelWidth: number,
+  ) => {
+    if (!isLiveWindow()) return;
+    window.webContents.send(IPC.event.windowWorkPanelResize, {
+      phase,
+      panelWidth,
+    });
+  };
+
+  const nativePanelWidth = (bounds: WindowBounds, baseBounds: WindowBounds) =>
+    Math.max(
+      WORK_PANEL_MIN_WIDTH,
+      Math.min(WORK_PANEL_MAX_WIDTH, bounds.width - baseBounds.width),
+    );
+
+  const syncNativeWorkPanelResize = (phase: "preview" | "commit") => {
+    const state = nativeWorkPanelResize;
+    if (!state || !isLiveWindow()) return;
+    const currentBounds = window.getBounds();
+    const panelWidth = nativePanelWidth(currentBounds, state.baseBounds);
+    requestedWorkPanelReservation = panelWidth;
+    workPanelReservation = {
+      width: Math.max(0, currentBounds.width - state.baseBounds.width),
+      xOffset: currentBounds.x - state.baseBounds.x,
+    };
+    workPanelLastAppliedBounds = { ...currentBounds };
+    sendWorkPanelResize(phase, panelWidth);
+    return panelWidth;
+  };
+
+  const finishNativeWorkPanelResize = () => {
+    const state = nativeWorkPanelResize;
+    if (!state || !isLiveWindow()) return;
+    nativeWorkPanelResize = null;
+    workPanelNativeResizeActive = false;
+    if (state.settleTimer) clearTimeout(state.settleTimer);
+
+    const currentBounds = window.getBounds();
+    const panelWidth = nativePanelWidth(currentBounds, state.baseBounds);
+    const nextBaseBounds: WindowBounds = {
+      x: state.baseBounds.x + currentBounds.x - state.initialBounds.x,
+      y: state.baseBounds.y + currentBounds.y - state.initialBounds.y,
+      width: state.baseBounds.width,
+      height: Math.max(
+        0,
+        state.baseBounds.height + currentBounds.height - state.initialBounds.height,
+      ),
+    };
+    workPanelBaseBounds = nextBaseBounds;
+    workPanelLastAppliedBounds = { ...currentBounds };
+    const display = screen.getDisplayMatching(currentBounds);
+    workPanelDisplayKey = displayWorkAreaKey(display.id, display.workArea);
+    requestedWorkPanelReservation = panelWidth;
+    workPanelReservation = {
+      width: Math.max(0, currentBounds.width - nextBaseBounds.width),
+      xOffset: currentBounds.x - nextBaseBounds.x,
+    };
+    const minimumWidth = Math.max(
+      WINDOW_MIN_WIDTH,
+      Math.min(display.workArea.width, WINDOW_MIN_WIDTH + panelWidth),
+    );
+    window.setMinimumSize(minimumWidth, WINDOW_MIN_HEIGHT);
+    sendWorkPanelResize("commit", panelWidth);
+  };
+
+  const armNativeWorkPanelResizeFinish = () => {
+    if (!nativeWorkPanelResize) return;
+    if (nativeWorkPanelResize.settleTimer) {
+      clearTimeout(nativeWorkPanelResize.settleTimer);
+    }
+    nativeWorkPanelResize.settleTimer = setTimeout(() => {
+      nativeWorkPanelResize = nativeWorkPanelResize
+        ? { ...nativeWorkPanelResize, settleTimer: null }
+        : null;
+      finishNativeWorkPanelResize();
+    }, WORK_PANEL_NATIVE_RESIZE_SETTLE_MS);
+  };
+
+  const beginNativeWorkPanelResize = (baseBoundsOverride?: WindowBounds) => {
+    if (
+      nativeWorkPanelResize ||
+      requestedWorkPanelReservation <= 0 ||
+      window.isFullScreen() ||
+      window.isMaximized()
+    ) {
+      return nativeWorkPanelResize;
+    }
+    const currentBounds = window.getBounds();
+    const baseBounds = baseBoundsOverride
+      ? { ...baseBoundsOverride }
+      : workPanelBaseBounds
+        ? { ...workPanelBaseBounds }
+        : baseWindowBounds(currentBounds, workPanelReservation);
+    nativeWorkPanelResize = {
+      baseBounds,
+      initialBounds: { ...currentBounds },
+      settleTimer: null,
+    };
+    workPanelNativeResizeActive = true;
+    // Let the right edge reach the panel minimum while the base chat width
+    // remains fixed. The normal minimum is restored after the gesture settles.
+    window.setMinimumSize(baseBounds.width + WORK_PANEL_MIN_WIDTH, WINDOW_MIN_HEIGHT);
+    return nativeWorkPanelResize;
+  };
+
+  const setWorkPanelChatWidth = (requestedWidth: number) => {
+    if (
+      !isLiveWindow() ||
+      requestedWorkPanelReservation <= 0 ||
+      window.isFullScreen() ||
+      window.isMaximized()
+    ) {
+      return workPanelBaseBounds?.width ?? WINDOW_MIN_WIDTH;
+    }
+    const currentBounds = window.getBounds();
+    const display = screen.getDisplayMatching(currentBounds);
+    const transition = classifyDisplayTransition(
+      displayWorkAreaKey(display.id, display.workArea),
+    );
+    const observedBase = observedWorkPanelBaseBounds(currentBounds, transition);
+    const baseBounds =
+      transition === "user-moved"
+        ? clampBoundsOriginToWorkArea(observedBase, display.workArea)
+        : observedBase;
+    workPanelBaseBounds = baseBounds;
+    workPanelDisplayKey = displayWorkAreaKey(display.id, display.workArea);
+    if (transition === "user-moved") workPanelUserMovePending = false;
+    const next = planWorkPanelReservation({
+      baseBounds: { ...baseBounds, width: requestedWidth },
+      workArea: display.workArea,
+      requestedWidth: requestedWorkPanelReservation,
+    });
+    const minimumWidth = Math.max(
+      WINDOW_MIN_WIDTH,
+      Math.min(display.workArea.width, WINDOW_MIN_WIDTH + next.reservation.width),
+    );
+    if (next.bounds.width < currentBounds.width) {
+      window.setMinimumSize(minimumWidth, WINDOW_MIN_HEIGHT);
+    }
+    expectedWorkPanelBounds = next.bounds;
+    window.setBounds(next.bounds, false);
+    if (next.bounds.width >= currentBounds.width) {
+      window.setMinimumSize(minimumWidth, WINDOW_MIN_HEIGHT);
+    }
+    const appliedBounds = window.getBounds();
+    expectedWorkPanelBounds = appliedBounds;
+    workPanelLastAppliedBounds = { ...appliedBounds };
+    workPanelBaseBounds = baseWindowBounds(appliedBounds, next.reservation);
+    workPanelReservation = {
+      width: Math.max(0, appliedBounds.width - workPanelBaseBounds.width),
+      xOffset: appliedBounds.x - workPanelBaseBounds.x,
+    };
+    return workPanelBaseBounds.width;
+  };
+  setWorkPanelChatWidthForWindow = setWorkPanelChatWidth;
+
+  window.on("will-resize", (event, newBounds, details) => {
+    if (!isWorkPanelOuterResizeEdge(details?.edge)) return;
+    const currentBounds = window.getBounds();
+    const state = beginNativeWorkPanelResize(
+      observedWorkPanelBaseBounds(currentBounds, "none"),
+    );
+    if (!state) return;
+    const rawPanelWidth = newBounds.width - state.baseBounds.width;
+    const panelWidth = nativePanelWidth(newBounds, state.baseBounds);
+    if (rawPanelWidth !== panelWidth) {
+      event.preventDefault();
+      const display = screen.getDisplayMatching(newBounds);
+      const next = planWorkPanelReservation({
+        baseBounds: state.baseBounds,
+        workArea: display.workArea,
+        requestedWidth: panelWidth,
+      });
+      expectedWorkPanelBounds = next.bounds;
+      window.setBounds(next.bounds, false);
+    }
+    requestedWorkPanelReservation = panelWidth;
+    sendWorkPanelResize("preview", panelWidth);
+    armNativeWorkPanelResizeFinish();
+  });
+
+  const observeNativeWorkPanelResize = () => {
+    if (nativeWorkPanelResize) {
+      syncNativeWorkPanelResize("preview");
+      armNativeWorkPanelResizeFinish();
+      return;
+    }
+    // Electron exposes `will-resize` on macOS and Windows. On Linux, retain
+    // the same ownership using the pointer's right-edge position as the
+    // narrow fallback available to the main process.
+    if (requestedWorkPanelReservation > 0) {
+      const bounds = window.getBounds();
+      const cursor = screen.getCursorScreenPoint();
+      if (Math.abs(cursor.x - (bounds.x + bounds.width)) <= 12) {
+        beginNativeWorkPanelResize();
+        syncNativeWorkPanelResize("preview");
+        armNativeWorkPanelResizeFinish();
+        return;
+      }
+    }
+    scheduleBoundsCheck();
+  };
+  window.on("resized", armNativeWorkPanelResizeFinish);
 
   window.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url);
@@ -2620,6 +2842,12 @@ async function createWindow() {
     screen.removeListener("display-metrics-changed", reconcileDisplayTopology);
     screen.removeListener("display-added", reconcileDisplayTopology);
     screen.removeListener("display-removed", reconcileDisplayTopology);
+    if (nativeWorkPanelResize?.settleTimer) {
+      clearTimeout(nativeWorkPanelResize.settleTimer);
+    }
+    nativeWorkPanelResize = null;
+    workPanelNativeResizeActive = false;
+    if (setWorkPanelChatWidthForWindow) setWorkPanelChatWidthForWindow = null;
     if (workPanelReconcileTimer) {
       clearTimeout(workPanelReconcileTimer);
       workPanelReconcileTimer = null;
@@ -2786,14 +3014,14 @@ async function createWindow() {
   window.on("show", () => ensureStableBounds(false));
   window.on("focus", () => ensureStableBounds(false));
   window.on("restore", () => ensureStableBounds(false));
-  window.on("resize", scheduleBoundsCheck);
+  window.on("resize", observeNativeWorkPanelResize);
   window.on("move", scheduleBoundsCheck);
   window.on("move", noteUserWindowMove);
 
   // Persist last good user bounds so relaunch restores them.
   let saveTimer: NodeJS.Timeout | null = null;
   const persistNormalWindowState = () => {
-    if (!isLiveWindow() || boundsGuard) return;
+    if (!isLiveWindow() || boundsGuard || workPanelNativeResizeActive) return;
     const normalBounds = window.getNormalBounds();
     const display = screen.getDisplayMatching(normalBounds);
     const nextDisplayKey = displayWorkAreaKey(display.id, display.workArea);
@@ -6649,6 +6877,26 @@ function registerIpc() {
       requestedWorkPanelReservation = requested;
       const reservation = applyWorkPanelReservation();
       return { requested, reserved: reservation.width };
+    },
+  );
+
+  handle(
+    IPC.invoke.windowSetWorkPanelChatWidth,
+    async (input: unknown = {}) => {
+      const requested = parseWorkPanelChatWidth(input);
+      if (requested === null) {
+        throw Object.assign(new Error("invalid work panel chat width"), {
+          errorCode: ErrorCodes.INVALID_ARGUMENT,
+        });
+      }
+      if (!mainWindow || mainWindow.isDestroyed()) {
+        throw new Error("main window unavailable");
+      }
+      if (!setWorkPanelChatWidthForWindow || requestedWorkPanelReservation <= 0) {
+        throw new Error("work panel unavailable");
+      }
+      const applied = setWorkPanelChatWidthForWindow(requested);
+      return { requested, applied };
     },
   );
 

@@ -1114,6 +1114,7 @@ export const en = {
     title: "Work panel",
     collapse: "Hide work panel",
     resize: "Resize work panel",
+    resizeChat: "Resize conversation area",
     tools: "Tools",
     pluginViews: "Plugin views",
     openItems: "Open resources",

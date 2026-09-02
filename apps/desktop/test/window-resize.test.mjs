@@ -33,6 +33,15 @@ test("programmatic panel reservation bounds are not treated as user moves", () =
   assert.match(mainSource, /expectedWorkPanelBounds = null/);
 });
 
+test("the right native edge previews panel width while the inner divider owns chat width", () => {
+  assert.match(mainSource, /window\.on\("will-resize",/);
+  assert.match(mainSource, /isWorkPanelOuterResizeEdge\(details\?\.edge\)/);
+  assert.match(mainSource, /window\.on\("resized", armNativeWorkPanelResizeFinish\)/);
+  assert.match(mainSource, /window\.webContents\.send\(IPC\.event\.windowWorkPanelResize/);
+  assert.match(mainSource, /window\.setMinimumSize\(baseBounds\.width \+ WORK_PANEL_MIN_WIDTH/);
+  assert.match(mainSource, /window\.on\("resize", observeNativeWorkPanelResize\)/);
+});
+
 test("native bounds timers are cleaned up with the window", () => {
   assert.match(
     mainSource,
