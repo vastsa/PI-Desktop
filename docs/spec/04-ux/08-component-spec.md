@@ -1479,7 +1479,7 @@ twice.
 
 | State | Header treatment | Expanded content |
 |---|---|---|
-| Running | Progressive action + shimmer + spinner; a `run` row pulses a dot beside `Working…` instead | Latest partial output |
+| Running | Progressive action + shimmer + spinner; a `run` row pulses a dot beside `Working…` instead | Latest partial output (`details.output` is presented as the stdout channel) |
 | Success | Past-tense action + result chips; no green success badge, except a `run` row's dot and `Done` | Result blocks, then arguments if not already shown |
 | Error | Past-tense action + compact danger status; auto-expanded. A `run` row is in this state whenever its command exited non-zero, whatever the call reported (D227) | Error note first, then arguments |
 | Denied | Muted `Denied` status | Permission result when available |
@@ -1497,8 +1497,11 @@ twice.
   group settles as `Processed for {elapsed}` even when a later tool recovered.
   Expansion uses a short height/opacity transition and keeps collapsed content
   inert.
-- Running updates replace the latest partial output in place. Blocks are built
-  on expansion only, so streaming ticks stay cheap.
+- Running updates replace the latest partial output in place. Bash's cumulative
+  `details.output` partial result is rendered through the stdout channel, while
+  the completed `details.stdout` value wins when both are present. Blocks are
+  built on expansion only and unchanged rows are memoized, so collapsed rows do
+  not parse or rerender on streaming ticks.
 - Results are presented before arguments so the primary result has higher
   information priority.
 - File paths and Grep hit headings open in the work panel when they resolve
@@ -1676,6 +1679,11 @@ things the body no longer offers move up into the head.
   and its scroll stay: a long build must not bury the transcript. `Errors` keeps
   its tint, and each channel's name is carried for assistive technology in place
   of the heading that used to name it.
+- **Streaming keeps one stdout channel.** While Bash is running, the renderer
+  accepts the runtime's cumulative `details.output` partial result and presents
+  it as stdout. The completed `details.stdout` value takes precedence when both
+  fields are present, so the final result cannot regress to an older progress
+  snapshot.
 - **The outcome is what the command did, not what the call did** (D227). It is
   read from the exit code the shell reported: non-zero is `Failed` even when the
   tool call around it came back fine, and a killed shell that reports no code at
