@@ -152,11 +152,11 @@ Each scenario is documented in this format:
 #### E2E-003: Rust host healthcheck responds
 
 - **Preconditions**: App is running; Rust host-core sidecar started.
-- **Steps**: 1) Electron handshakes with protocol version 9. 2) Call the host
+- **Steps**: 1) Electron handshakes with protocol version 10. 2) Call the host
   healthcheck RPC. 3) Repeat boot with mismatched older and newer protocol
   fixtures.
-- **Expected**: The protocol v9 host returns `ok` and the handshake is logged.
-  Every version other than v9, whether older or newer, is rejected before the
+- **Expected**: The protocol v10 host returns `ok` and the handshake is logged.
+  Every version other than v10, whether older or newer, is rejected before the
   conversation surface becomes interactive, so Plan approval/state events and
   context checkpoints cannot be silently lost.
 - **Specs linked**: `03-runtime/05-host-core-rust.md`, `03-runtime/06-host-rpc-protocol.md`
