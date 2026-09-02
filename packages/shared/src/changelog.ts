@@ -23,6 +23,12 @@ export type ChangelogEntry = {
 
 const enEntries: ChangelogEntry[] = [
   {
+    version: "0.12.0",
+    highlights: [
+      "Coordinate concurrent subagents over the Agent2Agent (A2A) protocol: discover running peers as Agent Cards, exchange durable tasks and typed messages, and stream task updates — replacing the previous in-process peer messaging.",
+    ],
+  },
+  {
     version: "0.11.4",
     date: "2026-09-01",
     highlights: [
@@ -513,6 +519,12 @@ const enEntries: ChangelogEntry[] = [
 ];
 
 const zhCNEntries: ChangelogEntry[] = [
+  {
+    version: "0.12.0",
+    highlights: [
+      "让并发子智能体通过 Agent2Agent（A2A）协议协作：以 Agent Card 发现正在运行的同伴，交换可持久化的任务与类型化消息，并流式接收任务更新——取代原先的进程内同伴消息。",
+    ],
+  },
   {
     version: "0.11.4",
     date: "2026-09-01",

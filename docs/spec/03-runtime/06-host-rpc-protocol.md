@@ -114,7 +114,7 @@ Params:
 
 ```ts
 type HandshakeParams = {
-  protocolVersion: 9
+  protocolVersion: 10
   client: "electron-main"
   clientVersion: string
   locale: string // default "en"
@@ -125,10 +125,11 @@ Result:
 
 ```ts
 type HandshakeResult = {
-  protocolVersion: 9
+  protocolVersion: 10
   host: "rust-host-core"
   hostVersion: string
   features: string[]
+  capabilities: string[] // includes "a2a" at protocol v10
 }
 ```
 
@@ -149,9 +150,16 @@ Rules:
    permission, shell catalog identity and dialect pin, streamed command output,
    and scheduled-task mode projection from `config_json`. A v7 or incompatible
    v8 host must be rejected before the UI becomes interactive.
+8. Version 10 adds the A2A protocol stack (ADR 0147): the host-core A2A broker,
+   the `a2a.*` method domain, and the `a2a.task.event` / `a2a.push` host→client
+   notifications. The `capabilities` array now advertises `"a2a"`; a v9 host
+   that cannot advertise `a2a` is rejected before the UI becomes interactive,
+   because subagent coordination would otherwise silently fall back to nothing.
 
-Protocol v9 remains paired with host-core storage schema v11 (v11 adds the
-`plan_approvals.kind` discriminator). The schema version
+Protocol v10 is paired with host-core storage schema v12 (v12 adds the
+`a2a_agents`, `a2a_tasks`, `a2a_messages`, `a2a_artifacts`, and
+`a2a_push_configs` tables via `migrate_v11_to_v12`; A2A capability tokens are
+in-memory only and are invalidated on deregister). The schema version
 is an internal persistence invariant, not an additional JSON-RPC field; the
 checkpoint architecture remains host-owned.
 
@@ -377,6 +385,77 @@ the outbox flushes in order after a successful handshake.
 - `notification.markRead`
 - `notification.markAllRead`
 - `notification.clear`
+
+### A2A (ADR 0147)
+
+The A2A broker runs in host-core; each subagent is a client reaching it over
+this transport. Every method except `a2a.agents.register` carries a host-minted
+capability `token`; the host validates it and authorizes addressing by it.
+`contextId` equals `sessionId`, and addressing is same-context only —
+cross-context calls fail with `A2A_CROSS_CONTEXT_DENIED`.
+
+- `a2a.agents.register({ contextId, card }) -> { agentId, token }` — register
+  the caller's Agent Card (derived from its `SubagentDefinition`) in the session
+  registry and mint an in-memory capability token. The token is injected by the
+  runtime and never exposed to the model.
+- `a2a.agents.deregister({ token }) -> { ok }` — remove the caller from the
+  registry and invalidate its token; called when a delegate settles.
+- `a2a.agents.list({ token }) -> { agents: AgentCard[] }` — the other agents in
+  the caller's context; the caller's own card is excluded.
+- `a2a.message.send({ token, message, configuration? }) -> { task } | { message }`
+  — send a message to a peer, creating or continuing a task; returns the task or
+  a direct message reply. `message.parts` is a typed `Part` list
+  (`TextPart | FilePart | DataPart`).
+- `a2a.message.stream({ token, message }) -> { task }` — like `send`, and the
+  caller then receives `a2a.task.event` notifications for the task.
+- `a2a.tasks.get({ token, id, historyLength? }) -> { task }` — read a durable
+  task and its bounded message history.
+- `a2a.tasks.cancel({ token, id }) -> { task }` — cancel a task the caller owns;
+  the task moves to the terminal `canceled` state.
+- `a2a.tasks.status({ token, id, state, message? }) -> { task }` — drive a task
+  to a new `state` (an A2ATaskState: the completion / failure / interactive-pause
+  path). The broker validates the transition against the task-state table,
+  rejecting moves out of a terminal state with `A2A_TASK_TERMINAL` and illegal
+  jumps with `A2A_INVALID_TRANSITION`. An optional `message` (an A2A Message) is
+  stamped with the caller's `from`/`contextId` (broker-owned provenance, never
+  trusted from the client) and appended to task history. On success it emits an
+  `a2a.task.event` (and, for a terminal state with a push config, an `a2a.push`).
+- `a2a.tasks.resubscribe({ token, id }) -> { task }` — re-attach to a task's
+  event stream after a disconnect.
+- `a2a.tasks.pushNotificationConfig.set({ token, taskId, config }) -> { config }`
+  — set the host-owned push config for a task.
+- `a2a.tasks.pushNotificationConfig.get({ token, taskId }) -> { config | null }`
+  — read the current push config, or `null` when none is set.
+
+Task states are `submitted, working, input-required, auth-required, completed,
+canceled, failed, rejected`; the last four are terminal and never transition
+again. The broker enforces legal transitions. Each `Task` carries both
+`agentName` (the worker that serves it) and `requesterName` (the peer id of the
+agent that requested the task — the sender of the first message).
+
+Two host→client JSON-RPC notifications carry task updates:
+
+- `a2a.task.event` — `{ recipient, contextId, event }`, where `event` is a
+  `TaskStatusUpdateEvent` or `TaskArtifactUpdateEvent`. Routing is
+  counterpart-based: task creation addresses the new task to the worker
+  (`agentName`); `a2a.message.send` on an existing task, `a2a.tasks.status`, and
+  `a2a.tasks.cancel` address the event to the counterpart of the caller (a
+  worker's reply or completion wakes the requester; a requester's follow-up
+  wakes the worker); `a2a.tasks.resubscribe` re-emits to the caller itself. So
+  `recipient` is the peer id the event is meant to wake, not always the task's
+  worker.
+- `a2a.push` — `{ recipient, contextId, taskId, token?, status }`, delivered for
+  tasks with a push config; its `recipient` follows the same counterpart
+  routing.
+
+A2A errors use JSON-RPC numeric code `1400` with `data.errorCode` one of
+`A2A_UNKNOWN_TOKEN`, `A2A_UNKNOWN_AGENT`, `A2A_UNKNOWN_TASK`,
+`A2A_CROSS_CONTEXT_DENIED`, `A2A_INVALID_TRANSITION`, `A2A_TASK_TERMINAL`,
+`A2A_SEND_CAP`, `A2A_NO_PEERS`, `A2A_PAYLOAD_TOO_LARGE`. Bounds:
+`A2A_MAX_TEXT_CHARS = 16000`, `A2A_MAX_FILE_BYTES = 20MB`,
+`A2A_MAX_TASK_HISTORY = 256`, `A2A_MAX_TASKS_PER_CONTEXT = 128`,
+`A2A_MAX_SENDS_PER_RUN = 200`, `A2A_MAX_STREAM_WAIT_SECONDS = 120`,
+`A2A_DEFAULT_STREAM_WAIT_SECONDS = 30`.
 
 ## 4a. Notification contracts (protocol v4)
 

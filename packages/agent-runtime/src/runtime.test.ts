@@ -80,9 +80,11 @@ vi.mock("./subagent.js", async (importOriginal) => {
   };
 });
 import {
+  A2A_NOTIFICATIONS,
+  A2A_RPC_METHODS,
   DEFAULT_SUBAGENT_IDLE_TIMEOUT_SECONDS,
   MAX_SUBAGENT_CONCURRENCY,
-  SUBAGENT_PEER_TOOLS,
+  SUBAGENT_A2A_TOOLS,
 } from "@pi-desktop/shared";
 import type {
   ContextCompactionRecord,
@@ -5034,12 +5036,13 @@ describe("DesktopAgentRuntime subagents", () => {
     await runtime.dispose();
   });
 
-  // Peer messaging (D277, ADR 0138). The mailbox itself is covered in
-  // `subagent-mailbox.test.ts`; here only the runtime wiring is under test.
+  // A2A protocol wiring (ADR 0146). The broker itself lives in Rust host-core;
+  // here only the runtime's client wiring is under test, so the host is mocked
+  // and each `a2a.*` call is asserted against the wire contract.
   const coordinator: SubagentDefinition = {
     name: "coordinator",
     description: "Coordinate with peers while it works.",
-    tools: ["Read", "Peer"],
+    tools: ["Read", "A2A"],
     maxTurns: 6,
     prompt: "Claim a file before editing it.",
     source: "builtin",
@@ -5047,14 +5050,34 @@ describe("DesktopAgentRuntime subagents", () => {
   const talkerOnly: SubagentDefinition = {
     name: "talker",
     description: "Only knows how to message peers.",
-    tools: ["Peer"],
+    tools: ["A2A"],
     maxTurns: 6,
     prompt: "Talk to the others.",
     source: "user",
     filePath: "/home/.agents/subagents/talker.md",
   };
 
-  it("never exposes a peer tool to the parent agent", async () => {
+  /**
+   * A host mock that answers the `a2a.*` broker calls the runtime makes at
+   * spawn/settle and from the A2A tool. `register` mints a per-agent token so
+   * the runtime builds the tool; every call is recorded for assertions.
+   */
+  function a2aHost(
+    responses: Record<string, unknown> = {},
+  ): { call: ReturnType<typeof vi.fn>; onNotification: ReturnType<typeof vi.fn> } {
+    const call = vi.fn(async (method: string, params: any) => {
+      if (method in responses) return responses[method];
+      if (method === A2A_RPC_METHODS.agentsRegister) {
+        return { agentId: params.card.name, token: `tok-${params.card.name}` };
+      }
+      if (method === A2A_RPC_METHODS.agentsDeregister) return { ok: true };
+      if (method === A2A_RPC_METHODS.agentsList) return { agents: [] };
+      return {};
+    });
+    return { call, onNotification: vi.fn(() => () => {}) };
+  }
+
+  it("never exposes the A2A tool to the parent agent", async () => {
     const runtime = createRuntime({ subagents: [coordinator, talkerOnly] });
     const catalog = (runtime as any).toolCatalog as Map<string, any>;
     const parentToolNames = (
@@ -5062,9 +5085,9 @@ describe("DesktopAgentRuntime subagents", () => {
     ).map((tool) => tool.name);
     const deferred = (runtime as any).deferredToolNames as Set<string>;
 
-    // The definition declares the peer tool, yet it is built per delegate:
-    // the parent already owns delegation, so it must not message delegates.
-    for (const name of SUBAGENT_PEER_TOOLS) {
+    // The definition declares the A2A tool, yet it is built per delegate: the
+    // parent already owns delegation, so it must not gain a second channel.
+    for (const name of SUBAGENT_A2A_TOOLS) {
       expect(catalog.has(name)).toBe(false);
       expect(parentToolNames).not.toContain(name);
       expect(deferred.has(name)).toBe(false);
@@ -5074,8 +5097,8 @@ describe("DesktopAgentRuntime subagents", () => {
     await runtime.dispose();
   });
 
-  it("refuses a definition whose only tools are peer messaging tools", async () => {
-    const runtime = createRuntime({ subagents: [talkerOnly] });
+  it("refuses a definition whose only tool is the A2A tool", async () => {
+    const runtime = createRuntime({ subagents: [talkerOnly], host: a2aHost() });
     subagentRuns.calls.length = 0;
     const tool = taskTool(runtime);
 
@@ -5085,7 +5108,7 @@ describe("DesktopAgentRuntime subagents", () => {
     });
 
     expect(result.content[0].text).toContain(
-      "declares only peer messaging tools",
+      "declares only the A2A tool and no tool to do work with",
     );
     // Messaging alone cannot do work, so no delegate is started at all.
     expect(subagentRuns.calls).toHaveLength(0);
@@ -5096,8 +5119,9 @@ describe("DesktopAgentRuntime subagents", () => {
     await runtime.dispose();
   });
 
-  it("hands a mixed definition its working tools plus its own peer tools", async () => {
-    const runtime = createRuntime({ subagents: [coordinator] });
+  it("registers the agent and builds the A2A tool for a mixed definition", async () => {
+    const host = a2aHost();
+    const runtime = createRuntime({ subagents: [coordinator], host });
     subagentRuns.calls.length = 0;
     subagentRuns.instances.length = 0;
     subagentRuns.deferred = true;
@@ -5115,16 +5139,26 @@ describe("DesktopAgentRuntime subagents", () => {
     });
     const delegationId = (result.details as any).delegationId as string;
     expect(delegationId.length).toBeGreaterThan(0);
-    expect((runtime as any).delegations.get(delegationId).status).toBe(
-      "running",
+    const record = (runtime as any).delegations.get(delegationId);
+    expect(record.status).toBe("running");
+
+    // Spawning registered the delegate with the broker, scoped to the session,
+    // and minted its capability token — kept on the record, never in the model.
+    const registerCall = host.call.mock.calls.find(
+      ([method]) => method === A2A_RPC_METHODS.agentsRegister,
     );
+    expect(registerCall).toBeDefined();
+    expect(registerCall![1]).toMatchObject({
+      contextId: "session-1",
+      card: { name: "coordinator" },
+    });
+    expect(record.a2aToken).toBe("tok-coordinator");
+
+    // The delegate got its work tools plus the single A2A tool.
     expect(subagentRuns.calls).toHaveLength(1);
     expect(
       subagentRuns.calls[0].tools.map((entry: any) => entry.name),
-    ).toEqual(["Read", "Peer"]);
-    // A running delegate is registered under its agent name, so a peer can
-    // address it.
-    expect((runtime as any).mailbox.peers("other")).toContain("coordinator");
+    ).toEqual(["Read", "A2A"]);
     await expect(
       (runtime as any).agent.afterToolCall({ toolCall: { id: "task-1" } }),
     ).resolves.toBeUndefined();
@@ -5141,85 +5175,253 @@ describe("DesktopAgentRuntime subagents", () => {
         "completed",
       );
     });
-    // A settled delegate leaves the mailbox, so a peer learns it is gone
-    // instead of queueing for a dead inbox.
-    expect((runtime as any).mailbox.peers("other")).not.toContain(
-      "coordinator",
-    );
+    // Settling deregisters the delegate, invalidating its token so the broker
+    // drops it from discovery.
+    await vi.waitFor(() => {
+      expect(
+        host.call.mock.calls.some(
+          ([method, params]) =>
+            method === A2A_RPC_METHODS.agentsDeregister &&
+            (params as any).token === "tok-coordinator",
+        ),
+      ).toBe(true);
+    });
     subagentRuns.deferred = false;
 
     await runtime.dispose();
   });
 
-  it("exposes one Peer tool that dispatches send, inbox and wait by action", async () => {
-    const runtime = createRuntime({ subagents: [coordinator] });
-    const mailbox = (runtime as any).mailbox;
-    const peer = (runtime as any).buildPeerTool("researcher") as any;
-    expect(peer.name).toBe("Peer");
-    // A single tool carries the three operations; `action` is its only
-    // required parameter, so the model cannot blur the operations together.
-    expect(peer.parameters.required).toEqual(["action"]);
+  it("keeps a delegate's work tools when the broker refuses registration", async () => {
+    // A host that cannot mint a token must not strip the delegate of its work
+    // tools — the A2A tool is simply absent.
+    const host = a2aHost({ [A2A_RPC_METHODS.agentsRegister]: undefined });
+    const runtime = createRuntime({ subagents: [coordinator], host });
+    subagentRuns.calls.length = 0;
+    subagentRuns.instances.length = 0;
+    subagentRuns.deferred = true;
+    subagentRuns.resolveRun = undefined;
+    const tool = taskTool(runtime);
 
-    mailbox.join("researcher");
-    mailbox.join("reviewer");
+    const result = await tool.execute("task-1", {
+      agent: "coordinator",
+      task: "Edit src/app.ts.",
+    });
+    const delegationId = (result.details as any).delegationId as string;
+    expect((runtime as any).delegations.get(delegationId).a2aToken).toBeUndefined();
+    expect(
+      subagentRuns.calls[0].tools.map((entry: any) => entry.name),
+    ).toEqual(["Read"]);
 
-    // send delivers to one running peer, and only to that peer's inbox.
-    const sent = await peer.execute("call-send", {
+    subagentRuns.resolveRun!({
+      agentName: "coordinator",
+      status: "completed",
+      report: "done",
+      turns: 1,
+      toolCalls: 1,
+    });
+    await vi.waitFor(() => {
+      expect((runtime as any).delegations.get(delegationId).status).toBe(
+        "completed",
+      );
+    });
+    subagentRuns.deferred = false;
+    await runtime.dispose();
+  });
+
+  it("exposes one A2A tool that dispatches discover, send, get, wait and complete by action", async () => {
+    const task = {
+      id: "task-9",
+      contextId: "session-1",
+      agentName: "reviewer",
+      status: { state: "working", timestamp: "t" },
+      history: [
+        {
+          role: "agent",
+          from: "researcher",
+          parts: [{ kind: "text", text: "I own src/a.ts" }],
+          messageId: "m1",
+        },
+      ],
+      artifacts: [],
+    };
+    const host = a2aHost({
+      [A2A_RPC_METHODS.agentsList]: {
+        agents: [
+          { name: "reviewer", description: "Reviews the diff." },
+        ],
+      },
+      [A2A_RPC_METHODS.messageSend]: { task },
+      [A2A_RPC_METHODS.tasksGet]: { task },
+      [A2A_RPC_METHODS.tasksStatus]: {
+        task: { ...task, status: { state: "completed", timestamp: "t" } },
+      },
+    });
+    const runtime = createRuntime({ subagents: [coordinator], host });
+    const a2a = (runtime as any).buildA2ATool("researcher", "tok-researcher") as any;
+    expect(a2a.name).toBe("A2A");
+    // A single tool carries every operation; `action` is its only required
+    // parameter, so the model cannot blur the operations together.
+    expect(a2a.parameters.required).toEqual(["action"]);
+
+    // discover lists running peers as Agent Cards, carrying the closure token.
+    const discovered = await a2a.execute("call-discover", { action: "discover" });
+    expect(discovered.details.action).toBe("discover");
+    expect(discovered.details.agents).toHaveLength(1);
+    expect(discovered.content[0].text).toContain("reviewer: Reviews the diff.");
+    const listCall = host.call.mock.calls.find(
+      ([method]) => method === A2A_RPC_METHODS.agentsList,
+    );
+    // The token is supplied by the runtime, never chosen by the model.
+    expect(listCall![1]).toEqual({ token: "tok-researcher" });
+
+    // send creates/continues a task and reports its state back to the model.
+    const sent = await a2a.execute("call-send", {
       action: "send",
       to: "reviewer",
       text: "I own src/a.ts",
     });
-    expect(sent.content[0].text).toBe("Delivered to reviewer.");
-    expect(mailbox.drain("reviewer").messages).toHaveLength(1);
-    expect(mailbox.hasMessages("researcher")).toBe(false);
+    expect(sent.details.action).toBe("send");
+    expect(sent.details.task.id).toBe("task-9");
+    const sendCall = host.call.mock.calls.find(
+      ([method]) => method === A2A_RPC_METHODS.messageSend,
+    );
+    expect(sendCall![1].token).toBe("tok-researcher");
+    expect(sendCall![1].message).toMatchObject({
+      role: "agent",
+      to: "reviewer",
+      parts: [{ kind: "text", text: "I own src/a.ts" }],
+    });
 
-    // Seed this delegate's own inbox from the other peer, then drain it.
-    mailbox.send("reviewer", "researcher", "Schema is set");
-    const inbox = await peer.execute("call-inbox", { action: "inbox" });
-    expect(inbox.details.action).toBe("inbox");
-    expect(inbox.content[0].text).toContain("Running peers:");
-    expect(inbox.content[0].text).toContain("Schema is set");
-    expect(inbox.details.messages).toHaveLength(1);
+    // An empty send is rejected locally without hitting the broker.
+    const empty = await a2a.execute("call-empty", { action: "send", to: "reviewer" });
+    expect(empty.details.error).toContain("non-empty text");
 
-    // wait with a short timeout returns empty when nobody writes, without
+    // get reads a task by id.
+    const got = await a2a.execute("call-get", { action: "get", taskId: "task-9" });
+    expect(got.details.action).toBe("get");
+    expect(got.details.task.id).toBe("task-9");
+
+    // wait with a short timeout returns empty when no event arrives, without
     // blocking forever.
-    const waited = await peer.execute("call-wait", {
+    const waited = await a2a.execute("call-wait", {
       action: "wait",
       timeoutSeconds: 1,
     });
     expect(waited.details.action).toBe("wait");
-    expect(waited.details.messages).toHaveLength(0);
+    expect(waited.details.events).toHaveLength(0);
     expect(waited.details.timedOut).toBe(true);
+
+    // complete finishes a task the peer serves via tasks.status, defaulting to
+    // the `completed` state and carrying the closure token.
+    const completed = await a2a.execute("call-complete", {
+      action: "complete",
+      taskId: "task-9",
+      text: "done",
+    });
+    expect(completed.details.action).toBe("complete");
+    expect(completed.details.task.status.state).toBe("completed");
+    const statusCall = host.call.mock.calls.find(
+      ([method]) => method === A2A_RPC_METHODS.tasksStatus,
+    );
+    expect(statusCall![1]).toMatchObject({
+      token: "tok-researcher",
+      id: "task-9",
+      state: "completed",
+    });
+    expect(statusCall![1].message).toMatchObject({
+      parts: [{ kind: "text", text: "done" }],
+    });
 
     await runtime.dispose();
   });
 
-  it("adds the peer messaging guidance block only when a peer tool is declared", async () => {
+  it("delivers a broker task event to the addressed peer's wait", async () => {
+    const host = a2aHost();
+    const runtime = createRuntime({ subagents: [coordinator], host });
+    // Subscribe to broker notifications, then capture the registered handler.
+    (runtime as any).ensureA2ASubscription();
+    const handler = host.onNotification.mock.calls[0][0] as (
+      method: string,
+      params: unknown,
+    ) => void;
+    const a2a = (runtime as any).buildA2ATool("researcher", "tok-researcher") as any;
+
+    const waitPromise = a2a.execute("call-wait", {
+      action: "wait",
+      timeoutSeconds: 5,
+    });
+    // The broker addresses an event to "researcher"; it must wake that wait.
+    handler(A2A_NOTIFICATIONS.taskEvent, {
+      recipient: "researcher",
+      contextId: "session-1",
+      event: {
+        kind: "status-update",
+        taskId: "task-42",
+        contextId: "session-1",
+        status: { state: "working", timestamp: "t" },
+        final: false,
+      },
+    });
+    const waited = await waitPromise;
+    expect(waited.details.timedOut).toBe(false);
+    expect(waited.details.events).toHaveLength(1);
+    expect(waited.content[0].text).toContain("task-42");
+
+    await runtime.dispose();
+  });
+
+  it("wakes a blocked wait when a peer deregisters on settle", async () => {
+    const host = a2aHost();
+    const runtime = createRuntime({ subagents: [coordinator], host });
+    const a2a = (runtime as any).buildA2ATool("researcher", "tok-researcher") as any;
+
+    // "researcher" blocks waiting for a peer's reply.
+    const waitPromise = a2a.execute("call-wait", {
+      action: "wait",
+      timeoutSeconds: 30,
+    });
+    // A different peer settles and deregisters. The departing agent cannot know
+    // who was waiting on it, so every waiter must be woken to re-evaluate
+    // instead of waiting out its 30s timeout.
+    (runtime as any).deregisterA2AAgent("tok-reviewer");
+    const waited = await waitPromise;
+    // No event was queued for "researcher", so the woken wait returns empty —
+    // early, not after the full timeout.
+    expect(waited.details.action).toBe("wait");
+    expect(waited.details.events).toHaveLength(0);
+    expect(waited.details.timedOut).toBe(true);
+    expect(
+      host.call.mock.calls.some(
+        ([method, params]) =>
+          method === A2A_RPC_METHODS.agentsDeregister &&
+          (params as any).token === "tok-reviewer",
+      ),
+    ).toBe(true);
+
+    await runtime.dispose();
+  });
+
+  it("adds the A2A guidance block only when the A2A tool is declared", async () => {
     const runtime = createRuntime({ subagents: [coordinator, explorer] });
 
-    const withPeers = (
+    const withA2A = (
       (runtime as any).subagentGuidance(coordinator) as string[]
     ).join("\n\n");
-    expect(withPeers).toContain("Peer messaging:");
-    expect(withPeers).toContain('you are "coordinator"');
-    expect(withPeers).toContain(
-      "Nobody else is running right now, so peer sends will have no recipient",
-    );
-    expect(withPeers).toContain("Never ask a peer to do your task");
+    expect(withA2A).toContain("A2A protocol:");
+    expect(withA2A).toContain('you are the agent "coordinator"');
+    expect(withA2A).toContain("A2A(action=discover)");
+    expect(withA2A).toContain("Never ask a peer to do your task");
 
-    const withoutPeers = (
+    const withoutA2A = (
       (runtime as any).subagentGuidance(explorer) as string[]
     ).join("\n\n");
-    expect(withoutPeers).not.toContain("Peer messaging:");
+    expect(withoutA2A).not.toContain("A2A protocol:");
 
-    // Once a peer is running, the block names it rather than claiming nobody is.
-    (runtime as any).mailbox.join("reviewer");
-    const withRunningPeer = (
-      (runtime as any).subagentGuidance(coordinator) as string[]
+    // The guidance names the delegate by its resolved peerId.
+    const named = (
+      (runtime as any).subagentGuidance(coordinator, "coordinator-2") as string[]
     ).join("\n\n");
-    expect(withRunningPeer).toContain(
-      "Running alongside you right now: reviewer.",
-    );
+    expect(named).toContain('you are the agent "coordinator-2"');
 
     await runtime.dispose();
   });
@@ -5228,13 +5430,14 @@ describe("DesktopAgentRuntime subagents", () => {
     const discussant: SubagentDefinition = {
       name: "discussant",
       description: "Participate in a multi-agent roundtable.",
-      tools: ["Read", "Peer"],
+      tools: ["Read", "A2A"],
       maxTurns: 6,
       prompt: "Debate the topic.",
       source: "user" as const,
       filePath: "/home/.agents/subagents/discussant.md",
     };
-    const runtime = createRuntime({ subagents: [discussant] });
+    const host = a2aHost();
+    const runtime = createRuntime({ subagents: [discussant], host });
     subagentRuns.calls.length = 0;
     subagentRuns.instances.length = 0;
     subagentRuns.deferred = true;
@@ -5271,39 +5474,31 @@ describe("DesktopAgentRuntime subagents", () => {
     expect(d3.agentName).toBe("discussant");
     expect(new Set([d1.peerId, d2.peerId, d3.peerId]).size).toBe(3);
 
-    // Each peerId is in the mailbox and can see the other two as peers.
-    const mailbox = (runtime as any).mailbox;
-    expect(mailbox.peers(d1.peerId).sort()).toEqual(
-      [d2.peerId, d3.peerId].sort(),
+    // Each delegation registered its own Agent Card under its unique peerId,
+    // so the broker can address each individually.
+    const registeredNames = host.call.mock.calls
+      .filter(([method]) => method === A2A_RPC_METHODS.agentsRegister)
+      .map(([, params]) => (params as any).card.name);
+    expect(new Set(registeredNames)).toEqual(
+      new Set([d1.peerId, d2.peerId, d3.peerId]),
     );
-    expect(mailbox.peers(d2.peerId).sort()).toEqual(
-      [d1.peerId, d3.peerId].sort(),
-    );
-
-    // Messages between them should work.
-    const sendResult = mailbox.send(d1.peerId, d2.peerId, "I own the REST argument");
-    expect(sendResult.ok).toBe(true);
-
-    const drained = mailbox.drain(d2.peerId);
-    expect(drained.messages).toHaveLength(1);
-    expect(drained.messages[0].from).toBe(d1.peerId);
-    expect(drained.messages[0].text).toBe("I own the REST argument");
 
     subagentRuns.deferred = false;
     await runtime.dispose();
   });
 
-  it("includes roundtable delegation guidance when a peer-enabled subagent exists", async () => {
+  it("includes roundtable delegation guidance when an A2A-enabled subagent exists", async () => {
     const discussant: SubagentDefinition = {
       name: "discussant",
       description: "Participate in a multi-agent roundtable.",
-      tools: ["Read", "Peer"],
+      tools: ["Read", "A2A"],
       maxTurns: 6,
       prompt: "Debate the topic.",
       source: "user" as const,
       filePath: "/home/.agents/subagents/discussant.md",
     };
-    // With a peer-enabled subagent, the delegation section includes the roundtable pattern.
+    // With an A2A-enabled subagent, the delegation section includes the
+    // roundtable pattern.
     const withPeer = createRuntime({ subagents: [discussant, explorer] });
     const promptWithPeer = (withPeer as any).agent.state.systemPrompt as string;
     expect(promptWithPeer).toContain("Structured debate / roundtable");
@@ -5311,7 +5506,7 @@ describe("DesktopAgentRuntime subagents", () => {
     expect(promptWithPeer).toContain("Never pack multiple roles into a single Task");
     await withPeer.dispose();
 
-    // Without any peer-enabled subagent, the roundtable bullet is absent.
+    // Without any A2A-enabled subagent, the roundtable bullet is absent.
     const withoutPeer = createRuntime({ subagents: [explorer] });
     const promptWithoutPeer = (withoutPeer as any).agent.state.systemPrompt as string;
     expect(promptWithoutPeer).not.toContain("Structured debate / roundtable");

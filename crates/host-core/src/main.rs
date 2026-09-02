@@ -1,3 +1,4 @@
+mod a2a;
 mod activation;
 mod agent_capabilities;
 mod artifacts;

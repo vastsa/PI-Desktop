@@ -152,10 +152,11 @@ Each ADR includes:
 | 0135 | Retry unchanged edited prompts | Accepted |
 | 0136 | Preserve the active task boundary across context compaction | Accepted |
 | 0137 | Retained session panes | Accepted (amends 0130 clauses 4/5) |
-| 0138 | Subagent peer messaging | Accepted (amended by 0140) |
-| 0140 | Fold the three peer tools into one `Peer` tool | Accepted |
+| 0138 | Subagent peer messaging | Superseded by 0147 |
+| 0140 | Fold the three peer tools into one `Peer` tool | Superseded by 0147 |
 | 0141 | Make expanded sidebar width user-resizable | Accepted |
 | 0142 | Allow non-loopback HTTP MCP endpoints with explicit risk disclosure | Accepted |
 | 0144 | Allow user-configured thinking-level overrides | Accepted |
 | 0145 | Publish native macOS Intel artifacts | Accepted |
 | 0146 | Assign outer and inner work-panel resize ownership by boundary | Accepted |
+| 0147 | A2A protocol stack for subagent coordination | Accepted (supersedes 0138 / 0140) |

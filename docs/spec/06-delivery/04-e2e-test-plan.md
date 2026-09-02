@@ -6990,64 +6990,76 @@ This test plan spec is accepted when:
 - **Status**: Unit-covered (`packages/agent-runtime/src/runtime.test.ts`,
   `context-compaction.test.mjs`); provider/UI journey Draft
 
-#### E2E-165: Concurrent subagents coordinate through peer messages
+#### E2E-165: Concurrent subagents coordinate through the A2A protocol
 
 - **Preconditions**: Agent mode with two user subagent definitions that each
-  declare a working tool plus the `Peer` tool — one write-capable
-  (`tools: Read, Edit, Peer`) and one read-only
-  (`tools: Read, Grep, Peer`). A third definition declares only `Peer`.
-  A fourth declares no peer tool.
-- **Steps**: 1) Start both peer-capable delegates in one assistant message and
-  let one claim a shared file with `Peer(action="send")` while the other reads
-  its inbox. 2) Have the read-only delegate call `Peer(action="wait")` for an
-  answer the peer never sends, and let the wait expire. 3) Send more than the
-  64-message inbox cap to one delegate, then drain it. 4) Let one delegate
-  settle while its peer is waiting. 5) Delegate to the `Peer`-only definition.
-  6) Delegate to the definition with no peer tool. 7) Inspect the parent's own
-  tool list and the reports the parent receives.
-- **Expected**: A directed send reaches only the named peer and a broadcast
-  reaches every other running delegate but never the sender; addressing is by
-  agent name and a send to a name that is not running returns a tool error
-  listing the running peers. An expired `wait` returns empty and is not a
-  failure. Draining past the cap returns 64 messages with the oldest dropped and
-  the loss reported once, and a drained message is never returned twice. A
-  delegate settling wakes its peer's pending `wait` immediately instead of
-  holding it to the timeout. The `Peer`-only definition is refused at `Task`
-  time with "declares only peer messaging tools". The definition with no peer
-  tool receives no peer guidance and behaves exactly as before. `Peer` never
-  appears in the parent's tool list, no peer message appears in the parent's
-  model context, and peer tool calls appear in the transcript attributed to the
-  sending delegate under its `Task` row.
+  declare a working tool plus the `A2A` tool — one write-capable
+  (`tools: Read, Edit, A2A`) and one read-only (`tools: Read, Grep, A2A`).
+  A third definition declares only `A2A`. A fourth declares no A2A tool. The
+  host advertises `"a2a"` at handshake (protocol v10).
+- **Steps**: 1) Start both A2A-capable delegates in one assistant message; on
+  spawn each is registered with the host-core broker and receives a capability
+  token. 2) Each calls `A2A(action="discover")` and finds the other in the
+  session's agent registry. 3) One delegate (the requester) sends a message to
+  the other (the worker) with `A2A(action="send")`, creating a task addressed to
+  the worker. 4) The worker calls `A2A(action="wait")` and receives the
+  streaming `a2a.task.event` addressed to it, then reads the task with
+  `A2A(action="get")`. 5) The worker finishes the task with
+  `A2A(action="complete")` (equivalently `a2a.tasks.status`), driving it to the
+  terminal `completed` state; the requester, parked in `A2A(action="wait")`,
+  wakes on the terminal `a2a.task.event` routed to it as the worker's
+  counterpart and reads the final message. 6) Delegate to the `A2A`-only
+  definition. 7) Delegate to the definition with no A2A tool. 8) Inspect the
+  parent's own tool list and the reports it receives.
+- **Expected**: `discover` returns the other registered agent (each caller's own
+  Agent Card excluded), with cards derived from the `SubagentDefinition`. A send
+  creates a durable `a2a_tasks` row in state `submitted`/`working` carrying
+  `agentName` (the worker) and `requesterName` (the sender); the worker's `wait`
+  wakes on the creation `a2a.task.event` addressed to it (`recipient` = its peer
+  id) rather than holding to the timeout; `get` returns the task and its bounded
+  history. The worker's `complete` drives the task to the terminal `completed`
+  state and routes the terminal event to the requester (the caller's
+  counterpart), which wakes its `wait`; no further transition is accepted
+  (`A2A_TASK_TERMINAL`). The `A2A`-only definition is refused at `Task`
+  time as declaring only coordination tools. The definition with no A2A tool
+  receives no A2A guidance and behaves exactly as before. `A2A` never appears in
+  the parent's tool list, no A2A traffic appears in the parent's model context,
+  and A2A tool calls appear in the transcript attributed to the calling delegate
+  under its `Task` row. On settle each delegate is deregistered and its token
+  invalidated.
 - **Specs linked**: `03-runtime/02-agent-runtime.md` §5f.2,
+  `03-runtime/06-host-rpc-protocol.md` §4,
   `03-runtime/03-tools-and-permissions.md` §10.2,
-  `08-meta/decisions-log.md` (D277), ADR 0138, ADR 0140
+  `08-meta/decisions-log.md` (D277), ADR 0147
 - **Acceptance**: E (tools & permissions) + C (chat/stream) + Security
 - **Milestone**: M5
-- **Status**: Unit-covered (`packages/agent-runtime/src/subagent-mailbox.test.ts`,
-  `packages/agent-runtime/src/runtime.test.ts`); agent-facing journey Draft
+- **Status**: Draft
 
-#### E2E-165b: Multiple concurrent delegations of one definition exchange peer messages
+#### E2E-165b: A2A push notification and capability/cross-context enforcement
 
-- **Preconditions**: Agent mode with one user subagent definition declaring
-  working tools plus the `Peer` tool (e.g.
-  `tools: Read, Glob, Grep, Peer`).
-- **Steps**: 1) Delegate three concurrent instances of the same definition in
-  one assistant message with distinct roles (e.g. "REST advocate", "GraphQL
-  advocate", "Pragmatist"). 2) Each delegate broadcasts its opening position.
-  3) Each delegate calls `Peer(action="inbox")` and responds to the others.
-  4) One delegate settles.
-- **Expected**: Each delegation gets a unique peer id (e.g. "discussant",
-  "discussant-2", "discussant-3") and its own mailbox inbox. A broadcast from
-  one reaches the other two. Directed messages by peer id reach only the
-  target. Peer ids appear in the system-prompt guidance given to each delegate
-  (`you are "discussant-2"`). When one delegate settles, its peers see it
-  disappear from the peer list their next `Peer(action="inbox")` returns. No
-  `no-peers` or `unknown-peer` errors occur during normal operation.
-- **Specs linked**: `03-runtime/02-agent-runtime.md` §5f.2, ADR 0138, ADR 0140
-- **Acceptance**: E (tools & permissions) + C (chat/stream)
+- **Preconditions**: Agent mode with two user subagent definitions that each
+  declare a working tool plus the `A2A` tool, delegated concurrently in one
+  session (one `contextId`). The host advertises `"a2a"` at handshake.
+- **Steps**: 1) One delegate sends a message creating a task, then sets a push
+  config for that task with `A2A`/`a2a.tasks.pushNotificationConfig.set`. 2) The
+  task advances; the broker emits an `a2a.push` notification for the subscribed
+  task. 3) A delegate attempts to address an agent in a different session
+  (`contextId`). 4) A call is replayed with a token that has been invalidated by
+  deregister, and a call is made against a task the caller does not own.
+- **Expected**: The push config is stored host-side and readable with
+  `pushNotificationConfig.get`; a status change delivers an `a2a.push`
+  notification shaped `{ recipient, contextId, taskId, token?, status }` to the
+  subscribed agent. The cross-context addressing attempt is rejected with
+  JSON-RPC code `1400` / `data.errorCode = A2A_CROSS_CONTEXT_DENIED`. A call
+  bearing an invalidated token fails with `A2A_UNKNOWN_TOKEN`, and addressing a
+  task the caller does not own fails with `A2A_UNKNOWN_TASK`; a terminal task
+  refuses further transitions with `A2A_TASK_TERMINAL`. The capability token is
+  never present in the model-visible transcript.
+- **Specs linked**: `03-runtime/02-agent-runtime.md` §5f.2,
+  `03-runtime/06-host-rpc-protocol.md` §4, ADR 0147
+- **Acceptance**: E (tools & permissions) + C (chat/stream) + Security
 - **Milestone**: M5
-- **Status**: Unit-covered (`packages/agent-runtime/src/subagent-mailbox.test.ts`,
-  `packages/agent-runtime/src/runtime.test.ts`); agent-facing journey Draft
+- **Status**: Draft
 
 #### E2E-166: Subagent model selection
 

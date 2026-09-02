@@ -69,13 +69,33 @@ import {
   DEFAULT_SUBAGENT_PERMISSION,
   formatAskToolOutput,
   isCommandShellOption,
-  isSubagentPeerTool,
+  isSubagentA2ATool,
   isToolsOutputParams,
   MAX_SUBAGENT_CONCURRENCY,
   normalizeSubagentName,
   proposalKindForMode,
   subagentModelKey,
-  subagentUsesPeerMessaging,
+  subagentUsesA2A,
+  toAgentCard,
+  A2A_RPC_METHODS,
+  A2A_NOTIFICATIONS,
+  A2A_DEFAULT_STREAM_WAIT_SECONDS,
+  A2A_MAX_STREAM_WAIT_SECONDS,
+  A2A_MAX_SENDS_PER_RUN,
+  A2A_MAX_TEXT_CHARS,
+  isA2ATerminalState,
+  isA2ATaskState,
+  type A2AAgentCard,
+  type A2AMessage,
+  type A2ATask,
+  type A2AStreamEvent,
+  type A2ATaskEventNotification,
+  type A2APushNotification,
+  type A2AMessageSendResult,
+  type A2AAgentsListResult,
+  type A2ATasksGetResult,
+  type A2ATasksCancelResult,
+  type A2ATasksStatusResult,
   type ProposalKind,
   type SubagentPermission,
 } from "@pi-desktop/shared";
@@ -99,16 +119,6 @@ import {
   type RuntimeProviderConfig,
 } from "./provider-binding.js";
 import { PathMutex } from "./path-lock.js";
-import {
-  DEFAULT_PEER_WAIT_SECONDS,
-  formatPeerMessages,
-  isPeerAction,
-  MAX_PEER_MESSAGE_CHARS,
-  MAX_PEER_SENDS_PER_RUN,
-  MAX_PEER_WAIT_SECONDS,
-  PEER_ACTIONS,
-  SubagentMailbox,
-} from "./subagent-mailbox.js";
 import {
   composeSubagentSystemPrompt,
   SubagentRun,
@@ -261,13 +271,27 @@ export type DelegationStatus =
  * One background delegation owned by the session runtime. `completion`
  * resolves when the delegate settles; `abort` stops the delegate's agent.
  */
+/** Actions the delegate-facing `A2A` tool multiplexes (ADR 0146). Local to the
+ * runtime: the wire contract is the `a2a.*` RPC methods, this is only the
+ * single tool's `action` selector. */
+const A2A_TOOL_ACTIONS = ["discover", "send", "get", "wait", "complete", "cancel"] as const;
+type A2AToolAction = (typeof A2A_TOOL_ACTIONS)[number];
+function isA2AToolAction(value: string): value is A2AToolAction {
+  return (A2A_TOOL_ACTIONS as readonly string[]).includes(value);
+}
+
 export type DelegationRecord = {
   delegationId: string;
   agentName: string;
-  /** Unique identity for peer messaging.  Equals `agentName` for the first
+  /** Unique identity for A2A addressing. Equals `agentName` for the first
    * delegation of a definition; subsequent concurrent ones get a numeric
-   * suffix so each peer is individually addressable (e.g. "discussant-2"). */
+   * suffix so each peer is individually addressable (e.g. "discussant-2").
+   * Doubles as the delegate's registered A2A agent card `name`. */
   peerId: string;
+  /** Host-minted A2A capability token, present when the delegate registered
+   * (declared the `A2A` tool). Held here so settle can deregister it; never
+   * exposed to the delegate's model. */
+  a2aToken?: string;
   status: DelegationStatus;
   startedAt: number;
   completedAt?: number;
@@ -1182,11 +1206,18 @@ export class DesktopAgentRuntime {
    */
   private delegatePermissionScopes = new Map<string, SubagentPermission>();
   /**
-   * Peer mailbox shared by the delegates of this session (D277, ADR 0138).
-   * Owned here rather than by any delegate, so a delegate can only reach it
-   * through the single `Peer` tool the runtime hands it.
+   * A2A streaming events delivered by host-core, keyed by recipient peer id
+   * (ADR 0146). The broker addresses every `a2a.task.event` to the agent that
+   * should act on it, so a delegate waits on its own peer id. Owned by the
+   * runtime, not by any delegate: a delegate reaches A2A only through the
+   * single `A2A` tool the runtime hands it.
    */
-  private mailbox = new SubagentMailbox();
+  private a2aEvents = new Map<
+    string,
+    { queue: A2AStreamEvent[]; wakers: Set<() => void> }
+  >();
+  /** Unsubscribe from host A2A notifications; set on first registration. */
+  private a2aUnsubscribe?: () => void;
   /** Serializes same-path mutations across the parent and its delegates. */
   private writeLocks = new PathMutex();
   /** Complete tool registry; only the active subset is sent to the provider. */
@@ -1344,8 +1375,8 @@ Use the Task tool when:
 - Adversarial review: after implementing a non-trivial change, delegate a read-only review of it to code-reviewer before you commit.
 - Implementation: a multi-file change with a complete, self-contained spec — delegate to fixer, which may write inside the workspace.
 - Context economy: wide searches, long logs, multi-file surveys whose intermediate output you do not need — explorer / test-runner.
-- Batch sharding: the same bounded job repeated over many independent targets.${this.subagents.some(subagentUsesPeerMessaging) ? `
-- Structured debate / roundtable: start one Task(\"discussant\") per perspective in the same assistant message. Each brief must state: the role name, the topic, the list of other participants (by peer id), the number of discussion rounds, and the protocol (open with Peer send, read with Peer inbox/wait, respond, then close). Never pack multiple roles into a single Task — each role must be its own delegate so they can debate through peer messaging.` : ""}
+- Batch sharding: the same bounded job repeated over many independent targets.${this.subagents.some(subagentUsesA2A) ? `
+- Structured debate / roundtable: start one Task(\"discussant\") per perspective in the same assistant message. Each brief must state: the role name, the topic, the list of other participants (by agent name), the number of discussion rounds, and the protocol (discover peers, open with A2A send, read with A2A wait/get, respond, then close). Never pack multiple roles into a single Task — each role must be its own delegate so they can debate through the A2A protocol.` : ""}
 
 Delegation rules:
 - Task returns immediately with a delegation id. Do not sit idle: keep working on your own independent line, then converge with TaskWait (mode="any" + minCompleted to converge early) when you need results, TaskList to check progress, TaskStop to stop.
@@ -2670,19 +2701,18 @@ Delegation rules:
         `Write temporary and intermediate files into the session scratch directory \`${this.scratchDir}\` (in Bash: $PI_SCRATCH_DIR) using absolute paths, never into the workspace.`,
       );
     }
-    if (subagentUsesPeerMessaging(definition)) {
-      // Named peers, resolved at spawn time: a delegate cannot discover who is
-      // running any other way, and addressing is by peer id (D277).  When
-      // multiple delegates share a definition name, each gets a unique peerId
-      // so they can address each other individually.
+    if (subagentUsesA2A(definition)) {
+      // Named agents, resolved at spawn time: a delegate discovers who is
+      // running through the A2A tool's `discover` action, and addressing is by
+      // agent name (ADR 0146). When multiple delegates share a definition name,
+      // each gets a unique peerId so they can address each other individually.
       const self = peerId ?? definition.name;
-      const peers = this.mailbox.peers(self);
       blocks.push(
         [
-          `Peer messaging: you are "${self}" and other subagents may be working in this session at the same time. ${peers.length ? `Running alongside you right now: ${peers.join(", ")}.` : "Nobody else is running right now, so peer sends will have no recipient until one starts."}`,
-          "Use the single Peer tool: Peer(action=send) delivers a note (omit `to` to broadcast), Peer(action=inbox) reads your queued messages without blocking, and Peer(action=wait) blocks until one arrives.",
+          `A2A protocol: you are the agent "${self}" and other subagents may be running in this session at the same time. You reach them through the A2A tool over the host's Agent2Agent broker.`,
+          "Use the single A2A tool: A2A(action=discover) lists the peers running alongside you as Agent Cards; A2A(action=send) sends a message to a peer by name (creating or continuing a task); A2A(action=get) reads a task's status and history; A2A(action=wait) blocks until a peer addresses a task to you; A2A(action=cancel) cancels a task you own.",
           "Coordination is the point, not conversation: claim a file before editing it so two agents do not fight over it, correct a peer whose assumption you just disproved, and pass a fact that saves a peer a search. Never ask a peer to do your task, and never wait on a peer to finish yours.",
-          "A peer may never reply. Messages are not interrupts — a peer reads them only when it checks — so treat every exchange as best effort and keep your own report self-contained. The main agent never sees peer traffic, so anything that matters must also be in your report.",
+          "A peer may never reply. A task addressed to you is not an interrupt — you see it only when you `wait` or `get` — so treat every exchange as best effort and keep your own report self-contained. The main agent never sees A2A traffic, so anything that matters must also be in your report.",
         ].join("\n\n"),
       );
     }
@@ -2712,7 +2742,8 @@ Delegation rules:
    * Compute a unique peer identity for a new delegation.  The first delegation
    * of a given definition keeps its bare name (e.g. "discussant"); each extra
    * concurrent delegation of the same name gets a numeric suffix ("discussant-2",
-   * "discussant-3", …) so every peer is individually addressable in the mailbox.
+   * "discussant-3", …) so every peer is individually addressable through the
+   * A2A broker.
    */
   private assignPeerId(agentName: string): string {
     // Collect *all* running peerIds, not just those for the same definition,
@@ -2835,24 +2866,25 @@ Delegation rules:
           }
         }
         const tools = definition.tools
-          .filter((name) => !isSubagentPeerTool(name))
+          .filter((name) => !isSubagentA2ATool(name))
           .map((name) => this.toolCatalog.get(name))
           .filter((tool): tool is AgentTool => tool !== undefined);
-        // Check whether peer tools are declared. They are built later, after
-        // the unique peerId is assigned, because they close over it (D277).
-        const hasPeerTools = definition.tools.some(isSubagentPeerTool);
-        if (tools.length === 0 && !hasPeerTools) {
+        // Check whether the A2A tool is declared. It is built later, after the
+        // unique peerId is assigned and the agent registers with the broker,
+        // because it closes over the peerId and the host-minted token (ADR 0146).
+        const hasA2ATool = definition.tools.some(isSubagentA2ATool);
+        if (tools.length === 0 && !hasA2ATool) {
           return this.subagentToolError(
             toolCallId,
             `The ${definition.name} subagent declares no tool available in this session.`,
           );
         }
         if (tools.length === 0) {
-          // Messaging alone cannot accomplish a task; a delegate with only peer
-          // tools would burn turns talking with nothing to report.
+          // Messaging alone cannot accomplish a task; a delegate with only the
+          // A2A tool would burn turns talking with nothing to report.
           return this.subagentToolError(
             toolCallId,
-            `The ${definition.name} subagent declares only peer messaging tools and no tool to do work with.`,
+            `The ${definition.name} subagent declares only the A2A tool and no tool to do work with.`,
           );
         }
         const startedAt = Date.now();
@@ -2877,10 +2909,10 @@ Delegation rules:
         });
         // Assign a unique peer identity *before* creating the record so that
         // concurrent delegations of the same definition (e.g. three
-        // "discussant" subagents in a roundtable) each get their own mailbox
-        // inbox and can address each other individually.
+        // "discussant" subagents in a roundtable) each register a distinct
+        // A2A agent card and can address each other individually.
         const peerId =
-          hasPeerTools
+          hasA2ATool
             ? this.assignPeerId(definition.name)
             : definition.name;
         const record: DelegationRecord = {
@@ -2896,19 +2928,24 @@ Delegation rules:
         };
         this.delegations.set(delegationId, record);
 
-        // Peer tools bypass `scopeDelegateTools`: they are in-process message
-        // passing, never a host tool call, so there is no permission scope to
-        // attach and nothing for host-core to gate.
-        // Rebuild the single `Peer` tool bound to the unique peerId, not
-        // definition.name.
-        const resolvedPeerTools = definition.tools.some(isSubagentPeerTool)
-          ? [this.buildPeerTool(peerId)]
-          : [];
+        // The A2A tool bypasses `scopeDelegateTools`: it is a host `a2a.*` call
+        // authorized by the delegate's own capability token, not a workspace
+        // tool call, so there is no permission scope to attach for host-core to
+        // gate. Register the agent with the broker to mint its token and
+        // publish its Agent Card, then build the tool bound to the peerId and
+        // token — both supplied by the runtime, never by the model (ADR 0146).
+        const a2aTools: AgentTool[] = [];
+        if (hasA2ATool) {
+          const token = await this.registerA2AAgent(peerId, definition);
+          if (token) {
+            record.a2aToken = token;
+            a2aTools.push(this.buildA2ATool(peerId, token));
+          }
+        }
         const scopedTools = [
           ...this.scopeDelegateTools(tools, definition),
-          ...resolvedPeerTools,
+          ...a2aTools,
         ];
-        if (resolvedPeerTools.length > 0) this.mailbox.join(peerId);
         new SubagentRun({
           definition,
           sessionId: this.sessionId,
@@ -2984,72 +3021,244 @@ Delegation rules:
   }
 
   /**
-   * Build the single `Peer` messaging tool bound to `self` (D277, ADR 0138,
-   * ADR 0140).
-   *
-   * One tool carries the three peer operations — `send`, `inbox` and `wait` —
-   * selected by the required `action` parameter, so an opt-in delegate
-   * declares one tool instead of three. The tool closes over the delegate's
-   * own agent name, so a delegate cannot spoof a sender or read another
-   * agent's inbox: the name is supplied by the runtime at spawn time, never
-   * by the model. It is deliberately absent from `toolCatalog` — the parent
-   * already owns the delegation lifecycle and must not gain a second, weaker
-   * channel to its delegates.
+   * Register a delegate with the host-core A2A broker at spawn time (ADR
+   * 0146). Returns the host-minted capability token the `A2A` tool authorizes
+   * with, or `undefined` when the host is unavailable — the delegate then runs
+   * without A2A rather than failing outright. The agent card `name` is the
+   * unique peerId so concurrent delegations of one definition stay
+   * individually addressable; `contextId` is the session id, which scopes
+   * discovery and addressing to this session.
    */
-  private buildPeerTool(self: string): AgentTool {
+  private async registerA2AAgent(
+    peerId: string,
+    definition: SubagentDefinition,
+  ): Promise<string | undefined> {
+    this.ensureA2ASubscription();
+    const card: A2AAgentCard = { ...toAgentCard(definition), name: peerId };
+    try {
+      const result = await this.host.call<{ agentId: string; token: string }>(
+        A2A_RPC_METHODS.agentsRegister,
+        { contextId: this.sessionId, card },
+      );
+      return result?.token;
+    } catch {
+      // Host unavailable or rejected: the delegate keeps its work tools.
+      return undefined;
+    }
+  }
+
+  /** Deregister a settled delegate, invalidating its capability token and
+   * waking any peer waiting on events addressed to it. Best effort: a failed
+   * deregister on a dying host does not block settling. */
+  private deregisterA2AAgent(token: string): void {
+    this.host
+      .call(A2A_RPC_METHODS.agentsDeregister, { token })
+      .catch(() => undefined);
+    // Wake every local waiter so a peer blocked in `A2A(wait)` on the departing
+    // agent re-evaluates instead of waiting out its own timeout. Waiters park
+    // on their own name (the symmetric model), and the departing agent cannot
+    // know which peer was blocked on it, so wake them all; a woken waiter with
+    // an empty queue simply returns early, which is the documented "returns as
+    // soon as your last peer finishes" behavior.
+    for (const recipient of [...this.a2aEvents.keys()]) {
+      this.wakeA2ARecipient(recipient);
+    }
+  }
+
+  /**
+   * Subscribe once to host A2A notifications. The broker addresses every
+   * `a2a.task.event` / `a2a.push` to the peer that should act on it, so the
+   * runtime routes each event into that recipient's queue and wakes anything
+   * blocked in `A2A(wait)` for it.
+   */
+  private ensureA2ASubscription(): void {
+    if (this.a2aUnsubscribe) return;
+    this.a2aUnsubscribe = this.host.onNotification((method, params) => {
+      if (method === A2A_NOTIFICATIONS.taskEvent) {
+        const note = params as A2ATaskEventNotification;
+        if (note && typeof note.recipient === "string" && note.event) {
+          this.deliverA2AEvent(note.recipient, note.event);
+        }
+      } else if (method === A2A_NOTIFICATIONS.push) {
+        const note = params as A2APushNotification;
+        if (note && typeof note.recipient === "string" && note.status) {
+          this.deliverA2AEvent(note.recipient, {
+            kind: "status-update",
+            taskId: note.taskId,
+            contextId: note.contextId,
+            status: note.status,
+            final: isA2ATerminalState(note.status.state),
+          });
+        }
+      }
+    });
+  }
+
+  /** Queue an event for a recipient peer and wake its waiters. */
+  private deliverA2AEvent(recipient: string, event: A2AStreamEvent): void {
+    const entry = this.a2aEvents.get(recipient) ?? {
+      queue: [],
+      wakers: new Set<() => void>(),
+    };
+    entry.queue.push(event);
+    this.a2aEvents.set(recipient, entry);
+    const wakers = [...entry.wakers];
+    entry.wakers.clear();
+    for (const wake of wakers) wake();
+  }
+
+  /** Wake every waiter for a recipient without queueing an event (used when a
+   * peer deregisters, so a blocked `wait` returns instead of timing out). */
+  private wakeA2ARecipient(recipient: string): void {
+    const entry = this.a2aEvents.get(recipient);
+    if (!entry) return;
+    const wakers = [...entry.wakers];
+    entry.wakers.clear();
+    for (const wake of wakers) wake();
+  }
+
+  /** Take and clear the events queued for a recipient. */
+  private drainA2AEvents(recipient: string): A2AStreamEvent[] {
+    const entry = this.a2aEvents.get(recipient);
+    if (!entry || entry.queue.length === 0) return [];
+    const events = entry.queue;
+    entry.queue = [];
+    return events;
+  }
+
+  /** Block until an event is addressed to `self`, the deadline passes, or the
+   * run aborts. Returns the drained events (empty on timeout/abort). */
+  private waitForA2AEvents(
+    self: string,
+    deadline: number,
+    signal?: AbortSignal,
+  ): Promise<A2AStreamEvent[]> {
+    const existing = this.drainA2AEvents(self);
+    if (existing.length > 0) return Promise.resolve(existing);
+    if (signal?.aborted) return Promise.resolve([]);
+    const entry = this.a2aEvents.get(self) ?? {
+      queue: [],
+      wakers: new Set<() => void>(),
+    };
+    this.a2aEvents.set(self, entry);
+    return new Promise<A2AStreamEvent[]>((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        entry.wakers.delete(wake);
+        signal?.removeEventListener("abort", onAbort);
+        resolve(this.drainA2AEvents(self));
+      };
+      const wake = () => finish();
+      const onAbort = () => finish();
+      entry.wakers.add(wake);
+      signal?.addEventListener("abort", onAbort, { once: true });
+      const timer = setTimeout(finish, Math.max(0, deadline - Date.now()));
+    });
+  }
+
+  /** Map a broker error to its A2A contract error code, when present. */
+  private a2aErrorCode(error: unknown): string | undefined {
+    const data = (error as { data?: unknown })?.data;
+    if (data && typeof data === "object" && "errorCode" in data) {
+      const code = (data as { errorCode?: unknown }).errorCode;
+      if (typeof code === "string") return code;
+    }
+    return undefined;
+  }
+
+  /** Render a task's current state and last message for the delegate's model. */
+  private formatA2ATask(task: A2ATask): string {
+    const lines = [
+      `Task ${task.id} owned by ${task.agentName}: ${task.status.state}.`,
+    ];
+    const last = task.history[task.history.length - 1];
+    if (last) {
+      const text = last.parts
+        .map((part) =>
+          part.kind === "text"
+            ? part.text
+            : part.kind === "file"
+              ? `[file ${part.file.name ?? part.file.mimeType ?? "attachment"}]`
+              : "[data]",
+        )
+        .join(" ");
+      lines.push(`Latest from ${last.from ?? last.role}: ${text}`);
+    }
+    return lines.join("\n");
+  }
+
+  /**
+   * Build the single `A2A` tool bound to `self` and its capability `token`
+   * (ADR 0146).
+   *
+   * One tool carries the A2A operations a delegate needs — `discover`, `send`,
+   * `get`, `wait` and `cancel` — selected by the required `action` parameter,
+   * so an opt-in delegate declares one tool. The tool closes over the
+   * delegate's own peer id and its host-minted token: a delegate cannot spoof
+   * a sender or address the broker as another agent because the token is
+   * supplied by the runtime at spawn time, never by the model. It is
+   * deliberately absent from `toolCatalog` — the parent already owns the
+   * delegation lifecycle and must not gain a second, weaker channel to its
+   * delegates.
+   */
+  private buildA2ATool(self: string, token: string): AgentTool {
     return {
-      name: "Peer",
-      label: "Peer",
+      name: "A2A",
+      label: "A2A",
       description: [
-        "Talk to another subagent running right now in this session. `action` picks the operation: `send` delivers a note, `inbox` reads your queued messages without blocking, `wait` blocks until one arrives.",
-        "Use `send` to coordinate, not to transfer data: claim a file before you edit it, warn a peer that a shared assumption is wrong, or pass a fact that saves the peer a search. Keep it under ${MAX_PEER_MESSAGE_CHARS} characters — a peer that needs a file reads the file. Omit `to` to reach every running peer.",
-        `You may send at most ${MAX_PEER_SENDS_PER_RUN} times in this run. Use \`topic\` to tag a thread and \`inReplyTo\` to reference a specific message seq.`,
-        "`inbox` clears the messages queued for you and lists the subagents running alongside you. Use `from` to read only messages from one peer — unmatched messages stay queued. Messages are removed once read, so keep anything that matters. Check it before you start work another peer may already own, and again before you write your report.",
-        `\`wait\` returns early with whatever is queued and returns empty if nothing arrives within \`timeoutSeconds\` (default ${DEFAULT_PEER_WAIT_SECONDS}, max ${MAX_PEER_WAIT_SECONDS}). Only wait when you are genuinely blocked on an answer you asked a peer for — a peer under no obligation to reply may never reply, and an empty wait is not a failure; proceed on your own and say so in your report. It also returns as soon as your last peer finishes, because nobody is left to write.`,
-        "Peers only read their inbox when they call `inbox` or `wait`, so a note is not an interrupt and never a substitute for your own report. The main agent does not see peer messages.",
+        "Talk to another subagent running right now in this session over the Agent2Agent (A2A) protocol. `action` picks the operation.",
+        "`discover` lists the peers running alongside you as Agent Cards (name, description, skills). Call it first to learn who is available and by what name to address them.",
+        `\`send\` sends a message to a peer, creating a task the peer serves or continuing one via \`taskId\`. Set \`to\` to a peer name from \`discover\`; put your note in \`text\`. Coordinate, do not transfer data: a peer that needs a file reads the file. Keep \`text\` under ${A2A_MAX_TEXT_CHARS} characters. You may send at most ${A2A_MAX_SENDS_PER_RUN} times per run.`,
+        "`get` reads a task's current state and message history by `taskId`.",
+        `\`wait\` blocks until a peer addresses a task to you and returns it, or returns empty after \`timeoutSeconds\` (default ${A2A_DEFAULT_STREAM_WAIT_SECONDS}, max ${A2A_MAX_STREAM_WAIT_SECONDS}). Only wait when you are genuinely blocked on a peer's reply — a peer under no obligation to answer may never answer, and an empty wait is not a failure. It also returns as soon as your last peer finishes.`,
+        "`complete` finishes a task you serve by `taskId`, moving it to a terminal state (default `completed`; set `state` to `failed` or `rejected`, or to `input-required`/`auth-required` to pause for the requester). Put your result in `text`; it becomes the task's final message and wakes the requester.",
+        "`cancel` cancels a task by `taskId`, moving it to a terminal state.",
+        "The main agent never sees A2A traffic, so anything that matters must also be in your report.",
       ].join("\n\n"),
       parameters: Type.Object({
         action: Type.Union(
-          PEER_ACTIONS.map((value) => Type.Literal(value)),
+          A2A_TOOL_ACTIONS.map((value) => Type.Literal(value)),
           {
             description:
-              "Which operation to run: `send` a note to a peer, `inbox` read and clear your queued messages, or `wait` for one to arrive.",
+              "Which operation to run: `discover` list peers, `send` a message to a peer, `get` a task, `wait` for a peer to address you, `complete` a task you serve, or `cancel` a task.",
           },
         ),
         to: Type.Optional(
           Type.String({
             description:
-              "For `send`: agent name of the recipient. Omit to broadcast to every running peer.",
+              "For `send`: peer name of the recipient (from `discover`). Omit to address the single other running peer.",
           }),
         ),
         text: Type.Optional(
           Type.String({
-            description: "For `send`: the note. State the fact or the claim, not narration.",
+            description: "For `send`: the message. State the fact or the claim, not narration.",
           }),
         ),
-        topic: Type.Optional(
+        taskId: Type.Optional(
           Type.String({
             description:
-              "For `send`: short topic tag for threading, e.g. 'schema-design' or 'file-ownership'. Max 80 chars.",
+              "For `send`: continue an existing task instead of creating one. For `get`/`complete`/`cancel`: the task to read, finish, or cancel.",
           }),
         ),
-        inReplyTo: Type.Optional(
-          Type.Number({
-            description:
-              "For `send`: seq number of the message you are replying to. Helps peers follow the thread.",
-          }),
-        ),
-        from: Type.Optional(
-          Type.String({
-            description:
-              "For `inbox`/`wait`: only read or wait for messages from this sender; other messages stay queued.",
-          }),
+        state: Type.Optional(
+          Type.Union(
+            (["completed", "failed", "rejected", "input-required", "auth-required"] as const).map(
+              (value) => Type.Literal(value),
+            ),
+            {
+              description:
+                "For `complete`: the target state. Defaults to `completed`.",
+            },
+          ),
         ),
         timeoutSeconds: Type.Optional(
           Type.Number({
             minimum: 1,
-            maximum: MAX_PEER_WAIT_SECONDS,
-            description: `For \`wait\`: max seconds to wait; defaults to ${DEFAULT_PEER_WAIT_SECONDS}.`,
+            maximum: A2A_MAX_STREAM_WAIT_SECONDS,
+            description: `For \`wait\`: max seconds to block; defaults to ${A2A_DEFAULT_STREAM_WAIT_SECONDS}.`,
           }),
         ),
       }),
@@ -3058,105 +3267,184 @@ Delegation rules:
         const action =
           isRecord(params) &&
           typeof params.action === "string" &&
-          isPeerAction(params.action)
+          isA2AToolAction(params.action)
             ? params.action
-            : "inbox";
+            : "discover";
         const to =
           isRecord(params) && typeof params.to === "string" && params.to.trim()
             ? params.to.trim()
             : undefined;
         const text =
           isRecord(params) && typeof params.text === "string" ? params.text : "";
-        const topic =
+        const taskId =
           isRecord(params) &&
-          typeof params.topic === "string" &&
-          params.topic.trim()
-            ? params.topic.trim()
+          typeof params.taskId === "string" &&
+          params.taskId.trim()
+            ? params.taskId.trim()
             : undefined;
-        const inReplyTo =
-          isRecord(params) && typeof params.inReplyTo === "number"
-            ? params.inReplyTo
+        const state =
+          isRecord(params) &&
+          typeof params.state === "string" &&
+          isA2ATaskState(params.state)
+            ? params.state
             : undefined;
-        const from =
-          isRecord(params) && typeof params.from === "string" && params.from.trim()
-            ? params.from.trim()
-            : undefined;
-        const filter = from ? { from } : undefined;
 
-        if (action === "send") {
-          const outcome = this.mailbox.send(self, to, text, { topic, inReplyTo });
-          if (outcome.ok) {
+        try {
+          if (action === "discover") {
+            const result = await this.host.call<A2AAgentsListResult>(
+              A2A_RPC_METHODS.agentsList,
+              { token },
+            );
+            const agents = result?.agents ?? [];
+            const body =
+              agents.length === 0
+                ? "No other subagent is running right now. Carry on and put anything that matters in your report."
+                : agents
+                    .map((card) => `- ${card.name}: ${card.description}`)
+                    .join("\n");
             return {
-              content: [
-                {
-                  type: "text",
-                  text: `Delivered to ${outcome.delivered.join(", ")}.`,
-                },
-              ],
-              details: { action, delivered: outcome.delivered },
+              content: [{ type: "text", text: body }],
+              details: { action, agents },
             };
           }
-          const peers = this.mailbox.peers(self);
-          const peerList = peers.length ? peers.join(", ") : "none";
-          const reason =
-            outcome.reason === "unknown-peer"
-              ? `No running peer named "${to}". Running peers: ${peerList}.`
-              : outcome.reason === "no-peers"
-                ? "No other subagent is running, so there is nobody to tell. Carry on and put this in your report instead."
-                : outcome.reason === "send-cap"
-                  ? `You have used all ${MAX_PEER_SENDS_PER_RUN} peer sends for this run. Finish the work and put anything else in your report.`
-                  : "A peer message needs non-empty text.";
-          return {
-            content: [{ type: "text", text: reason }],
-            details: { action, error: reason, peers },
-          };
-        }
 
-        if (action === "inbox") {
-          const { messages, dropped } = this.mailbox.drain(self, filter);
-          const peers = this.mailbox.peers(self);
-          const peerLine = `Running peers: ${peers.length ? peers.join(", ") : "none"}.`;
+          if (action === "send") {
+            const body = text.trim();
+            if (!body) {
+              const msg = "An A2A message needs non-empty text.";
+              return {
+                content: [{ type: "text", text: msg }],
+                details: { action, error: msg },
+              };
+            }
+            const message: A2AMessage = {
+              role: "agent",
+              parts: [{ kind: "text", text: body }],
+              messageId: randomUUID(),
+              ...(taskId ? { taskId } : {}),
+              ...(to ? { to } : {}),
+            };
+            const result = await this.host.call<A2AMessageSendResult>(
+              A2A_RPC_METHODS.messageSend,
+              { token, message },
+            );
+            if ("task" in result) {
+              return {
+                content: [{ type: "text", text: this.formatA2ATask(result.task) }],
+                details: { action, task: result.task },
+              };
+            }
+            return {
+              content: [{ type: "text", text: "Delivered." }],
+              details: { action, message: result.message },
+            };
+          }
+
+          if (action === "get") {
+            if (!taskId) {
+              const msg = "`get` needs a `taskId`.";
+              return {
+                content: [{ type: "text", text: msg }],
+                details: { action, error: msg },
+              };
+            }
+            const result = await this.host.call<A2ATasksGetResult>(
+              A2A_RPC_METHODS.tasksGet,
+              { token, id: taskId },
+            );
+            return {
+              content: [{ type: "text", text: this.formatA2ATask(result.task) }],
+              details: { action, task: result.task },
+            };
+          }
+
+          if (action === "complete") {
+            if (!taskId) {
+              const msg = "`complete` needs a `taskId`.";
+              return {
+                content: [{ type: "text", text: msg }],
+                details: { action, error: msg },
+              };
+            }
+            const targetState = state ?? "completed";
+            const body = text.trim();
+            const message: A2AMessage | undefined = body
+              ? {
+                  role: "agent",
+                  parts: [{ kind: "text", text: body }],
+                  messageId: randomUUID(),
+                  taskId,
+                }
+              : undefined;
+            const result = await this.host.call<A2ATasksStatusResult>(
+              A2A_RPC_METHODS.tasksStatus,
+              { token, id: taskId, state: targetState, ...(message ? { message } : {}) },
+            );
+            return {
+              content: [{ type: "text", text: this.formatA2ATask(result.task) }],
+              details: { action, task: result.task },
+            };
+          }
+
+          if (action === "cancel") {
+            if (!taskId) {
+              const msg = "`cancel` needs a `taskId`.";
+              return {
+                content: [{ type: "text", text: msg }],
+                details: { action, error: msg },
+              };
+            }
+            const result = await this.host.call<A2ATasksCancelResult>(
+              A2A_RPC_METHODS.tasksCancel,
+              { token, id: taskId },
+            );
+            return {
+              content: [{ type: "text", text: this.formatA2ATask(result.task) }],
+              details: { action, task: result.task },
+            };
+          }
+
+          // action === "wait"
+          const timeoutSeconds =
+            isRecord(params) && typeof params.timeoutSeconds === "number"
+              ? Math.min(
+                  Math.max(1, Math.floor(params.timeoutSeconds)),
+                  A2A_MAX_STREAM_WAIT_SECONDS,
+                )
+              : A2A_DEFAULT_STREAM_WAIT_SECONDS;
+          const events = await this.waitForA2AEvents(
+            self,
+            Date.now() + timeoutSeconds * 1000,
+            signal,
+          );
+          if (events.length === 0) {
+            const body = `No peer addressed a task to you within ${timeoutSeconds}s. Do not wait again for the same answer — continue on your own and note the missing input in your report.`;
+            return {
+              content: [{ type: "text", text: body }],
+              details: { action, events, timedOut: true },
+            };
+          }
+          const lines = events.map((event) =>
+            event.kind === "status-update"
+              ? `Task ${event.taskId}: ${event.status.state}${event.final ? " (final)" : ""}.`
+              : `Task ${event.taskId}: artifact ${event.artifact.name ?? event.artifact.artifactId}.`,
+          );
+          lines.push("Use A2A(action=get, taskId=...) to read the full message, then A2A(action=send) to respond.");
+          return {
+            content: [{ type: "text", text: lines.join("\n") }],
+            details: { action, events, timedOut: false },
+          };
+        } catch (error) {
+          const code = this.a2aErrorCode(error);
+          const message =
+            error instanceof Error ? error.message : "A2A call failed.";
           return {
             content: [
-              {
-                type: "text",
-                text: `${formatPeerMessages(messages, dropped)}\n\n${peerLine}`,
-              },
+              { type: "text", text: code ? `${message} (${code})` : message },
             ],
-            details: { action, messages, dropped, peers },
+            details: { action, error: message, ...(code ? { code } : {}) },
           };
         }
-
-        // action === "wait"
-        const timeoutSeconds =
-          isRecord(params) && typeof params.timeoutSeconds === "number"
-            ? Math.min(
-                Math.max(1, Math.floor(params.timeoutSeconds)),
-                MAX_PEER_WAIT_SECONDS,
-              )
-            : DEFAULT_PEER_WAIT_SECONDS;
-        await this.mailbox.waitForMessages(
-          self,
-          Date.now() + timeoutSeconds * 1000,
-          signal,
-          filter,
-        );
-        const { messages, dropped } = this.mailbox.drain(self, filter);
-        const peers = this.mailbox.peers(self);
-        const body =
-          messages.length === 0
-            ? `No peer message arrived within ${timeoutSeconds}s. Running peers: ${peers.length ? peers.join(", ") : "none"}. Do not wait again for the same answer — continue on your own and note the missing input in your report.`
-            : `${formatPeerMessages(messages, dropped)}\n\nRunning peers: ${peers.length ? peers.join(", ") : "none"}.`;
-        return {
-          content: [{ type: "text", text: body }],
-          details: {
-            action,
-            messages,
-            dropped,
-            peers,
-            timedOut: messages.length === 0,
-          },
-        };
       },
     };
   }
@@ -3189,13 +3477,12 @@ Delegation rules:
     result: SubagentRunResult,
   ): void {
     if (record.status !== "running") return;
-    // Leave the mailbox before waking waiters, so a peer blocked in `PeerWait`
-    // on this agent re-evaluates against a peer list that no longer lists it
-    // rather than waiting out its own timeout (D277). The mailbox is keyed by
-    // peerId (unique per delegation for peer-enabled agents), so each delegate
-    // has its own inbox. Calling leave for a delegate that never joined (no
-    // peer tools) is a no-op.
-    this.mailbox.leave(record.peerId);
+    // Deregister from the A2A broker before waking waiters, so a peer blocked
+    // in `A2A(wait)` on this agent returns rather than waiting out its own
+    // timeout once its counterpart has exited (ADR 0146). The token is minted
+    // per delegation; deregistering invalidates it. A delegate that never
+    // registered (no A2A tool) has no token, so this is skipped.
+    if (record.a2aToken) this.deregisterA2AAgent(record.a2aToken);
     record.status =
       record.stopRequested && result.status === "aborted"
         ? "stopped"
@@ -5609,9 +5896,15 @@ Delegation rules:
     this.disposed = true;
     this.resolvePendingAskTools();
     this.abortRunningDelegations();
-    // Release any delegate still parked in `PeerWait` so dispose does not have
-    // to wait out a peer timeout (D277).
-    this.mailbox.clear();
+    // Release any delegate still parked in `A2A(wait)` and drop the host
+    // notification subscription so dispose does not wait out a peer timeout
+    // (ADR 0146). Deregistration of live agents rides on their run aborting.
+    for (const recipient of [...this.a2aEvents.keys()]) {
+      this.wakeA2ARecipient(recipient);
+    }
+    this.a2aEvents.clear();
+    this.a2aUnsubscribe?.();
+    this.a2aUnsubscribe = undefined;
     this.pathInstructionClaims.clear();
     this.failedHostToolCalls.clear();
     this.mutationFailureCounts.clear();

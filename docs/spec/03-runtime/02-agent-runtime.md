@@ -639,85 +639,100 @@ delegate may call), `04-data-storage.md` §4.7a (persisted attribution),
 `04-ux/03-permission-ux.md` §6a (more than one pending request) and
 `04-ux/08-component-spec.md` §9.9 (how a delegation reads).
 
-### 5f.2 Peer messaging between delegates (D277, ADR 0138)
+### 5f.2 Agent-to-agent coordination via A2A (D277, ADR 0147)
 
-Concurrent delegates may exchange bounded text messages directly, without
-routing them through the parent. This is **opt-in per definition**: a definition
-that names no peer tool behaves exactly as before, and none of the four builtins
-name one.
+Concurrent delegates coordinate through a real **A2A (Agent2Agent) protocol
+stack** instead of routing everything through the parent. The A2A broker lives
+in the Rust host-core process; each delegate is an A2A **client** that reaches
+the broker over the existing stdio JSON-RPC / NDJSON transport through the
+`a2a.*` method domain (see `06-host-rpc-protocol.md` §4). This replaces the
+in-process `SubagentMailbox` and `Peer` tool of ADR 0138 / ADR 0140. It is
+**opt-in per definition**: a definition that names no A2A tool behaves exactly
+as before, and none of the four builtins name one.
 
 **Why it exists.** Delegates fan out on briefs the parent wrote before any of
 them started, so the parent cannot always know the directions are truly
-independent. Three failures follow from that and none are solvable by the path
-lock, which prevents a torn write but not a stale premise: two write-capable
-delegates discovering they need the same file, one delegate disproving an
-assumption every brief was written against, and one delegate about to search for
-a fact another already found. Routing coordination through the parent does not
-work either — the parent is blocked in `TaskWait`, `task` is write-once, and
-every relayed note would land in the context delegation exists to protect.
+independent. Three failures follow and none are solvable by the path lock, which
+prevents a torn write but not a stale premise: two write-capable delegates
+discovering they need the same file, one delegate disproving an assumption every
+brief was written against, and one delegate about to search for a fact another
+already found. Routing coordination through the parent does not work either — the
+parent is blocked in `TaskWait`, `task` is write-once, and every relayed note
+would land in the context delegation exists to protect.
 
-**Tools.** One `Peer` tool joins the seven assignable tools and may appear in a
+**Tool.** One `A2A` tool joins the seven assignable tools and may appear in a
 definition's `tools:` list. It is built per delegate at spawn time and is
 deliberately **absent from the session tool catalog**, so the parent cannot
-reach it. A required `action` parameter selects the operation:
+reach it. `SUBAGENT_A2A_TOOLS = ["A2A"]`. A required `action` parameter selects
+the operation:
 
-- `Peer(action="send", to?, text, topic?, inReplyTo?)` — deliver a note to one
-  running peer, or to every running peer when `to` is omitted. A broadcast
-  costs one send. `topic` (max 80 chars) tags a thread; `inReplyTo` references
-  a prior message's `seq` for threading.
-- `Peer(action="inbox", from?)` — drain queued messages and list running peers.
-  Never blocks; returns empty when there is nothing. When `from` is given, only
-  that sender's messages are taken and others stay queued.
-- `Peer(action="wait", timeoutSeconds?, from?)` — block until a message
-  arrives, the timeout expires, the last peer leaves, or the run aborts.
-  Default 30s, ceiling 120s. When `from` is given, only wakes for messages from
-  that sender; unrelated messages stay queued. An omitted or unrecognised
-  `action` falls back to `inbox`, the read-only, never-blocking operation.
+- `A2A(action="discover")` — list the other agents registered in this session
+  (the caller's own Agent Card is excluded). Cards are derived from each
+  delegate's `SubagentDefinition` (name/description/skills).
+- `A2A(action="send", to, parts, configuration?)` — send a message to a peer,
+  creating or continuing a task. Returns the resulting task (or a direct
+  message reply). `parts` is a typed `Part` list —
+  `TextPart | FilePart | DataPart`.
+- `A2A(action="get", id, historyLength?)` — read a task and its bounded message
+  history by id.
+- `A2A(action="wait", id?, timeoutSeconds?)` — block until a task event
+  addressed to this agent arrives (a streamed `TaskStatusUpdateEvent` /
+  `TaskArtifactUpdateEvent`), the timeout expires, or the run aborts. Default
+  30s, ceiling 120s.
+- `A2A(action="complete", taskId, state?)` — finish a task this delegate serves,
+  moving it to a terminal state (default `completed`; `state` may be
+  `completed | failed | rejected | input-required | auth-required`). The call's
+  text becomes the task's final message and wakes the requester (via
+  `a2a.tasks.status`).
+- `A2A(action="cancel", id)` — cancel a task the agent owns; the task moves to
+  the terminal `canceled` state.
 
-**Addressing and identity.** Messages are addressed by **peer id**, never by
-delegation id: a delegation id would hand a worker a handle on the parent's
-registry. When a definition is delegated once, its peer id equals its agent
-name; when multiple delegations of the same definition run concurrently (e.g.
-three "discussant" subagents in a roundtable), each gets a unique peer id by
-appending a numeric suffix ("discussant-2", "discussant-3") so they can address
-each other individually. The `Peer` tool closes over the delegate's own peer id,
-supplied by the runtime at spawn, so `from` is not a model input — a delegate
-can neither spoof a sender nor read another peer's inbox.
+**Registration and identity.** Each delegate is registered with the broker at
+spawn via `a2a.agents.register({ contextId, card })`, which returns
+`{ agentId, token }`. The runtime injects that capability **token** into every
+subsequent `a2a.*` call the `A2A` tool makes; the token is never a model input
+and never visible to the model, so a delegate can neither forge its `from`
+identity nor address on another agent's behalf. On settle the delegate is
+deregistered (`a2a.agents.deregister`), which invalidates its token. `contextId`
+equals the `sessionId`: discovery and addressing are scoped to the same session,
+and cross-context addressing is refused (`A2A_CROSS_CONTEXT_DENIED`).
 
-**Not a host call.** Peer messages are in-process. They carry no
-`permissionScope`, never reach host-core, consume no tool budget, and are not
-gated: there is no file, process, or network involved. `scopeDelegateTools`
-therefore does not wrap them.
+**Task lifecycle.** A send creates a durable task in host-core with states
+`submitted → working → input-required / auth-required → completed`, plus the
+terminal `canceled`, `failed`, and `rejected`. The last four are terminal and
+never transition again; the broker enforces legal transitions and rejects
+illegal ones (`A2A_INVALID_TRANSITION`, `A2A_TASK_TERMINAL`). A delegate re-reads
+a task with `get`, so history survives a restart rather than being destroyed on
+read.
 
-**Bounds.** A message is capped at 2,000 characters (longer text is truncated,
-not rejected); an inbox holds 64 messages and drops oldest-first, reporting the
-loss to the reader on its next read; a delegate may send 60 times per run; and
-a `wait` is capped at 120 seconds, deliberately below the 300-second idle
-watchdog so a delegate cannot expire itself waiting for an answer that never
-comes. Draining is destructive — once read, the delegate's own context holds
-the only copy.
+**Streaming.** A task event is delivered as a host→client JSON-RPC notification
+`a2a.task.event` shaped `{ recipient, contextId, event }`. Routing is
+counterpart-based: task creation addresses the new task to the worker, while a
+`send` on an existing task, a `complete`/`a2a.tasks.status`, and a `cancel`
+address the event to the caller's counterpart — a worker's reply or completion
+wakes the requester, and a requester's follow-up wakes the worker. A delegate
+parked in `A2A(action="wait")` wakes on events addressed to itself. Host-owned
+push config (`a2a.tasks.pushNotificationConfig.set/get`) and the `a2a.push`
+notification carry task-status pushes for subscribed tasks.
 
-**Membership.** A delegate joins the mailbox when it starts and leaves when it
-settles; leaving wakes every waiter, so a delegate waiting on an agent that
-just exited returns immediately rather than waiting out its timeout.
-Sending to a name that is not running is a tool error listing the peers that
-are, not a queued message.
+**Bounds.** The broker enforces `A2A_MAX_TEXT_CHARS = 16000`,
+`A2A_MAX_FILE_BYTES = 20MB`, `A2A_MAX_TASK_HISTORY = 256`,
+`A2A_MAX_TASKS_PER_CONTEXT = 128`, `A2A_MAX_SENDS_PER_RUN = 200`, and a wait
+ceiling of `A2A_MAX_STREAM_WAIT_SECONDS = 120` (default 30) — deliberately below
+the 300-second idle watchdog so a delegate cannot expire itself waiting for an
+answer that never comes. Oversized payloads are refused with
+`A2A_PAYLOAD_TOO_LARGE`; the send cap with `A2A_SEND_CAP`; addressing an empty
+session with `A2A_NO_PEERS`.
 
-Peer ids are **unique per running delegation** for definitions that declare peer
-tools. Each delegation receives its own inbox, so three concurrent "discussant"
-delegates see each other as separate peers and can exchange messages. A delegate
-with no peer tools still uses the definition name as its peer id (used only for
-`DelegationRecord` bookkeeping).
-
-**Boundaries preserved.** Peer traffic never enters the parent's model context;
+**Boundaries preserved.** A2A traffic never enters the parent's model context;
 the parent still learns only what a report says, and a delegate's prompt says
-so. A definition that declares only peer tools and no working tool is refused at
-`Task` time. There is no cross-session messaging, no messaging with the parent,
-no nested delegation, and no durable peer history.
+so. A definition that declares only the `A2A` tool and no working tool is
+refused at `Task` time. There is no cross-session (cross-context) coordination,
+no messaging with the parent, no nested delegation, and no remote agents.
 
-**Transcript.** No new wire contract: a peer message is a tool call of the
-delegate that sent or read it, so it already appears attributed by
-`parentToolCallId` and `agentName` under the owning `Task` row.
+**Transcript.** An `A2A` call is a tool call of the delegate that made it, so it
+appears attributed by `parentToolCallId` and `agentName` under the owning `Task`
+row.
 
 ## 6. Providers & models
 

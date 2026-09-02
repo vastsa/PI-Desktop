@@ -14,6 +14,7 @@
  * - a delegate never inherits mutation rights from the parent session.
  */
 
+import type { A2AAgentCard } from "./a2a.js";
 import { THINKING_LEVELS, type ThinkingLevel } from "./types.js";
 
 /**
@@ -60,21 +61,22 @@ export type SubagentDefinition = {
 };
 
 /**
- * Peer messaging tool a delegate may declare to talk to its concurrent
- * siblings (D277, ADR 0138). It is opt-in per definition: silence means a
- * delegate keeps the ADR 0062 isolation where the parent is the only
- * integration point, so no existing definition changes behaviour.
+ * A2A capability tool a delegate may declare to talk to its concurrent
+ * siblings over the host-core A2A broker (ADR 0146, superseding D277/ADR
+ * 0138/0140). It is opt-in per definition: silence means a delegate keeps the
+ * ADR 0062 isolation where the parent is the only integration point, so no
+ * existing definition changes behaviour.
  *
- * A single `Peer` tool carries the three operations a delegate needs — `send`,
- * `inbox` and `wait` — selected by an `action` parameter, so the capability is
- * counted and declared as one tool, not three. It is a session-local
- * coordination tool, not a delegation tool: it carries text between running
- * delegates and never exposes delegation ids, the delegation registry, or the
- * ability to start or stop a delegate.
+ * A single `A2A` tool carries the operations a delegate needs — `discover`,
+ * `send`, `get`, `wait` and `cancel` — selected by an `action` parameter, so
+ * the capability is counted and declared as one tool. It is a session-local
+ * coordination tool, not a delegation tool: it exchanges A2A messages/tasks
+ * between running delegates and never exposes delegation ids, the delegation
+ * registry, or the ability to start or stop a delegate.
  */
-export const SUBAGENT_PEER_TOOLS = ["Peer"] as const;
+export const SUBAGENT_A2A_TOOLS = ["A2A"] as const;
 
-export type SubagentPeerTool = (typeof SUBAGENT_PEER_TOOLS)[number];
+export type SubagentA2ATool = (typeof SUBAGENT_A2A_TOOLS)[number];
 
 /** Tools a definition may declare. Plugin, skill, mode and meta tools stay out
  * of reach: a delegate is a bounded file/search/shell worker, not a second
@@ -87,7 +89,7 @@ export const SUBAGENT_ASSIGNABLE_TOOLS = [
   "Bash",
   "Edit",
   "Write",
-  ...SUBAGENT_PEER_TOOLS,
+  ...SUBAGENT_A2A_TOOLS,
 ] as const;
 
 export type SubagentAssignableTool = (typeof SUBAGENT_ASSIGNABLE_TOOLS)[number];
@@ -174,15 +176,39 @@ export function isSubagentMutatingTool(value: string): boolean {
   return (SUBAGENT_MUTATING_TOOLS as readonly string[]).includes(value);
 }
 
-export function isSubagentPeerTool(value: string): value is SubagentPeerTool {
-  return (SUBAGENT_PEER_TOOLS as readonly string[]).includes(value);
+export function isSubagentA2ATool(value: string): value is SubagentA2ATool {
+  return (SUBAGENT_A2A_TOOLS as readonly string[]).includes(value);
 }
 
-/** Whether this delegate opted into peer messaging (D277). */
-export function subagentUsesPeerMessaging(
-  definition: SubagentDefinition,
-): boolean {
-  return definition.tools.some(isSubagentPeerTool);
+/** Whether this delegate opted into A2A messaging (ADR 0146). */
+export function subagentUsesA2A(definition: SubagentDefinition): boolean {
+  return definition.tools.some(isSubagentA2ATool);
+}
+
+/**
+ * Derive the A2A Agent Card a delegate advertises through the broker's
+ * discovery. `name` is filled in by the runtime at spawn time with the
+ * delegate's unique peer id; the card here carries the definition-derived
+ * identity and skill so a peer's `discover` returns something meaningful. The
+ * card claims streaming and push because the host-core broker serves both.
+ */
+export function toAgentCard(definition: SubagentDefinition): A2AAgentCard {
+  return {
+    name: definition.name,
+    description: definition.description,
+    version: "1.0.0",
+    skills: [
+      {
+        id: definition.name,
+        name: definition.name,
+        description: definition.description,
+        tags: definition.tools.filter((tool) => !isSubagentA2ATool(tool)),
+      },
+    ],
+    capabilities: { streaming: true, pushNotifications: true },
+    defaultInputModes: ["text/plain"],
+    defaultOutputModes: ["text/plain"],
+  };
 }
 
 /** Whether this delegate can change the workspace. */

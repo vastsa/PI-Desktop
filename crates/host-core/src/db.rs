@@ -4,10 +4,11 @@ use serde::Serialize;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
-/// Storage schema v11: SQLite holds
+/// Storage schema v12: SQLite holds
 /// index data only; transcript content lives in per-session JSONL files
 /// (D119, `transcripts.rs`). v11 adds the Plan/Goal approval kind (D198).
-pub const SCHEMA_VERSION: i64 = 11;
+/// v12 adds the A2A broker tables (ADR 0146).
+pub const SCHEMA_VERSION: i64 = 12;
 
 /// Absolute approval deadline for a newly submitted Plan or Goal proposal.
 pub const PLAN_APPROVAL_TIMEOUT_MS: i64 = 30 * 60 * 1000;
@@ -449,21 +450,25 @@ impl Database {
                 let tx = conn.unchecked_transaction()?;
                 tx.execute_batch(SCHEMA_LATEST)?;
                 tx.execute_batch(PLAN_APPROVALS_SCHEMA)?;
+                tx.execute_batch(crate::a2a::store::A2A_SCHEMA)?;
                 tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
                 tx.commit()?;
             }
             7 => {
                 migrate_v7_to_v8(&conn)?;
-                migrate_v8_to_v11(&conn, path)?;
+                migrate_v8_to_v12(&conn, path)?;
             }
             8 => {
-                migrate_v8_to_v11(&conn, path)?;
+                migrate_v8_to_v12(&conn, path)?;
             }
             9 => {
-                migrate_v9_to_v11(&conn, path)?;
+                migrate_v9_to_v12(&conn, path)?;
             }
             10 => {
-                migrate_v10_to_v11(&conn, path)?;
+                migrate_v10_to_v12(&conn, path)?;
+            }
+            11 => {
+                migrate_v11_to_v12(&conn, path)?;
             }
             legacy @ 1..=6 => {
                 let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
@@ -1039,6 +1044,14 @@ fn migrate_v10_to_v11_tx(tx: &rusqlite::Transaction<'_>) -> Result<()> {
     Ok(())
 }
 
+/// v12 adds the A2A broker tables (ADR 0146). Purely additive: new empty
+/// tables, no data backfill.
+fn migrate_v11_to_v12_tx(tx: &rusqlite::Transaction<'_>) -> Result<()> {
+    tx.execute_batch(crate::a2a::store::A2A_SCHEMA)?;
+    tx.pragma_update(None, "user_version", 12i64)?;
+    Ok(())
+}
+
 fn migration_backup_path(path: &Path, version: i64) -> PathBuf {
     path.with_extension(format!("sqlite.v{version}.bak"))
 }
@@ -1120,42 +1133,58 @@ fn create_migration_backup(conn: &Connection, path: &Path, version: i64) -> Resu
     Ok(backup)
 }
 
-fn migrate_v8_to_v11(conn: &Connection, path: &Path) -> Result<()> {
+fn migrate_v8_to_v12(conn: &Connection, path: &Path) -> Result<()> {
     let backup = create_migration_backup(conn, path, 8)?;
     let tx = conn.unchecked_transaction()?;
     migrate_v8_to_v9_tx(&tx)?;
     migrate_v9_to_v10_tx(&tx)?;
     migrate_v10_to_v11_tx(&tx)?;
+    migrate_v11_to_v12_tx(&tx)?;
     tx.commit().with_context(|| {
         format!(
-            "commit schema v8 to v11 migration; backup {} remains",
+            "commit schema v8 to v12 migration; backup {} remains",
             backup.display()
         )
     })?;
     Ok(())
 }
 
-fn migrate_v9_to_v11(conn: &Connection, path: &Path) -> Result<()> {
+fn migrate_v9_to_v12(conn: &Connection, path: &Path) -> Result<()> {
     let backup = create_migration_backup(conn, path, 9)?;
     let tx = conn.unchecked_transaction()?;
     migrate_v9_to_v10_tx(&tx)?;
     migrate_v10_to_v11_tx(&tx)?;
+    migrate_v11_to_v12_tx(&tx)?;
     tx.commit().with_context(|| {
         format!(
-            "commit schema v9 to v11 migration; backup {} remains",
+            "commit schema v9 to v12 migration; backup {} remains",
             backup.display()
         )
     })?;
     Ok(())
 }
 
-fn migrate_v10_to_v11(conn: &Connection, path: &Path) -> Result<()> {
+fn migrate_v10_to_v12(conn: &Connection, path: &Path) -> Result<()> {
     let backup = create_migration_backup(conn, path, 10)?;
     let tx = conn.unchecked_transaction()?;
     migrate_v10_to_v11_tx(&tx)?;
+    migrate_v11_to_v12_tx(&tx)?;
     tx.commit().with_context(|| {
         format!(
-            "commit schema v10 to v11 migration; backup {} remains",
+            "commit schema v10 to v12 migration; backup {} remains",
+            backup.display()
+        )
+    })?;
+    Ok(())
+}
+
+fn migrate_v11_to_v12(conn: &Connection, path: &Path) -> Result<()> {
+    let backup = create_migration_backup(conn, path, 11)?;
+    let tx = conn.unchecked_transaction()?;
+    migrate_v11_to_v12_tx(&tx)?;
+    tx.commit().with_context(|| {
+        format!(
+            "commit schema v11 to v12 migration; backup {} remains",
             backup.display()
         )
     })?;
@@ -1248,6 +1277,10 @@ mod tests {
             "secrets_meta",
             "audit_log",
             "plan_approvals",
+            "a2a_tasks",
+            "a2a_messages",
+            "a2a_artifacts",
+            "a2a_push_configs",
         ] {
             assert!(table_exists(db.conn(), table), "missing {table}");
         }
@@ -2096,6 +2129,46 @@ mod tests {
             .unwrap();
         drop(db);
         assert_readable_migration_backup(&path, 10);
+    }
+
+    #[test]
+    fn migrates_v11_by_adding_empty_a2a_tables() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pi.sqlite");
+        {
+            let db = Database::open(&path).unwrap();
+            db.conn()
+                .execute_batch(
+                    "DROP TABLE a2a_push_configs;
+                     DROP TABLE a2a_artifacts;
+                     DROP TABLE a2a_messages;
+                     DROP TABLE a2a_tasks;",
+                )
+                .unwrap();
+            db.conn().pragma_update(None, "user_version", 11).unwrap();
+        }
+
+        let db = Database::open(&path).unwrap();
+        let version: i64 = db
+            .conn()
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, SCHEMA_VERSION);
+        for table in [
+            "a2a_tasks",
+            "a2a_messages",
+            "a2a_artifacts",
+            "a2a_push_configs",
+        ] {
+            assert!(table_exists(db.conn(), table), "missing {table}");
+            let count: i64 = db
+                .conn()
+                .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| row.get(0))
+                .unwrap();
+            assert_eq!(count, 0, "{table} must be empty after migration");
+        }
+        drop(db);
+        assert_readable_migration_backup(&path, 11);
     }
 
     #[test]
