@@ -117,7 +117,7 @@ boundary.
 Deliverables:
 - Agent | Plan | Goal selector with Agent as the default
 - persisted session/settings/scheduled `chat` → `plan` migration
-- protocol v9 and schema v11 with immutable host-written `.pi/plan/*.md` and
+- protocol v10 and schema v12 with immutable host-written `.pi/plan/*.md` and
   `.pi/goal/*.md` artifacts, structured title/question fields, and
   `plan_approvals` artifact/execution fields
 - Rust-owned mode resolution, Plan tool policy, selectable shell catalog with

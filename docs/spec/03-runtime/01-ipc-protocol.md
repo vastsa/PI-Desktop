@@ -207,7 +207,7 @@ If renderer smart Stop undoes an unanswered user turn, restoration comes from
 the renderer's session/turn-scoped pre-serialization snapshot; the existing
 transcript rewrite removes the sent row without changing protocol version.
 
-### 5.4 compact (protocol v9)
+### 5.4 compact (protocol v10)
 
 ```ts
 type AgentCompactRequest = { sessionId: string };
@@ -633,7 +633,7 @@ for the reserved `Alt+Space` binding. Host-core emits the notification
 keyboard hook detects the chord; the hook consumes that chord so the active
 window system menu does not open. Non-Windows hosts treat the method as a
 no-op. `responseDurationMs` and `responseOutputTokens` are optional transcript
-metadata persisted in message metadata, so protocol v9 and storage schema v11
+metadata persisted in message metadata, so protocol v10 and storage schema v12
 remain unchanged.
 
 The Settings font picker (ADR 0083) reads installed system font families
@@ -918,7 +918,7 @@ above.
 
 ## 11. Version Compatibility
 
-- IPC/host contract version field: `protocolVersion: 9`
+- IPC/host contract version field: `protocolVersion: 10`
 - Breaking changes must bump the version and record an ADR
 - renderer and main validate the version at startup; on mismatch, prompt to upgrade/reinstall
 - Protocol v4 adds notification records, channels, and the

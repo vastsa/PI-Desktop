@@ -35,14 +35,14 @@ test("Plan and Goal artifact runtime uses the terminating submit contract", asyn
   assert.doesNotMatch(resolveSource, /action === "reject"[\s\S]*dispatchApprovedPlan/);
 });
 
-test("Electron retains the stable Plan IPC names and protocol version", async () => {
+test("Electron retains the stable Plan IPC names and protocol v10", async () => {
   const [protocol, main] = await Promise.all([
     readRoot("packages/shared/src/protocol.ts"),
     readDesktop("electron/main/index.ts"),
   ]);
 
-  assert.match(protocol, /PROTOCOL_VERSION = 9/);
-  assert.match(protocol, /SCHEMA_VERSION = 11/);
+  assert.match(protocol, /PROTOCOL_VERSION = 10/);
+  assert.match(protocol, /SCHEMA_VERSION = 12/);
   assert.match(protocol, /plansPending:/);
   assert.match(protocol, /plansResolve:/);
   assert.match(protocol, /plansChanged:/);

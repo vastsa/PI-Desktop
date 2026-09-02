@@ -18,7 +18,7 @@ import { PROTOCOL_VERSION as SHARED_PROTOCOL_VERSION } from "../packages/shared/
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..");
-const PROTOCOL_VERSION = 9;
+const PROTOCOL_VERSION = 10;
 const PLAN_APPROVAL_TIMEOUT_MS = 30 * 60 * 1000;
 const LONG_TIMEOUT_ENABLED = process.env.PI_DESKTOP_E2E_LONG_TIMEOUT === "1";
 

@@ -182,7 +182,7 @@ type AgentAbortRequest = {
 渲染器的 session/turn-scoped 预序列化快照；现有的
 转录重写会删除发送的行而不更改协议版本。
 
-### 5.4 紧凑型（协议 v9）
+### 5.4 紧凑型（协议 v10）
 
 ```ts
 type AgentCompactRequest = { sessionId: string };
@@ -597,7 +597,7 @@ Electron 主要丰富了会话 list/get/create/fork/configure 结果
 键盘钩子检测和弦；钩子消耗了那个和弦，所以活动的
 窗口系统菜单打不开。非 Windows 主机将该方法视为
 无操作。 `responseDurationMs` 和 `responseOutputTokens` 是可选的转录本
-元数据保留在消息元数据中，因此协议 v9 和存储架构 v11
+元数据保留在消息元数据中，因此协议 v10 和存储架构 v12
 保持不变。
 
 设置字体选择器（ADR 0083）通过一个仅 Electron 的允许通道读取
@@ -638,7 +638,7 @@ Electron拥有本地化并提供面向用户的分支名称；主机
 新的会话 ID，因此无法重用或改变源 pi 运行时或
 它的提供商缓存。
 
-协议版本9添加检查点Plan合约：`SubmitPlan`，唯一
+协议版本 9 添加检查点 Plan 合约：`SubmitPlan`，唯一
 `.pi/plan/*.md` 工件元数据、approve/reject-only 响应、绝对
 到期、`plan_approvals` 执行字段、shell catalog/identity 字段以及
 直播 stdout/stderr 事件。 v7 或更旧的主机，以及任何不兼容的 v8
@@ -856,7 +856,7 @@ Plan 不会取代此通用许可合同。 Plan `Bash` 调用
 
 ## 11. 版本兼容性
 
-- IPC/host 合约版本字段：`protocolVersion: 9`
+- IPC/host 合约版本字段：`protocolVersion: 10`
 - 重大更改必须提升版本并记录 ADR
 - 渲染器和主程序在启动时验证版本；不匹配时，提示 upgrade/reinstall
 - 协议 v4 增加了通知记录、通道和

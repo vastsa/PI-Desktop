@@ -5,7 +5,7 @@
 
 - 基线版本：`0.4.16`
 - 日期：`2026-08-14`
-- 状态：`Frozen for implementation details (Plan checkpoint artifact + approval/execution startup fence + protocol v9 + schema v10 + selectable shell catalog + icon-free composer prompt row + turn-boundary context checkpoint compaction + session-scoped work panel + pi-owned model metadata + provider/runtime safety + M5 hardening + settings IA + project archive + sidebar organization + app update delivery + three-platform release + Extensions page density and theme-readable actions + custom global UI font)`
+- 状态：`Frozen for implementation details (Plan checkpoint artifact + approval/execution startup fence + protocol v10 + schema v12 + selectable shell catalog + icon-free composer prompt row + turn-boundary context checkpoint compaction + session-scoped work panel + pi-owned model metadata + provider/runtime safety + M5 hardening + settings IA + project archive + sidebar organization + app update delivery + three-platform release + Extensions page density and theme-readable actions + custom global UI font)`
 - 语言政策：**英语优先**
 - 后端策略：**Rust 主机核心 + pi 代理 sidecar**
 
