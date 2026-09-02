@@ -83,6 +83,20 @@ test("stream rendering avoids duplicate frame state and coalesces following", ()
   assert.match(transcript, /assistantTurnPropsEqual/);
 });
 
+test("expanded live tool output stays local to the changed row", () => {
+  // Running rows remain collapsed until the user asks to inspect output, so a
+  // burst of Bash updates does not walk or render the cumulative payload for
+  // every row in the activity group.
+  assert.match(transcript, /const ToolRow = memo\(function ToolRow/);
+  assert.match(transcript, /function toolRowPropsEqual\(/);
+  assert.match(transcript, /if \(previous\.variant !== "topology"\) return true;/);
+  assert.match(transcript, /const \[open, setOpen\] = useState\(failed\);/);
+  assert.match(
+    transcript,
+    /const blocks =\s*open && hasDetails\s*\?\s*buildToolPresentation\(/,
+  );
+});
+
 test("stream event bursts are coalesced until a paint or terminal event", () => {
   assert.match(store, /createFrameBatcher<AgentEventEnvelope>/);
   assert.match(store, /streamUpdates\.enqueue\(/);

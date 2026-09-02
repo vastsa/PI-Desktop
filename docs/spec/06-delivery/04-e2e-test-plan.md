@@ -6155,7 +6155,14 @@ This test plan spec is accepted when:
   produced at least three command rows: one that succeeded with output, one that
   failed with both output and errors, and one still running.
 - **Steps**:
-  1) Expand the successful row and confirm the body shows the command's output
+  1) Leave the running row collapsed while it produces output and confirm the
+  row remains a compact one-line status; then click its disclosure while the
+  command is still running and confirm the current output appears immediately.
+  1a) Keep the command running through enough output to exceed the output area's
+  visible height and confirm the output stays inside its capped scroll region,
+  rather than pushing the transcript out of view. Confirm later output replaces
+  the same body in place while the row remains open.
+  1b) Expand the successful row and confirm the body shows the command's output
      as plain text — no `Output` heading, no bordered card, no per-block copy
      button — and that the command is not repeated inside the body, with no
      argument list in its place.
@@ -6193,8 +6200,13 @@ This test plan spec is accepted when:
   on the dot's color. The outcome reports what the command did — a non-zero or
   missing exit code reads `Failed` regardless of the tool call's own status — and
   a row with nothing to report states nothing instead of claiming `Done`. The
-  expanded body holds only what the command printed, as bare text, and a command
-  that printed nothing opens empty rather than falling back to its arguments.
+  running row is collapsed by default, and expanding it during execution shows
+  the cumulative `details.output` stream in the stdout channel. The body keeps
+  the live output in a capped internal scroll region and updates in place without
+  rerendering unrelated rows; the completed `details.stdout` value wins over any
+  older partial snapshot. The expanded body holds only what the command printed,
+  as bare text, and a command that printed nothing opens empty rather than
+  falling back to its arguments.
   Approval cards are unaffected, since they have no head of their own.
 - **Specs linked**: `04-ux/08-component-spec.md` §9.2, §9.3, §9.5, §9.10
 - **Acceptance**: E (tools & permissions), H (localization)

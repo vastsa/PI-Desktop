@@ -573,8 +573,14 @@ function resultBlocks(
       if (command !== null && !options.hideSummaryArg) {
         blocks.push(codeBlock("command", command, "bash"));
       }
-      const stdout = stringAt(details, "stdout");
-      if (stdout !== null) blocks.push(codeBlock("stdout", stdout));
+      // Bash progress updates use `details.output`; the completed result uses
+      // `details.stdout`. A present empty stdout is meaningful too: it must
+      // suppress a stale progress snapshot rather than fall back to output.
+      const stdout =
+        typeof details?.stdout === "string"
+          ? details.stdout
+          : stringAt(details, "output");
+      if (stdout) blocks.push(codeBlock("stdout", stdout));
       const stderr = stringAt(details, "stderr");
       if (stderr !== null) {
         blocks.push(codeBlock("stderr", stderr, "", { tone: "error" }));

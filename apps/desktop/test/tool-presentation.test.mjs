@@ -155,6 +155,44 @@ test("Bash keeps its channels apart and leaves the command to the head", () => {
   assert.equal(byRole(asked, "command").lang, "bash");
 });
 
+test("Bash progress output renders in the stdout channel before completion", () => {
+  const progress = buildToolPresentation(
+    {
+      toolName: "Bash",
+      toolStatus: "running",
+      toolArgs: { command: "for i in 1 2 3; do echo $i; done" },
+      toolResult: envelope({ output: "1\n2\n" }),
+    },
+    { hideSummaryArg: true },
+  );
+  assert.deepEqual(roles(progress), ["stdout"]);
+  assert.equal(byRole(progress, "stdout").text, "1\n2\n");
+
+  // The completed shape remains authoritative when both fields are present;
+  // this prevents a stale progress snapshot from winning after tool_end.
+  const completed = buildToolPresentation(
+    {
+      toolName: "Bash",
+      toolStatus: "success",
+      toolArgs: { command: "echo done" },
+      toolResult: envelope({ output: "stale\n", stdout: "done\n" }),
+    },
+    { hideSummaryArg: true },
+  );
+  assert.equal(byRole(completed, "stdout").text, "done\n");
+
+  const completedEmpty = buildToolPresentation(
+    {
+      toolName: "Bash",
+      toolStatus: "success",
+      toolArgs: { command: ":" },
+      toolResult: envelope({ output: "stale\n", stdout: "" }),
+    },
+    { hideSummaryArg: true },
+  );
+  assert.deepEqual(roles(completedEmpty), []);
+});
+
 test("the run outcome comes from the exit code, not from the call's status", () => {
   const run = (details, toolStatus) =>
     runOutcome({
