@@ -536,6 +536,13 @@ Optional:
 - compatibility flags
 - custom headers (non-secret)
 
+For the OpenAI Chat Completions adapter, system instructions use the
+standard `system` role by default. This keeps arbitrary compatible gateways
+interoperable because some upstream routes reject the newer `developer` role,
+including reasoning-model routes. A resolved model record may explicitly set
+`compat.supportsDeveloperRole: true` when its endpoint is known to accept that
+role; this override is model-scoped and does not change other providers.
+
 This is the **universal escape hatch** guaranteeing market coverage beyond native integrations.
 
 ## 17. Multi-provider product rules

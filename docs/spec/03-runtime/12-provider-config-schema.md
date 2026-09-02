@@ -112,6 +112,12 @@ models.dev snapshot. Unknown free-form models initially expose
 still persist an explicit thinking-level binding for an endpoint that supports
 it. The raw secret and internal compatibility JSON remain hidden.
 
+For OpenAI-compatible Chat Completions models, the runtime defaults
+`compat.supportsDeveloperRole` to `false`, so system instructions are sent as
+`role: "system"` even when the selected model supports reasoning. A resolved
+model record may explicitly set it to `true` for an upstream that accepts
+`role: "developer"`; this override is model-scoped.
+
 `authKind: "oauth"` marks a vendor-account row (ADR 0095, D237, D240): the credential
 is an OAuth grant under `secret:provider:<id>:oauth` rather than a pasted key,
 so the row carries no `secretRef` for it and launches with an empty key. The

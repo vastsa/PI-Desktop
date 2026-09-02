@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ModelAuth } from "@earendil-works/pi-ai";
+import { convertMessages } from "@earendil-works/pi-ai/api/openai-completions";
 import {
   apiBindingForStyle,
   buildProviderModel,
@@ -38,6 +39,64 @@ describe("apiBindingForStyle", () => {
   it("keeps unknown styles on chat completions", () => {
     expect(apiBindingForStyle("not-a-style").api).toBe("openai-completions");
     expect(apiBindingForStyle(undefined).api).toBe("openai-completions");
+  });
+});
+
+describe("buildProviderModel OpenAI-compatible role compatibility", () => {
+  const reasoningProvider: RuntimeProviderConfig = {
+    ...keyedProvider,
+    supportsReasoning: true,
+    supportedThinkingLevels: ["off", "high"],
+    modelConfig: {
+      source: "generic",
+      name: "Reasoning model",
+      baseUrl: keyedProvider.baseUrl!,
+      reasoning: true,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 128_000,
+      maxTokens: 8_192,
+    },
+  };
+
+  it("sends the system prompt as system by default", () => {
+    const model = buildProviderModel({
+      ...reasoningProvider,
+      apiStyle: "chat_completions",
+    }) as any;
+
+    expect(model.compat).toMatchObject({ supportsDeveloperRole: false });
+    const messages = convertMessages(
+      model,
+      { systemPrompt: "Follow the workspace rules.", messages: [] },
+      { supportsDeveloperRole: model.compat.supportsDeveloperRole } as any,
+    );
+
+    expect(messages).toEqual([
+      { role: "system", content: "Follow the workspace rules." },
+    ]);
+  });
+
+  it("preserves an explicit model-level developer-role override", () => {
+    const model = buildProviderModel({
+      ...reasoningProvider,
+      apiStyle: "chat_completions",
+      modelConfig: {
+        ...reasoningProvider.modelConfig!,
+        compat: { supportsDeveloperRole: true },
+      },
+    }) as any;
+
+    expect(model.compat).toMatchObject({ supportsDeveloperRole: true });
+    const messages = convertMessages(
+      model,
+      { systemPrompt: "Use the provider's developer role.", messages: [] },
+      { supportsDeveloperRole: model.compat.supportsDeveloperRole } as any,
+    );
+
+    expect(messages).toEqual([
+      { role: "developer", content: "Use the provider's developer role." },
+    ]);
   });
 });
 

@@ -237,6 +237,25 @@ Each scenario is documented in this format:
 - **Milestone**: M2
 - **Status**: Unit-covered (form and discovery contracts); rendered UI scenario Draft
 
+#### E2E-005C: OpenAI-compatible system role fallback
+
+- **Preconditions**: A deterministic OpenAI-compatible Chat Completions
+  fixture exposes one reasoning-capable model and rejects `role: "developer"`
+  in favor of `role: "system"`.
+- **Steps**: 1) Configure the fixture provider and select its reasoning model.
+  2) Start an Agent turn with a non-empty system prompt. 3) Capture the JSON
+  request body at the fixture boundary. 4) Repeat with a model record that
+  explicitly sets `compat.supportsDeveloperRole: true`.
+- **Expected**: The first request contains the system prompt with
+  `role: "system"` and the turn succeeds. The explicit model override changes
+  only the second request to `role: "developer"`; the default remains
+  model-scoped and does not affect other provider adapters.
+- **Specs linked**: `03-runtime/11-provider-model-system.md`,
+  `03-runtime/12-provider-config-schema.md`
+- **Acceptance**: B (OpenAI-compatible provider interoperability)
+- **Milestone**: M2
+- **Status**: Unit-covered; deterministic provider fixture pending
+
 #### E2E-006: Key survives restart
 
 - **Preconditions**: Provider + key configured.

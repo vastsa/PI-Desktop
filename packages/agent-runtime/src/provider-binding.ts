@@ -129,12 +129,24 @@ export function buildProviderModel(
   const catalogModel = catalog
     ? (({ source: _source, ...model }) => model)(catalog)
     : genericModelConfig(provider.modelId, provider.baseUrl ?? binding.defaultBaseUrl);
+  // OpenAI-compatible gateways are not guaranteed to implement the newer
+  // `developer` role, even when the selected model supports reasoning. Keep
+  // the broadest Chat Completions wire shape as the default; a catalog/model
+  // override may opt into `developer` when the endpoint explicitly supports it.
+  const compat =
+    binding.api === "openai-completions"
+      ? {
+          ...(catalogModel.compat ?? {}),
+          supportsDeveloperRole: catalogModel.compat?.supportsDeveloperRole === true,
+        }
+      : catalogModel.compat;
   return {
     ...catalogModel,
     id: provider.modelId,
     api: binding.api,
     provider: provider.id,
     baseUrl: provider.baseUrl ?? catalog?.baseUrl ?? binding.defaultBaseUrl,
+    ...(compat ? { compat } : {}),
   } as Model<Api>;
 }
 
