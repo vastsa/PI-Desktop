@@ -6841,14 +6841,17 @@ This test plan spec is accepted when:
   3. With the work panel open, drag the outer right edge and confirm the panel
      width changes while the base conversation width stays fixed. Drag the inner
      divider and confirm the conversation width changes while the panel width
-     and reservation stay fixed.
+     and reservation stay fixed. Repeat the inner-divider drag on a work area
+     too narrow for the preferred panel target and confirm the panel does not
+     narrow; the conversation target stops at the available base width.
   4. Close and relaunch the app after the resize settles.
 - **Expected**: Native edge and corner hit regions remain available in frameless
   chrome, the minimum size remains 1040×700, and the recovery watchdog does not
   compete with a slow resize stream. The outer right edge and right corners
   update the bounded `244..720px` panel target without changing the base chat
   width; the inner divider updates the bounded chat target without changing
-  panel width. The last settled base bounds reopen after relaunch; temporary
+  panel width, including when the work area is tight. The last settled base
+  bounds reopen after relaunch; temporary
   work-panel reservation width is not persisted as the user's chat-window size.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md`,
   `04-ux/01-ui-ia.md`, `04-ux/07-ui-design-system.md`,

@@ -1253,8 +1253,11 @@ window/event/workPanelResize
 `window/setWorkPanelChatWidth` accepts only a safe integer in the inclusive
 `1040..10000` range. It is the bounded target-state channel used by the
 renderer-owned divider inside the window; it changes the base conversation
-width while preserving the panel reservation. The native right edge (and
-right corners where Electron reports them) changes the panel target instead.
+width while preserving the currently active panel reservation. On a tight
+work area, the chat target stops at the largest base width that still keeps
+that reservation; the panel is never narrowed as a side effect. The native
+right edge (and right corners where Electron reports them) changes the panel
+target instead.
 Main previews that native panel width through `window/event/workPanelResize`
 and commits it to the renderer after the native resize stream settles. The
 panel target remains bounded to `244..720px`.

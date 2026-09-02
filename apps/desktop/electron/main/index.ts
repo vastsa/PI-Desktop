@@ -172,6 +172,7 @@ import {
   isWorkPanelOuterResizeEdge,
   parseWorkPanelChatWidth,
   parseWorkPanelReservationWidth,
+  planWorkPanelChatResize,
   planWorkPanelReservation,
   reconcileBaseWindowBounds,
   WORK_PANEL_MAX_WIDTH,
@@ -246,6 +247,7 @@ const WINDOW_MIN_HEIGHT = 700;
 // bounds have been stable for one short interaction window.
 const WINDOW_BOUNDS_SETTLE_MS = 300;
 const WORK_PANEL_NATIVE_RESIZE_SETTLE_MS = 180;
+const WORK_PANEL_CHAT_RESIZE_SETTLE_MS = WINDOW_BOUNDS_SETTLE_MS + 120;
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -281,6 +283,8 @@ let expectedWorkPanelBounds: WindowBounds | null = null;
 // not depend on how long the main process took to reach the classification.
 let workPanelUserMovePending = false;
 let workPanelNativeResizeActive = false;
+let workPanelChatResizeActive = false;
+let workPanelChatResizeTimer: NodeJS.Timeout | null = null;
 let setWorkPanelChatWidthForWindow: ((width: number) => number) | null = null;
 let host: HostProcess | null = null;
 let sidecar: AgentSidecar | null = null;
@@ -2130,6 +2134,15 @@ function observedWorkPanelBaseBounds(
   });
 }
 
+function markWorkPanelChatResizeActive() {
+  workPanelChatResizeActive = true;
+  if (workPanelChatResizeTimer) clearTimeout(workPanelChatResizeTimer);
+  workPanelChatResizeTimer = setTimeout(() => {
+    workPanelChatResizeTimer = null;
+    workPanelChatResizeActive = false;
+  }, WORK_PANEL_CHAT_RESIZE_SETTLE_MS);
+}
+
 /**
  * Classifies a display change. A user drag is the only transition that follows
  * a native move stream, so a pending move is the signal that separates it from
@@ -2153,7 +2166,9 @@ function applyWorkPanelReservation(): WorkPanelReservationState {
   ) {
     return workPanelReservation;
   }
-  if (workPanelNativeResizeActive) return workPanelReservation;
+  if (workPanelNativeResizeActive || workPanelChatResizeActive) {
+    return workPanelReservation;
+  }
 
   const window = mainWindow;
   const currentBounds = window.getBounds();
@@ -2180,6 +2195,8 @@ function applyWorkPanelReservation(): WorkPanelReservationState {
     baseBounds,
     workArea,
     requestedWidth: requestedWorkPanelReservation,
+    preserveReservation:
+      displayTransition === "none" && workPanelReservation.width > 0,
   });
   const minimumWidth = Math.max(
     WINDOW_MIN_WIDTH,
@@ -2420,6 +2437,9 @@ async function createWindow() {
   expectedWorkPanelBounds = null;
   workPanelUserMovePending = false;
   workPanelNativeResizeActive = false;
+  if (workPanelChatResizeTimer) clearTimeout(workPanelChatResizeTimer);
+  workPanelChatResizeTimer = null;
+  workPanelChatResizeActive = false;
   setWorkPanelChatWidthForWindow = null;
   const savedState = await readWindowState();
   mainWindow = new BrowserWindow({
@@ -2602,6 +2622,7 @@ async function createWindow() {
     ) {
       return workPanelBaseBounds?.width ?? WINDOW_MIN_WIDTH;
     }
+    markWorkPanelChatResizeActive();
     const currentBounds = window.getBounds();
     const display = screen.getDisplayMatching(currentBounds);
     const transition = classifyDisplayTransition(
@@ -2615,10 +2636,11 @@ async function createWindow() {
     workPanelBaseBounds = baseBounds;
     workPanelDisplayKey = displayWorkAreaKey(display.id, display.workArea);
     if (transition === "user-moved") workPanelUserMovePending = false;
-    const next = planWorkPanelReservation({
-      baseBounds: { ...baseBounds, width: requestedWidth },
+    const next = planWorkPanelChatResize({
+      baseBounds,
       workArea: display.workArea,
-      requestedWidth: requestedWorkPanelReservation,
+      reservationWidth: workPanelReservation.width,
+      requestedWidth,
     });
     const minimumWidth = Math.max(
       WINDOW_MIN_WIDTH,
@@ -2645,6 +2667,7 @@ async function createWindow() {
   setWorkPanelChatWidthForWindow = setWorkPanelChatWidth;
 
   window.on("will-resize", (event, newBounds, details) => {
+    if (workPanelChatResizeActive) return;
     if (!isWorkPanelOuterResizeEdge(details?.edge)) return;
     const currentBounds = window.getBounds();
     const state = beginNativeWorkPanelResize(
@@ -2670,6 +2693,7 @@ async function createWindow() {
   });
 
   const observeNativeWorkPanelResize = () => {
+    if (workPanelChatResizeActive) return;
     if (nativeWorkPanelResize) {
       syncNativeWorkPanelResize("preview");
       armNativeWorkPanelResizeFinish();
@@ -2847,6 +2871,9 @@ async function createWindow() {
     }
     nativeWorkPanelResize = null;
     workPanelNativeResizeActive = false;
+    if (workPanelChatResizeTimer) clearTimeout(workPanelChatResizeTimer);
+    workPanelChatResizeTimer = null;
+    workPanelChatResizeActive = false;
     if (setWorkPanelChatWidthForWindow) setWorkPanelChatWidthForWindow = null;
     if (workPanelReconcileTimer) {
       clearTimeout(workPanelReconcileTimer);
@@ -2923,6 +2950,7 @@ async function createWindow() {
     if (
       !isLiveWindow() ||
       boundsGuard ||
+      workPanelChatResizeActive ||
       captureViewportOverride ||
       // Never fight the user's own state: a minimized window stays
       // minimized and a tray-hidden window stays hidden.
@@ -2995,7 +3023,7 @@ async function createWindow() {
 
   const scheduleBoundsCheck = () => {
     if (boundsTimer) clearTimeout(boundsTimer);
-    if (!isLiveWindow()) return;
+    if (!isLiveWindow() || workPanelChatResizeActive) return;
     const scheduledBounds = window.getBounds();
     boundsTimer = setTimeout(() => {
       boundsTimer = null;
@@ -3021,7 +3049,14 @@ async function createWindow() {
   // Persist last good user bounds so relaunch restores them.
   let saveTimer: NodeJS.Timeout | null = null;
   const persistNormalWindowState = () => {
-    if (!isLiveWindow() || boundsGuard || workPanelNativeResizeActive) return;
+    if (
+      !isLiveWindow() ||
+      boundsGuard ||
+      workPanelNativeResizeActive ||
+      workPanelChatResizeActive
+    ) {
+      return;
+    }
     const normalBounds = window.getNormalBounds();
     const display = screen.getDisplayMatching(normalBounds);
     const nextDisplayKey = displayWorkAreaKey(display.id, display.workArea);

@@ -138,6 +138,7 @@ export function WorkPanel({
   } | null>(null);
   const pendingChatWidth = useRef<number | null>(null);
   const chatResizeRequestRunning = useRef(false);
+  const chatResizeActive = useRef(false);
   const contextRef = useRef<HTMLDivElement | null>(null);
   const contextButtonRef = useRef<HTMLButtonElement | null>(null);
   /** Where focus lands when the menu opens: the active row, or its last row. */
@@ -152,6 +153,10 @@ export function WorkPanel({
 
   useEffect(() => {
     return api.onWorkPanelResize((event) => {
+      // A programmatic chat resize changes the native outer bounds. Ignore
+      // any stale native preview that arrives during that transaction so it
+      // cannot rewrite the panel target owned by this renderer divider.
+      if (chatResizeActive.current) return;
       if (event.phase === "preview") {
         setNativePanelWidth(clampWorkPanelWidth(event.panelWidth));
         setNativeResizeActive(true);
@@ -182,6 +187,7 @@ export function WorkPanel({
 
   const enqueueChatWidth = useCallback((width: number) => {
     pendingChatWidth.current = clampWorkPanelChatWidth(width);
+    chatResizeActive.current = true;
     if (chatResizeRequestRunning.current) return;
     chatResizeRequestRunning.current = true;
     void (async () => {
@@ -196,6 +202,7 @@ export function WorkPanel({
         }
       }
       chatResizeRequestRunning.current = false;
+      chatResizeActive.current = false;
     })();
   }, []);
 
@@ -368,6 +375,7 @@ export function WorkPanel({
       const drag = chatDragState.current;
       if (drag?.pointerId !== pointerId) return;
       chatDragState.current = null;
+      chatResizeActive.current = false;
       if (drag.frame) cancelAnimationFrame(drag.frame);
       if (target.hasPointerCapture(pointerId)) {
         target.releasePointerCapture(pointerId);
@@ -391,6 +399,7 @@ export function WorkPanel({
       e.currentTarget.focus({ preventScroll: true });
       e.stopPropagation();
       const startWidth = chatWidth;
+      chatResizeActive.current = true;
       chatDragState.current = {
         pointerId: e.pointerId,
         startClientX: e.clientX,
@@ -437,6 +446,7 @@ export function WorkPanel({
     () => () => {
       const drag = chatDragState.current;
       if (drag?.frame) cancelAnimationFrame(drag.frame);
+      chatResizeActive.current = false;
       document.documentElement.removeAttribute("data-work-panel-resizing");
     },
     [],

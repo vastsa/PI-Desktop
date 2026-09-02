@@ -23,9 +23,11 @@ When the work panel is open:
   temporarily lowered to allow the panel target to reach its minimum.
 - The inner renderer divider owns the base conversation width. Pointer and
   keyboard changes use the bounded `window/setWorkPanelChatWidth({width})`
-  target-state channel (`1040..10000px`) and preserve the current panel
-  reservation. Requests are serialized so a fast pointer stream cannot reorder
-  native bounds updates; cancellation sends the press-time target again.
+  target-state channel (`1040..10000px`) and preserve the currently active
+  panel reservation. Requests are serialized so a fast pointer stream cannot
+  reorder native bounds updates; when the work area is too tight, the
+  conversation target stops before it would narrow the panel. Cancellation
+  sends the press-time target again.
 - Left and non-right native edges retain their existing base-window behavior.
   Display transitions, maximized/fullscreen deferral, persisted base bounds,
   and work-area reservation clamping continue to follow ADR 0122 and ADR 0132.

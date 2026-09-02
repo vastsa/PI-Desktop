@@ -130,14 +130,18 @@ export function planWorkPanelReservation({
   baseBounds,
   workArea,
   requestedWidth,
+  preserveReservation = false,
 }: {
   baseBounds: WindowBounds;
   workArea: WindowBounds;
   requestedWidth: number;
+  preserveReservation?: boolean;
 }): { bounds: WindowBounds; reservation: WorkPanelReservationState } {
   const base = { ...baseBounds };
   const availableWidth = Math.max(0, workArea.width - base.width);
-  const reservedWidth = Math.min(requestedWidth, availableWidth);
+  const reservedWidth = preserveReservation
+    ? Math.max(0, requestedWidth)
+    : Math.min(requestedWidth, availableWidth);
   const width = base.width + reservedWidth;
   const workAreaRight = workArea.x + workArea.width;
   const maximumX = workAreaRight - width;
@@ -153,6 +157,36 @@ export function planWorkPanelReservation({
       xOffset: x - base.x,
     },
   };
+}
+
+/**
+ * Replans a renderer-owned conversation resize without changing the panel
+ * reservation currently visible in the window. The target may grow only while
+ * the current reservation still fits the display; otherwise the divider stops
+ * at the largest safe base width instead of narrowing the panel.
+ */
+export function planWorkPanelChatResize({
+  baseBounds,
+  workArea,
+  reservationWidth,
+  requestedWidth,
+}: {
+  baseBounds: WindowBounds;
+  workArea: WindowBounds;
+  reservationWidth: number;
+  requestedWidth: number;
+}): { bounds: WindowBounds; reservation: WorkPanelReservationState } {
+  const maximumBaseWidth = Math.max(
+    baseBounds.width,
+    workArea.width - Math.max(0, reservationWidth),
+  );
+  const baseWidth = Math.min(requestedWidth, maximumBaseWidth);
+  return planWorkPanelReservation({
+    baseBounds: { ...baseBounds, width: baseWidth },
+    workArea,
+    requestedWidth: reservationWidth,
+    preserveReservation: true,
+  });
 }
 
 export function parseWorkPanelReservationWidth(input: unknown): number | null {

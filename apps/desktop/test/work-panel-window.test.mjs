@@ -8,6 +8,7 @@ import {
   isWorkPanelOuterResizeEdge,
   parseWorkPanelChatWidth,
   parseWorkPanelReservationWidth,
+  planWorkPanelChatResize,
   planWorkPanelReservation,
   reconcileBaseWindowBounds,
 } from "../electron/main/work-panel-window.ts";
@@ -132,6 +133,52 @@ test("reserves only the available width when the work area is constrained", () =
     reservation: { width: 200, xOffset: 0 },
   });
   assert.deepEqual(baseWindowBounds(plan.bounds, plan.reservation), base);
+});
+
+test("chat resize keeps the active panel reservation when the work area is tight", () => {
+  const constrainedWorkArea = { x: 0, y: 0, width: 1100, height: 900 };
+  const base = { x: 0, y: 40, width: 900, height: 800 };
+  const opened = planWorkPanelReservation({
+    baseBounds: base,
+    workArea: constrainedWorkArea,
+    requestedWidth: 420,
+  });
+  const resized = planWorkPanelChatResize({
+    baseBounds: base,
+    workArea: constrainedWorkArea,
+    reservationWidth: opened.reservation.width,
+    requestedWidth: 1000,
+  });
+
+  assert.equal(opened.reservation.width, 200);
+  assert.deepEqual(resized, {
+    bounds: { x: 0, y: 40, width: 1100, height: 800 },
+    reservation: { width: 200, xOffset: 0 },
+  });
+});
+
+test("chat resize keeps the current panel width while shrinking the base", () => {
+  const workArea = { x: 0, y: 0, width: 1920, height: 1080 };
+  const base = { x: 100, y: 80, width: 1000, height: 800 };
+  const opened = planWorkPanelReservation({
+    baseBounds: base,
+    workArea,
+    requestedWidth: 420,
+  });
+  const resized = planWorkPanelChatResize({
+    baseBounds: base,
+    workArea,
+    reservationWidth: opened.reservation.width,
+    requestedWidth: 800,
+  });
+
+  assert.equal(resized.reservation.width, opened.reservation.width);
+  assert.deepEqual(baseWindowBounds(resized.bounds, resized.reservation), {
+    x: 100,
+    y: 80,
+    width: 800,
+    height: 800,
+  });
 });
 
 test("planning the current reservation is idempotent", () => {

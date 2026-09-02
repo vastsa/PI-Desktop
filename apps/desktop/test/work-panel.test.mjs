@@ -336,6 +336,9 @@ test("native window and work panel resizing have explicit edge owners", () => {
   );
   assert.doesNotMatch(mainSource, /windowResizeBy|panelWindowWidthOffset/);
   assert.match(mainSource, /workPanelNativeResizeActive/);
+  assert.match(mainSource, /workPanelChatResizeActive/);
+  assert.match(mainSource, /planWorkPanelChatResize/);
+  assert.match(mainSource, /preserveReservation:/);
   assert.match(mainSource, /baseBounds\.width \+ WORK_PANEL_MIN_WIDTH/);
   assert.match(mainSource, /baseWindowBounds/);
   assert.match(mainSource, /workPanelReservation/);
@@ -381,6 +384,8 @@ test("work panel separator exposes pointer and keyboard resizing", () => {
   assert.match(panelSource, /onPointerUp=\{onChatResizeCommit\}/);
   assert.match(panelSource, /onPointerCancel=\{onChatResizeCancel\}/);
   assert.match(panelSource, /onLostPointerCapture=\{onChatResizeCancel\}/);
+  assert.match(panelSource, /chatResizeActive\.current = true/);
+  assert.match(panelSource, /if \(chatResizeActive\.current\) return/);
   assert.match(panelSource, /data-work-panel-resizing/);
   assert.match(globalStyles, /\.work-panel-resize \{[^}]*width:\s*10px;/s);
   assert.match(globalStyles, /touch-action:\s*none/);
