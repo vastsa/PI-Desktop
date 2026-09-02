@@ -1,6 +1,6 @@
 {
   "name": "@pi-desktop/desktop",
-  "version": "0.11.4",
+  "version": "0.12.0",
   "private": true,
   "description": "PI-Desktop Electron application",
   "homepage": "https://github.com/vastsa/PI-Desktop",
