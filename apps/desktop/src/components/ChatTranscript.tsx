@@ -802,13 +802,7 @@ function ToolCommandCopy({ command }: { command: string }) {
   );
 }
 
-function ToolRow({
-  message,
-  delegate,
-  variant = "default",
-  delegationStatuses,
-  delegationTimings,
-}: {
+type ToolRowProps = {
   message: UiMessage;
   /** Rows the delegate produced, when this row is a `Task` call (ADR 0062). */
   delegate?: SubagentRun;
@@ -818,7 +812,55 @@ function ToolRow({
   delegationStatuses?: ReadonlyMap<string, SubagentOutcome>;
   /** Runtime timings read from the turn's delegation lifecycle rows. */
   delegationTimings?: ReadonlyMap<string, SubagentTiming>;
-}) {
+};
+
+function toolRowDelegationId(message: UiMessage): string | undefined {
+  const payload = toolResultPayload(message);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return undefined;
+  }
+  const delegationId = (payload as { delegationId?: unknown }).delegationId;
+  return typeof delegationId === "string" ? delegationId : undefined;
+}
+
+/**
+ * Streaming updates replace one message object at a time. Regular rows only
+ * depend on that message and their nested run; topology rows additionally
+ * depend on the status/timing for their own delegation, not on Map identity.
+ */
+function toolRowPropsEqual(
+  previous: ToolRowProps,
+  next: ToolRowProps,
+): boolean {
+  if (
+    previous.message !== next.message ||
+    previous.variant !== next.variant ||
+    !subagentRunsEqual(previous.delegate, next.delegate)
+  ) {
+    return false;
+  }
+  if (previous.variant !== "topology") return true;
+  const previousId = toolRowDelegationId(previous.message);
+  const nextId = toolRowDelegationId(next.message);
+  if (previousId !== nextId) return false;
+  if (!previousId || !nextId) return true;
+  const previousTiming = previous.delegationTimings?.get(previousId);
+  const nextTiming = next.delegationTimings?.get(nextId);
+  return (
+    previous.delegationStatuses?.get(previousId) ===
+      next.delegationStatuses?.get(nextId) &&
+    previousTiming?.startedAt === nextTiming?.startedAt &&
+    previousTiming?.completedAt === nextTiming?.completedAt
+  );
+}
+
+const ToolRow = memo(function ToolRow({
+  message,
+  delegate,
+  variant = "default",
+  delegationStatuses,
+  delegationTimings,
+}: ToolRowProps) {
   const { t } = useTranslation();
   const detailsId = useId();
   const root = useAppStore((s) => s.workspace?.path);
@@ -1142,7 +1184,7 @@ function ToolRow({
       ) : null}
     </div>
   );
-}
+}, toolRowPropsEqual);
 
 /**
  * What a delegate did, nested under the `Task` call that spawned it.
