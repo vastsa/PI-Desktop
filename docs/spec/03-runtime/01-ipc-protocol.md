@@ -30,7 +30,7 @@ Principles:
 | `workspace` | Workspace selection and legacy working-tree diagnostics |
 | `browser` | Work panel embedded preview navigation/bounds/visibility + state events |
 | `fs` | Work panel workspace file listing/reading/reveal (read-only) |
-| `window` | Frameless window state, controls, and bounded work-panel width reservation |
+| `window` | Frameless window state, controls, and bounded work-panel reservation/chat-width channels |
 | `menu` | Allowlisted application-menu commands and native editing/window actions |
 | `notification` | Durable inbox list/read/clear and new/activated events |
 
@@ -1220,7 +1220,8 @@ Plugin panel chrome uses a separate Electron-local
 but the handler resolves the target strictly from the sender's live panel
 window. The preload consumes this channel internally for its closed-Shadow-DOM
 titlebar; it is not added to `window.pluginBridge` or the shared host protocol.
-The one geometry-specific capability is a target-state work-panel reservation
+The geometry-specific capabilities are bounded target-state work-panel
+reservation and chat-width updates
 (D163, D255, ADR 0032/0122):
 
 ```ts
@@ -1238,12 +1239,34 @@ to the normal base window for that target and can be smaller than `requested`
 only when the display work area is insufficient. Calls are idempotent target
 updates: repeating the same width never adds another delta.
 
+The two visible resize boundaries have different owners while the panel is
+open:
+
+```ts
+window/setWorkPanelChatWidth({ width: number })
+  -> { requested: number; applied: number }
+
+window/event/workPanelResize
+  -> { phase: "preview" | "commit"; panelWidth: number }
+```
+
+`window/setWorkPanelChatWidth` accepts only a safe integer in the inclusive
+`1040..10000` range. It is the bounded target-state channel used by the
+renderer-owned divider inside the window; it changes the base conversation
+width while preserving the panel reservation. The native right edge (and
+right corners where Electron reports them) changes the panel target instead.
+Main previews that native panel width through `window/event/workPanelResize`
+and commits it to the renderer after the native resize stream settles. The
+panel target remains bounded to `244..720px`.
+
 In normal state, Main expands the base bounds toward the right and shifts left
 only as needed to keep the expanded bounds inside the current display work
 area. A zero target symmetrically removes the added width and reverses that
 reservation-induced shift. Main persists base bounds with both effects removed.
-Native edge gestures update only those base bounds, leaving `requested` and the
-renderer-owned fixed panel width unchanged. Maximized and fullscreen windows
+Native gestures from the left edge or non-right corners update only those base
+bounds, leaving `requested` and the renderer-owned fixed panel width
+unchanged. The outer right edge and right corners update the panel target while
+the base conversation width stays fixed. Maximized and fullscreen windows
 remember the latest target but defer geometry; returning to normal reconciles
 it once against the restored base bounds and current work area. If the window
 manager first compresses or relocates the outer window during a display or

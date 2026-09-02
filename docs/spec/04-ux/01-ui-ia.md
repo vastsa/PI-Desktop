@@ -87,9 +87,10 @@ destination, chat as the home surface, tools and permissions inline.
   resource tab and collapsing it without discarding one; the create trigger
   remains unavailable while the panel is closed. A
   successful active-session workspace Write/Edit artifact opens Review;
-  scratch, failed, and background-session writes never steal focus. Width is
-  drag-resizable from 244px to 720px and remains at
-  its fixed committed width while open. The sole panel-level control collapses
+  scratch, failed, and background-session writes never steal focus. The outer
+  right native edge resizes the panel from 244px to 720px and the inner divider
+  resizes the conversation area; outside an outer-edge gesture, the panel
+  remains at its fixed committed width while open. The sole panel-level control collapses
   the panel;
   each session retains its own runtime open state, tab set, active tab, and
   Browser resource in renderer memory. Selecting another session swaps the
@@ -105,8 +106,10 @@ destination, chat as the home surface, tools and permissions inline.
   display work area allows it; collapse and final-resource close release the
   reservation after the exit animation and return the window to its base
   bounds. On constrained windows the panel stays fixed and chat absorbs only
-  the unavoidable shortfall. Native window edges resize chat and never the
-  panel. Maximized/fullscreen is unaffected; moving between displays or
+  the unavoidable shortfall. The inner panel divider resizes the conversation
+  area while the outer right window edge resizes the panel; the panel remains
+  fixed during inner-divider drags. Other native edges resize the chat area.
+  Maximized/fullscreen is unaffected; moving between displays or
   changing a display work area reconciles the target normally. Persisted base
   bounds exclude temporary panel reservation. Background artifacts never
   change the visible panel or reservation (D163, D255, ADR 0122). The outer

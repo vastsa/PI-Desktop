@@ -2924,3 +2924,16 @@ D193, and D194.
 - macOS updater feeds are renamed per architecture before artifact upload and
   merged into one `latest-mac.yml` during publication. macOS remains
   notify-and-link until a signed in-app channel is qualified.
+
+## 2026-09-02 — Work panel outer and inner resize ownership (D286)
+
+- With the right work panel open, the outer native right edge and right corners
+  resize the panel target (`244..720px`) while preserving the base conversation
+  width. Main previews and commits that target through an Electron-local event;
+  left and other native edges retain base chat resizing.
+- The inner renderer divider resizes the base conversation width through the
+  bounded `window/setWorkPanelChatWidth` channel (`1040..10000px`) while the
+  panel reservation remains unchanged. Pointer updates are serialized and
+  cancellation restores the press-time target.
+- This is an Electron-local behavior change; the host protocol remains v9.
+  See ADR 0146 and E2E-056/E2E-167.

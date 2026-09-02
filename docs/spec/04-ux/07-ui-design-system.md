@@ -895,13 +895,14 @@ retain the fade-and-slide exit.
 
 - The work panel never participates in responsive collapse. It keeps its
   committed `244..720px` width (default 280px) while visible.
-- Native window and sidebar changes reflow MainChat. The 360px chat target holds
-  when the native reservation can fit panel + chat; otherwise chat reflows below
-  it.
+- The inner panel divider resizes the base chat window while the outer right
+  native edge resizes the fixed panel target. Other native and sidebar changes
+  reflow MainChat. The 360px chat target holds when the native reservation can
+  fit panel + chat; otherwise chat reflows below it.
 - Panel open requests the committed native reservation; collapse/final close
-  release it after the exit animation, and divider commit updates the
-  committed preferred width and active reservation. Native edges resize the
-  window and reflow MainChat.
+  release it after the exit animation, and the outer-edge panel gesture or
+  inner-divider chat gesture updates its respective target. Native edges keep
+  their OS hit regions and the renderer previews the outer-edge panel target.
 - The outer shell keeps native edge/corner resizing enabled on every platform.
   Frameless titlebar drag regions never replace the OS resize ownership. A
   300ms stable-bounds settle window prevents recovery logic from competing with

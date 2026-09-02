@@ -69,9 +69,12 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
   Windows/Linux, opening the work panel removes the main titlebar's native
   window-control clearance because those controls occupy the work-panel header
   at the outer window edge.
-- Work panel resize: left-edge drag handle (§5.4)
-- Window resize: native edges and corners change MainChat width only while an
-  open work panel keeps its committed width; responsive layout follows
+- Work panel resize: inner left-edge handle changes the base chat width; the
+  outer right native edge changes the panel width (§5.4)
+- Window resize: the outer right edge and right corners change the open work
+  panel target while preserving MainChat width; the inner divider changes the
+  MainChat target while preserving the panel width. Other native edges and
+  corners change MainChat width only; responsive layout follows
   [07-ui-design-system.md](07-ui-design-system.md) §10.1
 
 ### 1.5 Accessibility
@@ -766,7 +769,7 @@ workflow while rendering entirely inside the plugin's isolated page:
 | Open | Docked flex row right of the main pane; opened by an artifact or `Cmd/Ctrl + J` at a fixed committed width of 244–720px (default 280px). `Cmd/Ctrl + J` again collapses it, retaining the session context. Its flex allocation eases from zero to the committed width so MainChat reflows continuously, while a matching native reservation keeps the chat width stable when possible (ADR 0122). |
 | Multiple artifacts | The current-resource header keeps one readable label at the panel minimum; its bounded menu lists the tools first and then the transcript-opened resources in first-open order, with full-path tooltips and independent close controls |
 | Session switch | The destination session's retained open state, tabs, active tab, and Browser resource replace the previous session's panel context atomically; neither context is deleted |
-| Resizing | The left divider follows anchored pointer delta or keyboard input. Pointer changes preview once per animation frame and commit width plus reservation only on release; Escape, pointer cancellation, or lost capture restores both. Native window-edge/corner resize changes MainChat only. The Electron recovery watchdog waits for stable bounds so it cannot interrupt a slow gesture. |
+| Resizing | The inner left divider follows anchored pointer delta or keyboard input for the base chat target; pointer changes are frame-coalesced and bounded native requests are serialized. Escape, pointer cancellation, or lost capture restores the prior chat target. The outer right native edge/corners preview and commit the panel target; other native edges resize MainChat. The Electron recovery watchdog waits for stable bounds so it cannot interrupt a slow gesture. |
 | No workspace | Each tab renders its own "open a project" empty state |
 | Open with no resource | `Cmd/Ctrl + J` reveals the panel without creating a tab, so the body renders the no-resource empty state: title, one line of copy, and the available Browser/plugin-view entries. Activating an entry creates or selects that singleton view. The body is not a `role="tabpanel"` here because no tab labels it. |
 | Constrained work area | The panel stays at its committed width; the native reservation is capped by the work area and MainChat absorbs the shortfall, possibly falling below its 360px target on small windows (ADR 0122) |
@@ -837,17 +840,17 @@ workflow while rendering entirely inside the plugin's isolated page:
   again. A workspace selection with no active conversation hides the panel.
   Every context remains bound to its originating session/workspace, so relative
   file and Browser resources are never reinterpreted against another workspace.
-- Resize: pointer drag on the left-edge handle; `ArrowLeft` / `ArrowRight`
-  adjust it in 16px steps (`Shift` uses 32px), `Home` / `End` reach the current
-  fixed 244px / 720px limits, and double-click restores the default width.
-  Pointer math is anchored to the press position and starting committed width,
-  so grabbing the handle cannot jump the divider. Move events are
-  frame-coalesced; release
-  commits once, while Escape, pointer cancellation, and lost capture cancel.
-  The 10px hit area keeps a global column-resize cursor and suppresses text
-  selection during the gesture. The live preview changes renderer columns only;
-  a successful commit updates the committed preferred width. Native window edges
-  resize MainChat by reflow only, never the panel or its preference (ADR 0122).
+- Resize: the inner left-edge handle keeps the panel at its committed width and
+  sends a bounded conversation-width target (`1040..10000px`) through Electron.
+  `ArrowLeft` / `ArrowRight` adjust the chat target in 16px steps (`Shift` uses
+  32px), and `Home` / `End` reach its limits. Pointer math is anchored to the
+  press position and starting chat width, so grabbing the handle cannot jump
+  the divider; move events are frame-coalesced and queued as one bounded native
+  request at a time. Escape, pointer cancellation, and lost capture restore
+  the press-time chat width. The 10px hit area keeps a global column-resize
+  cursor and suppresses text selection during the gesture. The outer right
+  native edge and right corners preview and commit the panel's fixed
+  `244..720px` target while preserving the base chat width (ADR 0146).
 - Persistence: all session contexts are renderer runtime state only. On app
   startup, open state, tabs, active-tab selection, file requests, and Browser
   resources reset; only the committed preferred `{width}` remains in
@@ -2720,9 +2723,10 @@ Sidebar footer                                        Popover (360px max)
 17. NotificationInbox exposes All/Unread views, exact unread badge semantics,
     row activation, mark-all-read and clear actions; it is keyboard-operable
     and never treats a visible-current or aborted turn as a notification
-18. Native edges resize MainChat by reflow without compressing the fixed work panel;
-    panel visibility and divider commits update the committed preferred width and
-    active reservation, and cancelled divider gestures restore the prior width
-    and reservation (ADR 0122)
+18. The outer right native edge resizes the fixed work-panel target while the
+    inner divider resizes the MainChat target; other native edges reflow MainChat
+    without compressing the panel. Panel visibility, outer-edge commits, and
+    inner-divider chat requests update their own target, and cancelled divider
+    gestures restore the prior chat target (ADR 0146)
 19. Expanded sidebar session titles, project/group titles, and empty-state copy
     use the 13px compact token while primary sidebar actions remain at 14px
