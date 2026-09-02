@@ -17,7 +17,7 @@
     "build": "pnpm -r --if-present build && cargo build --release -p host-core",
     "build:js": "pnpm -r --if-present build",
     "build:host": "cargo build --release -p host-core",
-    "typecheck": "pnpm -r --if-present typecheck",
+    "typecheck": "pnpm -r --if-present build && pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test && cargo test -p host-core",
     "test:host": "cargo test -p host-core",
     "test:e2e": "node scripts/e2e-smoke.mjs",

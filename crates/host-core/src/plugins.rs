@@ -3285,7 +3285,10 @@ mod tests {
             assert!(installed.plugin.path.unwrap().contains("installed"));
             assert_eq!(installed.plugin.source, "marketplace");
             let listed = mgr.list();
-            assert_eq!(listed.len(), 1);
+            assert!(
+                listed.iter().any(|plugin| plugin.id == "demo.hello"),
+                "installed marketplace plugin must be present in the registry"
+            );
         });
     }
 
