@@ -23,6 +23,15 @@ export type ChangelogEntry = {
 
 const enEntries: ChangelogEntry[] = [
   {
+    version: "0.12.2",
+    date: "2026-09-03",
+    highlights: [
+      "Fix user message row appearing before host round trip completes.",
+      "Clear draft prompt before sending to prevent stale content.",
+      "Settle long transcripts under a skeleton veil for smoother rendering.",
+    ],
+  },
+  {
     version: "0.12.1",
     date: "2026-09-03",
     highlights: [
@@ -528,6 +537,15 @@ const enEntries: ChangelogEntry[] = [
 ];
 
 const zhCNEntries: ChangelogEntry[] = [
+  {
+    version: "0.12.2",
+    date: "2026-09-03",
+    highlights: [
+      "修复用户消息行在宿主往返完成前出现的问题。",
+      "发送前清空草稿提示以防止内容残留。",
+      "长对话记录在骨架遮罩下结算以获得更流畅的渲染效果。",
+    ],
+  },
   {
     version: "0.12.1",
     date: "2026-09-03",
