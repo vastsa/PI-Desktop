@@ -2578,10 +2578,16 @@ export const ChatTranscript = memo(function ChatTranscript({
   // otherwise the reveal shows one empty frame.
   const firstCommitRef = useRef(true);
   const firstCommit = firstCommitRef.current;
+  // A retained pane can receive a newer live snapshot while it is hidden. Do
+  // not let useDeferredValue reveal its previous frame first; the reveal itself
+  // is a navigation boundary and must paint the snapshot selected for it.
+  const paneRevealed = paneVisible && !wasPaneVisibleRef.current;
   const deferredMessages = useDeferredValue(messages);
   const deferredCompactions = useDeferredValue(compactions);
-  const renderedMessages = firstCommit ? messages : deferredMessages;
-  const renderedCompactions = firstCommit ? compactions : deferredCompactions;
+  const renderedMessages =
+    firstCommit || paneRevealed ? messages : deferredMessages;
+  const renderedCompactions =
+    firstCommit || paneRevealed ? compactions : deferredCompactions;
   const { entries, visible } = useMemo(
     () => buildTranscriptEntries(renderedMessages, renderedCompactions),
     [renderedMessages, renderedCompactions],

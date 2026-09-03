@@ -61,7 +61,7 @@ test("only the latest navigation may commit a loaded transcript", () => {
   assert.match(selection, /navigationIntentIsCurrent\(intent\)/);
   assert.match(
     selection,
-    /commitSelection\(detail\.session\?\.messages \?\? \[\], false, historyWindow\)/,
+    /commitSelection\(selectedMessages, false, historyWindow\)/,
   );
   assert.ok(
     selection.indexOf("const detailPromise = loadSessionDetail(id)") <
@@ -71,10 +71,10 @@ test("only the latest navigation may commit a loaded transcript", () => {
   // already fully painted still waits for workspace alignment to show up.
   assert.match(
     selection,
-    /commitSelection\(get\(\)\.retainedTranscripts\[id\], true\)/,
+    /commitSelection\(retainedMessages, true\)/,
   );
   assert.ok(
-    selection.indexOf("get().retainedTranscripts[id]") <
+    selection.indexOf("const retainedMessages") <
       selection.indexOf("await alignWorkspaceLatest(summary.projectPath)"),
     "the retained pane must be revealed before workspace alignment is awaited",
   );
@@ -142,6 +142,20 @@ test("a hidden pane does no reading work off screen", () => {
     /const loadOlder = useCallback\(\(\) => \{[\s\S]*?if \(!paneVisibleRef\.current\) return;/,
   );
   assert.match(transcript, /\{paneVisible \? \(\s*<ConversationMinimap/);
+});
+
+test("reopening a running session never lets durable detail erase its live tail", () => {
+  assert.match(store, /const liveSessionTranscripts = new Set/);
+  assert.match(store, /cacheBackgroundTranscriptEvent\(envelope\)/);
+  assert.match(store, /const runningAtSelection = stateAtStart\.runningSessions\[id\] === true/);
+  assert.match(store, /mergeLiveSessionMessages\(detail\.session\.messages \?\? \[\], liveMessages\)/);
+  // The detail reader itself must preserve a live cache: otherwise its promise
+  // can erase the partial row before selectSession reaches its final commit.
+  assert.match(store, /liveSessionTranscripts\.has\(id\) \|\| state\.runningSessions\[id\]/);
+  // A warm pane must not reveal one deferred frame from before the stream was
+  // captured; its first visible render uses the selected live snapshot.
+  assert.match(transcript, /const paneRevealed = paneVisible && !wasPaneVisibleRef\.current/);
+  assert.match(transcript, /firstCommit \|\| paneRevealed \? messages : deferredMessages/);
 });
 
 test("a cold switch keeps the visible pane legible instead of dimming it", () => {

@@ -60,7 +60,7 @@ test("stream rendering avoids duplicate frame state and coalesces following", ()
   // commit that reveals it, or the reveal shows one empty frame (ADR 0137).
   assert.match(
     transcript,
-    /const renderedMessages = firstCommit \? messages : deferredMessages/,
+    /const renderedMessages =\s*firstCommit \|\| paneRevealed \? messages : deferredMessages/,
   );
   assert.match(transcript, /const \{ entries, visible \} = useMemo/);
   assert.match(

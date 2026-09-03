@@ -232,8 +232,10 @@ may be retained while exactly one workspace supplies the visible shell context.
   `display: none`, which would discard their scroll offset — and each pane keeps
   its own scroll position for its lifetime. Switching to a session that still has
   a pane (warm) reveals it immediately with its retained content and position:
-  nothing is dimmed, no skeleton appears, no transcript remounts, and the
-  revalidated snapshot lands in the same pane without a visible change.
+  nothing is dimmed, no skeleton appears, and no transcript remounts. If the
+  destination is running, revalidation treats the durable read as a lower-water
+  mark and keeps its renderer-owned assistant/tool tail; completed durable rows
+  may be added, but the partial reply cannot be rolled back.
 - Switching to a session with no retained pane (cold) leaves the visible pane on
   its own session until the destination commits. Only a thin progress track and
   `aria-busy` mark the wait, the composer stays non-interactive so a prompt cannot
@@ -251,8 +253,10 @@ may be retained while exactly one workspace supplies the visible shell context.
   not perform a second project navigation before session creation or selection.
 - Run state, permission grants, and streamed events are keyed by session id.
   A project/tab switch does not abort a background turn or copy its events into
-  the visible transcript. Background message, tool, completion, and permission
-  events never activate their session, change the visible project/page, or move
+  the visible transcript. Background message and tool events update that
+  session's renderer-owned live cache, so reopening a running session does not
+  lose the partial tail when its durable detail read completes. These events
+  never activate their session, change the visible project/page, or move
   focus. Creating a new session or switching to one that is not running returns
   the composer to its idle Send state immediately: a turn still streaming in the
   previously selected session never leaves the destination session's send button

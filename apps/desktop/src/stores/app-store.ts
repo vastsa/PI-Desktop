@@ -58,6 +58,11 @@ import {
 } from "../lib/session-panes";
 import { normalizeProjectPath, sessionMatchesProject } from "../lib/sidebar-session-groups";
 import {
+  mergeLiveSessionMessages,
+  removeLiveSessionMessage,
+  upsertLiveSessionMessage,
+} from "../lib/session-transcript";
+import {
   latestSessionOutcomes,
   type SidebarSessionOutcome,
 } from "../lib/sidebar-session-status";
@@ -232,6 +237,9 @@ let pendingSessionSelection: { id: string; intent: number } | null = null;
 let sessionWorkspaceQueue: Promise<void> = Promise.resolve();
 const pendingNewSessionRequests = new Map<string, Promise<void>>();
 const sessionTranscriptCache = new Map<string, UiMessage[]>();
+// A cache entry can contain a completed row that is newer than the durable
+// read, so keep its live provenance until a selection has reconciled it.
+const liveSessionTranscripts = new Set<string>();
 type SessionHistoryWindow = {
   messageStart: number;
   hasMoreBefore: boolean;
@@ -312,6 +320,7 @@ function cacheSessionTranscript(
     if (typeof oldestId !== "string") break;
     sessionTranscriptCache.delete(oldestId);
     sessionHistoryCache.delete(oldestId);
+    liveSessionTranscripts.delete(oldestId);
   }
 }
 
@@ -327,7 +336,15 @@ function loadSessionDetail(
   if (active && options?.messageBefore === undefined) return active;
   const request = api.getSession(id, options).then((detail) => {
     if (detail.session && options?.messageBefore === undefined) {
-      cacheSessionTranscript(id, detail.session.messages ?? [], {
+      const state = useAppStore.getState();
+      const liveMessages =
+        sessionTranscriptCache.get(id) ?? state.retainedTranscripts[id];
+      const messages =
+        (liveSessionTranscripts.has(id) || state.runningSessions[id]) &&
+        liveMessages
+          ? mergeLiveSessionMessages(detail.session.messages ?? [], liveMessages)
+          : detail.session.messages ?? [];
+      cacheSessionTranscript(id, messages, {
         messageStart: detail.session.messageStart ?? 0,
         hasMoreBefore: detail.session.hasMoreBefore === true,
       });
@@ -353,6 +370,122 @@ async function loadFullSessionMessages(id: string): Promise<UiMessage[] | null> 
   const messages = detail.session.messages ?? [];
   cacheSessionTranscript(id, messages, { messageStart: 0, hasMoreBefore: false });
   return messages;
+}
+
+/**
+ * Keep a warm session's renderer cache current while it streams in the
+ * background. The hidden pane itself is not re-rendered; its next reveal reads
+ * this cache and commits the latest available tail in one frame.
+ */
+function cacheBackgroundTranscriptEvent(envelope: AgentEventEnvelope): void {
+  const { sessionId, event } = envelope;
+  const state = useAppStore.getState();
+  const current =
+    sessionTranscriptCache.get(sessionId) ?? state.retainedTranscripts[sessionId];
+  if (!current) return;
+
+  let next = current;
+  switch (event.type) {
+    case "message_start":
+    case "message_update":
+      next = upsertLiveSessionMessage(current, event.message);
+      break;
+    case "message_end": {
+      const failed =
+        event.message.status === "error" || event.message.status === "aborted";
+      const empty =
+        !(event.message.content || "").trim() &&
+        !(event.message.thinking || "").trim();
+      next =
+        failed && empty && !event.message.error
+          ? removeLiveSessionMessage(current, event.message.id)
+          : upsertLiveSessionMessage(current, event.message);
+      break;
+    }
+    case "tool_start":
+      next = upsertLiveSessionMessage(current, {
+        id: event.toolCallId,
+        role: "tool",
+        content: "",
+        createdAt: new Date(envelope.ts).toISOString(),
+        toolCallId: event.toolCallId,
+        toolName: event.toolName,
+        toolArgs: event.args,
+        toolStatus: "running",
+        status: "streaming",
+        ...(envelope.parentToolCallId
+          ? { parentToolCallId: envelope.parentToolCallId }
+          : {}),
+        ...(envelope.agentName ? { agentName: envelope.agentName } : {}),
+      });
+      break;
+    case "tool_update": {
+      if (event.partialResult === undefined) return;
+      const existing = current.find(
+        (message) =>
+          message.toolCallId === event.toolCallId &&
+          message.toolStatus === "running",
+      );
+      if (!existing) return;
+      next = upsertLiveSessionMessage(current, {
+        ...existing,
+        content:
+          typeof event.partialResult === "string"
+            ? event.partialResult
+            : formatToolValue(event.partialResult),
+        toolResult: event.partialResult,
+      });
+      break;
+    }
+    case "tool_end": {
+      const toolStart = toolStartsByCallId.get(event.toolCallId);
+      const completedAt = new Date(envelope.ts).toISOString();
+      const completed: UiMessage = {
+        id: event.toolCallId,
+        role: "tool",
+        content:
+          typeof event.result === "string"
+            ? event.result
+            : JSON.stringify(event.result, null, 2),
+        createdAt: toolStart?.createdAt ?? completedAt,
+        toolCallId: event.toolCallId,
+        ...(toolStart?.toolName ? { toolName: toolStart.toolName } : {}),
+        ...(toolStart ? { toolArgs: toolStart.args } : {}),
+        toolCompletedAt: completedAt,
+        toolDurationMs: toolStart
+          ? Math.max(0, envelope.ts - Date.parse(toolStart.createdAt))
+          : 0,
+        toolStatus: event.isError ? "error" : "success",
+        toolResult: event.result,
+        ...(event.toolUsage ? { toolUsage: event.toolUsage } : {}),
+        status: "complete",
+        isError: event.isError,
+      };
+      const existing = current.find(
+        (message) => message.toolCallId === event.toolCallId,
+      );
+      next = existing
+        ? upsertLiveSessionMessage(current, {
+            ...existing,
+            ...completed,
+            toolName: existing.toolName ?? completed.toolName,
+            toolArgs: existing.toolArgs ?? completed.toolArgs,
+            createdAt: existing.createdAt || completed.createdAt,
+          })
+        : upsertLiveSessionMessage(current, completed);
+      break;
+    }
+    default:
+      return;
+  }
+
+  if (next === current) return;
+  liveSessionTranscripts.add(sessionId);
+  cacheSessionTranscript(
+    sessionId,
+    next,
+    sessionHistoryCache.get(sessionId) ?? state.sessionHistory[sessionId],
+  );
 }
 
 function nextPlanSyncGeneration(sessionId: string): number {
@@ -1329,6 +1462,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     const selection = { id, intent };
     pendingSessionSelection = selection;
     const stateAtStart = get();
+    const runningAtSelection = stateAtStart.runningSessions[id] === true;
+    if (runningAtSelection) liveSessionTranscripts.add(id);
     if (stateAtStart.activeSessionId) {
       cacheSessionTranscript(
         stateAtStart.activeSessionId,
@@ -1426,12 +1561,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       // (ADR 0137). Reveal it before awaiting workspace alignment so a warm
       // switch shows the destination on its first frame; the revalidated
       // transcript lands in the same pane afterwards.
-      if (
-        get().retainedTranscripts[id] &&
-        get().activeSessionId !== id &&
-        summary
-      ) {
-        commitSelection(get().retainedTranscripts[id], true);
+      const retainedMessages =
+        sessionTranscriptCache.get(id) ?? get().retainedTranscripts[id];
+      if (retainedMessages && get().activeSessionId !== id && summary) {
+        commitSelection(retainedMessages, true);
       }
       if (summary) {
         if (!(await alignWorkspaceLatest(summary.projectPath))) return;
@@ -1455,10 +1588,26 @@ export const useAppStore = create<AppState>((set, get) => ({
             hasMoreBefore: detail.session.hasMoreBefore === true,
           }
         : { messageStart: 0, hasMoreBefore: false };
+      const currentState = get();
+      const liveMessages =
+        (runningAtSelection || currentState.runningSessions[id] === true)
+          ? currentState.activeSessionId === id
+            ? currentState.messages
+            : sessionTranscriptCache.get(id) ??
+              currentState.retainedTranscripts[id]
+          : undefined;
+      const selectedMessages = detail.session
+        ? liveMessages
+          ? mergeLiveSessionMessages(detail.session.messages ?? [], liveMessages)
+          : detail.session.messages ?? []
+        : liveMessages ?? [];
       if (detail.session) {
-        cacheSessionTranscript(id, detail.session.messages ?? [], historyWindow);
+        cacheSessionTranscript(id, selectedMessages, historyWindow);
       }
-      commitSelection(detail.session?.messages ?? [], false, historyWindow);
+      commitSelection(selectedMessages, false, historyWindow);
+      if (currentState.runningSessions[id] !== true) {
+        liveSessionTranscripts.delete(id);
+      }
       rememberSessionCompactions(id, detail.session);
       void get().restorePendingPlan(id);
       void get().acknowledgeSessionOutcome(id);
@@ -2608,6 +2757,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     pendingSessionConfigurations.delete(id);
     sessionTranscriptCache.delete(id);
     sessionHistoryCache.delete(id);
+    liveSessionTranscripts.delete(id);
     sessionOlderLoads.delete(id);
     if (get().activeSessionId === id) get().resetWorkPanelContext();
     set((state) => {
@@ -3267,6 +3417,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       void flushPendingSessionConfiguration(envelope.sessionId);
     }
     if (envelope.sessionId !== get().activeSessionId) {
+      cacheBackgroundTranscriptEvent(envelope);
       // Cross-session events update only their scoped state. They never
       // replace the visible transcript, page, project, or focus.
       if (event.type === "tool_end") {
@@ -3895,6 +4046,8 @@ useAppStore.subscribe((state, previous) => {
   }
   const id = state.activeSessionId;
   if (!id) return;
+  if (state.runningSessions[id]) liveSessionTranscripts.add(id);
+  cacheSessionTranscript(id, state.messages, state.sessionHistory[id]);
   if (state.retainedTranscripts[id] === state.messages) return;
   useAppStore.setState((current) =>
     current.activeSessionId === id

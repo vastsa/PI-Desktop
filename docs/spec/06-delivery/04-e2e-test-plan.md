@@ -2874,6 +2874,28 @@ Each scenario is documented in this format:
 - **Milestone**: M5
 - **Status**: Draft
 
+#### E2E-071h: Reopening a session while its response is streaming
+
+- **Preconditions**: Session A has a completed transcript and is producing a
+  long assistant response; at least one other session is available.
+- **Steps**: 1) While A is streaming, open another session. 2) Wait long enough
+  for A to emit several assistant or tool updates without finishing. 3) Open A
+  again before the response ends. 4) Continue watching A until the turn
+  completes. 5) Switch away and back once more.
+- **Expected**: A's retained/live pane is revealed without a blank, skeleton,
+  dim, or top-of-history flash. The first frame includes the latest in-memory
+  assistant/tool tail available before the click. The delayed durable detail
+  response may add completed rows, but it never replaces the partial reply with
+  an older transcript; subsequent stream updates continue from the same row and
+  the completed answer is not duplicated. A's background events do not change
+  the other session's transcript, composer, workspace, or focus.
+- **Specs linked**: `04-ux/08-component-spec.md`,
+  `04-ux/09-interaction-patterns.md`, ADR 0137
+- **Acceptance**: C (chat stream), Quality
+- **Milestone**: M5
+- **Status**: Unit-covered (`session-transcript.test.mjs`,
+  `session-switch-performance.test.mjs`); UI scenario Draft
+
 #### E2E-073: Icon-only message toolbars and editing a user prompt
 
 - **Preconditions**: An idle conversation contains two completed user/assistant
