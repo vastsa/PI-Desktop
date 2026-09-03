@@ -150,7 +150,9 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
   the surrounding titlebar drag region cannot consume minimize, maximize,
   restore, or close clicks. Their shared 112×46px control band is opaque
   `bg-primary`, preventing destination content from bleeding through the
-  reserved titlebar surface.
+  reserved titlebar surface. The band uses the same 1px `border-subtle` rule
+  on its leading and bottom edges as the adjacent titlebar, completing one
+  continuous chrome separator rather than introducing a stronger box seam.
 - Minimize uses the platform's normal window model: Windows/Linux renderer and
   native-menu actions call native minimize and keep the taskbar entry, while
   the macOS traffic light/Window menu role remains tray-resident. Clicking a
@@ -230,7 +232,8 @@ combined model × reasoning selection (§11).
   sidebar header, work-panel header, and native window-control band all use
   `--ds-toolbar-height`. Windows/Linux keep the same `--ds-window-controls-width`
   reservation so the right boundary and native controls stay aligned when the
-  route or work panel changes.
+  route or work panel changes; the control band continues the titlebar's
+  `border-subtle` bottom rule and uses the same token for its leading divider.
 - Band reservation is platform-independent (D269). The band is opaque and
   absolutely positioned, so scrolling route content passes underneath it on
   every platform, macOS included. Every route surface that starts its own

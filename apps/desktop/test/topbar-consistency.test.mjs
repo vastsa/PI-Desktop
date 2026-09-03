@@ -29,6 +29,12 @@ test("window chrome reserves the same titlebar height and native control band", 
   assert.match(stylesSource, /--ds-toolbar-height:\s*46px;/);
 });
 
+test("window control band completes the shared titlebar separator", () => {
+  const controls = styleBlock("\\.window-controls");
+  assert.match(controls, /border-bottom:\s*1px solid var\(--ds-border-subtle\);/);
+  assert.match(controls, /border-left:\s*1px solid var\(--ds-border-subtle\);/);
+});
+
 test("sidebar and work-panel headers use the shared toolbar metric", () => {
   assert.match(styleBlock("\\.sidebar-header"), /height:\s*var\(--ds-toolbar-height\);/);
   assert.match(styleBlock("\\.sidebar-header"), /flex:\s*0 0 var\(--ds-toolbar-height\);/);
