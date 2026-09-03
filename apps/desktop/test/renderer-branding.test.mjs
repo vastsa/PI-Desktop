@@ -51,33 +51,30 @@ test("app chrome uses the shared brand asset without branding the composer input
   assert.match(icons, /export const IconNewSession/);
   assert.doesNotMatch(icons, /IconCodexHome|IconCompose|IconPiMark|IconPiHome/);
   assert.match(chatSurface, /<HomeMascotLogo \/>/);
-  assert.match(mascotLogo, /home-mascot-groups\.png/);
-  assert.match(mascotLogo, /Math\.random\(\)/);
-  assert.match(mascotLogo, /useState\(\(\) => chooseMascotGroupIndex\(\)\)/);
-  assert.match(mascotLogo, /useState\(0\)/);
-  assert.match(mascotLogo, /setTimeout/);
-  assert.match(mascotLogo, /chooseMascotGroupIndex\(current\)/);
-  assert.match(mascotLogo, /index !== previousIndex/);
-  assert.match(mascotLogo, /FRAME_DURATION_MS = 160/);
-  assert.match(mascotLogo, /randomDuration\(GROUP_PAUSE_MIN_MS, GROUP_PAUSE_MAX_MS\)/);
-  assert.match(mascotLogo, /randomDuration\(STATIC_GROUP_PAUSE_MIN_MS, STATIC_GROUP_PAUSE_MAX_MS\)/);
-  assert.match(mascotLogo, /const isLastFrame/);
-  assert.match(mascotLogo, /useState\(false\)/);
-  assert.match(mascotLogo, /isHovered\s*\?\s*FRAME_DURATION_MS/);
-  assert.match(mascotLogo, /onMouseEnter=\{\(\) => setIsHovered\(true\)\}/);
-  assert.match(mascotLogo, /onMouseLeave=\{\(\) => setIsHovered\(false\)\}/);
-  assert.match(mascotLogo, /backgroundPosition: `-\$\{frame\}px 0`/);
-  assert.match(mascotLogo, /matchMedia\("\(prefers-reduced-motion: reduce\)"\)/);
-  assert.equal((mascotLogo.match(/startFrame:/g) ?? []).length, 9);
-  assert.equal((mascotLogo.match(/frameCount:/g) ?? []).length, 9);
-  assert.match(mascotLogo, /startFrame:\s*44,\s*frameCount:\s*6/);
+  assert.match(mascotLogo, /<svg/);
+  assert.match(mascotLogo, /className="home-mascot-logo"/);
+  assert.match(mascotLogo, /aria-hidden="true"/);
+  assert.match(mascotLogo, /home-mascot-orbit/);
+  assert.match(mascotLogo, /home-mascot-core/);
+  assert.match(mascotLogo, /home-mascot-eye/);
+  assert.doesNotMatch(
+    mascotLogo,
+    /home-mascot-groups\.png|Math\.random\(\)|setTimeout|backgroundPosition|onMouseEnter|onMouseLeave|useState|useEffect|matchMedia/,
+  );
   assert.doesNotMatch(chatSurface, /<BrandLogo/);
   assert.match(styles, /\.empty-hero-icon\s*\{[\s\S]*?height:\s*100px;[\s\S]*?width:\s*100px;/);
   assert.match(
     styles,
-    /\.home-mascot-logo\s*\{[\s\S]*?background-repeat:\s*no-repeat;[\s\S]*?background-size:\s*5000px 100px;[\s\S]*?image-rendering:\s*pixelated;/,
+    /\.home-mascot-logo\s*\{[\s\S]*?display:\s*block;[\s\S]*?width:\s*100px;[\s\S]*?height:\s*100px;[\s\S]*?overflow:\s*visible;/,
   );
-  assert.doesNotMatch(styles, /@keyframes home-mascot-group/);
+  assert.match(styles, /@keyframes home-mascot-orbit/);
+  assert.match(styles, /@keyframes home-mascot-breathe/);
+  assert.match(styles, /@keyframes home-mascot-blink/);
+  assert.match(
+    styles,
+    /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.home-mascot-logo[\s\S]*?animation: none;/,
+  );
+  assert.doesNotMatch(styles, /background-size:\s*5000px 100px|image-rendering:\s*pixelated/);
   assert.doesNotMatch(composer, /<BrandLogo/);
   assert.doesNotMatch(composer, /composer-thread-mark/);
   assert.doesNotMatch(styles, /\.composer-thread-mark/);

@@ -659,7 +659,7 @@ may be retained while exactly one workspace supplies the visible shell context.
 - Activating the row reveals clamped output first and raw input second.
 - Each section scrolls internally and exposes its own copy action.
 - The disclosure chevron rotates on expansion. Reduced-motion disables
-  non-essential shimmer/rotation animation.
+  non-essential running-marker pulse and rotation animation.
 
 ### 4.3 Tool result truncation
 

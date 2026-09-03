@@ -120,18 +120,14 @@ Codex as a visual reference. The identity contract is deliberately small:
   and NSIS shortcut identity stay aligned so native notifications,
   notification settings, and taskbar groups identify the app as `PI-Desktop`
   rather than Electron.
-- The empty-home hero uses a 100px `HomeMascotLogo` compiled from the remaining
-  supplied `docs/ip` frame sheets into nine static-pose groups (50 transparent
-  frames total). Each mount selects one group at random; after that group
-  finishes, the next group is randomized without immediately repeating the
-  previous one. Frames swap discretely inside the fixed 100px viewport, while
-  the completed pose rests for several seconds before the next selection
-  (single-frame poses rest longer). Reduced motion holds the current group's
-  first frame. The sheet is monochrome with recovered edge alpha: the frames
-  were keyed off a magenta background, so a partially covered pixel carries its
-  own coverage rather than the key colour, and the mascot leaves no coloured
-  fringe on a dark surface. `python3 scripts/clean-mascot-sprite.py` restores
-  that property if the sheet is ever recompiled with a hard alpha threshold.
+- The empty-home hero uses a 100px code-native `HomeMascotLogo` SVG: a neutral
+  agent mark with a thin orbit, compact core, and small antenna. The core
+  breathes slowly, the orbit carries a single low-contrast signal point, and
+  the eyes blink occasionally. There is no raster atlas, random pose
+  selection, or hover-driven speed change. Reduced motion freezes the mark
+  without changing its size or contrast. `BrandLogo` remains 20px/18px in the
+  expanded/collapsed sidebar and 64px in the startup splash. Composer prompt
+  rows do not render a leading brand icon in either home or thread-docked mode.
   `BrandLogo` remains 20px/18px in the expanded/collapsed sidebar and 64px in
   the startup splash. Composer prompt rows do not render a leading brand icon
   in either home or thread-docked mode.
@@ -626,8 +622,8 @@ All motion tokens must respect `prefers-reduced-motion: reduce`:
 }
 ```
 
-Boot splash, overlay/dialog enters, streaming pulse, and continuous bars are
-also explicitly suppressed or collapsed to a static state.
+Boot splash, overlay/dialog enters, running-status pulses, and continuous bars
+are also explicitly suppressed or collapsed to a static state.
 
 > See also [09-interaction-patterns.md](09-interaction-patterns.md) §10.
 
@@ -709,12 +705,11 @@ model):
   controls remain icon-only and use the semantic hover wash
 - Empty hero title uses `var(--ds-text-primary)` (light override `#1a1c1f`);
   never hardcode light ink for shared hero styles
-- Empty-home branding stays quiet: the 100px mascot is the sole animated hero
-  mark. A single randomly selected pose group plays at a time, and the
-  supporting line stays short and muted so the composer remains the primary
-  task surface. Pointer hover over the mascot bypasses the idle pause and
-  continuously advances through pose groups; reduced motion still disables
-  the animation.
+- Empty-home branding stays quiet: the 100px inline SVG mascot is the sole
+  animated hero mark. Its slow orbit, gentle core breathe, and occasional
+  blink keep the supporting line short and muted so the composer remains the
+  primary task surface. Pointer hover does not change the cadence; reduced
+  motion freezes the mark.
 - Night home composer plate styles are **dark-scoped only** (elevated-primary
   `#212121f5` + standard elevation-prominent)
 - Empty draft row keeps **one visible line / 28px optical minimum** so the
@@ -840,7 +835,8 @@ query still ranks relevance first and uses recency only as a tiebreaker.
   be toggled independently afterward.
 - The trigger is a button with `aria-expanded`, `aria-controls`, and localized
   Show/Hide labels. Collapsed reasoning is hidden from focus and accessibility
-  traversal; reduced-motion mode disables shimmer and disclosure transitions.
+  traversal; reduced-motion mode disables the running marker pulse and
+  disclosure transitions.
 - Thinking never enters the answer bubble, answer copy action, transcript
   minimap excerpt, or searchable answer text.
 - A thinking-only stream opens the transcript surface without an empty answer

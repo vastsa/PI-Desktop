@@ -1628,16 +1628,15 @@ Each scenario is documented in this format:
 - **Preconditions**: App running in both English and zh-CN locales, with an
   empty home and a docked transcript available.
 - **Steps**: 1) Inspect the expanded and collapsed sidebar. 2) Inspect the
-  empty-home hero and docked composer. 3) Hover the mascot and confirm it
-  continues playing without the idle pause, then move the pointer away and
-  confirm the idle pause returns. 4) Focus the footer Settings and Plugins
-  icons, then each project/Temporary session create control. 5) Open Settings
-  and the composer input.
+  empty-home hero and docked composer. 3) Observe the mascot's calm orbit and
+  core breathe, move the pointer over it, and confirm its cadence and geometry
+  do not change. Enable reduced motion and confirm the mark becomes static.
+  4) Focus the footer Settings and Plugins icons, then each project/Temporary
+  session create control. 5) Open Settings and the composer input.
 - **Expected**: Visible shell identity reads `PI-Desktop`; the empty-home hero
-  renders the 100px `HomeMascotLogo` sprite, randomly selecting a pose group
-  and selecting a different group after playback inside a fixed viewport
-  without translating the mascot horizontally; pointer hover continuously
-  advances the groups while leaving the mascot resumes the slower idle cadence.
+  renders the 100px inline SVG `HomeMascotLogo` with a calm orbit, slow core
+  breathe, and occasional blink. Pointer hover does not alter the cadence or
+  geometry, and reduced motion freezes the mark.
   The expanded/collapsed
   sidebar renders the derived `src/assets/brand/logo-*.png` asset through `BrandLogo`
   and the docked composer prompt row has no leading
@@ -1856,8 +1855,8 @@ Each scenario is documented in this format:
   Thinking disclosure updates without an empty answer bubble or duplicate
   Working indicator. The disclosure uses the transcript surface, theme tokens,
   a Sparkles/chevron trigger, and a left rule instead of an inset card;
-  collapsed content leaves focus traversal and reduced motion disables shimmer
-  and transitions. Final answer markdown renders separately; Copy answer
+  collapsed content leaves focus traversal and reduced motion disables the
+  running marker pulse and transitions. Final answer markdown renders separately; Copy answer
   contains no thinking text.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md`,
   `04-ux/07-ui-design-system.md`, `04-ux/08-component-spec.md`, ADR 0018
@@ -3206,9 +3205,9 @@ Each scenario is documented in this format:
 - **Steps**:
   1. In light mode, open the app shell, an empty chat home, and the expanded sidebar (Windows/Linux) or startup splash.
   2. Inspect the rendered `BrandLogo` source in the sidebar and startup splash,
-     and inspect the randomly selected `HomeMascotLogo` pose-group animation in
-     the empty-home hero. Hover the mascot and verify that it advances
-     continuously while hovered.
+     and inspect the calm inline-SVG `HomeMascotLogo` animation in the
+     empty-home hero. Hover the mascot and verify that its cadence does not
+     change.
   3. Switch the theme to dark (Settings → Basics → Appearance, or system appearance change).
   4. Re-inspect the same surfaces without reloading.
   5. Switch back to light and re-inspect.
@@ -3216,13 +3215,9 @@ Each scenario is documented in this format:
   - Light and dark mode render `src/assets/brand/logo-light.png` /
     `src/assets/brand/logo-dark.png`
     live in the sidebar and startup splash without a window reload.
-  - The empty-home hero renders the 100px mascot sprite, chooses one of nine
-    remaining pose groups on mount, swaps discrete frames within the fixed
-    viewport, and chooses a different group after each playback. Single-frame
-    groups hold longer, and completed groups rest for several seconds before
-    the next selection. Pointer hover bypasses those idle rests and continuously
-    advances the pose groups; under reduced motion the current group's first
-    frame remains visible.
+  - The empty-home hero renders the 100px inline SVG mascot with a slow orbit,
+    gentle core breathe, and occasional blink. Pointer hover does not change
+    the cadence; under reduced motion the mark remains static.
   - Sizes stay stable across theme changes (sidebar 20px, hero 100px, splash
     64px), and the marks stay decorative with no click, keyboard, or focus
     behavior.
@@ -3374,8 +3369,8 @@ Each scenario is documented in this format:
     minimap without being rebuilt as a React subtree for every token.
   - Pressing and releasing standard, icon, sidebar, send, stop, and message
     action controls uses one eased transform rather than a snapped scale;
-    active streaming labels and loading skeletons keep their shimmer/pulse
-    loop at or below 1 second.
+    active streaming labels keep their readable text while their compact status
+    markers pulse at or below 1 second; loading skeletons retain their pulse.
   - Minimap overflow and active-marker state remain correct without marker
     jitter while streamed content changes height.
   - Destination, panel, focus, pressed, jump, and error feedback use one short
@@ -5393,15 +5388,11 @@ This test plan spec is accepted when:
   row, with no Logo/Home brand or back/forward buttons.
 
 ### US-UI-17 PI-Desktop home hero logo
-- On empty chat home, the 100px `HomeMascotLogo` renders above the title using
-  the nine remaining pose groups (50 transparent mascot frames) compiled from
-  the supplied `docs/ip` sheets.
-- Each empty-home mount randomly chooses one group and plays only its visible
-  atlas cells. When the group finishes, another group is randomized without an
-  immediate repeat after a several-second idle rest; single-frame groups rest
-  longer. Hovering the mascot bypasses the idle rest and continuously advances
-  through the pose groups. The sprite keeps its native pixel-art colors and
-  reduced motion holds the current group's first frame.
+- On empty chat home, the 100px `HomeMascotLogo` inline SVG renders above the
+  title as a neutral agent mark with a thin orbit and compact core.
+- The orbit rotates slowly, the core breathes gently, and the eyes blink
+  occasionally. Pointer hover does not change the cadence or geometry; reduced
+  motion freezes the mark. The mascot remains decorative.
 - Title is 28px / weight 400; active project name uses dotted underline (1px, offset 4px).
 - Composer does not render attachment or appshot controls before their payload
   reaches pi end to end.

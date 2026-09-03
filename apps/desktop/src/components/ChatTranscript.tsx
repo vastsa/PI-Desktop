@@ -1680,7 +1680,12 @@ function WorkingIndicator() {
       role="status"
       aria-live="polite"
     >
-      <span className="shimmer-text">{t("chat.running")}</span>
+      <span className="working-indicator-mark" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </span>
+      <span className="working-indicator-label">{t("chat.running")}</span>
       {elapsed > 0 ? (
         <span className="working-elapsed" aria-hidden="true">
           {formatToolDuration(elapsed)}

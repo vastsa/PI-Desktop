@@ -851,12 +851,3 @@
 .thinking-prose blockquote {
   border-left-color: var(--ds-border-default);
 }
-
-@keyframes shimmer {
-  from {
-    background-position: 200% 0;
-  }
-  to {
-    background-position: -200% 0;
-  }
-}

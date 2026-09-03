@@ -248,12 +248,43 @@
   box-sizing: border-box;
   display: flex;
   width: min(100%, 720px);
-  align-items: baseline;
-  gap: 8px;
+  align-items: center;
+  gap: 7px;
   margin: 2px 0 8px;
   padding: 8px 0 4px 16px;
   color: var(--ds-text-secondary);
   font-size: var(--text-sm-plus);
+}
+
+.working-indicator-mark {
+  display: inline-flex;
+  width: 18px;
+  height: 8px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 3px;
+}
+
+.working-indicator-mark > span {
+  width: 4px;
+  height: 4px;
+  flex: 0 0 auto;
+  border-radius: var(--radius-round);
+  background: var(--ds-text-secondary);
+  opacity: 0.35;
+  animation: working-indicator-dot 1s var(--motion-ease-standard) infinite;
+}
+
+.working-indicator-mark > span:nth-child(2) {
+  animation-delay: 120ms;
+}
+
+.working-indicator-mark > span:nth-child(3) {
+  animation-delay: 240ms;
+}
+
+.working-indicator-label {
+  color: var(--ds-text-secondary);
 }
 
 .working-elapsed {
@@ -276,18 +307,47 @@
   color: var(--ds-purple);
 }
 
-.shimmer-text {
-  background: linear-gradient(
-    90deg,
-    var(--ds-text-muted) 35%,
-    var(--ds-text-primary) 50%,
-    var(--ds-text-muted) 65%
-  );
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: shimmer 0.9s linear infinite;
+@keyframes working-indicator-dot {
+  0%,
+  60%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Running labels stay readable; the small marker carries the live feedback
+   so long tool names never flash between two text colours. */
+.tool-activity-label.running,
+.tool-row-name.running {
+  color: var(--ds-text-secondary);
+}
+
+.tool-activity-label.running::after,
+.tool-row-name.running::after {
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  margin-inline-start: 6px;
+  vertical-align: middle;
+  border-radius: var(--radius-round);
+  background: var(--ds-text-secondary);
+  content: "";
+  animation: activity-marker-pulse 1s var(--motion-ease-standard) infinite;
+}
+
+@keyframes activity-marker-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 /* A recorded change is a list row, not a card: it borrows `.tool-row`'s
@@ -1505,19 +1565,6 @@
   font-weight: var(--font-weight-medium);
 }
 
-.tool-activity-label.running {
-  background: linear-gradient(
-    90deg,
-    var(--ds-text-secondary) 30%,
-    var(--ds-text-primary) 50%,
-    var(--ds-text-secondary) 70%
-  );
-  background-size: 200% 100%;
-  background-clip: text;
-  color: transparent;
-  animation: shimmer 0.9s linear infinite;
-}
-
 .tool-activity-count {
   min-width: 0;
   overflow: hidden;
@@ -2106,19 +2153,6 @@
   flex: none;
   font-weight: var(--font-weight-medium);
   color: var(--ds-text-secondary);
-}
-
-.tool-row-name.running {
-  background: linear-gradient(
-    90deg,
-    var(--ds-text-secondary) 30%,
-    var(--ds-text-primary) 50%,
-    var(--ds-text-secondary) 70%
-  );
-  background-size: 200% 100%;
-  background-clip: text;
-  color: transparent;
-  animation: shimmer 0.9s linear infinite;
 }
 
 .tool-row-header:hover .tool-row-name {

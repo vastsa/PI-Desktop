@@ -480,14 +480,11 @@ visually distinct from list content.
   splash at 3x; ADR 0125). The component subscribes to
   `document.documentElement[data-theme]` via a `MutationObserver` and swaps the
   source at runtime for the sidebar and startup splash without a reload. The
-  empty-home hero uses `HomeMascotLogo` at 100px: its transparent sprite is
-  compiled from the remaining supplied `docs/ip` frame sheets into nine static-
-  pose groups (50 frames total). Each mount randomly selects one group, then
-  chooses a different group after playback completes. It swaps discrete atlas
-  frames inside the fixed 100px viewport, rests for several seconds between
-  actions, holds single-frame poses longer, and holds the current group's first
-  frame under reduced motion. Pointer hover over the mascot bypasses the idle
-  pause and continuously advances through the groups. The
+  empty-home hero uses `HomeMascotLogo` as a 100px inline SVG. The neutral
+  agent mark combines a thin orbit and signal point with a compact core,
+  antenna, face, and feet. The orbit rotates slowly, the core breathes gently,
+  and the eyes blink occasionally. The motion is deterministic and does not
+  change on pointer hover; reduced motion freezes all three effects. The
   expanded/collapsed sidebar remains 20px/18px and the startup splash 64px.
   Home and thread-docked composer prompt rows do not render a leading brand
   icon.
@@ -1495,7 +1492,7 @@ twice.
 
 | State | Header treatment | Expanded content |
 |---|---|---|
-| Running | Progressive action + shimmer + spinner; a `run` row pulses a dot beside `Working…` instead | Latest partial output (`details.output` is presented as the stdout channel) |
+| Running | Progressive action with readable text and a compact pulsing marker; a `run` row also shows its spinner and pulses the status dot beside `Working…` | Latest partial output (`details.output` is presented as the stdout channel) |
 | Success | Past-tense action + result chips; no green success badge, except a `run` row's dot and `Done` | Result blocks, then arguments if not already shown |
 | Error | Past-tense action + compact danger status; auto-expanded. A `run` row is in this state whenever its command exited non-zero, whatever the call reported (D227) | Error note first, then arguments |
 | Denied | Muted `Denied` status | Permission result when available |

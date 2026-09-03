@@ -18,17 +18,22 @@ test("active turns show immediate feedback without a progress card", () => {
   assert.match(transcript, /function WorkingIndicator\(\)/);
   assert.match(transcript, /data-testid="working-indicator"/);
   assert.match(transcript, /role="status"/);
+  assert.match(transcript, /className="working-indicator-mark" aria-hidden="true"/);
+  assert.match(transcript, /className="working-indicator-label"/);
   assert.match(transcript, /const showWorking =/);
   assert.match(transcript, /\{showWorking \? <WorkingIndicator \/> : null\}/);
   assert.doesNotMatch(transcript, /AgentProgressTimeline|agent-progress/);
   assert.match(transcript, /<PermissionCard/);
   assert.doesNotMatch(store, /AgentProgress|agentProgress|updateAgentProgress/);
   assert.match(messagesStyles, /\.working-indicator\s*\{/);
-  assert.match(messagesStyles, /\.shimmer-text\s*\{/);
+  assert.match(messagesStyles, /\.working-indicator-mark\s*\{/);
+  assert.match(messagesStyles, /\.working-indicator-mark > span\s*\{[\s\S]*?animation:\s*working-indicator-dot\s+1s/);
   assert.doesNotMatch(proseStyles, /\.working-indicator\s*\{|\.shimmer-text\s*\{/);
-  assert.match(messagesStyles, /\.shimmer-text\s*\{[\s\S]*?animation:\s*shimmer\s+0\.9s/);
-  assert.match(messagesStyles, /\.tool-activity-label\.running\s*\{[\s\S]*?animation:\s*shimmer\s+0\.9s/);
-  assert.match(messagesStyles, /\.tool-row-name\.running\s*\{[\s\S]*?animation:\s*shimmer\s+0\.9s/);
+  assert.doesNotMatch(messagesStyles, /\.shimmer-text\s*\{|animation:\s*shimmer\b/);
+  assert.match(
+    messagesStyles,
+    /\.tool-activity-label\.running::after,\s*\.tool-row-name\.running::after\s*\{[\s\S]*?animation:\s*activity-marker-pulse\s+1s/,
+  );
   assert.doesNotMatch(
     en,
     /progressUnderstanding|progressWorking|progressChecking|progressFinalizing|progressWaiting/,

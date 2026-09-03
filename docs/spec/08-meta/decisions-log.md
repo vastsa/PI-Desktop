@@ -109,7 +109,7 @@ Gold source: local Codex electron captures; latest row wins where rows conflict.
 | D068 | Recents row actions + fixture titles | *(sidebar actions superseded by D088, then reorganized by D093; fixture-title guidance retained)* **Active/hover recent rows show pin + panel trailing actions; capture/fixtures prefer Chinese titled empty sessions (同步代码) over bare New task** | Gold sidebar selected row chrome; reduce selection residual |
 | D069 | Destination title scale + dark New task ghost | **Destination page titles use Codex 28px/560 weight; New task is transparent ghost in dark too; capture drops English noise fixtures and pins 同步代码** | PR/Projects title mismatch; dark New task read as selected chip |
 | D070 | Settings gold metric polish | **Settings rail 275px/#f4f4f4; denser nav; content title offset; 32×20 accent toggles; Account arrow-up-right; 14px cards; 720px content band** | Residual vs cx-settings-try (rail width, toggle size, title Y, external mark) |
-| D071 | Transcript interaction parity | **Tool calls render as Codex-style lightweight disclosure rows (caret + name + mono arg hint + spinner/status, clamped inset body) replacing boxed cards; auto-scroll only while pinned to bottom with floating jump-to-latest pill (send / retry / regenerate re-pin per D151); shimmer Working… line with elapsed time; hover copy on messages and code blocks** | Boxed tool cards and forced scrollIntoView diverged from Codex transcript feel; spec 7.4 scroll pause was unimplemented |
+| D071 | Transcript interaction parity | **Tool calls render as Codex-style lightweight disclosure rows (caret + name + mono arg hint + spinner/status, clamped inset body) replacing boxed cards; auto-scroll only while pinned to bottom with floating jump-to-latest pill (send / retry / regenerate re-pin per D151); readable Working… line with elapsed time and a compact running marker (amended by D290); hover copy on messages and code blocks** | Boxed tool cards and forced scrollIntoView diverged from Codex transcript feel; spec 7.4 scroll pause was unimplemented |
 | D072 | Typography/radius token enforcement | **All font-size/weight/line-height/letter-spacing/border-radius values must use `@theme` token vars (`--text-*` ramp with `-plus` half-steps, `--font-weight-*` incl. 520/560, `--leading-*`, `--tracking-*`, 12-step `--radius-*`); raw literals in CSS and TSX arbitrary utilities are blocked by `scripts/check-style-tokens.mjs` wired into `pnpm lint`; pixel values preserved exactly (no visual change)** | ~130 scattered literals drifted from any scale; design-system doc §5.2/§6.2 tables were stale vs implementation |
 | D073 | Full renderer i18n coverage | **Every user-visible renderer string flows through i18next (`en` source of truth, `zh-CN` via `satisfies EnglishCatalog`): ContextPanel/CommandPalette/PermissionDialog wired; toast/aria/title/placeholder literals keyed; session default titles come from `i18n.t` with a shared case-insensitive `isDefaultSessionTitle` matcher covering legacy titles across locales; proper nouns (VS Code, Finder) and native language names stay untranslated** | Six components bypassed i18n entirely; default-title matching was duplicated in store and Sidebar and missed zh "新对话" |
 | D131 | Empty home without suggestion cards | *(starter-grid clause amended by D205, then superseded by D206)* **The empty chat home temporarily rendered only the hero, optional first-run checklist, and composer; the original four Explore / Build / Review / Fix cards, their colored glyphs, and their prompt-prefill actions were removed. This superseded D049/D067 and the original card-specific clauses of D111 while retaining its single scrollable flow layout.** | The direct composer remained the primary task entry; removing the original decorative starter row addressed noisy card treatment. D205 briefly reintroduced a quieter, non-submitting developer grid before D206 returned the empty state to direct entry. |
@@ -3003,3 +3003,26 @@ D193, and D194.
   unbound so Electron cannot restore their default accelerator.
 - The existing settings JSON, IPC methods, protocol version, storage schema, and
   plugin-local shortcut contract remain unchanged. See ADR 0148 and E2E-072.
+
+## 2026-09-04 — Calm running status motion in the transcript (D290)
+
+- Replace the high-contrast text shimmer used by the Working indicator and live
+  activity labels with static readable text plus compact status markers. The
+  pre-stream Working indicator uses three small staggered dots; active activity
+  labels use one small pulse marker, while tool spinners and the existing
+  assistant streaming rail retain their state feedback.
+- The marker pulse is compositor-friendly, capped at a one-second loop, and is
+  disabled under `prefers-reduced-motion`; the status remains visible as static
+  text and dots. No protocol, storage, or runtime behavior changes. See ADR
+  0149 and E2E-053/E2E-083.
+
+## 2026-09-04 — Replace the empty-home mascot sprite with a calm inline agent mark (D291)
+
+- Replace the randomized raster pose atlas in the empty-home hero with a 100px
+  inline SVG containing a compact neutral agent, a thin orbit, and one signal
+  point. The core breathes slowly and the eyes blink occasionally.
+- The mark is deterministic and decorative. Pointer hover does not alter its
+  cadence or geometry; reduced motion freezes its CSS animation while keeping
+  the same size, placement, and semantic colors.
+- No protocol, storage, or runtime behavior changes. See ADR 0150 and
+  E2E-046/E2E-099/US-UI-17.

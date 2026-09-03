@@ -681,12 +681,11 @@
   .provider-dialog {
     animation-duration: 0.01ms !important;
   }
-  .shimmer-text,
-  .tool-row-name.running,
-  .tool-activity-label.running {
+  .working-indicator-mark > span,
+  .tool-row-name.running::after,
+  .tool-activity-label.running::after {
     animation: none;
-    color: var(--ds-text-secondary);
-    background: none;
+    opacity: 0.7;
   }
   .tool-spinner {
     animation: none;

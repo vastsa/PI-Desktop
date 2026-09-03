@@ -1,100 +1,28 @@
-import { type CSSProperties, useEffect, useState } from "react";
-import mascotGroupsUrl from "../assets/home-mascot-groups.png";
-
-const FRAME_WIDTH = 100;
-const FRAME_DURATION_MS = 160;
-const GROUP_PAUSE_MIN_MS = 3200;
-const GROUP_PAUSE_MAX_MS = 5600;
-const STATIC_GROUP_PAUSE_MIN_MS = 5200;
-const STATIC_GROUP_PAUSE_MAX_MS = 8000;
-
-const MASCOT_GROUPS = [
-  { startFrame: 0, frameCount: 1 },
-  { startFrame: 1, frameCount: 6 },
-  { startFrame: 7, frameCount: 4 },
-  { startFrame: 11, frameCount: 8 },
-  { startFrame: 19, frameCount: 5 },
-  { startFrame: 24, frameCount: 8 },
-  { startFrame: 32, frameCount: 6 },
-  { startFrame: 38, frameCount: 6 },
-  { startFrame: 44, frameCount: 6 },
-] as const;
-
-function chooseMascotGroupIndex(previousIndex = -1) {
-  const candidates = MASCOT_GROUPS.map((_, index) => index).filter(
-    (index) => index !== previousIndex,
-  );
-  const index = Math.floor(Math.random() * candidates.length);
-  return candidates[index] ?? 0;
-}
-
-function randomDuration(minMs: number, maxMs: number) {
-  return Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
-}
-
-function usePrefersReducedMotion() {
-  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const updatePreference = () => setPrefersReducedMotion(mediaQuery.matches);
-
-    updatePreference();
-    mediaQuery.addEventListener("change", updatePreference);
-    return () => mediaQuery.removeEventListener("change", updatePreference);
-  }, []);
-
-  return prefersReducedMotion;
-}
-
 export function HomeMascotLogo() {
-  const [groupIndex, setGroupIndex] = useState(() => chooseMascotGroupIndex());
-  const [frameIndex, setFrameIndex] = useState(0);
-  const [isHovered, setIsHovered] = useState(false);
-  const prefersReducedMotion = usePrefersReducedMotion();
-  const group = MASCOT_GROUPS[groupIndex] ?? MASCOT_GROUPS[0];
-
-  useEffect(() => {
-    if (prefersReducedMotion) {
-      setFrameIndex(0);
-      return;
-    }
-
-    const isLastFrame = frameIndex + 1 >= group.frameCount;
-    const duration = isHovered
-      ? FRAME_DURATION_MS
-      : isLastFrame
-      ? group.frameCount <= 1
-        ? randomDuration(STATIC_GROUP_PAUSE_MIN_MS, STATIC_GROUP_PAUSE_MAX_MS)
-        : randomDuration(GROUP_PAUSE_MIN_MS, GROUP_PAUSE_MAX_MS)
-      : FRAME_DURATION_MS;
-    const timer = window.setTimeout(() => {
-      if (!isLastFrame) {
-        setFrameIndex((current) => current + 1);
-        return;
-      }
-
-      setGroupIndex((current) => chooseMascotGroupIndex(current));
-      setFrameIndex(0);
-    }, duration);
-
-    return () => window.clearTimeout(timer);
-  }, [frameIndex, group.frameCount, groupIndex, isHovered, prefersReducedMotion]);
-
-  const frame = (group.startFrame + frameIndex) * FRAME_WIDTH;
-  const style = {
-    backgroundImage: `url(${mascotGroupsUrl})`,
-    backgroundPosition: `-${frame}px 0`,
-  } as CSSProperties;
-
   return (
-    <div
+    <svg
       className="home-mascot-logo"
       data-testid="home-mascot-logo"
+      viewBox="0 0 100 100"
+      fill="none"
       aria-hidden="true"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      style={style}
-    />
+    >
+      <g className="home-mascot-orbit">
+        <circle className="home-mascot-orbit-ring" cx="50" cy="50" r="30" />
+        <circle className="home-mascot-orbit-dot" cx="50" cy="20" r="2.5" />
+      </g>
+      <g className="home-mascot-core">
+        <path className="home-mascot-antenna" d="M50 31V24" />
+        <circle className="home-mascot-antenna-dot" cx="50" cy="21" r="2.5" />
+        <rect className="home-mascot-body" x="25" y="31" width="50" height="40" rx="15" />
+        <rect className="home-mascot-screen" x="33" y="41" width="34" height="20" rx="8" />
+        <g className="home-mascot-eyes">
+          <circle className="home-mascot-eye" cx="44" cy="50" r="2.5" />
+          <circle className="home-mascot-eye" cx="56" cy="50" r="2.5" />
+        </g>
+        <path className="home-mascot-mouth" d="M45 55c1.5 1.5 3.5 2.25 5 2.25s3.5-.75 5-2.25" />
+        <path className="home-mascot-feet" d="M37 71v4m26-4v4" />
+      </g>
+    </svg>
   );
 }
