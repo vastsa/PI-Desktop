@@ -23,6 +23,15 @@ export type ChangelogEntry = {
 
 const enEntries: ChangelogEntry[] = [
   {
+    version: "0.12.3",
+    date: "2026-09-03",
+    highlights: [
+      "Show context usage against the selected model's published context window.",
+      "Keep model-specific context limits consistent across provider settings, the Composer, and the runtime.",
+      "Keep Composer contextual guidance stable while switching models and during active turns.",
+    ],
+  },
+  {
     version: "0.12.2",
     date: "2026-09-03",
     highlights: [
@@ -537,6 +546,15 @@ const enEntries: ChangelogEntry[] = [
 ];
 
 const zhCNEntries: ChangelogEntry[] = [
+  {
+    version: "0.12.3",
+    date: "2026-09-03",
+    highlights: [
+      "根据当前选定模型发布的上下文窗口显示准确的上下文用量。",
+      "在服务商设置、编辑器和运行时之间保持模型级上下文限制一致。",
+      "切换模型和进行中的回合时，保持编辑器上下文提示稳定。",
+    ],
+  },
   {
     version: "0.12.2",
     date: "2026-09-03",
