@@ -115,6 +115,38 @@ test("cross-session agent_end cannot clear the active session's running flag", (
   assert.ok(agentEnd, "active-session agent_end clears isRunning");
 });
 
+test("send clears the composer before the round trip and restores a rejected draft (D287)", () => {
+  const submit = composer.match(
+    /const submit = async \(\) => \{[\s\S]*?\n  \};\n\n  const pasteClipboardFiles/,
+  )?.[0] ?? "";
+  assert.ok(submit.length > 0, "composer submit implementation not found");
+  // The DOM value is the source of truth for what gets sent: a state update
+  // still pending under load must not drop the last characters typed.
+  assert.match(submit, /const text = ref\.current\?\.value \?\? value;/);
+  assert.match(submit, /serializeInlineComposerFileReferences\(\s*text,\s*activeFileReferences,\s*\)/);
+  // Blocked and not-ready states are said, not swallowed.
+  assert.match(submit, /if \(pasting\) showToast\(t\("chat\.pasteInProgress"\)/);
+  assert.match(
+    submit,
+    /if \(!modelReady\) \{\s*showToast\(t\("errors\.MODEL_NOT_CONFIGURED"\), \{ variant: "error" \}\);\s*return;\s*\}/,
+  );
+  // Optimistic clear, restore on rejection. The clear must precede the await.
+  const clearAt = submit.indexOf("clearDraftForKey(submittedDraftKey);\n    const accepted = await sendPrompt(inlineContent, submittedDraft);");
+  assert.ok(clearAt > 0, "draft must be cleared before awaiting sendPrompt");
+  assert.match(submit, /if \(!accepted\) restoreDraftForKey\(submittedDraftKey, submittedDraft\);/);
+  assert.doesNotMatch(submit, /if \(accepted\) clearDraftForKey\(submittedDraftKey\);\s*\};/);
+  const restore = composer.match(
+    /const restoreDraftForKey = \(key: string, snapshot: ComposerDraftSnapshot\) => \{[\s\S]*?\n  \};/,
+  )?.[0] ?? "";
+  assert.ok(restore.length > 0, "restoreDraftForKey not found");
+  // Text typed after the failed send wins; a session the user left keeps the
+  // draft in its cache slot for the next switch back.
+  assert.match(restore, /if \(valueRef\.current\.trim\(\)\) return;/);
+  assert.match(restore, /if \(currentKey !== key\) \{[\s\S]*?draftCacheRef\.current\.set\(key, snapshot\);/);
+  assert.match(restore, /setValue\(snapshot\.text\);/);
+  assert.match(restore, /setCursor\(snapshot\.text\.length\);/);
+});
+
 test("mode slash prefixes send the trailing prompt and retain failed drafts", () => {
   const submit = composer.match(
     /const submit = async \(\) => \{[\s\S]*?\n  \};\n\n  const composerAc/,
@@ -132,7 +164,7 @@ test("mode slash prefixes send the trailing prompt and retain failed drafts", ()
   );
   assert.match(
     submit,
-    /const accepted = await sendPrompt\(inlineContent, draftSnapshot\(value\)\);[\s\S]*?if \(accepted\) clearDraftForKey\(submittedDraftKey\);/,
+    /const submittedDraft = draftSnapshot\(text\);\s*clearDraftForKey\(submittedDraftKey\);\s*const accepted = await sendPrompt\(inlineContent, submittedDraft\);\s*if \(!accepted\) restoreDraftForKey\(submittedDraftKey, submittedDraft\);/,
   );
   assert.match(store, /draft\?: ComposerDraftSnapshot/);
   const sendPrompt = store.match(

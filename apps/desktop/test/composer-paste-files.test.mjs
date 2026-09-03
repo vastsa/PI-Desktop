@@ -34,11 +34,11 @@ test("composer converts oversized text paste and materializes clipboard files", 
   assert.match(composer, /setFileReferences\(\(current\) => \[/);
   assert.match(
     composer,
-    /serializeComposerFileReferences\(value, activeFileReferences\)/,
+    /serializeComposerFileReferences\(text, activeFileReferences\)/,
   );
   assert.match(
     composer,
-    /const serializedContent = serializeComposerFileReferences\(value, activeFileReferences\)/,
+    /const serializedContent = serializeComposerFileReferences\(text, activeFileReferences\)/,
   );
   assert.match(composer, /el\.setSelectionRange\(selectionStart, selectionEnd\)/);
   assert.doesNotMatch(composer, /formatFileInsert\(file\.path, "file"\)/);

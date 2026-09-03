@@ -966,6 +966,37 @@ export function Composer({
     setCursor(0);
   };
 
+  // Undo an optimistic clear after the store rejected the send. The draft
+  // returns only where it can be seen again: into the box if the user is still
+  // on that session and has not typed anything new, otherwise into the cache
+  // that the next switch back reads. Text typed after the failed send wins.
+  const restoreDraftForKey = (key: string, snapshot: ComposerDraftSnapshot) => {
+    const activeSessionId = useAppStore.getState().activeSessionId;
+    const currentKey = draftKeyForSession(activeSessionId);
+    if (currentKey !== key) {
+      if (!draftCacheRef.current.get(key)?.text) {
+        draftCacheRef.current.set(key, snapshot);
+      }
+      return;
+    }
+    if (valueRef.current.trim()) return;
+    const sessionId = activeSessionId ?? "";
+    placeholderFocusPauseReleasedRef.current = false;
+    setValue(snapshot.text);
+    setFileReferences((current) => [
+      ...current.filter((fileReference) => fileReference.sessionId !== sessionId),
+      ...snapshot.fileReferences.map((fileReference) =>
+        createFileReference(
+          fileReference.path,
+          fileReference.name,
+          sessionId,
+          fileReference,
+        ),
+      ),
+    ]);
+    setCursor(snapshot.text.length);
+  };
+
   const draftSnapshot = (text: string): ComposerDraftSnapshot => ({
     text: text.trim(),
     fileReferences: activeFileReferences
@@ -1068,12 +1099,22 @@ export function Composer({
   };
 
   const submit = async () => {
+    // The textarea is what the user sees. Under load a state update from a late
+    // `onChange` can still be pending when Enter arrives; sending the DOM value
+    // rather than the closure's `value` never drops those characters.
+    const text = ref.current?.value ?? value;
     const inlineContent = serializeInlineComposerFileReferences(
-      value,
+      text,
       activeFileReferences,
     );
-    const serializedContent = serializeComposerFileReferences(value, activeFileReferences);
-    if (!serializedContent || sendBlocked) return;
+    const serializedContent = serializeComposerFileReferences(text, activeFileReferences);
+    if (!serializedContent) return;
+    if (sendBlocked) {
+      // A paste that is still being saved is the one blocked state the user
+      // cannot see, so it has to be said rather than swallowed.
+      if (pasting) showToast(t("chat.pasteInProgress"), { variant: "info" });
+      return;
+    }
     invalidatePromptEnhancement();
     const submittedDraftKey = draftKey;
     // Slash dispatch (D123): builtin/plugin aliases execute locally without
@@ -1100,7 +1141,7 @@ export function Composer({
         if (isModeCommand && commandBody) {
           try {
             await runPaletteCommand(command.id);
-            const visibleDraft = value.trim();
+            const visibleDraft = text.trim();
             const visibleCommandEnd = visibleDraft.search(/\s/);
             const visibleCommandBody =
               visibleCommandEnd === -1
@@ -1139,9 +1180,18 @@ export function Composer({
         }
       }
     }
-    if (!modelReady) return;
-    const accepted = await sendPrompt(inlineContent, draftSnapshot(value));
-    if (accepted) clearDraftForKey(submittedDraftKey);
+    if (!modelReady) {
+      showToast(t("errors.MODEL_NOT_CONFIGURED"), { variant: "error" });
+      return;
+    }
+    // Clear before the round trip (D287): the prompt leaves the box the moment
+    // Enter is pressed, so a slow host cannot make a send look ignored or invite
+    // a second Enter that would queue the same prompt twice. A rejected send
+    // puts the draft back.
+    const submittedDraft = draftSnapshot(text);
+    clearDraftForKey(submittedDraftKey);
+    const accepted = await sendPrompt(inlineContent, submittedDraft);
+    if (!accepted) restoreDraftForKey(submittedDraftKey, submittedDraft);
   };
 
   const pasteClipboardFiles = async (event: ClipboardEvent<HTMLTextAreaElement>) => {

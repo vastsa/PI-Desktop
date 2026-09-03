@@ -222,6 +222,7 @@ export const en = {
     stopGenerating: "Stop generating",
     running: "Working…",
     loadingSession: "Loading conversation…",
+    pasteInProgress: "Still saving the pasted content. Try again in a moment.",
     loadingEarlierMessages: "Loading earlier messages…",
     showEarlierMessages: "Show earlier messages",
     copy: "Copy",

@@ -217,6 +217,7 @@ export const zhCN = {
     stopGenerating: "停止生成",
     running: "正在处理…",
     loadingSession: "正在加载会话…",
+    pasteInProgress: "粘贴内容仍在保存中，请稍后再发送。",
     loadingEarlierMessages: "正在加载更早的消息…",
     showEarlierMessages: "显示更早的消息",
     copy: "复制",
