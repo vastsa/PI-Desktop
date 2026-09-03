@@ -141,7 +141,7 @@ test("a hidden pane does no reading work off screen", () => {
     transcript,
     /const loadOlder = useCallback\(\(\) => \{[\s\S]*?if \(!paneVisibleRef\.current\) return;/,
   );
-  assert.match(transcript, /\{paneVisible \? \(\s*<ConversationMinimap/);
+  assert.match(transcript, /\{paneVisible && !veilCovering \? \(\s*<ConversationMinimap/);
 });
 
 test("reopening a running session never lets durable detail erase its live tail", () => {

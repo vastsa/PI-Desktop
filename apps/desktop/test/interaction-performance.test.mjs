@@ -148,7 +148,7 @@ test("layout clamps after send cannot release transcript follow as a gesture", (
   );
   assert.match(transcript, /event\.type === "pointerdown"/);
   assert.match(transcript, /el\.addEventListener\("wheel", markScrollGesture/);
-  assert.match(transcript, /className="thread-wrap" ref=\{wrapRef\}/);
+  assert.match(transcript, /className="thread-wrap"\s+ref=\{wrapRef\}/);
   assert.match(
     transcript,
     /const released =\s*transition\.releasedFollow &&\s*isRecentScrollGesture\(/,

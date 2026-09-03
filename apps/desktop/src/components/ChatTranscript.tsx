@@ -70,6 +70,12 @@ import {
   TRANSCRIPT_WINDOW_MIN,
 } from "../lib/transcript-window";
 import {
+  createTranscriptSettleState,
+  reduceTranscriptSettle,
+  TRANSCRIPT_SKELETON_ROWS,
+  TRANSCRIPT_VEIL_FADE_MS,
+} from "../lib/transcript-settle";
+import {
   assistantTurnContent,
   assistantTurnMessages,
   assistantTurnResponseDuration,
@@ -2431,6 +2437,19 @@ export const ChatTranscript = memo(function ChatTranscript({
     });
   }, [scrollToBottom]);
 
+  // Re-pins before the browser paints. A ResizeObserver callback runs after
+  // layout and before paint, so a `requestAnimationFrame` requested from it
+  // lands in the *next* frame: the current frame painted the grown content
+  // unpinned and the next one snapped it back, which read as the transcript
+  // twitching whenever a row changed height after mount (D287). Scrolling from
+  // inside the callback costs nothing extra (layout is already clean) and
+  // cannot resize the observed box, so it never re-triggers the observer.
+  const followScrollNow = useCallback(() => {
+    if (!paneVisibleRef.current || !pinnedRef.current) return;
+    cancelFollowScroll();
+    scrollToBottom();
+  }, [cancelFollowScroll, scrollToBottom]);
+
   useEffect(() => cancelFollowScroll, [cancelFollowScroll]);
 
   const loadOlder = useCallback(() => {
@@ -2562,15 +2581,23 @@ export const ChatTranscript = memo(function ChatTranscript({
     scheduleFollowScroll,
   ]);
 
-  // Streamed Markdown and expanded activity rows can change content height, so
-  // keep pinned follow synchronized with the observed layout.
+  // Streamed Markdown, expanded activity rows, late images, and diagrams change
+  // the content height without a React commit, so pinned follow is kept in sync
+  // from the observed layout. The content is observed on its border box: the
+  // bottom padding is the composer's published height, and a multi-line draft
+  // growing that padding must re-pin too, or the newest turn slides behind the
+  // composer until the next commit happens to re-pin it. The content box does
+  // not include padding and would miss that change entirely. The scroller is
+  // observed as well so a window or work-panel resize keeps the bottom in view.
   useEffect(() => {
-    const el = contentRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(scheduleFollowScroll);
-    ro.observe(el);
+    const content = contentRef.current;
+    const scroller = scrollRef.current;
+    if (!content || !scroller || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(followScrollNow);
+    ro.observe(content, { box: "border-box" });
+    ro.observe(scroller, { box: "border-box" });
     return () => ro.disconnect();
-  }, [scheduleFollowScroll]);
+  }, [followScrollNow]);
 
   // Streaming tokens are deferred so the full historical transcript tree does
   // not rebuild at the same priority as the tail. The pane's own first commit is
@@ -2647,6 +2674,19 @@ export const ChatTranscript = memo(function ChatTranscript({
     // re-evaluates instead of holding a stale frame.
   }, [hydrationBounded, hydrationTick]);
 
+  // Settle veil (D287). A bounded first commit means the transcript is long
+  // enough for its geometry to keep moving for several frames after mount: the
+  // expansion, then rows whose height resolves only once laid out. Rather than
+  // painting that motion, an opaque skeleton covers the scroller until the
+  // geometry has held still (or a hard time cap passes) and then fades out.
+  // Short transcripts mount in one commit and never show the veil. The phase is
+  // initialised from the first render's own gate so the veil is in the commit
+  // that reveals the pane, not one frame later.
+  const [veilPhase, setVeilPhase] = useState<"covering" | "leaving" | "off">(
+    () => (hydrationBounded ? "covering" : "off"),
+  );
+  const veilCovering = veilPhase === "covering";
+
   const transcriptWindow = reduceTranscriptWindow({
     historyLength: allHistoryEntries.length,
     windowSize,
@@ -2674,6 +2714,46 @@ export const ChatTranscript = memo(function ChatTranscript({
     cancelFollowScroll();
     scrollToBottom();
   }, [cancelFollowScroll, hydrationBounded, hydrationTick, scrollToBottom]);
+
+  // Sample the scroller once per frame from the expansion commit onward and
+  // lift the veil once the geometry has stopped moving. The bounded commit
+  // itself is not sampled: the expansion that follows it changes the height by
+  // design. Each sample also re-pins a still-pinned transcript, so the frame the
+  // veil reveals is already at the newest turn. A hidden pane pauses sampling
+  // (its scroller reports no usable geometry) and resumes when revealed.
+  useEffect(() => {
+    if (!veilCovering || hydrationBounded || !paneVisible) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    let state = createTranscriptSettleState(performance.now());
+    let frame = 0;
+    const sample = () => {
+      frame = 0;
+      if (pinnedRef.current) scrollToBottom();
+      const step = reduceTranscriptSettle(
+        state,
+        { scrollHeight: el.scrollHeight, clientHeight: el.clientHeight },
+        performance.now(),
+      );
+      state = step.state;
+      if (step.settled) {
+        setVeilPhase("leaving");
+        return;
+      }
+      frame = requestAnimationFrame(sample);
+    };
+    frame = requestAnimationFrame(sample);
+    return () => cancelAnimationFrame(frame);
+  }, [hydrationBounded, paneVisible, scrollToBottom, veilCovering]);
+
+  useEffect(() => {
+    if (veilPhase !== "leaving") return;
+    const timer = window.setTimeout(
+      () => setVeilPhase("off"),
+      TRANSCRIPT_VEIL_FADE_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [veilPhase]);
 
   // The minimap must describe the mounted rows, not every loaded message: it
   // resolves a click by looking up the marker's node in the scroller, so a dash
@@ -2804,12 +2884,18 @@ export const ChatTranscript = memo(function ChatTranscript({
     !askPending;
 
   return (
-    <div className="thread-wrap" ref={wrapRef}>
+    <div
+      className="thread-wrap"
+      ref={wrapRef}
+      data-transcript-settling={veilCovering ? "true" : undefined}
+    >
       {/* The minimap measures row positions against a rendered scroller. A
         * hidden pane has none, so measuring there would cache junk offsets and
         * reuse them on reveal. It is out of flow and re-measures on mount, so
-        * leaving it out while hidden costs nothing. */}
-      {paneVisible ? (
+        * leaving it out while hidden costs nothing. It also waits for the
+        * settle veil to lift: mounting it against still-moving rows would cache
+        * offsets the settled layout no longer matches. */}
+      {paneVisible && !veilCovering ? (
         <ConversationMinimap
           scrollRef={scrollRef}
           messages={minimapMessages}
@@ -2865,7 +2951,37 @@ export const ChatTranscript = memo(function ChatTranscript({
           {showWorking ? <WorkingIndicator /> : null}
         </div>
       </div>
-      {showJump ? (
+      {veilPhase !== "off" ? (
+        // Positioned without a z-index on purpose: it paints above the scroller
+        // in tree order and stays beneath the docked composer, so the user can
+        // keep typing while the transcript settles.
+        <div
+          className="transcript-settle-veil"
+          data-phase={veilPhase}
+          role="status"
+          aria-busy={veilCovering}
+          aria-label={t("chat.loadingSession")}
+        >
+          <div className="transcript-settle-veil-band">
+            {TRANSCRIPT_SKELETON_ROWS.map((row, rowIndex) => (
+              <div
+                key={rowIndex}
+                className={`transcript-skeleton-row ${row.role}`}
+                aria-hidden
+              >
+                {row.lines.map((width, lineIndex) => (
+                  <span
+                    key={lineIndex}
+                    className="transcript-skeleton-line"
+                    style={{ width }}
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {showJump && !veilCovering ? (
         <button
           className="jump-latest-btn"
           aria-label={t("chat.scrollToBottom")}
