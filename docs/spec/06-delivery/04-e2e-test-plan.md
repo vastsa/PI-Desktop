@@ -3020,6 +3020,37 @@ Each scenario is documented in this format:
 - **Status**: Unit-covered (`settings-general.test.mjs`); Windows rendered
   scenario Draft
 
+#### E2E-071i: Long session opens under a settle veil and sends clear instantly
+
+- **Preconditions**: One session with several hundred messages including code
+  blocks and tool results; a configured model; the host made slow (for example a
+  throttled sidecar or a large pending tool output) so a prompt round trip takes
+  visibly longer than a frame.
+- **Steps**: 1) From the home surface, open the long session and record the
+  first painted frames. 2) Wait for the transcript to appear. 3) Type a
+  multi-line prompt so the composer grows, then press Enter. 4) While the host
+  is still busy, press Enter again on the now-empty box. 5) Make the host reject
+  a send (for example disable the model's provider) and press Enter with a new
+  draft. 6) Open a session with fewer than fifteen messages.
+- **Expected**: The first frame of the long session is an opaque skeleton of
+  alternating user and assistant lines under the composer; no transcript text is
+  visible during the frames in which the history expands or row heights settle,
+  and the skeleton fades out within roughly 600ms onto a transcript already
+  positioned at its newest turn. The rows never move up and down after the
+  reveal. While the multi-line draft grows, the newest turn moves up with the
+  composer instead of disappearing behind it. Pressing Enter clears the box in
+  the same frame, before the user row arrives; the second Enter on the empty box
+  does nothing and queues no duplicate. When the send is rejected, the draft
+  returns to the box with the caret at its end. The short session shows no
+  skeleton.
+- **Specs linked**: `04-ux/08-component-spec.md`,
+  `04-ux/09-interaction-patterns.md`, `08-meta/decisions-log.md` (D287)
+- **Acceptance**: C (chat stream), Quality
+- **Milestone**: M5
+- **Status**: Unit-covered (`transcript-settle.test.mjs`,
+  `composer-send-state.test.mjs` `send clears the composer before the round
+  trip and restores a rejected draft (D287)`); UI scenario Draft
+
 #### E2E-072: Keyboard shortcut mappings persist and stay conflict-safe
 
 - **Preconditions**: App running on macOS and on one Windows/Linux target with

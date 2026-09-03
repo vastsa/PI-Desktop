@@ -497,6 +497,14 @@ may be retained while exactly one workspace supplies the visible shell context.
   pinned re-anchors to the bottom, scrolled up returns to the same offset.
   Neither path animates through history, and no pane may ever expose the
   transcript top or another session's scroll position.
+- A first open whose history exceeds the initial mount budget settles under an
+  opaque skeleton veil (D287). The veil is in the same commit as the bounded
+  first paint, covers the scroller but not the composer, and lifts only once the
+  scroller's `scrollHeight` and `clientHeight` have read the same for three
+  consecutive frames, or after a 600ms cap. Every sampled frame re-pins a pinned
+  transcript, so the frame the veil reveals is already at the newest turn. The
+  minimap and the jump control mount after the veil lifts. Short transcripts
+  never show the veil.
 - Auto-scroll to bottom on each new token group (throttled: check every 100ms, not every token)
 - The first upward manual scroll movement pauses auto-scroll immediately and
   cancels any pending follow frame; small trackpad deltas must not snap back to
@@ -1005,6 +1013,11 @@ When drag/drop is implemented, these patterns should apply:
   when the composer collapses after send or an indicator row unmounts) is
   treated as layout noise and re-baselined instead of being mistaken for a
   user scrolling up
+- A pinned transcript re-pins in the same frame the content or the viewport
+  changes size, never one frame later. That includes the composer growing under
+  a multi-line draft: the bottom reserve is padding on the transcript content, so
+  the content is observed on its border box and the newest turn moves up with
+  the composer instead of sliding behind it (D287).
 - User send / retry / regenerate: re-pins, hides the jump control, and positions the latest content in the layout phase so the new turn is visible without a top-of-history flash; subsequent persisted and streamed rows continue to follow the bottom
 - Scroll-to-bottom button: position fixed at bottom-right of transcript area, offset 12px
 - Button appears as soon as upward scrolling releases follow mode
@@ -1096,8 +1109,11 @@ This does not prevent state changes — it makes them instant.
   layout changes (composer height, indicator rows) arrive after the fact and
   look like an upward gesture; because they have no preceding input they are
   ignored and follow mode is preserved.
-- Resize observers schedule work and never synchronously measure every
-  transcript row from their callback.
+- Resize observers never synchronously measure every transcript row from their
+  callback. The one synchronous action they may take is the bottom re-pin of a
+  pinned, visible transcript (a single `scrollTo`), because a frame requested
+  from inside the callback lands after the current frame has already painted
+  the grown content unpinned (D287).
 
 ## 11. Acceptance criteria
 

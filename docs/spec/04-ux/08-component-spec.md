@@ -593,7 +593,10 @@ Primary chat area containing ChatTranscript and Composer. Scrollable, center of 
   expansion re-anchors the bottom during its own layout phase; correcting a
   guessed height after paint is visible as the transcript jumping, so it is not
   permitted. A user who scrolls up during the bounded frame keeps that position,
-  and the pane keeps it across later switches.
+  and the pane keeps it across later switches. When the first commit is bounded,
+  an opaque skeleton veil covers the scroller from that same commit until the
+  scroller geometry has held still for consecutive frames (600ms cap), then
+  fades out; the composer stays visible and usable above it (D287).
 - The transcript's bottom reserve is **height-aware**, not a fixed gap. The
   docked composer measures its real rendered height (it grows with multi-line
   drafts) and publishes it as the `--composer-dock-height` custom property on
@@ -1363,7 +1366,9 @@ Renderer: `apps/desktop/src/components/Markdown.tsx` + `apps/desktop/src/lib/shi
   spacer holding the remaining scroll height, and expands to the steady-state
   window on the next frame. The gate is derived during render from the session
   being painted; deciding it from an effect instead makes the switch mount the
-  whole history, discard it, and rebuild it.
+  whole history, discard it, and rebuild it. The bounded commit also raises the
+  settle veil (D287): late row heights (Markdown, code blocks,
+  `content-visibility` placeholders) are measured under it rather than painted.
 - **Bounded mounted history**: the mounted history is a trailing window over the
   loaded history, not all of it. Reaching the top escalates in two stages —
   mount more of what is already loaded, and fetch an older page only once the
@@ -1950,6 +1955,15 @@ reasoning-level control.
 ### 11.5 Interactions
 
 - Enter: send message (configurable: Shift+Enter for newline)
+- Send clears the box before the host round trip (D287): the draft leaves the
+  textarea in the frame Enter is pressed, so a slow host cannot make a send look
+  ignored or let a second Enter queue the same prompt twice. If the store
+  rejects the send, the draft (text and file references) returns to the box
+  with the caret at its end, unless the user has typed something new, which
+  wins; a rejected send for a session the user has since left restores into that
+  session's draft slot. The send reads the textarea's live value. A send refused
+  because the model is not configured or a paste is still saving shows a toast
+  instead of doing nothing.
 - Shift+Enter: newline in textarea
 - Placeholder carousel: starts on the welcome copy and changes every 4 seconds
   while the draft is empty and inactive. Non-empty text or file references,

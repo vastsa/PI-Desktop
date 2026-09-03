@@ -2937,3 +2937,25 @@ D193, and D194.
   cancellation restores the press-time target.
 - This is an Electron-local behavior change; the host protocol remains v9.
   See ADR 0146 and E2E-056/E2E-167.
+
+## 2026-09-03 — Transcript settle veil and pre-paint follow (D287)
+
+- A session whose first commit is bounded (history above the initial mount
+  budget) mounts under an opaque skeleton veil in that same commit. The veil
+  covers the transcript scroller only; the docked composer stays visible and
+  usable. It lifts once the scroller's `scrollHeight` and `clientHeight` have
+  read the same for three consecutive frames, or after a 600ms cap, and fades
+  over 160ms. Each sampled frame re-pins a pinned transcript so the revealed
+  frame is at the newest turn. The minimap and jump control mount after the
+  veil lifts. Short transcripts never show it.
+- Pinned follow re-pins inside the content ResizeObserver callback, before the
+  browser paints, instead of requesting a frame from it: the requested frame
+  landed after the grown content had already painted unpinned once. The
+  content is observed on its border box so the composer's published bottom
+  reserve (padding) is a follow trigger too; the scroller itself is observed
+  so viewport resizes keep the bottom in view.
+- Sending clears the composer before the host round trip and restores the
+  draft if the store rejects the send; text typed after a failed send is never
+  overwritten. The send reads the textarea's live value, and the two silent
+  refusals (model not configured, paste still saving) now surface a toast.
+  See E2E-071i.
