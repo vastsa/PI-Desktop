@@ -493,7 +493,7 @@ fullscreen. Windows/Linux keep the identity and sidebar actions in their first
 row and reserve the rightmost 120px for three frameless-window controls. The
 controls retain 112px of full-height hit targets, while the outer band adds an
 8px visual buffer and a divider before adjacent work-panel actions. The band
-paints an opaque `bg-secondary` surface so page content never shows through the
+paints an opaque `bg-primary` surface so page content never shows through the
 controls. Main, Settings, and work-panel drag regions must terminate before
 this reservation rather than overlap it and rely only on descendant `no-drag`,
 so every visible control pixel remains clickable. The band floats over the

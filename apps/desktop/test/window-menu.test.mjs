@@ -171,7 +171,7 @@ test("Windows and Linux use menu-free frameless chrome with window controls", ()
   );
   assert.match(
     stylesSource,
-    /\.window-controls\s*\{[^}]*height:\s*var\(--ds-toolbar-height\)[^}]*padding-left:\s*8px;[^}]*background:\s*var\(--ds-bg-secondary\);[^}]*border-left:\s*1px solid var\(--ds-border-default\);/s,
+    /\.window-controls\s*\{[^}]*height:\s*var\(--ds-toolbar-height\)[^}]*padding-left:\s*8px;[^}]*background:\s*var\(--ds-bg-primary\);[^}]*border-left:\s*1px solid var\(--ds-border-default\);/s,
   );
   assert.match(stylesSource, /--ds-window-controls-width:\s*120px;/);
   assert.match(

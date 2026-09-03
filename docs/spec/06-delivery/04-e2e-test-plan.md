@@ -2534,7 +2534,7 @@ Each scenario is documented in this format:
   commands wait for renderer readiness without
   creating duplicate windows or losing events. No Main, Settings, or work-panel
   drag rectangle overlaps the reserved control zone. The 120px control band is
-  an opaque `bg-secondary` surface in both light and dark themes, with an 8px
+  an opaque `bg-primary` surface in both light and dark themes, with an 8px
   visual buffer separating it from adjacent work-panel actions, so destination
   content never bleeds through it. Window controls remain clickable across
   their full 46px-high hit targets, match native state, and

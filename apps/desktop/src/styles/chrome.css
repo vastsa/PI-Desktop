@@ -860,7 +860,7 @@
   padding-left: 8px;
   /* Paint a separate full hit band so page content cannot show through the
    * controls and panel actions cannot read as part of the same button group. */
-  background: var(--ds-bg-secondary);
+  background: var(--ds-bg-primary);
   border-left: 1px solid var(--ds-border-default);
 }
 
