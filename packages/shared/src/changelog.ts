@@ -23,6 +23,14 @@ export type ChangelogEntry = {
 
 const enEntries: ChangelogEntry[] = [
   {
+    version: "0.12.1",
+    date: "2026-09-03",
+    highlights: [
+      "Keep models enabled for subagent delegation available after saving provider settings and restarting the app.",
+      "Keep live replies visible when reopening sessions.",
+    ],
+  },
+  {
     version: "0.12.0",
     date: "2026-09-02",
     highlights: [
@@ -520,6 +528,14 @@ const enEntries: ChangelogEntry[] = [
 ];
 
 const zhCNEntries: ChangelogEntry[] = [
+  {
+    version: "0.12.1",
+    date: "2026-09-03",
+    highlights: [
+      "保存服务商设置并重启应用后，仍可使用已启用的子智能体委派模型。",
+      "重新打开会话时继续显示正在生成的回复。",
+    ],
+  },
   {
     version: "0.12.0",
     date: "2026-09-02",
