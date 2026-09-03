@@ -1964,6 +1964,12 @@ reasoning-level control.
   session's draft slot. The send reads the textarea's live value. A send refused
   because the model is not configured or a paste is still saving shows a toast
   instead of doing nothing.
+- The sent prompt is in the transcript in that same frame (D288): the renderer
+  inserts the user row under an id it minted and the host echoes the durable
+  row under the same id, replacing it in place. File references show under
+  their source paths until the echo brings the session-scoped refs; a slash
+  prompt shows its typed form until the echo brings the expanded body and
+  command chip. A send that never reaches the host withdraws the row again.
 - Shift+Enter: newline in textarea
 - Placeholder carousel: starts on the welcome copy and changes every 4 seconds
   while the draft is empty and inactive. Non-empty text or file references,

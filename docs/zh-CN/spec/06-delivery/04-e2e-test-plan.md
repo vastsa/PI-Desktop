@@ -2360,16 +2360,17 @@ PI-Desktop 图标；两个表面都不会暴露库存 Electron 名称或图标�
   助手线条组成；在历史展开和行高落定的那些帧里看不到任何转录文字，骨架屏在
   约 600ms 内淡出，露出的转录已经定位在最新回合。揭开之后行不再上下移动。
   多行草稿增长时，最新回合随输入框一起上移而不是消失在其后面。按 Enter 在
-  同一帧内清空输入框，早于用户行到达；对空输入框的第二次 Enter 不做任何事，
-  也不会排队重复项。发送被拒绝时，草稿回到输入框且光标位于末尾。短会话不
-  显示骨架屏。
+  同一帧内清空输入框并在转录底部显示用户行，早于主机应答；主机回显到达时该行
+  不重复也不跳动。对空输入框的第二次 Enter 不做任何事，也不会排队重复项。
+  发送被拒绝时，用户行消失，草稿回到输入框且光标位于末尾。短会话不显示骨架屏。
 - **关联规格**：`04-ux/08-component-spec.md`、`04-ux/09-interaction-patterns.md`、
-  `08-meta/decisions-log.md`（D287）
+  `08-meta/decisions-log.md`（D287、D288）
 - **验收**：C（聊天 stream）、质量
 - **里程碑**：M5
 - **状态**：单元覆盖（`transcript-settle.test.mjs`、`composer-send-state.test.mjs`
-  `send clears the composer before the round trip and restores a rejected draft (D287)`）；
-  UI 场景草稿
+  `send clears the composer before the round trip and restores a rejected draft (D287)`
+  与 `the user row is inserted before the host round trip and echoed under the same id (D288)`、
+  `session-transcript.test.mjs`）；UI 场景草稿
 
 #### E2E-073：纯图标消息工具栏和编辑用户提示
 

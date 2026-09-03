@@ -2959,3 +2959,29 @@ D193, and D194.
   overwritten. The send reads the textarea's live value, and the two silent
   refusals (model not configured, paste still saving) now surface a toast.
   See E2E-071i.
+
+## 2026-09-03 — User row inserted before the host round trip (D288)
+
+- The user's prompt appears in the transcript in the frame it is sent, not
+  when the host echoes it. Before this the row waited on the host's turn setup
+  (runtime launch, `session.beginTurn`, attachment preparation, persistence)
+  and a slow host left the transcript unchanged for visibly long after Enter.
+- The renderer mints the message id (`crypto.randomUUID()`), inserts the row
+  under it (`optimisticUserMessage`), and sends the id as
+  `AgentPromptRequest.messageId`. The host persists and echoes the durable row
+  under that id when it is a UUID the session does not already hold, otherwise
+  it mints its own. The echo therefore upserts the optimistic row in place; a
+  durable read that already holds the echo wins over it, and one that does not
+  yet hold it keeps the row visible (`mergeLiveSessionMessages`).
+- The optimistic row shows the typed text and its file references under their
+  source paths; the echo brings the expanded slash body, the `command` chip,
+  session-scoped attachment refs and revision metadata.
+- Withdrawal: when the send never reached the host (rejected by a pending plan,
+  or the IPC failed) the renderer removes its own row object only, so a failure
+  after persistence leaves the durable echo in place next to the error row.
+  Smart stop already treats the row as the sent prompt and pulls it back into
+  the composer. A visible session inserts into `messages`; a background session
+  (queued prompt draining) inserts into its renderer cache, where the echo
+  lands too.
+- Edit-resend follows the same path: the rewritten prompt replaces the old row
+  immediately and the host echo settles it. See E2E-071i.

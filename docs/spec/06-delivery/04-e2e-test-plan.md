@@ -3038,18 +3038,22 @@ Each scenario is documented in this format:
   and the skeleton fades out within roughly 600ms onto a transcript already
   positioned at its newest turn. The rows never move up and down after the
   reveal. While the multi-line draft grows, the newest turn moves up with the
-  composer instead of disappearing behind it. Pressing Enter clears the box in
-  the same frame, before the user row arrives; the second Enter on the empty box
-  does nothing and queues no duplicate. When the send is rejected, the draft
+  composer instead of disappearing behind it. Pressing Enter clears the box and
+  shows the user row at the bottom of the transcript in the same frame, before
+  the host has answered; when the host echo arrives the row does not duplicate
+  or jump. The second Enter on the empty box does nothing and queues no
+  duplicate. When the send is rejected, the user row disappears and the draft
   returns to the box with the caret at its end. The short session shows no
   skeleton.
 - **Specs linked**: `04-ux/08-component-spec.md`,
-  `04-ux/09-interaction-patterns.md`, `08-meta/decisions-log.md` (D287)
+  `04-ux/09-interaction-patterns.md`, `08-meta/decisions-log.md` (D287, D288)
 - **Acceptance**: C (chat stream), Quality
 - **Milestone**: M5
 - **Status**: Unit-covered (`transcript-settle.test.mjs`,
   `composer-send-state.test.mjs` `send clears the composer before the round
-  trip and restores a rejected draft (D287)`); UI scenario Draft
+  trip and restores a rejected draft (D287)` and `the user row is inserted
+  before the host round trip and echoed under the same id (D288)`,
+  `session-transcript.test.mjs`); UI scenario Draft
 
 #### E2E-072: Keyboard shortcut mappings persist and stay conflict-safe
 
