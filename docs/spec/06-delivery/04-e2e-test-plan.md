@@ -2540,7 +2540,10 @@ Each scenario is documented in this format:
   their full 46px-high hit targets, match native state, and
   have accessible names; the first user or assistant transcript row never
   paints beneath them, and neither do the Extensions page header actions or the
-  plugin detail sheet close button. Unknown actions fail closed. Each package contains
+  plugin detail sheet close button. The titlebar and right-side control band
+  share one continuous 1px `border-subtle` separator; the control band's
+  leading divider uses the same token and its bottom edge does not disappear
+  under the window buttons. Unknown actions fail closed. Each package contains
   the target-native host binary (`.exe` only on Windows). Passing this scenario
   on Windows/Linux proves shell readiness, not first-release qualification.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md`,
