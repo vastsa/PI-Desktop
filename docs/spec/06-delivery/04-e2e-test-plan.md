@@ -7094,30 +7094,35 @@ This test plan spec is accepted when:
 
 #### E2E-166: Subagent model selection
 
-- **Preconditions**: Agent mode; at least one provider has a model binding with
-  `availableForSubagents: true`; a second model binding exists without the flag
-  or with it set to false; a builtin subagent definition is available.
-- **Steps**: 1) Start a session and inspect the parent agent's system prompt for
-  the delegation model summary. 2) Delegate a Task with
-  `model: "provider/modelId"` pointing to the enabled binding. 3) Delegate a
-  Task with `model:` pointing to a binding that is not enabled for subagents.
-  4) Delegate a Task with `model:` pointing to a model that is not configured
-  at all. 5) Delegate a Task with no `model:` parameter and a definition that
-  has a frontmatter model pin. 6) Delegate a Task with no `model:` parameter
-  and a definition that has no frontmatter model pin.
+- **Preconditions**: Agent mode; at least one provider has two configured model
+  bindings; a builtin subagent definition is available.
+- **Steps**: 1) Enable the delegation checkbox for one model binding, save the
+  provider, reopen it, and confirm the checkbox remains enabled; restart the
+  app, reopen the provider again, and confirm it is still enabled. 2) Start a
+  session and inspect the parent agent's system prompt for the delegation model
+  summary. 3) Delegate a Task with `model: "provider/modelId"` pointing to the
+  enabled binding. 4) Delegate a Task with `model:` pointing to a binding that
+  is not enabled for subagents. 5) Delegate a Task with `model:` pointing to a
+  model that is not configured at all. 6) Delegate a Task with no `model:`
+  parameter and a definition that has a frontmatter model pin. 7) Delegate a
+  Task with no `model:` parameter and a definition that has no frontmatter
+  model pin.
 - **Expected**:
-  1. The delegation model summary appears in the parent's system prompt listing
+  1. Saving and reopening the provider preserves the
+     `availableForSubagents` opt-in, including after an application restart.
+  2. The delegation model summary appears in the parent's system prompt listing
      every model marked `availableForSubagents`.
-  2. The Task tool accepts the `model` parameter and the delegate runs on the
+  3. The Task tool accepts the `model` parameter and the delegate runs on the
      specified model, not the session model.
-  3. If the model is not configured or not enabled for delegation, the Task
+  4. If the model is not configured or not enabled for delegation, the Task
      returns a tool error listing available models.
-  4. Resolution priority is Task.model parameter → definition frontmatter pin →
+  5. Resolution priority is Task.model parameter → definition frontmatter pin →
      session model.
-  5. On-demand resolution succeeds for models enabled in provider settings via
+  6. On-demand resolution succeeds for models enabled in provider settings via
      the `provider.resolveSubagentModel` RPC.
 - **Specs linked**: `03-runtime/02-agent-runtime.md` §5f,
   `03-runtime/11-provider-model-system.md` §7,
+  `03-runtime/12-provider-config-schema.md` §2,
   `08-meta/decisions-log.md` (D278)
 - **Acceptance**: C (chat/stream) + B (model configuration) + E (tools)
 - **Milestone**: M6+

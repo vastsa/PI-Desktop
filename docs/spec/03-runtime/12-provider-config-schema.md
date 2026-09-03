@@ -93,7 +93,8 @@ Tables (canonical DDL in [04-data-storage](04-data-storage.md) §4.3–4.4, §4.
             "enum": ["off", "minimal", "low", "medium", "high", "xhigh", "max", null]
           },
           "supportsImages": { "type": ["boolean", "null"] },
-          "supportsDocuments": { "type": ["boolean", "null"] }
+          "supportsDocuments": { "type": ["boolean", "null"] },
+          "availableForSubagents": { "type": "boolean", "default": false }
         }
       }
     },
@@ -150,6 +151,12 @@ materializes one binding on read with a 128,000 context window, 8,192 max
 output, no enabled thinking levels, and a null default. The settings editor
 still renders all canonical choices for that legacy binding, and the next write
 stores the explicit binding array in `config_json.models`.
+
+`availableForSubagents` is an optional, persisted opt-in on each model binding.
+Host read/write and normalization preserve `true`; records created before this
+field existed remain disabled by default. This flag is what Electron main uses
+to build the delegation model catalog, so changing it survives provider edits
+and application restarts.
 
 `apiStyle: "opencode_go"` is a first-class OpenCode Go preset layered on the
 OpenAI-compatible provider type. It persists as its own style so the UI can

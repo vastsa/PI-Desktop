@@ -126,6 +126,10 @@ pub struct ModelBinding {
     pub supports_images: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supports_documents: Option<bool>,
+    /// Whether this model may be selected for AI-driven subagent delegation.
+    /// None/false keeps the opt-in disabled for existing provider records.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub available_for_subagents: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -221,6 +225,7 @@ fn normalize_model_bindings(bindings: &[ModelBinding]) -> Vec<ModelBinding> {
                 default_thinking_level,
                 supports_images: binding.supports_images,
                 supports_documents: binding.supports_documents,
+                available_for_subagents: binding.available_for_subagents,
             })
         })
         .collect()
@@ -238,6 +243,7 @@ fn legacy_model_binding(model_id: Option<String>) -> Vec<ModelBinding> {
                 default_thinking_level: None,
                 supports_images: None,
                 supports_documents: None,
+                available_for_subagents: None,
             }]
         })
         .unwrap_or_default()
@@ -1052,6 +1058,7 @@ mod tests {
                         default_thinking_level: Some("medium".into()),
                         supports_images: Some(true),
                         supports_documents: None,
+                        available_for_subagents: Some(true),
                     },
                     ModelBinding {
                         id: "plain-model".into(),
@@ -1061,6 +1068,7 @@ mod tests {
                         default_thinking_level: None,
                         supports_images: None,
                         supports_documents: Some(false),
+                        available_for_subagents: None,
                     },
                 ]),
                 default_model_id: None,
@@ -1079,6 +1087,8 @@ mod tests {
         assert_eq!(provider.models[0].context_window, 256_000);
         assert_eq!(provider.models[0].default_thinking_level.as_deref(), Some("medium"));
         assert_eq!(provider.models[1].default_thinking_level, None);
+        assert_eq!(provider.models[0].available_for_subagents, Some(true));
+        assert_eq!(provider.models[1].available_for_subagents, None);
 
         let raw: String = db
             .conn()
@@ -1094,8 +1104,10 @@ mod tests {
         // persisted, while "follow the catalog" stays absent instead of being
         // frozen into a false that a later catalog fix could not correct.
         assert_eq!(config["models"][0]["supportsImages"], true);
+        assert_eq!(config["models"][0]["availableForSubagents"], true);
         assert!(config["models"][0].get("supportsDocuments").is_none());
         assert_eq!(config["models"][1]["supportsDocuments"], false);
+        assert!(config["models"][1].get("availableForSubagents").is_none());
         assert!(config["models"][1].get("supportsImages").is_none());
         assert_eq!(provider.models[0].supports_images, Some(true));
         assert_eq!(provider.models[1].supports_documents, Some(false));
