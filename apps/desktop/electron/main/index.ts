@@ -996,8 +996,31 @@ function enrichProvider<T extends RuntimeProvider>(
       : genericModelConfig(modelId, provider.baseUrl ?? ""),
     storedModel,
   );
+  // Provider discovery is lazy in the renderer. Publish the same effective
+  // limits on the provider snapshot so the context inspector is correct before
+  // Composer has loaded the per-provider model list.
+  const models = provider.models?.map((binding) => {
+    const catalogModel = modelsDevModelFor(provider, binding.id);
+    if (!catalogModel) return binding;
+    const effective = modelConfigWithBinding(
+      modelConfigFromModelsDev(catalogModel, provider.baseUrl),
+      binding,
+    );
+    return {
+      ...binding,
+      contextWindow: effective.contextWindow,
+      maxTokens: effective.maxTokens,
+    };
+  });
   return {
     ...provider,
+    ...(models ? { models } : {}),
+    ...(modelsDevModel
+      ? {
+          contextWindow: modelConfig.contextWindow,
+          maxOutputTokens: modelConfig.maxTokens,
+        }
+      : {}),
     ...capabilitiesFromModelConfig(modelConfig),
     supportsVision: visionFromModelConfig(modelConfig),
   };

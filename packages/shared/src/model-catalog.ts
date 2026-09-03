@@ -124,6 +124,38 @@ export const CATALOG_DEFAULT_CONTEXT_WINDOW = 128_000;
 export const CATALOG_DEFAULT_MAX_TOKENS = 8_192;
 
 /**
+ * Resolve a model's effective context window.
+ *
+ * Older provider bindings were seeded with the generic 128k fallback before a
+ * catalog record was available. Treat that value as inherited when a published
+ * model limit is now known, while preserving every non-default value as an
+ * explicit Advanced override.
+ */
+export function effectiveContextWindow(
+  publishedContextWindow?: number | null,
+  configuredContextWindow?: number | null,
+): number | undefined {
+  const published =
+    typeof publishedContextWindow === "number" &&
+    Number.isFinite(publishedContextWindow) &&
+    publishedContextWindow > 0
+      ? Math.round(publishedContextWindow)
+      : undefined;
+  const configured =
+    typeof configuredContextWindow === "number" &&
+    Number.isFinite(configuredContextWindow) &&
+    configuredContextWindow > 0
+      ? Math.round(configuredContextWindow)
+      : undefined;
+
+  if (configured === undefined) return published;
+  if (published !== undefined && configured === CATALOG_DEFAULT_CONTEXT_WINDOW) {
+    return published;
+  }
+  return configured;
+}
+
+/**
  * Build the persisted binding for a published record. Published limits and
  * thinking levels seed a fresh binding, so a newly picked model needs no
  * manual token entry; the user can still configure the endpoint explicitly.

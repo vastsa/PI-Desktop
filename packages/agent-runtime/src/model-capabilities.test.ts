@@ -78,6 +78,21 @@ describe("main-supplied model capabilities", () => {
     });
   });
 
+  it("uses the published long-context window when a legacy binding has the generic seed", () => {
+    const model = {
+      ...knownModel(),
+      contextWindow: 1_050_000,
+      limit: { context: 1_050_000, input: 922_000, output: 128_000 },
+    };
+    const configured = modelConfigWithBinding(model, {
+      contextWindow: 128_000,
+      maxTokens: 8_192,
+      thinkingLevels: [],
+    });
+    expect(configured.contextWindow).toBe(1_050_000);
+    expect(configured.limit?.context).toBe(1_050_000);
+  });
+
   it("applies binding limits and preserves explicit thinking levels", () => {
     const configured = modelConfigWithBinding(knownModel(), {
       contextWindow: 64_000,

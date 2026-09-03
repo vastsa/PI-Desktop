@@ -1,10 +1,11 @@
-import { modelIdsMatch } from "@pi-desktop/shared";
-import type {
-  MessageUsage,
-  ModelInfo,
-  ProviderPublic,
-  ToolTokenUsage,
-  UiMessage,
+import {
+  effectiveContextWindow,
+  modelIdsMatch,
+  type MessageUsage,
+  type ModelInfo,
+  type ProviderPublic,
+  type ToolTokenUsage,
+  type UiMessage,
 } from "@pi-desktop/shared";
 
 export const DEFAULT_CONTEXT_WINDOW = 128_000;
@@ -38,12 +39,25 @@ function providerContextWindow(provider: ProviderPublic | undefined): number | u
   return value > 0 ? value : undefined;
 }
 
+function bindingContextWindow(
+  provider: ProviderPublic | undefined,
+  modelId: string | undefined,
+): number | undefined {
+  if (!provider || !modelId) return undefined;
+  const binding = provider.models?.find((candidate) =>
+    modelIdsMatch(candidate.id, modelId),
+  );
+  const value = positiveTokenCount(binding?.contextWindow);
+  return value > 0 ? value : undefined;
+}
+
 export function resolveContextWindow(
   providerId: string | undefined,
   modelId: string | undefined,
   providerModels: Record<string, ModelInfo[]>,
   providers: ProviderPublic[],
 ): number {
+  const provider = providers.find((candidate) => candidate.id === providerId);
   const catalogModel = modelId
     ? providerId
       ? providerModels[providerId]?.find((model) => modelIdsMatch(model.modelId, modelId))
@@ -52,11 +66,13 @@ export function resolveContextWindow(
           .find((model) => modelIdsMatch(model.modelId, modelId))
     : undefined;
   const catalogWindow = modelContextWindow(catalogModel);
-  if (catalogWindow) return catalogWindow;
-
-  const providerWindow = providerContextWindow(
-    providers.find((provider) => provider.id === providerId),
+  const configuredWindow = effectiveContextWindow(
+    catalogWindow,
+    bindingContextWindow(provider, modelId),
   );
+  if (configuredWindow) return configuredWindow;
+
+  const providerWindow = providerContextWindow(provider);
   return providerWindow ?? DEFAULT_CONTEXT_WINDOW;
 }
 

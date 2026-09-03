@@ -3,6 +3,7 @@ import {
   bindingForCustomModel,
   bindingFromModelInfo,
   bindingSupportsDocuments,
+  effectiveContextWindow,
   bindingSupportsImages,
   modelMatchesFilter,
 } from "./model-catalog.js";
@@ -29,6 +30,18 @@ function textModel(): ModelInfo {
     modalities: { input: ["text"], output: ["text"] },
   } as ModelInfo;
 }
+
+describe("effective model context windows", () => {
+  it("lets a published long-context window replace the legacy generic seed", () => {
+    expect(effectiveContextWindow(1_050_000, 128_000)).toBe(1_050_000);
+    expect(effectiveContextWindow(64_000, 128_000)).toBe(64_000);
+  });
+
+  it("preserves a non-default per-model override", () => {
+    expect(effectiveContextWindow(1_050_000, 256_000)).toBe(256_000);
+    expect(effectiveContextWindow(1_050_000, undefined)).toBe(1_050_000);
+  });
+});
 
 describe("published attachment capabilities", () => {
   it("reads image and pdf input from the published modalities", () => {
