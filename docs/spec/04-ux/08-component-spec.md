@@ -1865,8 +1865,8 @@ reasoning-level control.
 | [Agent/Plan/Goal] [permission mode]          | [model · reasoning ▾] |
 | queued messages (optional; one row per item) | [⏹ Stop / → Send] (one submit slot) |
 | textarea (auto-growing, 1 line → max 7)                         |
-| placeholder: welcome ↔ "Type / to invoke a command"            |
-| (EN/zh-CN welcome + hint pairs; home uses its own welcome key)   |
+| placeholder: welcome → command/file hint → keyboard hint        |
+| (advances only on page/session changes; native value stays accessible) |
 +----------------------------------------------------------+
 ```
 
@@ -1926,12 +1926,14 @@ reasoning-level control.
   inline edges, so the centered transcript does not shift when overflow and
   the minimap first appear.
 - Bottom-anchored: fixed at bottom of MainChat area
-- Placeholder carousel: home uses `chat.placeholderHome` (welcome) and
-  `chat.placeholderHomeHint` (command hint); a session composer uses
-  `chat.placeholder` and `chat.placeholderHint`. The welcome copy is shown
-  first, then the hint copy every 4 seconds in a loop. The visible copy is a
-  keyed opacity fade while the native `placeholder` value remains in the
-  textarea for assistive technology.
+- Placeholder guidance: home uses `chat.placeholderHome`,
+  `chat.placeholderHomeHint`, and `chat.placeholderShortcut`; a session
+  composer uses `chat.placeholder`, `chat.placeholderHint`, and the same
+  shortcut hint. The selected copy stays stable while the page/session context
+  is unchanged. Switching home/session views or active conversations advances
+  to the next hint; there is no timer tied to focus, draft, or IME state. The
+  visible copy is a keyed opacity fade while the native `placeholder` value
+  remains in the textarea for assistive technology.
 - Queue rows: while a session is running, each accepted prompt is held in a
   renderer-owned FIFO list above the shell. Rows show the visible prompt (or
   file-reference names), expose independent Remove and Send now actions, and
@@ -1974,11 +1976,11 @@ reasoning-level control.
   prompt shows its typed form until the echo brings the expanded body and
   command chip. A send that never reaches the host withdraws the row again.
 - Shift+Enter: newline in textarea
-- Placeholder carousel: starts on the welcome copy and changes every 4 seconds
-  while the draft is empty and inactive. Non-empty text or file references,
-  retained focus, and IME composition pause the timer. Clearing the draft
-  releases the pause so rotation resumes even if focus remains after send;
-  switching between home and session views resets to that view's welcome copy.
+- Placeholder guidance: the initially rendered context starts on its welcome copy and remains
+  unchanged while the page/session context, draft, focus, and IME state change.
+  Switching between home/session views or active conversations advances to the
+  next localized command/file or keyboard hint with an opacity fade; there is no
+  timer, and clearing or sending a draft never changes the guidance.
 - Escape: when textarea focused, clears input or blurs (not abort)
 - Send while running: clears the current draft and appends one FIFO row to the
   active session's in-memory queue when the draft has content. The row is sent
@@ -2145,7 +2147,7 @@ Anatomy:
   shadow, subtle hairline, `--radius-lg`); max-height caps with internal
   scroll and `scrollIntoView(nearest)` keyboard follow.
 - Slash mode (`/` typed at position 0, cursor inside the first token, no
-  whitespace yet): the placeholder hint teaches `Type / to invoke a command`
+  whitespace yet): the placeholder teaches `Type / for commands · @ for files`
   (localized in zh-CN), and groups appear in order — prompt templates (name +
   `argument-hint` ghost text + description, project source before
   user-global), app commands (builtin slash aliases), plugin commands.
@@ -2338,8 +2340,8 @@ Guidance surfaces when key data is absent. Must always provide an **action link*
 | No sessions | "Start your first conversation" | "New Task" button → focus composer |
 | No provider | "No model provider configured" | "Add provider" link → Settings → Agent → Providers |
 | No project (Agent, Plan, or Goal) | "No project open — workspace tools unavailable" | "Open folder" button → ProjectPicker |
-| Session empty (first message) | Welcome placeholder (`chat.placeholder`); it rotates with the localized `/` command hint (`chat.placeholderHint`) | N/A |
-| Home empty (first message) | Welcome placeholder (`chat.placeholderHome`); it rotates with the localized `/` command hint (`chat.placeholderHomeHint`) | N/A |
+| Session empty (first message) | Contextual placeholder guidance (`chat.placeholder`, command/file hint, or keyboard hint) | N/A |
+| Home empty (first message) | Contextual placeholder guidance (`chat.placeholderHome`, home command/file hint, or keyboard hint) | N/A |
 
 ### 15.3 Layout
 

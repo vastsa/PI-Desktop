@@ -627,9 +627,11 @@ Toast enter/exit 保留现有移除合同（`animationend` 于
 
 ## 8. 0 Home 空栈和底部 Composer (D111/D204/D206)
 
-空输入框占位符轮播：首页从 `chat.placeholderHome` 开始，会话输入框从
-`chat.placeholder` 开始；输入框为空且未操作时，每 4 秒切换到本地化的
-斜杠命令提示（`chat.placeholderHomeHint` / `chat.placeholderHint`）。
+空输入框占位提示按当前页面和会话作用域保持稳定：首页从
+`chat.placeholderHome` 开始，会话输入框从 `chat.placeholder` 开始。处于
+同一页面和会话时文案不变；切换首页/会话视图或活动会话时，才推进到本地化的
+命令/文件提示（`chat.placeholderHomeHint` / `chat.placeholderHint`）和快捷键提示
+（`chat.placeholderShortcut`）。它不会因计时器、焦点、草稿或 IME 状态而轮换。
 可见文案使用透明度渐变，并在浅色和深色输入框面板上保持可读。
 
 空聊天主页将内容和输入框保留在单独的垂直区域中

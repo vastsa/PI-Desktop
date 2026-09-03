@@ -654,29 +654,29 @@ Each scenario is documented in this format:
 - **Milestone**: M2
 - **Status**: Draft
 
-#### E2E-088b: Composer placeholder carousel teaches slash commands
+#### E2E-088b: Composer placeholder guidance follows page and session context
 
 - **Preconditions**: English and zh-CN locales are available; a provider is
-  configured; both an empty home and an existing conversation can be opened.
-- **Steps**: 1) On empty home, record the welcome placeholder immediately and
-  again after 4 seconds. 2) Open an existing conversation and repeat for its
-  view-specific welcome copy. 3) Focus the empty textarea and wait past one
-  interval; type a character and wait; clear it without moving focus and wait
-  past one interval. 4) Start an IME composition and wait past one interval,
-  then finish it and leave the draft empty. 5) Type `/` and inspect the slash
-  menu. 6) Switch to zh-CN and repeat the empty-home checks.
-- **Expected**: Each view starts with its welcome copy, changes to its localized
-  `/` command hint after 4 seconds, and uses an opacity fade rather than a
-  visible text flash. Focus, non-empty text/file references, and IME composition
-  keep the current copy stable. Clearing the draft resumes rotation even when
-  focus remains. The slash menu still contains `/new`, `/compact`,
-  `/agent-mode`, `/plan-mode`, and `/goal-mode`. zh-CN shows the matching
-  localized welcome and `输入 / 调用命令` hint.
+  configured; both an empty home and two conversations can be opened.
+- **Steps**: 1) On empty home, record the welcome placeholder and wait longer
+  than 4 seconds to confirm it is unchanged. 2) Open conversation A, record
+  its guidance, type and clear text, focus and blur the textarea, and wait;
+  confirm the copy is unchanged. 3) Switch to conversation B and then back to
+  A, recording each guidance change. 4) Switch between home and a conversation
+  and inspect the command/file and keyboard hints. 5) Type `/` and inspect the
+  slash menu. 6) Switch to zh-CN and repeat the context-switch checks.
+- **Expected**: The initially rendered context starts with its welcome copy and stays stable until
+  the page/session context changes. Each context switch advances to the next
+  localized command/file or keyboard hint with an opacity fade; no timer-driven
+  changes occur. The keyboard hint includes Shift+Enter and a submit hint, while the
+  command/file hint includes `/` and `@`. The slash menu still contains `/new`,
+  `/compact`, `/agent-mode`, `/plan-mode`, and `/goal-mode`. zh-CN shows the
+  matching localized copy, including `Shift+Enter for newline · Use Send to submit`.
 - **Specs linked**: `04-ux/08-component-spec.md` (§11),
   `04-ux/04-builtin-commands.md` (§7)
 - **Acceptance**: C (send/UI), Localization, Quality
 - **Milestone**: M2
-- **Status**: Source-covered (`composer-placeholder-carousel.test.mjs`);
+- **Status**: Source-covered (`composer-placeholder-context.test.mjs`);
   full UI scenario Draft
 
 #### E2E-089: Composer model menu opens upward and switches model
@@ -5502,9 +5502,10 @@ This test plan spec is accepted when:
 ### US-UI-30 Composer placeholder copy
 - Empty home and session composers start with their localized welcome copy:
   `chat.placeholderHome` / `chat.placeholder`.
-- After 4 seconds of an empty, inactive composer, each view rotates to its
-  localized `/` command hint (`chat.placeholderHomeHint` /
-  `chat.placeholderHint`) with an opacity fade; the cycle repeats.
+- The selected guidance stays unchanged until the page/session context changes;
+  switching context advances to localized `/`/`@` command/file guidance and the
+  keyboard hint `Shift+Enter for newline · Use Send to submit`, with an opacity fade.
+- Waiting, focusing, editing, clearing, or composing does not change the copy.
 - Placeholder ink is legible on light and dark floating plates.
 
 ### US-UI-31 Home empty vertical stack (D111/D204/D206)

@@ -672,11 +672,14 @@ High-frequency workstation feedback must remain compositor-friendly and bounded:
 
 ## 8.0 Home empty stack and bottom composer (D111/D204/D206)
 
-Empty composer placeholder carousel: home starts with `chat.placeholderHome` and
-thread-docked starts with `chat.placeholder`; each rotates every 4 seconds to
-its localized slash-command hint (`chat.placeholderHomeHint` /
-`chat.placeholderHint`) while the draft is empty and inactive. The visible copy
-uses an opacity fade and remains legible on the light and dark composer plates.
+Empty composer placeholder guidance is scoped to the current page and session:
+home starts with `chat.placeholderHome` and thread-docked starts with
+`chat.placeholder`. Within that context the copy remains stable. Switching
+between home/session views or active conversations advances through the localized
+command/file hint (`chat.placeholderHomeHint` / `chat.placeholderHint`) and the
+keyboard hint (`chat.placeholderShortcut`). It does not rotate on a timer or
+because focus, draft, or IME state changes. The visible copy uses an opacity
+fade and remains legible on the light and dark composer plates.
 
 Empty chat home keeps the content and composer in separate vertical regions
 inside `home-main-content` (D111/D204/D206; supersedes the D047 dual-grow portal

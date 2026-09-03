@@ -65,7 +65,18 @@ import {
 
 const COMPOSER_MIN_HEIGHT_PX = 28;
 const COMPOSER_MAX_VISIBLE_ROWS = 7;
-const PLACEHOLDER_CAROUSEL_INTERVAL_MS = 4_000;
+const PLACEHOLDER_KEYS = {
+  home: [
+    "chat.placeholderHome",
+    "chat.placeholderHomeHint",
+    "chat.placeholderShortcut",
+  ],
+  docked: [
+    "chat.placeholder",
+    "chat.placeholderHint",
+    "chat.placeholderShortcut",
+  ],
+} as const;
 let composerFileReferenceSequence = 0;
 const EMPTY_QUEUED_PROMPTS: QueuedPrompt[] = [];
 
@@ -330,9 +341,9 @@ export function Composer({
   const [composing, setComposing] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
-  // Clearing a draft releases the focus pause so guidance can resume after a
-  // send, even when the textarea keeps focus. A new focus starts paused again.
-  const placeholderFocusPauseReleasedRef = useRef(false);
+  const placeholderContextRef = useRef(
+    `${variant}:${activeSessionId ?? HOME_DRAFT_KEY}`,
+  );
   const [permissionOpen, setPermissionOpen] = useState(false);
   const permissionRef = useRef<HTMLDivElement>(null);
   const [modelThinkingOpen, setModelThinkingOpen] = useState(false);
@@ -376,21 +387,10 @@ export function Composer({
   const activeChipFileReferences = activeFileReferences.filter(
     (fileReference) => !fileReference.token,
   );
+  const placeholderKeys = PLACEHOLDER_KEYS[variant];
   const placeholderKey =
-    variant === "home"
-      ? placeholderIndex === 0
-        ? "chat.placeholderHome"
-        : "chat.placeholderHomeHint"
-      : placeholderIndex === 0
-        ? "chat.placeholder"
-        : "chat.placeholderHint";
+    placeholderKeys[placeholderIndex % placeholderKeys.length] ?? placeholderKeys[0];
   const placeholderText = t(placeholderKey);
-  const placeholderPaused =
-    value.length > 0 ||
-    activeChipFileReferences.length > 0 ||
-    activeInlineFileReferences.length > 0 ||
-    composing ||
-    (inputFocused && !placeholderFocusPauseReleasedRef.current);
 
   const invalidatePromptEnhancement = () => {
     enhancementVersionRef.current += 1;
@@ -398,18 +398,17 @@ export function Composer({
     setEnhancementError(null);
   };
 
+  // Keep one guidance copy stable until the user changes page or session.
+  // Advancing here, rather than on a timer or draft/focus update, keeps the
+  // composer quiet while it is available for writing.
   useEffect(() => {
-    setPlaceholderIndex(0);
-    placeholderFocusPauseReleasedRef.current = false;
-  }, [variant]);
-
-  useEffect(() => {
-    if (placeholderPaused) return;
-    const timer = window.setInterval(() => {
-      setPlaceholderIndex((current) => (current + 1) % 2);
-    }, PLACEHOLDER_CAROUSEL_INTERVAL_MS);
-    return () => window.clearInterval(timer);
-  }, [placeholderPaused, variant]);
+    const nextContext = `${variant}:${activeSessionId ?? HOME_DRAFT_KEY}`;
+    if (placeholderContextRef.current === nextContext) return;
+    placeholderContextRef.current = nextContext;
+    setPlaceholderIndex(
+      (current) => (current + 1) % PLACEHOLDER_KEYS[variant].length,
+    );
+  }, [activeSessionId, variant]);
 
   // Keep a live ref so the draft cache can snapshot the latest value without
   // re-running a serialization effect on every keystroke.
@@ -437,7 +436,6 @@ export function Composer({
       });
       draftKeyRef.current = draftKey;
       const nextDraft = draftCacheRef.current.get(draftKey);
-      placeholderFocusPauseReleasedRef.current = false;
       setValue(nextDraft?.text ?? "");
       setFileReferences(
         nextDraft?.fileReferences.map((fileReference) =>
@@ -955,7 +953,6 @@ export function Composer({
     draftCacheRef.current.delete(key);
     const currentKey = draftKeyForSession(useAppStore.getState().activeSessionId);
     if (currentKey !== key) return;
-    placeholderFocusPauseReleasedRef.current = true;
     setValue("");
     setFileReferences((current) => {
       const next = current.filter(
@@ -981,7 +978,6 @@ export function Composer({
     }
     if (valueRef.current.trim()) return;
     const sessionId = activeSessionId ?? "";
-    placeholderFocusPauseReleasedRef.current = false;
     setValue(snapshot.text);
     setFileReferences((current) => [
       ...current.filter((fileReference) => fileReference.sessionId !== sessionId),
@@ -1531,9 +1527,6 @@ export function Composer({
                       })}
                       disabled={inputBlocked}
                       onClick={() => {
-                        if (activeChipFileReferences.length === 1) {
-                          placeholderFocusPauseReleasedRef.current = true;
-                        }
                         setFileReferences((current) =>
                           current.filter(
                             (candidate) => candidate.id !== fileReference.id,
@@ -1565,7 +1558,6 @@ export function Composer({
                 onChange={(e) => {
                   const nextValue = e.target.value;
                   invalidatePromptEnhancement();
-                  placeholderFocusPauseReleasedRef.current = nextValue.length === 0;
                   setValue(nextValue);
                   // `filter` allocates even when it drops nothing, and a new
                   // array identity per keystroke re-runs the draft-cache
@@ -1589,11 +1581,9 @@ export function Composer({
                   updateCursor(e.currentTarget.selectionStart ?? 0);
                 }}
                 onFocus={() => {
-                  placeholderFocusPauseReleasedRef.current = false;
                   setInputFocused(true);
                 }}
                 onBlur={() => {
-                  placeholderFocusPauseReleasedRef.current = false;
                   setInputFocused(false);
                 }}
                 onKeyDown={(e) => {
@@ -1609,9 +1599,6 @@ export function Composer({
                   ) {
                     e.preventDefault();
                     const lastReference = activeChipFileReferences.at(-1);
-                    if (activeChipFileReferences.length === 1) {
-                      placeholderFocusPauseReleasedRef.current = true;
-                    }
                     setFileReferences((current) =>
                       current.filter(
                         (fileReference) => fileReference.id !== lastReference?.id,
