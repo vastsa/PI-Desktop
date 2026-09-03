@@ -161,7 +161,11 @@ PI-Desktop must not permanently restrict users to a short fixed model list.
    thinking level applied to a new session, and the attachment capability
    overrides. `models.dev` supplies published metadata and seeds the initial
    thinking selection for a newly added known model; it is not a runtime gate
-   on a level the user explicitly enables for the endpoint.
+   on a level the user explicitly enables for the endpoint. For compatibility,
+   a binding that still contains the legacy generic `128,000` context seed
+   follows a newly published `limit.context`; a non-default Advanced value
+   remains explicit. This keeps the sidecar and context inspector on the same
+   effective window after a catalog refresh.
 8. Settings renders the seven canonical thinking levels for every binding.
    Published levels begin selected for a known reasoning model. A non-reasoning
    or unknown model shows the same choices unselected, with a short manual

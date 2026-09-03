@@ -204,11 +204,14 @@ type ModelCatalogItem = {
 - MVP 中没有激进的背景轮询
 - 刷新失败保留以前的缓存并显示非致命错误
 
-Electron 使用匹配的内容装饰缓存的和新发现的模型行
-`pi-ai` 模型记录（当存在时）。其`contextWindow`是权威的
-选择器和上下文检查器的值，因为相同的记录被传递到
-代理 sidecar。提供商发现仍然是模型缺失的后备方案
-来自 `pi-ai` 目录。
+Electron 使用本地 `models.dev` 记录装饰缓存和新发现的模型行。其
+`contextWindow` 与 agent sidecar 共享同一套 effective 解析；提供商发现只
+为目录缺失的模型提供 ID，未知模型仍使用通用后备。
+
+上下文窗口解析必须与 agent runtime 使用同一个 effective window：已发布的
+`models.dev limit.context` 会替换旧 binding 中遗留的 128k 通用种子，因此
+`gpt-5.6-luna` 这类 1m 级模型不会再显示为 128k。用户在 Advanced 中输入的
+非默认值仍是明确的按模型覆盖；未知模型仍保守使用 128k，不能仅凭 ID 猜测。
 
 ## 13. 搜索行为
 

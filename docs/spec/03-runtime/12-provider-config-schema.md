@@ -152,6 +152,12 @@ output, no enabled thinking levels, and a null default. The settings editor
 still renders all canonical choices for that legacy binding, and the next write
 stores the explicit binding array in `config_json.models`.
 
+For context resolution, that 128,000 value is a backward-compatible generic
+seed, not a reason to hide a published long-context limit. If models.dev now
+publishes a positive `limit.context`, the effective runtime and inspector window
+follow it; a non-default value entered in the model's Advanced controls remains
+an explicit per-model override. Unknown IDs continue to use 128,000.
+
 `availableForSubagents` is an optional, persisted opt-in on each model binding.
 Host read/write and normalization preserve `true`; records created before this
 field existed remain disabled by default. This flag is what Electron main uses

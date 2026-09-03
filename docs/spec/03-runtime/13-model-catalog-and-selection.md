@@ -194,7 +194,17 @@ field records a models.dev match; a provider cache stores only normalized
 selection fields and is re-decorated from the local raw catalog on the next
 read.
 
-### 9.1 Conversation Composer scope
+### 9.1 Effective context window
+
+The runtime and context inspector use the same effective model window. A positive
+published `limit.context` from models.dev replaces the legacy `128,000` generic
+seed that older bindings may contain; this allows a refreshed catalog record such
+as `gpt-5.6-luna` (`1,050,000` tokens) to stop appearing as a 128k model. A
+non-default value entered through the per-model Advanced control remains the
+explicit user override. Unknown models still use the conservative 128k generic
+window and are never promoted from an ID pattern alone.
+
+### 9.2 Conversation Composer scope
 
 The conversation Composer is a configured-model picker, not a raw discovery
 catalog. For each enabled, runnable provider it renders only the model IDs in

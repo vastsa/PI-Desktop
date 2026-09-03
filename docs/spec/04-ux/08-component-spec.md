@@ -1231,8 +1231,10 @@ Single message render — either user (plaintext) or assistant (markdown streami
   explanatory estimate note are intentionally omitted from the default view.
   Generation speed is a completed-turn value in tokens per second and is not
   updated while a response is streaming. The context-window total uses the
-  same local models.dev model metadata as the agent sidecar; unknown models use
-  the provider's generic default window. The panel is portaled to
+  same effective model window as the agent sidecar: a published models.dev
+  `limit.context` replaces a legacy 128k generic binding seed, while a non-default
+  per-model Advanced value remains explicit. Unknown models use the provider's
+  generic default window. The panel is portaled to
   the document body as a fixed viewport overlay, flips above or below the
   trigger, clamps to viewport margins, and repositions on transcript scrolling
   or window resize so no transcript clipping ancestor can hide it (D103, D184,

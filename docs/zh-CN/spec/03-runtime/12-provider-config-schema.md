@@ -161,6 +161,10 @@ type ModelCatalogCacheRecord = {
 }
 ```
 
+上下文窗口解析与 sidecar 保持一致：若 models.dev 已发布正数
+`limit.context`，它会替换旧 binding 中的 128k 通用种子；用户在模型
+Advanced 控件中设置的非默认值仍优先。未知模型继续使用 128k 的保守后备。
+
 ## 5. IPC / 主机方法（提供商域）
 
 - `providers.list`

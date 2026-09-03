@@ -2223,7 +2223,9 @@ Each scenario is documented in this format:
 #### E2E-060d: Assistant meta chips, compact context summary, and retry action
 
 - **Preconditions**: A completed assistant message includes modelId and token
-  usage; another completed assistant message has content but no usage.
+  usage; another completed assistant message has content but no usage. The
+  selected model has a published 1m-class context window, while its provider
+  binding still contains the legacy 128k generic seed.
 - **Steps**: 1) Open the session. 2) Hover the completed assistant turn that has
   usage, confirm the panel stays closed, then click its Context inspector
   trigger. 3) Inspect the compact remaining-token header, used/window counts,
@@ -2243,9 +2245,11 @@ Each scenario is documented in this format:
   Provider values remain exact, tool values remain visibly approximate through
   the `~` aggregate total, and no per-tool list, source badge, progress bar, or
   explanatory estimate paragraph is rendered. The cache hit rate is omitted
-  when cache-read metadata is absent rather than inferred. The context-window
-  total matches the model metadata used by the agent runtime. Generation rate
-  remains a completed-turn value and does not update during streaming; Retry
+  when cache-read metadata is absent rather than inferred. A published 1m-class
+  limit (for example `gpt-5.6-luna` at 1,050,000 tokens) is shown instead of
+  128k, the same effective window is used by the agent runtime, and a non-default
+  Advanced override remains honored. Generation rate remains a completed-turn
+  value and does not update during streaming; Retry
   re-sends the nearest preceding user prompt and is disabled while a turn is
   running; the portaled panel remains fully visible within the viewport, never
   clipped by transcript scrolling, and follows the trigger after scrolling or
