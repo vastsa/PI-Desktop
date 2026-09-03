@@ -254,7 +254,7 @@ Each scenario is documented in this format:
   `03-runtime/12-provider-config-schema.md`
 - **Acceptance**: B (OpenAI-compatible provider interoperability)
 - **Milestone**: M2
-- **Status**: Unit-covered; deterministic provider fixture pending
+- **Status**: Unit-covered (including the #30 GLM gateway regression); deterministic provider fixture pending
 
 #### E2E-006: Key survives restart
 

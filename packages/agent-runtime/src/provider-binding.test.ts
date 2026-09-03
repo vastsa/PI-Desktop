@@ -59,10 +59,19 @@ describe("buildProviderModel OpenAI-compatible role compatibility", () => {
     },
   };
 
-  it("sends the system prompt as system by default", () => {
+  it("sends the system prompt as system for issue #30's GLM gateway", () => {
     const model = buildProviderModel({
       ...reasoningProvider,
+      id: "aimom",
+      name: "AIMOM",
+      baseUrl: "https://platform.aimom.net/v1",
+      modelId: "glm-5.3-flash",
       apiStyle: "chat_completions",
+      modelConfig: {
+        ...reasoningProvider.modelConfig!,
+        name: "GLM-5.3-Flash",
+        baseUrl: "https://platform.aimom.net/v1",
+      },
     }) as any;
 
     expect(model.compat).toMatchObject({ supportsDeveloperRole: false });
