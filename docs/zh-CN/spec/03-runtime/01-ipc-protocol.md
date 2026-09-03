@@ -1139,8 +1139,8 @@ Maximize/unmaximize 变化也会发出
 `window/event/maximized`。未知的操作失败。这些仅限电子的通道
 不要跨入 host-core，也不要更改主机 RPC 协议版本。
 preload 故意不公开任意的 BrowserWindow 调整大小通道。
-一种特定于几何形状的功能是目标状态工作面板保留
-（D163，ADR 0032）：
+特定于几何形状的能力是有界的目标状态工作面板保留与聊天宽度更新
+（D163、D255，ADR 0032/0122）：
 
 ```ts
 window/setWorkPanelReservation({ width: 0 | number })
@@ -1157,12 +1157,31 @@ window/setWorkPanelReservation({ width: 0 | number })
 仅当显示工作区域不足时。调用是幂等目标
 更新：重复相同的宽度不会添加另一个增量。
 
+面板打开时，两条可见的调整边界有不同的归属：
+
+```ts
+window/setWorkPanelChatWidth({ width: number })
+  -> { requested: number; applied: number }
+
+window/event/workPanelResize
+  -> { phase: "preview" | "commit"; panelWidth: number }
+```
+
+`window/setWorkPanelChatWidth` 只接受 `1040..10000` 闭区间内的安全整数。
+它是窗口内渲染器拥有的分隔条使用的有界目标状态通道；它改变基础对话
+宽度，同时保留当前生效的面板保留量。工作区紧张时，聊天目标停在仍能容纳
+该保留量的最大基础宽度上；面板绝不会作为副作用被收窄。原生右边缘（以及
+Electron 报告的右侧角）改变的是面板目标。Main 通过
+`window/event/workPanelResize` 预览该原生面板宽度，并在原生调整流稳定后
+提交给渲染器。面板目标仍限定在 `244..720px`。
+
 正常状态下，Main 向右扩展基边界并向左移动
 仅根据需要将扩展边界保留在当前显示工作范围内
 区。零目标对称地消除了增加的宽度并反转了这一点
 保留引起的转变。 Main 仍然保留基界，并且移除了这两种效果。
-本机边缘手势仅更新那些基边界，留下 `requested` 和
-渲染器拥有的固定面板宽度不变。最大化和全屏窗口
+来自左边缘或非右侧角的本机手势仅更新那些基边界，留下 `requested` 和
+渲染器拥有的固定面板宽度不变。外侧右边缘和右侧角更新面板目标，而基础
+对话宽度保持固定。最大化和全屏窗口
 记住最新的目标但推迟几何；恢复正常协调
 它一次针对恢复的基础边界和当前工作区域。如果窗户
 管理器首先在显示期间压缩或重新定位外部窗口，或者
