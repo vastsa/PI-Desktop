@@ -842,6 +842,28 @@ async function preparePromptAttachments(
   return prepared;
 }
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Use the renderer's id for the new user row when it is a UUID the session
+ * does not already hold (D288); otherwise mint one. The renderer inserted its
+ * optimistic row under that id, so the durable echo lands on the same row.
+ */
+export function durableUserMessageId(
+  requested: unknown,
+  existing: ReadonlyArray<{ id?: unknown }>,
+): string {
+  if (
+    typeof requested === "string" &&
+    UUID_PATTERN.test(requested) &&
+    !existing.some((message) => message?.id === requested)
+  ) {
+    return requested;
+  }
+  return crypto.randomUUID();
+}
+
 function appendPromptFallbackPaths(
   content: string,
   attachments: readonly PreparedPromptAttachment[],
@@ -7399,8 +7421,10 @@ function registerIpc() {
           activeRevision?: number;
         }
       | undefined;
+    // The renderer already shows this row under its own id (D288); persisting
+    // and echoing under the same id lets the echo replace it in place.
     const userMessage = {
-      id: crypto.randomUUID(),
+      id: durableUserMessageId(req.messageId, allMessages),
       role: "user" as const,
       content: promptContent,
       createdAt: new Date().toISOString(),

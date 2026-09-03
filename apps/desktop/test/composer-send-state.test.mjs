@@ -4,9 +4,10 @@ import test from "node:test";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-const [store, composer] = await Promise.all([
+const [store, composer, main] = await Promise.all([
   read("../src/stores/app-store.ts"),
   read("../src/components/Composer.tsx"),
+  read("../electron/main/index.ts"),
 ]);
 
 test("composer send/stop button follows draft content and the visible session's run state", () => {
@@ -175,4 +176,31 @@ test("mode slash prefixes send the trailing prompt and retain failed drafts", ()
     sendPrompt,
     /await api\.prompt\(\{[\s\S]*?sessionId,[\s\S]*?content,[\s\S]*?attachments:[\s\S]*?promptAttachmentsFromDraft\(draft\.fileReferences\)[\s\S]*?\}\);[\s\S]*?return true;/,
   );
+});
+
+test("the user row is inserted before the host round trip and echoed under the same id (D288)", () => {
+  const sendPrompt = store.match(/\n  sendPrompt: async \([\s\S]*?\n  },\n/)?.[0] ?? "";
+  assert.ok(sendPrompt.length > 0, "sendPrompt not found");
+  const insertAt = sendPrompt.indexOf("insertOptimisticUserMessage(startedIn, optimisticMessage)");
+  const promptAt = sendPrompt.indexOf("await api.prompt({");
+  assert.ok(insertAt > 0, "sendPrompt should insert the optimistic user row");
+  assert.ok(promptAt > insertAt, "the row must be on screen before api.prompt is awaited");
+  assert.match(
+    sendPrompt.slice(promptAt),
+    /await api\.prompt\(\{[^}]*messageId: optimisticMessage\.id/,
+    "the renderer id travels with the prompt so the host echo lands on the same row",
+  );
+  // The row is withdrawn when the send never reached the host, but only the
+  // renderer's own object: a durable echo under the same id stays.
+  assert.match(sendPrompt, /catch \(e\) \{\s*submittedComposerDrafts\.delete\(startedIn\);\s*retractOptimisticUserMessage\(startedIn, optimisticMessage\);/);
+  assert.match(store, /function retractOptimisticUserMessage[\s\S]*?s\.messages\.includes\(message\)/);
+  // A background session receives the row through its renderer cache.
+  assert.match(store, /function insertOptimisticUserMessage[\s\S]*?sessionTranscriptCache\.set\(sessionId, upsertLiveSessionMessage\(cached, message\)\)/);
+  // Edit-resend shows the rewritten prompt in place of the old row the same way.
+  const editUserMessage = store.match(/\n  editUserMessage: async \([\s\S]*?\n  },\n/)?.[0] ?? "";
+  assert.match(editUserMessage, /messages: \[\.\.\.kept, optimisticMessage\]/);
+  assert.match(editUserMessage, /messageId: optimisticMessage\.id/);
+  // The host persists and echoes under the renderer's id when it is a fresh UUID.
+  assert.match(main, /id: durableUserMessageId\(req\.messageId, allMessages\)/);
+  assert.match(main, /export function durableUserMessageId\([\s\S]*?UUID_PATTERN\.test\(requested\)[\s\S]*?!existing\.some\(\(message\) => message\?\.id === requested\)/);
 });

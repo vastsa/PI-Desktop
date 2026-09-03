@@ -60,6 +60,7 @@ import { normalizeProjectPath, sessionMatchesProject } from "../lib/sidebar-sess
 import {
   mergeLiveSessionMessages,
   removeLiveSessionMessage,
+  optimisticUserMessage,
   upsertLiveSessionMessage,
 } from "../lib/session-transcript";
 import {
@@ -370,6 +371,46 @@ async function loadFullSessionMessages(id: string): Promise<UiMessage[] | null> 
   const messages = detail.session.messages ?? [];
   cacheSessionTranscript(id, messages, { messageStart: 0, hasMoreBefore: false });
   return messages;
+}
+
+/**
+ * Show the user's prompt the moment it is sent (D288). The visible session
+ * appends the row to its transcript; a background session receives it through
+ * its renderer cache, exactly where the host echo will land.
+ */
+function insertOptimisticUserMessage(sessionId: string, message: UiMessage): void {
+  const state = useAppStore.getState();
+  if (state.activeSessionId === sessionId) {
+    useAppStore.setState((s) => ({
+      messages: upsertLiveSessionMessage(s.messages, message),
+    }));
+    return;
+  }
+  const cached = sessionTranscriptCache.get(sessionId);
+  if (cached) {
+    sessionTranscriptCache.set(sessionId, upsertLiveSessionMessage(cached, message));
+  }
+}
+
+/**
+ * Undo the optimistic row when the send never reached the host. Only the
+ * renderer's own object is removed: once the host has echoed the durable row
+ * under the same id the failure happened after persistence, and the row stays.
+ */
+function retractOptimisticUserMessage(sessionId: string, message: UiMessage): void {
+  const state = useAppStore.getState();
+  if (state.activeSessionId === sessionId) {
+    useAppStore.setState((s) =>
+      s.messages.includes(message)
+        ? { messages: removeLiveSessionMessage(s.messages, message.id) }
+        : s,
+    );
+    return;
+  }
+  const cached = sessionTranscriptCache.get(sessionId);
+  if (cached?.includes(message)) {
+    sessionTranscriptCache.set(sessionId, removeLiveSessionMessage(cached, message.id));
+  }
 }
 
 /**
@@ -1950,6 +1991,15 @@ export const useAppStore = create<AppState>((set, get) => ({
       latestTurnResults: withoutRecordKey(s.latestTurnResults, startedIn),
       sessionOutcomes: withoutRecordKey(s.sessionOutcomes, startedIn),
     }));
+    // The prompt is on screen before the host round trip (D288). The host
+    // persists and echoes the row under this same id, so the echo replaces
+    // the optimistic row instead of adding a second one.
+    const optimisticMessage = optimisticUserMessage(
+      crypto.randomUUID(),
+      content,
+      submission.draft.fileReferences,
+    );
+    insertOptimisticUserMessage(startedIn, optimisticMessage);
     try {
       const current = get().sessions.find((s) => s.id === sessionId);
       if (isDefaultSessionTitle(current?.title)) {
@@ -1963,6 +2013,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
       if (get().pendingPlans[sessionId]?.status === "pending") {
         submittedComposerDrafts.delete(startedIn);
+        retractOptimisticUserMessage(startedIn, optimisticMessage);
         set((s) => ({
           isRunning: s.activeSessionId === startedIn ? false : s.isRunning,
           runningSessions: { ...s.runningSessions, [startedIn]: false },
@@ -1970,12 +2021,14 @@ export const useAppStore = create<AppState>((set, get) => ({
         return false;
       }
       if (submission.abortResolution && (await submission.abortResolution)) {
+        // Smart stop already pulled the row back into the composer.
         submittedComposerDrafts.delete(startedIn);
         return false;
       }
       await api.prompt({
         sessionId,
         content,
+        messageId: optimisticMessage.id,
         viewingSessionId: viewingSessionIdForPrompt(get(), sessionId),
         attachments: draft
           ? promptAttachmentsFromDraft(draft.fileReferences)
@@ -1987,6 +2040,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       return true;
     } catch (e) {
       submittedComposerDrafts.delete(startedIn);
+      retractOptimisticUserMessage(startedIn, optimisticMessage);
       const messageError = messageErrorFromUnknown(e);
       set((s) => ({
         // The user may have switched sessions while the request was in
@@ -2104,9 +2158,23 @@ export const useAppStore = create<AppState>((set, get) => ({
     // index into the deduplicated renderer array are different coordinate
     // spaces, and mixing them cuts the wrong message on a paged transcript.
     const truncateFromMessageId = state.messages[userIndex].id;
+    // The rewritten prompt shows in place of the old row before the host
+    // round trip (D288); the durable echo replaces it under the same id.
+    const optimisticMessage = optimisticUserMessage(
+      crypto.randomUUID(),
+      prompt,
+      (attachments ?? state.messages[userIndex].attachments ?? []).map(
+        (attachment) => ({
+          path: attachment.ref,
+          name: attachment.name,
+          kind: attachment.kind,
+          mimeType: attachment.mimeType,
+        }),
+      ),
+    );
 
     set((s) => ({
-      messages: kept,
+      messages: [...kept, optimisticMessage],
       isRunning: true,
       error: null,
       errorCode: null,
@@ -2120,6 +2188,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       await api.prompt({
         sessionId,
         content: prompt,
+        messageId: optimisticMessage.id,
         viewingSessionId: viewingSessionIdForPrompt(get(), sessionId),
         attachments: promptAttachments,
         truncateFromMessageId,

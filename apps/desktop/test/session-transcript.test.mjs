@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   mergeLiveSessionMessages,
+  optimisticUserMessage,
   removeLiveSessionMessage,
   upsertLiveSessionMessage,
 } from "../src/lib/session-transcript.ts";
@@ -58,4 +59,56 @@ test("live event upserts preserve array identity for unchanged rows", () => {
   assert.equal(updated[0].content, "new partial");
   assert.strictEqual(upsertLiveSessionMessage(original, original[0]), original);
   assert.strictEqual(removeLiveSessionMessage(original, "missing"), original);
+});
+
+test("optimistic user row carries the prompt and its file references under the renderer id (D288)", () => {
+  const row = optimisticUserMessage(
+    "11111111-2222-4333-8444-555555555555",
+    "look at these",
+    [
+      { path: "/tmp/shot.png", name: "shot.png" },
+      { path: "src/index.ts", name: "index.ts", kind: "file", mimeType: "text/plain" },
+      { path: "/tmp/paste-1.txt", name: "paste-1.txt", token: "[paste #1]" },
+    ],
+    "2026-09-03T00:00:00.000Z",
+  );
+  assert.deepEqual(row, {
+    id: "11111111-2222-4333-8444-555555555555",
+    role: "user",
+    content: "look at these",
+    createdAt: "2026-09-03T00:00:00.000Z",
+    status: "complete",
+    attachments: [
+      { kind: "image", name: "shot.png", ref: "/tmp/shot.png" },
+      { kind: "file", name: "index.ts", ref: "src/index.ts", mimeType: "text/plain" },
+    ],
+  });
+  assert.equal(
+    "attachments" in optimisticUserMessage("id", "text only"),
+    false,
+    "a text-only prompt has no attachments key",
+  );
+});
+
+test("host echo under the same id replaces the optimistic user row in place (D288)", () => {
+  const optimistic = optimisticUserMessage("same-id", "/review src", [
+    { path: "src/a.ts", name: "a.ts" },
+  ]);
+  const before = [message("earlier"), optimistic];
+  const durable = message("same-id", {
+    role: "user",
+    content: "Review the code in src",
+    command: "/review src",
+    attachments: [{ kind: "file", name: "a.ts", ref: "sessions/x/a.ts" }],
+  });
+  const after = upsertLiveSessionMessage(before, durable);
+  assert.equal(after.length, 2);
+  assert.equal(after[1], durable);
+  // A durable read that already holds the echo wins over the optimistic row;
+  // one that does not yet hold it keeps the row visible.
+  assert.deepEqual(mergeLiveSessionMessages([message("earlier"), durable], before), [
+    message("earlier"),
+    durable,
+  ]);
+  assert.deepEqual(mergeLiveSessionMessages([message("earlier")], before), before);
 });

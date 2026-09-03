@@ -1,4 +1,47 @@
-import type { UiMessage } from "@pi-desktop/shared";
+import type { MessageAttachment, UiMessage } from "@pi-desktop/shared";
+
+type OptimisticFileReference = {
+  path: string;
+  name: string;
+  kind?: "image" | "file";
+  mimeType?: string;
+  /** Large-text paste tokens travel inline in the text, not as attachments. */
+  token?: string;
+};
+
+/**
+ * The user row shown the moment a prompt is sent, before the host has
+ * persisted or echoed it (D288). The host reuses `id`, so its echo replaces
+ * this row in place; attachments show under their source path until the
+ * durable row brings the session-scoped ref.
+ */
+export function optimisticUserMessage(
+  id: string,
+  content: string,
+  fileReferences: readonly OptimisticFileReference[] = [],
+  createdAt: string = new Date().toISOString(),
+): UiMessage {
+  const attachments: MessageAttachment[] = fileReferences
+    .filter((reference) => !reference.token)
+    .map((reference) => ({
+      kind:
+        reference.kind ??
+        (/\.(avif|bmp|gif|heic|jpe?g|png|tiff?|webp)$/i.test(reference.path)
+          ? "image"
+          : "file"),
+      name: reference.name,
+      ref: reference.path,
+      ...(reference.mimeType ? { mimeType: reference.mimeType } : {}),
+    }));
+  return {
+    id,
+    role: "user",
+    content,
+    createdAt,
+    status: "complete",
+    ...(attachments.length ? { attachments } : {}),
+  };
+}
 
 /**
  * Apply one live event message to a renderer-owned session snapshot without
