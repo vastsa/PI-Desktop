@@ -133,7 +133,11 @@ function CollapsedTitlebarActions({
     <div className="titlebar-nav no-drag">
       <button
         className="title-nav-btn"
-        title={`${toggleLabel} (${sidebarToggleShortcut})`}
+        title={
+          sidebarToggleShortcut
+            ? `${toggleLabel} (${sidebarToggleShortcut})`
+            : toggleLabel
+        }
         aria-label={toggleLabel}
         aria-expanded={false}
         data-nav="toggle-sidebar"

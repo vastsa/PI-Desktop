@@ -7,6 +7,7 @@ import {
   type AppMenuCommand,
   type KeybindingOverrides,
   type KeyboardShortcutId,
+  type NativeMenuAction,
   type ShortcutPlatform,
 } from "@pi-desktop/shared";
 import { en, resolveLocale, zhCN } from "@pi-desktop/i18n";
@@ -18,6 +19,8 @@ export type ApplicationMenuOptions = {
   /** Adds the devtools item to the View menu (settings.developerMode). */
   developerMode?: boolean;
   dispatch: (command: AppMenuCommand) => void;
+  /** Executes configurable native menu actions when their shortcut is unbound. */
+  dispatchNative: (action: NativeMenuAction) => void;
 };
 
 function appCommand(
@@ -33,12 +36,27 @@ function appCommand(
   };
 }
 
+function nativeAction(
+  label: string,
+  role: NonNullable<MenuItemConstructorOptions["role"]>,
+  action: NativeMenuAction,
+  accelerator: string | undefined,
+  dispatchNative: ApplicationMenuOptions["dispatchNative"],
+): MenuItemConstructorOptions {
+  // Electron assigns a role's platform default whenever accelerator is absent.
+  // A plain item keeps the command clickable without resurrecting that default.
+  return accelerator
+    ? { role, accelerator }
+    : { label, click: () => dispatchNative(action) };
+}
+
 export function buildApplicationMenuTemplate({
   platform = process.platform,
   locale = "en",
   keybindings,
   developerMode = false,
   dispatch,
+  dispatchNative,
 }: ApplicationMenuOptions): MenuItemConstructorOptions[] {
   const isMac = platform === "darwin";
   const shortcutPlatform = platform as ShortcutPlatform;
@@ -102,7 +120,13 @@ export function buildApplicationMenuTemplate({
             ] satisfies MenuItemConstructorOptions[])
           : []),
         { type: "separator" },
-        { role: "close", accelerator: accelerator("closeWindow") },
+        nativeAction(
+          labels.menu.closeWindow,
+          "close",
+          "close",
+          accelerator("closeWindow"),
+          dispatchNative,
+        ),
       ],
     },
     {
@@ -136,14 +160,35 @@ export function buildApplicationMenuTemplate({
         { type: "separator" },
         { role: "reload" },
         { type: "separator" },
-        { role: "resetZoom", accelerator: accelerator("resetZoom") },
-        { role: "zoomIn", accelerator: accelerator("zoomIn") },
-        { role: "zoomOut", accelerator: accelerator("zoomOut") },
+        nativeAction(
+          labels.menu.actualSize,
+          "resetZoom",
+          "resetZoom",
+          accelerator("resetZoom"),
+          dispatchNative,
+        ),
+        nativeAction(
+          labels.menu.zoomIn,
+          "zoomIn",
+          "zoomIn",
+          accelerator("zoomIn"),
+          dispatchNative,
+        ),
+        nativeAction(
+          labels.menu.zoomOut,
+          "zoomOut",
+          "zoomOut",
+          accelerator("zoomOut"),
+          dispatchNative,
+        ),
         { type: "separator" },
-        {
-          role: "togglefullscreen",
-          accelerator: accelerator("toggleFullScreen"),
-        },
+        nativeAction(
+          labels.menu.toggleFullScreen,
+          "togglefullscreen",
+          "toggleFullScreen",
+          accelerator("toggleFullScreen"),
+          dispatchNative,
+        ),
         // Only surfaced with developer mode on, so the console stays out of
         // reach for regular users (settings.developerMode).
         ...(developerMode

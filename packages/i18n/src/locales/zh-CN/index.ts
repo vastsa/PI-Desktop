@@ -551,6 +551,8 @@ export const zhCN = {
     shortcutReserved: "该组合键由操作系统或编辑器保留。",
     shortcutConflict: "已分配给“{{action}}”。",
     shortcutSaveFailed: "无法保存快捷键。",
+    shortcutUnbound: "未绑定",
+    shortcutDisable: "禁用“{{action}}”快捷键",
     shortcutGroup: {
       navigation: "导航",
       agent: "智能体",

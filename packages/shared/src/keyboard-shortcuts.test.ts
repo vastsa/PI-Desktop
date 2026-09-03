@@ -33,6 +33,22 @@ describe("keyboard shortcut mapping", () => {
     );
   });
 
+  it("keeps explicit null overrides unbound", () => {
+    const search = KEYBOARD_SHORTCUTS.find((shortcut) => shortcut.id === "openSearch")!;
+    expect(resolveKeybinding(search, undefined, "darwin")).toBe("Mod+K");
+    expect(resolveKeybinding(search, { openSearch: null }, "darwin")).toBeNull();
+    expect(
+      keybindingMatchesEvent(
+        null,
+        { key: "k", code: "KeyK", metaKey: true },
+        "darwin",
+      ),
+    ).toBe(false);
+    expect(keybindingsConflict(null, "Mod+K")).toBe(false);
+    expect(keybindingToElectronAccelerator(null, "darwin")).toBeUndefined();
+    expect(keybindingDisplayParts(null, "darwin")).toEqual([]);
+  });
+
   it("assigns Cmd/Ctrl+J to opening the work panel", () => {
     const workPanel = KEYBOARD_SHORTCUTS.find(
       (shortcut) => shortcut.id === "openWorkPanel",

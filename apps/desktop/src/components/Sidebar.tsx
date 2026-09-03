@@ -1523,7 +1523,11 @@ export function Sidebar({
           <button
             type="button"
             className="icon-btn"
-            title={`${t("nav.collapseSidebar")} (${sidebarToggleShortcut})`}
+            title={
+              sidebarToggleShortcut
+                ? `${t("nav.collapseSidebar")} (${sidebarToggleShortcut})`
+                : t("nav.collapseSidebar")
+            }
             aria-label={t("nav.collapseSidebar")}
             aria-expanded={true}
             data-nav="toggle-sidebar"

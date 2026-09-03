@@ -2985,3 +2985,21 @@ D193, and D194.
   lands too.
 - Edit-resend follows the same path: the rewritten prompt replaces the old row
   immediately and the host echo settles it. See E2E-071i.
+
+## 2026-09-03 — Explicitly disable application keyboard shortcuts (D289)
+
+- Application shortcut overrides have three states: an absent property uses the
+  platform default, a valid portable binding string customizes it, and explicit
+  JSON `null` means `Unbound` and dispatches nothing. Invalid strings retain the
+  existing safe fallback to the default.
+- Settings exposes Disable separately from Restore default and renders a
+  localized Unbound state. Unbound actions do not participate in conflicts and
+  remain editable. The shared state drives renderer matching, macOS menu
+  accelerators, and the global plugin launcher.
+- Unbinding `openPluginLauncher` unregisters any prior Electron global shortcut,
+  disables the Windows host hook, and removes the focused-window fallback. The
+  host hook starts disabled until Electron applies the effective settings.
+  Configurable macOS native-role menu items become role-less clickable items when
+  unbound so Electron cannot restore their default accelerator.
+- The existing settings JSON, IPC methods, protocol version, storage schema, and
+  plugin-local shortcut contract remain unchanged. See ADR 0148 and E2E-072.

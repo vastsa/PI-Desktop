@@ -439,8 +439,8 @@
 
 .shortcut-row-controls {
   display: flex;
-  width: 222px;
-  flex: 0 0 222px;
+  width: 260px;
+  flex: 0 0 260px;
   align-items: center;
   justify-content: flex-end;
   gap: 6px;
@@ -488,6 +488,12 @@
   gap: 3px;
 }
 
+.shortcut-unbound {
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+}
+
 .shortcut-key-part {
   gap: 3px;
 }
@@ -522,6 +528,7 @@
   box-shadow: 0 1px 0 color-mix(in oklab, #1a1c1f 6%, transparent);
 }
 
+.shortcut-disable,
 .shortcut-reset {
   display: inline-flex;
   width: 32px;
@@ -534,11 +541,13 @@
   transition: background var(--motion-duration-fast) var(--motion-ease-out), color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
+.shortcut-disable:hover:not(:disabled),
 .shortcut-reset:hover:not(:disabled) {
   background: var(--ds-bg-hover);
   color: var(--ds-text-primary);
 }
 
+.shortcut-disable:disabled,
 .shortcut-reset:disabled {
   opacity: 0.28;
 }

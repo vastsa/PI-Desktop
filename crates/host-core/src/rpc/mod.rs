@@ -3910,6 +3910,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn settings_set_round_trips_an_explicitly_disabled_shortcut() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let state = Arc::new(Mutex::new(app_state));
+        let tx = mpsc::unbounded_channel().0;
+
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "keybindings": { "openSearch": null } }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let disabled = handle_request(state.clone(), "settings.get", json!({}), tx.clone())
+            .await
+            .unwrap();
+        assert_eq!(disabled["keybindings"]["openSearch"], Value::Null);
+
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "theme": "light" }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let preserved = handle_request(state, "settings.get", json!({}), tx)
+            .await
+            .unwrap();
+        assert_eq!(preserved["keybindings"]["openSearch"], Value::Null);
+    }
+
+    #[tokio::test]
     async fn settings_set_preserves_stored_shell_when_shell_is_omitted() {
         let Some(current_shell) = available_test_shell_id() else {
             return;

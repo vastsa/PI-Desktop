@@ -3067,28 +3067,35 @@ Each scenario is documented in this format:
 - **Preconditions**: App running on macOS and on one Windows/Linux target with
   Settings open; no custom shortcut overrides are stored.
 - **Steps**: 1) Open Settings → Shortcuts and inspect Keyboard shortcuts. 2) Change
-  Search to an unused modifier chord. 3) invoke the new chord and then the old
-  chord. 4) Attempt to assign that chord to the command shortcut (now opened via global search). 5) Attempt a bare
-  letter and a reserved editing chord. 6) Restart the app and invoke the custom
-  Search chord again. 7) Restore Search, then choose Restore defaults. 8) On
+  Search to an unused modifier chord. 3) Invoke the new chord and then the old
+  chord. 4) Attempt to assign that chord to the command shortcut (now opened via
+  global search). 5) Attempt a bare letter and a reserved editing chord. 6)
+  Disable Search and confirm its row shows Unbound. 7) Confirm neither the
+  default nor custom Search chord invokes Search, then restart and check that it
+  remains disabled. 8) Restore Search individually and confirm its default
+  returns; choose Restore defaults and confirm all rows return to defaults. 9) On
   macOS inspect the corresponding native application-menu accelerator after
-  each save/reset. 9) Press and release Ctrl/Command alone, confirm an IME
-  candidate, and hold the back/forward chord long enough to generate repeats.
+  each save/reset. 10) On Windows disable the plugin launcher and confirm its
+  old global binding, focused fallback, and Alt+Space host fallback are all
+  inactive. 11) Press and release Ctrl/Command alone, confirm an IME candidate,
+  and hold the back/forward chord long enough to generate repeats.
 - **Expected**: Actions are grouped as Navigation, Agent, and Window with
   platform-native key labels; recording has visible focus and `Escape` cancels;
   the custom Search chord takes effect immediately, replaces the old chord,
   survives restart, and updates the macOS menu; duplicate, modifier-free, and
   reserved assignments show an inline error without changing either action;
+  Unbound displays as a localized explicit state, participates in no conflicts,
+  dispatches no old or default chord, persists across restart, removes the
+  macOS accelerator, and disables the Windows launcher fallback layers;
   individual and global reset restore the shared defaults; Keyboard shortcuts is
-  its own Settings destination (the eight-item rail remains unchanged). Modifier-only
-  and IME keydowns dispatch nothing, and a held history chord traverses only
-  once per physical press.
+  its own Settings destination. Modifier-only and IME keydowns dispatch nothing,
+  and a held history chord traverses only once per physical press.
 - **Specs linked**: `04-ux/06-settings-ia.md`, `04-ux/07-ui-design-system.md`,
   `03-runtime/01-ipc-protocol.md`
 - **Acceptance**: F (settings persistence), Quality (keyboard accessibility)
 - **Milestone**: M5
 - **Status**: Unit-covered (`keyboard-shortcuts.test.ts`,
-  `settings-keyboard-shortcuts.test.mjs`); rendered scenario Draft
+  `settings-keyboard-shortcuts.test.mjs`, host settings RPC test); rendered scenario Draft
 
 #### E2E-073a: Developer mode gates the developer-tools console
 

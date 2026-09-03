@@ -160,3 +160,4 @@ Each ADR includes:
 | 0145 | Publish native macOS Intel artifacts | Accepted |
 | 0146 | Assign outer and inner work-panel resize ownership by boundary | Accepted |
 | 0147 | A2A protocol stack for subagent coordination | Accepted (supersedes 0138 / 0140) |
+| 0148 | Explicitly disable application keyboard shortcuts | Accepted |

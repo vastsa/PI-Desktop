@@ -102,15 +102,21 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
     Windows/Linux) and the platform-specific full-screen default
   - clicking a binding records the next modifier chord or `F1`–`F12`; `Escape`
     cancels recording
+  - each binding can be explicitly set to `Unbound`; the disabled state remains
+    editable and is distinct from restoring the default
   - duplicate application bindings and operating-system/editor-reserved chords
-    are rejected with an inline error
+    are rejected with an inline error; an unbound action never participates in
+    conflict checks
   - each override can be restored independently and all overrides can be
     restored together
-  - overrides persist in optional `AppSettings.keybindings`; macOS native-menu
-    accelerators and renderer-owned shortcuts update from the same map
+  - overrides persist in optional `AppSettings.keybindings`; a missing entry
+    uses the platform default, a valid string uses the custom binding, and
+    `null` disables the action. macOS native-menu accelerators and
+    renderer-owned shortcuts update from the same map
   - the plugin launcher defaults to `Option + Space` on macOS and `Alt + Space`
-    on Windows/Linux; its native global registration follows the same override,
-    while the focused frameless window retains an `Alt + Space` fallback
+    on Windows/Linux; its native global registration follows the same override.
+    An unbound launcher disables Electron registration, the Windows host hook,
+    and the focused-window fallback
 
 ### Model configuration (`agent` tab)
 - **Defaults** card: a compact settings row shows the provider name and exact

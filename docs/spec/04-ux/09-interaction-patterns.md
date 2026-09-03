@@ -51,6 +51,9 @@
 - Shortcuts must not conflict with macOS system shortcuts or common browser shortcuts
 - Never override `Cmd/Ctrl + C`, `Cmd/Ctrl + V`, `Cmd/Ctrl + A`, `Cmd/Ctrl + S`
 - Shortcuts are consistent across macOS (Cmd) and Windows/Linux (Ctrl)
+- A missing shortcut override uses the shared platform default; a valid
+  string uses the custom binding; an explicit `null` means `Unbound` and never
+  dispatches. Unbound actions do not conflict with other bindings.
 - A modifier-only keydown and an IME composition/229 keydown never dispatch a
   command. Repeated keydown events do not repeatedly traverse destination
   history; each back/forward chord advances at most once per physical press.
@@ -61,7 +64,8 @@
   low-level keyboard hook that consumes the system-menu chord and emits an
   Electron host notification, so it works while another application is
   focused. A focused-window fallback remains available if the hook cannot be
-  installed. Custom bindings continue to use Electron's global shortcut API.
+  installed. An unbound launcher disables both the hook and focused-window
+  fallback. Custom bindings continue to use Electron's global shortcut API.
   Electron starts warming the launcher in a hidden window as soon as Electron
   is ready, in parallel with backend and main-window boot; shortcut delivery
   during warm-up joins the same in-flight load. The macOS show path relies on

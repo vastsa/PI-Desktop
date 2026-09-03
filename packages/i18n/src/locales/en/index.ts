@@ -553,6 +553,8 @@ export const en = {
     shortcutReserved: "Reserved by the operating system or editor.",
     shortcutConflict: "Already assigned to {{action}}.",
     shortcutSaveFailed: "Could not save the shortcut.",
+    shortcutUnbound: "Unbound",
+    shortcutDisable: "Disable shortcut for {{action}}",
     shortcutGroup: {
       navigation: "Navigation",
       agent: "Agent",

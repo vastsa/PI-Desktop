@@ -68,6 +68,8 @@ test("shared shortcut map drives renderer dispatch and native menu accelerators"
   assert.match(mainSource, /applyPluginLauncherShortcut/);
   assert.match(mainSource, /globalShortcut\.register/);
   assert.match(mainSource, /keyboard\.setGlobalShortcut/);
+  assert.match(mainSource, /pluginLauncherBinding: string \| null/);
+  assert.match(mainSource, /pluginLauncherAccelerator && pluginLauncherAccelerator !== accelerator/);
   assert.match(mainSource, /method === "keyboard\.shortcut"/);
 });
 
@@ -83,12 +85,20 @@ test("global shortcut dispatch ignores incomplete keyboard events", () => {
 
 test("Basics exposes editable, conflict-safe, resettable shortcut mappings", () => {
   assert.match(sharedTypesSource, /keybindings\?: KeybindingOverrides/);
+  assert.match(
+    shortcutSource,
+    /export type KeybindingOverrides = Partial<Record<KeyboardShortcutId, string \| null>>/,
+  );
   assert.match(settingsSource, /<KeyboardShortcutsSection/);
   assert.match(sectionSource, /keybindingFromEvent/);
   assert.match(sectionSource, /isAllowedKeybinding/);
   assert.match(sectionSource, /isReservedKeybinding/);
   assert.match(sectionSource, /keybindingsConflict/);
   assert.match(sectionSource, /settings\.shortcutConflict/);
+  assert.match(sectionSource, /settings\.shortcutUnbound/);
+  assert.match(sectionSource, /settings\.shortcutDisable/);
+  assert.match(sectionSource, /hasOwnProperty\.call/);
+  assert.match(sectionSource, /mode === "disabled"/);
   assert.match(sectionSource, /onKeyDown=\{\s*recording/);
   assert.match(sectionSource, /delete next\[shortcut\.id\]/);
   assert.match(sectionSource, /saveSettings\(\{ keybindings: \{\} \}\)/);

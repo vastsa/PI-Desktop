@@ -733,8 +733,10 @@ Non-sensitive config that can be returned to the UI:
   host reads missing values as 600 and accepts integers from 1 through 1,000,000
 - permission policy toggles
 - UI preferences, including optional `AppSettings.keybindings` overrides keyed
-  by the shared shortcut action ids; values use portable `Mod+Shift+Key`
-  notation and contain no platform-specific native accelerator strings
+  by the shared shortcut action ids; values are either `null` or portable
+  `Mod+Shift+Key` strings and contain no platform-specific native accelerator
+  strings. A missing entry uses the platform default, while `null` is an
+  explicit disabled/Unbound state
 - optional `AppSettings.developerMode`; absent and `false` both keep developer
   tools disabled
 

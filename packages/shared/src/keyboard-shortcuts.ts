@@ -19,7 +19,7 @@ export const KEYBOARD_SHORTCUT_IDS = [
 
 export type KeyboardShortcutId = (typeof KEYBOARD_SHORTCUT_IDS)[number];
 export type ShortcutPlatform = "darwin" | "win32" | "linux";
-export type KeybindingOverrides = Partial<Record<KeyboardShortcutId, string>>;
+export type KeybindingOverrides = Partial<Record<KeyboardShortcutId, string | null>>;
 export type KeyboardShortcutGroup = "navigation" | "agent" | "window";
 
 export type KeyboardShortcutDefinition = {
@@ -129,7 +129,14 @@ export function resolveKeybinding(
   shortcut: KeyboardShortcutDefinition,
   overrides: KeybindingOverrides | undefined,
   platform: ShortcutPlatform,
-): string {
+): string | null {
+  if (
+    overrides &&
+    Object.prototype.hasOwnProperty.call(overrides, shortcut.id) &&
+    overrides[shortcut.id] === null
+  ) {
+    return null;
+  }
   return normalizeKeybinding(overrides?.[shortcut.id]) ?? defaultKeybinding(shortcut, platform);
 }
 
@@ -148,7 +155,7 @@ export function keybindingFromEvent(
 }
 
 export function keybindingMatchesEvent(
-  binding: string,
+  binding: string | null | undefined,
   event: KeyboardEventLike,
   platform: ShortcutPlatform,
 ): boolean {
@@ -161,7 +168,10 @@ export function keybindingMatchesEvent(
   return shiftedEqualVariant(normalized) === eventBinding;
 }
 
-export function keybindingsConflict(left: string, right: string): boolean {
+export function keybindingsConflict(
+  left: string | null | undefined,
+  right: string | null | undefined,
+): boolean {
   const normalizedLeft = normalizeKeybinding(left);
   const normalizedRight = normalizeKeybinding(right);
   if (!normalizedLeft || !normalizedRight) return false;
@@ -207,7 +217,7 @@ export function isReservedKeybinding(
 }
 
 export function keybindingToElectronAccelerator(
-  binding: string,
+  binding: string | null | undefined,
   platform: ShortcutPlatform,
 ): string | undefined {
   const normalized = normalizeKeybinding(binding);
@@ -223,7 +233,7 @@ export function keybindingToElectronAccelerator(
 }
 
 export function keybindingDisplayParts(
-  binding: string,
+  binding: string | null | undefined,
   platform: ShortcutPlatform,
 ): string[] {
   const normalized = normalizeKeybinding(binding);

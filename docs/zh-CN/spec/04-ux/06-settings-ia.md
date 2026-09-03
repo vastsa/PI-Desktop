@@ -89,17 +89,18 @@
   - 列出来自一个共享快捷方式地图的导航、代理和窗口操作
   - 渲染平台本机修饰符标签（`⌘` 位于 macOS 上，`Ctrl` 位于
     Windows/Linux) 和平台特定的全屏默认值
-  - 单击绑定记录下一个修饰和弦或 `F1`–`F12`； `Escape`
-    取消录音
+  - 单击绑定记录下一个修饰和弦或 `F1`–`F12`；`Escape`
+    取消录制
+  - 每个绑定都可以明确设为“未绑定”；该状态仍可编辑，且不同于恢复默认值
   - 重复的应用程序绑定和 operating-system/editor-reserved 和弦
-    因内联错误而被拒绝
-  - 每个覆盖都可以独立恢复，并且所有覆盖都可以
-    一起恢复
-  - 覆盖持续存在于可选的 `AppSettings.keybindings` 中； macOS 本机菜单
-    加速器和渲染器拥有的快捷方式从同一地图更新
-- macOS 和 `Alt + Space` 上的插件启动器默认为 `Option + Space`
-    在 Windows/Linux 上；它的本地全局注册遵循相同的覆盖，
-    而聚焦的无框窗口保留了 `Alt + Space` 后备
+    会以内联错误拒绝；未绑定的操作不参与冲突检查
+  - 每个覆盖都可以独立恢复，并且所有覆盖都可以一起恢复
+  - 覆盖持续存在于可选的 `AppSettings.keybindings` 中：缺少属性使用平台默认值，
+    合法字符串使用自定义绑定，`null` 表示明确禁用；macOS 本机菜单加速器和
+    渲染器拥有的快捷键从同一张映射更新
+- 插件启动器在 macOS 默认为 `Option + Space`，在 Windows/Linux 默认为
+    `Alt + Space`；本机全局注册遵循相同覆盖。未绑定时会同时关闭 Electron 注册、
+    Windows host hook 和聚焦窗口后备
 
 ### 模型配置（`agent` 选项卡）
 - **Studio Hero**：提供商计数、就绪计数和当前默认 provider/model 摘要

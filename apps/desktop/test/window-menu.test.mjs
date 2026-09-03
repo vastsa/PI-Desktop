@@ -64,7 +64,7 @@ test("macOS installs a standard application menu before window creation", () => 
   assert.match(menuSource, /Menu\.setApplicationMenu\(null\)/);
   assert.match(
     mainSource,
-    /installApplicationMenu\(\{\s+locale: app\.getLocale\(\),\s+dispatch: dispatchApplicationMenuCommand,\s+\}\);/,
+    /installApplicationMenu\(\{\s+locale: app\.getLocale\(\),\s+dispatch: dispatchApplicationMenuCommand,\s+dispatchNative: dispatchNativeMenuAction,\s+\}\);/,
   );
   assert.ok(
     mainSource.indexOf("prewarmPluginLauncher();") < mainSource.indexOf("registerIpc();"),
@@ -91,15 +91,17 @@ test("macOS application menu routes shell commands and preserves native roles", 
     "paste",
     "selectAll",
     "reload",
-    "resetZoom",
-    "zoomIn",
-    "zoomOut",
-    "togglefullscreen",
   ]) {
     assert.match(menuSource, new RegExp(`role: "${role}"`));
   }
+  assert.match(menuSource, /function nativeAction\(/);
+  for (const action of ["close", "resetZoom", "zoomIn", "zoomOut", "toggleFullScreen"]) {
+    assert.match(menuSource, new RegExp(`"${action}"`));
+  }
+  assert.match(menuSource, /A plain item keeps the command clickable/);
   assert.match(mainSource, /IPC\.event\.menuCommand/);
   assert.match(mainSource, /APP_MENU_COMMANDS\.includes\(command\)/);
+  assert.match(mainSource, /dispatchNative: dispatchNativeMenuAction/);
   assert.doesNotMatch(menuSource, /CmdOrCtrl\+J|toggleWorkPanel/);
   assert.doesNotMatch(protocolSource, /"toggleWorkPanel"/);
 });
@@ -253,11 +255,12 @@ test("Windows/Linux explicit minimize paths use the native taskbar", () => {
     /window\.on\("minimize", \(\) => \{[\s\S]*process\.platform !== "darwin"\) return;[\s\S]*window\.hide\(\)/,
   );
   assert.match(mainSource, /tray\?\.destroy\(\)/);
-  assert.match(mainSource, /case "minimize":\s*window\.minimize\(\)/);
-  const nativeMenuBlock = mainSource.slice(
-    mainSource.indexOf("IPC.invoke.nativeMenuAction"),
+  assert.match(mainSource, /case "minimize":\s*target\.minimize\(\)/);
+  const nativeActionBlock = mainSource.slice(
+    mainSource.indexOf("function executeNativeMenuAction"),
+    mainSource.indexOf("function dispatchNativeMenuAction"),
   );
-  assert.match(nativeMenuBlock, /case "minimize":\s*window\.minimize\(\)/);
+  assert.match(nativeActionBlock, /case "minimize":\s*target\.minimize\(\)/);
   const trayResource = packageJson.build.extraResources.find(
     (resource) => resource.to === "tray-icon.png",
   );

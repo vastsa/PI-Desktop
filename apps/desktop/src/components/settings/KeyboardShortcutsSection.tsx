@@ -15,7 +15,7 @@ import {
   type KeyboardShortcutId,
   type ShortcutPlatform,
 } from "@pi-desktop/shared";
-import { IconSnapshot } from "../icons";
+import { IconPower, IconSnapshot } from "../icons";
 
 type Props = {
   settings: AppSettings;
@@ -36,10 +36,19 @@ function shortcutLabelKey(id: KeyboardShortcutId): string {
 function Keybinding({
   binding,
   platform,
+  unboundLabel,
 }: {
-  binding: string;
+  binding: string | null;
   platform: ShortcutPlatform;
+  unboundLabel: string;
 }) {
+  if (!binding) {
+    return (
+      <span className="shortcut-unbound" aria-label={unboundLabel}>
+        {unboundLabel}
+      </span>
+    );
+  }
   const parts = keybindingDisplayParts(binding, platform);
   return (
     <span className="shortcut-keybinding" aria-label={parts.join("+")}>
@@ -74,9 +83,14 @@ export function KeyboardShortcutsSection({ settings, platform, saveSettings }: P
   const storeBinding = async (
     shortcut: KeyboardShortcutDefinition,
     binding: string | null,
+    mode: "binding" | "disabled" | "default" = "binding",
   ) => {
     const next = { ...(settings.keybindings ?? {}) };
-    if (!binding || binding === defaultKeybinding(shortcut, platform)) {
+    if (mode === "default") {
+      delete next[shortcut.id];
+    } else if (mode === "disabled") {
+      next[shortcut.id] = null;
+    } else if (!binding || binding === defaultKeybinding(shortcut, platform)) {
       delete next[shortcut.id];
     } else {
       next[shortcut.id] = binding;
@@ -166,7 +180,11 @@ export function KeyboardShortcutsSection({ settings, platform, saveSettings }: P
             </div>
             {shortcuts.map((shortcut) => {
               const binding = resolveKeybinding(shortcut, settings.keybindings, platform);
-              const customized = Boolean(settings.keybindings?.[shortcut.id]);
+              const customized = Object.prototype.hasOwnProperty.call(
+                settings.keybindings ?? {},
+                shortcut.id,
+              );
+              const disabled = customized && settings.keybindings?.[shortcut.id] === null;
               const recording = recordingId === shortcut.id;
               const rowError = error?.id === shortcut.id ? error.message : null;
               return (
@@ -208,8 +226,26 @@ export function KeyboardShortcutsSection({ settings, platform, saveSettings }: P
                           {t("settings.shortcutRecording")}
                         </span>
                       ) : (
-                        <Keybinding binding={binding} platform={platform} />
+                        <Keybinding
+                          binding={binding}
+                          platform={platform}
+                          unboundLabel={t("settings.shortcutUnbound")}
+                        />
                       )}
+                    </button>
+                    <button
+                      type="button"
+                      className="shortcut-disable"
+                      aria-label={t("settings.shortcutDisable", {
+                        action: t(shortcutLabelKey(shortcut.id)),
+                      })}
+                      title={t("settings.shortcutDisable", {
+                        action: t(shortcutLabelKey(shortcut.id)),
+                      })}
+                      disabled={disabled || savingId !== null}
+                      onClick={() => void storeBinding(shortcut, null, "disabled")}
+                    >
+                      <IconPower size={13} />
                     </button>
                     <button
                       type="button"
@@ -221,7 +257,7 @@ export function KeyboardShortcutsSection({ settings, platform, saveSettings }: P
                         action: t(shortcutLabelKey(shortcut.id)),
                       })}
                       disabled={!customized || savingId !== null}
-                      onClick={() => void storeBinding(shortcut, null)}
+                      onClick={() => void storeBinding(shortcut, null, "default")}
                     >
                       <IconSnapshot size={13} />
                     </button>

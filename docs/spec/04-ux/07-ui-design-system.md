@@ -223,7 +223,7 @@ and light themes.
 Light-surface polish (D148):
 
 - Docked work panel uses quiet inset paper (`#fafafa`) with a white header band and a combined create trigger in the header so the tool column stays on content without a heavy divider.
-- Shared form fields, browser URL, settings segment tracks, and shortcut keycaps use `#f5f5f5` inset fills with a 0.5px ink stroke; focus lifts to white with a neutral ring.
+- Shared form fields, browser URL, settings segment tracks, and shortcut keycaps use `#f5f5f5` inset fills with a 0.5px ink stroke; focus lifts to white with a neutral ring. An Unbound shortcut uses a localized text state instead of an empty keycap and keeps its recorder and restore controls keyboard-focusable.
 - Settings toggles keep a near-black on-track and force a white knob in light mode.
   Off/on track and knob colours come from the `--ds-switch-*` theme tokens; a
   per-theme `:root[data-theme="…"] .settings-toggle` background override

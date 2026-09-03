@@ -254,7 +254,7 @@ let tray: Tray | null = null;
 let pluginLauncherWindow: BrowserWindow | null = null;
 let pluginLauncherCreationPromise: Promise<BrowserWindow> | null = null;
 let pluginLauncherAccelerator: string | null = null;
-let pluginLauncherBinding = "Alt+Space";
+let pluginLauncherBinding: string | null = null;
 let windowCreationPromise: Promise<void> | null = null;
 let applicationBooted = false;
 const isDevelopmentBuild =
@@ -1803,6 +1803,71 @@ function dispatchApplicationMenuCommand(command: AppMenuCommand) {
   });
 }
 
+function executeNativeMenuAction(
+  action: NativeMenuAction,
+  target: BrowserWindow | null = mainWindow,
+) {
+  if (!target || target.isDestroyed()) {
+    return { maximized: false, fullScreen: false };
+  }
+
+  const contents = target.webContents;
+  switch (action) {
+    case "undo":
+      contents.undo();
+      break;
+    case "redo":
+      contents.redo();
+      break;
+    case "cut":
+      contents.cut();
+      break;
+    case "copy":
+      contents.copy();
+      break;
+    case "paste":
+      contents.paste();
+      break;
+    case "selectAll":
+      contents.selectAll();
+      break;
+    case "reload":
+      contents.reload();
+      break;
+    case "zoomIn":
+      contents.setZoomFactor(Math.min(3, contents.getZoomFactor() * 1.1));
+      break;
+    case "zoomOut":
+      contents.setZoomFactor(Math.max(0.5, contents.getZoomFactor() / 1.1));
+      break;
+    case "resetZoom":
+      contents.setZoomFactor(1);
+      break;
+    case "toggleFullScreen":
+      target.setFullScreen(!target.isFullScreen());
+      break;
+    case "minimize":
+      target.minimize();
+      break;
+    case "toggleMaximize":
+      if (target.isMaximized()) target.unmaximize();
+      else target.maximize();
+      break;
+    case "close":
+      target.close();
+      break;
+  }
+
+  return {
+    maximized: !target.isDestroyed() && target.isMaximized(),
+    fullScreen: !target.isDestroyed() && target.isFullScreen(),
+  };
+}
+
+function dispatchNativeMenuAction(action: NativeMenuAction) {
+  void executeNativeMenuAction(action);
+}
+
 let appliedMenuSettings: string | null = null;
 
 /**
@@ -1873,6 +1938,7 @@ function applyApplicationMenuSettings(settings?: {
     keybindings,
     developerMode: devMode,
     dispatch: dispatchApplicationMenuCommand,
+    dispatchNative: dispatchNativeMenuAction,
   });
   updateTrayMenu(locale);
 }
@@ -2441,21 +2507,16 @@ function applyPluginLauncherShortcut(keybindings?: KeybindingOverrides) {
       );
   }
 
+  if (pluginLauncherAccelerator && pluginLauncherAccelerator !== accelerator) {
+    globalShortcut.unregister(pluginLauncherAccelerator);
+    pluginLauncherAccelerator = null;
+  }
+
   // Windows reserves Alt+Space for the active window system menu. The
   // host-core low-level hook owns this exact binding so it still works while
   // another application is focused; do not ask Electron to register it too.
-  if (process.platform === "win32" && binding === "Alt+Space") {
-    if (pluginLauncherAccelerator) {
-      globalShortcut.unregister(pluginLauncherAccelerator);
-      pluginLauncherAccelerator = null;
-    }
-    return;
-  }
+  if (process.platform === "win32" && binding === "Alt+Space") return;
   if (!accelerator || accelerator === pluginLauncherAccelerator) return;
-  if (pluginLauncherAccelerator) {
-    globalShortcut.unregister(pluginLauncherAccelerator);
-  }
-  pluginLauncherAccelerator = null;
   const registered = globalShortcut.register(accelerator, () => {
     void togglePluginLauncher().catch((error) =>
       logger.app("diagnostics", "error", "plugin launcher shortcut failed", {
@@ -7057,63 +7118,7 @@ function registerIpc() {
       ) {
         throw new Error("unsupported native menu action");
       }
-      if (!mainWindow || mainWindow.isDestroyed()) {
-        return { maximized: false, fullScreen: false };
-      }
-
-      const window = mainWindow;
-      const action = input.action as NativeMenuAction;
-      const contents = window.webContents;
-      switch (action) {
-        case "undo":
-          contents.undo();
-          break;
-        case "redo":
-          contents.redo();
-          break;
-        case "cut":
-          contents.cut();
-          break;
-        case "copy":
-          contents.copy();
-          break;
-        case "paste":
-          contents.paste();
-          break;
-        case "selectAll":
-          contents.selectAll();
-          break;
-        case "reload":
-          contents.reload();
-          break;
-        case "zoomIn":
-          contents.setZoomFactor(Math.min(3, contents.getZoomFactor() * 1.1));
-          break;
-        case "zoomOut":
-          contents.setZoomFactor(Math.max(0.5, contents.getZoomFactor() / 1.1));
-          break;
-        case "resetZoom":
-          contents.setZoomFactor(1);
-          break;
-        case "toggleFullScreen":
-          window.setFullScreen(!window.isFullScreen());
-          break;
-        case "minimize":
-          window.minimize();
-          break;
-        case "toggleMaximize":
-          if (window.isMaximized()) window.unmaximize();
-          else window.maximize();
-          break;
-        case "close":
-          window.close();
-          break;
-      }
-
-      return {
-        maximized: !window.isDestroyed() && window.isMaximized(),
-        fullScreen: !window.isDestroyed() && window.isFullScreen(),
-      };
+      return executeNativeMenuAction(input.action as NativeMenuAction);
     },
   );
 
@@ -8501,6 +8506,7 @@ app.whenReady().then(async () => {
   installApplicationMenu({
     locale: app.getLocale(),
     dispatch: dispatchApplicationMenuCommand,
+    dispatchNative: dispatchNativeMenuAction,
   });
   // Start the retained launcher as soon as Electron is ready. It can load in
   // parallel with host/plugin boot, so the first post-boot Option+Space does
@@ -8511,7 +8517,6 @@ app.whenReady().then(async () => {
   // snapshot stale, so every release performs one bounded update without
   // blocking the first window; Settings can force the same refresh on demand.
   void modelsDevCatalog.ensureLoaded();
-  applyPluginLauncherShortcut();
   updater.startAutoCheck();
   let bootError: unknown = null;
   try {
@@ -8534,8 +8539,13 @@ app.whenReady().then(async () => {
       applyApplicationMenuSettings(stored);
       applyDeveloperMode(stored);
     } catch {
-      // keep the OS-locale menu until settings can be read again
+      // Keep the OS-locale menu until settings can be read again, while
+      // retaining the historical default launcher fallback for this failure.
+      applyPluginLauncherShortcut();
     }
+  } else {
+    // If the backend never started, retain the default focused/global path.
+    applyPluginLauncherShortcut();
   }
   await ensureWindow();
   // createWindow awaits the initial load (loadFile resolves on

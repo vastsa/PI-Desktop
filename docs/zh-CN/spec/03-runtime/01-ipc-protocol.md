@@ -678,8 +678,9 @@ sidecar 用于显示每秒输出令牌的流时间。 `ToolTokenUsage`
   读取为 600，并接受 1 至 1,000,000 的整数
 - 权限策略切换
 - UI 首选项，包括可选的 `AppSettings.keybindings` 覆盖键控
-  通过共享快捷操作 ID；值使用便携式 `Mod+Shift+Key`
-  表示法并且不包含特定于平台的本机加速器字符串
+  通过共享快捷操作 ID；值可以是 `null` 或便携式 `Mod+Shift+Key` 字符串，
+  不包含特定于平台的本机加速器字符串。缺少属性使用平台默认值，`null` 表示
+  明确禁用（未绑定）
 - 可选的 `AppSettings.developerMode`；缺席和 `false` 均保留开发人员
   工具已禁用
 
