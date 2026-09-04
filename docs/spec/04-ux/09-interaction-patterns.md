@@ -1028,6 +1028,21 @@ When drag/drop is implemented, these patterns should apply:
 - Choosing **Open folder** opens the project directory in the system file
   manager without changing the active session transcript.
 
+### 9.1b Sidebar session hover card
+
+- Hovering or focusing a session row reveals a multi-line hover card after
+  the same 500ms delay used by the project path tooltip; the card never
+  anchors to a torn-down row.
+- The card surfaces the row's metadata in this order, top to bottom: title,
+  tag chips, **Workspace**, branch (when the project exposes one), and
+  **Updated {{when}}**. Temporary/scratch sessions show the localized
+  "Temporary" / "临时对话" placeholder instead of a workspace name.
+- The card is rendered through a portal at `document.body`, never widens
+  beyond 320px, never causes horizontal scroll on the underlying row, and
+  stays non-interactive so the row keeps receiving pointer events.
+- The card cancels on pointer leave, focus blur, scroll (any scroll
+  container), resize, and the moment a context menu opens.
+
 ### 9.2 Sidebar scrolling
 
 - The standalone Sessions body is capped at five compact rows and scrolls

@@ -1688,6 +1688,31 @@ Each scenario is documented in this format:
 - **Status**: Unit-covered (`sidebar-preferences.test.mjs` for retained paths
   and collapse persistence); full UI scenario Draft
 
+#### E2E-047b: Sidebar session hover card surfaces rich metadata
+
+- **Preconditions**: A retained project with at least two sessions, one of
+  which has a recorded git branch; a Temporary/scratch session also exists.
+- **Steps**: 1) Hover a session row under the retained project and wait for
+  the card to appear; repeat with keyboard focus on the same row. 2) Move the
+  pointer to a different session row without leaving the sidebar; wait. 3)
+  Hover a Temporary/scratch session row. 4) Resize the sidebar narrower than
+  320px; hover again. 5) Right-click a session row while the card is visible
+  and open its context menu. 6) Scroll the sidebar body while the card is up.
+- **Expected**: The card appears after a 500ms dwell, never appears during
+  quick pointer passes, and re-targets to the latest hovered row when the
+  pointer changes. Each card shows: the localized session title, two tag
+  chips (Local task + mode/permission badge), the project name under
+  Workspace (or "Temporary" / "临时对话" for scratch rows), the project's
+  git branch when one is known, and the row's `Updated` timestamp formatted
+  by the active locale. The card never widens past 320px, never causes the
+  underlying row to horizontally scroll, and disappears immediately on
+  resize, scroll, or context-menu open.
+- **Specs linked**: `04-ux/09-interaction-patterns.md §9.1b`
+- **Acceptance**: F (local presentation)
+- **Milestone**: M5
+- **Status**: Unit-covered (`sidebar-navigation.test.mjs` for the project
+  path tooltip contract that the session card reuses); full UI scenario Draft
+
 #### E2E-048: Pin, archive, restore, and sort project/conversation rows
 
 - **Preconditions**: Two retained projects contain conversations with distinct
