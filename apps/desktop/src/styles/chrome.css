@@ -352,8 +352,8 @@
   background: linear-gradient(
     180deg,
     transparent 0%,
-    var(--ds-sidebar-glass-edge) 12%,
-    var(--ds-sidebar-glass-edge) 88%,
+    var(--ds-sidebar-glass-edge) 25%,
+    var(--ds-sidebar-glass-edge) 75%,
     transparent 100%
   );
 }

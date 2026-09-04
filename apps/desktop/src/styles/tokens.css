@@ -56,7 +56,7 @@
   --ds-sidebar-glass-tint: color-mix(in oklab, var(--ds-bg-sidebar) 40%, transparent);
   --ds-sidebar-glass-sheen-top: color-mix(in oklab, var(--gray-0) 7%, transparent);
   --ds-sidebar-glass-sheen-bottom: color-mix(in oklab, var(--gray-0) 4%, transparent);
-  --ds-sidebar-glass-edge: color-mix(in oklab, var(--gray-0) 14%, transparent);
+  --ds-sidebar-glass-edge: color-mix(in oklab, var(--gray-0) 7%, transparent);
   --ds-bg-chip: color-mix(in oklab, var(--gray-0) 6%, transparent);
   --ds-text-primary: var(--gray-0);
   /*
@@ -132,7 +132,7 @@
   --ds-sidebar-glass-tint: color-mix(in oklab, var(--ds-bg-sidebar) 55%, transparent);
   --ds-sidebar-glass-sheen-top: color-mix(in oklab, #ffffff 45%, transparent);
   --ds-sidebar-glass-sheen-bottom: color-mix(in oklab, #ffffff 30%, transparent);
-  --ds-sidebar-glass-edge: color-mix(in oklab, #1a1c1f 10%, transparent);
+  --ds-sidebar-glass-edge: color-mix(in oklab, #1a1c1f 4%, transparent);
   --ds-bg-chip: color-mix(in oklab, #1a1c1f 4%, transparent);
   --ds-text-primary: #1a1c1f;
   --ds-text-secondary: color-mix(in oklab, #1a1c1f 74%, transparent);

@@ -136,8 +136,10 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
   `visualEffectState: "followWindow"` and a transparent window backing. Only the
   `.sidebar` and any rendered `.sidebar-rail` surface are translucent; the
   renderer adds a thin theme tint (`--ds-sidebar-glass-tint`, 40% dark /
-  55% light) plus a top/bottom sheen and a hairline seam that fades at both
-  ends. The material carries the blur, so the tint must stay thin — the sheen
+  55% light) plus a top/bottom sheen and a deliberately faint hairline seam
+  (7% dark / 4% light, fading out over the outer quarter of each end) so the
+  dock edge reads borderless rather than as a hard divider. The material
+  carries the blur, so the tint must stay thin — the sheen
   and the graded seam are what make the surface read as glass rather than a
   painted panel. `.main-pane`, `.main-titlebar`, and `.conversation-topbar`
   remain opaque `bg-primary` surfaces, so vibrancy does not spread across the
