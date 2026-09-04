@@ -29,6 +29,7 @@ import {
   Dot,
   ExternalLink,
   FileDiff,
+  FileSpreadsheet,
   FileText,
   Folder,
   FolderOpen,
@@ -49,6 +50,7 @@ import {
   Monitor,
   Moon,
   MoreHorizontal,
+  Music,
   Palette,
   PanelLeft,
   PanelRight,
@@ -79,6 +81,7 @@ import {
   TriangleAlert,
   UserRound,
   Undo2,
+  Video,
   Webhook,
   Workflow,
   Wrench,
@@ -148,6 +151,10 @@ export const IconCloudDown = icon(CloudDownload);
 export const IconDownload = icon(Download);
 export const IconImage = icon(Image);
 export const IconCamera = icon(Camera);
+/* Composer attachment chips: one glyph per file family. */
+export const IconSheet = icon(FileSpreadsheet);
+export const IconAudio = icon(Music);
+export const IconVideo = icon(Video);
 export const IconReview = icon(RefreshCw);
 export const IconKeyboard = icon(Keyboard);
 export const IconMic = icon(Mic);

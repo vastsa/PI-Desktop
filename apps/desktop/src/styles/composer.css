@@ -157,7 +157,8 @@
 
 .composer-input-stage {
   position: relative;
-  width: 100%;
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .composer-placeholder {
@@ -186,13 +187,22 @@
   }
 }
 
-.composer-file-references {
+/* WorkBuddy-style attachment row: chips share the input's first line with
+ * the text instead of sitting in a strip above it. */
+.composer-input-line {
   display: flex;
   width: 100%;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.composer-file-references {
+  display: flex;
+  max-width: 60%;
   min-width: 0;
+  flex: 0 1 auto;
   flex-wrap: wrap;
   gap: 5px;
-  margin-bottom: 6px;
 }
 
 .composer-file-reference {

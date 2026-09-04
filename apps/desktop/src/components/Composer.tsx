@@ -58,8 +58,13 @@ import {
   IconListChecks,
   IconSparkles,
   IconTarget,
+  IconArchive,
+  IconAudio,
+  IconCode,
   IconFileText,
   IconImage,
+  IconSheet,
+  IconVideo,
   IconX,
 } from "./icons";
 
@@ -92,6 +97,45 @@ type ComposerFileReference = {
 
 function isImageFilePath(path: string): boolean {
   return /\.(avif|bmp|gif|heic|jpe?g|png|tiff?|webp)$/i.test(path);
+}
+
+const CODE_FILE_PATTERN =
+  /\.(cjs|css|go|java|js|json|jsx|kt|mjs|php|py|rb|rs|sh|sql|svelte|swift|toml|ts|tsx|vue|ya?ml)$/i;
+const ARCHIVE_FILE_PATTERN = /\.(7z|bz2|gz|jar|rar|tar|zip)$/i;
+const SHEET_FILE_PATTERN = /\.(csv|ods|xls|xlsx)$/i;
+const AUDIO_FILE_PATTERN = /\.(flac|m4a|mp3|ogg|wav)$/i;
+const VIDEO_FILE_PATTERN = /\.(avi|mkv|m4v|mov|mp4|webm)$/i;
+
+/**
+ * One glyph per file family on composer attachment chips, so an image, a
+ * script, and an archive are distinguishable at a glance.
+ */
+function FileReferenceIcon({
+  reference,
+}: {
+  reference: ComposerFileReference;
+}) {
+  const mime = reference.mimeType ?? "";
+  if (reference.kind === "image" || mime.startsWith("image/")) {
+    return <IconImage size={13} aria-hidden />;
+  }
+  const name = reference.name;
+  if (CODE_FILE_PATTERN.test(name) || /javascript|typescript|json|python/i.test(mime)) {
+    return <IconCode size={13} aria-hidden />;
+  }
+  if (ARCHIVE_FILE_PATTERN.test(name) || /zip|compressed|tar$/i.test(mime)) {
+    return <IconArchive size={13} aria-hidden />;
+  }
+  if (SHEET_FILE_PATTERN.test(name) || /csv|spreadsheet/i.test(mime)) {
+    return <IconSheet size={13} aria-hidden />;
+  }
+  if (AUDIO_FILE_PATTERN.test(name) || mime.startsWith("audio/")) {
+    return <IconAudio size={13} aria-hidden />;
+  }
+  if (VIDEO_FILE_PATTERN.test(name) || mime.startsWith("video/")) {
+    return <IconVideo size={13} aria-hidden />;
+  }
+  return <IconFileText size={13} aria-hidden />;
 }
 
 function createFileReference(
@@ -1227,23 +1271,21 @@ export function Composer({
         if (!pasted) throw new Error("temporary paste file was not created");
 
         const displayName = pasted.name || name;
-        const token = `@${displayName}`;
-        const nextValue =
-          sourceValue.slice(0, selectionStart) +
-          token +
-          " " +
-          sourceValue.slice(selectionEnd);
+        // The paste attaches as an atomic chip: the draft text is never
+        // touched, so no later edit can corrupt a reference token or lose
+        // the attachment silently. Serialization appends the scratch path
+        // at send time, exactly like pasted files.
         const previousReferences = fileReferencesRef.current
           .filter((fileReference) => fileReference.sessionId === sourceReferenceSessionId)
-          .map(({ path, name: referenceName, kind, mimeType, token: referenceToken }) => ({
+          .map(({ path, name: referenceName, kind, mimeType, token }) => ({
             path,
             name: referenceName,
             kind,
             ...(mimeType ? { mimeType } : {}),
-            ...(referenceToken ? { token: referenceToken } : {}),
+            ...(token ? { token } : {}),
           }));
         const nextSnapshot: ComposerDraftSnapshot = {
-          text: nextValue,
+          text: sourceValue,
           fileReferences: [
             ...previousReferences,
             {
@@ -1251,7 +1293,6 @@ export function Composer({
               name: displayName,
               kind: "file",
               mimeType: pasted.mimeType,
-              token,
             },
           ],
         };
@@ -1261,7 +1302,7 @@ export function Composer({
         draftCacheRef.current.set(sessionId, nextSnapshot);
         const currentSessionId = useAppStore.getState().activeSessionId;
         if (currentSessionId === sessionId) {
-          setValue(nextValue);
+          // Same session: the text stays untouched, only the chip list grows.
           setFileReferences(
             nextSnapshot.fileReferences.map((fileReference) =>
               createFileReference(
@@ -1272,13 +1313,11 @@ export function Composer({
               ),
             ),
           );
-          setCursor(selectionStart + token.length + 1);
           requestAnimationFrame(() => {
             const el = ref.current;
             if (!el) return;
             el.focus();
-            const nextCursor = selectionStart + token.length + 1;
-            el.setSelectionRange(nextCursor, nextCursor);
+            el.setSelectionRange(selectionStart, selectionEnd);
           });
         } else if (sourceDraftKey === HOME_DRAFT_KEY) {
           // The home slot is intentionally not reused after materialization;
@@ -1494,54 +1533,51 @@ export function Composer({
             <ComposerAutocomplete ac={composerAc} onAccept={acceptCompletion} />
           ) : null}
           <div className="composer-input-wrap">
-            {activeChipFileReferences.length ? (
-              <div
-                className="composer-file-references"
-                role="list"
-                aria-label={t("chat.fileReferences")}
-              >
-                {activeChipFileReferences.map((fileReference) => (
-                  <div
-                    key={fileReference.id}
-                    className="composer-file-reference"
-                    role="listitem"
-                    title={fileReference.path}
-                    aria-label={`${fileReference.name} — ${fileReference.path}`}
-                  >
-                    {fileReference.kind === "image" ? (
-                      <IconImage size={13} aria-hidden />
-                    ) : (
-                      <IconFileText size={13} aria-hidden />
-                    )}
-                    <span className="composer-file-reference-name">
-                      {fileReference.name}
-                    </span>
-                    <button
-                      type="button"
-                      className="composer-file-reference-remove"
-                      title={t("chat.removeFileReference", {
-                        name: fileReference.name,
-                      })}
-                      aria-label={t("chat.removeFileReference", {
-                        name: fileReference.name,
-                      })}
-                      disabled={inputBlocked}
-                      onClick={() => {
-                        setFileReferences((current) =>
-                          current.filter(
-                            (candidate) => candidate.id !== fileReference.id,
-                          ),
-                        );
-                        requestAnimationFrame(() => ref.current?.focus());
-                      }}
+            <div className="composer-input-line">
+              {activeChipFileReferences.length ? (
+                <div
+                  className="composer-file-references"
+                  role="list"
+                  aria-label={t("chat.fileReferences")}
+                >
+                  {activeChipFileReferences.map((fileReference) => (
+                    <div
+                      key={fileReference.id}
+                      className="composer-file-reference"
+                      role="listitem"
+                      title={fileReference.path}
+                      aria-label={`${fileReference.name} — ${fileReference.path}`}
                     >
-                      <IconX size={11} aria-hidden />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-            <div className="composer-input-stage">
+                      <FileReferenceIcon reference={fileReference} />
+                      <span className="composer-file-reference-name">
+                        {fileReference.name}
+                      </span>
+                      <button
+                        type="button"
+                        className="composer-file-reference-remove"
+                        title={t("chat.removeFileReference", {
+                          name: fileReference.name,
+                        })}
+                        aria-label={t("chat.removeFileReference", {
+                          name: fileReference.name,
+                        })}
+                        disabled={inputBlocked}
+                        onClick={() => {
+                          setFileReferences((current) =>
+                            current.filter(
+                              (candidate) => candidate.id !== fileReference.id,
+                            ),
+                          );
+                          requestAnimationFrame(() => ref.current?.focus());
+                        }}
+                      >
+                        <IconX size={11} aria-hidden />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              <div className="composer-input-stage">
               <textarea
                 ref={ref}
                 className="composer-input"
@@ -1645,6 +1681,7 @@ export function Composer({
                   {placeholderText}
                 </span>
               ) : null}
+              </div>
             </div>
           </div>
 
