@@ -106,7 +106,9 @@ Supervision parameters (implemented in Electron main):
 ## 5. Shutdown order
 
 1. Reject new prompts
-2. Abort active turns
+2. Flush the in-flight reply checkpoints, then abort active turns through the
+   sidecar and wait, bounded (2 s total), for their aborted final rows to
+   drain through the persistence outbox while host-core is still alive (D299)
 3. Interrupt pending/queued/running Plan and Goal work and reject late responses
 4. Unload plugins
 5. Stop Node agent sidecar
@@ -114,6 +116,13 @@ Supervision parameters (implemented in Electron main):
 7. Stop Rust host
 8. Dispose update polling
 9. Close windows / exit
+
+A quit that runs out of its budget logs `quit before streaming replies settled`
+and proceeds; the next host boot promotes whatever checkpoint remains. An
+unexpected sidecar exit takes the same recovery path immediately: the last
+checkpoint of every running session is flushed and `session.endTurn` is asked
+to `recoverInflight`, so the streamed text becomes the turn's `aborted` row
+instead of vanishing with the process.
 
 Minimizing the main window is a resident-shell action, not an application
 shutdown. On Windows/Linux, explicit application minimize actions use the

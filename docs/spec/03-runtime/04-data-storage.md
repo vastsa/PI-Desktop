@@ -46,7 +46,8 @@ schema v7, v8, and v11:
  ├── pi.sqlite.v10.bak    # exact readable backup before v10→v11 destructive work
  ├── sessions/            # transcript file store (D119) — host-core only
  │    ├── <sessionId>.jsonl           # live transcript (header + messages)
- │    └── <sessionId>.revisions.jsonl # regenerate branches, append-only
+ │    ├── <sessionId>.revisions.jsonl # regenerate branches, append-only
+ │    └── <sessionId>.inflight.json   # streaming reply checkpoint (D299), transient
  ├── secrets/             # encrypted secret blobs + .machine-key (unchanged)
  ├── attachments/         # content-addressed blobs (sha256 name), refs from messages
  ├── plugins/             # code + data + registry.json (unchanged, spec 07-11)
@@ -91,6 +92,20 @@ per message; `seq` is implied by line order:
 {"type":"message","id":"m3","role":"assistant","createdAt":"…","blocks":[{"type":"thinking","text":"…"},{"type":"text","text":"…"}],"meta":{"usage":{},"modelId":"…"}}
 {"type":"compaction","id":"cp1","summary":"…","firstKeptMessageId":"m2","throughMessageId":"m3","tokensBefore":917000,"retainedTail":[…],"providerId":"…","modelId":"…","createdAt":"…"}
 ```
+
+`sessions/<sessionId>.inflight.json` — the assistant reply currently
+streaming in the session, as one `{ schema, sessionId, turnId, savedAt,
+message }` object that host-core replaces atomically (temp + rename) on every
+`session.saveInflightMessage` (D299). Electron main sends a checkpoint at most
+every 1.5 s while `message_update` events carry visible text, so a quit or
+crash mid-reply loses at most the last interval of output instead of the whole
+reply. The file is transient: the final row's `session.appendMessage` with the
+same id removes it, a `completed`/`error` turn end removes it, and the boot
+sweep plus a sidecar-loss turn end (`recoverInflight`) promote a leftover whose
+final row never landed into the transcript as an `aborted` assistant message
+under its turn. It is never appended to, never read by the sidecar, and never
+mirrored into SQLite; a late checkpoint for an id that is already indexed is
+dropped. Delegate replies are not checkpointed.
 
 `sessions/<sessionId>.revisions.jsonl` — append-only, one line per archived
 regenerate branch; the *active* flag lives only in the DB index so switching
@@ -849,10 +864,11 @@ is the source of truth, the index is derived and self-healing.
 | event | file step | index/DB transaction |
 |---|---|---|
 | prompt accepted | append user message line | `last_seq` alloc (RETURNING) + index row + touch `sessions.updated_at`; then insert `turns(running)` |
-| assistant/tool message end | append message line | index row + touch session |
+| assistant/tool message end | append message line; remove the in-flight checkpoint when its id matches | index row + touch session |
+| streaming reply checkpoint (`session.saveInflightMessage`, D299) | atomically replace `<id>.inflight.json`; no-op for an empty message or an id already indexed | — |
 | context checkpoint (`session.appendCompaction`) | append typed checkpoint line after its referenced message boundary | — (checkpoint is not searchable transcript content) |
 | tool succeeded (Write/Edit) | — | upsert `artifacts` + `audit_log` row, same tx as result persistence |
-| turn terminal via `session.endTurn` | — | update `turns`; for completed/error insert one notification and prune to 200 in the same tx; aborted inserts none |
+| turn terminal via `session.endTurn` | `completed`/`error`: remove the in-flight checkpoint; `recoverInflight`: append the checkpoint as an `aborted` message line when its final row never landed | update `turns`; for completed/error insert one notification and prune to 200 in the same tx; aborted inserts none; a promoted checkpoint gets an index row under the turn |
 | plan/goal submission | host writes the exact Markdown bytes to a new unique `<workspaceRoot>/.pi/<kind>/*.md` file | insert one `plan_approvals(pending)` row with the kind, structured title/question, artifact path/hash/size, and expiry before emitting the approval request |
 | plan/goal approval | verify the immutable artifact path/hash/size | atomically resolve `plan_approvals`, update `sessions.mode` and explicit `permission_mode`, and set `execution_state = 'queued'`; reject/expiry stay in the contract mode |
 | transcript truncate / edit / unanswered smart Stop (`session.replaceMessages`) | atomic transcript rewrite (temp + rename); preserve only a checkpoint whose boundary remains | single tx: delete index rows, bulk reinsert carrying each surviving message's owning `turn_id`, reset `last_seq`; smart Stop keeps its structured composer snapshot only in renderer memory |
@@ -864,8 +880,16 @@ is the source of truth, the index is derived and self-healing.
 | session delete | remove both session files after row delete | `DELETE FROM sessions` (cascades) |
 
 Rules: user message durable (fsync'd file line) before the turn starts;
-assistant/tool lines durable at their end events; a crash mid-turn loses at
-most the in-flight turn's tail, and the boot sweep marks that turn `aborted`.
+assistant/tool lines durable at their end events; the streaming assistant
+reply is additionally checkpointed at most every 1.5 s (D299), so a quit or
+crash mid-turn loses at most the last checkpoint interval of the in-flight
+reply plus any tool rows still running. The boot sweep marks that turn
+`aborted` and promotes the leftover checkpoint into the transcript as the
+turn's `aborted` assistant row; a user Stop does not touch the checkpoint,
+because the runtime's own aborted final row is still on its way and removes
+it on arrival. Renderer-side Stop never rewrites a transcript that has a
+started reply (spec 01 §5.3); its only rewrite is the undo of an unanswered
+prompt, computed from the full durable transcript merged with the live rows.
 A checkpoint is installed into the live runtime only after its append succeeds;
 therefore a failed/crashed checkpoint write leaves the previous full context or
 previous checkpoint authoritative rather than creating a memory-only state.

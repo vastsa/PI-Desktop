@@ -257,6 +257,13 @@ reach this protocol — see [14-secrets-storage](14-secrets-storage.md) §10.
   configuration is allowed only while idle and without a pending/queued/running
   Plan or Goal record
 - `session.appendMessage`
+- `session.saveInflightMessage` — Electron-main-only checkpoint of the
+  assistant reply currently streaming: `{ sessionId, turnId?, message }`
+  atomically replaces `sessions/<id>.inflight.json` (D299, spec 04 §2.1).
+  Returns `{ ok, saved }`; `saved` is false for a message without visible text
+  or for an id that is already indexed (the final row landed first), and in the
+  latter case any leftover checkpoint is removed. Non-assistant roles are
+  `INVALID_PARAMS`-class failures
 - `session.appendCompaction` — sidecar-only append of the newest typed
   model-context checkpoint. It requires non-empty checkpoint/summary/boundary
   ids and non-negative `tokensBefore`; it does not insert a message/search row
@@ -285,7 +292,12 @@ reach this protocol — see [14-secrets-storage](14-secrets-storage.md) §10.
 - `session.endTurn` — atomically moves a running turn to its terminal state and
   conditionally returns the newly created notification for `completed`/`error`;
   returns no notification when `createNotification=false`, for `aborted`, or
-  for an already-terminal turn
+  for an already-terminal turn. It also settles the session's in-flight reply
+  checkpoint (D299): `completed`/`error` remove it; `recoverInflight: true`
+  (sent when the sidecar is gone and no final row can follow) promotes a
+  checkpoint whose final row never landed into the transcript as an `aborted`
+  assistant message and returns it as `recovered`; a plain `aborted` (user
+  Stop) leaves the checkpoint for the arriving final row to supersede
 - `session.import` — atomically imports one converted session; a non-empty
   project path is normalized and upserted into `projects` before the session
   references it; returns `{ imported, skipped }`
@@ -359,7 +371,9 @@ releasing the execution slot.
 
 `session.appendMessage` is idempotent by message id. Electron main may keep
 message appends in its application-owned outbox while host-core is restarting;
-the outbox flushes in order after a successful handshake.
+the outbox flushes in order after a successful handshake. In-flight checkpoints
+never go through the outbox: a checkpoint is only meaningful against a live
+host, and replaying one after the final row would be wrong.
 
 ### Permissions
 - `permissions.evaluate`

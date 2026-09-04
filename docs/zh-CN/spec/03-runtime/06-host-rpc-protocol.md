@@ -232,6 +232,11 @@ type ToolBudgetHealth = {
   仅在空闲且没有 pending/queued/running 时才允许配置
   Plan 或 Goal 记录
 - `session.appendMessage`
+- `session.saveInflightMessage` — 仅供 Electron 主进程使用的检查点，保存正在流式
+  输出的助手回复：`{ sessionId, turnId?, message }` 原子替换
+  `sessions/<id>.inflight.json`（D299，规格 04 §2.1）。返回 `{ ok, saved }`；
+  消息没有可见文本、或该 id 已被索引（最终行先落盘）时 `saved` 为 false，后一种
+  情况下还会移除残留检查点。非助手角色属于 `INVALID_PARAMS` 类失败
 - `session.appendCompaction` — 仅附加最新类型的 sidecar
   模型上下文检查点。它需要非空 checkpoint/summary/boundary
 ids 和非负 `tokensBefore`；它不会插入 message/search 行
@@ -258,7 +263,11 @@ ids 和非负 `tokensBefore`；它不会插入 message/search 行
   并标记根寻呼机元数据
 - `session.beginTurn`
 - `session.endTurn` — 以原子方式将正在运行的回合移动到其终止状态，并且
-有条件地返回新创建的 `completed`/`error` 通知；
+有条件地返回新创建的 `completed`/`error` 通知；它还会落定该会话的进行中回复
+  检查点（D299）：`completed`/`error` 移除它；`recoverInflight: true`（sidecar
+  已丢失、不会再有最终行时发送）把最终行从未落盘的检查点提升为 `aborted` 助手消息
+  写入转录并作为 `recovered` 返回；普通的 `aborted`（用户停止）保留检查点，交给
+  即将到达的最终行取代；
   当 `createNotification=false`、`aborted` 或
   对于已经结束的回合
 - `session.import` — 以原子方式导入一个转换后的会话；一个非空的
@@ -334,7 +343,8 @@ off | minimal | low | medium | high | xhigh | max
 
 `session.appendMessage` 通过消息 ID 是幂等的。 Electron 主要可以保留
 当 host-core 重新启动时，消息会附加到其应用程序拥有的发件箱中；
-握手成功后，发件箱会按顺序冲洗。
+握手成功后，发件箱会按顺序冲洗。进行中检查点从不经过发件箱：检查点只对存活的
+主机有意义，在最终行之后重放它是错误的。
 
 ### 权限
 - `permissions.evaluate`

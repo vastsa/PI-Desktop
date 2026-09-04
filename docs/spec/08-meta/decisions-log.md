@@ -3129,3 +3129,28 @@ D193, and D194.
   new scheme per file. No protocol, storage, or runtime behavior changes.
   Supersedes the stroke rows of §6.4 in the UI design system and the D148
   0.5px field stroke.
+## 2026-09-05 — Streaming replies are checkpointed and recovered (D299)
+
+- The assistant reply currently streaming in a session is checkpointed by
+  Electron main to host-core at most every 1.5 s (`session.saveInflightMessage`)
+  into `sessions/<id>.inflight.json`, one atomically replaced file per session.
+  Previously a reply became durable only at `message_end`, so an app quit,
+  sidecar crash, or restart mid-reply lost the whole text the user had already
+  watched stream; after relaunch the session showed only the prompt.
+- The checkpoint is transient. The final row of the same id removes it, a
+  `completed`/`error` turn end removes it, and the host boot sweep plus a
+  sidecar-loss `session.endTurn { recoverInflight: true }` promote a leftover
+  whose final row never landed into the transcript as the turn's `aborted`
+  assistant row. A user Stop leaves it for the arriving final row. A late
+  checkpoint for an already-indexed id is dropped. Delegate replies are not
+  checkpointed.
+- Quit flushes the checkpoints, aborts active turns through the sidecar, and
+  waits (bounded, 2 s) for their aborted rows to drain before host-core is
+  disposed. The sidecar used to be killed while host-core was already closing.
+- Renderer Stop no longer rewrites the transcript to settle a started reply;
+  it settles in memory and leaves the durable copy to the runtime's aborted
+  final row. That rewrite raced the outbox append and could delete the reply
+  it was meant to keep, and it wrote the renderer's display-capped rows back
+  over the full ones. The unanswered-prompt undo (and message delete) now
+  rewrite from the full durable transcript merged with the live rows, and the
+  undo is re-evaluated on that merge. ADR 0153, E2E-171.

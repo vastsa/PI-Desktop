@@ -98,7 +98,8 @@ queued/running `plan_approvals` 执行状态已中断并中止它们
 ## 5. 关机命令
 
 1.拒绝新的提示
-2. 中止活动回合
+2. 刷写进行中回复检查点，然后通过 sidecar 中止活动回合，并在 host-core 仍存活时
+   有界等待（总计 2 秒）其中止最终行经由持久化发件箱落盘（D299）
 3. 中断 pending/queued/running Plan 和 Goal 工作并拒绝迟到的响应
 4.卸载插件
 5. 停止 Node 代理 sidecar
@@ -106,6 +107,11 @@ queued/running `plan_approvals` 执行状态已中断并中止它们
 7. 停止 Rust 主机
 8. 处理更新轮询
 9. 关闭窗口/退出
+
+用尽预算的退出会记录 `quit before streaming replies settled` 并继续；下一次主机
+启动会提升残留的检查点。sidecar 意外退出立即走同一条恢复路径：刷写每个运行中会话
+的最后一个检查点，并要求 `session.endTurn` 执行 `recoverInflight`，这样已流式的
+文本成为该回合的 `aborted` 行，而不是随进程一起消失。
 
 最小化主窗口是驻留 shell 操作，而不是应用程序
 shutdown: Electron Main 隐藏窗口并使进程保持活动状态

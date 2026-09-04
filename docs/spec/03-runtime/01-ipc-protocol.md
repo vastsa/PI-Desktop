@@ -205,7 +205,15 @@ type AgentAbortRequest = {
 The abort request and response carry no Composer draft or file-reference data.
 If renderer smart Stop undoes an unanswered user turn, restoration comes from
 the renderer's session/turn-scoped pre-serialization snapshot; the existing
-transcript rewrite removes the sent row without changing protocol version.
+transcript rewrite removes the sent row without changing protocol version. That
+rewrite is computed from the full durable transcript (`session.get` without a
+window) merged with the live rows, never from the renderer's paged,
+display-capped window, and it is re-evaluated on that merge: a reply row that
+landed between the abort and the read turns the undo into a settle (D299). A
+Stop that finds a started reply settles it in renderer memory only (streaming
+assistant → `aborted`, running tools → error) and performs no transcript
+rewrite; the durable copy is the runtime's own aborted final row or, if that
+never arrives, the host's promoted in-flight checkpoint.
 
 ### 5.4 compact (protocol v10)
 

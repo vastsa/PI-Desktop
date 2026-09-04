@@ -356,6 +356,34 @@ Each scenario is documented in this format:
 - **Milestone**: M2
 - **Status**: Draft
 
+#### E2E-171: Streaming reply survives quit, crash, and stop
+
+- **Preconditions**: A session whose transcript is longer than one renderer
+  page (more than 100 messages) and a model that streams a reply for at least
+  ten seconds before its first tool call.
+- **Steps**: 1) Send a prompt and let the reply stream for ~5 s. 2) Quit the
+  app (Cmd+Q / tray Quit) mid-stream, relaunch, and open the session. 3) Repeat
+  the send, then kill the agent sidecar process mid-stream and observe the
+  transcript. 4) Repeat the send, press Stop mid-stream, then reopen the
+  session from the sidebar and inspect `sessions/<id>.jsonl` and
+  `sessions/<id>.inflight.json`. 5) Repeat the send and let it finish normally.
+- **Expected**: 2) The session shows the user prompt followed by the streamed
+  text up to at most 1.5 s before the quit, as an `aborted` assistant row under
+  an `aborted` turn; nothing earlier in the session is missing or truncated. 3)
+  The streaming row settles to `aborted` in place with its text, the same row
+  is present after a reload, and no `.inflight.json` remains. 4) The partial
+  reply is visible immediately after Stop and after reopening; the transcript
+  file was not rewritten (its earlier lines are byte-identical) and the
+  checkpoint file is gone once the aborted final row landed. 5) The completed
+  reply has exactly one row per assistant fragment, no `aborted` duplicate, and
+  no checkpoint file.
+- **Specs linked**: `03-runtime/04-data-storage.md`,
+  `03-runtime/06-host-rpc-protocol.md`, `03-runtime/07-process-model.md`,
+  `03-runtime/01-ipc-protocol.md`
+- **Acceptance**: C (abort), F (persistence)
+- **Milestone**: M2
+- **Status**: Draft
+
 #### E2E-011: Switch between project and temporary sessions
 
 - **Preconditions**: One retained project session and one path-less Temporary
@@ -5218,7 +5246,7 @@ Each scenario is documented in this format:
 | C — Conversation & stream | E2E-008, E2E-008a, E2E-009, E2E-010, E2E-011, E2E-011a, E2E-011b, E2E-011d, E2E-011e, E2E-031, E2E-040, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-052, E2E-053, E2E-054, E2E-055, E2E-059, E2E-059a, E2E-060c, E2E-060d, E2E-061, E2E-061a, E2E-062, E2E-064, E2E-065, E2E-068, E2E-071, E2E-073, E2E-074, E2E-075, E2E-081, E2E-083, E2E-084, E2E-086, E2E-087, E2E-088, E2E-088b, E2E-089, E2E-090, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102g, E2E-106, E2E-109, E2E-111, E2E-114, E2E-116, E2E-117, E2E-118, E2E-119, E2E-120, E2E-121, E2E-AGENTS-001, E2E-142, E2E-144, E2E-145, E2E-146, E2E-147, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159, E2E-161, E2E-162, E2E-166 |
 | D — Workspace | E2E-012, E2E-013, E2E-022B, E2E-024I, E2E-047, E2E-049, E2E-057, E2E-058, E2E-060, E2E-068, E2E-075, E2E-078, E2E-153, E2E-158 |
 | E — Tools & permissions | E2E-008a, E2E-014, E2E-015, E2E-016, E2E-017, E2E-018, E2E-019, E2E-024I, E2E-024K, E2E-040, E2E-049, E2E-074, E2E-093, E2E-097, E2E-099, E2E-100, E2E-101, E2E-102, E2E-102d, E2E-102e, E2E-102g, E2E-103, E2E-105, E2E-106, E2E-107, E2E-111, E2E-112, E2E-113, E2E-114, E2E-115, E2E-116, E2E-119, E2E-121, E2E-122, E2E-142, E2E-145, E2E-147, E2E-155, E2E-158, E2E-166 |
-| F — Persistence | E2E-020, E2E-021, E2E-021a, E2E-036, E2E-037, E2E-038, E2E-040, E2E-042, E2E-047, E2E-048, E2E-051, E2E-054, E2E-056, E2E-061, E2E-062, E2E-064, E2E-066, E2E-068, E2E-071, E2E-072, E2E-073, E2E-082, E2E-084, E2E-096, E2E-098, E2E-102, E2E-102b, E2E-102c, E2E-102d, E2E-102g, E2E-103, E2E-AGENTS-001, E2E-061a, E2E-073a, E2E-104, E2E-106, E2E-107, E2E-108, E2E-109, E2E-110, E2E-112, E2E-118, E2E-119, E2E-120, E2E-121, E2E-123, E2E-142, E2E-146, E2E-148, E2E-151, E2E-158, E2E-160, E2E-168 |
+| F — Persistence | E2E-020, E2E-021, E2E-021a, E2E-036, E2E-037, E2E-038, E2E-040, E2E-042, E2E-047, E2E-048, E2E-051, E2E-054, E2E-056, E2E-061, E2E-062, E2E-064, E2E-066, E2E-068, E2E-071, E2E-072, E2E-073, E2E-082, E2E-084, E2E-096, E2E-098, E2E-102, E2E-102b, E2E-102c, E2E-102d, E2E-102g, E2E-103, E2E-AGENTS-001, E2E-061a, E2E-073a, E2E-104, E2E-106, E2E-107, E2E-108, E2E-109, E2E-110, E2E-112, E2E-118, E2E-119, E2E-120, E2E-121, E2E-123, E2E-142, E2E-146, E2E-148, E2E-151, E2E-158, E2E-160, E2E-168, E2E-171 |
 | G — Plugins | E2E-022, E2E-022A, E2E-022B, E2E-022C, E2E-023, E2E-024, E2E-024B, E2E-024C, E2E-024D, E2E-024E, E2E-024W, E2E-024F, E2E-024G, E2E-024H, E2E-024I, E2E-024J, E2E-024K, E2E-024L, E2E-024M, E2E-024N, E2E-024O, E2E-024P, E2E-025, E2E-026, E2E-105, E2E-117, E2E-120, E2E-122, E2E-123, E2E-024Q, E2E-148, E2E-152, E2E-153 |
 | H — Diagnostics | E2E-027, E2E-031, E2E-034, E2E-042, E2E-096, E2E-098, E2E-104, E2E-107, E2E-108, E2E-109, E2E-110, E2E-113, E2E-115, E2E-116, E2E-118, E2E-121, E2E-146, E2E-155, E2E-159 |
 | Security | E2E-028, E2E-029, E2E-030, E2E-024J, E2E-024K, E2E-024M, E2E-049, E2E-068, E2E-086, E2E-102c, E2E-102d, E2E-102e, E2E-105, E2E-106, E2E-107, E2E-108, E2E-109, E2E-110, E2E-112, E2E-113, E2E-115, E2E-116, E2E-117, E2E-119, E2E-121, E2E-122, E2E-123, E2E-142, E2E-148, E2E-151, E2E-153, E2E-158 |
