@@ -567,104 +567,34 @@
 
 .home-mascot-logo {
   display: block;
+  position: relative;
   width: 100px;
   height: 100px;
   flex: 0 0 auto;
-  overflow: visible;
+  overflow: hidden;
 }
 
-.home-mascot-orbit {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: home-mascot-orbit 12s linear infinite;
+.home-mascot-logo img {
+  display: block;
+  width: 100px;
+  height: 100px;
+  object-fit: contain;
+  pointer-events: none;
+  -webkit-user-drag: none;
+  user-select: none;
 }
 
-.home-mascot-orbit-ring {
-  fill: none;
-  stroke: var(--ds-text-secondary);
-  stroke-width: 1.5;
-  opacity: 0.18;
-}
-
-.home-mascot-orbit-dot,
-.home-mascot-antenna-dot {
-  fill: var(--ds-accent);
-}
-
-.home-mascot-orbit-dot {
-  opacity: 0.65;
-}
-
-.home-mascot-core {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: home-mascot-breathe 4s var(--motion-ease-standard) infinite;
-}
-
-.home-mascot-body {
-  fill: var(--ds-text-primary);
-}
-
-.home-mascot-screen {
-  fill: var(--ds-bg-primary);
-}
-
-.home-mascot-antenna,
-.home-mascot-mouth,
-.home-mascot-feet {
-  fill: none;
-  stroke: var(--ds-text-primary);
-  stroke-width: 1.5;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.home-mascot-eye {
-  fill: var(--ds-text-primary);
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: home-mascot-blink 6s var(--motion-ease-standard) infinite;
-}
-
-.home-mascot-eye:nth-child(2) {
-  animation-delay: 40ms;
-}
-
-@keyframes home-mascot-orbit {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes home-mascot-breathe {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-
-  50% {
-    transform: translateY(-2px);
-  }
-}
-
-@keyframes home-mascot-blink {
-  0%,
-  46%,
-  100% {
-    transform: scaleY(1);
-  }
-
-  48%,
-  50% {
-    transform: scaleY(0.18);
-  }
+.home-mascot-logo .home-mascot-still {
+  display: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .home-mascot-logo .home-mascot-orbit,
-  .home-mascot-logo .home-mascot-core,
-  .home-mascot-logo .home-mascot-eye {
-    animation: none;
+  .home-mascot-logo .home-mascot-motion {
+    display: none;
+  }
+
+  .home-mascot-logo .home-mascot-still {
+    display: block;
   }
 }
 

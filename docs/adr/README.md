@@ -162,5 +162,6 @@ Each ADR includes:
 | 0147 | A2A protocol stack for subagent coordination | Accepted (supersedes 0138 / 0140) |
 | 0148 | Explicitly disable application keyboard shortcuts | Accepted |
 | 0149 | Calm transcript running-status motion | Accepted |
-| 0150 | Inline SVG empty-home agent mark | Accepted |
+| 0150 | Inline SVG empty-home agent mark | Superseded by 0152 |
 | 0151 | Keep the work panel inside the fixed application window | Accepted |
+| 0152 | Eight-frame empty-home mascot GIF | Accepted |

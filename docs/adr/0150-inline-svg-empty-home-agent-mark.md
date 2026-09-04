@@ -1,6 +1,6 @@
 # ADR 0150: Inline SVG empty-home agent mark
 
-- Status: Accepted
+- Status: Superseded by ADR 0152
 - Date: 2026-09-04
 - Deciders: PI-Desktop core
 - Related: D291, E2E-046, E2E-099, US-UI-17

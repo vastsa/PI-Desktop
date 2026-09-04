@@ -3040,3 +3040,14 @@ D193, and D194.
   normalizes every valid request to `{ requested: 0, reserved: 0 }`. The native
   Browser view still follows the renderer-measured panel rectangle. See ADR
   0151 and E2E-056/E2E-160/E2E-167.
+
+## 2026-09-04 — Play an eight-frame waving mascot on empty home (D293)
+
+- Replace the empty-home inline SVG agent mark with a processed eight-frame
+  GIF in the existing 100px slot. The loop holds the idle frame briefly, then
+  plays the wave; pointer hover does not change cadence.
+- Reduced motion swaps the GIF for the still first-frame PNG through CSS. The
+  mark stays decorative with no random selection, JavaScript timer, or hover
+  state.
+- No protocol, storage, or runtime behavior changes. See ADR 0152 and
+  E2E-046/E2E-099/US-UI-17.

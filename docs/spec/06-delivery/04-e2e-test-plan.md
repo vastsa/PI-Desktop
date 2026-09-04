@@ -1628,15 +1628,16 @@ Each scenario is documented in this format:
 - **Preconditions**: App running in both English and zh-CN locales, with an
   empty home and a docked transcript available.
 - **Steps**: 1) Inspect the expanded and collapsed sidebar. 2) Inspect the
-  empty-home hero and docked composer. 3) Observe the mascot's calm orbit and
-  core breathe, move the pointer over it, and confirm its cadence and geometry
-  do not change. Enable reduced motion and confirm the mark becomes static.
-  4) Focus the footer Settings and Plugins icons, then each project/Temporary
-  session create control. 5) Open Settings and the composer input.
+  empty-home hero and docked composer. 3) Observe the eight-frame mascot GIF
+  looping in place, move the pointer over it, and confirm its cadence and
+  geometry do not change. Enable reduced motion and confirm the still first
+  frame is shown. 4) Focus the footer Settings and Plugins icons, then each
+  project/Temporary session create control. 5) Open Settings and the composer
+  input.
 - **Expected**: Visible shell identity reads `PI-Desktop`; the empty-home hero
-  renders the 100px inline SVG `HomeMascotLogo` with a calm orbit, slow core
-  breathe, and occasional blink. Pointer hover does not alter the cadence or
-  geometry, and reduced motion freezes the mark.
+  renders the 100px `HomeMascotLogo` GIF with a short idle hold and a looping
+  wave. Pointer hover does not alter the cadence or geometry, and reduced
+  motion shows the still first frame.
   The expanded/collapsed
   sidebar renders the derived `src/assets/brand/logo-*.png` asset through `BrandLogo`
   and the docked composer prompt row has no leading
@@ -1650,8 +1651,9 @@ Each scenario is documented in this format:
   the external import-source label or in non-runtime design-reference text.
 - **Specs linked**: `04-ux/01-ui-ia.md`, `04-ux/07-ui-design-system.md`,
   `04-ux/08-component-spec.md`, `04-ux/09-interaction-patterns.md`,
-  `08-meta/decisions-log.md` (D094/D160),
-  `../../adr/0031-icon-free-composer-prompt-row.md`
+  `08-meta/decisions-log.md` (D094/D160/D293),
+  `../../adr/0031-icon-free-composer-prompt-row.md`,
+  `../../adr/0152-eight-frame-empty-home-mascot-gif.md`
 - **Acceptance**: Quality (brand consistency and key operations feel polished)
 - **Milestone**: M5
 - **Status**: Unit-covered (`renderer-branding.test.mjs`); scenario Documented
@@ -3200,9 +3202,8 @@ Each scenario is documented in this format:
 - **Steps**:
   1. In light mode, open the app shell, an empty chat home, and the expanded sidebar (Windows/Linux) or startup splash.
   2. Inspect the rendered `BrandLogo` source in the sidebar and startup splash,
-     and inspect the calm inline-SVG `HomeMascotLogo` animation in the
-     empty-home hero. Hover the mascot and verify that its cadence does not
-     change.
+     and inspect the eight-frame `HomeMascotLogo` GIF in the empty-home hero.
+     Hover the mascot and verify that its cadence does not change.
   3. Switch the theme to dark (Settings → Basics → Appearance, or system appearance change).
   4. Re-inspect the same surfaces without reloading.
   5. Switch back to light and re-inspect.
@@ -3210,9 +3211,9 @@ Each scenario is documented in this format:
   - Light and dark mode render `src/assets/brand/logo-light.png` /
     `src/assets/brand/logo-dark.png`
     live in the sidebar and startup splash without a window reload.
-  - The empty-home hero renders the 100px inline SVG mascot with a slow orbit,
-    gentle core breathe, and occasional blink. Pointer hover does not change
-    the cadence; under reduced motion the mark remains static.
+  - The empty-home hero renders the 100px eight-frame mascot GIF with a short
+    idle hold and a looping wave. Pointer hover does not change the cadence;
+    under reduced motion the still first frame remains visible.
   - Sizes stay stable across theme changes (sidebar 20px, hero 100px, splash
     64px), and the marks stay decorative with no click, keyboard, or focus
     behavior.
@@ -5383,11 +5384,10 @@ This test plan spec is accepted when:
   row, with no Logo/Home brand or back/forward buttons.
 
 ### US-UI-17 PI-Desktop home hero logo
-- On empty chat home, the 100px `HomeMascotLogo` inline SVG renders above the
-  title as a neutral agent mark with a thin orbit and compact core.
-- The orbit rotates slowly, the core breathes gently, and the eyes blink
-  occasionally. Pointer hover does not change the cadence or geometry; reduced
-  motion freezes the mark. The mascot remains decorative.
+- On empty chat home, the 100px `HomeMascotLogo` GIF renders above the title
+  as an eight-frame waving mascot with a short idle hold.
+- Pointer hover does not change the cadence or geometry; reduced motion shows
+  the still first frame. The mascot remains decorative.
 - Title is 28px / weight 400; active project name uses dotted underline (1px, offset 4px).
 - Composer does not render attachment or appshot controls before their payload
   reaches pi end to end.

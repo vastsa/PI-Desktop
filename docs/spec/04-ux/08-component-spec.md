@@ -489,12 +489,11 @@ visually distinct from list content.
   splash at 3x; ADR 0125). The component subscribes to
   `document.documentElement[data-theme]` via a `MutationObserver` and swaps the
   source at runtime for the sidebar and startup splash without a reload. The
-  empty-home hero uses `HomeMascotLogo` as a 100px inline SVG. The neutral
-  agent mark combines a thin orbit and signal point with a compact core,
-  antenna, face, and feet. The orbit rotates slowly, the core breathes gently,
-  and the eyes blink occasionally. The motion is deterministic and does not
-  change on pointer hover; reduced motion freezes all three effects. The
-  expanded/collapsed sidebar remains 20px/18px and the startup splash 64px.
+  empty-home hero uses `HomeMascotLogo` as a 100px eight-frame GIF. The mascot
+  loops a processed wave with a short idle hold on the first frame. Playback
+  is native to the GIF and does not change on pointer hover; reduced motion
+  swaps to the still first-frame PNG. The expanded/collapsed sidebar remains
+  20px/18px and the startup splash 64px.
   Home and thread-docked composer prompt rows do not render a leading brand
   icon.
 - Project and Temporary session creation controls render the dedicated
