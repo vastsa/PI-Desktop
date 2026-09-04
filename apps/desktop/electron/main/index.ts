@@ -2505,7 +2505,7 @@ async function createWindow() {
       ? {
           titleBarStyle: "hiddenInset" as const,
           trafficLightPosition: { x: 16, y: 16 },
-          vibrancy: "sidebar" as const,
+          vibrancy: "under-window" as const,
           visualEffectState: "followWindow" as const,
           transparent: true,
           backgroundColor: "#00000000",

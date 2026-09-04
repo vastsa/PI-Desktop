@@ -132,7 +132,7 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
 | Windows | Frameless 46px titlebar; sidebar actions at left, open work-panel collapse in session pane top-right ahead of minimize/maximize/close | None inside the window |
 | Linux | Frameless 46px titlebar; sidebar actions at left, open work-panel collapse in session pane top-right ahead of minimize/maximize/close | None inside the window |
 
-- macOS enables the native Electron `vibrancy: "sidebar"` material with
+- macOS enables the native Electron `vibrancy: "under-window"` material with
   `visualEffectState: "followWindow"` and a transparent window backing. Only the
   `.sidebar` and any rendered `.sidebar-rail` surface are translucent; the
   renderer adds a thin theme tint (`--ds-sidebar-glass-tint`, 40% dark /
