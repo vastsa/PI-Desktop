@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
 import {
   Agent,
-  buildSessionContext,
+  BACKGROUND_CONTEXT,
   compact,
   convertToLlm,
   estimateContextTokens,
   estimateTokens,
   prepareCompaction,
+  withAbortSignal,
   type AgentContext,
   type AgentEvent,
   type AgentLoopTurnUpdate,
@@ -106,9 +107,11 @@ import {
   isRecord,
   nowIso,
   timestampMs,
+  toJsonValue,
   usageFromPi,
   usageToPi,
 } from "./agent-messages.js";
+import { buildSessionContext } from "./session-context.js";
 import {
   apiBindingForStyle,
   buildProviderModel,
@@ -1798,7 +1801,9 @@ Delegation rules:
       retainedTail:
         retainedTailForContext(checkpoint.retainedTail, checkpoint.details) ??
         [],
-      details: checkpoint.details,
+      details: toJsonValue(checkpoint.details),
+      // Desktop-owned checkpoints are not pi extension-hook compactions.
+      fromHook: false,
       usage: checkpoint.usage as Usage | undefined,
     };
     entries.splice(throughIndex + 1, 0, compactionEntry);
@@ -4513,6 +4518,14 @@ Delegation rules:
     };
   }
 
+  /**
+   * Shape the next in-run assistant turn. pi 0.84.4+ calls this only after
+   * `shouldStopAfterTurn` and queued-message checks decide the loop will start
+   * another assistant turn, including between a tool batch and the follow-up
+   * model request. A new user prompt compacts separately in `prompt()` via
+   * `automaticCompactionNeeded`, because that first turn does not go through
+   * this hook.
+   */
   private async prepareNextTurn(
     turn: PrepareNextTurnContext,
     _signal?: AbortSignal,
@@ -4936,8 +4949,10 @@ Delegation rules:
       this.models,
       this.model,
       undefined,
-      signal,
       this.thinkingLevel,
+      undefined,
+      undefined,
+      withAbortSignal(signal, BACKGROUND_CONTEXT),
     );
   }
 

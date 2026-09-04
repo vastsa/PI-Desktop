@@ -11,6 +11,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
+  BACKGROUND_CONTEXT,
   loadSourcedPromptTemplates,
   parseCommandArgs,
   substituteArgs,
@@ -96,7 +97,12 @@ export async function loadComposerTemplates(
     ...(dirs.project ? [{ path: dirs.project, source: "project" as const }] : []),
     { path: dirs.user, source: "user" as const },
   ];
-  const loaded = await loadSourcedPromptTemplates(env, inputs);
+  const loaded = await loadSourcedPromptTemplates(
+    env,
+    inputs,
+    undefined,
+    BACKGROUND_CONTEXT,
+  );
 
   const byName = new Map<string, ComposerTemplate>();
   for (const { promptTemplate, source } of loaded.promptTemplates) {

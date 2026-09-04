@@ -154,7 +154,7 @@ PI-Desktop must not permanently restrict users to a short fixed model list.
    preserving all raw records in the file for future surfaces. Image input is
    sent as a transient image content block only when the model accepts image
    input. PDF capability is surfaced and retained in model metadata; because
-   pi-ai 0.84 has no native PDF content block, PDF attachments remain bounded
+   pi-ai 0.85 has no native PDF content block, PDF attachments remain bounded
    file references rather than being incorrectly encoded as images.
 7. User-edited `ModelBinding` values remain explicit provider configuration:
    they control selected request limits, enabled thinking levels, the default
@@ -180,7 +180,7 @@ PI-Desktop must not permanently restrict users to a short fixed model list.
    self-hosted endpoint routinely accepts input its catalog entry omits.
    Enabling image input turns on the transient image content block; enabling PDF
    input records the capability but does not change the encoding, since pi-ai
-   0.84 has no PDF content block and PDFs stay bounded file references.
+   0.85 has no PDF content block and PDFs stay bounded file references.
 10. The settings checkboxes show the effective answer against the published
     baseline, and setting one back to the published value stores "follow the
     catalog" rather than an equal-valued override. Agreeing with models.dev is

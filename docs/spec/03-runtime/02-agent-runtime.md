@@ -213,16 +213,26 @@ The complete visible transcript and the model context are separate views of
 the same session. A durable checkpoint summarizes older model context while
 the renderer continues to show every original user, assistant, and tool row.
 
-PI-Desktop reuses pi-agent-core's `buildSessionContext`, `convertToLlm`,
-`estimateContextTokens`, `prepareCompaction`, and `compact` primitives. The
-desktop runtime owns when they run and how the result crosses the Rust storage
-boundary; OpenCode DCP is an AGPL-3.0 behavioral reference only, not a linked or
-copied dependency.
+PI-Desktop reuses pi-agent-core's `convertToLlm`, `estimateContextTokens`,
+`prepareCompaction`, and `compact` primitives, and applies the same session
+context projection pi used to export as `buildSessionContext` (slice from the
+newest compaction, then `compactionSummary` before the retained tail). pi 0.85
+moved that helper off the public package export and made the remaining
+internal builder async for custom-entry projectors; the desktop runtime keeps
+a synchronous local copy because it synthesizes only message and compaction
+entries. The desktop runtime owns when they run and how the result crosses the
+Rust storage boundary; OpenCode DCP is an AGPL-3.0 behavioral reference only,
+not a linked or copied dependency.
 
 Compaction follows Codex's mechanism (ADR 0064): it always happens inline at a
 turn boundary, the model can request it through `new_context`, every compaction
 adds a transcript row and raises one warning toast, and there is no
 pre-computation anywhere.
+
+pi 0.84.4+ invokes `prepareNextTurn` only when the loop will start another
+assistant turn in the same run — including between a completed tool batch and
+the follow-up model request. A new user prompt still compacts before its first
+provider request through `automaticCompactionNeeded` in `prompt()`.
 
 For every pi loop turn:
 

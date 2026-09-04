@@ -3471,7 +3471,10 @@ Each scenario is documented in this format:
 - **Expected**:
   - Each `turn_end` is evaluated before another provider request and never
     marks the overall task idle; composer/config controls remain blocked until
-    `agent_end`, `error`, or manual-only `compaction_end`.
+    `agent_end`, `error`, or manual-only `compaction_end`. In-run follow-up
+    assistant turns compact through `prepareNextTurn` (pi 0.84.4+ skips that
+    hook on a terminating turn); a new user prompt still compacts before its
+    first provider request.
   - Every successful compaction adds exactly one divider row to the transcript,
     positioned immediately after the last message that checkpoint covers, and
     raises exactly one warning toast. Two checkpoints produce two rows, in

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildSessionContext, estimateTokens } from "@earendil-works/pi-agent-core";
+import { estimateTokens } from "@earendil-works/pi-agent-core";
+import { buildSessionContext } from "./session-context.js";
 import {
   DesktopAgentRuntime,
   PATH_INSTRUCTION_RESOLUTION_TIMEOUT_MS,
