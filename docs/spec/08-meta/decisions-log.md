@@ -3051,3 +3051,14 @@ D193, and D194.
   state.
 - No protocol, storage, or runtime behavior changes. See ADR 0152 and
   E2E-046/E2E-099/US-UI-17.
+
+## 2026-09-04 — Theme-specific empty-home mascot GIFs (D294)
+
+- Replace the single empty-home mascot GIF with dedicated light and dark
+  eight-frame assets plus matching still PNGs. CSS follows
+  `document.documentElement[data-theme]`; anything other than `light` uses
+  the dark pair.
+- Reduced motion still swaps to the first-frame PNG of the active theme.
+  Playback, hover, and decorative role are unchanged.
+- No protocol, storage, or runtime behavior changes. See ADR 0152 and
+  E2E-046/E2E-099/US-UI-17.

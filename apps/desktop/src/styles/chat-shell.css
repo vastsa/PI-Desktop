@@ -575,7 +575,7 @@
 }
 
 .home-mascot-logo img {
-  display: block;
+  display: none;
   width: 100px;
   height: 100px;
   object-fit: contain;
@@ -584,16 +584,19 @@
   user-select: none;
 }
 
-.home-mascot-logo .home-mascot-still {
-  display: none;
+:root:not([data-theme="light"]) .home-mascot-logo .home-mascot-motion.home-mascot-dark,
+:root[data-theme="light"] .home-mascot-logo .home-mascot-motion.home-mascot-light {
+  display: block;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .home-mascot-logo .home-mascot-motion {
+  :root:not([data-theme="light"]) .home-mascot-logo .home-mascot-motion.home-mascot-dark,
+  :root[data-theme="light"] .home-mascot-logo .home-mascot-motion.home-mascot-light {
     display: none;
   }
 
-  .home-mascot-logo .home-mascot-still {
+  :root:not([data-theme="light"]) .home-mascot-logo .home-mascot-still.home-mascot-dark,
+  :root[data-theme="light"] .home-mascot-logo .home-mascot-still.home-mascot-light {
     display: block;
   }
 }
