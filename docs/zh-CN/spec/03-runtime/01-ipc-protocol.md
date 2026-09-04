@@ -580,12 +580,12 @@ type SessionDetail = SessionSummary & {
 };
 ```
 
-Electron 主要丰富了会话 list/get/create/fork/configure 结果
-来自 pi-ai 模型记录的有效推理能力
-精确的 `(providerId, modelId)`。缺少 pi 模型元数据产量
-`supportsReasoning: false` 和 `off`；缓存发现和遗留提供程序
-覆盖不会取代 pi 语义。 Rust 主机仅具有权威性
-打造耐用的 `thinkingLevel`。
+Electron 主进程用该会话精确 provider/API URL 与 model 的本地 models.dev
+记录，丰富 session list/get/create/fork/configure 结果中的有效推理能力。
+未固定 `providerId`/`modelId` 的会话仅在此丰富步骤继承应用默认供应商/模型；
+持久化 id 保持为空，以便之后的默认模型变更仍然生效。快照中没有该 ID、或
+会话无法解析出默认目标时，得到 `supportsReasoning: false` 和 `off`；缓存/
+供应商声明不能取代目录语义。Rust 主机仅对持久化的 `thinkingLevel` 权威。
 
 全局插件启动器使用仅 Electron 允许的通道：
 

@@ -63,6 +63,7 @@ test("running session configuration is queued for the next turn", () => {
     store,
     /get\(\)\.runningSessions\[sessionId\][\s\S]*pendingSessionConfigurations\.set\(sessionId, config\)/,
   );
+  assert.match(store, /applyOptimisticSessionConfiguration\(session, config\)/);
   assert.match(store, /event\.type === "agent_end"[\s\S]*flushPendingSessionConfiguration\(envelope\.sessionId\)/);
 });
 

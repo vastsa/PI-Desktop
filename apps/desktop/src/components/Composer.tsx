@@ -48,6 +48,10 @@ import {
   composerModelsForProvider,
 } from "../lib/composer-models";
 import {
+  providerThinkingLevels,
+  resolveComposerThinkingProvider,
+} from "../lib/session-thinking";
+import {
   resolveComposerCommand,
   useComposerAutocomplete,
 } from "../lib/use-composer-autocomplete";
@@ -501,16 +505,6 @@ const PERMISSION_MODE_I18N_KEYS: Record<PermissionMode, string> = {
   "accept-edits": "chat.permissionAcceptEdits",
   auto: "chat.permissionAuto",
 };
-
-function providerThinkingLevels(provider?: ProviderPublic | null): ThinkingLevel[] {
-  if (!provider?.supportsReasoning) return [];
-  const declared = new Set(
-    Array.isArray(provider.supportedThinkingLevels)
-      ? provider.supportedThinkingLevels
-      : [],
-  );
-  return THINKING_LEVELS.filter((level) => declared.has(level));
-}
 
 /**
  * Preserve the current level when changing providers, but never carry a
@@ -1128,18 +1122,12 @@ export function Composer({
     modelId,
     selectedModelCatalog,
   );
-  const thinkingProvider =
-    provider &&
-    activeSession?.providerId === provider.id &&
-    activeSession.modelId === modelId &&
-    typeof activeSession.supportsReasoning === "boolean"
-      ? {
-          ...provider,
-          supportsReasoning: activeSession.supportsReasoning,
-          supportedThinkingLevels:
-            activeSession.supportedThinkingLevels ?? (["off"] as ThinkingLevel[]),
-        }
-      : catalogThinkingProvider;
+  const thinkingProvider = resolveComposerThinkingProvider({
+    provider,
+    modelId,
+    activeSession,
+    catalogThinkingProvider,
+  });
   // A draft without a session starts at the strongest level enabled by its
   // inherited model binding; published metadata seeds that binding on add.
   const draftThinkingLevel = thinkingProvider?.supportsReasoning

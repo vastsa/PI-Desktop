@@ -1095,12 +1095,68 @@ async function enrichProviderList<T extends RuntimeProvider>(result: { providers
   };
 }
 
+type SessionCapabilityDefaults = {
+  defaultProviderId?: string;
+  defaultModelId?: string;
+};
+
+async function loadSessionCapabilityDefaults(): Promise<SessionCapabilityDefaults> {
+  if (!host) return {};
+  try {
+    const settings = await host.call<{
+      defaultProviderId?: string;
+      defaultModelId?: string;
+    }>("settings.get");
+    return {
+      defaultProviderId: settings?.defaultProviderId,
+      defaultModelId: settings?.defaultModelId,
+    };
+  } catch {
+    return {};
+  }
+}
+
+async function sessionCapabilityContext() {
+  const [providers, defaults] = await Promise.all([
+    listRuntimeProviders(),
+    loadSessionCapabilityDefaults(),
+  ]);
+  return { providers, defaults };
+}
+
+function resolveSessionCapabilityTarget(
+  session: RuntimeSession,
+  providers: readonly RuntimeProvider[],
+  defaults?: SessionCapabilityDefaults,
+): { provider: RuntimeProvider; modelId: string } | null {
+  const pinnedProvider = session.providerId
+    ? providers.find((item) => item.id === session.providerId)
+    : undefined;
+  const provider =
+    pinnedProvider ||
+    (defaults?.defaultProviderId
+      ? providers.find((item) => item.id === defaults.defaultProviderId)
+      : undefined);
+  if (!provider) return null;
+  const pinnedModelId = pinnedProvider && session.modelId ? session.modelId : undefined;
+  const inheritedModelId =
+    provider.id === defaults?.defaultProviderId ? defaults.defaultModelId : undefined;
+  const modelId =
+    pinnedModelId ||
+    inheritedModelId ||
+    provider.models?.[0]?.id ||
+    provider.defaultModelId;
+  if (!modelId) return null;
+  return { provider, modelId };
+}
+
 function enrichSession<T extends RuntimeSession>(
   session: T,
   providers: readonly RuntimeProvider[],
+  defaults?: SessionCapabilityDefaults,
 ): T & ThinkingCapabilities & { supportsVision: boolean } {
-  const provider = providers.find((candidate) => candidate.id === session.providerId);
-  if (!provider || !session.modelId) {
+  const target = resolveSessionCapabilityTarget(session, providers, defaults);
+  if (!target) {
     return {
       ...session,
       supportsReasoning: false,
@@ -1108,12 +1164,13 @@ function enrichSession<T extends RuntimeSession>(
       supportedThinkingLevels: ["off"],
     };
   }
-  const storedModel = bindingForModel(provider, session.modelId);
-  const modelsDevModel = modelsDevModelFor(provider, session.modelId);
+  const { provider, modelId } = target;
+  const storedModel = bindingForModel(provider, modelId);
+  const modelsDevModel = modelsDevModelFor(provider, modelId);
   const modelConfig = modelConfigWithBinding(
     modelsDevModel
       ? modelConfigFromModelsDev(modelsDevModel, provider.baseUrl)
-      : genericModelConfig(session.modelId, provider.baseUrl ?? ""),
+      : genericModelConfig(modelId, provider.baseUrl ?? ""),
     storedModel,
   );
   return {
@@ -5983,13 +6040,15 @@ function registerIpc() {
 
   handle(IPC.invoke.sessionList, async () => {
     if (!host) throw new Error("host unavailable");
-    const [result, providers] = await Promise.all([
+    const [result, { providers, defaults }] = await Promise.all([
       host.call<{ sessions: RuntimeSession[] }>("session.list"),
-      listRuntimeProviders(),
+      sessionCapabilityContext(),
     ]);
     return {
       ...result,
-      sessions: result.sessions.map((session) => enrichSession(session, providers)),
+      sessions: result.sessions.map((session) =>
+        enrichSession(session, providers, defaults),
+      ),
     };
   });
   handle(IPC.invoke.sessionCreate, async (input = {}) => {
@@ -6000,8 +6059,8 @@ function registerIpc() {
     );
     logger.app("session", "info", "session created", { sessionId: res.session?.id });
     if (!res.session) return res;
-    const providers = await listRuntimeProviders();
-    return { ...res, session: enrichSession(res.session, providers) };
+    const { providers, defaults } = await sessionCapabilityContext();
+    return { ...res, session: enrichSession(res.session, providers, defaults) };
   });
   handle(
     IPC.invoke.sessionFork,
@@ -6022,7 +6081,7 @@ function registerIpc() {
       }
       // Resolve enrichment before the mutation so a provider-list failure
       // cannot report a failed IPC after the child has already been committed.
-      const providers = await listRuntimeProviders();
+      const { providers, defaults } = await sessionCapabilityContext();
       let result: { session?: RuntimeSession | null };
       try {
         result = await host.call("session.fork", {
@@ -6046,7 +6105,7 @@ function registerIpc() {
       });
       return {
         ...result,
-        session: enrichSession(result.session, providers),
+        session: enrichSession(result.session, providers, defaults),
       };
     },
   );
@@ -6066,7 +6125,7 @@ function registerIpc() {
       const request = typeof input === "string" ? { id: input } : input ?? {};
       const id = String(request.id ?? "").trim();
       if (!id) throw new Error("session id required");
-      const [result, providers] = await Promise.all([
+      const [result, { providers, defaults }] = await Promise.all([
         host.call<{ session?: RuntimeSession | null }>("session.get", {
           id,
           ...(Number.isInteger(request.messageBefore) && request.messageBefore! >= 0
@@ -6079,10 +6138,10 @@ function registerIpc() {
             ? { contentLimit: request.contentLimit }
             : {}),
         }),
-        listRuntimeProviders(),
+        sessionCapabilityContext(),
       ]);
       return result.session
-        ? { ...result, session: enrichSession(result.session, providers) }
+        ? { ...result, session: enrichSession(result.session, providers, defaults) }
         : result;
     },
   );
@@ -6203,8 +6262,8 @@ function registerIpc() {
         { id, ...config },
       );
       if (!result.session) return result;
-      const providers = await listRuntimeProviders();
-      return { ...result, session: enrichSession(result.session, providers) };
+      const { providers, defaults } = await sessionCapabilityContext();
+      return { ...result, session: enrichSession(result.session, providers, defaults) };
     },
   );
 

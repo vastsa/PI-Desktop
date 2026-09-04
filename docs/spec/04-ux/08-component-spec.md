@@ -2045,7 +2045,12 @@ reasoning-level control.
   session immediately while idle. During a turn, the renderer applies the
   latest selection optimistically as a next-turn choice and persists it only
   after `agent_end` or `error`; the host never mutates the running turn's pinned
-  configuration. An active pending Plan or Goal approval still disables these
+  configuration. An optimistic model or thinking pin must not keep capability
+  fields computed for an unpinned or previous model. The Composer falls back to
+  the selected model's catalog/binding levels whenever the session snapshot has
+  no usable thinking menu (`supportsReasoning: false`, a missing level list, or
+  an empty list), so changing a level during a turn cannot collapse the submenu
+  to Off-only. An active pending Plan or Goal approval still disables these
   controls. Approval actions are the exception while awaiting approval. The
   Composer-left Agent/Plan/Goal chip is the sole mode
   control and cycles Agent → Plan → Goal → Agent on click. The Composer-right

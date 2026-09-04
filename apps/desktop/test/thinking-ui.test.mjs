@@ -137,6 +137,7 @@ test("draft Composer thinking follows the exact model selected in its menu", () 
     /const selectedModelCatalog = provider \? providerModels\[provider\.id\]/,
   );
   assert.match(composerSource, /const catalogThinkingProvider = thinkingProviderForModel\(/);
+  assert.match(composerSource, /resolveComposerThinkingProvider\(\{/);
   assert.match(
     composerSource,
     /const nextModelProvider = thinkingProviderForModel\([\s\S]*?providerModels\[candidate\.id\]/,
@@ -166,7 +167,9 @@ test("new sessions default to the strongest level of a reasoning model", () => {
 
 test("main resolves reasoning from each session's exact selected model", () => {
   assert.match(mainSource, /function enrichSession/);
-  assert.match(mainSource, /modelsDevModelFor\(provider, session\.modelId\)/);
+  assert.match(mainSource, /function resolveSessionCapabilityTarget/);
+  assert.match(mainSource, /defaults\?\.defaultProviderId/);
+  assert.match(mainSource, /modelsDevModelFor\(provider, modelId\)/);
   assert.match(mainSource, /sessions:\s*result\.sessions\.map/);
   assert.match(mainSource, /modelConfigFromModelsDev\(modelsDevModel, provider\.baseUrl\)/);
   // models.dev records stamp reasoning capability per exact model id.

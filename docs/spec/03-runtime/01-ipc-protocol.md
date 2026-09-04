@@ -621,10 +621,13 @@ session-state signal.
 
 Electron main enriches session list/get/create/fork/configure results with
 effective reasoning capability from the local models.dev record for that
-session's exact provider/API URL and model. An ID absent from the snapshot gets
-`supportsReasoning: false` and `off`; cached/provider claims do not replace
-catalog semantics. The Rust host remains authoritative only for the durable
-`thinkingLevel`.
+session's exact provider/API URL and model. Sessions without a pinned
+`providerId`/`modelId` inherit the app default provider/model for this
+enrichment only; the durable ids remain unset so later default-model changes
+still apply. An ID absent from the snapshot, or a session with no resolvable
+default, gets `supportsReasoning: false` and `off`; cached/provider claims do
+not replace catalog semantics. The Rust host remains authoritative only for the
+durable `thinkingLevel`.
 
 The global plugin launcher uses Electron-only allowlisted channels:
 

@@ -105,6 +105,13 @@ an explicit binding override is authoritative. A non-reasoning or unknown
 model starts at `off` until the user enables a non-`off` level. This is a
 creation default only and never rewrites an existing session's stored choice.
 
+Unpinned sessions still advertise that inherited default model's reasoning
+capability on session list/get/create/fork/configure. Enrichment does not pin
+`providerId`/`modelId`. The Composer never treats a `supportsReasoning: false`
+or empty thinking-level snapshot as authoritative when the selected
+catalog/binding model exposes levels, so a mid-turn thinking or model pick
+cannot collapse the menu to Off-only.
+
 ## 5. Capability warnings
 
 If user selects model tagged without tools while in Agent mode:

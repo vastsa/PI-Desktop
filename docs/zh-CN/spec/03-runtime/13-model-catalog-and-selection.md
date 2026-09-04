@@ -65,6 +65,11 @@ type RecentModelRef = {
 非推理模型或缺失的能力元数据从 `off` 开始。这是一个
 仅创建默认值，绝不会重写现有会话的存储选择。
 
+未固定的会话仍在 list/get/create/fork/configure 上展示该继承默认模型的
+推理能力；丰富步骤不会写入 `providerId`/`modelId`。当所选目录/绑定模型
+暴露了思考等级时，Composer 不得把 `supportsReasoning: false` 或空等级列表
+当作权威快照，因此回合中改档不会把菜单塌缩成只剩关闭思考。
+
 ## 5. 能力警告
 
 如果用户在 Agent 模式下选择不带工具标记的模型：

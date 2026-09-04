@@ -49,6 +49,7 @@ import {
   FORKED_SESSION_WINDOW,
 } from "../lib/session-fork";
 import { rememberProject, setProjectPinned } from "../lib/recent-projects";
+import { applyOptimisticSessionConfiguration } from "../lib/session-thinking";
 import {
   RETAINED_SESSION_PANE_LIMIT,
   clearSessionPanes,
@@ -1826,7 +1827,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       pendingSessionConfigurations.set(sessionId, config);
       set((state) => ({
         sessions: state.sessions.map((session) =>
-          session.id === sessionId ? { ...session, ...config } : session,
+          session.id === sessionId
+            ? applyOptimisticSessionConfiguration(session, config)
+            : session,
         ),
       }));
       return;
