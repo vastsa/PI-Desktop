@@ -313,14 +313,49 @@
 
 /*
  * macOS supplies the blur through the native `sidebar` vibrancy material on
- * the transparent window. Keep only the two sidebar surfaces translucent and
- * use the active theme token as a restrained tint; the main pane and titlebars
- * remain opaque `bg-primary` surfaces.
+ * the transparent window. The renderer must stay out of its way: a thin theme
+ * tint plus a top/bottom sheen, no opaque fill. The sheen is what keeps the
+ * material reading as glass — a flat tint of any density just looks like a
+ * painted panel. The main pane and titlebars remain opaque `bg-primary`.
  */
 :root[data-platform="darwin"] .sidebar,
 :root[data-platform="darwin"] .sidebar-rail {
-  background: color-mix(in oklab, var(--ds-bg-sidebar) 78%, transparent);
-  border-right-color: color-mix(in oklab, var(--ds-text-primary) 8%, transparent);
+  position: relative;
+  background-color: var(--ds-sidebar-glass-tint);
+  background-image: linear-gradient(
+      180deg,
+      var(--ds-sidebar-glass-sheen-top),
+      transparent 220px
+    ),
+    linear-gradient(0deg, var(--ds-sidebar-glass-sheen-bottom), transparent 160px);
+  background-repeat: no-repeat;
+  /* The seam moves to the gradient hairline below so it can fade at the ends. */
+  border-right-color: transparent;
+}
+
+/*
+ * Glass edge: a hairline that is brightest across the body of the dock and
+ * fades out at the very top and bottom, the way a bevelled pane catches light.
+ * Drawn inside the reserved 1px border so dock widths never shift, and clipped
+ * to the padding box — `right: -1px` would fall inside the border and vanish
+ * under the sidebar's `overflow: hidden`.
+ */
+:root[data-platform="darwin"] .sidebar::after,
+:root[data-platform="darwin"] .sidebar-rail::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 1px;
+  content: "";
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    var(--ds-sidebar-glass-edge) 12%,
+    var(--ds-sidebar-glass-edge) 88%,
+    transparent 100%
+  );
 }
 
 /* Collapsed-sidebar controls stay in normal flow inside the main drag band so

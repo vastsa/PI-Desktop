@@ -47,6 +47,16 @@
   --ds-bg-active: color-mix(in oklab, var(--gray-0) 10%, transparent);
   /* Codex elevated-primary #212121f5 / color-mix(gray-800 96%, transparent) */
   --ds-bg-composer: color-mix(in oklab, var(--gray-800) 96%, transparent);
+  /*
+    macOS sidebar glass (chrome.css). The native vibrancy material carries the
+    blur, so the renderer only adds a thin tint plus a sheen; anything heavier
+    reads as a flat panel and hides the material. Tuned so text-muted still
+    clears 4.5:1 on the brightest backdrop the material can produce.
+  */
+  --ds-sidebar-glass-tint: color-mix(in oklab, var(--ds-bg-sidebar) 40%, transparent);
+  --ds-sidebar-glass-sheen-top: color-mix(in oklab, var(--gray-0) 7%, transparent);
+  --ds-sidebar-glass-sheen-bottom: color-mix(in oklab, var(--gray-0) 4%, transparent);
+  --ds-sidebar-glass-edge: color-mix(in oklab, var(--gray-0) 14%, transparent);
   --ds-bg-chip: color-mix(in oklab, var(--gray-0) 6%, transparent);
   --ds-text-primary: var(--gray-0);
   /*
@@ -119,6 +129,10 @@
   --ds-bg-hover: color-mix(in oklab, #1a1c1f 5%, transparent);
   --ds-bg-active: color-mix(in oklab, #1a1c1f 8%, transparent);
   --ds-bg-composer: #ffffff;
+  --ds-sidebar-glass-tint: color-mix(in oklab, var(--ds-bg-sidebar) 55%, transparent);
+  --ds-sidebar-glass-sheen-top: color-mix(in oklab, #ffffff 45%, transparent);
+  --ds-sidebar-glass-sheen-bottom: color-mix(in oklab, #ffffff 30%, transparent);
+  --ds-sidebar-glass-edge: color-mix(in oklab, #1a1c1f 10%, transparent);
   --ds-bg-chip: color-mix(in oklab, #1a1c1f 4%, transparent);
   --ds-text-primary: #1a1c1f;
   --ds-text-secondary: color-mix(in oklab, #1a1c1f 74%, transparent);
