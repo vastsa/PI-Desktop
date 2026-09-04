@@ -1,8 +1,10 @@
 # ADR 0146: Assign outer and inner work-panel resize ownership by boundary
 
-- Status: Accepted
+- Status: Partially superseded by ADR 0148
 - Date: 2026-09-02
 - Related: ADR 0122, ADR 0132
+- Superseded clause: ADR 0148 removes the outer-right-edge ownership of the
+  panel target; native edges return to ordinary window resizing.
 
 ## Context
 

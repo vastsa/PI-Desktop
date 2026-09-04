@@ -63,14 +63,12 @@ destination, chat as the home surface, tools and permissions inline.
   `hiddenInset` traffic lights and the system application menu. The expanded
   sidebar keeps Search and Collapse sidebar in the same 46px row, aligned to
   the right outside the traffic-light safety area; no logo/title is rendered
-  there, including in fullscreen. When the work panel is open, the native
-  window controls stay at the conversation pane's right edge while the panel
-  header uses its full width for the active resource.
+  there, including in fullscreen.
   Windows/Linux use a menu-free frameless 46px row with sidebar actions on the
-  left and accessible minimize / maximize-or-restore / close controls at the
-  right edge of the conversation pane (D129). When the work panel is open, the
-  controls stay with the conversation pane and the panel header uses its full
-  width for resource actions. Destination history is shortcut-only (`Cmd/Ctrl+[` and
+  left and accessible minimize / maximize-or-restore / close controls fixed at
+  the viewport right edge (D129). The work-panel toggle remains immediately
+  ahead of that control band while the panel animates; the panel header reserves
+  both regions so its resource actions remain clickable. Destination history is shortcut-only (`Cmd/Ctrl+[` and
   `Cmd/Ctrl+]`); no back/forward buttons are rendered. The main titlebar has no
   notification action; the durable local inbox opens from the sidebar footer
   bell instead (D130/D117).
@@ -87,32 +85,24 @@ destination, chat as the home surface, tools and permissions inline.
   resource tab and collapsing it without discarding one; the create trigger
   remains unavailable while the panel is closed. A
   successful active-session workspace Write/Edit artifact opens Review;
-  scratch, failed, and background-session writes never steal focus. The outer
-  right native edge resizes the panel from 244px to 720px and the inner divider
-  resizes the conversation area; outside an outer-edge gesture, the panel
-  remains at its fixed committed width while open. The sole panel-level control collapses
-  the panel;
-  each session retains its own runtime open state, tab set, active tab, and
-  Browser resource in renderer memory. Selecting another session swaps the
-  visible panel context without deleting either session's state; selecting a
-  workspace without an active conversation hides the panel rather than
-  reinterpreting relative resources. Background artifacts update only their
-  originating session's retained panel context and never open, activate, or
-  resize the visible panel. Startup is closed with no retained session
-  contexts, and only the preferred panel width persists across launches.
-  The work panel remains a fixed-width in-flow column beside MainChat, with a
-  matching native reservation while visible (ADR 0122). Opening it reserves
-  the committed width before presentation so MainChat keeps its width when the
-  display work area allows it; collapse and final-resource close release the
-  reservation after the exit animation and return the window to its base
-  bounds. On constrained windows the panel stays fixed and chat absorbs only
-  the unavoidable shortfall. The inner panel divider resizes the conversation
-  area while the outer right window edge resizes the panel; the panel remains
-  fixed during inner-divider drags. Other native edges resize the chat area.
-  Maximized/fullscreen is unaffected; moving between displays or
-  changing a display work area reconciles the target normally. Persisted base
-  bounds exclude temporary panel reservation. Background artifacts never
-  change the visible panel or reservation (D163, D255, ADR 0122). The outer
+  scratch, failed, and background-session writes never steal focus. One
+  AppShell-owned toggle stays at the same viewport position in the topbar band
+  on every non-Settings route; the work-panel header contains no duplicate
+  collapse control. Each session retains its own runtime open state, tab set,
+  active tab, and Browser resource in renderer memory. Selecting another
+  session swaps the visible panel context without deleting either session's
+  state; selecting a workspace without an active conversation hides the panel
+  rather than reinterpreting relative resources. Background artifacts update
+  only their originating session's retained panel context and never open,
+  activate, or resize the visible panel. Startup is closed with no retained
+  session contexts, and only the preferred panel width persists across launches.
+  The work panel remains an in-flow column inside fixed BrowserWindow bounds.
+  Opening, collapse, and final-resource close all request reservation `0`; its
+  width/flex animation narrows or restores MainChat inside the current client
+  area. The inner divider previews and commits the panel width from 244px to
+  720px, while every native edge resizes BrowserWindow normally. Maximized and
+  fullscreen states use the same internal layout. Background artifacts never
+  change the visible panel or reservation (D287, ADR 0148). The outer
   window remains natively resizable from all OS edges and corners; its minimum
   supported size is 1040×700. Native bounds recovery waits until the resize or
   move stream is idle, and the last stable base bounds are persisted after a

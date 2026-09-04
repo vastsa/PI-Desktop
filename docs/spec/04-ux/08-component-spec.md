@@ -43,7 +43,7 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
 |---|---|
 | Default | Sidebar expanded, work panel hidden |
 | Narrow (<640px) | Sidebar auto-collapses to icon rail |
-| Constrained work area with panel open | Work panel keeps its fixed committed width; MainChat absorbs any reservation shortfall |
+| Work panel open | BrowserWindow bounds stay fixed; the panel consumes client width and MainChat narrows by the panel's animated flex allocation |
 | Fullscreen | Topbar remains; sidebar toggle and artifact-driven panel stay available |
 
 ### 1.4 Interactions
@@ -62,20 +62,17 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
   The 8px edge hit area stays transparent when the sidebar body is hovered;
   direct handle hover reveals only a centered compact marker, while focus and
   active dragging use the accent marker without changing layout.
-- Work panel collapse: sole control lives in the session pane titlebar top-right
-  while the panel is open, with its outer edge flush against the divider
-  between the session pane and work panel so the work-panel content header is
-  not occupied. On
-  Windows/Linux, opening the work panel removes the main titlebar's native
-  window-control clearance because those controls occupy the work-panel header
-  at the outer window edge.
-- Work panel resize: inner left-edge handle changes the base chat width; the
-  outer right native edge changes the panel width (§5.4)
-- Window resize: the outer right edge and right corners change the open work
-  panel target while preserving MainChat width; the inner divider changes the
-  MainChat target while preserving the panel width. Other native edges and
-  corners change MainChat width only; responsive layout follows
-  [07-ui-design-system.md](07-ui-design-system.md) §10.1
+- Work panel toggle: one always-mounted control stays at the conversation
+  topbar's viewport-fixed top-right position in both open and closed states.
+  It sits ahead of native window controls on Windows/Linux and above the panel
+  header while open; the panel header does not render a duplicate collapse
+  control.
+- Work panel resize: the inner left-edge handle previews and commits the panel
+  width within 244–720px (§5.4); MainChat reflows inversely inside the client
+  area.
+- Window resize: every native edge and corner resizes the BrowserWindow
+  normally. The open panel keeps its committed width while responsive layout
+  follows [07-ui-design-system.md](07-ui-design-system.md) §10.1.
 
 ### 1.5 Accessibility
 
@@ -131,9 +128,9 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
 
 | Platform | Top-level chrome | Application menu |
 |---|---|---|
-| macOS | Native inset traffic lights at `{x:16,y:16}`; expanded sidebar Search and Collapse controls share the row at right, with no logo/title; open work-panel collapse sits in the session pane top-right | System menu: PI-Desktop, File, Edit, View, Window, Help |
-| Windows | Frameless 46px titlebar; sidebar actions at left, open work-panel collapse in session pane top-right ahead of minimize/maximize/close | None inside the window |
-| Linux | Frameless 46px titlebar; sidebar actions at left, open work-panel collapse in session pane top-right ahead of minimize/maximize/close | None inside the window |
+| macOS | Native inset traffic lights at `{x:16,y:16}`; expanded sidebar Search and Collapse controls share the row at right, with no logo/title; the work-panel toggle stays fixed at the viewport top-right | System menu: PI-Desktop, File, Edit, View, Window, Help |
+| Windows | Frameless 46px titlebar; sidebar actions at left, persistent work-panel toggle ahead of minimize/maximize/close | None inside the window |
+| Linux | Frameless 46px titlebar; sidebar actions at left, persistent work-panel toggle ahead of minimize/maximize/close | None inside the window |
 
 - The macOS system menu exposes New Task, Open Project, Settings, Command
   Palette, Sidebar, standard editing, zoom/fullscreen, window, Help, Logs, and
@@ -191,12 +188,14 @@ palette / application menu, not the top bar.)
 ### 2.2 Anatomy
 
 ```text
-[☰ Sidebar] [Task title]                          [＋ New] [🔍 Search]
+[☰ Sidebar] [Task title]                  [＋ New] [🔍 Search] [▣ Panel]
 ```
 
 (Icons described functionally; actual render uses Lucide SVGs. The `[☰ Sidebar]`
 toggle renders **only when the sidebar is collapsed**; when the sidebar is
-expanded it owns that control, so the top bar does not duplicate it.)
+expanded it owns that control, so the top bar does not duplicate it. The Panel
+toggle is always mounted on the chat route and remains at one viewport position
+while the work panel animates under it.)
 
 The conversation top bar renders for the chat route only; Pull requests, Scheduled,
 Plugins, and Settings keep the frameless drag band. It owns the task title and
@@ -391,9 +390,9 @@ visually distinct from list content.
   reflows continuously, the press position remains anchored, and the final
   width is saved on release. Focus the edge handle and use ArrowLeft/Right,
   Home, or End for keyboard resizing; Escape cancels an active pointer resize.
-- While the work panel is open, click the session-pane top-right panel collapse
-  control to hide the panel without deleting tabs; the work-panel header keeps
-  only dynamic tabs
+- Click the viewport-fixed conversation-topbar panel toggle to open or collapse
+  the work panel without deleting tabs; the same control remains in place in
+  both states and the work-panel header keeps only resource actions
 - Click the `Projects` heading folder-plus action: open the project picker and
   retain the selected project
 - Right-click the `Projects` heading or empty project-list chrome: open a
@@ -425,8 +424,9 @@ visually distinct from list content.
   cards. Directory `+` and overflow actions remain hidden until hover or
   keyboard focus, without changing the directory label's position.
 - Sidebar toggle: expanded-header icon beside Search + keyboard shortcut; the
-  collapsed main titlebar retains an Expand sidebar icon; when the work panel is
-  open, the session-pane top-right hosts the sole panel collapse control
+  collapsed main titlebar retains an Expand sidebar icon. The separate
+  work-panel toggle remains viewport-fixed at the conversation top-right in
+  both panel states.
 - Click the local profile trigger: open or close the identity menu containing
   Settings, Logs, and Theme
 - Click the footer bell: open or close the durable notification inbox
@@ -720,10 +720,10 @@ copy — followed by the same entries the header menu lists, as plain rows:
   `prefers-reduced-motion` (D173)
 - The 46px header follows a "context left, actions right" model: the unified
   context trigger anchors the left and shows the active tool icon and ellipsized
-  label; a right action cluster is pinned to the right edge behind a thin
-  divider, so the close / collapse controls never shift with the label length.
-  The gap between the two remains a window-drag region. The collapse control
-  uses a right chevron so it reads as "push the panel away", not "open a panel"
+  label; a right action cluster keeps the active-resource close control behind
+  a thin divider. Trailing space is reserved for the viewport-fixed topbar panel
+  toggle, which stays clickable above this header. The gap remains a window-drag
+  region, and no duplicate panel collapse control is rendered here.
 - Active tabs, file-tree rows, diff headers, and the resize handle ease hover
   fills with `--motion-duration-fast` / `--motion-ease-out`
 - Browser URL and empty-tool chrome share the light inset field treatment used
@@ -772,13 +772,13 @@ workflow while rendering entirely inside the plugin's isolated page:
 | State | Behavior |
 |---|---|
 | Closed (default) | Not rendered; startup has no retained tabs. `Cmd/Ctrl + J` reveals the active session's panel context without creating a tab. Inline review cards remain available in the transcript because they are message-scoped and do not require the work panel. |
-| Open | Docked flex row right of the main pane; opened by an artifact or `Cmd/Ctrl + J` at a fixed committed width of 244–720px (default 280px). `Cmd/Ctrl + J` again collapses it, retaining the session context. Its flex allocation eases from zero to the committed width so MainChat reflows continuously, while a matching native reservation keeps the chat width stable when possible (ADR 0122). |
+| Open | Docked flex row inside the window at the right of the main pane; opened by the persistent topbar toggle, an artifact, or `Cmd/Ctrl + J` at a committed width of 244–720px (default 280px). Toggling again collapses it while retaining the session context. Its flex allocation eases from zero to the committed width so MainChat narrows continuously while BrowserWindow bounds and the toggle position stay fixed (ADR 0148). |
 | Multiple artifacts | The current-resource header keeps one readable label at the panel minimum; its bounded menu lists the tools first and then the transcript-opened resources in first-open order, with full-path tooltips and independent close controls |
 | Session switch | The destination session's retained open state, tabs, active tab, and Browser resource replace the previous session's panel context atomically; neither context is deleted |
-| Resizing | The inner left divider follows anchored pointer delta or keyboard input for the base chat target; pointer changes are frame-coalesced and bounded native requests are serialized. Escape, pointer cancellation, or lost capture restores the prior chat target. The outer right native edge/corners preview and commit the panel target; other native edges resize MainChat. The Electron recovery watchdog waits for stable bounds so it cannot interrupt a slow gesture. |
+| Resizing | The inner left divider follows anchored pointer delta or keyboard input for the panel width; pointer previews are frame-coalesced and the final bounded width is persisted once on release. Escape, pointer cancellation, or lost capture restores the prior panel width. Native edges resize the BrowserWindow normally. |
 | No workspace | Each tab renders its own "open a project" empty state |
 | Open with no resource | `Cmd/Ctrl + J` reveals the panel without creating a tab, so the body renders the no-resource empty state: title, one line of copy, and the available Browser/plugin-view entries. Activating an entry creates or selects that singleton view. The body is not a `role="tabpanel"` here because no tab labels it. |
-| Constrained work area | The panel stays at its committed width; the native reservation is capped by the work area and MainChat absorbs the shortfall, possibly falling below its 360px target on small windows (ADR 0122) |
+| Constrained work area | The panel stays at its committed width inside the current client area; MainChat absorbs that width and may fall below its 360px target on small windows (ADR 0148) |
 | Plugin view active | The body hosts the plugin's own isolated page as a native `WebContentsView`, positioned from the measured surface rect. It is hidden whenever the tab is inactive, the panel is animating or being resized, or a blocking overlay is open — the same rule the Browser preview follows, since both composite above renderer content. A view whose plugin is disabled, uninstalled, reloaded, or crashed is destroyed; the tab stays and re-opens the page on the next lifecycle event (ADR 0104) |
 | Plugin out of scope | A view contributed by a plugin that is not active in the current project disappears from the menu when the project changes. Unlike contributed themes, which are one global setting and stay unfiltered, a view is scoped work |
 
@@ -789,12 +789,14 @@ workflow while rendering entirely inside the plugin's isolated page:
   events carry `sessionId`, and the renderer retains that session's preview
   path/URL as its Browser resource. Successful workspace Write/Edit artifacts
   create/activate Review in the originating session.
-  `Cmd/Ctrl + J` toggles the active session's retained panel context: it
-  reveals the panel without creating a resource and collapses the visible panel
-  without deleting one. With no active session it does nothing. The shortcut is
-  ignored while Settings is the active page.
-  Background artifacts may update that retained context but never reveal it,
-  resize the window, or change visible selection/focus. The transcript does
+  The conversation-topbar control and `Cmd/Ctrl + J` toggle the active
+  session's retained panel context: they reveal the panel without creating a
+  resource and collapse the visible panel without deleting one. With no active
+  session the shortcut does nothing, and it is ignored while Settings is the
+  active page. The topbar control remains mounted at the same viewport position
+  throughout entry and exit.
+  Background artifacts may update that retained context but never reveal it or
+  change visible layout, selection, or focus. The transcript does
   not create a global Review changes launcher: each successful workspace
   Write/Edit row owns only its adjacent InlineReviewCard, and another session
   cannot render that card in its transcript. Repeated resources deduplicate
@@ -837,39 +839,36 @@ workflow while rendering entirely inside the plugin's isolated page:
   directly. Arrow keys, Home, End, and Escape operate the menu; opening the menu
   hides the native Browser preview until it closes.
 - Tab close: closing an active tab selects its right neighbor, then its left;
-  closing the last tab hides the panel. The panel-level collapse control lives
-  in the session pane top-right (not the work-panel content header) and hides the
-  panel without deleting the runtime tab set; a later artifact reopens it.
+  closing the last tab hides the panel. The viewport-fixed conversation-topbar
+  toggle opens or collapses the panel without deleting the runtime tab set; a
+  later toggle or artifact reopens it. The work-panel content header contains no
+  second collapse control.
 - Context change: selecting another session atomically projects that session's
   retained `{open, tabs, activeTabId, browserResource}` state. The previous
   session's context remains in renderer memory and is restored when selected
   again. A workspace selection with no active conversation hides the panel.
   Every context remains bound to its originating session/workspace, so relative
   file and Browser resources are never reinterpreted against another workspace.
-- Resize: the inner left-edge handle keeps the panel at its committed width and
-  sends a bounded conversation-width target (`1040..10000px`) through Electron.
-  `ArrowLeft` / `ArrowRight` adjust the chat target in 16px steps (`Shift` uses
-  32px), and `Home` / `End` reach its limits. Pointer math is anchored to the
-  press position and starting chat width, so grabbing the handle cannot jump
-  the divider; move events are frame-coalesced and queued as one bounded native
-  request at a time. Escape, pointer cancellation, and lost capture restore
-  the press-time chat width. The 10px hit area keeps a global column-resize
-  cursor and suppresses text selection during the gesture. The outer right
-  native edge and right corners preview and commit the panel's fixed
-  `244..720px` target while preserving the base chat width (ADR 0146).
+- Resize: the inner left-edge handle previews the panel's bounded
+  `244..720px` width. `ArrowLeft` widens and `ArrowRight` narrows in 16px steps
+  (`Shift` uses 32px), while `Home` / `End` reach the limits and double-click
+  restores 280px. Pointer math is anchored to the press position and starting
+  panel width, so grabbing the handle cannot jump the divider; move events are
+  frame-coalesced and only release persists the final width. Escape, pointer
+  cancellation, and lost capture restore the press-time width. The 10px hit
+  area keeps a global column-resize cursor and suppresses text selection during
+  the gesture. Native window edges retain ordinary BrowserWindow resize
+  ownership (ADR 0148).
 - Persistence: all session contexts are renderer runtime state only. On app
   startup, open state, tabs, active-tab selection, file requests, and Browser
   resources reset; only the committed preferred `{width}` remains in
-  localStorage `pi.desktop.workPanel`. Before presenting an open panel the
-  renderer requests a native reservation equal to that width; collapse and
-  final-tab close release the reservation after the exit animation. Target
-  updates are idempotent. The panel reflows MainChat beside its reserved native
-  column; on constrained work areas chat may fall below its 360px target.
-  Maximized/fullscreen geometry is unaffected. Background session artifacts
-  never update the visible panel or reservation. The renderer changes panel
-  presentation only after the latest reservation request succeeds; a rejected
-  or superseded request keeps the last confirmed presentation state
-  (D163, D255, ADR 0122).
+  localStorage `pi.desktop.workPanel`. Opening, collapse, and final-tab close
+  all request native reservation `0`; the stable IPC seam never expands or
+  repositions BrowserWindow. The panel reflows MainChat inside the current
+  client area, including while maximized/fullscreen. Background session
+  artifacts never update the visible panel. Presentation still commits only
+  after the latest zero-reservation request succeeds; a rejected or superseded
+  request keeps the last confirmed presentation state (D287, ADR 0148).
 
 ### 5.5 Accessibility
 
@@ -888,8 +887,8 @@ workflow while rendering entirely inside the plugin's isolated page:
   `aria-orientation="vertical"`, a localized label, dynamic
   `aria-valuemin` / `aria-valuemax` / `aria-valuenow`, visible focus, and
   Arrow/Home/End keyboard control. Escape cancels an active pointer gesture.
-- Every resource close and the sole session-pane panel collapse button expose
-  localized names
+- Every resource close and the persistent conversation-topbar panel toggle
+  expose localized names; the toggle publishes its pressed state
 
 ### 5.6 MVP constraints
 
@@ -1989,11 +1988,13 @@ reasoning-level control.
   style is not invalidated while typing inside one row. The `height: auto`
   measurement probe is taken only when the box may need to shrink.
 - Draft text and file-reference chips are retained in renderer memory per
-  session. Switching sessions saves the source draft and restores the target
-  draft; an uncached target and every newly created session start empty. The
-  no-active-session home composer has its own slot. A successful send clears
-  only the submitting session's slot, including when navigation occurs while
-  the request is in flight, and deleting a session drops its slot.
+  session for the renderer lifetime. Switching sessions, projects, empty versus
+  transcript layouts, or route-level destinations saves the source draft and
+  restores it on return; an uncached target and every newly created session
+  start empty. The no-active-session home composer has its own slot. A
+  successful send clears only the submitting session's slot, including when
+  navigation occurs while the request is in flight, and deleting a session
+  drops its slot. Renderer reload and application restart clear all drafts.
 - Text correction off (D145): composer textarea sets `spellCheck={false}`,
   `autoCorrect="off"`, and `autoCapitalize="off"` so browser/OS spelling and
   autocorrect never rewrite coding prompts
@@ -2737,10 +2738,9 @@ Sidebar footer                                        Popover (360px max)
 17. NotificationInbox exposes All/Unread views, exact unread badge semantics,
     row activation, mark-all-read and clear actions; it is keyboard-operable
     and never treats a visible-current or aborted turn as a notification
-18. The outer right native edge resizes the fixed work-panel target while the
-    inner divider resizes the MainChat target; other native edges reflow MainChat
-    without compressing the panel. Panel visibility, outer-edge commits, and
-    inner-divider chat requests update their own target, and cancelled divider
-    gestures restore the prior chat target (ADR 0146)
+18. Opening and closing the work panel keep BrowserWindow bounds and the
+    top-right toggle position fixed while MainChat reflows with the panel's flex
+    allocation. The inner divider previews and commits only the bounded panel
+    width; cancelled gestures restore its prior width (ADR 0148)
 19. Expanded sidebar session titles, project/group titles, and empty-state copy
     use the 13px compact token while primary sidebar actions remain at 14px

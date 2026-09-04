@@ -1139,8 +1139,9 @@ Maximize/unmaximize 变化也会发出
 `window/event/maximized`。未知的操作失败。这些仅限电子的通道
 不要跨入 host-core，也不要更改主机 RPC 协议版本。
 preload 故意不公开任意的 BrowserWindow 调整大小通道。
-一种特定于几何形状的功能是目标状态工作面板保留
-（D163，ADR 0032）：
+几何相关的目标状态工作面板 reservation channel 继续保留用于旧版兼容。
+D287 / ADR 0148 覆盖其可见 UI 所有权：当前 renderer 始终请求 0，并在固定
+客户区内调整面板宽度。
 
 ```ts
 window/setWorkPanelReservation({ width: 0 | number })
@@ -1150,17 +1151,15 @@ window/setWorkPanelReservation({ width: 0 | number })
 `width` 必须是等于 `0` 或在 JSON 内的有限整数
 包括 `244..720` 范围。字符串、布尔值、null、小数值和
 其他格式错误的有效负载会因 `INVALID_ARGUMENT` 而失败，而不是
-被胁迫。零是 closed/collapsed 目标，正值是
-可见面板的承诺固定宽度。 `requested` 是接受的当前目标。
-`reserved` 是当前添加的原生宽度
-到该目标的正常基本窗口，并且可以小于 `requested`
-仅当显示工作区域不足时。调用是幂等目标
-更新：重复相同的宽度不会添加另一个增量。
+被胁迫。零会移除原生 reservation。正值仍供旧版 renderer 兼容使用，
+但当前 renderer 在打开、折叠和关闭最后资源时都只请求零。`requested` 是
+接受的当前目标，`reserved` 是当前加到基础窗口上的原生宽度。调用是幂等
+目标更新：重复相同宽度不会添加另一份增量。
 
-正常状态下，Main 向右扩展基边界并向左移动
-仅根据需要将扩展边界保留在当前显示工作范围内
-区。零目标对称地消除了增加的宽度并反转了这一点
-保留引起的转变。 Main 仍然保留基界，并且移除了这两种效果。
+旧版 renderer 提供正目标且窗口处于正常状态时，Main 向右扩展基础边界，
+并仅在需要时左移，以把扩展边界保留在当前显示工作区域内。
+零目标会对称移除增加宽度并反转 reservation 引起的偏移。
+Main 仍然保留移除这两种效果后的基础边界。
 本机边缘手势仅更新那些基边界，留下 `requested` 和
 渲染器拥有的固定面板宽度不变。最大化和全屏窗口
 记住最新的目标但推迟几何；恢复正常协调
@@ -1173,9 +1172,8 @@ window/setWorkPanelReservation({ width: 0 | number })
 规范化进目标显示器工作区域，并且这一位置会被持久化用于下次启动。
 即使目标工作区域更窄，基础尺寸也会保留，因此收缩的是 `reserved`
 而不是窗口。Main 会把这次协调推迟到本机移动流稳定之后，
-所以拖动过程中不会应用任何保留几何。 Renderer 代码
-仅针对当前可见的会话设置此目标：背景工件
-无法更改可见的保留几何形状。
+所以拖动过程中不会应用任何保留几何。当前 renderer 只请求零，背景工件
+无法更改可见的 reservation 几何。
 
 ## 13c。 Composer 输入 API（D123/D124/D197、ADR 0024/0059）
 
