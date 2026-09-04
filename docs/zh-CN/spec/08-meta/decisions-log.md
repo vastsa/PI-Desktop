@@ -2506,3 +2506,19 @@ D193 和 D194。
   新模型的默认值重新播种；已有会话在新模型支持当前等级时仍保留该等级。
 - 协议、存储和运行时钳位规则不变。已有会话行保留其存储的 `thinkingLevel`。
   取代 D153。见 E2E-082 / E2E-163 / E2E-174。
+
+## 2026-09-05 —— 启动页复用 macOS 侧边栏玻璃态（D304）
+
+- macOS 上启动页（`.startup-splash`）去掉不透明的 `--ds-bg-primary` 底色，改用
+  侧边栏同款玻璃配方：`--ds-sidebar-glass-tint` 加上下 sheen 渐变，叠在窗口原生
+  `under-window` vibrancy 之上。`ready` 一翻转 shell 就会挂载到启动页之下、早于
+  最短停留结束；在玻璃后面它会透过 tint 漏出来，因此 darwin 上启动页加载期间
+  shell 保持 `visibility: hidden`，退出淡出时再以 opacity transition 淡入（不用
+  animation，避免侧边栏自身的 `sidebar-in` 挂载动画被重放），与启动页交叉过渡到
+  不透明主面板和玻璃侧边栏。
+- Windows 与 Linux 仍保留不透明启动页；规则与侧边栏一样限定在
+  `:root[data-platform="darwin"]`。启动页、侧边栏和导轨共用同一套玻璃选择器，避免
+  配方漂移。玻璃 token 的注释同时标注两个使用方。
+  `macos-sidebar-vibrancy.test.mjs` 断言 darwin 下启动页使用 tint 与 sheen，
+  基础规则仍为 `--ds-bg-primary`。扩展 UI 设计系统 §8.3；无协议、存储或运行时
+  行为变化。E2E-076。

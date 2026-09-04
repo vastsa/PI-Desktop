@@ -29,6 +29,24 @@
   animation: startup-splash-in var(--motion-duration-slow) var(--motion-ease-out) both;
 }
 
+/*
+ * On macOS the splash is glass, so the shell that mounts under it as soon as
+ * `ready` flips would bleed through the tint. Hide it until the exit fade,
+ * then cross-fade with a transition — not an animation, because `.sidebar`
+ * owns `sidebar-in` and swapping animation-name would replay it after boot.
+ */
+:root[data-platform="darwin"] .app-shell.is-booting:has(.startup-splash:not(.is-exiting))
+  > :not(.startup-splash) {
+  visibility: hidden;
+  opacity: 0;
+}
+
+:root[data-platform="darwin"] .app-shell.is-booting:has(.startup-splash.is-exiting)
+  > :not(.startup-splash) {
+  opacity: 1;
+  transition: opacity var(--motion-duration-normal) var(--motion-ease-out);
+}
+
 .startup-splash.is-exiting {
   animation: startup-splash-out var(--motion-duration-normal) var(--motion-ease-in) both;
   pointer-events: none;
@@ -161,6 +179,11 @@
     width: 100%;
     transform: none;
     opacity: 0.55;
+  }
+  :root[data-platform="darwin"]
+    .app-shell.is-booting:has(.startup-splash.is-exiting)
+    > :not(.startup-splash) {
+    transition-duration: 0.01ms;
   }
 }
 
@@ -309,15 +332,15 @@
 }
 
 /*
- * macOS supplies the blur through the native `sidebar` vibrancy material on
- * the transparent window. The renderer must stay out of its way: a thin theme
- * tint plus a top/bottom sheen, no opaque fill. The sheen is what keeps the
- * material reading as glass — a flat tint of any density just looks like a
- * painted panel. The main pane and titlebars remain opaque `bg-primary`.
+ * macOS supplies the blur through native under-window vibrancy. The renderer
+ * only adds a thin tint plus sheen on the sidebar, rail, and boot splash —
+ * an opaque splash would flash a painted panel before the glass sidebar.
+ * The sheen keeps the material reading as glass; a flat tint looks painted.
+ * The main pane and titlebars remain opaque `bg-primary`.
  */
+:root[data-platform="darwin"] .startup-splash,
 :root[data-platform="darwin"] .sidebar,
 :root[data-platform="darwin"] .sidebar-rail {
-  position: relative;
   background-color: var(--ds-sidebar-glass-tint);
   background-image: linear-gradient(
       180deg,
@@ -326,8 +349,10 @@
     ),
     linear-gradient(0deg, var(--ds-sidebar-glass-sheen-bottom), transparent 160px);
   background-repeat: no-repeat;
-  /* No dock seam: the glass meets the opaque main pane flush, so the only edge
-     cue is the tint's natural change against the pane. */
+}
+
+:root[data-platform="darwin"] .sidebar-rail {
+  position: relative;
 }
 
 /* Collapsed-sidebar controls stay in normal flow inside the main drag band so

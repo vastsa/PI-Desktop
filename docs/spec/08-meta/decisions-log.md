@@ -3242,3 +3242,22 @@ D193, and D194.
 - No protocol, storage, or runtime clamp change. Existing session rows keep
   their stored `thinkingLevel`. Supersedes D153. See E2E-082 / E2E-163 /
   E2E-174.
+
+## 2026-09-05 — Startup splash shares the macOS sidebar glass (D304)
+
+- On macOS the boot splash (`.startup-splash`) drops its opaque
+  `--ds-bg-primary` fill for the sidebar glass recipe: `--ds-sidebar-glass-tint`
+  plus the top/bottom sheen gradients, over the window's native `under-window`
+  vibrancy. The shell mounts under the splash as soon as `ready` flips, ahead
+  of the minimum dwell; behind glass it would bleed through the tint, so on
+  darwin the shell stays `visibility: hidden` while the splash is loading and
+  fades in with an opacity transition (not an animation, so the sidebar's own
+  `sidebar-in` mount animation is not replayed) under the splash's exit fade —
+  a cross-fade from glass into the opaque main pane and glass sidebar.
+- Windows and Linux keep the opaque splash; the rule is scoped to
+  `:root[data-platform="darwin"]` like the sidebar rule. Splash, sidebar, and
+  rail share one glass selector so the recipe cannot drift. The glass tokens'
+  comment now names both consumers. `macos-sidebar-vibrancy.test.mjs` asserts
+  the splash uses the tint and sheen on darwin and stays `--ds-bg-primary` in
+  the base rule. Extends §8.3 of the UI design system; no protocol, storage,
+  or runtime behavior changes. E2E-076.

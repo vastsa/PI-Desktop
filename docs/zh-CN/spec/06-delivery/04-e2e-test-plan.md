@@ -2629,7 +2629,7 @@ IPC 请求无法关闭。
   - 退出并外部单击关闭菜单而不创建任何内容。
 
 #### E2E-076：出现启动画面，然后返回主 shell
-- **状态**：部分自动化（`startup-splash-motion.test.mjs` 涵盖启动标记、运动标记、简化运动和目录键；全窗口计时仍为草稿）
+- **状态**：部分自动化（`startup-splash-motion.test.mjs` 涵盖启动标记、运动标记、简化运动和目录键；`macos-sidebar-vibrancy.test.mjs` 覆盖 darwin 玻璃启动页与 shell 交叉淡入；全窗口计时仍为草稿）
 - **优先级**：P1
 - **封面**：A，品质/US-UI 外壳抛光
 - **先决条件**：应用程序启动路径可用（开发或打包）。
@@ -2638,12 +2638,14 @@ IPC 请求无法关闭。
   2. 在引导完成之前观察第一个绘制的渲染器表面。
   3. 等待 sessions/settings 引导程序完成。
   4. 如果可用，请对 OS `prefers-reduced-motion: reduce` 重复此操作。
+  5. 在 macOS 上，将启动面与 shell 出现后的侧边栏玻璃态对比。
 - **预期**：
 - 准备之前：带有品牌标志、外壳名称、标语和可访问的启动状态 (`data-testid="startup-splash"`) 的全窗口启动画面。
   - 准备好后：启动画面会短暂淡出（或立即减少运动）退出，并且主外壳（或设置页面）在下面是交互式的。
+  - macOS 上启动页与侧边栏使用同一套玻璃 tint/sheen，叠在原生 `under-window` vibrancy 之上；已挂载的 shell 在退出淡出前保持隐藏，再交叉淡入。其他平台仍为不透明的 `--ds-bg-primary`。
   - 没有简单的无品牌“开始...”居中文本作为唯一的启动 UI。
   - Overlay/dialog 输入动作使用共享令牌；减少的运动可以保持状态变化，而无需装饰持续时间。
-- **链接规格**：`04-ux/07-ui-design-system.md` §8、`04-ux/02-i18n-english-first.md`、决策日志 D146
+- **链接规格**：`04-ux/07-ui-design-system.md` §8、`04-ux/02-i18n-english-first.md`、决策日志 D146 / D304
 - **验收**：A（应用程序启动），质量
 - **里程碑**：M5
 #### E2E-099：品牌标志遵循活跃主题

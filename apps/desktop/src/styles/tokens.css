@@ -48,10 +48,11 @@
   /* Codex elevated-primary #212121f5 / color-mix(gray-800 96%, transparent) */
   --ds-bg-composer: color-mix(in oklab, var(--gray-800) 96%, transparent);
   /*
-    macOS sidebar glass (chrome.css). The native vibrancy material carries the
-    blur, so the renderer only adds a thin tint plus a sheen; anything heavier
-    reads as a flat panel and hides the material. Tuned so text-muted still
-    clears 4.5:1 on the brightest backdrop the material can produce.
+    macOS sidebar and boot-splash glass (chrome.css). The native vibrancy
+    material carries the blur, so the renderer only adds a thin tint plus a
+    sheen; anything heavier reads as a flat panel and hides the material. Tuned
+    so text-muted still clears 4.5:1 on the brightest backdrop the material can
+    produce.
   */
   --ds-sidebar-glass-tint: color-mix(in oklab, var(--ds-bg-sidebar) 40%, transparent);
   --ds-sidebar-glass-sheen-top: color-mix(in oklab, var(--gray-0) 7%, transparent);

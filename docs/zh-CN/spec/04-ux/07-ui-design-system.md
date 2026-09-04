@@ -571,6 +571,10 @@ shadow-lg:  0 8px 24px rgba(0,0,0,0.12)
 - 退出：一旦 `ready` 为 true，就会出现 280 毫秒不透明度淡出 (`startup-splash-out`)，显露出来
   下面已经安装好的外壳
 - 减少运动：接近零的 enter/exit 和静态全宽条
+- macOS：启动页与侧边栏使用同一套玻璃态（D304）——`--ds-sidebar-glass-tint`
+  底色加上下 sheen，叠在原生 `under-window` vibrancy 之上，这样启动面不会在
+  半透明侧边栏之前闪出一块不透明面板。已挂载的 shell 在玻璃下保持隐藏直到退出
+  淡出，再交叉淡入。其他平台仍为不透明的 `--ds-bg-primary`
 
 这是启动状态反馈，而不是装饰性镀铬。
 

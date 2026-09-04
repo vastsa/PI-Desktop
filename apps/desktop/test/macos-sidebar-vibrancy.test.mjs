@@ -39,19 +39,50 @@ test("macOS main window enables native under-window vibrancy only in its platfor
   assert.match(mainWindowBlock, /frame: false/);
 });
 
-test("only macOS sidebar surfaces receive the translucent glass treatment", () => {
-  const macSidebarBlock =
+test("the macOS startup splash shares the sidebar glass tint and sheen", () => {
+  const macGlassBlock =
     stylesSource.match(
-      /:root\[data-platform="darwin"\] \.sidebar,\n:root\[data-platform="darwin"\] \.sidebar-rail\s*\{[^}]*\}/,
+      /:root\[data-platform="darwin"\] \.startup-splash,\n:root\[data-platform="darwin"\] \.sidebar,\n:root\[data-platform="darwin"\] \.sidebar-rail\s*\{[^}]*\}/,
     )?.[0] ?? "";
-  assert.match(macSidebarBlock, /background-color:\s*var\(--ds-sidebar-glass-tint\)/);
+  assert.match(macGlassBlock, /background-color:\s*var\(--ds-sidebar-glass-tint\)/);
+  assert.match(macGlassBlock, /var\(--ds-sidebar-glass-sheen-top\)/);
+  assert.match(macGlassBlock, /var\(--ds-sidebar-glass-sheen-bottom\)/);
+  assert.doesNotMatch(macGlassBlock, /var\(--ds-bg-primary\)/);
+  // Keep splash `position: fixed`; relative is only for the dock surfaces.
+  assert.doesNotMatch(macGlassBlock, /position:\s*relative/);
+
+  // Other platforms keep the opaque boot surface; the glass is darwin-only.
+  const baseSplashBlock = stylesSource.match(/\n\.startup-splash\s*\{[^}]*\}/)?.[0] ?? "";
+  assert.match(baseSplashBlock, /background:\s*var\(--ds-bg-primary\)/);
+  assert.doesNotMatch(baseSplashBlock, /glass/);
+
+  // The shell mounts under the splash once `ready` flips; behind glass it must
+  // stay hidden until the exit fade, then cross-fade in rather than bleed
+  // through the tint. A transition, not an animation: `.sidebar` owns its
+  // `sidebar-in` mount animation and swapping animation-name would replay it.
+  assert.match(
+    stylesSource,
+    /:root\[data-platform="darwin"\] \.app-shell\.is-booting:has\(\.startup-splash:not\(\.is-exiting\)\)\s*>\s*:not\(\.startup-splash\)\s*\{\s*visibility:\s*hidden;/,
+  );
+  assert.match(
+    stylesSource,
+    /:root\[data-platform="darwin"\] \.app-shell\.is-booting:has\(\.startup-splash\.is-exiting\)\s*>\s*:not\(\.startup-splash\)\s*\{\s*opacity:\s*1;\s*transition:\s*opacity/,
+  );
+});
+
+test("only macOS sidebar and splash surfaces receive the translucent glass treatment", () => {
+  const macGlassBlock =
+    stylesSource.match(
+      /:root\[data-platform="darwin"\] \.startup-splash,\n:root\[data-platform="darwin"\] \.sidebar,\n:root\[data-platform="darwin"\] \.sidebar-rail\s*\{[^}]*\}/,
+    )?.[0] ?? "";
+  assert.match(macGlassBlock, /background-color:\s*var\(--ds-sidebar-glass-tint\)/);
   // Sheen, not a flat tint — this is what keeps the material reading as glass.
-  assert.match(macSidebarBlock, /var\(--ds-sidebar-glass-sheen-top\)/);
-  assert.match(macSidebarBlock, /var\(--ds-sidebar-glass-sheen-bottom\)/);
+  assert.match(macGlassBlock, /var\(--ds-sidebar-glass-sheen-top\)/);
+  assert.match(macGlassBlock, /var\(--ds-sidebar-glass-sheen-bottom\)/);
   // No dock seam on any platform (D297): neither the macOS glass rule nor the
   // base `.sidebar` rule draws a right edge, so the glass meets the opaque main
   // pane flush and no transparent override is needed.
-  assert.doesNotMatch(macSidebarBlock, /border-right/);
+  assert.doesNotMatch(macGlassBlock, /border-right/);
   const baseSidebarBlock = stylesSource.match(/\n\.sidebar\s*\{[^}]*\}/)?.[0] ?? "";
   assert.doesNotMatch(baseSidebarBlock, /border-right/);
 

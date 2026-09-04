@@ -3210,7 +3210,7 @@ Each scenario is documented in this format:
   - Escape and outside click dismiss the menu without creating anything.
 
 #### E2E-076: Startup splash appears then yields to the main shell
-- **Status**: Partially automated (`startup-splash-motion.test.mjs` covers splash markup, motion tokens, reduced-motion, and catalog keys; full window timing remains Draft)
+- **Status**: Partially automated (`startup-splash-motion.test.mjs` covers splash markup, motion tokens, reduced-motion, and catalog keys; `macos-sidebar-vibrancy.test.mjs` covers the darwin glass splash and shell cross-fade; full window timing remains Draft)
 - **Priority**: P1
 - **Covers**: A, Quality / US-UI shell polish
 - **Preconditions**: App launch path available (dev or packaged).
@@ -3219,12 +3219,14 @@ Each scenario is documented in this format:
   2. Observe the first painted renderer surface before bootstrap completes.
   3. Wait until sessions/settings bootstrap finishes.
   4. Repeat with OS `prefers-reduced-motion: reduce` when available.
+  5. On macOS, compare the splash surface with the sidebar glass after the shell appears.
 - **Expected**:
   - Before ready: full-window splash with brand mark, shell name, tagline, and accessible starting status (`data-testid="startup-splash"`).
   - After ready: splash exits with a short fade (or instantly under reduced motion) and the main shell (or settings page) is interactive underneath.
+  - On macOS the splash uses the same glass tint and sheen as the sidebar over native `under-window` vibrancy; the mounted shell stays hidden until the splash exit fade, then cross-fades in. Other platforms keep the opaque `--ds-bg-primary` fill.
   - No plain unbranded “Starting…” centered text as the only boot UI.
   - Overlay/dialog enter motion uses shared tokens; reduced motion keeps state changes without decorative duration.
-- **Specs linked**: `04-ux/07-ui-design-system.md` §8, `04-ux/02-i18n-english-first.md`, decisions-log D146
+- **Specs linked**: `04-ux/07-ui-design-system.md` §8, `04-ux/02-i18n-english-first.md`, decisions-log D146 / D304
 - **Acceptance**: A (app startup), Quality
 - **Milestone**: M5
 #### E2E-099: Brand logo follows the active theme
