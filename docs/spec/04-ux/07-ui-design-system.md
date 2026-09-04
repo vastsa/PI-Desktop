@@ -29,6 +29,7 @@ The desktop shell targets a 1:1 visual match with the local Codex desktop client
 | **Restraint** | One accent color family. No rainbow status colors — use semantic token names (success, warning, error). |
 | **Motion as feedback** | Animations convey state change (streaming, loading, expand/collapse). Never decorative. |
 | **Keyboard-first** | Focus rings, tab order, and shortcut labels are primary UX, not afterthoughts. |
+| **Continuous shell chrome** | Titlebars stay borderless and continuous with their surfaces; reserve faint separators for boundaries that clarify ownership, such as the window-control side seam. |
 
 ### 3.1 AI-generated page copy
 

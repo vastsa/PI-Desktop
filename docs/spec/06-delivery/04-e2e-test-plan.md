@@ -7190,3 +7190,26 @@ This test plan spec is accepted when:
 - **Acceptance**: C (chat/stream) + B (model configuration) + E (tools)
 - **Milestone**: M6+
 - **Status**: Draft
+
+#### E2E-170: Shell titlebars use borderless chrome
+
+- **Preconditions**: PI-Desktop is open in chat, at least one destination page,
+  and Settings on a supported light or dark theme. On Windows/Linux, renderer-
+  drawn window controls are visible.
+- **Steps**: 1) Inspect the top band on the chat, destination, and Settings
+  surfaces. 2) Switch between light and dark themes and repeat. 3) On
+  Windows/Linux, inspect the window-control band and its boundary with the
+  adjacent surface. 4) Drag the titlebar and activate each window-control
+  button.
+- **Expected**: The shared 46px top band remains stable and draggable, but its
+  lower edge has no visible border line in either theme or route. The
+  Windows/Linux control band has no bottom line; only its existing faint side
+  seam separates the controls from the adjacent surface. Focus rings, hover
+  states, window actions, and content clearance remain unchanged.
+- **Specs linked**: `04-ux/01-ui-ia.md`, `04-ux/07-ui-design-system.md`,
+  `04-ux/08-component-spec.md`
+- **Acceptance**: A (app shell), Quality
+- **Milestone**: M6+
+- **Status**: Unit/source-contract covered (`topbar-consistency.test.mjs`,
+  `settings-drag-region.test.mjs`, `window-menu.test.mjs`); rendered light/dark
+  desktop journey remains pending

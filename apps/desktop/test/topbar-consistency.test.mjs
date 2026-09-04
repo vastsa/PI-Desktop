@@ -8,7 +8,7 @@ function styleBlock(selector) {
   return stylesSource.match(new RegExp(`(?:^|\\n)${selector} \\{[^}]*\\}`))?.[0] ?? "";
 }
 
-test("shell titlebar surfaces share the toolbar metric and light surface", () => {
+test("shell titlebar surfaces share the toolbar metric and borderless surface", () => {
   for (const selector of [
     "\\.main-titlebar",
     "\\.conversation-topbar",
@@ -17,7 +17,7 @@ test("shell titlebar surfaces share the toolbar metric and light surface", () =>
     const block = styleBlock(selector);
     assert.match(block, /height:\s*var\(--ds-toolbar-height\);/);
     assert.match(block, /background:\s*var\(--ds-bg-primary\);/);
-    assert.match(block, /border-bottom:\s*1px solid var\(--ds-border-subtle\);/);
+    assert.match(block, /border-bottom:\s*0;/);
   }
 });
 
@@ -29,9 +29,9 @@ test("window chrome reserves the same titlebar height and native control band", 
   assert.match(stylesSource, /--ds-toolbar-height:\s*46px;/);
 });
 
-test("window control band completes the shared titlebar separator", () => {
+test("window control band keeps only a weak side boundary", () => {
   const controls = styleBlock("\\.window-controls");
-  assert.match(controls, /border-bottom:\s*1px solid var\(--ds-border-subtle\);/);
+  assert.doesNotMatch(controls, /border-bottom:/);
   assert.match(controls, /border-left:\s*1px solid var\(--ds-border-subtle\);/);
 });
 

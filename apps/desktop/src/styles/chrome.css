@@ -366,7 +366,9 @@
   justify-content: flex-end;
   padding: 0 12px;
   background: var(--ds-bg-primary);
-  border-bottom: 1px solid var(--ds-border-subtle);
+  /* Keep the shell continuous; titlebar hierarchy comes from spacing and
+   * surface color instead of a hard lower rule. */
+  border-bottom: 0;
   -webkit-app-region: drag;
 }
 
@@ -390,7 +392,8 @@
   justify-content: space-between;
   padding: 0 12px;
   background: var(--ds-bg-primary);
-  border-bottom: 1px solid var(--ds-border-subtle);
+  /* Keep the conversation surface visually continuous with the titlebar. */
+  border-bottom: 0;
   /* Where the returning dock toggle sits; platform rules below override it. */
   --ct-lead-inset: 12px;
   /*
@@ -861,8 +864,8 @@
   /* Paint a separate full hit band so page content cannot show through the
    * controls and panel actions cannot read as part of the same button group. */
   background: var(--ds-bg-primary);
-  /* Keep the control band visually continuous with the adjacent titlebar. */
-  border-bottom: 1px solid var(--ds-border-subtle);
+  /* Keep the control band visually continuous with the adjacent titlebar;
+   * the side seam is intentionally the only chrome divider in this band. */
   border-left: 1px solid var(--ds-border-subtle);
 }
 

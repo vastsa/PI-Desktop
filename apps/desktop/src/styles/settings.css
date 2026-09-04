@@ -34,7 +34,8 @@
   z-index: 10;
   height: var(--ds-toolbar-height);
   background: var(--ds-bg-primary);
-  border-bottom: 1px solid var(--ds-border-subtle);
+  /* Let the settings content and titlebar read as one surface. */
+  border-bottom: 0;
   -webkit-app-region: drag;
 }
 
