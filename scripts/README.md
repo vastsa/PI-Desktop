@@ -23,7 +23,6 @@ disagrees, so a green `check:release-docs` is a precondition, not a substitute.
 |---|---|---|
 | `release-macos.sh` | `scripts/release-macos.sh` | Signed, and with Apple credentials notarized, local native macOS lane. Defaults to the host architecture; `MAC_ARCH=arm64` or `MAC_ARCH=x64` must match the host. Injects `MAC_SIGNING_IDENTITY` through `-c.mac.identity` because the static electron-builder config stays `identity: null` |
 | `make-icon.py` | `python3 scripts/make-icon.py` | Derive the package PNG, the macOS tray template, and the iconset/ICNS from the canonical PNG |
-| `clean-mascot-sprite.py` | `python3 scripts/clean-mascot-sprite.py` | Normalize the mascot sprite sheet |
 | `publish-screenshots.py` | `python3 scripts/publish-screenshots.py` | Publish documentation screenshots |
 
 ## Development

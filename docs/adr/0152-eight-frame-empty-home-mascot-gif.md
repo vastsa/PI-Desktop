@@ -38,8 +38,8 @@ hover does not change cadence.
 - The 100px layout slot, decorative role, and reduced-motion freeze remain.
 - Light and dark surfaces each keep a dedicated mascot treatment instead of
   recoloring one asset through theme tokens.
-- The historical `home-mascot-groups.png` atlas stays out of the renderer
-  path.
+- The historical `home-mascot-groups.png` atlas is not in the repository;
+  the GIFs and still frames are the source assets.
 
 ## Alternatives rejected
 

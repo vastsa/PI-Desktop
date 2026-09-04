@@ -54,6 +54,9 @@ test("app chrome uses the shared brand asset without branding the composer input
   await access(new URL("../src/assets/home-mascot-light.gif", import.meta.url));
   await access(new URL("../src/assets/home-mascot-still-dark.png", import.meta.url));
   await access(new URL("../src/assets/home-mascot-still-light.png", import.meta.url));
+  await assert.rejects(
+    () => access(new URL("../src/assets/home-mascot-groups.png", import.meta.url)),
+  );
   assert.match(chatSurface, /<HomeMascotLogo \/>/);
   assert.match(mascotLogo, /import mascotMotionDarkUrl from\s*"\.\.\/assets\/home-mascot-dark\.gif"/);
   assert.match(mascotLogo, /import mascotMotionLightUrl from\s*"\.\.\/assets\/home-mascot-light\.gif"/);
