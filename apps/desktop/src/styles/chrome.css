@@ -3,6 +3,18 @@
   native window controls, the conversation top bar, and the notification center.
 */
 
+/*
+ * The native vibrancy material is visible only through the renderer ancestry.
+ * Keep those layers transparent on macOS; the full-height sidebar and the
+ * opaque main pane/titlebars still cover their respective regions.
+ */
+:root[data-platform="darwin"],
+:root[data-platform="darwin"] body,
+:root[data-platform="darwin"] #root,
+:root[data-platform="darwin"] .app-shell {
+  background: transparent;
+}
+
 /* Boot splash — feedback for host/settings bootstrap (not decorative chrome). */
 .startup-splash {
   position: fixed;
@@ -297,6 +309,18 @@
   flex-direction: column;
   background: var(--ds-bg-sidebar, var(--ds-bg-primary));
   border-right: 1px solid var(--ds-border-subtle);
+}
+
+/*
+ * macOS supplies the blur through the native `sidebar` vibrancy material on
+ * the transparent window. Keep only the two sidebar surfaces translucent and
+ * use the active theme token as a restrained tint; the main pane and titlebars
+ * remain opaque `bg-primary` surfaces.
+ */
+:root[data-platform="darwin"] .sidebar,
+:root[data-platform="darwin"] .sidebar-rail {
+  background: color-mix(in oklab, var(--ds-bg-sidebar) 78%, transparent);
+  border-right-color: color-mix(in oklab, var(--ds-text-primary) 8%, transparent);
 }
 
 /* Collapsed-sidebar controls stay in normal flow inside the main drag band so

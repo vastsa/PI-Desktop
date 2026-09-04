@@ -2553,7 +2553,6 @@ async function createWindow() {
     minWidth: WINDOW_MIN_WIDTH,
     minHeight: WINDOW_MIN_HEIGHT,
     title: APP_NAME,
-    backgroundColor: nativeTheme.shouldUseDarkColors ? "#181818" : "#ffffff",
     show: false,
     // Keep native edge/corner resizing explicit. Frameless chrome owns the
     // titlebar only; the OS remains responsible for the resize hit regions.
@@ -2565,8 +2564,15 @@ async function createWindow() {
       ? {
           titleBarStyle: "hiddenInset" as const,
           trafficLightPosition: { x: 16, y: 16 },
+          vibrancy: "sidebar" as const,
+          visualEffectState: "followWindow" as const,
+          transparent: true,
+          backgroundColor: "#00000000",
         }
-      : { frame: false }),
+      : {
+          frame: false,
+          backgroundColor: nativeTheme.shouldUseDarkColors ? "#181818" : "#ffffff",
+        }),
     webPreferences: {
       preload: join(__dirname, "../preload/index.cjs"),
       contextIsolation: true,

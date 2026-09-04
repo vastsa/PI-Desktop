@@ -135,6 +135,13 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
 | Windows | Frameless 46px titlebar; sidebar actions at left, open work-panel collapse in session pane top-right ahead of minimize/maximize/close | None inside the window |
 | Linux | Frameless 46px titlebar; sidebar actions at left, open work-panel collapse in session pane top-right ahead of minimize/maximize/close | None inside the window |
 
+- macOS enables the native Electron `vibrancy: "sidebar"` material with
+  `visualEffectState: "followWindow"` and a transparent window backing. Only the
+  `.sidebar` and any rendered `.sidebar-rail` surface use a restrained,
+  theme-derived translucent tint with a 1px edge seam. `.main-pane`,
+  `.main-titlebar`, and `.conversation-topbar` remain opaque `bg-primary`
+  surfaces, so vibrancy does not spread across the whole window. Windows/Linux
+  retain their existing opaque background and frameless behavior.
 - The macOS system menu exposes New Task, Open Project, Settings, Command
   Palette, Sidebar, standard editing, zoom/fullscreen, window, Help, Logs, and
   Check for Updates actions. Windows/Linux expose equivalent product actions

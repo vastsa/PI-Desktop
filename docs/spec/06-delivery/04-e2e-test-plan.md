@@ -5993,6 +5993,20 @@ This test plan spec is accepted when:
 - **Milestone**: M5
 - **Status**: Partially automated (renderer style/source contract)
 
+### US-UI-74 macOS native sidebar vibrancy
+- Open the desktop app on macOS in both light and dark appearances with the
+  sidebar expanded, then exercise the existing collapse/expand path.
+- Expect the main window to use native `sidebar` vibrancy with a restrained
+  theme tint behind `.sidebar` and any rendered `.sidebar-rail`; the edge
+  remains a single fine seam.
+- Expect `.main-pane`, `.main-titlebar`, and `.conversation-topbar` to remain
+  solid theme surfaces without whole-window transparency or a strong artificial
+  blur/card treatment. Sidebar collapse/expand, resize, traffic-light placement,
+  and drag/no-drag hit regions remain unchanged.
+- **Specs linked**: `04-ux/08-component-spec.md` §1.7, §3.4
+- **Milestone**: M6
+- **Status**: Partially automated (`macos-sidebar-vibrancy.test.mjs` source contract); native visual verification Draft
+
 #### E2E-123: asktool collects multiple answers and returns skipped placeholders
 
 - **Preconditions**: Agent, Plan, or Goal mode; a configured provider; a
