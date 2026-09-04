@@ -23,6 +23,15 @@ export type ChangelogEntry = {
 
 const enEntries: ChangelogEntry[] = [
   {
+    version: "0.13.3",
+    date: "2026-09-05",
+    highlights: [
+      "Open New Task to an empty destination immediately, without keeping the previous transcript on screen.",
+      "Treat a filled Read window as complete and keep the truncated chip for actual cuts.",
+      "Keep later conversation turns when switching regenerate variants, instead of restoring a stale archive.",
+    ],
+  },
+  {
     version: "0.13.2",
     date: "2026-09-05",
     highlights: [
@@ -590,6 +599,15 @@ const enEntries: ChangelogEntry[] = [
 ];
 
 const zhCNEntries: ChangelogEntry[] = [
+  {
+    version: "0.13.3",
+    date: "2026-09-05",
+    highlights: [
+      "新建任务会立刻显示空会话，不再在宿主读写期间继续展示上一条转录。",
+      "读文件填满窗口时视为完整而非截断，截断标记只用于真正被裁切的结果。",
+      "切换重新生成的版本时保留之后的对话回合，不再用过期归档覆盖后续内容。",
+    ],
+  },
   {
     version: "0.13.2",
     date: "2026-09-05",
