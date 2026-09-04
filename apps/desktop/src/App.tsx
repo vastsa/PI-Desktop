@@ -1773,18 +1773,6 @@ function AppShell() {
             </Suspense>
           </section>
 
-          <button
-            type="button"
-            className="app-work-panel-toggle no-drag"
-            title={t("nav.toggleWorkPanel")}
-            aria-label={t("nav.toggleWorkPanel")}
-            aria-pressed={workPanelOpen}
-            disabled={!activeSessionId}
-            onClick={togglePresentedWorkPanel}
-          >
-            <IconPanel size={15} />
-          </button>
-
           {(presentedWorkPanelOpen || workPanelExiting) && (
             <WorkPanel
               panelBlocked={searchOpen}
@@ -1794,6 +1782,18 @@ function AppShell() {
               }
             />
           )}
+
+          <button
+            type="button"
+            className="app-work-panel-toggle no-drag"
+            title={t("nav.toggleWorkPanel")}
+            aria-label={t("nav.toggleWorkPanel")}
+            aria-pressed={workPanelOpen || presentedWorkPanelOpen}
+            disabled={!activeSessionId && !presentedWorkPanelOpen && !workPanelExiting}
+            onClick={togglePresentedWorkPanel}
+          >
+            <IconPanel size={15} />
+          </button>
 
           <SearchDialog open={searchOpen} onClose={() => setSearchOpen(false)} />
           <ToastHost />

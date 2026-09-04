@@ -1925,7 +1925,10 @@ Each scenario is documented in this format:
   same viewport coordinates in closed, entering, open, and exiting states. On
   Windows/Linux it stays ahead of minimize/maximize/close; while open it remains
   visible above the panel header, whose trailing resource close stays clickable
-  and which renders no duplicate collapse control. The toggle publishes its
+  and which renders no duplicate collapse control. The button is emitted after
+  the panel in paint order, explicitly carves out a non-drag pointer region, and
+  retains an active fill while the panel is visible; the panel header's drag
+  region never steals its hover or click. The toggle publishes its
   pressed state and both it and Cmd/Ctrl+J use the active session's existing
   toggle path. A second button click prioritizes the visible presentation and
   collapses it even if the session projection is briefly stale. Clicking again

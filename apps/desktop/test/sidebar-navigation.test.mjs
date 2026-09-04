@@ -59,7 +59,7 @@ test("sidebar header retains non-mac branding and keeps collapse beside search",
 
 test("work panel toggle stays viewport-fixed in the app shell", () => {
   assert.match(appSource, /className="app-work-panel-toggle no-drag"/);
-  assert.match(appSource, /aria-pressed=\{workPanelOpen\}/);
+  assert.match(appSource, /aria-pressed=\{workPanelOpen \|\| presentedWorkPanelOpen\}/);
   assert.match(appSource, /<IconPanel/);
   assert.match(appSource, /useAppStore\.getState\(\)\.toggleWorkPanel\(\)/);
   assert.doesNotMatch(topbarSource, /app-work-panel-toggle|IconPanel/);

@@ -507,7 +507,15 @@
   position: fixed;
   top: 9px;
   right: 12px;
-  z-index: 40;
+  z-index: 30;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.app-work-panel-toggle[aria-pressed="true"] {
+  background: var(--ds-bg-active);
+  color: var(--ds-text-primary);
 }
 
 :root[data-platform="win32"] .app-work-panel-toggle,

@@ -85,7 +85,7 @@ test("work panel reflows the shell without changing native window bounds", () =>
   // before confirming zero reservation and unmounting.
   assert.match(
     appSource,
-    /<\/section>[\s\S]*?className="app-work-panel-toggle no-drag"[\s\S]*?\{\(presentedWorkPanelOpen \|\| workPanelExiting\) && \(?\s*<WorkPanel/,
+    /<\/section>[\s\S]*?\{\(presentedWorkPanelOpen \|\| workPanelExiting\) && \(?\s*<WorkPanel[\s\S]*?className="app-work-panel-toggle no-drag"/,
   );
   assert.doesNotMatch(
     appSource,
@@ -128,8 +128,11 @@ test("work panel reflows the shell without changing native window bounds", () =>
 test("app shell owns the sole viewport-fixed work panel toggle", () => {
   assert.match(appSource, /className="app-work-panel-toggle no-drag"/);
   assert.match(appSource, /t\("nav\.toggleWorkPanel"\)/);
-  assert.match(appSource, /aria-pressed=\{workPanelOpen\}/);
-  assert.match(appSource, /disabled=\{!activeSessionId\}/);
+  assert.match(appSource, /aria-pressed=\{workPanelOpen \|\| presentedWorkPanelOpen\}/);
+  assert.match(
+    appSource,
+    /disabled=\{!activeSessionId && !presentedWorkPanelOpen && !workPanelExiting\}/,
+  );
   assert.match(appSource, /onClick=\{togglePresentedWorkPanel\}/);
   const buttonToggle = appSource.slice(
     appSource.indexOf("const togglePresentedWorkPanel = useCallback"),
@@ -150,7 +153,11 @@ test("app shell owns the sole viewport-fixed work panel toggle", () => {
   assert.doesNotMatch(panelSource, /onCollapse|work-panel-toolbar-collapse|IconChevronRight/);
   assert.match(
     globalStyles,
-    /\.app-work-panel-toggle \{[^}]*position:\s*fixed;[^}]*right:\s*12px;[^}]*z-index:\s*40;/s,
+    /\.app-work-panel-toggle \{[^}]*position:\s*fixed;[^}]*right:\s*12px;[^}]*z-index:\s*30;[^}]*pointer-events:\s*auto;[^}]*-webkit-app-region:\s*no-drag;/s,
+  );
+  assert.match(
+    globalStyles,
+    /\.app-work-panel-toggle\[aria-pressed="true"\] \{[^}]*background:\s*var\(--ds-bg-active\);[^}]*color:\s*var\(--ds-text-primary\);/s,
   );
   assert.match(globalStyles, /\.conversation-topbar \{[^}]*z-index:\s*10;/s);
   assert.match(
