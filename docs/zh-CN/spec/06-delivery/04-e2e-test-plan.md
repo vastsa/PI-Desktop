@@ -1584,6 +1584,8 @@ hover/focus 不带移位标签，项目标题 hover/focus 路径显示
   相同视口坐标。Windows/Linux 上它位于 minimize/maximize/close 之前；面板
   打开时按钮显示在面板标题之上，资源关闭按钮仍可点击，且面板标题没有重复的
   折叠控件。按钮发布按下状态，并与 Cmd/Ctrl+J 共用活动会话的 toggle 路径。
+  第二次点击按钮时优先依据当前可见 presentation，即使会话投影短暂滞后也必须
+  收起可见面板；退出动画中再次点击则取消关闭目标并重新打开。
 
   打开请求 `window/setWorkPanelReservation({width: 0})`，BrowserWindow 边界和
   位置不变。in-flow 面板从 UI 右边缘滑入并从零增长到 244–720px 已提交宽度，

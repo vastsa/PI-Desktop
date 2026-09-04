@@ -1927,7 +1927,9 @@ Each scenario is documented in this format:
   visible above the panel header, whose trailing resource close stays clickable
   and which renders no duplicate collapse control. The toggle publishes its
   pressed state and both it and Cmd/Ctrl+J use the active session's existing
-  toggle path.
+  toggle path. A second button click prioritizes the visible presentation and
+  collapses it even if the session projection is briefly stale. Clicking again
+  during exit cancels that close target and reopens the panel.
 
   Opening requests `window/setWorkPanelReservation({width: 0})`, keeps native
   BrowserWindow bounds and position unchanged, and animates the in-flow panel

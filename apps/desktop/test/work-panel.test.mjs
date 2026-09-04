@@ -130,10 +130,21 @@ test("app shell owns the sole viewport-fixed work panel toggle", () => {
   assert.match(appSource, /t\("nav\.toggleWorkPanel"\)/);
   assert.match(appSource, /aria-pressed=\{workPanelOpen\}/);
   assert.match(appSource, /disabled=\{!activeSessionId\}/);
-  assert.match(
-    appSource,
-    /onClick=\{\(\) => useAppStore\.getState\(\)\.toggleWorkPanel\(\)\}/,
+  assert.match(appSource, /onClick=\{togglePresentedWorkPanel\}/);
+  const buttonToggle = appSource.slice(
+    appSource.indexOf("const togglePresentedWorkPanel = useCallback"),
+    appSource.indexOf("const finishWorkPanelExit = useCallback"),
   );
+  assert.match(
+    buttonToggle,
+    /if \(workPanelExitingRef\.current\) \{\s*store\.openWorkPanel\(\);\s*return;/,
+  );
+  assert.match(buttonToggle, /store\.workPanelOpen \|\| presentedWorkPanelRef\.current/);
+  assert.match(buttonToggle, /store\.collapseWorkPanel\(\)/);
+  assert.match(buttonToggle, /presentedWorkPanelRef\.current && !workPanelExitingRef\.current/);
+  assert.match(buttonToggle, /workPanelExitingRef\.current = true/);
+  assert.match(buttonToggle, /setWorkPanelExiting\(true\)/);
+  assert.match(buttonToggle, /store\.openWorkPanel\(\)/);
   assert.match(appSource, /<IconPanel size=\{15\}/);
   assert.doesNotMatch(topbarSource, /app-work-panel-toggle|onToggleWorkPanel|IconPanel/);
   assert.doesNotMatch(panelSource, /onCollapse|work-panel-toolbar-collapse|IconChevronRight/);
