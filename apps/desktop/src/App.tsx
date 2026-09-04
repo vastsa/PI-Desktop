@@ -1469,13 +1469,14 @@ function AppShell() {
           "修复 host-core 启动失败并补充错误恢复测试",
           "同步代码",
         ];
+        // The inbox lists failures only, so every fixture row is a failure.
         const notifications = Array.from({ length: count }, (_, index) => ({
           id: `capture-notification-${index}`,
-          kind: index === 1 ? ("task.failed" as const) : ("task.completed" as const),
+          kind: "task.failed" as const,
           sessionId: `capture-session-${index}`,
           sessionTitle: titles[index] ?? `后台任务 ${index + 1}`,
           turnId: `capture-turn-${index}`,
-          ...(index === 1 ? { errorCode: "MODEL_REQUEST_TIMEOUT" } : {}),
+          ...(index % 2 === 1 ? { errorCode: "MODEL_REQUEST_TIMEOUT" } : {}),
           createdAt: new Date(now - (index + 1) * 60_000).toISOString(),
           readAt: index === 2 ? new Date(now - 30_000).toISOString() : null,
         }));

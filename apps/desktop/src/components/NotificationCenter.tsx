@@ -12,6 +12,10 @@ import type { AppNotification } from "@pi-desktop/shared";
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "../stores/app-store";
 import {
+  inboxNotifications,
+  inboxUnreadCount,
+} from "../lib/notification-inbox";
+import {
   IconBell,
   IconCheckCheck,
   IconCircleAlert,
@@ -61,8 +65,17 @@ export function NotificationCenter({
   onBeforeOpen?: () => void;
 }) {
   const { t, i18n } = useTranslation();
-  const notifications = useAppStore((state) => state.notifications);
-  const unreadCount = useAppStore((state) => state.unreadNotificationCount);
+  const storedNotifications = useAppStore((state) => state.notifications);
+  // Successful completions are hidden here; they still drive the sidebar
+  // outcome badge and native notifications from the unfiltered store.
+  const notifications = useMemo(
+    () => inboxNotifications(storedNotifications),
+    [storedNotifications],
+  );
+  const unreadCount = useMemo(
+    () => inboxUnreadCount(storedNotifications),
+    [storedNotifications],
+  );
   const refreshNotifications = useAppStore((state) => state.refreshNotifications);
   const markAllNotificationsRead = useAppStore(
     (state) => state.markAllNotificationsRead,

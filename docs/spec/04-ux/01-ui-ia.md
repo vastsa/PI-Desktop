@@ -256,7 +256,7 @@ shared capability contract:
 | Command palette | Cmd/Ctrl+K (also Cmd/Ctrl+Shift+P per D014) | builtin + plugin commands |
 | Model menu | Composer-right model × reasoning chip | configured provider/model choices + settings entry (D091) |
 | Profile menu | sidebar footer | Settings / Logs / Theme cycle (D041) |
-| Notification inbox | sidebar footer bell | All/Unread views, task completion/failure rows, mark-all-read and clear actions (D130/D117) |
+| Notification inbox | sidebar footer bell | All/Unread views, task failure rows only (successful completions are hidden, D295), mark-all-read and clear actions (D130/D117) |
 | Toasts | events (plugin toast, backend restored, copy) | top-center; 4s default, 8s for errors |
 
 ## 5. Navigation model
@@ -313,9 +313,11 @@ shared capability contract:
 - Completed/failed turn not already visible → host-core appends one durable
   inbox row. A result shown in the visible, focused current chat and every
   `aborted` turn append none. Background sessions and any turn finishing while
-  the window is unfocused still append. The sidebar footer bell badge shows the
-  unread count; selecting a row marks it read and activates its bound
-  project/session.
+  the window is unfocused still append. The sidebar footer bell lists only
+  `task.failed` rows and its badge counts only unread failures; successful
+  completions stay in the durable record for the sidebar outcome badge and
+  native notification but never appear in the inbox (D295). Selecting a row
+  marks it read and activates its bound project/session.
   Electron additionally presents a native system notification only when the
   app window is unfocused, and clicking it focuses the window before activating
   the same session (D117). Receiving either the durable or native notification

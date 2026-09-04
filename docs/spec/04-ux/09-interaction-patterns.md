@@ -345,6 +345,10 @@ may be retained while exactly one workspace supplies the visible shell context.
 
 #### Popover behavior
 
+- The list shows `task.failed` rows only and the bell badge counts only
+  unread failures. `task.completed` rows are still persisted and still drive
+  the sidebar outcome badge and the native notification, but the inbox hides
+  them so failures are not buried under routine completions (D295).
 - Bell click toggles the non-modal popover; a second click, Escape, or outside
   press closes it. Escape restores focus to the bell.
 - Opening preserves the most recently selected `All` / `Unread` filter for the

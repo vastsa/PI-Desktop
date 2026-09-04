@@ -3062,3 +3062,17 @@ D193, and D194.
   Playback, hover, and decorative role are unchanged.
 - No protocol, storage, or runtime behavior changes. See ADR 0152 and
   E2E-046/E2E-099/US-UI-17.
+
+## 2026-09-04 — Notification inbox lists failures only (D295)
+
+- The sidebar-footer inbox renders only `task.failed` rows, and its unread
+  badge counts only unread failures. Routine successful completions had
+  buried the rows that actually need attention.
+- Host-core still persists `task.completed` rows unchanged. They continue to
+  drive the sidebar session outcome badge and the unfocused-window native
+  notification; only the inbox popover filters them out at the renderer
+  boundary (`inboxNotifications` / `inboxUnreadCount`).
+- Mark-all-read and clear still operate on the full durable record, so hidden
+  completions are read or removed together with the visible failures. No
+  protocol or storage changes. Supersedes only the "task completion rows"
+  clause of D117.
