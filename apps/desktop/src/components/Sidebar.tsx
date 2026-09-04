@@ -495,81 +495,6 @@ export function Sidebar({
     [],
   );
 
-  // Locale-aware absolute timestamp matching the WorkBuddy card shape:
-  // "2026-09-04 14:11:53" in zh-CN, "Sep 4, 2026, 2:11 PM" in en-US.
-  const formatHoverCardTimestamp = useCallback(
-    (value: string | undefined): string => {
-      if (!value) return "—";
-      const parsed = new Date(value);
-      if (Number.isNaN(parsed.getTime())) return value;
-      try {
-        const locale = i18n.language || undefined;
-        const usesAbsoluteDateTime =
-          (locale || "").toLowerCase().startsWith("zh");
-        const fmt = new Intl.DateTimeFormat(locale, {
-          year: "numeric",
-          month: usesAbsoluteDateTime ? "2-digit" : "short",
-          day: "2-digit",
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-          hour12: !usesAbsoluteDateTime,
-        });
-        return fmt.format(parsed);
-      } catch {
-        return parsed.toLocaleString();
-      }
-    },
-    [i18n],
-  );
-
-  const hideSessionHoverCard = useCallback(() => {
-    window.clearTimeout(sessionHoverTimerRef.current);
-    setSessionHoverCard(null);
-  }, []);
-
-  const showSessionHoverCard = useCallback(
-    (
-      session: SessionSummary,
-      target: HTMLElement,
-      temporary: boolean,
-    ) => {
-      // Clear any pending timer so back-to-back hovers don't flash the card.
-      window.clearTimeout(sessionHoverTimerRef.current);
-      sessionHoverTimerRef.current = window.setTimeout(() => {
-        // Skip if the row was torn down while we were waiting (project
-        // closed, list filtered, etc.) — nothing meaningful to point at.
-        if (!target.isConnected) return;
-        const rect = target.getBoundingClientRect();
-        const cardWidth = Math.min(320, window.innerWidth - 16);
-        const cardHeight = 168; // estimated; used for flip-below detection
-        const wantBelow = rect.bottom + cardHeight <= window.innerHeight;
-        const spaceEntry = temporary
-          ? null
-          : projectEntriesByPath.get(session.projectPath ?? "");
-        const spaceName = temporary
-          ? t("nav.hoverCardTemporarySpace")
-          : (spaceEntry?.name ?? projectName(session.projectPath ?? ""));
-        setSessionHoverCard({
-          id: `session-hover-${session.id}`,
-          top: wantBelow ? rect.bottom + 6 : Math.max(8, rect.top - cardHeight - 6),
-          left: Math.max(
-            8,
-            Math.min(rect.left, window.innerWidth - cardWidth - 8),
-          ),
-          title: taskTitle(session.title),
-          mode: session.mode,
-          permissionMode: session.permissionMode,
-          space: spaceName,
-          branch: spaceEntry?.branch,
-          updatedAt: formatHoverCardTimestamp(session.updatedAt),
-          temporary,
-        });
-      }, PROJECT_PATH_HOVER_DELAY_MS);
-    },
-    [projectEntriesByPath, t, taskTitle, formatHoverCardTimestamp],
-  );
-
   const openSectionMenu = useCallback(
     (section: "sessions" | "projects", x: number, y: number) => {
       menuTriggerRef.current = null;
@@ -841,6 +766,81 @@ export function Sidebar({
     for (const entry of projectEntries) map.set(entry.path, entry);
     return map;
   }, [projectEntries]);
+
+  // Locale-aware absolute timestamp matching the WorkBuddy card shape:
+  // "2026-09-04 14:11:53" in zh-CN, "Sep 4, 2026, 2:11 PM" in en-US.
+  const formatHoverCardTimestamp = useCallback(
+    (value: string | undefined): string => {
+      if (!value) return "—";
+      const parsed = new Date(value);
+      if (Number.isNaN(parsed.getTime())) return value;
+      try {
+        const locale = i18n.language || undefined;
+        const usesAbsoluteDateTime =
+          (locale || "").toLowerCase().startsWith("zh");
+        const fmt = new Intl.DateTimeFormat(locale, {
+          year: "numeric",
+          month: usesAbsoluteDateTime ? "2-digit" : "short",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: !usesAbsoluteDateTime,
+        });
+        return fmt.format(parsed);
+      } catch {
+        return parsed.toLocaleString();
+      }
+    },
+    [i18n],
+  );
+
+  const hideSessionHoverCard = useCallback(() => {
+    window.clearTimeout(sessionHoverTimerRef.current);
+    setSessionHoverCard(null);
+  }, []);
+
+  const showSessionHoverCard = useCallback(
+    (
+      session: SessionSummary,
+      target: HTMLElement,
+      temporary: boolean,
+    ) => {
+      // Clear any pending timer so back-to-back hovers don't flash the card.
+      window.clearTimeout(sessionHoverTimerRef.current);
+      sessionHoverTimerRef.current = window.setTimeout(() => {
+        // Skip if the row was torn down while we were waiting (project
+        // closed, list filtered, etc.) — nothing meaningful to point at.
+        if (!target.isConnected) return;
+        const rect = target.getBoundingClientRect();
+        const cardWidth = Math.min(320, window.innerWidth - 16);
+        const cardHeight = 168; // estimated; used for flip-below detection
+        const wantBelow = rect.bottom + cardHeight <= window.innerHeight;
+        const spaceEntry = temporary
+          ? null
+          : projectEntriesByPath.get(session.projectPath ?? "");
+        const spaceName = temporary
+          ? t("nav.hoverCardTemporarySpace")
+          : (spaceEntry?.name ?? projectName(session.projectPath ?? ""));
+        setSessionHoverCard({
+          id: `session-hover-${session.id}`,
+          top: wantBelow ? rect.bottom + 6 : Math.max(8, rect.top - cardHeight - 6),
+          left: Math.max(
+            8,
+            Math.min(rect.left, window.innerWidth - cardWidth - 8),
+          ),
+          title: taskTitle(session.title),
+          mode: session.mode,
+          permissionMode: session.permissionMode,
+          space: spaceName,
+          branch: spaceEntry?.branch,
+          updatedAt: formatHoverCardTimestamp(session.updatedAt),
+          temporary,
+        });
+      }, PROJECT_PATH_HOVER_DELAY_MS);
+    },
+    [projectEntriesByPath, t, taskTitle, formatHoverCardTimestamp],
+  );
 
   const temporarySessions = useMemo(
     () => filtered
