@@ -42,7 +42,12 @@ import {
   sidebarSessionStatus,
   type SidebarSessionStatus,
 } from "../lib/sidebar-session-status";
-import type { ProjectWorkspace, SessionSummary } from "@pi-desktop/shared";
+import type {
+  Mode,
+  PermissionMode,
+  ProjectWorkspace,
+  SessionSummary,
+} from "@pi-desktop/shared";
 import type {
   ProjectMeta,
   SessionMeta,
@@ -65,6 +70,7 @@ import {
   IconBranch,
   IconCheck,
   IconChevronDown,
+  IconClock,
   IconCopy,
   IconCircleAlert,
   IconNewSession,
@@ -88,6 +94,8 @@ type ProjectEntry = {
   open: boolean;
   active: boolean;
   meta: ProjectMeta;
+  /** Best-effort git branch from the project workspace, if known. */
+  branch?: string;
 };
 
 type ProjectPathTooltip = {
@@ -95,6 +103,19 @@ type ProjectPathTooltip = {
   path: string;
   top: number;
   left: number;
+};
+
+type SessionHoverCard = {
+  id: string;
+  top: number;
+  left: number;
+  title: string;
+  mode: Mode;
+  permissionMode: PermissionMode;
+  space: string;
+  branch?: string;
+  updatedAt: string;
+  temporary: boolean;
 };
 
 const VIEWPORT_PADDING = 8;
@@ -210,7 +231,7 @@ export function Sidebar({
   className?: string;
   onAnimationEnd?: ReactAnimationEventHandler<HTMLElement>;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const sessions = useAppStore((s) => s.sessions);
   const activeSessionId = useAppStore((s) => s.activeSessionId);
   const selectingSessionId = useAppStore((s) => s.selectingSessionId);
@@ -265,12 +286,14 @@ export function Sidebar({
     left: number;
   } | null>(null);
   const [projectPathTooltip, setProjectPathTooltip] = useState<ProjectPathTooltip | null>(null);
+  const [sessionHoverCard, setSessionHoverCard] = useState<SessionHoverCard | null>(null);
   const [expandedProjectSessions, setExpandedProjectSessions] = useState<Record<string, boolean>>({});
   const [sidebarResizing, setSidebarResizing] = useState(false);
   const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const menuFirstItemRef = useRef<HTMLButtonElement | null>(null);
   const sessionPrefetchTimerRef = useRef<number | undefined>(undefined);
   const projectPathTimerRef = useRef<number | undefined>(undefined);
+  const sessionHoverTimerRef = useRef<number | undefined>(undefined);
   const sidebarResizeRef = useRef<SidebarResizeState | null>(null);
 
   const finishSidebarResize = useCallback((cancelled: boolean) => {
@@ -426,6 +449,8 @@ export function Sidebar({
       setSortOpen(false);
       setProjectMenu(null);
       setSectionMenu(null);
+      window.clearTimeout(sessionHoverTimerRef.current);
+      setSessionHoverCard(null);
       setSessionMenu(sessionId);
     },
     [],
@@ -468,6 +493,81 @@ export function Sidebar({
       }, PROJECT_PATH_HOVER_DELAY_MS);
     },
     [],
+  );
+
+  // Locale-aware absolute timestamp matching the WorkBuddy card shape:
+  // "2026-09-04 14:11:53" in zh-CN, "Sep 4, 2026, 2:11 PM" in en-US.
+  const formatHoverCardTimestamp = useCallback(
+    (value: string | undefined): string => {
+      if (!value) return "—";
+      const parsed = new Date(value);
+      if (Number.isNaN(parsed.getTime())) return value;
+      try {
+        const locale = i18n.language || undefined;
+        const usesAbsoluteDateTime =
+          (locale || "").toLowerCase().startsWith("zh");
+        const fmt = new Intl.DateTimeFormat(locale, {
+          year: "numeric",
+          month: usesAbsoluteDateTime ? "2-digit" : "short",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: !usesAbsoluteDateTime,
+        });
+        return fmt.format(parsed);
+      } catch {
+        return parsed.toLocaleString();
+      }
+    },
+    [i18n],
+  );
+
+  const hideSessionHoverCard = useCallback(() => {
+    window.clearTimeout(sessionHoverTimerRef.current);
+    setSessionHoverCard(null);
+  }, []);
+
+  const showSessionHoverCard = useCallback(
+    (
+      session: SessionSummary,
+      target: HTMLElement,
+      temporary: boolean,
+    ) => {
+      // Clear any pending timer so back-to-back hovers don't flash the card.
+      window.clearTimeout(sessionHoverTimerRef.current);
+      sessionHoverTimerRef.current = window.setTimeout(() => {
+        // Skip if the row was torn down while we were waiting (project
+        // closed, list filtered, etc.) — nothing meaningful to point at.
+        if (!target.isConnected) return;
+        const rect = target.getBoundingClientRect();
+        const cardWidth = Math.min(320, window.innerWidth - 16);
+        const cardHeight = 168; // estimated; used for flip-below detection
+        const wantBelow = rect.bottom + cardHeight <= window.innerHeight;
+        const spaceEntry = temporary
+          ? null
+          : projectEntriesByPath.get(session.projectPath ?? "");
+        const spaceName = temporary
+          ? t("nav.hoverCardTemporarySpace")
+          : (spaceEntry?.name ?? projectName(session.projectPath ?? ""));
+        setSessionHoverCard({
+          id: `session-hover-${session.id}`,
+          top: wantBelow ? rect.bottom + 6 : Math.max(8, rect.top - cardHeight - 6),
+          left: Math.max(
+            8,
+            Math.min(rect.left, window.innerWidth - cardWidth - 8),
+          ),
+          title: taskTitle(session.title),
+          mode: session.mode,
+          permissionMode: session.permissionMode,
+          space: spaceName,
+          branch: spaceEntry?.branch,
+          updatedAt: formatHoverCardTimestamp(session.updatedAt),
+          temporary,
+        });
+      }, PROJECT_PATH_HOVER_DELAY_MS);
+    },
+    [projectEntriesByPath, t, taskTitle, formatHoverCardTimestamp],
   );
 
   const openSectionMenu = useCallback(
@@ -522,6 +622,34 @@ export function Sidebar({
     window.addEventListener("resize", hideTooltip);
     return () => window.removeEventListener("resize", hideTooltip);
   }, [projectPathTooltip]);
+
+  useEffect(() => {
+    if (!sessionHoverCard) return;
+    const hide = () => {
+      window.clearTimeout(sessionHoverTimerRef.current);
+      setSessionHoverCard(null);
+    };
+    window.addEventListener("resize", hide);
+    return () => window.removeEventListener("resize", hide);
+  }, [sessionHoverCard]);
+
+  // Cancel any pending session hover-card reveal when the sidebar scrolls;
+  // mirrors the project path tooltip behavior so the cards never anchor to a
+  // row that has scrolled out from under the cursor.
+  useEffect(() => {
+    if (!sessionHoverCard) return;
+    let frame = 0;
+    const onScroll = () => {
+      window.clearTimeout(sessionHoverTimerRef.current);
+      if (!sessionHoverCard) return;
+      frame = window.requestAnimationFrame(() => setSessionHoverCard(null));
+    };
+    window.addEventListener("scroll", onScroll, true);
+    return () => {
+      window.removeEventListener("scroll", onScroll, true);
+      window.cancelAnimationFrame(frame);
+    };
+  }, [sessionHoverCard]);
 
   // Footer utility bar: settings / plugins / notifications + build chip.
 
@@ -622,13 +750,14 @@ export function Sidebar({
 
   const projectEntries = useMemo(() => {
     const byPath = new Map<string, ProjectEntry>();
-    const add = (rawPath: string, name?: string, open = false) => {
+    const add = (rawPath: string, name?: string, branch?: string, open = false) => {
       const normalized = normalizeProjectPath(rawPath);
       if (!normalized) return;
       const existing = byPath.get(normalized);
       if (existing) {
         existing.open ||= open;
         if (name && existing.name === projectName(existing.path)) existing.name = name;
+        if (branch && !existing.branch) existing.branch = branch;
         return;
       }
       byPath.set(normalized, {
@@ -639,15 +768,16 @@ export function Sidebar({
         open,
         active: normalized === activeProjectPath,
         meta: projectMetaFor(rawPath, projectMeta),
+        branch,
       });
     };
     for (const path of openProjectPaths) {
       const record = openProjects.find(
         (project) => normalizeProjectPath(project.path) === path,
       );
-      add(path, record?.name, true);
+      add(path, record?.name, record?.branch, true);
     }
-    if (workspace?.path) add(workspace.path, workspace.name, true);
+    if (workspace?.path) add(workspace.path, workspace.name, workspace.branch, true);
     for (const session of filtered) {
       const sessionPath = normalizeProjectPath(session.projectPath);
       if (!sessionPath) continue;
@@ -703,6 +833,14 @@ export function Sidebar({
     sessionMeta,
     compareSessions,
   ]);
+
+  // Look up project entries by normalized path so session rows can fetch the
+  // workspace name (and any other project metadata) for the hover card.
+  const projectEntriesByPath = useMemo(() => {
+    const map = new Map<string, ProjectEntry>();
+    for (const entry of projectEntries) map.set(entry.path, entry);
+    return map;
+  }, [projectEntries]);
 
   const temporarySessions = useMemo(
     () => filtered
@@ -1041,8 +1179,17 @@ export function Sidebar({
           onPointerEnter={() => scheduleSessionPrefetch(session.id)}
           onPointerLeave={cancelSessionPrefetch}
           onFocus={() => void prefetchSession(session.id).catch(() => undefined)}
+          onMouseEnter={(event) =>
+            showSessionHoverCard(session, event.currentTarget, options?.temporary ?? false)
+          }
+          onMouseLeave={hideSessionHoverCard}
+          onFocusCapture={(event) =>
+            showSessionHoverCard(session, event.currentTarget, options?.temporary ?? false)
+          }
+          onBlur={hideSessionHoverCard}
           onClick={() => {
             cancelSessionPrefetch();
+            hideSessionHoverCard();
             void (options?.temporary
               ? selectTemporarySession(session.id)
               : selectProjectSession(session));
@@ -1496,6 +1643,81 @@ export function Sidebar({
     );
   };
 
+  // Map a session mode to the secondary tag label. We only show one tag in
+  // addition to the always-on "Local task" badge so the row stays compact.
+  const modeTagLabel = (mode: Mode, permission: PermissionMode): string => {
+    if (mode === "plan") return t("chat.modePlan");
+    if (mode === "goal") return t("chat.modeGoal");
+    if (permission === "auto") return t("chat.permissionAuto");
+    if (permission === "accept-edits") return t("chat.permissionAcceptEdits");
+    if (permission === "ask") return t("chat.permissionAsk");
+    return t("chat.modeAgent");
+  };
+
+  const renderSessionHoverCard = () => {
+    if (!sessionHoverCard || typeof document === "undefined") return null;
+    return createPortal(
+      <div
+        id={sessionHoverCard.id}
+        className="sidebar-session-hover-card"
+        role="tooltip"
+        style={{ top: sessionHoverCard.top, left: sessionHoverCard.left }}
+      >
+        <div className="sidebar-session-hover-card-title">
+          {sessionHoverCard.title}
+        </div>
+        <div className="sidebar-session-hover-card-tags">
+          <span className="sidebar-session-hover-card-tag">
+            <IconBranch size={12} aria-hidden />
+            {t("nav.hoverCardLocalTask")}
+          </span>
+          <span className="sidebar-session-hover-card-tag sidebar-session-hover-card-tag-accent">
+            {modeTagLabel(sessionHoverCard.mode, sessionHoverCard.permissionMode)}
+          </span>
+        </div>
+        <div className="sidebar-session-hover-card-meta">
+          <div className="sidebar-session-hover-card-meta-row">
+            <span className="sidebar-session-hover-card-meta-icon" aria-hidden>
+              <IconFolder size={12} />
+            </span>
+            <span className="sidebar-session-hover-card-meta-label">
+              {t("nav.hoverCardSpace")}
+            </span>
+            <span className="sidebar-session-hover-card-meta-value">
+              {sessionHoverCard.space}
+            </span>
+          </div>
+          {sessionHoverCard.branch ? (
+            <div className="sidebar-session-hover-card-meta-row">
+              <span className="sidebar-session-hover-card-meta-icon" aria-hidden>
+                <IconBranch size={12} />
+              </span>
+              <span
+                className="sidebar-session-hover-card-meta-value"
+                aria-label={t("nav.hoverCardBranchAria", {
+                  name: sessionHoverCard.branch,
+                })}
+              >
+                {sessionHoverCard.branch}
+              </span>
+            </div>
+          ) : null}
+          <div className="sidebar-session-hover-card-meta-row">
+            <span className="sidebar-session-hover-card-meta-icon" aria-hidden>
+              <IconClock size={12} />
+            </span>
+            <span className="sidebar-session-hover-card-meta-label">
+              {t("nav.hoverCardUpdatedAt", {
+                when: sessionHoverCard.updatedAt,
+              })}
+            </span>
+          </div>
+        </div>
+      </div>,
+      document.body,
+    );
+  };
+
   return (
     <aside
       className={cx("sidebar", className)}
@@ -1729,6 +1951,7 @@ export function Sidebar({
       </div>
       {renderFloatingMenu()}
       {renderProjectPathTooltip()}
+      {renderSessionHoverCard()}
       {renameFor ? (
         <SessionRenameDialog
           session={renameFor}

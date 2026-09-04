@@ -174,6 +174,11 @@ export const en = {
     timeGroupArchived: "Older",
     loadMore: "Load more…",
     loadMoreCount: "Load {{count}} more…",
+    hoverCardSpace: "Workspace",
+    hoverCardUpdatedAt: "Updated {{when}}",
+    hoverCardLocalTask: "Local task",
+    hoverCardTemporarySpace: "Temporary",
+    hoverCardBranchAria: "Branch {{name}}",
   },
   chat: {
     emptyTitle: "What can I help you build?",

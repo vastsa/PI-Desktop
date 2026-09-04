@@ -169,6 +169,11 @@ export const zhCN = {
     timeGroupArchived: "更早",
     loadMore: "加载更多…",
     loadMoreCount: "加载更多（{{count}} 条）…",
+    hoverCardSpace: "所属空间",
+    hoverCardUpdatedAt: "更新于 {{when}}",
+    hoverCardLocalTask: "本地任务",
+    hoverCardTemporarySpace: "临时对话",
+    hoverCardBranchAria: "分支 {{name}}",
   },
   chat: {
     emptyTitle: "今天想做点什么？",
