@@ -152,7 +152,6 @@
   overflow-y: auto;
   overscroll-behavior-y: contain;
   scrollbar-gutter: stable;
-  scrollbar-width: thin;
   scroll-padding-block: 2px;
 }
 
@@ -2259,7 +2258,6 @@
   overflow-y: auto;
   overscroll-behavior-y: contain;
   scrollbar-gutter: stable;
-  scrollbar-width: thin;
 }
 
 .subagent-run-rows:focus-visible {
@@ -2507,7 +2505,6 @@
   padding: 6px 10px;
   gap: 2px;
   scrollbar-gutter: stable;
-  scrollbar-width: thin;
 }
 
 .tool-field {

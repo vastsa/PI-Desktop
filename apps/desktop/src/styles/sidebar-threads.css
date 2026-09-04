@@ -60,16 +60,17 @@
   overflow-y: auto;
   overscroll-behavior-y: contain;
   padding-top: 2px;
-  scrollbar-width: thin;
 }
 
 /* Keep sidebar scrolling available without turning the navigation tree into a
-   second visual rail. The thumb stays hidden at rest and appears when the
-   pointer or keyboard focus enters the owning scroll region. */
+   second visual rail. The base.css scrollbar is already transparent at rest
+   and revealed on hover or while scrolling; the sidebar lists narrow it to
+   6px, also reveal it while a row has keyboard focus, and use a 20% ink thumb
+   in every revealed state so the thumb never darkens further under the
+   pointer. No `scrollbar-color` here: it would disable the pseudo-elements. */
 .sidebar-session-groups,
 .sidebar-session-group-body.standalone {
   --sidebar-scrollbar-thumb-hover: color-mix(in oklab, var(--ds-text-primary) 20%, transparent);
-  scrollbar-color: transparent transparent;
 }
 
 .sidebar-session-groups::-webkit-scrollbar,
@@ -80,34 +81,21 @@
 
 .sidebar-session-groups::-webkit-scrollbar-thumb,
 .sidebar-session-group-body.standalone::-webkit-scrollbar-thumb {
-  border: 1px solid transparent;
-  border-radius: var(--radius-full);
-  background: transparent;
-  background-clip: content-box;
-}
-
-.sidebar-session-groups:hover,
-.sidebar-session-groups:focus-within,
-.sidebar-session-group-body.standalone:hover,
-.sidebar-session-group-body.standalone:focus-within {
-  scrollbar-color: var(--sidebar-scrollbar-thumb-hover) transparent;
+  border-width: 1px;
 }
 
 .sidebar-session-groups:hover::-webkit-scrollbar-thumb,
 .sidebar-session-groups:focus-within::-webkit-scrollbar-thumb,
+.sidebar-session-groups[data-scrolling]::-webkit-scrollbar-thumb,
 .sidebar-session-group-body.standalone:hover::-webkit-scrollbar-thumb,
 .sidebar-session-group-body.standalone:focus-within::-webkit-scrollbar-thumb,
+.sidebar-session-group-body.standalone[data-scrolling]::-webkit-scrollbar-thumb,
 .sidebar-session-groups::-webkit-scrollbar-thumb:hover,
 .sidebar-session-groups::-webkit-scrollbar-thumb:active,
 .sidebar-session-group-body.standalone::-webkit-scrollbar-thumb:hover,
 .sidebar-session-group-body.standalone::-webkit-scrollbar-thumb:active {
   background: var(--sidebar-scrollbar-thumb-hover);
   background-clip: content-box;
-}
-
-.sidebar-session-groups::-webkit-scrollbar-track,
-.sidebar-session-group-body.standalone::-webkit-scrollbar-track {
-  background: transparent;
 }
 
 .sidebar-session-group {
@@ -239,7 +227,6 @@
   overflow-y: auto;
   overscroll-behavior-y: contain;
   padding: 0 2px;
-  scrollbar-width: thin;
 }
 
 .sidebar-standalone-sessions {

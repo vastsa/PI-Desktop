@@ -544,17 +544,6 @@
   background-color: transparent;
 }
 
-.code-block pre::-webkit-scrollbar {
-  height: 8px;
-}
-
-.code-block pre::-webkit-scrollbar-thumb {
-  background: color-mix(in oklab, var(--ds-text-primary) 16%, transparent);
-  border-radius: var(--radius-full);
-  border: 2px solid transparent;
-  background-clip: content-box;
-}
-
 /* Mermaid diagrams keep code-card density while using a paper-like canvas. */
 .mermaid-block {
   margin: 0.85em 0;

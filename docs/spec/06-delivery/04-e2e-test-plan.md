@@ -6836,8 +6836,9 @@ This test plan spec is accepted when:
   stays fixed. At rest each scrollbar is trackless, 6px wide, and transparent;
   hovering or focusing the owning list reveals only its thumb, and dragging
   keeps it visible so navigation remains visually quiet without changing the
-  scroll region's width. Chat, code, and Settings scrollbars keep their
-  existing treatments.
+  scroll region's width. Chat, code, and Settings scrollbars follow the same
+  rest/reveal rule at 8px: transparent until their scroller is hovered or
+  scrolling (D300).
 - **Specs linked**: `04-ux/07-ui-design-system.md`,
   `04-ux/08-component-spec.md`, `04-ux/09-interaction-patterns.md`
 - **Acceptance**: Quality (sidebar polish and independent navigation)

@@ -3101,6 +3101,32 @@ D193, and D194.
   behavior changes. Refines the Installed-tab clause of D169 and §3.5 of the UI
   IA.
 
+## 2026-09-05 — Scrollbars show only on hover or while scrolling (D300)
+
+- Every renderer scroll container now uses the one quiet scrollbar defined in
+  `base.css`: 8px, trackless, thumb transparent at rest. The thumb is painted
+  only while the owning scroller is hovered (`:hover::-webkit-scrollbar-thumb`)
+  or carries `data-scrolling`, and strengthens under the pointer or while
+  dragged. Previously the global thumb was always visible at 16% ink and only
+  the two sidebar lists hid it at rest (D147, E2E-157).
+- `lib/scrollbar-reveal.ts`, installed from `main.tsx`, supplies the state CSS
+  cannot express: a passive capture `scroll` listener on `document` marks the
+  element that scrolled with `data-scrolling` and clears it 800 ms after its
+  last scroll event; a viewport scroll marks `<html>`. Programmatic scrolls
+  (pinned-follow while streaming) reveal the thumb too, matching macOS overlay
+  bars. Disposal clears every mark it set.
+- Partials no longer set `scrollbar-width` or `scrollbar-color` (ask-tool
+  options, sub-agent rows, tool fields, sidebar lists). WebKit and Chromium
+  ignore `::-webkit-scrollbar` on any element that sets either, so those
+  surfaces had been rendering an always-visible native bar instead of the
+  custom one. The sidebar lists keep their 6px width, 20% ink, and
+  focus-within reveal on top of the global rule; the code-block override is
+  removed as redundant. `interaction-polish.test.mjs` asserts the rest/reveal
+  rules and the absence of the standard properties;
+  `scrollbar-reveal.test.mjs` covers the mark lifecycle. Supersedes the
+  scrollbar clause of D147 and generalises the sidebar treatment in the UI
+  design system §sidebar. No protocol, storage, or runtime behavior changes.
+
 ## 2026-09-05 — Divider-free surfaces across the app (D297)
 
 - Extends D296 from the Extensions page to every renderer surface. In-flow

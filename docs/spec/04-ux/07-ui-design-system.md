@@ -463,12 +463,23 @@ build/version chip is right-aligned and remains the update check/release entry
 point. Hover and active states use semantic sidebar surfaces; neither side adds
 a persistent card fill.
 
-Sidebar list scrollers keep their native scroll affordance but use a 6px
-trackless scrollbar whose thumb is transparent at rest and uses a 20%
-semantic-ink color when the list is hovered or focused, including while the
-thumb is dragged. This keeps the navigation tree visually quiet while
-preserving a discoverable control during interaction; chat, code, and settings
-scroll containers keep their own scrollbar treatments.
+Every scroll container in the renderer uses one quiet scrollbar: 8px,
+trackless, with a thumb that is transparent at rest. The thumb appears only
+while the pointer is over the owning scroll region or while that region is
+scrolling (the renderer marks the scrolling element with `data-scrolling` for
+a short hold after the last scroll event, so wheel, trackpad, keyboard, and
+pinned-follow scrolls all reveal it); it strengthens under the pointer and
+while dragged. Scrollbars are styled only through the `::-webkit-scrollbar`
+pseudo-elements. Partials never set `scrollbar-width` or `scrollbar-color`,
+because WebKit and Chromium then ignore the pseudo-elements and the surface
+falls back to an always-visible native bar. Reserved gutters
+(`scrollbar-gutter: stable`) stay where layout needs them; they are simply
+empty at rest.
+
+Sidebar list scrollers narrow that scrollbar to 6px, also reveal it while a
+row has keyboard focus, and use a 20% semantic-ink thumb in every revealed
+state. This keeps the navigation tree visually quiet while preserving a
+discoverable control during interaction.
 
 The expanded sidebar's resize handle keeps its 8px hit area transparent when
 the sidebar surface is merely hovered. Direct handle hover reveals only a
