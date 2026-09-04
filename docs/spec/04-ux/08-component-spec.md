@@ -1546,7 +1546,7 @@ twice.
 - No cross-row activity grouping until turn boundaries are available to the
   transcript component
 
-### 9.9 Delegation cards and fan-out topology (D201, D265, D268, D271, ADR 0062)
+### 9.9 Delegation cards and fan-out topology (D201, D265, D268, D271, D302, ADR 0062)
 
 A `Task` call is presented as a node of a delegation card, not as a compact tool
 row — one delegation reads the same as a fan-out (D265). The node names the
@@ -1632,6 +1632,16 @@ Opening a node reveals the blocks the call carries, then the delegate's own rows
   The run heading stays outside the scroll area, so the attribution cannot
   scroll away from the rows it labels, and the area is a labelled, focusable
   group so a keyboard reader can scroll what the pointer can.
+- **While the run is expanded, the nested scroller follows the latest output**
+  (D302). It uses the same pinned-follow contract as the parent transcript
+  (`04-ux/09-interaction-patterns.md` §9.1), independently: expanding pins to
+  the newest row, new thinking / tool / answer rows keep the viewport at the
+  bottom, the first real upward gesture pauses follow and shows a nested
+  jump-to-latest control over the scroller, and a layout clamp or programmatic
+  follow `scrollTo` never counts as that gesture. Native overflow anchoring is
+  disabled on `.subagent-run-rows` so it cannot fight pinned follow. The jump
+  control reuses `chat.scrollToBottom` and sits in a relative wrapper around
+  the scroller, never on `.subagent-run`, so the collapse rail stays unclipped.
 - Every detail block is bounded the same way: `fields` tables cap at 260px like
   `content`, file lists and match lists, so a long roster or a plugin payload
   with thirty keys scrolls instead of stretching the page. A lifecycle row's

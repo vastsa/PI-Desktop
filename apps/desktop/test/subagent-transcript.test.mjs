@@ -6,6 +6,10 @@ const transcriptSource = await readFile(
   new URL("../src/components/ChatTranscript.tsx", import.meta.url),
   "utf8",
 );
+const followScrollSource = await readFile(
+  new URL("../src/lib/use-follow-scroll.ts", import.meta.url),
+  "utf8",
+);
 const storeSource = await readFile(
   new URL("../src/stores/app-store.ts", import.meta.url),
   "utf8",
@@ -258,6 +262,10 @@ test("a delegate's rows scroll in place instead of growing the page (D271)", () 
     messagesCss,
     /\.subagent-run-rows \{[^}]*overscroll-behavior-y: contain/,
   );
+  assert.match(
+    messagesCss,
+    /\.subagent-run-rows \{[^}]*overflow-anchor: none/,
+  );
   // A keyboard user can reach the scroll area the pointer already can.
   assert.match(messagesCss, /\.subagent-run-rows:focus-visible \{/);
   // `.subagent-run` itself must stay unclipped so the rail survives.
@@ -265,4 +273,43 @@ test("a delegate's rows scroll in place instead of growing the page (D271)", () 
   // Every field table is bounded too, so a long roster scrolls as well.
   assert.match(messagesCss, /\.tool-fields \{[^}]*max-height: 260px/);
   assert.match(messagesCss, /\.tool-fields \{[^}]*overflow: auto/);
+});
+
+test("an expanded delegate run follows the latest output while pinned (D302)", () => {
+  // Nested follow is a dedicated hook so the main transcript's history,
+  // veil, and pane-visibility machinery stay out of the run scroller.
+  assert.match(transcriptSource, /function SubagentRunFollow\(/);
+  assert.match(transcriptSource, /const \{[^}]*scrollRef,[^}]*\} = useFollowScroll\(\)/);
+  assert.match(transcriptSource, /<SubagentRunFollow headingId=\{headingId\} items=\{run\.items\} \/>/);
+  assert.match(
+    transcriptSource,
+    /className="subagent-run-rows"[\s\S]*?onScroll=\{handleScroll\}/,
+  );
+  assert.match(transcriptSource, /className="subagent-run-follow"/);
+  assert.match(
+    transcriptSource,
+    /className="jump-latest-btn"[\s\S]*?onClick=\{jumpToLatest\}/,
+  );
+
+  assert.match(followScrollSource, /export function useFollowScroll\(/);
+  assert.match(followScrollSource, /reduceTranscriptScroll\(/);
+  assert.match(followScrollSource, /isRecentScrollGesture\(/);
+  assert.match(
+    followScrollSource,
+    /const followScrollNow = useCallback\(\(\) => \{\s*if \(!pinnedRef\.current\) return;\s*cancelFollowScroll\(\);\s*scrollToBottom\(\);/,
+  );
+  assert.match(followScrollSource, /new ResizeObserver\(followScrollNow\)/);
+  assert.doesNotMatch(
+    followScrollSource,
+    /new ResizeObserver\(scheduleFollowScroll\)/,
+  );
+
+  // The jump control overlays the bounded scroller; overflow stays off
+  // `.subagent-run` so the collapse rail is not clipped.
+  assert.match(messagesCss, /\.subagent-run-follow \{[^}]*position: relative/);
+  assert.match(
+    messagesCss,
+    /\.subagent-run-follow > \.jump-latest-btn \{[^}]*bottom: 8px/,
+  );
+  assert.doesNotMatch(messagesCss, /\.subagent-run \{[^}]*overflow/);
 });

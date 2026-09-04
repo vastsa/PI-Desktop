@@ -1021,6 +1021,12 @@ When drag/drop is implemented, these patterns should apply:
 - Button appears as soon as upward scrolling releases follow mode
 - Click button: scrolls to bottom, resumes auto-scroll
 - Button disappears when at bottom
+- An expanded delegate run's `.subagent-run-rows` scroller uses that same
+  contract independently of the parent transcript (D302): expanding pins to
+  the latest output, new nested rows keep the viewport at the bottom while
+  pinned, the first upward gesture pauses follow and shows a nested
+  jump-to-latest control, and a layout clamp or programmatic follow `scrollTo`
+  never releases it. Native overflow anchoring is disabled on that scroller.
 
 ### 9.1a Sidebar project path and open folder
 

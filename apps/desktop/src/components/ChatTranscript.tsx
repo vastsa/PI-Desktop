@@ -63,6 +63,7 @@ import {
   isRecentScrollGesture,
   reduceTranscriptScroll,
 } from "../lib/transcript-scroll";
+import { useFollowScroll } from "../lib/use-follow-scroll";
 import {
   growTranscriptWindow,
   reduceTranscriptWindow,
@@ -90,6 +91,7 @@ import {
   type AssistantActivityItem,
   type AssistantTurnEntry,
   type SubagentRun,
+  type SubagentRunItem,
   type TranscriptEntry,
 } from "../lib/assistant-turns";
 import {
@@ -1228,41 +1230,90 @@ function SubagentRunRows({
           {t("chat.processingSteps", { count: run.items.length })}
         </span>
       </div>
+      <SubagentRunFollow headingId={headingId} items={run.items} />
+    </div>
+  );
+}
+
+/**
+ * Nested follow-scroll for one expanded delegate (D302). Mounted only once
+ * the run has rows, so the first layout pins to the latest output instead of
+ * to an empty scroller.
+ */
+function SubagentRunFollow({
+  headingId,
+  items,
+}: {
+  headingId: string;
+  items: SubagentRunItem[];
+}) {
+  const { t } = useTranslation();
+  const {
+    scrollRef,
+    contentRef,
+    showJump,
+    handleScroll,
+    jumpToLatest,
+    scheduleFollowScroll,
+  } = useFollowScroll();
+
+  useLayoutEffect(() => {
+    scheduleFollowScroll();
+  }, [items, scheduleFollowScroll]);
+
+  return (
+    <div className="subagent-run-follow">
       {/* The rows scroll inside the run rather than growing the transcript
-        * (D271). Labelled and focusable so a keyboard reader can reach the
-        * scroll area the pointer can already use. */}
+        * (D271). Follow sticks to the latest output while pinned (D302).
+        * Labelled and focusable so a keyboard reader can reach the scroll
+        * area the pointer can already use. */}
       <div
+        ref={scrollRef}
         className="subagent-run-rows"
         role="group"
         tabIndex={0}
         aria-labelledby={headingId}
+        onScroll={handleScroll}
       >
-        {run.items.map((item) =>
-          item.kind === "tool" ? (
-            <Fragment key={item.message.id}>
-              <ToolRow message={item.message} />
-              <ReviewChangeCard message={item.message} />
-            </Fragment>
-          ) : item.kind === "thinking" ? (
-            <ThinkingRow
-              key={`thinking-${item.message.id}`}
-              message={item.message}
-              streaming={item.message.status === "streaming"}
-            />
-          ) : (
-            <div className="subagent-answer" key={`answer-${item.message.id}`}>
-              {item.message.content ? (
-                <div className="prose-chat">
-                  <Markdown source={item.message.content} />
-                </div>
-              ) : null}
-              {item.message.error ? (
-                <AssistantErrorMessage message={item.message} />
-              ) : null}
-            </div>
-          ),
-        )}
+        <div ref={contentRef}>
+          {items.map((item) =>
+            item.kind === "tool" ? (
+              <Fragment key={item.message.id}>
+                <ToolRow message={item.message} />
+                <ReviewChangeCard message={item.message} />
+              </Fragment>
+            ) : item.kind === "thinking" ? (
+              <ThinkingRow
+                key={`thinking-${item.message.id}`}
+                message={item.message}
+                streaming={item.message.status === "streaming"}
+              />
+            ) : (
+              <div className="subagent-answer" key={`answer-${item.message.id}`}>
+                {item.message.content ? (
+                  <div className="prose-chat">
+                    <Markdown source={item.message.content} />
+                  </div>
+                ) : null}
+                {item.message.error ? (
+                  <AssistantErrorMessage message={item.message} />
+                ) : null}
+              </div>
+            ),
+          )}
+        </div>
       </div>
+      {showJump ? (
+        <button
+          type="button"
+          className="jump-latest-btn"
+          aria-label={t("chat.scrollToBottom")}
+          title={t("chat.scrollToBottom")}
+          onClick={jumpToLatest}
+        >
+          <IconArrowDown size={14} />
+        </button>
+      ) : null}
     </div>
   );
 }
