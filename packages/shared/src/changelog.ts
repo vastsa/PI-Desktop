@@ -23,6 +23,16 @@ export type ChangelogEntry = {
 
 const enEntries: ChangelogEntry[] = [
   {
+    version: "0.12.4",
+    date: "2026-09-04",
+    highlights: [
+      "Keep the right work panel inside the application window so MainChat reflows like the left sidebar.",
+      "Resize the work panel from its inner divider with pointer or keyboard controls while preserving window bounds.",
+      "Deduplicate paged transcript reads during session switching for smoother navigation.",
+      "Add a native macOS sidebar surface treatment without changing the sidebar's layout behavior.",
+    ],
+  },
+  {
     version: "0.12.3",
     date: "2026-09-03",
     highlights: [
@@ -546,6 +556,16 @@ const enEntries: ChangelogEntry[] = [
 ];
 
 const zhCNEntries: ChangelogEntry[] = [
+  {
+    version: "0.12.4",
+    date: "2026-09-04",
+    highlights: [
+      "将右侧工作面板保留在应用窗口内部，让 MainChat 像左侧边栏一样重新分配空间。",
+      "支持通过内部拖拽条或键盘调整工作面板宽度，同时保持窗口边界不变。",
+      "会话切换时去重分页转录读取，让导航更流畅。",
+      "为 macOS 增加原生侧边栏表面效果，不改变侧边栏布局逻辑。",
+    ],
+  },
   {
     version: "0.12.3",
     date: "2026-09-03",
