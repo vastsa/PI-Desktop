@@ -28,6 +28,10 @@ const panelSource = await readFile(
   new URL("../src/components/workpanel/WorkPanel.tsx", import.meta.url),
   "utf8",
 );
+const topbarSource = await readFile(
+  new URL("../src/components/ConversationTopbar.tsx", import.meta.url),
+  "utf8",
+);
 const transcriptSource = await readFile(
   new URL("../src/components/ChatTranscript.tsx", import.meta.url),
   "utf8",
@@ -48,9 +52,9 @@ test("work panel replaces the context panel overlay", async () => {
   assert.match(appSource, /case "openWorkPanel"/);
   assert.match(appSource, /useAppStore\.getState\(\)\.toggleWorkPanel\(\)/);
   assert.match(storeSource, /openWorkPanel:\s*\(\) => \{/);
-  // The panel is toggled inside the renderer store; the legacy main-process
-  // nav bridge that resized the OS window must stay gone.
-  assert.doesNotMatch(appSource, /nav\.toggleWorkPanel/);
+  // The panel is toggled inside the renderer store; no main-process navigation
+  // bridge may own the interaction.
+  assert.doesNotMatch(appSource, /api\.(?:nav|toggleWorkPanel)/);
   assert.doesNotMatch(appSource, /key\.toLowerCase\(\) === "j"/);
 });
 
@@ -65,26 +69,23 @@ test("the work panel shortcut closes the panel it opened", () => {
   assert.match(toggleBody, /openWorkPanel\(\)/);
 });
 
-test("work panel reserves native width and releases it after collapse", () => {
+test("work panel reflows the shell without changing native window bounds", () => {
   assert.match(appSource, /presentedWorkPanelOpen/);
   assert.match(appSource, /setPresentedWorkPanelOpen/);
   assert.match(appSource, /workPanelExiting/);
-  // The panel remains an in-flow sibling, but the native window reserves its
-  // committed width before presentation so the chat column stays stable.
-  assert.match(appSource, /requestedWidth\s*=\s*Math\.round\(workPanelWidth\)/);
-  assert.match(appSource, /setWorkPanelReservation\(requestedWidth\)/);
-  assert.ok(
-    appSource.indexOf("setWorkPanelReservation(requestedWidth)") <
-      appSource.indexOf("setPresentedWorkPanelOpen(shouldPresent)"),
-    "the native reservation must settle before presentation changes",
-  );
   assert.match(appSource, /commitWorkPanelPresentation/);
+  assert.doesNotMatch(appSource, /Math\.round\(workPanelWidth\)/);
+  assert.doesNotMatch(appSource, /setWorkPanelReservation\((?!0\))/);
+  assert.ok(
+    (appSource.match(/setWorkPanelReservation\(0\)/g) ?? []).length >= 2,
+    "open and close presentation paths must both request zero reservation",
+  );
   assert.doesNotMatch(appSource, /\.finally\(\(\) => \{[\s\S]*setPresentedWorkPanelOpen/);
   // Mount follows presentation commit; exit keep-alive plays work-panel-out
-  // before releasing the native reservation and unmounting.
+  // before confirming zero reservation and unmounting.
   assert.match(
     appSource,
-    /<\/section>\s*\{\(presentedWorkPanelOpen \|\| workPanelExiting\) && \(?\s*<WorkPanel/,
+    /<\/section>[\s\S]*?className="app-work-panel-toggle no-drag"[\s\S]*?\{\(presentedWorkPanelOpen \|\| workPanelExiting\) && \(?\s*<WorkPanel/,
   );
   assert.doesNotMatch(
     appSource,
@@ -122,6 +123,34 @@ test("work panel reserves native width and releases it after collapse", () => {
     globalStyles,
     /@keyframes work-panel-out \{[\s\S]*?flex-basis:\s*0;[\s\S]*?width:\s*0;/,
   );
+});
+
+test("app shell owns the sole viewport-fixed work panel toggle", () => {
+  assert.match(appSource, /className="app-work-panel-toggle no-drag"/);
+  assert.match(appSource, /t\("nav\.toggleWorkPanel"\)/);
+  assert.match(appSource, /aria-pressed=\{workPanelOpen\}/);
+  assert.match(appSource, /disabled=\{!activeSessionId\}/);
+  assert.match(
+    appSource,
+    /onClick=\{\(\) => useAppStore\.getState\(\)\.toggleWorkPanel\(\)\}/,
+  );
+  assert.match(appSource, /<IconPanel size=\{15\}/);
+  assert.doesNotMatch(topbarSource, /app-work-panel-toggle|onToggleWorkPanel|IconPanel/);
+  assert.doesNotMatch(panelSource, /onCollapse|work-panel-toolbar-collapse|IconChevronRight/);
+  assert.match(
+    globalStyles,
+    /\.app-work-panel-toggle \{[^}]*position:\s*fixed;[^}]*right:\s*12px;[^}]*z-index:\s*40;/s,
+  );
+  assert.match(globalStyles, /\.conversation-topbar \{[^}]*z-index:\s*10;/s);
+  assert.match(
+    globalStyles,
+    /:root\[data-platform="win32"\] \.app-work-panel-toggle,[\s\S]*?right:\s*calc\(var\(--ds-window-controls-width\) \+ 12px\);/,
+  );
+  assert.match(
+    globalStyles,
+    /\.window-controls\.window-controls-in-pane\s*\{[^}]*position:\s*fixed;/s,
+  );
+  assert.match(globalStyles, /\.work-panel-header \{[^}]*padding:\s*0 47px 0 8px;/s);
 });
 
 test("work panel header exposes one unified menu with no duplicated entries", () => {
@@ -165,10 +194,8 @@ test("work panel header exposes one unified menu with no duplicated entries", ()
   // resource instead of being replaced by a blank singleton.
   assert.match(panelSource, /const existing = tabs\.find\(\(tab\) => tab\.id === kind\)/);
   assert.match(panelSource, /if \(existing\) activateTab\(existing\.id\)/);
-  assert.doesNotMatch(panelSource, /collapsePanel/);
-  assert.doesNotMatch(panelSource, /work-panel-collapse/);
-  assert.match(panelSource, /onCollapse/);
-  assert.match(panelSource, /work-panel-toolbar-collapse/);
+  assert.doesNotMatch(panelSource, /collapsePanel|onCollapse/);
+  assert.doesNotMatch(panelSource, /work-panel-collapse|work-panel-toolbar-collapse/);
   assert.match(panelSource, /data-work-panel-section="current"/);
   assert.match(panelSource, /panel\.tools/);
   assert.match(panelSource, /panel\.openItems/);
@@ -255,51 +282,26 @@ test("work panel starts closed with no tabs and persists width only", () => {
   assert.doesNotMatch(persistenceBlock, /workPanelContexts|tabs|open/);
 });
 
-test("work panel and chat resize targets stay independent", () => {
+test("work panel divider previews internally and commits its width once", () => {
   assert.equal(MAIN_PANE_MIN_WIDTH, 360);
   assert.equal(WORK_PANEL_MIN_WIDTH, 244);
   assert.equal(WORK_PANEL_MAX_WIDTH, 720);
-  assert.match(panelSource, /renderPanelWidth = clampWorkPanelWidth\(nativePanelWidth \?\? width\)/);
-  assert.match(panelSource, /viewportWidth/);
-  assert.match(panelSource, /clampWorkPanelChatWidth/);
-  assert.match(panelSource, /api\.setWorkPanelChatWidth/);
+  assert.match(panelSource, /renderPanelWidth = clampWorkPanelWidth\(dragWidth \?\? width\)/);
+  assert.match(
+    panelSource,
+    /drag\.startWidth \+ drag\.startClientX - event\.clientX/,
+  );
+  assert.match(panelSource, /setDragWidth\(drag\.width\)/);
+  assert.match(panelSource, /if \(commit && drag\.width !== drag\.startWidth\) setWidth\(drag\.width\)/);
+  assert.doesNotMatch(panelSource, /api\.setWorkPanelChatWidth|onWorkPanelResize/);
   assert.doesNotMatch(panelSource, /\.sidebar, \.sidebar-rail/);
   assert.match(globalStyles, /\.main-pane \{[^}]*min-width:\s*0;/s);
-  assert.match(mainSource, /displayWorkAreaKey/);
-  // D263: a native move stream is a drag, so the move path only marks the
-  // user-move window and defers display reconciliation until it settles.
-  assert.match(mainSource, /window\.on\("move", noteUserWindowMove\)/);
-  assert.doesNotMatch(
-    mainSource,
-    /window\.on\("move", reconcileWorkPanelDisplay\)/,
-  );
-  assert.match(mainSource, /workPanelUserMovePending = true/);
-  // Attribution must not depend on main-process scheduling.
-  assert.doesNotMatch(mainSource, /workPanelUserMoveUntil/);
-  const moveHandler =
-    mainSource.match(/const noteUserWindowMove = \(\) => \{[\s\S]*?\n  \};/)?.[0] ??
-    "";
-  assert.match(moveHandler, /workPanelUserMovePending = true/);
-  assert.match(moveHandler, /reconcileWorkPanelDisplay\(\)/);
-  assert.match(moveHandler, /WORK_PANEL_MOVE_SETTLE_MS/);
-  // Topology events are OS-owned and must drop a pending drag attribution.
+  // Reservation zero keeps the legacy native edge path gated, so OS edge
+  // resizing remains ordinary BrowserWindow resizing.
   assert.match(
     mainSource,
-    /const reconcileDisplayTopology = \(\) => \{\s*workPanelUserMovePending = false;/,
+    /nativeWorkPanelResize \|\|\s*requestedWorkPanelReservation <= 0/,
   );
-  for (const event of [
-    "display-metrics-changed",
-    "display-added",
-    "display-removed",
-  ]) {
-    assert.match(mainSource, new RegExp(`screen\\.on\\("${event}"`));
-    assert.match(mainSource, new RegExp(`screen\\.removeListener\\("${event}"`));
-  }
-  assert.match(mainSource, /if \(nextDisplayKey === workPanelDisplayKey\) return/);
-  assert.match(mainSource, /if \(isLiveWindow\(\)\) applyWorkPanelReservation\(\)/);
-  assert.match(mainSource, /window\.on\("will-resize"/);
-  assert.match(mainSource, /isWorkPanelOuterResizeEdge/);
-  assert.match(mainSource, /window\.on\("resized"/);
 });
 
 test("work panel reservation has a complete renderer-to-main IPC path", () => {
@@ -327,65 +329,39 @@ test("work panel reservation has a complete renderer-to-main IPC path", () => {
   assert.match(mainSource, /IPC\.event\.windowWorkPanelResize/);
 });
 
-test("native window and work panel resizing have explicit edge owners", () => {
-  assert.match(panelSource, /onWorkPanelResize/);
-  assert.match(panelSource, /setWidth\(clampWorkPanelWidth\(event\.panelWidth\)\)/);
+test("native reservation resize seams remain gated behind a positive target", () => {
+  assert.doesNotMatch(panelSource, /onWorkPanelResize|setWorkPanelChatWidth/);
+  assert.match(mainSource, /requestedWorkPanelReservation <= 0/);
+  assert.match(mainSource, /if \(requestedWorkPanelReservation > 0\)/);
   assert.doesNotMatch(
     storeSource,
     /windowResizeBy|panelWindowGrowth|expandWindowForPanel|shrinkWindowForPanel/,
   );
   assert.doesNotMatch(mainSource, /windowResizeBy|panelWindowWidthOffset/);
-  assert.match(mainSource, /workPanelNativeResizeActive/);
-  assert.match(mainSource, /workPanelChatResizeActive/);
-  assert.match(mainSource, /planWorkPanelChatResize/);
-  assert.match(mainSource, /preserveReservation:/);
-  assert.match(mainSource, /baseBounds\.width \+ WORK_PANEL_MIN_WIDTH/);
   assert.match(mainSource, /baseWindowBounds/);
-  assert.match(mainSource, /workPanelReservation/);
   assert.match(mainSource, /window\.getNormalBounds\(\)/);
-  const persistenceBlock =
-    mainSource.match(
-      /const persistNormalWindowState = \(\) => \{[\s\S]*?\n  \};/,
-    )?.[0] ?? "";
-  assert.match(
-    persistenceBlock,
-    /baseWindowBounds\([\s\S]*window\.getNormalBounds\(\)[\s\S]*workPanelReservation/,
-  );
-  assert.match(persistenceBlock, /writeWindowState\(bounds\)/);
-  // D263: a cross-display drag advances the persisted base and its display key,
-  // and is normalized into the target work area, because a maximized window
-  // makes this the only consumer of the drag.
-  assert.match(persistenceBlock, /classifyDisplayTransition\(nextDisplayKey\)/);
-  assert.match(persistenceBlock, /displayTransition !== "os-adjusted"/);
-  assert.match(persistenceBlock, /workPanelDisplayKey = nextDisplayKey/);
-  assert.match(
-    persistenceBlock,
-    /displayTransition === "user-moved"\s*\?\s*clampBoundsOriginToWorkArea/,
-  );
   assert.match(mainSource, /window\.on\("close", \(event\) =>/);
   assert.match(mainSource, /persistNormalWindowState\(\)/);
 });
 
 test("work panel separator exposes pointer and keyboard resizing", () => {
   assert.match(panelSource, /role="separator"/);
-  assert.match(panelSource, /aria-label=\{t\("panel\.resizeChat"\)\}/);
-  assert.match(panelSource, /aria-valuemin=\{WORK_PANEL_CHAT_MIN_WIDTH\}/);
-  assert.match(panelSource, /aria-valuemax=\{WORK_PANEL_CHAT_MAX_WIDTH\}/);
-  assert.match(panelSource, /aria-valuenow=\{Math\.round\(chatDragWidth \?\? chatWidth\)\}/);
+  assert.match(panelSource, /aria-label=\{t\("panel\.resize"\)\}/);
+  assert.match(panelSource, /aria-valuemin=\{WORK_PANEL_MIN_WIDTH\}/);
+  assert.match(panelSource, /aria-valuemax=\{WORK_PANEL_MAX_WIDTH\}/);
+  assert.match(panelSource, /aria-valuenow=\{Math\.round\(renderPanelWidth\)\}/);
   assert.match(panelSource, /tabIndex=\{0\}/);
-  assert.match(panelSource, /startClientX:\s*e\.clientX/);
-  assert.match(panelSource, /startWidth/);
-  assert.match(panelSource, /workPanelChatWidthFromPointer/);
-  assert.match(panelSource, /onPointerDown=\{onChatResizeStart\}/);
+  assert.match(panelSource, /startClientX:\s*event\.clientX/);
+  assert.match(panelSource, /startWidth:\s*renderPanelWidth/);
+  assert.match(panelSource, /onPointerDown=\{onResizeStart\}/);
   assert.match(panelSource, /requestAnimationFrame/);
   assert.match(panelSource, /event\.key === "ArrowLeft"/);
   assert.match(panelSource, /event\.key === "ArrowRight"/);
   assert.match(panelSource, /event\.key === "Escape" && drag/);
-  assert.match(panelSource, /onPointerUp=\{onChatResizeCommit\}/);
-  assert.match(panelSource, /onPointerCancel=\{onChatResizeCancel\}/);
-  assert.match(panelSource, /onLostPointerCapture=\{onChatResizeCancel\}/);
-  assert.match(panelSource, /chatResizeActive\.current = true/);
-  assert.match(panelSource, /if \(chatResizeActive\.current\) return/);
+  assert.match(panelSource, /onPointerUp=\{onResizeCommit\}/);
+  assert.match(panelSource, /onPointerCancel=\{onResizeCancel\}/);
+  assert.match(panelSource, /onLostPointerCapture=\{onResizeCancel\}/);
+  assert.match(panelSource, /onDoubleClick=\{\(\) => setWidth\(WORK_PANEL_DEFAULT_WIDTH\)\}/);
   assert.match(panelSource, /data-work-panel-resizing/);
   assert.match(globalStyles, /\.work-panel-resize \{[^}]*width:\s*10px;/s);
   assert.match(globalStyles, /touch-action:\s*none/);

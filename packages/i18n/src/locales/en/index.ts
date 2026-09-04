@@ -137,6 +137,7 @@ export const en = {
     newChat: "New chat",
     conversation: "Conversation",
     toggleSidebar: "Toggle sidebar",
+    toggleWorkPanel: "Toggle work panel",
     sessions: "Sessions",
     commandPalette: "Command palette",
     back: "Back",

@@ -45,6 +45,7 @@ import { StartupSplash } from "./components/StartupSplash";
 import { cx } from "./components/ui";
 import {
   IconNewSession,
+  IconPanel,
   IconSidebar,
 } from "./components/icons";
 import type {
@@ -176,7 +177,6 @@ function AppShell() {
   const abort = useAppStore((s) => s.abort);
   const settings = useAppStore((s) => s.settings);
   const workPanelOpen = useAppStore((s) => s.workPanelOpen);
-  const workPanelWidth = useAppStore((s) => s.workPanelWidth);
   const pluginThemes = useAppStore((s) => s.pluginThemes);
   const refreshPluginThemes = useAppStore((s) => s.refreshPluginThemes);
   const plugins = useAppStore((s) => s.plugins);
@@ -281,26 +281,22 @@ function AppShell() {
     const request = ++workPanelReservationRequest.current;
 
     if (shouldPresent) {
-      // Cancel any in-flight exit and reserve native width before mount.
+      // Cancel any in-flight exit and clear native reservation before mount.
+      // The in-flow panel alone reflows the conversation inside fixed window bounds.
       workPanelExitGeneration.current += 1;
       workPanelExitClosing.current = false;
       workPanelExitingRef.current = false;
       setWorkPanelExiting(false);
-      // Keep the panel in the renderer's flex layout, but reserve matching
-      // native width before presenting it. This keeps the conversation width
-      // stable while open and lets the close path return the window to its
-      // original bounds after the exit animation releases the reservation.
-      const requestedWidth = Math.round(workPanelWidth);
       void commitWorkPanelPresentation({
-        reservation: api.setWorkPanelReservation(requestedWidth),
+        reservation: api.setWorkPanelReservation(0),
         isCurrent: () => request === workPanelReservationRequest.current,
         commit: () => setPresentedWorkPanelOpen(shouldPresent),
       });
       return;
     }
 
-    // Close: keep the dock mounted through work-panel-out, then release the
-    // native reservation. Instant path when the shell was never presented.
+    // Close: keep the dock mounted through work-panel-out, then confirm the
+    // zero native reservation. Instant path when the shell was never presented.
     if (presentedWorkPanelRef.current || workPanelExitingRef.current) {
       if (presentedWorkPanelRef.current && !workPanelExitingRef.current) {
         workPanelExitGeneration.current += 1;
@@ -310,13 +306,12 @@ function AppShell() {
       return;
     }
 
-    const requestedWidth = 0;
     void commitWorkPanelPresentation({
-      reservation: api.setWorkPanelReservation(requestedWidth),
+      reservation: api.setWorkPanelReservation(0),
       isCurrent: () => request === workPanelReservationRequest.current,
       commit: () => setPresentedWorkPanelOpen(shouldPresent),
     });
-  }, [page, ready, workPanelOpen, workPanelWidth]);
+  }, [page, ready, workPanelOpen]);
 
   // Fallback if animationend is skipped (display:none mid-flight, etc.).
   useEffect(() => {
@@ -1692,7 +1687,7 @@ function AppShell() {
             {page === "chat" ? (
               <ConversationTopbar
                 sidebarCollapsed={sidebarCollapsed}
-                workPanelOpen={presentedWorkPanelOpen}
+                workPanelOpen={workPanelOpen}
                 onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
                 onNewTask={() => void runMenuCommand("newTask")}
                 onOpenSearch={() => setSearchOpen(true)}
@@ -1757,6 +1752,18 @@ function AppShell() {
             </Suspense>
           </section>
 
+          <button
+            type="button"
+            className="app-work-panel-toggle no-drag"
+            title={t("nav.toggleWorkPanel")}
+            aria-label={t("nav.toggleWorkPanel")}
+            aria-pressed={workPanelOpen}
+            disabled={!activeSessionId}
+            onClick={() => useAppStore.getState().toggleWorkPanel()}
+          >
+            <IconPanel size={15} />
+          </button>
+
           {(presentedWorkPanelOpen || workPanelExiting) && (
             <WorkPanel
               panelBlocked={searchOpen}
@@ -1764,7 +1771,6 @@ function AppShell() {
               onExitAnimationEnd={() =>
                 finishWorkPanelExit(workPanelExitGeneration.current)
               }
-              onCollapse={() => useAppStore.getState().collapseWorkPanel()}
             />
           )}
 

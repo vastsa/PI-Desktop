@@ -365,6 +365,20 @@ test("motion feedback is composited, bounded, and accessible", () => {
   assert.match(styles, /@keyframes work-panel-in/);
   assert.match(styles, /@keyframes work-panel-out/);
   assert.match(styles, /@keyframes work-panel-out-windows/);
+  assert.match(styles, /\.work-panel \{[^}]*flex:\s*0 0 var\(--work-panel-width\)/s);
+  assert.match(
+    styles,
+    /@keyframes work-panel-in \{[\s\S]*?flex-basis:\s*0;[\s\S]*?width:\s*0;[\s\S]*?flex-basis:\s*var\(--work-panel-width\);[\s\S]*?width:\s*var\(--work-panel-width\);/,
+  );
+  assert.match(
+    styles,
+    /@keyframes work-panel-out \{[\s\S]*?flex-basis:\s*var\(--work-panel-width\);[\s\S]*?flex-basis:\s*0;[\s\S]*?width:\s*0;/,
+  );
+  assert.doesNotMatch(
+    styles.match(/\.work-panel \{[^}]*\}/s)?.[0] ?? "",
+    /position:\s*(?:absolute|fixed)/,
+  );
+  assert.doesNotMatch(app, /setWorkPanelReservation\((?!0\))/);
   assert.match(
     styles,
     /:root\[data-platform="win32"\] \.work-panel\.is-exiting \{[^}]*animation-name:\s*work-panel-out-windows;/s,
