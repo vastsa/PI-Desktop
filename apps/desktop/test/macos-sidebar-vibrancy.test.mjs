@@ -48,15 +48,13 @@ test("only macOS sidebar surfaces receive the translucent glass treatment", () =
   // Sheen, not a flat tint — this is what keeps the material reading as glass.
   assert.match(macSidebarBlock, /var\(--ds-sidebar-glass-sheen-top\)/);
   assert.match(macSidebarBlock, /var\(--ds-sidebar-glass-sheen-bottom\)/);
-  // The seam is a gradient hairline, so the flat border must stay out of the way.
+  // No dock seam: the flat hairline from the non-darwin base rule must stay out
+  // of the way so the glass meets the opaque main pane flush, borderless.
   assert.match(macSidebarBlock, /border-right-color:\s*transparent/);
-
-  const macSeamBlock =
-    stylesSource.match(
-      /:root\[data-platform="darwin"\] \.sidebar::after,\n:root\[data-platform="darwin"\] \.sidebar-rail::after\s*\{[^}]*\}/,
-    )?.[0] ?? "";
-  assert.match(macSeamBlock, /var\(--ds-sidebar-glass-edge\)/);
-  assert.match(macSeamBlock, /pointer-events:\s*none/);
+  assert.doesNotMatch(
+    macSidebarBlock,
+    /border-right:\s*1px solid color-mix\(in oklab, var\(--ds-text-primary\) 4%,\s*transparent\)/,
+  );
 
   const macAncestorBlock =
     stylesSource.match(
@@ -89,7 +87,6 @@ test("the sidebar glass tint stays thin enough to reveal the vibrancy material",
       "--ds-sidebar-glass-tint",
       "--ds-sidebar-glass-sheen-top",
       "--ds-sidebar-glass-sheen-bottom",
-      "--ds-sidebar-glass-edge",
     ]) {
       assert.match(block, new RegExp(`${token}:`), `${theme} must define ${token}`);
     }

@@ -136,15 +136,14 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
   `visualEffectState: "followWindow"` and a transparent window backing. Only the
   `.sidebar` and any rendered `.sidebar-rail` surface are translucent; the
   renderer adds a thin theme tint (`--ds-sidebar-glass-tint`, 40% dark /
-  55% light) plus a top/bottom sheen and a deliberately faint hairline seam
-  (7% dark / 4% light, fading out over the outer quarter of each end) so the
-  dock edge reads borderless rather than as a hard divider. The material
-  carries the blur, so the tint must stay thin — the sheen
-  and the graded seam are what make the surface read as glass rather than a
-  painted panel. `.main-pane`, `.main-titlebar`, and `.conversation-topbar`
-  remain opaque `bg-primary` surfaces, so vibrancy does not spread across the
-  whole window. Windows/Linux retain their existing opaque background and
-  frameless behavior.
+  55% light) plus a top/bottom sheen. The dock carries no seam or hairline:
+  the glass meets the opaque main pane flush, so the only edge cue is the
+  tint's natural change against the pane. The material carries the blur, so the
+  tint must stay thin — the sheen is what keeps the surface reading as glass
+  rather than a painted panel. `.main-pane`, `.main-titlebar`, and
+  `.conversation-topbar` remain opaque `bg-primary` surfaces, so vibrancy does
+  not spread across the whole window. Windows/Linux retain their existing
+  opaque background and frameless behavior.
 - The macOS system menu exposes New Task, Open Project, Settings, Command
   Palette, Sidebar, standard editing, zoom/fullscreen, window, Help, Logs, and
   Check for Updates actions. Windows/Linux expose equivalent product actions

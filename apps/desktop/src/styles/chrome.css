@@ -329,33 +329,10 @@
     ),
     linear-gradient(0deg, var(--ds-sidebar-glass-sheen-bottom), transparent 160px);
   background-repeat: no-repeat;
-  /* The seam moves to the gradient hairline below so it can fade at the ends. */
+  /* No dock seam: the glass meets the opaque main pane flush. The transparent
+     border keeps the flat hairline from the non-darwin base rule out of the
+     way, so the only edge cue is the tint's natural change against the pane. */
   border-right-color: transparent;
-}
-
-/*
- * Glass edge: a hairline that is brightest across the body of the dock and
- * fades out at the very top and bottom, the way a bevelled pane catches light.
- * Drawn inside the reserved 1px border so dock widths never shift, and clipped
- * to the padding box — `right: -1px` would fall inside the border and vanish
- * under the sidebar's `overflow: hidden`.
- */
-:root[data-platform="darwin"] .sidebar::after,
-:root[data-platform="darwin"] .sidebar-rail::after {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  right: 0;
-  width: 1px;
-  content: "";
-  pointer-events: none;
-  background: linear-gradient(
-    180deg,
-    transparent 0%,
-    var(--ds-sidebar-glass-edge) 25%,
-    var(--ds-sidebar-glass-edge) 75%,
-    transparent 100%
-  );
 }
 
 /* Collapsed-sidebar controls stay in normal flow inside the main drag band so

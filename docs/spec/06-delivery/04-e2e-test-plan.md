@@ -5966,11 +5966,12 @@ This test plan spec is accepted when:
 ### US-UI-74 macOS native sidebar vibrancy
 - Open the desktop app on macOS in both light and dark appearances with the
   sidebar expanded, then exercise the existing collapse/expand path.
-- Expect the main window to use native `sidebar` vibrancy with a thin theme
-  tint behind `.sidebar` and any rendered `.sidebar-rail`: desktop content
-  stays perceptible through the material, the surface carries a top-to-bottom
-  sheen rather than a flat fill, and the edge is a single fine seam that fades
-  out at the top and bottom of the dock.
+- Expect the main window to use native `under-window` vibrancy with a thin
+  theme tint behind `.sidebar` and any rendered `.sidebar-rail`: desktop
+  content stays perceptible through the material and the surface carries a
+  top-to-bottom sheen rather than a flat fill. The dock carries no seam or
+  hairline — the glass meets the opaque main pane flush, so no hard divider
+  separates the two panes.
 - Expect `.main-pane`, `.main-titlebar`, and `.conversation-topbar` to remain
   solid theme surfaces without whole-window transparency or a strong artificial
   blur/card treatment. Sidebar collapse/expand, resize, traffic-light placement,
