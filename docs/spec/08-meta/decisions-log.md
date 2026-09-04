@@ -3026,3 +3026,17 @@ D193, and D194.
   the same size, placement, and semantic colors.
 - No protocol, storage, or runtime behavior changes. See ADR 0150 and
   E2E-046/E2E-099/US-UI-17.
+
+## 2026-09-04 — Keep the work panel inside the fixed application window (D292)
+
+- The work panel remains an in-flow right column. Opening and collapsing it
+  animates flex allocation inside the existing client area instead of expanding
+  or shrinking the native BrowserWindow.
+- The renderer-owned inner divider adjusts the persisted `244..720px` panel
+  width; native window edges resize only the application window and never rewrite
+  the panel preference. Escape, cancellation, and lost pointer capture restore
+  the press-time panel width.
+- The `window/setWorkPanelReservation` seam is retained for compatibility but
+  normalizes every valid request to `{ requested: 0, reserved: 0 }`. The native
+  Browser view still follows the renderer-measured panel rectangle. See ADR
+  0151 and E2E-056/E2E-160/E2E-167.

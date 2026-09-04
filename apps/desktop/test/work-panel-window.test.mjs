@@ -15,7 +15,7 @@ import {
 
 const workArea = { x: 0, y: 0, width: 1920, height: 1080 };
 
-test("right-side native edges own panel width while other edges remain chat-owned", () => {
+test("legacy work-panel edge classifier remains available to geometry helpers", () => {
   assert.equal(isWorkPanelOuterResizeEdge("right"), true);
   assert.equal(isWorkPanelOuterResizeEdge("top-right"), true);
   assert.equal(isWorkPanelOuterResizeEdge("bottom-right"), true);

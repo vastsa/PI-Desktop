@@ -873,38 +873,33 @@ Codex parity decisions (D034/D070) supersede any older value here.
 | Titlebar row height | 46px | Codex toolbar rhythm (D034); traffic lights {x:16,y:16} |
 | Sidebar width (collapsed) | 48px | Icon-only rail |
 | Sidebar width (expanded) | `240px–520px` (default 275px) | Right-edge resize handle; persisted preferred width |
-| Main pane minimum readable width | 360px | Target while the native work-panel reservation can fit panel + chat; constrained windows reflow chat below it (D163, D255, ADR 0122) |
+| Main pane minimum readable width | 360px | Target when the panel is closed; an open internal panel may reduce MainChat below this target on small windows |
 | Work panel width (closed) | 0px | Hidden by default |
-| Work panel width (open) | `244px–720px` (default 280px), fixed at the committed width | the combined create trigger keeps the full panel width on content; the panel is an in-flow column backed by a matching temporary native reservation (D154/D163/D255, ADR 0122) |
+| Work panel width (open) | `244px–720px` (default 280px), fixed at the committed width | the panel is an in-flow column whose width is taken from the existing client area; the renderer owns its divider (ADR 0151) |
 | Composer shell minimum | ~80px | One-line draft + toolbar padding |
 | Composer draft height | 1–7 text lines | Auto-grow; internal scroll beyond line 7 |
 | Chat message max width | 720px assistant / 560px user plate | Prevent eye-span over-stretch; user turns stay compact |
-| Window min width | 1040px | Enforced by Electron as the base chat-shell minimum; an open work panel grows the normal window when the display can supply the reservation, otherwise the fixed panel may reduce the chat pane below its 360px readability target |
+| Window min width | 1040px | Enforced by Electron for the whole app; opening the panel never changes native bounds |
 | Window min height | 700px | Enforced by Electron |
 
-An open work panel is a fixed-width in-flow column backed by a matching native
-reservation (ADR 0122). The renderer requests its committed width before
-presentation, so MainChat keeps its width when the display work area allows
-the reservation. The native browser view follows the renderer-measured panel
-rect. Persisted normal bounds exclude temporary reservation width and its
-display-edge shift. Before collapse motion starts, any native Browser preview
-surface is detached because it cannot participate in renderer CSS animation.
-Windows keeps the exiting dock opaque during its bounded slide so a frameless
-native resize never exposes a full-panel background flash; macOS and Linux
-retain the fade-and-slide exit.
+An open work panel is a fixed-width in-flow column inside the existing client
+area (ADR 0151). Its flex allocation comes from MainChat, and the renderer's
+measured panel rect continues to position the native Browser view. Opening and
+collapsing do not request a positive native reservation or change persisted
+window bounds. Before collapse motion starts, any native Browser preview surface
+is detached because it cannot participate in renderer CSS animation; macOS,
+Windows, and Linux retain the fade-and-slide exit.
 
 ### 10.1 Responsive collapse
 
 - The work panel never participates in responsive collapse. It keeps its
   committed `244..720px` width (default 280px) while visible.
-- The inner panel divider resizes the base chat window while the outer right
-  native edge resizes the fixed panel target. Other native and sidebar changes
-  reflow MainChat. The 360px chat target holds when the native reservation can
-  fit panel + chat; otherwise chat reflows below it.
-- Panel open requests the committed native reservation; collapse/final close
-  release it after the exit animation, and the outer-edge panel gesture or
-  inner-divider chat gesture updates its respective target. Native edges keep
-  their OS hit regions and the renderer previews the outer-edge panel target.
+- The inner panel divider changes the panel width in the renderer. Moving it
+  left takes more internal space from MainChat; moving it right returns that
+  space. Native window edges resize only the fixed app window.
+- Panel open and collapse change only the in-flow flex allocation. No positive
+  native reservation is requested, and the panel's preferred width remains a
+  renderer-local setting.
 - The outer shell keeps native edge/corner resizing enabled on every platform.
   Frameless titlebar drag regions never replace the OS resize ownership. A
   300ms stable-bounds settle window prevents recovery logic from competing with

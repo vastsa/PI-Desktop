@@ -30,7 +30,7 @@ Principles:
 | `workspace` | Workspace selection and legacy working-tree diagnostics |
 | `browser` | Work panel embedded preview navigation/bounds/visibility + state events |
 | `fs` | Work panel workspace file listing/reading/reveal (read-only) |
-| `window` | Frameless window state, controls, and bounded work-panel reservation/chat-width channels |
+| `window` | Frameless window state, controls, and compatibility work-panel geometry channels |
 | `menu` | Allowlisted application-menu commands and native editing/window actions |
 | `notification` | Durable inbox list/read/clear and new/activated events |
 
@@ -1222,9 +1222,8 @@ Plugin panel chrome uses a separate Electron-local
 but the handler resolves the target strictly from the sender's live panel
 window. The preload consumes this channel internally for its closed-Shadow-DOM
 titlebar; it is not added to `window.pluginBridge` or the shared host protocol.
-The geometry-specific capabilities are bounded target-state work-panel
-reservation and chat-width updates
-(D163, D255, ADR 0032/0122):
+The work-panel geometry seam is retained for Electron compatibility, but the
+panel is renderer-owned and never changes native window bounds (ADR 0151):
 
 ```ts
 window/setWorkPanelReservation({ width: 0 | number })
@@ -1234,15 +1233,13 @@ window/setWorkPanelReservation({ width: 0 | number })
 `width` must be a finite integer JSON number equal to `0` or inside the
 inclusive `244..720` range. Strings, booleans, null, fractional values, and
 other malformed payloads fail with `INVALID_ARGUMENT` rather than being
-coerced. Zero is the closed/collapsed target, and a positive value is the
-visible panel's committed fixed width. `requested` is the accepted current target.
-`reserved` is the native width currently added
-to the normal base window for that target and can be smaller than `requested`
-only when the display work area is insufficient. Calls are idempotent target
-updates: repeating the same width never adds another delta.
+coerced. The internal dock normalizes every valid request to zero and returns
+`{ requested: 0, reserved: 0 }`; positive values are accepted only as a
+backwards-compatible no-op. Repeating a request never changes native bounds.
 
-The two visible resize boundaries have different owners while the panel is
-open:
+The legacy chat-width/event shapes remain Electron-local compatibility surfaces,
+but the visible internal dock does not call them or use them to resize the
+window:
 
 ```ts
 window/setWorkPanelChatWidth({ width: number })
@@ -1252,41 +1249,14 @@ window/event/workPanelResize
   -> { phase: "preview" | "commit"; panelWidth: number }
 ```
 
-`window/setWorkPanelChatWidth` accepts only a safe integer in the inclusive
-`1040..10000` range. It is the bounded target-state channel used by the
-renderer-owned divider inside the window; it changes the base conversation
-width while preserving the currently active panel reservation. On a tight
-work area, the chat target stops at the largest base width that still keeps
-that reservation; the panel is never narrowed as a side effect. The native
-right edge (and right corners where Electron reports them) changes the panel
-target instead.
-Main previews that native panel width through `window/event/workPanelResize`
-and commits it to the renderer after the native resize stream settles. The
-panel target remains bounded to `244..720px`.
-
-In normal state, Main expands the base bounds toward the right and shifts left
-only as needed to keep the expanded bounds inside the current display work
-area. A zero target symmetrically removes the added width and reverses that
-reservation-induced shift. Main persists base bounds with both effects removed.
-Native gestures from the left edge or non-right corners update only those base
-bounds, leaving `requested` and the renderer-owned fixed panel width
-unchanged. The outer right edge and right corners update the panel target while
-the base conversation width stays fixed. Maximized and fullscreen windows
-remember the latest target but defer geometry; returning to normal reconciles
-it once against the restored base bounds and current work area. If the window
-manager first compresses or relocates the outer window during a display or
-work-area transition, reconciliation preserves the last confirmed base bounds;
-returning to a roomier work area restores the original chat width. That
-preservation applies to window-manager adjustments only. A cross-display change
-that arrives while the user is dragging the window is attributed to the user
-(D263, ADR 0132): the dropped position becomes the new base bounds, with only
-its origin normalized into the target display work area, and it is the position
-persisted for relaunch. The base size is preserved even when the target work
-area is narrower, so `reserved` shrinks rather than the window. Main defers this
-reconciliation until the native move stream settles, so no reservation geometry
-is applied mid-drag. Renderer code
-sets this target only for the currently visible session: background artifacts
-cannot change visible reservation geometry.
+`window/setWorkPanelChatWidth` and `window/event/workPanelResize` remain
+available only to older Electron callers. The current renderer divider changes
+the persisted `244..720px` panel width locally, and native window edges resize
+the fixed application window without changing that panel target. The native
+Browser view continues to follow the renderer-measured panel rectangle.
+Window bounds persistence and display reconciliation therefore operate on the
+ordinary application bounds; there is no panel-specific width or x-offset
+reservation, and background artifacts cannot change visible window geometry.
 
 ## 13c. Composer input APIs (D123/D124/D197, ADR 0024/0059)
 

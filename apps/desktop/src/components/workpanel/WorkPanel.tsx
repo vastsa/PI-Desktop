@@ -36,12 +36,9 @@ import { FilesTab } from "./FilesTab";
 import { PluginViewTab } from "./PluginViewTab";
 import { WorkTabEmpty } from "./WorkTabEmpty";
 import {
-  WORK_PANEL_CHAT_MAX_WIDTH,
-  WORK_PANEL_CHAT_MIN_WIDTH,
+  WORK_PANEL_MAX_WIDTH,
+  WORK_PANEL_MIN_WIDTH,
   clampWorkPanelWidth,
-  clampWorkPanelChatWidth,
-  committedWorkPanelChatWidth,
-  workPanelChatWidthFromPointer,
 } from "../../lib/work-panel-resize";
 
 const TAB_ICONS = {
@@ -69,6 +66,14 @@ const TAB_ICONS = {
 const HEADER_TOOLS = [{ kind: "browser", Icon: IconGlobe }] as const;
 
 type HeaderToolKind = (typeof HEADER_TOOLS)[number]["kind"];
+
+type WorkPanelResizeState = {
+  pointerId: number;
+  startClientX: number;
+  startWidth: number;
+  currentWidth: number;
+  frame: number;
+};
 
 function headerToolTab(kind: HeaderToolKind): WorkPanelTab {
   return toolWorkPanelTab(kind);
@@ -122,23 +127,8 @@ export function WorkPanel({
   /** Resources opened from the transcript; tools and plugin views list above. */
   const resourceTabs = tabs.filter((tab) => !isToolWorkPanelTab(tab));
 
-  const [nativePanelWidth, setNativePanelWidth] = useState<number | null>(null);
-  const [chatDragWidth, setChatDragWidth] = useState<number | null>(null);
-  const [nativeResizeActive, setNativeResizeActive] = useState(false);
-  const [viewportWidth, setViewportWidth] = useState(() =>
-    typeof window === "undefined" ? 0 : window.innerWidth,
-  );
-  const chatDragState = useRef<{
-    pointerId: number;
-    startClientX: number;
-    startWidth: number;
-    width: number;
-    dirty: boolean;
-    frame: number;
-  } | null>(null);
-  const pendingChatWidth = useRef<number | null>(null);
-  const chatResizeRequestRunning = useRef(false);
-  const chatResizeActive = useRef(false);
+  const [panelDragWidth, setPanelDragWidth] = useState<number | null>(null);
+  const panelResizeState = useRef<WorkPanelResizeState | null>(null);
   const contextRef = useRef<HTMLDivElement | null>(null);
   const contextButtonRef = useRef<HTMLButtonElement | null>(null);
   /** Where focus lands when the menu opens: the active row, or its last row. */
@@ -147,32 +137,8 @@ export function WorkPanel({
   const [nativeSurfaceReadyForExit, setNativeSurfaceReadyForExit] =
     useState(false);
 
-  const renderPanelWidth = clampWorkPanelWidth(nativePanelWidth ?? width);
-  const chatWidth = clampWorkPanelChatWidth(viewportWidth - renderPanelWidth);
-  const isResizing = chatDragWidth !== null || nativeResizeActive;
-
-  useEffect(() => {
-    return api.onWorkPanelResize((event) => {
-      // A programmatic chat resize changes the native outer bounds. Ignore
-      // any stale native preview that arrives during that transaction so it
-      // cannot rewrite the panel target owned by this renderer divider.
-      if (chatResizeActive.current) return;
-      if (event.phase === "preview") {
-        setNativePanelWidth(clampWorkPanelWidth(event.panelWidth));
-        setNativeResizeActive(true);
-        return;
-      }
-      setNativePanelWidth(null);
-      setNativeResizeActive(false);
-      setWidth(clampWorkPanelWidth(event.panelWidth));
-    });
-  }, [setWidth]);
-
-  useEffect(() => {
-    const onViewportResize = () => setViewportWidth(window.innerWidth);
-    window.addEventListener("resize", onViewportResize);
-    return () => window.removeEventListener("resize", onViewportResize);
-  }, []);
+  const renderPanelWidth = clampWorkPanelWidth(panelDragWidth ?? width);
+  const isResizing = panelDragWidth !== null;
 
   useEffect(() => {
     if (isResizing) {
@@ -184,27 +150,6 @@ export function WorkPanel({
       document.documentElement.removeAttribute("data-work-panel-resizing");
     };
   }, [isResizing]);
-
-  const enqueueChatWidth = useCallback((width: number) => {
-    pendingChatWidth.current = clampWorkPanelChatWidth(width);
-    chatResizeActive.current = true;
-    if (chatResizeRequestRunning.current) return;
-    chatResizeRequestRunning.current = true;
-    void (async () => {
-      while (pendingChatWidth.current !== null) {
-        const nextWidth = pendingChatWidth.current;
-        pendingChatWidth.current = null;
-        try {
-          await api.setWorkPanelChatWidth(nextWidth);
-        } catch {
-          // A closed window can finish a pointer gesture after its bridge is
-          // gone. The native window remains the source of truth in that case.
-        }
-      }
-      chatResizeRequestRunning.current = false;
-      chatResizeActive.current = false;
-    })();
-  }, []);
 
   const menuItems = useCallback(
     () =>
@@ -370,107 +315,105 @@ export function WorkPanel({
     items[next]?.focus();
   };
 
-  const finishChatResize = useCallback(
-    (target: HTMLDivElement, pointerId: number, commit: boolean) => {
-      const drag = chatDragState.current;
+  const finishPanelResize = useCallback(
+    (target: HTMLDivElement, pointerId: number, cancelled: boolean) => {
+      const drag = panelResizeState.current;
       if (drag?.pointerId !== pointerId) return;
-      chatDragState.current = null;
-      chatResizeActive.current = false;
+      panelResizeState.current = null;
       if (drag.frame) cancelAnimationFrame(drag.frame);
       if (target.hasPointerCapture(pointerId)) {
         target.releasePointerCapture(pointerId);
       }
-      setChatDragWidth(null);
-      const targetWidth = commit
-        ? (committedWorkPanelChatWidth(drag, drag.width, true) ??
-          (drag.dirty ? drag.startWidth : null))
-        : drag.dirty
-          ? drag.startWidth
-          : null;
-      if (targetWidth !== null) enqueueChatWidth(targetWidth);
+      setPanelDragWidth(null);
+      if (!cancelled && drag.currentWidth !== drag.startWidth) {
+        setWidth(drag.currentWidth);
+      }
     },
-    [enqueueChatWidth],
+    [setWidth],
   );
 
-  const onChatResizeStart = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      if (e.button !== 0) return;
-      e.preventDefault();
-      e.currentTarget.focus({ preventScroll: true });
-      e.stopPropagation();
-      const startWidth = chatWidth;
-      chatResizeActive.current = true;
-      chatDragState.current = {
-        pointerId: e.pointerId,
-        startClientX: e.clientX,
+  const onPanelResizeStart = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0 || panelResizeState.current) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.currentTarget.focus({ preventScroll: true });
+      const startWidth = clampWorkPanelWidth(width);
+      panelResizeState.current = {
+        pointerId: event.pointerId,
+        startClientX: event.clientX,
         startWidth,
-        width: startWidth,
-        dirty: false,
+        currentWidth: startWidth,
         frame: 0,
       };
-      e.currentTarget.setPointerCapture(e.pointerId);
-      setChatDragWidth(startWidth);
+      setPanelDragWidth(startWidth);
+      event.currentTarget.setPointerCapture(event.pointerId);
     },
-    [chatWidth],
+    [width],
   );
 
-  const onChatResizeMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    const drag = chatDragState.current;
-    if (drag?.pointerId !== e.pointerId) return;
-    drag.dirty = true;
-    drag.width = workPanelChatWidthFromPointer(drag, e.clientX);
-    if (drag.frame) return;
-    drag.frame = requestAnimationFrame(() => {
-      if (chatDragState.current !== drag) return;
-      drag.frame = 0;
-      setChatDragWidth(drag.width);
-      enqueueChatWidth(drag.width);
-    });
-  }, [enqueueChatWidth]);
-
-  const onChatResizeCommit = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      finishChatResize(e.currentTarget, e.pointerId, true);
+  const onPanelResizeMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const drag = panelResizeState.current;
+      if (drag?.pointerId !== event.pointerId) return;
+      // The divider is on the panel's left edge: moving it left makes the
+      // panel wider, while moving it right gives that space back to chat.
+      drag.currentWidth = clampWorkPanelWidth(
+        drag.startWidth + drag.startClientX - event.clientX,
+      );
+      if (drag.frame) return;
+      drag.frame = requestAnimationFrame(() => {
+        if (panelResizeState.current !== drag) return;
+        drag.frame = 0;
+        setPanelDragWidth(drag.currentWidth);
+      });
     },
-    [finishChatResize],
+    [],
   );
 
-  const onChatResizeCancel = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      finishChatResize(e.currentTarget, e.pointerId, false);
+  const onPanelResizeCommit = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      finishPanelResize(event.currentTarget, event.pointerId, false);
     },
-    [finishChatResize],
+    [finishPanelResize],
+  );
+
+  const onPanelResizeCancel = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      finishPanelResize(event.currentTarget, event.pointerId, true);
+    },
+    [finishPanelResize],
   );
 
   useEffect(
     () => () => {
-      const drag = chatDragState.current;
+      const drag = panelResizeState.current;
       if (drag?.frame) cancelAnimationFrame(drag.frame);
-      chatResizeActive.current = false;
+      panelResizeState.current = null;
       document.documentElement.removeAttribute("data-work-panel-resizing");
     },
     [],
   );
 
-  const onChatResizeKeyDown = useCallback(
+  const onPanelResizeKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLDivElement>) => {
-      const drag = chatDragState.current;
+      const drag = panelResizeState.current;
       if (event.key === "Escape" && drag) {
         event.preventDefault();
-        finishChatResize(event.currentTarget, drag.pointerId, false);
+        finishPanelResize(event.currentTarget, drag.pointerId, true);
         return;
       }
       const step = event.shiftKey ? 32 : 16;
       let nextWidth: number | null = null;
-      if (event.key === "ArrowLeft") nextWidth = chatWidth - step;
-      else if (event.key === "ArrowRight") nextWidth = chatWidth + step;
-      else if (event.key === "Home") nextWidth = WORK_PANEL_CHAT_MIN_WIDTH;
-      else if (event.key === "End") nextWidth = WORK_PANEL_CHAT_MAX_WIDTH;
+      if (event.key === "ArrowLeft") nextWidth = width + step;
+      else if (event.key === "ArrowRight") nextWidth = width - step;
+      else if (event.key === "Home") nextWidth = WORK_PANEL_MIN_WIDTH;
+      else if (event.key === "End") nextWidth = WORK_PANEL_MAX_WIDTH;
       if (nextWidth === null) return;
       event.preventDefault();
-      enqueueChatWidth(nextWidth);
+      setWidth(clampWorkPanelWidth(nextWidth));
     },
-    [chatWidth, enqueueChatWidth, finishChatResize],
+    [finishPanelResize, setWidth, width],
   );
   const activeLabel = activeTab ? tabLabel(activeTab, t, pluginViews) : t("panel.title");
   const activePluginView =
@@ -511,17 +454,17 @@ export function WorkPanel({
         className="work-panel-resize no-drag"
         role="separator"
         aria-orientation="vertical"
-        aria-label={t("panel.resizeChat")}
-        aria-valuemin={WORK_PANEL_CHAT_MIN_WIDTH}
-        aria-valuemax={WORK_PANEL_CHAT_MAX_WIDTH}
-        aria-valuenow={Math.round(chatDragWidth ?? chatWidth)}
+        aria-label={t("panel.resize")}
+        aria-valuemin={WORK_PANEL_MIN_WIDTH}
+        aria-valuemax={WORK_PANEL_MAX_WIDTH}
+        aria-valuenow={Math.round(panelDragWidth ?? renderPanelWidth)}
         tabIndex={0}
-        onPointerDown={onChatResizeStart}
-        onPointerMove={onChatResizeMove}
-        onPointerUp={onChatResizeCommit}
-        onPointerCancel={onChatResizeCancel}
-        onLostPointerCapture={onChatResizeCancel}
-        onKeyDown={onChatResizeKeyDown}
+        onPointerDown={onPanelResizeStart}
+        onPointerMove={onPanelResizeMove}
+        onPointerUp={onPanelResizeCommit}
+        onPointerCancel={onPanelResizeCancel}
+        onLostPointerCapture={onPanelResizeCancel}
+        onKeyDown={onPanelResizeKeyDown}
       />
       <div className="work-panel-main">
         <header className="work-panel-header" data-work-panel-section="current">

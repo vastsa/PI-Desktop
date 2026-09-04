@@ -1,6 +1,6 @@
 # ADR 0122: Reserve native width while the work panel is visible
 
-- Status: Accepted
+- Status: Superseded by ADR 0151
 - Date: 2026-08-25
 - Related: [01-ui-ia](../spec/04-ux/01-ui-ia.md) ·
   [08-component-spec §5](../spec/04-ux/08-component-spec.md) ·

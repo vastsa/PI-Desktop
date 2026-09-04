@@ -268,8 +268,8 @@
   }
 }
 
-/* win32 native-width collapse: keep the dock opaque to avoid exposing the
-   frameless window background (mirrors work-panel-out-windows). */
+/* win32 collapse: keep the dock opaque to avoid exposing the frameless
+   window background during its exit motion. */
 @keyframes sidebar-out-windows {
   from {
     flex-basis: var(--ds-sidebar-width);

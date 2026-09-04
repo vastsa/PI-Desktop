@@ -364,11 +364,6 @@ test("motion feedback is composited, bounded, and accessible", () => {
   assert.match(styles, /@keyframes route-surface-in/);
   assert.match(styles, /@keyframes work-panel-in/);
   assert.match(styles, /@keyframes work-panel-out/);
-  assert.match(styles, /@keyframes work-panel-out-windows/);
-  assert.match(
-    styles,
-    /:root\[data-platform="win32"\] \.work-panel\.is-exiting \{[^}]*animation-name:\s*work-panel-out-windows;/s,
-  );
   assert.match(styles, /translateX\(8px\)/);
   assert.match(styles, /\.composer-shell:focus-within/);
   assert.doesNotMatch(styles, /backdrop-filter:\s*blur/);

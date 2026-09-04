@@ -1,6 +1,6 @@
 # ADR 0146: Assign outer and inner work-panel resize ownership by boundary
 
-- Status: Accepted
+- Status: Superseded by ADR 0151
 - Date: 2026-09-02
 - Related: ADR 0122, ADR 0132
 

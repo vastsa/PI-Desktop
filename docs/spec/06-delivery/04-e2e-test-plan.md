@@ -1919,28 +1919,21 @@ Each scenario is documented in this format:
   tabs and a Browser resource; switch to session B, create a different tab set,
   then switch repeatedly between A and B and select a project without an active
   conversation. Generate a background artifact in the non-visible session.
-  7) Drag the inner left-edge handle below 1040px and above 10000px; verify
-  pointer-down does not jump the divider or resize the panel, cancel one gesture
-  with Escape, then focus the handle and exercise Arrow/Shift+Arrow/Home/End.
-  Commit a different chat width with Browser active. 8) On a display with enough
-  work area, record MainChat width,
-  native bounds, and `window/setWorkPanelReservation` results while opening,
-  repeating the same open target, committing an inner-divider chat width, collapsing,
-  reopening, and closing the final resource. With Browser active on Windows,
-  repeat collapse while watching the entire frameless window. 9) With the panel
-  open, drag the outer right edge and confirm the panel width changes while the
-  base chat width stays fixed; drag the inner divider and confirm the chat width
-  changes while the panel stays fixed. Resize from the left edge and repeat
-  after toggling the sidebar. 10) Repeat open/resize/collapse on a work area too narrow
-  to supply the complete reservation. 11) Open or collapse while maximized and
-  fullscreen, then return to normal. 12) Move the normal window between displays with
-  different work areas, change the active display's work-area geometry, and
-  perform ordinary moves within one unchanged work area; include a transition
-  where the window manager compresses and relocates the outer window before the
-  display-change callback. 13) Inject one rejected reservation while opening
-  and one while collapsing, then retry each action. 14) Send string, boolean,
-  null, fractional, and out-of-range reservation and chat-width payloads. 15)
-  Relaunch.
+  7) Drag the inner left-edge handle left and right across its bounds; verify
+  pointer-down does not jump the divider or resize the native window, cancel one
+  gesture with Escape, then focus the handle and exercise Arrow/Shift+Arrow/Home/End.
+  Commit a different panel width with Browser active. 8) Record MainChat width
+  and native bounds while opening, repeating the same open action, resizing the
+  panel, collapsing, reopening, and closing the final resource. Repeat collapse
+  on Windows while watching the entire frameless window. 9) With the panel open,
+  resize the application from each native edge and confirm only the application
+  bounds change; the panel remains at its renderer-committed width. Resize from
+  the left edge and repeat after toggling the sidebar. 10) Open, resize, and
+  collapse on a small work area, then repeat while maximized and fullscreen. 11)
+  Move the normal window between displays and change the active display's
+  work-area geometry. 12) Send valid and malformed reservation payloads,
+  including positive values, and confirm the compatibility seam never changes
+  native bounds. 13) Relaunch.
 - **Expected**: Startup shows no panel, welcome chooser, fixed tool buttons, or
   titlebar/menu launcher. Cmd/Ctrl+J opens the active session's panel at its
   committed width without creating a resource tab and collapses it again on the
@@ -1952,74 +1945,47 @@ Each scenario is documented in this format:
   closing animate the panel's width/flex allocation with its bounded
   opacity/slide, so MainChat reflows continuously without a pre-animation jump.
   Opening the panel, collapsing it, or committing a divider resize updates the
-  target-state native reservation without a presentation jump. Once the panel
-  is open, a single unified
-  context trigger opens one dropdown that lists Browser and in-scope plugin
-  views, with a fill plus 2px edge marker for the active row and a dot for open
-  inactive ones, each open row carrying its own close control in an
-  always-reserved trailing slot; a second section appears after a divider only
-  for transcript-opened resources (full-path tooltips, per-item close), so no
-  entry is listed twice. The menu fades in over ≤4px and is static under
-  reduced motion. Arrow/Home/End move focus across rows only and skip the close
-  buttons, ArrowDown/ArrowUp on the trigger open on the active/last row,
-  Delete/Backspace closes the focused row while the menu stays open with focus on
-  its neighbor, and Escape/Tab/selection restore focus to the trigger. Reopening
-  an already-open tool activates it and preserves its Browser URL. The right
-  action cluster stays pinned to the header's right edge regardless of label
-  length. Opening the menu
-  temporarily hides the native Browser preview so it is never occluded. The
-  sole
-  collapse control sits in the session pane top-right rather than the content header.
+  presentation jump. Once the panel is open, a single unified context trigger
+  opens one dropdown that lists Browser and in-scope plugin views, with a fill
+  plus 2px edge marker for the active row and a dot for open inactive ones, each
+  open row carrying its own close control in an always-reserved trailing slot;
+  a second section appears after a divider only for transcript-opened resources
+  (full-path tooltips, per-item close), so no entry is listed twice. The menu
+  fades in over ≤4px and is static under reduced motion. Arrow/Home/End move
+  focus across rows only and skip the close buttons, ArrowDown/ArrowUp on the
+  trigger open on the active/last row, Delete/Backspace closes the focused row
+  while the menu stays open with focus on its neighbor, and Escape/Tab/selection
+  restore focus to the trigger. Reopening an already-open tool activates it and
+  preserves its Browser URL. The right action cluster stays pinned to the
+  header's right edge regardless of label length. Opening the menu temporarily
+  hides the native Browser preview so it is never occluded. The sole collapse
+  control sits in the session pane top-right rather than the content header.
   Active close selects the right neighbor then left; closing the last tab hides
-  the panel. Collapse retains runtime
-  tabs but hides the panel until another artifact reopens it. Width clamps to
-  the fixed `244px–720px` range and previews its current/minimum/maximum values
-  through the panel separator. The inner divider exposes the bounded chat width
-  to assistive technology and supports the documented keyboard steps.
-  Pointer-down preserves the starting width, movement follows the pointer
-  continuously, and release commits once only when the target changed. Escape
-  or cancellation restores the press-time target. Browser preview does not
-  intercept an active divider drag.
+  the panel. Collapse retains runtime tabs but hides the panel until another
+  artifact reopens it. Width clamps to the fixed `244px–720px` range and
+  previews its current/minimum/maximum values through the panel separator. The
+  inner divider exposes the panel width to assistive technology and supports
+  the documented keyboard steps. Pointer-down preserves the starting width,
+  movement follows the pointer continuously, and release commits once only when
+  the target changed. Escape or cancellation restores the press-time width.
+  Browser preview does not intercept an active divider drag.
   A and B independently restore their runtime open state, ordered tabs, active
   tab, and Browser resource; selecting a project without an active conversation
   hides the panel, and no relative resource crosses session/workspace context.
   Background artifacts update only their retained context and never change the
-  visible reservation.
-  Before exit motion, the native Browser preview detaches from the window. On
-  Windows the dock remains opaque through its bounded exit slide, and collapse
-  produces no white/full-pane flash or stale preview frame while native bounds
-  return to the base width.
-  Only `{width}` is restored after relaunch; every session's open state, tabs,
-  active tab, and Browser resource reset. The open panel remains exactly at its
-  committed width through inner-divider chat resizing and sidebar changes. The
-  outer right edge changes only the panel target and keeps the base chat width
-  stable; the inner divider changes only the base chat target and keeps the panel
-  reservation stable. In normal state, open returns
-  `{requested: committedWidth, reserved: committedWidth}` and grows/shifts the
-  native window inside the work area so MainChat width stays unchanged. Repeating
-  the target is a no-op. Divider commit updates the target once. Collapse and
-  final close return `{requested: 0, reserved: 0}` and symmetrically restore the
-  base bounds and x position. On a constrained work area, `reserved` reports all
-  available added width below `requested`; the panel remains fixed and only
-  MainChat absorbs the shortfall. Maximized/fullscreen calls retain the latest
-  requested target without changing geometry, then reconcile once on return to
-  normal. Display/work-area changes reconcile the same target against current
-  available width and update the native minimum; ordinary movement within one
-  unchanged work area does not reapply geometry. System compression or
-  relocation during a display transition does not overwrite the confirmed base
-  bounds, and returning to a roomier display restores the prior chat width.
-  Relaunch restores the user's window size without the temporary visible-panel
-  reservation (ADR 0122). Malformed reservation payloads fail with
-  `INVALID_ARGUMENT` and
-  never coerce. A rejected reservation keeps
-  the last confirmed panel presentation until a later successful request; a
-  superseded success cannot commit stale presentation. No transition produces
-  a second resize or position drift.
-  The former context-panel overlay no longer exists.
+  visible panel or native window geometry. Before exit motion, the native
+  Browser preview detaches from the window; collapse produces no stale preview
+  frame. Only `{width}` is restored after relaunch; every session's open state,
+  tabs, active tab, and Browser resource reset. The panel remains exactly at its
+  committed width while open, and sidebar or native window changes do not alter
+  that preferred panel width. The compatibility reservation seam returns
+  `{requested: 0, reserved: 0}` for every valid request, including positive
+  legacy values, and never changes native bounds. Malformed payloads fail with
+  `INVALID_ARGUMENT` and never coerce. The former context-panel overlay no
+  longer exists.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md`, `04-ux/01-ui-ia.md`,
   `04-ux/07-ui-design-system.md`, `04-ux/08-component-spec.md`,
-  `04-ux/09-interaction-patterns.md`, ADR 0032, ADR 0068, ADR 0122, D163,
-  D207, D255
+  `04-ux/09-interaction-patterns.md`, ADR 0068, ADR 0151, D207, D292
 - **Acceptance**: F (persistence), Quality
 - **Milestone**: M5
 - **Status**: Unit-covered (`work-panel-resize.test.mjs`,
@@ -5121,9 +5087,9 @@ Each scenario is documented in this format:
   9. Re-enable, reopen, then edit the plugin's HTML on disk to trigger a
      development reload. Confirm the view reloads rather than going blank.
 - **Expected**: A plugin view is reachable, isolated, correctly positioned, and
-  bounded by the plugin's lifecycle and activation scope. Inner-divider chat
-  resizing keeps the panel width fixed, while the outer right edge resizes the
-  panel without changing the base chat width. It never renders while a
+  bounded by the plugin's lifecycle and activation scope. The panel remains an
+  in-flow internal column; its renderer-owned divider resizes the panel and
+  native window edges never change that target. It never renders while a
   blocking overlay is open, and it never obtains window controls.
 - **Specs linked**: `07-plugins/02-plugin-manifest-schema.md` §4/§5,
   `07-plugins/13-plugin-permissions-matrix.md` §2,
@@ -6917,12 +6883,11 @@ This test plan spec is accepted when:
   3. Drag the window so it straddles the boundary between the two displays and
      release it, then confirm it settles fully inside one display's work area
      without changing size.
-  4. With the panel open, repeat the cross-display drag and confirm the
-     conversation width stays stable and the reservation is re-planned for the
-     target display's work area, shrinking only when that work area is too
-     narrow to supply the committed width.
-  5. Drag the window back to the first display and confirm the full reservation
-     returns when its work area allows it.
+  4. With the panel open, repeat the cross-display drag and confirm the panel
+     remains an internal column at its committed renderer width; no reservation
+     is re-planned and no panel-specific native geometry is applied.
+  5. Drag the window back to the first display and confirm the application
+     bounds continue to follow the dropped position without panel expansion.
   6. Leave the window on the second display, quit, and relaunch.
   7. Disconnect the second display while the window is on it, then reconnect it.
 - **Expected**: Every pointer release leaves the window at the position the user
@@ -6930,10 +6895,10 @@ This test plan spec is accepted when:
   into one work area without a resize. Relaunch reopens the window on the
   display it was last used on rather than the one it started on. Removing the
   display the window occupied still relocates it to a live display, and
-  reconnecting restores the reservation ADR 0122 specifies for a roomy work
-  area.
+  reconnecting preserves the same application bounds contract; no work-panel
+  reservation is restored.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md`,
-  `04-ux/09-interaction-patterns.md` §8, ADR 0122, ADR 0132
+  `04-ux/09-interaction-patterns.md` §8, ADR 0132, ADR 0151
 - **Acceptance**: F (persistence), Quality
 - **Milestone**: M6+
 - **Status**: Unit-covered (`work-panel-window.test.mjs`: cross-display drag
@@ -6950,25 +6915,21 @@ This test plan spec is accepted when:
      pause during the gesture, then release.
   2. Confirm the window follows the pointer continuously and does not jump to
      the default size or display edge while the pointer is down.
-  3. With the work panel open, drag the outer right edge and confirm the panel
-     width changes while the base conversation width stays fixed. Drag the inner
-     divider and confirm the conversation width changes while the panel width
-     and reservation stay fixed. Repeat the inner-divider drag on a work area
-     too narrow for the preferred panel target and confirm the panel does not
-     narrow; the conversation target stops at the available base width.
+  3. With the work panel open, drag its inner divider slowly in both directions
+     and confirm the panel width changes inside the existing window while the
+     native bounds stay fixed. Repeat below the panel minimum and above its
+     maximum, then verify the target clamps to `244..720px`.
   4. Close and relaunch the app after the resize settles.
 - **Expected**: Native edge and corner hit regions remain available in frameless
   chrome, the minimum size remains 1040×700, and the recovery watchdog does not
-  compete with a slow resize stream. The outer right edge and right corners
-  update the bounded `244..720px` panel target without changing the base chat
-  width; the inner divider updates the bounded chat target without changing
-  panel width, including when the work area is tight. The last settled base
-  bounds reopen after relaunch; temporary
-  work-panel reservation width is not persisted as the user's chat-window size.
+  compete with a slow resize stream. The renderer-owned divider updates the
+  bounded panel target without changing native bounds; the last settled window
+  bounds and the committed panel width reopen after relaunch. No temporary
+  work-panel reservation width is persisted or restored.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md`,
   `04-ux/01-ui-ia.md`, `04-ux/07-ui-design-system.md`,
   `04-ux/08-component-spec.md`, `04-ux/09-interaction-patterns.md`,
-  ADR 0029 / ADR 0122 / ADR 0146
+  ADR 0029 / ADR 0151
 - **Acceptance**: A (app shell), F (persistence), Quality
 - **Milestone**: M6+
 - **Status**: Unit/source-contract covered; native desktop edge/corner journey

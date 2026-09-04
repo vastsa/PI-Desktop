@@ -1,6 +1,6 @@
 # ADR 0033: Internal-dock work panel (no native window expansion)
 
-- Status: Superseded by ADR 0122
+- Status: Superseded by ADR 0122; internal-dock direction restored by ADR 0151
 - Date: 2026-07-30
 - Related: [01-ui-ia](../spec/04-ux/01-ui-ia.md) ·
   [08-component-spec §5](../spec/04-ux/08-component-spec.md) ·

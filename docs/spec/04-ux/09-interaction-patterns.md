@@ -396,11 +396,10 @@ may be retained while exactly one workspace supplies the visible shell context.
   neighbor, then the left; closing the final tab hides the panel. The separate
   panel collapse control in the session pane top-right hides the panel without
   deleting tabs.
-- On every platform, opening the visible panel requests native width equal to
-  its committed width. Collapse and final close reclaim the reservation. The
-  inner divider updates the base chat target without changing that reservation;
-  the outer right native edge updates the panel target while preserving the
-  base chat width. Other native edges resize MainChat only (D163, ADR 0146).
+- On every platform, opening and collapsing the visible panel change only the
+  internal flex allocation; native window bounds remain unchanged. The inner
+  divider updates the renderer-owned panel target between 244px and 720px,
+  while native window edges resize only the fixed application window (ADR 0151).
 - A successful workspace Write/Edit creates or activates Review in its
   originating session. Failed and scratch writes do not. Background-session
   artifacts update only their retained context and never open, activate, resize,
@@ -847,40 +846,27 @@ Running turns and pending approvals continue to gate the controls.
 
 ### 8.1 MVP status
 
-Work-panel and conversation resizing are implemented in MVP:
+Work-panel and application-window resizing are implemented in MVP:
 
 - The 10px inner left-edge separator anchors to the press position and
-  starting conversation width, then follows pointer delta without jumping.
-- The inner divider's target clamps to the native conversation range of
-  `1040px–10000px`.
-- Pointer movement is frame-coalesced and bounded native requests are
-  serialized. Pointer release commits the conversation target; Escape, pointer
-  cancellation, and lost capture restore the press-time target.
+  starting panel width, then follows pointer delta without jumping. Moving it
+  left grows the panel; moving it right gives space back to MainChat.
+- The inner divider's target clamps to the renderer-owned panel range of
+  `244px–720px`; pointer movement is frame-coalesced and release commits the
+  preferred width. Escape, pointer cancellation, and lost capture restore the
+  press-time panel width.
 - Opening and closing animate the dock's `width` and `flex-basis` together with
   the bounded opacity/transform feedback, so MainChat reflows continuously
-  instead of changing width before the first motion frame.
-- Opening requests a native reservation equal to the committed panel width;
-  collapse and final close request zero after the exit animation (ADR 0122).
-  Repeating a target is idempotent. The panel target remains `244px–720px` and
-  is changed only by the outer right native edge and right corners.
-- MainChat reflows continuously while the panel flex allocation opens or
-  closes. When the display work area can supply the reservation, the chat
-  width stays stable and the window returns to its base bounds after collapse.
-  When the work area is too narrow, chat absorbs the unavoidable shortfall and
-  may reflow below its 360px target.
-- The inner panel divider resizes the base chat window through a bounded,
-  serialized native target request. The outer right native edge and right
-  corners resize the panel target while preserving the base chat width; the
-  renderer receives preview and commit events for that panel target. Other
-  native edges and corners resize MainChat by reflow only. The OS retains
-  ownership of native hit regions; recovery logic waits for a 300ms stable-bounds
-  window and state persistence runs 600ms after the final resize/move event, so
-  neither can fight a slow edge drag or save an intermediate rectangle.
-- Maximized/fullscreen is unaffected; display/work-area changes reconcile the
-  reservation against the current bounds. Ordinary movement within one
-  unchanged work area does not reapply geometry. Persisted base bounds exclude
-  temporary reservation width and its x shift.
-- Background-session artifacts never update the visible panel or reservation.
+  inside the existing client area instead of changing width before the first
+  motion frame.
+- No panel action requests a positive native reservation. The preferred panel
+  width is renderer-local, and native window edges resize only the fixed app
+  window. Background-session artifacts never update the visible panel or window
+  geometry.
+- The native Browser view still follows the renderer-measured panel rectangle;
+  it is detached before collapse motion because it cannot participate in
+  renderer CSS animation. Native bounds recovery and persistence continue to
+  apply to ordinary window resize/move gestures without panel-specific deltas.
 
 Sidebar width resizing is also implemented in MVP:
 
@@ -1163,7 +1149,6 @@ This does not prevent state changes — it makes them instant.
 20. Streamed message updates stay within the chat render boundary; shell
     navigation, composer, completed rows, and work-panel content do not rerender
     solely because the current assistant message appended content
-21. The outer right native edge changes the panel target while preserving the
-    base chat width; the inner divider changes the base chat target while
-    preserving the panel reservation. Other native edges reflow MainChat, and
-    divider cancellation restores the prior chat target (ADR 0146)
+21. The work panel opens and collapses inside the fixed client area; the inner
+    divider changes the renderer-owned panel target within 244px–720px, and
+    divider cancellation restores the prior panel width (ADR 0151)

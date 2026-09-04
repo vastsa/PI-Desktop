@@ -136,7 +136,7 @@ Each ADR includes:
 | 0119 | Event-driven subagent timeouts | Accepted for implementation |
 | 0120 | Bounded session history windows | Accepted |
 | 0121 | Keep Composer prompt enhancement one-shot and main-owned | Accepted |
-| 0122 | Reserve native width while the work panel is visible | Accepted |
+| 0122 | Reserve native width while the work panel is visible | Superseded by 0151 |
 | 0123 | Use native taskbar minimize for Windows/Linux window controls | Accepted |
 | 0124 | Bind temporary sessions to their own scratch workspace | Accepted |
 | 0125 | Renderer-derived brand marks and minified renderer output | Accepted |
@@ -158,8 +158,9 @@ Each ADR includes:
 | 0142 | Allow non-loopback HTTP MCP endpoints with explicit risk disclosure | Accepted |
 | 0144 | Allow user-configured thinking-level overrides | Accepted |
 | 0145 | Publish native macOS Intel artifacts | Accepted |
-| 0146 | Assign outer and inner work-panel resize ownership by boundary | Accepted |
+| 0146 | Assign outer and inner work-panel resize ownership by boundary | Superseded by 0151 |
 | 0147 | A2A protocol stack for subagent coordination | Accepted (supersedes 0138 / 0140) |
 | 0148 | Explicitly disable application keyboard shortcuts | Accepted |
 | 0149 | Calm transcript running-status motion | Accepted |
 | 0150 | Inline SVG empty-home agent mark | Accepted |
+| 0151 | Keep the work panel inside the fixed application window | Accepted |

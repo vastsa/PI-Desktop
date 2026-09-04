@@ -2269,70 +2269,11 @@ function classifyDisplayTransition(nextDisplayKey: string): DisplayTransition {
 }
 
 function applyWorkPanelReservation(): WorkPanelReservationState {
-  if (
-    !mainWindow ||
-    mainWindow.isDestroyed() ||
-    mainWindow.isFullScreen() ||
-    mainWindow.isMaximized()
-  ) {
-    return workPanelReservation;
-  }
-  if (workPanelNativeResizeActive || workPanelChatResizeActive) {
-    return workPanelReservation;
-  }
-
-  const window = mainWindow;
-  const currentBounds = window.getBounds();
-  const display = screen.getDisplayMatching(currentBounds);
-  const workArea = display.workArea;
-  const nextDisplayKey = displayWorkAreaKey(display.id, workArea);
-  const displayTransition = classifyDisplayTransition(nextDisplayKey);
-  const observedBase = observedWorkPanelBaseBounds(
-    currentBounds,
-    displayTransition,
-  );
-  // A dragged-in base came from the target display's own coordinates, but the
-  // window can still straddle the boundary at drop time. Normalize it to the
-  // target work area so the plan below never reads an off-display origin.
-  const baseBounds =
-    displayTransition === "user-moved"
-      ? clampBoundsOriginToWorkArea(observedBase, workArea)
-      : observedBase;
-  workPanelBaseBounds = baseBounds;
-  workPanelDisplayKey = nextDisplayKey;
-  // The drag has now been accounted for on its target display.
-  if (displayTransition === "user-moved") workPanelUserMovePending = false;
-  const next = planWorkPanelReservation({
-    baseBounds,
-    workArea,
-    requestedWidth: requestedWorkPanelReservation,
-    preserveReservation:
-      displayTransition === "none" && workPanelReservation.width > 0,
-  });
-  const minimumWidth = Math.max(
-    WINDOW_MIN_WIDTH,
-    Math.min(workArea.width, WINDOW_MIN_WIDTH + next.reservation.width),
-  );
-
-  // Lower the minimum before a collapse; raise it after the expanded bounds
-  // exist. The native right edge has its own panel-resize path while the
-  // remaining native edges continue to update the base chat bounds.
-  if (next.bounds.width < currentBounds.width) {
-    window.setMinimumSize(minimumWidth, WINDOW_MIN_HEIGHT);
-  }
-  expectedWorkPanelBounds = next.bounds;
-  window.setBounds(next.bounds, false);
-  if (next.bounds.width >= currentBounds.width) {
-    window.setMinimumSize(minimumWidth, WINDOW_MIN_HEIGHT);
-  }
-
-  const appliedBounds = window.getBounds();
-  expectedWorkPanelBounds = appliedBounds;
-  workPanelLastAppliedBounds = { ...appliedBounds };
-  workPanelReservation = {
-    width: Math.max(0, appliedBounds.width - baseBounds.width),
-    xOffset: appliedBounds.x - baseBounds.x,
-  };
+  // The work panel is rendered inside the existing BrowserWindow. This helper
+  // remains as a no-op for recovery call sites from the old reservation path,
+  // but opening or collapsing the panel must never mutate native bounds.
+  requestedWorkPanelReservation = 0;
+  workPanelReservation = emptyWorkPanelReservationState();
   return workPanelReservation;
 }
 
@@ -7021,9 +6962,12 @@ function registerIpc() {
         throw new Error("main window unavailable");
       }
 
-      requestedWorkPanelReservation = requested;
-      const reservation = applyWorkPanelReservation();
-      return { requested, reserved: reservation.width };
+      // The work panel is an internal renderer column. Keep this IPC seam for
+      // compatibility, but never let it change BrowserWindow bounds: opening
+      // and collapsing the panel are handled entirely by renderer flex layout.
+      requestedWorkPanelReservation = 0;
+      workPanelReservation = emptyWorkPanelReservationState();
+      return { requested: 0, reserved: 0 };
     },
   );
 
