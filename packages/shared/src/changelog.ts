@@ -23,6 +23,18 @@ export type ChangelogEntry = {
 
 const enEntries: ChangelogEntry[] = [
   {
+    version: "0.13.2",
+    date: "2026-09-05",
+    highlights: [
+      "Keep unsent composer drafts, including file chips, when the input remounts or the window is hidden.",
+      "Start new sessions at the model binding's default thinking level instead of always using the strongest.",
+      "Keep expanded subagent runs scrolled to the latest output, with a jump-to-latest control after you scroll up.",
+      "Keep the thinking-level menu available when pinning a level while a turn is running.",
+      "Keep add-provider fields fully visible and focused in a narrow window.",
+      "Match the macOS startup splash to the sidebar glass so the window no longer flashes an opaque panel.",
+    ],
+  },
+  {
     version: "0.13.1",
     date: "2026-09-05",
     highlights: [
@@ -578,6 +590,18 @@ const enEntries: ChangelogEntry[] = [
 ];
 
 const zhCNEntries: ChangelogEntry[] = [
+  {
+    version: "0.13.2",
+    date: "2026-09-05",
+    highlights: [
+      "输入框重新挂载或窗口隐藏后再打开时，未发送的草稿和附件芯片仍会保留。",
+      "新会话使用模型绑定的默认思考级别，而不再总是选最强档。",
+      "展开的子智能体运行会跟随最新输出，上翻后可点回到最新。",
+      "在回合进行中固定思考级别时，思考菜单仍保持可用。",
+      "窄窗口下添加服务商的输入框能完整显示并保持焦点可见。",
+      "macOS 启动闪屏与侧边栏使用同一套毛玻璃，避免先闪出不透明面板。",
+    ],
+  },
   {
     version: "0.13.1",
     date: "2026-09-05",
