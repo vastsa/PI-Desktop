@@ -1537,13 +1537,24 @@ async fn handle_request(
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
             let st = state.lock().await;
-            let revision = sessions::save_message_revision(
-                &st.db,
-                session_id,
-                root_user_id,
-                &messages,
-                make_active,
-            )
+            // An explicit index refreshes that revision's payload in place
+            // (the branch grew since it was archived); otherwise a new index.
+            let revision = match params.get("revisionIndex").and_then(|v| v.as_i64()) {
+                Some(revision_index) => sessions::refresh_message_revision(
+                    &st.db,
+                    session_id,
+                    root_user_id,
+                    revision_index,
+                    &messages,
+                ),
+                None => sessions::save_message_revision(
+                    &st.db,
+                    session_id,
+                    root_user_id,
+                    &messages,
+                    make_active,
+                ),
+            }
             .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             Ok(json!({ "revision": revision }))
         }

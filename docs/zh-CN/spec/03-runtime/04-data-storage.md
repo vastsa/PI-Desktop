@@ -109,7 +109,7 @@ commit 不会删除历史审查证据。
 修订版永远不会重写此文件：
 
 ```jsonl
-{"type":"revision","rootUserId":"u1","revisionIndex":1,"createdAt":"…","messages":[…message records…]}
+{"type":"revision","rootUserId":"u1","revisionIndex":1,"createdAt":"…","messages":[…message records…],"turns":{"<messageId>":"<turnId>"}}
 ```
 
 规则：
@@ -667,6 +667,16 @@ CREATE INDEX idx_message_revisions_root
   同时持久性发件箱附加的工具行仍然存在。一个
   从主机锁之外拍摄的快照重写整个转录本将
   删除它（ADR 0060）。
+- 分支在归档之后仍会继续生长：之后的提示都追加在它上面，而以错误结束的
+  回合永远到不了 `agent_end`。因此每个会丢弃实时分支的操作都先把它写回
+  所属的修订（D307）：`session.activateRevision` 在切换前从持久转录本重新
+  归档该系列的实时分支；重新生成路径向 `session.saveRevision` 传入
+  `revisionIndex` 刷新被标记的变体；`session.saveActiveRevision` 对已归档
+  的索引做刷新而不是跳过。刷新只是在追加式文件里多写一行（同一
+  `(rootUserId, revisionIndex)` 以最后一条为准）并更新 `message_count`。
+  被刷新的是实时根消息 `activeRevision` 标记所指的变体；已标记但还没有
+  索引行的变体（其回合在归档前失败）作为新变体单独存储，绝不覆盖之前的
+  变体。
 
 ### 4. 10 工件 — 会话生成的文件
 
@@ -850,9 +860,9 @@ CREATE INDEX idx_notifications_unread
 | plan/goal 批准 | 验证不可变工件 path/hash/size | 原子地解析 `plan_approvals`，更新 `sessions.mode` 和显式 `permission_mode`，并设置 `execution_state = 'queued'`； reject/expiry 保持合约模式 |
 | 转录本截断/编辑/无应答智能停止 (`session.replaceMessages`) | 原子记录重写（临时+重命名）；只保留边界仍然存在的检查点 | single tx：删除索引行，批量重新插入携带每个幸存消息所属的 `turn_id`，重置 `last_seq`； smart Stop 仅将其结构化输入框快照保留在渲染器内存中 |
 | 会话分叉 (`session.fork`) | 使用重新映射的 message/tool-call id 编写新的转录本； copy/remap 仅当包含其边界时才为检查点 | single tx：克隆会话配置，插入子索引行，设置`last_seq`；失败时删除子文件 |
-| 重新生成分支保存 | 追加修订行 | 带有 `message_count` 的索引行（+ `is_active` 翻转） |
-| 回合完成分支存档 (`session.saveActiveRevision`) | 附加修订行，然后仅重写寻呼机标记的根用户的转录行 | 带有 `message_count` 的索引行（+ `is_active` 翻转）；其他消息的索引行未受影响 |
-| 修订版开关 | 读取分支，原子转录重写 | 翻转 `is_active`，重建索引行，重置 `last_seq` |
+| 重新生成分支保存 | 追加修订行（带 `revisionIndex` 时为该已有变体的刷新行） | 带有 `message_count` 的索引行（+ `is_active` 翻转）；刷新只更新 `message_count` |
+| 回合完成分支存档 (`session.saveActiveRevision`) | 附加修订行（活动变体已归档时为刷新行），然后仅重写寻呼机标记的根用户的转录行 | 带有 `message_count` 的索引行（+ `is_active` 翻转）；其他消息的索引行未受影响 |
+| 修订版开关 | 先为实时分支自身的变体追加刷新行，读取目标分支，原子转录重写并保留锚点仍存在的检查点 | 翻转 `is_active`，重建索引行并带上每条幸存消息所属的 `turn_id`，重置 `last_seq` |
 | 进口 | 写入成绩单文件 | 每个会话一笔交易：会话行 + 索引行；失败时文件将被删除 |
 | 会话删除 | 行删除后删除两个会话文件 | `DELETE FROM sessions`（级联） |
 

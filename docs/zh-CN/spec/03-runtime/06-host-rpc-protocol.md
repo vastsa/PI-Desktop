@@ -250,17 +250,24 @@ ids 和非负 `tokensBefore`；它不会插入 message/search 行
   通话期间的整个记录：快照的任何重写
   在 RPC 锁之外采取的可以删除附加在其间的消息
 - `session.saveRevision` — 将重新生成分支归档到
-  `(sessionId, rootUserId)`
+  `(sessionId, rootUserId)`。带 `revisionIndex` 时，就地刷新该已有变体的
+  载荷（分支自归档后又生长了），而不是新建索引；DB 行保留身份和活动
+  标志，只更新 `message_count`
 - `session.saveActiveRevision` — 归档最新的分支
   将带有修订版的用户 root 作为其活动修订版并标记该 root 的寻呼机
   元数据，全部位于 RPC 锁下。邮票重写了一行文字记录
   而不是文件，因此并发的 `session.appendMessage` 仍然存在。
   当会话不拥有重新生成历史记录时，返回 `{ saved: null }`。
+  已归档的活动变体会被刷新，而不是跳过。
   回合完成调用者使用它而不是
   `session.get` + `session.replaceMessages`
 - `session.listRevisions` — 列出根用户系列的线性变体
 - `session.activateRevision` — 用 `prefix + branch` 替换实时转录
-  并标记根寻呼机元数据
+  并标记根寻呼机元数据。切换前它先从持久转录本重新归档该系列的实时
+  分支（刷新实时根消息 `activeRevision` 标记所指的变体，或把已标记但从未
+  归档的分支存为新变体），因此上次归档之后追加的内容不会丢失。当该系列
+  存在于持久转录本中时，恢复分支之前的前缀取自转录本而非调用方。幸存
+  消息保留所属的 `turn_id`
 - `session.beginTurn`
 - `session.endTurn` — 以原子方式将正在运行的回合移动到其终止状态，并且
 有条件地返回新创建的 `completed`/`error` 通知；它还会落定该会话的进行中回复

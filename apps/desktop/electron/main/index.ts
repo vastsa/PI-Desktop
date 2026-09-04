@@ -7418,15 +7418,35 @@ function registerIpc() {
             typeof rootUser.revisionRootId === "string" && rootUser.revisionRootId
               ? rootUser.revisionRootId
               : rootUser.id;
-          const listed = await host.call<{ revisions?: Array<{ revisionIndex: number }> }>(
-            "session.listRevisions",
-            { sessionId: req.sessionId, rootUserId: stableRootUserId },
-          );
+          const listed = await host.call<{
+            revisions?: Array<{ revisionIndex: number; isActive?: boolean }>;
+          }>("session.listRevisions", { sessionId: req.sessionId, rootUserId: stableRootUserId });
           const existing = listed.revisions ?? [];
-          // First regenerate only: the original live tail is not stored yet.
-          // Later regenerates already persisted the active branch on agent_end,
-          // so re-archiving here would duplicate variants.
-          if (existing.length === 0) {
+          // The stamp on the discarded root names the variant this tail is.
+          // It beats the DB active flag, which only moves on agent_end: after
+          // a regenerate whose turn failed, the DB still points at the
+          // previous variant and refreshing that would bury it.
+          const stamped =
+            typeof rootUser.activeRevision === "number" ? rootUser.activeRevision : 0;
+          const target =
+            stamped > 0
+              ? existing.find((revision) => revision.revisionIndex === stamped)
+              : existing.find((revision) => revision.isActive);
+          if (target) {
+            // The branch was archived on its agent_end, but every prompt since
+            // then appended to it (and an error-ended turn never re-archived
+            // it). Write the live tail back over that revision so the pager
+            // restores all of it, not a stale copy.
+            await host.call("session.saveRevision", {
+              sessionId: req.sessionId,
+              rootUserId: stableRootUserId,
+              messages: discarded,
+              revisionIndex: target.revisionIndex,
+            });
+          } else {
+            // First regenerate (the original tail is not stored yet), or a
+            // tail stamped by an earlier regenerate whose turn failed before
+            // agent_end archived it: a variant of its own.
             await host.call("session.saveRevision", {
               sessionId: req.sessionId,
               rootUserId: stableRootUserId,

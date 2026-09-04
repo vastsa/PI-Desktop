@@ -1742,6 +1742,7 @@ pub fn save_message_revision(
         .unwrap_or(1);
     let created = now_ms();
     let (records, _) = records_and_texts(messages);
+    let turns = owning_turns_for(db, session_id, messages)?;
     transcripts::append_revision(
         db.data_dir(),
         session_id,
@@ -1750,6 +1751,7 @@ pub fn save_message_revision(
             revision_index: next_index,
             created_at: ms_to_ts(created),
             messages: records,
+            turns,
         },
     )?;
     let tx = conn.unchecked_transaction()?;
@@ -1783,6 +1785,148 @@ pub fn save_message_revision(
         created_at: ms_to_ts(created),
         message_count: messages.len() as i64,
     })
+}
+
+/// Owning turn per message id, for the messages of one branch. The turn is
+/// index-row state, so an archived branch carries it explicitly.
+fn owning_turns_for(db: &Database, session_id: &str, messages: &[UiMessage]) -> Result<HashMap<String, String>> {
+    let mut stmt = db.conn().prepare_cached(
+        "SELECT id, turn_id FROM messages
+         WHERE session_id = ?1 AND turn_id IS NOT NULL",
+    )?;
+    let rows = stmt.query_map(params![session_id], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    let mut all: HashMap<String, String> = HashMap::new();
+    for row in rows {
+        let (id, turn_id) = row?;
+        all.insert(id, turn_id);
+    }
+    Ok(messages
+        .iter()
+        .filter_map(|message| {
+            all.remove(&message.id)
+                .map(|turn_id| (message.id.clone(), turn_id))
+        })
+        .collect())
+}
+
+/// Re-archive an existing revision with the branch as it stands now.
+///
+/// A branch keeps growing after its first archive: every later prompt appends
+/// to it, and error-ended turns never reach the agent_end archive at all. The
+/// revisions file is append-only and `read_revision` takes the last record for
+/// a (root, index) pair, so a refresh is one more line plus a count update, and
+/// the DB stamp (identity, ordering, active flag) is untouched.
+pub fn refresh_message_revision(
+    db: &Database,
+    session_id: &str,
+    root_user_id: &str,
+    revision_index: i64,
+    messages: &[UiMessage],
+) -> Result<MessageRevisionSummary> {
+    if messages.is_empty() {
+        return Err(anyhow!("messages required"));
+    }
+    let conn = db.conn();
+    let (is_active, created): (i64, i64) = conn
+        .query_row(
+            "SELECT is_active, created_at FROM message_revisions
+             WHERE session_id = ?1 AND root_user_id = ?2 AND revision_index = ?3",
+            params![session_id, root_user_id, revision_index],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?
+        .ok_or_else(|| anyhow!("revision not found"))?;
+    let (records, _) = records_and_texts(messages);
+    let turns = owning_turns_for(db, session_id, messages)?;
+    transcripts::append_revision(
+        db.data_dir(),
+        session_id,
+        &RevisionRecord {
+            root_user_id: root_user_id.to_string(),
+            revision_index,
+            created_at: ms_to_ts(created),
+            messages: records,
+            turns,
+        },
+    )?;
+    conn.prepare_cached(
+        "UPDATE message_revisions SET message_count = ?4
+         WHERE session_id = ?1 AND root_user_id = ?2 AND revision_index = ?3",
+    )?
+    .execute(params![
+        session_id,
+        root_user_id,
+        revision_index,
+        messages.len() as i64
+    ])?;
+    Ok(MessageRevisionSummary {
+        revision_index,
+        is_active: is_active != 0,
+        created_at: ms_to_ts(created),
+        message_count: messages.len() as i64,
+    })
+}
+
+/// Where a revision family starts in the live transcript: the root itself, or
+/// (after a regenerate gave the live prompt a new id) the first user message
+/// stamped with that family key.
+fn live_branch_start(messages: &[UiMessage], root_user_id: &str) -> Option<usize> {
+    messages
+        .iter()
+        .position(|message| message.id == root_user_id)
+        .or_else(|| {
+            messages.iter().position(|message| {
+                message.role == "user" && message.revision_root_id.as_deref() == Some(root_user_id)
+            })
+        })
+}
+
+/// Write the live branch of `root_user_id` back over the revision it belongs to
+/// before a switch replaces it. Anything appended since the last archive
+/// (later prompts, error-ended turns that never hit agent_end) would otherwise
+/// vanish the moment the user pages away and back.
+///
+/// Returns the branch start in `live` when the family is present at all.
+fn archive_live_branch(
+    db: &Database,
+    session_id: &str,
+    root_user_id: &str,
+    live: &[UiMessage],
+) -> Result<Option<usize>> {
+    let Some(start) = live_branch_start(live, root_user_id) else {
+        return Ok(None);
+    };
+    let branch = &live[start..];
+    if branch.is_empty() {
+        return Ok(Some(start));
+    }
+    let existing = list_message_revisions(db, session_id, root_user_id)?;
+    // The stamp on the live root names the variant this branch is. It beats
+    // the DB active flag, which only moves on agent_end: after a regenerate
+    // whose turn failed, the DB still points at the previous variant, and
+    // refreshing that would bury the previous branch under this one.
+    let stamped = live[start].active_revision.unwrap_or(0);
+    let target = if stamped > 0 {
+        existing
+            .iter()
+            .find(|revision| revision.revision_index == stamped)
+    } else {
+        existing.iter().find(|revision| revision.is_active)
+    }
+    .map(|revision| revision.revision_index);
+    match target {
+        Some(index) => {
+            refresh_message_revision(db, session_id, root_user_id, index, branch)?;
+        }
+        None => {
+            // Stamped but never archived (or never stamped at all): the live
+            // tail is a variant of its own.
+            save_message_revision(db, session_id, root_user_id, branch, true)?;
+        }
+    }
+    Ok(Some(start))
 }
 
 pub fn list_message_revisions(
@@ -1865,7 +2009,17 @@ pub fn save_active_branch_revision(
         existing.len() as i64 + 1
     };
     let mut archived = false;
-    if !already_archived {
+    if already_archived {
+        // The branch grew past its stored copy (this turn appended to it).
+        // Refresh the payload so paging away and back restores all of it.
+        refresh_message_revision(
+            db,
+            session_id,
+            &root_user_id,
+            desired_active,
+            &messages[root_index..],
+        )?;
+    } else {
         let saved =
             save_message_revision(db, session_id, &root_user_id, &messages[root_index..], true)?;
         active = saved.revision_index;
@@ -1893,7 +2047,8 @@ pub fn save_active_branch_revision(
 }
 
 /// Activate a stored revision: replace the live transcript with prefix + branch.
-/// `prefix` is every message before the root user turn.
+/// `prefix` is every message before the root user turn, as the renderer sees
+/// it; the durable transcript wins over it whenever the family is found there.
 pub fn activate_message_revision(
     db: &Database,
     session_id: &str,
@@ -1902,21 +2057,37 @@ pub fn activate_message_revision(
     prefix: &[UiMessage],
 ) -> Result<Vec<UiMessage>> {
     let session_created = session_created_at(db, session_id)?;
-    let conn = db.conn();
-    let known: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM message_revisions
-         WHERE session_id = ?1 AND root_user_id = ?2 AND revision_index = ?3",
-        params![session_id, root_user_id, revision_index],
-        |row| row.get(0),
-    )?;
-    if known == 0 {
-        return Err(anyhow!("revision not found"));
+    {
+        let conn = db.conn();
+        let known: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM message_revisions
+             WHERE session_id = ?1 AND root_user_id = ?2 AND revision_index = ?3",
+            params![session_id, root_user_id, revision_index],
+            |row| row.get(0),
+        )?;
+        if known == 0 {
+            return Err(anyhow!("revision not found"));
+        }
     }
+    // The switch below throws the live branch away. Archive it first, from the
+    // durable transcript rather than the renderer's copy, so every message that
+    // landed since the last archive survives the round trip.
+    let live = get_session(db, session_id)?
+        .map(|detail| detail.messages)
+        .unwrap_or_default();
+    let live_start = archive_live_branch(db, session_id, root_user_id, &live)?;
+    let prefix: &[UiMessage] = match live_start {
+        Some(start) => &live[..start],
+        None => prefix,
+    };
+
     let revision =
         transcripts::read_revision(db.data_dir(), session_id, root_user_id, revision_index)?
             .ok_or_else(|| anyhow!("revision payload missing from revisions file"))?;
+    let archived_turns = revision.turns;
     let branch: Vec<UiMessage> = revision.messages.into_iter().map(record_to_ui).collect();
 
+    let conn = db.conn();
     let total: i64 = conn.query_row(
         "SELECT COUNT(*) FROM message_revisions
          WHERE session_id = ?1 AND root_user_id = ?2",
@@ -1949,8 +2120,42 @@ pub fn activate_message_revision(
     }
 
     let (records, texts) = records_and_texts(&combined);
+    // A checkpoint whose anchors survive the switch stays valid; the rest is
+    // dropped with the branch it summarised, exactly as on truncation.
+    let compactions: Vec<CompactionRecord> =
+        transcripts::read_compactions(db.data_dir(), session_id)?
+            .into_iter()
+            .filter(|record| compaction_valid_for_records(record, &records))
+            .collect();
     invalidate_transcript_layout(session_id);
-    transcripts::write_transcript(db.data_dir(), session_id, &session_created, &records)?;
+    transcripts::write_transcript_with_compactions(
+        db.data_dir(),
+        session_id,
+        &session_created,
+        &records,
+        &compactions,
+    )?;
+    // Reseating the index rows must carry each surviving message's owning turn
+    // across, or the whole session loses its turn/token attribution on switch.
+    let mut owning_turns: HashMap<String, String> = HashMap::new();
+    {
+        let mut stmt = conn.prepare_cached(
+            "SELECT id, turn_id FROM messages
+             WHERE session_id = ?1 AND turn_id IS NOT NULL",
+        )?;
+        let rows = stmt.query_map(params![session_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        for row in rows {
+            let (id, turn_id) = row?;
+            owning_turns.insert(id, turn_id);
+        }
+    }
+    // Restored messages left the index with the branch; their turns come back
+    // from the archive. A live row's own turn is never overridden.
+    for (id, turn_id) in archived_turns {
+        owning_turns.entry(id).or_insert(turn_id);
+    }
     let tx = conn.unchecked_transaction()?;
     tx.prepare_cached(
         "UPDATE message_revisions
@@ -1965,7 +2170,7 @@ pub fn activate_message_revision(
             &tx,
             session_id,
             seq as i64,
-            None,
+            owning_turns.get(&record.id).map(String::as_str),
             record,
             texts[seq].as_deref(),
         )?;
@@ -3760,6 +3965,204 @@ mod tests {
                 .len(),
             1,
         );
+    }
+
+    #[test]
+    fn save_active_branch_revision_refreshes_an_already_archived_branch() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let mut root = user_msg("u1", "hello", "2025-05-01T00:00:00Z");
+        root.revision_count = Some(1);
+        root.active_revision = Some(1);
+        append_message(&db, &session.id, &root, None).unwrap();
+        save_message_revision(&db, &session.id, "u1", &[root.clone()], true).unwrap();
+
+        // A later prompt on the same branch: the archived copy is now short.
+        append_message(
+            &db,
+            &session.id,
+            &user_msg("u2", "and then", "2025-05-01T00:01:00Z"),
+            None,
+        )
+        .unwrap();
+        let mut answer = user_msg("a2", "done", "2025-05-01T00:01:01Z");
+        answer.role = "assistant".into();
+        append_message(&db, &session.id, &answer, None).unwrap();
+
+        let saved = save_active_branch_revision(&db, &session.id)
+            .unwrap()
+            .unwrap();
+        assert!(!saved.archived, "no new index is minted");
+        assert_eq!(saved.revision_count, 1);
+        let branch = transcripts::read_revision(db.data_dir(), &session.id, "u1", 1)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            branch
+                .messages
+                .iter()
+                .map(|m| m.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["u1", "u2", "a2"],
+        );
+        let listed = list_message_revisions(&db, &session.id, "u1").unwrap();
+        assert_eq!(listed[0].message_count, 3);
+        assert!(listed[0].is_active);
+    }
+
+    /// The incident shape: a branch archived on agent_end kept growing (later
+    /// prompts, an error-ended turn that never re-archived it). Paging away and
+    /// back must restore all of it, not the copy taken at the first archive.
+    #[test]
+    fn activate_message_revision_archives_the_grown_live_branch_first() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let turn = begin_turn(&db, &session.id, Some("p1"), Some("m1")).unwrap();
+        let prefix_msg = user_msg("u0", "earlier", "2025-04-29T00:00:00Z");
+        append_message(&db, &session.id, &prefix_msg, Some(&turn)).unwrap();
+        // Regenerate archived the original tail as revision 1 ...
+        let mut discarded = user_msg("u1", "do it", "2025-04-30T00:00:00Z");
+        discarded.revision_root_id = Some("u1".into());
+        let mut discarded_answer = user_msg("a1", "old answer", "2025-04-30T00:00:01Z");
+        discarded_answer.role = "assistant".into();
+        save_message_revision(
+            &db,
+            &session.id,
+            "u1",
+            &[discarded, discarded_answer],
+            false,
+        )
+        .unwrap();
+        // ... and the rewritten prompt finished and was archived as revision 2.
+        let mut root = user_msg("u2", "redo it", "2025-05-01T00:00:00Z");
+        root.revision_root_id = Some("u1".into());
+        root.revision_count = Some(2);
+        root.active_revision = Some(2);
+        append_message(&db, &session.id, &root, Some(&turn)).unwrap();
+        let mut answer = user_msg("a2", "new answer", "2025-05-01T00:00:01Z");
+        answer.role = "assistant".into();
+        append_message(&db, &session.id, &answer, Some(&turn)).unwrap();
+        save_message_revision(&db, &session.id, "u1", &[root, answer], true).unwrap();
+        // The conversation went on; this turn ended in an error, so nothing
+        // re-archived the branch.
+        append_message(
+            &db,
+            &session.id,
+            &user_msg("u3", "continue", "2025-05-01T00:05:00Z"),
+            Some(&turn),
+        )
+        .unwrap();
+        let mut failed = user_msg("a3", "", "2025-05-01T00:05:01Z");
+        failed.role = "assistant".into();
+        failed.status = Some("error".into());
+        append_message(&db, &session.id, &failed, Some(&turn)).unwrap();
+
+        // Page back to the original, with a deliberately wrong renderer prefix:
+        // the durable transcript decides what stays in front of the branch.
+        let back = activate_message_revision(&db, &session.id, "u1", 1, &[]).unwrap();
+        assert_eq!(
+            back.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            vec!["u0", "u1", "a1"],
+        );
+        let listed = list_message_revisions(&db, &session.id, "u1").unwrap();
+        assert_eq!(listed.len(), 2, "no extra variant was minted");
+        assert_eq!(
+            listed[1].message_count, 4,
+            "revision 2 now holds the grown branch"
+        );
+
+        // Page forward again: the whole grown branch is back, including the
+        // failed turn, and the prefix kept its owning turn.
+        let forward = activate_message_revision(&db, &session.id, "u1", 2, &[]).unwrap();
+        assert_eq!(
+            forward.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            vec!["u0", "u2", "a2", "u3", "a3"],
+        );
+        assert_eq!(forward[1].active_revision, Some(2));
+        assert_eq!(forward[1].revision_count, Some(2));
+        let detail = get_session(&db, &session.id).unwrap().unwrap();
+        assert_eq!(detail.messages.len(), 5);
+        let prefix_turn: Option<String> = db
+            .conn()
+            .query_row(
+                "SELECT turn_id FROM messages WHERE session_id = ?1 AND id = 'u0'",
+                params![session.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(prefix_turn.as_deref(), Some(turn.as_str()));
+        let restored_with_turn: i64 = db
+            .conn()
+            .query_row(
+                "SELECT COUNT(*) FROM messages
+                 WHERE session_id = ?1 AND turn_id = ?2 AND id IN ('u2', 'a2', 'u3', 'a3')",
+                params![session.id, turn],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            restored_with_turn, 4,
+            "rows that left the index with the branch get their turn back"
+        );
+    }
+
+    /// A regenerate stamped the new prompt as variant 2, then its turn failed
+    /// before agent_end archived it. Paging away must store that tail as its
+    /// own variant instead of writing it over variant 1.
+    #[test]
+    fn activate_message_revision_keeps_a_stamped_unarchived_branch_as_its_own_variant() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let mut discarded = user_msg("u1", "do it", "2025-04-30T00:00:00Z");
+        discarded.revision_root_id = Some("u1".into());
+        let mut discarded_answer = user_msg("a1", "old answer", "2025-04-30T00:00:01Z");
+        discarded_answer.role = "assistant".into();
+        save_message_revision(
+            &db,
+            &session.id,
+            "u1",
+            &[discarded, discarded_answer],
+            false,
+        )
+        .unwrap();
+        let mut root = user_msg("u2", "redo it", "2025-05-01T00:00:00Z");
+        root.revision_root_id = Some("u1".into());
+        root.revision_count = Some(2);
+        root.active_revision = Some(2);
+        append_message(&db, &session.id, &root, None).unwrap();
+        let mut failed = user_msg("a2", "", "2025-05-01T00:00:01Z");
+        failed.role = "assistant".into();
+        failed.status = Some("error".into());
+        append_message(&db, &session.id, &failed, None).unwrap();
+
+        let back = activate_message_revision(&db, &session.id, "u1", 1, &[]).unwrap();
+        assert_eq!(
+            back.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            vec!["u1", "a1"],
+        );
+        let listed = list_message_revisions(&db, &session.id, "u1").unwrap();
+        assert_eq!(listed.len(), 2);
+        let original = transcripts::read_revision(db.data_dir(), &session.id, "u1", 1)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            original.messages.last().unwrap().id,
+            "a1",
+            "variant 1 is intact"
+        );
+        let forward = activate_message_revision(&db, &session.id, "u1", 2, &[]).unwrap();
+        assert_eq!(
+            forward.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            vec!["u2", "a2"],
+        );
+    }
+
+    #[test]
+    fn refresh_message_revision_rejects_an_unknown_index() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let root = user_msg("u1", "hello", "2025-05-01T00:00:00Z");
+        assert!(refresh_message_revision(&db, &session.id, "u1", 1, &[root]).is_err());
     }
 
     #[test]

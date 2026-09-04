@@ -277,17 +277,27 @@ reach this protocol — see [14-secrets-storage](14-secrets-storage.md) §10.
   the whole transcript for the duration of the call: any rewrite from a snapshot
   taken outside the RPC lock can delete a message appended in between
 - `session.saveRevision` — archive a regenerate branch under
-  `(sessionId, rootUserId)`
+  `(sessionId, rootUserId)`. With `revisionIndex`, refresh that existing
+  variant's payload in place (the branch grew since it was archived) instead
+  of minting a new index; the DB row keeps its identity and active flag and
+  only `message_count` changes
 - `session.saveActiveRevision` — archive the branch of the newest
   revision-bearing user root as its active revision and stamp that root's pager
   metadata, all under the RPC lock. The stamp rewrites one transcript line
   instead of the file, so a concurrent `session.appendMessage` survives.
   Returns `{ saved: null }` when the session owns no regenerate history.
+  An already-archived active variant is refreshed, not skipped.
   Turn-completion callers use this instead of
   `session.get` + `session.replaceMessages`
 - `session.listRevisions` — list linear variants for a root user family
 - `session.activateRevision` — replace live transcript with `prefix + branch`
-  and stamp root pager metadata
+  and stamp root pager metadata. Before the switch it re-archives the live
+  branch of that family from the durable transcript (refreshing the variant
+  the live root's `activeRevision` stamp names, or storing a stamped but
+  never-archived branch as its own variant), so nothing appended since the
+  last archive is lost. When the family is present in the durable transcript,
+  the prefix in front of the restored branch is taken from there rather than
+  from the caller. Surviving messages keep their owning `turn_id`
 - `session.beginTurn`
 - `session.endTurn` — atomically moves a running turn to its terminal state and
   conditionally returns the newly created notification for `completed`/`error`;

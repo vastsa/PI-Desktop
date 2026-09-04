@@ -82,6 +82,11 @@ pub struct RevisionRecord {
     pub revision_index: i64,
     pub created_at: String,
     pub messages: Vec<MessageRecord>,
+    /// message id -> owning turn id, for the branch messages that had one.
+    /// The turn lives only in the SQLite index row, which a revision switch
+    /// deletes; carrying it here lets the switch back restore attribution.
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub turns: std::collections::HashMap<String, String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1308,6 +1313,7 @@ mod tests {
     fn revisions_roundtrip_by_root_and_index() {
         let dir = tempdir().unwrap();
         let rev = |i: i64, text: &str| RevisionRecord {
+            turns: Default::default(),
             root_user_id: "u1".into(),
             revision_index: i,
             created_at: "2026-07-26T00:00:00Z".into(),
@@ -1334,6 +1340,7 @@ mod tests {
                 revision_index: 1,
                 created_at: "2026-07-26T00:00:00Z".into(),
                 messages: vec![record("m", "x")],
+                turns: Default::default(),
             },
         )
         .unwrap();

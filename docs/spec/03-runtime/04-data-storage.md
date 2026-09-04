@@ -112,7 +112,7 @@ regenerate branch; the *active* flag lives only in the DB index so switching
 revisions never rewrites this file:
 
 ```jsonl
-{"type":"revision","rootUserId":"u1","revisionIndex":1,"createdAt":"…","messages":[…message records…]}
+{"type":"revision","rootUserId":"u1","revisionIndex":1,"createdAt":"…","messages":[…message records…],"turns":{"<messageId>":"<turnId>"}}
 ```
 
 Rules:
@@ -690,6 +690,18 @@ CREATE INDEX idx_message_revisions_root
   tool line appended by the persistence outbox in the meantime survives. A
   whole-transcript rewrite from a snapshot taken outside the host lock would
   delete it (ADR 0060).
+- A branch keeps growing after its archive: later prompts append to it and an
+  error-ended turn never reaches `agent_end`. So every operation that discards
+  the live branch first writes it back over the revision it belongs to (D307):
+  `session.activateRevision` re-archives the live branch of the family from
+  the durable transcript before the switch, the regenerate path passes
+  `revisionIndex` to `session.saveRevision` to refresh the stamped variant, and
+  `session.saveActiveRevision` refreshes an already-archived index instead of
+  skipping it. The refresh is one more line in the append-only file (last
+  record for `(rootUserId, revisionIndex)` wins) plus a `message_count` update.
+  The variant named by the live root's `activeRevision` stamp is the one
+  refreshed; a stamped variant with no index row yet (its turn failed before
+  archive) is stored as its own new variant, never over a previous one.
 
 ### 4.10 artifacts — files a session produced
 
@@ -873,9 +885,9 @@ is the source of truth, the index is derived and self-healing.
 | plan/goal approval | verify the immutable artifact path/hash/size | atomically resolve `plan_approvals`, update `sessions.mode` and explicit `permission_mode`, and set `execution_state = 'queued'`; reject/expiry stay in the contract mode |
 | transcript truncate / edit / unanswered smart Stop (`session.replaceMessages`) | atomic transcript rewrite (temp + rename); preserve only a checkpoint whose boundary remains | single tx: delete index rows, bulk reinsert carrying each surviving message's owning `turn_id`, reset `last_seq`; smart Stop keeps its structured composer snapshot only in renderer memory |
 | session fork (`session.fork`) | write a new transcript with remapped message/tool-call ids; copy/remap the checkpoint only when its boundary is included | single tx: clone session configuration, insert child index rows, set `last_seq`; remove child file on failure |
-| regenerate branch save | append revision line | index row with `message_count` (+ `is_active` flip) |
-| turn-completion branch archive (`session.saveActiveRevision`) | append revision line, then rewrite only the root user's transcript line for the pager stamp | index row with `message_count` (+ `is_active` flip); index rows for other messages untouched |
-| revision switch | read branch, atomic transcript rewrite | flip `is_active`, rebuild index rows, reset `last_seq` |
+| regenerate branch save | append revision line (with `revisionIndex`: a refresh line for that existing variant) | index row with `message_count` (+ `is_active` flip); a refresh only updates `message_count` |
+| turn-completion branch archive (`session.saveActiveRevision`) | append revision line (a refresh line when the active variant is already archived), then rewrite only the root user's transcript line for the pager stamp | index row with `message_count` (+ `is_active` flip); index rows for other messages untouched |
+| revision switch | append a refresh line for the live branch's own variant, read the target branch, atomic transcript rewrite keeping checkpoints whose anchors survive | flip `is_active`, rebuild index rows carrying each surviving message's owning `turn_id`, reset `last_seq` |
 | import | write transcript file | one tx per session: session row + index rows; on failure the file is removed |
 | session delete | remove both session files after row delete | `DELETE FROM sessions` (cascades) |
 
