@@ -169,7 +169,7 @@ test("a cold switch keeps the visible pane legible instead of dimming it", () =>
   // left. The transcript keeps full contrast: the dim was itself a visible flash.
   assert.match(
     styles,
-    /\.chat-surface\.session-switching > \.composer-dock\s*\{\s*pointer-events: none;\s*\}/,
+    /\.chat-surface\.session-switching > \.composer-slot \.composer-dock\s*\{\s*pointer-events: none;\s*\}/,
   );
   assert.doesNotMatch(styles, /session-switching[\s\S]{0,200}?opacity: 0\.82/);
   assert.match(

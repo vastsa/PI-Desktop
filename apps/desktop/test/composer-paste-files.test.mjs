@@ -23,7 +23,7 @@ test("composer converts oversized text paste and materializes clipboard files", 
   assert.match(composer, /const name = `pasted-text-\$\{crypto\.randomUUID\(\)\.slice\(0, 8\)\}\.txt`/);
   assert.match(composer, /mimeType: "text\/plain"/);
   assert.match(composer, /const token = `@\$\{displayName\}`/);
-  assert.match(composer, /draftCacheRef\.current\.set\(sessionId, nextSnapshot\)/);
+  assert.match(composer, /composerDraftCache\.set\(sessionId, nextSnapshot\)/);
   assert.match(composer, /if \(!files\.length\) return;/);
   assert.match(composer, /event\.preventDefault\(\);/);
   assert.match(composer, /file\.arrayBuffer\(\)/);

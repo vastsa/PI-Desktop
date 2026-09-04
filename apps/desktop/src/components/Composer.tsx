@@ -270,6 +270,19 @@ export type ComposerPrefill = {
 };
 
 const HOME_DRAFT_KEY = "__home__";
+const composerDraftCache = new Map<string, ComposerDraftSnapshot>();
+const composerDraftVersions = new Map<string, number>();
+
+function composerDraftVersion(key: string) {
+  return composerDraftVersions.get(key) ?? 0;
+}
+
+function invalidateComposerDraft(key: string) {
+  composerDraftCache.delete(key);
+  const nextVersion = composerDraftVersion(key) + 1;
+  composerDraftVersions.set(key, nextVersion);
+  return nextVersion;
+}
 
 type ComposerMenuView = "root" | "model" | "thinking";
 
@@ -320,8 +333,21 @@ export function Composer({
       ? s.queuedPrompts[s.activeSessionId] ?? EMPTY_QUEUED_PROMPTS
       : EMPTY_QUEUED_PROMPTS,
   );
-  const [value, setValue] = useState("");
-  const [fileReferences, setFileReferences] = useState<ComposerFileReference[]>([]);
+  const [value, setValue] = useState(
+    () => composerDraftCache.get(draftKeyForSession(activeSessionId))?.text ?? "",
+  );
+  const [fileReferences, setFileReferences] = useState<ComposerFileReference[]>(() =>
+    composerDraftCache
+      .get(draftKeyForSession(activeSessionId))
+      ?.fileReferences.map((fileReference) =>
+        createFileReference(
+          fileReference.path,
+          fileReference.name,
+          activeSessionId ?? "",
+          fileReference,
+        ),
+      ) ?? [],
+  );
   const [cursor, setCursor] = useState(0);
   // `onSelect` fires on every caret move, so an unchanged cursor must not
   // re-render the composer or re-run autocomplete trigger detection.
@@ -357,8 +383,8 @@ export function Composer({
   const dockRef = useRef<HTMLDivElement>(null);
   const publishedDockHeightRef = useRef(-1);
   const draftKey = draftKeyForSession(activeSessionId);
-  const draftCacheRef = useRef(new Map<string, ComposerDraftSnapshot>());
   const draftKeyRef = useRef(draftKey);
+  const draftVersionRef = useRef(composerDraftVersion(draftKey));
   const approvalPending = planCheckpoint?.status === "pending";
   const executionActive = isActivePlanExecution(planCheckpoint);
   const runActive = isRunning || executionActive;
@@ -422,21 +448,29 @@ export function Composer({
     const previousKey = draftKeyRef.current;
     if (previousKey !== draftKey) {
       invalidatePromptEnhancement();
-      // Persist the outgoing draft before switching.
-      draftCacheRef.current.set(previousKey, {
-        text: valueRef.current,
-        fileReferences: fileReferencesRef.current
-          .filter((fileReference) => fileReference.sessionId === previousKey)
-          .map(({ path, name, kind, mimeType, token }) => ({
-            path,
-            name,
-            kind,
-            ...(mimeType ? { mimeType } : {}),
-            ...(token ? { token } : {}),
-          })),
-      });
+      // Persist the outgoing draft unless an async completion already cleared
+      // this exact cache generation before the switch effect could run.
+      if (draftVersionRef.current === composerDraftVersion(previousKey)) {
+        composerDraftCache.set(previousKey, {
+          text: valueRef.current,
+          fileReferences: fileReferencesRef.current
+            .filter(
+              (fileReference) =>
+                fileReference.sessionId ===
+                (previousKey === HOME_DRAFT_KEY ? "" : previousKey),
+            )
+            .map(({ path, name, kind, mimeType, token }) => ({
+              path,
+              name,
+              kind,
+              ...(mimeType ? { mimeType } : {}),
+              ...(token ? { token } : {}),
+            })),
+        });
+      }
       draftKeyRef.current = draftKey;
-      const nextDraft = draftCacheRef.current.get(draftKey);
+      draftVersionRef.current = composerDraftVersion(draftKey);
+      const nextDraft = composerDraftCache.get(draftKey);
       placeholderFocusPauseReleasedRef.current = false;
       setValue(nextDraft?.text ?? "");
       setFileReferences(
@@ -459,7 +493,8 @@ export function Composer({
   // Keep the draft cache warm on file-reference changes (infrequent) while
   // skipping the expensive serialization on plain text edits.
   useEffect(() => {
-    draftCacheRef.current.set(draftKey, {
+    if (draftVersionRef.current !== composerDraftVersion(draftKey)) return;
+    composerDraftCache.set(draftKey, {
       text: valueRef.current,
       fileReferences: fileReferences
         .filter((fileReference) => fileReference.sessionId === referenceSessionId)
@@ -473,11 +508,34 @@ export function Composer({
     });
   }, [draftKey, fileReferences, referenceSessionId]);
 
+  useEffect(
+    () => () => {
+      const key = draftKeyRef.current;
+      if (draftVersionRef.current !== composerDraftVersion(key)) return;
+      composerDraftCache.set(key, {
+        text: valueRef.current,
+        fileReferences: fileReferencesRef.current
+          .filter(
+            (fileReference) =>
+              fileReference.sessionId === (key === HOME_DRAFT_KEY ? "" : key),
+          )
+          .map(({ path, name, kind, mimeType, token }) => ({
+            path,
+            name,
+            kind,
+            ...(mimeType ? { mimeType } : {}),
+            ...(token ? { token } : {}),
+          })),
+      });
+    },
+    [],
+  );
+
   useEffect(() => {
     const sessionIds = new Set(sessions.map((session) => session.id));
-    for (const key of draftCacheRef.current.keys()) {
+    for (const key of composerDraftCache.keys()) {
       if (key !== HOME_DRAFT_KEY && key !== draftKey && !sessionIds.has(key)) {
-        draftCacheRef.current.delete(key);
+        invalidateComposerDraft(key);
       }
     }
   }, [draftKey, sessions]);
@@ -952,17 +1010,19 @@ export function Composer({
 
   const clearDraftForKey = (key: string) => {
     invalidatePromptEnhancement();
-    draftCacheRef.current.delete(key);
+    const nextVersion = invalidateComposerDraft(key);
     const currentKey = draftKeyForSession(useAppStore.getState().activeSessionId);
     if (currentKey !== key) return;
+    if (draftKeyRef.current === key) draftVersionRef.current = nextVersion;
     placeholderFocusPauseReleasedRef.current = true;
+    valueRef.current = "";
     setValue("");
-    setFileReferences((current) => {
-      const next = current.filter(
-        (fileReference) => fileReference.sessionId !== key,
-      );
-      return next.length === current.length ? current : next;
-    });
+    const referenceKey = key === HOME_DRAFT_KEY ? "" : key;
+    const nextReferences = fileReferencesRef.current.filter(
+      (fileReference) => fileReference.sessionId !== referenceKey,
+    );
+    fileReferencesRef.current = nextReferences;
+    setFileReferences(nextReferences);
     setCursor(0);
   };
 
@@ -980,6 +1040,43 @@ export function Composer({
         ...(token ? { token } : {}),
       })),
   });
+
+  const sendComposerPrompt = async (
+    content: string,
+    snapshot: ComposerDraftSnapshot,
+  ) => {
+    let sessionId = activeSessionId;
+    let submittedKey = draftKey;
+    if (!sessionId) {
+      const materializedSessionId = await materializeDraftSession();
+      if (!materializedSessionId) return false;
+      sessionId = materializedSessionId;
+      // The durable session now owns the home draft. Versioning the old key
+      // prevents the pending session-switch effect from writing it back.
+      composerDraftCache.set(materializedSessionId, snapshot);
+      invalidateComposerDraft(HOME_DRAFT_KEY);
+      submittedKey = materializedSessionId;
+      if (draftKeyRef.current === materializedSessionId) {
+        const restoredReferences = snapshot.fileReferences.map((fileReference) =>
+          createFileReference(
+            fileReference.path,
+            fileReference.name,
+            materializedSessionId,
+            fileReference,
+          ),
+        );
+        draftVersionRef.current = composerDraftVersion(materializedSessionId);
+        valueRef.current = snapshot.text;
+        fileReferencesRef.current = restoredReferences;
+        setValue(snapshot.text);
+        setFileReferences(restoredReferences);
+        setCursor(snapshot.text.length);
+      }
+    }
+    const accepted = await sendPrompt(content, snapshot, sessionId);
+    if (accepted) clearDraftForKey(submittedKey);
+    return accepted;
+  };
 
   const enhancePrompt = async () => {
     const sourceText = value;
@@ -1106,14 +1203,13 @@ export function Composer({
               visibleCommandEnd === -1
                 ? ""
                 : visibleDraft.slice(visibleCommandEnd).trim();
-            const accepted = await sendPrompt(
+            await sendComposerPrompt(
               serializeInlineComposerFileReferences(
                 visibleCommandBody,
                 activeFileReferences,
               ),
               draftSnapshot(visibleCommandBody),
             );
-            if (accepted) clearDraftForKey(submittedDraftKey);
           } catch (e) {
             showToast(e instanceof Error ? e.message : String(e), {
               variant: "error",
@@ -1140,8 +1236,7 @@ export function Composer({
       }
     }
     if (!modelReady) return;
-    const accepted = await sendPrompt(inlineContent, draftSnapshot(value));
-    if (accepted) clearDraftForKey(submittedDraftKey);
+    await sendComposerPrompt(inlineContent, draftSnapshot(value));
   };
 
   const pasteClipboardFiles = async (event: ClipboardEvent<HTMLTextAreaElement>) => {
@@ -1212,7 +1307,7 @@ export function Composer({
         // Materialization can change the active session while the IPC call is
         // in flight. Cache the result by its durable target rather than
         // allowing a late response to contaminate another session's draft.
-        draftCacheRef.current.set(sessionId, nextSnapshot);
+        composerDraftCache.set(sessionId, nextSnapshot);
         const currentSessionId = useAppStore.getState().activeSessionId;
         if (currentSessionId === sessionId) {
           setValue(nextValue);
@@ -1237,7 +1332,7 @@ export function Composer({
         } else if (sourceDraftKey === HOME_DRAFT_KEY) {
           // The home slot is intentionally not reused after materialization;
           // keep it empty while the new session owns the converted draft.
-          draftCacheRef.current.delete(HOME_DRAFT_KEY);
+          invalidateComposerDraft(HOME_DRAFT_KEY);
         }
         showToast(t("chat.largeTextPasted", { name: displayName }), {
           variant: "success",

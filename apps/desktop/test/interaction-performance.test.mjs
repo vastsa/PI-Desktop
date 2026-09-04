@@ -24,6 +24,11 @@ test("streaming state stays inside the chat render boundary", () => {
   assert.match(chatSurface, /export const ChatSurface = memo/);
   assert.match(chatSurface, /const messages = useAppStore/);
   assert.match(chatSurface, /const StableComposer = memo\(Composer\)/);
+  assert.equal((chatSurface.match(/<StableComposer/g) ?? []).length, 1);
+  assert.match(
+    chatSurface,
+    /<StableComposer variant=\{showEmptyState \? "home" : "docked"\} \/>/,
+  );
 });
 
 test("chat configuration errors still navigate to agent settings", () => {

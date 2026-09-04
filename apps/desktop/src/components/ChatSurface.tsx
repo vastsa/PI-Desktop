@@ -174,24 +174,23 @@ export const ChatSurface = memo(function ChatSurface() {
               <OnboardingChecklist />
             </div>
           </div>
-          <div className="home-composer-wrap">
-            <StableComposer variant="home" />
-          </div>
         </div>
       ) : (
-        <>
-          <div className="session-panes">
-            {retainedSessionIds.map((id) => (
-              <SessionPane
-                key={id}
-                sessionId={id}
-                visible={id === visibleSessionId}
-              />
-            ))}
-          </div>
-          <StableComposer variant="docked" />
-        </>
+        <div className="session-panes">
+          {retainedSessionIds.map((id) => (
+            <SessionPane
+              key={id}
+              sessionId={id}
+              visible={id === visibleSessionId}
+            />
+          ))}
+        </div>
       )}
+      <div
+        className={`composer-slot${showEmptyState ? " home-composer-wrap" : ""}`}
+      >
+        <StableComposer variant={showEmptyState ? "home" : "docked"} />
+      </div>
 
       {error ? (
         <div className="chat-error-layer">
