@@ -110,8 +110,8 @@ const CHIP_TOKEN_END = 0xf8ff;
 let chipTokenSequence = 0;
 
 function nextChipToken(): string {
-  chipTokenSequence =
-    (chipTokenSequence - CHIP_TOKEN_BASE + 1) % (CHIP_TOKEN_END - CHIP_TOKEN_BASE + 1);
+  const range = CHIP_TOKEN_END - CHIP_TOKEN_BASE + 1;
+  chipTokenSequence = (chipTokenSequence + 1) % range;
   return String.fromCodePoint(CHIP_TOKEN_BASE + chipTokenSequence);
 }
 

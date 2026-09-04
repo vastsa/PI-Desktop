@@ -49,6 +49,36 @@ test("composer converts oversized text paste and materializes clipboard files", 
   assert.match(composer, /await materializeDraftSession\(\)/);
 });
 
+test("chip sentinels stay unique inside the private-use range", () => {
+  const baseLiteral = composer.match(/const CHIP_TOKEN_BASE = (0x[0-9a-f]+);/)?.[1];
+  const endLiteral = composer.match(/const CHIP_TOKEN_END = (0x[0-9a-f]+);/)?.[1];
+  const body = composer.match(
+    /function nextChipToken\(\): string \{[\s\S]*?\n\}/,
+  )?.[0];
+  assert.ok(baseLiteral && endLiteral && body, "sentinel helpers missing");
+
+  // Execute the real arithmetic (not a re-implementation): a past regression
+  // computed `(seq - BASE + 1) % range`, which produced Hangul code points
+  // that rendered as raw garbage text instead of chips.
+  const snippet = [
+    `const CHIP_TOKEN_BASE = ${baseLiteral};`,
+    `const CHIP_TOKEN_END = ${endLiteral};`,
+    "let chipTokenSequence = 0;",
+    body.replace(/: string/g, ""),
+    "return nextChipToken;",
+  ].join("\n");
+  const nextChipToken = new Function(snippet)();
+
+  const seen = new Set();
+  for (let i = 0; i < 128; i += 1) {
+    const token = nextChipToken();
+    const code = token.codePointAt(0) ?? 0;
+    assert.ok(code >= 0xe000 && code <= 0xf8ff, `token ${i} left the PUA range`);
+    assert.ok(!seen.has(token), `token ${i} repeated within a cycle`);
+    seen.add(token);
+  }
+});
+
 test("paste IPC is a typed renderer-to-main bridge", () => {
   assert.match(protocol, /composerPasteFiles: "pi-desktop\/composer\/pasteFiles"/);
   assert.match(api, /pasteFiles: \(sessionId: string, files: ComposerPasteFile\[\]\)/);
