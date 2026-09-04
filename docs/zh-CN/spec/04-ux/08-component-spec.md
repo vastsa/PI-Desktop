@@ -2267,7 +2267,7 @@ dismissToast(id: number); // ToastHost internal / tests
 | 忙排 | 该卡已禁用 Test/update/delete 操作 |
 
 ### 19. 4 交互
-- 添加提供商打开模式对话框； Cancel/close 重置字段并关闭对话框
+- 添加提供商打开模式对话框，对话框留在 overlay 内（可从 1040px 首选宽度收缩）。聚焦的凭据输入框须完整显示 2px 强调环，滚动区域为此留出间隙而不是裁切。Cancel/close 重置字段并关闭对话框
 - 保存创建提供商，存储秘密，成功后将其设置为默认值，并刷新列表
 - 测试连接调用 `providers.testConnection` 并祝酒 success/failure
 - 思考预设更新通过具有 D102 语义的 `providers.update` 持续存在

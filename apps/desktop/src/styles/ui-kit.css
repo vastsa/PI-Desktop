@@ -121,6 +121,9 @@
 
 .dialog {
   width: min(100%, 440px);
+  /* Overlay is a flex box; auto min-width would let wide content overflow it. */
+  min-width: 0;
+  max-width: 100%;
   border: 1px solid var(--ds-border-default);
   border-radius: var(--radius-lg-plus);
   background: var(--ds-bg-elevated-opaque);

@@ -38,6 +38,8 @@
     dialog never grows with the number of models: the panes scroll, not the page.
   */
   width: min(1040px, calc(100vw - 48px));
+  max-width: 100%;
+  min-width: 0;
   height: min(720px, calc(100vh - 64px));
   padding: 16px;
 }
@@ -79,8 +81,13 @@
   /*
     Kept scrollable for very short windows, but in the normal case the two
     panes below own the scrolling and this container does not move.
+    overflow-y: auto computes overflow-x to auto, which would clip the 2px
+    field focus ring and let a wide min-content row scroll sideways. The
+    2px padding keeps the ring inside the padding box.
   */
+  overflow-x: hidden;
   overflow-y: auto;
+  padding: 2px;
   overscroll-behavior: contain;
 }
 
@@ -667,6 +674,8 @@
   gap: 12px;
   /* Same box as the service dialog: it renders the same two model panes. */
   width: min(1040px, calc(100vw - 48px));
+  max-width: 100%;
+  min-width: 0;
   height: min(720px, calc(100vh - 64px));
   padding: 16px;
 }
@@ -692,7 +701,9 @@
   flex-direction: column;
   gap: 12px;
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
+  padding: 2px;
   overscroll-behavior: contain;
 }
 

@@ -31,6 +31,20 @@ test("the dialog is a fixed-height shell so it cannot grow with the model count"
   const dialog = block(".provider-setup-dialog");
   assert.match(dialog, /height: min\(720px, calc\(100vh - 64px\)\)/);
   assert.match(dialog, /width: min\(1040px, calc\(100vw - 48px\)\)/);
+  // Overlay is flex: auto min-width would keep the 1040px preferred width and
+  // clip the credential fields (and their 2px focus ring) on a narrower window.
+  assert.match(dialog, /min-width: 0/);
+  assert.match(dialog, /max-width: 100%/);
+});
+
+test("the scrolling body keeps the credential focus ring inside the dialog", () => {
+  const body = block(".provider-setup-body");
+  assert.match(body, /overflow-x: hidden/);
+  assert.match(body, /overflow-y: auto/);
+  assert.match(body, /padding: 2px/);
+  const vendorBody = block(".vendor-account-body");
+  assert.match(vendorBody, /overflow-x: hidden/);
+  assert.match(vendorBody, /padding: 2px/);
 });
 
 test("credentials are a 2x2 grid of four peer fields", () => {
@@ -195,6 +209,8 @@ test("the vendor account dialog hosts the same panes in the same shell", () => {
   // rather than the narrower stacked one it used while it had its own copy.
   const dialog = block(".vendor-account-dialog");
   assert.match(dialog, /width: min\(1040px, calc\(100vw - 48px\)\)/);
+  assert.match(dialog, /max-width: 100%/);
+  assert.match(dialog, /min-width: 0/);
   assert.match(dialog, /height: min\(720px, calc\(100vh - 64px\)\)/);
   assert.match(vendorDialogSource, /<ModelSelectionPanes/);
   // The duplicated chosen-pane and custom-model rules are retired with it.
