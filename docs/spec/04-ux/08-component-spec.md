@@ -1170,6 +1170,12 @@ Single message render — either user (plaintext) or assistant (markdown streami
   collapse. Previewable path and URL controls remain inline with that plaintext;
   long references wrap within the plate and continuation lines keep logical-start
   alignment instead of inheriting the browser's centered button text.
+  Image attachments (pasted/uploaded images and stored `attachments/<sha256>`
+  blobs) render as bounded inline thumbnails above the text via the host's
+  `fs/readImageDataUrl` channel; clicking a thumbnail opens it in the work-panel
+  files viewer. A file that cannot be resolved falls back to the compact
+  attachment chip. Local Markdown images in assistant answers render inline the
+  same way, falling back to the files-viewer chip when unavailable.
 - Assistant: transparent surface, left-aligned, markdown rendered at full
   content width
 - Thinking: separate lightweight disclosure above the answer with no card

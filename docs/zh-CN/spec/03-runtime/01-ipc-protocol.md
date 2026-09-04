@@ -1052,6 +1052,17 @@ type AgentCapabilityQuery = {
 - 每个路径都在工作空间根目录内解析；外面的遍历是
   被拒绝（`INVALID_ARGUMENT`）。
 
+#### fs/readImageDataUrl — 会话内图片显示
+
+`fs/readImageDataUrl({ref, mimeType?})` → `FsImageDataUrlResult`（`image` 携带 `dataUrl`，
+或 `missing` / `notImage` / `tooLarge` 及稳定 `errorCode`）。ref 可以是
+工作区相对路径、`attachments/<sha256>` 路径，或数据根目录下 `scratch/` /
+`attachments/` 子目录内的绝对路径。主进程解析真实路径并拒绝这些根之外的
+任何内容，因此粘贴/上传的消息图片和本地 Markdown 图片可在会话框内联渲染，
+而无需暴露通用文件读取通道。存储的 `mimeType` 优先于扩展名推断，因为粘贴的
+附件以无扩展名的 `attachments/<sha256>` 文件存储。大小与 `fs/read` 相同，
+限制为 5MB。
+
 ## 13b。桌面菜单和窗口 API
 
 preload 公开同步、只读 `platform: NodeJS.Platform`

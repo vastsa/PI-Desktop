@@ -14,6 +14,7 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import type {
   ContextCompactionMark,
+  MessageAttachment,
   MessageUsage,
   PlanningState,
   ProposalKind,
@@ -55,6 +56,7 @@ import {
   type SubagentTiming,
 } from "../lib/subagent-topology";
 import { useOpenPreviewTarget } from "../lib/use-preview-target";
+import { useReferencedImageDataUrl } from "../lib/use-referenced-image-data-url";
 import {
   getToolPreviewTarget,
   splitChatText,
@@ -1703,6 +1705,42 @@ function PlanningIndicator({ kind }: { kind: ProposalKind }) {
   );
 }
 
+/**
+ * A user-message image attachment rendered as a real thumbnail. The host
+ * resolves the ref (workspace-relative, `attachments/<sha256>`, or absolute
+ * scratch/attachment) into a bounded data URL; an unresolvable load falls back
+ * to the compact chip so the message stays readable.
+ */
+function MessageAttachmentImage({ attachment }: { attachment: MessageAttachment }) {
+  const dataUrl = useReferencedImageDataUrl(attachment.ref, attachment.mimeType);
+  if (!dataUrl) {
+    return (
+      <div className="message-attachment" role="listitem" title={attachment.ref}>
+        <IconImage size={13} aria-hidden />
+        <span>{attachment.name}</span>
+      </div>
+    );
+  }
+  const canOpenInWorkPanel =
+    !attachment.ref.trim().startsWith("attachments/") &&
+    !attachment.ref.trim().startsWith("/");
+  return (
+    <button
+      type="button"
+      className="message-attachment-image"
+      role="listitem"
+      title={`${attachment.name} — ${attachment.ref}`}
+      onClick={() => {
+        if (canOpenInWorkPanel) {
+          useAppStore.getState().openFileInWorkPanel(attachment.ref);
+        }
+      }}
+    >
+      <img src={dataUrl} alt={attachment.name} />
+    </button>
+  );
+}
+
 const MessageRow = memo(function MessageRow({
   message,
   isRunning,
@@ -1802,21 +1840,24 @@ const MessageRow = memo(function MessageRow({
                     role="list"
                     aria-label={t("chat.messageAttachments")}
                   >
-                    {message.attachments.map((attachment) => (
-                      <div
-                        key={`${attachment.ref}:${attachment.name}`}
-                        className="message-attachment"
-                        role="listitem"
-                        title={attachment.ref}
-                      >
-                        {attachment.kind === "image" ? (
-                          <IconImage size={13} aria-hidden />
-                        ) : (
+                    {message.attachments.map((attachment) =>
+                      attachment.kind === "image" ? (
+                        <MessageAttachmentImage
+                          key={`${attachment.ref}:${attachment.name}`}
+                          attachment={attachment}
+                        />
+                      ) : (
+                        <div
+                          key={`${attachment.ref}:${attachment.name}`}
+                          className="message-attachment"
+                          role="listitem"
+                          title={attachment.ref}
+                        >
                           <IconFileText size={13} aria-hidden />
-                        )}
-                        <span>{attachment.name}</span>
-                      </div>
-                    ))}
+                          <span>{attachment.name}</span>
+                        </div>
+                      ),
+                    )}
                   </div>
                 ) : null}
                 {message.content ? (

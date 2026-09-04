@@ -527,6 +527,31 @@ Each scenario is documented in this format:
 - **Milestone**: M2
 - **Status**: Source-level regression covered; full UI scenario Draft
 
+#### E2E-011h: In-chat image display for attachments and local Markdown images
+
+- **Preconditions**: A vision-capable provider configured; one session with a
+  workspace containing an image file.
+- **Steps**: 1) Paste an image into the composer and send it with a short
+  prompt; also attach a second image via file paste. 2) Inspect the user
+  message bubble. 3) Reload the session/app, then reopen the same conversation
+  and inspect again. 4) Ask the assistant to reference a local image file with
+  Markdown (`![alt](path)`), and separately confirm a remote `https://` image
+  still renders. 5) Point Markdown at a missing path.
+- **Expected**: Pasted/uploaded image attachments render as bounded inline
+  thumbnails in the user bubble via the root-checked `fs/readImageDataUrl`
+  channel, above the prompt text; a second image keeps its own thumbnail.
+  Reloading and reopening the session re-displays the same images from their
+  stored refs. Local Markdown images render inline in assistant answers and
+  open in the files viewer when clicked; remote images still render directly.
+  A missing path falls back to the files-viewer chip and never shows a broken
+  image or an arbitrary file read.
+- **Specs linked**: `03-runtime/01-ipc-protocol.md` (§fs),
+  `04-ux/08-component-spec.md` (§8)
+- **Acceptance**: C (chat and stream), F (persistence)
+- **Milestone**: M2
+- **Status**: Source-level regression covered
+  (`message-image-display.test.mjs`); full UI scenario Draft
+
 #### E2E-011f: Send while running queues per-session prompts and supports Send now
 
 - **Preconditions**: Provider configured; session A can produce a delayed

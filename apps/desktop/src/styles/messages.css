@@ -1294,6 +1294,35 @@
   white-space: nowrap;
 }
 
+.message-attachment-image {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--radius-md);
+  padding: 3px;
+  background: var(--ds-bg-secondary);
+  cursor: pointer;
+  overflow: hidden;
+  transition:
+    border-color var(--motion-duration-fast) var(--motion-ease-out),
+    box-shadow var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.message-attachment-image:hover {
+  border-color: var(--ds-border-default);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 18%, transparent);
+}
+
+.message-attachment-image img {
+  display: block;
+  max-width: 220px;
+  max-height: 220px;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+}
+
 .message-row.assistant .message-bubble,
 .message-row.system .message-bubble,
 .message-row.tool .message-bubble {

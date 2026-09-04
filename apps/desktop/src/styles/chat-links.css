@@ -56,7 +56,8 @@
   text-underline-offset: 2px;
 }
 
-/* Local image references render as a chip opening the files-tab viewer. */
+/* Local image references render inline via a bounded data URL; the chip is
+   the fallback when the file cannot be resolved. */
 .chat-image-chip {
   display: inline-flex;
   align-items: center;
@@ -75,8 +76,14 @@
   border-color: color-mix(in oklab, var(--ds-accent) 45%, transparent);
 }
 
+.chat-image-local,
 .chat-image-remote {
   cursor: pointer;
+}
+
+.chat-image-local {
+  max-width: min(100%, 560px);
+  border-radius: var(--radius-md);
 }
 
 /* Audio player in chat messages */

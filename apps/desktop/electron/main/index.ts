@@ -151,7 +151,7 @@ import {
   modelInfoFromModelsDev,
 } from "./models-dev-catalog";
 import { OAUTH_AUTH_KIND, VendorOAuth } from "./oauth";
-import { listDir, readWorkspaceFile, resolveWithinRoot } from "./fs-panel";
+import { listDir, readReferencedImage, readWorkspaceFile, resolveWithinRoot } from "./fs-panel";
 import { getWorkspaceFileIndex } from "./fs-index";
 import { saveComposerPasteFiles } from "./composer-paste";
 import { builtinComposerCommands, builtinPaletteItems } from "./builtin-commands";
@@ -6803,6 +6803,29 @@ function registerIpc() {
     const root = await requireWorkspaceRoot();
     return readWorkspaceFile(root, String(input.path ?? ""));
   });
+
+  // In-chat image display (attachments, pasted files, and local Markdown
+  // images) reads through a bounded, root-checked data URL instead of exposing
+  // a generic file channel. The ref may be workspace-relative, an
+  // `attachments/<sha256>` path, or an absolute scratch/attachment path; the
+  // stored mimeType wins over extension sniffing for extension-less blobs.
+  handle(
+    IPC.invoke.fsReadImageDataUrl,
+    async (input: { ref?: string; mimeType?: string } = {}) => {
+      let workspaceRoot: string | null = null;
+      try {
+        workspaceRoot = await requireWorkspaceRoot();
+      } catch {
+        workspaceRoot = null;
+      }
+      return readReferencedImage(
+        dataDir,
+        workspaceRoot,
+        String(input.ref ?? ""),
+        input.mimeType,
+      );
+    },
+  );
 
   handle(IPC.invoke.fsReveal, async (input: { path?: string } = {}) => {
     const root = await requireWorkspaceRoot();

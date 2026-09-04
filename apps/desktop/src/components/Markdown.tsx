@@ -35,6 +35,7 @@ import {
   IconWorkflow,
 } from "./icons";
 import { useAppStore } from "../stores/app-store";
+import { useReferencedImageDataUrl } from "../lib/use-referenced-image-data-url";
 import { resolvePreviewTarget, toWorkspaceRel } from "../lib/chat-links";
 import {
   isClosedFencedCodeBlock,
@@ -495,9 +496,11 @@ function Anchor({
 }
 
 /**
- * Local image references can't load over the renderer origin; render them as
- * a chip that opens the files-tab image viewer instead of a broken <img>.
- * Remote images render inline and click through to the browser tab.
+ * Local image references can't load over the renderer origin directly; the
+ * host resolves them into a bounded data URL so they render inline. When the
+ * file cannot be resolved (missing, outside allowed roots, or oversized) the
+ * image falls back to a chip that opens the files-tab image viewer. Remote
+ * images render inline and click through to the browser tab.
  */
 function MarkdownImage({
   node: _node,
@@ -511,7 +514,19 @@ function MarkdownImage({
   const fileTitle = usePreviewTitle("file");
   const urlTitle = usePreviewTitle("url");
   const source = typeof src === "string" ? src : "";
-  if (/^https?:\/\//i.test(source)) {
+  const decoded = (() => {
+    try {
+      return decodeURI(source);
+    } catch {
+      return source;
+    }
+  })();
+  const rel = toWorkspaceRel(decoded, root);
+  // Always run the hook before any branch so the hook order stays stable even
+  // when a streaming src flips between remote and local. For remote images the
+  // resolved data URL is null and unused.
+  const dataUrl = useReferencedImageDataUrl(rel ?? decoded);
+  if (/^https?:/i.test(source)) {
     return (
       <img
         {...rest}
@@ -523,7 +538,18 @@ function MarkdownImage({
       />
     );
   }
-  const rel = toWorkspaceRel(decodeURI(source), root);
+  if (dataUrl) {
+    return (
+      <img
+        {...rest}
+        src={dataUrl}
+        alt={alt ?? ""}
+        className="chat-image-local"
+        title={rel ? fileTitle : source}
+        onClick={rel ? () => openFile(rel) : undefined}
+      />
+    );
+  }
   if (rel) {
     return (
       <button

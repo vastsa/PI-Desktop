@@ -1121,6 +1121,19 @@ visible session's workspace.
 - Every path resolves inside the workspace root; traversal outside is
   rejected (`INVALID_ARGUMENT`).
 
+#### fs/readImageDataUrl — in-chat image display
+
+`fs/readImageDataUrl({ref, mimeType?})` → `FsImageDataUrlResult` (`image` with
+`dataUrl`, or `missing` / `notImage` / `tooLarge` with a stable `errorCode`).
+The ref may be a workspace-relative path, an `attachments/<sha256>` path, or an
+absolute path inside the data root's `scratch/` or `attachments/` directories.
+The host resolves the real path and rejects anything outside those roots, so
+pasted/uploaded message images and local Markdown images render inline in the
+transcript without exposing a generic file read channel. A stored `mimeType`
+wins over extension sniffing, because pasted attachments are stored as
+extension-less `attachments/<sha256>` blobs. Size is bounded by the same 5MB
+image limit as `fs/read`.
+
 ## 13b. Desktop Menu and Window APIs
 
 The preload exposes a synchronous, read-only `platform: NodeJS.Platform`

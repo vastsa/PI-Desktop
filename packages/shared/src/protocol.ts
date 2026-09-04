@@ -194,6 +194,7 @@ export const IPC = {
     browserGetState: "pi-desktop/browser/getState",
     fsList: "pi-desktop/fs/list",
     fsRead: "pi-desktop/fs/read",
+    fsReadImageDataUrl: "pi-desktop/fs/readImageDataUrl",
     fsReveal: "pi-desktop/fs/reveal",
     fsIndex: "pi-desktop/fs/index",
     windowSetWorkPanelReservation:
