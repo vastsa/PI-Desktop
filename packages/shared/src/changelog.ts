@@ -23,6 +23,17 @@ export type ChangelogEntry = {
 
 const enEntries: ChangelogEntry[] = [
   {
+    version: "0.13.0",
+    date: "2026-09-04",
+    highlights: [
+      "Add a rich hover card on sidebar session rows showing workspace, branch, and update time.",
+      "Switch macOS sidebar to the under-window vibrancy material for deeper glass depth.",
+      "Remove the macOS sidebar dock seam for a borderless glass edge.",
+      "Restore the inline SVG mascot on the empty-home screen.",
+      "Fix a sidebar crash on first render caused by a forward-referenced variable.",
+    ],
+  },
+  {
     version: "0.12.4",
     date: "2026-09-04",
     highlights: [
@@ -556,6 +567,17 @@ const enEntries: ChangelogEntry[] = [
 ];
 
 const zhCNEntries: ChangelogEntry[] = [
+  {
+    version: "0.13.0",
+    date: "2026-09-04",
+    highlights: [
+      "侧边栏会话行新增悬浮卡片，显示所属空间、分支和更新时间。",
+      "macOS 侧边栏切换到窗口下方材质，增强毛玻璃深度。",
+      "移除 macOS 侧边栏的底部分隔线，呈现无边框玻璃效果。",
+      "恢复首页的内联 SVG 吉祥物。",
+      "修复侧边栏首次渲染时因变量前向引用导致的崩溃。",
+    ],
+  },
   {
     version: "0.12.4",
     date: "2026-09-04",
