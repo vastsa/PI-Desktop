@@ -126,6 +126,7 @@ import {
   shouldCreateTaskNotification as shouldCreateTaskNotificationPolicy,
 } from "./notification-policy";
 import { PersistenceOutbox } from "./persistence-outbox";
+import { InflightCheckpointer } from "./inflight-checkpoint";
 import { AgentSidecar } from "./agent-sidecar";
 import { PluginRuntime } from "./plugin-runtime";
 import { ClipboardHistory, type ClipboardCapture } from "./clipboard-history";
@@ -884,6 +885,23 @@ const logger = new Logger(
 );
 const persistenceOutbox = new PersistenceOutbox(dataDir, (level, message, data) => {
   logger.app("persistence", level, message, { data });
+});
+// The reply currently streaming in each session, checkpointed to host-core so
+// a quit or crash mid-reply keeps the text the user already saw (D299). A
+// checkpoint is a best-effort write against a live host; the outbox is not
+// involved because a stale checkpoint must never be replayed after the final
+// row.
+const inflightCheckpointer = new InflightCheckpointer(async (checkpoint) => {
+  if (!host || !host.isAvailable()) return;
+  await host.call(
+    "session.saveInflightMessage",
+    {
+      sessionId: checkpoint.sessionId,
+      turnId: checkpoint.turnId,
+      message: checkpoint.message,
+    },
+    5_000,
+  );
 });
 
 /** Product UI locale for dual-locale update notes (mirrored from settings). */
@@ -4738,7 +4756,13 @@ function wireSidecar(s: AgentSidecar) {
         if (host) {
           await host.call("plans.abort", { sessionId }).catch(() => undefined);
         }
-        await finishTurn(sessionId, "aborted", "PLAN_APPROVAL_INTERRUPTED");
+        // No final row is coming from a dead sidecar: keep whatever the reply
+        // had streamed so far as an aborted transcript row (D299).
+        await inflightCheckpointer.flush(sessionId);
+        inflightCheckpointer.settle(sessionId);
+        await finishTurn(sessionId, "aborted", "PLAN_APPROVAL_INTERRUPTED", {
+          recoverInflight: true,
+        });
         if (executionId) {
           await finishApprovedExecution(
             executionId,
@@ -4981,7 +5005,7 @@ function finishTurn(
   sessionId: string,
   status: "completed" | "aborted" | "error",
   errorCode?: string,
-  options: { createNotification?: boolean } = {},
+  options: { createNotification?: boolean; recoverInflight?: boolean } = {},
 ): Promise<void> {
   const existing = turnFinalizations.get(sessionId);
   if (existing) return existing;
@@ -5004,16 +5028,30 @@ function finishTurn(
           const result = await host.call<{
             ok: boolean;
             notification?: AppNotification;
+            recovered?: UiMessage;
           }>("session.endTurn", {
             turnId,
             status,
             errorCode,
             createNotification,
+            // The reply can no longer finish on its own: promote its last
+            // checkpoint instead of waiting for a final row that never comes.
+            ...(options.recoverInflight ? { recoverInflight: true } : {}),
           });
           if (result.notification) {
             sendToRenderer(IPC.event.notificationChanged, {
               notification: result.notification,
             });
+          }
+          if (result.recovered) {
+            // Settle the renderer's streaming row the same way a final
+            // message_end would have, so it does not stay "streaming" forever.
+            sendToRenderer(IPC.event.agentMessage, {
+              sessionId,
+              turnId,
+              ts: Date.now(),
+              event: { type: "message_end", message: result.recovered },
+            } satisfies AgentEventEnvelope);
           }
         } catch (e) {
           logger.app("persistence", "warn", "endTurn failed", {
@@ -5392,6 +5430,19 @@ function persistAgentEvent(envelope: AgentEventEnvelope): UiMessage | undefined 
       planSubmissionTurnKey(envelope.sessionId, envelope.turnId || turnId!),
     );
   }
+  if (event.type === "message_update" && event.message.role === "assistant") {
+    // Checkpoint only the session's own reply (D299). Delegate rows stream in
+    // parallel with the parent's and would thrash a per-session checkpoint;
+    // their loss on a crash is bounded to the Task call's activity.
+    if (!envelope.parentToolCallId) {
+      inflightCheckpointer.observe({
+        sessionId: envelope.sessionId,
+        turnId: envelope.turnId ?? turnId,
+        message: event.message,
+      });
+    }
+    return;
+  }
   if (event.type === "tool_start") {
     activeToolCalls.set(activeToolCallKey(envelope.sessionId, event.toolCallId), {
       toolName: event.toolName,
@@ -5491,6 +5542,10 @@ function persistAgentEvent(envelope: AgentEventEnvelope): UiMessage | undefined 
     return;
   }
   if (event.type === "message_end" && event.message.role === "assistant") {
+    // The final row supersedes any pending checkpoint of this reply (D299).
+    if (!envelope.parentToolCallId) {
+      inflightCheckpointer.settle(envelope.sessionId);
+    }
     // Empty aborted bubbles are not useful transcript rows. Structured
     // provider failures remain durable assistant messages so their details
     // stay attached to the failed turn after reload.
@@ -8638,6 +8693,45 @@ app.on("window-all-closed", () => {
   app.quit();
 });
 
+/** Upper bound on the time quit spends waiting for streaming replies to settle. */
+const QUIT_TURN_SETTLE_BUDGET_MS = 2_000;
+
+async function settleRunningTurnsForQuit(): Promise<void> {
+  const sessions = [...activeTurns.keys()];
+  const deadline = Date.now() + QUIT_TURN_SETTLE_BUDGET_MS;
+  // The newest snapshot of every streaming reply lands first: it is the
+  // fallback if the abort below does not produce a final row in time.
+  await inflightCheckpointer.flushAll();
+  if (sessions.length === 0) {
+    await persistenceOutbox.flush(() => host);
+    return;
+  }
+  if (sidecar) {
+    const activeSidecar = sidecar;
+    await Promise.allSettled(
+      sessions.map((sessionId) =>
+        Promise.race([
+          activeSidecar.call("agent.abort", { sessionId }),
+          new Promise((resolve) => setTimeout(resolve, 800)),
+        ]),
+      ),
+    );
+  }
+  // The abort surfaces as message_end + error/agent_end, which finishTurn
+  // turns into a settled turn and an outbox append. Wait for that, bounded.
+  while (Date.now() < deadline) {
+    await persistenceOutbox.flush(() => host);
+    if (activeTurns.size === 0 && persistenceOutbox.size() === 0) break;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  await persistenceOutbox.flush(() => host);
+  if (activeTurns.size > 0 || persistenceOutbox.size() > 0) {
+    logger.app("lifecycle", "warn", "quit before streaming replies settled", {
+      data: { running: activeTurns.size, pendingAppends: persistenceOutbox.size() },
+    });
+  }
+}
+
 app.on("before-quit", (event) => {
   // A duplicate launch has no host, sidecar, panel, or outbox of its own, and
   // the shutdown sequence below would write into the running instance's data
@@ -8656,6 +8750,11 @@ app.on("before-quit", (event) => {
     pluginLauncherAccelerator = null;
   }
   shutdownPromise = (async () => {
+    // Replies still streaming are stopped through the sidecar first so their
+    // aborted final rows can reach the transcript while host-core is alive;
+    // whatever does not make it in time is covered by the last checkpoint
+    // (D299). Bounded: a quit must not hang on an unresponsive provider.
+    await settleRunningTurnsForQuit();
     const hostShutdown = host?.dispose();
     const pluginPanelShutdown = pluginPanels.closeAll();
     updater.dispose();
@@ -8667,6 +8766,7 @@ app.on("before-quit", (event) => {
     userMcp.disposeAll();
     browserPane.dispose();
     pluginViews.dispose();
+    inflightCheckpointer.dispose();
     const sidecarShutdown = sidecar?.dispose();
 
     try {
