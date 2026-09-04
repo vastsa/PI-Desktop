@@ -87,8 +87,13 @@ test("leaving the chat with no session drops every pane", () => {
 test("the store drops panes wherever it clears the active session", () => {
   // Each of these paths sets `activeSessionId: undefined` with `messages: []`:
   // bootstrap with no persisted session, activateProject, openProject,
-  // clearProject. All four must release retention in the same commit.
-  const clearing = store.match(/activeSessionId: undefined,\n\s*(?:draftConfiguration: null,\n\s*)?messages: \[\],/g) ?? [];
+  // clearProject, and New Task's first-frame empty reveal (D305). All of them
+  // must release retention in the same commit. Intermediate fields such as
+  // `draftConfiguration` or `selectingSessionId` do not exempt a path.
+  const clearing =
+    store.match(
+      /activeSessionId: undefined,(?:\n\s*(?:draftConfiguration: null|selectingSessionId: undefined),)*\n\s*messages: \[\],/g,
+    ) ?? [];
   const releasing = store.match(/\.\.\.clearSessionPanes\(\),/g) ?? [];
   assert.equal(
     releasing.length,
