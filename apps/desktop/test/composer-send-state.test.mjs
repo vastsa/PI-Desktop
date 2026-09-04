@@ -84,9 +84,10 @@ test("new task persists or reuses an empty session and keeps the run flag scoped
   )?.[0] ?? "";
   assert.ok(newSession.length > 0, "newSession implementation not found");
   assert.match(newSession, /latestSessionInScope/);
-  assert.match(newSession, /latest\.messageCount === 0/);
+  assert.match(newSession, /sessionIsReusableEmpty/);
   assert.match(newSession, /persistSessionAndSelect/);
   assert.match(newSession, /pendingNewSessionRequests/);
+  assert.doesNotMatch(newSession, /refreshSessions/);
   // A newly selected empty session uses its own run state, so a turn still
   // streaming in the previous session cannot leave it stuck on the stop
   // button.
@@ -96,7 +97,7 @@ test("new task persists or reuses an empty session and keeps the run flag scoped
   );
   assert.match(
     store,
-    /isRunning: s\.runningSessions\[sessionId\] \?\? false/,
+    /isRunning: current\.runningSessions\[summary\.id\] \?\? false/,
   );
 });
 

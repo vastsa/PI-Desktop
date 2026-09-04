@@ -2068,12 +2068,13 @@ reasoning-level control.
   same active-session configuration path; after host confirmation resolves an
   approval, the approval surface is removed rather than remaining as a terminal
   action card.
-- During project or session navigation, the home composer may briefly have no
-  `activeSessionId`. Its idle mode, model × reasoning, and permission triggers remain
-  enabled while the durable empty session is loading; once selected, the
-  configuration applies directly to that session. A new task appears in the
-  sidebar before it carries input, and a running turn or pending approval still
-  gates those controls.
+- New Task reveals the empty home on the first frame, so the previous
+  conversation does not linger while the durable row is created. The home
+  composer may briefly have no `activeSessionId` during that create. Its idle
+  mode, model × reasoning, and permission triggers remain enabled; once
+  selected, the configuration applies directly to that session. A new task
+  appears in the sidebar from the `session.create` summary before it carries
+  input, and a running turn or pending approval still gates those controls.
 - While the home composer has no active session, its Thinking trigger resolves
   capabilities from the exact model selected in the model menu (using the
   cached catalog record), not from that provider's default model. Selecting a

@@ -44,11 +44,16 @@ import {
 import { api } from "../lib/api";
 import type { SettingsTabId } from "../lib/settings-search";
 import { createNavigationIntentController } from "../lib/navigation-intent";
+import { scheduleHomeDraftAdopt } from "../lib/composer-draft-cache";
 import {
   commitForkedSessionState,
   forkedSessionMessages,
   FORKED_SESSION_WINDOW,
 } from "../lib/session-fork";
+import {
+  EMPTY_SESSION_WINDOW,
+  sessionIsReusableEmpty,
+} from "../lib/session-create";
 import { rememberProject, setProjectPinned } from "../lib/recent-projects";
 import { applyOptimisticSessionConfiguration } from "../lib/session-thinking";
 import {
@@ -309,6 +314,18 @@ function latestSessionInScope(
       return bTime - aTime || b.id.localeCompare(a.id);
     })
     .find((session) => !sessionIsArchived(session.id, sessionMeta));
+}
+
+function liveMessageCountForSession(
+  id: string,
+  state: { activeSessionId?: string; messages: UiMessage[]; retainedTranscripts: Record<string, UiMessage[]> },
+): number {
+  if (state.activeSessionId === id) return state.messages.length;
+  return (
+    sessionTranscriptCache.get(id)?.length ??
+    state.retainedTranscripts[id]?.length ??
+    0
+  );
 }
 
 function cacheSessionTranscript(
@@ -1610,6 +1627,19 @@ export const useAppStore = create<AppState>((set, get) => ({
         sessionTranscriptCache.get(id) ?? get().retainedTranscripts[id];
       if (retainedMessages && get().activeSessionId !== id && summary) {
         commitSelection(retainedMessages, true);
+      } else if (
+        summary &&
+        get().activeSessionId !== id &&
+        sessionIsReusableEmpty(summary, {
+          running: runningAtSelection,
+          liveMessageCount: retainedMessages?.length ?? 0,
+          submitted: submittedComposerDrafts.has(id),
+        })
+      ) {
+        // An empty destination has nothing to load. Reveal it on this frame
+        // instead of leaving the previous transcript up during session.get.
+        cacheSessionTranscript(id, [], EMPTY_SESSION_WINDOW);
+        commitSelection([], true, EMPTY_SESSION_WINDOW);
       }
       if (summary) {
         if (!(await alignWorkspaceLatest(summary.projectPath))) return;
@@ -1700,25 +1730,27 @@ export const useAppStore = create<AppState>((set, get) => ({
         if (!navigationIntentIsCurrent(intent)) return;
       }
 
-      // Refresh before deciding: a session may have received its first user
-      // message while its turn is still streaming, before the next normal
-      // sidebar refresh at agent_end.
-      await get().refreshSessions();
-      if (!navigationIntentIsCurrent(intent)) return;
+      // Reuse against renderer state: a just-sent first message is already
+      // visible as a running session, live rows, or a submitted draft, even
+      // when session.list has not yet refreshed messageCount.
       const latest = latestSessionInScope(
         get().sessions,
         requestedProjectPath,
         get().sessionMeta,
       );
-      if (latest && latest.messageCount === 0) {
+      if (
+        latest &&
+        sessionIsReusableEmpty(latest, {
+          running: get().runningSessions[latest.id] === true,
+          liveMessageCount: liveMessageCountForSession(latest.id, get()),
+          submitted: submittedComposerDrafts.has(latest.id),
+        })
+      ) {
         if (get().activeSessionId === latest.id && get().page === "chat") return;
         await get().selectSession(latest.id, { navigationIntent: intent });
         return;
       }
 
-      // A New Task click is itself the materialization trigger now. The
-      // returned session is real immediately, so refreshSessions exposes its
-      // zero-message row before the transcript is selected.
       await persistSessionAndSelect({
         intent,
         projectPath: requestedProjectPath,
@@ -4234,10 +4266,81 @@ type PersistSessionOptions = {
 };
 
 /**
+ * Drop the previous transcript on this frame so New Task does not leave the
+ * old conversation on screen while `session.create` is in flight (D305).
+ */
+function revealEmptyCreatingSession(intent: number): void {
+  if (!navigationIntentIsCurrent(intent)) return;
+  useAppStore.setState((state) => {
+    if (
+      !state.activeSessionId &&
+      state.page === "chat" &&
+      state.messages.length === 0 &&
+      state.retainedSessionIds.length === 0
+    ) {
+      return {};
+    }
+    return {
+      ...switchWorkPanelSession(state, undefined),
+      ...clearSessionPanes(),
+      activeSessionId: undefined,
+      selectingSessionId: undefined,
+      messages: [],
+      page: "chat" as const,
+      isRunning: false,
+    };
+  });
+}
+
+function commitCreatedEmptySession(
+  summary: SessionSummary,
+  options: { activate: boolean },
+): void {
+  const messages: UiMessage[] = [];
+  cacheSessionTranscript(summary.id, messages, EMPTY_SESSION_WINDOW);
+  if (options.activate) scheduleHomeDraftAdopt(summary.id);
+  useAppStore.setState((current) => {
+    const commit = commitForkedSessionState(current, summary, {
+      activate: options.activate,
+    });
+    const shared: Partial<AppState> = {
+      sessions: decorateSessions(commit.sessions, current.sessionMeta),
+      sessionHistory: {
+        ...current.sessionHistory,
+        [summary.id]: EMPTY_SESSION_WINDOW,
+      },
+      planningStates: {
+        ...current.planningStates,
+        [summary.id]: summary.mode === "plan" ? "planning" : "inactive",
+      },
+    };
+    if (!commit.activated) return shared;
+    return {
+      ...switchWorkPanelSession(current, summary.id),
+      ...shared,
+      ...retainSessionPane(current, summary.id, messages),
+      activeSessionId: summary.id,
+      selectingSessionId: undefined,
+      draftConfiguration: null,
+      messages,
+      page: "chat" as const,
+      // The composer follows the visible session's own run state: a turn
+      // still streaming in the previously selected session must not leave
+      // the fresh session's send button stuck in the stop/abort state
+      // (the old session's agent_end is a cross-session event and never
+      // clears the active flag).
+      isRunning: current.runningSessions[summary.id] ?? false,
+      navStack: commit.navStack as AppState["navStack"],
+      navIndex: commit.navIndex,
+    };
+  });
+}
+
+/**
  * Create a durable empty session and select it. The same path is used by an
  * explicit New Task click and by the legacy home draft when its first message
  * or pasted file needs a session. Returns null when navigation was superseded
- * after the host mutation, leaving the refreshed session list authoritative.
+ * after the host mutation; the created row is still inserted into the list.
  */
 async function persistSessionAndSelect(
   options: PersistSessionOptions = {},
@@ -4276,53 +4379,33 @@ async function persistSessionAndSelect(
     inheritedBinding,
     defaultProvider?.supportedThinkingLevels,
   );
-  const created = await api.createSession({
-    title: untitledTaskTitle(),
-    mode: draftConfig?.mode ?? normalizeMode(settings?.defaultMode),
-    thinkingLevel: draftConfig?.thinkingLevel ?? defaultThinkingLevel,
-    permissionMode: draftConfig?.permissionMode,
-    providerId: draftConfig?.providerId,
-    modelId: draftConfig?.modelId,
-    projectPath: projectPath ?? undefined,
-  });
-  await useAppStore.getState().refreshSessions();
-  if (!navigationIntentIsCurrent(active)) return null;
-  const detail = await api.getSession(created.session.id);
-  if (!navigationIntentIsCurrent(active)) return null;
+  const previousSessionId = state.activeSessionId;
+  revealEmptyCreatingSession(active);
+  let created: Awaited<ReturnType<typeof api.createSession>>;
+  try {
+    created = await api.createSession({
+      title: untitledTaskTitle(),
+      mode: draftConfig?.mode ?? normalizeMode(settings?.defaultMode),
+      thinkingLevel: draftConfig?.thinkingLevel ?? defaultThinkingLevel,
+      permissionMode: draftConfig?.permissionMode,
+      providerId: draftConfig?.providerId,
+      modelId: draftConfig?.modelId,
+      projectPath: projectPath ?? undefined,
+    });
+  } catch (error) {
+    if (previousSessionId && navigationIntentIsCurrent(active)) {
+      void useAppStore.getState().selectSession(previousSessionId, {
+        navigationIntent: active,
+      });
+    }
+    throw error;
+  }
   const sessionId = created.session.id;
-  const initialMessages = detail.session?.messages ?? [];
-  const initialHistoryWindow = { messageStart: 0, hasMoreBefore: false };
-  cacheSessionTranscript(sessionId, initialMessages, initialHistoryWindow);
-  useAppStore.setState((s) => {
-    const stack = s.navStack.slice(0, s.navIndex + 1);
-    const entry = { page: "chat" as const, sessionId };
-    const nextStack = [...stack, entry].slice(-50);
-    return {
-      ...switchWorkPanelSession(s, sessionId),
-      ...retainSessionPane(s, sessionId, initialMessages),
-      activeSessionId: sessionId,
-      draftConfiguration: null,
-      messages: initialMessages,
-      sessionHistory: {
-        ...s.sessionHistory,
-        [sessionId]: initialHistoryWindow,
-      },
-      page: "chat" as const,
-      planningStates: {
-        ...s.planningStates,
-        [sessionId]: created.session.mode === "plan" ? "planning" : "inactive",
-      },
-      navStack: nextStack,
-      navIndex: nextStack.length - 1,
-      // The composer follows the visible session's own run state: a turn
-      // still streaming in the previously selected session must not leave
-      // the fresh session's send button stuck in the stop/abort state
-      // (the old session's agent_end is a cross-session event and never
-      // clears the active flag).
-      isRunning: s.runningSessions[sessionId] ?? false,
-    };
-  });
-  void useAppStore.getState().restorePendingPlan(sessionId);
+  if (!navigationIntentIsCurrent(active)) {
+    commitCreatedEmptySession(created.session, { activate: false });
+    return null;
+  }
+  commitCreatedEmptySession(created.session, { activate: true });
   return sessionId;
 }
 
@@ -4334,5 +4417,13 @@ async function persistSessionAndSelect(
 export async function materializeDraftSession(
   intent?: number,
 ): Promise<string | null> {
+  const state = useAppStore.getState();
+  const scopeKey = newSessionScopeKey(state.workspace?.path ?? null);
+  const pending = pendingNewSessionRequests.get(scopeKey);
+  if (pending) {
+    await pending;
+    const activeId = useAppStore.getState().activeSessionId;
+    if (activeId) return activeId;
+  }
   return persistSessionAndSelect({ intent });
 }

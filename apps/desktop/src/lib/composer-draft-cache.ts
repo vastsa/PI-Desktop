@@ -76,6 +76,48 @@ export function deleteComposerDraft(key: string): void {
   cache.delete(key);
 }
 
+/**
+ * Session that should receive the home draft after New Task / materialize.
+ *
+ * The Composer persists the outgoing `__home__` slot on every key change, which
+ * would otherwise put the typed text back after the store has already moved it.
+ * `flushScheduledHomeDraftAdopt` runs after that persist so the live snapshot
+ * lands on the new session and the home slot stays empty.
+ */
+let scheduledHomeAdoptSessionId: string | null = null;
+
+/**
+ * Move typed home-composer content onto a session that was just created.
+ *
+ * New Task reveals the empty home before `session.create` returns, so any
+ * keystrokes in that interval land in the home slot. They belong to the new
+ * session, not to a later startup draft. A non-empty home snapshot wins over
+ * an earlier copy of the same slot.
+ */
+export function adoptHomeDraftForSession(sessionId: string): void {
+  if (!sessionId) return;
+  const home = cache.get(HOME_DRAFT_KEY);
+  cache.delete(HOME_DRAFT_KEY);
+  if (!home) return;
+  if (!home.text && home.fileReferences.length === 0) return;
+  cache.set(sessionId, {
+    text: home.text,
+    fileReferences: home.fileReferences.map((reference) => ({ ...reference })),
+  });
+}
+
+export function scheduleHomeDraftAdopt(sessionId: string): void {
+  if (!sessionId) return;
+  scheduledHomeAdoptSessionId = sessionId;
+  adoptHomeDraftForSession(sessionId);
+}
+
+export function flushScheduledHomeDraftAdopt(sessionId: string): void {
+  if (!sessionId || scheduledHomeAdoptSessionId !== sessionId) return;
+  scheduledHomeAdoptSessionId = null;
+  adoptHomeDraftForSession(sessionId);
+}
+
 export function pruneComposerDrafts(keep: Iterable<string>): void {
   const retain = new Set(keep);
   for (const key of cache.keys()) {
@@ -86,4 +128,5 @@ export function pruneComposerDrafts(keep: Iterable<string>): void {
 /** Test-only: drop every slot so cases cannot leak into one another. */
 export function resetComposerDraftCache(): void {
   cache.clear();
+  scheduledHomeAdoptSessionId = null;
 }

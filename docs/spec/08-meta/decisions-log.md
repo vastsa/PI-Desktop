@@ -3243,6 +3243,24 @@ D193, and D194.
   their stored `thinkingLevel`. Supersedes D153. See E2E-082 / E2E-163 /
   E2E-174.
 
+## 2026-09-05 — New Task reveals the empty destination before host IO (D305)
+
+- New Task used to await `session.list`, `session.create`, another
+  `session.list`, and `session.get` before leaving the previous transcript.
+  That chain made the click feel stuck: the old conversation stayed on screen,
+  then jumped to empty. The list refresh existed only so a first message sent
+  moments earlier would not look empty; the renderer already knows that case
+  from `runningSessions`, live rows, and submitted drafts.
+- Creating a session now clears the previous conversation on the first frame
+  and inserts the durable row from the `session.create` summary. Reusing the
+  group's latest empty session commits an empty transcript on that same frame.
+  Send and paste wait for the in-flight create instead of opening a second
+  slot; keystrokes typed on the empty home during create move onto the new
+  session.
+- Decision D305 amends D252 / ADR 0113 timing only. The reuse rule, durable
+  empty slot, and protocol/storage versions are unchanged. ADR 0154,
+  E2E-011a / E2E-011d / E2E-011g.
+
 ## 2026-09-05 — Startup splash shares the macOS sidebar glass (D304)
 
 - On macOS the boot splash (`.startup-splash`) drops its opaque

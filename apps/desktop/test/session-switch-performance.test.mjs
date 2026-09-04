@@ -81,6 +81,15 @@ test("only the latest navigation may commit a loaded transcript", () => {
       selection.indexOf("await alignWorkspaceLatest(summary.projectPath)"),
     "the retained pane must be revealed before workspace alignment is awaited",
   );
+  // Reusing an empty New Task slot is also a first-frame reveal: there is no
+  // transcript to load, so the previous conversation must not linger.
+  assert.match(selection, /sessionIsReusableEmpty/);
+  assert.match(selection, /commitSelection\(\[\], true, EMPTY_SESSION_WINDOW\)/);
+  assert.ok(
+    selection.indexOf("commitSelection([], true, EMPTY_SESSION_WINDOW)") <
+      selection.indexOf("await alignWorkspaceLatest(summary.projectPath)"),
+    "an empty destination must be revealed before workspace alignment is awaited",
+  );
 });
 
 test("sidebar owns feedback and prefetch while store owns workspace alignment", () => {

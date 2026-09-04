@@ -6053,13 +6053,14 @@ function registerIpc() {
   });
   handle(IPC.invoke.sessionCreate, async (input = {}) => {
     if (!host) throw new Error("host unavailable");
+    const capabilityPromise = sessionCapabilityContext();
     const res = await host.call<{ session?: (RuntimeSession & { id?: string }) | null }>(
       "session.create",
       input,
     );
     logger.app("session", "info", "session created", { sessionId: res.session?.id });
     if (!res.session) return res;
-    const { providers, defaults } = await sessionCapabilityContext();
+    const { providers, defaults } = await capabilityPromise;
     return { ...res, session: enrichSession(res.session, providers, defaults) };
   });
   handle(

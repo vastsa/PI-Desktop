@@ -33,6 +33,7 @@ import {
   deleteComposerDraft,
   draftKeyForSession,
   draftOwnerSessionId,
+  flushScheduledHomeDraftAdopt,
   pruneComposerDrafts,
   readComposerDraft,
   writeComposerDraft,
@@ -845,6 +846,9 @@ export function Composer({
       // Persist the outgoing draft before switching. Capture from the live
       // editable so a keystroke that has not re-rendered yet is not dropped.
       persistDraft(previousKey);
+      if (previousKey === HOME_DRAFT_KEY) {
+        flushScheduledHomeDraftAdopt(draftKey);
+      }
       draftKeyRef.current = draftKey;
       const nextDraft = readComposerDraft(draftKey);
       setValue(nextDraft?.text ?? "");

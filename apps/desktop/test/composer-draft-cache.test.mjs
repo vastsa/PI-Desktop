@@ -3,9 +3,12 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   HOME_DRAFT_KEY,
+  adoptHomeDraftForSession,
   captureComposerDraft,
   deleteComposerDraft,
   draftKeyForSession,
+  flushScheduledHomeDraftAdopt,
+  scheduleHomeDraftAdopt,
   draftOwnerSessionId,
   pruneComposerDrafts,
   readComposerDraft,
@@ -75,6 +78,35 @@ test("deleting a slot does not clear a different session", () => {
   assert.equal(readComposerDraft("b")?.text, "beta");
 });
 
+test("adopting the home draft moves the live snapshot onto the created session", () => {
+  captureComposerDraft(HOME_DRAFT_KEY, "typed during create", []);
+  adoptHomeDraftForSession("sess-new");
+  assert.equal(readComposerDraft(HOME_DRAFT_KEY), undefined);
+  assert.equal(readComposerDraft("sess-new")?.text, "typed during create");
+  captureComposerDraft(HOME_DRAFT_KEY, "later home", []);
+  writeComposerDraft("sess-new", { text: "already owned", fileReferences: [] });
+  adoptHomeDraftForSession("sess-new");
+  assert.equal(readComposerDraft("sess-new")?.text, "later home");
+  assert.equal(readComposerDraft(HOME_DRAFT_KEY), undefined);
+});
+
+test("flushing a scheduled adopt uses the Composer persist that rewrote home", () => {
+  scheduleHomeDraftAdopt("sess-new");
+  writeComposerDraft(HOME_DRAFT_KEY, {
+    text: "typed after persist",
+    fileReferences: [],
+  });
+  flushScheduledHomeDraftAdopt("other");
+  assert.equal(readComposerDraft(HOME_DRAFT_KEY)?.text, "typed after persist");
+  flushScheduledHomeDraftAdopt("sess-new");
+  assert.equal(readComposerDraft(HOME_DRAFT_KEY), undefined);
+  assert.equal(readComposerDraft("sess-new")?.text, "typed after persist");
+  writeComposerDraft(HOME_DRAFT_KEY, { text: "stale home", fileReferences: [] });
+  flushScheduledHomeDraftAdopt("sess-new");
+  assert.equal(readComposerDraft("sess-new")?.text, "typed after persist");
+  assert.equal(readComposerDraft(HOME_DRAFT_KEY)?.text, "stale home");
+});
+
 test("composer hydrates from the shared cache and persists across unmount and hidden windows", () => {
   assert.match(composer, /from "\.\.\/lib\/composer-draft-cache"/);
   assert.match(composer, /readComposerDraft\(draftKey\)/);
@@ -86,6 +118,7 @@ test("composer hydrates from the shared cache and persists across unmount and hi
   assert.match(composer, /paintCurrentDraft\(el, expected\)/);
   assert.match(composer, /const previousKey = draftKeyRef\.current/);
   assert.match(composer, /persistDraft\(previousKey\)/);
+  assert.match(composer, /flushScheduledHomeDraftAdopt\(draftKey\)/);
   assert.match(composer, /const nextDraft = readComposerDraft\(draftKey\)/);
   assert.match(composer, /setValue\(nextDraft\?\.text \?\? ""\)/);
   assert.match(composer, /setFileReferences\(\s*nextDraft\?\.fileReferences\.map/);

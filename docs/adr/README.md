@@ -166,3 +166,4 @@ Each ADR includes:
 | 0151 | Keep the work panel inside the fixed application window | Accepted |
 | 0152 | Eight-frame empty-home mascot GIF | Accepted |
 | 0153 | Checkpoint the streaming reply beside the transcript | Accepted |
+| 0154 | Reveal the New Task empty destination before host IO | Accepted |

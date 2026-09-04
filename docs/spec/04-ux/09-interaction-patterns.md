@@ -247,6 +247,12 @@ may be retained while exactly one workspace supplies the visible shell context.
   with another session's messages. The destination is then revealed at its final
   record without a top-of-history or empty-home flash. An evicted session is
   indistinguishable from a first visit.
+- New Task is not a cold switch. Creating a session reveals the empty home on
+  the first frame (the previous conversation and retained panes clear before
+  `session.create`). Reusing the group's latest empty session commits that empty
+  transcript on the same frame rather than waiting for `session.get`. The
+  durable row is inserted from the `session.create` summary; send and paste wait
+  for that in-flight create instead of opening a second slot (ADR 0154).
 - A first-opened session settles at its newest turn. A revisited pane returns to
   the offset the user left, and a pane still pinned re-anchors to the bottom;
   activation no longer resets manual-scroll state for a revisit (ADR 0137).
@@ -265,7 +271,7 @@ may be retained while exactly one workspace supplies the visible shell context.
   cannot add a second copy of a user message. These events never activate their
   session, change the visible project/page, or move
   focus. Creating a new session or switching to one that is not running returns
-  the composer to its idle Send state immediately: a turn still streaming in the
+  the composer to its idle Send state on that first frame: a turn still streaming in the
   previously selected session never leaves the destination session's send button
   stuck in the Abort/stop state, and that background turn's later completion
   does not alter the destination composer. Their work-panel artifacts and
@@ -1154,7 +1160,9 @@ This does not prevent state changes — it makes them instant.
 9a. Creating a new session or switching to a non-running session returns the
     composer to its idle Send state even while another session is still
     streaming; the destination session's own run state alone decides the
-    send/abort button
+    send/abort button. New Task reveals the empty destination on the first
+    frame rather than leaving the previous transcript visible until host IO
+    completes.
 10. Focus rings visible on `focus-visible` only, 2px accent offset 2px
 11. Command palette traps focus; Escape returns to previous focus
 12. All animations respect `prefers-reduced-motion: reduce` — state changes are instant, no decorative motion
