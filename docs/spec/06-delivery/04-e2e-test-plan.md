@@ -3033,22 +3033,25 @@ Each scenario is documented in this format:
   throttled sidecar or a large pending tool output) so a prompt round trip takes
   visibly longer than a frame.
 - **Steps**: 1) From the home surface, open the long session and record the
-  first painted frames. 2) Wait for the transcript to appear. 3) Type a
-  multi-line prompt so the composer grows, then press Enter. 4) While the host
-  is still busy, press Enter again on the now-empty box. 5) Make the host reject
-  a send (for example disable the model's provider) and press Enter with a new
-  draft. 6) Open a session with fewer than fifteen messages.
+  first painted frames. 2) Wait for the transcript to appear. 3) Leave and
+  re-open the same session while its history page is being revalidated. 4) Type
+  a multi-line prompt so the composer grows, then press Enter. 5) While the
+  host is still busy, press Enter again on the now-empty box. 6) Make the host
+  reject a send (for example disable the model's provider) and press Enter with
+  a new draft. 7) Open a session with fewer than fifteen messages.
 - **Expected**: The first frame of the long session is an opaque skeleton of
   alternating user and assistant lines under the composer; no transcript text is
   visible during the frames in which the history expands or row heights settle,
   and the skeleton fades out within roughly 600ms onto a transcript already
   positioned at its newest turn. The rows never move up and down after the
   reveal. While the multi-line draft grows, the newest turn moves up with the
-  composer instead of disappearing behind it. Pressing Enter clears the box and
-  shows the user row at the bottom of the transcript in the same frame, before
-  the host has answered; when the host echo arrives the row does not duplicate
-  or jump. The second Enter on the empty box does nothing and queues no
-  duplicate. When the send is rejected, the user row disappears and the draft
+  composer instead of disappearing behind it. Re-opening during revalidation
+  and a repeated older-page response leave exactly one row per message id,
+  including the existing user row. Pressing Enter clears the box and shows the
+  user row at the bottom of the transcript in the same frame, before the host
+  has answered; when the host echo arrives the row does not duplicate or jump.
+  The second Enter on the empty box does nothing and queues no duplicate. When
+  the send is rejected, the user row disappears and the draft
   returns to the box with the caret at its end. The short session shows no
   skeleton.
 - **Specs linked**: `04-ux/08-component-spec.md`,
@@ -3059,7 +3062,8 @@ Each scenario is documented in this format:
   `composer-send-state.test.mjs` `send clears the composer before the round
   trip and restores a rejected draft (D287)` and `the user row is inserted
   before the host round trip and echoed under the same id (D288)`,
-  `session-transcript.test.mjs`); UI scenario Draft
+  `session-transcript.test.mjs` (`repeated transcript rows keep one position and
+  the latest value`); UI scenario Draft
 
 #### E2E-072: Keyboard shortcut mappings persist and stay conflict-safe
 

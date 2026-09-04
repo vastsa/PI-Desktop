@@ -44,6 +44,33 @@ export function optimisticUserMessage(
 }
 
 /**
+ * Collapse repeated transcript rows by their canonical message id.
+ *
+ * A retry or a stale page response can briefly put the same durable row in
+ * both the live snapshot and the page being prepended. Keep the first
+ * position, but use the last value, matching host-core's keep-last policy.
+ */
+export function dedupeSessionMessages(messages: UiMessage[]): UiMessage[] {
+  const positions = new Map<string, number>();
+  let next: UiMessage[] | undefined;
+  for (const [index, message] of messages.entries()) {
+    const previous = positions.get(message.id);
+    if (previous === undefined) {
+      if (next) {
+        positions.set(message.id, next.length);
+        next.push(message);
+      } else {
+        positions.set(message.id, index);
+      }
+      continue;
+    }
+    if (!next) next = messages.slice(0, index);
+    next[previous] = message;
+  }
+  return next ?? messages;
+}
+
+/**
  * Apply one live event message to a renderer-owned session snapshot without
  * rebuilding the whole transcript when the row is unchanged.
  */
@@ -51,10 +78,11 @@ export function upsertLiveSessionMessage(
   messages: UiMessage[],
   message: UiMessage,
 ): UiMessage[] {
-  const index = messages.findIndex((candidate) => candidate.id === message.id);
-  if (index < 0) return [...messages, message];
-  if (messages[index] === message) return messages;
-  const next = messages.slice();
+  const normalized = dedupeSessionMessages(messages);
+  const index = normalized.findIndex((candidate) => candidate.id === message.id);
+  if (index < 0) return [...normalized, message];
+  if (normalized[index] === message) return normalized;
+  const next = normalized.slice();
   next[index] = message;
   return next;
 }
@@ -67,9 +95,10 @@ export function removeLiveSessionMessage(
   messages: UiMessage[],
   messageId: string,
 ): UiMessage[] {
-  const index = messages.findIndex((message) => message.id === messageId);
-  if (index < 0) return messages;
-  return [...messages.slice(0, index), ...messages.slice(index + 1)];
+  const normalized = dedupeSessionMessages(messages);
+  const index = normalized.findIndex((message) => message.id === messageId);
+  if (index < 0) return normalized;
+  return [...normalized.slice(0, index), ...normalized.slice(index + 1)];
 }
 
 /**
@@ -85,11 +114,13 @@ export function mergeLiveSessionMessages(
   durableMessages: UiMessage[],
   liveMessages: UiMessage[],
 ): UiMessage[] {
-  if (liveMessages.length === 0) return durableMessages;
+  const durable = dedupeSessionMessages(durableMessages);
+  const liveNormalized = dedupeSessionMessages(liveMessages);
+  if (liveNormalized.length === 0) return durable;
 
-  const liveById = new Map(liveMessages.map((message) => [message.id, message]));
+  const liveById = new Map(liveNormalized.map((message) => [message.id, message]));
   let changed = false;
-  const merged = durableMessages.map((durable) => {
+  const merged = durable.map((durable) => {
     const live = liveById.get(durable.id);
     if (!live) return durable;
     liveById.delete(durable.id);
@@ -100,13 +131,13 @@ export function mergeLiveSessionMessages(
     return durable;
   });
 
-  for (const live of liveMessages) {
+  for (const live of liveNormalized) {
     if (!liveById.has(live.id)) continue;
     liveById.delete(live.id);
     merged.push(live);
     changed = true;
   }
-  return changed ? merged : durableMessages;
+  return changed ? merged : durable;
 }
 
 function isInFlightMessage(message: UiMessage): boolean {

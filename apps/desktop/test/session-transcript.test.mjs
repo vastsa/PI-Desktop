@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  dedupeSessionMessages,
   mergeLiveSessionMessages,
   optimisticUserMessage,
   removeLiveSessionMessage,
@@ -46,6 +47,46 @@ test("live-only terminal rows are retained when detail arrives during a turn", (
   ];
 
   assert.equal(mergeLiveSessionMessages(durable, live).at(-1).id, "answer");
+});
+
+test("repeated transcript rows keep one position and the latest value", () => {
+  const first = message("user", { role: "user", content: "first" });
+  const replacement = message("user", { role: "user", content: "latest" });
+  const tail = message("answer", { content: "tail" });
+  const tailReplacement = message("answer", { content: "latest tail" });
+  const end = message("end", { content: "end" });
+  const duplicate = [first, replacement, tail, tailReplacement, end];
+
+  const normalized = dedupeSessionMessages(duplicate);
+  assert.deepEqual(normalized.map(({ id, content }) => ({ id, content })), [
+    { id: "user", content: "latest" },
+    { id: "answer", content: "latest tail" },
+    { id: "end", content: "end" },
+  ]);
+  const unique = [first, tail];
+  assert.strictEqual(dedupeSessionMessages(unique), unique);
+  assert.deepEqual(
+    mergeLiveSessionMessages([first, tail], duplicate).map(({ id, content }) => ({
+      id,
+      content,
+    })),
+    [
+      { id: "user", content: "first" },
+      { id: "answer", content: "tail" },
+      { id: "end", content: "end" },
+    ],
+  );
+  assert.deepEqual(
+    mergeLiveSessionMessages(duplicate, [first, tail]).map(({ id, content }) => ({
+      id,
+      content,
+    })),
+    [
+      { id: "user", content: "latest" },
+      { id: "answer", content: "latest tail" },
+      { id: "end", content: "end" },
+    ],
+  );
 });
 
 test("live event upserts preserve array identity for unchanged rows", () => {

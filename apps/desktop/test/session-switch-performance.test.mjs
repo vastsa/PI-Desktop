@@ -23,6 +23,9 @@ test("session reads use a bounded tail and load older pages on demand", () => {
   assert.match(store, /SESSION_TRANSCRIPT_CONTENT_LIMIT = 64 \* 1024/);
   assert.match(store, /loadOlderMessages: async/);
   assert.match(store, /messageBefore: before/);
+  assert.match(store, /const merged = mergeLiveSessionMessages\(page\.messages, cached\)/);
+  assert.match(store, /messages: mergeLiveSessionMessages\(page\.messages, state\.messages\)/);
+  assert.doesNotMatch(store, /messages: \[\.\.\.page\.messages, \.\.\.state\.messages\]/);
   assert.match(api, /messageLimit\?: number/);
   assert.match(api, /contentLimit\?: number/);
   assert.match(main, /messageBefore\?: number/);

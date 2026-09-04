@@ -58,6 +58,7 @@ import {
 } from "../lib/session-panes";
 import { normalizeProjectPath, sessionMatchesProject } from "../lib/sidebar-session-groups";
 import {
+  dedupeSessionMessages,
   mergeLiveSessionMessages,
   removeLiveSessionMessage,
   optimisticUserMessage,
@@ -313,8 +314,9 @@ function cacheSessionTranscript(
   messages: UiMessage[],
   window?: SessionHistoryWindow,
 ) {
+  const normalized = dedupeSessionMessages(messages);
   sessionTranscriptCache.delete(id);
-  sessionTranscriptCache.set(id, messages);
+  sessionTranscriptCache.set(id, normalized);
   if (window) sessionHistoryCache.set(id, window);
   while (sessionTranscriptCache.size > SESSION_TRANSCRIPT_CACHE_LIMIT) {
     const oldestId = sessionTranscriptCache.keys().next().value;
@@ -1470,12 +1472,12 @@ export const useAppStore = create<AppState>((set, get) => ({
         // A newer navigation or another prepend wins; never duplicate a page
         // after a stale response arrives.
         if (cachedStart !== before && cached.length > 0) return;
-        const merged = [...page.messages, ...cached];
+        const merged = mergeLiveSessionMessages(page.messages, cached);
         cacheSessionTranscript(sessionId, merged, nextWindow);
         set((state) =>
           state.activeSessionId === sessionId
             ? {
-                messages: [...page.messages, ...state.messages],
+                messages: mergeLiveSessionMessages(page.messages, state.messages),
                 sessionHistory: {
                   ...state.sessionHistory,
                   [sessionId]: nextWindow,

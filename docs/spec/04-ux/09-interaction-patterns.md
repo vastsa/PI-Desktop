@@ -259,8 +259,11 @@ may be retained while exactly one workspace supplies the visible shell context.
   A project/tab switch does not abort a background turn or copy its events into
   the visible transcript. Background message and tool events update that
   session's renderer-owned live cache, so reopening a running session does not
-  lose the partial tail when its durable detail read completes. These events
-  never activate their session, change the visible project/page, or move
+  lose the partial tail when its durable detail read completes. Transcript
+  revalidation and older-page prepends are idempotent by message id and keep the
+  last version at the first row position, so reopening or a stale page response
+  cannot add a second copy of a user message. These events never activate their
+  session, change the visible project/page, or move
   focus. Creating a new session or switching to one that is not running returns
   the composer to its idle Send state immediately: a turn still streaming in the
   previously selected session never leaves the destination session's send button

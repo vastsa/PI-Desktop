@@ -1981,6 +1981,9 @@ reasoning-level control.
   their source paths until the echo brings the session-scoped refs; a slash
   prompt shows its typed form until the echo brings the expanded body and
   command chip. A send that never reaches the host withdraws the row again.
+  Revalidation and older-page prepends are idempotent by message id, so leaving
+  and re-entering a session cannot display a second copy of an existing user
+  row.
 - Shift+Enter: newline in textarea
 - Placeholder guidance: the initially rendered context starts on its welcome copy and remains
   unchanged while the page/session context, draft, focus, and IME state change.
