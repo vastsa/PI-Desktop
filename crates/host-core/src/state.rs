@@ -64,6 +64,17 @@ pub struct AppState {
 impl AppState {
     pub fn open(data_dir: &std::path::Path) -> Result<Self> {
         let db = Database::open_in_dir(data_dir)?;
+        // Replies that were still streaming when the previous process ended
+        // are promoted into their transcripts before any client can read them
+        // (D299). The turn sweep inside `open` has already marked those turns
+        // aborted, so the promoted rows land under an aborted turn.
+        match crate::sessions::recover_inflight_messages(&db) {
+            Ok(recovered) if !recovered.is_empty() => {
+                tracing::info!(count = recovered.len(), "recovered in-flight replies");
+            }
+            Ok(_) => {}
+            Err(error) => tracing::warn!(%error, "in-flight reply sweep failed"),
+        }
         let secrets = SecretStore::open(data_dir)?;
         // The marketplace source is read before the manager builds its first
         // catalog, so a mirror configured for networks without GitHub access

@@ -6,6 +6,7 @@
 //! ```text
 //! <data_dir>/sessions/<session_id>.jsonl            live transcript
 //! <data_dir>/sessions/<session_id>.revisions.jsonl  regenerate branches
+//! <data_dir>/sessions/<session_id>.inflight.json    streaming reply checkpoint
 //! ```
 //!
 //! The transcript starts with a `{"type":"session",...}` header line followed
@@ -336,6 +337,99 @@ pub fn transcript_path(data_dir: &Path, session_id: &str) -> Result<PathBuf> {
 
 pub fn revisions_path(data_dir: &Path, session_id: &str) -> Result<PathBuf> {
     path_for(data_dir, session_id, ".revisions.jsonl")
+}
+
+/// Bumped when the in-flight checkpoint shape changes incompatibly.
+pub const INFLIGHT_SCHEMA: i64 = 1;
+
+/// The assistant message currently streaming for one session, checkpointed
+/// so a quit or crash mid-reply keeps the text the user already saw (D299).
+///
+/// One file per session, overwritten atomically on every checkpoint; it is
+/// never appended to and never read by the sidecar. `turn_id` ties it to the
+/// durable turn so recovery can tell a live reply from a stale leftover.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InflightRecord {
+    pub schema: i64,
+    pub session_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_id: Option<String>,
+    /// RFC3339 stamp of the checkpoint itself.
+    pub saved_at: String,
+    pub message: MessageRecord,
+}
+
+pub fn inflight_path(data_dir: &Path, session_id: &str) -> Result<PathBuf> {
+    path_for(data_dir, session_id, ".inflight.json")
+}
+
+/// Atomically replace the session's in-flight checkpoint.
+pub fn write_inflight(data_dir: &Path, session_id: &str, record: &InflightRecord) -> Result<()> {
+    let path = inflight_path(data_dir, session_id)?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let tmp = path.with_extension("json.tmp");
+    {
+        let mut file = File::create(&tmp)?;
+        file.write_all(serde_json::to_string(record)?.as_bytes())?;
+        file.write_all(b"\n")?;
+        file.flush()?;
+        file.sync_data()?;
+    }
+    swap_into_place(&tmp, &path)
+}
+
+/// Load the session's in-flight checkpoint. A missing or unreadable file is
+/// `None`: a torn checkpoint is worth less than the transcript it would sit in.
+pub fn read_inflight(data_dir: &Path, session_id: &str) -> Result<Option<InflightRecord>> {
+    let path = inflight_path(data_dir, session_id)?;
+    let raw = match fs::read_to_string(&path) {
+        Ok(raw) => raw,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e).with_context(|| format!("read {}", path.display())),
+    };
+    match serde_json::from_str::<InflightRecord>(raw.trim()) {
+        Ok(record) if record.schema == INFLIGHT_SCHEMA => Ok(Some(record)),
+        Ok(_) => Ok(None),
+        Err(error) => {
+            tracing::warn!(path = %path.display(), %error, "skipping invalid inflight checkpoint");
+            Ok(None)
+        }
+    }
+}
+
+/// Remove the session's in-flight checkpoint; a missing file is not an error.
+pub fn remove_inflight(data_dir: &Path, session_id: &str) -> Result<()> {
+    let path = inflight_path(data_dir, session_id)?;
+    match fs::remove_file(&path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e).with_context(|| format!("remove {}", path.display())),
+    }
+}
+
+/// Session ids that currently own an in-flight checkpoint file.
+pub fn list_inflight_sessions(data_dir: &Path) -> Result<Vec<String>> {
+    let dir = base_dir(data_dir);
+    let entries = match fs::read_dir(&dir) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(e).with_context(|| format!("read {}", dir.display())),
+    };
+    let mut ids = Vec::new();
+    for entry in entries {
+        let name = entry?.file_name();
+        let Some(name) = name.to_str() else { continue };
+        if let Some(id) = name.strip_suffix(".inflight.json") {
+            if safe_session_id(id) {
+                ids.push(id.to_string());
+            }
+        }
+    }
+    ids.sort();
+    Ok(ids)
 }
 
 /// Durable single-line append shared by transcript and revision writers.
@@ -734,10 +828,15 @@ pub fn remove_session_files(data_dir: &Path, session_id: &str) {
     let Ok(revisions) = revisions_path(data_dir, session_id) else {
         return;
     };
+    let Ok(inflight) = inflight_path(data_dir, session_id) else {
+        return;
+    };
     for path in [
         transcript.with_extension("jsonl.tmp"),
         transcript,
         revisions,
+        inflight.with_extension("json.tmp"),
+        inflight,
     ] {
         if let Err(error) = fs::remove_file(&path) {
             if error.kind() != std::io::ErrorKind::NotFound {

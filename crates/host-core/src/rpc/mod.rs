@@ -1456,6 +1456,32 @@ async fn handle_request(
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             Ok(json!({ "ok": true }))
         }
+        "session.saveInflightMessage" => {
+            let session_id = params
+                .get("sessionId")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| rpc_err(1002, "sessionId required", "INVALID_PARAMS"))?;
+            let message: UiMessage = serde_json::from_value(
+                params
+                    .get("message")
+                    .cloned()
+                    .ok_or_else(|| rpc_err(1002, "message required", "INVALID_PARAMS"))?,
+            )
+            .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
+            let turn_id = params
+                .get("turnId")
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
+            let st = state.lock().await;
+            let saved = sessions::save_inflight_message(
+                &st.db,
+                session_id,
+                turn_id.as_deref(),
+                &message,
+            )
+            .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            Ok(json!({ "ok": true, "saved": saved }))
+        }
         "session.appendCompaction" => {
             let session_id = params
                 .get("sessionId")
@@ -1636,7 +1662,7 @@ async fn handle_request(
                 .and_then(|v| v.as_str())
                 .unwrap_or("completed");
             let st = state.lock().await;
-            let result = sessions::end_turn(
+            let result = sessions::end_turn_settling(
                 &st.db,
                 turn_id,
                 status,
@@ -1646,11 +1672,18 @@ async fn handle_request(
                     .get("createNotification")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(true),
+                params
+                    .get("recoverInflight")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false),
             )
             .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             let mut response = json!({ "ok": result.updated });
             if let Some(notification) = result.notification {
                 response["notification"] = json!(notification);
+            }
+            if let Some(recovered) = result.recovered {
+                response["recovered"] = json!(recovered);
             }
             Ok(response)
         }
@@ -5899,6 +5932,70 @@ mod tests {
         assert_eq!(listed["models"].as_array().unwrap().len(), 2);
         assert_eq!(listed["models"][1]["modelId"], "model-b");
         assert_eq!(listed["models"][1]["capabilities"][1], "reasoning");
+    }
+
+    #[tokio::test]
+    async fn inflight_checkpoint_rpc_lifecycle() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let session = sessions::create_session(&app_state.db, None, None, None, None, None)
+            .unwrap();
+        let turn = sessions::begin_turn(&app_state.db, &session.id, None, None).unwrap();
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        let saved = handle_request(
+            state.clone(),
+            "session.saveInflightMessage",
+            json!({
+                "sessionId": session.id,
+                "turnId": turn,
+                "message": {
+                    "id": "a1",
+                    "role": "assistant",
+                    "content": "partial reply",
+                    "createdAt": "2026-09-04T00:00:00.000Z",
+                    "status": "streaming"
+                }
+            }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(saved, json!({ "ok": true, "saved": true }));
+
+        // The sidecar is gone: the turn end promotes the checkpoint.
+        let ended = handle_request(
+            state.clone(),
+            "session.endTurn",
+            json!({
+                "turnId": turn,
+                "status": "aborted",
+                "errorCode": "TURN_ABORTED",
+                "createNotification": false,
+                "recoverInflight": true
+            }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(ended["ok"], json!(true));
+        assert_eq!(ended["recovered"]["id"], json!("a1"));
+        assert_eq!(ended["recovered"]["status"], json!("aborted"));
+        assert_eq!(ended["recovered"]["content"], json!("partial reply"));
+
+        let detail = handle_request(
+            state.clone(),
+            "session.get",
+            json!({ "id": session.id }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let messages = detail["session"]["messages"].as_array().unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0]["status"], json!("aborted"));
     }
 
     #[tokio::test]

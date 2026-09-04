@@ -1409,21 +1409,49 @@ pub fn append_message(
     let (record, text) = ui_to_record(message);
     // Electron may replay an outbox entry after a host restart. Message ids
     // are globally unique, so an existing row is already the durable result.
-    let already_appended: Option<i64> = db
+    if message_indexed(db, session_id, &record.id)? {
+        return Ok(());
+    }
+    append_record(db, session_id, &session_created, &record, text.as_deref(), turn_id)?;
+    // The final assistant row supersedes any checkpoint of the same message
+    // (D299). A checkpoint for a different id belongs to a newer fragment and
+    // stays until its own final row or the turn end settles it.
+    if record.role == "assistant" {
+        if let Some(inflight) = transcripts::read_inflight(db.data_dir(), session_id)? {
+            if inflight.message.id == record.id {
+                transcripts::remove_inflight(db.data_dir(), session_id)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Whether the session's index already carries `message_id`.
+fn message_indexed(db: &Database, session_id: &str, message_id: &str) -> Result<bool> {
+    let existing: Option<i64> = db
         .conn()
         .query_row(
             "SELECT mid FROM messages WHERE id = ?1 AND session_id = ?2",
-            params![record.id, session_id],
+            params![message_id, session_id],
             |row| row.get(0),
         )
         .optional()?;
-    if already_appended.is_some() {
-        return Ok(());
-    }
+    Ok(existing.is_some())
+}
+
+/// Append one canonical record: transcript line first, then the index row.
+fn append_record(
+    db: &Database,
+    session_id: &str,
+    session_created: &str,
+    record: &MessageRecord,
+    text: Option<&str>,
+    turn_id: Option<&str>,
+) -> Result<()> {
     // File first: the transcript is the source of truth. A crash before the
     // index commit costs one derived row (self-healed by the next rewrite),
     // never message content.
-    transcripts::append_message(db.data_dir(), session_id, &session_created, &record)?;
+    transcripts::append_message(db.data_dir(), session_id, session_created, record)?;
     let conn = db.conn();
     let tx = conn.unchecked_transaction()?;
     let now = now_ms();
@@ -1437,9 +1465,116 @@ pub fn append_message(
     let Some(seq) = seq else {
         return Err(anyhow!("session not found: {session_id}"));
     };
-    insert_index_row(&tx, session_id, seq - 1, turn_id, &record, text.as_deref())?;
+    insert_index_row(&tx, session_id, seq - 1, turn_id, record, text)?;
     tx.commit()?;
     Ok(())
+}
+
+/// Checkpoint the assistant message currently streaming for `session_id`
+/// (D299). The checkpoint is a single atomically replaced file beside the
+/// transcript, never a transcript line, so a long reply does not bloat the
+/// file with one copy per checkpoint. An empty message is not worth keeping;
+/// a message whose final row already landed must not be resurrected by a
+/// checkpoint that was still in flight when the row was appended.
+pub fn save_inflight_message(
+    db: &Database,
+    session_id: &str,
+    turn_id: Option<&str>,
+    message: &UiMessage,
+) -> Result<bool> {
+    session_created_at(db, session_id)?;
+    if message.role != "assistant" {
+        return Err(anyhow!("in-flight checkpoint must be an assistant message"));
+    }
+    let has_text = !message.content.trim().is_empty()
+        || message
+            .thinking
+            .as_deref()
+            .map_or(false, |thinking| !thinking.trim().is_empty());
+    if !has_text {
+        return Ok(false);
+    }
+    if message_indexed(db, session_id, &message.id)? {
+        transcripts::remove_inflight(db.data_dir(), session_id)?;
+        return Ok(false);
+    }
+    let (record, _) = ui_to_record(message);
+    transcripts::write_inflight(
+        db.data_dir(),
+        session_id,
+        &transcripts::InflightRecord {
+            schema: transcripts::INFLIGHT_SCHEMA,
+            session_id: session_id.to_string(),
+            turn_id: turn_id.map(str::to_string),
+            saved_at: ms_to_ts(now_ms()),
+            message: record,
+        },
+    )?;
+    Ok(true)
+}
+
+/// Settle the session's in-flight checkpoint once its turn can no longer
+/// finish on its own (D299). The checkpoint is removed either way; it is
+/// promoted into the transcript as an `aborted` assistant message only when
+/// the final row never landed and the owning turn did not complete. Returns
+/// the promoted message so the caller can echo it to the renderer.
+pub fn recover_inflight_message(db: &Database, session_id: &str) -> Result<Option<UiMessage>> {
+    let Some(inflight) = transcripts::read_inflight(db.data_dir(), session_id)? else {
+        return Ok(None);
+    };
+    transcripts::remove_inflight(db.data_dir(), session_id)?;
+    let session_created = match session_created_at(db, session_id) {
+        Ok(created) => created,
+        // The session is gone; its checkpoint was an orphan.
+        Err(_) => return Ok(None),
+    };
+    if message_indexed(db, session_id, &inflight.message.id)? {
+        return Ok(None);
+    }
+    if let Some(turn_id) = inflight.turn_id.as_deref() {
+        let status: Option<String> = db
+            .conn()
+            .prepare_cached("SELECT status FROM turns WHERE id = ?1")?
+            .query_row(params![turn_id], |r| r.get(0))
+            .optional()?;
+        if status.as_deref() == Some("completed") {
+            return Ok(None);
+        }
+    }
+    let mut record = inflight.message;
+    let mut meta = match record.meta.take() {
+        Some(Value::Object(map)) => map,
+        _ => serde_json::Map::new(),
+    };
+    meta.insert("status".into(), json!("aborted"));
+    record.meta = Some(Value::Object(meta));
+    let text = record_index_text(&record);
+    append_record(
+        db,
+        session_id,
+        &session_created,
+        &record,
+        text.as_deref(),
+        inflight.turn_id.as_deref(),
+    )?;
+    Ok(Some(record_to_ui(record)))
+}
+
+/// Boot sweep companion to `Database::boot_maintenance` (D299): every
+/// checkpoint left behind by a quit or crash mid-reply is promoted or
+/// discarded before the first client request can read its session.
+pub fn recover_inflight_messages(db: &Database) -> Result<Vec<(String, UiMessage)>> {
+    let mut recovered = Vec::new();
+    for session_id in transcripts::list_inflight_sessions(db.data_dir())? {
+        match recover_inflight_message(db, &session_id) {
+            Ok(Some(message)) => recovered.push((session_id, message)),
+            Ok(None) => {}
+            Err(error) => {
+                tracing::warn!(%session_id, %error, "in-flight reply recovery failed");
+            }
+        }
+    }
+    Ok(recovered)
 }
 
 pub fn append_compaction(
@@ -1976,8 +2111,12 @@ pub fn begin_turn(
 pub struct EndTurnResult {
     pub updated: bool,
     pub notification: Option<Notification>,
+    /// In-flight reply promoted into the transcript by this turn end (D299).
+    pub recovered: Option<UiMessage>,
 }
 
+/// Test-facing shorthand for `end_turn_settling` without checkpoint recovery.
+#[cfg(test)]
 pub fn end_turn(
     db: &Database,
     turn_id: &str,
@@ -1985,6 +2124,21 @@ pub fn end_turn(
     error_code: Option<&str>,
     usage: Option<&Value>,
     create_notification: bool,
+) -> Result<EndTurnResult> {
+    end_turn_settling(db, turn_id, status, error_code, usage, create_notification, false)
+}
+
+/// `end_turn` that also settles the session's in-flight reply checkpoint
+/// (D299). `recover_inflight` promotes a checkpoint whose final row can no
+/// longer arrive; it is what a caller passes when the sidecar is gone.
+pub fn end_turn_settling(
+    db: &Database,
+    turn_id: &str,
+    status: &str,
+    error_code: Option<&str>,
+    usage: Option<&Value>,
+    create_notification: bool,
+    recover_inflight: bool,
 ) -> Result<EndTurnResult> {
     let status = match status {
         "completed" | "aborted" | "error" => status,
@@ -1996,6 +2150,11 @@ pub fn end_turn(
     let output_tokens = usage
         .and_then(|u| u.get("outputTokens"))
         .and_then(|v| v.as_i64());
+    let session_id: Option<String> = db
+        .conn()
+        .prepare_cached("SELECT session_id FROM turns WHERE id = ?1")?
+        .query_row(params![turn_id], |r| r.get(0))
+        .optional()?;
     let tx = db.conn().unchecked_transaction()?;
     let n = tx
         .prepare_cached(
@@ -2020,9 +2179,23 @@ pub fn end_turn(
         None
     };
     tx.commit()?;
+    // Settle the in-flight checkpoint (D299). A caller that knows the reply
+    // can never finish (sidecar gone) asks for recovery; a turn that reached
+    // its own terminal message has nothing left to keep. A user stop leaves
+    // the checkpoint alone: the aborted final row is still on its way and
+    // removes it on arrival, and the boot sweep settles a row that never came.
+    let recovered = match session_id.as_deref() {
+        Some(session_id) if recover_inflight => recover_inflight_message(db, session_id)?,
+        Some(session_id) if status != "aborted" => {
+            transcripts::remove_inflight(db.data_dir(), session_id)?;
+            None
+        }
+        _ => None,
+    };
     Ok(EndTurnResult {
         updated: n > 0,
         notification,
+        recovered,
     })
 }
 
@@ -3614,5 +3787,170 @@ mod tests {
             )
             .unwrap();
         assert_eq!(owning.as_deref(), Some(turn.as_str()));
+    }
+
+    fn streaming_assistant(id: &str, content: &str) -> UiMessage {
+        let mut message = user_msg(id, content, "2025-05-01T00:00:01Z");
+        message.role = "assistant".into();
+        message.status = Some("streaming".into());
+        message.thinking = Some("still thinking".into());
+        message
+    }
+
+    #[test]
+    fn inflight_checkpoint_is_promoted_as_aborted_after_reopen() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pi.sqlite");
+        let db = Database::open(&path).unwrap();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let turn = begin_turn(&db, &session.id, None, None).unwrap();
+        append_message(&db, &session.id, &user_msg("u1", "hello", "2025-05-01T00:00:00Z"), Some(&turn))
+            .unwrap();
+
+        // Two checkpoints of the same reply: the file is replaced, not appended.
+        assert!(save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a1", "par")).unwrap());
+        assert!(save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a1", "partial")).unwrap());
+        assert!(transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
+        assert_eq!(get_session(&db, &session.id).unwrap().unwrap().messages.len(), 1);
+        drop(db);
+
+        // A new process: the boot sweep aborts the turn, then the checkpoint
+        // becomes the aborted tail of the transcript.
+        let db = Database::open(&path).unwrap();
+        let recovered = recover_inflight_messages(&db).unwrap();
+        assert_eq!(recovered.len(), 1);
+        assert_eq!(recovered[0].0, session.id);
+        assert_eq!(recovered[0].1.content, "partial");
+        assert_eq!(recovered[0].1.status.as_deref(), Some("aborted"));
+        assert!(!transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
+
+        let messages = get_session(&db, &session.id).unwrap().unwrap().messages;
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[1].id, "a1");
+        assert_eq!(messages[1].thinking.as_deref(), Some("still thinking"));
+        assert_eq!(messages[1].status.as_deref(), Some("aborted"));
+        let owning: Option<String> = db
+            .conn()
+            .query_row("SELECT turn_id FROM messages WHERE id = 'a1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(owning.as_deref(), Some(turn.as_str()));
+        // Running it again finds nothing to do.
+        assert!(recover_inflight_messages(&db).unwrap().is_empty());
+    }
+
+    #[test]
+    fn final_row_supersedes_checkpoint_and_late_checkpoint_cannot_resurrect_it() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let turn = begin_turn(&db, &session.id, None, None).unwrap();
+        assert!(save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a1", "partial")).unwrap());
+
+        let mut final_row = streaming_assistant("a1", "partial and complete");
+        final_row.status = Some("complete".into());
+        append_message(&db, &session.id, &final_row, Some(&turn)).unwrap();
+        assert!(!transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
+
+        // A checkpoint call that was already in flight when the final row landed.
+        assert!(!save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a1", "partial")).unwrap());
+        assert!(!transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
+        assert!(recover_inflight_message(&db, &session.id).unwrap().is_none());
+
+        let messages = get_session(&db, &session.id).unwrap().unwrap().messages;
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].content, "partial and complete");
+        assert_eq!(messages[0].status.as_deref(), Some("complete"));
+    }
+
+    #[test]
+    fn checkpoint_for_a_newer_fragment_survives_an_older_final_row() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let turn = begin_turn(&db, &session.id, None, None).unwrap();
+        assert!(save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a2", "second")).unwrap());
+
+        let mut earlier = streaming_assistant("a1", "first");
+        earlier.status = Some("complete".into());
+        append_message(&db, &session.id, &earlier, Some(&turn)).unwrap();
+        assert!(transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
+    }
+
+    #[test]
+    fn empty_streaming_message_is_not_checkpointed() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let mut empty = streaming_assistant("a1", "   ");
+        empty.thinking = None;
+        assert!(!save_inflight_message(&db, &session.id, None, &empty).unwrap());
+        assert!(!transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
+        assert!(save_inflight_message(&db, &session.id, None, &user_msg("u1", "x", "2025-05-01T00:00:00Z")).is_err());
+    }
+
+    #[test]
+    fn completed_turn_end_discards_a_stale_checkpoint() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let turn = begin_turn(&db, &session.id, None, None).unwrap();
+        assert!(save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a1", "partial")).unwrap());
+
+        let ended = end_turn_settling(&db, &turn, "completed", None, None, false, false).unwrap();
+        assert!(ended.updated);
+        assert!(ended.recovered.is_none());
+        assert!(!transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
+        assert!(get_session(&db, &session.id).unwrap().unwrap().messages.is_empty());
+    }
+
+    #[test]
+    fn sidecar_loss_recovers_the_checkpoint_at_turn_end() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let turn = begin_turn(&db, &session.id, None, None).unwrap();
+        assert!(save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a1", "partial")).unwrap());
+
+        let ended = end_turn_settling(&db, &turn, "aborted", Some("TURN_ABORTED"), None, false, true).unwrap();
+        assert!(ended.updated);
+        let recovered = ended.recovered.expect("checkpoint promoted");
+        assert_eq!(recovered.id, "a1");
+        assert_eq!(recovered.status.as_deref(), Some("aborted"));
+        assert!(!transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
+        let messages = get_session(&db, &session.id).unwrap().unwrap().messages;
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].content, "partial");
+
+        // The final row for the same id, should it still arrive, is a no-op.
+        let mut late = streaming_assistant("a1", "partial");
+        late.status = Some("aborted".into());
+        append_message(&db, &session.id, &late, Some(&turn)).unwrap();
+        assert_eq!(get_session(&db, &session.id).unwrap().unwrap().messages.len(), 1);
+    }
+
+    #[test]
+    fn user_stop_keeps_the_checkpoint_until_the_final_row_lands() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let turn = begin_turn(&db, &session.id, None, None).unwrap();
+        assert!(save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a1", "partial")).unwrap());
+
+        let ended = end_turn_settling(&db, &turn, "aborted", Some("TURN_ABORTED"), None, false, false).unwrap();
+        assert!(ended.updated);
+        assert!(ended.recovered.is_none());
+        assert!(transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
+
+        let mut final_row = streaming_assistant("a1", "partial");
+        final_row.status = Some("aborted".into());
+        append_message(&db, &session.id, &final_row, Some(&turn)).unwrap();
+        assert!(!transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
+        assert_eq!(get_session(&db, &session.id).unwrap().unwrap().messages.len(), 1);
+    }
+
+    #[test]
+    fn delete_session_removes_the_checkpoint_file() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        assert!(save_inflight_message(&db, &session.id, None, &streaming_assistant("a1", "partial")).unwrap());
+        let path = transcripts::inflight_path(db.data_dir(), &session.id).unwrap();
+        assert!(path.exists());
+        assert!(delete_session(&db, &session.id).unwrap());
+        assert!(!path.exists());
+        assert!(recover_inflight_messages(&db).unwrap().is_empty());
     }
 }
