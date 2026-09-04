@@ -51,7 +51,7 @@ test("composer send/stop button follows draft content and the visible session's 
   );
   assert.match(composer, /const inputBlocked = approvalPending \|\| pasting;/);
   assert.match(composer, /const controlsBlocked = approvalPending;/);
-  assert.match(composer, /readOnly=\{inputBlocked\}/);
+  assert.match(composer, /contentEditable=\{!inputBlocked\}/);
   assert.match(composer, /disabled=\{controlsBlocked\}/);
   assert.match(composer, /sendBlocked[\s\S]*\(!modelReady/);
   assert.doesNotMatch(composer, /const inputBlocked = [^;]*runActive/);
@@ -118,12 +118,15 @@ test("cross-session agent_end cannot clear the active session's running flag", (
 
 test("send clears the composer before the round trip and restores a rejected draft (D287)", () => {
   const submit = composer.match(
-    /const submit = async \(\) => \{[\s\S]*?\n  \};\n\n  const pasteClipboardFiles/,
+    /const submit = async \(\) => \{[\s\S]*?\n  const applyEditorDraft = \(/,
   )?.[0] ?? "";
   assert.ok(submit.length > 0, "composer submit implementation not found");
   // The DOM value is the source of truth for what gets sent: a state update
   // still pending under load must not drop the last characters typed.
-  assert.match(submit, /const text = ref\.current\?\.value \?\? value;/);
+  assert.match(
+    submit,
+    /const text = ref\.current \? readEditorValue\(ref\.current\) : value;/,
+  );
   assert.match(submit, /serializeInlineComposerFileReferences\(\s*text,\s*activeFileReferences,\s*\)/);
   // Blocked and not-ready states are said, not swallowed.
   assert.match(submit, /if \(pasting\) showToast\(t\("chat\.pasteInProgress"\)/);

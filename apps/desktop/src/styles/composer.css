@@ -157,8 +157,7 @@
 
 .composer-input-stage {
   position: relative;
-  flex: 1 1 0;
-  min-width: 0;
+  width: 100%;
 }
 
 .composer-placeholder {
@@ -187,71 +186,6 @@
   }
 }
 
-/* WorkBuddy-style attachment row: chips share the input's first line with
- * the text instead of sitting in a strip above it. */
-.composer-input-line {
-  display: flex;
-  width: 100%;
-  align-items: flex-start;
-  gap: 6px;
-}
-
-.composer-file-references {
-  display: flex;
-  max-width: 60%;
-  min-width: 0;
-  flex: 0 1 auto;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-
-.composer-file-reference {
-  display: inline-flex;
-  max-width: min(100%, 280px);
-  height: 26px;
-  min-width: 0;
-  align-items: center;
-  gap: 5px;
-  border: 1px solid var(--ds-border-subtle);
-  border-radius: var(--radius-md);
-  padding: 0 5px 0 7px;
-  background: var(--ds-bg-inset);
-  color: var(--ds-text-secondary);
-  font-size: var(--text-sm-plus);
-  line-height: var(--leading-compact);
-}
-
-.composer-file-reference-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.composer-file-reference-remove {
-  display: inline-flex;
-  width: 18px;
-  height: 18px;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-full);
-  color: var(--ds-text-muted);
-  transition:
-    background var(--motion-duration-fast) var(--motion-ease-out),
-    color var(--motion-duration-fast) var(--motion-ease-out);
-}
-
-.composer-file-reference-remove:hover:not(:disabled),
-.composer-file-reference-remove:focus-visible {
-  background: var(--ds-bg-hover);
-  color: var(--ds-text-primary);
-}
-
-.composer-file-reference-remove:disabled {
-  opacity: 0.45;
-}
-
 .composer-input {
   width: 100%;
   min-height: 28px;
@@ -264,6 +198,63 @@
   color: var(--ds-text-primary);
   font-size: var(--text-base);
   line-height: var(--leading-body);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  cursor: text;
+}
+
+/* Atomic inline attachment chip inside the editable draft. */
+.composer-chip {
+  display: inline-flex;
+  max-width: min(100%, 240px);
+  height: 20px;
+  align-items: center;
+  gap: 4px;
+  margin: 0 2px;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--radius-md);
+  padding: 0 4px 0 6px;
+  background: var(--ds-bg-inset);
+  color: var(--ds-text-secondary);
+  font-size: var(--text-xs-plus);
+  line-height: var(--leading-compact);
+  vertical-align: middle;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.composer-chip-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--ds-text-muted);
+}
+
+.composer-chip-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-chip-remove {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  color: var(--ds-text-muted);
+  transition:
+    background var(--motion-duration-fast) var(--motion-ease-out),
+    color var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.composer-chip-remove:hover,
+.composer-chip-remove:focus-visible {
+  background: var(--ds-bg-hover);
+  color: var(--ds-text-primary);
 }
 
 .composer-input::placeholder {

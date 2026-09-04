@@ -46,7 +46,7 @@ test("each pending proposal restores the remembered approval choice", () => {
 });
 
 test("pending input is retained but every composer/model mutation control is gated", () => {
-  assert.match(composer, /readOnly=\{inputBlocked\}/);
+  assert.match(composer, /contentEditable=\{!inputBlocked\}/);
   assert.match(composer, /aria-readonly=\{inputBlocked\}/);
   assert.match(composer, /enabled: !inputBlocked/);
   assert.match(composer, /disabled=\{controlsBlocked\}/);

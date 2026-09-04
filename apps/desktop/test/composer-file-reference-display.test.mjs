@@ -41,11 +41,15 @@ test("accepted files become compact references while directories keep completion
   );
 });
 
-test("composer renders removable leaf-name references and serializes paths on send", () => {
-  assert.match(composer, /className="composer-file-references"/);
-  assert.match(composer, /className="composer-file-reference-name"/);
-  assert.match(composer, /\{fileReference\.name\}/);
-  assert.match(composer, /title=\{fileReference\.path\}/);
+test("composer renders atomic inline chips and serializes paths on send", () => {
+  // Chips are atomic non-editable elements inside the contenteditable draft,
+  // one per sentinel token, with an ellipsized leaf name.
+  assert.match(composer, /className = "composer-chip"/);
+  assert.match(composer, /chip\.contentEditable = "false"/);
+  assert.match(composer, /chip\.dataset\.token = token/);
+  assert.match(composer, /composer-chip-name/);
+  assert.match(composer, /nameSpan\.textContent = reference\.name/);
+  assert.match(composer, /chip\.title = reference\.path/);
   assert.match(
     composer,
     /serializeComposerFileReferences\(text, activeFileReferences\)/,
@@ -55,7 +59,7 @@ test("composer renders removable leaf-name references and serializes paths on se
   assert.match(composer, /current\.filter\(/);
   assert.match(
     composerStyles,
-    /\.composer-file-reference-name[\s\S]*?text-overflow: ellipsis/,
+    /\.composer-chip-name[\s\S]*?text-overflow: ellipsis/,
   );
 });
 

@@ -58,13 +58,6 @@ import {
   IconListChecks,
   IconSparkles,
   IconTarget,
-  IconArchive,
-  IconAudio,
-  IconCode,
-  IconFileText,
-  IconImage,
-  IconSheet,
-  IconVideo,
   IconX,
 } from "./icons";
 
@@ -107,35 +100,245 @@ const AUDIO_FILE_PATTERN = /\.(flac|m4a|mp3|ogg|wav)$/i;
 const VIDEO_FILE_PATTERN = /\.(avi|mkv|m4v|mov|mp4|webm)$/i;
 
 /**
- * One glyph per file family on composer attachment chips, so an image, a
- * script, and an archive are distinguishable at a glance.
+ * Inline attachment chips live inside the editable draft as one sentinel
+ * character each (private-use code points, unique per chip). The editable
+ * renders each sentinel as an atomic `composer-chip` element; serialization
+ * swaps the sentinel back for the real @path at send time.
  */
-function FileReferenceIcon({
-  reference,
-}: {
-  reference: ComposerFileReference;
-}) {
-  const mime = reference.mimeType ?? "";
-  if (reference.kind === "image" || mime.startsWith("image/")) {
-    return <IconImage size={13} aria-hidden />;
+const CHIP_TOKEN_BASE = 0xe000;
+const CHIP_TOKEN_END = 0xf8ff;
+let chipTokenSequence = 0;
+
+function nextChipToken(): string {
+  chipTokenSequence =
+    (chipTokenSequence - CHIP_TOKEN_BASE + 1) % (CHIP_TOKEN_END - CHIP_TOKEN_BASE + 1);
+  return String.fromCodePoint(CHIP_TOKEN_BASE + chipTokenSequence);
+}
+
+function isChipTokenChar(char: string): boolean {
+  if (char.length !== 1) return false;
+  const code = char.codePointAt(0) ?? 0;
+  return code >= CHIP_TOKEN_BASE && code <= CHIP_TOKEN_END;
+}
+
+function isChipElement(node: Node): boolean {
+  return (
+    node.nodeType === Node.ELEMENT_NODE &&
+    (node as HTMLElement).classList.contains("composer-chip")
+  );
+}
+
+/** Rendered length of a node in draft-string characters (chip = 1 char). */
+function editorNodeLength(node: Node): number {
+  if (node.nodeType === Node.TEXT_NODE) return (node.nodeValue ?? "").length;
+  if (isChipElement(node)) return 1;
+  if (node.nodeType === Node.ELEMENT_NODE) {
+    const element = node as HTMLElement;
+    if (element.tagName === "BR") return 1;
+    let total = 0;
+    for (const child of Array.from(node.childNodes)) total += editorNodeLength(child);
+    return total;
   }
+  return 0;
+}
+
+/** Read the editable's DOM back into the plain draft string. */
+function readEditorValue(el: HTMLElement): string {
+  let out = "";
+  const walk = (node: Node, blockStart: boolean): void => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      out += node.nodeValue ?? "";
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    const element = node as HTMLElement;
+    if (isChipElement(element)) {
+      const token = element.dataset.token ?? "";
+      out += isChipTokenChar(token) ? token : "";
+      return;
+    }
+    if (element.tagName === "BR") {
+      out += "\n";
+      return;
+    }
+    if (
+      element !== el &&
+      (element.tagName === "DIV" || element.tagName === "P")
+    ) {
+      // Native undo can reintroduce block wrappers; normalize them back
+      // to newline-separated text so the value round-trips.
+      if (!blockStart && out.length > 0 && !out.endsWith("\n")) out += "\n";
+      for (const child of Array.from(element.childNodes)) walk(child, out.length === 0);
+      return;
+    }
+    for (const child of Array.from(element.childNodes)) walk(child, blockStart && out.length === 0);
+  };
+  for (const child of Array.from(el.childNodes)) walk(child, true);
+  return out;
+}
+
+/** Map a DOM point inside the editable to a draft-string index. */
+function editorIndexAt(el: HTMLElement, node: Node, offset: number): number {
+  try {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    range.setEnd(node, offset);
+    const fragment = range.cloneContents();
+    let total = 0;
+    const walk = (parent: DocumentFragment | HTMLElement): void => {
+      for (const child of Array.from(parent.childNodes)) {
+        if (child.nodeType === Node.TEXT_NODE) {
+          total += (child.nodeValue ?? "").length;
+        } else if (isChipElement(child) || (child as HTMLElement).tagName === "BR") {
+          total += 1;
+        } else if (child.nodeType === Node.ELEMENT_NODE) {
+          walk(child as HTMLElement);
+        }
+      }
+    };
+    walk(fragment);
+    return total;
+  } catch {
+    return 0;
+  }
+}
+
+/** Ordered [start, end] draft-string indices covered by the selection. */
+function editorSelectionRange(el: HTMLElement): { start: number; end: number } {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) {
+    return { start: readEditorValue(el).length, end: readEditorValue(el).length };
+  }
+  const range = selection.getRangeAt(0);
+  if (!el.contains(range.startContainer) || !el.contains(range.endContainer)) {
+    const end = readEditorValue(el).length;
+    return { start: end, end };
+  }
+  const a = editorIndexAt(el, range.startContainer, range.startOffset);
+  const b = editorIndexAt(el, range.endContainer, range.endOffset);
+  return { start: Math.min(a, b), end: Math.max(a, b) };
+}
+
+/** Draft-string index → DOM caret point. */
+function editorCaretPoint(el: HTMLElement, target: number): { node: Node; offset: number } {
+  let remaining = target;
+  let point: { node: Node; offset: number } | null = null;
+  const descend = (parent: Node): boolean => {
+    const children = Array.from(parent.childNodes);
+    for (let index = 0; index < children.length; index += 1) {
+      const child = children[index];
+      const length = editorNodeLength(child);
+      if (child.nodeType === Node.TEXT_NODE) {
+        if (point === null && remaining <= length) {
+          point = { node: child, offset: remaining };
+          return true;
+        }
+        remaining -= length;
+      } else if (isChipElement(child) || (child as HTMLElement).tagName === "BR") {
+        if (point === null && remaining <= 1) {
+          point = { node: parent, offset: remaining === 0 ? index : index + 1 };
+          return true;
+        }
+        remaining -= 1;
+      } else if (child.nodeType === Node.ELEMENT_NODE && descend(child)) {
+        return true;
+      }
+    }
+    return false;
+  };
+  descend(el);
+  return point ?? { node: el, offset: el.childNodes.length };
+}
+
+function setEditorCaret(el: HTMLElement, index: number): void {
+  const point = editorCaretPoint(el, Math.max(0, index));
+  const selection = window.getSelection();
+  if (!selection) return;
+  const maxOffset =
+    point.node.nodeType === Node.TEXT_NODE
+      ? (point.node.nodeValue ?? "").length
+      : point.node.childNodes.length;
+  const range = document.createRange();
+  range.setStart(point.node, Math.min(point.offset, maxOffset));
+  range.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+/** One glyph per file family on attachment chips, as inline SVG strings. */
+const CHIP_ICON_SVG: Record<string, string> = {
+  image:
+    '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
+  code: '<path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/>',
+  archive:
+    '<rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/>',
+  sheet:
+    '<path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/>',
+  audio:
+    '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
+  video:
+    '<path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/>',
+  file: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>',
+  x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+};
+
+function chipIconKey(reference: ComposerFileReference): string {
+  const mime = reference.mimeType ?? "";
+  if (reference.kind === "image" || mime.startsWith("image/")) return "image";
   const name = reference.name;
   if (CODE_FILE_PATTERN.test(name) || /javascript|typescript|json|python/i.test(mime)) {
-    return <IconCode size={13} aria-hidden />;
+    return "code";
   }
   if (ARCHIVE_FILE_PATTERN.test(name) || /zip|compressed|tar$/i.test(mime)) {
-    return <IconArchive size={13} aria-hidden />;
+    return "archive";
   }
   if (SHEET_FILE_PATTERN.test(name) || /csv|spreadsheet/i.test(mime)) {
-    return <IconSheet size={13} aria-hidden />;
+    return "sheet";
   }
-  if (AUDIO_FILE_PATTERN.test(name) || mime.startsWith("audio/")) {
-    return <IconAudio size={13} aria-hidden />;
-  }
-  if (VIDEO_FILE_PATTERN.test(name) || mime.startsWith("video/")) {
-    return <IconVideo size={13} aria-hidden />;
-  }
-  return <IconFileText size={13} aria-hidden />;
+  if (AUDIO_FILE_PATTERN.test(name) || mime.startsWith("audio/")) return "audio";
+  if (VIDEO_FILE_PATTERN.test(name) || mime.startsWith("video/")) return "video";
+  return "file";
+}
+
+function chipSvg(key: string, size = 13): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${CHIP_ICON_SVG[key] ?? CHIP_ICON_SVG.file}</svg>`;
+}
+
+/** Build the atomic inline chip element for one attachment reference. */
+function buildChipElement(
+  reference: ComposerFileReference,
+  token: string,
+  removeLabel: string,
+  onRemove: (token: string) => void,
+): HTMLElement {
+  const chip = document.createElement("span");
+  chip.className = "composer-chip";
+  chip.contentEditable = "false";
+  chip.dataset.token = token;
+  chip.title = reference.path;
+  chip.setAttribute("role", "listitem");
+  chip.setAttribute("aria-label", `${reference.name} — ${reference.path}`);
+
+  const icon = document.createElement("span");
+  icon.className = "composer-chip-icon";
+  icon.innerHTML = chipSvg(chipIconKey(reference));
+
+  const nameSpan = document.createElement("span");
+  nameSpan.className = "composer-chip-name";
+  nameSpan.textContent = reference.name;
+
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "composer-chip-remove";
+  remove.title = removeLabel;
+  remove.setAttribute("aria-label", removeLabel);
+  remove.innerHTML = chipSvg("x", 11);
+  // Swallow the mousedown so removing a chip never moves the editable caret.
+  remove.addEventListener("mousedown", (event) => event.preventDefault());
+  remove.addEventListener("click", () => onRemove(token));
+
+  chip.append(icon, nameSpan, remove);
+  return chip;
 }
 
 function createFileReference(
@@ -408,7 +611,7 @@ export function Composer({
     useState<PromptEnhancementError | null>(null);
   const enhancementVersionRef = useRef(0);
   const enhancementRequestRef = useRef<symbol | null>(null);
-  const ref = useRef<HTMLTextAreaElement>(null);
+  const ref = useRef<HTMLDivElement>(null);
   const dockRef = useRef<HTMLDivElement>(null);
   const publishedDockHeightRef = useRef(-1);
   const draftKey = draftKeyForSession(activeSessionId);
@@ -424,13 +627,24 @@ export function Composer({
   const activeFileReferences = fileReferences.filter(
     (fileReference) => fileReference.sessionId === referenceSessionId,
   );
+  // Chips are inline now: every attachment occupies one sentinel character in
+  // the draft, so "inline" is the only kind of reference.
   const activeInlineFileReferences = activeFileReferences.filter(
     (fileReference) =>
       Boolean(fileReference.token && value.includes(fileReference.token)),
   );
-  const activeChipFileReferences = activeFileReferences.filter(
-    (fileReference) => !fileReference.token,
-  );
+  const referenceByToken = useMemo(() => {
+    const map = new Map<string, ComposerFileReference>();
+    for (const fileReference of activeFileReferences) {
+      if (fileReference.token) map.set(fileReference.token, fileReference);
+    }
+    return map;
+  }, [activeFileReferences]);
+  // Draft-string value currently reflected in the editable DOM. Typing keeps
+  // them equal so the sync effect never rewrites (and never drops) the caret;
+  // programmatic value changes diverge and trigger a rebuild.
+  const editorValueRef = useRef(value);
+  const pendingEditorCaretRef = useRef<number | null>(null);
   const placeholderKeys = PLACEHOLDER_KEYS[variant];
   const placeholderKey =
     placeholderKeys[placeholderIndex % placeholderKeys.length] ?? placeholderKeys[0];
@@ -460,6 +674,124 @@ export function Composer({
   valueRef.current = value;
   const fileReferencesRef = useRef(fileReferences);
   fileReferencesRef.current = fileReferences;
+
+  // Rebuild the editable DOM only for programmatic value changes. Typing
+  // updates the DOM natively and keeps editorValueRef in sync via onInput,
+  // so this effect never fights the caret.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (editorValueRef.current === value) return;
+    el.replaceChildren();
+    let textBuffer = "";
+    const flush = () => {
+      if (textBuffer) {
+        el.appendChild(document.createTextNode(textBuffer));
+        textBuffer = "";
+      }
+    };
+    for (const char of Array.from(value)) {
+      if (isChipTokenChar(char)) {
+        flush();
+        const reference = referenceByToken.get(char);
+        if (reference) {
+          el.appendChild(
+            buildChipElement(
+              reference,
+              char,
+              t("chat.removeFileReference", { name: reference.name }),
+              removeChipByToken,
+            ),
+          );
+        }
+        continue;
+      }
+      textBuffer += char;
+    }
+    flush();
+    if (el.childNodes.length === 0) {
+      // Chromium needs at least one node for reliable caret placement.
+      el.appendChild(document.createTextNode(""));
+    }
+    editorValueRef.current = value;
+    const pendingCaret = pendingEditorCaretRef.current;
+    if (pendingCaret !== null) {
+      pendingEditorCaretRef.current = null;
+      setEditorCaret(el, pendingCaret);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- removeChipByToken is a stable ref callback
+  }, [value, referenceByToken]);
+
+  // The caret position feeds autocomplete trigger detection; contenteditable
+  // selection changes only surface through the document-level event.
+  useEffect(() => {
+    const handler = () => {
+      const el = ref.current;
+      if (!el) return;
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) return;
+      const anchor = selection.anchorNode;
+      if (anchor && !el.contains(anchor)) return;
+      const { start } = editorSelectionRange(el);
+      updateCursor(start);
+    };
+    document.addEventListener("selectionchange", handler);
+    return () => document.removeEventListener("selectionchange", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- updateCursor is stable
+  }, []);
+
+  const removeChipByToken = (token: string) => {
+    const el = ref.current;
+    if (!el) return;
+    const source = readEditorValue(el);
+    const index = source.indexOf(token);
+    if (index === -1) return;
+    const next = source.slice(0, index) + source.slice(index + 1);
+    invalidatePromptEnhancement();
+    editorValueRef.current = next;
+    pendingEditorCaretRef.current = index;
+    setValue(next);
+    setCursor(index);
+    setFileReferences((current) => current.filter((fileReference) => fileReference.token !== token));
+  };
+
+  /** Commit a manual DOM edit back into React state (no input event fires). */
+  const commitEditorDom = () => {
+    const el = ref.current;
+    if (!el) return;
+    const nextValue = readEditorValue(el);
+    const { start } = editorSelectionRange(el);
+    invalidatePromptEnhancement();
+    editorValueRef.current = nextValue;
+    setValue(nextValue);
+    setFileReferences((current) => {
+      const next = current.filter(
+        (fileReference) =>
+          !fileReference.token || nextValue.includes(fileReference.token),
+      );
+      return next.length === current.length ? current : next;
+    });
+    updateCursor(start);
+  };
+
+  /** Enter inside the editable inserts a bare "\n" text node (pre-wrap CSS). */
+  const insertNewlineInEditor = () => {
+    const el = ref.current;
+    if (!el) return;
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+    const range = selection.getRangeAt(0);
+    if (!el.contains(range.startContainer) || !el.contains(range.endContainer)) return;
+    range.deleteContents();
+    const node = document.createTextNode("\n");
+    range.insertNode(node);
+    const after = document.createRange();
+    after.setStart(node, 1);
+    after.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(after);
+    commitEditorDom();
+  };
 
   useEffect(() => {
     const previousKey = draftKeyRef.current;
@@ -561,8 +893,7 @@ export function Composer({
       const el = ref.current;
       if (!el) return;
       el.focus();
-      const len = el.value.length;
-      el.setSelectionRange(len, len);
+      setEditorCaret(el, readEditorValue(el).length);
     });
   }, [activeSessionId, composerPrefill, clearComposerPrefill]);
 
@@ -574,8 +905,7 @@ export function Composer({
       const el = ref.current;
       if (!el) return;
       el.focus();
-      const len = el.value.length;
-      el.setSelectionRange(len, len);
+      setEditorCaret(el, readEditorValue(el).length);
     });
   }, [prefill]);
 
@@ -815,11 +1145,9 @@ export function Composer({
   const largePasteThreshold = normalizeLargePasteThreshold(
     settings?.largePasteThreshold,
   );
-  const hasDraftContent = Boolean(
-    value.trim() ||
-      activeChipFileReferences.length ||
-      activeInlineFileReferences.length,
-  );
+  // Chips occupy sentinel characters, which `trim()` preserves — text and
+  // attachments share one content check.
+  const hasDraftContent = Boolean(value.trim());
 
   useEffect(() => {
     if (!modelThinkingOpen || modelThinkingView !== "model") return;
@@ -1102,7 +1430,7 @@ export function Composer({
         const textarea = ref.current;
         if (!textarea) return;
         textarea.focus();
-        textarea.setSelectionRange(enhancedDraft.length, enhancedDraft.length);
+        setEditorCaret(textarea, enhancedDraft.length);
       });
     } catch (error) {
       const currentKey = draftKeyForSession(useAppStore.getState().activeSessionId);
@@ -1134,15 +1462,15 @@ export function Composer({
       const textarea = ref.current;
       if (!textarea) return;
       textarea.focus();
-      textarea.setSelectionRange(enhancementUndoText.length, enhancementUndoText.length);
+      setEditorCaret(textarea, enhancementUndoText.length);
     });
   };
 
   const submit = async () => {
-    // The textarea is what the user sees. Under load a state update from a late
-    // `onChange` can still be pending when Enter arrives; sending the DOM value
-    // rather than the closure's `value` never drops those characters.
-    const text = ref.current?.value ?? value;
+    // The editable is what the user sees. Under load a state update from a
+    // late input event can still be pending when Enter arrives; sending the
+    // DOM value rather than the closure's `value` never drops characters.
+    const text = ref.current ? readEditorValue(ref.current) : value;
     const inlineContent = serializeInlineComposerFileReferences(
       text,
       activeFileReferences,
@@ -1234,99 +1562,139 @@ export function Composer({
     if (!accepted) restoreDraftForKey(submittedDraftKey, submittedDraft);
   };
 
-  const pasteClipboardFiles = async (event: ClipboardEvent<HTMLTextAreaElement>) => {
+  /** Programmatic draft application: state + pending caret for the sync effect. */
+  const applyEditorDraft = (
+    nextText: string,
+    nextReferences: ComposerFileReference[],
+    caret: number,
+  ) => {
+    pendingEditorCaretRef.current = caret;
+    setValue(nextText);
+    setCursor(caret);
+    setFileReferences(nextReferences);
+    requestAnimationFrame(() => {
+      const el = ref.current;
+      if (!el) return;
+      el.focus();
+      setEditorCaret(el, caret);
+    });
+  };
+
+  /** Clean snapshot references (drop runtime-only fields). */
+  const snapshotReferences = (sourceSessionId: string) =>
+    fileReferencesRef.current
+      .filter((fileReference) => fileReference.sessionId === sourceSessionId)
+      .map(({ path, name, kind, mimeType, token }) => ({
+        path,
+        name,
+        kind,
+        ...(mimeType ? { mimeType } : {}),
+        ...(token ? { token } : {}),
+      }));
+
+  const pasteClipboardFiles = async (event: ClipboardEvent<HTMLDivElement>) => {
     if (inputBlocked) return;
     const files = clipboardFiles(event.clipboardData);
     const text = event.clipboardData.getData("text/plain");
     const textLength = Array.from(text).length;
     const isLargeTextPaste = !files.length && textLength > largePasteThreshold;
-    if (isLargeTextPaste) {
+    if (isLargeTextPaste || files.length) {
       event.preventDefault();
-      const selectionStart = event.currentTarget.selectionStart ?? cursor;
-      const selectionEnd = event.currentTarget.selectionEnd ?? selectionStart;
+      const editor = event.currentTarget;
+      const { start: selectionStart, end: selectionEnd } = editorSelectionRange(editor);
+      const sourceValue = readEditorValue(editor);
       const sourceSessionId = activeSessionId;
       const sourceDraftKey = draftKey;
-      const sourceValue = valueRef.current;
-      const sourceReferenceSessionId = sourceSessionId ?? "";
       setPasting(true);
       try {
+        const payload = files.length
+          ? await Promise.all(
+              files.map(async (file) => ({
+                name: file.name || undefined,
+                mimeType: file.type || undefined,
+                data: await file.arrayBuffer(),
+              })),
+            )
+          : (() => {
+              const bytes = new TextEncoder().encode(text);
+              return [
+                {
+                  name: `pasted-text-${crypto.randomUUID().slice(0, 8)}.txt`,
+                  mimeType: "text/plain",
+                  data: bytes.buffer.slice(
+                    bytes.byteOffset,
+                    bytes.byteOffset + bytes.byteLength,
+                  ) as ArrayBuffer,
+                },
+              ];
+            })();
         let sessionId = sourceSessionId;
         if (!sessionId) {
-          // Large text is real input: persist the draft so the file has a
-          // durable session owner before it is written.
+          // Pastes count as real input: persist the draft so the files have
+          // a durable session owner before they are written.
           sessionId = (await materializeDraftSession()) ?? "";
         }
         if (!sessionId) throw new Error("session unavailable");
 
-        const bytes = new TextEncoder().encode(text);
-        const data = bytes.buffer.slice(
-          bytes.byteOffset,
-          bytes.byteOffset + bytes.byteLength,
-        ) as ArrayBuffer;
-        const name = `pasted-text-${crypto.randomUUID().slice(0, 8)}.txt`;
-        const result = await api.pasteFiles(sessionId, [
-          { name, mimeType: "text/plain", data },
-        ]);
-        const pasted = result.files[0];
-        if (!pasted) throw new Error("temporary paste file was not created");
-
-        const displayName = pasted.name || name;
-        // The paste attaches as an atomic chip: the draft text is never
-        // touched, so no later edit can corrupt a reference token or lose
-        // the attachment silently. Serialization appends the scratch path
-        // at send time, exactly like pasted files.
-        const previousReferences = fileReferencesRef.current
-          .filter((fileReference) => fileReference.sessionId === sourceReferenceSessionId)
-          .map(({ path, name: referenceName, kind, mimeType, token }) => ({
-            path,
-            name: referenceName,
-            kind,
-            ...(mimeType ? { mimeType } : {}),
-            ...(token ? { token } : {}),
-          }));
-        const nextSnapshot: ComposerDraftSnapshot = {
-          text: sourceValue,
-          fileReferences: [
-            ...previousReferences,
-            {
-              path: pasted.path,
-              name: displayName,
-              kind: "file",
-              mimeType: pasted.mimeType,
-            },
-          ],
-        };
+        const result = await api.pasteFiles(sessionId, payload);
+        // Every pasted item attaches as an atomic inline chip at the caret:
+        // one sentinel character in the draft, rendered as a non-editable
+        // pill. Serialization swaps sentinels for real @paths at send time.
+        const chips = result.files.map((file) => {
+          const token = nextChipToken();
+          return {
+            token,
+            reference: createFileReference(file.path, file.name, sessionId, {
+              kind: file.kind,
+              mimeType: file.mimeType,
+              token,
+            }),
+          };
+        });
+        const inserted = chips.map((chip) => chip.token).join("");
+        const nextText =
+          sourceValue.slice(0, selectionStart) +
+          inserted +
+          sourceValue.slice(selectionEnd);
+        const previousReferences = snapshotReferences(sourceSessionId ?? "");
+        const nextReferences = [
+          ...previousReferences.map((reference) =>
+            createFileReference(reference.path, reference.name, sessionId, reference),
+          ),
+          ...chips.map((chip) => chip.reference),
+        ];
         // Materialization can change the active session while the IPC call is
         // in flight. Cache the result by its durable target rather than
         // allowing a late response to contaminate another session's draft.
-        draftCacheRef.current.set(sessionId, nextSnapshot);
+        draftCacheRef.current.set(sessionId, {
+          text: nextText,
+          fileReferences: [
+            ...previousReferences,
+            ...chips.map((chip) => ({
+              path: chip.reference.path,
+              name: chip.reference.name,
+              kind: chip.reference.kind,
+              ...(chip.reference.mimeType ? { mimeType: chip.reference.mimeType } : {}),
+              token: chip.token,
+            })),
+          ],
+        });
         const currentSessionId = useAppStore.getState().activeSessionId;
         if (currentSessionId === sessionId) {
-          // Same session: the text stays untouched, only the chip list grows.
-          setFileReferences(
-            nextSnapshot.fileReferences.map((fileReference) =>
-              createFileReference(
-                fileReference.path,
-                fileReference.name,
-                sessionId,
-                fileReference,
-              ),
-            ),
-          );
-          requestAnimationFrame(() => {
-            const el = ref.current;
-            if (!el) return;
-            el.focus();
-            el.setSelectionRange(selectionStart, selectionEnd);
-          });
+          applyEditorDraft(nextText, nextReferences, selectionStart + inserted.length);
         } else if (sourceDraftKey === HOME_DRAFT_KEY) {
           // The home slot is intentionally not reused after materialization;
           // keep it empty while the new session owns the converted draft.
           draftCacheRef.current.delete(HOME_DRAFT_KEY);
         }
-        showToast(t("chat.largeTextPasted", { name: displayName }), {
-          variant: "success",
-        });
+        showToast(
+          files.length
+            ? t("chat.filesPasted", { count: result.files.length })
+            : t("chat.largeTextPasted", {
+                name: result.files[0]?.name ?? "pasted-text",
+              }),
+          { variant: "success" },
+        );
       } catch (error) {
         showToast(error instanceof Error ? error.message : String(error), {
           variant: "error",
@@ -1336,62 +1704,28 @@ export function Composer({
       }
       return;
     }
-    if (!files.length) return;
 
+    // Small text paste: force plain text into the editable (the default
+    // contenteditable insertion would paste rich HTML markup).
     event.preventDefault();
-    const selectionStart = event.currentTarget.selectionStart ?? cursor;
-    const selectionEnd = event.currentTarget.selectionEnd ?? selectionStart;
-    setPasting(true);
-    try {
-      const payload = await Promise.all(
-        files.map(async (file) => ({
-          name: file.name || undefined,
-          mimeType: file.type || undefined,
-          data: await file.arrayBuffer(),
-        })),
-      );
-      let sessionId = activeSessionId;
-      if (!sessionId) {
-        // Pasting files counts as real input: persist the draft so the files
-        // have a session to attach to.
-        sessionId = (await materializeDraftSession()) ?? "";
-      }
-      if (!sessionId) throw new Error("session unavailable");
-      if (!activeSessionId) {
-        setFileReferences((current) =>
-          current.map((fileReference) =>
-            fileReference.sessionId === ""
-              ? { ...fileReference, sessionId }
-              : fileReference,
-          ),
-        );
-      }
-
-      const result = await api.pasteFiles(sessionId, payload);
-      setFileReferences((current) => [
-        ...current,
-        ...result.files.map((file) =>
-          createFileReference(file.path, file.name, sessionId, {
-            kind: file.kind,
-            mimeType: file.mimeType,
-          }),
-        ),
-      ]);
-      requestAnimationFrame(() => {
-        const el = ref.current;
-        if (!el) return;
-        el.focus();
-        el.setSelectionRange(selectionStart, selectionEnd);
-      });
-      showToast(t("chat.filesPasted", { count: result.files.length }), {
-        variant: "success",
-      });
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : String(error), {
-        variant: "error",
-      });
-    } finally {
-      setPasting(false);
+    if (!text) return;
+    if (!document.execCommand("insertText", false, text)) {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) return;
+      const range = selection.getRangeAt(0);
+      range.deleteContents();
+      range.insertNode(document.createTextNode(text));
+      range.collapse(false);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      const el = ref.current;
+      if (!el) return;
+      const nextValue = readEditorValue(el);
+      const { start } = editorSelectionRange(el);
+      invalidatePromptEnhancement();
+      editorValueRef.current = nextValue;
+      setValue(nextValue);
+      updateCursor(start);
     }
   };
 
@@ -1423,7 +1757,7 @@ export function Composer({
       const el = ref.current;
       if (!el) return;
       el.focus();
-      el.setSelectionRange(result.cursor, result.cursor);
+      setEditorCaret(el, result.cursor);
     });
   };
 
@@ -1533,71 +1867,49 @@ export function Composer({
             <ComposerAutocomplete ac={composerAc} onAccept={acceptCompletion} />
           ) : null}
           <div className="composer-input-wrap">
-            <div className="composer-input-line">
-              {activeChipFileReferences.length ? (
-                <div
-                  className="composer-file-references"
-                  role="list"
-                  aria-label={t("chat.fileReferences")}
-                >
-                  {activeChipFileReferences.map((fileReference) => (
-                    <div
-                      key={fileReference.id}
-                      className="composer-file-reference"
-                      role="listitem"
-                      title={fileReference.path}
-                      aria-label={`${fileReference.name} — ${fileReference.path}`}
-                    >
-                      <FileReferenceIcon reference={fileReference} />
-                      <span className="composer-file-reference-name">
-                        {fileReference.name}
-                      </span>
-                      <button
-                        type="button"
-                        className="composer-file-reference-remove"
-                        title={t("chat.removeFileReference", {
-                          name: fileReference.name,
-                        })}
-                        aria-label={t("chat.removeFileReference", {
-                          name: fileReference.name,
-                        })}
-                        disabled={inputBlocked}
-                        onClick={() => {
-                          setFileReferences((current) =>
-                            current.filter(
-                              (candidate) => candidate.id !== fileReference.id,
-                            ),
-                          );
-                          requestAnimationFrame(() => ref.current?.focus());
-                        }}
-                      >
-                        <IconX size={11} aria-hidden />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-              <div className="composer-input-stage">
-              <textarea
+            <div className="composer-input-stage">
+              {/* Rich editable draft: plain text plus one atomic inline chip
+                per attachment, WorkBuddy-style. DOM is owned imperatively —
+                React never renders children into this node. */}
+              <div
                 ref={ref}
                 className="composer-input"
-                readOnly={inputBlocked}
+                role="textbox"
+                aria-multiline="true"
                 aria-readonly={inputBlocked}
                 aria-busy={pasting}
-                rows={2}
-                placeholder={placeholderText}
+                aria-placeholder={placeholderText}
+                contentEditable={!inputBlocked}
+                suppressContentEditableWarning
                 spellCheck={false}
                 autoCorrect="off"
                 autoCapitalize="off"
-                value={value}
+                translate="no"
                 onPaste={pasteClipboardFiles}
-                onChange={(e) => {
-                  const nextValue = e.target.value;
+                onBeforeInput={(e) => {
+                  // Normalize Enter into a plain "\n" text node so the draft
+                  // string round-trips without block wrappers.
+                  const native = e.nativeEvent as InputEvent;
+                  if (
+                    native.inputType === "insertParagraph" ||
+                    native.inputType === "insertLineBreak"
+                  ) {
+                    e.preventDefault();
+                    insertNewlineInEditor();
+                  }
+                }}
+                onInput={(e) => {
+                  const el = e.currentTarget;
+                  const nextValue = readEditorValue(el);
+                  const { start } = editorSelectionRange(el);
                   invalidatePromptEnhancement();
+                  editorValueRef.current = nextValue;
                   setValue(nextValue);
                   // `filter` allocates even when it drops nothing, and a new
                   // array identity per keystroke re-runs the draft-cache
-                  // serialization effect that keys off it.
+                  // serialization effect that keys off it. A sentinel that
+                  // left the draft (chip deleted natively) drops its
+                  // reference here.
                   setFileReferences((current) => {
                     const next = current.filter(
                       (fileReference) =>
@@ -1606,15 +1918,13 @@ export function Composer({
                     );
                     return next.length === current.length ? current : next;
                   });
-                  updateCursor(e.target.selectionStart ?? nextValue.length);
-                }}
-                onSelect={(e) => {
-                  updateCursor(e.currentTarget.selectionStart ?? 0);
+                  updateCursor(start);
                 }}
                 onCompositionStart={() => setComposing(true)}
                 onCompositionEnd={(e) => {
                   setComposing(false);
-                  updateCursor(e.currentTarget.selectionStart ?? 0);
+                  const { start } = editorSelectionRange(e.currentTarget);
+                  updateCursor(start);
                 }}
                 onFocus={() => {
                   setInputFocused(true);
@@ -1628,20 +1938,6 @@ export function Composer({
                   // never drive the autocomplete menu (D125).
                   if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229)
                     return;
-                  if (
-                    e.key === "Backspace" &&
-                    value.length === 0 &&
-                    activeChipFileReferences.length
-                  ) {
-                    e.preventDefault();
-                    const lastReference = activeChipFileReferences.at(-1);
-                    setFileReferences((current) =>
-                      current.filter(
-                        (fileReference) => fileReference.id !== lastReference?.id,
-                      ),
-                    );
-                    return;
-                  }
                   if (composerAc.open && e.key === "Escape") {
                     // Escape closes only the menu; overlay handlers must not
                     // also fire on the same press.
@@ -1681,7 +1977,6 @@ export function Composer({
                   {placeholderText}
                 </span>
               ) : null}
-              </div>
             </div>
           </div>
 

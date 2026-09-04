@@ -20,36 +20,33 @@ test("composer converts oversized text paste and materializes clipboard files", 
   assert.match(composer, /const text = event\.clipboardData\.getData\("text\/plain"\)/);
   assert.match(composer, /const textLength = Array\.from\(text\)\.length/);
   assert.match(composer, /!files\.length && textLength > largePasteThreshold/);
-  assert.match(composer, /const name = `pasted-text-\$\{crypto\.randomUUID\(\)\.slice\(0, 8\)\}\.txt`/);
+  assert.match(composer, /pasted-text-\$\{crypto\.randomUUID\(\)\.slice\(0, 8\)\}\.txt/);
   assert.match(composer, /mimeType: "text\/plain"/);
-  // Oversized pastes attach as atomic chips: the draft text is never edited,
-  // so no editable @token can be corrupted or silently dropped.
+  // Oversized pastes attach as atomic inline chips: one sentinel character
+  // inserted at the caret inside an editable draft, never an editable
+  // @token that later edits could corrupt or silently drop.
   assert.doesNotMatch(composer, /const token = `@\$\{displayName\}`/);
-  assert.match(composer, /text: sourceValue,/);
-  assert.match(composer, /draftCacheRef\.current\.set\(sessionId, nextSnapshot\)/);
-  assert.match(composer, /if \(!files\.length\) return;/);
-  assert.match(composer, /event\.preventDefault\(\);/);
+  assert.match(composer, /sourceValue\.slice\(0, selectionStart\) \+/);
+  assert.match(composer, /draftCacheRef\.current\.set\(sessionId, \{/);
+  assert.match(composer, /if \(isLargeTextPaste \|\| files\.length\) \{/);
   assert.match(composer, /file\.arrayBuffer\(\)/);
   assert.match(
     composer,
     /createFileReference\(file\.path, file\.name, sessionId, \{[\s\S]*kind: file\.kind/,
   );
-  assert.match(composer, /setFileReferences\(\(current\) => \[/);
-  assert.match(
-    composer,
-    /serializeComposerFileReferences\(text, activeFileReferences\)/,
-  );
+  assert.match(composer, /serializeComposerFileReferences\(text, activeFileReferences\)/);
   assert.match(
     composer,
     /const serializedContent = serializeComposerFileReferences\(text, activeFileReferences\)/,
   );
-  assert.match(composer, /el\.setSelectionRange\(selectionStart, selectionEnd\)/);
-  assert.doesNotMatch(composer, /formatFileInsert\(file\.path, "file"\)/);
+  // The draft is a contenteditable rich field: sentinels render as atomic
+  // chips and every caret write goes through the DOM-range helper.
+  assert.match(composer, /contentEditable=\{!inputBlocked\}/);
+  assert.match(composer, /function readEditorValue\(/);
+  assert.match(composer, /function setEditorCaret\(/);
+  assert.doesNotMatch(composer, /<textarea/);
+  assert.doesNotMatch(composer, /setSelectionRange\(/);
   assert.match(composer, /await materializeDraftSession\(\)/);
-  // Attachment chips render inline on the input's first line with a
-  // per-file-type icon.
-  assert.match(composer, /composer-input-line/);
-  assert.match(composer, /FileReferenceIcon/);
 });
 
 test("paste IPC is a typed renderer-to-main bridge", () => {

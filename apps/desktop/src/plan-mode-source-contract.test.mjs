@@ -184,7 +184,7 @@ test("mode commands configure the active session instead of only changing defaul
 });
 
 test("pending approval keeps the draft while gating every composer control", () => {
-  assert.match(composerSource, /readOnly=\{inputBlocked\}/);
+  assert.match(composerSource, /contentEditable=\{!inputBlocked\}/);
   assert.match(composerSource, /aria-readonly=\{inputBlocked\}/);
   assert.match(composerSource, /enabled: !inputBlocked/);
   assert.match(composerSource, /disabled=\{controlsBlocked\}/);

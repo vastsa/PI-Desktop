@@ -209,6 +209,15 @@ describe("compact file references", () => {
     ).toBe("the token was removed");
   });
 
+  it("keeps one separating space between adjacent sentinel chips", () => {
+    expect(
+      serializeInlineComposerFileReferences("\uE001\uE002 inspect", [
+        { path: "src/a.ts", token: "\uE001" },
+        { path: "src/b.ts", token: "\uE002" },
+      ]),
+    ).toBe("@src/a.ts @src/b.ts inspect");
+  });
+
   it("normalizes large-paste thresholds to the supported range", () => {
     expect(normalizeLargePasteThreshold(undefined)).toBe(600);
     expect(normalizeLargePasteThreshold(600)).toBe(600);
