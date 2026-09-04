@@ -3180,3 +3180,24 @@ D193, and D194.
   over the full ones. The unanswered-prompt undo (and message delete) now
   rewrite from the full durable transcript merged with the live rows, and the
   undo is re-evaluated on that merge. ADR 0153, E2E-171.
+
+## 2026-09-05 — Composer drafts survive remounts and window switches (D301)
+
+- Composer drafts stay in renderer memory per session, but the cache is now a
+  module-level map rather than a `useRef` inside one Composer instance. Home
+  and docked composers still remount when the empty state toggles, and
+  `ChatSurface` still unmounts when leaving chat for Settings/Plugins/other
+  pages; those remounts previously dropped the in-memory Map, so unsent input
+  vanished on a window/page switch (issue #38).
+- The next mount hydrates from the same slot. Unmount (layout cleanup),
+  session switch, file-reference changes, and window blur/visibility-hidden
+  capture the live contenteditable value so a keystroke that has not
+  re-rendered yet is not lost. If Chromium wipes the contenteditable while the
+  window is in the background, focus/visibility restore paints the cached
+  value back. Home file references are keyed by the empty session id, not the
+  `__home__` cache key.
+- A successful send still clears only the submitting session's slot; deleting
+  a session still drops its slot; nothing is written to disk.
+  `composer-draft-cache.ts` plus `composer-draft-cache.test.mjs` cover
+  isolation, prune, remount, and Composer wiring. Extends E2E-011c. No
+  protocol, storage, or runtime behavior changes.

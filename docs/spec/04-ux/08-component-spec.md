@@ -2024,11 +2024,16 @@ reasoning-level control.
   style is not invalidated while typing inside one row. The `height: auto`
   measurement probe is taken only when the box may need to shrink.
 - Draft text and file-reference chips are retained in renderer memory per
-  session. Switching sessions saves the source draft and restores the target
-  draft; an uncached target and every newly created session start empty. The
-  no-active-session home composer has its own slot. A successful send clears
-  only the submitting session's slot, including when navigation occurs while
-  the request is in flight, and deleting a session drops its slot.
+  session (D301). The cache is module-scoped, not instance state, so a remount
+  — empty-home ↔ docked, chat ↔ Settings/Plugins/other pages, or the window
+  hiding and showing — restores the same slot. Switching sessions saves the
+  source draft and restores the target draft; an uncached target and every
+  newly created session start empty. The no-active-session home composer has
+  its own slot. A successful send clears only the submitting session's slot,
+  including when navigation occurs while the request is in flight, and
+  deleting a session drops its slot. If the contenteditable DOM is wiped while
+  the window is in the background, the next focus or visibility restore paints
+  the cached value back.
 - Text correction off (D145): composer textarea sets `spellCheck={false}`,
   `autoCorrect="off"`, and `autoCapitalize="off"` so browser/OS spelling and
   autocorrect never rewrite coding prompts

@@ -491,19 +491,24 @@ Each scenario is documented in this format:
 
 #### E2E-011c: Session-scoped composer drafts
 
-- **Preconditions**: Provider configured; sessions A and B exist; the composer
-  is visible and both sessions are idle.
+- **Preconditions**: Provider configured; sessions A and B exist; A has a
+  transcript so it uses the docked composer; B is an empty session so it uses
+  the home composer; the composer is visible and both sessions are idle.
 - **Steps**: 1) Select A and type a prompt without sending it. 2) Switch to B
   and inspect the composer. 3) Type a different prompt in B, then switch back
   to A. 4) Create a new session and inspect its composer. 5) Return to B and
   then delete B; revisit the remaining sessions and the home composer if it is
-  available.
+  available. 6) Type in A, open Settings (or Plugins), then return to chat.
+  7) Hide the app window and show it again with an unsent draft in A.
 - **Expected**: B initially shows an empty composer, A restores its original
   unsent prompt, and the new session starts empty rather than inheriting A or
-  B. Each session keeps only its own draft (including file-reference chips).
-  Deleting B removes its cached draft. If a prompt is sent while its request is
-  in flight and the user switches sessions, successful completion clears only
-  the submitting session's draft and never clears the destination composer.
+  B. Each session keeps only its own draft (including file-reference chips)
+  across empty-home ↔ docked remounts. Deleting B removes its cached draft. If
+  a prompt is sent while its request is in flight and the user switches
+  sessions, successful completion clears only the submitting session's draft
+  and never clears the destination composer. The draft in A is still present
+  after the Settings/Plugins round-trip and after the window is hidden and
+  shown (D301).
 - **Specs linked**: `04-ux/09-interaction-patterns.md`
 - **Acceptance**: C (session isolation and composer input)
 - **Milestone**: M2

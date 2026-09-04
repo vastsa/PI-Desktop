@@ -27,7 +27,7 @@ test("composer converts oversized text paste and materializes clipboard files", 
   // @token that later edits could corrupt or silently drop.
   assert.doesNotMatch(composer, /const token = `@\$\{displayName\}`/);
   assert.match(composer, /sourceValue\.slice\(0, selectionStart\) \+/);
-  assert.match(composer, /draftCacheRef\.current\.set\(sessionId, \{/);
+  assert.match(composer, /writeComposerDraft\(sessionId, \{/);
   assert.match(composer, /if \(isLargeTextPaste \|\| files\.length\) \{/);
   assert.match(composer, /file\.arrayBuffer\(\)/);
   assert.match(

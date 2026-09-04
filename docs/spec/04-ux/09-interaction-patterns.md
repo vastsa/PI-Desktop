@@ -273,13 +273,14 @@ may be retained while exactly one workspace supplies the visible shell context.
   originating session's retained renderer context and do not reveal or resize
   the visible panel. Only an explicit session/notification activation navigates
   and projects the destination session's retained panel context.
-- The composer draft is also session-scoped in renderer memory: switching
-  sessions saves/restores the source text and file references, an uncached
-  destination starts empty, and the home composer has its own draft slot.
-  Creating a new session does not copy another slot. A completed send clears
-  only the draft belonging to the session that submitted it, even if the user
-  switches sessions while the request is in flight; deleted sessions cannot
-  retain drafts.
+- The composer draft is also session-scoped in renderer memory (D301): the
+  cache outlives any one Composer mount, so switching sessions, empty-home ↔
+  docked, chat ↔ other pages, or OS windows saves/restores the source text and
+  file references. An uncached destination starts empty, and the home composer
+  has its own draft slot. Creating a new session does not copy another slot. A
+  completed send clears only the draft belonging to the session that submitted
+  it, even if the user switches sessions while the request is in flight;
+  deleted sessions cannot retain drafts.
 - Every tool call resolves `workspaceRoot` from the originating durable
   session, not from the currently selected project tab. Background completion
   refreshes the matching row without redirecting the active conversation.

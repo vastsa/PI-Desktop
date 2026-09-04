@@ -146,7 +146,7 @@ test("send clears the composer before the round trip and restores a rejected dra
   // Text typed after the failed send wins; a session the user left keeps the
   // draft in its cache slot for the next switch back.
   assert.match(restore, /if \(valueRef\.current\.trim\(\)\) return;/);
-  assert.match(restore, /if \(currentKey !== key\) \{[\s\S]*?draftCacheRef\.current\.set\(key, snapshot\);/);
+  assert.match(restore, /if \(currentKey !== key\) \{[\s\S]*?writeComposerDraft\(key, snapshot\);/);
   assert.match(restore, /setValue\(snapshot\.text\);/);
   assert.match(restore, /setCursor\(snapshot\.text\.length\);/);
 });

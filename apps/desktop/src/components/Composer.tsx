@@ -27,6 +27,16 @@ import {
 } from "@pi-desktop/shared";
 import { materializeDraftSession, useAppStore } from "../stores/app-store";
 import type { ComposerDraftSnapshot } from "../lib/composer-smart-stop";
+import {
+  HOME_DRAFT_KEY,
+  captureComposerDraft,
+  deleteComposerDraft,
+  draftKeyForSession,
+  draftOwnerSessionId,
+  pruneComposerDrafts,
+  readComposerDraft,
+  writeComposerDraft,
+} from "../lib/composer-draft-cache";
 import { api } from "../lib/api";
 import { isActivePlanExecution } from "../lib/plan-mode-state";
 import { headAsk, queuedAskCount } from "../lib/pending-asks";
@@ -363,6 +373,48 @@ function createFileReference(
   };
 }
 
+/** Paint the contenteditable from the draft string. Used on programmatic
+ *  value changes and when a hidden window wiped the native editable. */
+function paintEditorValue(
+  el: HTMLElement,
+  value: string,
+  referenceByToken: Map<string, ComposerFileReference>,
+  removeLabelFor: (name: string) => string,
+  onRemove: (token: string) => void,
+): void {
+  el.replaceChildren();
+  let textBuffer = "";
+  const flush = () => {
+    if (textBuffer) {
+      el.appendChild(document.createTextNode(textBuffer));
+      textBuffer = "";
+    }
+  };
+  for (const char of Array.from(value)) {
+    if (isChipTokenChar(char)) {
+      flush();
+      const reference = referenceByToken.get(char);
+      if (reference) {
+        el.appendChild(
+          buildChipElement(
+            reference,
+            char,
+            removeLabelFor(reference.name),
+            onRemove,
+          ),
+        );
+      }
+      continue;
+    }
+    textBuffer += char;
+  }
+  flush();
+  if (el.childNodes.length === 0) {
+    // Chromium needs at least one node for reliable caret placement.
+    el.appendChild(document.createTextNode(""));
+  }
+}
+
 /**
  * The composer-left chip is the only mode control, so one click steps through
  * every mode in a fixed order: execute freely, plan first, then goal contract.
@@ -527,18 +579,12 @@ export type ComposerPrefill = {
   token: number;
 };
 
-const HOME_DRAFT_KEY = "__home__";
-
 type ComposerMenuView = "root" | "model" | "thinking";
 
 type PromptEnhancementError = {
   message: string;
   code: string;
 };
-
-function draftKeyForSession(sessionId: string | null | undefined) {
-  return sessionId ?? HOME_DRAFT_KEY;
-}
 
 export function Composer({
   variant = "docked",
@@ -578,9 +624,21 @@ export function Composer({
       ? s.queuedPrompts[s.activeSessionId] ?? EMPTY_QUEUED_PROMPTS
       : EMPTY_QUEUED_PROMPTS,
   );
-  const [value, setValue] = useState("");
-  const [fileReferences, setFileReferences] = useState<ComposerFileReference[]>([]);
-  const [cursor, setCursor] = useState(0);
+  const draftKey = draftKeyForSession(activeSessionId);
+  const referenceSessionId = activeSessionId ?? "";
+  const initialDraft = readComposerDraft(draftKey);
+  const [value, setValue] = useState(() => initialDraft?.text ?? "");
+  const [fileReferences, setFileReferences] = useState<ComposerFileReference[]>(() =>
+    (initialDraft?.fileReferences ?? []).map((fileReference) =>
+      createFileReference(
+        fileReference.path,
+        fileReference.name,
+        referenceSessionId,
+        fileReference,
+      ),
+    ),
+  );
+  const [cursor, setCursor] = useState(() => initialDraft?.text.length ?? 0);
   // `onSelect` fires on every caret move, so an unchanged cursor must not
   // re-render the composer or re-run autocomplete trigger detection.
   const updateCursor = (next: number) =>
@@ -614,8 +672,6 @@ export function Composer({
   const ref = useRef<HTMLDivElement>(null);
   const dockRef = useRef<HTMLDivElement>(null);
   const publishedDockHeightRef = useRef(-1);
-  const draftKey = draftKeyForSession(activeSessionId);
-  const draftCacheRef = useRef(new Map<string, ComposerDraftSnapshot>());
   const draftKeyRef = useRef(draftKey);
   const approvalPending = planCheckpoint?.status === "pending";
   const executionActive = isActivePlanExecution(planCheckpoint);
@@ -623,7 +679,6 @@ export function Composer({
   const inputBlocked = approvalPending || pasting;
   const controlsBlocked = approvalPending;
   const sendBlocked = approvalPending || pasting;
-  const referenceSessionId = activeSessionId ?? "";
   const activeFileReferences = fileReferences.filter(
     (fileReference) => fileReference.sessionId === referenceSessionId,
   );
@@ -640,11 +695,15 @@ export function Composer({
     }
     return map;
   }, [activeFileReferences]);
-  // Draft-string value currently reflected in the editable DOM. Typing keeps
-  // them equal so the sync effect never rewrites (and never drops) the caret;
-  // programmatic value changes diverge and trigger a rebuild.
-  const editorValueRef = useRef(value);
-  const pendingEditorCaretRef = useRef<number | null>(null);
+  // Draft-string value currently reflected in the editable DOM. `null` forces
+  // the first paint (including a hydrated cache hit) because React does not
+  // render children into the contenteditable. Typing keeps them equal so the
+  // sync effect never rewrites (and never drops) the caret; programmatic
+  // value changes diverge and trigger a rebuild.
+  const editorValueRef = useRef<string | null>(null);
+  const pendingEditorCaretRef = useRef<number | null>(
+    initialDraft?.text ? initialDraft.text.length : null,
+  );
   const placeholderKeys = PLACEHOLDER_KEYS[variant];
   const placeholderKey =
     placeholderKeys[placeholderIndex % placeholderKeys.length] ?? placeholderKeys[0];
@@ -674,6 +733,26 @@ export function Composer({
   valueRef.current = value;
   const fileReferencesRef = useRef(fileReferences);
   fileReferencesRef.current = fileReferences;
+  const referenceByTokenRef = useRef(referenceByToken);
+  referenceByTokenRef.current = referenceByToken;
+  const removeChipByTokenRef = useRef<(token: string) => void>(() => {});
+
+  const liveDraftText = () =>
+    ref.current ? readEditorValue(ref.current) : valueRef.current;
+
+  const persistDraft = (key = draftKeyRef.current) =>
+    captureComposerDraft(key, liveDraftText(), fileReferencesRef.current);
+
+  const paintCurrentDraft = (el: HTMLElement, nextValue: string) => {
+    paintEditorValue(
+      el,
+      nextValue,
+      referenceByTokenRef.current,
+      (name) => t("chat.removeFileReference", { name }),
+      (token) => removeChipByTokenRef.current(token),
+    );
+    editorValueRef.current = nextValue;
+  };
 
   // Rebuild the editable DOM only for programmatic value changes. Typing
   // updates the DOM natively and keeps editorValueRef in sync via onInput,
@@ -682,38 +761,7 @@ export function Composer({
     const el = ref.current;
     if (!el) return;
     if (editorValueRef.current === value) return;
-    el.replaceChildren();
-    let textBuffer = "";
-    const flush = () => {
-      if (textBuffer) {
-        el.appendChild(document.createTextNode(textBuffer));
-        textBuffer = "";
-      }
-    };
-    for (const char of Array.from(value)) {
-      if (isChipTokenChar(char)) {
-        flush();
-        const reference = referenceByToken.get(char);
-        if (reference) {
-          el.appendChild(
-            buildChipElement(
-              reference,
-              char,
-              t("chat.removeFileReference", { name: reference.name }),
-              removeChipByToken,
-            ),
-          );
-        }
-        continue;
-      }
-      textBuffer += char;
-    }
-    flush();
-    if (el.childNodes.length === 0) {
-      // Chromium needs at least one node for reliable caret placement.
-      el.appendChild(document.createTextNode(""));
-    }
-    editorValueRef.current = value;
+    paintCurrentDraft(el, value);
     const pendingCaret = pendingEditorCaretRef.current;
     if (pendingCaret !== null) {
       pendingEditorCaretRef.current = null;
@@ -748,12 +796,14 @@ export function Composer({
     if (index === -1) return;
     const next = source.slice(0, index) + source.slice(index + 1);
     invalidatePromptEnhancement();
-    editorValueRef.current = next;
+    // Leave editorValueRef stale so the layout effect rebuilds the DOM
+    // without the chip. Setting it here would skip the paint.
     pendingEditorCaretRef.current = index;
     setValue(next);
     setCursor(index);
     setFileReferences((current) => current.filter((fileReference) => fileReference.token !== token));
   };
+  removeChipByTokenRef.current = removeChipByToken;
 
   /** Commit a manual DOM edit back into React state (no input event fires). */
   const commitEditorDom = () => {
@@ -763,6 +813,7 @@ export function Composer({
     const { start } = editorSelectionRange(el);
     invalidatePromptEnhancement();
     editorValueRef.current = nextValue;
+    valueRef.current = nextValue;
     setValue(nextValue);
     setFileReferences((current) => {
       const next = current.filter(
@@ -797,21 +848,11 @@ export function Composer({
     const previousKey = draftKeyRef.current;
     if (previousKey !== draftKey) {
       invalidatePromptEnhancement();
-      // Persist the outgoing draft before switching.
-      draftCacheRef.current.set(previousKey, {
-        text: valueRef.current,
-        fileReferences: fileReferencesRef.current
-          .filter((fileReference) => fileReference.sessionId === previousKey)
-          .map(({ path, name, kind, mimeType, token }) => ({
-            path,
-            name,
-            kind,
-            ...(mimeType ? { mimeType } : {}),
-            ...(token ? { token } : {}),
-          })),
-      });
+      // Persist the outgoing draft before switching. Capture from the live
+      // editable so a keystroke that has not re-rendered yet is not dropped.
+      persistDraft(previousKey);
       draftKeyRef.current = draftKey;
-      const nextDraft = draftCacheRef.current.get(draftKey);
+      const nextDraft = readComposerDraft(draftKey);
       setValue(nextDraft?.text ?? "");
       setFileReferences(
         nextDraft?.fileReferences.map((fileReference) =>
@@ -826,35 +867,64 @@ export function Composer({
       setCursor(nextDraft?.text.length ?? 0);
       return;
     }
-    // For the current draftKey the cache is updated lazily (on switch or
-    // snapshot) via valueRef/fileReferencesRef; no per-keystroke serialization.
+    // For the current draftKey the cache is updated lazily (on switch,
+    // unmount, or snapshot) via persistDraft; no per-keystroke serialization.
   }, [draftKey, referenceSessionId]);
 
   // Keep the draft cache warm on file-reference changes (infrequent) while
   // skipping the expensive serialization on plain text edits.
   useEffect(() => {
-    draftCacheRef.current.set(draftKey, {
-      text: valueRef.current,
-      fileReferences: fileReferences
-        .filter((fileReference) => fileReference.sessionId === referenceSessionId)
-        .map(({ path, name, kind, mimeType, token }) => ({
-          path,
-          name,
-          kind,
-          ...(mimeType ? { mimeType } : {}),
-          ...(token ? { token } : {}),
-        })),
-    });
+    captureComposerDraft(draftKey, valueRef.current, fileReferences);
   }, [draftKey, fileReferences, referenceSessionId]);
 
   useEffect(() => {
-    const sessionIds = new Set(sessions.map((session) => session.id));
-    for (const key of draftCacheRef.current.keys()) {
-      if (key !== HOME_DRAFT_KEY && key !== draftKey && !sessionIds.has(key)) {
-        draftCacheRef.current.delete(key);
-      }
-    }
+    pruneComposerDrafts([
+      HOME_DRAFT_KEY,
+      draftKey,
+      ...sessions.map((session) => session.id),
+    ]);
   }, [draftKey, sessions]);
+
+  // Survive remounts (empty-home ↔ docked, chat ↔ other pages) by writing
+  // the live draft on unmount. Layout cleanup still sees the editable node.
+  // The next Composer instance hydrates from the module cache.
+  useLayoutEffect(() => {
+    return () => {
+      persistDraft(draftKeyRef.current);
+    };
+  }, []);
+
+  // Switching OS windows can wipe a contenteditable without unmounting React.
+  // Persist while hidden; if the DOM comes back empty, paint the cached value.
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        persistDraft();
+        return;
+      }
+      const el = ref.current;
+      if (!el) return;
+      const live = readEditorValue(el);
+      const expected = valueRef.current;
+      if (live === expected) return;
+      if (!live && expected) {
+        paintCurrentDraft(el, expected);
+        setEditorCaret(el, expected.length);
+        return;
+      }
+      commitEditorDom();
+    };
+    const onWindowBlur = () => persistDraft();
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("focus", onVisibility);
+    window.addEventListener("blur", onWindowBlur);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", onVisibility);
+      window.removeEventListener("blur", onWindowBlur);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- persist/paint close over refs
+  }, []);
 
   useEffect(() => {
     if (!controlsBlocked) return;
@@ -1322,13 +1392,16 @@ export function Composer({
 
   const clearDraftForKey = (key: string) => {
     invalidatePromptEnhancement();
-    draftCacheRef.current.delete(key);
+    deleteComposerDraft(key);
     const currentKey = draftKeyForSession(useAppStore.getState().activeSessionId);
     if (currentKey !== key) return;
+    valueRef.current = "";
+    if (ref.current) paintCurrentDraft(ref.current, "");
     setValue("");
+    const owner = draftOwnerSessionId(key);
     setFileReferences((current) => {
       const next = current.filter(
-        (fileReference) => fileReference.sessionId !== key,
+        (fileReference) => fileReference.sessionId !== owner,
       );
       return next.length === current.length ? current : next;
     });
@@ -1343,8 +1416,8 @@ export function Composer({
     const activeSessionId = useAppStore.getState().activeSessionId;
     const currentKey = draftKeyForSession(activeSessionId);
     if (currentKey !== key) {
-      if (!draftCacheRef.current.get(key)?.text) {
-        draftCacheRef.current.set(key, snapshot);
+      if (!readComposerDraft(key)?.text) {
+        writeComposerDraft(key, snapshot);
       }
       return;
     }
@@ -1666,7 +1739,7 @@ export function Composer({
         // Materialization can change the active session while the IPC call is
         // in flight. Cache the result by its durable target rather than
         // allowing a late response to contaminate another session's draft.
-        draftCacheRef.current.set(sessionId, {
+        writeComposerDraft(sessionId, {
           text: nextText,
           fileReferences: [
             ...previousReferences,
@@ -1685,7 +1758,7 @@ export function Composer({
         } else if (sourceDraftKey === HOME_DRAFT_KEY) {
           // The home slot is intentionally not reused after materialization;
           // keep it empty while the new session owns the converted draft.
-          draftCacheRef.current.delete(HOME_DRAFT_KEY);
+          deleteComposerDraft(HOME_DRAFT_KEY);
         }
         showToast(
           files.length
@@ -1904,6 +1977,7 @@ export function Composer({
                   const { start } = editorSelectionRange(el);
                   invalidatePromptEnhancement();
                   editorValueRef.current = nextValue;
+                  valueRef.current = nextValue;
                   setValue(nextValue);
                   // `filter` allocates even when it drops nothing, and a new
                   // array identity per keystroke re-runs the draft-cache
@@ -1931,6 +2005,7 @@ export function Composer({
                 }}
                 onBlur={() => {
                   setInputFocused(false);
+                  persistDraft();
                 }}
                 onKeyDown={(e) => {
                   // An Enter that confirms an IME candidate (isComposing, or the
