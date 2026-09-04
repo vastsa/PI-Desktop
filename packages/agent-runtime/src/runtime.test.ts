@@ -371,6 +371,12 @@ describe("DesktopAgentRuntime configuration matching", () => {
       ]),
     );
     expect(byName("Read").description).toContain("never a directory");
+    expect(byName("Read").description).toContain(
+      "truncated` is true only when this window was cut short",
+    );
+    expect(byName("Read").parameters.properties.limit.description).toContain(
+      "defaults to 2000",
+    );
     expect(byName("Read").parameters.properties.path.description).toContain(
       "Existing regular file only",
     );

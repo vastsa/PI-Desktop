@@ -14,8 +14,7 @@
 `Read` 并将整个上下文的 56% 花在 read/search 结果上，其中
 强制压实并使代理重新搜索已经发现的内容。
 
-Read/Glob/Grep 获得更严格的预算，因为他们的结果可以在
-需求（缩小格局，提前偏移）； shell 输出不是。
+Read/Glob/Grep 的预算仍比 shell 更紧，因为结果可以按需再取（缩小模式、推进偏移）。48KB 过紧：普通源码的默认窗口就会溢出，于是几乎每次 Read 都报 `truncated`，智能体只好重新搜索已经读过的内容。
 
 Bash 输出通过了两个独立的上限。 **捕获**层限制了什么
 主机在进程流式传输时保留在内存中，这就是溢出文件
@@ -25,11 +24,11 @@ Bash 输出通过了两个独立的上限。 **捕获**层限制了什么
 
 | 频道 | 限制 | 超过时采取行动 |
 |---|---|---|
-| 读取/Glob/Grep 结果 (`BUDGET_SEARCH`) | 48 KB，2000 行 | 绑定窗口 + `notice` 命名下一步 |
+| 读取/Glob/Grep 结果 (`BUDGET_SEARCH`) | 128 KB，4000 行 | 绑定窗口 + `notice` 命名下一步 |
 | Bash 标准输出 (`BUDGET_SHELL`) | 96 KB，4000 行，头 | 截断+标记+溢出 |
 | Bash stderr (`BUDGET_SHELL_ERR`) | 96 KB，4000 行，**尾部** | 截断+标记+溢出 |
-| 任何单行 (`MAX_LINE_CHARS`) | 2000 个字符 | 剪辑，在 `notice` 中计数 |
-| 阅读窗口 | 默认2000行，`BUDGET_SEARCH`/`notice` | 分页；从不拒绝文件大小 |
+| 任何单行 (`MAX_LINE_CHARS`) | 16,384 个字符 | 剪辑，在 `notice` 中计数 |
+| 阅读窗口 | 默认 2000 行（最大 4000），`offset`/`limit`；始终报告 `totalLines` | 分页；仅在本窗口被切断时 `truncated` |
 | Grep 匹配 (`headLimit`) | 默认200 | 以 `truncated: true` 停止 |
 | 全局条目 (`limit`) | 默认 100 个，最大 1000 个 | 以 `truncated: true` 停止 |
 | Bash 捕获保留 (`CAPTURE_MAX_BYTES` / `CAPTURE_MAX_LINES`) | 512 KB，200000 行 | 停止保留；报告遗漏的字节和行 |
@@ -119,8 +118,13 @@ Grep 可以读取溢出文件，因为显式 `path` 参数会停止父级
 
 ## 5. 部分结果标志
 
-每个有界工具都会报告 `truncated: boolean`。另外 Read/Glob/Grep
-报告什么是有界的以及如何继续：
+每个有界工具都会报告 `truncated: boolean`。对 Read 来说，该标志仅在本窗口
+比调用方请求的更短时为真（字节预算打断扫描，或某行被剪辑）。一次返回了
+请求窗口或默认窗口的 Read，即使文件更长也报告 `truncated: false`；
+`totalLines`、`offset`、`lineCount` 和下一个偏移的 `notice` 描述剩余部分。
+Grep 与 Glob 在匹配/条目上限挡住了剩余命中时设 `truncated: true`。
+
+Read/Glob/Grep 另外报告什么被限制以及如何继续：
 
 ```ts
 type ReadResult = {
@@ -128,7 +132,7 @@ type ReadResult = {
   content: string          // "[path#TAG]" header + "N:"-prefixed window
   tag: string              // 4 hex, whole-file; the Edit anchor
   offset: number; lineCount: number
-  totalLines?: number      // present only once end of file was reached
+  totalLines: number       // always reported via fast pre-scan
   fileBytes: number
   truncated: boolean
   notice?: string          // next offset, budget stop, clipped-line count
@@ -151,8 +155,8 @@ type GlobResult = { matches: string[]; count: number; truncated: boolean; notice
 常见的 `files_with_matches` 和 `files-with-matches` 提供商拼写。
 
 `notice` 是面向模型的散文，而不是稳定的契约：它命名了下一个偏移量，
-停止扫描的预算，或剪切了多少行。 `truncated`
-计数即为稳定信号。
+停止扫描的预算，或剪切了多少行。成功分页的 Read 不会再让模型去 Grep。
+`truncated` 与计数才是稳定信号。UI 的截断芯片跟随 `truncated`。
 
 ## 6. 优先级规则
 
@@ -178,9 +182,8 @@ type GlobResult = { matches: string[]; count: number; truncated: boolean; notice
 - [x] 超大 Bash 输出用标记截断并溢出更完整的副本
 - [x] Bash stderr 在截断时保留其最后几行
 - [x] Grep 在 `headLimit` 和 `truncated: true` 处停止
-- [x] Grep 和 Read 在 2000 个字符处剪辑行，且被剪辑的行被排除在 `Edit` 来源集之外
-- [x] Read 对多兆字节文件进行分页而不是拒绝它，并报告
-下一个偏移量
+- [x] Grep 和 Read 在 16,384 个字符处剪辑行，且被剪辑的行被排除在 `Edit` 来源集之外
+- [x] Read 对多兆字节文件进行分页而不是拒绝它，报告下一个偏移量，并在填满请求窗口时不设 `truncated`
 - [x] 读取拒绝带有 `TOOL_BINARY_CONTENT` 的二进制内容
 - [x] 显式 `path` 到达被忽略的树（`node_modules`，溢出目录）
 - [x] Glob 和 Grep 按修改时间对结果进行排序，最新的在前

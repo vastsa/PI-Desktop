@@ -4452,12 +4452,14 @@ Each scenario is documented in this format:
      between batches.
 - **Expected**:
   - Every description carries its parameters and the real limit numbers.
-  - No single tool result exceeds its budget: 48 KB for Read/Glob/Grep, 96 KB
+  - No single tool result exceeds its budget: 128 KB for Read/Glob/Grep, 96 KB
     for Bash. Read reports `offset`, `lineCount`, `fileBytes`, and a next-offset
     `notice`; the second read continues without overlap; `totalLines` is always
-    reported from the first read so the model knows the file scale upfront.
+    reported from the first read so the model knows the file scale upfront. A
+    filled default or requested window reports `truncated: false` even when the
+    file continues.
   - No file size is ever refused. Lines from the bundle and the `.map` arrive
-    clipped at 2000 chars and the clip count appears in `notice`, so one line
+    clipped at 16,384 chars and the clip count appears in `notice`, so one line
     cannot consume the result.
   - An explicit `path` reaches into the ignored tree; without it the same search
     returns nothing from there. `include`, `outputMode`, and `headLimit` each
@@ -4471,7 +4473,7 @@ Each scenario is documented in this format:
     batch with a sentence about what it is doing, never leaves more than one
     batch without new visible text, and ends with a self-contained result.
 - **Specs linked**: `03-runtime/16-tool-result-limits.md`,
-  `03-runtime/02-agent-runtime.md` §7, `08-meta/decisions-log.md` (D194)
+  `03-runtime/02-agent-runtime.md` §7, `08-meta/decisions-log.md` (D194, D306)
 - **Acceptance**: C (chat & stream), E (tools & permissions), Quality
 - **Milestone**: M5
 - **Status**: Unit-covered (host-core `tools` tests, `runtime.test.ts` prompt
@@ -6405,7 +6407,7 @@ This test plan spec is accepted when:
 #### E2E-131: An edit on never-displayed lines is rejected and the retry succeeds
 
 - **Preconditions**: A session that has read only lines 1–50 of a 400-line file.
-  A second fixture file has one line longer than 2000 characters.
+  A second fixture file has one line longer than 16,384 characters.
 - **Steps**:
   1. Emit `Edit` with the correct `tag` and a `PUT 300.=301:` op.
   2. Inspect the error code and confirm the message inlines the current content
@@ -7368,3 +7370,29 @@ This test plan spec is accepted when:
 - **Milestone**: M6+
 - **Status**: Unit/source-contract covered (`thinking-levels.test.ts`,
   `thinking-ui.test.mjs`); rendered desktop journey remains pending
+
+#### E2E-175: A paged Read is not shown as truncated
+
+- **Preconditions**: A project-bound Agent session; the workspace contains a
+  text file of at least 3000 lines whose lines are shorter than 16,384
+  characters, plus a fixture whose first line exceeds that cap.
+- **Steps**:
+  1. `Read` the long file with no `offset`/`limit`.
+  2. `Read` the same file with `offset` equal to the reported next offset and
+     a modest `limit`.
+  3. `Read` the over-long-line fixture.
+  4. Grep a token that matches more than the default `headLimit`.
+- **Expected**:
+  - Step 1 returns the default 2000-line window, `truncated: false`, no
+    truncated chip, `totalLines` of the whole file, and a `notice` naming the
+    next offset. It does not tell the model to Grep.
+  - Step 2 continues without overlap and stays `truncated: false`.
+  - Step 3 sets `truncated: true`, counts the clipped line in `notice`, and
+    shows the truncated chip.
+  - Step 4 sets `truncated: true` because remaining matches exist, and shows
+    the chip.
+- **Specs linked**: `03-runtime/16-tool-result-limits.md` §2 / §5,
+  `04-ux/08-component-spec.md` §9.2, `08-meta/decisions-log.md` (D306)
+- **Acceptance**: C (chat & stream), E (tools & permissions)
+- **Milestone**: M5
+- **Status**: Unit-covered (host-core `tools` tests)

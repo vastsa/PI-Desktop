@@ -3736,12 +3736,12 @@ IPC 请求无法关闭。
      批次之间。
 - **预期**：
   - 每个描述都带有其参数和实际限制数。
-  - 没有任何一个工具结果超出其预算：Read/Glob/Grep 为 48 KB，96 KB
-    对于巴什。读取报告 `offset`、`lineCount`、`fileBytes` 和下一个偏移量
-    `notice`；第二次读取继续，没有重叠，并报告 `totalLines`
-    一旦到达终点。
+  - 没有任何一个工具结果超出其预算：Read/Glob/Grep 为 128 KB，96 KB
+    对于 Bash。读取报告 `offset`、`lineCount`、`fileBytes` 和下一个偏移量
+    `notice`；第二次读取继续，没有重叠；`totalLines` 从第一次读取就始终
+    报告。填满的默认或请求窗口即使文件更长也报告 `truncated: false`。
   - 任何文件大小都不会被拒绝。来自捆绑包和 `.map` 的行到达
-    剪辑为 2000 个字符，并且剪辑计数出现在 `notice` 中，因此一行
+    剪辑为 16,384 个字符，并且剪辑计数出现在 `notice` 中，因此一行
     无法消耗结果。
   - 显式 `path` 到达被忽略的树；没有它同样的搜索
     从那里没有返回任何内容。 `include`、`outputMode` 和 `headLimit` 各一个
@@ -3755,7 +3755,7 @@ IPC 请求无法关闭。
     批处理用一个关于它正在做什么的句子，永远不会留下多个
     批处理没有新的可见文本，并以独立的结果结束。
 - **链接规格**：`03-runtime/16-tool-result-limits.md`，
-  `03-runtime/02-agent-runtime.md` §7、`08-meta/decisions-log.md` (D194)
+  `03-runtime/02-agent-runtime.md` §7、`08-meta/decisions-log.md` (D194、D306)
 - **验收**：C（聊天和直播）、E（工具和权限）、质量
 - **里程碑**：M5
 - **状态**：单位覆盖（host-core `tools` 测试，`runtime.test.ts` 提示
@@ -5072,7 +5072,7 @@ IPC 请求无法关闭。
 #### E2E-131：针对从未显示过的行的编辑被拒绝，而重试成功
 
 - **先决条件**：一个仅读取了某 400 行文件第 1–50 行的会话。第二个装置文件有一行
-  长度超过 2000 个字符。
+  长度超过 16,384 个字符。
 - **步骤**：
   1. 用正确的 `tag` 发出带 `PUT 300.=301:` 操作的 `Edit`。
   2. 检查错误代码，确认消息内联了第 300 与 301 行的当前内容。
@@ -5487,3 +5487,24 @@ IPC 请求无法关闭。
 - **里程碑**：M6+
 - **状态**：单元/源码契约已覆盖（`thinking-levels.test.ts`、
   `thinking-ui.test.mjs`）；渲染桌面旅程仍待补
+
+#### E2E-175：分页读取不显示为已截断
+
+- **前提条件**：绑定项目的 Agent 会话；工作区有一个至少 3000 行、每行短于
+  16,384 个字符的文本文件，以及首行超过该上限的夹具。
+- **步骤**：
+  1. 不带 `offset`/`limit` 地 `Read` 该长文件。
+  2. 用报告的下一个偏移和一个适度的 `limit` 再 `Read` 同一文件。
+  3. `Read` 超长行夹具。
+  4. Grep 一个匹配数超过默认 `headLimit` 的词。
+- **预期**：
+  - 步骤 1 返回默认 2000 行窗口，`truncated: false`，无截断芯片，
+    `totalLines` 为整文件行数，`notice` 写出下一个偏移，且不让模型去 Grep。
+  - 步骤 2 无重叠地继续，并保持 `truncated: false`。
+  - 步骤 3 设 `truncated: true`，在 `notice` 中计数被剪行，并显示截断芯片。
+  - 步骤 4 因还有剩余命中而设 `truncated: true`，并显示芯片。
+- **链接规格**：`03-runtime/16-tool-result-limits.md` §2 / §5、
+  `04-ux/08-component-spec.md` §9.2、`08-meta/decisions-log.md`（D306）
+- **验收**：C（聊天和直播）、E（工具和权限）
+- **里程碑**：M5
+- **状态**：单元已覆盖（host-core `tools` 测试）

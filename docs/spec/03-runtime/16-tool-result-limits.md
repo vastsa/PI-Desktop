@@ -11,8 +11,10 @@ everything meant no cap in practice: measured sessions averaged 154KB per
 `Read` and spent 56% of their whole context on read/search results, which
 forced compaction and made the agent re-search what it had already found.
 
-Read/Glob/Grep get the tighter budget because their results are re-fetchable on
-demand (narrow the pattern, advance the offset); shell output is not.
+Read/Glob/Grep get a tighter budget than shell because their results are
+re-fetchable on demand (narrow the pattern, advance the offset). 48KB was too
+tight: a default window of ordinary source already overflowed, so almost every
+Read reported `truncated` and the agent re-searched what it had.
 
 Bash output passes two independent ceilings. The **capture** layer bounds what
 the host retains in memory while the process streams, and is what the spill file
@@ -22,11 +24,11 @@ copy could never be fuller than the excerpt it exists to back.
 
 | channel | limit | action when exceeded |
 |---|---|---|
-| Read / Glob / Grep result (`BUDGET_SEARCH`) | 48 KB, 2000 lines | bound the window + `notice` naming the next step |
+| Read / Glob / Grep result (`BUDGET_SEARCH`) | 128 KB, 4000 lines | bound the window + `notice` naming the next step |
 | Bash stdout (`BUDGET_SHELL`) | 96 KB, 4000 lines, head | truncate + marker + spill |
 | Bash stderr (`BUDGET_SHELL_ERR`) | 96 KB, 4000 lines, **tail** | truncate + marker + spill |
-| any single line (`MAX_LINE_CHARS`) | 2000 chars | clip, count it in `notice` |
-| Read window | 500 lines default (max 2000), `offset`/`limit`; `totalLines` always reported | paginate; never refuse on file size |
+| any single line (`MAX_LINE_CHARS`) | 16,384 chars | clip, count it in `notice` |
+| Read window | 2000 lines default (max 4000), `offset`/`limit`; `totalLines` always reported | paginate; `truncated` only when this window was cut |
 | Grep matches (`headLimit`) | 200 default | stop with `truncated: true` |
 | Glob entries (`limit`) | 100 default, 1000 max | stop with `truncated: true` |
 | Bash capture retention (`CAPTURE_MAX_BYTES` / `CAPTURE_MAX_LINES`) | 512 KB, 200000 lines | stop retaining; report omitted bytes and lines |
@@ -121,8 +123,15 @@ ignore files from applying — the same rule that lets `path` reach into
 
 ## 5. Partial result flags
 
-Every bounded tool reports `truncated: boolean`. Read/Glob/Grep additionally
-report what was bounded and how to continue:
+Every bounded tool reports `truncated: boolean`. For Read, that flag is true
+only when this window was cut short of what the caller asked for (the byte
+budget stopped the scan, or a line was clipped). A Read that returned the
+requested or default window of a longer file reports `truncated: false`;
+`totalLines`, `offset`, `lineCount`, and a next-offset `notice` describe the
+remainder. Grep and Glob set `truncated: true` when the match/entry cap hid
+remaining hits.
+
+Read/Glob/Grep additionally report what was bounded and how to continue:
 
 ```ts
 type ReadResult = {
@@ -153,8 +162,9 @@ matches. The sidecar emits `filesWithMatches`; host-core also normalizes the
 common `files_with_matches` and `files-with-matches` provider spellings.
 
 `notice` is model-facing prose, not a stable contract: it names the next offset,
-the budget that stopped the scan, or how many lines were clipped. `truncated`
-and the counts are the stable signals.
+the budget that stopped the scan, or how many lines were clipped. It does not
+tell the model to Grep after a successful paged Read. `truncated` and the
+counts are the stable signals. The UI truncated chip follows `truncated`.
 
 ## 6. Priority rules
 
@@ -180,10 +190,10 @@ and the counts are the stable signals.
 - [x] oversize Bash output truncates with marker and spills the fuller copy
 - [x] Bash stderr retains its final lines when truncated
 - [x] Grep stops at `headLimit` with `truncated: true`
-- [x] Grep and Read clip lines at 2000 chars, and a clipped line is excluded
+- [x] Grep and Read clip lines at 16,384 chars, and a clipped line is excluded
   from the `Edit` provenance set
-- [x] Read paginates a multi-megabyte file instead of refusing it, and reports
-  the next offset
+- [x] Read paginates a multi-megabyte file instead of refusing it, reports the
+  next offset, and does not set `truncated` when the requested window was filled
 - [x] Read refuses binary content with `TOOL_BINARY_CONTENT`
 - [x] an explicit `path` reaches into an ignored tree (`node_modules`, spill dir)
 - [x] Glob and Grep order results by modification time, newest first

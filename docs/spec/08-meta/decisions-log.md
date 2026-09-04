@@ -53,7 +53,8 @@ This log freezes previously open questions into concrete decisions.
 | D030 | Connection test | **First-class host method before trusting provider for runs** | Fail early, actionable setup UX |
 | D031 | Secrets backend | **OS safeStorage primary + encrypted file fallback** | Robust on macOS first release |
 | D032 | Workspace ignore | **security denylist + defaults + `.pi-desktopignore`** | Safe/predictable tool FS behavior |
-| D033 | Tool result limits | **256KB/4000 lines defaults with explicit truncation markers** | Protect context & UI |
+| D033 | Tool result limits | **256KB/4000 lines defaults with explicit truncation markers** *(amended by D194, D306)* | Protect context & UI |
+| D306 | Search/read truncation is a cut, not a window | **Amend D033 / D194: Read/Glob/Grep `truncated` is true only when the host cut content the caller asked for (byte budget, per-line clip, Grep/Glob match cap). A Read that returned the requested or default window of a longer file is complete for that window; `totalLines`/`offset`/`lineCount` and a next-offset `notice` describe the remainder. Default Read window is 2000 lines (max 4000). `BUDGET_SEARCH` is 128KB / 4000 lines. Per-line clip is 16,384 characters. The UI truncated chip follows this flag.** | The 48KB / 500-line window marked almost every source and spec file truncated, including successful paged reads, which hid real cuts and forced the agent to re-search what it already had. |
 | D244 | Compact context usage summary | **Amend D103 / D184 / ADR 0047: keep the context inspector's remaining-capacity trigger, used/window counts, turn total, completed-turn speed, exact provider values, aggregate tool types/calls/tokens, and checkpoint summary, but render them as a short summary. Remove the per-tool rows, share bars, source badges, explanatory estimate paragraph, and used-capacity meter from the default panel. No protocol, storage, runtime accounting, or model metadata changes.** | The prior diagnostic layout made a routine capacity check tall and visually dense. Keeping the aggregate signal while removing drill-down chrome makes the default status surface scannable without changing the underlying usage data. See ADR 0103 and E2E-060d / US-UI-61. |
 | D243 | Model-aware image attachment transport | **Amend D197 / ADR 0059: Composer file references retain structured kind/name/MIME metadata. Electron main resolves vision from the exact models.dev model record when matched, or the exact pi-ai fallback record (`modalities.input` / `input` includes `image`), stores image bytes as `attachments/<sha256>`, sends eligible images as transient image blocks, and falls back to a safe `@path` for unknown/non-vision or oversized images. Durable messages store refs and metadata, never base64; the renderer shows an accessible capability status.** | The previous path-only contract made a vision-capable GPT model receive a scratch path instead of image content. Keeping capability ownership at the selected catalog source prevents provider discovery or unknown model ids from claiming transport, while the path fallback preserves non-vision file-tool behavior (ADR 0101, amended by D266). |
 | D245 | OpenCode-style bounded provider 429 retry | **Amend D186 / D233 / ADR 0091: `PROVIDER_RATE_LIMITED` gets five silent, abortable retries after the initial attempt, with one counter shared across request setup and mid-stream recovery. Disable nested pi-ai retries; capture failed response status/headers; honor `retry-after-ms`, `retry-after` seconds, HTTP-date, then 2-second exponential backoff with 25% positive jitter and a 30-second cap. Reuse the assistant bubble and suppress intermediate lifecycle/error events in main sessions and builtin subagents. Authentication, model-selection, malformed-request, and context errors remain terminal; exhaustion records `retryAttempt: 5` and `providerStatus: 429`.** | The prior split one-retry policy exposed transient 429s too early and allowed setup and stream layers to drift. OpenCode's bounded, header-aware policy preserves user control without hiding persistent provider failure or multiplying nested retries. |
@@ -3279,3 +3280,23 @@ D193, and D194.
   the splash uses the tint and sheen on darwin and stays `--ds-bg-primary` in
   the base rule. Extends §8.3 of the UI design system; no protocol, storage,
   or runtime behavior changes. E2E-076.
+
+## 2026-09-05 — Search/read truncation is a cut, not a window (D306)
+
+- `Read.truncated` was true whenever a file continued after the returned
+  window, and the 48KB / 500-line cap cut ordinary source and spec tables.
+  Almost every Read then showed the UI truncated chip and told the model to
+  Grep, including after an explicit `offset`/`limit` that had already been
+  filled.
+- `truncated` is now true only when this result was cut short: the byte
+  budget stopped the window, a line was clipped, or Grep/Glob hid remaining
+  hits behind their caps. A filled Read window of a longer file is
+  `truncated: false`; `notice` names the next offset instead of nagging Grep.
+- Default Read window returns to 2000 lines (max 4000). `BUDGET_SEARCH` is
+  128KB / 4000 lines so that window of typical source actually fits.
+  Per-line clip is 16,384 characters so a decision-log row survives while a
+  minified one-liner still clips.
+- Decision D306 amends D033 / D194. Host-core tool results, sidecar Read
+  schema copy, and the truncated chip contract. No ADR: the field stays
+  boolean and callers that already honored `truncated` keep working. See
+  `03-runtime/16-tool-result-limits.md` and E2E-147 / E2E-175.

@@ -94,8 +94,9 @@ replace an artifact.
   available platform shell; each turn pins its effective ID/dialect and the
   host rejects a changed pin before spawn with `COMMAND_SHELL_CHANGED`.
 - Timeouts are mandatory: 60s default with a 1–300s bounded override. Output
-  streams as separate stdout/stderr channels and is truncated at 256KB / 4000
-  lines with the `[truncated: output exceeded 256KB or 4000 lines]` marker
+  streams as separate stdout/stderr channels and is truncated at 96KB / 4000
+  lines with an explicit `[truncated: …]` marker that names which end survived
+  (see [16-tool-result-limits](../03-runtime/16-tool-result-limits.md))
 - User abort and timeout shut down the complete process tree before the tool
   closes; no orphan process may continue writing output.
 - Full command line recorded in the audit log (SQLite, redacted), with shell ID

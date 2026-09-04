@@ -469,8 +469,10 @@ pub enum Direction {
 /// One shared 256KB cap used to govern every tool, which in practice meant no
 /// cap at all: measured sessions averaged 154KB per `Read` and spent 56% of
 /// their whole context on read/search results, which then forced compaction
-/// and re-searching. Search and read results get the tighter budget because
-/// they are re-fetchable on demand; shell output is not.
+/// and re-searching. Search and read results still get a tighter budget than
+/// shell because they are re-fetchable on demand. 48KB was too tight: a 500-line
+/// window of ordinary source or a spec table row already overflowed, so almost
+/// every Read reported `truncated` and the agent re-searched what it had.
 #[derive(Debug, Clone, Copy)]
 pub struct OutputBudget {
     pub max_bytes: usize,
@@ -478,10 +480,11 @@ pub struct OutputBudget {
     pub direction: Direction,
 }
 
-/// Read / Glob / Grep.
+/// Read / Glob / Grep. 128KB fits a 2000-line window of typical source; 4000
+/// lines is the explicit ceiling so a default window is not also the max.
 pub const BUDGET_SEARCH: OutputBudget = OutputBudget {
-    max_bytes: 48 * 1024,
-    max_lines: 2000,
+    max_bytes: 128 * 1024,
+    max_lines: 4000,
     direction: Direction::Head,
 };
 
@@ -509,12 +512,14 @@ pub const BUDGET_SHELL_ERR: OutputBudget = OutputBudget {
 pub const SPILL_MAX_BYTES: usize = 512 * 1024;
 
 /// Longest single line any tool hands to the model. Minified bundles and
-/// sourcemaps are routinely one multi-megabyte line; before this cap a single
-/// Grep hit could carry tens of KB of it.
-pub const MAX_LINE_CHARS: usize = 2000;
+/// sourcemaps are routinely one multi-megabyte line; 2000 chars also clipped
+/// ordinary spec tables and JSONL, which then marked the whole Read truncated.
+/// 16,384 still clips a minified one-liner while leaving a decision-log row
+/// intact. The byte budget still bounds how many such lines a result can hold.
+pub const MAX_LINE_CHARS: usize = 16_384;
 
 /// Read window when the caller does not ask for one.
-const DEFAULT_READ_LINES: usize = 500;
+const DEFAULT_READ_LINES: usize = 2000;
 
 /// Grep hits returned when the caller does not ask for a limit.
 const GREP_DEFAULT_HEAD_LIMIT: usize = 200;
@@ -1249,9 +1254,10 @@ fn tool_read(
     }
     if has_more {
         notes.push(format!(
-            "{total_line_count} lines total; use Grep to locate content, then Read with offset/limit"
+            "{total_line_count} lines total; next offset is {}",
+            offset + kept.len()
         ));
-    } else {
+    } else if !(kept.is_empty() && offset > 0) {
         notes.push(format!("end of file ({total_line_count} lines total)"));
     }
     if clipped_lines > 0 {
@@ -1260,15 +1266,15 @@ fn tool_read(
         ));
     }
 
-    // `content` stays byte-faithful to the requested window — no line numbers,
-    // no inline marker — so text copied out of it still matches for Edit.
-    // Everything the model needs to know about the window lives in the
-    // sibling fields it also receives.
+    // `truncated` means this window was cut — budget or a clipped line —
+    // not merely that the file continues after it. `totalLines` / `offset` /
+    // `lineCount` already describe pagination; treating a full window as
+    // truncated made every long file look like a failure.
     let mut out = json!({
         "path": display,
         "root": root_label(root_kind),
         "content": kept.join("\n"),
-        "truncated": has_more || clipped_lines > 0,
+        "truncated": budget_capped || clipped_lines > 0,
         "offset": offset,
         "lineCount": kept.len(),
         "totalLines": total_line_count,
@@ -2439,7 +2445,8 @@ pub fn builtin_tool_defs() -> Value {
                  Read never accepts a directory; activate and use Glob when a directory must be listed or the file name is uncertain. \
                  Returns at most {} lines ({}KB) starting at `offset`; lines longer than {} characters are cut. \
                  `totalLines` is always reported so you know the file scale upfront. \
-                 For large files use Grep to locate the target content first, then Read the relevant range with offset/limit. \
+                 `truncated` is true only when this window was cut short (budget or a clipped line), not merely because the file continues. \
+                 For files beyond the default window, Grep to locate the target, then Read the range with offset/limit. \
                  Prefer this over `cat`/`sed`/`head` in Bash.",
                 DEFAULT_READ_LINES,
                 BUDGET_SEARCH.max_bytes / 1024,
@@ -2738,17 +2745,24 @@ mod tests {
         )
         .await;
         assert!(first.ok, "read failed: {:?}", first.content);
-        assert_eq!(first.content["lineCount"].as_u64(), Some(500));
+        assert_eq!(
+            first.content["lineCount"].as_u64(),
+            Some(DEFAULT_READ_LINES as u64)
+        );
         assert_eq!(first.content["totalLines"].as_u64(), Some(70_000));
         let content = first.content["content"].as_str().unwrap();
         assert!(content.starts_with("line 1\nline 2\n"));
-        assert!(content.ends_with("line 500"));
+        assert!(content.ends_with(&format!("line {DEFAULT_READ_LINES}")));
         assert!(content.len() <= BUDGET_SEARCH.max_bytes);
-        assert_eq!(first.content["truncated"].as_bool(), Some(true));
-        assert!(first.content["notice"]
-            .as_str()
-            .unwrap()
-            .contains("70000 lines total"));
+        assert_eq!(
+            first.content["truncated"].as_bool(),
+            Some(false),
+            "a full default window is pagination, not truncation: {:?}",
+            first.content["notice"]
+        );
+        let notice = first.content["notice"].as_str().unwrap();
+        assert!(notice.contains("70000 lines total"));
+        assert!(notice.contains(&format!("next offset is {DEFAULT_READ_LINES}")));
 
         let tail = execute_tool(
             Some(dir.path()),
@@ -2794,7 +2808,51 @@ mod tests {
         assert!(result.content["notice"]
             .as_str()
             .unwrap()
-            .contains("longer than 2000 characters"));
+            .contains(&format!("longer than {MAX_LINE_CHARS} characters")));
+        assert_eq!(result.content["truncated"].as_bool(), Some(true));
+    }
+
+    #[tokio::test]
+    async fn read_does_not_mark_a_filled_window_truncated() {
+        let dir = tempfile::tempdir().unwrap();
+        let body: String = (1..=120).map(|n| format!("line {n}\n")).collect();
+        std::fs::write(dir.path().join("notes.txt"), &body).unwrap();
+
+        let window = execute_tool(
+            Some(dir.path()),
+            None,
+            "Read",
+            &serde_json::json!({ "path": "notes.txt", "offset": 10, "limit": 20 }),
+            5_000,
+        )
+        .await;
+        assert!(window.ok, "read failed: {:?}", window.content);
+        assert_eq!(window.content["lineCount"].as_u64(), Some(20));
+        assert_eq!(window.content["totalLines"].as_u64(), Some(120));
+        assert_eq!(window.content["truncated"].as_bool(), Some(false));
+        assert_eq!(
+            window.content["content"].as_str().unwrap().lines().next(),
+            Some("line 11")
+        );
+        let notice = window.content["notice"].as_str().unwrap();
+        assert!(notice.contains("next offset is 30"), "{notice}");
+        assert!(!notice.contains("use Grep"), "{notice}");
+
+        let whole = execute_tool(
+            Some(dir.path()),
+            None,
+            "Read",
+            &serde_json::json!({ "path": "notes.txt" }),
+            5_000,
+        )
+        .await;
+        assert!(whole.ok, "read failed: {:?}", whole.content);
+        assert_eq!(whole.content["lineCount"].as_u64(), Some(120));
+        assert_eq!(whole.content["truncated"].as_bool(), Some(false));
+        assert!(whole.content["notice"]
+            .as_str()
+            .unwrap()
+            .contains("end of file"));
     }
 
     #[tokio::test]
@@ -3268,7 +3326,11 @@ mod tests {
             );
         }
         assert!(by_name("Glob")["parameters"]["properties"]["limit"].is_object());
-        assert!(read["description"].as_str().unwrap().contains("500 lines"));
+        assert!(read["description"].as_str().unwrap().contains("2000 lines"));
+        assert!(read["description"]
+            .as_str()
+            .unwrap()
+            .contains("truncated` is true only when this window was cut"));
         assert!(read["description"]
             .as_str()
             .unwrap()

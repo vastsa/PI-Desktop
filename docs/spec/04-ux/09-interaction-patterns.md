@@ -676,10 +676,12 @@ may be retained while exactly one workspace supplies the visible shell context.
 
 ### 4.3 Tool result truncation
 
-- Per D033: tool results exceeding 256KB or 4000 lines are truncated with explicit markers
-- Truncation marker: `[truncated: output exceeded 256KB or 4000 lines]` (host-enforced, see [16-tool-result-limits](../03-runtime/16-tool-result-limits.md))
+- Per D306 / D194: budgets are per tool class (see [16-tool-result-limits](../03-runtime/16-tool-result-limits.md)). Search/read results cap at 128KB / 4000 lines; Bash stdout/stderr cap at 96KB / 4000 lines with a spill file.
+- Read/Glob/Grep report `truncated: true` only when this result was cut short (budget, a clipped line, or remaining Grep/Glob hits). A filled Read window of a longer file is not truncated; `notice` names the next offset.
+- Bash markers name which end survived and the spill path, for example `[truncated: kept the first 4000 of 51234 lines; limit 4000 lines / 96KB. …]`.
 - Truncated content is never silently omitted — always marked
 - Disclosure expansion does not load content beyond the host-enforced cap
+- The collapsed-row `truncated` chip follows `details.truncated`
 
 ## 5. Permission interrupt flow
 
@@ -1148,7 +1150,7 @@ This does not prevent state changes — it makes them instant.
 3a. Send stays enabled while running, queues prompts per session, and Send now
     finishes the current boundary before releasing its prioritized prompt
 4. Long content (>50 lines for messages, >10 for args, >20 for results) is collapsed by default with expand link
-5. Tool results exceeding 256KB/4000 lines show truncation marker per D033
+5. Tool results that were cut short show a truncation marker or chip per D306; a filled Read window of a longer file does not
 6. Permission interrupt inserts inline card, disables composer, shows countdown, and re-enables after resolution
 7. Toasts used for transient background operations; inline errors used for context-specific failures
 8. Focus returns to composer after session switch, message send, permission resolution, and abort

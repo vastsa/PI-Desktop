@@ -1838,7 +1838,8 @@ Delegation rules:
           return (
             "Read a bounded window from an existing regular text file, never a directory. " +
             "The result always includes `totalLines` so you know the file\'s scale upfront. " +
-            "For large files, use Grep to locate the target content first, then Read " +
+            "`truncated` is true only when this window was cut short, not merely because the file continues. " +
+            "For files beyond the default window, use Grep to locate the target content first, then Read " +
             "the relevant range with `offset` and `limit`. Activate and use Glob " +
             "when a directory must be listed or the file name is uncertain." +
             `${scratchPathHint}${externalPathHint}`
@@ -1889,7 +1890,7 @@ Delegation rules:
           Type.Number({ minimum: 0, description: "0-based line offset; defaults to 0." }),
         ),
         limit: Type.Optional(
-          Type.Number({ minimum: 1, description: "Maximum lines to return; defaults to 500." }),
+          Type.Number({ minimum: 1, description: "Maximum lines to return; defaults to 2000." }),
         ),
       },
       BrowserPreview: {

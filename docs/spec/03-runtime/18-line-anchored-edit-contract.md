@@ -125,7 +125,7 @@ Read fusion is what makes paginated reading work: reading lines 1–2000 and the
 A line joins `seen_lines` only when the producer emitted it **in full**:
 
 - `Read` records every line it returned, **excluding** lines clipped at
-  `MAX_LINE_CHARS` (2000). A clipped line was not displayed; its tail is exactly
+  `MAX_LINE_CHARS` (16,384). A clipped line was not displayed; its tail is exactly
   where a blind edit does damage.
 - `Grep` in `content` mode records only its matched lines. `filesWithMatches`
   and `count` modes record nothing and mint a tag with `seen_lines` empty, which

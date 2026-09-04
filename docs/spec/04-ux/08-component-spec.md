@@ -1450,7 +1450,9 @@ agent errors remain owned by the assistant error and TurnOutcomeCard surfaces.
 - The primary argument is a clamped single-line monospace hint.
 - Result chips follow the hint: exit code (error hue), match/file counts,
   replacement count, written or read size, `truncated`, `scratch`. A successful
-  exit earns no chip — the row status already says so.
+  exit earns no chip — the row status already says so. The `truncated` chip
+  follows `details.truncated` and therefore appears only when this result was
+  cut short, not when a Read window of a longer file was filled (D306).
 - The disclosure chevron is quiet until hover/focus or expansion.
 - A `run` row's head carries two more controls than the others, because its
   command lives only there (D226, §9.10): the outcome with a toned dot, and a

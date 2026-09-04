@@ -147,7 +147,7 @@ v8→v11 迁移是一个带有 WAL 检查点和精确的原子事务
 
 - [x] 主路径上没有崩溃 — auto:`test:e2e:boot` + `test:e2e:supervision`
 - [x] 错误显示可读消息 — 手册：M2（AppError 消息浮出水面）
-- [x] 长输出不会冻结 UI — 手册：M3（256KB/4000-line 截断）
+- [x] 长输出不会冻结 UI — 手册：M3（按工具预算；搜索 128KB / 4000 行）
 - [x] 按键操作显示 loading/running 状态 — 手动：M2
 - [x] 发布包没有重复的 renderer/runtime 依赖树 —
   auto:desktop包合约+本机 macOS arm64/Intel x64 软件包审核：E2E-092

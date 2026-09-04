@@ -610,10 +610,12 @@
 
 ### 4. 3 工具结果截断
 
-- 根据 D033：超过 256KB 或 4000 行的工具结果将被显式标记截断
-- 截断标记：`[truncated: output exceeded 256KB or 4000 lines]`（主机强制，请参阅 [16-tool-result-limits](/zh-CN/spec/03-runtime/16-tool-result-limits)）
+- 根据 D306 / D194：预算按工具类别计算（见 [16-tool-result-limits](/zh-CN/spec/03-runtime/16-tool-result-limits)）。搜索/读取结果上限为 128KB / 4000 行；Bash stdout/stderr 上限为 96KB / 4000 行并带溢出文件。
+- Read/Glob/Grep 仅在本次结果被切断时报告 `truncated: true`（预算、被剪行，或 Grep/Glob 还有剩余命中）。填满的 Read 窗口即使文件更长也不算截断；`notice` 写出下一个偏移。
+- Bash 标记标明哪一端幸存以及溢出路径，例如 `[truncated: kept the first 4000 of 51234 lines; limit 4000 lines / 96KB. …]`。
 - 截断的内容永远不会被默默地省略——总是被标记
 - 披露扩展不会加载超出主机强制上限的内容
+- 折叠行的 `truncated` 芯片跟随 `details.truncated`
 
 ## 5. 权限中断流程
 
@@ -1033,7 +1035,7 @@ Mode/provider/model/permission/shell 配置和新提示仍然存在
 2.回车发送消息； Shift+Enter 在输入框中插入换行符
 3. Abort 立即取消正在运行的回合和挂起的权限，无需确认对话框
 4.长内容（>50行消息，>10行参数，>20行结果）默认通过展开链接折叠
-5. 超过 256KB/4000 行的工具结果显示按照 D033 的截断标记
+5. 被切断的工具结果按 D306 显示截断标记或芯片；更长文件上已填满的 Read 窗口不显示
 6.权限中断插入内联卡，禁用composer，显示倒计时，解决后重新启用
 7. 用于短暂后台操作的Toast；用于特定于上下文的失败的内联错误
 8. 会话切换、消息发送、权限解析、中止后焦点返回到composer
