@@ -2371,25 +2371,25 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   deleteMessage: async (messageId) => {
-    let state = get();
-    const sessionId = state.activeSessionId;
-    if (!sessionId || state.isRunning) return;
-    if (state.sessionHistory[sessionId]?.hasMoreBefore) {
-      const fullMessages = await loadFullSessionMessages(sessionId);
-      if (!fullMessages || get().activeSessionId !== sessionId) return;
-      set((current) =>
-        current.activeSessionId === sessionId
-          ? {
-              messages: fullMessages,
-              sessionHistory: {
-                ...current.sessionHistory,
-                [sessionId]: { messageStart: 0, hasMoreBefore: false },
-              },
-            }
-          : {},
-      );
-      state = get();
-    }
+    const sessionId = get().activeSessionId;
+    if (!sessionId || get().isRunning) return;
+    // The rewrite below replaces the whole transcript, so it must start from
+    // the full durable copy: the renderer's window is paged and display-capped
+    // (D299), and writing it back would truncate long rows on disk.
+    const fullMessages = await loadFullSessionMessages(sessionId);
+    if (!fullMessages || get().activeSessionId !== sessionId) return;
+    set((current) =>
+      current.activeSessionId === sessionId
+        ? {
+            messages: fullMessages,
+            sessionHistory: {
+              ...current.sessionHistory,
+              [sessionId]: { messageStart: 0, hasMoreBefore: false },
+            },
+          }
+        : {},
+    );
+    const state = get();
     const index = state.messages.findIndex((message) => message.id === messageId);
     if (index < 0) return;
     const target = state.messages[index];
@@ -2502,7 +2502,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         sessionId,
       ),
     }));
-    let state = get();
+    const state = get();
     if (state.activeSessionId !== sessionId) {
       submittedDraft?.resolveAbort?.(false);
       submittedComposerDrafts.delete(sessionId);
@@ -2511,82 +2511,87 @@ export const useAppStore = create<AppState>((set, get) => ({
       }));
       return;
     }
-    let messages = state.messages;
-    if (state.sessionHistory[sessionId]?.hasMoreBefore) {
+    const smartStop = resolveComposerSmartStop(state.messages, submittedDraft);
+    if (smartStop.kind === "restore") {
+      // Nothing came back yet — undo the send: pull the prompt into the
+      // composer and drop the turn from the transcript. The rewrite must start
+      // from the full durable transcript, never from the windowed, display-
+      // capped copy the renderer holds (D299), and it must keep any reply row
+      // the host persisted between the abort and this read.
       const fullMessages = await loadFullSessionMessages(sessionId);
       if (!fullMessages || get().activeSessionId !== sessionId) {
         submittedDraft?.resolveAbort?.(false);
         submittedComposerDrafts.delete(sessionId);
         return;
       }
-      set((current) =>
-        current.activeSessionId === sessionId
+      const merged = mergeLiveSessionMessages(fullMessages, get().messages);
+      const fullStop = resolveComposerSmartStop(merged, submittedDraft);
+      if (fullStop.kind === "restore") {
+        submittedComposerDrafts.delete(sessionId);
+        submittedDraft?.resolveAbort?.(true);
+        const fullWindow = { messageStart: 0, hasMoreBefore: false };
+        cacheSessionTranscript(sessionId, fullStop.kept, fullWindow);
+        set((s) => ({
+          messages: fullStop.kept,
+          sessionHistory: { ...s.sessionHistory, [sessionId]: fullWindow },
+          composerPrefill: { ...fullStop.draft, sessionId },
+          isRunning: false,
+          runningSessions: { ...s.runningSessions, [sessionId]: false },
+        }));
+        if (fullStop.kept.length < merged.length) {
+          try {
+            await api.replaceSessionMessages(sessionId, fullStop.kept);
+          } catch {
+            // Best effort — the local transcript already reflects the undo.
+          }
+        }
+        void flushPendingSessionConfiguration(sessionId);
+        return;
+      }
+      // The reply had started after all (its row landed while we looked).
+      // Fall through and settle it in place on the full transcript.
+      set((s) =>
+        s.activeSessionId === sessionId
           ? {
-              messages: fullMessages,
+              messages: merged,
               sessionHistory: {
-                ...current.sessionHistory,
+                ...s.sessionHistory,
                 [sessionId]: { messageStart: 0, hasMoreBefore: false },
               },
             }
           : {},
       );
-      state = get();
-      messages = state.messages;
-    }
-    const smartStop = resolveComposerSmartStop(messages, submittedDraft);
-    if (smartStop.kind === "restore") {
-      // Nothing came back yet — undo the send: pull the prompt into the
-      // composer and drop the turn from the transcript. Prefer the renderer
-      // snapshot so serialized file paths return as compact references.
-      submittedComposerDrafts.delete(sessionId);
-      submittedDraft?.resolveAbort?.(true);
-      set((s) => ({
-        messages: smartStop.kept,
-        composerPrefill: { ...smartStop.draft, sessionId },
-        isRunning: false,
-        runningSessions: { ...s.runningSessions, [sessionId]: false },
-      }));
-      if (smartStop.kept.length < messages.length) {
-        try {
-          await api.replaceSessionMessages(sessionId, smartStop.kept);
-        } catch {
-          // Best effort — the local transcript already reflects the undo.
-        }
-      }
-      void flushPendingSessionConfiguration(sessionId);
-      return;
     }
     submittedDraft?.resolveAbort?.(false);
     submittedComposerDrafts.delete(sessionId);
     // A partial reply exists: settle it in place. Streaming assistant text
-    // becomes an aborted-but-kept answer; still-running tools close out.
-    const settled = messages.map((message) => {
-      if (message.role === "assistant" && message.status === "streaming") {
-        return {
-          ...settleStoppedAssistantMetrics(message, stoppedAtMs),
-          status: "aborted" as const,
-        };
-      }
-      if (message.role === "tool" && message.toolStatus === "running") {
-        return {
-          ...message,
-          toolStatus: "error" as const,
-          status: "aborted" as const,
-          toolCompletedAt: message.toolCompletedAt ?? new Date().toISOString(),
-        };
-      }
-      return message;
-    });
+    // becomes an aborted-but-kept answer; still-running tools close out. The
+    // durable copy is the runtime's own aborted final row (or its last
+    // checkpoint), so the renderer does not rewrite the transcript here: a
+    // rewrite from this snapshot raced that row and could delete it (D299).
+    const stoppedRows = (rows: UiMessage[]) =>
+      rows.map((message) => {
+        if (message.role === "assistant" && message.status === "streaming") {
+          return {
+            ...settleStoppedAssistantMetrics(message, stoppedAtMs),
+            status: "aborted" as const,
+          };
+        }
+        if (message.role === "tool" && message.toolStatus === "running") {
+          return {
+            ...message,
+            toolStatus: "error" as const,
+            status: "aborted" as const,
+            toolCompletedAt: message.toolCompletedAt ?? new Date().toISOString(),
+          };
+        }
+        return message;
+      });
     set((s) => ({
-      messages: settled,
+      messages: s.activeSessionId === sessionId ? stoppedRows(s.messages) : s.messages,
       isRunning: false,
       runningSessions: { ...s.runningSessions, [sessionId]: false },
     }));
-    try {
-      await api.replaceSessionMessages(sessionId, settled);
-    } catch {
-      // Best effort — the host may persist its own copy of the turn.
-    }
     void flushPendingSessionConfiguration(sessionId);
   },
 

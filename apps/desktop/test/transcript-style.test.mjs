@@ -159,18 +159,29 @@ test("stopping a turn undoes an unanswered prompt or settles the partial reply",
     "utf8",
   );
   assert.match(storeSource, /const submittedDraft = submittedComposerDrafts\.get\(sessionId\)/);
-  assert.match(storeSource, /resolveComposerSmartStop\(messages, submittedDraft\)/);
-  assert.match(storeSource, /composerPrefill:\s*\{ \.\.\.smartStop\.draft, sessionId \}/);
+  assert.match(storeSource, /resolveComposerSmartStop\(state\.messages, submittedDraft\)/);
+  assert.match(storeSource, /composerPrefill:\s*\{ \.\.\.fullStop\.draft, sessionId \}/);
   assert.match(storeSource, /submittedDraft\?\.resolveAbort\?\.\(true\)/);
   assert.match(storeSource, /submittedDraft\?\.resolveAbort\?\.\(false\)/);
   assert.match(storeSource, /submittedComposerDrafts\.delete\(sessionId\)/);
   assert.match(storeSource, /smartStop\.kind === "restore"/);
   assert.match(storeSource, /status:\s*"aborted" as const/);
+  // The undo rewrite starts from the full durable transcript merged with the
+  // live rows, never from the renderer's paged, display-capped window (D299).
   assert.match(
     storeSource,
-    /replaceSessionMessages\(sessionId,\s*smartStop\.kept\)/,
+    /const merged = mergeLiveSessionMessages\(fullMessages, get\(\)\.messages\)/,
   );
-  assert.match(storeSource, /replaceSessionMessages\(sessionId,\s*settled\)/);
+  assert.match(storeSource, /resolveComposerSmartStop\(merged, submittedDraft\)/);
+  assert.match(
+    storeSource,
+    /replaceSessionMessages\(sessionId,\s*fullStop\.kept\)/,
+  );
+  // Settling a partial reply is renderer-only: the runtime's aborted final row
+  // (or its checkpoint) is the durable copy, and a rewrite from this snapshot
+  // could delete it.
+  assert.doesNotMatch(storeSource, /replaceSessionMessages\(sessionId,\s*settled\)/);
+  assert.doesNotMatch(storeSource, /replaceSessionMessages\(sessionId,\s*smartStop\.kept\)/);
 });
 
 test("delete remains on user turns and is removed from assistant toolbar", async () => {
