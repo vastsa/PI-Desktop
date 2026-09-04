@@ -99,9 +99,19 @@ test("assistant turns stay transparent full-width prose", () => {
     stylesSource,
     /\.message-row\.assistant[\s\S]*?\.message-col[\s\S]*?width:\s*min\(100%,\s*720px\);/,
   );
+  // D297: the live turn tints a tile instead of drawing a rail; the inset is
+  // reserved either way so the tint fading never reflows the text.
   assert.match(
     stylesSource,
-    /\.message-row\.assistant-turn\.streaming \.message-col\s*\{[\s\S]*?border-left-color:/,
+    /\.message-row\.assistant-turn \.message-col\s*\{[^}]*padding-left:\s*14px/,
+  );
+  assert.doesNotMatch(
+    stylesSource,
+    /\.message-row\.assistant-turn \.message-col\s*\{[^}]*border-left/,
+  );
+  assert.match(
+    stylesSource,
+    /\.message-row\.assistant-turn\.streaming \.message-col\s*\{[^}]*background:\s*var\(--ds-tile\)/,
   );
 });
 

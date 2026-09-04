@@ -71,6 +71,19 @@
   --ds-border-default: color-mix(in oklab, var(--gray-0) 8%, transparent);
   --ds-border-subtle: color-mix(in oklab, var(--gray-0) 5%, transparent);
   --ds-border-strong: color-mix(in oklab, var(--gray-0) 14%, transparent);
+  /*
+    Divider-free surfaces (D297). In-flow structure is carried by three tonal
+    layers instead of strokes: the page, a soft tile mixed from the text colour,
+    and a raised layer (an opaque lift plus a soft shadow) for the active pill
+    of a control or a block that must read as "on top". Border tokens above stay
+    for floating layers — menus, dialogs, tooltips — where an edge is an
+    elevation cue rather than a partition.
+  */
+  --ds-tile: color-mix(in oklab, var(--gray-0) 3.5%, transparent);
+  --ds-tile-hover: color-mix(in oklab, var(--gray-0) 6%, transparent);
+  --ds-tile-deep: color-mix(in oklab, var(--gray-0) 8%, transparent);
+  --ds-raised: var(--gray-750);
+  --ds-raised-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
   --ds-accent: var(--gray-0);
   --ds-accent-hover: var(--gray-100);
   --ds-accent-soft: var(--gray-300);
@@ -92,7 +105,8 @@
   --ds-shadow-dialog: 0 16px 48px rgba(0, 0, 0, 0.55);
   /* Codex --elevation-prominent (same stroke+lift in dark and light) */
   --ds-elevation-stroke: 0 0 0 0.5px color-mix(in oklab, var(--gray-0) 12%, transparent);
-  --ds-shadow-composer: var(--ds-elevation-stroke), 0 3px 7.5px #0000000a, 0 0 20px #0000000d;
+  /* D297: the composer lifts by shadow alone; the hairline stroke is gone. */
+  --ds-shadow-composer: 0 3px 7.5px #0000000a, 0 0 20px #0000000d;
   --ds-bg-elevated-primary: color-mix(in oklab, var(--gray-800) 96%, transparent);
   --ds-sidebar-width: clamp(240px, 275px, min(520px, calc(100vw - 320px)));
   /* Settings rail border-box width, including its 1px right border. The
@@ -139,6 +153,11 @@
   --ds-border-default: color-mix(in oklab, #1a1c1f 8%, transparent);
   --ds-border-subtle: color-mix(in oklab, #1a1c1f 5%, transparent);
   --ds-border-strong: color-mix(in oklab, #1a1c1f 12%, transparent);
+  --ds-tile: color-mix(in oklab, #1a1c1f 3.5%, transparent);
+  --ds-tile-hover: color-mix(in oklab, #1a1c1f 6%, transparent);
+  --ds-tile-deep: color-mix(in oklab, #1a1c1f 8%, transparent);
+  --ds-raised: #ffffff;
+  --ds-raised-shadow: 0 1px 2px rgba(0, 0, 0, 0.1), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
   /* Light theme accent inverts: dark ink on pale surfaces. */
   --ds-accent: #1a1c1f;
   --ds-accent-hover: #303030;
@@ -157,9 +176,7 @@
   --ds-shadow-dialog: 0 16px 48px rgba(0, 0, 0, 0.12);
   --ds-elevation-stroke: 0 0 0 0.5px color-mix(in oklab, #1a1c1f 12%, transparent);
   /* Codex elevation-prominent exact (same dark/light formula). */
-  --ds-shadow-composer: var(--ds-elevation-stroke),
-    0 3px 7.5px #0000000a,
-    0 0 20px #0000000d;
+  --ds-shadow-composer: 0 3px 7.5px #0000000a, 0 0 20px #0000000d;
   --ds-bg-elevated-primary: color-mix(in oklab, #ffffff 70%, transparent);
 }
 

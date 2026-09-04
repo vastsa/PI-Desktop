@@ -149,10 +149,14 @@ test("memoized activity rows compare delegate runs by their rows", () => {
 });
 
 test("the nested run is visibly one level inside the call", () => {
+  // D297: the run is a soft tile; the collapse rail draws nothing at rest and
+  // only shows its bar as a hover/focus affordance.
+  assert.match(messagesCss, /\.subagent-run \{[^}]*background: var\(--ds-tile\)/);
   assert.match(
     messagesCss,
-    /\.subagent-run > \.disclosure-collapse-rail::before \{[^}]*background: var\(--ds-border-default\)/,
+    /\.disclosure-collapse-rail::before \{[^}]*background: transparent/,
   );
+  assert.doesNotMatch(messagesCss, /\.subagent-run > \.disclosure-collapse-rail::before/);
   assert.match(messagesCss, /\.subagent-run \{[^}]*margin: 2px 0 8px 24px/);
   assert.match(messagesCss, /\.subagent-run-count \{[^}]*margin-inline-start: auto/);
   assert.match(messagesCss, /\.tool-row-agent \{/);
@@ -211,7 +215,15 @@ test("the aggregate label counts, so a lone delegation is not called plural", ()
 test("the topology uses semantic low-noise surfaces and responsive connectors", () => {
   assert.match(messagesCss, /\.tool-activity-group\.has-subagents \{/);
   assert.match(messagesCss, /\.subagent-topology \{[^}]*display: grid/);
-  assert.match(messagesCss, /\.subagent-topology-node \{[^}]*var\(--ds-border-default\)/);
+  // D297: nodes are raised tiles on the group's tile, connectors are tinted
+  // bars, and the dotted canvas is gone.
+  assert.match(messagesCss, /\.subagent-topology-node \{[^}]*background: var\(--ds-raised\)/);
+  assert.doesNotMatch(messagesCss, /\.subagent-topology-node \{[^}]*border:/);
+  assert.match(messagesCss, /\.tool-activity-group\.has-subagents \{[^}]*background: var\(--ds-tile\)/);
+  assert.doesNotMatch(messagesCss, /\.tool-activity-group\.has-subagents \{[^}]*border:/);
+  assert.doesNotMatch(messagesCss, /\.subagent-topology \{[^}]*background-image/);
+  assert.match(messagesCss, /\.subagent-topology-connector \{[^}]*background: var\(--ds-tile-deep\)/);
+  assert.match(messagesCss, /\.subagent-topology-node::before \{[^}]*height: 2px/);
   assert.match(messagesCss, /\.subagent-topology-node\.outcome-completed/);
   assert.match(messagesCss, /\.subagent-topology-node\.outcome-failed/);
   assert.match(messagesCss, /\.subagent-topology-node\.outcome-timed-out/);

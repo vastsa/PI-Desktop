@@ -60,13 +60,15 @@ test("the API format is the fourth field, not a disclosure of its own", () => {
   assert.match(pickerSource, /provider-chosen-advanced-toggle/);
 });
 
-test("list rows carry no box of their own inside a bordered pane", () => {
-  // Double borders were what made the dialog look coarse.
+test("list rows carry no box of their own inside the inset pane", () => {
+  // Double borders were what made the dialog look coarse; D297 removed the
+  // hairline between rows too — the checkbox and a 2px gap make the list.
   const row = block(".provider-models-row");
-  assert.doesNotMatch(row, /border: 1px solid/);
-  assert.match(styles, /\.provider-models-row \+ \.provider-models-row\s*\{\s*border-top: 1px solid/);
+  assert.doesNotMatch(row, /border:|border-top|box-shadow/);
+  assert.doesNotMatch(styles, /\.provider-models-row \+ \.provider-models-row/);
+  assert.match(block(".provider-models-list"), /gap: 2px/);
   const chosen = block(".provider-chosen-row");
-  assert.doesNotMatch(chosen, /border: 1px solid/);
+  assert.doesNotMatch(chosen, /border:|border-top|box-shadow/);
   // The panes themselves read as wells, not as raised cards.
   for (const selector of [".provider-models", ".provider-chosen"]) {
     assert.match(block(selector), /background: var\(--ds-bg-inset\)/);
@@ -143,11 +145,9 @@ test("each pane is a self-contained panel that scrolls its own list", () => {
   for (const selector of [".provider-models", ".provider-chosen"]) {
     const pane = block(selector);
     assert.match(pane, /min-height: 0/);
-    assert.match(pane, /border: 1px solid var\(--ds-border-subtle\)/);
+    // D297: the inset tone is the pane's edge; no stroke of any kind.
+    assert.doesNotMatch(pane, /border:|border-top|box-shadow/);
     assert.match(pane, /border-radius: var\(--radius-sm\)/);
-    // The divider that separated the old stacked sections would now cut across
-    // the grid, so it must be gone.
-    assert.doesNotMatch(pane, /border-top: 1px solid/);
   }
   for (const selector of [".provider-models-list", ".provider-chosen-list"]) {
     const list = block(selector);
@@ -163,7 +163,9 @@ test("each pane is a self-contained panel that scrolls its own list", () => {
 test("the custom-model row stays pinned under the chosen list", () => {
   const custom = block(".provider-custom-model");
   assert.match(custom, /flex: none/);
-  assert.match(custom, /border-top: 1px solid var\(--ds-border-subtle\)/);
+  // D297: spacing, not a rule, sets it off from the list above.
+  assert.match(custom, /margin-top: 2px/);
+  assert.doesNotMatch(custom, /border-top/);
 });
 
 test("empty panes hold their height instead of collapsing", () => {

@@ -3,24 +3,25 @@
   the overlay/dialog base used by every floating surface.
 */
 
+/* Surfaces and fields carry tone, not strokes (D297): a card is a soft tile,
+   a field is a filled well that lifts and gains an accent ring only while
+   focused. Both themes share the formula through the tile tokens. */
 .panel-card {
-  border: 1px solid var(--ds-border-default);
   border-radius: var(--radius-lg);
-  background: color-mix(in oklab, var(--ds-text-primary) 3%, transparent);
+  background: var(--ds-tile);
 }
 
 .field-input,
 .field-select,
 .field-textarea {
   width: 100%;
-  border: 1px solid var(--ds-border-default);
+  border: 0;
   border-radius: var(--radius-sm);
-  background: color-mix(in oklab, var(--ds-text-primary) 3%, transparent);
-  padding: 8px 10px;
+  background: var(--ds-tile-hover);
+  padding: 9px 11px;
   color: var(--ds-text-primary);
   outline: none;
   transition:
-    border-color var(--motion-duration-fast) var(--motion-ease-out),
     background var(--motion-duration-fast) var(--motion-ease-out),
     box-shadow var(--motion-duration-fast) var(--motion-ease-out);
 }
@@ -28,26 +29,8 @@
 .field-input:focus,
 .field-select:focus,
 .field-textarea:focus {
-  border-color: color-mix(in oklab, var(--ds-accent) 55%, transparent);
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 16%, transparent);
-}
-
-:root[data-theme="light"] .field-input,
-:root[data-theme="light"] .field-select,
-:root[data-theme="light"] .field-textarea {
-  background: #f5f5f5;
-  border-color: transparent;
-  box-shadow: 0 0 0 0.5px color-mix(in oklab, #1a1c1f 8%, transparent);
-}
-
-:root[data-theme="light"] .field-input:focus,
-:root[data-theme="light"] .field-select:focus,
-:root[data-theme="light"] .field-textarea:focus {
-  background: #ffffff;
-  border-color: transparent;
-  box-shadow:
-    0 0 0 0.5px color-mix(in oklab, #1a1c1f 12%, transparent),
-    0 0 0 2px color-mix(in oklab, #1a1c1f 12%, transparent);
+  background: var(--ds-raised);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 22%, transparent);
 }
 
 .btn {
@@ -72,7 +55,6 @@
 .btn-primary {
   background: var(--ds-accent);
   color: var(--ds-bg-primary);
-  box-shadow: inset 0 0 0 0.5px var(--ds-border-default);
 }
 .btn-primary:hover:not(:disabled) {
   background: var(--ds-accent-hover);
@@ -80,13 +62,11 @@
 }
 
 .btn-secondary {
-  background: var(--ds-bg-secondary);
+  background: var(--ds-tile-hover);
   color: var(--ds-text-primary);
-  box-shadow: inset 0 0 0 0.5px var(--ds-border-default);
 }
 .btn-secondary:hover:not(:disabled) {
-  background: var(--ds-bg-tertiary);
-  box-shadow: inset 0 0 0 0.5px var(--ds-border-strong);
+  background: var(--ds-tile-deep);
 }
 
 .btn-ghost {

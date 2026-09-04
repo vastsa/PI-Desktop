@@ -43,7 +43,7 @@
   /* Gold coding-shell settings rail ~275px at 1200-wide captures */
   width: var(--ds-settings-nav-width);
   flex: 0 0 var(--ds-settings-nav-width);
-  border-right: 1px solid transparent;
+  /* D297: no right rule; the rail's own tone separates it from the content. */
   background: var(--ds-bg-sidebar);
   padding: 0;
   gap: 0;
@@ -56,7 +56,6 @@
 
 :root[data-theme="dark"] .settings-shell-full .settings-nav {
   background: #000000;
-  border-right-color: color-mix(in oklab, var(--gray-0) 8%, transparent);
 }
 
 .settings-nav-top {
@@ -108,17 +107,15 @@
   padding: 0 12px 0 30px;
   font-size: var(--text-md);
   outline: none;
-  box-shadow: 0 0 0 0.5px var(--ds-border-default);
 }
 
+/* D297: the field is a raised fill on the rail, not a ringed box. */
 :root[data-theme="light"] .settings-search {
   background: #ffffff;
-  box-shadow: 0 0 0 0.5px color-mix(in oklab, #1a1c1f 10%, transparent);
 }
 
 :root[data-theme="dark"] .settings-search {
   background: #212121;
-  box-shadow: 0 0 0 0.5px color-mix(in oklab, var(--gray-0) 10%, transparent);
 }
 
 .settings-search::placeholder {
@@ -291,23 +288,29 @@
   gap: 14px;
 }
 
+/* D297: a panel is one soft tile. No ring in either theme; tone does the work. */
 .settings-panel {
   display: flex;
   flex-direction: column;
   border-radius: var(--radius-lg);
-  background: color-mix(in oklab, var(--ds-text-primary) 2.5%, transparent);
+  background: var(--ds-tile);
   overflow: hidden;
-  box-shadow: 0 0 0 0.5px var(--ds-border-default);
 }
 
-:root[data-theme="light"] .settings-panel {
-  background: #ffffff;
-  box-shadow: 0 0 0 0.5px color-mix(in oklab, #1a1c1f 9%, transparent);
-}
-
-:root[data-theme="dark"] .settings-panel {
-  background: #212121;
-  box-shadow: 0 0 0 0.5px color-mix(in oklab, var(--gray-0) 10%, transparent);
+/*
+  Panels that are only a stack of rows dissolve into the page: each row becomes
+  its own tile and the gap between tiles replaces the hairline that used to
+  divide them (same rhythm as the plugins index, D296). Panels with mixed
+  content (theme grid, editors, form grids) stay one tile.
+*/
+.settings-panel:has(> .settings-row),
+.settings-panel.shortcut-map,
+.settings-panel.agent-capability-panel,
+.settings-panel.provider-list-panel:has(> .provider-row-list),
+.settings-panel.model-provider-panel:has(> .model-provider-list) {
+  gap: 6px;
+  background: transparent;
+  overflow: visible;
 }
 
 .settings-panel-actions {
@@ -343,11 +346,8 @@
   justify-content: space-between;
   gap: 24px;
   padding: 14px 16px;
-  border-bottom: 1px solid var(--ds-border-subtle);
-}
-
-.settings-row:last-child {
-  border-bottom: 0;
+  border-radius: var(--radius-md-plus);
+  background: var(--ds-tile);
 }
 
 .settings-row-copy {
@@ -400,12 +400,18 @@
   overflow: visible;
 }
 
+.shortcut-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .shortcut-group + .shortcut-group {
-  border-top: 1px solid var(--ds-border-subtle);
+  margin-top: 10px;
 }
 
 .shortcut-group-label {
-  padding: 12px 16px 5px;
+  padding: 0 4px 2px;
   color: var(--ds-text-muted);
   font-size: var(--text-xs-plus);
   font-weight: var(--font-weight-strong);
@@ -420,10 +426,8 @@
   justify-content: space-between;
   gap: 24px;
   padding: 9px 12px 9px 16px;
-}
-
-.shortcut-row + .shortcut-row {
-  border-top: 1px solid var(--ds-border-subtle);
+  border-radius: var(--radius-md-plus);
+  background: var(--ds-tile);
 }
 
 .shortcut-row-copy {
@@ -453,23 +457,21 @@
   min-height: 32px;
   align-items: center;
   justify-content: flex-end;
-  border: 1px solid var(--ds-border-default);
   border-radius: var(--radius-sm);
-  background: var(--ds-bg-secondary);
+  background: var(--ds-raised);
+  box-shadow: var(--ds-raised-shadow);
   padding: 4px 7px;
   color: var(--ds-text-primary);
-  transition: border-color var(--motion-duration-fast) var(--motion-ease-out), background var(--motion-duration-fast) var(--motion-ease-out);
+  transition: box-shadow var(--motion-duration-fast) var(--motion-ease-out), background var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 .shortcut-recorder:hover:not(:disabled) {
   background: var(--ds-bg-hover);
-  border-color: var(--ds-border-strong);
 }
 
 .shortcut-recorder.recording {
   justify-content: center;
-  border-color: var(--ds-accent);
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 20%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 30%, transparent);
 }
 
 .shortcut-recording-label {
@@ -510,23 +512,15 @@
   height: 22px;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--ds-border-default);
-  border-bottom-color: var(--ds-border-strong);
   border-radius: var(--radius-3xs);
-  background: var(--ds-bg-primary);
+  /* D297: a keycap is a raised block, not a boxed one. */
+  background: var(--ds-raised);
   padding: 0 6px;
   color: var(--ds-text-primary);
   font-family: var(--font-mono);
   font-size: var(--text-xs-plus);
   line-height: var(--leading-none);
-  box-shadow: 0 1px 0 var(--ds-border-subtle);
-}
-
-:root[data-theme="light"] .shortcut-keybinding kbd {
-  background: #f5f5f5;
-  border-color: color-mix(in oklab, #1a1c1f 10%, transparent);
-  border-bottom-color: color-mix(in oklab, #1a1c1f 16%, transparent);
-  box-shadow: 0 1px 0 color-mix(in oklab, #1a1c1f 6%, transparent);
+  box-shadow: var(--ds-raised-shadow);
 }
 
 .shortcut-disable,
@@ -605,7 +599,6 @@
   flex: 0 0 auto;
   border-radius: var(--radius-full);
   background: var(--ds-switch-track-off);
-  box-shadow: inset 0 0 0 1px var(--ds-switch-ring-off);
   transition:
     background var(--motion-duration-fast) var(--motion-ease-out),
     box-shadow var(--motion-duration-fast) var(--motion-ease-out);
@@ -623,19 +616,15 @@
 */
 .settings-toggle.on {
   background: var(--ds-accent);
-  box-shadow: inset 0 0 0 1px var(--ds-accent);
 }
 
 .settings-toggle.on:hover {
   background: var(--ds-accent-hover);
-  box-shadow: inset 0 0 0 1px var(--ds-accent-hover);
 }
 
 .settings-toggle:focus-visible,
 .settings-toggle.on:focus-visible {
-  box-shadow:
-    inset 0 0 0 1px var(--ds-switch-ring-off),
-    0 0 0 2px color-mix(in oklab, var(--ds-accent) 24%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 24%, transparent);
 }
 
 .settings-toggle.is-busy .settings-toggle-thumb {
@@ -678,19 +667,22 @@
   flex-direction: column;
   align-items: stretch;
   gap: 10px;
-  border: 1px solid var(--ds-border-default);
   border-radius: var(--radius-md-plus);
-  background: transparent;
+  /* D297: cards rest as tiles; the active one lifts to the raised layer and
+     carries the check badge, so no selected border is needed. A raised rest
+     state would vanish on the light page, where raised and page are both white. */
+  background: var(--ds-tile);
   padding: 12px;
   text-align: left;
   cursor: pointer;
-  transition: border-color var(--motion-duration-fast) var(--motion-ease-out),
+  transition:
+    background var(--motion-duration-fast) var(--motion-ease-out),
     box-shadow var(--motion-duration-fast) var(--motion-ease-out),
     transform var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 .settings-theme-card:hover {
-  border-color: var(--ds-border-strong);
+  background: var(--ds-tile-hover);
   transform: translateY(-2px);
 }
 
@@ -700,8 +692,8 @@
 }
 
 .settings-theme-card.active {
-  border-color: color-mix(in oklab, var(--ds-accent) 70%, var(--ds-border-default));
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 22%, transparent);
+  background: var(--ds-raised);
+  box-shadow: var(--ds-raised-shadow), 0 6px 16px rgba(0, 0, 0, 0.08);
 }
 
 /* Selected check badge */
@@ -716,7 +708,9 @@
   height: 20px;
   border-radius: var(--radius-full);
   background: var(--ds-accent);
-  color: #fff;
+  /* Accent is white in the dark theme, so the glyph takes the page ink like
+     a primary button does; a fixed #fff vanished there. */
+  color: var(--ds-bg-primary);
   animation: theme-card-check-pop var(--motion-duration-fast) var(--motion-ease-out);
 }
 
@@ -739,8 +733,8 @@
   height: 56px;
   padding: 8px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--ds-border-subtle);
   background: var(--ds-bg-inset);
+  box-shadow: var(--ds-raised-shadow);
 }
 
 .settings-theme-preview-bar {
@@ -775,7 +769,6 @@
 /* Light theme preview */
 .settings-theme-card.light .settings-theme-preview {
   background: #ffffff;
-  border-color: #e5e5e5;
 }
 .settings-theme-card.light .settings-theme-preview-bar,
 .settings-theme-card.light .settings-theme-preview-line {
@@ -788,7 +781,6 @@
 /* Dark theme preview */
 .settings-theme-card.dark .settings-theme-preview {
   background: #18181b;
-  border-color: #27272a;
 }
 .settings-theme-card.dark .settings-theme-preview-bar,
 .settings-theme-card.dark .settings-theme-preview-line {
@@ -801,7 +793,6 @@
 /* System theme preview: split surface shows it adapts to the OS */
 .settings-theme-card.system .settings-theme-preview {
   background: linear-gradient(135deg, #ffffff 0 50%, #18181b 50% 100%);
-  border-color: #d4d4d8;
 }
 .settings-theme-card.system .settings-theme-preview-bar,
 .settings-theme-card.system .settings-theme-preview-line {
@@ -819,7 +810,6 @@
   height: 56px;
   padding: 0 10px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--ds-border-subtle);
   background: var(--ds-bg-inset);
 }
 
@@ -895,25 +885,13 @@
   min-width: 132px;
   height: 30px;
   border-radius: var(--radius-full);
-  border: 1px solid var(--ds-border-default);
-  background: var(--ds-bg-primary);
+  border: 0;
+  /* D297: controls on a tile row are raised fills, not ringed boxes. */
+  background: var(--ds-raised);
+  box-shadow: var(--ds-raised-shadow);
   padding: 0 28px 0 12px;
   color: var(--ds-text-primary);
   font-size: var(--text-sm-plus);
-}
-
-:root[data-theme="light"] .settings-pill-select,
-:root[data-theme="light"] .settings-row-control .field-select {
-  background: #f5f5f5;
-  border-color: transparent;
-  box-shadow: 0 0 0 0.5px color-mix(in oklab, #1a1c1f 7%, transparent);
-}
-
-:root[data-theme="dark"] .settings-pill-select,
-:root[data-theme="dark"] .settings-row-control .field-select {
-  background: color-mix(in oklab, var(--gray-0) 6%, transparent);
-  border-color: transparent;
-  box-shadow: 0 0 0 0.5px color-mix(in oklab, var(--gray-0) 10%, transparent);
 }
 
 /* Global UI font picker (Appearance card). Pill trigger mirrors the
@@ -932,22 +910,10 @@
   height: 30px;
   padding: 0 12px;
   border-radius: var(--radius-full);
-  border: 1px solid var(--ds-border-default);
-  background: var(--ds-bg-primary);
+  background: var(--ds-raised);
+  box-shadow: var(--ds-raised-shadow);
   color: var(--ds-text-primary);
   font-size: var(--text-sm-plus);
-}
-
-:root[data-theme="light"] .settings-font-trigger {
-  background: #f5f5f5;
-  border-color: transparent;
-  box-shadow: 0 0 0 0.5px color-mix(in oklab, #1a1c1f 7%, transparent);
-}
-
-:root[data-theme="dark"] .settings-font-trigger {
-  background: color-mix(in oklab, var(--gray-0) 6%, transparent);
-  border-color: transparent;
-  box-shadow: 0 0 0 0.5px color-mix(in oklab, var(--gray-0) 10%, transparent);
 }
 
 .settings-font-trigger:hover {
@@ -1220,7 +1186,6 @@
   background: color-mix(in oklab, var(--ds-text-primary) 5%, transparent);
   padding: 0 11px;
   color: var(--ds-text-muted);
-  box-shadow: 0 0 0 0.5px var(--ds-border-default);
   transition:
     background var(--motion-duration-fast) var(--motion-ease-out),
     box-shadow var(--motion-duration-fast) var(--motion-ease-out);
@@ -1316,19 +1281,18 @@
   transition: opacity var(--motion-duration-fast) var(--motion-ease-out);
 }
 
-/* Level divider inside the panel: which level, where it lives, how many. */
+/* Level header above its rows: which level, where it lives, how many. D297:
+   a quiet label line, not a tinted divider strip. */
 .agent-capability-group {
   display: flex;
   min-width: 0;
   align-items: center;
   gap: 8px;
-  border-top: 1px solid var(--ds-border-subtle);
-  background: var(--ds-bg-chip);
-  padding: 7px 14px;
+  padding: 8px 4px 0;
 }
 
 .agent-capability-group:first-child {
-  border-top: 0;
+  padding-top: 0;
 }
 
 .agent-capability-group-label {
@@ -1381,11 +1345,12 @@
   line-height: var(--leading-normal);
 }
 
-/* Natural-height list inside the shared Settings panel surface. */
+/* Natural-height list of row tiles; the gap is the divider (D297). */
 .agent-capability-list {
   display: flex;
   min-width: 0;
   flex-direction: column;
+  gap: 6px;
 }
 
 /* Rows follow the provider-row rhythm: quiet icon, name + badges, meta. */
@@ -1395,16 +1360,13 @@
   gap: 12px;
   min-width: 0;
   padding: 11px 14px;
-  border-top: 1px solid var(--ds-border-subtle);
+  border-radius: var(--radius-md-plus);
+  background: var(--ds-tile);
   transition: background var(--motion-duration-fast) var(--motion-ease-out);
 }
 
-.agent-capability-row:first-child {
-  border-top: 0;
-}
-
 .agent-capability-row:hover {
-  background: var(--ds-bg-hover);
+  background: var(--ds-tile-hover);
 }
 
 /* Dim the identity of a disabled row but keep its switch fully legible. */
@@ -1515,8 +1477,7 @@
   which lands near 2.3:1 on white.
 */
 .agent-capability-badge.is-level {
-  border: 1px solid var(--ds-border-default);
-  background: transparent;
+  background: var(--ds-tile-deep);
   color: var(--ds-text-muted);
 }
 
@@ -1621,7 +1582,7 @@
 }
 
 .agent-capability-row.menu-open {
-  background: var(--ds-bg-hover);
+  background: var(--ds-tile-hover);
 }
 
 .agent-capability-menu-wrap {
@@ -1707,21 +1668,18 @@
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  border: 1px solid transparent;
   border-radius: var(--radius-md);
   background: transparent;
   color: var(--ds-text-secondary);
   cursor: pointer;
   transition:
     background var(--motion-duration-fast) var(--motion-ease-out),
-    border-color var(--motion-duration-fast) var(--motion-ease-out),
     color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 .settings-icon-button:hover:not(:disabled),
 .settings-icon-button:focus-visible {
-  border-color: var(--ds-border-default);
-  background: var(--ds-bg-hover);
+  background: var(--ds-tile-deep);
   color: var(--ds-text-primary);
 }
 
@@ -1772,16 +1730,17 @@
   width: 100%;
   height: var(--agent-capability-control-height, 32px);
   appearance: none;
-  border: 1px solid var(--ds-border-default);
+  border: 0;
   border-radius: var(--radius-sm);
-  background: var(--ds-bg-inset);
+  background: var(--ds-raised);
+  box-shadow: var(--ds-raised-shadow);
   padding: 0 25px;
   color: var(--ds-text-primary);
   cursor: pointer;
   font-size: var(--text-xs-plus);
   outline: none;
   transition:
-    border-color var(--motion-duration-fast) var(--motion-ease-out),
+    background var(--motion-duration-fast) var(--motion-ease-out),
     box-shadow var(--motion-duration-fast) var(--motion-ease-out);
 }
 
@@ -1798,12 +1757,11 @@
 }
 
 .agent-capability-project-picker select:hover:not(:disabled) {
-  border-color: var(--ds-border-strong);
+  background: var(--ds-bg-hover);
 }
 
 .agent-capability-project-picker select:focus-visible {
-  border-color: color-mix(in oklab, var(--ds-accent) 55%, transparent);
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 16%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 30%, transparent);
 }
 
 .agent-capability-project-picker select:disabled {
@@ -1816,7 +1774,7 @@
   display: flex;
   min-width: 0;
   flex-direction: column;
-  padding: 3px 0;
+  gap: 6px;
 }
 
 .agent-capability-skeleton-row {
@@ -1825,11 +1783,8 @@
   gap: 12px;
   min-width: 0;
   padding: 12px 14px;
-  border-top: 1px solid var(--ds-border-subtle);
-}
-
-.agent-capability-skeleton-row:first-child {
-  border-top: 0;
+  border-radius: var(--radius-md-plus);
+  background: var(--ds-tile);
 }
 
 .agent-capability-skeleton-glyph,
@@ -1874,7 +1829,7 @@
   animation-delay: 320ms;
 }
 
-/* Quiet empty state: centered glyph + copy, no decorative frame. */
+/* Quiet empty state: centered glyph + copy on one soft tile. */
 .agent-capability-empty {
   display: flex;
   flex-direction: column;
@@ -1882,6 +1837,8 @@
   justify-content: center;
   gap: 9px;
   padding: 38px 20px;
+  border-radius: var(--radius-lg);
+  background: var(--ds-tile);
   color: var(--ds-text-muted);
   font-size: var(--text-sm-plus);
   text-align: center;

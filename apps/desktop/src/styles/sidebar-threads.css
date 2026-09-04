@@ -191,10 +191,11 @@
   pointer-events: none;
 }
 
+/* Nested session rows read as children through the indent alone; the tree
+   rail is gone (D297). */
 .sidebar-session-group-body.project {
   margin-left: 13px;
   padding-left: 9px;
-  border-left: 1px solid var(--ds-border-subtle);
 }
 
 .sidebar-session-group-body.temporary {

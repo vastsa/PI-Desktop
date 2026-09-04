@@ -110,7 +110,7 @@
   z-index: 30;
   height: 2px;
   overflow: hidden;
-  background: var(--ds-border-subtle);
+  background: var(--ds-tile-deep);
   pointer-events: none;
 }
 
@@ -210,15 +210,16 @@
   width: 32px;
   height: 32px;
   border-radius: var(--radius-round);
-  border: 1px solid var(--ds-border-default);
-  background: var(--ds-bg-secondary);
+  background: var(--ds-raised);
   color: var(--ds-text-secondary);
+  /* Lifted by shadow alone (D297). */
   box-shadow:
+    var(--ds-raised-shadow),
     0 3px 7.5px rgba(0, 0, 0, 0.039),
     0 0 20px rgba(0, 0, 0, 0.051);
   animation: jump-latest-in var(--motion-duration-normal) var(--motion-ease-out)
     both;
-  transition: background var(--motion-duration-fast) var(--motion-ease-out), color var(--motion-duration-fast) var(--motion-ease-out), border-color var(--motion-duration-fast) var(--motion-ease-out);
+  transition: background var(--motion-duration-fast) var(--motion-ease-out), color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 @keyframes jump-latest-in {
@@ -233,7 +234,7 @@
 }
 
 .jump-latest-btn:hover {
-  background: var(--ds-bg-tertiary);
+  background: var(--ds-raised);
   color: var(--ds-text-primary);
 }
 
@@ -400,7 +401,7 @@
   height: min(2px, 100%);
   width: calc(var(--dash-w) * var(--magnify, 1));
   border-radius: var(--radius-full);
-  background: var(--ds-border-strong);
+  background: color-mix(in oklab, var(--ds-text-primary) 14%, transparent);
   transition: width 90ms var(--motion-ease-out),
     background var(--motion-duration-fast) var(--motion-ease-out);
 }
@@ -415,7 +416,7 @@
 
 .minimap-marker.history {
   --dash-w: 13px;
-  --history-marker-color: var(--ds-border-strong);
+  --history-marker-color: color-mix(in oklab, var(--ds-text-primary) 14%, transparent);
 }
 
 .minimap-marker.history::before {

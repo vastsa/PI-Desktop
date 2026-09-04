@@ -53,7 +53,6 @@
   gap: 8px;
   border-radius: var(--radius-md);
   background: color-mix(in oklab, var(--ds-error) 10%, transparent);
-  box-shadow: inset 0 0 0 0.5px color-mix(in oklab, var(--ds-error) 40%, transparent);
   padding: 9px 12px;
   color: var(--ds-error);
   font-size: var(--text-sm-plus);
@@ -111,9 +110,12 @@
 
 /* -------------------------------------------------------------------- rows */
 
+/* D297: rows are tiles with a gap between them; nothing is ruled off, and
+   nothing clips, so row menus overhang freely. */
 .ext-list {
   display: flex;
   flex-direction: column;
+  gap: 6px;
   padding: 0;
   overflow: visible;
 }
@@ -123,27 +125,15 @@
   align-items: flex-start;
   gap: 12px;
   padding: 12px 14px;
+  border-radius: var(--radius-md-plus);
+  background: var(--ds-tile);
   transition: background var(--motion-duration-fast) var(--motion-ease-out);
-}
-
-.ext-row:first-child {
-  border-top-left-radius: var(--radius-lg);
-  border-top-right-radius: var(--radius-lg);
-}
-
-.ext-row:last-child {
-  border-bottom-left-radius: var(--radius-lg);
-  border-bottom-right-radius: var(--radius-lg);
-}
-
-.ext-row + .ext-row {
-  border-top: 1px solid var(--ds-border-subtle);
 }
 
 .ext-row:hover,
 .ext-row:focus-within,
 .ext-row.menu-open {
-  background: var(--ds-bg-hover);
+  background: var(--ds-tile-hover);
 }
 
 /*
@@ -379,15 +369,15 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-full);
   padding: 3px 10px 3px 8px;
+  background: var(--ds-tile-hover);
   color: var(--ds-text-secondary);
   font-size: var(--text-xs-plus);
   cursor: pointer;
   transition:
     background var(--motion-duration-fast) var(--motion-ease-out),
-    border-color var(--motion-duration-fast) var(--motion-ease-out);
+    color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 .ext-tool-opt code {
@@ -395,18 +385,17 @@
 }
 
 .ext-tool-opt:hover {
-  background: var(--ds-bg-hover);
+  background: var(--ds-tile-deep);
 }
 
+/* On reads through the fill alone (D297); the tint says which kind. */
 .ext-tool-opt.is-on {
-  border-color: color-mix(in oklab, var(--ds-accent) 45%, transparent);
-  background: color-mix(in oklab, var(--ds-accent) 10%, transparent);
+  background: color-mix(in oklab, var(--ds-accent) 14%, transparent);
   color: var(--ds-text-primary);
 }
 
 .ext-tool-opt.is-on.is-mutating {
-  border-color: color-mix(in oklab, var(--ds-warning) 45%, transparent);
-  background: color-mix(in oklab, var(--ds-warning) 12%, transparent);
+  background: color-mix(in oklab, var(--ds-warning) 16%, transparent);
 }
 
 /* --------------------------------------------------------- scope control */
@@ -630,9 +619,9 @@
 }
 
 .scope-seg.is-active {
-  background: var(--ds-bg-elevated-opaque, var(--ds-bg-primary));
+  background: var(--ds-raised);
   color: var(--ds-text-primary);
-  box-shadow: 0 0 0 0.5px var(--ds-border-default), 0 1px 2px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--ds-raised-shadow);
 }
 
 /* Off reads as off: the active segment stays quiet instead of looking selected. */
@@ -668,7 +657,7 @@
   color: var(--ds-text-secondary);
   font-size: var(--text-2xs);
   font-weight: var(--font-weight-medium);
-  box-shadow: inset 0 0 0 0.5px var(--ds-border-default);
+  background: var(--ds-tile-hover);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -690,7 +679,7 @@
 
 .scope-chip.is-empty {
   color: var(--ds-warning);
-  box-shadow: inset 0 0 0 0.5px color-mix(in oklab, var(--ds-warning) 45%, transparent);
+  background: color-mix(in oklab, var(--ds-warning) 12%, transparent);
 }
 
 /* Stacked rather than wrapped: `flex-basis: 100%` resolves against a
@@ -777,7 +766,6 @@
   margin: 0 10px 6px;
   border-radius: var(--radius-sm);
   background: color-mix(in oklab, var(--ds-text-primary) 5%, transparent);
-  box-shadow: inset 0 0 0 0.5px var(--ds-border-subtle);
   padding: 0 9px;
   height: 28px;
   color: var(--ds-text-faint);
@@ -833,17 +821,16 @@
   height: 15px;
   margin-top: 1px;
   border-radius: var(--radius-2xs);
-  box-shadow: inset 0 0 0 1px var(--ds-border-strong);
+  background: var(--ds-tile-deep);
   color: transparent;
   flex: 0 0 auto;
   transition:
     background var(--motion-duration-fast) var(--motion-ease-out),
-    box-shadow var(--motion-duration-fast) var(--motion-ease-out);
+    color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 .scope-option.is-on .scope-option-check {
   background: var(--ds-accent);
-  box-shadow: none;
   color: var(--ds-bg-primary);
 }
 
@@ -887,8 +874,7 @@
 
 .scope-popover-foot {
   margin: 0;
-  border-top: 1px solid var(--ds-border-subtle);
-  padding: 7px 12px;
+  padding: 4px 12px 9px;
   color: var(--ds-text-faint);
   font-size: var(--text-3xs);
   line-height: var(--leading-normal);
@@ -923,7 +909,8 @@
   width: 100%;
   max-height: 268px;
   margin-top: 2px;
-  box-shadow: inset 0 0 0 0.5px var(--ds-border-default);
+  background: var(--ds-tile);
+  box-shadow: none;
 }
 
 /* ------------------------------------------------------------------ sheets */
@@ -948,12 +935,12 @@
   width: min(100%, 480px);
 }
 
+/* D297: head, body and actions are set apart by spacing, not rules. */
 .ext-sheet-head {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  border-bottom: 1px solid var(--ds-border-subtle);
-  padding: 16px 16px 13px 18px;
+  padding: 16px 16px 6px 18px;
 }
 
 .ext-sheet-head > div:first-child {
@@ -1009,8 +996,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  border-top: 1px solid var(--ds-border-subtle);
-  padding: 12px 18px;
+  padding: 6px 18px 14px;
 }
 
 .ext-sheet-actions-end {
@@ -1029,7 +1015,6 @@
 
 .ext-sheet-warning {
   margin: -4px 0 0;
-  border: 1px solid color-mix(in oklab, var(--ds-warning) 35%, transparent);
   border-radius: var(--radius-sm);
   background: color-mix(in oklab, var(--ds-warning) 10%, transparent);
   padding: 8px 10px;
@@ -1039,17 +1024,13 @@
 }
 
 .ext-sheet-error {
-  margin: 0;
-  border-top: 1px solid color-mix(in oklab, var(--ds-error) 30%, transparent);
-  background: color-mix(in oklab, var(--ds-error) 6%, transparent);
-  padding: 8px 18px;
+  margin: 0 18px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklab, var(--ds-error) 8%, transparent);
+  padding: 8px 12px;
   color: var(--ds-error);
   font-size: var(--text-sm);
   line-height: var(--leading-body);
-}
-
-.ext-sheet-error + .ext-sheet-actions {
-  border-top-color: color-mix(in oklab, var(--ds-error) 30%, transparent);
 }
 
 .ext-field-group {
@@ -1099,7 +1080,7 @@
   gap: 9px;
   text-align: left;
   border-radius: var(--radius-md);
-  box-shadow: inset 0 0 0 0.5px var(--ds-border-default);
+  background: var(--ds-tile);
   padding: 10px 11px;
   transition:
     background var(--motion-duration-fast) var(--motion-ease-out),
@@ -1107,12 +1088,13 @@
 }
 
 .ext-transport-card:hover {
-  background: var(--ds-bg-hover);
+  background: var(--ds-tile-hover);
 }
 
+/* The chosen transport is the raised card (D297), not the outlined one. */
 .ext-transport-card.is-active {
-  background: color-mix(in oklab, var(--ds-text-primary) 6%, transparent);
-  box-shadow: inset 0 0 0 1.5px var(--ds-accent);
+  background: var(--ds-raised);
+  box-shadow: var(--ds-raised-shadow);
 }
 
 .ext-transport-icon {
@@ -1262,7 +1244,7 @@
   flex-direction: column;
   gap: 2px;
   border-radius: var(--radius-md);
-  box-shadow: inset 0 0 0 0.5px var(--ds-border-subtle);
+  background: var(--ds-tile);
   padding: 8px;
 }
 
@@ -1384,14 +1366,14 @@
   color: var(--ds-text-secondary);
   font-size: var(--text-xs-plus);
   font-weight: var(--font-weight-medium);
-  box-shadow: inset 0 0 0 0.5px var(--ds-border-default);
+  background: var(--ds-tile-hover);
   transition:
     background var(--motion-duration-fast) var(--motion-ease-out),
     color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 .kv-add:hover {
-  background: color-mix(in oklab, var(--ds-text-primary) 8%, transparent);
+  background: var(--ds-tile-deep);
   color: var(--ds-text-primary);
 }
 

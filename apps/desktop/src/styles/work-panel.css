@@ -15,8 +15,9 @@
   height: 100%;
   min-height: 0;
   z-index: 20;
-  background: var(--ds-bg-primary);
-  border-left: 1px solid var(--ds-border-subtle);
+  /* The dock is a step lighter than the conversation pane, and that tone
+     change is its only edge (D297): no divider against the chat column. */
+  background: var(--ds-bg-secondary);
   /*
    * Animate the allocated dock width as well as its small compositor slide.
    * Transform-only feedback used to leave the flex item at full width before
@@ -71,7 +72,6 @@
 :root[data-theme="light"] .work-panel {
   /* Quiet inset paper so the dock reads as a tool column on white chat. */
   background: #fafafa;
-  border-left-color: color-mix(in oklab, #1a1c1f 10%, transparent);
 }
 
 .work-panel-main {
@@ -131,7 +131,6 @@
   align-items: center;
   gap: 6px;
   padding: 0 7px 0 8px;
-  border-bottom: 1px solid var(--ds-border-subtle);
   -webkit-app-region: drag;
 }
 
@@ -146,16 +145,10 @@
   gap: 2px;
   margin-left: auto;
   padding-left: 6px;
-  border-left: 1px solid var(--ds-border-subtle);
-}
-
-:root[data-theme="light"] .work-panel-actions {
-  border-left-color: color-mix(in oklab, #1a1c1f 8%, transparent);
 }
 
 :root[data-theme="light"] .work-panel-header {
   background: #ffffff;
-  border-bottom-color: color-mix(in oklab, #1a1c1f 8%, transparent);
 }
 
 /* The panel header exposes one unified context menu (left trigger). It lists
@@ -208,10 +201,9 @@
   }
 }
 
+/* Menu sections are separated by space, not a rule (D297). */
 .work-panel-context-divider {
-  height: 1px;
-  margin: 5px 8px;
-  background: var(--ds-border-subtle);
+  height: 6px;
 }
 
 .work-panel-menu-group {
@@ -522,7 +514,6 @@
   gap: 8px;
   min-height: 34px;
   padding: 6px 10px;
-  border-bottom: 1px solid var(--ds-border-subtle);
 }
 
 .review-summary {
@@ -545,7 +536,6 @@
   flex: 1;
   overflow: auto;
   padding: 4px 8px 12px;
-  background: var(--ds-bg-primary);
 }
 
 .diff-counts {
@@ -564,12 +554,9 @@
   color: var(--ds-error);
 }
 
-.diff-hunk {
-  border-bottom: 1px solid var(--ds-border-subtle);
-}
-
-.diff-hunk:last-child {
-  border-bottom: none;
+/* Hunks are set apart by a gap; each opens with its own tinted header line. */
+.diff-hunk + .diff-hunk {
+  margin-top: 8px;
 }
 
 .diff-line {
@@ -635,13 +622,11 @@
   align-items: center;
   gap: 4px;
   padding: 6px 8px;
-  border-bottom: 1px solid var(--ds-border-subtle);
 }
 
 :root[data-theme="light"] .work-browser-chrome,
 :root[data-theme="light"] .file-viewer-header {
   background: #ffffff;
-  border-bottom-color: color-mix(in oklab, #1a1c1f 8%, transparent);
 }
 
 .work-browser-url {
@@ -653,36 +638,21 @@
   width: 100%;
   height: 26px;
   padding: 0 10px;
+  border: 0;
   border-radius: var(--radius-full);
-  border: 1px solid var(--ds-border-subtle);
-  background: color-mix(in oklab, var(--ds-text-primary) 4%, transparent);
+  background: var(--ds-tile-hover);
   color: var(--ds-text-primary);
   font-size: var(--text-sm);
   transition:
-    border-color var(--motion-duration-fast) var(--motion-ease-out),
     background var(--motion-duration-fast) var(--motion-ease-out),
     box-shadow var(--motion-duration-fast) var(--motion-ease-out);
 }
 
+/* Filled field, accent ring only while focused (D297). */
 .work-browser-url input:focus {
   outline: none;
-  border-color: var(--ds-accent);
-  background: var(--ds-bg-primary);
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 14%, transparent);
-}
-
-:root[data-theme="light"] .work-browser-url input {
-  background: #f5f5f5;
-  border-color: transparent;
-  box-shadow: 0 0 0 0.5px color-mix(in oklab, #1a1c1f 8%, transparent);
-}
-
-:root[data-theme="light"] .work-browser-url input:focus {
-  background: #ffffff;
-  border-color: transparent;
-  box-shadow:
-    0 0 0 0.5px color-mix(in oklab, #1a1c1f 12%, transparent),
-    0 0 0 2px color-mix(in oklab, #1a1c1f 12%, transparent);
+  background: var(--ds-raised);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 22%, transparent);
 }
 
 .work-browser-surface {
@@ -690,7 +660,6 @@
   min-height: 0;
   flex: 1;
   display: flex;
-  background: var(--ds-bg-primary);
 }
 
 /* Work panel — plugin views (ADR 0104)
@@ -698,7 +667,9 @@
    The page itself is a native WebContentsView composited above the renderer,
    so this is only the rect it is positioned against. It still paints a
    background: during the first load the view has not drawn yet, and a
-   transparent hole would show the conversation behind the panel. */
+   transparent hole would show the conversation behind the panel. The panel
+   itself is opaque, so the surface inherits that paint rather than restating
+   the chat tone (D297). */
 
 .work-plugin-view {
   min-height: 0;
@@ -712,7 +683,6 @@
   min-height: 0;
   flex: 1;
   display: flex;
-  background: var(--ds-bg-primary);
 }
 
 /* Fallback for a view whose icon token this build does not know. Sized to the
@@ -807,7 +777,6 @@
   align-items: center;
   gap: 6px;
   padding: 6px 8px;
-  border-bottom: 1px solid var(--ds-border-subtle);
 }
 
 .file-viewer-path {

@@ -173,8 +173,10 @@ test("Windows and Linux use menu-free frameless chrome with window controls", ()
   );
   assert.match(
     stylesSource,
-    /\.window-controls\s*\{[^}]*height:\s*var\(--ds-toolbar-height\)[^}]*padding-left:\s*8px;[^}]*background:\s*var\(--ds-bg-primary\);[^}]*border-left:\s*1px solid var\(--ds-border-subtle\);/s,
+    /\.window-controls\s*\{[^}]*height:\s*var\(--ds-toolbar-height\)[^}]*padding-left:\s*8px;[^}]*background:\s*var\(--ds-bg-primary\);/s,
   );
+  // D297: no side seam between the control band and the titlebar.
+  assert.doesNotMatch(stylesSource, /\.window-controls\s*\{[^}]*border-left/s);
   assert.doesNotMatch(
     stylesSource,
     /\.window-controls\s*\{[^}]*border-bottom:/s,

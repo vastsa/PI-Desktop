@@ -27,9 +27,8 @@
 }
 
 .page-card {
-  border: 1px solid var(--ds-border-default);
   border-radius: var(--radius-lg-plus);
-  background: color-mix(in oklab, var(--ds-text-primary) 3%, transparent);
+  background: var(--ds-tile);
 }
 
 .page-empty {
@@ -116,8 +115,7 @@
   /* No side padding: .sidebar-body's 8px already sets the content grid, so the
      chip's own padding lands its text on the 16px nav inset and the trailing
      icon's hover fill ends flush with the nav rows above. */
-  padding: 5px 0 2px;
-  border-top: 1px solid color-mix(in oklab, var(--ds-text-primary) 5%, transparent);
+  padding: 7px 0 2px;
   background: transparent;
 }
 
@@ -291,8 +289,7 @@
   min-width: 0;
 }
 
+/* Menu sections are separated by space, not a rule (D297). */
 .composer-plus-sep {
-  height: 1px;
-  margin: 4px 6px;
-  background: var(--ds-border-subtle);
+  height: 6px;
 }

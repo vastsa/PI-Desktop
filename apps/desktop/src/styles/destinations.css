@@ -38,9 +38,9 @@
 }
 
 .dest-filter.active {
-  background: var(--ds-bg-elevated-opaque);
+  background: var(--ds-raised);
   color: var(--ds-text-primary);
-  box-shadow: 0 0 0 0.5px var(--ds-border-default);
+  box-shadow: var(--ds-raised-shadow);
 }
 
 .dest-list {
@@ -54,21 +54,15 @@
   align-items: flex-start;
   gap: 12px;
   width: 100%;
-  border: 1px solid var(--ds-border-default);
   border-radius: var(--radius-lg);
-  background: color-mix(in oklab, var(--ds-text-primary) 2.5%, transparent);
+  background: var(--ds-tile);
   padding: 12px 14px;
   text-align: left;
-  transition: background var(--motion-duration-fast) var(--motion-ease-out), border-color var(--motion-duration-fast) var(--motion-ease-out);
-}
-
-:root[data-theme="light"] .dest-row {
-  background: #ffffff;
-  box-shadow: 0 0 0 0.5px color-mix(in oklab, #1a1c1f 8%, transparent);
+  transition: background var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 .dest-row:hover {
-  background: var(--ds-bg-hover);
+  background: var(--ds-tile-hover);
 }
 
 .dest-row-icon {
@@ -112,17 +106,13 @@
   align-items: center;
 }
 
+/* The create form is one soft tile; its fields are filled controls inside it
+   (ui-kit), so nothing draws a frame within a frame (D297). */
 .dest-create {
   margin-bottom: 16px;
-  border: 1px solid var(--ds-border-default);
   border-radius: var(--radius-lg-plus);
-  background: color-mix(in oklab, var(--ds-text-primary) 2.5%, transparent);
+  background: var(--ds-tile);
   padding: 14px;
-}
-
-:root[data-theme="light"] .dest-create {
-  background: #ffffff;
-  box-shadow: 0 0 0 0.5px color-mix(in oklab, #1a1c1f 8%, transparent);
 }
 
 .dest-section-label {

@@ -12,8 +12,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--ds-border-subtle);
+  padding: 10px 14px 6px;
 }
 
 .import-select-all {
@@ -52,16 +51,19 @@
   flex-direction: column;
 }
 
+/* Groups are separated by space; each header is a soft band, not a rule. */
 .import-group + .import-group {
-  border-top: 1px solid var(--ds-border-subtle);
+  margin-top: 6px;
 }
 
 .import-group-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 14px;
-  background: var(--ds-bg-secondary);
+  margin: 0 6px;
+  border-radius: var(--radius-sm);
+  padding: 8px 8px;
+  background: var(--ds-tile);
 }
 
 .import-group-toggle {
@@ -118,14 +120,15 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 14px 8px 34px;
+  margin: 0 6px;
+  border-radius: var(--radius-sm);
+  padding: 8px 8px 8px 28px;
   cursor: pointer;
-  border-top: 1px solid var(--ds-border-subtle);
   transition: background var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 .import-row:hover {
-  background: var(--ds-bg-tertiary);
+  background: var(--ds-tile-hover);
 }
 
 .import-row-main {
@@ -560,20 +563,18 @@
   height: 15px;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--ds-border-default);
   border-radius: var(--radius-2xs);
+  background: var(--ds-tile-deep);
   font-size: var(--text-xs);
 }
 
+/* A filled square is the box; the check and the accent tint are the state. */
 .sidebar-checkbox.checked {
-  border-color: var(--ds-accent);
-  background: color-mix(in oklab, var(--ds-accent) 16%, transparent);
+  background: color-mix(in oklab, var(--ds-accent) 22%, transparent);
 }
 
 .sidebar-popover-divider {
-  height: 1px;
-  margin: 5px 2px;
-  background: var(--ds-border-subtle);
+  height: 6px;
 }
 
 .sidebar-session-group-title.project-toggle {

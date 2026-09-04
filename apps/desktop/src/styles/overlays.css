@@ -38,8 +38,7 @@
   flex: 0 0 auto;
   align-items: center;
   gap: 10px;
-  padding: 13px 16px;
-  border-bottom: 1px solid var(--ds-border-subtle);
+  padding: 14px 16px 8px;
   color: var(--ds-text-muted);
 }
 
@@ -140,8 +139,8 @@
 
 .search-item-badge {
   flex: 0 0 auto;
-  border: 1px solid var(--ds-border-default);
   border-radius: var(--radius-full);
+  background: var(--ds-tile-deep);
   padding: 1px 6px;
   font-size: var(--text-2xs);
 }
@@ -330,8 +329,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  padding: 18px 20px 14px;
-  border-bottom: 1px solid var(--ds-border-subtle);
+  padding: 18px 20px 10px;
 }
 
 .release-notes-heading {
@@ -366,18 +364,19 @@
   padding: 0 20px;
 }
 
+/* Versions are stacked with a gap; the highlighted one sits on a soft tile
+   instead of carrying an accent bar (D297). */
 .release-notes-version {
-  padding: 18px 0 18px 12px;
-  border-bottom: 1px solid var(--ds-border-subtle);
-  border-inline-start: 2px solid transparent;
+  border-radius: var(--radius-md);
+  padding: 14px 12px;
 }
 
-.release-notes-version:last-child {
-  border-bottom: 0;
+.release-notes-version + .release-notes-version {
+  margin-top: 6px;
 }
 
 .release-notes-version.is-highlighted {
-  border-inline-start-color: var(--ds-accent-soft);
+  background: var(--ds-tile);
 }
 
 .release-notes-version-header {
@@ -783,7 +782,7 @@
 
 .chat-error-action {
   padding: 4px 8px;
-  border: 1px solid var(--ds-border-strong);
+  background: var(--ds-tile-deep);
   font-size: var(--text-sm-plus);
 }
 

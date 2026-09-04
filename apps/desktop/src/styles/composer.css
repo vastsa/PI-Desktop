@@ -70,7 +70,6 @@
   min-width: 0;
   align-items: center;
   gap: 8px;
-  border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-lg);
   padding: 7px 8px 7px 12px;
   background: var(--ds-bg-composer);
@@ -140,10 +139,9 @@
     transform var(--motion-duration-normal) var(--motion-ease-out);
 }
 
+/* Focus deepens the lift; the shell never gains a stroke (D297). */
 .composer-shell:focus-within {
-  box-shadow:
-    var(--ds-elevation-stroke),
-    0 7px 24px color-mix(in oklab, var(--ds-text-primary) 9%, transparent);
+  box-shadow: 0 7px 24px color-mix(in oklab, var(--ds-text-primary) 9%, transparent);
 }
 
 .composer-input-wrap {
@@ -211,10 +209,9 @@
   align-items: center;
   gap: 4px;
   margin: 0 2px;
-  border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-md);
   padding: 0 4px 0 6px;
-  background: var(--ds-bg-inset);
+  background: var(--ds-tile-deep);
   color: var(--ds-text-secondary);
   font-size: var(--text-xs-plus);
   line-height: var(--leading-compact);
@@ -345,7 +342,6 @@
   gap: 8px;
   width: 100%;
   margin: 0 0 8px;
-  border: 1px solid color-mix(in oklab, var(--ds-error) 35%, var(--ds-border-subtle));
   border-radius: var(--radius-lg);
   padding: 8px 10px;
   background: color-mix(in oklab, var(--ds-error) 8%, var(--ds-bg-composer));
@@ -470,10 +466,8 @@
   gap: 10px 14px;
   margin-bottom: 8px;
   padding: 7px 9px;
-  border: 1px solid var(--ds-border-default);
-  border-radius: var(--radius-sm);
-  background: var(--ds-bg-secondary);
-  box-shadow: 0 1px 0 color-mix(in oklab, var(--ds-text-primary) 3%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--ds-tile);
 }
 
 .plan-approval-copy {
@@ -565,8 +559,7 @@
   line-height: var(--leading-compact);
   transition:
     background var(--motion-duration-fast) var(--motion-ease-out),
-    color var(--motion-duration-fast) var(--motion-ease-out),
-    border-color var(--motion-duration-fast) var(--motion-ease-out);
+    color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 .plan-approval-reject {
@@ -588,9 +581,8 @@
   min-width: 0;
   flex: 0 1 220px;
   align-items: stretch;
-  border: 1px solid var(--ds-border-strong);
   border-radius: var(--radius-sm);
-  background: color-mix(in oklab, var(--ds-text-primary) 8%, transparent);
+  background: var(--ds-tile-deep);
 }
 
 .plan-approval-approve-main {
@@ -613,7 +605,6 @@
   flex: 0 0 30px;
   align-items: center;
   justify-content: center;
-  border-left: 1px solid var(--ds-border-strong);
   border-radius: 0 var(--radius-3xs) var(--radius-3xs) 0;
   color: var(--ds-text-secondary);
 }

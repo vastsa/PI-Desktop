@@ -38,24 +38,22 @@
   align-items: flex-start;
 }
 
+/* Decision cards are soft tiles (D297): risk rides in the tint and the risk
+   pill rather than a coloured rail. */
 .permission-card {
   width: min(100%, 720px);
   margin: 10px 0;
   padding: 14px 16px;
-  border: 1px solid var(--ds-border-default);
-  border-left: 3px solid var(--ds-warning);
-  border-radius: var(--radius-sm);
-  background: var(--ds-bg-secondary);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklab, var(--ds-warning) 7%, transparent);
 }
 
 .asktool-card {
   width: min(100%, 720px);
   margin: 10px 0;
   padding: 14px 16px;
-  border: 1px solid var(--ds-border-default);
-  border-left: 2px solid var(--ds-accent);
-  border-radius: var(--radius-sm);
-  background: var(--ds-bg-secondary);
+  border-radius: var(--radius-md);
+  background: var(--ds-tile);
 }
 
 .asktool-card-header,
@@ -113,9 +111,8 @@
   width: 8px;
   height: 8px;
   padding: 0;
-  border: 1px solid var(--ds-border-strong);
   border-radius: var(--radius-full);
-  background: transparent;
+  background: var(--ds-tile-deep);
   cursor: pointer;
 }
 
@@ -125,12 +122,10 @@
 }
 
 .asktool-indicator.answered {
-  border-color: var(--ds-success);
   background: var(--ds-success);
 }
 
 .asktool-indicator.skipped {
-  border-color: var(--ds-text-muted);
   background: var(--ds-text-muted);
 }
 
@@ -168,22 +163,20 @@
   gap: 8px;
   min-height: 30px;
   padding: 4px 8px;
-  border: 1px solid var(--ds-border-default);
   border-radius: var(--radius-sm);
-  background: var(--ds-bg-primary);
+  background: var(--ds-raised);
+  box-shadow: var(--ds-raised-shadow);
   color: var(--ds-text-secondary);
   cursor: pointer;
   font: inherit;
   font-size: var(--text-md);
   text-align: start;
-  transition: border-color var(--motion-duration-fast) var(--motion-ease-out),
-    background-color var(--motion-duration-fast) var(--motion-ease-out);
+  transition: background-color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 .asktool-option:hover,
 .asktool-option.selected {
-  border-color: var(--ds-accent);
-  background: color-mix(in oklab, var(--ds-accent) 8%, var(--ds-bg-primary));
+  background: color-mix(in oklab, var(--ds-accent) 10%, var(--ds-raised));
   color: var(--ds-text-primary);
 }
 
@@ -193,8 +186,8 @@
   height: 15px;
   flex: none;
   place-items: center;
-  border: 1px solid var(--ds-border-strong);
   border-radius: var(--radius-2xs);
+  background: var(--ds-tile-deep);
   color: var(--ds-accent);
   font-size: var(--text-xs);
   line-height: var(--leading-none);
@@ -205,7 +198,7 @@
 }
 
 .asktool-option.selected .asktool-option-mark {
-  border-color: var(--ds-accent);
+  background: color-mix(in oklab, var(--ds-accent) 18%, transparent);
 }
 
 .asktool-custom-input {
@@ -213,12 +206,18 @@
   width: 100%;
   margin-top: 10px;
   padding: 6px 8px;
-  border: 1px solid var(--ds-border-default);
+  border: 0;
   border-radius: var(--radius-sm);
-  background: var(--ds-bg-primary);
+  background: var(--ds-raised);
+  box-shadow: var(--ds-raised-shadow);
   color: var(--ds-text-primary);
   font: inherit;
   font-size: var(--text-md);
+}
+
+.asktool-custom-input:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 30%, transparent);
 }
 
 .asktool-card-actions {
@@ -476,12 +475,13 @@
   opacity: 0.55;
 }
 
-/* The expanded diff hangs off a hairline aligned with the path text. */
+/* The expanded diff sits in a soft tile indented to the path text (D297). */
 .review-change-card-body {
   max-height: min(360px, 42vh);
   margin: 2px 0 6px 18px;
   overflow: auto;
-  border-inline-start: 1px solid var(--ds-border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--ds-tile);
   animation: review-change-reveal var(--motion-duration-normal) var(--motion-ease-out) both;
 }
 
@@ -594,15 +594,13 @@
 .turn-outcome-card {
   width: min(100%, 720px);
   margin: 12px 0 8px;
-  border: 1px solid var(--ds-border-default);
-  border-left: 3px solid var(--ds-accent);
   border-radius: var(--radius-md);
-  background: var(--ds-bg-secondary);
+  background: var(--ds-tile);
   padding: 12px 14px;
 }
 
 .turn-outcome-card.failed {
-  border-left-color: var(--ds-error);
+  background: color-mix(in oklab, var(--ds-error) 7%, transparent);
 }
 
 .turn-outcome-heading {
@@ -665,11 +663,11 @@
 }
 
 .permission-card.risk-high {
-  border-left-color: var(--ds-error);
+  background: color-mix(in oklab, var(--ds-error) 7%, transparent);
 }
 
 .permission-card.risk-low {
-  border-left-color: var(--ds-text-muted);
+  background: var(--ds-tile);
 }
 
 .permission-card-header,
@@ -707,20 +705,20 @@
 .permission-risk {
   flex: none;
   padding: 2px 7px;
-  border: 1px solid var(--ds-border-strong);
   border-radius: var(--radius-full);
+  background: var(--ds-tile-deep);
   color: var(--ds-text-muted);
   font-size: var(--text-2xs);
   text-transform: uppercase;
 }
 
 .permission-risk.risk-high {
-  border-color: color-mix(in oklab, var(--ds-error) 45%, transparent);
+  background: color-mix(in oklab, var(--ds-error) 14%, transparent);
   color: var(--ds-error);
 }
 
 .permission-risk.risk-medium {
-  border-color: color-mix(in oklab, var(--ds-warning) 45%, transparent);
+  background: color-mix(in oklab, var(--ds-warning) 14%, transparent);
   color: var(--ds-warning);
 }
 
@@ -940,7 +938,7 @@
   min-height: 24px;
   align-items: center;
   gap: 6px;
-  border: 1px solid transparent;
+  border: 0;
   border-radius: var(--radius-full);
   background: transparent;
   padding: 3px 8px 3px 5px;
@@ -950,18 +948,15 @@
   line-height: var(--leading-compact);
   transition:
     background var(--motion-duration-fast) var(--motion-ease-out),
-    border-color var(--motion-duration-fast) var(--motion-ease-out),
     color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 .context-inspector-trigger:hover {
-  border-color: var(--ds-border-default);
-  background: color-mix(in oklab, currentColor 7%, transparent);
+  background: color-mix(in oklab, currentColor 8%, transparent);
 }
 
 .context-inspector[data-open="true"] .context-inspector-trigger {
-  border-color: color-mix(in oklab, currentColor 26%, var(--ds-border-default));
-  background: color-mix(in oklab, currentColor 5%, transparent);
+  background: color-mix(in oklab, currentColor 12%, transparent);
 }
 
 .context-inspector-trigger:focus-visible {
@@ -1097,11 +1092,10 @@
   font-size: var(--text-2xs);
 }
 
+/* Sections inside the popover are set apart by space alone (D297). */
 .context-inspector-window {
   align-items: baseline;
-  margin-top: 14px;
-  border-top: 1px solid var(--ds-border-subtle);
-  padding-top: 10px;
+  margin-top: 18px;
   color: var(--ds-text-secondary);
   font-size: var(--text-2xs);
   font-variant-numeric: tabular-nums;
@@ -1140,7 +1134,6 @@
 }
 
 .context-inspector-kpis > div + div {
-  border-left: 1px solid var(--ds-border-subtle);
   padding-left: 12px;
 }
 
@@ -1162,9 +1155,7 @@
 .context-inspector-summary {
   display: grid;
   gap: 10px;
-  margin-top: 14px;
-  border-top: 1px solid var(--ds-border-subtle);
-  padding-top: 12px;
+  margin-top: 18px;
 }
 
 .context-inspector-summary-row {
@@ -1198,9 +1189,7 @@
 }
 
 .context-inspector-compaction {
-  margin-top: 12px;
-  border-top: 1px solid var(--ds-border-subtle);
-  padding-top: 10px;
+  margin-top: 16px;
   color: var(--ds-text-muted);
   font-size: var(--text-2xs);
   font-variant-numeric: tabular-nums;
@@ -1211,8 +1200,8 @@
   font-weight: var(--font-weight-medium);
 }
 
-/* One transcript row per compaction: a quiet rule the eye can skip, with the
- * label riding on it. Same muted/subtle pairing as the inspector's row. */
+/* One transcript row per compaction: a quiet centred label the eye can skip.
+ * The flanking pseudo-elements only centre it — no rule is drawn (D297). */
 .transcript-compaction-row {
   display: flex;
   align-items: center;
@@ -1226,7 +1215,6 @@
 .transcript-compaction-row::before,
 .transcript-compaction-row::after {
   flex: 1;
-  border-top: 1px solid var(--ds-border-subtle);
   content: "";
 }
 
@@ -1270,7 +1258,6 @@
 .message-row.user .message-bubble:has(.message-edit) {
   width: 100%;
   background: transparent;
-  border-color: transparent;
   padding: 0;
 }
 
@@ -1279,9 +1266,10 @@
   min-height: 112px;
   max-height: 50vh;
   resize: vertical;
-  border: 1px solid var(--ds-border-strong);
+  border: 0;
   border-radius: var(--radius-md-plus);
-  background: var(--ds-bg-elevated-opaque);
+  background: var(--ds-raised);
+  box-shadow: var(--ds-raised-shadow);
   padding: 10px 12px;
   color: var(--ds-text-primary);
   font: inherit;
@@ -1290,8 +1278,7 @@
 }
 
 .message-edit-input:focus {
-  border-color: var(--ds-accent);
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 18%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 30%, transparent);
 }
 
 .message-edit-actions {
@@ -1339,8 +1326,8 @@
   min-width: 0;
   align-items: center;
   gap: 5px;
-  border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-md);
+  background: var(--ds-tile-deep);
   padding: 4px 7px;
   color: var(--ds-text-secondary);
   font-size: var(--text-sm-plus);
@@ -1365,25 +1352,23 @@
   box-shadow: none;
 }
 
-/* Live-turn rail: the whole assistant turn (prose fragments + tool rows)
-   shares one soft rail while streaming. Space is always reserved, so the
-   rail fading in/out never reflows the text. */
+/* Live turn: the whole assistant turn (prose fragments + tool rows) sits on
+   one soft tile while streaming (D297 — no rail). The inset is always
+   reserved, so the tint fading in/out never reflows the text. */
 .message-row.assistant-turn .message-col {
-  border-left: 2px solid transparent;
+  border-radius: var(--radius-md-plus);
   padding-left: 14px;
-  transition: border-color var(--motion-duration-slow) var(--motion-ease-out);
+  transition: background var(--motion-duration-slow) var(--motion-ease-out);
 }
 
 .message-row.assistant-turn.streaming .message-col {
-  border-left-color: color-mix(in oklab, var(--ds-text-primary) 30%, transparent);
+  background: var(--ds-tile);
 }
 
 .message-error {
   width: min(100%, 680px);
-  border: 1px solid var(--ds-border-subtle);
-  border-inline-start: 2px solid var(--ds-error);
-  border-radius: var(--radius-sm);
-  background: var(--ds-bg-secondary);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklab, var(--ds-error) 7%, transparent);
   padding: 10px 12px;
   color: var(--ds-text-primary);
 }
@@ -1455,9 +1440,7 @@
 }
 
 .message-error-details {
-  margin-top: 8px;
-  border-top: 1px solid var(--ds-border-subtle);
-  padding-top: 8px;
+  margin-top: 12px;
 }
 
 .message-error-details dl {
@@ -1629,9 +1612,8 @@
 .tool-activity-group.has-subagents {
   container: subagent-activity / inline-size;
   overflow: hidden;
-  border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-md-plus);
-  background: color-mix(in oklab, var(--ds-bg-primary) 94%, transparent);
+  background: var(--ds-tile);
 }
 
 .tool-activity-group.has-subagents .tool-activity-header {
@@ -1642,10 +1624,6 @@
   margin: 0;
   border-radius: 0;
   padding: 8px 12px;
-}
-
-.tool-activity-group.has-subagents.open .tool-activity-header {
-  border-bottom: 1px solid var(--ds-border-subtle);
 }
 
 .tool-activity-group.has-subagents .tool-activity-caret {
@@ -1672,19 +1650,14 @@
   padding: 0;
 }
 
+/* Nodes are raised tiles on the group's tile; connectors are tinted 2px bars
+   rather than hairlines, and the dotted canvas is gone (D297). */
 .subagent-topology {
   display: grid;
   min-width: 0;
   grid-template-columns: minmax(138px, 0.58fr) 34px minmax(248px, 1.42fr);
   align-items: center;
   padding: 14px;
-  background-image: radial-gradient(
-    circle,
-    color-mix(in oklab, var(--ds-border-default) 55%, transparent) 0.8px,
-    transparent 0.9px
-  );
-  background-position: 0 0;
-  background-size: 18px 18px;
 }
 
 .subagent-topology-root {
@@ -1693,11 +1666,10 @@
   min-height: 72px;
   align-items: flex-start;
   gap: 9px;
-  border: 1px solid var(--ds-border-default);
   border-radius: var(--radius-md);
-  background: var(--ds-bg-elevated-opaque);
+  background: var(--ds-raised);
   padding: 11px;
-  box-shadow: 0 1px 2px color-mix(in oklab, var(--ds-text-primary) 5%, transparent);
+  box-shadow: var(--ds-raised-shadow);
 }
 
 .subagent-topology-root-icon,
@@ -1739,8 +1711,9 @@
 }
 
 .subagent-topology-connector {
-  height: 1px;
-  background: var(--ds-border-default);
+  height: 2px;
+  border-radius: var(--radius-full);
+  background: var(--ds-tile-deep);
 }
 
 .subagent-topology-agents {
@@ -1756,7 +1729,9 @@
   top: 36px;
   bottom: 36px;
   left: 0;
-  border-left: 1px solid var(--ds-border-default);
+  width: 2px;
+  border-radius: var(--radius-full);
+  background: var(--ds-tile-deep);
   content: "";
 }
 
@@ -1764,10 +1739,9 @@
   position: relative;
   min-width: 0;
   margin: 0;
-  border: 1px solid var(--ds-border-default);
   border-radius: var(--radius-md);
-  background: var(--ds-bg-elevated-opaque);
-  box-shadow: 0 1px 2px color-mix(in oklab, var(--ds-text-primary) 5%, transparent);
+  background: var(--ds-raised);
+  box-shadow: var(--ds-raised-shadow);
 }
 
 .subagent-topology-node::before {
@@ -1775,7 +1749,8 @@
   top: 35px;
   right: 100%;
   width: 15px;
-  border-top: 1px solid var(--ds-border-default);
+  height: 2px;
+  background: var(--ds-tile-deep);
   content: "";
 }
 
@@ -1814,7 +1789,8 @@
   height: 13px;
   align-items: center;
   justify-content: center;
-  border: 2px solid var(--ds-bg-elevated-opaque);
+  /* Knockout ring in the node's own surface colour, not a divider. */
+  border: 2px solid var(--ds-raised);
   border-radius: var(--radius-round);
   background: var(--ds-text-muted);
   color: var(--ds-bg-primary);
@@ -1900,11 +1876,9 @@
 }
 
 .subagent-topology-node.open {
-  border-color: color-mix(
-    in oklab,
-    var(--ds-text-secondary) 42%,
-    var(--ds-border-default)
-  );
+  box-shadow:
+    var(--ds-raised-shadow),
+    0 0 0 2px color-mix(in oklab, var(--ds-accent) 22%, transparent);
 }
 
 @container subagent-activity (max-width: 520px) {
@@ -1923,10 +1897,9 @@
   }
 
   .subagent-topology-connector {
-    width: 1px;
+    width: 2px;
     height: 18px;
     margin-left: 28px;
-    background: var(--ds-border-default);
   }
 
   .subagent-topology-agents {
@@ -2162,17 +2135,18 @@
 /* Which delegate a `Task` row handed the work to (ADR 0060). */
 .tool-row-agent {
   flex: none;
-  border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-xs);
   padding: 0 5px;
+  background: var(--ds-tile-deep);
   color: var(--ds-text-secondary);
   font-size: var(--text-2xs);
   line-height: var(--leading-row);
   white-space: nowrap;
 }
 
+/* A fan-out count is lighter than a named delegate. */
 .tool-row-agent.is-count {
-  border-style: dashed;
+  background: var(--ds-tile);
 }
 
 .tool-row-summary {
@@ -2231,24 +2205,21 @@
   cursor: pointer;
 }
 
+/* The collapse rail draws nothing at rest (D297): indentation alone marks the
+   body. Hovering or focusing the strip reveals a 2px bar as the affordance. */
 .disclosure-collapse-rail::before {
   position: absolute;
   inset-block: 0;
-  left: calc(50% - 0.5px);
-  width: 1px;
-  background: var(--ds-border-subtle);
+  left: calc(50% - 1px);
+  width: 2px;
+  border-radius: var(--radius-full);
+  background: transparent;
   content: "";
-  transition: background-color var(--motion-duration-fast) var(--motion-ease-out),
-    width var(--motion-duration-fast) var(--motion-ease-out);
-}
-
-.subagent-run > .disclosure-collapse-rail::before {
-  background: var(--ds-border-default);
+  transition: background-color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 .disclosure-collapse-rail:hover::before,
 .disclosure-collapse-rail:focus-visible::before {
-  width: 2px;
   background: var(--ds-text-muted);
 }
 
@@ -2258,13 +2229,15 @@
 }
 
 /*
- * What a delegate did, one level inside its `Task` row. The rail marks the
- * boundary: everything past it happened in the delegate's own context.
+ * What a delegate did, one level inside its `Task` row. The tile marks the
+ * boundary: everything inside it happened in the delegate's own context.
  */
 .subagent-run {
   position: relative;
   margin: 2px 0 8px 24px;
-  padding: 2px 0 4px 12px;
+  border-radius: var(--radius-md);
+  background: var(--ds-tile);
+  padding: 6px 10px 8px 12px;
 }
 
 /*
@@ -2333,9 +2306,9 @@
 .tool-chip {
   display: inline-flex;
   align-items: center;
-  border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-xs);
   padding: 0 5px;
+  background: var(--ds-tile-deep);
   color: var(--ds-text-muted);
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
@@ -2344,7 +2317,7 @@
 }
 
 .tool-chip.is-error {
-  border-color: color-mix(in oklab, var(--ds-error) 38%, var(--ds-border-subtle));
+  background: color-mix(in oklab, var(--ds-error) 12%, transparent);
   color: var(--ds-error);
 }
 
@@ -2383,9 +2356,8 @@
   max-height: 260px;
   margin: 0;
   overflow: auto;
-  border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-md);
-  background: color-mix(in oklab, var(--ds-text-primary) 2.5%, transparent);
+  background: var(--ds-tile);
   padding: 10px 12px;
   color: var(--ds-text-secondary);
   font-family: var(--font-mono);
@@ -2396,7 +2368,7 @@
 }
 
 .tool-row-content.is-error {
-  border-color: color-mix(in oklab, var(--ds-error) 28%, var(--ds-border-subtle));
+  background: color-mix(in oklab, var(--ds-error) 7%, transparent);
   color: color-mix(in oklab, var(--ds-error) 72%, var(--ds-text-primary));
 }
 
@@ -2418,24 +2390,24 @@
   padding: 0;
 }
 
-/* Edit diffs: same rails as the review card, inside the tool body. */
+/* Edit diffs: a soft tile inside the tool body; add/del read from the line
+   tints alone, with no gutter bars (D297). */
 .tool-diff {
   overflow: hidden;
-  border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-md);
+  background: var(--ds-tile);
 }
 
 .tool-diff .diff-line {
-  border-inline-start: 2px solid transparent;
   font-size: var(--text-sm);
 }
 
 .tool-diff .diff-line.add {
-  border-inline-start-color: var(--ds-success);
+  background: color-mix(in oklab, var(--ds-success) 14%, transparent);
 }
 
 .tool-diff .diff-line.del {
-  border-inline-start-color: var(--ds-error);
+  background: color-mix(in oklab, var(--ds-error) 14%, transparent);
 }
 
 .tool-diff .diff-line-text {
@@ -2448,9 +2420,8 @@
   max-height: 260px;
   flex-direction: column;
   overflow: auto;
-  border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-md);
-  background: color-mix(in oklab, var(--ds-text-primary) 2.5%, transparent);
+  background: var(--ds-tile);
   padding: 6px 4px;
   gap: 1px;
 }
@@ -2531,9 +2502,8 @@
   margin: 0;
   overflow: auto;
   overscroll-behavior-y: contain;
-  border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-md);
-  background: color-mix(in oklab, var(--ds-text-primary) 2.5%, transparent);
+  background: var(--ds-tile);
   padding: 6px 10px;
   gap: 2px;
   scrollbar-gutter: stable;
@@ -2572,9 +2542,8 @@
   display: flex;
   align-items: baseline;
   gap: 6px;
-  border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-md);
-  background: var(--ds-bg-chip);
+  background: var(--ds-tile);
   padding: 8px 10px;
   color: var(--ds-text-secondary);
   font-size: var(--text-sm);
@@ -2582,7 +2551,6 @@
 }
 
 .tool-note.is-error {
-  border-color: color-mix(in oklab, var(--ds-error) 28%, var(--ds-border-subtle));
   background: color-mix(in oklab, var(--ds-error) 7%, transparent);
   color: var(--ds-error);
 }

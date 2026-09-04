@@ -17,15 +17,12 @@
    sheet, dialogs, tooltips), where an edge is an elevation cue rather than a
    partition. */
 :root {
-  --plugins-tile: color-mix(in oklab, var(--ds-text-primary) 3.5%, transparent);
-  --plugins-tile-hover: color-mix(in oklab, var(--ds-text-primary) 6%, transparent);
-  --plugins-tile-deep: color-mix(in oklab, var(--ds-text-primary) 8%, transparent);
-  --plugins-raised: var(--ds-bg-elevated-opaque, var(--ds-bg-primary));
-  --plugins-raised-shadow: 0 1px 2px rgba(0, 0, 0, 0.1), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
-}
-
-:root[data-theme="dark"] {
-  --plugins-raised-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  /* Aliases of the global tile scheme (tokens.css, D297). */
+  --plugins-tile: var(--ds-tile);
+  --plugins-tile-hover: var(--ds-tile-hover);
+  --plugins-raised: var(--ds-raised);
+  --plugins-raised-shadow: var(--ds-raised-shadow);
+  --plugins-tile-deep: var(--ds-tile-deep);
 }
 
 .plugins-page {

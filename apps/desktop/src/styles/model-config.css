@@ -17,9 +17,8 @@
   justify-content: space-between;
   gap: 10px;
   padding: 8px 12px;
-  border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-md);
-  background: var(--ds-bg-secondary);
+  background: var(--ds-tile);
 }
 
 .model-catalog-status-text {
@@ -115,7 +114,6 @@
 
 .provider-setup-error {
   padding: 8px 10px;
-  border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-xs);
   background: var(--ds-bg-inset);
   color: var(--ds-warning);
@@ -142,27 +140,24 @@
 
 /* The service's own answer, so this is a short checkbox list, not a catalog. */
 /*
-  Both panes are self-contained panels. The separating top border they used to
-  carry belonged to the stacked layout and would now cut across the grid.
+  Both panes are self-contained inset trays (D297): the inset tone sets them
+  off from the dialog, and the head is separated from its list by spacing only.
 */
 .provider-models {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-sm);
   background: var(--ds-bg-inset);
 }
 
-/* A hairline under each pane header separates the title from its list. */
 .provider-models-head {
   display: flex;
   align-items: center;
   gap: 8px;
   flex: none;
   flex-wrap: wrap;
-  padding: 5px 7px;
-  border-bottom: 1px solid var(--ds-border-subtle);
+  padding: 7px 7px 3px;
 }
 
 .provider-models-title {
@@ -189,20 +184,15 @@
   padding: 0 7px;
   min-height: 24px;
   min-width: 150px;
-  border: 1px solid transparent;
   border-radius: var(--radius-2xs);
   background: var(--ds-bg-chip);
   color: var(--ds-text-faint);
-  transition: background 120ms ease, border-color 120ms ease;
+  transition: background 120ms ease, box-shadow 120ms ease;
 }
 
 .provider-models-search-wrap:focus-within {
-  border-color: var(--ds-border-strong);
-  background: var(--ds-bg-primary);
-}
-
-.provider-models-search-wrap:focus-within {
-  border-color: var(--ds-border-strong);
+  background: var(--ds-raised);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 24%, transparent);
 }
 
 .provider-models-search {
@@ -223,9 +213,8 @@
 .provider-models-note {
   margin: 0 8px;
   padding: 6px 8px;
-  border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-xs);
-  background: var(--ds-bg-inset);
+  background: var(--ds-tile);
   color: var(--ds-text-muted);
   font-size: var(--text-2xs);
   line-height: var(--leading-relaxed);
@@ -240,9 +229,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  margin: 3px;
   padding: 14px 10px;
-  border: 1px dashed var(--ds-border-subtle);
   border-radius: var(--radius-xs);
+  background: var(--ds-tile);
   color: var(--ds-text-faint);
   font-size: var(--text-2xs);
   line-height: var(--leading-relaxed);
@@ -253,7 +243,7 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 2px;
   margin: 0;
   padding: 3px;
   min-height: 0;
@@ -263,16 +253,11 @@
 }
 
 /*
-  These rows live inside an already-bordered pane, so they carry no box of
-  their own — a hairline between them reads as a list instead of a stack of
-  little cards.
+  These rows live inside the inset tray, so they carry no box of their own;
+  the checkbox and the 2px gap are enough for them to read as a list (D297).
 */
 .provider-models-row {
   border-radius: var(--radius-3xs);
-}
-
-.provider-models-row + .provider-models-row {
-  border-top: 1px solid var(--ds-border-subtle);
 }
 
 .provider-models-row:hover {
@@ -343,7 +328,6 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-sm);
   background: var(--ds-bg-inset);
 }
@@ -353,8 +337,7 @@
   align-items: center;
   gap: 6px;
   flex: none;
-  padding: 7px 8px;
-  border-bottom: 1px solid var(--ds-border-subtle);
+  padding: 9px 8px 4px;
 }
 
 .provider-chosen-title {
@@ -382,9 +365,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  margin: 3px;
   padding: 14px 10px;
-  border: 1px dashed var(--ds-border-subtle);
   border-radius: var(--radius-xs);
+  background: var(--ds-tile);
   color: var(--ds-text-faint);
   font-size: var(--text-2xs);
   line-height: var(--leading-relaxed);
@@ -406,7 +390,7 @@
 
 .provider-chosen-row {
   border-radius: var(--radius-3xs);
-  background: var(--ds-bg-inset);
+  background: var(--ds-tile);
 }
 
 .provider-chosen-row-head {
@@ -438,9 +422,8 @@
 .provider-chosen-advanced-toggle {
   flex: none;
   padding: 2px 8px;
-  border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-full);
-  background: transparent;
+  background: var(--ds-tile-deep);
   color: var(--ds-text-muted);
   font-size: var(--text-3xs);
   line-height: var(--leading-normal);
@@ -448,7 +431,7 @@
 }
 
 .provider-chosen-advanced-toggle:hover {
-  background: var(--ds-bg-hover);
+  background: var(--ds-bg-active);
   color: var(--ds-text-primary);
 }
 
@@ -483,7 +466,6 @@
   gap: 10px;
   padding: 0 8px 8px;
   font-size: var(--text-sm);
-  border-top: 1px solid var(--ds-border-subtle);
   padding-top: 8px;
 }
 
@@ -533,9 +515,10 @@
 .provider-chosen-thinking-select {
   min-height: 24px;
   padding: 1px 6px;
-  border: 1px solid var(--ds-border-subtle);
+  border: 0;
   border-radius: var(--radius-sm);
-  background: var(--ds-bg-input);
+  background: var(--ds-raised);
+  box-shadow: var(--ds-raised-shadow);
   color: var(--ds-text-primary);
   font-size: var(--text-2xs);
   line-height: var(--leading-normal);
@@ -577,7 +560,6 @@
   width: fit-content;
   max-width: 100%;
   padding: 3px;
-  border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-md);
   background: var(--ds-bg-chip);
 }
@@ -603,9 +585,10 @@
   color: var(--ds-text-primary);
 }
 
+/* The chosen level is the raised segment of the track (D297). */
 .provider-thinking-chip.selected {
-  box-shadow: inset 0 0 0 1px var(--ds-border-strong);
-  background: var(--ds-bg-active);
+  background: var(--ds-raised);
+  box-shadow: var(--ds-raised-shadow);
   color: var(--ds-text-primary);
 }
 
@@ -660,9 +643,9 @@
 
 .provider-custom-model {
   flex: none;
+  margin-top: 2px;
   padding: 8px;
   font-size: var(--text-sm);
-  border-top: 1px solid var(--ds-border-subtle);
 }
 
 .provider-custom-model-row {
@@ -719,7 +702,6 @@
   justify-content: flex-end;
   gap: 8px;
   padding-top: 12px;
-  border-top: 1px solid var(--ds-border-subtle);
 }
 
 /* -------------------------------------------------- model config page */
@@ -841,9 +823,11 @@
   align-items: center;
   gap: 6px;
   flex: none;
-  padding: 2px 5px 5px;
+  margin-bottom: 3px;
+  padding: 2px 7px;
+  border-radius: var(--radius-xs);
+  background: var(--ds-tile);
   color: var(--ds-text-faint);
-  border-bottom: 1px solid var(--ds-border-subtle);
 }
 
 .model-default-search input {
@@ -922,7 +906,6 @@
 
 .model-default-option.is-current {
   background: color-mix(in oklab, var(--ds-accent) 9%, transparent);
-  box-shadow: inset 0 0 0 1px var(--ds-border-strong);
 }
 
 .model-default-option:focus-visible {
@@ -951,9 +934,7 @@
 }
 
 .model-default-provider-group.has-divider {
-  margin-top: 6px;
-  padding-top: 7px;
-  border-top: 1px solid var(--ds-border-subtle);
+  margin-top: 10px;
 }
 
 .model-default-option-model {
@@ -1007,9 +988,11 @@
   text-align: center;
 }
 
+/* D297: service rows are tiles separated by a gap, not by hairlines. */
 .model-provider-list {
   display: flex;
   flex-direction: column;
+  gap: 6px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -1021,10 +1004,8 @@
   justify-content: space-between;
   gap: 12px;
   padding: 10px 12px;
-}
-
-.model-provider-row + .model-provider-row {
-  border-top: 1px solid var(--ds-border-subtle);
+  border-radius: var(--radius-md-plus);
+  background: var(--ds-tile);
 }
 
 .model-provider-row.is-disabled {
@@ -1082,9 +1063,8 @@
 
 .model-provider-delete-confirm {
   padding: 3px 9px;
-  border: 1px solid var(--ds-warning);
   border-radius: var(--radius-full);
-  background: transparent;
+  background: color-mix(in oklab, var(--ds-warning) 14%, transparent);
   color: var(--ds-warning);
   font-size: var(--text-3xs);
   font-weight: var(--font-weight-medium);

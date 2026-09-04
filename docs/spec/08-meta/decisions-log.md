@@ -3100,3 +3100,32 @@ D193, and D194.
   `pi-plugins-sheet` scenes are added. No protocol, storage, or runtime
   behavior changes. Refines the Installed-tab clause of D169 and §3.5 of the UI
   IA.
+
+## 2026-09-05 — Divider-free surfaces across the app (D297)
+
+- Extends D296 from the Extensions page to every renderer surface. In-flow
+  strokes — panel rings, card outlines, row and section dividers, left rails,
+  form-field borders, inset hairline chips, the sidebar footer and rail seams,
+  the work panel's edge and header rules, the composer's elevation stroke —
+  are replaced by three tonal layers plus spacing: page, `--ds-tile`
+  (3.5% text mix; hover 6%, deep 8%) and `--ds-raised` with
+  `--ds-raised-shadow`. The tokens live in `tokens.css`; the D296
+  `--plugins-*` variables alias them.
+- Lists become stacks of tile rows with a 2–6px gap (settings rows, shortcut
+  map, capability pages, provider and model rows, project archive, session
+  import, notification inbox, version history). Selection (theme and language
+  cards, segmented controls, level filters) is a raised pill or tile plus the
+  existing check; no selected border. Form controls are tile fills with an
+  accent focus ring. Markdown loses code-block, table, blockquote and heading
+  rules (zebra rows, tile plates, spacing). Subagent trees draw connectors as
+  2px tinted bars on a tile group with raised nodes.
+- Floating layers keep their edge: menus, popovers, autocomplete, the search
+  dialog, dialogs, tooltips, toasts and hover cards retain
+  `0 0 0 0.5px border-default` plus shadow, but rules inside them are gone.
+  Control affordances (switch focus ring, scrollbar padding, spinner strokes,
+  status-dot knockouts) are not dividers and stay.
+- The theme-card check glyph takes `--ds-bg-primary` ink instead of `#fff`,
+  which was invisible on the white dark-theme accent. Style tests assert the
+  new scheme per file. No protocol, storage, or runtime behavior changes.
+  Supersedes the stroke rows of §6.4 in the UI design system and the D148
+  0.5px field stroke.

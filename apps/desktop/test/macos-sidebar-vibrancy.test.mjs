@@ -48,13 +48,12 @@ test("only macOS sidebar surfaces receive the translucent glass treatment", () =
   // Sheen, not a flat tint — this is what keeps the material reading as glass.
   assert.match(macSidebarBlock, /var\(--ds-sidebar-glass-sheen-top\)/);
   assert.match(macSidebarBlock, /var\(--ds-sidebar-glass-sheen-bottom\)/);
-  // No dock seam: the flat hairline from the non-darwin base rule must stay out
-  // of the way so the glass meets the opaque main pane flush, borderless.
-  assert.match(macSidebarBlock, /border-right-color:\s*transparent/);
-  assert.doesNotMatch(
-    macSidebarBlock,
-    /border-right:\s*1px solid color-mix\(in oklab, var\(--ds-text-primary\) 4%,\s*transparent\)/,
-  );
+  // No dock seam on any platform (D297): neither the macOS glass rule nor the
+  // base `.sidebar` rule draws a right edge, so the glass meets the opaque main
+  // pane flush and no transparent override is needed.
+  assert.doesNotMatch(macSidebarBlock, /border-right/);
+  const baseSidebarBlock = stylesSource.match(/\n\.sidebar\s*\{[^}]*\}/)?.[0] ?? "";
+  assert.doesNotMatch(baseSidebarBlock, /border-right/);
 
   const macAncestorBlock =
     stylesSource.match(

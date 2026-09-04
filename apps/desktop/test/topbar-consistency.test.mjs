@@ -29,10 +29,12 @@ test("window chrome reserves the same titlebar height and native control band", 
   assert.match(stylesSource, /--ds-toolbar-height:\s*46px;/);
 });
 
-test("window control band keeps only a weak side boundary", () => {
+test("window control band draws no boundary of its own", () => {
+  // D297: the band paints the titlebar tone and nothing else; no side seam.
   const controls = styleBlock("\\.window-controls");
   assert.doesNotMatch(controls, /border-bottom:/);
-  assert.match(controls, /border-left:\s*1px solid var\(--ds-border-subtle\);/);
+  assert.doesNotMatch(controls, /border-left/);
+  assert.match(controls, /background:\s*var\(--ds-bg-primary\);/);
 });
 
 test("sidebar and work-panel headers use the shared toolbar metric", () => {

@@ -50,8 +50,7 @@
   align-items: center;
   justify-content: center;
   border-radius: var(--ds-composer-radius);
-  background: color-mix(in oklab, var(--ds-text-primary) 5%, transparent);
-  box-shadow: var(--ds-elevation-stroke);
+  background: var(--ds-tile-deep);
   animation: startup-mark-in var(--motion-duration-slow) var(--motion-ease-out) both;
 }
 
@@ -177,8 +176,8 @@
   overflow: hidden;
   position: relative;
   background: var(--ds-bg-sidebar, var(--ds-bg-primary));
-  /* Codex expanded shell: continuous sidebar/main edge (hairline only) */
-  border-right: 1px solid color-mix(in oklab, var(--ds-text-primary) 4%, transparent);
+  /* No seam against the main pane (D297): the sidebar's own surface tone is
+     the only edge cue on every platform, as it already was on macOS glass. */
   /*
    * Animate the flex allocation with the dock motion. A transform-only
    * animation leaves MainChat at its final width before the first frame,
@@ -293,13 +292,12 @@
  * every session row re-runs its ellipsis, and the collapse reads as flicker
  * rather than motion. Hold the content at the dock's full width and let
  * `overflow: hidden` wipe it — one content layout instead of one per frame.
- * `min-width` (not `width`) so a wider dock still stretches its children, and
- * less the hairline `border-right` above so the pin matches the dock's content
- * box exactly instead of overflowing it by a pixel.
+ * `min-width` (not `width`) so a wider dock still stretches its children. The
+ * dock draws no edge stroke (D297), so the pin is the full dock width.
  */
 .sidebar-header,
 .sidebar-body {
-  min-width: calc(var(--ds-sidebar-width) - 1px);
+  min-width: var(--ds-sidebar-width);
 }
 
 .sidebar-rail {
@@ -308,7 +306,6 @@
   display: flex;
   flex-direction: column;
   background: var(--ds-bg-sidebar, var(--ds-bg-primary));
-  border-right: 1px solid var(--ds-border-subtle);
 }
 
 /*
@@ -329,10 +326,8 @@
     ),
     linear-gradient(0deg, var(--ds-sidebar-glass-sheen-bottom), transparent 160px);
   background-repeat: no-repeat;
-  /* No dock seam: the glass meets the opaque main pane flush. The transparent
-     border keeps the flat hairline from the non-darwin base rule out of the
-     way, so the only edge cue is the tint's natural change against the pane. */
-  border-right-color: transparent;
+  /* No dock seam: the glass meets the opaque main pane flush, so the only edge
+     cue is the tint's natural change against the pane. */
 }
 
 /* Collapsed-sidebar controls stay in normal flow inside the main drag band so
@@ -368,8 +363,7 @@
   justify-content: center;
   border-radius: var(--radius-2xs);
   color: color-mix(in oklab, var(--ds-text-primary) 55%, transparent);
-  background: color-mix(in oklab, var(--ds-text-primary) 4%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ds-text-primary) 6%, transparent);
+  background: var(--ds-tile);
   transition:
     background var(--motion-duration-fast) var(--motion-ease-out),
     color var(--motion-duration-fast) var(--motion-ease-out),
@@ -674,8 +668,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 8px 10px 7px 14px;
-  border-bottom: 1px solid var(--ds-border-subtle);
+  padding: 10px 10px 4px 14px;
 }
 
 .notification-header h2 {
@@ -718,8 +711,7 @@
   display: flex;
   flex: 0 0 auto;
   gap: 2px;
-  padding: 7px 10px;
-  border-bottom: 1px solid var(--ds-border-subtle);
+  padding: 4px 10px 8px;
 }
 
 .notification-filter {
@@ -742,16 +734,17 @@
   color: var(--ds-text-primary);
 }
 
+/* Rows are separated by a small gap and their own rounded fill, not by
+   hairlines (D297). */
 .notification-list {
+  display: flex;
   min-height: 0;
+  flex-direction: column;
+  gap: 2px;
   margin: 0;
-  padding: 0;
+  padding: 0 6px 8px;
   overflow-y: auto;
   list-style: none;
-}
-
-.notification-list li:not(:last-child) {
-  border-bottom: 1px solid var(--ds-border-subtle);
 }
 
 .notification-item {
@@ -761,7 +754,8 @@
   grid-template-columns: 22px minmax(0, 1fr) auto;
   align-items: start;
   gap: 9px;
-  padding: 11px 13px;
+  padding: 10px 9px;
+  border-radius: var(--radius-sm);
   color: var(--ds-text-secondary);
   text-align: left;
   transition: background var(--motion-duration-fast) var(--motion-ease-out);
@@ -900,9 +894,7 @@
   /* Paint a separate full hit band so page content cannot show through the
    * controls and panel actions cannot read as part of the same button group. */
   background: var(--ds-bg-primary);
-  /* Keep the control band visually continuous with the adjacent titlebar;
-   * the side seam is intentionally the only chrome divider in this band. */
-  border-left: 1px solid var(--ds-border-subtle);
+  /* Continuous with the adjacent titlebar: no side seam (D297). */
 }
 
 /* The main shell puts the controls inside the conversation pane so the right

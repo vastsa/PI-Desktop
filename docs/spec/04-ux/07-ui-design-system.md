@@ -212,15 +212,14 @@ Neutral gray scale only — no blue-slate surfaces. Chrome components must consu
 
 Shared buttons must use semantic theme tokens for both their surface and ink:
 primary actions pair `--ds-accent` with `--ds-bg-primary`, while secondary
-actions use the opaque `--ds-bg-secondary` surface with primary text and a
-visible semantic border. Hover states use the corresponding accent/tertiary
-tokens rather than opacity-only changes, so actions remain legible in dark
-and light themes.
+actions sit on the `--ds-tile` fill with primary text and no stroke (D297).
+Hover states use the corresponding accent/tile-hover tokens rather than
+opacity-only changes, so actions remain legible in dark and light themes.
 
 Light-surface polish (D148):
 
-- Docked work panel uses quiet inset paper (`#fafafa`) with a white header band and a combined create trigger in the header so the tool column stays on content without a heavy divider.
-- Shared form fields, browser URL, settings segment tracks, and shortcut keycaps use `#f5f5f5` inset fills with a 0.5px ink stroke; focus lifts to white with a neutral ring. An Unbound shortcut uses a localized text state instead of an empty keycap and keeps its recorder and restore controls keyboard-focusable.
+- Docked work panel uses quiet inset paper (`#fafafa`) with a white header band and a combined create trigger in the header so the tool column stays on content without any divider (D297 removed the remaining edge rules).
+- Shared form fields, browser URL, settings segment tracks, and shortcut keycaps use `--ds-tile` fills with no stroke (D297); focus lifts to white with an accent-tinted ring. An Unbound shortcut uses a localized text state instead of an empty keycap and keeps its recorder and restore controls keyboard-focusable.
 - Settings toggles keep a near-black on-track and force a white knob in light mode.
   Off/on track and knob colours come from the `--ds-switch-*` theme tokens; a
   per-theme `:root[data-theme="…"] .settings-toggle` background override
@@ -506,8 +505,8 @@ content.
 
 Composer elevation (Codex `elevation-prominent`):
 
-- stroke: `0 0 0 0.5px` border-heavy mix
 - soft: `0 3px 7.5px rgba(0,0,0,0.039)` + `0 0 20px rgba(0,0,0,0.051)` (Codex `#0000000a` / `#0000000d`, both themes)
+- no stroke (D297): the composer lifts by shadow alone; `--ds-elevation-stroke` remains a token for floating layers only
 
 Shadow token values (light theme only):
 
@@ -519,12 +518,24 @@ shadow-lg:  0 8px 24px rgba(0,0,0,0.12)
 
 ### 6.4 Border rules
 
-| Context | Token | Width | Style |
-|---|---|---|---|
-| Default separators | `border-subtle` | 1px | solid |
-| Card outlines | `border-default` | 1px | solid |
-| Focus rings | accent color | 2px | solid, offset 2px |
-| Active/pressed | accent color | 1px inset | solid |
+In-flow surfaces draw no strokes (D297). Structure inside a page comes from
+three tonal layers plus spacing, and the border tokens are reserved for
+floating layers where an edge is an elevation cue rather than a partition.
+
+| Layer | Token | Use |
+|---|---|---|
+| Page | `--ds-bg-primary` | The route or dialog body itself |
+| Tile | `--ds-tile` (3.5% text mix); hover `--ds-tile-hover` (6%); deep `--ds-tile-deep` (8%) | Panels, list rows, cards, form fields, chips, code blocks, empty states |
+| Raised | `--ds-raised` + `--ds-raised-shadow` | The active pill of a segmented control, a disclosed detail block, a recorder keycap |
+
+| Context | Treatment |
+|---|---|
+| Row / section separators | Spacing (4–6px gap between tile rows, 12–24px between sections); never a rule |
+| Card / panel outlines | `--ds-tile` fill, no ring, in both themes |
+| Selection (theme, language, level) | Deeper tint or raised pill plus the existing check mark; no selected border |
+| Floating layers (menus, popovers, dialogs, tooltips, toasts, hover cards) | `0 0 0 0.5px border-default` + shadow on the container; no rules inside |
+| Focus rings | accent tint, 2px box-shadow |
+| Control affordances (switch off-ring, resize handles) | Allowed; they are the control, not a partition |
 
 ## 7. Iconography
 
@@ -916,7 +927,7 @@ These are **token-level foundations** for common primitives. Detailed component 
 | Variant | Padding | Height | Font | Radius | Border | Background |
 |---|---|---|---|---|---|---|
 | Primary | px-3 py-1.5 | 32px | text-sm 500 | radius-sm | none | accent |
-| Secondary | px-3 py-1.5 | 32px | text-sm 400 | radius-sm | border-default | bg-secondary |
+| Secondary | px-3 py-1.5 | 32px | text-sm 400 | radius-sm | none (D297) | `--ds-tile`, hover `--ds-tile-hover` |
 | Ghost | px-2 py-1 | 28px | text-sm 400 | radius-sm | none | transparent |
 | Danger | px-3 py-1.5 | 32px | text-sm 500 | radius-sm | none | error |
 
@@ -927,8 +938,8 @@ These are **token-level foundations** for common primitives. Detailed component 
 | Height (single-line) | 32px |
 | Padding | px-3 py-1.5 |
 | Font | text-sm font-mono (for composer); text-sm font-sans (for settings) |
-| Border | 1px border-default; focus → 2px accent ring offset-2 |
-| Background | bg-primary |
+| Border | none (D297); focus → 2px accent-tinted ring |
+| Background | `--ds-tile`; focus lifts to `--ds-raised` |
 | Radius | radius-sm |
 | Text correction (D145) | `spellCheck={false}`, `autoCorrect="off"`, `autoCapitalize="off"` on every text input/textarea |
 
@@ -937,9 +948,9 @@ These are **token-level foundations** for common primitives. Detailed component 
 | Property | Value |
 |---|---|
 | Padding | p-3 |
-| Border | 1px border-default |
+| Border | none (D297) |
 | Radius | radius-lg |
-| Background | bg-secondary |
+| Background | `--ds-tile` |
 | Hover (interactive) | bg-tertiary, no shadow change |
 
 ### 11.4 Dialog / modal

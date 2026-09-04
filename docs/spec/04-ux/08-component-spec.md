@@ -1266,8 +1266,9 @@ Single message render — either user (plaintext) or assistant (markdown streami
 Not a bubble: a full-width divider between transcript rows, drawn after the last
 message its checkpoint covers.
 
-- One centered label — how many times the session has compacted — with a hairline
-  rule filling the space on both sides, using `--ds-border-subtle`.
+- One centered label — how many times the session has compacted — with no
+  hairline on either side (D297); the label and its vertical spacing alone
+  mark the checkpoint.
 - A second muted segment states the summary's estimated token cost, or that no
   summary was generated (the no-summary family).
 - `--ds-text-muted` at `--text-2xs` with tabular numerals; the detail segment
@@ -1341,17 +1342,18 @@ Renderer: `apps/desktop/src/components/Markdown.tsx` + `apps/desktop/src/lib/shi
   changed lines by chaining GrammarState (per-line cache), so per-frame cost
   is constant regardless of block size.
 - **Code block chrome**: `.code-block` single-surface card (radius-md-plus,
-  hairline border; dark `#282c34`, light `#fafafa` — matching One Dark Pro /
+  no border since D297 — a `--ds-tile` plate; dark `#282c34`, light `#fafafa` — matching One Dark Pro /
   One Light editor bg). Header is transparent (language tag left, copy right);
   body `pre`/`code`/token spans have **no nested background**, so Shiki token
   colors sit on the one card surface. Body text at text-sm-plus /
   leading-relaxed with horizontal scroll and tab-size 2.
 - **Prose**: calmer chat density — body at text-base / leading-prose with
-  pretty wrapping; heading ramp h1 `text-xl` (hairline underline) → h2
+  pretty wrapping; heading ramp h1 `text-xl` (no underline since D297) → h2
   `text-lg-plus` → h3 `text-lg` → h4 `text-base-plus` → h5/h6 `text-base`
-  secondary; blockquotes use a 3px neutral rule over a soft plate;
-  hr is a faded center gradient; lists use quieter markers and flex task
-  rows; inline code gets a hairline border + soft gray tint; tables wrap
+  secondary; blockquotes are a soft `--ds-tile` plate with no rule (D297);
+  hr is pure spacing; lists use quieter markers and flex task
+  rows; inline code gets a soft gray tint and no border; tables drop cell
+  borders for a `--ds-tile-deep` header and zebra `--ds-tile` rows and wrap
   in `.table-wrap` (rounded shell, header row, even-row wash, hover wash);
   display math sits in a subtle inset plate. Thinking prose reuses the same
   hierarchy at text-sm-plus / secondary color.
@@ -1487,7 +1489,7 @@ twice.
 - Outer row: transparent, borderless, shadowless, approximately 24px high
 - Icon: 15–16px; disclosure chevron: 12px
 - Header gap: 4px; expanded body inset: 24px
-- Chips: monospace `--text-2xs`, hairline border, error hue for exit codes
+- Chips: monospace `--text-2xs`, `--ds-tile-deep` fill (no border, D297), error hue for exit codes
 - Code, file list, match list and field blocks: `font-mono text-sm`,
   independently copyable, capped at 260px with internal scrolling
 - Diff blocks reuse the review card's `.diff-line` rails
@@ -1616,8 +1618,8 @@ Opening a node reveals the blocks the call carries, then the delegate's own rows
   delegate's own rows follow the whole body, so the summary reads before the
   detail.
 - A failed delegation shows its error instead of an empty report.
-- The delegate's rows render inside a `.subagent-run` block, indented behind a
-  hairline rail, headed by the agent name and a step count. They collapse with
+- The delegate's rows render inside a `.subagent-run` block, a `--ds-tile`
+  plate with no rail (D297), headed by the agent name and a step count. They collapse with
   the node, so a transcript at rest reads as one card per activity group.
 - **An expanded run scrolls in place rather than growing the transcript**
   (D271). A delegate that made forty tool calls would otherwise add forty rows
@@ -1882,7 +1884,8 @@ reasoning-level control.
   reserved above the shell in either home or thread-docked mode (D095)
 - Background: one solid semantic composer surface; no internal gradient,
   background image, or decorative wash
-- Elevation: 20px radius with a hairline stroke and restrained soft shadow;
+- Elevation: 20px radius with the restrained soft shadow alone; the hairline
+  stroke was removed in D297;
   the docked transcript fade is outside the composer shell
 - The solid/near-opaque surface uses no `backdrop-filter`; focus-within adds a
   1px lift and token shadow without forcing transcript repaint through a blur
@@ -2678,7 +2681,8 @@ Sidebar footer                                        Popover (360px max)
   actions carry localized tooltips and accessible names.
 - Row: unread dot, semantic completion/failure icon, localized event label,
   snapshotted session title, optional stable failure code, and localized
-  relative time. Rows are dense list items separated by hairlines, not cards.
+  relative time. Rows are dense `--radius-sm` tiles stacked with a 2px gap
+  (D297), not cards and not hairline-separated.
 - Display title/body are derived at render time from `kind`, `sessionTitle`,
   and optional `errorCode`; no localized title/body string is persisted.
 

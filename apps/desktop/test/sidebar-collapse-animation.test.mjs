@@ -90,8 +90,9 @@ test("the collapse keyframes cannot reflow the sidebar's content", () => {
   // re-runs the ellipsis on every session row, which reads as flicker.
   const contentBlock =
     globalStyles.match(/\.sidebar-header,\n\.sidebar-body\s*\{[\s\S]*?\}/)?.[0] ?? "";
-  // ... less the dock's hairline border, so the pin is a no-op at rest.
-  assert.match(contentBlock, /min-width:\s*calc\(var\(--ds-sidebar-width\) - 1px\)/);
+  // The dock draws no edge stroke (D297), so the pin is the full dock width and
+  // a no-op at rest.
+  assert.match(contentBlock, /min-width:\s*var\(--ds-sidebar-width\)/);
   // `overflow: hidden` on the dock is what turns the pinned content into a wipe.
   const sidebarBlock = globalStyles.match(/\.sidebar\s*\{[\s\S]*?\}/)?.[0] ?? "";
   assert.match(sidebarBlock, /overflow:\s*hidden/);
