@@ -444,12 +444,15 @@ export function Sidebar({
     [],
   );
 
+  // Match WorkBuddy's hover-card cadence: half a second is long enough for
+  // the pointer to settle on the row, but short enough that a deliberate
+  // hover does not feel sluggish.
+  const PROJECT_PATH_HOVER_DELAY_MS = 500;
+
   const showProjectPath = useCallback(
     (entry: ProjectEntry, target: HTMLButtonElement) => {
-      // Clear any existing timer
+      // Clear any pending timer so back-to-back hovers don't flash the card.
       window.clearTimeout(projectPathTimerRef.current);
-      
-      // Set a new timer for 1.5 seconds
       projectPathTimerRef.current = window.setTimeout(() => {
         const rect = target.getBoundingClientRect();
         const tooltipWidth = Math.min(420, window.innerWidth - 16);
@@ -462,7 +465,7 @@ export function Sidebar({
               : Math.max(8, rect.top - 42),
           left: Math.max(8, Math.min(rect.left, window.innerWidth - tooltipWidth - 8)),
         });
-      }, 400);
+      }, PROJECT_PATH_HOVER_DELAY_MS);
     },
     [],
   );
