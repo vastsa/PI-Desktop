@@ -3344,11 +3344,11 @@ Each scenario is documented in this format:
 - **Status**: Partially automated (`apps/desktop/test/transcript-scroll.test.mjs`);
   full trackpad interaction remains Draft
 
-#### E2E-082: New reasoning session defaults to maximum thinking
+#### E2E-082: New reasoning session defaults to the binding thinking level
 
-- **Preconditions**: The app default provider/model resolves through pi-ai as
-  reasoning-capable and publishes a sparse thinking-level set; a second default
-  model is non-reasoning.
+- **Preconditions**: The app default provider/model resolves as reasoning-capable
+  and publishes a sparse thinking-level set with a stored binding default that
+  is not the strongest enabled level; a second default model is non-reasoning.
 - **Steps**:
   1. Set the reasoning-capable model as the app default and create a new session.
   2. Inspect the Composer model × reasoning chip and the session configuration
@@ -3356,15 +3356,16 @@ Each scenario is documented in this format:
   3. Select a lower level or Off, leave the session, and reopen it.
   4. Set the non-reasoning model as default and create another new session.
 - **Expected**:
-  - The first new session persists and displays the highest canonical level
-    published for the inherited reasoning model, even when the provider returns
-    its sparse levels out of order.
+  - The first new session persists and displays the binding's stored default
+    thinking level, clamped onto the enabled set, even when the provider returns
+    its sparse levels out of order. It does not jump to the strongest enabled
+    level merely because the model supports reasoning.
   - Reopening the first session preserves the user's later explicit selection.
   - The non-reasoning session starts at `off`; its combined chip keeps the Bot
     icon, omits level text, and its reasoning submenu exposes only Off. Missing
     capability metadata also falls back to `off`.
 - **Specs linked**: `03-runtime/13-model-catalog-and-selection.md`,
-  `04-ux/08-component-spec.md`, ADR 0018, D153
+  `04-ux/08-component-spec.md`, ADR 0018, D303
 - **Acceptance**: B (model config), F (persistence), Quality
 - **Milestone**: M5
 - **Status**: Partially automated (`thinking-levels.test.ts`,
@@ -5250,15 +5251,15 @@ Each scenario is documented in this format:
 | Acceptance | Scenarios |
 |---|---|
 | A — App startup | E2E-001, E2E-002, E2E-003, E2E-004, E2E-067, E2E-076, E2E-079, E2E-092, E2E-097, E2E-143, E2E-150, E2E-168 |
-| B — Model config | E2E-005, E2E-006, E2E-007, E2E-038, E2E-050, E2E-052, E2E-055, E2E-066, E2E-080, E2E-082, E2E-102c, E2E-102d, E2E-102e, E2E-151, E2E-154, E2E-166, E2E-172 |
-| C — Conversation & stream | E2E-008, E2E-008a, E2E-009, E2E-010, E2E-011, E2E-011a, E2E-011b, E2E-011d, E2E-011e, E2E-031, E2E-040, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-052, E2E-053, E2E-054, E2E-055, E2E-059, E2E-059a, E2E-060c, E2E-060d, E2E-061, E2E-061a, E2E-062, E2E-064, E2E-065, E2E-068, E2E-071, E2E-073, E2E-074, E2E-075, E2E-081, E2E-083, E2E-084, E2E-086, E2E-087, E2E-088, E2E-088b, E2E-089, E2E-090, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102g, E2E-106, E2E-109, E2E-111, E2E-114, E2E-116, E2E-117, E2E-118, E2E-119, E2E-120, E2E-121, E2E-AGENTS-001, E2E-142, E2E-144, E2E-145, E2E-146, E2E-147, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159, E2E-161, E2E-162, E2E-166, E2E-173 |
+| B — Model config | E2E-005, E2E-006, E2E-007, E2E-038, E2E-050, E2E-052, E2E-055, E2E-066, E2E-080, E2E-082, E2E-102c, E2E-102d, E2E-102e, E2E-151, E2E-154, E2E-163, E2E-166, E2E-172, E2E-174 |
+| C — Conversation & stream | E2E-008, E2E-008a, E2E-009, E2E-010, E2E-011, E2E-011a, E2E-011b, E2E-011d, E2E-011e, E2E-031, E2E-040, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-052, E2E-053, E2E-054, E2E-055, E2E-059, E2E-059a, E2E-060c, E2E-060d, E2E-061, E2E-061a, E2E-062, E2E-064, E2E-065, E2E-068, E2E-071, E2E-073, E2E-074, E2E-075, E2E-081, E2E-083, E2E-084, E2E-086, E2E-087, E2E-088, E2E-088b, E2E-089, E2E-090, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102g, E2E-106, E2E-109, E2E-111, E2E-114, E2E-116, E2E-117, E2E-118, E2E-119, E2E-120, E2E-121, E2E-AGENTS-001, E2E-142, E2E-144, E2E-145, E2E-146, E2E-147, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159, E2E-161, E2E-162, E2E-166, E2E-172, E2E-173, E2E-174 |
 | D — Workspace | E2E-012, E2E-013, E2E-022B, E2E-024I, E2E-047, E2E-049, E2E-057, E2E-058, E2E-060, E2E-068, E2E-075, E2E-078, E2E-153, E2E-158 |
 | E — Tools & permissions | E2E-008a, E2E-014, E2E-015, E2E-016, E2E-017, E2E-018, E2E-019, E2E-024I, E2E-024K, E2E-040, E2E-049, E2E-074, E2E-093, E2E-097, E2E-099, E2E-100, E2E-101, E2E-102, E2E-102d, E2E-102e, E2E-102g, E2E-103, E2E-105, E2E-106, E2E-107, E2E-111, E2E-112, E2E-113, E2E-114, E2E-115, E2E-116, E2E-119, E2E-121, E2E-122, E2E-142, E2E-145, E2E-147, E2E-155, E2E-158, E2E-166 |
 | F — Persistence | E2E-020, E2E-021, E2E-021a, E2E-036, E2E-037, E2E-038, E2E-040, E2E-042, E2E-047, E2E-048, E2E-051, E2E-054, E2E-056, E2E-061, E2E-062, E2E-064, E2E-066, E2E-068, E2E-071, E2E-072, E2E-073, E2E-082, E2E-084, E2E-096, E2E-098, E2E-102, E2E-102b, E2E-102c, E2E-102d, E2E-102g, E2E-103, E2E-AGENTS-001, E2E-061a, E2E-073a, E2E-104, E2E-106, E2E-107, E2E-108, E2E-109, E2E-110, E2E-112, E2E-118, E2E-119, E2E-120, E2E-121, E2E-123, E2E-142, E2E-146, E2E-148, E2E-151, E2E-158, E2E-160, E2E-168, E2E-171 |
 | G — Plugins | E2E-022, E2E-022A, E2E-022B, E2E-022C, E2E-023, E2E-024, E2E-024B, E2E-024C, E2E-024D, E2E-024E, E2E-024W, E2E-024F, E2E-024G, E2E-024H, E2E-024I, E2E-024J, E2E-024K, E2E-024L, E2E-024M, E2E-024N, E2E-024O, E2E-024P, E2E-025, E2E-026, E2E-105, E2E-117, E2E-120, E2E-122, E2E-123, E2E-024Q, E2E-148, E2E-152, E2E-153 |
 | H — Diagnostics | E2E-027, E2E-031, E2E-034, E2E-042, E2E-096, E2E-098, E2E-104, E2E-107, E2E-108, E2E-109, E2E-110, E2E-113, E2E-115, E2E-116, E2E-118, E2E-121, E2E-146, E2E-155, E2E-159 |
 | Security | E2E-028, E2E-029, E2E-030, E2E-024J, E2E-024K, E2E-024M, E2E-049, E2E-068, E2E-086, E2E-102c, E2E-102d, E2E-102e, E2E-105, E2E-106, E2E-107, E2E-108, E2E-109, E2E-110, E2E-112, E2E-113, E2E-115, E2E-116, E2E-117, E2E-119, E2E-121, E2E-122, E2E-123, E2E-142, E2E-148, E2E-151, E2E-153, E2E-158 |
-| Quality | E2E-032, E2E-033, E2E-039, E2E-043, E2E-044, E2E-045, E2E-046, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-050, E2E-053, E2E-055, E2E-056, E2E-057, E2E-058, E2E-059, E2E-060, E2E-061, E2E-062, E2E-063, E2E-064, E2E-065, E2E-066, E2E-067, E2E-068, E2E-069, E2E-070, E2E-071, E2E-072, E2E-073, E2E-074, E2E-075, E2E-076, E2E-077, E2E-078, E2E-079, E2E-080, E2E-081, E2E-082, E2E-083, E2E-084, E2E-085, E2E-086, E2E-092, E2E-093, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-100, E2E-101, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102e, E2E-103, E2E-AGENTS-001, E2E-021a, E2E-024N, E2E-024O, E2E-059a, E2E-060b, E2E-060c, E2E-060d, E2E-061a, E2E-073a, E2E-111, E2E-114, E2E-117, E2E-118, E2E-119, E2E-120, E2E-122, E2E-123, E2E-142, E2E-143, E2E-144, E2E-145, E2E-146, E2E-147, E2E-148, E2E-150, E2E-151, E2E-153, E2E-155, E2E-158, E2E-159, E2E-160, E2E-161, E2E-162, E2E-168, E2E-173 |
+| Quality | E2E-032, E2E-033, E2E-039, E2E-043, E2E-044, E2E-045, E2E-046, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-050, E2E-053, E2E-055, E2E-056, E2E-057, E2E-058, E2E-059, E2E-060, E2E-061, E2E-062, E2E-063, E2E-064, E2E-065, E2E-066, E2E-067, E2E-068, E2E-069, E2E-070, E2E-071, E2E-072, E2E-073, E2E-074, E2E-075, E2E-076, E2E-077, E2E-078, E2E-079, E2E-080, E2E-081, E2E-082, E2E-083, E2E-084, E2E-085, E2E-086, E2E-092, E2E-093, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-100, E2E-101, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102e, E2E-103, E2E-AGENTS-001, E2E-021a, E2E-024N, E2E-024O, E2E-059a, E2E-060b, E2E-060c, E2E-060d, E2E-061a, E2E-073a, E2E-111, E2E-114, E2E-117, E2E-118, E2E-119, E2E-120, E2E-122, E2E-123, E2E-142, E2E-143, E2E-144, E2E-145, E2E-146, E2E-147, E2E-148, E2E-150, E2E-151, E2E-153, E2E-155, E2E-158, E2E-159, E2E-160, E2E-161, E2E-162, E2E-163, E2E-168, E2E-172, E2E-173, E2E-174 |
 
 | Milestone | Scenarios |
 |---|---|
@@ -5268,7 +5269,7 @@ Each scenario is documented in this format:
 | M4 | E2E-022, E2E-023, E2E-024, E2E-025, E2E-026, E2E-030, E2E-038 |
 | M5 | E2E-008a, E2E-032, E2E-033, E2E-034, E2E-039, E2E-043, E2E-044, E2E-045, E2E-046, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-050, E2E-051, E2E-052, E2E-053, E2E-054, E2E-055, E2E-056, E2E-057, E2E-058, E2E-059, E2E-060, E2E-061, E2E-062, E2E-063, E2E-064, E2E-065, E2E-066, E2E-067, E2E-068, E2E-069, E2E-070, E2E-071, E2E-072, E2E-073, E2E-074, E2E-075, E2E-076, E2E-077, E2E-078, E2E-079, E2E-080, E2E-081, E2E-082, E2E-083, E2E-084, E2E-085, E2E-086, E2E-092, E2E-093, E2E-096, E2E-097, E2E-098, E2E-099, E2E-100, E2E-101, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102e, E2E-AGENTS-001, E2E-059a, E2E-060b, E2E-060c, E2E-061a, E2E-073a, E2E-094, E2E-095, E2E-143, E2E-145, E2E-146, E2E-147 |
 | M6 | E2E-104, E2E-105, E2E-106, E2E-107, E2E-108, E2E-109, E2E-110, E2E-111, E2E-112, E2E-113, E2E-114, E2E-115, E2E-116, E2E-117, E2E-118, E2E-119, E2E-120, E2E-103, E2E-172 |
-| M6+ | E2E-121, E2E-122, E2E-148, E2E-150, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159, E2E-160, E2E-161, E2E-162, E2E-166, E2E-168, E2E-173 |
+| M6+ | E2E-121, E2E-122, E2E-148, E2E-150, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159, E2E-160, E2E-161, E2E-162, E2E-163, E2E-166, E2E-168, E2E-173, E2E-174 |
 | Post-MVP | E2E-022A, E2E-022B, E2E-022C, E2E-024I, E2E-024J, E2E-024K, E2E-024L, E2E-024M (plugin roadmap R2/R3/R6) |
 
 The `US-UI-*` visual scenarios (§UI shell visual scenarios) trace to the
@@ -7116,8 +7117,9 @@ This test plan spec is accepted when:
   attach a PDF. 10) Configure a model, then point the service at an endpoint that
   no longer lists it, reopen the editor and read that model's capability boxes.
 - **Expected**: The default thinking level is selectable among the levels the
-  binding enables and nothing else; it persists across reopen and is the level a
-  new session starts at. Disabling the chosen default moves it to a still-enabled
+  binding enables and nothing else; it persists across reopen and is the level
+  the home draft chip and a newly persisted session start at, not the strongest
+  enabled level. Disabling the chosen default moves it to a still-enabled
   level rather than leaving a level the runtime would clamp away, and the
   selector is absent when a binding enables one level or none. An answered
   Image input switch overrides the published capability in both directions and
@@ -7314,3 +7316,27 @@ This test plan spec is accepted when:
 - **Status**: Unit-covered (`session-thinking.test.mjs`, `thinking-ui.test.mjs`,
   `composer-send-state.test.mjs`); full UI scenario Draft
   (do not run E2E locally unless explicitly requested)
+
+#### E2E-174: Binding default thinking level seeds drafts and new sessions
+
+- **Preconditions**: One AI service with a reasoning model whose published
+  levels omit `off` (for example `low` / `high` / `max`) and whose Advanced
+  default thinking level is a non-max enabled level such as `low`.
+- **Steps**: 1) Open the home composer with no active session and read the
+  model × reasoning chip. 2) Create a new task without opening the reasoning
+  menu, then read the chip and the session's stored `thinkingLevel`. 3) On the
+  home draft, switch to that model from the model menu and read the chip before
+  sending. 4) Change the binding default to another enabled level, save, and
+  repeat steps 1–2 on a fresh draft.
+- **Expected**: The home draft chip, a draft model switch, and the newly
+  persisted session all start at the binding's stored default, not the
+  strongest published or enabled level. Changing the default in Settings
+  changes the next draft and new session and does not rewrite existing
+  sessions.
+- **Specs linked**: `03-runtime/11-provider-model-system.md` §6.2,
+  `03-runtime/13-model-catalog-and-selection.md` §4,
+  `04-ux/08-component-spec.md` §11.4 / §11.5, `08-meta/decisions-log.md` (D303)
+- **Acceptance**: B (model config), C (chat/stream), Quality
+- **Milestone**: M6+
+- **Status**: Unit/source-contract covered (`thinking-levels.test.ts`,
+  `thinking-ui.test.mjs`); rendered desktop journey remains pending

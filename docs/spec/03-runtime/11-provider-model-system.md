@@ -158,8 +158,9 @@ PI-Desktop must not permanently restrict users to a short fixed model list.
    file references rather than being incorrectly encoded as images.
 7. User-edited `ModelBinding` values remain explicit provider configuration:
    they control selected request limits, enabled thinking levels, the default
-   thinking level applied to a new session, and the attachment capability
-   overrides. `models.dev` supplies published metadata and seeds the initial
+   thinking level applied to a new home draft and newly persisted session
+   (clamped onto the enabled set; strongest-enabled only when the default is
+   unset), and the attachment capability overrides. `models.dev` supplies published metadata and seeds the initial
    thinking selection for a newly added known model; it is not a runtime gate
    on a level the user explicitly enables for the endpoint. For compatibility,
    a binding that still contains the legacy generic `128,000` context seed

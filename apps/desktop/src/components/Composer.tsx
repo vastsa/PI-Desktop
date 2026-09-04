@@ -18,7 +18,7 @@ import type {
 import {
   fileReferenceLabel,
   formatTokenCount,
-  highestSupportedThinkingLevel,
+  initialThinkingLevelForBinding,
   modelIdsMatch,
   normalizeLargePasteThreshold,
   PERMISSION_MODES,
@@ -1128,11 +1128,15 @@ export function Composer({
     activeSession,
     catalogThinkingProvider,
   });
-  // A draft without a session starts at the strongest level enabled by its
-  // inherited model binding; published metadata seeds that binding on add.
-  const draftThinkingLevel = thinkingProvider?.supportsReasoning
-    ? highestSupportedThinkingLevel(thinkingProvider.supportedThinkingLevels)
-    : "off";
+  const selectedBinding = provider?.models.find((candidate) =>
+    modelIdsMatch(candidate.id, modelId ?? ""),
+  );
+  // A draft without a session starts at the selected model's stored default
+  // thinking level, clamped onto that binding's enabled ladder.
+  const draftThinkingLevel = initialThinkingLevelForBinding(
+    selectedBinding,
+    thinkingProvider?.supportedThinkingLevels,
+  );
   const sessionThinkingLevel =
     activeSession?.thinkingLevel ??
     (!activeSession ? draftConfiguration?.thinkingLevel : undefined) ??
@@ -1290,11 +1294,15 @@ export function Composer({
         nextModelId,
         providerModels[candidate.id],
       );
+      const nextBinding = candidate.models.find((entry) =>
+        modelIdsMatch(entry.id, nextModelId),
+      );
       const nextThinkingLevel = activeSession
         ? thinkingLevelForProvider(nextModelProvider, thinkingLevel)
-        : nextModelProvider?.supportsReasoning
-          ? highestSupportedThinkingLevel(nextModelProvider.supportedThinkingLevels)
-          : "off";
+        : initialThinkingLevelForBinding(
+            nextBinding,
+            nextModelProvider?.supportedThinkingLevels,
+          );
       await configureActiveSession({
         mode,
         providerId: candidate.id,

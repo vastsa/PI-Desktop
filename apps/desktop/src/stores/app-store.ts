@@ -34,8 +34,9 @@ import type {
 import {
   contextCompactionMark,
   ErrorCodes as SharedErrorCodes,
-  highestSupportedThinkingLevel,
+  initialThinkingLevelForBinding,
   modeForProposalKind,
+  modelIdsMatch,
   normalizeMode,
   normalizeProposalKind,
   PROTOCOL_VERSION,
@@ -4244,15 +4245,6 @@ async function persistSessionAndSelect(
   const active = options.intent ?? beginNavigationIntent();
   const state = useAppStore.getState();
   const settings = state.settings;
-  const defaultProvider = state.providers.find(
-    (provider) => provider.id === settings?.defaultProviderId,
-  );
-  // New reasoning sessions start at the strongest level enabled by the
-  // inherited model binding. Catalog metadata seeds that binding, while an
-  // empty or off-only binding remains the conservative off fallback.
-  const defaultThinkingLevel = defaultProvider?.supportsReasoning
-    ? highestSupportedThinkingLevel(defaultProvider.supportedThinkingLevels)
-    : "off";
   // No providerId/modelId here unless the user pinned a pick on the draft:
   // sessions without an explicit pick resolve them at prompt time, so later
   // default-model changes apply everywhere. The Composer pins both onto the
@@ -4265,6 +4257,25 @@ async function persistSessionAndSelect(
     options && "draftConfiguration" in options
       ? options.draftConfiguration
       : state.draftConfiguration;
+  const defaultProvider = state.providers.find(
+    (provider) =>
+      provider.id === (draftConfig?.providerId ?? settings?.defaultProviderId),
+  );
+  const inheritedModelId =
+    draftConfig?.modelId ??
+    settings?.defaultModelId ??
+    defaultProvider?.defaultModelId;
+  const inheritedBinding = defaultProvider?.models.find((candidate) =>
+    modelIdsMatch(candidate.id, inheritedModelId ?? ""),
+  );
+  // New reasoning sessions start at the selected model's stored default
+  // thinking level, clamped onto the enabled ladder. Catalog metadata seeds
+  // that default when the model is added; strongest-enabled is only the
+  // fallback when Settings has not stored a default.
+  const defaultThinkingLevel = initialThinkingLevelForBinding(
+    inheritedBinding,
+    defaultProvider?.supportedThinkingLevels,
+  );
   const created = await api.createSession({
     title: untitledTaskTitle(),
     mode: draftConfig?.mode ?? normalizeMode(settings?.defaultMode),

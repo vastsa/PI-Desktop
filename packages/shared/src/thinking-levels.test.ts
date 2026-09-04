@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   highestSupportedThinkingLevel,
+  initialThinkingLevelForBinding,
+  nearestSupportedThinkingLevel,
   publishedThinkingLevels,
 } from "./thinking-levels.js";
 
@@ -13,6 +15,63 @@ describe("highestSupportedThinkingLevel", () => {
   it("falls back to off when no supported level is published", () => {
     expect(highestSupportedThinkingLevel(undefined)).toBe("off");
     expect(highestSupportedThinkingLevel([])).toBe("off");
+  });
+});
+
+describe("nearestSupportedThinkingLevel", () => {
+  it("keeps a requested level that is enabled", () => {
+    expect(nearestSupportedThinkingLevel("low", ["low", "high", "max"])).toBe("low");
+  });
+
+  it("walks up first, then down, then off", () => {
+    expect(nearestSupportedThinkingLevel("medium", ["low", "high", "max"])).toBe("high");
+    expect(nearestSupportedThinkingLevel("max", ["off", "low"])).toBe("low");
+    expect(nearestSupportedThinkingLevel("low", [])).toBe("off");
+  });
+});
+
+describe("initialThinkingLevelForBinding", () => {
+  it("uses the stored default when it is still enabled", () => {
+    expect(
+      initialThinkingLevelForBinding({
+        thinkingLevels: ["low", "high", "max"],
+        defaultThinkingLevel: "low",
+      }),
+    ).toBe("low");
+  });
+
+  it("clamps a stale stored default onto the enabled ladder", () => {
+    expect(
+      initialThinkingLevelForBinding({
+        thinkingLevels: ["high", "max"],
+        defaultThinkingLevel: "low",
+      }),
+    ).toBe("high");
+  });
+
+  it("falls back to the strongest enabled level when no default is stored", () => {
+    expect(
+      initialThinkingLevelForBinding({
+        thinkingLevels: ["low", "high", "max"],
+        defaultThinkingLevel: null,
+      }),
+    ).toBe("max");
+    expect(initialThinkingLevelForBinding(undefined, ["low", "high"])).toBe("high");
+  });
+
+  it("honors an explicit off default and empty bindings", () => {
+    expect(
+      initialThinkingLevelForBinding({
+        thinkingLevels: ["off", "low"],
+        defaultThinkingLevel: "off",
+      }),
+    ).toBe("off");
+    expect(
+      initialThinkingLevelForBinding({
+        thinkingLevels: [],
+        defaultThinkingLevel: null,
+      }),
+    ).toBe("off");
   });
 });
 
