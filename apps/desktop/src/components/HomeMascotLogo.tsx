@@ -1,5 +1,3 @@
-import mascotFramesUrl from "../assets/home-mascot/mascot-frames.png";
-
 export function HomeMascotLogo() {
   return (
     <svg
@@ -16,14 +14,8 @@ export function HomeMascotLogo() {
       <g className="home-mascot-core">
         <path className="home-mascot-antenna" d="M50 31V24" />
         <circle className="home-mascot-antenna-dot" cx="50" cy="21" r="2.5" />
-        <image
-          className="home-mascot-frames"
-          href={mascotFramesUrl}
-          x="25"
-          y="31"
-          width="50"
-          height="200"
-        />
+        <rect className="home-mascot-body" x="25" y="31" width="50" height="40" rx="15" />
+        <rect className="home-mascot-screen" x="33" y="41" width="34" height="20" rx="8" />
         <g className="home-mascot-eyes">
           <circle className="home-mascot-eye" cx="44" cy="50" r="2.5" />
           <circle className="home-mascot-eye" cx="56" cy="50" r="2.5" />

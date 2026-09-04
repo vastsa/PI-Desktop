@@ -601,30 +601,12 @@
   animation: home-mascot-breathe 4s var(--motion-ease-standard) infinite;
 }
 
-.home-mascot-frames {
-  animation: home-mascot-frame-step 4.8s linear infinite;
+.home-mascot-body {
+  fill: var(--ds-text-primary);
 }
 
-@keyframes home-mascot-frame-step {
-  0%,
-  24.99% {
-    transform: translateY(0);
-  }
-
-  25%,
-  49.99% {
-    transform: translateY(-50px);
-  }
-
-  50%,
-  74.99% {
-    transform: translateY(-100px);
-  }
-
-  75%,
-  100% {
-    transform: translateY(-150px);
-  }
+.home-mascot-screen {
+  fill: var(--ds-bg-primary);
 }
 
 .home-mascot-antenna,
@@ -681,8 +663,7 @@
 @media (prefers-reduced-motion: reduce) {
   .home-mascot-logo .home-mascot-orbit,
   .home-mascot-logo .home-mascot-core,
-  .home-mascot-logo .home-mascot-eye,
-  .home-mascot-logo .home-mascot-frames {
+  .home-mascot-logo .home-mascot-eye {
     animation: none;
   }
 }
