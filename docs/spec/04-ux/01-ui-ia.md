@@ -202,8 +202,11 @@ execution.
 
 The Extensions destination is a focused plugin surface with a compact header and
 only two tabs: **Installed** and **Marketplace**. Installed groups plugin rows
-by state — Needs attention / Updates available / Active / Turned off — inside
-one hairline-separated panel. Marketplace remains the browse/install card grid.
+by state — Needs attention / Updates available / Active / Turned off — as soft
+tiles stacked under a group label (D296). Marketplace remains the browse/install
+card grid. The page draws no dividers: header, toolbar, rows, source settings,
+cards and the detail sheet's sections are set apart by tone and spacing, and
+hairlines are reserved for floating layers (menus, sheet, dialogs).
 MCP, Skills, and Subagents are not tabs or sections of Extensions.
 
 ### 3.6 Settings (full-page takeover)

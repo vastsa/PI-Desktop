@@ -250,8 +250,9 @@ combined model × reasoning selection (§11).
   (`.thread-content`) and the destination-page frame (`.page-frame`, shared by
   Plugins, Scheduled, and Pull requests) both pad by `--ds-toolbar-height`.
   Without that reservation a page header renders behind the band and its title
-  row is clipped. Only surfaces that stack above the band (the plugin detail
-  sheet at `z-index: 60`) may skip it.
+  row is clipped. The plugin detail sheet reserves it too (D296): the route
+  surface keeps a transform after its entry animation, so the sheet's fixed
+  layer stacks inside the route rather than above the band.
 
 ### 2.4 States
 

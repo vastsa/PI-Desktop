@@ -3798,10 +3798,32 @@ async function createWindow() {
             );
             await setPage("plugins");
             await new Promise((r) => setTimeout(r, 350));
+            // Mounting the page refreshes the store slice from IPC, which
+            // replaces the fixture with the real (near-empty) index; seed again
+            // once the mount effect has settled.
+            await mainWindow!.webContents.executeJavaScript(
+              `window.__PI_DESKTOP__?.seedPlugins?.(4)`,
+            );
+            await new Promise((r) => setTimeout(r, 250));
             await shot("pi-plugins-live");
-            // Row overflow menu on the last row of a group: the list panel
-            // clips its rounded corners, so this scene guards the menu against
-            // being cut off by that clip.
+            // Disclosed row details: capability, service and permission chips
+            // inside the raised detail block (D296).
+            await mainWindow!.webContents.executeJavaScript(`
+              (() => {
+                const details = document.querySelector('.plugins-row-details');
+                if (details) details.open = true;
+              })()
+            `);
+            await new Promise((r) => setTimeout(r, 250));
+            await shot("pi-plugins-row-details");
+            await mainWindow!.webContents.executeJavaScript(`
+              (() => {
+                const details = document.querySelector('.plugins-row-details');
+                if (details) details.open = false;
+              })()
+            `);
+            // Row overflow menu on the last row of a group: rows are separate
+            // tiles, so this scene guards the menu against the tile below.
             await mainWindow!.webContents.executeJavaScript(`
               (() => {
                 const rows = [...document.querySelectorAll('.plugins-row')];
@@ -3817,8 +3839,9 @@ async function createWindow() {
               `document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`,
             );
             await new Promise((r) => setTimeout(r, 150));
-            // The extension tabs, in order: installed, MCP, skills, subagents,
-            // marketplace (D202 inserted the fourth).
+            // The page's segments, in order: installed, marketplace. (MCP,
+            // skills and subagents moved to Settings; their scenes below are
+            // shot from there and only reuse this helper's click plumbing.)
             const extTab = async (index: number, settle = 350) => {
               await mainWindow!.webContents.executeJavaScript(`
                 (() => {
@@ -3914,8 +3937,20 @@ async function createWindow() {
             await new Promise((r) => setTimeout(r, 250));
             // Marketplace tab of the same page (D169 segmented control, fifth
             // since D202).
-            await extTab(4, 900);
+            await extTab(1, 900);
             await shot("pi-plugins-market");
+            // Detail sheet opened from the first card: head, install CTA and
+            // the section stack without rules between them (D296).
+            await mainWindow!.webContents.executeJavaScript(`
+              document.querySelector('.plugins-card-hit')
+                ?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+            `);
+            await new Promise((r) => setTimeout(r, 500));
+            await shot("pi-plugins-sheet");
+            await mainWindow!.webContents.executeJavaScript(
+              `document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`,
+            );
+            await new Promise((r) => setTimeout(r, 250));
             // Template picker behind the overflow menu (D171). Selecting a
             // template only sets state, so no folder dialog opens here.
             await extTab(0, 250);

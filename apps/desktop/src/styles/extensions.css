@@ -430,7 +430,6 @@
   padding: 2px;
   border-radius: var(--radius-full);
   background: color-mix(in oklab, var(--ds-text-primary) 5%, transparent);
-  box-shadow: inset 0 0 0 0.5px var(--ds-border-subtle);
 }
 
 .scope-seg {
@@ -471,7 +470,7 @@
   font-size: var(--text-xs-plus);
   font-weight: var(--font-weight-medium);
   white-space: nowrap;
-  box-shadow: inset 0 0 0 0.5px var(--ds-border-default);
+  background: color-mix(in oklab, var(--ds-text-primary) 5%, transparent);
   transition:
     background var(--motion-duration-fast) var(--motion-ease-out),
     color var(--motion-duration-fast) var(--motion-ease-out),
@@ -503,9 +502,8 @@
 
 .scope-compact-trigger:hover:not(:disabled),
 .scope-compact-trigger[aria-expanded="true"] {
-  background: color-mix(in oklab, var(--ds-text-primary) 8%, transparent);
+  background: color-mix(in oklab, var(--ds-text-primary) 10%, transparent);
   color: var(--ds-text-primary);
-  box-shadow: inset 0 0 0 0.5px var(--ds-border-strong);
 }
 
 .scope-compact-trigger:disabled {

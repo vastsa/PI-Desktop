@@ -667,6 +667,8 @@ function AppShell() {
     const originalRefreshNotifications =
       useAppStore.getState().refreshNotifications;
     const originalListPluginServices = api.listPluginServices;
+    const originalMarketSearch = api.marketSearch;
+    const originalMarketDetail = api.marketGetDetail;
     const originalListMcpServers = api.listMcpServers;
     const originalListUserSkills = api.listUserSkills;
     const originalListUserSubagents = api.listUserSubagents;
@@ -1054,8 +1056,118 @@ function AppShell() {
         if (count <= 0) {
           useAppStore.setState({ plugins: [] });
           (api as any).listPluginServices = originalListPluginServices;
+          (api as any).marketSearch = originalMarketSearch;
+          (api as any).marketGetDetail = originalMarketDetail;
           return;
         }
+        (api as any).marketGetDetail = async (id: string) => ({
+          plugin: {
+            id,
+            name: "Git Insights",
+            description: "Summarizes repository activity into a review panel.",
+            author: "Pi Labs",
+            latestVersion: "1.5.0",
+            downloads: 12840,
+            updatedAt: "2026-08-21T09:00:00.000Z",
+            categories: ["productivity"],
+            permissionSummary: ["fs.read", "fs.write", "ui.panel", "notify"],
+            permissions: ["fs.read", "fs.write", "ui.panel", "notify"],
+            verified: true,
+            trust: "verified",
+            installed: true,
+            installedVersion: "1.4.2",
+            updateAvailable: true,
+            installable: true,
+            homepage: "https://example.invalid/git-insights",
+            repository: "https://github.com/example/git-insights",
+            safetyNotes: "Writes only under docs/ and Markdown files in the workspace.",
+            readmeMarkdown: "# Git Insights\n\nA review panel for repository activity.",
+            versions: [
+              {
+                version: "1.5.0",
+                publishedAt: "2026-08-21T09:00:00.000Z",
+                changelog: "Adds a per-author heatmap.",
+                shasum: "capture",
+                url: "https://example.invalid/git-insights-1.5.0.piplug",
+                size: 48210,
+              },
+              {
+                version: "1.4.2",
+                publishedAt: "2026-07-02T09:00:00.000Z",
+                changelog: "Fixes a stale cache after branch switches.",
+                shasum: "capture",
+                url: "https://example.invalid/git-insights-1.4.2.piplug",
+                size: 47100,
+              },
+            ],
+          },
+        });
+        // The marketplace tab searches the catalog over IPC, which is offline
+        // in the capture rig; stand in with a card per trust tier and state.
+        (api as any).marketSearch = async () => ({
+          plugins: [
+            {
+              id: "pi.git-insights",
+              name: "Git Insights",
+              description: "Summarizes repository activity into a review panel.",
+              author: "Pi Labs",
+              latestVersion: "1.5.0",
+              downloads: 12840,
+              updatedAt: "2026-08-21T09:00:00.000Z",
+              categories: ["productivity"],
+              permissionSummary: ["fs.read", "fs.write", "ui.panel"],
+              verified: true,
+              trust: "verified",
+              installed: true,
+              installedVersion: "1.4.2",
+              updateAvailable: true,
+              installable: true,
+            },
+            {
+              id: "pi.markdown-tools",
+              name: "Markdown Tools",
+              description: "Formats tables and normalizes headings on demand.",
+              author: "Community",
+              latestVersion: "0.9.0",
+              downloads: 3210,
+              updatedAt: "2026-07-30T09:00:00.000Z",
+              categories: ["editing"],
+              permissionSummary: ["clipboard.read", "clipboard.write"],
+              trust: "community",
+              installed: true,
+              installedVersion: "0.9.0",
+              installable: true,
+            },
+            {
+              id: "pi.deploy-preview",
+              name: "Deploy Preview",
+              description:
+                "Builds a preview deployment for the current branch and links it in the transcript.",
+              author: "Pi Labs",
+              latestVersion: "0.4.1",
+              downloads: 980,
+              updatedAt: "2026-08-02T09:00:00.000Z",
+              categories: ["productivity"],
+              permissionSummary: ["net.fetch", "ui.panel"],
+              verified: true,
+              trust: "verified",
+              installable: true,
+            },
+            {
+              id: "pi.sql-explorer",
+              name: "SQL Explorer",
+              description: "Browse local databases and paste query results into chat.",
+              author: "Data Tools",
+              latestVersion: "2.1.0",
+              downloads: 5602,
+              updatedAt: "2026-08-15T09:00:00.000Z",
+              categories: ["data"],
+              permissionSummary: ["fs.read", "process.spawn"],
+              trust: "community",
+              installable: false,
+            },
+          ],
+        });
         // The rows read service state straight from IPC, which reports nothing
         // for a fixture plugin; stand in for the supervisor here.
         (api as any).listPluginServices = async () => [

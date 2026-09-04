@@ -8,20 +8,39 @@
    One cohesive section for the whole Plugins page: page shell,
    segmented tabs, installed index, marketplace grid, detail sheet, and the
    risk-tiered permission dialog. Every color goes through a --ds-* token so the
-   page renders correctly in both themes. */
+   page renders correctly in both themes.
+
+   The page draws no dividers (D296). In-flow structure is carried by three
+   tonal layers — the page, soft tiles mixed from the text colour, and the
+   raised pill of an active control — plus spacing. Hairlines, inset rings and
+   border-top/bottom rules are reserved for floating layers (menus, the detail
+   sheet, dialogs, tooltips), where an edge is an elevation cue rather than a
+   partition. */
+:root {
+  --plugins-tile: color-mix(in oklab, var(--ds-text-primary) 3.5%, transparent);
+  --plugins-tile-hover: color-mix(in oklab, var(--ds-text-primary) 6%, transparent);
+  --plugins-tile-deep: color-mix(in oklab, var(--ds-text-primary) 8%, transparent);
+  --plugins-raised: var(--ds-bg-elevated-opaque, var(--ds-bg-primary));
+  --plugins-raised-shadow: 0 1px 2px rgba(0, 0, 0, 0.1), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
+}
+
+:root[data-theme="dark"] {
+  --plugins-raised-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
 .plugins-page {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 14px;
 }
 
-/* The page header and segmented row form one quiet tool surface. */
+/* The page header and segmented row form one quiet tool surface; air, not a
+   rule, separates them from the list below. */
 .plugins-page > .page-header.plugins-page-header {
   align-items: center;
   gap: 16px;
   margin: 0;
-  padding: 0 0 12px;
-  border-bottom: 1px solid var(--ds-border-subtle);
+  padding: 0 0 2px;
 }
 
 .plugins-title-block {
@@ -38,10 +57,9 @@
   width: 24px;
   height: 24px;
   flex: 0 0 auto;
-  border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-sm);
   color: var(--ds-text-secondary);
-  background: color-mix(in oklab, var(--ds-text-primary) 5%, transparent);
+  background: var(--plugins-tile-deep);
 }
 
 .plugins-title-copy {
@@ -76,10 +94,9 @@
 .plugins-header-menu {
   width: 30px;
   height: 30px;
-  border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-2xs);
   color: var(--ds-text-muted);
-  background: transparent;
+  background: var(--plugins-tile);
   box-shadow: none;
 }
 
@@ -101,7 +118,6 @@
   border-radius: var(--radius-lg);
   padding: 12px 14px;
   background: color-mix(in oklab, var(--ds-success) 10%, transparent);
-  box-shadow: inset 0 0 0 0.5px color-mix(in oklab, var(--ds-success) 34%, transparent);
 }
 
 .plugins-alert-icon {
@@ -136,20 +152,18 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 0 0 10px;
-  border-bottom: 1px solid var(--ds-border-subtle);
+  padding: 0;
   flex-wrap: wrap;
 }
 
+/* Segmented tabs: a tinted pill track with the active tab raised on it. */
 .plugins-segment {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  padding: 2px;
-  border: 1px solid var(--ds-border-default);
-  border-radius: var(--radius-md);
-  background: var(--ds-bg-secondary);
-  box-shadow: inset 0 0 0 0.5px var(--ds-border-subtle);
+  padding: 3px;
+  border-radius: var(--radius-full);
+  background: color-mix(in oklab, var(--ds-text-primary) 5%, transparent);
 }
 
 .plugins-segment-btn {
@@ -157,8 +171,8 @@
   align-items: center;
   gap: 6px;
   height: 28px;
-  padding: 0 10px;
-  border-radius: var(--radius-sm);
+  padding: 0 12px;
+  border-radius: var(--radius-full);
   color: var(--ds-text-muted);
   font-size: var(--text-sm);
   font-weight: var(--font-weight-medium);
@@ -173,9 +187,9 @@
 }
 
 .plugins-segment-btn.active {
-  background: var(--ds-bg-elevated-opaque, var(--ds-bg-primary));
+  background: var(--plugins-raised);
   color: var(--ds-text-primary);
-  box-shadow: 0 0 0 0.5px var(--ds-border-default);
+  box-shadow: var(--plugins-raised-shadow);
 }
 
 .plugins-segment-count {
@@ -223,7 +237,6 @@
   padding: 0 30px 0 31px;
   font-size: var(--text-md);
   outline: none;
-  box-shadow: 0 0 0 0.5px var(--ds-border-default);
   transition:
     box-shadow var(--motion-duration-fast) var(--motion-ease-out),
     background var(--motion-duration-fast) var(--motion-ease-out);
@@ -236,7 +249,6 @@
 
 :root[data-theme="light"] .plugins-search {
   background: #f3f3f3;
-  box-shadow: none;
 }
 
 :root[data-theme="light"] .plugins-search:focus-visible {
@@ -267,7 +279,7 @@
 .plugins-panel {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 22px;
   min-width: 0;
 }
 
@@ -283,7 +295,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 2px;
+  padding: 0 4px;
 }
 
 .plugins-group-label {
@@ -309,40 +321,29 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Installed rows share one panel; hairlines separate them. */
+/* Installed rows are soft tiles stacked with a small gap; the gap does the
+   work a hairline used to. Nothing clips, so row menus can overhang freely. */
 .plugins-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   min-width: 0;
-  /* Row overflow menus escape the panel box, so the panel must not clip
-     (.settings-panel hides overflow); the end rows round their own corners. */
-  overflow: visible;
 }
 
 .plugins-row {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 14px 16px;
+  padding: 13px 16px;
+  border-radius: var(--radius-md-plus);
+  background: var(--plugins-tile);
   transition: background var(--motion-duration-fast) var(--motion-ease-out);
-}
-
-.plugins-row:first-child {
-  border-top-left-radius: var(--radius-lg);
-  border-top-right-radius: var(--radius-lg);
-}
-
-.plugins-row:last-child {
-  border-bottom-left-radius: var(--radius-lg);
-  border-bottom-right-radius: var(--radius-lg);
-}
-
-.plugins-row + .plugins-row {
-  border-top: 1px solid var(--ds-border-subtle);
 }
 
 .plugins-row:hover,
 .plugins-row:focus-within,
 .plugins-row.menu-open {
-  background: var(--ds-bg-hover);
+  background: var(--plugins-tile-hover);
 }
 
 .plugins-row:has(.plugins-row-details[open]) {
@@ -356,7 +357,7 @@
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-md);
-  background: color-mix(in oklab, var(--ds-text-primary) 8%, transparent);
+  background: var(--plugins-tile-deep);
   color: var(--ds-text-secondary);
   flex: 0 0 auto;
 }
@@ -504,8 +505,8 @@
   margin-top: 7px;
   border-radius: var(--radius-md);
   padding: 9px 10px;
-  background: color-mix(in oklab, var(--ds-text-primary) 3%, transparent);
-  box-shadow: inset 0 0 0 0.5px var(--ds-border-subtle);
+  background: var(--plugins-raised);
+  box-shadow: var(--plugins-raised-shadow);
 }
 
 .plugins-row-detail {
@@ -566,9 +567,8 @@
 
 .plugins-perm-chip.risk-low,
 .plugins-perm-chip.is-more {
-  background: transparent;
+  background: var(--plugins-tile);
   color: var(--ds-text-muted);
-  box-shadow: inset 0 0 0 0.5px var(--ds-border-subtle);
 }
 
 .plugins-perm-none {
@@ -595,7 +595,7 @@
   font-size: var(--text-3xs);
   line-height: var(--leading-relaxed);
   color: var(--ds-text-secondary);
-  box-shadow: inset 0 0 0 0.5px var(--ds-border-strong);
+  background: var(--plugins-tile-deep);
 }
 
 /* A resident service reads as a status pill: dot, name, state, restart count. */
@@ -609,7 +609,7 @@
   font-size: var(--text-3xs);
   line-height: var(--leading-relaxed);
   color: var(--ds-text-secondary);
-  box-shadow: inset 0 0 0 0.5px var(--ds-border-subtle);
+  background: var(--plugins-tile-hover);
 }
 
 .plugins-service-dot {
@@ -630,7 +630,7 @@
 
 .plugins-service-chip.is-failed {
   color: var(--ds-error);
-  box-shadow: inset 0 0 0 0.5px color-mix(in oklab, var(--ds-error) 40%, transparent);
+  background: color-mix(in oklab, var(--ds-error) 12%, transparent);
 }
 
 .plugins-service-chip.is-failed .plugins-service-dot {
@@ -719,7 +719,7 @@
   height: 32px;
   border-radius: var(--radius-md);
   color: var(--ds-text-secondary);
-  box-shadow: inset 0 0 0 0.5px var(--ds-border-default);
+  background: var(--plugins-tile);
 }
 
 /* Popover menus (page overflow, row overflow). */
@@ -798,10 +798,10 @@
   background: color-mix(in oklab, var(--ds-error) 12%, transparent);
 }
 
+/* Menu groups are separated by a breath of space; the destructive item's
+   colour already sets it apart. */
 .plugins-menu-sep {
-  height: 1px;
-  margin: 5px 6px;
-  background: var(--ds-border-subtle);
+  height: 6px;
 }
 
 /* Generated settings surface for declarative plugin fields. */
@@ -818,7 +818,7 @@
 .plugins-settings-body {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 6px;
   max-height: 460px;
   overflow: auto;
   padding: 0 18px;
@@ -828,8 +828,9 @@
   display: flex;
   align-items: flex-start;
   gap: 20px;
-  padding: 13px 0;
-  border-bottom: 1px solid var(--ds-border-subtle);
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: var(--plugins-tile);
 }
 
 .plugins-setting-copy {
@@ -906,11 +907,11 @@
   justify-content: center;
   min-width: 126px;
   height: 32px;
-  border: 1px solid var(--ds-border-default);
   border-radius: var(--radius-md);
   padding: 0 10px;
   color: var(--ds-text-primary);
-  background: var(--ds-bg-secondary);
+  background: var(--plugins-raised);
+  box-shadow: var(--plugins-raised-shadow);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
 }
@@ -918,13 +919,12 @@
 .plugins-shortcut-recorder:hover,
 .plugins-shortcut-recorder:focus-visible,
 .plugins-shortcut-recorder.recording {
-  border-color: color-mix(in oklab, var(--ds-accent) 60%, var(--ds-border-default));
   outline: none;
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 18%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 30%, transparent);
 }
 
 .plugins-shortcut-recorder.error {
-  border-color: color-mix(in oklab, var(--ds-error) 60%, var(--ds-border-default));
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-error) 35%, transparent);
 }
 
 .plugins-settings-error {
@@ -946,11 +946,15 @@
   }
 }
 
-/* Empty / no-match states. */
+/* Empty / no-match states: one soft tile, centred copy. */
 .plugins-empty {
+  display: flex;
+  flex-direction: column;
   align-items: center;
   gap: 6px;
+  border-radius: var(--radius-lg);
   padding: 36px 24px 30px;
+  background: var(--plugins-tile);
   text-align: center;
 }
 
@@ -997,21 +1001,20 @@
   color: var(--ds-text-secondary);
   font-size: var(--text-sm);
   white-space: nowrap;
-  box-shadow: inset 0 0 0 0.5px var(--ds-border-default);
+  background: var(--plugins-tile);
   transition:
     background var(--motion-duration-fast) var(--motion-ease-out),
     color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 .plugins-filter:hover {
-  background: var(--ds-bg-hover);
+  background: var(--plugins-tile-hover);
   color: var(--ds-text-primary);
 }
 
 .plugins-filter.active {
   background: color-mix(in oklab, var(--ds-text-primary) 12%, transparent);
   color: var(--ds-text-primary);
-  box-shadow: inset 0 0 0 0.5px var(--ds-border-strong);
 }
 
 .plugins-card-grid {
@@ -1020,12 +1023,12 @@
   gap: 12px;
 }
 
+/* Marketplace cards are tiles too: tint at rest, lifted by shadow on hover. */
 .plugins-card {
   display: flex;
   flex-direction: column;
   border-radius: var(--radius-lg);
-  background: color-mix(in oklab, var(--ds-text-primary) 2.5%, transparent);
-  box-shadow: 0 0 0 0.5px var(--ds-border-default);
+  background: var(--plugins-tile);
   overflow: hidden;
   transition:
     background var(--motion-duration-fast) var(--motion-ease-out),
@@ -1033,18 +1036,14 @@
     transform var(--motion-duration-fast) var(--motion-ease-out);
 }
 
-:root[data-theme="light"] .plugins-card {
-  background: #ffffff;
-  box-shadow: 0 0 0 0.5px color-mix(in oklab, #1a1c1f 9%, transparent);
-}
-
 .plugins-card:hover {
   transform: translateY(-1px);
-  box-shadow: 0 0 0 0.5px var(--ds-border-strong), 0 6px 18px rgba(0, 0, 0, 0.14);
+  background: var(--plugins-raised);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
 }
 
 .plugins-card.active {
-  box-shadow: 0 0 0 1px color-mix(in oklab, var(--ds-accent) 45%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 40%, transparent);
 }
 
 .plugins-card-hit {
@@ -1150,8 +1149,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 10px 14px;
-  border-top: 1px solid var(--ds-border-subtle);
+  padding: 2px 14px 12px;
 }
 
 .plugins-card-state {
@@ -1172,9 +1170,15 @@
   font-weight: var(--font-weight-medium);
 }
 
+/* Marketplace source: a single tile; the custom-URL row hangs below the head
+   with spacing alone marking the step. */
 .plugins-market-settings {
+  display: flex;
+  flex-direction: column;
   gap: 0;
   margin-bottom: 0;
+  border-radius: var(--radius-lg);
+  background: var(--plugins-tile);
 }
 
 .plugins-market-settings-head,
@@ -1187,7 +1191,7 @@
 }
 
 .plugins-market-settings-row {
-  border-top: 1px solid var(--ds-border-subtle);
+  padding-top: 0;
 }
 
 .plugins-market-settings-copy {
@@ -1319,19 +1323,19 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 16px 16px 14px;
-  border-bottom: 1px solid var(--ds-border-subtle);
+  padding: 16px 16px 10px;
   /* The head reaches the window's top edge, where the titlebar drag rectangle
      lives; its close button must take the click instead of moving the window. */
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
 
-/* On Windows/Linux the conversation pane owns the top-right 120px of that
-   band — exactly where the sheet's close button lands. Drop the sheet below
-   the band so the two close targets never stack. */
-:root[data-platform="win32"] .plugins-sheet,
-:root[data-platform="linux"] .plugins-sheet {
+/* The route surface keeps a transform after its entry animation, so this
+   fixed layer stacks inside it and the opaque titlebar band still paints over
+   the top of the sheet. Reserve the band on every platform: on macOS it would
+   otherwise clip the title row, and on Windows/Linux the conversation pane owns
+   the band's top-right 120px — exactly where the close button lands. */
+.plugins-sheet {
   padding-top: var(--ds-toolbar-height);
 }
 
@@ -1375,9 +1379,10 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--ds-border-subtle);
-  background: color-mix(in oklab, var(--ds-text-primary) 3%, transparent);
+  margin: 2px 16px 0;
+  border-radius: var(--radius-md-plus);
+  padding: 12px 14px;
+  background: var(--plugins-tile);
 }
 
 .plugins-sheet-cta-copy {
@@ -1408,16 +1413,12 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 4px 16px 24px;
+  padding: 8px 16px 24px;
 }
 
+/* Sections are set apart by their uppercase heads and a generous gap. */
 .plugins-sheet-section {
-  padding: 16px 0;
-  border-bottom: 1px solid var(--ds-border-subtle);
-}
-
-.plugins-sheet-section:last-child {
-  border-bottom: 0;
+  padding: 16px 0 12px;
 }
 
 .plugins-sheet-section-title {
@@ -1498,7 +1499,6 @@
   border-radius: var(--radius-md-plus);
   padding: 12px 14px;
   background: color-mix(in oklab, var(--ds-warning) 10%, transparent);
-  box-shadow: inset 0 0 0 0.5px color-mix(in oklab, var(--ds-warning) 32%, transparent);
 }
 
 .plugins-callout-icon {
@@ -1538,7 +1538,7 @@
   gap: 10px;
   border-radius: var(--radius-2xs);
   padding: 8px 10px;
-  background: color-mix(in oklab, var(--ds-text-primary) 3%, transparent);
+  background: var(--plugins-tile);
 }
 
 .plugins-perm-list.is-plain > li {
@@ -1868,18 +1868,15 @@
 .plugins-risk-group {
   border-radius: var(--radius-md-plus);
   padding: 10px 12px;
-  background: color-mix(in oklab, var(--ds-text-primary) 3%, transparent);
-  box-shadow: inset 0 0 0 0.5px var(--ds-border-subtle);
+  background: var(--plugins-tile);
 }
 
 .plugins-risk-group.risk-high {
-  background: color-mix(in oklab, var(--ds-error) 7%, transparent);
-  box-shadow: inset 0 0 0 0.5px color-mix(in oklab, var(--ds-error) 30%, transparent);
+  background: color-mix(in oklab, var(--ds-error) 8%, transparent);
 }
 
 .plugins-risk-group.risk-medium {
-  background: color-mix(in oklab, var(--ds-warning) 7%, transparent);
-  box-shadow: inset 0 0 0 0.5px color-mix(in oklab, var(--ds-warning) 28%, transparent);
+  background: color-mix(in oklab, var(--ds-warning) 9%, transparent);
 }
 
 .plugins-risk-head {

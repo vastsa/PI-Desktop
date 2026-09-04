@@ -3076,3 +3076,27 @@ D193, and D194.
   completions are read or removed together with the visible failures. No
   protocol or storage changes. Supersedes only the "task completion rows"
   clause of D117.
+
+## 2026-09-04 — Extensions page draws no dividers (D296)
+
+- The Extensions destination replaces every in-flow rule with tone and
+  spacing: the header and toolbar lose their bottom borders, the segmented
+  tabs sit on a tinted pill track with the active tab raised by shadow, and
+  the installed index is a stack of soft tiles under each group label instead
+  of one hairline-separated panel. Marketplace source settings, category
+  chips, cards, empty states, the row detail block and the detail sheet's
+  install strip and sections follow the same three-layer scheme (page, tile,
+  raised). Chips that carried inset rings are filled instead.
+- Hairlines remain only on floating layers — row and page menus, tooltips,
+  the detail sheet and dialogs — where an edge is an elevation cue rather than
+  a partition. The menu group separator becomes a gap.
+- The detail sheet reserves the titlebar band on every platform, not only
+  Windows/Linux: the route surface keeps a transform after its entry
+  animation, so the sheet's fixed layer stacks inside the route and the band
+  painted over its title row on macOS.
+- Capture rig: the plugins fixture is re-seeded after the page mounts (the
+  mount refresh had been replacing it), the marketplace search and detail
+  calls are stubbed while seeded, and `pi-plugins-row-details` /
+  `pi-plugins-sheet` scenes are added. No protocol, storage, or runtime
+  behavior changes. Refines the Installed-tab clause of D169 and §3.5 of the UI
+  IA.
