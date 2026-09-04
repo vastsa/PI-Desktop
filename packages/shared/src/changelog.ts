@@ -23,6 +23,17 @@ export type ChangelogEntry = {
 
 const enEntries: ChangelogEntry[] = [
   {
+    version: "0.13.1",
+    date: "2026-09-05",
+    highlights: [
+      "Insert atomic attachment chips on the composer input line, with a three-line default height.",
+      "Checkpoint streaming replies so they survive quit, sidecar loss, and Stop without rewriting the transcript.",
+      "Hide successful completions from the notification inbox.",
+      "Remove in-flow borders and dividers, and show scrollbars only on hover or while scrolling.",
+      "Play light and dark GIF mascots on the empty-home screen.",
+    ],
+  },
+  {
     version: "0.13.0",
     date: "2026-09-04",
     highlights: [
@@ -567,6 +578,17 @@ const enEntries: ChangelogEntry[] = [
 ];
 
 const zhCNEntries: ChangelogEntry[] = [
+  {
+    version: "0.13.1",
+    date: "2026-09-05",
+    highlights: [
+      "在输入行插入原子附件芯片，并将默认输入高度设为三行。",
+      "对流式回复做检查点，退出、sidecar 断开或点停止时仍保留已生成内容，且不会重写转录。",
+      "成功完成的任务不再进入通知收件箱。",
+      "去掉界面中的内联边框与分隔线，滚动条仅在悬停或滚动时显示。",
+      "首页空状态使用浅色与深色主题的 GIF 吉祥物。",
+    ],
+  },
   {
     version: "0.13.0",
     date: "2026-09-04",
