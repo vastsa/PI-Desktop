@@ -11,6 +11,7 @@ import type { FsEntry, FsReadResult } from "@pi-desktop/shared";
 import { useAppStore } from "../../stores/app-store";
 import { api } from "../../lib/api";
 import { Markdown } from "../Markdown";
+import { fileDirOf } from "../../lib/chat-links";
 import { cx } from "../ui";
 import {
   ensureLang,
@@ -339,7 +340,7 @@ export function FilesTab() {
             <div className="file-tree-note">{t("panel.files.loading")}</div>
           ) : file.kind === "text" && isMarkdownPath(selected) ? (
             <div className="file-viewer-markdown prose-chat">
-              <Markdown source={file.content ?? ""} />
+              <Markdown source={file.content ?? ""} baseDir={fileDirOf(selected)} />
             </div>
           ) : file.kind === "text" ? (
             <HighlightedText path={selected} content={file.content ?? ""} />

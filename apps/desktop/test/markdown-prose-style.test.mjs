@@ -8,6 +8,10 @@ const markdownSource = await readFile(
   new URL("../src/components/Markdown.tsx", import.meta.url),
   "utf8",
 );
+const filesTabSource = await readFile(
+  new URL("../src/components/workpanel/FilesTab.tsx", import.meta.url),
+  "utf8",
+);
 const shikiSource = await readFile(
   new URL("../src/lib/shiki.ts", import.meta.url),
   "utf8",
@@ -42,6 +46,16 @@ test("markdown renderer still streams by memoized blocks", () => {
   assert.match(markdownSource, /const markdownComponents: Components =/);
   assert.match(markdownSource, /className="code-block"/);
   assert.match(markdownSource, /className="table-wrap"/);
+});
+
+test("markdown resolves relative file links against a base directory", () => {
+  assert.match(markdownSource, /baseDir\?: string/);
+  assert.match(markdownSource, /remarkChatFileLinks/);
+  assert.match(
+    markdownSource,
+    /toWorkspaceRel\(safeDecodeUri\(href\), root, baseDir\)/,
+  );
+  assert.match(filesTabSource, /baseDir=\{fileDirOf\(selected\)\}/);
 });
 
 test("code blocks use one-dark-pro with a single surface background", () => {

@@ -35,7 +35,13 @@ import {
   IconWorkflow,
 } from "./icons";
 import { useAppStore } from "../stores/app-store";
-import { resolvePreviewTarget, toWorkspaceRel } from "../lib/chat-links";
+import {
+  linkifyMdastTree,
+  resolvePreviewTarget,
+  safeDecodeUri,
+  toWorkspaceRel,
+  type MdastNode,
+} from "../lib/chat-links";
 import {
   isClosedFencedCodeBlock,
   MAX_MERMAID_SOURCE_LENGTH,
@@ -374,6 +380,14 @@ const MarkdownBlockContext = createContext({
   renderDiagrams: true,
 });
 
+const MarkdownBaseDirContext = createContext("");
+
+function remarkChatFileLinks(root?: string | null, baseDir?: string | null) {
+  return (tree: MdastNode) => {
+    linkifyMdastTree(tree, root, baseDir);
+  };
+}
+
 function extractCode(children: ReactNode): { code: string; lang: string } | null {
   const element = Array.isArray(children)
     ? children.find((child) => isValidElement(child))
@@ -429,12 +443,13 @@ function InlineCode({
   ...rest
 }: ComponentProps<"code"> & { node?: unknown }) {
   const root = useAppStore((s) => s.workspace?.path);
+  const baseDir = useContext(MarkdownBaseDirContext);
   const openFile = useAppStore((s) => s.openFileInWorkPanel);
   const openUrl = useAppStore((s) => s.openUrlInWorkPanel);
   const text = typeof children === "string" ? children : null;
   const target =
     text && !className && !text.includes("\n")
-      ? resolvePreviewTarget(text, root)
+      ? resolvePreviewTarget(text, root, baseDir)
       : null;
   const fileTitle = usePreviewTitle("file");
   const urlTitle = usePreviewTitle("url");
@@ -468,6 +483,7 @@ function Anchor({
   ...rest
 }: ComponentProps<"a"> & { node?: unknown }) {
   const root = useAppStore((s) => s.workspace?.path);
+  const baseDir = useContext(MarkdownBaseDirContext);
   const openFile = useAppStore((s) => s.openFileInWorkPanel);
   const openUrl = useAppStore((s) => s.openUrlInWorkPanel);
   // Plain click previews in the work panel (browser tab for http(s), files
@@ -481,7 +497,7 @@ function Anchor({
       openUrl(href);
       return;
     }
-    const rel = toWorkspaceRel(decodeURI(href), root);
+    const rel = toWorkspaceRel(safeDecodeUri(href), root, baseDir);
     if (rel) {
       e.preventDefault();
       openFile(rel);
@@ -506,6 +522,7 @@ function MarkdownImage({
   ...rest
 }: ComponentProps<"img"> & { node?: unknown }) {
   const root = useAppStore((s) => s.workspace?.path);
+  const baseDir = useContext(MarkdownBaseDirContext);
   const openFile = useAppStore((s) => s.openFileInWorkPanel);
   const openUrl = useAppStore((s) => s.openUrlInWorkPanel);
   const fileTitle = usePreviewTitle("file");
@@ -523,7 +540,7 @@ function MarkdownImage({
       />
     );
   }
-  const rel = toWorkspaceRel(decodeURI(source), root);
+  const rel = toWorkspaceRel(safeDecodeUri(source), root, baseDir);
   if (rel) {
     return (
       <button
@@ -590,7 +607,7 @@ const markdownComponents: Components = {
   table: Table,
 };
 
-const remarkPlugins = [remarkGfm, remarkMath];
+const staticRemarkPlugins = [remarkGfm, remarkMath];
 
 // Extend the default schema only for the media elements rendered above.
 const sanitizeSchema = {
@@ -660,9 +677,13 @@ function useBlocks(source: string): string[] {
 const Block = memo(function MarkdownBlock({
   raw,
   renderDiagrams,
+  workspaceRoot,
+  baseDir,
 }: {
   raw: string;
   renderDiagrams: boolean;
+  workspaceRoot?: string | null;
+  baseDir?: string;
 }) {
   const context = useMemo(
     () => ({
@@ -670,6 +691,13 @@ const Block = memo(function MarkdownBlock({
       renderDiagrams,
     }),
     [raw, renderDiagrams],
+  );
+  const remarkPlugins = useMemo(
+    () => [
+      ...staticRemarkPlugins,
+      remarkChatFileLinks(workspaceRoot, baseDir),
+    ],
+    [workspaceRoot, baseDir],
   );
   return (
     <MarkdownBlockContext.Provider value={context}>
@@ -687,16 +715,26 @@ const Block = memo(function MarkdownBlock({
 export const Markdown = memo(function Markdown({
   source,
   renderDiagrams = true,
+  baseDir,
 }: {
   source: string;
   renderDiagrams?: boolean;
+  /** Workspace-relative directory of the source file, for `./` / `../` links. */
+  baseDir?: string;
 }) {
+  const workspaceRoot = useAppStore((s) => s.workspace?.path);
   const blocks = useBlocks(source);
   return (
-    <>
+    <MarkdownBaseDirContext.Provider value={baseDir ?? ""}>
       {blocks.map((raw, i) => (
-        <Block key={i} raw={raw} renderDiagrams={renderDiagrams} />
+        <Block
+          key={i}
+          raw={raw}
+          renderDiagrams={renderDiagrams}
+          workspaceRoot={workspaceRoot}
+          baseDir={baseDir}
+        />
       ))}
-    </>
+    </MarkdownBaseDirContext.Provider>
   );
 });

@@ -1189,7 +1189,12 @@ Single message render — either user (plaintext) or assistant (markdown streami
   keep logical-start alignment instead of inheriting the browser's centered
   button text.
 - Assistant: transparent surface, left-aligned, markdown rendered at full
-  content width
+  content width. Workspace file paths in that markdown are previewable:
+  inline code, markdown links/images, and bare path tokens (with a known
+  extension) open the work-panel files viewer. Unprefixed relative paths
+  resolve from the workspace root; `./` and `../` resolve from the workspace
+  root in chat, and from the viewed file's directory when previewing a
+  markdown document in the files tab. Parent escapes stay inert.
 - Thinking: separate lightweight disclosure above the answer with no card
   background or outer border. Its Sparkles/chevron trigger uses secondary text,
   and the expanded markdown is indented by a subtle theme-token left rule. It
