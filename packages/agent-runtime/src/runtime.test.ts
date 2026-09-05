@@ -151,7 +151,7 @@ function createRuntime(
   }> = {},
 ) {
   return new DesktopAgentRuntime({
-    host: (overrides.host ?? { call: vi.fn() }) as never,
+    host: (overrides.host ?? { call: vi.fn(), onNotification: vi.fn(() => () => {}) }) as never,
     sessionId: "session-1",
     mode: overrides.mode === "chat" ? "plan" : overrides.mode ?? "agent",
     turnId: overrides.turnId,
@@ -1257,6 +1257,7 @@ describe("DesktopAgentRuntime deferred tool catalog", () => {
       "EnterPlanMode",
       "EnterGoalMode",
       "new_context",
+      "A2A",
       "ToolSearch",
     ]);
     expect(names).not.toContain("BrowserPreview");
@@ -4191,7 +4192,7 @@ describe("DesktopAgentRuntime inline context compaction", () => {
 
   it("counts checkpoint generations so the inspector can show how often a session compacted", async () => {
     const runtime = createRuntime({
-      host: { call: vi.fn().mockResolvedValue(undefined) },
+      host: { call: vi.fn().mockResolvedValue(undefined), onNotification: vi.fn(() => () => {}) },
       history,
     });
     const preparation = {
@@ -4221,7 +4222,7 @@ describe("DesktopAgentRuntime inline context compaction", () => {
 
   it("reports the session as running while it compacts", async () => {
     const runtime = createRuntime({
-      host: { call: vi.fn().mockResolvedValue(undefined) },
+      host: { call: vi.fn().mockResolvedValue(undefined), onNotification: vi.fn(() => () => {}) },
       history,
     });
     budgetSpy(runtime);
@@ -4245,7 +4246,7 @@ describe("DesktopAgentRuntime inline context compaction", () => {
 
   it("does not compact when automatic protection is disabled", async () => {
     const runtime = createRuntime({
-      host: { call: vi.fn().mockResolvedValue(undefined) },
+      host: { call: vi.fn().mockResolvedValue(undefined), onNotification: vi.fn(() => () => {}) },
       history,
       compactionSettings: {
         enabled: false,
@@ -4969,6 +4970,7 @@ describe("DesktopAgentRuntime subagents", () => {
         }
         return Promise.resolve({ ok: true, content: {} });
       }),
+      onNotification: vi.fn(() => () => {}),
     };
     const runtime = createRuntime({
       subagents: [mutator],
