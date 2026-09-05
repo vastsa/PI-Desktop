@@ -381,9 +381,12 @@ releasing the execution slot.
 
 `session.appendMessage` is idempotent by message id. Electron main may keep
 message appends in its application-owned outbox while host-core is restarting;
-the outbox flushes in order after a successful handshake. In-flight checkpoints
-never go through the outbox: a checkpoint is only meaningful against a live
-host, and replaying one after the final row would be wrong.
+the outbox flushes in order after a successful handshake. A missing sessions
+row is restored from the live JSONL (or created as a stub under the same id
+when the file is gone) so a queued outbox can drain (D318). `session.delete`
+drops that session's outbox entries. In-flight checkpoints never go through
+the outbox: a checkpoint is only meaningful against a live host, and replaying
+one after the final row would be wrong.
 
 ### Permissions
 - `permissions.evaluate`

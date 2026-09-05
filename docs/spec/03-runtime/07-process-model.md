@@ -71,7 +71,10 @@ Supervision parameters (implemented in Electron main):
   generation; stale generation requests and notifications are rejected before
   they reach the current bridge.
 - Host persistence appends are buffered in an Electron-main-owned outbox while
-  the host is unavailable and flushed sequentially after a new handshake.
+  the host is unavailable and flushed sequentially after a new handshake. A
+  missing sessions row is restored from the live transcript (or created as a
+  stub) before those appends apply; deleting a session drops its outbox
+  entries (D318).
 - Host-core's stdin/stdout control path uses one dedicated OS thread per
   direction rather than Tokio's dynamic blocking pool. Transient pipe resource
   errors are retried; control-thread creation failures are surfaced as a boot

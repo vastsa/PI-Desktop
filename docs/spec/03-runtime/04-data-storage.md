@@ -889,7 +889,8 @@ is the source of truth, the index is derived and self-healing.
 | turn-completion branch archive (`session.saveActiveRevision`) | append revision line (a refresh line when the active variant is already archived), then rewrite only the root user's transcript line for the pager stamp | index row with `message_count` (+ `is_active` flip); index rows for other messages untouched |
 | revision switch | append a refresh line for the live branch's own variant, read the target branch, atomic transcript rewrite keeping checkpoints whose anchors survive | flip `is_active`, rebuild index rows carrying each surviving message's owning `turn_id`, reset `last_seq` |
 | import | write transcript file | one tx per session: session row + index rows; on failure the file is removed |
-| session delete | remove both session files after row delete | `DELETE FROM sessions` (cascades) |
+| session delete | remove both session files after row delete | `DELETE FROM sessions` (cascades); Electron main drops that session's outbox entries (D318) |
+| orphaned session restore (boot / `session.appendMessage`, D318) | leave the live JSONL in place | reinsert the missing `sessions` row and rebuild index rows from the file; if the file is also gone, append inserts a stub row under the existing id so the outbox can drain |
 
 Rules: user message durable (fsync'd file line) before the turn starts;
 assistant/tool lines durable at their end events; the streaming assistant

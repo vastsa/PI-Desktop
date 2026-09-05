@@ -155,6 +155,10 @@ transcript-file line first, index transaction second.
   Renderer revalidation of a running session stitches the bounded durable page
   onto the live snapshot in chronological order so older live rows stay before
   that page and the in-flight tail stays after it (D317)
+- orphaned session restore: a live JSONL whose sessions row is gone is
+  reinserted at host boot and on `session.appendMessage`; a queued outbox
+  drains after that restore, and `session.delete` drops that session's
+  outbox entries (D318)
 - unanswered smart Stop: mark the turn aborted through the existing lifecycle,
   then atomically rewrite the transcript to the prefix before its root user row;
   the structured composer snapshot remains renderer-memory-only

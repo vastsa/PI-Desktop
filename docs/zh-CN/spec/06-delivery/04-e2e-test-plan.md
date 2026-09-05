@@ -5545,3 +5545,15 @@ IPC 请求无法关闭。
 - **验收**：C（对话和直播）、F（持久化）、质量
 - **里程碑**：M5
 - **状态**：单元已覆盖（`session-transcript.test.mjs` 的 D317 用例）；完整桌面旅程仍为草稿（除非用户明确要求，否则不要在本地跑 E2E）
+
+#### E2E-178：缺失的 sessions 行被恢复，outbox 才能排空
+
+- **前提条件**：会话仍有活的 `sessions/<id>.jsonl`，以及 `session-message-outbox.json` 里排队的回合，但 `pi.sqlite` 的 `sessions` 行已不在（WAL/索引丢失）。
+- **步骤**：1）确认侧边栏不再列出该会话，且 `session.appendMessage` 会因 `session not found` 失败。2）重启应用（或完成一次会刷新 outbox 的主机握手）。3）可选：删除该会话，确认其 outbox 条目被丢掉而不是被救回。
+- **预期**：主机启动从 JSONL 重新插入 sessions 行并重建搜索索引。outbox 不会卡在队头，能够排空。对话回到侧边栏且消息还在。用户删除的会话不会被残留 outbox 条目重建。
+- **链接规格**：`03-runtime/04-data-storage.md`、
+  `03-runtime/06-host-rpc-protocol.md`、`03-runtime/07-process-model.md`、
+  ADR 0041、`08-meta/decisions-log.md`（D318）
+- **验收**：C（对话和直播）、F（持久化）
+- **里程碑**：M5
+- **状态**：单元已覆盖（host-core 孤儿会话恢复测试、`persistence-outbox.test.mjs`）；完整桌面旅程仍为草稿（除非用户明确要求，否则不要在本地跑 E2E）

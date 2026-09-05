@@ -437,6 +437,32 @@ pub fn list_inflight_sessions(data_dir: &Path) -> Result<Vec<String>> {
     Ok(ids)
 }
 
+/// Session ids that still have a live transcript file. Used to restore a
+/// missing SQLite sessions row after a WAL/index loss (D318).
+pub fn list_transcript_sessions(data_dir: &Path) -> Result<Vec<String>> {
+    let dir = base_dir(data_dir);
+    let entries = match fs::read_dir(&dir) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(e).with_context(|| format!("read {}", dir.display())),
+    };
+    let mut ids = Vec::new();
+    for entry in entries {
+        let name = entry?.file_name();
+        let Some(name) = name.to_str() else { continue };
+        if let Some(id) = name.strip_suffix(".jsonl") {
+            if id.ends_with(".revisions") {
+                continue;
+            }
+            if safe_session_id(id) {
+                ids.push(id.to_string());
+            }
+        }
+    }
+    ids.sort();
+    Ok(ids)
+}
+
 /// Durable single-line append shared by transcript and revision writers.
 /// `header` is written first when the file does not exist yet.
 fn append_line(path: &Path, header: Option<String>, line: String) -> Result<()> {

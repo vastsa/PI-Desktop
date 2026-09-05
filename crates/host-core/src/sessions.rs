@@ -880,6 +880,139 @@ fn insert_index_row(
     Ok(())
 }
 
+fn recovered_session_title(records: &[MessageRecord]) -> String {
+    let title = records
+        .iter()
+        .find(|record| record.role == "user")
+        .and_then(record_index_text)
+        .map(|text| {
+            text.split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+                .chars()
+                .take(48)
+                .collect::<String>()
+        })
+        .unwrap_or_default();
+    if title.is_empty() {
+        "Recovered session".into()
+    } else {
+        title
+    }
+}
+
+fn insert_recovered_session_row(
+    tx: &rusqlite::Transaction<'_>,
+    session_id: &str,
+    title: &str,
+    last_seq: i64,
+    created_at: i64,
+    updated_at: i64,
+) -> Result<()> {
+    tx.prepare_cached(
+        "INSERT INTO sessions (
+            id, title, last_seq, thinking_level, permission_mode, created_at, updated_at
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+    )?
+    .execute(params![
+        session_id,
+        title,
+        last_seq,
+        default_thinking_level(),
+        default_permission_mode(),
+        created_at,
+        updated_at
+    ])?;
+    Ok(())
+}
+
+/// Restore a missing sessions row (and its search index) from an orphaned
+/// JSONL transcript. Returns true when a row was inserted (D318).
+pub fn restore_orphaned_session(db: &Database, session_id: &str) -> Result<bool> {
+    if session_created_at(db, session_id).is_ok() {
+        return Ok(false);
+    }
+    let path = transcripts::transcript_path(db.data_dir(), session_id)?;
+    if !path.exists() {
+        return Ok(false);
+    }
+    let records = dedupe_records(transcripts::read_transcript(db.data_dir(), session_id)?);
+    let created_at = records
+        .first()
+        .map(|record| ts_to_ms(&record.created_at))
+        .unwrap_or_else(now_ms);
+    let updated_at = records
+        .last()
+        .map(|record| ts_to_ms(&record.created_at))
+        .unwrap_or(created_at);
+    let title = recovered_session_title(&records);
+    let conn = db.conn();
+    let tx = conn.unchecked_transaction()?;
+    insert_recovered_session_row(
+        &tx,
+        session_id,
+        &title,
+        records.len() as i64,
+        created_at,
+        updated_at,
+    )?;
+    for (seq, record) in records.iter().enumerate() {
+        insert_index_row(
+            &tx,
+            session_id,
+            seq as i64,
+            None,
+            record,
+            record_index_text(record).as_deref(),
+        )?;
+    }
+    tx.commit()?;
+    tracing::info!(
+        %session_id,
+        messages = records.len(),
+        "restored orphaned session row from transcript"
+    );
+    Ok(true)
+}
+
+/// Boot sweep: every live transcript whose sessions row is gone is reinserted
+/// so the sidebar and the persistence outbox can see it again (D318).
+pub fn recover_orphaned_sessions(db: &Database) -> Result<usize> {
+    let mut restored = 0;
+    for session_id in transcripts::list_transcript_sessions(db.data_dir())? {
+        match restore_orphaned_session(db, &session_id) {
+            Ok(true) => restored += 1,
+            Ok(false) => {}
+            Err(error) => {
+                tracing::warn!(%session_id, %error, "orphaned session restore failed");
+            }
+        }
+    }
+    Ok(restored)
+}
+
+fn ensure_session_for_append(db: &Database, session_id: &str) -> Result<String> {
+    match session_created_at(db, session_id) {
+        Ok(created) => Ok(created),
+        Err(error) if error.to_string().starts_with("session not found") => {
+            if restore_orphaned_session(db, session_id)? {
+                return session_created_at(db, session_id);
+            }
+            let now = now_ms();
+            let conn = db.conn();
+            let tx = conn.unchecked_transaction()?;
+            insert_recovered_session_row(&tx, session_id, "Recovered session", 0, now, now)?;
+            tx.commit()?;
+            tracing::warn!(
+                %session_id,
+                "recreated missing session row so a persistence outbox can drain"
+            );
+            session_created_at(db, session_id)
+        }
+        Err(error) => Err(error),
+    }
+}
+
 /// The session's created_at (RFC3339, used as the transcript header stamp) —
 /// doubles as the existence check before any transcript file is touched.
 fn session_created_at(db: &Database, session_id: &str) -> Result<String> {
@@ -1405,7 +1538,7 @@ pub fn append_message(
     message: &UiMessage,
     turn_id: Option<&str>,
 ) -> Result<()> {
-    let session_created = session_created_at(db, session_id)?;
+    let session_created = ensure_session_for_append(db, session_id)?;
     let (record, text) = ui_to_record(message);
     // Electron may replay an outbox entry after a host restart. Message ids
     // are globally unique, so an existing row is already the durable result.
@@ -3442,6 +3575,99 @@ mod tests {
         assert!(delete_session(&db, &session.id).unwrap());
         assert!(!transcript.exists());
         assert!(!revisions.exists());
+    }
+
+    #[test]
+    fn missing_session_row_is_restored_from_transcript() {
+        let db = test_db();
+        let session = create_session(&db, Some("Keep me".into()), None, None, None, None).unwrap();
+        append_message(
+            &db,
+            &session.id,
+            &user_msg("u1", "hello world", "2025-05-01T00:00:00Z"),
+            None,
+        )
+        .unwrap();
+        append_message(
+            &db,
+            &session.id,
+            &user_msg("u2", "second", "2025-05-01T00:00:01Z"),
+            None,
+        )
+        .unwrap();
+        db.conn()
+            .execute("DELETE FROM sessions WHERE id = ?1", params![session.id])
+            .unwrap();
+        assert!(get_session(&db, &session.id).unwrap().is_none());
+
+        assert!(restore_orphaned_session(&db, &session.id).unwrap());
+        let restored = get_session(&db, &session.id).unwrap().unwrap();
+        assert_eq!(restored.messages.len(), 2);
+        assert_eq!(restored.messages[0].content, "hello world");
+        assert_eq!(restored.summary.title, "hello world");
+        assert_eq!(restored.summary.message_count, 2);
+        assert!(!restore_orphaned_session(&db, &session.id).unwrap());
+    }
+
+    #[test]
+    fn recover_orphaned_sessions_restores_transcript_files_without_rows() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        append_message(
+            &db,
+            &session.id,
+            &user_msg("u1", "keep", "2025-05-01T00:00:00Z"),
+            None,
+        )
+        .unwrap();
+        db.conn()
+            .execute("DELETE FROM sessions WHERE id = ?1", params![session.id])
+            .unwrap();
+        assert_eq!(recover_orphaned_sessions(&db).unwrap(), 1);
+        assert!(get_session(&db, &session.id).unwrap().is_some());
+        assert_eq!(recover_orphaned_sessions(&db).unwrap(), 0);
+    }
+
+    #[test]
+    fn append_recreates_a_missing_session_row_so_the_outbox_can_drain() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        append_message(
+            &db,
+            &session.id,
+            &user_msg("u1", "first", "2025-05-01T00:00:00Z"),
+            None,
+        )
+        .unwrap();
+        db.conn()
+            .execute("DELETE FROM sessions WHERE id = ?1", params![session.id])
+            .unwrap();
+        append_message(
+            &db,
+            &session.id,
+            &user_msg("u2", "queued", "2025-05-01T00:00:01Z"),
+            None,
+        )
+        .unwrap();
+        let restored = get_session(&db, &session.id).unwrap().unwrap();
+        assert_eq!(restored.messages.len(), 2);
+        assert_eq!(restored.messages[1].content, "queued");
+    }
+
+    #[test]
+    fn append_creates_a_stub_session_when_the_transcript_is_also_gone() {
+        let db = test_db();
+        let id = "11111111-2222-4333-8444-555555555555";
+        append_message(
+            &db,
+            id,
+            &user_msg("u1", "from outbox", "2025-05-01T00:00:00Z"),
+            None,
+        )
+        .unwrap();
+        let restored = get_session(&db, id).unwrap().unwrap();
+        assert_eq!(restored.summary.title, "Recovered session");
+        assert_eq!(restored.messages[0].content, "from outbox");
     }
 
     #[test]

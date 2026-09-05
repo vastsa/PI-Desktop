@@ -68,6 +68,13 @@ impl AppState {
         // are promoted into their transcripts before any client can read them
         // (D299). The turn sweep inside `open` has already marked those turns
         // aborted, so the promoted rows land under an aborted turn.
+        match crate::sessions::recover_orphaned_sessions(&db) {
+            Ok(restored) if restored > 0 => {
+                tracing::info!(count = restored, "restored orphaned session rows from transcripts");
+            }
+            Ok(_) => {}
+            Err(error) => tracing::warn!(%error, "orphaned session sweep failed"),
+        }
         match crate::sessions::recover_inflight_messages(&db) {
             Ok(recovered) if !recovered.is_empty() => {
                 tracing::info!(count = recovered.len(), "recovered in-flight replies");

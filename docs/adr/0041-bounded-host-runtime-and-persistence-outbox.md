@@ -32,6 +32,10 @@ message append is idempotent by message id.
   errors.
 - SQLite ownership remains exclusively in host-core.
 - The application data directory gains one small recovery outbox file.
+- A missing sessions row is restored from the live JSONL (or created as a
+  stub under the same id) so a queued outbox can drain; `session.delete`
+  drops that session's outbox entries so a stub cannot resurrect a deleted
+  conversation (D318).
 - Tool capacity becomes observable through `app.health` and structured logs.
 
 ## Alternatives rejected

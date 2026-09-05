@@ -141,6 +141,9 @@ accept_prompt
 - assistant/tool 消息：在 message_end/tool_end 上。再验证仍在运行的
   会话时，把有界持久化页按时间顺序缝到实时快照上，使更早的实时
   行留在该页之前、进行中的尾巴留在该页之后（D317）
+- 孤儿会话恢复：活着的 JSONL 若 sessions 行已不在，则在主机启动和
+  `session.appendMessage` 时重新插入；排队的 outbox 在恢复后排空，
+  `session.delete` 丢掉该会话的 outbox 条目（D318）
 - 未应答的智能停止：标记在现有生命周期中中止的回合，
   然后以原子方式将记录重写为其根用户行之前的前缀；
   结构化输入框快照仅保留渲染器内存
