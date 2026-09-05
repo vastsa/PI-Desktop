@@ -29,7 +29,7 @@ Principles:
 | `commandPalette` | Command palette search and execution |
 | `workspace` | Workspace selection and legacy working-tree diagnostics |
 | `browser` | Work panel embedded preview navigation/bounds/visibility + state events |
-| `fs` | Work panel workspace file listing/reading/reveal (read-only) |
+| `fs` | Work panel workspace file listing/reading/reveal, plus user-initiated open with the OS default handler (read-only) |
 | `window` | Frameless window state, controls, and compatibility work-panel geometry channels |
 | `menu` | Allowlisted application-menu commands and native editing/window actions |
 | `notification` | Durable inbox list/read/clear and new/activated events |
@@ -1131,8 +1131,13 @@ visible session's workspace.
   [15-workspace-ignore-rules](15-workspace-ignore-rules.md)
 - `fs/read({path})` → text (≤512KB) / image data URL (≤5MB) / binary / tooLarge
 - `fs/reveal({path})` → reveal in Finder
-- Every path resolves inside the workspace root; traversal outside is
-  rejected (`INVALID_ARGUMENT`).
+- `fs/open({path})` → open with the OS default application. Relative paths
+  resolve inside the workspace root; absolute paths are accepted only when
+  they already live under the workspace, `<data_dir>/scratch/`, or
+  `<data_dir>/attachments/`. Traversal, `~`, and other escapes are rejected
+  (`INVALID_ARGUMENT`).
+- `fs/list` and `fs/read` resolve inside the workspace root; traversal outside
+  is rejected (`INVALID_ARGUMENT`). `fs/reveal` stays workspace-only.
 
 ## 13b. Desktop Menu and Window APIs
 

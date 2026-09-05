@@ -144,7 +144,12 @@ import {
   modelInfoFromModelsDev,
 } from "./models-dev-catalog";
 import { OAUTH_AUTH_KIND, VendorOAuth } from "./oauth";
-import { listDir, readWorkspaceFile, resolveWithinRoot } from "./fs-panel";
+import {
+  listDir,
+  readWorkspaceFile,
+  resolveOpenablePath,
+  resolveWithinRoot,
+} from "./fs-panel";
 import { getWorkspaceFileIndex } from "./fs-index";
 import { saveComposerPasteFiles } from "./composer-paste";
 import { builtinComposerCommands, builtinPaletteItems } from "./builtin-commands";
@@ -6305,6 +6310,27 @@ function registerIpc() {
       });
     }
     shell.showItemInFolder(stripWinLongPrefix(target));
+    return { ok: true };
+  });
+
+  handle(IPC.invoke.fsOpen, async (input: { path?: string } = {}) => {
+    let workspaceRoot: string | null = null;
+    try {
+      workspaceRoot = await requireWorkspaceRoot();
+    } catch {
+      workspaceRoot = null;
+    }
+    const target = resolveOpenablePath(String(input.path ?? ""), workspaceRoot, [
+      join(dataDir, "scratch"),
+      join(dataDir, "attachments"),
+    ]);
+    if (!target) {
+      throw Object.assign(new Error("path is not openable"), {
+        errorCode: ErrorCodes.INVALID_ARGUMENT,
+      });
+    }
+    const openError = await shell.openPath(stripWinLongPrefix(target));
+    if (openError) throw new Error(openError);
     return { ok: true };
   });
 

@@ -175,3 +175,4 @@ Each ADR includes:
 | 0160 | Shipped locale registry and searchable language picker | Accepted |
 | 0161 | Searchable theme picker matching language | Accepted |
 | 0162 | Cross-session A2A addressing | Accepted (amends 0147) |
+| 0163 | Transcript file references render as previewable chips | Accepted |

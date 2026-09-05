@@ -710,6 +710,7 @@ export const api = {
     invoke<{ entries: FsEntry[] }>(IPC.invoke.fsList, { path: path ?? "" }),
   fsRead: (path: string) => invoke<FsReadResult>(IPC.invoke.fsRead, { path }),
   fsReveal: (path: string) => invoke(IPC.invoke.fsReveal, { path }),
+  fsOpen: (path: string) => invoke(IPC.invoke.fsOpen, { path }),
   fsIndex: () => invoke<FsIndexResult>(IPC.invoke.fsIndex),
   composerCommands: () =>
     invoke<{ commands: ComposerCommand[] }>(IPC.invoke.composerCommands),

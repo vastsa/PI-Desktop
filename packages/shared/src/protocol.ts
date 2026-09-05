@@ -196,6 +196,7 @@ export const IPC = {
     fsList: "pi-desktop/fs/list",
     fsRead: "pi-desktop/fs/read",
     fsReveal: "pi-desktop/fs/reveal",
+    fsOpen: "pi-desktop/fs/open",
     fsIndex: "pi-desktop/fs/index",
     windowSetWorkPanelReservation:
       "pi-desktop/window/setWorkPanelReservation",

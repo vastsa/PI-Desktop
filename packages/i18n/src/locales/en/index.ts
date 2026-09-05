@@ -249,6 +249,7 @@ export const en = {
     errorModel: "Model",
     previewFile: "Preview in the side panel",
     previewUrl: "Open in the side browser",
+    openFile: "Open with default application",
     retry: "Regenerate",
     forkResponse: "Branch from this reply",
     editMessage: "Edit and resend",

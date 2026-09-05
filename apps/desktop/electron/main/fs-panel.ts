@@ -55,6 +55,41 @@ function pathIsWithin(root: string, target: string): boolean {
   return rel === "" || (!rel.startsWith(`..${sep}`) && rel !== ".." && !isAbsolute(rel));
 }
 
+/**
+ * Resolve a user-clicked chat file path against the workspace plus extra
+ * containment roots (session scratch, attachments). Relative paths resolve
+ * only inside the workspace; absolute paths must already live under one of
+ * the allowed roots.
+ */
+export function resolveOpenablePath(
+  path: string,
+  workspaceRoot: string | null | undefined,
+  extraRoots: readonly string[] = [],
+): string | null {
+  const raw = String(path ?? "").trim();
+  if (!raw || raw.startsWith("~")) return null;
+
+  const allowed = [
+    ...(workspaceRoot ? [resolve(workspaceRoot)] : []),
+    ...extraRoots
+      .filter((root) => typeof root === "string" && root.trim())
+      .map((root) => resolve(root)),
+  ];
+  if (allowed.length === 0) return null;
+
+  let candidate: string;
+  if (isAbsolute(raw)) {
+    candidate = resolve(raw);
+  } else {
+    if (!workspaceRoot) return null;
+    const relativePath = resolveWithinRoot(workspaceRoot, raw);
+    if (!relativePath) return null;
+    candidate = relativePath;
+  }
+
+  return allowed.some((root) => pathIsWithin(root, candidate)) ? candidate : null;
+}
+
 /** Resolve an existing path and its root through links before containment. */
 export async function resolveRealPathWithinRoot(
   root: string,

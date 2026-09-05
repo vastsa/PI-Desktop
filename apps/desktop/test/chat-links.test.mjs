@@ -90,6 +90,7 @@ test("splitChatText linkifies embedded refs and keeps literals", () => {
     kind: "file",
     path: "apps/desktop/src/App.tsx",
   });
+  assert.equal(segments[1].label, "App.tsx");
   assert.deepEqual(segments[3].target, {
     kind: "url",
     url: "https://example.com",
@@ -98,4 +99,22 @@ test("splitChatText linkifies embedded refs and keeps literals", () => {
   assert.deepEqual(splitChatText("普通文本，没有链接。", ROOT), [
     { kind: "text", text: "普通文本，没有链接。" },
   ]);
+});
+
+test("splitChatText turns composer @paths into leaf-name chips", () => {
+  const segments = splitChatText(
+    'inspect @apps/desktop/src/App.tsx and @"my file.md" plus @/tmp/scratch/pasted/uuid-photo.png',
+    ROOT,
+  );
+  const files = segments.filter((s) => s.kind === "target" && s.target.kind === "file");
+  assert.equal(files.length, 3);
+  assert.deepEqual(files[0].target, { kind: "file", path: "apps/desktop/src/App.tsx" });
+  assert.equal(files[0].label, "App.tsx");
+  assert.deepEqual(files[1].target, { kind: "file", path: "my file.md" });
+  assert.equal(files[1].label, "my file.md");
+  assert.deepEqual(files[2].target, {
+    kind: "file",
+    path: "/tmp/scratch/pasted/uuid-photo.png",
+  });
+  assert.equal(files[2].label, "uuid-photo.png");
 });

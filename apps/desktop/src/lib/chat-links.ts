@@ -1,11 +1,12 @@
 /**
  * Detection and resolution of file/URL references in chat content so the
- * transcript can preview them in the work panel (files viewer / browser).
+ * transcript can preview them: HTML in the work-panel browser, other files
+ * with the OS default handler, URLs in the embedded browser.
  *
  * File detection is deliberately conservative: a bare token only counts as a
  * file when it carries a known extension, so ordinary dotted identifiers in
- * prose (`store.messages`) stay plain text. Anything with a path separator
- * and an extension qualifies.
+ * prose (`store.messages`) stay plain text. Explicit `@path` tokens from the
+ * composer (D124 / D320) are accepted even when quoted or absolute.
  */
 
 const KNOWN_EXTS = new Set([
@@ -28,8 +29,37 @@ const KNOWN_BARE_NAMES = new Set([
 const FILE_TOKEN_RE =
   /^\/?(?:\.{1,2}\/)?[\w@+.-]+(?:\/[\w@+.-]+)*(?::\d+(?::\d+)?)?$/;
 
+const AT_QUOTED_RE = /^@"([^"\n]+)"$/;
+const AT_UNQUOTED_RE = /^@(\/?[^\s]+)$/;
+
 export function isHttpUrl(text: string): boolean {
   return /^https?:\/\/\S+$/i.test(text.trim());
+}
+
+export function isHtmlFilePath(path: string): boolean {
+  return /\.html?$/i.test(path);
+}
+
+function stripLineRef(path: string): string {
+  return path.replace(/:\d+(?::\d+)?$/, "");
+}
+
+function leafName(path: string): string {
+  const normalized = path.replaceAll("\\", "/").replace(/\/+$/, "");
+  return normalized.slice(normalized.lastIndexOf("/") + 1) || path;
+}
+
+function isLikelyFilePath(path: string): boolean {
+  const base = path.split("/").pop() ?? "";
+  const dotIndex = base.lastIndexOf(".");
+  const ext = dotIndex > 0 ? base.slice(dotIndex + 1).toLowerCase() : "";
+  if (path.includes("/")) {
+    if (ext && ext.length <= 8) return true;
+    if (KNOWN_BARE_NAMES.has(base)) return true;
+    return false;
+  }
+  if (KNOWN_BARE_NAMES.has(base)) return true;
+  return KNOWN_EXTS.has(ext);
 }
 
 /**
@@ -43,19 +73,29 @@ export function parseFileRef(text: string): string | null {
   if (!raw || raw.length > 512) return null;
   if (raw.startsWith("@")) raw = raw.slice(1);
   if (!raw || !FILE_TOKEN_RE.test(raw)) return null;
-  const path = raw.replace(/:\d+(?::\d+)?$/, "");
-  const base = path.split("/").pop() ?? "";
-  const dotIndex = base.lastIndexOf(".");
-  const ext = dotIndex > 0 ? base.slice(dotIndex + 1).toLowerCase() : "";
-  if (path.includes("/")) {
-    // Pathy tokens still need an extension or a well-known bare name so
-    // module ids and slash-phrases stay plain.
-    if (ext && ext.length <= 8) return path;
-    if (KNOWN_BARE_NAMES.has(base)) return path;
-    return null;
+  const path = stripLineRef(raw);
+  return isLikelyFilePath(path) ? path : null;
+}
+
+/**
+ * Unwrap a composer-serialized `@path` / `@"path with spaces"` token into the
+ * canonical path. Quoted paths keep interior whitespace; unquoted tokens stop
+ * at whitespace. Returns null when the token is not an `@` file reference.
+ */
+export function unwrapAtFileRef(text: string): string | null {
+  const raw = text.trim();
+  if (!raw || raw.length > 512) return null;
+  const quoted = raw.match(AT_QUOTED_RE);
+  if (quoted) {
+    const path = stripLineRef(quoted[1]);
+    return path && isLikelyFilePath(path) ? path : null;
   }
-  if (KNOWN_BARE_NAMES.has(base)) return path;
-  return KNOWN_EXTS.has(ext) ? path : null;
+  const unquoted = raw.match(AT_UNQUOTED_RE);
+  if (unquoted) {
+    const path = stripLineRef(unquoted[1]);
+    return path && isLikelyFilePath(path) ? path : null;
+  }
+  return null;
 }
 
 /**
@@ -89,6 +129,8 @@ export function resolvePreviewTarget(
 ): ChatPreviewTarget | null {
   const trimmed = text.trim();
   if (isHttpUrl(trimmed)) return { kind: "url", url: trimmed };
+  const at = unwrapAtFileRef(trimmed);
+  if (at) return { kind: "file", path: at };
   const file = parseFileRef(trimmed);
   if (!file) return null;
   const rel = toWorkspaceRel(file, root);
@@ -119,14 +161,21 @@ export function getToolPreviewTarget(
 
 export type ChatTextSegment =
   | { kind: "text"; text: string }
-  | { kind: "target"; text: string; target: ChatPreviewTarget };
+  | {
+      kind: "target";
+      text: string;
+      /** Compact leaf label for file chips; the raw token for URLs. */
+      label: string;
+      target: ChatPreviewTarget;
+    };
 
 const SCAN_RE =
-  /https?:\/\/[^\s<>"'()[\]{}]+|(?:\.{0,2}\/)?[\w@+.-]+(?:\/[\w@+.-]+)+(?::\d+(?::\d+)?)?|[\w@+-][\w@+.-]*\.[A-Za-z0-9]{1,8}\b/g;
+  /@"[^"\n]+"|@[^\s]+|https?:\/\/[^\s<>"'()[\]{}]+|(?:\.{0,2}\/)?[\w@+.-]+(?:\/[\w@+.-]+)+(?::\d+(?::\d+)?)?|[\w@+-][\w@+.-]*\.[A-Za-z0-9]{1,8}\b/g;
 
 /**
  * Split plain chat text (user messages) into literal runs and previewable
- * references. Unresolvable candidates stay literal text.
+ * references. Unresolvable candidates stay literal text. File targets carry a
+ * leaf-name `label` so the transcript can render composer-like chips (D320).
  */
 export function splitChatText(
   text: string,
@@ -140,7 +189,9 @@ export function splitChatText(
     const target = resolvePreviewTarget(raw, root);
     if (!target) continue;
     if (start > last) segments.push({ kind: "text", text: text.slice(last, start) });
-    segments.push({ kind: "target", text: raw, target });
+    const label =
+      target.kind === "file" ? leafName(target.path) : raw;
+    segments.push({ kind: "target", text: raw, label, target });
     last = start + raw.length;
   }
   if (segments.length === 0) return [{ kind: "text", text }];

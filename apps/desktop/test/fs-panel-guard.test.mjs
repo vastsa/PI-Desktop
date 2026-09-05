@@ -7,6 +7,7 @@ import {
   isIgnoredName,
   listDir,
   readWorkspaceFile,
+  resolveOpenablePath,
   resolveWithinRoot,
 } from "../electron/main/fs-panel.ts";
 
@@ -67,4 +68,28 @@ test("work panel never follows a workspace link outside the real root", async (t
     readWorkspaceFile(root, "linked/secret.md"),
     /path escapes workspace root/,
   );
+});
+
+test("resolveOpenablePath allows workspace-relative and contained absolute paths", () => {
+  const scratch = join(tmpdir(), "pi-scratch-root");
+  assert.equal(
+    resolveOpenablePath("src/a.ts", ROOT, [scratch]),
+    join(ROOT, "src", "a.ts"),
+  );
+  assert.equal(
+    resolveOpenablePath(join(ROOT, "src", "a.ts"), ROOT, [scratch]),
+    join(ROOT, "src", "a.ts"),
+  );
+  assert.equal(
+    resolveOpenablePath(join(scratch, "sess", "pasted", "x.png"), ROOT, [scratch]),
+    join(scratch, "sess", "pasted", "x.png"),
+  );
+});
+
+test("resolveOpenablePath rejects escapes and relative paths without a workspace", () => {
+  const scratch = join(tmpdir(), "pi-scratch-root");
+  assert.equal(resolveOpenablePath("../outside.ts", ROOT, [scratch]), null);
+  assert.equal(resolveOpenablePath("/etc/passwd", ROOT, [scratch]), null);
+  assert.equal(resolveOpenablePath("src/a.ts", null, [scratch]), null);
+  assert.equal(resolveOpenablePath("~/secret.ts", ROOT, [scratch]), null);
 });

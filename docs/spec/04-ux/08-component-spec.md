@@ -1180,9 +1180,14 @@ Single message render — either user (plaintext) or assistant (markdown streami
   chat turns rather than full-width blocks. User body is plaintext with
   preserved hard newlines (`white-space: pre-wrap`);
   only trailing/leading composer trim is applied, never internal newline
-  collapse. Previewable path and URL controls remain inline with that plaintext;
-  long references wrap within the plate and continuation lines keep logical-start
-  alignment instead of inheriting the browser's centered button text.
+  collapse. Serialized `@path` file references render as compact leaf-name
+  chips matching the composer node (icon + ellipsized name; canonical path in
+  the tooltip and accessible name). Clicking a workspace HTML chip previews it
+  in the side browser; clicking any other allowed file opens it with the OS
+  default application for that suffix. HTTP(S) URLs remain inline text links
+  that open in the side browser; long URL links wrap within the plate and
+  keep logical-start alignment instead of inheriting the browser's centered
+  button text.
 - Assistant: transparent surface, left-aligned, markdown rendered at full
   content width
 - Thinking: separate lightweight disclosure above the answer with no card
@@ -2264,6 +2269,11 @@ Anatomy:
   explanatory vision-status row is rendered.
 - Sent template invocations render in the transcript as a monospace command
   chip from the message's `command` field instead of the expanded body.
+- Sent `@path` file references (quoted or unquoted) render as the same compact
+  leaf-name chip as the draft. Clicking a workspace `.html`/`.htm` file opens
+  the work-panel browser; clicking any other allowed file (workspace, session
+  scratch, or attachments) opens it with the OS default application. HTTP(S)
+  URLs stay text links into the side browser.
 - States: keyboard-active row uses the shared `kb-active` treatment; empty
   query lists everything (slash) / recently indexed order (file); zero
   matches renders the localized empty row and the menu counts as closed for

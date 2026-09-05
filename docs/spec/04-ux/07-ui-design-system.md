@@ -769,7 +769,9 @@ border, a file glyph, an ellipsized leaf name, and a focus-visible remove
 action. No references means no reserved row or extra composer height. The
 canonical path is tooltip/accessibility metadata and never textarea body copy,
 including after unanswered smart-stop restoration. Dispatch and persisted user
-messages still carry the canonical path required by D124.
+messages still carry the canonical path required by D124. After send, the
+transcript paints those same references as composer-matching leaf-name chips
+rather than full-path text (D320).
 
 Large text pastes use a second presentation: text-only input at or below the
 configured `largePasteThreshold` remains native textarea content, while input

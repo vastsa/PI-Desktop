@@ -55,9 +55,13 @@ import {
   type SubagentOutcome,
   type SubagentTiming,
 } from "../lib/subagent-topology";
-import { useOpenPreviewTarget } from "../hooks/use-preview-target";
+import {
+  useOpenChatFileRef,
+  useOpenPreviewTarget,
+} from "../hooks/use-preview-target";
 import {
   getToolPreviewTarget,
+  isHtmlFilePath,
   splitChatText,
 } from "../lib/chat-links";
 import {
@@ -114,10 +118,15 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconCopy,
+  IconArchive,
+  IconAudio,
+  IconCode,
   IconFileText,
   IconFolder,
   IconGlobe,
   IconImage,
+  IconSheet,
+  IconVideo,
   IconListChecks,
   IconPencil,
   IconSearch,
@@ -746,27 +755,80 @@ function ToolActionIcon({ action }: { action: ToolAction }) {
 /** Actions whose path/url argument makes sense to preview in the panel. */
 const PREVIEWABLE_ACTIONS = new Set<ToolAction>(["read", "write", "edit", "fetch"]);
 
-/** Plain user text with file paths and URLs linkified to the work panel. */
+function fileChipIcon(name: string, kind?: "image" | "file") {
+  if (kind === "image" || /\.(avif|bmp|gif|heic|jpe?g|png|tiff?|webp)$/i.test(name)) {
+    return IconImage;
+  }
+  if (
+    /\.(cjs|css|go|html?|java|js|json|jsx|kt|mjs|php|py|rb|rs|sh|sql|svelte|swift|toml|ts|tsx|vue|ya?ml)$/i.test(
+      name,
+    )
+  ) {
+    return IconCode;
+  }
+  if (/\.(7z|bz2|gz|jar|rar|tar|zip)$/i.test(name)) return IconArchive;
+  if (/\.(csv|ods|xls|xlsx)$/i.test(name)) return IconSheet;
+  if (/\.(flac|m4a|mp3|ogg|wav)$/i.test(name)) return IconAudio;
+  if (/\.(avi|mkv|m4v|mov|mp4|webm)$/i.test(name)) return IconVideo;
+  return IconFileText;
+}
+
+/** Compact leaf-name chip matching the composer file node (D320). */
+function FileRefChip({
+  name,
+  path,
+  kind,
+  onOpen,
+}: {
+  name: string;
+  path: string;
+  kind?: "image" | "file";
+  onOpen: (path: string) => void;
+}) {
+  const { t } = useTranslation();
+  const Icon = fileChipIcon(name, kind);
+  const html = isHtmlFilePath(path) || isHtmlFilePath(name);
+  return (
+    <button
+      type="button"
+      className="chat-file-chip"
+      title={`${html ? t("chat.previewUrl") : t("chat.openFile")} — ${path}`}
+      aria-label={`${name} — ${path}`}
+      onClick={() => onOpen(path)}
+    >
+      <span className="chat-file-chip-icon" aria-hidden>
+        <Icon size={13} />
+      </span>
+      <span className="chat-file-chip-name">{name}</span>
+    </button>
+  );
+}
+
+/** Plain user text: @paths become composer-like chips; URLs stay text links. */
 function LinkifiedText({ text }: { text: string }) {
   const { t } = useTranslation();
   const root = useAppStore((s) => s.workspace?.path);
   const openTarget = useOpenPreviewTarget();
+  const openFileRef = useOpenChatFileRef();
   const segments = useMemo(() => splitChatText(text, root), [text, root]);
   return (
     <>
       {segments.map((segment, index) =>
         segment.kind === "text" ? (
           <span key={index}>{segment.text}</span>
+        ) : segment.target.kind === "file" ? (
+          <FileRefChip
+            key={index}
+            name={segment.label}
+            path={segment.target.path}
+            onOpen={openFileRef}
+          />
         ) : (
           <button
             key={index}
             type="button"
             className="chat-text-link"
-            title={
-              segment.target.kind === "file"
-                ? t("chat.previewFile")
-                : t("chat.previewUrl")
-            }
+            title={t("chat.previewUrl")}
             onClick={() => openTarget(segment.target)}
           >
             {segment.text}
@@ -1788,6 +1850,8 @@ const MessageRow = memo(function MessageRow({
   const activateMessageRevision = useAppStore((s) => s.activateMessageRevision);
   const deleteMessage = useAppStore((s) => s.deleteMessage);
   const isUser = message.role === "user";
+  const workspaceRoot = useAppStore((s) => s.workspace?.path);
+  const openFileRef = useOpenChatFileRef();
   // Slash prompts are stored expanded; editing works on the typed form so the
   // resent turn re-expands the template (D123).
   const editSeed = (isUser && message.command) || message.content || "";
@@ -1804,6 +1868,16 @@ const MessageRow = memo(function MessageRow({
   const revisionCount = message.revisionCount ?? 0;
   const activeRevision = message.activeRevision ?? revisionCount;
   const showRevisionPager = isUser && revisionCount > 1;
+  const extraAttachments = useMemo(() => {
+    const attachments = message.attachments;
+    if (!attachments?.length) return [];
+    const inline = new Set(
+      splitChatText(String(message.content || ""), workspaceRoot)
+        .filter((segment) => segment.kind === "target" && segment.target.kind === "file")
+        .map((segment) => (segment.target.kind === "file" ? segment.target.path : "")),
+    );
+    return attachments.filter((attachment) => !inline.has(attachment.ref));
+  }, [message.attachments, message.content, workspaceRoot]);
   const cancelEdit = () => {
     setEditValue(editSeed);
     setEditing(false);
@@ -1869,26 +1943,24 @@ const MessageRow = memo(function MessageRow({
               </div>
             ) : isUser ? (
               <>
-                {message.attachments?.length ? (
+                {extraAttachments.length ? (
                   <div
                     className="message-attachments"
                     role="list"
                     aria-label={t("chat.messageAttachments")}
                   >
-                    {message.attachments.map((attachment) => (
-                      <div
+                    {extraAttachments.map((attachment) => (
+                      <span
                         key={`${attachment.ref}:${attachment.name}`}
-                        className="message-attachment"
                         role="listitem"
-                        title={attachment.ref}
                       >
-                        {attachment.kind === "image" ? (
-                          <IconImage size={13} aria-hidden />
-                        ) : (
-                          <IconFileText size={13} aria-hidden />
-                        )}
-                        <span>{attachment.name}</span>
-                      </div>
+                        <FileRefChip
+                          name={attachment.name}
+                          path={attachment.ref}
+                          kind={attachment.kind}
+                          onOpen={openFileRef}
+                        />
+                      </span>
                     ))}
                   </div>
                 ) : null}

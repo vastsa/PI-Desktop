@@ -251,6 +251,7 @@ export const tr = {
     errorModel: "Model",
     previewFile: "Yan panelde önizle",
     previewUrl: "Yan tarayıcıda aç",
+    openFile: "Varsayılan uygulamayla aç",
     retry: "Yeniden oluştur",
     forkResponse: "Bu yanıttan dal oluştur",
     editMessage: "Düzenle ve yeniden gönder",

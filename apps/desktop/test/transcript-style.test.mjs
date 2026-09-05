@@ -153,6 +153,14 @@ test("wrapped user links keep plaintext alignment", () => {
   assert.match(userLinkStyles, /overflow-wrap:\s*anywhere;/);
 });
 
+test("user-message file chips ellipsize the leaf name like composer chips", () => {
+  assert.match(
+    stylesSource,
+    /\.chat-file-chip-name[\s\S]*?text-overflow:\s*ellipsis/,
+  );
+  assert.match(transcriptSource, /className=\"chat-file-chip\"/);
+});
+
 test("stopping a turn undoes an unanswered prompt or settles the partial reply", async () => {
   const storeSource = await readFile(
     new URL("../src/stores/app-store.ts", import.meta.url),

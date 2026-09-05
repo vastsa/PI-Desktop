@@ -244,6 +244,7 @@ export const zhCN = {
     errorModel: "模型",
     previewFile: "在侧边面板预览",
     previewUrl: "在侧边浏览器中打开",
+    openFile: "用系统默认应用打开",
     retry: "重新生成",
     forkResponse: "从此回复创建分支",
     editMessage: "编辑并重新发送",

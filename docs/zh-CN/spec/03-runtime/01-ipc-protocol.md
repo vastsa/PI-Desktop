@@ -32,7 +32,7 @@
 | `commandPalette` | 命令面板搜索和执行 |
 | `workspace` | 工作区选择和遗留工作树诊断 |
 | `browser` | 工作面板嵌入预览 navigation/bounds/visibility + 状态事件 |
-| `fs` | 工作面板工作区文件 listing/reading/reveal（只读） |
+| `fs` | 工作面板工作区文件 listing/reading/reveal，以及用户点击后用系统默认应用打开（只读） |
 | `window` | 无框窗口状态、控件和有界工作面板宽度预留 |
 | `menu` | 列入许可名单的应用程序菜单命令和本机 editing/window 操作 |
 | `notification` | 持久收件箱 list/read/clear 和 new/activated 事件 |
@@ -1055,8 +1055,8 @@ type AgentCapabilityQuery = {
   [15-工作区-忽略-规则](/zh-CN/spec/03-runtime/15-workspace-ignore-rules)
 - `fs/read({path})` → 文本 (≤512KB) / 图像数据 URL (≤5MB) / 二进制 / 太大
 - `fs/reveal({path})` → 在 Finder 中显示
-- 每个路径都在工作空间根目录内解析；外面的遍历是
-  被拒绝（`INVALID_ARGUMENT`）。
+- `fs/open({path})` → 用系统默认应用打开。相对路径在工作区根内解析；绝对路径仅当已位于工作区、`<data_dir>/scratch/` 或 `<data_dir>/attachments/` 之下时才接受。穿越、`~` 和其他逃逸被拒绝（`INVALID_ARGUMENT`）。
+- `fs/list` 与 `fs/read` 在工作区根内解析；外面的遍历被拒绝（`INVALID_ARGUMENT`）。`fs/reveal` 仍只限工作区。
 
 ## 13b。桌面菜单和窗口 API
 

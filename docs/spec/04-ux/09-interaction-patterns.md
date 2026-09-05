@@ -982,6 +982,12 @@ When drag/drop is implemented, these patterns should apply:
   undo the send. That undo restores the original chip order and labels; it
   never parses serialized `@path` text. Once reply content begins, abort keeps
   the partial transcript and restores no draft.
+- After a successful send, the user bubble parses those serialized `@path`
+  tokens back into composer-matching leaf-name chips for display only. The
+  persisted message and model context stay canonical `@path` text. Clicking a
+  workspace HTML chip previews it in the side browser; clicking any other
+  allowed file opens it with the OS default application (`pi-desktop/fs/open`,
+  contained to the workspace, session scratch, and attachments roots).
 
 ### 8a.3 Keyboard while open
 
