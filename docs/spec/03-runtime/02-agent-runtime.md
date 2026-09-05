@@ -649,7 +649,7 @@ delegate may call), `04-data-storage.md` §4.7a (persisted attribution),
 `04-ux/03-permission-ux.md` §6a (more than one pending request) and
 `04-ux/08-component-spec.md` §9.9 (how a delegation reads).
 
-### 5f.2 Agent-to-agent coordination via A2A (D277, ADR 0147)
+### 5f.2 Agent-to-agent coordination via A2A (D277, ADR 0147, ADR 0162)
 
 Concurrent delegates coordinate through a real **A2A (Agent2Agent) protocol
 stack** instead of routing everything through the parent. The A2A broker lives
@@ -676,9 +676,11 @@ deliberately **absent from the session tool catalog**, so the parent cannot
 reach it. `SUBAGENT_A2A_TOOLS = ["A2A"]`. A required `action` parameter selects
 the operation:
 
-- `A2A(action="discover")` — list the other agents registered in this session
-  (the caller's own Agent Card is excluded). Cards are derived from each
-  delegate's `SubagentDefinition` (name/description/skills).
+- `A2A(action="discover")` — list the other agents registered on this host
+  (the caller's own Agent Card is excluded), including agents in other
+  sessions. Cards are derived from each delegate's `SubagentDefinition`
+  (name/description/skills) and carry `contextId` so a peer can tell
+  same-session from other-session agents.
 - `A2A(action="send", to, parts, configuration?)` — send a message to a peer,
   creating or continuing a task. Returns the resulting task (or a direct
   message reply). `parts` is a typed `Part` list —
@@ -704,8 +706,11 @@ subsequent `a2a.*` call the `A2A` tool makes; the token is never a model input
 and never visible to the model, so a delegate can neither forge its `from`
 identity nor address on another agent's behalf. On settle the delegate is
 deregistered (`a2a.agents.deregister`), which invalidates its token. `contextId`
-equals the `sessionId`: discovery and addressing are scoped to the same session,
-and cross-context addressing is refused (`A2A_CROSS_CONTEXT_DENIED`).
+equals the `sessionId` and groups a task with the requester's session.
+Discovery and addressing span every live agent on the host, including other
+sessions (ADR 0162). Live peer ids are unique across the registry: a colliding
+`card.name` is suffix-uniquified at register and the runtime adopts the returned
+`agentId`. A stranger still cannot read a task they are not a party to.
 
 **Task lifecycle.** A send creates a durable task in host-core with states
 `submitted → working → input-required / auth-required → completed`, plus the
@@ -716,14 +721,17 @@ a task with `get`, so history survives a restart rather than being destroyed on
 read.
 
 **Streaming.** A task event is delivered as a host→client JSON-RPC notification
-`a2a.task.event` shaped `{ recipient, contextId, event }`. Routing is
-counterpart-based: task creation addresses the new task to the worker, while a
-`send` on an existing task, a `complete`/`a2a.tasks.status`, and a `cancel`
-address the event to the caller's counterpart — a worker's reply or completion
-wakes the requester, and a requester's follow-up wakes the worker. A delegate
-parked in `A2A(action="wait")` wakes on events addressed to itself. Host-owned
-push config (`a2a.tasks.pushNotificationConfig.set/get`) and the `a2a.push`
-notification carry task-status pushes for subscribed tasks.
+`a2a.task.event` shaped `{ recipient, recipientContextId, contextId, event }`.
+Routing is counterpart-based: task creation addresses the new task to the
+worker, while a `send` on an existing task, a `complete`/`a2a.tasks.status`,
+and a `cancel` address the event to the caller's counterpart — a worker's
+reply or completion wakes the requester, and a requester's follow-up wakes the
+worker. Each session runtime delivers an event only when `recipientContextId`
+matches its `sessionId`, so a broadcast on the shared sidecar pipe cannot wake
+a peer in a different session. A delegate parked in `A2A(action="wait")` wakes
+on events addressed to itself. Host-owned push config
+(`a2a.tasks.pushNotificationConfig.set/get`) and the `a2a.push` notification
+carry task-status pushes for subscribed tasks.
 
 **Bounds.** The broker enforces `A2A_MAX_TEXT_CHARS = 16000`,
 `A2A_MAX_FILE_BYTES = 20MB`, `A2A_MAX_TASK_HISTORY = 256`,
@@ -731,14 +739,15 @@ notification carry task-status pushes for subscribed tasks.
 ceiling of `A2A_MAX_STREAM_WAIT_SECONDS = 120` (default 30) — deliberately below
 the 300-second idle watchdog so a delegate cannot expire itself waiting for an
 answer that never comes. Oversized payloads are refused with
-`A2A_PAYLOAD_TOO_LARGE`; the send cap with `A2A_SEND_CAP`; addressing an empty
-session with `A2A_NO_PEERS`.
+`A2A_PAYLOAD_TOO_LARGE`; the send cap with `A2A_SEND_CAP`; addressing with no
+reachable peer with `A2A_NO_PEERS`.
 
 **Boundaries preserved.** A2A traffic never enters the parent's model context;
 the parent still learns only what a report says, and a delegate's prompt says
 so. A definition that declares only the `A2A` tool and no working tool is
-refused at `Task` time. There is no cross-session (cross-context) coordination,
-no messaging with the parent, no nested delegation, and no remote agents.
+refused at `Task` time. Cross-session coordination on this host is allowed
+(ADR 0162). There is no messaging with the parent, no nested delegation, and
+no remote agents.
 
 **Transcript.** An `A2A` call is a tool call of the delegate that made it, so it
 appears attributed by `parentToolCallId` and `agentName` under the owning `Task`

@@ -418,17 +418,22 @@ one after the final row would be wrong.
 The A2A broker runs in host-core; each subagent is a client reaching it over
 this transport. Every method except `a2a.agents.register` carries a host-minted
 capability `token`; the host validates it and authorizes addressing by it.
-`contextId` equals `sessionId`, and addressing is same-context only —
-cross-context calls fail with `A2A_CROSS_CONTEXT_DENIED`.
+`contextId` equals `sessionId` and groups a task with the requester's session.
+Discovery and addressing span every live agent on the host (ADR 0162);
+`A2A_CROSS_CONTEXT_DENIED` is reserved and not produced. A caller that is
+neither a task's requester nor its worker fails with `A2A_UNKNOWN_AGENT`.
 
 - `a2a.agents.register({ contextId, card }) -> { agentId, token }` — register
-  the caller's Agent Card (derived from its `SubagentDefinition`) in the session
-  registry and mint an in-memory capability token. The token is injected by the
-  runtime and never exposed to the model.
+  the caller's Agent Card (derived from its `SubagentDefinition`) in the host
+  registry and mint an in-memory capability token. If `card.name` is already
+  taken, the broker suffix-uniquifies it and returns that `agentId`. The token
+  is injected by the runtime and never exposed to the model. The card is
+  stamped with `contextId`.
 - `a2a.agents.deregister({ token }) -> { ok }` — remove the caller from the
   registry and invalidate its token; called when a delegate settles.
-- `a2a.agents.list({ token }) -> { agents: AgentCard[] }` — the other agents in
-  the caller's context; the caller's own card is excluded.
+- `a2a.agents.list({ token }) -> { agents: AgentCard[] }` — every other live
+  agent on the host, including other sessions; the caller's own card is
+  excluded. Each card carries `contextId`.
 - `a2a.message.send({ token, message, configuration? }) -> { task } | { message }`
   — send a message to a peer, creating or continuing a task; returns the task or
   a direct message reply. `message.parts` is a typed `Part` list
@@ -462,18 +467,21 @@ agent that requested the task — the sender of the first message).
 
 Two host→client JSON-RPC notifications carry task updates:
 
-- `a2a.task.event` — `{ recipient, contextId, event }`, where `event` is a
-  `TaskStatusUpdateEvent` or `TaskArtifactUpdateEvent`. Routing is
-  counterpart-based: task creation addresses the new task to the worker
-  (`agentName`); `a2a.message.send` on an existing task, `a2a.tasks.status`, and
-  `a2a.tasks.cancel` address the event to the counterpart of the caller (a
-  worker's reply or completion wakes the requester; a requester's follow-up
-  wakes the worker); `a2a.tasks.resubscribe` re-emits to the caller itself. So
-  `recipient` is the peer id the event is meant to wake, not always the task's
-  worker.
-- `a2a.push` — `{ recipient, contextId, taskId, token?, status }`, delivered for
-  tasks with a push config; its `recipient` follows the same counterpart
-  routing.
+- `a2a.task.event` — `{ recipient, recipientContextId, contextId, event }`,
+  where `event` is a `TaskStatusUpdateEvent` or `TaskArtifactUpdateEvent`.
+  Routing is counterpart-based: task creation addresses the new task to the
+  worker (`agentName`); `a2a.message.send` on an existing task,
+  `a2a.tasks.status`, and `a2a.tasks.cancel` address the event to the
+  counterpart of the caller (a worker's reply or completion wakes the
+  requester; a requester's follow-up wakes the worker);
+  `a2a.tasks.resubscribe` re-emits to the caller itself. So `recipient` is the
+  peer id the event is meant to wake, not always the task's worker.
+  `recipientContextId` is that peer's session; each session runtime delivers
+  the event only when that field matches its `sessionId` (the sidecar pipe is
+  shared and does not filter).
+- `a2a.push` — `{ recipient, recipientContextId, contextId, taskId, token?,
+  status }`, delivered for tasks with a push config; its `recipient` /
+  `recipientContextId` follow the same counterpart routing.
 
 A2A errors use JSON-RPC numeric code `1400` with `data.errorCode` one of
 `A2A_UNKNOWN_TOKEN`, `A2A_UNKNOWN_AGENT`, `A2A_UNKNOWN_TASK`,

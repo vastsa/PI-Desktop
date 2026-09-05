@@ -3441,6 +3441,26 @@ D193, and D194.
 - Decision D316 amends ADR 0160. See ADR 0161, `04-ux/06-settings-ia.md`,
   and E2E-091.
 
+## 2026-09-05 — A2A addressing spans sessions on the same host (D318)
+
+- Decision D318 amends ADR 0147. The local A2A broker stays in host-core with
+  capability-token auth and durable tasks; same-context-only discovery and
+  send are lifted so two A2A-capable delegates in different open sessions can
+  coordinate.
+- `a2a.agents.list` returns every other live agent; cards carry `contextId`.
+  `a2a.message.send` may address any registered peer (omitted `to` still
+  prefers a same-session peer). Task access is membership — requester or
+  worker — not context. `A2A_CROSS_CONTEXT_DENIED` is kept on the wire list
+  and is no longer produced.
+- Live peer ids are unique across the registry: a colliding `card.name` is
+  suffix-uniquified at register and the runtime adopts the returned
+  `agentId`. `a2a.task.event` / `a2a.push` gain `recipientContextId`; each
+  session runtime delivers an event only when that field matches its
+  `sessionId`.
+- Unchanged: the parent cannot call `A2A`, settled delegates deregister, no
+  nested delegation, no remote agents. See ADR 0162,
+  `03-runtime/02-agent-runtime.md` §5f.2, and E2E-165c.
+
 ## 2026-09-05 — Live/durable transcript merge keeps chronological order (D317)
 
 - Revalidating a running session used the bounded durable page as the array

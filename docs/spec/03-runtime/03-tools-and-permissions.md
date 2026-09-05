@@ -511,11 +511,11 @@ delegate with `Bash`, `Edit` or `Write` would drive straight through them.
 
 A definition declares the tools its delegate may call, drawn only from the seven
 working tools `Read`, `Glob`, `Grep`, `BrowserPreview`, `Bash`, `Edit` and
-`Write`, plus the peer messaging tool `Peer` (D277, §10.3; its `send`/`inbox`/
-`wait` operations are selected by an `action` parameter, ADR 0140). A
-definition that declares none gets `Read`, `Glob`,
-`Grep`; `tools: "*"` means all seven working tools and no peer tool, since peer
-messaging is opt-in by name. An unrecognized name is dropped with a parse
+`Write`, plus the A2A tool `A2A` (D277 / ADR 0147 / ADR 0162, §10.3; its
+`discover`/`send`/`get`/`wait`/`complete`/`cancel` operations are selected by
+an `action` parameter). A definition that declares none gets `Read`, `Glob`,
+`Grep`; `tools: "*"` means all seven working tools and no A2A tool, since A2A
+is opt-in by name. An unrecognized name is dropped with a parse
 warning. Plugin tools, `Skill`, `ToolSearch`, `new_context`, the mode tools and
 `Task` itself are never assignable: a delegate is a bounded file/search/shell
 worker, not a second session.
@@ -551,13 +551,12 @@ Session-scoped `allow-session` grants are still per `toolName` and per session:
 one delegate's approval of `Bash` applies to the whole session, including the
 parent and other delegates.
 
-### 10.3 Peer messaging tool scope (D277, ADR 0138, ADR 0140)
+### 10.3 A2A tool scope (D277, ADR 0147, ADR 0162)
 
-`Peer` is the only assignable tool that is **not** a host tool call. It moves
-text between running delegates of one session inside the sidecar, so it touches
-no file, process, or network, carries no `permissionScope`, never reaches
-`tools.execute`, consumes no tool budget, and is never audited as a host call.
-Nothing in §4, §5 or §6 applies to it because there is no resource to gate.
+`A2A` is a host `a2a.*` call authorized by a host-minted capability token, not
+a workspace tool call, so it carries no `permissionScope` and is not gated by
+path, Bash, or permission-mode rules in §4–§6. It is still audited as the
+delegate's own tool call in the transcript.
 
 Three scope rules hold instead:
 
@@ -565,15 +564,16 @@ Three scope rules hold instead:
   catalog, so the parent session can never call it. Delegation lifecycle
   control stays with the parent's `Task`/`TaskWait`/`TaskList`/`TaskStop`.
 - The sender is **bound by the runtime**, not by the model: the tool closes over
-  its own delegate's agent name, so a delegate cannot spoof a sender or read
-  another delegate's inbox. Recipients are addressed by agent name; delegation
-  ids are never exposed to a delegate.
+  the host-minted token, so a delegate cannot spoof a sender or address the
+  broker as another agent. Recipients are addressed by unique peer id;
+  delegation ids are never exposed to a delegate. Discovery and send span every
+  live agent on the host, including other sessions.
 - It is **opt-in per definition and default-off**. No builtin declares it. A
-  definition that declares `Peer` but no working tool is refused when `Task`
+  definition that declares `A2A` but no working tool is refused when `Task`
   runs, so messaging can never be a delegate's only capability.
 
-Message size, inbox depth, sends per run, and the wait ceiling are bounded
-by the runtime (`02-agent-runtime.md` §5f.2). Peer traffic never enters the
+Payload size, task history, sends per run, and the wait ceiling are bounded
+by the broker (`02-agent-runtime.md` §5f.2). A2A traffic never enters the
 parent's model context; a delegate's report remains the only thing the parent
 reads.
 

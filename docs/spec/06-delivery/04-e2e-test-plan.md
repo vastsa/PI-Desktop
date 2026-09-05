@@ -7246,7 +7246,7 @@ This test plan spec is accepted when:
 - **Steps**: 1) Start both A2A-capable delegates in one assistant message; on
   spawn each is registered with the host-core broker and receives a capability
   token. 2) Each calls `A2A(action="discover")` and finds the other in the
-  session's agent registry. 3) One delegate (the requester) sends a message to
+  host's agent registry. 3) One delegate (the requester) sends a message to
   the other (the worker) with `A2A(action="send")`, creating a task addressed to
   the worker. 4) The worker calls `A2A(action="wait")` and receives the
   streaming `a2a.task.event` addressed to it, then reads the task with
@@ -7276,12 +7276,12 @@ This test plan spec is accepted when:
 - **Specs linked**: `03-runtime/02-agent-runtime.md` §5f.2,
   `03-runtime/06-host-rpc-protocol.md` §4,
   `03-runtime/03-tools-and-permissions.md` §10.2,
-  `08-meta/decisions-log.md` (D277), ADR 0147
+  `08-meta/decisions-log.md` (D277, D318), ADR 0147, ADR 0162
 - **Acceptance**: E (tools & permissions) + C (chat/stream) + Security
 - **Milestone**: M5
 - **Status**: Draft
 
-#### E2E-165b: A2A push notification and capability/cross-context enforcement
+#### E2E-165b: A2A push notification and capability enforcement
 
 - **Preconditions**: Agent mode with two user subagent definitions that each
   declare a working tool plus the `A2A` tool, delegated concurrently in one
@@ -7289,20 +7289,47 @@ This test plan spec is accepted when:
 - **Steps**: 1) One delegate sends a message creating a task, then sets a push
   config for that task with `A2A`/`a2a.tasks.pushNotificationConfig.set`. 2) The
   task advances; the broker emits an `a2a.push` notification for the subscribed
-  task. 3) A delegate attempts to address an agent in a different session
-  (`contextId`). 4) A call is replayed with a token that has been invalidated by
+  task. 3) A call is replayed with a token that has been invalidated by
   deregister, and a call is made against a task the caller does not own.
 - **Expected**: The push config is stored host-side and readable with
   `pushNotificationConfig.get`; a status change delivers an `a2a.push`
-  notification shaped `{ recipient, contextId, taskId, token?, status }` to the
-  subscribed agent. The cross-context addressing attempt is rejected with
-  JSON-RPC code `1400` / `data.errorCode = A2A_CROSS_CONTEXT_DENIED`. A call
-  bearing an invalidated token fails with `A2A_UNKNOWN_TOKEN`, and addressing a
-  task the caller does not own fails with `A2A_UNKNOWN_TASK`; a terminal task
+  notification shaped `{ recipient, recipientContextId, contextId, taskId,
+  token?, status }` to the subscribed agent. A call bearing an invalidated
+  token fails with `A2A_UNKNOWN_TOKEN`, and addressing a task the caller does
+  not own fails with `A2A_UNKNOWN_AGENT` / `A2A_UNKNOWN_TASK`; a terminal task
   refuses further transitions with `A2A_TASK_TERMINAL`. The capability token is
   never present in the model-visible transcript.
 - **Specs linked**: `03-runtime/02-agent-runtime.md` §5f.2,
-  `03-runtime/06-host-rpc-protocol.md` §4, ADR 0147
+  `03-runtime/06-host-rpc-protocol.md` §4, ADR 0147, ADR 0162
+- **Acceptance**: E (tools & permissions) + C (chat/stream) + Security
+- **Milestone**: M5
+- **Status**: Draft
+
+#### E2E-165c: A2A coordinates delegates across sessions
+
+- **Preconditions**: Agent mode with two open sessions, each with a user
+  subagent definition that declares a working tool plus the `A2A` tool. The
+  host advertises `"a2a"` at handshake.
+- **Steps**: 1) Start an A2A-capable delegate in session A and another in
+  session B. 2) The session-A delegate calls `A2A(action="discover")` and
+  finds the session-B agent (card carries a different `contextId`). 3) Session
+  A sends a message to that peer with `A2A(action="send")`, creating a task
+  whose `contextId` is session A and whose `agentName` is the session-B peer.
+  4) The session-B delegate's `A2A(action="wait")` wakes on the creation
+  `a2a.task.event` (`recipient` = its peer id, `recipientContextId` = session
+  B); session A's runtime does not deliver that event to any local waiter.
+  5) Session B finishes the task with `A2A(action="complete")`; session A's
+  parked `wait` wakes on the terminal event. 6) A third agent that is not a
+  party to the task attempts `get` / `complete` on it.
+- **Expected**: Cross-session discover, send, wait, and complete succeed.
+  The task is durable under session A's `contextId`. Events are delivered only
+  to the runtime whose `sessionId` equals `recipientContextId`. The stranger
+  is rejected with `A2A_UNKNOWN_AGENT`. If both sessions requested the same
+  definition name, the second register returns a suffix-uniquified `agentId`
+  and that is the address used in step 3. Parent tool catalogs still omit
+  `A2A`.
+- **Specs linked**: `03-runtime/02-agent-runtime.md` §5f.2,
+  `03-runtime/06-host-rpc-protocol.md` §4, ADR 0162
 - **Acceptance**: E (tools & permissions) + C (chat/stream) + Security
 - **Milestone**: M5
 - **Status**: Draft
