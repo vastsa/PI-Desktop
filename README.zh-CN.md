@@ -16,7 +16,7 @@
 
 <br/>
 
-<img src="docs/image/readme/hero.png" alt="PI-Desktop 工作台与智能体协作" width="88%" />
+<img src="docs/image/readme/home_zh.webp" alt="PI-Desktop 工作台与智能体协作" width="88%" />
 
 </div>
 

@@ -16,7 +16,7 @@ Bring your own models. Keep your code, your keys, and your conversations on your
 
 <br/>
 
-<img src="docs/image/readme/hero.png" alt="PI-Desktop workbench with agent orchestration" width="88%" />
+<img src="docs/image/readme/home.webp" alt="PI-Desktop workbench with agent orchestration" width="88%" />
 
 </div>
 
