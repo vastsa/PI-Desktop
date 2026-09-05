@@ -1,33 +1,29 @@
 /**
- * Language picker for Settings → General → Appearance.
+ * Theme picker for Settings → General → Appearance.
  *
- * Theme and language both use this searchable anchored-menu pattern.
- * Language is a growing named list: Auto pinned at the top, then shipped
- * locales with native names (endonyms, never translated) and English names
- * for search/sort.
+ * Language, font, and theme are searchable picker rows. Built-in System /
+ * Light / Dark stay pinned at the top; plugin themes follow after a divider.
+ * Search matches labels, descriptions, ids, and plugin ids.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { AppSettings } from "@pi-desktop/shared";
-import {
-  listedLocales,
-  localeInfo,
-  type AppLanguageSetting,
-  type AppLocale,
-} from "@pi-desktop/i18n";
+import type { AppSettings, ThemePreference } from "@pi-desktop/shared";
 import { cx } from "../ui";
 import { IconCheck, IconChevronDown, IconSearch } from "../icons";
 import { AnchoredMenu } from "./AnchoredMenu";
-import { resolveAppLanguage } from "../../lib/app-language";
+import { useAppStore } from "../../stores/app-store";
 
-type LanguageOption = {
-  id: AppLanguageSetting;
-  nativeName: string;
-  englishName: string | null;
+const BUILTIN_THEMES = ["system", "light", "dark"] as const;
+
+type ThemeOption = {
+  id: ThemePreference;
+  title: string;
+  hint: string | null;
   haystack: string;
+  kind: "builtin" | "plugin";
 };
 
-export function LanguageRow({
+export function ThemeRow({
   settings,
   saveSettings,
 }: {
@@ -35,37 +31,50 @@ export function LanguageRow({
   saveSettings: (patch: Partial<AppSettings>) => Promise<void>;
 }) {
   const { t } = useTranslation();
+  const pluginThemes = useAppStore((s) => s.pluginThemes);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [activeId, setActiveId] = useState<AppLanguageSetting>(
-    settings.language ?? "auto",
-  );
+  const [activeId, setActiveId] = useState<ThemePreference>(settings.theme);
   const optionRefs = useRef(new Map<string, HTMLButtonElement>());
 
-  const detected = resolveAppLanguage("auto");
-  const detectedInfo = localeInfo(detected);
-  const selectedId: AppLanguageSetting = settings.language ?? "auto";
-  const autoLabel = t("settings.languageAuto");
+  const selectedId: ThemePreference = settings.theme ?? "system";
 
-  const options = useMemo<LanguageOption[]>(() => {
-    const auto: LanguageOption = {
-      id: "auto",
-      nativeName: autoLabel,
-      englishName: t("settings.languageAutoDesc", {
-        state: detectedInfo.nativeName,
-      }),
-      haystack:
-        `${autoLabel} auto system ${detectedInfo.nativeName} ${detectedInfo.englishName} ${detectedInfo.id}`.toLowerCase(),
-    };
-    const locales = listedLocales().map((locale) => ({
-      id: locale.id,
-      nativeName: locale.nativeName,
-      englishName:
-        locale.englishName === locale.nativeName ? null : locale.englishName,
-      haystack: `${locale.nativeName} ${locale.englishName} ${locale.id}`.toLowerCase(),
-    }));
-    return [auto, ...locales];
-  }, [autoLabel, detectedInfo, t]);
+  const options = useMemo<ThemeOption[]>(() => {
+    const builtins: ThemeOption[] = BUILTIN_THEMES.map((id) => {
+      const title = t(
+        id === "light"
+          ? "settings.themeLight"
+          : id === "dark"
+            ? "settings.themeDark"
+            : "settings.themeSystem",
+      );
+      const hint = t(
+        id === "light"
+          ? "settings.themeLightDesc"
+          : id === "dark"
+            ? "settings.themeDarkDesc"
+            : "settings.themeSystemDesc",
+      );
+      return {
+        id,
+        title,
+        hint,
+        haystack: `${title} ${hint} ${id}`.toLowerCase(),
+        kind: "builtin",
+      };
+    });
+    const plugins: ThemeOption[] = pluginThemes.map((theme) => {
+      const hint = t("settings.themeFromPlugin", { plugin: theme.pluginId });
+      return {
+        id: theme.id,
+        title: theme.label,
+        hint,
+        haystack: `${theme.label} ${hint} ${theme.id} ${theme.pluginId} ${theme.themeId} plugin`.toLowerCase(),
+        kind: "plugin",
+      };
+    });
+    return [...builtins, ...plugins];
+  }, [pluginThemes, t]);
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -77,7 +86,7 @@ export function LanguageRow({
 
   useEffect(() => {
     setActiveId((current) =>
-      visibleIds.includes(current) ? current : (visibleIds[0] ?? "auto"),
+      visibleIds.includes(current) ? current : (visibleIds[0] ?? "system"),
     );
   }, [visibleIds]);
 
@@ -87,20 +96,17 @@ export function LanguageRow({
   }, [activeId, open]);
 
   const selected = options.find((option) => option.id === selectedId);
-  const triggerLabel =
-    selectedId === "auto"
-      ? autoLabel
-      : (selected?.nativeName ?? localeInfo(selectedId as AppLocale).nativeName);
+  const triggerLabel = selected?.title ?? selectedId;
 
   const close = () => {
     setOpen(false);
     setQuery("");
   };
 
-  const choose = (id: AppLanguageSetting) => {
+  const choose = (id: ThemePreference) => {
     close();
     if (id === selectedId) return;
-    void saveSettings({ language: id });
+    void saveSettings({ theme: id });
   };
 
   const moveActive = (delta: number) => {
@@ -112,50 +118,50 @@ export function LanguageRow({
           ? 0
           : visibleIds.length - 1
         : (index + delta + visibleIds.length) % visibleIds.length;
-    setActiveId(visibleIds[next] ?? "auto");
+    setActiveId(visibleIds[next] ?? "system");
   };
 
   return (
     <div className="settings-row">
       <div className="settings-row-copy">
-        <div className="settings-row-title">{t("settings.language")}</div>
-        <div className="settings-row-desc">{t("settings.languageDesc")}</div>
+        <div className="settings-row-title">{t("settings.theme")}</div>
+        <div className="settings-row-desc">{t("settings.themeDesc")}</div>
       </div>
       <div className="settings-row-control">
         <AnchoredMenu
-          className="settings-language-anchor"
+          className="settings-theme-anchor"
           open={open}
           onClose={close}
-          menuClassName="settings-language-menu"
-          label={t("settings.language")}
+          menuClassName="settings-theme-menu"
+          label={t("settings.theme")}
           align="end"
           initialFocus="input"
           trigger={(ref) => (
             <button
               ref={ref}
               type="button"
-              className="settings-language-trigger"
+              className="settings-theme-trigger"
               aria-haspopup="listbox"
               aria-expanded={open}
-              aria-label={t("settings.language")}
+              aria-label={t("settings.theme")}
               onClick={() => {
                 setQuery("");
                 setActiveId(selectedId);
                 setOpen((current) => !current);
               }}
             >
-              <span className="settings-language-trigger-label">{triggerLabel}</span>
+              <span className="settings-theme-trigger-label">{triggerLabel}</span>
               <IconChevronDown size={14} aria-hidden />
             </button>
           )}
         >
-          <div className="settings-language-search">
+          <div className="settings-theme-search">
             <IconSearch size={13} aria-hidden />
             <input
               type="text"
               value={query}
-              placeholder={t("settings.languageSearchPlaceholder")}
-              aria-label={t("settings.languageSearchPlaceholder")}
+              placeholder={t("settings.themeSearchPlaceholder")}
+              aria-label={t("settings.themeSearchPlaceholder")}
               spellCheck={false}
               autoCorrect="off"
               autoCapitalize="off"
@@ -175,17 +181,17 @@ export function LanguageRow({
               }}
             />
           </div>
-          <div className="settings-language-results">
+          <div className="settings-theme-results">
             {visible.length === 0 ? (
-              <div className="settings-language-empty">{t("settings.noResults")}</div>
+              <div className="settings-theme-empty">{t("settings.noResults")}</div>
             ) : (
-              <ul className="settings-language-list">
+              <ul className="settings-theme-list">
                 {visible.map((option, index) => {
                   const isCurrent = option.id === selectedId;
                   const isActive = option.id === activeId;
+                  const next = visible[index + 1];
                   const showDivider =
-                    option.id === "auto" &&
-                    visible.some((candidate) => candidate.id !== "auto");
+                    option.kind === "builtin" && next?.kind === "plugin";
                   return (
                     <li
                       key={option.id}
@@ -201,33 +207,33 @@ export function LanguageRow({
                         tabIndex={-1}
                         aria-selected={isCurrent}
                         className={cx(
-                          "settings-language-option",
+                          "settings-theme-option",
                           isCurrent && "is-current",
                           isActive && "is-active",
                         )}
                         onMouseEnter={() => setActiveId(option.id)}
                         onClick={() => choose(option.id)}
                       >
-                        <span className="settings-language-option-copy">
-                          <span className="settings-language-option-native">
-                            {option.nativeName}
+                        <span className="settings-theme-option-copy">
+                          <span className="settings-theme-option-title">
+                            {option.title}
                           </span>
-                          {option.englishName ? (
-                            <span className="settings-language-option-english">
-                              {option.englishName}
+                          {option.hint ? (
+                            <span className="settings-theme-option-hint">
+                              {option.hint}
                             </span>
                           ) : null}
                         </span>
                         {isCurrent ? (
                           <IconCheck
                             size={14}
-                            className="settings-language-check"
+                            className="settings-theme-check"
                             aria-hidden
                           />
                         ) : null}
                       </button>
-                      {index === 0 && showDivider ? (
-                        <span className="settings-language-divider" aria-hidden />
+                      {showDivider ? (
+                        <span className="settings-theme-divider" aria-hidden />
                       ) : null}
                     </li>
                   );

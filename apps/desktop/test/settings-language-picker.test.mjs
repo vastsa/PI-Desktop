@@ -13,20 +13,26 @@ const settingsPageSource = await readFile(
 );
 const styles = await loadStyles();
 
+/** Grouped language/theme rules put a sibling selector before `{`. */
+function pickerRule(selector, body = "") {
+  const grouped = `${selector}[^{]*\\{`;
+  return body ? new RegExp(`${grouped}[^}]*${body}`, "s") : new RegExp(grouped);
+}
+
 test("language picker uses an anchored menu so the settings card cannot clip it", () => {
   assert.match(rowSource, /AnchoredMenu/);
-  assert.match(rowSource, /menuClassName=\"settings-language-menu\"/);
-  assert.match(styles, /\.settings-language-menu\s*\{[^}]*position:\s*fixed;/s);
-  assert.match(styles, /\.settings-language-menu\.is-open\s*\{/);
+  assert.match(rowSource, /menuClassName="settings-language-menu"/);
+  assert.match(styles, pickerRule("\\.settings-language-menu", "position:\\s*fixed;"));
+  assert.match(styles, pickerRule("\\.settings-language-menu\\.is-open"));
 });
 
 test("language options come from the shipped locale registry, not a hard-coded trio of cards", () => {
   assert.match(rowSource, /listedLocales\(\)/);
-  assert.match(rowSource, /id: \"auto\"/);
+  assert.match(rowSource, /id: "auto"/);
   assert.match(rowSource, /saveSettings\(\{ language: id \}\)/);
   assert.match(settingsPageSource, /<LanguageRow /);
   assert.doesNotMatch(settingsPageSource, /settings-theme-card[\s\S]*lang/);
-  assert.doesNotMatch(settingsPageSource, /\(\[\"auto\", \"zh-CN\", \"en\"\] as const\)/);
+  assert.doesNotMatch(settingsPageSource, /\(\["auto", "zh-CN", "en"\] as const\)/);
 });
 
 test("native language names stay in the registry rather than the catalog", () => {
@@ -36,27 +42,15 @@ test("native language names stay in the registry rather than the catalog", () =>
 });
 
 test("the Auto row shows the OS-detected native name", () => {
-  assert.match(rowSource, /resolveAppLanguage\(\"auto\"\)/);
+  assert.match(rowSource, /resolveAppLanguage\("auto"\)/);
   assert.match(rowSource, /settings\.languageAutoDesc/);
   assert.match(rowSource, /detectedInfo\.nativeName/);
   assert.doesNotMatch(rowSource, /autoLabel} · \$\{detectedInfo/);
 });
 
 test("the language trigger fills the settings control column without a native field chrome", () => {
-  assert.match(
-    styles,
-    /\.settings-language-anchor\s*\{[^}]*width:\s*100%;/s,
-  );
-  assert.match(
-    styles,
-    /\.settings-language-trigger\s*\{[^}]*width:\s*100%;/s,
-  );
-  assert.match(
-    styles,
-    /\.settings-language-search input\s*\{[^}]*outline:\s*none;/s,
-  );
-  assert.match(
-    styles,
-    /\.settings-language-search input\s*\{[^}]*padding:\s*0;/s,
-  );
+  assert.match(styles, pickerRule("\\.settings-language-anchor", "width:\\s*100%;"));
+  assert.match(styles, pickerRule("\\.settings-language-trigger", "width:\\s*100%;"));
+  assert.match(styles, pickerRule("\\.settings-language-search input", "outline:\\s*none;"));
+  assert.match(styles, pickerRule("\\.settings-language-search input", "padding:\\s*0;"));
 });

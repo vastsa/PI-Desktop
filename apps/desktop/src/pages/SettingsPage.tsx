@@ -35,24 +35,20 @@ import {
   IconBookOpen,
   IconBot,
   IconChevronLeft,
-  IconCircleCheck,
   IconDownload,
   IconFileText,
   IconInfo,
   IconKeyboard,
-  IconMonitor,
-  IconMoon,
-  IconPalette,
   IconSearch,
   IconServer,
   IconSliders,
   IconSparkles,
-  IconSun,
 } from "../components/icons";
 import { ModelConfigPage } from "../components/settings/ModelConfigPage";
 import { KeyboardShortcutsSection } from "../components/settings/KeyboardShortcutsSection";
 import { FontFamilyRow } from "../components/settings/FontFamilyRow";
 import { LanguageRow } from "../components/settings/LanguageRow";
+import { ThemeRow } from "../components/settings/ThemeRow";
 import { ReleaseNotesDialog } from "../components/ReleaseNotesDialog";
 import { ProjectsPage } from "./ProjectsPage";
 import { AgentSkillsPage } from "../components/settings/AgentSkillsPage";
@@ -868,7 +864,6 @@ export function SettingsPage() {
   const setSettingsAnchor = useAppStore((s) => s.setSettingsAnchor);
   const setPage = useAppStore((s) => s.setPage);
   const settings = useAppStore((s) => s.settings);
-  const pluginThemes = useAppStore((s) => s.pluginThemes);
   const version = useAppStore((s) => s.version);
   const refreshProviders = useAppStore((s) => s.refreshProviders);
   const platform = (window.piDesktop?.platform ?? "darwin") as ShortcutPlatform;
@@ -1040,112 +1035,7 @@ export function SettingsPage() {
           {tab === "general" && settings && (
             <div className="settings-stack">
               <SettingsCard title={t("settings.appearance")}>
-                <div className="settings-row settings-row-plain">
-                  <div className="settings-row-copy">
-                    <div className="settings-row-title">{t("settings.theme")}</div>
-                    <div className="settings-row-desc">{t("settings.themeDesc")}</div>
-                  </div>
-                </div>
-                <div
-                  className="settings-theme-grid"
-                  role="radiogroup"
-                  aria-label={t("settings.theme")}
-                >
-                  {(["system", "light", "dark"] as const).map((theme) => {
-                    const active = settings.theme === theme;
-                    const ThemeIcon =
-                      theme === "light"
-                        ? IconSun
-                        : theme === "dark"
-                          ? IconMoon
-                          : IconMonitor;
-                    const label = t(
-                      theme === "light"
-                        ? "settings.themeLight"
-                        : theme === "dark"
-                          ? "settings.themeDark"
-                          : "settings.themeSystem",
-                    );
-                    const sub = t(
-                      theme === "light"
-                        ? "settings.themeLightDesc"
-                        : theme === "dark"
-                          ? "settings.themeDarkDesc"
-                          : "settings.themeSystemDesc",
-                    );
-                    return (
-                      <button
-                        key={theme}
-                        type="button"
-                        role="radio"
-                        aria-checked={active}
-                        className={cx("settings-theme-card", active && "active", theme)}
-                        onClick={() => void saveSettings({ theme })}
-                      >
-                        {active && (
-                          <span className="settings-card-check" aria-hidden="true">
-                            <IconCircleCheck size={16} />
-                          </span>
-                        )}
-                        <span className="settings-theme-preview" aria-hidden="true">
-                          <span className="settings-theme-preview-bar" />
-                          <span className="settings-theme-preview-line" />
-                          <span className="settings-theme-preview-line short" />
-                          <span className="settings-theme-preview-btn" />
-                        </span>
-                        <span className="settings-theme-meta">
-                          <span className="settings-theme-label">
-                            <ThemeIcon size={15} className="settings-theme-icon" />
-                            {label}
-                          </span>
-                          <span className="settings-theme-sub">{sub}</span>
-                        </span>
-                      </button>
-                    );
-                  })}
-                  {/* Themes contributed by plugins share the built-in grid. */}
-                  {pluginThemes.map((pluginTheme) => {
-                    const active = settings.theme === pluginTheme.id;
-                    return (
-                      <button
-                        key={pluginTheme.id}
-                        type="button"
-                        role="radio"
-                        aria-checked={active}
-                        className={cx(
-                          "settings-theme-card",
-                          active && "active",
-                          pluginTheme.base,
-                        )}
-                        onClick={() => void saveSettings({ theme: pluginTheme.id })}
-                      >
-                        {active && (
-                          <span className="settings-card-check" aria-hidden="true">
-                            <IconCircleCheck size={16} />
-                          </span>
-                        )}
-                        <span className="settings-theme-preview" aria-hidden="true">
-                          <span className="settings-theme-preview-bar" />
-                          <span className="settings-theme-preview-line" />
-                          <span className="settings-theme-preview-line short" />
-                          <span className="settings-theme-preview-btn" />
-                        </span>
-                        <span className="settings-theme-meta">
-                          <span className="settings-theme-label">
-                            <IconPalette size={15} className="settings-theme-icon" />
-                            {pluginTheme.label}
-                          </span>
-                          <span className="settings-theme-sub">
-                            {t("settings.themeFromPlugin", {
-                              plugin: pluginTheme.pluginId,
-                            })}
-                          </span>
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-
+                <ThemeRow settings={settings} saveSettings={saveSettings} />
                 <LanguageRow settings={settings} saveSettings={saveSettings} />
                 <FontFamilyRow settings={settings} saveSettings={saveSettings} />
               </SettingsCard>

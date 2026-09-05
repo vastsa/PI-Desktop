@@ -3723,7 +3723,7 @@ async function createWindow() {
                window.__PI_DESKTOP__?.seedPluginThemes?.(2)`,
             );
             await setPage("settings");
-            // The general tab carries the theme grid, including plugin themes
+            // The general tab carries the theme picker, including plugin themes
             // (D175); earlier scenes leave the sidebar on the archive tab.
             await setSettingsTab("general");
             // Seeding plugin themes activates one of them, which drags the

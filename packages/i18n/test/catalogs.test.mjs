@@ -130,6 +130,7 @@ test("the locale registry lists English first, then other locales by English nam
   );
   assert.equal(localeInfoNative("tr"), "Türkçe");
   assert.equal(english["settings.languageSearchPlaceholder"], "Search languages…");
+  assert.equal(english["settings.themeSearchPlaceholder"], "Search themes…");
   assert.equal(english["settings.languageAutoDesc"], "Currently {{state}}");
   const turkish = flattenCatalog(catalogs.tr);
   assert.equal(turkish["settings.language"], "Dil");

@@ -301,7 +301,7 @@
   Panels that are only a stack of rows dissolve into the page: each row becomes
   its own tile and the gap between tiles replaces the hairline that used to
   divide them (same rhythm as the plugins index, D296). Panels with mixed
-  content (theme grid, editors, form grids) stay one tile.
+  content (editors, form grids) stay one tile.
 */
 .settings-panel:has(> .settings-row),
 .settings-panel.shortcut-map,
@@ -654,183 +654,6 @@
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
 }
 
-.settings-theme-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  padding: 4px 16px 16px;
-}
-
-.settings-theme-card {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 10px;
-  border-radius: var(--radius-md-plus);
-  /* D297: cards rest as tiles; the active one lifts to the raised layer and
-     carries the check badge, so no selected border is needed. A raised rest
-     state would vanish on the light page, where raised and page are both white. */
-  background: var(--ds-tile);
-  padding: 12px;
-  text-align: left;
-  cursor: pointer;
-  transition:
-    background var(--motion-duration-fast) var(--motion-ease-out),
-    box-shadow var(--motion-duration-fast) var(--motion-ease-out),
-    transform var(--motion-duration-fast) var(--motion-ease-out);
-}
-
-.settings-theme-card:hover {
-  background: var(--ds-tile-hover);
-  transform: translateY(-2px);
-}
-
-.settings-theme-card:focus-visible {
-  outline: 2px solid var(--ds-accent);
-  outline-offset: 2px;
-}
-
-.settings-theme-card.active {
-  background: var(--ds-raised);
-  box-shadow: var(--ds-raised-shadow), 0 6px 16px rgba(0, 0, 0, 0.08);
-}
-
-/* Selected check badge */
-.settings-card-check {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: var(--radius-full);
-  background: var(--ds-accent);
-  /* Accent is white in the dark theme, so the glyph takes the page ink like
-     a primary button does; a fixed #fff vanished there. */
-  color: var(--ds-bg-primary);
-  animation: theme-card-check-pop var(--motion-duration-fast) var(--motion-ease-out);
-}
-
-@keyframes theme-card-check-pop {
-  from {
-    opacity: 0;
-    transform: scale(0.6);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-/* Theme: realistic mini window preview */
-.settings-theme-preview {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  height: 56px;
-  padding: 8px;
-  border-radius: var(--radius-sm);
-  background: var(--ds-bg-inset);
-  box-shadow: var(--ds-raised-shadow);
-}
-
-.settings-theme-preview-bar {
-  height: 8px;
-  width: 60%;
-  border-radius: var(--radius-3xs);
-  background: var(--ds-text-secondary);
-  opacity: 0.55;
-}
-
-.settings-theme-preview-line {
-  height: 5px;
-  width: 100%;
-  border-radius: var(--radius-3xs);
-  background: var(--ds-text-secondary);
-  opacity: 0.28;
-}
-
-.settings-theme-preview-line.short {
-  width: 70%;
-}
-
-.settings-theme-preview-btn {
-  margin-top: auto;
-  height: 12px;
-  width: 40%;
-  border-radius: var(--radius-3xs);
-  background: var(--ds-accent);
-  opacity: 0.85;
-}
-
-/* Light theme preview */
-.settings-theme-card.light .settings-theme-preview {
-  background: #ffffff;
-}
-.settings-theme-card.light .settings-theme-preview-bar,
-.settings-theme-card.light .settings-theme-preview-line {
-  background: #9ca3af;
-}
-.settings-theme-card.light .settings-theme-preview-btn {
-  background: #2563eb;
-}
-
-/* Dark theme preview */
-.settings-theme-card.dark .settings-theme-preview {
-  background: #18181b;
-}
-.settings-theme-card.dark .settings-theme-preview-bar,
-.settings-theme-card.dark .settings-theme-preview-line {
-  background: #71717a;
-}
-.settings-theme-card.dark .settings-theme-preview-btn {
-  background: #3b82f6;
-}
-
-/* System theme preview: split surface shows it adapts to the OS */
-.settings-theme-card.system .settings-theme-preview {
-  background: linear-gradient(135deg, #ffffff 0 50%, #18181b 50% 100%);
-}
-.settings-theme-card.system .settings-theme-preview-bar,
-.settings-theme-card.system .settings-theme-preview-line {
-  background: rgba(127, 127, 127, 0.5);
-}
-.settings-theme-card.system .settings-theme-preview-btn {
-  background: rgba(127, 127, 127, 0.65);
-}
-
-/* Shared meta (label + sub) */
-.settings-theme-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.settings-theme-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--ds-text-secondary);
-  font-size: var(--text-sm-plus);
-}
-
-.settings-theme-icon {
-  color: var(--ds-text-secondary);
-}
-
-.settings-theme-card.active .settings-theme-label {
-  color: var(--ds-text-primary);
-}
-
-.settings-theme-sub {
-  color: var(--ds-text-secondary);
-  font-size: var(--text-xs);
-  line-height: var(--leading-compact-plus);
-}
-
 .settings-empty {
   color: var(--ds-text-muted);
   font-size: var(--text-md);
@@ -1027,16 +850,17 @@
   text-align: center;
 }
 
-/* Language picker (Appearance). Pill trigger matches the font picker; the
-   menu is an AnchoredMenu so the settings card cannot clip it. Native names
-   stay endonyms; English names are the secondary search/sort labels. */
-.settings-language-anchor {
+/* Language and theme pickers (Appearance). Pill trigger matches the font
+   picker; the menu is an AnchoredMenu so the settings card cannot clip it. */
+.settings-language-anchor,
+.settings-theme-anchor {
   position: relative;
   width: 100%;
   min-width: 0;
 }
 
-.settings-language-trigger {
+.settings-language-trigger,
+.settings-theme-trigger {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1051,11 +875,13 @@
   font-size: var(--text-sm-plus);
 }
 
-.settings-language-trigger:hover {
+.settings-language-trigger:hover,
+.settings-theme-trigger:hover {
   background: var(--ds-bg-hover);
 }
 
-.settings-language-trigger-label {
+.settings-language-trigger-label,
+.settings-theme-trigger-label {
   min-width: 0;
   flex: 1;
   overflow: hidden;
@@ -1064,12 +890,14 @@
   text-align: left;
 }
 
-.settings-language-trigger > svg {
+.settings-language-trigger > svg,
+.settings-theme-trigger > svg {
   flex: 0 0 auto;
   color: var(--ds-text-muted);
 }
 
-.settings-language-menu {
+.settings-language-menu,
+.settings-theme-menu {
   position: fixed;
   z-index: 60;
   width: min(240px, calc(100vw - 48px));
@@ -1084,13 +912,15 @@
   visibility: hidden;
 }
 
-.settings-language-menu.is-open {
+.settings-language-menu.is-open,
+.settings-theme-menu.is-open {
   opacity: 1;
   pointer-events: auto;
   visibility: visible;
 }
 
-.settings-language-search {
+.settings-language-search,
+.settings-theme-search {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -1102,11 +932,13 @@
   color: var(--ds-text-muted);
 }
 
-.settings-language-search svg {
+.settings-language-search svg,
+.settings-theme-search svg {
   flex: 0 0 auto;
 }
 
-.settings-language-search input {
+.settings-language-search input,
+.settings-theme-search input {
   min-width: 0;
   flex: 1;
   height: 100%;
@@ -1120,11 +952,13 @@
   font-size: var(--text-sm);
 }
 
-.settings-language-search input::placeholder {
+.settings-language-search input::placeholder,
+.settings-theme-search input::placeholder {
   color: var(--ds-text-muted);
 }
 
-.settings-language-results {
+.settings-language-results,
+.settings-theme-results {
   min-height: 0;
   max-height: min(360px, calc(100vh - 220px));
   overflow-y: auto;
@@ -1132,13 +966,15 @@
   padding: 4px 0 6px;
 }
 
-.settings-language-list {
+.settings-language-list,
+.settings-theme-list {
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.settings-language-option {
+.settings-language-option,
+.settings-theme-option {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1151,15 +987,19 @@
 }
 
 .settings-language-option:hover,
-.settings-language-option.is-active {
+.settings-language-option.is-active,
+.settings-theme-option:hover,
+.settings-theme-option.is-active {
   background: var(--ds-bg-hover);
 }
 
-.settings-language-option.is-current .settings-language-option-native {
+.settings-language-option.is-current .settings-language-option-native,
+.settings-theme-option.is-current .settings-theme-option-title {
   color: var(--ds-text-primary);
 }
 
-.settings-language-option-copy {
+.settings-language-option-copy,
+.settings-theme-option-copy {
   display: flex;
   min-width: 0;
   flex: 1;
@@ -1167,7 +1007,8 @@
   gap: 1px;
 }
 
-.settings-language-option-native {
+.settings-language-option-native,
+.settings-theme-option-title {
   overflow: hidden;
   color: var(--ds-text-primary);
   font-size: var(--text-sm-plus);
@@ -1175,7 +1016,8 @@
   white-space: nowrap;
 }
 
-.settings-language-option-english {
+.settings-language-option-english,
+.settings-theme-option-hint {
   overflow: hidden;
   color: var(--ds-text-muted);
   font-size: var(--text-xs);
@@ -1184,19 +1026,22 @@
   white-space: nowrap;
 }
 
-.settings-language-check {
+.settings-language-check,
+.settings-theme-check {
   flex: 0 0 auto;
   color: var(--ds-accent);
 }
 
-.settings-language-divider {
+.settings-language-divider,
+.settings-theme-divider {
   display: block;
   height: 1px;
   margin: 4px 12px;
   background: var(--ds-border-subtle);
 }
 
-.settings-language-empty {
+.settings-language-empty,
+.settings-theme-empty {
   padding: 16px 10px;
   color: var(--ds-text-muted);
   font-size: var(--text-sm);

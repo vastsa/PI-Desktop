@@ -734,6 +734,7 @@ export const en = {
     themeLightDesc: "Light theme.",
     themeDarkDesc: "Dark theme.",
     themeFromPlugin: "Provided by the {{plugin}} plugin.",
+    themeSearchPlaceholder: "Search themes…",
     defaultPermissions: "Default permissions",
     defaultPermissionsDesc: "By default, PI-Desktop can read and edit files in your project. It will ask before doing anything riskier.",
     permissionMode: "Permission mode",

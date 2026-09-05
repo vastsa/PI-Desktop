@@ -89,6 +89,7 @@ test("Basics and AI tabs expose their respective app and AI controls", () => {
   const generalSource = settingsPageSource.slice(generalStart, aiStart);
   const aiSource = settingsPageSource.slice(aiStart, shortcutsStart);
 
+  assert.match(generalSource, /<ThemeRow /);
   assert.match(generalSource, /<LanguageRow /);
   assert.match(generalSource, /<FontFamilyRow /);
   assert.doesNotMatch(generalSource, /\(\["auto", "zh-CN", "en"\] as const\)/);

@@ -736,6 +736,7 @@ export const tr = {
     themeLightDesc: "Açık tema.",
     themeDarkDesc: "Koyu tema.",
     themeFromPlugin: "{{plugin}} eklentisi tarafından sağlanır.",
+    themeSearchPlaceholder: "Tema ara…",
     defaultPermissions: "Varsayılan izinler",
     defaultPermissionsDesc: "Varsayılan olarak PI-Desktop projenizdeki dosyaları okuyup düzenleyebilir. Daha riskli bir şeyden önce sorar.",
     permissionMode: "İzin kipi",

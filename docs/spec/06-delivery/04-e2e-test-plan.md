@@ -1086,21 +1086,21 @@ Each scenario is documented in this format:
 #### E2E-038: Settings owns the project archive destination
 
 - **Preconditions**: App running with at least one configured provider, one supported local session store, one retained project, and one archived project.
-- **Steps**: 1) Open Settings. 2) Inspect the complete settings rail. 3) Open Basics and change the theme in its Appearance card using the theme preview cards. 4) Open 全局 AI and inspect the Permissions and Defaults cards, including the Command shell row; confirm Context management has no settings card. 5) Open Shortcuts and inspect the Keyboard shortcuts card. 6) Open Instructions and save global instructions. 7) Open Model configuration and inspect the provider studio. 8) Open Import, Project archive, and Info in order. 9) Search Settings for "project" or "archive". 10) In Project archive, compare each group strip's count with its rendered rows. 11) Switch the sort control from Recent to Name. 12) Search for a known session title, inspect its expanded project row, then reveal more than eight sessions; clear the search with the clear affordance. 13) Open a row menu, dismiss it with Escape and with an outside press. 14) Restore the archived project, then activate it. 15) Return to the app shell and open Plugins.
+- **Steps**: 1) Open Settings. 2) Inspect the complete settings rail. 3) Open Basics and change the theme in its Appearance card using the searchable theme picker. 4) Open 全局 AI and inspect the Permissions and Defaults cards, including the Command shell row; confirm Context management has no settings card. 5) Open Shortcuts and inspect the Keyboard shortcuts card. 6) Open Instructions and save global instructions. 7) Open Model configuration and inspect the provider studio. 8) Open Import, Project archive, and Info in order. 9) Search Settings for "project" or "archive". 10) In Project archive, compare each group strip's count with its rendered rows. 11) Switch the sort control from Recent to Name. 12) Search for a known session title, inspect its expanded project row, then reveal more than eight sessions; clear the search with the clear affordance. 13) Open a row menu, dismiss it with Escape and with an outside press. 14) Restore the archived project, then activate it. 15) Return to the app shell and open Plugins.
 - **Expected**: The rail contains exactly Basics, 全局 AI/AI, Shortcuts, Instructions, Model configuration, Import, Project archive, and Info in that order, each with its semantic Lucide icon (Sliders / Sparkles / Keyboard / FileText / Bot / Download / Archive / Info). The flat directory is visually grouped under four muted, non-interactive headings — Personal / 个人 for Basics, AI, and Shortcuts; Agent / 智能体 for Instructions and Model configuration; Workspace / 工作区 for Import and Project archive; About / 关于 for Info — with whitespace and no divider lines between groups; searching keeps the destination results flat and hides empty groups together with their headings. Appearance remains in Basics, while Permissions, Defaults, and the Command shell row live under 全局 AI; an available selected shell is represented by the selector without a duplicate Configured status, while default, fallback, and no-effective-shell states remain explicit; Context management has no settings card; Keyboard shortcuts and global instructions have their own destinations; Developer lives under Info; Project archive shows active, closed, and archived durable rows without a visibility toggle, grouping them under the always-visible Pinned / All projects / Archived strips (D168/D267) with per-section counts inside one panel. The destination renders no hero block and no page-level counter run: the intro is one quiet description line, and each group strip's count agrees with its rendered rows; sorting by Name reorders rows inside every section without hiding any; search matches project fields and session titles and reports a match count, a session-title result expands its owning project, lists sessions by latest activity with relative update times, and reveals history in batches of eight; clearing the search restores the complete index. The row menu closes on Escape and on an outside press. Bootstrap completion and background refreshes do not return Settings or Extensions to the chat home; the destination changes only after an explicit navigation action. Restore keeps the archive open and activation returns to chat with the restored project retained in the sidebar; the home sidebar and global page results have no standalone Projects destination; Settings search finds Project archive; Plugins remains an independent app-shell destination.
 - **Specs linked**: `04-ux/06-settings-ia.md`, `04-ux/01-ui-ia.md`, `03-runtime/11-provider-model-system.md`
 - **Acceptance**: B (model configuration), F (session import)
 - **Milestone**: M4
 - **Status**: Unit-covered (`settings-project-archive.test.mjs`, `sidebar-navigation.test.mjs`); rendered scenario Draft
 
-#### E2E-091: Appearance card selects theme cards and a searchable language picker
+#### E2E-091: Appearance card selects searchable theme and language pickers
 
 - **Preconditions**: App running on macOS with a Simplified Chinese system locale.
 - **Steps**:
   1) Open Settings → General.
-  2) In the Appearance card, confirm the Theme row shows three preview cards
-     (System, Light, Dark) with the System card first; select Dark and confirm
-     the selected card shows a check badge and the UI switches to dark.
+  2) In the Appearance card, open the Theme picker. Confirm System, Light, and
+     Dark are pinned at the top; select Dark and confirm the trigger shows Dark
+     and the UI switches to dark.
   3) Select Light and confirm the UI switches to light.
   4) In the Language row, open the searchable picker. Confirm Auto is pinned
      at the top with the detected native name (简体中文) and that English,
@@ -1110,12 +1110,13 @@ Each scenario is documented in this format:
      confirm it switches back; select Türkçe and confirm shell chrome is
      Turkish without a reload.
   6) Type a native name or English name into the language search and confirm
-     unmatched locales disappear.
-- **Expected**: Theme remains a three-card grid. Language is a searchable
-  picker row (not a card grid and not a native select); the closed trigger
-  fills the settings control column and shows Match system or the native
-  name without overflowing the row; Auto resolves the OS locale through the
-  main process (`app.getLocale()`), passes it safely through the sandboxed
+     unmatched locales disappear. Type a theme name into the theme search and
+     confirm unmatched options disappear.
+- **Expected**: Theme and Language are searchable picker rows (not a card grid
+  and not a native select); each closed trigger fills the settings control
+  column without overflowing the row. Theme lists System, Light, and Dark,
+  then any plugin themes after a divider. Auto resolves the OS locale through
+  the main process (`app.getLocale()`), passes it safely through the sandboxed
   preload bridge, and reflects the detected native name inline in the menu;
   switching options updates the live UI without a reload.
 - **Specs linked**: `04-ux/06-settings-ia.md`, `04-ux/02-i18n-english-first.md`
