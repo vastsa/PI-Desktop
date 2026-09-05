@@ -182,7 +182,9 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
     record; provider discovery or a user-entered ID cannot promote an unknown
     model to image transport.
   - model discovery is debounced after a valid endpoint, key, or API style
-    change, including no-auth/local endpoints; the picker remains usable with
+    change, including no-auth/local endpoints; named add-path discovery waits
+    for an API key (editing reuses the stored secret) and does not mark
+    loading until the debounce fires; the picker remains usable with
     free-form custom model IDs when discovery is unavailable
   - thinking chips always render the seven canonical levels in canonical order.
     Published levels seed known-model bindings, while a row with no published
@@ -204,8 +206,9 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
     Ark, MiniMax, Kimi For Coding) then show Service + API key, with the
     published host as a one-line summary. Custom endpoint then shows Service,
     Name, Base URL, then API key beside API format. Named display names stay
-    behind Advanced. This is a compact grouped select, not a stepper or
-    vendor-card grid. Saved named rows store the models.dev `vendorKey` and
+    behind Advanced. Service is a searchable anchored menu (filter by
+    localized name, vendor key, alias, or host), not a native select, stepper,
+    or vendor-card grid. Saved named rows store the models.dev `vendorKey` and
     the preset `apiStyle` (Chat Completions, Responses, Anthropic, Gemini, or
     `opencode_go`).
   - helper copy stays out of the model cards; labels, status badges, and the

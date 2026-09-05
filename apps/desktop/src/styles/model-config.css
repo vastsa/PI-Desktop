@@ -101,8 +101,8 @@
 
 /*
   Named services are Service + key. Custom is Service, then Name / URL, then
-  the key. An unchosen service is one select so the first decision is which
-  endpoint, not which of five fields.
+  the key. An unchosen service is one searchable picker so the first decision
+  is which endpoint, not which of five fields.
 */
 .provider-setup-fields {
   display: grid;
@@ -124,6 +124,185 @@
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
   line-height: var(--leading-relaxed);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.provider-service-anchor {
+  width: 100%;
+  min-width: 0;
+}
+
+.provider-service-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.provider-service-trigger-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.provider-service-trigger.is-placeholder {
+  color: var(--ds-text-muted);
+}
+
+.provider-service-trigger-chevron {
+  flex: none;
+  color: var(--ds-text-muted);
+  transition: transform var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.provider-service-trigger[aria-expanded="true"] .provider-service-trigger-chevron {
+  transform: rotate(180deg);
+}
+
+/*
+  Portaled above the dialog overlay (z-index 40) so the list can overflow the
+  credential band. Measured before reveal, same as the default-model menu.
+*/
+.provider-service-menu {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  width: min(360px, calc(100vw - 32px));
+  max-height: min(400px, calc(100vh - 120px));
+  padding: 4px;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--ds-bg-elevated-opaque);
+  box-shadow: var(--ds-shadow-composer);
+  color: var(--ds-text-primary);
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  overflow: hidden;
+}
+
+.provider-service-menu.is-open {
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
+}
+
+.provider-service-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  margin-bottom: 3px;
+  padding: 2px 7px;
+  border-radius: var(--radius-xs);
+  background: var(--ds-tile);
+  color: var(--ds-text-faint);
+}
+
+.provider-service-search input {
+  min-width: 0;
+  height: 26px;
+  padding: 3px 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.provider-service-search input:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.provider-service-results {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding-top: 2px;
+}
+
+.provider-service-no-results {
+  padding: 24px 12px;
+  color: var(--ds-text-faint);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+.provider-service-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.provider-service-group {
+  padding: 6px 7px 2px;
+  color: var(--ds-text-faint);
+  font-size: var(--text-3xs);
+  font-weight: var(--font-weight-normal);
+  letter-spacing: var(--tracking-wide);
+  line-height: var(--leading-tight);
+}
+
+.provider-service-group.has-divider {
+  margin-top: 10px;
+}
+
+.provider-service-option {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 6px;
+  width: 100%;
+  min-height: 32px;
+  padding: 5px 7px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.provider-service-option:hover,
+.provider-service-option.is-active {
+  background: var(--ds-bg-hover);
+}
+
+.provider-service-option.is-current {
+  background: color-mix(in oklab, var(--ds-accent) 9%, transparent);
+}
+
+.provider-service-option:focus-visible {
+  outline: 2px solid var(--ds-accent-soft);
+  outline-offset: 1px;
+}
+
+.provider-service-option-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  color: var(--ds-accent);
+}
+
+.provider-service-option-label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ds-text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--leading-tight);
   text-overflow: ellipsis;
   white-space: nowrap;
 }

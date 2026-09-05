@@ -49,7 +49,7 @@ test("the scrolling body keeps the credential focus ring inside the dialog", () 
 
 test("credentials are a 2x2 grid of four peer fields", () => {
   assert.match(setupSource, /className="provider-setup-credentials"/);
-  assert.match(setupSource, /className="provider-setup-fields"/);
+  assert.match(setupSource, /provider-setup-fields/);
   const fields = block(".provider-setup-fields");
   assert.match(fields, /display: grid/);
   assert.match(fields, /grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
@@ -58,19 +58,18 @@ test("credentials are a 2x2 grid of four peer fields", () => {
   assert.doesNotMatch(styles, /\.provider-setup-form\s*\{/);
 });
 
-test("the API format is the fourth field, not a disclosure of its own", () => {
-  // One select did not justify a whole collapsible section.
+test("custom API format sits beside the key, not in a disclosure", () => {
   assert.doesNotMatch(setupSource, /<details/);
   assert.doesNotMatch(setupSource, /provider-advanced/);
   assert.doesNotMatch(setupSource, /advancedOpen/);
   const fieldsBlock = setupSource.slice(
-    setupSource.indexOf('className="provider-setup-fields"'),
+    setupSource.indexOf("provider-setup-fields"),
     setupSource.indexOf("<ModelSelectionPanes"),
   );
   assert.match(fieldsBlock, /settings\.apiStyle"/);
-  assert.match(fieldsBlock, /settings\.apiStyleDerived/);
-  assert.match(fieldsBlock, /API_STYLES\.map/);
-  // The per-model Advanced disclosure is a different control and stays.
+  assert.match(fieldsBlock, /API_STYLES\.filter/);
+  assert.doesNotMatch(fieldsBlock, /settings\.apiStyleDerived/);
+  assert.match(fieldsBlock, /<ServicePicker/);
   assert.match(pickerSource, /provider-chosen-advanced-toggle/);
 });
 
@@ -195,7 +194,7 @@ test("the panes stack again before the dialog gets too narrow to read", () => {
   assert.notEqual(at, -1, "missing the two-pane fallback breakpoint");
   const query = styles.slice(at, styles.indexOf("@media", at + 10));
   assert.match(query, /\.provider-setup-panes\s*\{\s*grid-template-columns: minmax\(0, 1fr\)/);
-  assert.match(query, /\.provider-setup-fields\s*\{\s*grid-template-columns: minmax\(0, 1fr\)/);
+  assert.match(query, /\.provider-setup-fields[\s\S]*?\{\s*grid-template-columns: minmax\(0, 1fr\)/);
   // A stacked dialog must be allowed to size to its content again, and both
   // dialogs host the same panes, so both need that release.
   assert.match(

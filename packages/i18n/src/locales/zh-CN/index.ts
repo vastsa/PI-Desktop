@@ -778,6 +778,8 @@ export const zhCN = {
     apiStyleOpenCodeGoFixed: "OpenCode Go 使用固定名称和地址；请输入 API 密钥继续。",
     service: "服务",
     chooseService: "选择服务",
+    searchService: "筛选服务",
+    noServiceMatches: "没有匹配的服务。",
     presetGroupInternational: "国际",
     presetGroupChina: "国内",
     presetOpenai: "OpenAI",

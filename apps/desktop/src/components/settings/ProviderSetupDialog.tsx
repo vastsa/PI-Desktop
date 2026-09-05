@@ -8,21 +8,18 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   API_STYLES,
-  NAMED_PRESET_GROUPS,
+  NAMED_ENDPOINT_PRESETS,
   OPENCODE_GO_API_STYLE,
   matchNamedPreset,
-  namedPresetsInGroup,
   type CatalogApiStyle,
   type ModelBinding,
-  type NamedPresetGroup,
   type ProviderPublic,
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { Button, Field, Input, Select } from "../ui";
 import { useProviderModels } from "./useProviderModels";
 import { ModelSelectionPanes, useModelSelection } from "./ModelSelectionPanes";
-
-const CUSTOM_SERVICE = "custom";
+import { CUSTOM_SERVICE, ServicePicker } from "./ServicePicker";
 
 const API_STYLE_LABEL_KEYS: Record<CatalogApiStyle, string> = {
   chat_completions: "settings.apiStyleChatCompletions",
@@ -32,11 +29,6 @@ const API_STYLE_LABEL_KEYS: Record<CatalogApiStyle, string> = {
   openai_codex_responses: "settings.apiStyleCodexResponses",
   pi_messages: "settings.apiStylePiMessages",
   opencode_go: "settings.apiStyleOpenCodeGo",
-};
-
-const GROUP_LABEL_KEYS: Record<NamedPresetGroup, string> = {
-  international: "settings.presetGroupInternational",
-  china: "settings.presetGroupChina",
 };
 
 function serviceIdFor(provider?: ProviderPublic | null): string {
@@ -111,16 +103,18 @@ export function ProviderSetupDialog({
   const [error, setError] = useState("");
   const [testResult, setTestResult] = useState("");
 
-  const namedPreset = namedPresetsInGroup("international")
-    .concat(namedPresetsInGroup("china"))
-    .find((preset) => preset.id === service);
+  const namedPreset = NAMED_ENDPOINT_PRESETS.find((preset) => preset.id === service);
   const named = Boolean(namedPreset);
   const custom = service === CUSTOM_SERVICE;
   const resolvedName = namedPreset ? name.trim() || namedPreset.name : name;
   const resolvedBaseUrl = namedPreset?.baseUrl ?? baseUrl;
   const resolvedApiStyle: CatalogApiStyle = namedPreset?.apiStyle ?? apiStyle;
+  // Named add-path waits for a key so picking a vendor does not 401-probe.
+  // Editing reuses the stored secret. Custom still probes a valid URL alone.
+  const discoveryActive =
+    Boolean(service) && (custom || Boolean(apiKey.trim()) || Boolean(provider));
   const discovery = useProviderModels(
-    true,
+    discoveryActive,
     { baseUrl: resolvedBaseUrl, apiKey, apiStyle: resolvedApiStyle },
     provider,
   );
@@ -135,27 +129,30 @@ export function ProviderSetupDialog({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose, saving]);
 
-  const focusApiKey = () => {
-    queueMicrotask(() => apiKeyRef.current?.focus());
+  const nameRef = useRef<HTMLInputElement>(null);
+  const focusAfterServiceChange = (next: string) => {
+    window.setTimeout(() => {
+      if (next === CUSTOM_SERVICE) nameRef.current?.focus();
+      else if (next) apiKeyRef.current?.focus();
+    }, 0);
   };
 
   const onServiceChange = (next: string) => {
     const previous = namedPreset;
     setService(next);
-    const preset = namedPresetsInGroup("international")
-      .concat(namedPresetsInGroup("china"))
-      .find((item) => item.id === next);
+    const preset = NAMED_ENDPOINT_PRESETS.find((item) => item.id === next);
     if (!preset) {
       if (next === CUSTOM_SERVICE && apiStyle === OPENCODE_GO_API_STYLE) {
         setApiStyle("chat_completions");
       }
+      focusAfterServiceChange(next);
       return;
     }
     const currentName = name.trim();
     if (!currentName || currentName === previous?.name) setName(preset.name);
     setBaseUrl(preset.baseUrl);
     setApiStyle(preset.apiStyle);
-    focusApiKey();
+    focusAfterServiceChange(next);
   };
 
   const testConnection = async () => {
@@ -292,27 +289,12 @@ export function ProviderSetupDialog({
             >
               <div className="provider-setup-service">
                 <Field label={t("settings.service")}>
-                  <Select
+                  <ServicePicker
                     value={service}
                     autoFocus={!named && !custom}
-                    onChange={(event) => onServiceChange(event.target.value)}
-                  >
-                    <option value="" disabled>
-                      {t("settings.chooseService")}
-                    </option>
-                    <option value={CUSTOM_SERVICE}>
-                      {t("settings.presetCustomEndpoint")}
-                    </option>
-                    {NAMED_PRESET_GROUPS.map((group) => (
-                      <optgroup key={group} label={t(GROUP_LABEL_KEYS[group])}>
-                        {namedPresetsInGroup(group).map((preset) => (
-                          <option key={preset.id} value={preset.id}>
-                            {t(preset.labelKey)}
-                          </option>
-                        ))}
-                      </optgroup>
-                    ))}
-                  </Select>
+                    disabled={saving}
+                    onChange={onServiceChange}
+                  />
                 </Field>
               </div>
 
@@ -345,6 +327,7 @@ export function ProviderSetupDialog({
                 <>
                   <Field label={t("settings.name")}>
                     <Input
+                      ref={nameRef}
                       value={name}
                       autoFocus
                       onChange={(event) => setName(event.target.value)}

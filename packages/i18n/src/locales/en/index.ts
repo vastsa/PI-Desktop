@@ -782,6 +782,8 @@ export const en = {
     apiStyleOpenCodeGoFixed: "OpenCode Go uses a fixed name and endpoint; enter an API key to continue.",
     service: "Service",
     chooseService: "Choose a service",
+    searchService: "Filter services",
+    noServiceMatches: "No matching services.",
     presetGroupInternational: "International",
     presetGroupChina: "China",
     presetOpenai: "OpenAI",
