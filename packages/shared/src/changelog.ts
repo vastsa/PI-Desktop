@@ -23,6 +23,17 @@ export type ChangelogEntry = {
 
 const enEntries: ChangelogEntry[] = [
   {
+    version: "0.13.4",
+    date: "2026-09-05",
+    highlights: [
+      "Add Turkish and a searchable language picker in Settings → General.",
+      "Make theme a searchable picker like language, including plugin themes.",
+      "Flatten the add-provider Service list, add Xiaomi, Zhipu, and Z.AI, and make Service searchable.",
+      "Report a problem from Settings → Info with version and OS already filled.",
+      "Keep streaming conversation turns in chronological order when the live transcript merges.",
+    ],
+  },
+  {
     version: "0.13.3",
     date: "2026-09-05",
     highlights: [
@@ -599,6 +610,17 @@ const enEntries: ChangelogEntry[] = [
 ];
 
 const zhCNEntries: ChangelogEntry[] = [
+  {
+    version: "0.13.4",
+    date: "2026-09-05",
+    highlights: [
+      "设置 → 常规新增土耳其语，语言改为可搜索选择器。",
+      "主题改为与语言相同的可搜索选择器，插件主题也在同一列表中。",
+      "添加服务商时服务列表改为平铺可搜索，并加入小米、智谱和 Z.AI。",
+      "设置 → 信息可提交问题反馈，并自动带上当前版本和操作系统。",
+      "流式转录合并时保持对话回合的时间顺序。",
+    ],
+  },
   {
     version: "0.13.3",
     date: "2026-09-05",
