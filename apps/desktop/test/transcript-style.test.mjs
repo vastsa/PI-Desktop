@@ -99,9 +99,9 @@ test("assistant turns stay transparent full-width prose", () => {
     stylesSource,
     /\.message-row\.assistant[\s\S]*?\.message-col[\s\S]*?width:\s*min\(100%,\s*720px\);/,
   );
-  // D297: the live turn tints a tile instead of drawing a rail; the inset is
-  // reserved either way so the tint fading never reflows the text.
-  assert.match(
+  // D323: the live parent turn stays transparent; no rail, no reserved
+  // inset, no whole-turn tile. The tile belongs only to the delegation card.
+  assert.doesNotMatch(
     stylesSource,
     /\.message-row\.assistant-turn \.message-col\s*\{[^}]*padding-left:\s*14px/,
   );
@@ -109,9 +109,13 @@ test("assistant turns stay transparent full-width prose", () => {
     stylesSource,
     /\.message-row\.assistant-turn \.message-col\s*\{[^}]*border-left/,
   );
-  assert.match(
+  assert.doesNotMatch(
     stylesSource,
     /\.message-row\.assistant-turn\.streaming \.message-col\s*\{[^}]*background:\s*var\(--ds-tile\)/,
+  );
+  assert.match(
+    stylesSource,
+    /\.tool-activity-group\.has-subagents\s*\{[^}]*background:\s*var\(--ds-tile\)/,
   );
 });
 

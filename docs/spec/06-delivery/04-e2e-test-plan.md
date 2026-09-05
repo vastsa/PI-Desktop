@@ -2236,13 +2236,14 @@ Each scenario is documented in this format:
 - **Expected**: User turns are right-aligned, theme-neutral soft plates capped
   near 560px, derived from each theme's primary text ink rather than an accent
   tint, with a subtle border; assistant answers remain transparent full-width
-  prose in the 720px content band. Row spacing is denser (~10px). Copy chips are
+  prose in the 720px content band, including while they stream — no left rail
+  and no whole-turn `--ds-tile` (D323). The tile belongs only to a
+  subagent/delegation card (D319). Row spacing is denser (~10px). Copy chips are
   hidden at rest, appear on hover/focus-within, and stay right-aligned under
-  user turns. Streaming assistant answers show a thin accent left rule without
-  boxing the whole answer. Both themes keep readable contrast on the user
-  plate.
+  user turns. Both themes keep readable contrast on the user plate.
 - **Specs linked**: `04-ux/07-ui-design-system.md`,
-  `04-ux/08-component-spec.md`, `04-ux/10-workbuddy-benchmark-ux.md`
+  `04-ux/08-component-spec.md` §8.3 / §8.4, `04-ux/10-workbuddy-benchmark-ux.md`,
+  decisions-log D101, D323
 - **Acceptance**: C (chat stream), Quality
 - **Milestone**: M5
 - **Status**: Unit-covered (`transcript-style.test.mjs`); full visual scenario Draft
@@ -5909,8 +5910,9 @@ This test plan spec is accepted when:
 - Open a mixed transcript in light and dark themes.
 - Expect right-aligned compact user plates, transparent full-width assistant
   prose, denser row spacing, and hover-only copy chips under each turn.
-- While an assistant answer streams, expect a thin accent left rule rather than
-  a boxed frame.
+- While an assistant answer streams, expect the same transparent full-width
+  prose as a completed turn — no left rail and no whole-turn tile. The tile
+  belongs only to a subagent/delegation card (D319, D323).
 
 
 ### US-UI-60b Assistant markdown prose redesign

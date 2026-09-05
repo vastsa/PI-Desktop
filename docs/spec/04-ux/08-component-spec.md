@@ -1270,9 +1270,9 @@ Single message render — either user (plaintext) or assistant (markdown streami
 
 | State | Appearance |
 |---|---|
-| Streaming | accent left rail along the whole assistant turn (fragments + tool rows); the rail's space is always reserved so it fading in/out never reflows text; content grows |
+| Streaming | transparent like a completed turn — no left rail, no reserved inset, no whole-turn `--ds-tile` (D323); content grows. The tile belongs only to a subagent/delegation card (D319) |
 | Thinking streaming | disclosure open; answer bubble omitted until answer text exists |
-| Complete | no streaming rule; full rendered markdown |
+| Complete | transparent full-width markdown; no streaming chrome |
 | Error | compact assistant error card in transcript; localized summary and stable code share one header with the details disclosure; details still opens to redacted provider response, provider/model IDs, and copy action; the card offers a localized Continue action that resends the continuation prompt; configuration failures show Open settings, while regenerate is provided by the session-scoped failed-turn recovery card |
 
 ### 8.4a Context compaction row
@@ -1562,7 +1562,7 @@ twice.
 - No cross-row activity grouping until turn boundaries are available to the
   transcript component
 
-### 9.9 Delegation cards and fan-out topology (D201, D265, D268, D271, D302, D319, ADR 0062)
+### 9.9 Delegation cards and fan-out topology (D201, D265, D268, D271, D302, D319, D323, ADR 0062)
 
 A `Task` call is presented as a node of a delegation card, not as a compact tool
 row — one delegation reads the same as a fan-out (D265). The node names the
@@ -1687,7 +1687,9 @@ Opening a node reveals the blocks the call carries, then the delegate's own rows
   (`TaskWait`/`TaskList`/`TaskStop`) are a separate processing group — before
   the card, after it, or both — so the parent's own work is not painted as
   subagent work. The tile, the “Subagent working” header, and the topology
-  canvas belong only to that Task group. The card keeps 16px inset from its
+  canvas belong only to that Task group. The parent turn itself stays
+  transparent while streaming — no whole-turn tile wrapping thinking, tools, or
+  answer fragments (D323). The card keeps 16px inset from its
   tile edge so the graph and any leftover rows do not sit on the border.
 - A topology group stays live — open once, ticking elapsed, labelled working —
   while any of *its* delegates is still running, even when the parent has

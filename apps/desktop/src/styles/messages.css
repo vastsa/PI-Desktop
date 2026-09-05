@@ -1351,18 +1351,9 @@
   box-shadow: none;
 }
 
-/* Live turn: the whole assistant turn (prose fragments + tool rows) sits on
-   one soft tile while streaming (D297 — no rail). The inset is always
-   reserved, so the tint fading in/out never reflows the text. */
-.message-row.assistant-turn .message-col {
-  border-radius: var(--radius-md-plus);
-  padding-left: 14px;
-  transition: background var(--motion-duration-slow) var(--motion-ease-out);
-}
-
-.message-row.assistant-turn.streaming .message-col {
-  background: var(--ds-tile);
-}
+/* Live parent turns stay transparent like completed prose (D323). The
+   `--ds-tile` card belongs only to `.tool-activity-group.has-subagents`
+   (D319) and the nested `.subagent-run`. */
 
 .message-error {
   width: min(100%, 680px);
