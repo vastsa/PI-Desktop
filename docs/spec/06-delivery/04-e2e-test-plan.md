@@ -5105,7 +5105,7 @@ Each scenario is documented in this format:
   global shortcut is registered.
 - **Specs linked**: `07-plugins/02-plugin-manifest-schema.md`,
   `07-plugins/03-plugin-api.md`, `07-plugins/11-plugin-storage-isolation.md`,
-  ADR 0082
+  ADR 0159
 - **Acceptance**: F (persistence), G (plugins), Security, Quality
 - **Milestone**: M6+
 - **Status**: Source-contract and focused integration coverage; full desktop

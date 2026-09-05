@@ -170,3 +170,5 @@ Each ADR includes:
 | 0155 | Add Zhipu / Z.AI named endpoint presets | Accepted |
 | 0156 | Simplify the add-provider common path | Accepted |
 | 0157 | Main-owned GitHub issue feedback | Accepted |
+| 0158 | Keep approval cards focused and remember the selected mode | Accepted |
+| 0159 | Generated plugin settings and plugin-local shortcuts | Accepted |

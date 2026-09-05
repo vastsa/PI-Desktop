@@ -4158,7 +4158,7 @@ IPC 请求无法关闭。
   插件命令。保留或冲突的快捷键会被拒绝；不会注册操作系统全局快捷键。
 - **链接规格**：`07-plugins/02-plugin-manifest-schema.md`、
   `07-plugins/03-plugin-api.md`、`07-plugins/11-plugin-storage-isolation.md`、
-  ADR 0082
+  ADR 0159
 - **接受**：F（持久性）、G（插件）、安全性、品质
 - **里程碑**：M6+
 - **状态**：Source-contract 与定向集成覆盖；完整桌面旅程草稿（除非明确要求，否则不要

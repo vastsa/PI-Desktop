@@ -1,4 +1,4 @@
-# ADR 0082: Generated plugin settings and plugin-local shortcuts
+# ADR 0159: Generated plugin settings and plugin-local shortcuts
 
 - Status: Accepted
 - Date: 2026-08-13

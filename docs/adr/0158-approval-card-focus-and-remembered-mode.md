@@ -1,4 +1,4 @@
-# ADR 0076: Keep approval cards focused and remember the selected mode
+# ADR 0158: Keep approval cards focused and remember the selected mode
 
 - Status: Accepted for implementation
 - Date: 2026-08-12
