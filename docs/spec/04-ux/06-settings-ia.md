@@ -47,9 +47,13 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   - **Theme**: three selectable preview cards (System / Light / Dark, System
     first) with a live mini-window mockup, a per-option description, and a
     selected check badge; selection updates `settings.theme`
-  - **Language**: three selectable preview cards (Auto / 简体中文 / English) with
-    a sample-text preview, a per-option description, and a selected check badge;
-    selection updates `settings.language`
+  - **Language**: a searchable picker row (not a card grid). The trigger shows
+    the current native name, or Match system plus the detected native name.
+    The menu pins Auto at the top with the detected language inline
+    (e.g. "Currently 简体中文"), then lists every shipped locale with its
+    native name (endonym, never translated) and English name for search and
+    sort. Selection updates `settings.language`. Adding a locale is a catalog
+    plus a registry row; the picker does not hard-code the option list.
   - **Font**: a searchable picker row (trigger shows the current family rendered
     in that face) offering the System default, bundled open-licensed families
     (Geist, Inter, Noto Sans SC, LXGW WenKai — SIL OFL 1.1, shipped locally),
@@ -60,7 +64,7 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
     (bounded font loading) and opening the picker never blocks input
   - **Auto language detection** resolves the OS locale through the main process
     (`app.getLocale()`) rather than the renderer's `navigator.language`, and the
-    Auto card shows the detected language inline (e.g. "当前：简体中文")
+    Auto option shows the detected language inline (e.g. "Currently 简体中文")
   - native select triggers and their opened option lists use the active theme's
     readable foreground/background pairing on macOS, Windows, and Linux; the
     shared native-select contract applies to every app surface

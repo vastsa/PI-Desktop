@@ -1,17 +1,17 @@
 /**
- * Every literal `t("…")` key in the renderer must exist in both catalogs.
+ * Every literal `t("…")` key in the renderer must exist in every shipped catalog.
  *
- * `catalogs.test.mjs` only compares the two locales against each other, so a
- * key that a component uses but neither locale defines passes there and then
- * renders as the raw key string in the UI. That is exactly how
- * `settings.serviceModels` and friends shipped untranslated, so this test
- * closes the loop from the call sites back to the catalogs.
+ * `catalogs.test.mjs` only compares locales against English, so a key that a
+ * component uses but no locale defines passes there and then renders as the
+ * raw key string in the UI. That is exactly how `settings.serviceModels` and
+ * friends shipped untranslated, so this test closes the loop from the call
+ * sites back to the catalogs.
  */
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "vitest";
-import { en, flattenCatalog, zhCN } from "../src/index.ts";
+import { catalogs, flattenCatalog } from "../src/index.ts";
 
 const SRC = new URL("../../../apps/desktop/src/", import.meta.url);
 
@@ -36,9 +36,6 @@ function has(catalog, key) {
 }
 
 const files = await sources(new URL(".", SRC).pathname);
-const english = flattenCatalog(en);
-const chinese = flattenCatalog(zhCN);
-
 const used = new Map();
 for (const file of files) {
   const text = await readFile(file, "utf8");
@@ -49,23 +46,21 @@ for (const file of files) {
   }
 }
 
+const flats = Object.fromEntries(
+  Object.entries(catalogs).map(([id, catalog]) => [id, flattenCatalog(catalog)]),
+);
+
 test("the renderer uses a non-trivial number of catalog keys", () => {
   // Guards against the scan silently matching nothing after a refactor.
   assert.ok(used.size > 500, `only found ${used.size} keys — is the scan still correct?`);
 });
 
-test("every key the renderer asks for exists in English", () => {
-  const missing = [...used].filter(([key]) => !has(english, key));
-  assert.deepEqual(
-    missing.map(([key, file]) => `${key} (${file.replace(/.*\/apps\//, "apps/")})`),
-    [],
-  );
-});
-
-test("every key the renderer asks for exists in Chinese", () => {
-  const missing = [...used].filter(([key]) => !has(chinese, key));
-  assert.deepEqual(
-    missing.map(([key, file]) => `${key} (${file.replace(/.*\/apps\//, "apps/")})`),
-    [],
-  );
-});
+for (const [id, catalog] of Object.entries(flats)) {
+  test(`every key the renderer asks for exists in ${id}`, () => {
+    const missing = [...used].filter(([key]) => !has(catalog, key));
+    assert.deepEqual(
+      missing.map(([key, file]) => `${key} (${file.replace(/.*\/apps\//, "apps/")})`),
+      [],
+    );
+  });
+}

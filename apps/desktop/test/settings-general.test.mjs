@@ -58,6 +58,10 @@ const zhLocaleSource = await readFile(
   new URL("../../../packages/i18n/src/locales/zh-CN/index.ts", import.meta.url),
   "utf8",
 );
+const trLocaleSource = await readFile(
+  new URL("../../../packages/i18n/src/locales/tr/index.ts", import.meta.url),
+  "utf8",
+);
 const mainSource = await readFile(
   new URL("../src/main.tsx", import.meta.url),
   "utf8",
@@ -85,9 +89,9 @@ test("Basics and AI tabs expose their respective app and AI controls", () => {
   const generalSource = settingsPageSource.slice(generalStart, aiStart);
   const aiSource = settingsPageSource.slice(aiStart, shortcutsStart);
 
-  assert.match(generalSource, /settings\.language/);
-  assert.match(generalSource, /settings\.languageAuto/);
-  assert.match(generalSource, /"zh-CN"/);
+  assert.match(generalSource, /<LanguageRow /);
+  assert.match(generalSource, /<FontFamilyRow /);
+  assert.doesNotMatch(generalSource, /\(\["auto", "zh-CN", "en"\] as const\)/);
   assert.doesNotMatch(generalSource, /defaultMode: value/);
   assert.doesNotMatch(generalSource, /enterToSend: !settings\.enterToSend/);
   assert.doesNotMatch(generalSource, /settings\.defaultsTitle/);
@@ -107,7 +111,7 @@ test("Basics and AI tabs expose their respective app and AI controls", () => {
 });
 
 test("language persists as part of shared app settings", () => {
-  assert.match(sharedTypesSource, /language\?: "auto" \| "en" \| "zh-CN"/);
+  assert.match(sharedTypesSource, /language\?: "auto" \| "en" \| "zh-CN" \| "tr"/);
   assert.match(sharedTypesSource, /largePasteThreshold\?: number/);
 });
 
@@ -256,6 +260,7 @@ test("settings nav keeps a flat searchable index with titled visual groups", () 
     assert.match(settingsSearchSource, new RegExp(key.replace(".", "\\.")));
     assert.match(enLocaleSource, new RegExp(`${key.split(".")[1]}:`));
     assert.match(zhLocaleSource, new RegExp(`${key.split(".")[1]}:`));
+    assert.match(trLocaleSource, new RegExp(`${key.split(".")[1]}:`));
   }
   assert.doesNotMatch(settingsSearchSource, /id: "extensions"/);
   const navOrder = [
@@ -308,6 +313,7 @@ test("settings rail uses short parallel labels and descriptive page titles", () 
     assert.match(settingsSearchSource, new RegExp(key.replaceAll(".", "\\.")));
     assert.match(enLocaleSource, new RegExp(`${key.split(".").at(-1)}:`));
     assert.match(zhLocaleSource, new RegExp(`${key.split(".").at(-1)}:`));
+    assert.match(trLocaleSource, new RegExp(`${key.split(".").at(-1)}:`));
   }
   assert.match(settingsSearchSource, /titleKey: "settings\.configuration"/);
   assert.match(settingsSearchSource, /titleKey: "settings\.projectArchive"/);

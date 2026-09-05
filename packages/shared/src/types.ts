@@ -1032,7 +1032,7 @@ export type AppSettings = {
   defaultPermissionMode?: GlobalPermissionMode;
   theme: ThemePreference;
   /** UI language; `auto` (and absent) follows the OS locale. */
-  language?: "auto" | "en" | "zh-CN";
+  language?: "auto" | "en" | "zh-CN" | "tr";
   /**
    * Global UI font stack (CSS `font-family` value). Absent means the built-in
    * token stack; bundled open-source families and installed system families

@@ -53,6 +53,7 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.appearance",
       "settings.theme",
       "settings.language",
+      "settings.languageAuto",
       "settings.font",
       "settings.closeBehaviorTitle",
       "settings.closeBehaviorTray",

@@ -10,7 +10,7 @@ import {
   type NativeMenuAction,
   type ShortcutPlatform,
 } from "@pi-desktop/shared";
-import { en, resolveLocale, zhCN } from "@pi-desktop/i18n";
+import { catalogs, resolveLocale } from "@pi-desktop/i18n";
 
 export type ApplicationMenuOptions = {
   platform?: NodeJS.Platform;
@@ -60,7 +60,7 @@ export function buildApplicationMenuTemplate({
 }: ApplicationMenuOptions): MenuItemConstructorOptions[] {
   const isMac = platform === "darwin";
   const shortcutPlatform = platform as ShortcutPlatform;
-  const labels = resolveLocale(locale) === "zh-CN" ? zhCN : en;
+  const labels = catalogs[resolveLocale(locale)];
   const template: MenuItemConstructorOptions[] = [];
   const accelerator = (id: KeyboardShortcutId) => {
     const shortcut = KEYBOARD_SHORTCUTS.find((candidate) => candidate.id === id);

@@ -156,7 +156,7 @@ import {
 } from "./importers";
 import { installApplicationMenu } from "./application-menu";
 import { AppUpdaterController } from "./updater";
-import { en, resolveLocale, zhCN } from "@pi-desktop/i18n";
+import { catalogs, resolveLocale } from "@pi-desktop/i18n";
 import {
   baseWindowBounds,
   clampBoundsOriginToWorkArea,
@@ -1457,7 +1457,7 @@ function restoreMainWindow() {
 
 function updateTrayMenu(locale = app.getLocale()) {
   if (!tray) return;
-  const labels = resolveLocale(locale) === "zh-CN" ? zhCN.tray : en.tray;
+  const labels = catalogs[resolveLocale(locale)].tray;
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: labels.open, click: restoreMainWindow },
@@ -1948,7 +1948,7 @@ function applyCloseBehavior(next: CloseBehavior) {
 async function askCloseBehavior(
   window: BrowserWindow,
 ): Promise<"tray" | "quit" | null> {
-  const labels = resolveLocale(app.getLocale()) === "zh-CN" ? zhCN : en;
+  const labels = catalogs[resolveLocale(app.getLocale())];
   const { response } = await dialog.showMessageBox(window, {
     type: "question",
     title: labels.tray.askTitle,

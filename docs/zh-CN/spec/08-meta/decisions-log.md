@@ -276,6 +276,7 @@
 | D118 | 平台应用程序菜单和窗口镶边 | **macOS 安装传统的系统应用程序菜单并保留隐藏式交通信号灯。 Windows/Linux 使用共享的 46px 无框架外壳以及本地化的 File/Edit/View/Window/Help 菜单和渲染器绘制的 minimize/maximize-or-restore/close 控件。两个菜单表面都通过固定的 `AppMenuCommand` 允许列表路由渲染器拥有的操作；渲染器菜单通过单独的固定允许列表路由本机 editing/window 操作。目标打包在 Electron 打包之前构建本地发布主机。这增加了平台就绪的 shell 行为，但不会逆转 D010：Windows/Linux 发布资格在 MVP 后仍然有效。** | 默认的 Electron 菜单会使 macOS shell 命令不完整，而无框 Windows/Linux 窗口会丢失应用程序菜单和窗口控件。共享允许列表可以保持行为一致，而不会暴露任意特权命令桥。 |
 | D120 | 应用程序更新交付 | **Electron Main 独家拥有固定的 GitHub 发布源、更新轮询、类型化状态和安装生命周期。开发被禁用；打包的 macOS 和非 AppImage Linux 使用通知和链接传递，而 Windows NSIS 和 Linux AppImage 在应用程序内下载并在退出时安装。 Renderer IPC 无法提供 Feed URL。自动故障保持环境状态，显式检查表面状态，下载状态保持可操作。更新程序始终强制使用 `allowPrerelease = false`，因此预发布安装（例如 `0.2.0-rc.6`）会跟踪 GitHub 的最新稳定版本，而不是 electro-updater 的默认同通道引脚。 D126 随后发布由标签矩阵生成的每个平台提要，而 macOS 仍保持手动状态，直到签名通道合格为止。** | 将软件包安装保持在沙盒渲染器之外，匹配每种安装程序格式的交付，并在菜单、设置和更新横幅之间提供一种一致的状态 (ADR 0022)。如果没有稳定通道引脚，RC 不会构建更新的稳定通道，因为电子更新程序将 `rc` 视为自定义通道。 |
 | D313 | 主进程拥有的 GitHub 问题反馈 | **GitHub issue 表单是唯一入口。Bug 表单必填描述、复现步骤、预期/实际行为、应用版本和操作系统；功能表单必填问题和期望改动。设置 → 信息提供一条「问题反馈」，走 `pi-desktop/app/openFeedback`。Electron Main 构造固定的 `bug_report.yml` URL，用主进程版本信息预填 `app-version` / `os` / `environment`，再以 `shell.openExternal` 打开。渲染器不能提供 URL。功能请求仍从 GitHub 模板选择器进入。不改 host 协议、存储或更新源（ADR 0157）。** | 缺少版本或复现步骤的报告无法排查；由渲染器选择目标会削弱 D120 同样的「GitHub URL 归主进程」规则。 |
+| D314 | 已发布语言注册表与语言选择器 | **修订 D073：界面语言列在 `@pi-desktop/i18n`（`en`、`zh-CN`、`tr`）。本地名称永不翻译。设置 → 常规的语言是可搜索选择器（跟随系统 + 注册表），不再是三张预览卡。插件标签和更新日志仍为 `en` + `zh-CN`，其它语言回退到英文。见 ADR 0160 与 E2E-091。** | 预览卡无法扩展到两种以上语言；注册表让土耳其语（以及后续语言）无需重写外观卡即可发货。 |
 | D121 | 品牌macOS开发主机 | **macOS 上的 `pnpm dev` 通过 `.cache/electron-dev/` 下已安装的 Electron 主机包的指纹、临时签名的 PI-Desktop 副本启动 electro-vite。生成的捆绑包仅更改开发主机元数据、可执行文件名称、捆绑包标识符和 ICNS 资源；它永远不会改变 `node_modules`。 Windows/Linux 保持库存开发可执行，而打包通道仍归电子制造商所有。** | AppKit 会忽略顶级应用程序身份的运行时 app-name/menu 覆盖，并从主机包中获取本机菜单名称和“关于”图标；需要品牌开发主机才能与打包的 PI-Desktop 保持一致。 |
 | D129 | 无菜单 Windows/Linux 窗口镀铬 | **应用程序菜单仅为 macOS 系统菜单表面。 Windows/Linux 保留共享的无框架 46px 标题栏和渲染器绘制的 minimize/maximize-or-restore/close 控件，但在窗口内不渲染 File/Edit/View/Window/Help 菜单，并且不保留左侧标题栏空间。通过 renderer/native Web 内容处理，现有应用程序、编辑、缩放、全屏和关闭快捷方式仍然可用；仍然可以通过“设置”->“信息”访问更新检查。这仅取代 D118 和 ADR 0021 的 Windows/Linux 渲染器菜单部分。** | 窗口内桌面菜单会重复 macOS 特定的系统菜单镶边、占用导航空间，并且不属于 PI-Desktop 的无框 Windows/Linux 标题栏。 |
 | D130 | 侧边栏页脚通知条目 | **持久通知铃声从主标题栏移动到扩展侧边栏页脚右侧单独的 `32px` 操作，取代了 D113 的“帮助”快捷方式。其未读徽章和完整的 D117 收件箱行为保持不变；弹出窗口在页脚的上方和右侧打开，并且主标题栏中没有重复的贝尔。这仅取代 D113 和 D117 的条目位置条款。** | 通知历史记录属于持久的本地配置文件控件，页脚位置使主标题栏保持安静，同时保留紧凑、熟悉的状态条目。 |
@@ -2598,3 +2599,11 @@ D193 和 D194。
 - 服务选项不再分国际 / 国内。自定义端点仍在最前，其后是可搜索的单一厂商列表。
 - 小米是命名端点：models.dev `vendorKey: "xiaomi"`，`https://api.xiaomimimo.com/v1`，Chat Completions。别名 `mimo`、`xiaomimimo`。
 - 决策 D312 修订 D310 / D311。见 `04-ux/06-settings-ia.md` 与 E2E-005。
+
+## 2026-09-05 —— 已发布语言注册表与语言选择器（D314）
+
+- 设置 → 常规的语言原先是三张预览卡（跟随系统 / 简体中文 / English），无法扩展，名称也是写死的。
+- 界面语言现在列在 `@pi-desktop/i18n`：`en`、`zh-CN`、`tr`。本地名称保持 endonym。「跟随系统」仍通过 preload 跟随 `app.getLocale()`。
+- 外观卡的主题仍是三张预览卡。语言改为可搜索选择器：顶部钉住「跟随系统」并显示检测到的本地名称，然后列出已发布语言。搜索匹配本地名称、英文名称和 id。
+- 插件标签和更新日志仍为 `en` + `zh-CN`，其它语言回退到英文。
+- 决策 D314 修订 D073。见 ADR 0160、`04-ux/02-i18n-english-first.md`、`04-ux/06-settings-ia.md` 与 E2E-091。

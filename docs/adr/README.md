@@ -172,3 +172,4 @@ Each ADR includes:
 | 0157 | Main-owned GitHub issue feedback | Accepted |
 | 0158 | Keep approval cards focused and remember the selected mode | Accepted |
 | 0159 | Generated plugin settings and plugin-local shortcuts | Accepted |
+| 0160 | Shipped locale registry and searchable language picker | Accepted |

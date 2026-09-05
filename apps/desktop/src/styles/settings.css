@@ -802,39 +802,6 @@
   background: rgba(127, 127, 127, 0.65);
 }
 
-/* Language preview */
-.settings-lang-preview {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 56px;
-  padding: 0 10px;
-  border-radius: var(--radius-sm);
-  background: var(--ds-bg-inset);
-}
-
-.settings-lang-glyph {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: var(--radius-sm);
-  background: var(--ds-accent);
-  color: #fff;
-  font-size: var(--text-md);
-  font-weight: var(--font-weight-semibold);
-}
-
-.settings-lang-glyph-icon {
-  color: var(--ds-text-secondary);
-}
-
-.settings-lang-sample {
-  font-size: var(--text-sm-plus);
-  color: var(--ds-text-secondary);
-}
-
 /* Shared meta (label + sub) */
 .settings-theme-meta {
   display: flex;
@@ -1054,6 +1021,178 @@
 }
 
 .settings-font-empty {
+  padding: 16px 10px;
+  color: var(--ds-text-muted);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+/* Language picker (Appearance). Pill trigger matches the font picker; the
+   menu is an AnchoredMenu so the settings card cannot clip it. Native names
+   stay endonyms; English names are the secondary search/sort labels. */
+.settings-language-anchor {
+  position: relative;
+}
+
+.settings-language-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 200px;
+  max-width: 280px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: var(--radius-full);
+  background: var(--ds-raised);
+  box-shadow: var(--ds-raised-shadow);
+  color: var(--ds-text-primary);
+  font-size: var(--text-sm-plus);
+}
+
+.settings-language-trigger:hover {
+  background: var(--ds-bg-hover);
+}
+
+.settings-language-trigger-label {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.settings-language-trigger > svg {
+  flex: 0 0 auto;
+  color: var(--ds-text-muted);
+}
+
+.settings-language-menu {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  width: min(320px, calc(100vw - 48px));
+  max-height: min(420px, calc(100vh - 160px));
+  border-radius: var(--radius-lg);
+  background: var(--ds-bg-elevated-opaque);
+  box-shadow: var(--ds-shadow-dialog);
+  border: 1px solid var(--ds-border-subtle);
+  color: var(--ds-text-primary);
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.settings-language-menu.is-open {
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
+}
+
+.settings-language-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  margin: 6px 6px 2px;
+  padding: 0 9px;
+  border-radius: var(--radius-md);
+  background: var(--ds-bg-inset);
+  color: var(--ds-text-muted);
+}
+
+.settings-language-search svg {
+  flex: 0 0 auto;
+}
+
+.settings-language-search input {
+  min-width: 0;
+  flex: 1;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--ds-text-primary);
+  font-size: var(--text-sm);
+}
+
+.settings-language-search input::placeholder {
+  color: var(--ds-text-muted);
+}
+
+.settings-language-results {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px 0 6px;
+}
+
+.settings-language-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settings-language-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: calc(100% - 12px);
+  margin: 0 6px;
+  padding: 7px 8px;
+  border-radius: var(--radius-sm);
+  color: var(--ds-text-primary);
+  text-align: left;
+}
+
+.settings-language-option:hover,
+.settings-language-option.is-active {
+  background: var(--ds-bg-hover);
+}
+
+.settings-language-option.is-current .settings-language-option-native {
+  color: var(--ds-text-primary);
+}
+
+.settings-language-option-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.settings-language-option-native {
+  overflow: hidden;
+  color: var(--ds-text-primary);
+  font-size: var(--text-sm-plus);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-language-option-english {
+  overflow: hidden;
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs);
+  line-height: var(--leading-compact-plus);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-language-check {
+  flex: 0 0 auto;
+  color: var(--ds-accent);
+}
+
+.settings-language-divider {
+  display: block;
+  height: 1px;
+  margin: 4px 12px;
+  background: var(--ds-border-subtle);
+}
+
+.settings-language-empty {
   padding: 16px 10px;
   color: var(--ds-text-muted);
   font-size: var(--text-sm);

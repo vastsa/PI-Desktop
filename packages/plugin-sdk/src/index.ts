@@ -64,7 +64,7 @@ export type PluginManifest = {
   activationEvents?: string[];
 };
 
-/** A plugin-provided label for the two locales supported by the desktop shell. */
+/** A plugin-provided label. Shell UI may add locales; plugins still ship en + zh-CN. */
 export type PluginLocalizedString = {
   en: string;
   "zh-CN": string;

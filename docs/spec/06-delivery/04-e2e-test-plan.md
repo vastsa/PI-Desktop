@@ -1093,25 +1093,29 @@ Each scenario is documented in this format:
 - **Milestone**: M4
 - **Status**: Unit-covered (`settings-project-archive.test.mjs`, `sidebar-navigation.test.mjs`); rendered scenario Draft
 
-#### E2E-091: Appearance card selects theme and language via preview cards
+#### E2E-091: Appearance card selects theme cards and a searchable language picker
 
 - **Preconditions**: App running on macOS with a Simplified Chinese system locale.
 - **Steps**:
-  1) Open Settings → Basics.
+  1) Open Settings → General.
   2) In the Appearance card, confirm the Theme row shows three preview cards
      (System, Light, Dark) with the System card first; select Dark and confirm
      the selected card shows a check badge and the UI switches to dark.
   3) Select Light and confirm the UI switches to light.
-  4) In the Language row, confirm three preview cards (Auto, 简体中文, English);
-     with the OS locale set to Chinese, the Auto card description reads
-     "当前：简体中文" and selecting Auto applies Simplified Chinese.
+  4) In the Language row, open the searchable picker. Confirm Auto is pinned
+     at the top with the detected native name (简体中文) and that English,
+     简体中文, and Türkçe are listed by native name; with the OS locale set to
+     Chinese, selecting Auto applies Simplified Chinese.
   5) Select English and confirm the UI switches to English; select 简体中文 and
-     confirm it switches back.
-- **Expected**: Theme and Language are card grids (not native selects), each with
-  a selected check badge and a per-option description; the Auto language card
-  resolves the OS locale through the main process (`app.getLocale()`), passes it
-  safely through the sandboxed preload bridge, and reflects it inline; switching
-  options updates the live UI without a reload.
+     confirm it switches back; select Türkçe and confirm shell chrome is
+     Turkish without a reload.
+  6) Type a native name or English name into the language search and confirm
+     unmatched locales disappear.
+- **Expected**: Theme remains a three-card grid. Language is a searchable
+  picker row (not a card grid and not a native select); Auto resolves the OS
+  locale through the main process (`app.getLocale()`), passes it safely through
+  the sandboxed preload bridge, and reflects the detected native name inline;
+  switching options updates the live UI without a reload.
 - **Specs linked**: `04-ux/06-settings-ia.md`, `04-ux/02-i18n-english-first.md`
 - **Acceptance**: A (core shell), H (localization)
 - **Milestone**: M4

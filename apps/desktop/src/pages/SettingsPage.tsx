@@ -17,7 +17,6 @@ import {
 import { useAppStore } from "../stores/app-store";
 import { api } from "../lib/api";
 import type { ImportCandidate } from "../lib/api";
-import { resolveAppLanguage } from "../lib/app-language";
 import { useUpdateState } from "../hooks/use-update-state";
 import {
   DEFAULT_IMPORT_GROUP_BY,
@@ -39,7 +38,6 @@ import {
   IconCircleCheck,
   IconDownload,
   IconFileText,
-  IconGlobe,
   IconInfo,
   IconKeyboard,
   IconMonitor,
@@ -54,6 +52,7 @@ import {
 import { ModelConfigPage } from "../components/settings/ModelConfigPage";
 import { KeyboardShortcutsSection } from "../components/settings/KeyboardShortcutsSection";
 import { FontFamilyRow } from "../components/settings/FontFamilyRow";
+import { LanguageRow } from "../components/settings/LanguageRow";
 import { ReleaseNotesDialog } from "../components/ReleaseNotesDialog";
 import { ProjectsPage } from "./ProjectsPage";
 import { AgentSkillsPage } from "../components/settings/AgentSkillsPage";
@@ -1041,80 +1040,6 @@ export function SettingsPage() {
           {tab === "general" && settings && (
             <div className="settings-stack">
               <SettingsCard title={t("settings.appearance")}>
-                {(() => {
-                  const detectedLocale = resolveAppLanguage("auto");
-                  const detectedLocaleLabel =
-                    detectedLocale === "zh-CN"
-                      ? t("settings.languageZh")
-                      : t("settings.languageEn");
-                  return (
-                    <div
-                      className="settings-theme-grid"
-                      role="radiogroup"
-                      aria-label={t("settings.language")}
-                    >
-                      {(["auto", "zh-CN", "en"] as const).map((value) => {
-                        const active = (settings.language ?? "auto") === value;
-                        const LangIcon = value === "auto" ? IconGlobe : null;
-                        const glyph = value === "zh-CN" ? "中" : value === "en" ? "A" : null;
-                        const label =
-                          value === "auto"
-                            ? t("settings.languageAuto")
-                            : value === "zh-CN"
-                              ? t("settings.languageZh")
-                              : t("settings.languageEn");
-                        const sub =
-                          value === "auto"
-                            ? t("settings.languageAutoDesc", { state: detectedLocaleLabel })
-                            : value === "zh-CN"
-                              ? t("settings.languageZhDesc")
-                              : t("settings.languageEnDesc");
-                        const sample =
-                          value === "auto"
-                            ? detectedLocale === "zh-CN"
-                              ? "中 / A"
-                              : "A / 中"
-                            : value === "zh-CN"
-                              ? "你好，世界"
-                              : "Hello, world";
-                        return (
-                          <button
-                            key={value}
-                            type="button"
-                            role="radio"
-                            aria-checked={active}
-                            className={cx(
-                              "settings-theme-card",
-                              active && "active",
-                              "lang",
-                              value,
-                            )}
-                            onClick={() => void saveSettings({ language: value })}
-                          >
-                            {active && (
-                              <span className="settings-card-check" aria-hidden="true">
-                                <IconCircleCheck size={16} />
-                              </span>
-                            )}
-                            <span className="settings-lang-preview" aria-hidden="true">
-                              {LangIcon ? (
-                                <LangIcon size={20} className="settings-lang-glyph-icon" />
-                              ) : (
-                                <span className="settings-lang-glyph">{glyph}</span>
-                              )}
-                              <span className="settings-lang-sample">{sample}</span>
-                            </span>
-                            <span className="settings-theme-meta">
-                              <span className="settings-theme-label">{label}</span>
-                              <span className="settings-theme-sub">{sub}</span>
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  );
-                })()}
-
                 <div className="settings-row settings-row-plain">
                   <div className="settings-row-copy">
                     <div className="settings-row-title">{t("settings.theme")}</div>
@@ -1221,6 +1146,7 @@ export function SettingsPage() {
                   })}
                 </div>
 
+                <LanguageRow settings={settings} saveSettings={saveSettings} />
                 <FontFamilyRow settings={settings} saveSettings={saveSettings} />
               </SettingsCard>
 

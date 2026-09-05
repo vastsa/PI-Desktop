@@ -2,7 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
-import { en, zhCN, flattenCatalog, resolveLocale } from "@pi-desktop/i18n";
+import { catalogs, flattenCatalog, resolveLocale } from "@pi-desktop/i18n";
 import App from "./App";
 import { PluginLauncher } from "./components/PluginLauncher";
 import { initLanguageSync, resolveOsLocale } from "./lib/app-language";
@@ -21,16 +21,17 @@ document.documentElement.dataset.platform =
 installScrollbarReveal(document);
 
 const locale = resolveLocale(resolveOsLocale());
+const resources = Object.fromEntries(
+  Object.entries(catalogs).map(([lng, catalog]) => [
+    lng,
+    { translation: flattenCatalog(catalog as unknown as Record<string, unknown>) },
+  ]),
+);
 
 void i18n.use(initReactI18next).init({
   lng: locale,
   fallbackLng: "en",
-  resources: {
-    en: { translation: flattenCatalog(en as unknown as Record<string, unknown>) },
-    "zh-CN": {
-      translation: flattenCatalog(zhCN as unknown as Record<string, unknown>),
-    },
-  },
+  resources,
   interpolation: { escapeValue: false },
 });
 

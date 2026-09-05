@@ -152,7 +152,7 @@ recency only breaks ties between equally relevant matches.
   menu, or activating the app from the macOS dock restores and focuses the
   existing window. If the window was closed, the same action creates a fresh
   window.
-- The tray menu is localized with the active English/zh-CN shell locale and
+- The tray menu is localized with the active shipped shell locale and
   exposes Show PI-Desktop plus an explicit Quit PI-Desktop action. Quit uses
   the existing ordered shutdown path. What closing the window does is the
   user's own choice on Windows/Linux (ADR 0090) and a Dock-lifecycle close on
