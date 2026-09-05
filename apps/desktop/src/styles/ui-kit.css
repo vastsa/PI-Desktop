@@ -33,6 +33,12 @@
   box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 22%, transparent);
 }
 
+.field-input:read-only,
+.field-select:disabled {
+  color: var(--ds-text-secondary);
+  cursor: default;
+}
+
 .btn {
   display: inline-flex;
   align-items: center;

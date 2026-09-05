@@ -206,6 +206,7 @@ const MODEL_VENDOR_PREFIXES = new Set([
   "qwen",
   "z-ai",
   "zai",
+  "zhipuai",
   "x-ai",
   "xai",
 ]);

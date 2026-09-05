@@ -201,6 +201,27 @@ Presets only prefill form defaults; they are not a closed world.
 |---|---|---|---|---|
 | `opencode_go` | `openai_compatible` | `api_key_and_base_url` | `OpenCode Go` | `https://opencode.ai/zen/go/v1` |
 
+### Named endpoint presets (Zhipu / Z.AI)
+
+These rows are created from the add-provider **Service** select, not from a
+new `apiStyle`. They remain `type: "openai_compatible"` with
+`apiStyle: "chat_completions"`. The dialog locks the endpoint; the display
+name stays editable. `vendorKey` is the models.dev provider key so catalog
+enrichment follows the exact API vs Coding Plan record.
+
+| vendorKey | name | baseUrl | notes |
+|---|---|---|---|
+| `zhipuai` | Zhipu AI | `https://open.bigmodel.cn/api/paas/v4` | China standard API |
+| `zhipuai-coding-plan` | Zhipu AI Coding Plan | `https://open.bigmodel.cn/api/coding/paas/v4` | China GLM Coding Plan. pi-ai `zai-coding-cn` is an alias. |
+| `zai` | Z.AI | `https://api.z.ai/api/paas/v4` | International standard API |
+| `zai-coding-plan` | Z.AI Coding Plan | `https://api.z.ai/api/coding/paas/v4` | International GLM Coding Plan |
+
+pi-ai names its international Coding Plan transport `zai`, while models.dev
+uses `zai` for the standard API. PI-Desktop persists the models.dev key and
+the exact URL so the two cannot be confused. When the configured URL or
+`vendorKey` matches one of these presets, the Completions adapter receives
+`thinkingFormat: "zai"` and `zaiToolStream: true`.
+
 ### Vendor-account presets
 
 These rows are created by signing in (Settings -> Model configuration ->

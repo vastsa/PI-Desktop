@@ -7,18 +7,26 @@
  * context/output limits need no manual entry on the common path. Choosing among
  * those rows is `ModelSelectionPanes`, shared with the vendor account editor.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   API_STYLES,
+  OPENCODE_GO_API_STYLE,
+  OPENCODE_GO_BASE_URL,
+  OPENCODE_GO_NAME,
+  ZHIPU_ENDPOINT_PRESETS,
+  matchZhipuPreset,
   type CatalogApiStyle,
   type ModelBinding,
   type ProviderPublic,
+  type ZhipuPresetId,
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { Button, Field, Input, Select } from "../ui";
 import { useProviderModels } from "./useProviderModels";
 import { ModelSelectionPanes, useModelSelection } from "./ModelSelectionPanes";
+
+const CUSTOM_SERVICE = "custom";
 
 const API_STYLE_LABEL_KEYS: Record<CatalogApiStyle, string> = {
   chat_completions: "settings.apiStyleChatCompletions",
@@ -29,6 +37,38 @@ const API_STYLE_LABEL_KEYS: Record<CatalogApiStyle, string> = {
   pi_messages: "settings.apiStylePiMessages",
   opencode_go: "settings.apiStyleOpenCodeGo",
 };
+
+const ZHIPU_PRESET_LABEL_KEYS: Record<ZhipuPresetId, string> = {
+  zhipuai: "settings.presetZhipuApi",
+  "zhipuai-coding-plan": "settings.presetZhipuCodingPlan",
+  zai: "settings.presetZaiApi",
+  "zai-coding-plan": "settings.presetZaiCodingPlan",
+};
+
+function serviceIdFor(provider?: ProviderPublic | null): string {
+  if (!provider || provider.apiStyle === OPENCODE_GO_API_STYLE) return CUSTOM_SERVICE;
+  return matchZhipuPreset({
+    vendorKey: provider.vendorKey,
+    baseUrl: provider.baseUrl,
+  })?.id ?? CUSTOM_SERVICE;
+}
+
+function initialName(provider?: ProviderPublic | null): string {
+  if (provider?.apiStyle === OPENCODE_GO_API_STYLE) return OPENCODE_GO_NAME;
+  return provider?.name ?? "";
+}
+
+function initialBaseUrl(provider?: ProviderPublic | null): string {
+  if (provider?.apiStyle === OPENCODE_GO_API_STYLE) return OPENCODE_GO_BASE_URL;
+  return (
+    matchZhipuPreset({
+      vendorKey: provider?.vendorKey,
+      baseUrl: provider?.baseUrl,
+    })?.baseUrl ??
+    provider?.baseUrl ??
+    ""
+  );
+}
 
 export type ProviderSetupDialogProps = {
   /** Existing row being edited; absent creates a new service. */
@@ -45,8 +85,10 @@ export function ProviderSetupDialog({
 }: ProviderSetupDialogProps) {
   const { t } = useTranslation();
   const editing = !!provider;
-  const [name, setName] = useState(provider?.name ?? "");
-  const [baseUrl, setBaseUrl] = useState(provider?.baseUrl ?? "");
+  const apiKeyRef = useRef<HTMLInputElement>(null);
+  const [service, setService] = useState(() => serviceIdFor(provider));
+  const [name, setName] = useState(() => initialName(provider));
+  const [baseUrl, setBaseUrl] = useState(() => initialBaseUrl(provider));
   const [apiKey, setApiKey] = useState("");
   const [apiStyle, setApiStyle] = useState<CatalogApiStyle>(
     (provider?.apiStyle as CatalogApiStyle) ?? "chat_completions",
@@ -57,7 +99,16 @@ export function ProviderSetupDialog({
   const [error, setError] = useState("");
   const [testResult, setTestResult] = useState("");
 
-  const discovery = useProviderModels(true, { baseUrl, apiKey, apiStyle }, provider);
+  const zhipuPreset = ZHIPU_ENDPOINT_PRESETS.find((preset) => preset.id === service);
+  const opencodeGo = apiStyle === OPENCODE_GO_API_STYLE;
+  const lockBaseUrl = Boolean(zhipuPreset) || opencodeGo;
+  const lockName = opencodeGo;
+  const resolvedBaseUrl = zhipuPreset?.baseUrl ?? (opencodeGo ? OPENCODE_GO_BASE_URL : baseUrl);
+  const discovery = useProviderModels(
+    true,
+    { baseUrl: resolvedBaseUrl, apiKey, apiStyle },
+    provider,
+  );
   const selection = useModelSelection(discovery, models, setModels);
 
   useEffect(() => {
@@ -68,6 +119,37 @@ export function ProviderSetupDialog({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose, saving]);
+
+  const focusApiKey = () => {
+    queueMicrotask(() => apiKeyRef.current?.focus());
+  };
+
+  const onServiceChange = (next: string) => {
+    const previous = zhipuPreset;
+    setService(next);
+    const preset = ZHIPU_ENDPOINT_PRESETS.find((item) => item.id === next);
+    if (!preset) return;
+    const currentName = name.trim();
+    if (
+      !currentName ||
+      currentName === previous?.name ||
+      currentName === OPENCODE_GO_NAME
+    ) {
+      setName(preset.name);
+    }
+    setBaseUrl(preset.baseUrl);
+    if (apiStyle === OPENCODE_GO_API_STYLE) setApiStyle("chat_completions");
+    focusApiKey();
+  };
+
+  const onApiStyleChange = (next: CatalogApiStyle) => {
+    setApiStyle(next);
+    if (next !== OPENCODE_GO_API_STYLE) return;
+    setService(CUSTOM_SERVICE);
+    setName(OPENCODE_GO_NAME);
+    setBaseUrl(OPENCODE_GO_BASE_URL);
+    focusApiKey();
+  };
 
   const testConnection = async () => {
     if (!provider) return;
@@ -95,12 +177,13 @@ export function ProviderSetupDialog({
   };
 
   const save = async () => {
-    const providerName = name.trim();
-    const providerBaseUrl = baseUrl.trim();
+    const providerName = (opencodeGo ? OPENCODE_GO_NAME : name).trim();
+    const providerBaseUrl = resolvedBaseUrl.trim();
     if (!providerName || !providerBaseUrl || models.length === 0) return;
     // Only levels the model publishes are stored; the runtime would drop the
     // rest while this dialog kept counting them as enabled.
     const persisted = selection.bindingsToPersist;
+    const persistedApiStyle = zhipuPreset ? "chat_completions" : apiStyle;
     setSaving(true);
     setError("");
     try {
@@ -108,10 +191,11 @@ export function ProviderSetupDialog({
         const result = await api.updateProvider({
           id: provider.id,
           name: providerName,
+          vendorKey: zhipuPreset?.vendorKey ?? "custom",
           baseUrl: providerBaseUrl,
           defaultModelId: persisted[0]?.id,
           models: persisted,
-          apiStyle,
+          apiStyle: persistedApiStyle,
           // An empty key on edit means "keep the stored one", so the secret is
           // only sent when the user actually typed a new value.
           ...(apiKey ? { secretValue: apiKey } : {}),
@@ -120,10 +204,7 @@ export function ProviderSetupDialog({
       } else {
         const result = await api.createProvider({
           name: providerName,
-          // Only the main process knows how a base URL maps onto a models.dev
-          // provider key, and no renderer-safe mapping is exported; the host
-          // resolves the catalog identity from baseUrl when it enriches models.
-          vendorKey: "custom",
+          vendorKey: zhipuPreset?.vendorKey ?? "custom",
           type: "openai_compatible",
           protocol: "openai_compatible",
           baseUrl: providerBaseUrl,
@@ -131,7 +212,7 @@ export function ProviderSetupDialog({
           defaultModelId: persisted[0]?.id,
           models: persisted,
           secretValue: apiKey || undefined,
-          apiStyle,
+          apiStyle: persistedApiStyle,
         });
         onSaved(result.provider, persisted);
       }
@@ -142,7 +223,16 @@ export function ProviderSetupDialog({
     }
   };
 
-  const canSave = !saving && !!name.trim() && !!baseUrl.trim() && models.length > 0;
+  const canSave =
+    !saving &&
+    !!(opencodeGo ? OPENCODE_GO_NAME : name).trim() &&
+    !!resolvedBaseUrl.trim() &&
+    models.length > 0;
+  const endpointHint = zhipuPreset?.codingPlan
+    ? t("settings.presetZhipuCodingPlanHint")
+    : opencodeGo
+      ? t("settings.apiStyleOpenCodeGoFixed")
+      : undefined;
 
   return (
     <div
@@ -201,19 +291,37 @@ export function ProviderSetupDialog({
 
           <div className="provider-setup-credentials">
             <div className="provider-setup-fields">
+              <Field label={t("settings.service")}>
+                <Select
+                  value={service}
+                  onChange={(event) => onServiceChange(event.target.value)}
+                >
+                  <option value={CUSTOM_SERVICE}>
+                    {t("settings.presetCustomEndpoint")}
+                  </option>
+                  {ZHIPU_ENDPOINT_PRESETS.map((preset) => (
+                    <option key={preset.id} value={preset.id}>
+                      {t(ZHIPU_PRESET_LABEL_KEYS[preset.id])}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+
               <Field label={t("settings.name")}>
                 <Input
-                  value={name}
-                  autoFocus
+                  value={opencodeGo ? OPENCODE_GO_NAME : name}
+                  autoFocus={!opencodeGo && !zhipuPreset}
+                  readOnly={lockName}
                   onChange={(event) => setName(event.target.value)}
                 />
               </Field>
 
-              <Field label={t("settings.baseUrl")}>
+              <Field label={t("settings.baseUrl")} hint={endpointHint}>
                 <Input
-                  value={baseUrl}
+                  value={resolvedBaseUrl}
                   className="font-mono text-sm-plus"
                   placeholder="https://api.example.com/v1"
+                  readOnly={lockBaseUrl}
                   onChange={(event) => setBaseUrl(event.target.value)}
                 />
               </Field>
@@ -223,11 +331,13 @@ export function ProviderSetupDialog({
                 hint={editing ? t("settings.apiKeyKeepHint") : t("settings.apiKeyHint")}
               >
                 <Input
+                  ref={apiKeyRef}
                   type="password"
                   value={apiKey}
                   placeholder="sk-…"
                   className="font-mono text-sm-plus"
                   autoComplete="off"
+                  autoFocus={opencodeGo || Boolean(zhipuPreset)}
                   onChange={(event) => setApiKey(event.target.value)}
                 />
               </Field>
@@ -239,7 +349,9 @@ export function ProviderSetupDialog({
               <Field label={t("settings.apiStyle")} hint={t("settings.apiStyleDerived")}>
                 <Select
                   value={apiStyle}
-                  onChange={(event) => setApiStyle(event.target.value as CatalogApiStyle)}
+                  onChange={(event) =>
+                    onApiStyleChange(event.target.value as CatalogApiStyle)
+                  }
                 >
                   {API_STYLES.map((style) => (
                     <option key={style} value={style}>

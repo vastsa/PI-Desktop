@@ -126,6 +126,7 @@
     全局默认模型
 - **提供商**工作室：
   - OpenAI 兼容的添加提供程序对话框（从添加提供程序/空状态 CTA 打开）
+  - **服务**下拉框提供自定义端点以及四套智谱 / Z.AI 命名端点（国内/国际标准 API 与 GLM Coding Plan）。选中后填入名称并锁定已发布的 Base URL；名称仍可编辑；Coding Plan 显示一行 API Key 提示。这是紧凑下拉框，不是厂商卡片网格。保存行写入 models.dev 的 `vendorKey`，并保持 `apiStyle: "chat_completions"`
   - 带有头像缩写、主机、默认模型、秘密状态的提供商卡，
     和测试/make-default/删除操作
   - add/edit 对话框配置连接身份（名称、端点、API 样式、模型 ID 和密码）；

@@ -201,6 +201,13 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
     **OpenCode Go** and endpoint `https://opencode.ai/zen/go/v1`; those two
     fields remain visible but read-only, the API key remains editable, and
     model discovery continues through the fixed endpoint
+  - a **Service** select offers Custom endpoint plus four Zhipu / Z.AI
+    named endpoints (China and international standard API, and GLM Coding
+    Plan). Choosing one fills the matching name and locks the published
+    Base URL; the name stays editable; Coding Plan shows a one-line API-key
+    hint. This is a compact select, not a vendor-card grid. Saved rows store
+    the models.dev `vendorKey` (`zhipuai`, `zhipuai-coding-plan`, `zai`,
+    `zai-coding-plan`) and keep `apiStyle: "chat_completions"`
   - helper copy stays out of the model cards; labels, status badges, and the
     empty/error state carry the necessary context without explanatory
     paragraphs

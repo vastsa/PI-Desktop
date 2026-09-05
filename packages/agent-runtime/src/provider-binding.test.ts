@@ -107,6 +107,28 @@ describe("buildProviderModel OpenAI-compatible role compatibility", () => {
       { role: "developer", content: "Use the provider's developer role." },
     ]);
   });
+
+  it("applies Zhipu thinking and tool-stream flags from the endpoint URL", () => {
+    const model = buildProviderModel({
+      ...reasoningProvider,
+      id: "row-uuid",
+      vendorKey: "zhipuai-coding-plan",
+      baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4",
+      modelId: "glm-5.3",
+      apiStyle: "chat_completions",
+      modelConfig: {
+        ...reasoningProvider.modelConfig!,
+        name: "GLM-5.3",
+        baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4",
+      },
+    }) as any;
+
+    expect(model.compat).toMatchObject({
+      thinkingFormat: "zai",
+      zaiToolStream: true,
+      supportsDeveloperRole: false,
+    });
+  });
 });
 
 describe("createProviderModels auth resolution", () => {

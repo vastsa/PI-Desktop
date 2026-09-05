@@ -65,6 +65,13 @@ Settings / UI
 5. `bedrock`（如果运行时支持启用）
 6. `custom_http`（稍后为advanced/experimental）
 
+智谱 / GLM 与 Z.AI 是命名的 OpenAI 兼容端点预设，不是新的线路 API。添加服务的
+「服务」下拉框提供国内/国际标准 API 以及 GLM Coding Plan 地址，持久化对应的
+models.dev `vendorKey`，并锁定端点。对话仍走 pi-ai 的 OpenAI Chat Completions
+适配器，并带上 `thinkingFormat: "zai"` 与 `zaiToolStream: true`。PI-Desktop
+存储 models.dev 的键（`zhipuai`、`zhipuai-coding-plan`、`zai`、
+`zai-coding-plan`），以免与 pi-ai 国际 Coding Plan 传输名 `zai` 混淆。
+
 ## 5. 内置供应商矩阵（发货意图）
 
 > 确切的可用性取决于引脚版本的 pi-ai 支持；产品必须公开所有受支持的产品，并为其余产品保持与 OpenAI 兼容的路径开放。

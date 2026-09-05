@@ -25,6 +25,7 @@ import { piMessagesApi } from "@earendil-works/pi-ai/api/pi-messages.lazy";
 import {
   OPENCODE_GO_API_STYLE,
   OPENCODE_GO_BASE_URL,
+  zhipuRequestCompat,
   type ThinkingLevel,
 } from "@pi-desktop/shared";
 import { genericModelConfig } from "./model-capabilities.js";
@@ -33,6 +34,7 @@ import type { ModelConfig } from "./thinking-level.js";
 export type RuntimeProviderConfig = {
   id: string;
   name: string;
+  vendorKey?: string;
   baseUrl?: string;
   modelId: string;
   apiKey: string;
@@ -129,14 +131,22 @@ export function buildProviderModel(
   const catalogModel = catalog
     ? (({ source: _source, ...model }) => model)(catalog)
     : genericModelConfig(provider.modelId, provider.baseUrl ?? binding.defaultBaseUrl);
+  const baseUrl = provider.baseUrl ?? catalog?.baseUrl ?? binding.defaultBaseUrl;
+  const zhipuCompat = zhipuRequestCompat({
+    vendorKey: provider.vendorKey,
+    baseUrl,
+  });
   // OpenAI-compatible gateways are not guaranteed to implement the newer
   // `developer` role, even when the selected model supports reasoning. Keep
   // the broadest Chat Completions wire shape as the default; a catalog/model
   // override may opt into `developer` when the endpoint explicitly supports it.
+  // Zhipu / Z.AI need thinkingFormat + tool-stream even though the row id is a
+  // UUID, so URL/vendorKey detection cannot rely on pi-ai's provider name.
   const compat =
     binding.api === "openai-completions"
       ? {
           ...(catalogModel.compat ?? {}),
+          ...(zhipuCompat ?? {}),
           supportsDeveloperRole: catalogModel.compat?.supportsDeveloperRole === true,
         }
       : catalogModel.compat;
@@ -145,7 +155,7 @@ export function buildProviderModel(
     id: provider.modelId,
     api: binding.api,
     provider: provider.id,
-    baseUrl: provider.baseUrl ?? catalog?.baseUrl ?? binding.defaultBaseUrl,
+    baseUrl,
     ...(compat ? { compat } : {}),
   } as Model<Api>;
 }

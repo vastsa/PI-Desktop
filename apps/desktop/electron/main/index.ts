@@ -1578,6 +1578,7 @@ async function resolveAgentRuntimeLaunch(
       subagentBindings.providers[key] = {
         id: row.id,
         name: row.name,
+        ...(row.vendorKey ? { vendorKey: row.vendorKey } : {}),
         ...(row.baseUrl ? { baseUrl: row.baseUrl } : {}),
         modelId: binding.id,
         apiKey,

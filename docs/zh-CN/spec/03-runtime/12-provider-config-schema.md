@@ -128,6 +128,23 @@ base URL 与粘贴的密钥工作。厂商行的样式不由厂商固定：GitHu
 |---|---|---|---|---|
 | `opencode_go` | `openai_compatible` | `api_key_and_base_url` | `OpenCode Go` | `https://opencode.ai/zen/go/v1` |
 
+### 命名端点预设（智谱 / Z.AI）
+
+这些行由添加提供商对话框的**服务**下拉框创建，而不是新的 `apiStyle`。它们仍是
+`type: "openai_compatible"` 且 `apiStyle: "chat_completions"`。对话框锁定端点；
+显示名称仍可编辑。`vendorKey` 使用 models.dev 提供商键，以便目录按 API 与
+Coding Plan 精确匹配。
+
+| vendorKey | 名称 | baseUrl | 说明 |
+|---|---|---|---|
+| `zhipuai` | 智谱 AI | `https://open.bigmodel.cn/api/paas/v4` | 国内标准 API |
+| `zhipuai-coding-plan` | 智谱 AI Coding Plan | `https://open.bigmodel.cn/api/coding/paas/v4` | 国内 GLM Coding Plan。pi-ai `zai-coding-cn` 是别名。 |
+| `zai` | Z.AI | `https://api.z.ai/api/paas/v4` | 国际标准 API |
+| `zai-coding-plan` | Z.AI Coding Plan | `https://api.z.ai/api/coding/paas/v4` | 国际 GLM Coding Plan |
+
+当配置的 URL 或 `vendorKey` 匹配这些预设时，Completions 适配器使用
+`thinkingFormat: "zai"` 与 `zaiToolStream: true`。
+
 ### 厂商账户预设
 
 这些行由登录创建（设置 → 模型配置 → 厂商账户），而不是由自定义提供商

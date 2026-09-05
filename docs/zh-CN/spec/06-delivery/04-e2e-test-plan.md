@@ -202,6 +202,27 @@ M5。
 - **里程碑**：M2
 - **状态**：自动（协议烟雾：提供商创建+秘密，无明文回显）
 
+#### E2E-005D：配置智谱 / Z.AI 命名端点预设
+
+- **前提条件**：应用已运行；尚未配置智谱提供商；models.dev 快照包含
+  `zhipuai`、`zhipuai-coding-plan`、`zai`、`zai-coding-plan`。
+- **步骤**：1) 打开设置 → 模型配置并打开添加提供商对话框。2) 在「服务」中选择
+  **智谱 AI Coding Plan**。3) 检查名称与 Base URL，输入 API Key，等待模型发现。
+  4) 选择发现的模型并保存。5) 重新打开该提供商，将服务切换到 **Z.AI**，再切回
+  **自定义端点**。
+- **预期**：Coding Plan 填入智谱名称和
+  `https://open.bigmodel.cn/api/coding/paas/v4`，URL 只读，显示 Coding Plan
+  API Key 提示，焦点落在密钥框，模型选择仍可用。保存行持久化
+  `vendorKey: "zhipuai-coding-plan"`、`apiStyle: "chat_completions"` 以及精确
+  Coding Plan URL。切到 Z.AI 会换成 `https://api.z.ai/api/paas/v4` 与
+  `vendorKey: "zai"`。切到自定义端点后 URL 重新可编辑。针对智谱 URL 的后续
+  Agent 回合以 Zhipu thinking（`thinkingFormat: "zai"`）发送 Completions。
+- **链接规格**：`03-runtime/11-provider-model-system.md`、
+  `03-runtime/12-provider-config-schema.md`、`04-ux/06-settings-ia.md`、ADR 0155
+- **验收**：B（模型配置与密钥存储）
+- **里程碑**：M2
+- **状态**：单元覆盖（预设匹配、目录别名、Completions 兼容）；界面场景草稿
+
 #### E2E-006：密钥在重启后仍然存在
 
 - **先决条件**：已配置提供商+密钥。

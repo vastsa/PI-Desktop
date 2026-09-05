@@ -32,9 +32,17 @@ export function Button({
   );
 }
 
-export function Input({ className, spellCheck = false, autoCorrect = "off", autoCapitalize = "off", ...props }: InputHTMLAttributes<HTMLInputElement>) {
+export function Input({
+  className,
+  spellCheck = false,
+  autoCorrect = "off",
+  autoCapitalize = "off",
+  ref,
+  ...props
+}: InputHTMLAttributes<HTMLInputElement> & { ref?: Ref<HTMLInputElement> }) {
   return (
     <input
+      ref={ref}
       className={cx("field-input", className)}
       spellCheck={spellCheck}
       autoCorrect={autoCorrect}

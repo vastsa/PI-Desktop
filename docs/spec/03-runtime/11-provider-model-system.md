@@ -69,6 +69,15 @@ models from `/models`, and sends chat turns through pi-ai's OpenAI Chat
 Completions adapter. It does not create a second transport or a closed model
 allowlist.
 
+Zhipu / GLM and Z.AI are named OpenAI-compatible endpoint presets, not new
+wire APIs. The add-provider Service select offers China and international
+standard API plus GLM Coding Plan URLs, persists the matching models.dev
+`vendorKey`, and locks the endpoint. Chat turns still use pi-ai's OpenAI Chat
+Completions adapter with `thinkingFormat: "zai"` and `zaiToolStream: true`.
+pi-ai's `zai` / `zai-coding-cn` transports remain available; PI-Desktop stores
+the models.dev keys (`zhipuai`, `zhipuai-coding-plan`, `zai`,
+`zai-coding-plan`) so catalog matching is unambiguous.
+
 ## 5. Built-in vendor matrix (ship intent)
 
 > Model metadata follows the bundled/in-memory models.dev catalog. Provider adapters remain

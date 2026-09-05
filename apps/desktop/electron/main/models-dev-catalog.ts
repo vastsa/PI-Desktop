@@ -484,6 +484,7 @@ const MODEL_VENDOR_PREFIXES = new Set([
   "qwen",
   "z-ai",
   "zai",
+  "zhipuai",
   "x-ai",
   "xai",
 ]);
@@ -546,7 +547,10 @@ const PROVIDER_ALIASES: Record<string, string[]> = {
   "google-vertex": ["google-vertex"],
   "azure-openai-responses": ["azure", "azure-cognitive-services"],
   "vercel-ai-gateway": ["vercel"],
-  "zai-coding-cn": ["zai", "zai-coding-plan"],
+  "zai-coding-cn": ["zhipuai-coding-plan", "zai-coding-cn"],
+  "zhipuai-coding-plan": ["zhipuai-coding-plan", "zai-coding-cn"],
+  zhipu: ["zhipuai"],
+  bigmodel: ["zhipuai"],
   "lm-studio": ["lmstudio", "lm-studio"],
   lmstudio: ["lmstudio", "lm-studio"],
 };

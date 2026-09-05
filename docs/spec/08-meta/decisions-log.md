@@ -45,6 +45,7 @@ This log freezes previously open questions into concrete decisions.
 |---|---|---|---|
 | D023 | Provider coverage goal | **Universal market coverage** (not a tiny fixed vendor list) | Globalization + real coding workflows |
 | D024 | Coverage strategy | **pi-ai native providers + first-class OpenAI-compatible + custom providers** | Maximum reach without rewriting every SDK |
+| D308 | Zhipu / Z.AI named endpoint presets | **Amend D024 / ADR 0116: the add-provider Service select offers four OpenAI-compatible Zhipu endpoints — China and international standard API plus GLM Coding Plan — with locked published URLs and models.dev `vendorKey`s (`zhipuai`, `zhipuai-coding-plan`, `zai`, `zai-coding-plan`). No new apiStyle or wire adapter. Completions requests on those URLs use `thinkingFormat: "zai"` and `zaiToolStream: true`. Custom endpoint remains available.** | Users had to know which BigModel / Z.AI URL to paste, and `vendorKey: "custom"` could catalog-match the wrong API vs Coding Plan record. Named presets keep coverage on the existing OpenAI-compatible path. See ADR 0155 and E2E-005D. |
 | D025 | Model allowlist | **No closed product allowlist** | Models churn; power users need free-form IDs |
 | D026 | Catalog sources | **bundled snapshot + discovery/refresh + user-defined** | Works offline and stays current |
 | D027 | Default identity | **Model selection is `(providerId, modelId)`** | Same model id can exist on many gateways |
@@ -3333,3 +3334,17 @@ D193, and D194.
   file format and protocol shape are unchanged, `revisionIndex` is an optional
   parameter. See `03-runtime/04-data-storage.md` §4.9 and
   `03-runtime/06-host-rpc-protocol.md`.
+
+## 2026-09-05 — Zhipu / Z.AI named endpoint presets (D308)
+
+- Adding 智谱 required knowing which of four URLs to paste. The add-provider
+  dialog now offers a Service select for China and international standard API
+  plus GLM Coding Plan. Choosing one fills the name, locks the published
+  Base URL, and stores the models.dev `vendorKey`.
+- Rows stay `openai_compatible` + `chat_completions`. pi-ai already speaks
+  those hosts; PI-Desktop does not add a Zhipu apiStyle or SDK.
+- Completions requests on a matching URL or vendorKey set `thinkingFormat:
+  "zai"` and `zaiToolStream: true`, because the stored provider id is a UUID
+  and cannot use pi-ai's `zai` / `zai-coding-cn` provider-name detection.
+- Decision D308 amends D024. See ADR 0155, `03-runtime/11-provider-model-system.md`,
+  `03-runtime/12-provider-config-schema.md`, and E2E-005D.
