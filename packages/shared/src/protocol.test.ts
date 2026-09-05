@@ -24,9 +24,9 @@ import {
 } from "./index.js";
 
 describe("Plan protocol contracts", () => {
-  it("uses protocol v10/schema v12 and exposes the plan, schedule, and shell channels", () => {
-    expect(PROTOCOL_VERSION).toBe(10);
-    expect(SCHEMA_VERSION).toBe(12);
+  it("uses protocol v11/schema v13 and exposes the plan, schedule, and shell channels", () => {
+    expect(PROTOCOL_VERSION).toBe(11);
+    expect(SCHEMA_VERSION).toBe(13);
     expect(IPC_WHITELIST.has(IPC.invoke.plansPending)).toBe(true);
     expect(IPC_WHITELIST.has(IPC.invoke.plansResolve)).toBe(true);
     expect(IPC_WHITELIST.has(IPC.event.plansChanged)).toBe(true);

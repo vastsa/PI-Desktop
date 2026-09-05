@@ -14,7 +14,7 @@ use crate::user_skills::UserSkillRegistry;
 use crate::user_subagents::UserSubagentRegistry;
 use crate::workspace::WorkspaceState;
 
-pub const PROTOCOL_VERSION: u32 = 10;
+pub const PROTOCOL_VERSION: u32 = 11;
 pub const HOST_VERSION: &str = env!("CARGO_PKG_VERSION");
 const BASH_ABORT_TOMBSTONE_TTL: Duration = Duration::from_secs(60);
 const MAX_BASH_ABORT_TOMBSTONES: usize = 1024;
@@ -27,10 +27,6 @@ pub struct AppState {
     pub permissions: PermissionManager,
     pub plans: PlanManager,
     pub plugins: PluginManager,
-    /// A2A (Agent2Agent) broker: in-memory peer registry + task coordination
-    /// with the store, so concurrent subagents discover each other and run
-    /// tasks with a real lifecycle (ADR 0146).
-    pub a2a: crate::a2a::A2aBroker,
     /// MCP servers the user configured directly, without a plugin around them.
     pub mcp_servers: McpServerRegistry,
     /// Skill documents the user wrote or imported directly.
@@ -102,7 +98,6 @@ impl AppState {
             permissions: PermissionManager::default(),
             plans: PlanManager,
             plugins,
-            a2a: crate::a2a::A2aBroker::new(),
             mcp_servers,
             user_skills,
             user_subagents,
@@ -230,7 +225,6 @@ impl AppState {
 
         self.pending_bash_aborts.clear();
         self.plugin_execs.clear();
-        self.a2a.clear();
     }
 
     pub fn uptime_ms(&self) -> u64 {

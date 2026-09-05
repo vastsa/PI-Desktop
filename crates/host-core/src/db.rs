@@ -4,11 +4,11 @@ use serde::Serialize;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
-/// Storage schema v12: SQLite holds
+/// Storage schema v13: SQLite holds
 /// index data only; transcript content lives in per-session JSONL files
 /// (D119, `transcripts.rs`). v11 adds the Plan/Goal approval kind (D198).
-/// v12 adds the A2A broker tables (ADR 0146).
-pub const SCHEMA_VERSION: i64 = 12;
+/// v12 added A2A broker tables (ADR 0147); v13 drops them (ADR 0165).
+pub const SCHEMA_VERSION: i64 = 13;
 
 /// Absolute approval deadline for a newly submitted Plan or Goal proposal.
 pub const PLAN_APPROVAL_TIMEOUT_MS: i64 = 30 * 60 * 1000;
@@ -450,25 +450,27 @@ impl Database {
                 let tx = conn.unchecked_transaction()?;
                 tx.execute_batch(SCHEMA_LATEST)?;
                 tx.execute_batch(PLAN_APPROVALS_SCHEMA)?;
-                tx.execute_batch(crate::a2a::store::A2A_SCHEMA)?;
                 tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
                 tx.commit()?;
             }
             7 => {
                 migrate_v7_to_v8(&conn)?;
-                migrate_v8_to_v12(&conn, path)?;
+                migrate_v8_to_v13(&conn, path)?;
             }
             8 => {
-                migrate_v8_to_v12(&conn, path)?;
+                migrate_v8_to_v13(&conn, path)?;
             }
             9 => {
-                migrate_v9_to_v12(&conn, path)?;
+                migrate_v9_to_v13(&conn, path)?;
             }
             10 => {
-                migrate_v10_to_v12(&conn, path)?;
+                migrate_v10_to_v13(&conn, path)?;
             }
             11 => {
-                migrate_v11_to_v12(&conn, path)?;
+                migrate_v11_to_v13(&conn, path)?;
+            }
+            12 => {
+                migrate_v12_to_v13(&conn, path)?;
             }
             legacy @ 1..=6 => {
                 let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
@@ -1044,11 +1046,24 @@ fn migrate_v10_to_v11_tx(tx: &rusqlite::Transaction<'_>) -> Result<()> {
     Ok(())
 }
 
-/// v12 adds the A2A broker tables (ADR 0146). Purely additive: new empty
-/// tables, no data backfill.
+/// v12 historically created A2A tables. Those tables are dropped in v13, so
+/// this step is now a version-only bump.
 fn migrate_v11_to_v12_tx(tx: &rusqlite::Transaction<'_>) -> Result<()> {
-    tx.execute_batch(crate::a2a::store::A2A_SCHEMA)?;
     tx.pragma_update(None, "user_version", 12i64)?;
+    Ok(())
+}
+
+/// v13 drops the withdrawn A2A tables (ADR 0165).
+fn migrate_v12_to_v13_tx(tx: &rusqlite::Transaction<'_>) -> Result<()> {
+    tx.execute_batch(
+        r#"
+        DROP TABLE IF EXISTS a2a_push_configs;
+        DROP TABLE IF EXISTS a2a_artifacts;
+        DROP TABLE IF EXISTS a2a_messages;
+        DROP TABLE IF EXISTS a2a_tasks;
+        "#,
+    )?;
+    tx.pragma_update(None, "user_version", 13i64)?;
     Ok(())
 }
 
@@ -1133,58 +1148,75 @@ fn create_migration_backup(conn: &Connection, path: &Path, version: i64) -> Resu
     Ok(backup)
 }
 
-fn migrate_v8_to_v12(conn: &Connection, path: &Path) -> Result<()> {
+fn migrate_v8_to_v13(conn: &Connection, path: &Path) -> Result<()> {
     let backup = create_migration_backup(conn, path, 8)?;
     let tx = conn.unchecked_transaction()?;
     migrate_v8_to_v9_tx(&tx)?;
     migrate_v9_to_v10_tx(&tx)?;
     migrate_v10_to_v11_tx(&tx)?;
     migrate_v11_to_v12_tx(&tx)?;
+    migrate_v12_to_v13_tx(&tx)?;
     tx.commit().with_context(|| {
         format!(
-            "commit schema v8 to v12 migration; backup {} remains",
+            "commit schema v8 to v13 migration; backup {} remains",
             backup.display()
         )
     })?;
     Ok(())
 }
 
-fn migrate_v9_to_v12(conn: &Connection, path: &Path) -> Result<()> {
+fn migrate_v9_to_v13(conn: &Connection, path: &Path) -> Result<()> {
     let backup = create_migration_backup(conn, path, 9)?;
     let tx = conn.unchecked_transaction()?;
     migrate_v9_to_v10_tx(&tx)?;
     migrate_v10_to_v11_tx(&tx)?;
     migrate_v11_to_v12_tx(&tx)?;
+    migrate_v12_to_v13_tx(&tx)?;
     tx.commit().with_context(|| {
         format!(
-            "commit schema v9 to v12 migration; backup {} remains",
+            "commit schema v9 to v13 migration; backup {} remains",
             backup.display()
         )
     })?;
     Ok(())
 }
 
-fn migrate_v10_to_v12(conn: &Connection, path: &Path) -> Result<()> {
+fn migrate_v10_to_v13(conn: &Connection, path: &Path) -> Result<()> {
     let backup = create_migration_backup(conn, path, 10)?;
     let tx = conn.unchecked_transaction()?;
     migrate_v10_to_v11_tx(&tx)?;
     migrate_v11_to_v12_tx(&tx)?;
+    migrate_v12_to_v13_tx(&tx)?;
     tx.commit().with_context(|| {
         format!(
-            "commit schema v10 to v12 migration; backup {} remains",
+            "commit schema v10 to v13 migration; backup {} remains",
             backup.display()
         )
     })?;
     Ok(())
 }
 
-fn migrate_v11_to_v12(conn: &Connection, path: &Path) -> Result<()> {
+fn migrate_v11_to_v13(conn: &Connection, path: &Path) -> Result<()> {
     let backup = create_migration_backup(conn, path, 11)?;
     let tx = conn.unchecked_transaction()?;
     migrate_v11_to_v12_tx(&tx)?;
+    migrate_v12_to_v13_tx(&tx)?;
     tx.commit().with_context(|| {
         format!(
-            "commit schema v11 to v12 migration; backup {} remains",
+            "commit schema v11 to v13 migration; backup {} remains",
+            backup.display()
+        )
+    })?;
+    Ok(())
+}
+
+fn migrate_v12_to_v13(conn: &Connection, path: &Path) -> Result<()> {
+    let backup = create_migration_backup(conn, path, 12)?;
+    let tx = conn.unchecked_transaction()?;
+    migrate_v12_to_v13_tx(&tx)?;
+    tx.commit().with_context(|| {
+        format!(
+            "commit schema v12 to v13 migration; backup {} remains",
             backup.display()
         )
     })?;
@@ -1277,10 +1309,6 @@ mod tests {
             "secrets_meta",
             "audit_log",
             "plan_approvals",
-            "a2a_tasks",
-            "a2a_messages",
-            "a2a_artifacts",
-            "a2a_push_configs",
         ] {
             assert!(table_exists(db.conn(), table), "missing {table}");
         }
@@ -2132,20 +2160,20 @@ mod tests {
     }
 
     #[test]
-    fn migrates_v11_by_adding_empty_a2a_tables() {
+    fn migrates_v12_by_dropping_a2a_tables() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("pi.sqlite");
         {
             let db = Database::open(&path).unwrap();
             db.conn()
                 .execute_batch(
-                    "DROP TABLE a2a_push_configs;
-                     DROP TABLE a2a_artifacts;
-                     DROP TABLE a2a_messages;
-                     DROP TABLE a2a_tasks;",
+                    "CREATE TABLE a2a_tasks (id TEXT PRIMARY KEY);
+                     CREATE TABLE a2a_messages (id TEXT PRIMARY KEY);
+                     CREATE TABLE a2a_artifacts (id TEXT PRIMARY KEY);
+                     CREATE TABLE a2a_push_configs (id TEXT PRIMARY KEY);",
                 )
                 .unwrap();
-            db.conn().pragma_update(None, "user_version", 11).unwrap();
+            db.conn().pragma_update(None, "user_version", 12).unwrap();
         }
 
         let db = Database::open(&path).unwrap();
@@ -2160,15 +2188,10 @@ mod tests {
             "a2a_artifacts",
             "a2a_push_configs",
         ] {
-            assert!(table_exists(db.conn(), table), "missing {table}");
-            let count: i64 = db
-                .conn()
-                .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| row.get(0))
-                .unwrap();
-            assert_eq!(count, 0, "{table} must be empty after migration");
+            assert!(!table_exists(db.conn(), table), "leftover {table}");
         }
         drop(db);
-        assert_readable_migration_backup(&path, 11);
+        assert_readable_migration_backup(&path, 12);
     }
 
     #[test]

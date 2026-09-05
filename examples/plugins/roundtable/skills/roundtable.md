@@ -1,15 +1,14 @@
 ---
 name: Roundtable Discussion
-description: Orchestrate a structured multi-agent roundtable where subagents debate a topic through peer messaging and converge on a conclusion.
+description: Orchestrate a structured multi-agent roundtable where each role reports independently through Task and the parent synthesizes the outcome.
 ---
 
 # Roundtable Discussion
 
 A roundtable discussion is a structured collaboration pattern in which multiple
-subagents, each assigned a distinct role or perspective, debate a topic through
-peer messaging. The goal is to surface diverse viewpoints, challenge
-assumptions, and converge on a well-reasoned conclusion that no single
-perspective would reach alone.
+subagents, each assigned a distinct role or perspective, examine a topic and
+return independent reports. The parent agent collects those reports and
+synthesizes a conclusion. Delegates do not message each other.
 
 ## When to use a roundtable
 
@@ -28,144 +27,84 @@ is a professional perspective such as "architect", "security-reviewer",
 will naturally produce productive disagreement. Three to five roles work well;
 more than five tends to produce noise without proportionally deeper insight.
 
-**Peer messaging.** Subagents communicate exclusively through the single `Peer`
-tool, choosing an `action` each call: `Peer(action="send")` delivers a message
-to a named peer or broadcasts it to all peers, `Peer(action="inbox")` retrieves
-messages that other peers have sent, and `Peer(action="wait")` blocks until at
-least one new message arrives, which is useful when a subagent finishes its turn
-early and needs to wait for others.
+**Independent reports.** Subagents do not talk to each other. Each `Task`
+returns a self-contained report. The parent is the only integration point:
+it starts concurrent Tasks, waits with TaskWait, and may start a later round
+whose brief includes earlier reports.
 
 **Rounds.** The discussion proceeds in a fixed number of rounds, typically three.
-Each round has a clear purpose: opening positions, iterative debate, and closing
-summaries. The round count is communicated to every subagent in its brief so
-that each participant knows when to wrap up.
+Round 1 is opening positions. Later rounds receive the previous reports in
+the brief so each role can respond, concede, or hold. The round count is
+communicated to every subagent so each knows when to wrap up.
 
-**Convergence.** The discussion is not a free-form chat. Each round should move
-the group closer to agreement or at least to a clear articulation of the
-remaining disagreements. Subagents should actively acknowledge points they agree
-with, concede when another perspective is stronger, and flag genuine unresolved
-tensions rather than repeating their opening position.
+**Convergence.** Each round should move the group closer to agreement or at
+least to a clear articulation of remaining disagreements. Reports should
+acknowledge points they agree with, concede when another perspective is
+stronger, and flag genuine unresolved tensions.
 
 ## The discussion protocol
 
-Every subagent follows the same three-phase protocol.
+Every subagent follows the same protocol for the round it is in.
 
-### Phase 1 — Opening round
+### Opening round
 
-Each subagent states its initial position on the topic from its role's
-perspective. The opening statement should be concise and substantive: what does
-this role care about, what risks does it see, and what outcome does it favor?
-After composing the statement, the subagent uses `Peer(action="send")` without
-`to` to broadcast it to all other participants. Then it calls
-`Peer(action="wait")` or `Peer(action="inbox")` to see the opening statements
-from others before proceeding to the discussion phase.
+State the initial position from this role's perspective: what this role cares
+about, what risks it sees, and what outcome it favors. Keep it concise. Return
+that position as the task result.
 
-### Phase 2 — Discussion rounds
+### Later rounds
 
-For each discussion round (the total number is specified in the brief):
+The brief includes the other roles' previous reports. Identify the most
+important challenges directed at this role, respond substantively, and refine
+the position. If another argument is convincing, say so and adjust. Return a
+self-contained updated position — do not assume the parent still has the
+opening report in context.
 
-1. Call `Peer(action="inbox")` to read all new messages from other
-   participants.
-2. Identify the most important points, challenges, or questions directed at
-   this role.
-3. Respond to those points substantively. Use `Peer(action="send", to="<peer>")`
-   when responding directly to that peer's argument. Use a broadcast
-   `Peer(action="send")` for observations relevant to the whole group.
-4. Refine the role's position based on what was learned. If another
-   participant's argument is convincing, say so explicitly and adjust.
-5. Avoid filler, narration, or restating points that have already been
-   acknowledged. Every message should advance the discussion.
+### Closing round
 
-Subagents should check `Peer(action="inbox")` at the start of every thinking
-cycle, not only at the formal round boundary. If a subagent finishes composing a
-response before others have sent theirs, it should call
-`Peer(action="wait")` to avoid busy-looping.
+Return a final position that includes:
 
-### Phase 3 — Closing round
-
-Each subagent composes a final position summary that includes:
-
-- The role's final recommendation or position.
-- Key points from other participants that influenced this position.
-- Any unresolved concerns or risks the group did not fully address.
-
-The subagent broadcasts its closing summary via `Peer(action="send")`, then
-returns its final report as the task result. The report is what the parent
-agent collects after calling TaskWait.
+- The role's final recommendation.
+- Key points from other reports that influenced this position.
+- Any unresolved concerns the group did not fully address.
 
 ## How the parent agent orchestrates
 
 The parent agent (you, when the user asks for a roundtable) is the conductor.
-You do not participate in the discussion itself. Your responsibilities are:
+You do not participate as a role. Your responsibilities are:
 
 1. **Define the roles.** Pick three to five roles relevant to the topic. If
-   the user specifies roles, use those. Otherwise, choose roles that will
-   produce constructive friction.
+   the user specifies roles, use those.
 
-2. **Create subagent definitions.** For each role, create a temporary subagent
-   definition that includes the `Peer` tool in its tool list. The definition's
-   system brief must contain:
-   - The assigned role name.
-   - The discussion topic.
-   - The list of all other participants (by role name).
-   - The number of discussion rounds.
-   - The full discussion protocol described above.
+2. **Start all roles concurrently.** Use Task to launch every role at the
+   same time. Each brief must contain the assigned role, the topic, the list
+   of other participants, the round number, and the protocol above.
 
-3. **Start all subagents concurrently.** Use Task to launch every subagent at
-   the same time. The task description for each should read: "Participate in a
-   roundtable discussion on: <topic>. Your role is <role>. Other participants:
-   <other roles>. Follow the discussion protocol in your brief for N rounds,
-   then return your final position summary."
+3. **Wait for completion.** Call TaskWait to collect reports. If a subagent
+   times out or fails, note its absence in the synthesis.
 
-4. **Wait for completion.** Call TaskWait to collect all final reports. If a
-   subagent times out or fails, note its absence in the synthesis.
+4. **Later rounds.** For each remaining round, start a new concurrent batch
+   whose briefs include the previous reports (attributed by role). Do not ask
+   delegates to message each other.
 
-5. **Synthesize.** After collecting all reports, produce a synthesis for the
-   user that includes:
-   - A summary of each role's final position.
-   - Points of agreement across roles.
-   - Points of disagreement and the arguments on each side.
-   - Unresolved concerns.
-   - A final recommendation or decision, if the group converged on one.
-   - An assessment of whether the stated goal was achieved.
+5. **Synthesize.** After the last round, produce a synthesis for the user
+   that includes each role's final position, agreement, disagreement,
+   unresolved concerns, and a recommendation if the group converged.
 
 ## Practical tips
 
-- **Keep messages focused.** A good peer message is two to four sentences that
-  make a concrete point. Avoid long monologues; they slow down the round and
-  make it harder for peers to respond to specific arguments.
+- **Keep reports focused.** Two to four short paragraphs that make concrete
+  points. Avoid long monologues.
 
-- **Check `Peer(action="inbox")` early and often.** A subagent that composes a
-  long response without reading incoming messages may address points that were
-  already conceded or miss a critical question.
+- **Default roles when none are specified.** For software topics: architect,
+  security reviewer, and UX designer.
 
-- **Claim resources before modifying them.** If the roundtable involves
-  subagents that might touch shared resources (files, state), each subagent
-  should declare what it intends to modify in its opening statement so others
-  can coordinate. In practice, most roundtables are purely advisory and
-  subagents only exchange text.
-
-- **Use the goal to steer synthesis.** When the user provides a goal (for
-  example, "decide between GraphQL and REST"), evaluate the discussion
-  outcome against that goal explicitly. If the roundtable did not produce a
-  clear answer, say so honestly and explain what additional information would
-  resolve the remaining disagreement.
-
-- **Respect the round limit.** The fixed round count prevents the discussion
-  from running indefinitely. If the topic is not resolved within the allotted
-  rounds, the closing summaries should capture the state of the debate rather
-  than trying to force premature agreement.
-
-- **Default roles when none are specified.** If the user does not name specific
-  roles, a good default set for software topics is: architect, security
-  reviewer, and UX designer. For non-software topics, pick three domain
-  experts whose perspectives are most likely to conflict productively.
+- **Respect the round limit.** If the topic is not resolved, closing reports
+  should capture the state of the debate rather than force agreement.
 
 ## Invoking the roundtable
 
 Use the `roundtable_start` tool to generate the full orchestration plan. Pass
 the topic, optional role list, optional round count, and optional goal. The
-tool returns a detailed step-by-step instruction that you should follow to
-set up and run the roundtable. The tool does not start subagents itself; it
-gives you the plan and you execute it using Task, the `Peer` tool, and
-TaskWait.
+tool does not start subagents itself; it gives you the plan and you execute
+it using Task and TaskWait.

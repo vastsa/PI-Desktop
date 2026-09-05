@@ -331,21 +331,6 @@ fn rpc_err(code: i64, message: impl Into<String>, error_code: &str) -> JsonRpcEr
     }
 }
 
-/// JSON-RPC numeric code used for every A2A domain error; the contract
-/// discriminator is the `errorCode` string carried in `data`.
-const A2A_JSONRPC_CODE: i64 = 1400;
-
-/// Map a broker [`crate::a2a::A2aError`] to a JSON-RPC error carrying its
-/// contract error-code string (e.g. "A2A_UNKNOWN_TOKEN").
-fn a2a_err(error: crate::a2a::A2aError) -> JsonRpcError {
-    rpc_err(A2A_JSONRPC_CODE, error.message(), error.code())
-}
-
-/// Parse `a2a.*` params into their typed struct at the RPC boundary.
-fn a2a_params<T: serde::de::DeserializeOwned>(params: Value) -> Result<T, JsonRpcError> {
-    serde_json::from_value(params).map_err(|error| rpc_err(1002, error.to_string(), "INVALID_PARAMS"))
-}
-
 /// Parse the optional session thinking selector at the RPC boundary.  A
 /// missing/null value keeps the backwards-compatible default; present values
 /// must be strings from the host's allowlist rather than being silently
@@ -976,7 +961,7 @@ async fn handle_request(
                 "version": HOST_VERSION,
                 "capabilities": [
                     "tools", "sessions", "providers", "secrets", "plugins", "permissions",
-                    "scheduled", "artifacts", "plans", "search", "turns", "notifications", "a2a"
+                    "scheduled", "artifacts", "plans", "search", "turns", "notifications"
                 ]
             }))
         }
@@ -3483,116 +3468,6 @@ async fn handle_request(
             audit::append(&st.db, kind, session_id, payload)
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             Ok(json!({ "ok": true }))
-        }
-
-        "a2a.agents.register" => {
-            let params: crate::a2a::AgentsRegisterParams = a2a_params(params)?;
-            let mut st = state.lock().await;
-            let result = st.a2a.register(params);
-            Ok(serde_json::to_value(result).unwrap_or(json!({})))
-        }
-        "a2a.agents.deregister" => {
-            let params: crate::a2a::AgentsDeregisterParams = a2a_params(params)?;
-            let (result, notifications) = {
-                let mut st = state.lock().await;
-                let crate::state::AppState { a2a, db, .. } = &mut *st;
-                a2a.deregister(db.conn(), params).map_err(a2a_err)?
-            };
-            for note in &notifications {
-                emit_notification(&tx, &note.method, note.params.clone()).await;
-            }
-            Ok(serde_json::to_value(result).unwrap_or(json!({})))
-        }
-        "a2a.agents.list" => {
-            let params: crate::a2a::AgentsListParams = a2a_params(params)?;
-            let st = state.lock().await;
-            let result = st.a2a.list(params).map_err(a2a_err)?;
-            Ok(serde_json::to_value(result).unwrap_or(json!({})))
-        }
-        "a2a.message.send" => {
-            let params: crate::a2a::MessageSendParams = a2a_params(params)?;
-            let (result, notifications) = {
-                let mut st = state.lock().await;
-                let crate::state::AppState { a2a, db, .. } = &mut *st;
-                a2a.message_send(db.conn(), params).map_err(a2a_err)?
-            };
-            for note in &notifications {
-                emit_notification(&tx, &note.method, note.params.clone()).await;
-            }
-            Ok(serde_json::to_value(result).unwrap_or(json!({})))
-        }
-        "a2a.message.stream" => {
-            let params: crate::a2a::MessageStreamParams = a2a_params(params)?;
-            let (result, notifications) = {
-                let mut st = state.lock().await;
-                let crate::state::AppState { a2a, db, .. } = &mut *st;
-                a2a.message_stream(db.conn(), params).map_err(a2a_err)?
-            };
-            for note in &notifications {
-                emit_notification(&tx, &note.method, note.params.clone()).await;
-            }
-            Ok(serde_json::to_value(result).unwrap_or(json!({})))
-        }
-        "a2a.tasks.get" => {
-            let params: crate::a2a::TasksGetParams = a2a_params(params)?;
-            let st = state.lock().await;
-            let result = st.a2a.tasks_get(st.db.conn(), params).map_err(a2a_err)?;
-            Ok(serde_json::to_value(result).unwrap_or(json!({})))
-        }
-        "a2a.tasks.cancel" => {
-            let params: crate::a2a::TasksCancelParams = a2a_params(params)?;
-            let (result, notifications) = {
-                let mut st = state.lock().await;
-                let crate::state::AppState { a2a, db, .. } = &mut *st;
-                a2a.tasks_cancel(db.conn(), params).map_err(a2a_err)?
-            };
-            for note in &notifications {
-                emit_notification(&tx, &note.method, note.params.clone()).await;
-            }
-            Ok(serde_json::to_value(result).unwrap_or(json!({})))
-        }
-        "a2a.tasks.status" => {
-            let params: crate::a2a::TasksStatusParams = a2a_params(params)?;
-            let (result, notifications) = {
-                let mut st = state.lock().await;
-                let crate::state::AppState { a2a, db, .. } = &mut *st;
-                a2a.tasks_status(db.conn(), params).map_err(a2a_err)?
-            };
-            for note in &notifications {
-                emit_notification(&tx, &note.method, note.params.clone()).await;
-            }
-            Ok(serde_json::to_value(result).unwrap_or(json!({})))
-        }
-        "a2a.tasks.resubscribe" => {
-            let params: crate::a2a::TasksResubscribeParams = a2a_params(params)?;
-            let (result, notifications) = {
-                let st = state.lock().await;
-                st.a2a
-                    .tasks_resubscribe(st.db.conn(), params)
-                    .map_err(a2a_err)?
-            };
-            for note in &notifications {
-                emit_notification(&tx, &note.method, note.params.clone()).await;
-            }
-            Ok(serde_json::to_value(result).unwrap_or(json!({})))
-        }
-        "a2a.tasks.pushNotificationConfig.set" => {
-            let params: crate::a2a::PushConfigSetParams = a2a_params(params)?;
-            let st = state.lock().await;
-            let result = st
-                .a2a
-                .push_config_set(st.db.conn(), params)
-                .map_err(a2a_err)?;
-            Ok(serde_json::to_value(result).unwrap_or(json!({})))
-        }
-        "a2a.tasks.pushNotificationConfig.get" => {
-            let params: crate::a2a::PushConfigGetParams = a2a_params(params)?;
-            let st = state.lock().await;
-            let result = st
-                .a2a
-                .push_config_get(st.db.conn(), params)
-                .map_err(a2a_err)?;
-            Ok(serde_json::to_value(result).unwrap_or(json!({})))
         }
 
         _ => Err(rpc_err(
