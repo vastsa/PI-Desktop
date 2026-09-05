@@ -1873,8 +1873,8 @@ const MessageRow = memo(function MessageRow({
     if (!attachments?.length) return [];
     const inline = new Set(
       splitChatText(String(message.content || ""), workspaceRoot)
-        .filter((segment) => segment.kind === "target" && segment.target.kind === "file")
-        .map((segment) => (segment.target.kind === "file" ? segment.target.path : "")),
+        .filter((segment): segment is { kind: "target"; text: string; label: string; target: { kind: "file"; path: string } } => segment.kind === "target" && segment.target.kind === "file")
+        .map((segment) => segment.target.path),
     );
     return attachments.filter((attachment) => !inline.has(attachment.ref));
   }, [message.attachments, message.content, workspaceRoot]);
