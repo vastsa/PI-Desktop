@@ -955,7 +955,10 @@ type McpServerStatus = {
 
 用户技能是从 `~/.agents/skills` 和 `<project>/.agents/skills` 扫描的 Markdown
 文档，同时接受直接 Markdown 文件和约定的 `<skill>/SKILL.md` 形状。启用状态
-位于 `<data>/agent-capabilities/skills.json`，绝不写回技能文档。
+位于 `<data>/agent-capabilities/skills.json`，绝不写回技能文档。目录 id 是
+ASCII slug：frontmatter `name` 能 slugify 时用它，否则 `SKILL.md` 用技能目录名
+（不是 `Downloads` 这类暂存目录），再否则用稳定的 `skill-<hash>`，这样非 ASCII
+标题仍会被列入。折叠 YAML `description: >` / `|` 会展平进目录里的一行摘要。
 
 - `skills.list({ level, projectPath? })` → `{ skills: UserSkillRecord[] }`
 - `skills.active({ projectPath? })` → 当前项目的有效运行时列表

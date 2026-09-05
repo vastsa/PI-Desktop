@@ -4342,11 +4342,14 @@ async function startSidecar(): Promise<void> {
         content: `# Skill: ${skill.name} (${skill.id})\n\n${skill.body}`,
       };
     } catch (error) {
-      const available = plugins
+      const userIds = (await activeUserSkills(projectPath ?? undefined)).map(
+        (skill) => skill.id,
+      );
+      const pluginIds = plugins
         .getSkills()
         .filter((skill) => pluginActiveInProject(skill.pluginId, projectPath))
-        .map((skill) => skill.id)
-        .join(", ");
+        .map((skill) => skill.id);
+      const available = [...userIds, ...pluginIds].join(", ");
       return {
         ok: false,
         isError: true,

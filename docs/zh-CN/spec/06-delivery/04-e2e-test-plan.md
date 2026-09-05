@@ -5574,3 +5574,24 @@ IPC 请求无法关闭。
 - **里程碑**：M5
 - **状态**：单元已覆盖（`chat-links.test.mjs`、`transcript-file-chips.test.mjs`、
   `fs-panel-guard.test.mjs`）；完整 UI 旅程仍为草稿（除非用户明确要求，否则不要在本地跑 E2E）
+
+#### E2E-181：导入的技能会出现在下一个会话的目录里
+
+- **前提条件**：设置 > 智能体 > 技能已打开。一份约定的 `<skill>/SKILL.md` 文档带有非 ASCII 的 frontmatter 名称和折叠 YAML 描述。同一项目上有一个空的 Agent 会话，技能将导入到该项目。
+- **步骤**：
+  1. 把 `SKILL.md` 导入到 Global，再导入到当前项目。
+  2. 确认技能页显示显示名、ASCII id（目录名，而不是 `skill`）以及展平后的描述。
+  3. 在该项目上开一个新的 Agent 会话，让智能体按显示名使用该技能。
+  4. 再用第二个同样没有 ASCII 名称的目录技能，以及一份 `|` 块描述的技能重复一遍。
+- **预期**：
+  - 导入成功。目录列出两个 id 不同的技能。
+  - 下一个会话的系统提示包含每个技能的 id、名称和展平描述。`Skill` 工具能按该 id 加载正文。
+  - 拼错的 `Skill` id 会在可用技能里列出用户技能 id，而不只是插件 id。
+  - 文档不会因为标题是非 ASCII、或因为两个文件都叫 `SKILL.md` 而被丢掉。
+- **链接规格**：`03-runtime/01-ipc-protocol.md` §12b、
+  `07-plugins/01-plugin-system.md` §12.3、`08-meta/decisions-log.md`（D174、
+  D194）
+- **验收**：E（工具和权限）、质量
+- **里程碑**：M5
+- **状态**：单元已覆盖（host-core `user_skills` / `agent_capabilities` 测试、
+  `apps/desktop/test/plugin-skills.test.mjs`）；完整 UI 旅程仍为草稿（除非用户明确要求，否则不要在本地跑 E2E）

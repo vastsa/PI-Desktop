@@ -496,6 +496,10 @@ Rules the control encodes:
   `~/.agents/skills` and `<project>/.agents/skills`.
 - Each column has one native single-file Import action; the host physically
   copies the selected file and scans its frontmatter.
+- A `SKILL.md` import or scan uses the parent directory as the id when the
+  frontmatter name is not an ASCII slug, and folded YAML descriptions still
+  enter the catalog. A readable document is never dropped because its title is
+  non-ASCII.
 - The description is the catalog summary and the body is fetched only when the
   model invokes `Skill` (D174, D194).
 

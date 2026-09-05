@@ -1027,7 +1027,12 @@ bridge's `plugin_` namespace (D015).
 User skills are Markdown documents scanned from `~/.agents/skills` and
 `<project>/.agents/skills`. Both direct Markdown files and the conventional
 `<skill>/SKILL.md` shape are accepted. Enablement is stored in
-`<data>/agent-capabilities/skills.json`, never in the document.
+`<data>/agent-capabilities/skills.json`, never in the document. Catalog ids
+are ASCII slugs: the frontmatter `name` when it slugifies, otherwise the
+skill directory name for `SKILL.md` (not a staging folder such as
+`Downloads`), otherwise a stable `skill-<hash>` so a non-ASCII title is still
+listed. Folded YAML `description: >` / `|` blocks flatten into the catalog
+one-liner.
 
 - `skills.list({ level, projectPath? })` → `{ skills: UserSkillRecord[] }`
 - `skills.active({ projectPath? })` → the effective runtime list

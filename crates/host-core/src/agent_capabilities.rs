@@ -1,6 +1,7 @@
 use anyhow::{bail, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -249,21 +250,141 @@ pub fn parse_front_matter(raw: &str) -> (BTreeMap<String, String>, String) {
     }
     let mut fields = BTreeMap::new();
     let mut consumed = 0usize;
-    for line in tail.split_inclusive('\n') {
+    let mut lines = tail.split_inclusive('\n').peekable();
+    while let Some(line) = lines.next() {
         consumed += line.len();
         let trimmed = line.trim_end_matches(['\n', '\r']).trim_end();
         if trimmed.trim() == "---" {
             return (fields, tail[consumed..].trim().to_string());
         }
-        let Some((key, value)) = trimmed.split_once(':') else {
+        let content = trimmed.trim();
+        if content.is_empty() || content.starts_with('#') {
+            continue;
+        }
+        // Nested YAML maps are ignored; block scalars collect indent below.
+        if trimmed.starts_with(' ') || trimmed.starts_with('\t') {
+            continue;
+        }
+        let Some((key, raw_value)) = trimmed.split_once(':') else {
             continue;
         };
-        let value = value.trim().trim_matches('"').trim_matches('\'').trim();
+        let key = key.trim().to_lowercase();
+        if key.is_empty() {
+            continue;
+        }
+        let raw_value = raw_value.trim();
+        if is_block_scalar_indicator(raw_value) {
+            let mut block = String::new();
+            while let Some(next) = lines.peek().copied() {
+                let next_trimmed = next.trim_end_matches(['\n', '\r']).trim_end();
+                if next_trimmed.trim() == "---" {
+                    break;
+                }
+                let next_content = next_trimmed.trim();
+                let indented = next_trimmed.starts_with(' ') || next_trimmed.starts_with('\t');
+                if !indented && !next_content.is_empty() {
+                    break;
+                }
+                let _ = lines.next();
+                consumed += next.len();
+                if indented && !next_content.is_empty() {
+                    if !block.is_empty() {
+                        block.push(' ');
+                    }
+                    block.push_str(next_content);
+                }
+            }
+            if !block.is_empty() {
+                fields.insert(key, block);
+            }
+            continue;
+        }
+        let value = raw_value.trim_matches('"').trim_matches('\'').trim();
         if !value.is_empty() {
-            fields.insert(key.trim().to_lowercase(), value.to_string());
+            fields.insert(key, value.to_string());
         }
     }
     (BTreeMap::new(), text.trim().to_string())
+}
+
+fn is_block_scalar_indicator(value: &str) -> bool {
+    matches!(value, "|" | "|-" | "|+" | ">" | ">-" | ">+")
+}
+
+/// True when `id` can be used as a capability file stem and RPC id.
+pub fn valid_capability_id(id: &str, max_chars: usize) -> bool {
+    !id.is_empty()
+        && id.len() <= max_chars
+        && id.starts_with(|c: char| c.is_ascii_alphanumeric())
+        && id
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
+/// Display-name fallback when frontmatter has no `name`.
+///
+/// `<skill>/SKILL.md` uses the directory, not the `SKILL` file stem — otherwise
+/// every unnamed directory skill collapses onto the same id. Dump folders
+/// (`Downloads`, `Desktop`, …) are skipped so a picker import does not inherit
+/// the staging directory as its id.
+pub fn path_stem_for_id(path: &Path) -> String {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("");
+    if file_name.eq_ignore_ascii_case("SKILL.md") {
+        if let Some(parent) = path
+            .parent()
+            .and_then(|parent| parent.file_name())
+            .and_then(|name| name.to_str())
+            .filter(|name| !name.is_empty() && !is_generic_skill_parent(name))
+        {
+            return parent.to_string();
+        }
+        return String::new();
+    }
+    path.file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("skill")
+        .to_string()
+}
+
+fn is_generic_skill_parent(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "downloads"
+            | "desktop"
+            | "documents"
+            | "tmp"
+            | "temp"
+            | "incoming"
+            | "files"
+            | "home"
+            | "users"
+            | "skills"
+            | "skill"
+    )
+}
+
+/// Resolve a stable ASCII id from a display name and on-disk path.
+///
+/// Frontmatter names are often not ASCII (Chinese titles, etc.). Prefer the
+/// slug of the name, then the path stem, then a hash so a readable document is
+/// never silently dropped from the catalog. The path fallback `skill` is
+/// skipped: that is the stem of `SKILL.md` and would collide across imports.
+pub fn capability_id(name: &str, path: &Path, max_chars: usize) -> String {
+    let from_name = slugify(name, max_chars);
+    if valid_capability_id(&from_name, max_chars) {
+        return from_name;
+    }
+    let from_path = slugify(&path_stem_for_id(path), max_chars);
+    if valid_capability_id(&from_path, max_chars) && from_path != "skill" {
+        return from_path;
+    }
+    let mut hasher = Sha256::new();
+    hasher.update(name.as_bytes());
+    let hex = hex::encode(&hasher.finalize()[..6]);
+    format!("skill-{hex}")
 }
 
 pub fn slugify(value: &str, max_chars: usize) -> String {
@@ -328,6 +449,41 @@ mod tests {
             Some("Check code")
         );
         assert_eq!(body, "Do it.");
+    }
+
+    #[test]
+    fn front_matter_reads_folded_yaml_descriptions() {
+        let raw = "---\nname: find-skills\ndescription: >\n  Discover skills when asked\n  how to do X.\n---\n\nFollow the steps.\n";
+        let (fields, body) = parse_front_matter(raw);
+        assert_eq!(fields.get("name").map(String::as_str), Some("find-skills"));
+        assert_eq!(
+            fields.get("description").map(String::as_str),
+            Some("Discover skills when asked how to do X.")
+        );
+        assert_eq!(body, "Follow the steps.");
+    }
+
+    #[test]
+    fn capability_id_falls_back_to_skill_directory_then_hash() {
+        let dir_skill = Path::new("/tmp/code-review/SKILL.md");
+        assert_eq!(capability_id("代码审查", dir_skill, 64), "code-review");
+        assert_eq!(path_stem_for_id(dir_skill), "code-review");
+
+        let hashed = capability_id("代码审查", Path::new("/tmp/代码审查.md"), 64);
+        assert!(hashed.starts_with("skill-"));
+        assert!(valid_capability_id(&hashed, 64));
+        assert_eq!(
+            hashed,
+            capability_id("代码审查", Path::new("/elsewhere/代码审查.md"), 64)
+        );
+        assert_eq!(
+            capability_id("代码审查", Path::new("/Users/me/Downloads/SKILL.md"), 64),
+            hashed
+        );
+        assert_ne!(
+            capability_id("代码审查", Path::new("/Users/me/Downloads/SKILL.md"), 64),
+            "downloads"
+        );
     }
 
     #[test]
