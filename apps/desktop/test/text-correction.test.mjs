@@ -14,11 +14,11 @@ test("shared Input/Textarea primitives default text correction off", async () =>
   const src = await read("../src/components/ui.tsx");
   assert.match(
     src,
-    /export function Input\(\{ className, spellCheck = false, autoCorrect = "off", autoCapitalize = "off"/,
+    /export function Input\(\{[\s\S]*?spellCheck = false[\s\S]*?autoCorrect = "off"[\s\S]*?autoCapitalize = "off"/,
   );
   assert.match(
     src,
-    /export function Textarea\(\{ className, spellCheck = false, autoCorrect = "off", autoCapitalize = "off"/,
+    /export function Textarea\(\{[\s\S]*?spellCheck = false[\s\S]*?autoCorrect = "off"[\s\S]*?autoCapitalize = "off"/,
   );
   assert.match(src, /spellCheck=\{spellCheck\}/);
   assert.match(src, /autoCorrect=\{autoCorrect\}/);
