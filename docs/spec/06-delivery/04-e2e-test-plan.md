@@ -7644,18 +7644,20 @@ This test plan spec is accepted when:
 - **Preconditions**: An Agent session in a workspace that contains
   `apps/desktop/src/App.tsx`, `docs/adr/0163-transcript-file-reference-chips.md`,
   and `docs/spec/00-baseline.md`.
-- **Steps**: 1) Prompt a turn whose assistant reply mentions
+- **Steps**: 1) Open an existing session whose transcript already contains
+  assistant markdown. 2) Prompt a turn whose assistant reply mentions
   `apps/desktop/src/App.tsx` as a bare path, as inline code, and as a
-  markdown link. 2) Click each. 3) Open the ADR markdown file in the work-panel
+  markdown link. 3) Click each. 4) Open the ADR markdown file in the work-panel
   files viewer and click a `../spec/00-baseline.md` link.
 - **Expected**:
+  - Opening the session paints the transcript without throwing.
   - Each chat path opens the work-panel files viewer on
     `apps/desktop/src/App.tsx`.
   - The markdown-file `../` link opens `docs/spec/00-baseline.md`, not a
     workspace-root `spec/00-baseline.md`.
   - A `../../../outside.ts` link from `docs/adr` stays inert.
 - **Specs linked**: `04-ux/08-component-spec.md` §8.3,
-  `08-meta/decisions-log.md` (D321)
+  `08-meta/decisions-log.md` (D322)
 - **Acceptance**: C (conversation & stream), D (workspace), Quality
 - **Milestone**: M5
 - **Status**: Unit-covered (`chat-links.test.mjs`,

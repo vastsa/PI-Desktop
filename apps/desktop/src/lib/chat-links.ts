@@ -10,7 +10,7 @@
  *
  * Relative paths are workspace-rooted unless they start with `./` or `../`,
  * in which case they resolve against an optional markdown-file directory and
- * still cannot escape the workspace (D321).
+ * still cannot escape the workspace (D322).
  */
 
 const KNOWN_EXTS = new Set([
@@ -285,17 +285,19 @@ const SKIP_MDAST = new Set([
  * inline code, and existing links/images.
  */
 export function linkifyMdastTree(
-  tree: MdastNode,
+  tree: MdastNode | null | undefined,
   root?: string | null,
   baseDir?: string | null,
 ): void {
   walk(tree, false);
 
-  function walk(node: MdastNode, skip: boolean) {
+  function walk(node: MdastNode | null | undefined, skip: boolean) {
+    if (!node || typeof node.type !== "string") return;
     const nextSkip = skip || SKIP_MDAST.has(node.type);
     if (!node.children) return;
     const next: MdastNode[] = [];
     for (const child of node.children) {
+      if (!child || typeof child.type !== "string") continue;
       if (!nextSkip && child.type === "text" && typeof child.value === "string") {
         const segments = splitChatText(child.value, root, baseDir);
         if (segments.length === 1 && segments[0].kind === "text") {
@@ -324,4 +326,21 @@ export function linkifyMdastTree(
     }
     node.children = next;
   }
+}
+
+/**
+ * unified attacher for the chat file-link pass. `ReactMarkdown` / unified
+ * call the plugin with options at freeze time and expect a transformer
+ * back; returning the transformer itself makes unified invoke it with
+ * `tree === undefined` and crash on `tree.type` when a session paints.
+ */
+export function remarkChatFileLinks(
+  root?: string | null,
+  baseDir?: string | null,
+) {
+  return function remarkChatFileLinksPlugin() {
+    return (tree: MdastNode) => {
+      linkifyMdastTree(tree, root, baseDir);
+    };
+  };
 }

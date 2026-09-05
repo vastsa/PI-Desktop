@@ -6,6 +6,7 @@ import {
   isHttpUrl,
   linkifyMdastTree,
   parseFileRef,
+  remarkChatFileLinks,
   resolvePreviewTarget,
   splitChatText,
   toWorkspaceRel,
@@ -191,4 +192,30 @@ test("linkifyMdastTree turns bare paths into links and skips code", () => {
   assert.equal(tree.children[0].children[1].url, "apps/desktop/src/App.tsx");
   assert.equal(tree.children[1].type, "inlineCode");
   assert.equal(tree.children[2].children[0].type, "text");
+});
+
+test("linkifyMdastTree ignores a missing tree instead of reading type", () => {
+  assert.doesNotThrow(() => linkifyMdastTree(undefined, ROOT));
+  assert.doesNotThrow(() =>
+    linkifyMdastTree({ type: "root", children: [undefined] }, ROOT),
+  );
+});
+
+test("remarkChatFileLinks is a unified attacher, not a transformer", () => {
+  const plugin = remarkChatFileLinks(ROOT);
+  // unified.use(plugin) calls plugin() at freeze with no tree.
+  const transformer = plugin();
+  assert.equal(typeof transformer, "function");
+  const tree = {
+    type: "root",
+    children: [
+      {
+        type: "paragraph",
+        children: [{ type: "text", value: "See apps/desktop/src/App.tsx" }],
+      },
+    ],
+  };
+  transformer(tree);
+  assert.equal(tree.children[0].children[1].type, "link");
+  assert.equal(tree.children[0].children[1].url, "apps/desktop/src/App.tsx");
 });

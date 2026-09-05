@@ -36,11 +36,10 @@ import {
 } from "./icons";
 import { useAppStore } from "../stores/app-store";
 import {
-  linkifyMdastTree,
+  remarkChatFileLinks,
   resolvePreviewTarget,
   safeDecodeUri,
   toWorkspaceRel,
-  type MdastNode,
 } from "../lib/chat-links";
 import {
   isClosedFencedCodeBlock,
@@ -381,12 +380,6 @@ const MarkdownBlockContext = createContext({
 });
 
 const MarkdownBaseDirContext = createContext("");
-
-function remarkChatFileLinks(root?: string | null, baseDir?: string | null) {
-  return (tree: MdastNode) => {
-    linkifyMdastTree(tree, root, baseDir);
-  };
-}
 
 function extractCode(children: ReactNode): { code: string; lang: string } | null {
   const element = Array.isArray(children)
