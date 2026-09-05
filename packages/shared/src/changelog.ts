@@ -23,6 +23,13 @@ export type ChangelogEntry = {
 
 const enEntries: ChangelogEntry[] = [
   {
+    version: "0.13.6",
+    date: "2026-09-06",
+    highlights: [
+      "Keep pasted-file user messages sized to their content instead of stretching across the thread.",
+    ],
+  },
+  {
     version: "0.13.5",
     date: "2026-09-06",
     highlights: [
@@ -618,6 +625,13 @@ const enEntries: ChangelogEntry[] = [
 ];
 
 const zhCNEntries: ChangelogEntry[] = [
+  {
+    version: "0.13.6",
+    date: "2026-09-06",
+    highlights: [
+      "粘贴文件后的用户消息按内容宽度显示，不再被撑满整列。",
+    ],
+  },
   {
     version: "0.13.5",
     date: "2026-09-06",
