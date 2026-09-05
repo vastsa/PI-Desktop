@@ -55,7 +55,7 @@ import {
 import {
   resolveComposerCommand,
   useComposerAutocomplete,
-} from "../lib/use-composer-autocomplete";
+} from "../hooks/use-composer-autocomplete";
 import { ComposerAutocomplete } from "./ComposerAutocomplete";
 import { AskToolCard } from "./AskToolCard";
 import { PlanApprovalBar } from "./PlanApprovalBar";

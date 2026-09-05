@@ -7,7 +7,7 @@ const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 const [autocomplete, autocompleteHook, autocompleteStyles, composer, composerStyles] =
   await Promise.all([
     read("../src/components/ComposerAutocomplete.tsx"),
-    read("../src/lib/use-composer-autocomplete.ts"),
+    read("../src/hooks/use-composer-autocomplete.ts"),
     read("../src/styles/composer-autocomplete.css"),
     read("../src/components/Composer.tsx"),
     read("../src/styles/composer.css"),

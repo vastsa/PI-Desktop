@@ -54,7 +54,7 @@ import {
   type SubagentOutcome,
   type SubagentTiming,
 } from "../lib/subagent-topology";
-import { useOpenPreviewTarget } from "../lib/use-preview-target";
+import { useOpenPreviewTarget } from "../hooks/use-preview-target";
 import {
   getToolPreviewTarget,
   splitChatText,
@@ -63,7 +63,7 @@ import {
   isRecentScrollGesture,
   reduceTranscriptScroll,
 } from "../lib/transcript-scroll";
-import { useFollowScroll } from "../lib/use-follow-scroll";
+import { useFollowScroll } from "../hooks/use-follow-scroll";
 import {
   growTranscriptWindow,
   reduceTranscriptWindow,

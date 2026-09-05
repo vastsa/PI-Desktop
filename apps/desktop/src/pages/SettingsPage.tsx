@@ -18,7 +18,7 @@ import { useAppStore } from "../stores/app-store";
 import { api } from "../lib/api";
 import type { ImportCandidate } from "../lib/api";
 import { resolveAppLanguage } from "../lib/app-language";
-import { useUpdateState } from "../lib/use-update-state";
+import { useUpdateState } from "../hooks/use-update-state";
 import {
   DEFAULT_IMPORT_GROUP_BY,
   formatImportDate,

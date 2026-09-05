@@ -61,7 +61,7 @@ import {
 import { BrandLogo } from "./BrandLogo";
 import { NotificationCenter } from "./NotificationCenter";
 import { SessionRenameDialog } from "./SessionRenameDialog";
-import { useUpdateState } from "../lib/use-update-state";
+import { useUpdateState } from "../hooks/use-update-state";
 import {
   IconArchive,
   IconArchiveRestore,

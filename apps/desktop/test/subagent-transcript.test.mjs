@@ -7,7 +7,7 @@ const transcriptSource = await readFile(
   "utf8",
 );
 const followScrollSource = await readFile(
-  new URL("../src/lib/use-follow-scroll.ts", import.meta.url),
+  new URL("../src/hooks/use-follow-scroll.ts", import.meta.url),
   "utf8",
 );
 const storeSource = await readFile(

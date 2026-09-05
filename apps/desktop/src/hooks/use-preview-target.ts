@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { useAppStore } from "../stores/app-store";
-import type { ChatPreviewTarget } from "./chat-links";
+import type { ChatPreviewTarget } from "../lib/chat-links";
 
 /**
  * Open a resolved chat reference in the work panel: files in the viewer, URLs

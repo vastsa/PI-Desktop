@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { UpdateState } from "@pi-desktop/shared";
-import { api } from "./api";
+import { api } from "../lib/api";
 
 /**
  * Live view of the app-update state: seeds from the main process snapshot,

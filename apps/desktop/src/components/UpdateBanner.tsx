@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { UpdateState } from "@pi-desktop/shared";
 import { api } from "../lib/api";
-import { useUpdateState } from "../lib/use-update-state";
+import { useUpdateState } from "../hooks/use-update-state";
 import { Button } from "./ui";
 import { IconClose, IconCloudDown, IconExternal } from "./icons";
 

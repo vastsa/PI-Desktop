@@ -14,7 +14,7 @@ import {
   type FsIndexEntry,
   type FuzzyMatch,
 } from "@pi-desktop/shared";
-import { api } from "./api";
+import { api } from "../lib/api";
 import { useAppStore } from "../stores/app-store";
 
 /**

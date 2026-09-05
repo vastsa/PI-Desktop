@@ -10,7 +10,7 @@ import {
 import {
   isRecentScrollGesture,
   reduceTranscriptScroll,
-} from "./transcript-scroll";
+} from "../lib/transcript-scroll";
 
 export type FollowScroll = {
   scrollRef: RefObject<HTMLDivElement | null>;
