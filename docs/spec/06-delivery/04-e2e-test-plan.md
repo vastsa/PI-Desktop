@@ -1112,9 +1112,11 @@ Each scenario is documented in this format:
   6) Type a native name or English name into the language search and confirm
      unmatched locales disappear.
 - **Expected**: Theme remains a three-card grid. Language is a searchable
-  picker row (not a card grid and not a native select); Auto resolves the OS
-  locale through the main process (`app.getLocale()`), passes it safely through
-  the sandboxed preload bridge, and reflects the detected native name inline;
+  picker row (not a card grid and not a native select); the closed trigger
+  fills the settings control column and shows Match system or the native
+  name without overflowing the row; Auto resolves the OS locale through the
+  main process (`app.getLocale()`), passes it safely through the sandboxed
+  preload bridge, and reflects the detected native name inline in the menu;
   switching options updates the live UI without a reload.
 - **Specs linked**: `04-ux/06-settings-ia.md`, `04-ux/02-i18n-english-first.md`
 - **Acceptance**: A (core shell), H (localization)

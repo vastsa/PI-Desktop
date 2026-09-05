@@ -47,9 +47,9 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   - **Theme**: three selectable preview cards (System / Light / Dark, System
     first) with a live mini-window mockup, a per-option description, and a
     selected check badge; selection updates `settings.theme`
-  - **Language**: a searchable picker row (not a card grid). The trigger shows
-    the current native name, or Match system plus the detected native name.
-    The menu pins Auto at the top with the detected language inline
+  - **Language**: a searchable picker row (not a card grid). The trigger fills
+    the settings control column and shows the current native name, or Match
+    system. The menu pins Auto at the top with the detected language inline
     (e.g. "Currently 简体中文"), then lists every shipped locale with its
     native name (endonym, never translated) and English name for search and
     sort. Selection updates `settings.language`. Adding a locale is a catalog

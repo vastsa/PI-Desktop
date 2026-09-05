@@ -39,4 +39,24 @@ test("the Auto row shows the OS-detected native name", () => {
   assert.match(rowSource, /resolveAppLanguage\(\"auto\"\)/);
   assert.match(rowSource, /settings\.languageAutoDesc/);
   assert.match(rowSource, /detectedInfo\.nativeName/);
+  assert.doesNotMatch(rowSource, /autoLabel} · \$\{detectedInfo/);
+});
+
+test("the language trigger fills the settings control column without a native field chrome", () => {
+  assert.match(
+    styles,
+    /\.settings-language-anchor\s*\{[^}]*width:\s*100%;/s,
+  );
+  assert.match(
+    styles,
+    /\.settings-language-trigger\s*\{[^}]*width:\s*100%;/s,
+  );
+  assert.match(
+    styles,
+    /\.settings-language-search input\s*\{[^}]*outline:\s*none;/s,
+  );
+  assert.match(
+    styles,
+    /\.settings-language-search input\s*\{[^}]*padding:\s*0;/s,
+  );
 });

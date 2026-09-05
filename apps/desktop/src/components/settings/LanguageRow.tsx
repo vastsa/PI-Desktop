@@ -89,7 +89,7 @@ export function LanguageRow({
   const selected = options.find((option) => option.id === selectedId);
   const triggerLabel =
     selectedId === "auto"
-      ? `${autoLabel} · ${detectedInfo.nativeName}`
+      ? autoLabel
       : (selected?.nativeName ?? localeInfo(selectedId as AppLocale).nativeName);
 
   const close = () => {

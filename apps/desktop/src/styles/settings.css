@@ -1032,14 +1032,16 @@
    stay endonyms; English names are the secondary search/sort labels. */
 .settings-language-anchor {
   position: relative;
+  width: 100%;
+  min-width: 0;
 }
 
 .settings-language-trigger {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-width: 200px;
-  max-width: 280px;
+  width: 100%;
+  min-width: 0;
   height: 30px;
   padding: 0 12px;
   border-radius: var(--radius-full);
@@ -1070,9 +1072,7 @@
 .settings-language-menu {
   position: fixed;
   z-index: 60;
-  display: flex;
-  flex-direction: column;
-  width: min(320px, calc(100vw - 48px));
+  width: min(240px, calc(100vw - 48px));
   max-height: min(420px, calc(100vh - 160px));
   border-radius: var(--radius-lg);
   background: var(--ds-bg-elevated-opaque);
@@ -1110,8 +1110,12 @@
   min-width: 0;
   flex: 1;
   height: 100%;
+  margin: 0;
+  padding: 0;
   border: 0;
+  outline: none;
   background: transparent;
+  box-shadow: none;
   color: var(--ds-text-primary);
   font-size: var(--text-sm);
 }
@@ -1122,7 +1126,7 @@
 
 .settings-language-results {
   min-height: 0;
-  flex: 1;
+  max-height: min(360px, calc(100vh - 220px));
   overflow-y: auto;
   overflow-x: hidden;
   padding: 4px 0 6px;
