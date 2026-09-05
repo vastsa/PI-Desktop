@@ -7538,6 +7538,8 @@ are withdrawn with ADR 0165.
   - Each sent reference renders as a compact leaf-name chip (icon + name),
     not as a full `@path`. The tooltip and accessible name keep the
     canonical path. Quoted and scratch-absolute paths are included.
+  - A chip plus a short prompt keeps the user plate content-sized; it does
+    not stretch to the `min(82%, 600px)` ceiling.
   - Clicking the HTML chip opens the work-panel browser on that file.
   - Clicking any other allowed file opens it with the OS default application.
   - The persisted user message still contains the canonical `@path` text for
@@ -7548,7 +7550,7 @@ are withdrawn with ADR 0165.
 - **Acceptance**: C (conversation & stream), Quality
 - **Milestone**: M5
 - **Status**: Unit-covered (`chat-links.test.mjs`, `transcript-file-chips.test.mjs`,
-  `fs-panel-guard.test.mjs`); full UI journey Draft (do not run E2E locally
+  `fs-panel-guard.test.mjs`, `transcript-style.test.mjs`); full UI journey Draft (do not run E2E locally
   unless explicitly requested)
 
 #### E2E-181: An imported skill is listed in the next session catalog

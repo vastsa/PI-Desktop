@@ -26,9 +26,20 @@
 }
 
 .message-row.user .message-col {
-  width: fit-content;
+  /* `min(max-content, …)` is a definite shrink-wrap. `fit-content` includes
+     the stretch size, so a descendant with `max-width: 100%` (file chips)
+     inflated the plate to the 82%/600px cap after a paste. */
+  width: min(max-content, 82%, 600px);
   max-width: min(82%, 600px);
   align-items: flex-end;
+}
+
+/* Composer chips use `max-width: min(100%, 240px)` so they shrink in a
+   definite composer. Inside this shrink-to-fit plate the percentage
+   containing block is the available thread width, which stretches the
+   bubble. A definite 240px cap keeps short chip+text prompts compact. */
+.message-row.user .composer-chip {
+  max-width: 240px;
 }
 
 .message-row.assistant .message-col,
@@ -1309,6 +1320,7 @@
   white-space: pre-wrap;
   overflow-wrap: break-word;
   word-break: normal;
+  min-width: 0;
   line-height: inherit;
 }
 
@@ -1318,6 +1330,11 @@
   flex-wrap: wrap;
   gap: 5px;
   margin-bottom: 7px;
+}
+
+.message-row.user .message-attachments {
+  /* Percentage max-width inflates the shrink-to-fit user plate. */
+  max-width: none;
 }
 
 .message-attachment {

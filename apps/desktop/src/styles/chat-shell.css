@@ -4,12 +4,15 @@
 */
 
 /*
-  User bubble. The wrap constraint lives on the column alone — the bubble
-  fills up to 100% of it. Stacking percentage max-widths on both (78% × 78%)
-  is what previously wrapped short prompts at ~60% of the thread width.
+  User bubble. The wrap constraint lives on the column alone. `max-content`
+  (not `fit-content`) sizes to the prompt instead of the available stretch;
+  a percentage max-width on this plate used to inflate short chip+text
+  turns to the 82%/600px ceiling. Stacking percentage max-widths on both
+  (78% × 78%) is what previously wrapped short prompts at ~60% of the
+  thread width.
 */
 .message-row.user .message-bubble {
-  width: fit-content;
+  width: max-content;
   max-width: 100%;
   border-radius: var(--radius-lg-plus);
   border-bottom-right-radius: var(--radius-xs);

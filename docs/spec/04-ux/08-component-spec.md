@@ -1179,7 +1179,10 @@ Single message render — either user (plaintext) or assistant (markdown streami
 - User: right-aligned, theme-neutral soft plate (`color-mix` on primary ink,
   never a fixed accent tint), borderless, `radius-lg-plus` with a tighter
   bottom-right corner, capped at `min(82%, 600px)` so short prompts read as
-  chat turns rather than full-width blocks. User body is plaintext with
+  chat turns rather than full-width blocks. The plate shrinks to the
+  prompt's max-content rather than stretching to that ceiling; inline file
+  chips use a definite 240px name cap so a pasted file plus a short prompt
+  stays compact. User body is plaintext with
   preserved hard newlines (`white-space: pre-wrap`);
   only trailing/leading composer trim is applied, never internal newline
   collapse. Serialized `@path` file references render as compact leaf-name
