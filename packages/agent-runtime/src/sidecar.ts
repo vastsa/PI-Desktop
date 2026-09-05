@@ -333,6 +333,7 @@ async function runtimeFor(
   if (reusable) {
     reusable.setCompactionSettings(params.compactionSettings);
     reusable.setMode(mode);
+    await reusable.ensureParentA2A();
     return reusable;
   }
 
@@ -384,6 +385,7 @@ async function runtimeFor(
     onEvent: (envelope: AgentEventEnvelope) => notify("agent.event", envelope),
   });
   runtimes.set(sessionId, runtime);
+  await runtime.ensureParentA2A();
   return runtime;
 }
 

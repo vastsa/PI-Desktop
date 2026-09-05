@@ -1221,6 +1221,10 @@ export class DesktopAgentRuntime {
   >();
   /** Unsubscribe from host A2A notifications; set on first registration. */
   private a2aUnsubscribe?: () => void;
+  /** Parent A2A identity (ADR 0164). Present while Agent-mode runtime is live. */
+  private parentA2AToken?: string;
+  private parentPeerId?: string;
+  private parentA2APromise?: Promise<void>;
   /** Serializes same-path mutations across the parent and its delegates. */
   private writeLocks = new PathMutex();
   /** Complete tool registry; only the active subset is sent to the provider. */
@@ -1525,6 +1529,7 @@ Delegation rules:
     this.agent.state.systemPrompt = this.composeSystemPrompt();
     this.agent.state.tools = this.activeTools();
     this.setPlanningState(planningState, details);
+    if (mode === "agent") void this.ensureParentA2A();
   }
 
   getMode(): Mode {
@@ -1534,10 +1539,20 @@ Delegation rules:
   private composeSystemPrompt(): string {
     const projectPrompt = projectInstructionsPrompt(this.projectInstructions);
     const optionalToolsPrompt = this.optionalToolsPrompt();
+    const parentA2APrompt =
+      this.mode === "agent" && this.parentA2AToken
+        ? [
+            "## Cross-conversation",
+            `You are the parent agent "${this.parentPeerId ?? "parent"}" of this conversation. Other open conversations on this host may be reached with the A2A tool.`,
+            "A2A(action=discover) lists their parent agents (name plus session title). A2A(action=send) sends a note; A2A(action=wait) blocks for a reply during this turn. Inbound notes from another conversation are prepended to the user's next message here — do not expect a conversation that is idle to answer immediately.",
+            "Do not use A2A to talk to subagents, including your own. Delegation stays on Task / TaskWait / TaskList / TaskStop.",
+          ].join("\n")
+        : "";
     return composeModeSystemPrompt(
       this.mode,
       [
         this.baseSystemPrompt,
+        ...(parentA2APrompt ? [parentA2APrompt] : []),
         ...(optionalToolsPrompt ? [optionalToolsPrompt] : []),
         ...(projectPrompt ? [projectPrompt] : []),
       ].join("\n\n"),
@@ -2401,6 +2416,19 @@ Delegation rules:
       });
     }
     this.toolCatalog = catalog;
+    if (
+      this.mode === "agent" &&
+      this.parentA2AToken &&
+      this.parentPeerId
+    ) {
+      this.toolCatalog.set(
+        "A2A",
+        {
+          ...this.buildA2ATool(this.parentPeerId, this.parentA2AToken, "parent"),
+          executionMode: "sequential",
+        },
+      );
+    }
     this.deferredToolNames = new Set(
       [...catalog.keys()].filter(
         (name) => !this.isCoreTool(name) && name !== TOOL_SEARCH_NAME,
@@ -2447,6 +2475,7 @@ Delegation rules:
       name === SUBAGENT_WAIT_TOOL_NAME ||
       name === SUBAGENT_LIST_TOOL_NAME ||
       name === SUBAGENT_STOP_TOOL_NAME ||
+      (this.mode === "agent" && name === "A2A") ||
       (this.mode === "agent"
         ? AGENT_CORE_TOOL_NAMES.has(name)
         : proposalKindForMode(this.mode)
@@ -3029,6 +3058,64 @@ Delegation rules:
   }
 
   /**
+   * Register this session's parent as an A2A agent (ADR 0164). Idempotent.
+   * Agent mode only; a failed register leaves the parent without the tool.
+   */
+  async ensureParentA2A(): Promise<void> {
+    if (this.disposed || this.mode !== "agent") return;
+    if (this.parentA2APromise) return this.parentA2APromise;
+    this.parentA2APromise = this.registerParentA2A();
+    return this.parentA2APromise;
+  }
+
+  private async registerParentA2A(): Promise<void> {
+    if (this.parentA2AToken) return;
+    this.ensureA2ASubscription();
+    let title = "this conversation";
+    try {
+      const detail = await this.host.call<{ session?: { title?: string } | null }>(
+        "session.get",
+        { id: this.sessionId },
+      );
+      const next = detail?.session?.title?.trim();
+      if (next) title = next;
+    } catch {
+      // Title is decorative on the card.
+    }
+    const card: A2AAgentCard = {
+      name: "parent",
+      description: `Parent agent for "${title}"`,
+      version: "1.0.0",
+      kind: "parent",
+      skills: [
+        {
+          id: "parent",
+          name: "parent",
+          description: "Cross-conversation collaboration",
+          tags: [],
+        },
+      ],
+      capabilities: { streaming: true, pushNotifications: true },
+      defaultInputModes: ["text/plain"],
+      defaultOutputModes: ["text/plain"],
+    };
+    try {
+      const result = await this.host.call<{ agentId: string; token: string }>(
+        A2A_RPC_METHODS.agentsRegister,
+        { contextId: this.sessionId, card },
+      );
+      if (!result?.token || this.disposed) return;
+      this.parentA2AToken = result.token;
+      this.parentPeerId = result.agentId || "parent";
+      this.rebuildToolCatalog();
+      this.agent.state.tools = this.activeTools();
+      this.agent.state.systemPrompt = this.composeSystemPrompt();
+    } catch {
+      this.parentA2APromise = undefined;
+    }
+  }
+
+  /**
    * Register a delegate with the host-core A2A broker at spawn time (ADR
    * 0147 / ADR 0162). Returns the host-minted capability token and the
    * (possibly uniquified) peer id, or `undefined` when the host is unavailable
@@ -3036,14 +3123,19 @@ Delegation rules:
    * agent card `name` starts as the session-unique peerId; the broker may
    * suffix it when another session already holds that name so live ids stay
    * unique across the host. `contextId` is the session id and groups tasks
-   * with this requester; discovery and addressing span every live agent.
+   * with this requester; discovery and addressing span every live agent of
+   * the same kind.
    */
   private async registerA2AAgent(
     peerId: string,
     definition: SubagentDefinition,
   ): Promise<{ token: string; agentId: string } | undefined> {
     this.ensureA2ASubscription();
-    const card: A2AAgentCard = { ...toAgentCard(definition), name: peerId };
+    const card: A2AAgentCard = {
+      ...toAgentCard(definition),
+      name: peerId,
+      kind: "subagent",
+    };
     try {
       const result = await this.host.call<{ agentId: string; token: string }>(
         A2A_RPC_METHODS.agentsRegister,
@@ -3221,23 +3313,33 @@ Delegation rules:
    * delegate's own peer id and its host-minted token: a delegate cannot spoof
    * a sender or address the broker as another agent because the token is
    * supplied by the runtime at spawn time, never by the model. It is
-   * deliberately absent from `toolCatalog` — the parent already owns the
-   * delegation lifecycle and must not gain a second, weaker channel to its
-   * delegates.
+   * Parent audience (ADR 0164) talks to other conversation parents only;
+   * subagent audience talks to other subagents. Kinds are enforced by the
+   * broker.
    */
-  private buildA2ATool(self: string, token: string): AgentTool {
+  private buildA2ATool(
+    self: string,
+    token: string,
+    audience: "parent" | "subagent" = "subagent",
+  ): AgentTool {
+    const peerNoun =
+      audience === "parent" ? "parent agent of another conversation" : "subagent";
     return {
       name: "A2A",
       label: "A2A",
       description: [
-        "Talk to another subagent running right now, in this session or another session, over the Agent2Agent (A2A) protocol. `action` picks the operation.",
-        "`discover` lists the other running agents as Agent Cards (name, description, skills, and whether they are in another session). Call it first to learn who is available and by what name to address them.",
-        `\`send\` sends a message to a peer, creating a task the peer serves or continuing one via \`taskId\`. Set \`to\` to a peer name from \`discover\`; put your note in \`text\`. Coordinate, do not transfer data: a peer that needs a file reads the file. Keep \`text\` under ${A2A_MAX_TEXT_CHARS} characters. You may send at most ${A2A_MAX_SENDS_PER_RUN} times per run.`,
+        audience === "parent"
+          ? "Talk to the parent agent of another open conversation on this host over the Agent2Agent (A2A) protocol. `action` picks the operation. You cannot use this to talk to subagents — use Task for that."
+          : "Talk to another subagent running right now, in this session or another session, over the Agent2Agent (A2A) protocol. `action` picks the operation.",
+        "`discover` lists the other running agents of your kind as Agent Cards (name, description, skills, and whether they are in another session). Call it first to learn who is available and by what name to address them.",
+        `\`send\` sends a message to a ${peerNoun}, creating a task they serve or continuing one via \`taskId\`. Set \`to\` to a name from \`discover\`; put your note in \`text\`. Keep \`text\` under ${A2A_MAX_TEXT_CHARS} characters. You may send at most ${A2A_MAX_SENDS_PER_RUN} times per run.`,
         "`get` reads a task's current state and message history by `taskId`.",
-        `\`wait\` blocks until a peer addresses a task to you and returns it, or returns empty after \`timeoutSeconds\` (default ${A2A_DEFAULT_STREAM_WAIT_SECONDS}, max ${A2A_MAX_STREAM_WAIT_SECONDS}). Only wait when you are genuinely blocked on a peer's reply — a peer under no obligation to answer may never answer, and an empty wait is not a failure. It also returns as soon as your last peer finishes.`,
+        `\`wait\` blocks until a peer addresses a task to you and returns it, or returns empty after \`timeoutSeconds\` (default ${A2A_DEFAULT_STREAM_WAIT_SECONDS}, max ${A2A_MAX_STREAM_WAIT_SECONDS}). Only wait when you are genuinely blocked on a peer's reply. An idle conversation will see your note on its next user prompt rather than answering immediately.`,
         "`complete` finishes a task you serve by `taskId`, moving it to a terminal state (default `completed`; set `state` to `failed` or `rejected`, or to `input-required`/`auth-required` to pause for the requester). Put your result in `text`; it becomes the task's final message and wakes the requester.",
         "`cancel` cancels a task by `taskId`, moving it to a terminal state.",
-        "The main agent never sees A2A traffic, so anything that matters must also be in your report.",
+        audience === "parent"
+          ? "Tell the user when you sent or received a cross-conversation note."
+          : "The main agent never sees A2A traffic, so anything that matters must also be in your report.",
       ].join("\n\n"),
       parameters: Type.Object({
         action: Type.Union(
@@ -3250,7 +3352,7 @@ Delegation rules:
         to: Type.Optional(
           Type.String({
             description:
-              "For `send`: peer name of the recipient (from `discover`, including other sessions). Omit to address the other peer in this session, or the single other live agent on the host.",
+              "For `send`: recipient name from `discover`. Omit to address the other same-kind peer in this session, or the single other live agent of your kind on the host.",
           }),
         ),
         text: Type.Optional(
@@ -3319,7 +3421,9 @@ Delegation rules:
             const agents = result?.agents ?? [];
             const body =
               agents.length === 0
-                ? "No other subagent is running right now. Carry on and put anything that matters in your report."
+                ? audience === "parent"
+                  ? "No other conversation's parent agent is reachable right now. A conversation is reachable after it has run at least one agent turn this app launch."
+                  : "No other subagent is running right now. Carry on and put anything that matters in your report."
                 : agents
                     .map((card) => {
                       const where =
@@ -5835,6 +5939,22 @@ Delegation rules:
     // Capabilities and path-scoped instruction claims belong to one prompt.
     this.resetDeferredToolsForPrompt();
     this.pathInstructionClaims.clear();
+    await this.ensureParentA2A();
+    const inbound = this.parentPeerId
+      ? this.drainA2AEvents(this.parentPeerId)
+      : [];
+    if (inbound.length > 0) {
+      const lines = inbound.map((event) =>
+        event.kind === "status-update"
+          ? `Task ${event.taskId}: ${event.status.state}${event.final ? " (final)" : ""}.`
+          : `Task ${event.taskId}: artifact ${event.artifact.name ?? event.artifact.artifactId}.`,
+      );
+      const prefix = `[A2A from another conversation]\n${lines.join("\n")}\nUse A2A(action=get, taskId=...) to read the full message, then A2A(action=send) to respond.\n---\n`;
+      input =
+        typeof input === "string"
+          ? prefix + input
+          : { ...input, text: prefix + input.text };
+    }
     this.pendingUserMessageId = userMessageId;
     this.resetRunRecoveryState();
     this.requestStartedAt = Date.now();
@@ -5933,6 +6053,11 @@ Delegation rules:
     this.disposed = true;
     this.resolvePendingAskTools();
     this.abortRunningDelegations();
+    if (this.parentA2AToken) {
+      this.deregisterA2AAgent(this.parentA2AToken);
+      this.parentA2AToken = undefined;
+      this.parentPeerId = undefined;
+    }
     // Release any delegate still parked in `A2A(wait)` and drop the host
     // notification subscription so dispose does not wait out a peer timeout
     // (ADR 0146). Deregistration of live agents rides on their run aborting.

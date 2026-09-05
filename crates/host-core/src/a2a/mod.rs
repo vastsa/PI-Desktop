@@ -148,13 +148,16 @@ impl A2aBroker {
         Ok((AgentsDeregisterResult { ok: true }, notifications))
     }
 
-    /// List all OTHER live peers on the host, including other sessions.
+    /// List all OTHER live peers of the caller's kind, including other sessions.
     pub fn list(&self, params: AgentsListParams) -> Result<AgentsListResult, A2aError> {
-        let _caller = self.agent_for_token(&params.token)?;
+        let caller = self.agent_for_token(&params.token)?;
+        let caller_kind = caller.card.kind;
         let mut agents: Vec<AgentCard> = self
             .agents
             .iter()
-            .filter(|(token, _)| token.as_str() != params.token)
+            .filter(|(token, agent)| {
+                token.as_str() != params.token && agent.card.kind == caller_kind
+            })
             .map(|(_, agent)| agent.card.clone())
             .collect();
         agents.sort_by(|a, b| a.name.cmp(&b.name).then(a.context_id.cmp(&b.context_id)));
@@ -285,10 +288,16 @@ impl A2aBroker {
         caller_context: &str,
         to: Option<&str>,
     ) -> Result<String, A2aError> {
+        let caller_kind = self
+            .agents
+            .values()
+            .find(|agent| agent.agent_id == caller_name)
+            .map(|agent| agent.card.kind)
+            .unwrap_or(types::AgentKind::Subagent);
         let mut others: Vec<&RegisteredAgent> = self
             .agents
             .values()
-            .filter(|agent| agent.agent_id != caller_name)
+            .filter(|agent| agent.agent_id != caller_name && agent.card.kind == caller_kind)
             .collect();
         if others.is_empty() {
             return Err(A2aError::NoPeers);
@@ -662,7 +671,15 @@ mod tests {
             default_input_modes: vec!["text".into()],
             default_output_modes: vec!["text".into()],
             context_id: None,
+            kind: types::AgentKind::Subagent,
         }
+    }
+
+    fn parent_card(name: &str) -> AgentCard {
+        let mut card = card(name);
+        card.kind = types::AgentKind::Parent;
+        card.description = format!("Parent agent for {name}");
+        card
     }
 
     fn register(broker: &mut A2aBroker, context: &str, name: &str) -> String {
@@ -670,6 +687,15 @@ mod tests {
             .register(AgentsRegisterParams {
                 context_id: context.into(),
                 card: card(name),
+            })
+            .token
+    }
+
+    fn register_parent(broker: &mut A2aBroker, context: &str, name: &str) -> String {
+        broker
+            .register(AgentsRegisterParams {
+                context_id: context.into(),
+                card: parent_card(name),
             })
             .token
     }
@@ -702,6 +728,65 @@ mod tests {
             .find(|card| card.name == "carol")
             .unwrap();
         assert_eq!(carol.context_id.as_deref(), Some("ctx-2"));
+    }
+
+    #[test]
+    fn list_and_send_are_kind_scoped() {
+        let (_dir, db) = open_db();
+        let mut broker = A2aBroker::new();
+        let parent_a = register_parent(&mut broker, "ctx-1", "parent");
+        let parent_b = register_parent(&mut broker, "ctx-2", "parent");
+        let worker = register(&mut broker, "ctx-1", "worker");
+
+        let listed = broker
+            .list(AgentsListParams {
+                token: parent_a.clone(),
+            })
+            .unwrap();
+        let names: Vec<&str> = listed.agents.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, vec!["parent-2"]);
+        assert_eq!(listed.agents[0].kind, types::AgentKind::Parent);
+
+        let workers = broker
+            .list(AgentsListParams {
+                token: worker.clone(),
+            })
+            .unwrap();
+        assert!(workers
+            .agents
+            .iter()
+            .all(|card| card.kind == types::AgentKind::Subagent));
+        assert!(workers.agents.iter().all(|card| card.name != "parent"));
+        assert!(workers.agents.iter().all(|card| card.name != "parent-2"));
+
+        let err = broker
+            .message_send(
+                db.conn(),
+                MessageSendParams {
+                    token: parent_a.clone(),
+                    message: text_message("m1", Some("worker"), None),
+                    configuration: None,
+                },
+            )
+            .unwrap_err();
+        assert_eq!(err, A2aError::UnknownAgent);
+
+        let (created, notes) = broker
+            .message_send(
+                db.conn(),
+                MessageSendParams {
+                    token: parent_a,
+                    message: text_message("m2", Some("parent-2"), None),
+                    configuration: None,
+                },
+            )
+            .unwrap();
+        assert_eq!(created.task.agent_name, "parent-2");
+        assert_eq!(
+            notes[0].params["recipientContextId"],
+            Value::String("ctx-2".into())
+        );
+        let _ = parent_b;
     }
 
     #[test]

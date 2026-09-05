@@ -5084,23 +5084,66 @@ describe("DesktopAgentRuntime subagents", () => {
     return { call, onNotification: vi.fn(() => () => {}) };
   }
 
-  it("never exposes the A2A tool to the parent agent", async () => {
-    const runtime = createRuntime({ subagents: [coordinator, talkerOnly] });
+  it("exposes parent A2A after registration and keeps it out of deferred tools", async () => {
+    const host = a2aHost({
+      "session.get": { session: { title: "Fix login" } },
+    });
+    const runtime = createRuntime({ subagents: [coordinator, talkerOnly], host });
+    await runtime.ensureParentA2A();
     const catalog = (runtime as any).toolCatalog as Map<string, any>;
     const parentToolNames = (
       (runtime as any).agent.state.tools as Array<any>
     ).map((tool) => tool.name);
     const deferred = (runtime as any).deferredToolNames as Set<string>;
 
-    // The definition declares the A2A tool, yet it is built per delegate: the
-    // parent already owns delegation, so it must not gain a second channel.
-    for (const name of SUBAGENT_A2A_TOOLS) {
-      expect(catalog.has(name)).toBe(false);
-      expect(parentToolNames).not.toContain(name);
-      expect(deferred.has(name)).toBe(false);
-    }
+    expect(catalog.has("A2A")).toBe(true);
+    expect(parentToolNames).toContain("A2A");
+    expect(deferred.has("A2A")).toBe(false);
+    expect((runtime as any).parentPeerId).toBe("parent");
+    expect((runtime as any).parentA2AToken).toBe("tok-parent");
+    const registerCall = host.call.mock.calls.find(
+      ([method]) => method === A2A_RPC_METHODS.agentsRegister,
+    );
+    expect(registerCall![1].card).toMatchObject({
+      name: "parent",
+      kind: "parent",
+    });
+    expect(registerCall![1].card.description).toContain("Fix login");
     expect(taskTool(runtime)).toBeDefined();
 
+    await runtime.dispose();
+    expect(
+      host.call.mock.calls.some(
+        ([method, params]) =>
+          method === A2A_RPC_METHODS.agentsDeregister &&
+          (params as { token?: string }).token === "tok-parent",
+      ),
+    ).toBe(true);
+  });
+
+  it("parent discover lists other parents, not subagents", async () => {
+    const host = a2aHost({
+      "session.get": { session: { title: "A" } },
+      [A2A_RPC_METHODS.agentsList]: {
+        agents: [
+          {
+            name: "parent-2",
+            description: 'Parent agent for "B"',
+            kind: "parent",
+            contextId: "session-2",
+          },
+        ],
+      },
+    });
+    const runtime = createRuntime({ subagents: [coordinator], host });
+    await runtime.ensureParentA2A();
+    const a2a = (runtime as any).toolCatalog.get("A2A") as {
+      execute: (id: string, params: unknown) => Promise<{ content: Array<{ text: string }>; details: { agents: unknown[] } }>;
+    };
+    const discovered = await a2a.execute("call-discover", { action: "discover" });
+    expect(discovered.content[0].text).toContain("parent-2");
+    expect(discovered.content[0].text).toContain("other session");
+    expect(discovered.details.agents).toHaveLength(1);
     await runtime.dispose();
   });
 

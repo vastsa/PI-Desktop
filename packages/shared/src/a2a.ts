@@ -190,6 +190,8 @@ export type A2AAgentCard = {
   defaultOutputModes: string[];
   /** Session id this agent registered under. Stamped by the broker. */
   contextId?: string;
+  /** Registry role. Default `subagent`. Parents and subagents never mix. */
+  kind?: "parent" | "subagent";
 };
 
 /** Streaming event: a task changed state (A2A `TaskStatusUpdateEvent`). */

@@ -209,6 +209,7 @@ export function toAgentCard(definition: SubagentDefinition): A2AAgentCard {
     capabilities: { streaming: true, pushNotifications: true },
     defaultInputModes: ["text/plain"],
     defaultOutputModes: ["text/plain"],
+    kind: "subagent",
   };
 }
 

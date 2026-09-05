@@ -277,6 +277,15 @@ pub struct AgentCapabilities {
     pub push_notifications: bool,
 }
 
+/// Registry role. Parents and subagents never mix (ADR 0164).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum AgentKind {
+    #[default]
+    Subagent,
+    Parent,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentCard {
@@ -290,6 +299,8 @@ pub struct AgentCard {
     /// Session id this agent registered under. Stamped by the broker.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub context_id: Option<String>,
+    #[serde(default)]
+    pub kind: AgentKind,
 }
 
 // ---------------------------------------------------------------------------
