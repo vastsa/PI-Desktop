@@ -23,6 +23,14 @@ export type ChangelogEntry = {
 
 const enEntries: ChangelogEntry[] = [
   {
+    version: "0.13.5",
+    date: "2026-09-06",
+    highlights: [
+      "Remove the A2A broker and peer-to-peer conversation tools.",
+      "Fix agent-runtime tests that broke after the A2A removal.",
+    ],
+  },
+  {
     version: "0.13.4",
     date: "2026-09-05",
     highlights: [
@@ -610,6 +618,14 @@ const enEntries: ChangelogEntry[] = [
 ];
 
 const zhCNEntries: ChangelogEntry[] = [
+  {
+    version: "0.13.5",
+    date: "2026-09-06",
+    highlights: [
+      "移除 A2A 代理和对等对话工具。",
+      "修复 A2A 移除后智能体运行时测试失败的问题。",
+    ],
+  },
   {
     version: "0.13.4",
     date: "2026-09-05",
