@@ -143,12 +143,6 @@ descriptions. Scaffolding writes a manifest, which turns the full skill on from
 the next prompt; creating from a template on the plugins page also opens the new
 folder as the project, so the workspace test passes right away.
 
-A second built-in skill, `apps/desktop/resources/skills/a2a-cross-conversation.md`
-(`pi-desktop/a2a-cross-conversation`), is catalogued in every session. It
-teaches the parent `A2A` tool (ADR 0164): discover other live conversations
-before claiming isolation, address by peer name not session UUID, and never
-send to subagents.
-
 ## 7. Hot reload
 
 A plugin loaded from a folder is watched from then on, including across
