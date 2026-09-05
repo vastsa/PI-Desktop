@@ -4859,9 +4859,10 @@ describe("DesktopAgentRuntime subagents", () => {
     // TaskStop stops the still-running second delegate and reports "stopped".
     const stopped = await stop.execute("stop-1", { delegationIds: [secondId] });
     expect(stopped.details.stopped).toHaveLength(1);
-    await vi.waitFor(() => {
-      expect((runtime as any).delegations.get(secondId).status).toBe("stopped");
-    });
+    expect((stopped.details.stopped as Array<{ status: string }>)[0].status).toBe(
+      "stopped",
+    );
+    expect((runtime as any).delegations.get(secondId).status).toBe("stopped");
     const afterStop = await wait.execute("wait-2", {
       delegationIds: [secondId],
     });

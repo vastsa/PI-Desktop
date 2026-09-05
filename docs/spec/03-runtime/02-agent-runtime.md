@@ -554,7 +554,8 @@ core set rather than the on-demand catalog of §7.1:
   deliberately shorter than this one.
 - `TaskList()` — reports every delegation of the session with status.
 - `TaskStop(delegationIds?)` — stops running delegations (defaults to all);
-  stopped delegations read as `stopped`.
+  waits for each abort to settle, then persists `status: "stopped"` with
+  `completedAt` on `details.stopped[]`. Stopped delegations read as `stopped`.
 
 **Delegate loop.** A `SubagentRun` is a second pi `Agent` in the same sidecar
 process with the definition's system prompt, its (possibly pinned)

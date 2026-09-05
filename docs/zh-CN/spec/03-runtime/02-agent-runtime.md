@@ -481,8 +481,9 @@ Frontmatter 新增 `permission: inherit | ask | accept-edits | auto`（默认
   一次往返，却换来可响应的停止。发现真正卡死的委托是空闲看门狗的职责，不是
   这个超时的职责，所以空闲默认值刻意比它更短。
 - `TaskList()` — 报告会话的每个委托及其状态。
-- `TaskStop(delegationIds?)` — 停止正在运行的委托（默认全部）；被停止的
-  委托读作 `stopped`。
+- `TaskStop(delegationIds?)` — 停止正在运行的委托（默认全部）；等待每次
+  中止结算后，在 `details.stopped[]` 上持久化 `status: "stopped"` 与
+  `completedAt`。被停止的委托读作 `stopped`。
 
 **委托循环。** `SubagentRun` 是同一 sidecar 进程中的第二个 pi `Agent`，
 使用该定义的系统提示、其（可能已固定的）provider/model、其声明的工具，

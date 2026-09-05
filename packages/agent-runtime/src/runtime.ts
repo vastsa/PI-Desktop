@@ -3873,6 +3873,9 @@ Delegation rules:
           record.stopRequested = true;
           record.abort();
         }
+        // Persist the settled snapshot: aborting is async, and a `running`
+        // `details.stopped[]` made finished sessions keep a live topology card.
+        await Promise.all(targets.map((record) => record.completion));
         const text =
           targets.length === 0
             ? "No matching running subagents to stop."
