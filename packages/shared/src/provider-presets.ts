@@ -6,8 +6,6 @@ export const OPENCODE_GO_API_STYLE = "opencode_go" as const;
 export const OPENCODE_GO_NAME = "OpenCode Go";
 export const OPENCODE_GO_BASE_URL = "https://opencode.ai/zen/go/v1";
 
-export type NamedPresetGroup = "international" | "china";
-
 export type NamedEndpointPreset = {
   id: string;
   /** models.dev provider key persisted as `vendorKey`. */
@@ -15,7 +13,6 @@ export type NamedEndpointPreset = {
   name: string;
   baseUrl: string;
   apiStyle: CatalogApiStyle;
-  group: NamedPresetGroup;
   /** i18n key under `settings`. */
   labelKey: string;
   aliases?: readonly string[];
@@ -30,7 +27,6 @@ export const NAMED_ENDPOINT_PRESETS: readonly NamedEndpointPreset[] = [
     name: "OpenAI",
     baseUrl: "https://api.openai.com/v1",
     apiStyle: "responses",
-    group: "international",
     labelKey: "settings.presetOpenai",
   },
   {
@@ -39,7 +35,6 @@ export const NAMED_ENDPOINT_PRESETS: readonly NamedEndpointPreset[] = [
     name: "Anthropic",
     baseUrl: "https://api.anthropic.com",
     apiStyle: "anthropic_messages",
-    group: "international",
     labelKey: "settings.presetAnthropic",
   },
   {
@@ -48,7 +43,6 @@ export const NAMED_ENDPOINT_PRESETS: readonly NamedEndpointPreset[] = [
     name: "Google Gemini",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta",
     apiStyle: "google_generative_ai",
-    group: "international",
     labelKey: "settings.presetGoogle",
     aliases: ["gemini"],
   },
@@ -58,7 +52,6 @@ export const NAMED_ENDPOINT_PRESETS: readonly NamedEndpointPreset[] = [
     name: "OpenRouter",
     baseUrl: "https://openrouter.ai/api/v1",
     apiStyle: "chat_completions",
-    group: "international",
     labelKey: "settings.presetOpenrouter",
   },
   {
@@ -67,7 +60,6 @@ export const NAMED_ENDPOINT_PRESETS: readonly NamedEndpointPreset[] = [
     name: "Groq",
     baseUrl: "https://api.groq.com/openai/v1",
     apiStyle: "chat_completions",
-    group: "international",
     labelKey: "settings.presetGroq",
   },
   {
@@ -76,7 +68,6 @@ export const NAMED_ENDPOINT_PRESETS: readonly NamedEndpointPreset[] = [
     name: "xAI",
     baseUrl: "https://api.x.ai/v1",
     apiStyle: "chat_completions",
-    group: "international",
     labelKey: "settings.presetXai",
   },
   {
@@ -85,7 +76,6 @@ export const NAMED_ENDPOINT_PRESETS: readonly NamedEndpointPreset[] = [
     name: "Mistral",
     baseUrl: "https://api.mistral.ai/v1",
     apiStyle: "chat_completions",
-    group: "international",
     labelKey: "settings.presetMistral",
   },
   {
@@ -94,7 +84,6 @@ export const NAMED_ENDPOINT_PRESETS: readonly NamedEndpointPreset[] = [
     name: "Together AI",
     baseUrl: "https://api.together.xyz/v1",
     apiStyle: "chat_completions",
-    group: "international",
     labelKey: "settings.presetTogether",
     aliases: ["together"],
   },
@@ -104,7 +93,6 @@ export const NAMED_ENDPOINT_PRESETS: readonly NamedEndpointPreset[] = [
     name: "Fireworks",
     baseUrl: "https://api.fireworks.ai/inference/v1",
     apiStyle: "chat_completions",
-    group: "international",
     labelKey: "settings.presetFireworks",
     aliases: ["fireworks"],
   },
@@ -114,7 +102,6 @@ export const NAMED_ENDPOINT_PRESETS: readonly NamedEndpointPreset[] = [
     name: OPENCODE_GO_NAME,
     baseUrl: OPENCODE_GO_BASE_URL,
     apiStyle: OPENCODE_GO_API_STYLE,
-    group: "international",
     labelKey: "settings.apiStyleOpenCodeGo",
   },
   {
@@ -123,7 +110,6 @@ export const NAMED_ENDPOINT_PRESETS: readonly NamedEndpointPreset[] = [
     name: "Z.AI",
     baseUrl: "https://api.z.ai/api/paas/v4",
     apiStyle: "chat_completions",
-    group: "international",
     labelKey: "settings.presetZaiApi",
     zhipuCompat: true,
   },
@@ -133,7 +119,6 @@ export const NAMED_ENDPOINT_PRESETS: readonly NamedEndpointPreset[] = [
     name: "Z.AI Coding Plan",
     baseUrl: "https://api.z.ai/api/coding/paas/v4",
     apiStyle: "chat_completions",
-    group: "international",
     labelKey: "settings.presetZaiCodingPlan",
     zhipuCompat: true,
   },
@@ -143,7 +128,6 @@ export const NAMED_ENDPOINT_PRESETS: readonly NamedEndpointPreset[] = [
     name: "DeepSeek",
     baseUrl: "https://api.deepseek.com",
     apiStyle: "chat_completions",
-    group: "china",
     labelKey: "settings.presetDeepseek",
   },
   {
@@ -152,7 +136,6 @@ export const NAMED_ENDPOINT_PRESETS: readonly NamedEndpointPreset[] = [
     name: "Alibaba (China)",
     baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     apiStyle: "chat_completions",
-    group: "china",
     labelKey: "settings.presetAlibabaCn",
     aliases: ["dashscope", "qwen"],
   },
@@ -162,7 +145,6 @@ export const NAMED_ENDPOINT_PRESETS: readonly NamedEndpointPreset[] = [
     name: "Moonshot AI (China)",
     baseUrl: "https://api.moonshot.cn/v1",
     apiStyle: "chat_completions",
-    group: "china",
     labelKey: "settings.presetMoonshotCn",
     aliases: ["moonshot"],
   },
@@ -172,7 +154,6 @@ export const NAMED_ENDPOINT_PRESETS: readonly NamedEndpointPreset[] = [
     name: "Zhipu AI",
     baseUrl: "https://open.bigmodel.cn/api/paas/v4",
     apiStyle: "chat_completions",
-    group: "china",
     labelKey: "settings.presetZhipuApi",
     aliases: ["zhipu", "bigmodel"],
     zhipuCompat: true,
@@ -183,7 +164,6 @@ export const NAMED_ENDPOINT_PRESETS: readonly NamedEndpointPreset[] = [
     name: "Zhipu AI Coding Plan",
     baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4",
     apiStyle: "chat_completions",
-    group: "china",
     labelKey: "settings.presetZhipuCodingPlan",
     aliases: ["zai-coding-cn"],
     zhipuCompat: true,
@@ -194,7 +174,6 @@ export const NAMED_ENDPOINT_PRESETS: readonly NamedEndpointPreset[] = [
     name: "SiliconFlow (China)",
     baseUrl: "https://api.siliconflow.cn/v1",
     apiStyle: "chat_completions",
-    group: "china",
     labelKey: "settings.presetSiliconflowCn",
   },
   {
@@ -203,7 +182,6 @@ export const NAMED_ENDPOINT_PRESETS: readonly NamedEndpointPreset[] = [
     name: "Volcengine Ark",
     baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
     apiStyle: "chat_completions",
-    group: "china",
     labelKey: "settings.presetVolcengine",
     aliases: ["doubao", "ark"],
   },
@@ -213,9 +191,17 @@ export const NAMED_ENDPOINT_PRESETS: readonly NamedEndpointPreset[] = [
     name: "MiniMax",
     baseUrl: "https://api.minimaxi.com/anthropic/v1",
     apiStyle: "anthropic_messages",
-    group: "china",
     labelKey: "settings.presetMinimaxCn",
     aliases: ["minimax"],
+  },
+  {
+    id: "xiaomi",
+    vendorKey: "xiaomi",
+    name: "Xiaomi",
+    baseUrl: "https://api.xiaomimimo.com/v1",
+    apiStyle: "chat_completions",
+    labelKey: "settings.presetXiaomi",
+    aliases: ["mimo", "xiaomimimo"],
   },
   {
     id: "kimi-for-coding",
@@ -223,17 +209,10 @@ export const NAMED_ENDPOINT_PRESETS: readonly NamedEndpointPreset[] = [
     name: "Kimi For Coding",
     baseUrl: "https://api.kimi.com/coding/v1",
     apiStyle: "anthropic_messages",
-    group: "china",
     labelKey: "settings.presetKimiCoding",
     aliases: ["kimi-coding", "kimi"],
   },
 ];
-
-export const NAMED_PRESET_GROUPS: readonly NamedPresetGroup[] = ["international", "china"];
-
-export function namedPresetsInGroup(group: NamedPresetGroup): NamedEndpointPreset[] {
-  return NAMED_ENDPOINT_PRESETS.filter((preset) => preset.group === group);
-}
 
 /** Canonical form of a configured endpoint for preset matching. */
 export function normalizeEndpointUrl(value: string | undefined): string | undefined {
@@ -273,8 +252,8 @@ function presetByUrl(url: string): NamedEndpointPreset | undefined {
 /**
  * Resolve a named endpoint from a stored row.
  *
- * URL wins when it addresses a published host, so API vs Coding Plan (or
- * China vs international) cannot be catalog-matched as the wrong record.
+ * URL wins when it addresses a published host, so API vs Coding Plan cannot
+ * be catalog-matched as the wrong record.
  */
 export function matchNamedPreset(input: {
   vendorKey?: string;

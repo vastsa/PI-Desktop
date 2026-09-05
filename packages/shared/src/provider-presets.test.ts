@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  NAMED_ENDPOINT_PRESETS,
   isZhipuEndpoint,
   matchNamedPreset,
   matchZhipuPreset,
-  namedPresetsInGroup,
   normalizeEndpointUrl,
   zhipuRequestCompat,
 } from "./provider-presets.js";
@@ -79,16 +79,26 @@ describe("Zhipu endpoint presets", () => {
 });
 
 describe("named endpoint presets", () => {
-  it("groups international and China first-party endpoints", () => {
-    const international = namedPresetsInGroup("international").map((item) => item.id);
-    const china = namedPresetsInGroup("china").map((item) => item.id);
-    expect(international).toEqual(
-      expect.arrayContaining(["openai", "anthropic", "google", "openrouter", "opencode_go"]),
+  it("lists first-party vendors in one flat catalog, including Xiaomi", () => {
+    const ids = NAMED_ENDPOINT_PRESETS.map((item) => item.id);
+    expect(ids).toEqual(
+      expect.arrayContaining([
+        "openai",
+        "anthropic",
+        "google",
+        "openrouter",
+        "opencode_go",
+        "deepseek",
+        "alibaba-cn",
+        "zhipuai",
+        "xiaomi",
+      ]),
     );
-    expect(china).toEqual(
-      expect.arrayContaining(["deepseek", "alibaba-cn", "zhipuai", "moonshotai-cn"]),
+    expect(NAMED_ENDPOINT_PRESETS.every((item) => !("group" in item))).toBe(true);
+    expect(matchNamedPreset({ vendorKey: "xiaomi" })?.baseUrl).toBe(
+      "https://api.xiaomimimo.com/v1",
     );
-    expect(international).not.toContain("zhipuai");
+    expect(matchNamedPreset({ vendorKey: "mimo" })?.id).toBe("xiaomi");
   });
 
   it("binds first-party vendors to their published wire styles", () => {

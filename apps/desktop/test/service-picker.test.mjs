@@ -39,16 +39,16 @@ test("the service menu portals above the dialog overlay and hides until measured
   assert.match(menuSource, /if \(restoreFocus\) triggerRef/);
 });
 
-test("service groups survive filtering and custom stays first", () => {
+test("the service list is a flat vendor menu with custom first", () => {
   assert.match(pickerSource, /id: CUSTOM_SERVICE/);
-  assert.match(pickerSource, /settings\.presetGroupInternational/);
-  assert.match(pickerSource, /settings\.presetGroupChina/);
+  assert.match(pickerSource, /NAMED_ENDPOINT_PRESETS\.map/);
   assert.match(pickerSource, /settings\.noServiceMatches/);
   assert.match(pickerSource, /role="option"/);
-  // Custom is prepended so it is not buried under International.
+  assert.doesNotMatch(pickerSource, /presetGroupInternational|presetGroupChina/);
+  assert.doesNotMatch(pickerSource, /NAMED_PRESET_GROUPS/);
   assert.ok(
     pickerSource.indexOf("id: CUSTOM_SERVICE") <
-      pickerSource.indexOf("NAMED_PRESET_GROUPS.flatMap"),
+      pickerSource.indexOf("NAMED_ENDPOINT_PRESETS.map"),
     "custom should be listed before named vendors",
   );
 });

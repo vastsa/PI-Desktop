@@ -70,9 +70,9 @@ Completions adapter. It does not create a second transport or a closed model
 allowlist.
 
 Zhipu / GLM and Z.AI are named OpenAI-compatible endpoint presets among a
-short models.dev-backed Service list (international first-party vendors plus
-China first-party vendors). The add-provider Service select persists the
-matching models.dev `vendorKey` and uses the published endpoint without
+short models.dev-backed Service list of first-party vendors (including
+Xiaomi). The add-provider Service picker persists the matching models.dev
+`vendorKey` and uses the published endpoint without
 showing Name, Base URL, or API format on the named-service path. Chat turns
 still use the selected pi-ai adapter (`chat_completions`, `responses`,
 `anthropic_messages`, `google_generative_ai`, or `opencode_go`). Zhipu / Z.AI

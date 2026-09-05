@@ -66,7 +66,7 @@ Settings / UI
 6. `custom_http`（稍后为advanced/experimental）
 
 智谱 / GLM 与 Z.AI 是 models.dev 支持的命名端点预设之一。添加服务的「服务」
-下拉框按国际 / 国内分组列出主流厂商，持久化对应的 models.dev `vendorKey`。
+按厂商平铺列出主流端点（含小米），持久化对应的 models.dev `vendorKey`。
 命名服务的常见路径是服务 + API 密钥。自定义端点在常见路径上并排显示 API 密钥
 与接口格式。
 

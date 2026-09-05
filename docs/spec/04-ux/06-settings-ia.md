@@ -200,15 +200,15 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
     enabled levels disable the default selector and show the model's
     manual-override hint
   - a new dialog starts with only **Service**. Named endpoints from
-    models.dev (international: OpenAI, Anthropic, Google Gemini, OpenRouter,
-    Groq, xAI, Mistral, Together, Fireworks, OpenCode Go, Z.AI; China:
-    DeepSeek, Qwen/DashScope, Moonshot/Kimi, Zhipu, SiliconFlow, Volcengine
-    Ark, MiniMax, Kimi For Coding) then show Service + API key, with the
-    published host as a one-line summary. Custom endpoint then shows Service,
-    Name, Base URL, then API key beside API format. Named display names stay
-    behind Advanced. Service is a searchable anchored menu (filter by
-    localized name, vendor key, alias, or host), not a native select, stepper,
-    or vendor-card grid. Saved named rows store the models.dev `vendorKey` and
+    models.dev (OpenAI, Anthropic, Google Gemini, OpenRouter, Groq, xAI,
+    Mistral, Together, Fireworks, OpenCode Go, Z.AI, DeepSeek, Qwen/DashScope,
+    Moonshot/Kimi, Zhipu, SiliconFlow, Volcengine Ark, MiniMax, Xiaomi, Kimi
+    For Coding) then show Service + API key, with the published host as a
+    one-line summary. Custom endpoint then shows Service, Name, Base URL, then
+    API key beside API format. Named display names stay behind Advanced.
+    Service is a searchable anchored menu of vendors (filter by localized
+    name, vendor key, alias, or host), not a native select, region grouping,
+    stepper, or vendor-card grid. Saved named rows store the models.dev `vendorKey` and
     the preset `apiStyle` (Chat Completions, Responses, Anthropic, Gemini, or
     `opencode_go`).
   - helper copy stays out of the model cards; labels, status badges, and the

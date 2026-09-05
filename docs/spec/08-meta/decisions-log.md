@@ -49,6 +49,7 @@ This log freezes previously open questions into concrete decisions.
 | D309 | Add-provider common path is Service + key | **Amend D308 / ADR 0116 / ADR 0155: a new add-provider dialog starts with only Service. Named endpoints (Zhipu / Z.AI, OpenCode Go) then show Service + API key and a host summary. Custom endpoint then shows Name, Base URL, and API key. Name (named) and API format (custom) stay in Advanced. OpenCode Go is a Service option. No stepper or vendor-card grid.** | Stacking Name, Base URL, and API format next to Service made a known service look like a generic gateway. The common path should be pick a service and paste a key. See ADR 0156 and E2E-005 / E2E-005B / E2E-005D. |
 | D310 | Custom API format stays beside the key; Service lists top models.dev vendors | **Amend D309 / ADR 0155 / ADR 0156: Custom endpoint shows Name + Base URL, then API key beside API format on the common path. Named Service options expand to models.dev-backed international and China first-party endpoints (OpenAI, Anthropic, Google, OpenRouter, Groq, xAI, Mistral, Together, Fireworks, OpenCode Go, Z.AI, DeepSeek, Qwen, Moonshot, Zhipu, SiliconFlow, Volcengine, MiniMax, Kimi For Coding), each with a published URL and wire style. Named display names stay in Advanced.** | Custom gateways need the format next to the key, while named vendors should cover the usual domestic and international APIs without a closed allowlist. See E2E-005 / E2E-005B / E2E-005D. |
 | D311 | Service picker is searchable; discovery waits for a stable choice | **Amend D310: the add-provider Service control is a searchable anchored menu (same pattern as the default-model picker), not a native select. Filtering is client-side over localized name, vendor key, aliases, and host. Named add-path discovery does not start until an API key is present (editing still reuses the stored secret). Custom endpoints still probe a valid URL without a key. The discovery hook does not mark loading until the debounce fires, and an endpoint change clears the previous list immediately.** | Native selects with optgroups are sluggish in the overlay, and changing Service or typing a key used to refetch/re-render on every change. Search matches how models are filtered. See E2E-005 / E2E-005D. |
+| D312 | Service list is a flat vendor catalog; add Xiaomi | **Amend D310 / D311: named Service options are one vendor list, not International / China groups. Add Xiaomi (`vendorKey: "xiaomi"`, `https://api.xiaomimimo.com/v1`, Chat Completions). Custom stays first. Search still matches localized name, vendor key, alias, and host.** | Region headings split the same vendors users already search by name. Xiaomi's first-party MiMo API is a models.dev vendor. See E2E-005. |
 | D025 | Model allowlist | **No closed product allowlist** | Models churn; power users need free-form IDs |
 | D026 | Catalog sources | **bundled snapshot + discovery/refresh + user-defined** | Works offline and stays current |
 | D027 | Default identity | **Model selection is `(providerId, modelId)`** | Same model id can exist on many gateways |
@@ -3384,3 +3385,13 @@ D193, and D194.
   list immediately so stale models do not linger.
 - Decision D311 amends D310. See `04-ux/06-settings-ia.md` and E2E-005 /
   E2E-005D.
+
+## 2026-09-05 — Flat vendor Service list and Xiaomi (D312)
+
+- Service options no longer split International / China. Custom stays first,
+  then one searchable vendor list.
+- Xiaomi is a named endpoint: models.dev `vendorKey: "xiaomi"`,
+  `https://api.xiaomimimo.com/v1`, Chat Completions. Aliases `mimo` and
+  `xiaomimimo` match the catalog.
+- Decision D312 amends D310 / D311. See `04-ux/06-settings-ia.md` and
+  E2E-005.

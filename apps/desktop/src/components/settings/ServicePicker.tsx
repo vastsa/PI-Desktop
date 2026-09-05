@@ -1,31 +1,21 @@
 /**
  * Searchable Service menu for the add/edit provider dialog.
  *
- * Native <select> with optgroups is sluggish in this overlay and cannot
- * filter. This follows the default-model picker: an anchored menu, a local
- * search field, and grouped options. Filtering never talks to the host.
+ * Native <select> is sluggish in this overlay and cannot filter. This follows
+ * the default-model picker: an anchored menu, a local search field, and a
+ * flat vendor list. Filtering never talks to the host.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  NAMED_PRESET_GROUPS,
-  namedPresetsInGroup,
-  type NamedPresetGroup,
-} from "@pi-desktop/shared";
+import { NAMED_ENDPOINT_PRESETS } from "@pi-desktop/shared";
 import { cx, Input } from "../ui";
 import { IconCheck, IconChevronDown, IconSearch } from "../icons";
 import { AnchoredMenu } from "./AnchoredMenu";
 
 export const CUSTOM_SERVICE = "custom";
 
-const GROUP_LABEL_KEYS: Record<NamedPresetGroup, string> = {
-  international: "settings.presetGroupInternational",
-  china: "settings.presetGroupChina",
-};
-
 type ServiceOption = {
   id: string;
-  group: "custom" | NamedPresetGroup;
   label: string;
   haystack: string;
 };
@@ -62,23 +52,19 @@ export function ServicePicker({
   const options = useMemo<ServiceOption[]>(() => {
     const custom: ServiceOption = {
       id: CUSTOM_SERVICE,
-      group: "custom",
       label: customLabel,
       haystack: `${customLabel} custom endpoint`.toLowerCase(),
     };
-    const named = NAMED_PRESET_GROUPS.flatMap((group) =>
-      namedPresetsInGroup(group).map((preset) => {
-        const label = t(preset.labelKey);
-        const aliases = preset.aliases?.join(" ") ?? "";
-        return {
-          id: preset.id,
-          group,
-          label,
-          haystack:
-            `${label} ${preset.name} ${preset.id} ${preset.vendorKey} ${aliases} ${preset.baseUrl} ${hostOf(preset.baseUrl)}`.toLowerCase(),
-        };
-      }),
-    );
+    const named = NAMED_ENDPOINT_PRESETS.map((preset) => {
+      const label = t(preset.labelKey);
+      const aliases = preset.aliases?.join(" ") ?? "";
+      return {
+        id: preset.id,
+        label,
+        haystack:
+          `${label} ${preset.name} ${preset.id} ${preset.vendorKey} ${aliases} ${preset.baseUrl} ${hostOf(preset.baseUrl)}`.toLowerCase(),
+      };
+    });
     return [custom, ...named];
   }, [customLabel, t]);
 
@@ -127,21 +113,6 @@ export function ServicePicker({
         : (index + delta + visibleIds.length) % visibleIds.length;
     setActiveId(visibleIds[next] ?? "");
   };
-
-  const groups = (
-    [
-      { id: "custom" as const, label: null },
-      ...NAMED_PRESET_GROUPS.map((group) => ({
-        id: group,
-        label: t(GROUP_LABEL_KEYS[group]),
-      })),
-    ] as const
-  )
-    .map((group) => ({
-      ...group,
-      options: visible.filter((option) => option.group === group.id),
-    }))
-    .filter((group) => group.options.length > 0);
 
   return (
     <AnchoredMenu
@@ -210,54 +181,38 @@ export function ServicePicker({
           </div>
         ) : (
           <ul className="provider-service-list">
-            {groups.map((group, groupIndex) => (
-              <li key={group.id}>
-                {group.label ? (
-                  <div
+            {visible.map((option) => {
+              const isCurrent = option.id === value;
+              const isActive = option.id === activeId;
+              return (
+                <li key={option.id}>
+                  <button
+                    ref={(node) => {
+                      if (node) optionRefs.current.set(option.id, node);
+                      else optionRefs.current.delete(option.id);
+                    }}
+                    type="button"
+                    role="option"
+                    tabIndex={-1}
+                    aria-selected={isCurrent}
                     className={cx(
-                      "provider-service-group",
-                      groupIndex > 0 && "has-divider",
+                      "provider-service-option",
+                      isCurrent && "is-current",
+                      isActive && "is-active",
                     )}
+                    onMouseEnter={() => setActiveId(option.id)}
+                    onClick={() => choose(option.id)}
                   >
-                    {group.label}
-                  </div>
-                ) : null}
-                <ul className="provider-service-list">
-                  {group.options.map((option) => {
-                    const isCurrent = option.id === value;
-                    const isActive = option.id === activeId;
-                    return (
-                      <li key={option.id}>
-                        <button
-                          ref={(node) => {
-                            if (node) optionRefs.current.set(option.id, node);
-                            else optionRefs.current.delete(option.id);
-                          }}
-                          type="button"
-                          role="option"
-                          tabIndex={-1}
-                          aria-selected={isCurrent}
-                          className={cx(
-                            "provider-service-option",
-                            isCurrent && "is-current",
-                            isActive && "is-active",
-                          )}
-                          onMouseEnter={() => setActiveId(option.id)}
-                          onClick={() => choose(option.id)}
-                        >
-                          <span className="provider-service-option-check" aria-hidden>
-                            {isCurrent ? <IconCheck size={12} /> : null}
-                          </span>
-                          <span className="provider-service-option-label">
-                            {option.label}
-                          </span>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </li>
-            ))}
+                    <span className="provider-service-option-check" aria-hidden>
+                      {isCurrent ? <IconCheck size={12} /> : null}
+                    </span>
+                    <span className="provider-service-option-label">
+                      {option.label}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
