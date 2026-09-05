@@ -18,7 +18,7 @@
     "preview": "electron-vite preview",
     "postinstall": "electron-builder install-app-deps",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --test test/*.test.mjs src/*.test.mjs",
+    "test": "node --test test/*.test.mjs",
     "lint": "node ../../scripts/check-style-tokens.mjs",
     "clean": "node -e \"fs.rmSync('out',{recursive:true,force:true});fs.rmSync('dist',{recursive:true,force:true})\"",
     "build:host-release": "cargo build --release --manifest-path ../../Cargo.toml -p host-core",

@@ -4,7 +4,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import {
   SCROLLING_ATTRIBUTE,
   installScrollbarReveal,
-} from "./lib/scrollbar-reveal.ts";
+} from "../src/lib/scrollbar-reveal.ts";
 
 function fakeElement() {
   const attrs = new Map();

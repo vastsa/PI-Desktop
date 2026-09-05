@@ -5,20 +5,20 @@ import test from "node:test";
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 const [apiSource, appSource, composerSource, settingsSource, commandsSource, storeSource, surfaceSource, transcriptSource, barSource, topbarSource, componentSpec, englishSource, chineseSource, planStateSource] =
   await Promise.all([
-    read("./lib/api.ts"),
-    read("./App.tsx"),
-    read("./components/Composer.tsx"),
-    read("./pages/SettingsPage.tsx"),
-    read("./lib/commands.ts"),
-    read("./stores/app-store.ts"),
-    read("./components/ChatSurface.tsx"),
-    read("./components/ChatTranscript.tsx"),
-    read("./components/PlanApprovalBar.tsx"),
-    read("./components/ConversationTopbar.tsx"),
+    read("../src/lib/api.ts"),
+    read("../src/App.tsx"),
+    read("../src/components/Composer.tsx"),
+    read("../src/pages/SettingsPage.tsx"),
+    read("../src/lib/commands.ts"),
+    read("../src/stores/app-store.ts"),
+    read("../src/components/ChatSurface.tsx"),
+    read("../src/components/ChatTranscript.tsx"),
+    read("../src/components/PlanApprovalBar.tsx"),
+    read("../src/components/ConversationTopbar.tsx"),
     read("../../../docs/spec/04-ux/08-component-spec.md"),
     read("../../../packages/i18n/src/locales/en/index.ts"),
     read("../../../packages/i18n/src/locales/zh-CN/index.ts"),
-    read("./lib/plan-mode-state.ts"),
+    read("../src/lib/plan-mode-state.ts"),
   ]);
 const legacyModeKey = ["mode", "Chat"].join("");
 const legacyModeCommand = ["builtin.mode", "chat"].join(".");

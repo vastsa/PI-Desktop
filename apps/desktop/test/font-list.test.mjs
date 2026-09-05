@@ -6,7 +6,7 @@ import {
   FONT_LIST_OVERSCAN,
   FONT_OPTION_ROW_HEIGHT,
   visibleRowRange,
-} from "./lib/font-list.ts";
+} from "../src/lib/font-list.ts";
 
 const option = (label, group) => ({
   value: `'${label}', sans-serif`,

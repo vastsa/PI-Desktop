@@ -5,7 +5,7 @@ import {
   buildFontOptions,
   cssFamilyForName,
   readableFontFamily,
-} from "./lib/fonts.ts";
+} from "../src/lib/fonts.ts";
 
 test("cssFamilyForName quotes names and escapes single quotes", () => {
   assert.equal(cssFamilyForName("PingFang SC"), "'PingFang SC'");

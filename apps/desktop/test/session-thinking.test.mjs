@@ -4,7 +4,7 @@ import {
   applyOptimisticSessionConfiguration,
   providerThinkingLevels,
   resolveComposerThinkingProvider,
-} from "./lib/session-thinking.ts";
+} from "../src/lib/session-thinking.ts";
 
 const reasoningProvider = {
   id: "bigmodel",

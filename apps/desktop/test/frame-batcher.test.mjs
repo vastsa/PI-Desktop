@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createFrameBatcher } from "./lib/frame-batcher.ts";
+import { createFrameBatcher } from "../src/lib/frame-batcher.ts";
 
 test("frame batcher keeps the latest value for each stream target", () => {
   const batches = [];
