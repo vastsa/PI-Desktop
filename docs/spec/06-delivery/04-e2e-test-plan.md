@@ -4421,6 +4421,8 @@ Each scenario is documented in this format:
     a path list; Grep shows hits grouped per file with line numbers in `content`
     mode, a path list in `filesWithMatches`, and per-file totals in `count`; the
     failing command carries an `exit 1` chip.
+  - Each Glob/Grep path-list row is start-aligned with natural character
+    spacing; glyphs are not distributed across the block width.
   - The workspace edit shows no inline diff (its ReviewChangeCard owns it); the
     scratch edit shows a compact diff and a `scratch` chip.
   - The plugin result renders label/value fields and labeled blocks, not a blob.

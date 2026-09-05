@@ -1510,6 +1510,9 @@ twice.
 - Chips: monospace `--text-2xs`, `--ds-tile-deep` fill (no border, D297), error hue for exit codes
 - Code, file list, match list and field blocks: `font-mono text-sm`,
   independently copyable, capped at 260px with internal scrolling
+- File-list paths are block-level, start-aligned rows (same box as Grep path
+  headings). A full-width `<button>` must not justify the path's characters
+  across the block.
 - Diff blocks reuse the review card's `.diff-line` rails
 - Only expanded content receives an inset surface and subtle border
 

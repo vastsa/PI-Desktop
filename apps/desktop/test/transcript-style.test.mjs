@@ -77,6 +77,12 @@ test("tool block bodies stay bounded and role-coded", () => {
     stylesSource,
     /\.tool-file-list,\s*\.tool-match-list \{[\s\S]*?max-height:\s*260px;[\s\S]*?overflow:\s*auto;/,
   );
+  // Stretched <button> paths stay start-aligned; Chromium must not justify
+  // the path glyphs across the row (same contract as Grep path headings).
+  const fileItem = stylesSource.match(/\.tool-file-item \{([^}]*)\}/)?.[1];
+  assert.ok(fileItem);
+  assert.match(fileItem, /display:\s*block;/);
+  assert.match(fileItem, /width:\s*100%;/);
   // stderr and error notes carry the error hue, host notices stay neutral.
   assert.match(stylesSource, /\.tool-row-content\.is-error \{[\s\S]*?var\(--ds-error\)/);
   assert.match(stylesSource, /\.tool-chip\.is-error \{[\s\S]*?var\(--ds-error\)/);

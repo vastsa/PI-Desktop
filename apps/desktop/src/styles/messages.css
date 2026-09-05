@@ -2444,8 +2444,18 @@
   gap: 1px;
 }
 
+/*
+ * Linked paths are <button>s stretched by the column flex list. Chromium's
+ * anonymous button box then justifies the label glyphs across the row
+ * unless the control is a block box, same as `.tool-match-path`.
+ */
 .tool-file-item {
+  display: block;
+  width: 100%;
+  min-width: 0;
   overflow: hidden;
+  appearance: none;
+  -webkit-appearance: none;
   border-radius: var(--radius-3xs);
   padding: 2px 8px;
   color: var(--ds-text-secondary);
