@@ -10,8 +10,8 @@
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import test from "node:test";
-import { en, flattenCatalog, zhCN } from "../dist/index.js";
+import { test } from "vitest";
+import { en, flattenCatalog, zhCN } from "../src/index.ts";
 
 const SRC = new URL("../../../apps/desktop/src/", import.meta.url);
 

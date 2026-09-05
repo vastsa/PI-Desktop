@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import {
   en,
   flattenCatalog,
   resolveLocale,
   zhCN,
-} from "../dist/index.js";
+} from "../src/index.ts";
 
 function placeholders(value) {
   return [...value.matchAll(/{{\s*([^},\s]+)[^}]*}}/g)]

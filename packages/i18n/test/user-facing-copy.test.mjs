@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import test from "node:test";
-import { en, flattenCatalog, zhCN } from "../dist/index.js";
+import { test } from "vitest";
+import { en, flattenCatalog, zhCN } from "../src/index.ts";
 
 const english = flattenCatalog(en);
 const chinese = flattenCatalog(zhCN);

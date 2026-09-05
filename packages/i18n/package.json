@@ -18,10 +18,11 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "pnpm run build && node --test test/*.test.mjs",
+    "test": "vitest run",
     "clean": "node -e \"fs.rmSync('dist',{recursive:true,force:true})\""
   },
   "devDependencies": {
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
   }
 }
