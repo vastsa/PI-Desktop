@@ -1,6 +1,6 @@
 {
   "name": "@pi-desktop/docs",
-  "version": "0.13.4",
+  "version": "0.13.5",
   "private": true,
   "type": "module",
   "scripts": {
