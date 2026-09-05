@@ -1059,6 +1059,9 @@ When drag/drop is implemented, these patterns should apply:
 - The card is rendered through a portal at `document.body`, never widens
   beyond 320px, never causes horizontal scroll on the underlying row, and
   stays non-interactive so the row keeps receiving pointer events.
+- The session row does not set a native `title` attribute. The hover card is
+  the only full-title surface, so the browser tooltip never stacks on the
+  card.
 - The card cancels on pointer leave, focus blur, scroll (any scroll
   container), resize, and the moment a context menu opens.
 

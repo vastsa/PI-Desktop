@@ -1793,14 +1793,15 @@ Each scenario is documented in this format:
   chips (Local task + mode/permission badge), the project name under
   Workspace (or "Temporary" / "临时对话" for scratch rows), the project's
   git branch when one is known, and the row's `Updated` timestamp formatted
-  by the active locale. The card never widens past 320px, never causes the
-  underlying row to horizontally scroll, and disappears immediately on
-  resize, scroll, or context-menu open.
+  by the active locale. The session row has no native `title` tooltip; the
+  hover card is the only full-title surface. The card never widens past
+  320px, never causes the underlying row to horizontally scroll, and
+  disappears immediately on resize, scroll, or context-menu open.
 - **Specs linked**: `04-ux/09-interaction-patterns.md §9.1b`
 - **Acceptance**: F (local presentation)
 - **Milestone**: M5
-- **Status**: Unit-covered (`sidebar-navigation.test.mjs` for the project
-  path tooltip contract that the session card reuses); full UI scenario Draft
+- **Status**: Unit-covered (`sidebar-navigation.test.mjs` for the session
+  hover card and the absence of a native row `title`); full UI scenario Draft
 
 #### E2E-048: Pin, archive, restore, and sort project/conversation rows
 

@@ -1194,7 +1194,6 @@ export function Sidebar({
               ? selectTemporarySession(session.id)
               : selectProjectSession(session));
           }}
-          title={taskTitle(session.title)}
           aria-current={active ? "page" : undefined}
         >
           {sessionPinned(session, meta) ? (

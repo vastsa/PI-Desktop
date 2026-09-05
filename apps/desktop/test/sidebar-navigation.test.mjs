@@ -253,3 +253,15 @@ test("project rows expose folder actions and full-path hover", () => {
     /\.sidebar-project-path-tooltip\s*\{[^}]*position:\s*fixed;[^}]*max-width:[^;]*;[^}]*overflow-wrap:\s*anywhere;/s,
   );
 });
+
+test("session rows use the hover card instead of a native title tooltip", () => {
+  const sessionMain = sidebarSource.match(
+    /className="thread-item-main"[\s\S]*?<\/button>/,
+  )?.[0] ?? "";
+
+  assert.match(sessionMain, /showSessionHoverCard\(/);
+  assert.doesNotMatch(sessionMain, /title=\{taskTitle\(session\.title\)\}/);
+  assert.doesNotMatch(sessionMain, /\btitle=\{/);
+  assert.match(sidebarSource, /className="sidebar-session-hover-card"/);
+  assert.match(sidebarSource, /className="sidebar-session-hover-card-title"/);
+});
