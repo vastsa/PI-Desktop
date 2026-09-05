@@ -1,6 +1,6 @@
 # ADR 0162: Cross-session A2A addressing
 
-- Status: Accepted
+- Status: Superseded by ADR 0165
 - Date: 2026-09-05
 - Deciders: PI-Desktop core
 - Related: D318, D277, ADR 0147, ADR 0062, ADR 0089,

@@ -1,6 +1,6 @@
 # ADR 0164: Parent agents collaborate across conversations
 
-- Status: Accepted
+- Status: Superseded by ADR 0165
 - Date: 2026-09-05
 - Deciders: PI-Desktop core
 - Related: D321, D318, ADR 0147, ADR 0162, ADR 0062,

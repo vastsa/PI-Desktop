@@ -1,6 +1,6 @@
 # ADR 0147: A2A Protocol Stack for Subagent Coordination
 
-- Status: Accepted (amended by ADR 0162 and ADR 0164)
+- Status: Superseded by ADR 0165
 - Date: 2026-09-02
 - Deciders: PI-Desktop core
 - Related: D277, D318, D321, ADR 0062, ADR 0089, ADR 0100, ADR 0162, ADR 0164,

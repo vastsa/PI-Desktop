@@ -32,7 +32,7 @@ PI-Desktop/
 ├── crates/
 │ └── host-core/              # Rust 特权宿主（二进制 pi-desktop-host-core）
 │   ├── Cargo.toml
-│   └── src/                  # rpc/、tools/、a2a/，其余每个领域一个模块
+│   └── src/                  # rpc/、tools/，其余每个领域一个模块
 ├── packages/
 │ ├── shared/                 # IPC/协议契约、错误码、更新日志
 │ ├── i18n/                   # en 与 zh-CN 目录及 locale 辅助函数

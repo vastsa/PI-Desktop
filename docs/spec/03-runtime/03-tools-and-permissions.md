@@ -511,14 +511,12 @@ delegate with `Bash`, `Edit` or `Write` would drive straight through them.
 
 A definition declares the tools its delegate may call, drawn only from the seven
 working tools `Read`, `Glob`, `Grep`, `BrowserPreview`, `Bash`, `Edit` and
-`Write`, plus the A2A tool `A2A` (D277 / ADR 0147 / ADR 0162, §10.3; its
-`discover`/`send`/`get`/`wait`/`complete`/`cancel` operations are selected by
-an `action` parameter). A definition that declares none gets `Read`, `Glob`,
-`Grep`; `tools: "*"` means all seven working tools and no A2A tool, since A2A
-is opt-in by name. An unrecognized name is dropped with a parse
-warning. Plugin tools, `Skill`, `ToolSearch`, `new_context`, the mode tools and
-`Task` itself are never assignable: a delegate is a bounded file/search/shell
-worker, not a second session.
+`Write`. A definition that declares none gets `Read`, `Glob`, `Grep`;
+`tools: "*"` means all seven working tools. An unrecognized name — including
+the withdrawn `A2A` and `Peer` tools (D326 / ADR 0165) — is dropped with a
+parse warning. Plugin tools, `Skill`, `ToolSearch`, `new_context`, the mode
+tools and `Task` itself are never assignable: a delegate is a bounded
+file/search/shell worker, not a second session.
 
 A delegate's available tools are its definition's, never its session's. It
 cannot gain a tool because the parent has it, and a session cannot lend
@@ -550,31 +548,6 @@ card can say which delegate wants the call (see `04-ux/03-permission-ux.md`
 Session-scoped `allow-session` grants are still per `toolName` and per session:
 one delegate's approval of `Bash` applies to the whole session, including the
 parent and other delegates.
-
-### 10.3 A2A tool scope (D277, ADR 0147, ADR 0162, ADR 0164)
-
-`A2A` is a host `a2a.*` call authorized by a host-minted capability token, not
-a workspace tool call, so it carries no `permissionScope` and is not gated by
-path, Bash, or permission-mode rules in §4–§6. It is still audited as the
-caller's own tool call in the transcript.
-
-Scope rules:
-
-- **Delegates.** Built per delegate at spawn. Opt-in per definition and
-  default-off. No builtin declares it. A definition that declares `A2A` but no
-  working tool is refused when `Task` runs. Delegate A2A never enters the
-  parent's model context; the report remains the only thing the parent reads
-  from a delegate. Discovery and send see other **subagents** on the host,
-  including other sessions — never parent agents.
-- **Parents.** Agent mode registers a `kind: "parent"` card for the runtime
-  lifetime and exposes `A2A` as a core tool. Plan/Goal do not. Parents
-  discover and send only to other **parents**. They cannot address subagents,
-  including their own; delegation lifecycle stays with `Task*`.
-- The sender is **bound by the runtime**, not by the model: the tool closes
-  over the host-minted token.
-
-Payload size, task history, sends per run, and the wait ceiling are bounded
-by the broker (`02-agent-runtime.md` §5f.2).
 
 ## 11. Plugin Tools
 

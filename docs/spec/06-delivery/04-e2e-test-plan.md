@@ -152,11 +152,11 @@ Each scenario is documented in this format:
 #### E2E-003: Rust host healthcheck responds
 
 - **Preconditions**: App is running; Rust host-core sidecar started.
-- **Steps**: 1) Electron handshakes with protocol version 10. 2) Call the host
+- **Steps**: 1) Electron handshakes with protocol version 11. 2) Call the host
   healthcheck RPC. 3) Repeat boot with mismatched older and newer protocol
   fixtures.
-- **Expected**: The protocol v10 host returns `ok` and the handshake is logged.
-  Every version other than v10, whether older or newer, is rejected before the
+- **Expected**: The protocol v11 host returns `ok` and the handshake is logged.
+  Every version other than v11, whether older or newer, is rejected before the
   conversation surface becomes interactive, so Plan approval/state events and
   context checkpoints cannot be silently lost.
 - **Specs linked**: `03-runtime/05-host-core-rust.md`, `03-runtime/06-host-rpc-protocol.md`
@@ -7253,125 +7253,31 @@ This test plan spec is accepted when:
 - **Status**: Unit-covered (`packages/agent-runtime/src/runtime.test.ts`,
   `context-compaction.test.mjs`); provider/UI journey Draft
 
-#### E2E-165: Concurrent subagents coordinate through the A2A protocol
+#### E2E-165: A2A and Peer tools are withdrawn
 
-- **Preconditions**: Agent mode with two user subagent definitions that each
-  declare a working tool plus the `A2A` tool — one write-capable
-  (`tools: Read, Edit, A2A`) and one read-only (`tools: Read, Grep, A2A`).
-  A third definition declares only `A2A`. A fourth declares no A2A tool. The
-  host advertises `"a2a"` at handshake (protocol v10).
-- **Steps**: 1) Start both A2A-capable delegates in one assistant message; on
-  spawn each is registered with the host-core broker and receives a capability
-  token. 2) Each calls `A2A(action="discover")` and finds the other in the
-  host's agent registry. 3) One delegate (the requester) sends a message to
-  the other (the worker) with `A2A(action="send")`, creating a task addressed to
-  the worker. 4) The worker calls `A2A(action="wait")` and receives the
-  streaming `a2a.task.event` addressed to it, then reads the task with
-  `A2A(action="get")`. 5) The worker finishes the task with
-  `A2A(action="complete")` (equivalently `a2a.tasks.status`), driving it to the
-  terminal `completed` state; the requester, parked in `A2A(action="wait")`,
-  wakes on the terminal `a2a.task.event` routed to it as the worker's
-  counterpart and reads the final message. 6) Delegate to the `A2A`-only
-  definition. 7) Delegate to the definition with no A2A tool. 8) Inspect the
-  parent's own tool list and the reports it receives.
-- **Expected**: `discover` returns the other registered agent (each caller's own
-  Agent Card excluded), with cards derived from the `SubagentDefinition`. A send
-  creates a durable `a2a_tasks` row in state `submitted`/`working` carrying
-  `agentName` (the worker) and `requesterName` (the sender); the worker's `wait`
-  wakes on the creation `a2a.task.event` addressed to it (`recipient` = its peer
-  id) rather than holding to the timeout; `get` returns the task and its bounded
-  history. The worker's `complete` drives the task to the terminal `completed`
-  state and routes the terminal event to the requester (the caller's
-  counterpart), which wakes its `wait`; no further transition is accepted
-  (`A2A_TASK_TERMINAL`). The `A2A`-only definition is refused at `Task`
-  time as declaring only coordination tools. The definition with no A2A tool
-  receives no A2A guidance and behaves exactly as before. `A2A` never appears in
-  the parent's tool list, no A2A traffic appears in the parent's model context,
-  and A2A tool calls appear in the transcript attributed to the calling delegate
-  under its `Task` row. On settle each delegate is deregistered and its token
-  invalidated.
+- **Preconditions**: Agent mode; protocol v11 host. A user subagent definition
+  lists `A2A` (or `Peer`) among its tools. Two Agent-mode sessions are open.
+- **Steps**: 1) Handshake and inspect host capabilities. 2) Inspect the parent
+  Agent tool list and `ToolSearch` results. 3) Load the definition that names
+  `A2A`/`Peer`. 4) Start two concurrent working-tool delegates. 5) Ask whether
+  one conversation can see the other.
+- **Expected**: Handshake succeeds at protocol v11 and does not advertise
+  `"a2a"`. `A2A` and `Peer` are absent from the parent catalog, deferred tools,
+  and `ToolSearch`. The unknown tool names are dropped with a parse warning;
+  remaining working tools still spawn. Concurrent delegates report only through
+  `Task*` — there is no sibling or parent-to-parent channel. `a2a.*` RPC
+  methods return method-not-found. Schema v13 databases have no `a2a_*`
+  tables.
 - **Specs linked**: `03-runtime/02-agent-runtime.md` §5f.2,
-  `03-runtime/06-host-rpc-protocol.md` §4,
   `03-runtime/03-tools-and-permissions.md` §10.2,
-  `08-meta/decisions-log.md` (D277, D318), ADR 0147, ADR 0162
+  `03-runtime/06-host-rpc-protocol.md` §3–§4,
+  `08-meta/decisions-log.md` (D326), ADR 0165
 - **Acceptance**: E (tools & permissions) + C (chat/stream) + Security
 - **Milestone**: M5
 - **Status**: Draft
 
-#### E2E-165b: A2A push notification and capability enforcement
-
-- **Preconditions**: Agent mode with two user subagent definitions that each
-  declare a working tool plus the `A2A` tool, delegated concurrently in one
-  session (one `contextId`). The host advertises `"a2a"` at handshake.
-- **Steps**: 1) One delegate sends a message creating a task, then sets a push
-  config for that task with `A2A`/`a2a.tasks.pushNotificationConfig.set`. 2) The
-  task advances; the broker emits an `a2a.push` notification for the subscribed
-  task. 3) A call is replayed with a token that has been invalidated by
-  deregister, and a call is made against a task the caller does not own.
-- **Expected**: The push config is stored host-side and readable with
-  `pushNotificationConfig.get`; a status change delivers an `a2a.push`
-  notification shaped `{ recipient, recipientContextId, contextId, taskId,
-  token?, status }` to the subscribed agent. A call bearing an invalidated
-  token fails with `A2A_UNKNOWN_TOKEN`, and addressing a task the caller does
-  not own fails with `A2A_UNKNOWN_AGENT` / `A2A_UNKNOWN_TASK`; a terminal task
-  refuses further transitions with `A2A_TASK_TERMINAL`. The capability token is
-  never present in the model-visible transcript.
-- **Specs linked**: `03-runtime/02-agent-runtime.md` §5f.2,
-  `03-runtime/06-host-rpc-protocol.md` §4, ADR 0147, ADR 0162
-- **Acceptance**: E (tools & permissions) + C (chat/stream) + Security
-- **Milestone**: M5
-- **Status**: Draft
-
-#### E2E-165c: A2A coordinates delegates across sessions
-
-- **Preconditions**: Agent mode with two open sessions, each with a user
-  subagent definition that declares a working tool plus the `A2A` tool. The
-  host advertises `"a2a"` at handshake.
-- **Steps**: 1) Start an A2A-capable delegate in session A and another in
-  session B. 2) The session-A delegate calls `A2A(action="discover")` and
-  finds the session-B agent (card carries a different `contextId`). 3) Session
-  A sends a message to that peer with `A2A(action="send")`, creating a task
-  whose `contextId` is session A and whose `agentName` is the session-B peer.
-  4) The session-B delegate's `A2A(action="wait")` wakes on the creation
-  `a2a.task.event` (`recipient` = its peer id, `recipientContextId` = session
-  B); session A's runtime does not deliver that event to any local waiter.
-  5) Session B finishes the task with `A2A(action="complete")`; session A's
-  parked `wait` wakes on the terminal event. 6) A third agent that is not a
-  party to the task attempts `get` / `complete` on it.
-- **Expected**: Cross-session discover, send, wait, and complete succeed.
-  The task is durable under session A's `contextId`. Events are delivered only
-  to the runtime whose `sessionId` equals `recipientContextId`. The stranger
-  is rejected with `A2A_UNKNOWN_AGENT`. If both sessions requested the same
-  definition name, the second register returns a suffix-uniquified `agentId`
-  and that is the address used in step 3. Delegate `discover` does not list
-  parent cards.
-- **Specs linked**: `03-runtime/02-agent-runtime.md` §5f.2,
-  `03-runtime/06-host-rpc-protocol.md` §4, ADR 0162
-- **Acceptance**: E (tools & permissions) + C (chat/stream) + Security
-- **Milestone**: M5
-- **Status**: Draft
-
-#### E2E-165d: Parent agents collaborate across conversations
-
-- **Preconditions**: Two Agent-mode sessions on the same host, each with a
-  live runtime (at least one agent prompt this process). The host advertises
-  `"a2a"` at handshake.
-- **Steps**: 1) Session A's parent calls `A2A(action="discover")`. 2) Session
-  A sends a note to session B's parent with `A2A(action="send")`. 3) Session
-  B is idle; the user later sends a prompt in session B. 4) Session A's
-  parent tries `A2A(action="send")` to a running subagent in either session.
-- **Expected**: `A2A` is in the parent's core Agent tool list from the first
-  prompt (not via `ToolSearch`). Discover lists the other session's parent
-  (`kind: "parent"`, title in the description, a different `contextId`) and
-  does not list subagents. The send creates a durable task. Session B's next
-  prompt is prefixed with the inbound A2A note so the parent model can reply.
-  Send to a subagent fails with `A2A_UNKNOWN_AGENT`. Plan/Goal sessions do
-  not expose parent `A2A`.
-- **Specs linked**: `03-runtime/02-agent-runtime.md` §5f.2,
-  `03-runtime/06-host-rpc-protocol.md` §4, ADR 0164
-- **Acceptance**: E (tools & permissions) + C (chat/stream) + Security
-- **Milestone**: M5
-- **Status**: Draft
+E2E-165b, E2E-165c, and E2E-165d (A2A push, cross-session A2A, parent A2A)
+are withdrawn with ADR 0165.
 
 #### E2E-166: Subagent model selection
 

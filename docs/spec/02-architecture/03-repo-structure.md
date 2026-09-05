@@ -31,7 +31,7 @@ PI-Desktop/
 ├── crates/
 │ └── host-core/              # Rust privileged host (binary pi-desktop-host-core)
 │   ├── Cargo.toml
-│   └── src/                  # rpc/, tools/, a2a/, plus one module per domain
+│   └── src/                  # rpc/, tools/, plus one module per domain
 ├── packages/
 │ ├── shared/                 # IPC/protocol contracts, error codes, changelog
 │ ├── i18n/                   # en and zh-CN catalogs plus locale helpers

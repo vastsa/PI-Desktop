@@ -159,7 +159,7 @@ Each ADR includes:
 | 0144 | Allow user-configured thinking-level overrides | Accepted |
 | 0145 | Publish native macOS Intel artifacts | Accepted |
 | 0146 | Assign outer and inner work-panel resize ownership by boundary | Superseded by 0151 |
-| 0147 | A2A protocol stack for subagent coordination | Accepted (supersedes 0138 / 0140) |
+| 0147 | A2A protocol stack for subagent coordination | Superseded by 0165 |
 | 0148 | Explicitly disable application keyboard shortcuts | Accepted |
 | 0149 | Calm transcript running-status motion | Accepted |
 | 0150 | Inline SVG empty-home agent mark | Superseded by 0152 |
@@ -174,6 +174,7 @@ Each ADR includes:
 | 0159 | Generated plugin settings and plugin-local shortcuts | Accepted |
 | 0160 | Shipped locale registry and searchable language picker | Accepted |
 | 0161 | Searchable theme picker matching language | Accepted |
-| 0162 | Cross-session A2A addressing | Accepted (amends 0147) |
+| 0162 | Cross-session A2A addressing | Superseded by 0165 |
 | 0163 | Transcript file references render as previewable chips | Accepted |
-| 0164 | Parent agents collaborate across conversations | Accepted (amends 0147 / 0162) |
+| 0164 | Parent agents collaborate across conversations | Superseded by 0165 |
+| 0165 | Withdraw the A2A / Peer coordination stack | Accepted (supersedes 0147 / 0162 / 0164) |
