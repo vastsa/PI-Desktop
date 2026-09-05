@@ -6,10 +6,11 @@ import test from "node:test";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-const [composer, api, main, saver, protocol, sidecar] = await Promise.all([
+const [composer, api, main, attachments, saver, protocol, sidecar] = await Promise.all([
   read("../src/components/Composer.tsx"),
   read("../src/lib/api.ts"),
   read("../electron/main/index.ts"),
+  read("../electron/main/prompt-attachments.ts"),
   read("../electron/main/composer-paste.ts"),
   read("../../../packages/shared/src/protocol.ts"),
   read("../../../packages/agent-runtime/src/sidecar.ts"),
@@ -97,11 +98,11 @@ test("pasted bytes stay in the session scratch directory", () => {
 });
 
 test("large image attachments avoid whole-file startup reads", () => {
-  assert.match(main, /async function hashFile\(path: string\)/);
-  assert.match(main, /createReadStream\(path\)/);
-  assert.match(main, /const inline = supportsVision && size <= MAX_INLINE_IMAGE_BYTES/);
-  assert.match(main, /await copyFile\(source, target, fsConstants\.COPYFILE_EXCL\)/);
-  assert.doesNotMatch(main, /const bytes = readFileSync\(source\.absolute\)/);
+  assert.match(attachments, /async function hashFile\(path: string\)/);
+  assert.match(attachments, /createReadStream\(path\)/);
+  assert.match(attachments, /const inline = supportsVision && size <= MAX_INLINE_IMAGE_BYTES/);
+  assert.match(attachments, /await copyFile\(source, target, fsConstants\.COPYFILE_EXCL\)/);
+  assert.doesNotMatch(attachments, /const bytes = readFileSync\(source\.absolute\)/);
   assert.match(sidecar, /const size = \(await stat\(canonical\)\)\.size/);
   assert.match(sidecar, /shouldInline && size <= MAX_INLINE_IMAGE_BYTES/);
   assert.match(sidecar, /await copyFile\(source, target, fsConstants\.COPYFILE_EXCL\)/);

@@ -12,21 +12,16 @@ import {
   shell,
   Tray,
 } from "electron";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import {
-  constants as fsConstants,
-  createReadStream,
   existsSync,
   mkdirSync,
-  readFileSync,
-  realpathSync,
   statSync,
   writeFileSync,
 } from "node:fs";
-import { copyFile, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { listInstalledFonts } from "./system-fonts";
 import {
   APP_ID,
@@ -50,7 +45,6 @@ import {
   THINKING_LEVELS,
   WINDOW_CONTROL_ACTIONS,
   err,
-  formatFileInsert,
   isActiveInProject,
   modelIdsMatch,
   ok,
@@ -60,10 +54,7 @@ import {
   type ComposerPasteFile,
   type PluginViewMeta,
   normalizeMode,
-  normalizeGlobalPermissionMode,
-  normalizeProposalKind,
   type AgentEventEnvelope,
-  type AgentPromptAttachment,
   type AgentPromptRequest,
   type PromptEnhancementRequest,
   type AgentStopRequest,
@@ -89,7 +80,6 @@ import {
   type PlanResolveRequest,
   type Result,
   type Risk,
-  type MessageAttachment,
   type ShortcutPlatform,
   type ThinkingLevel,
   type UiMessage,
@@ -185,6 +175,24 @@ import {
   type WindowBounds,
   type WorkPanelReservationState,
 } from "./work-panel-window";
+import {
+  appendPromptFallbackPaths,
+  durableUserMessageId,
+  preparePromptAttachments,
+  type PreparedPromptAttachment,
+} from "./prompt-attachments";
+import {
+  executionFromResponse,
+  executionListFromResponse,
+  planExecutionFromUnknown,
+} from "./plan-execution";
+import {
+  readCloseBehavior,
+  readWindowState,
+  writeCloseBehavior,
+  writeWindowState,
+} from "./window-preferences";
+import { createPlanUiProbe } from "./plan-ui-probe";
 
 // The shared error-code union is reconciled in the shared lane. Keep desktop
 // source type-safe while that lane is temporarily staged at main.
@@ -586,300 +594,6 @@ const IMPORT_SOURCES = new Set<ExternalSource>([
 
 const dataDir =
   process.env.PI_DESKTOP_DATA_DIR || join(homedir(), ".pi-desktop");
-
-const IMAGE_EXTENSIONS = new Set([
-  "avif",
-  "bmp",
-  "gif",
-  "heic",
-  "jpeg",
-  "jpg",
-  "png",
-  "tif",
-  "tiff",
-  "webp",
-]);
-const IMAGE_MIME_TYPES = new Set([
-  "image/avif",
-  "image/bmp",
-  "image/gif",
-  "image/heic",
-  "image/jpeg",
-  "image/png",
-  "image/tiff",
-  "image/webp",
-]);
-const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
-  avif: "image/avif",
-  bmp: "image/bmp",
-  gif: "image/gif",
-  heic: "image/heic",
-  jpeg: "image/jpeg",
-  jpg: "image/jpeg",
-  png: "image/png",
-  tif: "image/tiff",
-  tiff: "image/tiff",
-  webp: "image/webp",
-};
-const MAX_INLINE_IMAGE_BYTES = 20 * 1024 * 1024;
-
-type PromptPath = {
-  absolute: string;
-  root: "project" | "scratch" | "attachment";
-};
-
-type PreparedPromptAttachment = {
-  message: MessageAttachment;
-  fallbackPath: string;
-  inlineData?: string;
-};
-
-function pathInside(root: string, candidate: string): boolean {
-  const child = relative(root, candidate);
-  return child === "" || (!child.startsWith("..") && !isAbsolute(child));
-}
-
-function canonicalPath(path: string): string | undefined {
-  try {
-    return realpathSync(path);
-  } catch {
-    return undefined;
-  }
-}
-
-function promptMimeType(path: string, supplied?: string): string {
-  const value = supplied?.trim().toLowerCase();
-  if (value) return value;
-  const extension = path.split(".").at(-1)?.toLowerCase() ?? "";
-  return IMAGE_MIME_BY_EXTENSION[extension] ?? "application/octet-stream";
-}
-
-function isImagePromptAttachment(
-  attachment: AgentPromptAttachment,
-  path: string,
-): boolean {
-  const mimeType = promptMimeType(path, attachment.mimeType);
-  const extension = path.split(".").at(-1)?.toLowerCase() ?? "";
-  return (
-    attachment.kind === "image" ||
-    mimeType.startsWith("image/") ||
-    IMAGE_MIME_TYPES.has(mimeType) ||
-    IMAGE_EXTENSIONS.has(extension)
-  );
-}
-
-function resolvePromptPath(
-  dataRoot: string,
-  sessionId: string,
-  projectPath: string | undefined,
-  rawPath: string,
-): PromptPath | undefined {
-  const trimmed = rawPath.trim();
-  if (!trimmed) return undefined;
-  const scratchRoot = join(dataRoot, "scratch", sessionId);
-  const attachmentRoot = join(dataRoot, "attachments");
-  const roots: Array<{ path: string; root: PromptPath["root"] }> = [
-    { path: scratchRoot, root: "scratch" },
-    { path: attachmentRoot, root: "attachment" },
-    ...(projectPath ? [{ path: projectPath, root: "project" as const }] : []),
-  ];
-  const candidate = isAbsolute(trimmed)
-    ? resolve(trimmed)
-    : trimmed.startsWith("attachments/")
-      ? resolve(dataRoot, trimmed)
-      : projectPath
-        ? resolve(projectPath, trimmed)
-        : undefined;
-  if (!candidate) return undefined;
-  const realCandidate = canonicalPath(candidate);
-  if (!realCandidate) return undefined;
-  for (const entry of roots) {
-    const realRoot = canonicalPath(entry.path);
-    if (realRoot && pathInside(realRoot, realCandidate)) {
-      try {
-        if (!statSync(realCandidate).isFile()) return undefined;
-      } catch {
-        return undefined;
-      }
-      return { absolute: realCandidate, root: entry.root };
-    }
-  }
-  return undefined;
-}
-
-function displayPromptPath(
-  promptPath: PromptPath,
-  projectPath: string | undefined,
-): string {
-  if (promptPath.root !== "project" || !projectPath) return promptPath.absolute;
-  const relativePath = relative(projectPath, promptPath.absolute);
-  return relativePath && !relativePath.startsWith("..")
-    ? relativePath
-    : promptPath.absolute;
-}
-
-function ensureAttachmentBlob(dataRoot: string, bytes: Buffer): string {
-  const hash = createHash("sha256").update(bytes).digest("hex");
-  const root = join(dataRoot, "attachments");
-  mkdirSync(root, { recursive: true });
-  const target = join(root, hash);
-  if (!existsSync(target)) {
-    try {
-      writeFileSync(target, bytes, { flag: "wx" });
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException)?.code !== "EEXIST") throw error;
-    }
-  }
-  return `attachments/${hash}`;
-}
-
-async function hashFile(path: string): Promise<string> {
-  const hash = createHash("sha256");
-  const stream = createReadStream(path);
-  for await (const chunk of stream) hash.update(chunk as Buffer);
-  return hash.digest("hex");
-}
-
-async function ensureAttachmentBlobFromFile(
-  dataRoot: string,
-  source: string,
-): Promise<string> {
-  const hash = await hashFile(source);
-  const root = join(dataRoot, "attachments");
-  mkdirSync(root, { recursive: true });
-  const target = join(root, hash);
-  if (!existsSync(target)) {
-    try {
-      await copyFile(source, target, fsConstants.COPYFILE_EXCL);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException)?.code !== "EEXIST") throw error;
-    }
-  }
-  return `attachments/${hash}`;
-}
-
-async function fallbackPathForStoredAttachment(
-  dataRoot: string,
-  sessionId: string,
-  source: PromptPath,
-  name: string,
-): Promise<string> {
-  if (source.root !== "attachment") return source.absolute;
-  const root = join(dataRoot, "scratch", sessionId, "replayed");
-  mkdirSync(root, { recursive: true });
-  const safeName = name.replace(/[^\p{L}\p{N}._-]+/gu, "_") || "attachment";
-  const target = join(root, `${safeName}-${createHash("sha256").update(source.absolute).digest("hex").slice(0, 12)}`);
-  if (!existsSync(target)) {
-    try {
-      await copyFile(source.absolute, target, fsConstants.COPYFILE_EXCL);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException)?.code !== "EEXIST") throw error;
-    }
-  }
-  return target;
-}
-
-async function preparePromptAttachments(
-  dataRoot: string,
-  sessionId: string,
-  projectPath: string | undefined,
-  attachments: readonly AgentPromptAttachment[],
-  supportsVision: boolean,
-): Promise<PreparedPromptAttachment[]> {
-  const prepared: PreparedPromptAttachment[] = [];
-  for (const attachment of attachments) {
-    const source = resolvePromptPath(dataRoot, sessionId, projectPath, attachment.path);
-    if (!source) {
-      throw Object.assign(new Error(`Attachment path is outside the session roots: ${attachment.path}`), {
-        errorCode: ErrorCodes.PATH_OUTSIDE_WORKSPACE,
-      });
-    }
-    const name = attachment.name.trim() || source.absolute.split(/[\\/]/).at(-1) || "attachment";
-    const mimeType = promptMimeType(source.absolute, attachment.mimeType);
-    const isImage = isImagePromptAttachment(attachment, source.absolute);
-    if (!isImage) {
-      prepared.push({
-        message: {
-          kind: "file",
-          name,
-          ref: attachment.path,
-          ...(mimeType !== "application/octet-stream" ? { mimeType } : {}),
-          ...(Number.isFinite(attachment.size) ? { size: attachment.size } : {}),
-        },
-        fallbackPath: displayPromptPath(source, projectPath),
-      });
-      continue;
-    }
-
-    const size = statSync(source.absolute).size;
-    const inline = supportsVision && size <= MAX_INLINE_IMAGE_BYTES;
-    const bytes = inline ? await readFile(source.absolute) : undefined;
-    const ref =
-      source.root === "attachment" && attachment.path.trim().startsWith("attachments/")
-        ? attachment.path.trim()
-        : bytes
-          ? ensureAttachmentBlob(dataRoot, bytes)
-          : await ensureAttachmentBlobFromFile(dataRoot, source.absolute);
-    const fallbackPath = inline
-      ? displayPromptPath(source, projectPath)
-      : await fallbackPathForStoredAttachment(
-          dataRoot,
-          sessionId,
-          source,
-          name,
-        );
-    prepared.push({
-      message: {
-        kind: "image",
-        name,
-        ref,
-        mimeType,
-        size,
-      },
-      fallbackPath,
-      ...(bytes
-        ? { inlineData: bytes.toString("base64") }
-        : {}),
-    });
-  }
-  return prepared;
-}
-
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/**
- * Use the renderer's id for the new user row when it is a UUID the session
- * does not already hold (D288); otherwise mint one. The renderer inserted its
- * optimistic row under that id, so the durable echo lands on the same row.
- */
-export function durableUserMessageId(
-  requested: unknown,
-  existing: ReadonlyArray<{ id?: unknown }>,
-): string {
-  if (
-    typeof requested === "string" &&
-    UUID_PATTERN.test(requested) &&
-    !existing.some((message) => message?.id === requested)
-  ) {
-    return requested;
-  }
-  return crypto.randomUUID();
-}
-
-function appendPromptFallbackPaths(
-  content: string,
-  attachments: readonly PreparedPromptAttachment[],
-): string {
-  const paths = attachments
-    .filter((attachment) => !attachment.inlineData)
-    .map((attachment) => formatFileInsert(attachment.fallbackPath, "file"))
-    .join("")
-    .trim();
-  const text = content.trim();
-  if (!text) return paths;
-  return paths ? `${text}\n${paths}` : text;
-}
 
 const logger = new Logger(
   dataDir,
@@ -2215,61 +1929,6 @@ async function withGitBranch<T extends { path?: string; name?: string } | null |
   }
 }
 
-type WindowState = { x: number; y: number; width: number; height: number };
-
-function windowStatePath() {
-  return join(dataDir, "window-state.json");
-}
-
-async function readWindowState(): Promise<WindowState | null> {
-  const { readFile } = await import("node:fs/promises");
-  try {
-    const raw = JSON.parse(await readFile(windowStatePath(), "utf8"));
-    const s = {
-      x: Number(raw.x),
-      y: Number(raw.y),
-      width: Number(raw.width),
-      height: Number(raw.height),
-    };
-    if (![s.x, s.y, s.width, s.height].every(Number.isFinite)) return null;
-    if (s.width < WINDOW_MIN_WIDTH || s.height < WINDOW_MIN_HEIGHT) return null;
-    return s;
-  } catch {
-    return null;
-  }
-}
-
-function writeWindowState(state: WindowState) {
-  try {
-    mkdirSync(dataDir, { recursive: true });
-    writeFileSync(windowStatePath(), JSON.stringify(state), "utf8");
-  } catch {
-    // best-effort persistence
-  }
-}
-
-function closeBehaviorPath() {
-  return join(dataDir, "close-behavior.json");
-}
-
-function readCloseBehavior(): CloseBehavior | null {
-  try {
-    const raw = JSON.parse(readFileSync(closeBehaviorPath(), "utf8"));
-    return raw === "ask" || raw === "tray" || raw === "quit" ? raw : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeCloseBehavior(behavior: CloseBehavior) {
-  try {
-    mkdirSync(dataDir, { recursive: true });
-    writeFileSync(closeBehaviorPath(), JSON.stringify(behavior), "utf8");
-  } catch {
-    // best-effort persistence
-  }
-}
-
 /**
  * Applies a close-behavior choice. The tray icon is owned by D216 and stays
  * resident on every platform, so switching to "quit" must not destroy it —
@@ -2277,7 +1936,7 @@ function writeCloseBehavior(behavior: CloseBehavior) {
  */
 function applyCloseBehavior(next: CloseBehavior) {
   closeBehavior = next;
-  writeCloseBehavior(next);
+  writeCloseBehavior(dataDir, next);
   if (next === "tray") createTray();
 }
 
@@ -2566,7 +2225,11 @@ async function createWindow() {
   workPanelChatResizeTimer = null;
   workPanelChatResizeActive = false;
   setWorkPanelChatWidthForWindow = null;
-  const savedState = await readWindowState();
+  const savedState = await readWindowState(
+    dataDir,
+    WINDOW_MIN_WIDTH,
+    WINDOW_MIN_HEIGHT,
+  );
   mainWindow = new BrowserWindow({
     ...(savedState ?? { width: 1200, height: 800 }),
     minWidth: WINDOW_MIN_WIDTH,
@@ -3217,7 +2880,7 @@ async function createWindow() {
       }
     }
     if (bounds.width >= WINDOW_MIN_WIDTH && bounds.height >= WINDOW_MIN_HEIGHT) {
-      writeWindowState(bounds);
+      writeWindowState(dataDir, bounds);
     }
   };
   const scheduleStateSave = () => {
@@ -4432,341 +4095,11 @@ async function startHost(): Promise<void> {
   }
 }
 
-type PlanUiProbeRequest = {
-  operation?: unknown;
-  workspace?: unknown;
-  sessionId?: unknown;
-  turnId?: unknown;
-  status?: unknown;
-  revision?: unknown;
-  title?: unknown;
-  markdown?: unknown;
-  question?: unknown;
-};
-
-const PLAN_UI_PROBE_GLOBAL = "__PI_DESKTOP_PLAN_UI_PROBE";
-
-function planUiProbeHostChildPid(instance: HostProcess | null): number | null {
-  const child = (
-    instance as unknown as { child?: { pid?: unknown } } | null
-  )?.child;
-  return typeof child?.pid === "number" && Number.isInteger(child.pid)
-    ? child.pid
-    : null;
-}
-
-function planUiProbeIdentity(instance: HostProcess | null = host) {
-  return {
-    electronMainPid: process.pid,
-    hostChildPid: planUiProbeHostChildPid(instance),
-  };
-}
-
-function planUiProbeSidecarChildPid(instance: AgentSidecar | null = sidecar): number | null {
-  const child = (
-    instance as unknown as { child?: { pid?: unknown } } | null
-  )?.child;
-  return typeof child?.pid === "number" && Number.isInteger(child.pid)
-    ? child.pid
-    : null;
-}
-
-function planUiProbeErrorText(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  const secret = process.env.PI_DESKTOP_TEST_API_KEY;
-  if (!secret) return message;
-  return message.split(secret).join("[REDACTED]");
-}
-
-function planUiProbeString(value: unknown, field: string): string {
-  if (typeof value !== "string" || !value.trim()) {
-    throw new Error(`${field} must be a non-empty string`);
-  }
-  return value;
-}
-
-function planUiProbeWorkspace(value: unknown): string {
-  const workspace = planUiProbeString(value, "workspace").trim();
-  const resolved = resolve(workspace);
-  if (!existsSync(resolved) || !statSync(resolved).isDirectory()) {
-    throw new Error(`workspace directory not found: ${resolved}`);
-  }
-  return resolved;
-}
-
-async function planUiProbeLiveSetup(
-  activeHost: HostProcess,
-  workspace: string,
-): Promise<Record<string, unknown>> {
-  const apiKey = process.env.PI_DESKTOP_TEST_API_KEY;
-  const baseUrl = process.env.PI_DESKTOP_TEST_BASE_URL;
-  const modelId = process.env.PI_DESKTOP_TEST_MODEL;
-  const missing = [
-    !apiKey?.trim() ? "PI_DESKTOP_TEST_API_KEY" : null,
-    !baseUrl?.trim() ? "PI_DESKTOP_TEST_BASE_URL" : null,
-    !modelId?.trim() ? "PI_DESKTOP_TEST_MODEL" : null,
-  ].filter((name): name is string => Boolean(name));
-  if (missing.length > 0) {
-    throw new Error(`live Plan UI setup is missing ${missing.join(", ")}`);
-  }
-
-  const providerResponse = await activeHost.call<{
-    provider?: { id?: string; defaultModelId?: string } | null;
-  }>("providers.create", {
-    name: "Plan UI live provider",
-    vendorKey: "custom",
-    type: "openai_compatible",
-    protocol: "openai_compatible",
-    baseUrl,
-    authKind: "api_key_and_base_url",
-    defaultModelId: modelId,
-    secretValue: apiKey,
-    apiStyle: "chat_completions",
-  });
-  const providerId = providerResponse.provider?.id;
-  if (!providerId) throw new Error("live provider creation returned no provider ID");
-
-  const sessionResponse = await activeHost.call<{
-    session?: {
-      id?: string;
-      title?: string;
-      mode?: string;
-      providerId?: string | null;
-      modelId?: string | null;
-      projectPath?: string | null;
-    } | null;
-  }>("session.create", {
-    title: "Plan UI live Agent",
-    mode: "agent",
-    providerId,
-    modelId,
-    projectPath: workspace,
-  });
-  const session = sessionResponse.session;
-  if (!session?.id) throw new Error("live session creation returned no session ID");
-  if (session.mode !== "agent") throw new Error("live session is not Agent mode");
-  if (session.providerId !== providerId || session.modelId !== modelId) {
-    throw new Error("live session provider/model identity mismatch");
-  }
-  if (!session.projectPath) throw new Error("live session is not project-bound");
-  return {
-    ok: true,
-    operation: "liveSetup",
-    providerId,
-    modelId,
-    sessionId: session.id,
-    title: session.title,
-    mode: session.mode,
-    projectPath: session.projectPath,
-  };
-}
-
-async function runPlanUiProbe(request: unknown): Promise<Record<string, unknown>> {
-  try {
-    if (!request || typeof request !== "object" || Array.isArray(request)) {
-      throw new Error("probe request must be an object");
-    }
-    const input = request as PlanUiProbeRequest;
-    const operation = input.operation;
-    if (operation === "identity") {
-      return { ...planUiProbeIdentity(), ok: true, operation };
-    }
-    if (operation === "runtimeIdentity") {
-      if (!sidecar) throw new Error("agent sidecar unavailable");
-      const sessionId = planUiProbeString(input.sessionId, "sessionId").trim();
-      const runtime = await sidecar.call<{
-        runtimeId?: string;
-        sessionId?: string;
-        mode?: string;
-        modelId?: string;
-        status?: Record<string, unknown>;
-      }>("agent.testRuntimeIdentity", { sessionId });
-      if (!runtime.runtimeId) throw new Error("sidecar returned no runtime ID");
-      return {
-        ...planUiProbeIdentity(),
-        sidecarChildPid: planUiProbeSidecarChildPid(),
-        ok: true,
-        operation,
-        runtimeId: runtime.runtimeId,
-        sessionId: runtime.sessionId,
-        mode: runtime.mode,
-        modelId: runtime.modelId,
-        status: runtime.status,
-      };
-    }
-    if (
-      operation !== "seed" &&
-      operation !== "submit" &&
-      operation !== "settle" &&
-      operation !== "liveSetup"
-    ) {
-      throw new Error("probe operation must be identity, runtimeIdentity, seed, submit, settle, or liveSetup");
-    }
-
-    const activeHost = host;
-    if (!activeHost) throw new Error("host unavailable");
-    if (operation === "settle") {
-      const sessionId = planUiProbeString(input.sessionId, "sessionId").trim();
-      const turnId = planUiProbeString(input.turnId, "turnId").trim();
-      const status = input.status;
-      if (status !== "aborted" && status !== "completed") {
-        throw new Error("settle status must be aborted or completed");
-      }
-      const response = await activeHost.call("session.endTurn", {
-        turnId,
-        status,
-        createNotification: false,
-      });
-      if (host !== activeHost) throw new Error("host changed during Plan UI probe");
-      return {
-        ...planUiProbeIdentity(activeHost),
-        ok: true,
-        operation,
-        sessionId,
-        turnId,
-        status,
-        response,
-      };
-    }
-    const workspace = planUiProbeWorkspace(input.workspace);
-    const workspaceResponse = await activeHost.call<{
-      workspace?: { path?: string } | null;
-    }>("workspace.set", { path: workspace });
-    if (!workspaceResponse?.workspace?.path) {
-      throw new Error("workspace.set returned no workspace");
-    }
-
-    if (operation === "liveSetup") {
-      const response = await planUiProbeLiveSetup(activeHost, workspace);
-      if (host !== activeHost) throw new Error("host changed during Plan UI probe");
-      return {
-        ...planUiProbeIdentity(activeHost),
-        ...response,
-      };
-    }
-
-    if (operation === "seed") {
-      const response = await activeHost.call<{
-        session?: {
-          id?: string;
-          title?: string;
-          mode?: string;
-          providerId?: string | null;
-          projectPath?: string | null;
-        } | null;
-      }>("session.create", {
-        title: "Plan UI acceptance",
-        mode: "plan",
-        projectPath: workspace,
-      });
-      const session = response?.session;
-      if (!session?.id) throw new Error("session.create returned no session");
-      if (session.mode !== "plan") throw new Error("seed session is not Plan");
-      if (session.providerId) {
-        throw new Error("seed session unexpectedly requires a provider");
-      }
-      if (!session.projectPath) {
-        throw new Error("seed session is not project-bound");
-      }
-      if (host !== activeHost) throw new Error("host changed during Plan UI probe");
-      return {
-        ...planUiProbeIdentity(activeHost),
-        ok: true,
-        operation,
-        sessionId: session.id,
-        title: session.title,
-        mode: session.mode,
-        projectPath: session.projectPath,
-      };
-    }
-
-    const sessionId = planUiProbeString(input.sessionId, "sessionId").trim();
-    const revision = input.revision;
-    if (revision !== "first" && revision !== "second") {
-      throw new Error("revision must be first or second");
-    }
-    const title = planUiProbeString(input.title, "title");
-    const markdown = planUiProbeString(input.markdown, "markdown");
-    const question = planUiProbeString(input.question, "question");
-    const turnResponse = await activeHost.call<{ turnId?: string }>(
-      "session.beginTurn",
-      { sessionId },
-    );
-    const turnId = turnResponse?.turnId;
-    if (!turnId) throw new Error("session.beginTurn returned no turn");
-    const toolCallId = `plan-ui-probe-${revision}`;
-    const response = await activeHost.call<{
-      status?: string;
-      proposal?: Record<string, any> | null;
-    }>("plans.submit", {
-      sessionId,
-      turnId,
-      toolCallId,
-      title,
-      markdown,
-      question,
-    });
-    const proposal = response?.proposal;
-    if (response?.status !== "pending") {
-      throw new Error(`plans.submit was not pending: ${String(response?.status)}`);
-    }
-    if (!proposal?.id) throw new Error("plans.submit returned no proposal");
-    if (proposal.sessionId !== sessionId) {
-      throw new Error("proposal session identity mismatch");
-    }
-    if (proposal.turnId !== turnId) {
-      throw new Error("proposal turn identity mismatch");
-    }
-    if (proposal.toolCallId !== toolCallId) {
-      throw new Error("proposal tool identity mismatch");
-    }
-    if (proposal.markdown !== markdown) {
-      throw new Error("proposal Markdown is not byte-identical");
-    }
-    if (proposal.title !== title.trim()) {
-      throw new Error("proposal title mismatch");
-    }
-    if (proposal.question !== question.trim()) {
-      throw new Error("proposal question mismatch");
-    }
-    if (!proposal.expiresAt || !proposal.artifact?.relativePath) {
-      throw new Error("proposal is missing expiry or artifact metadata");
-    }
-    if (
-      typeof proposal.artifact.sha256 !== "string" ||
-      !Number.isSafeInteger(proposal.artifact.sizeBytes) ||
-      proposal.artifact.sizeBytes < 0
-    ) {
-      throw new Error("proposal artifact metadata is invalid");
-    }
-    if (host !== activeHost) throw new Error("host changed during Plan UI probe");
-    return {
-      ...planUiProbeIdentity(activeHost),
-      ok: true,
-      operation,
-      sessionId,
-      revision,
-      turnId,
-      toolCallId,
-      status: response.status,
-      proposal,
-    };
-  } catch (error) {
-    return {
-      ...planUiProbeIdentity(),
-      ok: false,
-      error: planUiProbeErrorText(error),
-    };
-  }
-}
-
-function installPlanUiProbe() {
-  if (process.env.PI_DESKTOP_PLAN_UI_PROBE !== "1") return;
-  (globalThis as any)[PLAN_UI_PROBE_GLOBAL] = runPlanUiProbe;
-  logger.app("diagnostics", "info", "Plan UI test probe enabled", {
-    data: planUiProbeIdentity(),
-  });
-}
+const planUiProbe = createPlanUiProbe({
+  getHost: () => host,
+  getSidecar: () => sidecar,
+  logger,
+});
 
 function wireSidecar(s: AgentSidecar) {
   s.onNotification((method, params) => {
@@ -5181,73 +4514,6 @@ function finishTurn(
     },
   );
   return finalization;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function planExecutionFromUnknown(value: unknown): PlanExecution | null {
-  if (!isRecord(value)) return null;
-  const artifact = isRecord(value.artifact) ? value.artifact : null;
-  const state =
-    value.state === "queued" ||
-    value.state === "running" ||
-    value.state === "completed" ||
-    value.state === "interrupted"
-      ? value.state
-      : "queued";
-  if (
-    typeof value.id !== "string" ||
-    typeof value.proposalId !== "string" ||
-    typeof value.sessionId !== "string" ||
-    typeof value.plan !== "string" ||
-    typeof value.title !== "string" ||
-    typeof value.question !== "string" ||
-    !artifact ||
-    typeof artifact.relativePath !== "string" ||
-    typeof artifact.sha256 !== "string" ||
-    typeof artifact.sizeBytes !== "number"
-  ) {
-    return null;
-  }
-  return {
-    id: value.id,
-    proposalId: value.proposalId,
-    sessionId: value.sessionId,
-    // Legacy queued rows predate the discriminator and are Plan by definition.
-    kind: normalizeProposalKind(value.kind),
-    plan: value.plan,
-    title: value.title,
-    question: value.question,
-    artifact: {
-      relativePath: artifact.relativePath,
-      sha256: artifact.sha256,
-      sizeBytes: artifact.sizeBytes,
-    },
-    targetPermissionMode: normalizeGlobalPermissionMode(
-      value.targetPermissionMode,
-    ),
-    state,
-  };
-}
-
-function executionFromResponse(value: unknown): PlanExecution | null {
-  if (isRecord(value) && value.execution) {
-    return planExecutionFromUnknown(value.execution);
-  }
-  return planExecutionFromUnknown(value);
-}
-
-function executionListFromResponse(value: unknown): PlanExecution[] {
-  const raw = Array.isArray(value)
-    ? value
-    : isRecord(value) && Array.isArray(value.executions)
-      ? value.executions
-      : [];
-  return raw
-    .map((candidate) => planExecutionFromUnknown(candidate))
-    .filter((candidate): candidate is PlanExecution => candidate !== null);
 }
 
 async function finishApprovedExecution(
@@ -8637,7 +7903,7 @@ app.whenReady().then(async () => {
   // close handler reads `closeBehavior` synchronously, and a window created
   // while it still held the "ask" default would prompt a user who already
   // chose.
-  const storedBehavior = readCloseBehavior();
+  const storedBehavior = readCloseBehavior(dataDir);
   if (storedBehavior) closeBehavior = storedBehavior;
   createTray();
   app.setAboutPanelOptions({
@@ -8670,7 +7936,7 @@ app.whenReady().then(async () => {
       data: String(e),
     });
   }
-  if (!bootError) installPlanUiProbe();
+  if (!bootError) planUiProbe.install();
   if (host) {
     try {
       const stored = (await host.call("settings.get")) as {

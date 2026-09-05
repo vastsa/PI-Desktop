@@ -4,10 +4,11 @@ import test from "node:test";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-const [store, composer, main] = await Promise.all([
+const [store, composer, main, attachments] = await Promise.all([
   read("../src/stores/app-store.ts"),
   read("../src/components/Composer.tsx"),
   read("../electron/main/index.ts"),
+  read("../electron/main/prompt-attachments.ts"),
 ]);
 
 test("composer send/stop button follows draft content and the visible session's run state", () => {
@@ -207,5 +208,5 @@ test("the user row is inserted before the host round trip and echoed under the s
   assert.match(editUserMessage, /messageId: optimisticMessage\.id/);
   // The host persists and echoes under the renderer's id when it is a fresh UUID.
   assert.match(main, /id: durableUserMessageId\(req\.messageId, allMessages\)/);
-  assert.match(main, /export function durableUserMessageId\([\s\S]*?UUID_PATTERN\.test\(requested\)[\s\S]*?!existing\.some\(\(message\) => message\?\.id === requested\)/);
+  assert.match(attachments, /export function durableUserMessageId\([\s\S]*?UUID_PATTERN\.test\(requested\)[\s\S]*?!existing\.some\(\(message\) => message\?\.id === requested\)/);
 });

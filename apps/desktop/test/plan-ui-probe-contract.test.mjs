@@ -6,6 +6,10 @@ const mainSource = await readFile(
   new URL("../electron/main/index.ts", import.meta.url),
   "utf8",
 );
+const probeSource = await readFile(
+  new URL("../electron/main/plan-ui-probe.ts", import.meta.url),
+  "utf8",
+);
 const sidecarSource = await readFile(
   new URL("../../../packages/agent-runtime/src/sidecar.ts", import.meta.url),
   "utf8",
@@ -16,19 +20,20 @@ const harnessSource = await readFile(
 );
 
 test("Plan UI probe is Main-only, explicitly gated, and reuses the live Host", () => {
-  assert.match(mainSource, /PI_DESKTOP_PLAN_UI_PROBE/);
-  assert.match(mainSource, /if \(process\.env\.PI_DESKTOP_PLAN_UI_PROBE !== "1"\) return/);
-  assert.match(mainSource, /__PI_DESKTOP_PLAN_UI_PROBE/);
+  assert.match(mainSource, /if \(!bootError\) planUiProbe\.install\(\)/);
+  assert.match(probeSource, /PI_DESKTOP_PLAN_UI_PROBE/);
+  assert.match(probeSource, /if \(process\.env\.PI_DESKTOP_PLAN_UI_PROBE !== "1"\) return/);
+  assert.match(probeSource, /__PI_DESKTOP_PLAN_UI_PROBE/);
   for (const method of [
     "workspace\\.set",
     "session\\.create",
     "session\\.beginTurn",
     "plans\\.submit",
   ]) {
-    assert.match(mainSource, new RegExp(`(?:host|activeHost)\\.call[\\s\\S]*?"${method}"`));
+    assert.match(probeSource, new RegExp(`(?:host|activeHost)\\.call[\\s\\S]*?"${method}"`));
   }
-  assert.match(mainSource, /electronMainPid: process\.pid/);
-  assert.match(mainSource, /hostChildPid:/);
+  assert.match(probeSource, /electronMainPid: process\.pid/);
+  assert.match(probeSource, /hostChildPid:/);
 });
 
 test("runtime identity is a probe-gated WeakMap identity for the live runtime object", () => {
@@ -43,16 +48,16 @@ test("runtime identity is a probe-gated WeakMap identity for the live runtime ob
     sidecarSource.indexOf("type RuntimeParams"),
   );
   assert.doesNotMatch(identityBlock, /apiKey|secretValue|baseUrl/);
-  assert.match(mainSource, /agent\.testRuntimeIdentity/);
-  assert.match(mainSource, /sidecarChildPid/);
+  assert.match(probeSource, /agent\.testRuntimeIdentity/);
+  assert.match(probeSource, /sidecarChildPid/);
 });
 
 test("live setup is Main-env gated and the harness never sends credentials through CDP", () => {
-  assert.match(mainSource, /PI_DESKTOP_TEST_API_KEY/);
-  assert.match(mainSource, /PI_DESKTOP_TEST_BASE_URL/);
-  assert.match(mainSource, /PI_DESKTOP_TEST_MODEL/);
-  assert.match(mainSource, /secretValue: apiKey/);
-  assert.match(mainSource, /operation === "liveSetup"/);
+  assert.match(probeSource, /PI_DESKTOP_TEST_API_KEY/);
+  assert.match(probeSource, /PI_DESKTOP_TEST_BASE_URL/);
+  assert.match(probeSource, /PI_DESKTOP_TEST_MODEL/);
+  assert.match(probeSource, /secretValue: apiKey/);
+  assert.match(probeSource, /operation === "liveSetup"/);
   assert.match(harnessSource, /E2E-106-live-agent/);
   assert.match(harnessSource, /LIVE_ENV_AVAILABLE/);
   assert.match(harnessSource, /submitComposerPrompt/);
