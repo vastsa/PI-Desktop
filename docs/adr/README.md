@@ -168,3 +168,4 @@ Each ADR includes:
 | 0153 | Checkpoint the streaming reply beside the transcript | Accepted |
 | 0154 | Reveal the New Task empty destination before host IO | Accepted |
 | 0155 | Add Zhipu / Z.AI named endpoint presets | Accepted |
+| 0156 | Simplify the add-provider common path | Accepted |

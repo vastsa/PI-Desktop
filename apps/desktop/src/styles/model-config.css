@@ -100,10 +100,52 @@
 }
 
 /*
-  Name / Base URL on the first row, API key / API format on the second: four
-  peer fields in a 2x2, rather than a 3-up row plus a disclosure below it.
+  Named services are Service + key. Custom is Service, then Name / URL, then
+  the key. An unchosen service is one select so the first decision is which
+  endpoint, not which of five fields.
 */
 .provider-setup-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+  align-items: start;
+}
+
+.provider-setup-fields.is-empty .provider-setup-service,
+.provider-setup-fields.is-custom .provider-setup-service,
+.provider-setup-fields.is-custom .provider-setup-key {
+  grid-column: 1 / -1;
+}
+
+.provider-setup-host {
+  grid-column: 1 / -1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ds-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-relaxed);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.provider-setup-advanced-toggle {
+  appearance: none;
+  align-self: start;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-tight);
+  cursor: pointer;
+}
+
+.provider-setup-advanced-toggle:hover {
+  color: var(--ds-text-primary);
+}
+
+.provider-setup-advanced {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px 12px;
@@ -1092,7 +1134,8 @@
 
 @media (max-width: 940px) {
   /* Two panes stop being readable before the dialog itself gets narrow. */
-  .provider-setup-fields {
+  .provider-setup-fields,
+  .provider-setup-advanced {
     grid-template-columns: minmax(0, 1fr);
   }
 

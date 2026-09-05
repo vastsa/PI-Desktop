@@ -1,11 +1,9 @@
 /**
  * One form to add or edit an AI service.
  *
- * Name, base URL and key are entered together, and the model list comes from
- * the service's own endpoint (`useProviderModels`) rather than from a browsable
- * catalog. models.dev only enriches the rows the service returned, which is why
- * context/output limits need no manual entry on the common path. Choosing among
- * those rows is `ModelSelectionPanes`, shared with the vendor account editor.
+ * The common path is pick a named service and paste a key. Custom endpoint
+ * still asks for a name and base URL. API format stays in Advanced, and
+ * models come from the service's own endpoint (`useProviderModels`).
  */
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -46,11 +44,14 @@ const ZHIPU_PRESET_LABEL_KEYS: Record<ZhipuPresetId, string> = {
 };
 
 function serviceIdFor(provider?: ProviderPublic | null): string {
-  if (!provider || provider.apiStyle === OPENCODE_GO_API_STYLE) return CUSTOM_SERVICE;
-  return matchZhipuPreset({
-    vendorKey: provider.vendorKey,
-    baseUrl: provider.baseUrl,
-  })?.id ?? CUSTOM_SERVICE;
+  if (!provider) return "";
+  if (provider.apiStyle === OPENCODE_GO_API_STYLE) return OPENCODE_GO_API_STYLE;
+  return (
+    matchZhipuPreset({
+      vendorKey: provider.vendorKey,
+      baseUrl: provider.baseUrl,
+    })?.id ?? CUSTOM_SERVICE
+  );
 }
 
 function initialName(provider?: ProviderPublic | null): string {
@@ -68,6 +69,15 @@ function initialBaseUrl(provider?: ProviderPublic | null): string {
     provider?.baseUrl ??
     ""
   );
+}
+
+function endpointHost(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.host}${parsed.pathname.replace(/\/+$/, "")}`;
+  } catch {
+    return url;
+  }
 }
 
 export type ProviderSetupDialogProps = {
@@ -93,6 +103,7 @@ export function ProviderSetupDialog({
   const [apiStyle, setApiStyle] = useState<CatalogApiStyle>(
     (provider?.apiStyle as CatalogApiStyle) ?? "chat_completions",
   );
+  const [advanced, setAdvanced] = useState(false);
   const [models, setModels] = useState<ModelBinding[]>(provider?.models ?? []);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -100,13 +111,23 @@ export function ProviderSetupDialog({
   const [testResult, setTestResult] = useState("");
 
   const zhipuPreset = ZHIPU_ENDPOINT_PRESETS.find((preset) => preset.id === service);
-  const opencodeGo = apiStyle === OPENCODE_GO_API_STYLE;
-  const lockBaseUrl = Boolean(zhipuPreset) || opencodeGo;
-  const lockName = opencodeGo;
+  const opencodeGo = service === OPENCODE_GO_API_STYLE;
+  const named = Boolean(zhipuPreset) || opencodeGo;
+  const custom = service === CUSTOM_SERVICE;
+  const resolvedName = opencodeGo
+    ? OPENCODE_GO_NAME
+    : zhipuPreset
+      ? name.trim() || zhipuPreset.name
+      : name;
   const resolvedBaseUrl = zhipuPreset?.baseUrl ?? (opencodeGo ? OPENCODE_GO_BASE_URL : baseUrl);
+  const resolvedApiStyle: CatalogApiStyle = zhipuPreset
+    ? "chat_completions"
+    : opencodeGo
+      ? OPENCODE_GO_API_STYLE
+      : apiStyle;
   const discovery = useProviderModels(
     true,
-    { baseUrl: resolvedBaseUrl, apiKey, apiStyle },
+    { baseUrl: resolvedBaseUrl, apiKey, apiStyle: resolvedApiStyle },
     provider,
   );
   const selection = useModelSelection(discovery, models, setModels);
@@ -124,31 +145,35 @@ export function ProviderSetupDialog({
     queueMicrotask(() => apiKeyRef.current?.focus());
   };
 
-  const onServiceChange = (next: string) => {
-    const previous = zhipuPreset;
-    setService(next);
-    const preset = ZHIPU_ENDPOINT_PRESETS.find((item) => item.id === next);
-    if (!preset) return;
+  const applyNamedService = (nextName: string, nextUrl: string, nextStyle: CatalogApiStyle) => {
     const currentName = name.trim();
+    const previous = zhipuPreset;
     if (
       !currentName ||
       currentName === previous?.name ||
       currentName === OPENCODE_GO_NAME
     ) {
-      setName(preset.name);
+      setName(nextName);
     }
-    setBaseUrl(preset.baseUrl);
-    if (apiStyle === OPENCODE_GO_API_STYLE) setApiStyle("chat_completions");
+    setBaseUrl(nextUrl);
+    setApiStyle(nextStyle);
     focusApiKey();
   };
 
-  const onApiStyleChange = (next: CatalogApiStyle) => {
-    setApiStyle(next);
-    if (next !== OPENCODE_GO_API_STYLE) return;
-    setService(CUSTOM_SERVICE);
-    setName(OPENCODE_GO_NAME);
-    setBaseUrl(OPENCODE_GO_BASE_URL);
-    focusApiKey();
+  const onServiceChange = (next: string) => {
+    setService(next);
+    const preset = ZHIPU_ENDPOINT_PRESETS.find((item) => item.id === next);
+    if (preset) {
+      applyNamedService(preset.name, preset.baseUrl, "chat_completions");
+      return;
+    }
+    if (next === OPENCODE_GO_API_STYLE) {
+      applyNamedService(OPENCODE_GO_NAME, OPENCODE_GO_BASE_URL, OPENCODE_GO_API_STYLE);
+      return;
+    }
+    if (next === CUSTOM_SERVICE && apiStyle === OPENCODE_GO_API_STYLE) {
+      setApiStyle("chat_completions");
+    }
   };
 
   const testConnection = async () => {
@@ -177,13 +202,10 @@ export function ProviderSetupDialog({
   };
 
   const save = async () => {
-    const providerName = (opencodeGo ? OPENCODE_GO_NAME : name).trim();
+    const providerName = resolvedName.trim();
     const providerBaseUrl = resolvedBaseUrl.trim();
     if (!providerName || !providerBaseUrl || models.length === 0) return;
-    // Only levels the model publishes are stored; the runtime would drop the
-    // rest while this dialog kept counting them as enabled.
     const persisted = selection.bindingsToPersist;
-    const persistedApiStyle = zhipuPreset ? "chat_completions" : apiStyle;
     setSaving(true);
     setError("");
     try {
@@ -195,9 +217,7 @@ export function ProviderSetupDialog({
           baseUrl: providerBaseUrl,
           defaultModelId: persisted[0]?.id,
           models: persisted,
-          apiStyle: persistedApiStyle,
-          // An empty key on edit means "keep the stored one", so the secret is
-          // only sent when the user actually typed a new value.
+          apiStyle: resolvedApiStyle,
           ...(apiKey ? { secretValue: apiKey } : {}),
         });
         onSaved(result.provider ?? provider, persisted);
@@ -212,7 +232,7 @@ export function ProviderSetupDialog({
           defaultModelId: persisted[0]?.id,
           models: persisted,
           secretValue: apiKey || undefined,
-          apiStyle: persistedApiStyle,
+          apiStyle: resolvedApiStyle,
         });
         onSaved(result.provider, persisted);
       }
@@ -225,14 +245,10 @@ export function ProviderSetupDialog({
 
   const canSave =
     !saving &&
-    !!(opencodeGo ? OPENCODE_GO_NAME : name).trim() &&
+    !!service &&
+    !!resolvedName.trim() &&
     !!resolvedBaseUrl.trim() &&
     models.length > 0;
-  const endpointHint = zhipuPreset?.codingPlan
-    ? t("settings.presetZhipuCodingPlanHint")
-    : opencodeGo
-      ? t("settings.apiStyleOpenCodeGoFixed")
-      : undefined;
 
   return (
     <div
@@ -254,12 +270,6 @@ export function ProviderSetupDialog({
           <h3 id="provider-setup-title" className="provider-setup-title">
             {editing ? t("settings.editProviderTitle") : t("settings.addProviderTitle")}
           </h3>
-          {/*
-            The dialog's actions live here instead of a footer bar, so Save sits
-            where the close affordance used to be. Cancel keeps the leftmost slot
-            of the group so a stray click near the corner discards rather than
-            saves, and Escape still closes the dialog.
-          */}
           <div className="provider-setup-head-actions">
             {provider ? (
               <Button
@@ -286,81 +296,150 @@ export function ProviderSetupDialog({
         </div>
 
         <div className="provider-setup-body">
-          {/* A save failure belongs next to the fields, not under the panes. */}
           {error ? <div className="provider-setup-error">{error}</div> : null}
 
           <div className="provider-setup-credentials">
-            <div className="provider-setup-fields">
-              <Field label={t("settings.service")}>
-                <Select
-                  value={service}
-                  onChange={(event) => onServiceChange(event.target.value)}
-                >
-                  <option value={CUSTOM_SERVICE}>
-                    {t("settings.presetCustomEndpoint")}
-                  </option>
-                  {ZHIPU_ENDPOINT_PRESETS.map((preset) => (
-                    <option key={preset.id} value={preset.id}>
-                      {t(ZHIPU_PRESET_LABEL_KEYS[preset.id])}
+            <div
+              className={
+                named
+                  ? "provider-setup-fields is-named"
+                  : custom
+                    ? "provider-setup-fields is-custom"
+                    : "provider-setup-fields is-empty"
+              }
+            >
+              <div className="provider-setup-service">
+                <Field label={t("settings.service")}>
+                  <Select
+                    value={service}
+                    autoFocus={!named && !custom}
+                    onChange={(event) => onServiceChange(event.target.value)}
+                  >
+                    <option value="" disabled>
+                      {t("settings.chooseService")}
                     </option>
-                  ))}
-                </Select>
-              </Field>
-
-              <Field label={t("settings.name")}>
-                <Input
-                  value={opencodeGo ? OPENCODE_GO_NAME : name}
-                  autoFocus={!opencodeGo && !zhipuPreset}
-                  readOnly={lockName}
-                  onChange={(event) => setName(event.target.value)}
-                />
-              </Field>
-
-              <Field label={t("settings.baseUrl")} hint={endpointHint}>
-                <Input
-                  value={resolvedBaseUrl}
-                  className="font-mono text-sm-plus"
-                  placeholder="https://api.example.com/v1"
-                  readOnly={lockBaseUrl}
-                  onChange={(event) => setBaseUrl(event.target.value)}
-                />
-              </Field>
-
-              <Field
-                label={t("settings.apiKey")}
-                hint={editing ? t("settings.apiKeyKeepHint") : t("settings.apiKeyHint")}
-              >
-                <Input
-                  ref={apiKeyRef}
-                  type="password"
-                  value={apiKey}
-                  placeholder="sk-…"
-                  className="font-mono text-sm-plus"
-                  autoComplete="off"
-                  autoFocus={opencodeGo || Boolean(zhipuPreset)}
-                  onChange={(event) => setApiKey(event.target.value)}
-                />
-              </Field>
-
-              {/*
-                Derived from the endpoint, but a plain fourth field: a whole
-                disclosure for one select was more chrome than the setting.
-              */}
-              <Field label={t("settings.apiStyle")} hint={t("settings.apiStyleDerived")}>
-                <Select
-                  value={apiStyle}
-                  onChange={(event) =>
-                    onApiStyleChange(event.target.value as CatalogApiStyle)
-                  }
-                >
-                  {API_STYLES.map((style) => (
-                    <option key={style} value={style}>
-                      {t(API_STYLE_LABEL_KEYS[style])}
+                    <option value={CUSTOM_SERVICE}>
+                      {t("settings.presetCustomEndpoint")}
                     </option>
-                  ))}
-                </Select>
-              </Field>
+                    <optgroup label={t("settings.presetGroupZhipu")}>
+                      {ZHIPU_ENDPOINT_PRESETS.map((preset) => (
+                        <option key={preset.id} value={preset.id}>
+                          {t(ZHIPU_PRESET_LABEL_KEYS[preset.id])}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <option value={OPENCODE_GO_API_STYLE}>
+                      {t("settings.apiStyleOpenCodeGo")}
+                    </option>
+                  </Select>
+                </Field>
+              </div>
+
+              {named ? (
+                <>
+                  <Field
+                    label={t("settings.apiKey")}
+                    hint={editing ? t("settings.apiKeyKeepHint") : undefined}
+                  >
+                    <Input
+                      ref={apiKeyRef}
+                      type="password"
+                      value={apiKey}
+                      placeholder="sk-…"
+                      className="font-mono text-sm-plus"
+                      autoComplete="off"
+                      autoFocus
+                      onChange={(event) => setApiKey(event.target.value)}
+                    />
+                  </Field>
+                  {resolvedBaseUrl ? (
+                    <div className="provider-setup-host" title={resolvedBaseUrl}>
+                      {endpointHost(resolvedBaseUrl)}
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
+
+              {custom ? (
+                <>
+                  <Field label={t("settings.name")}>
+                    <Input
+                      value={name}
+                      autoFocus
+                      onChange={(event) => setName(event.target.value)}
+                    />
+                  </Field>
+                  <Field label={t("settings.baseUrl")}>
+                    <Input
+                      value={baseUrl}
+                      className="font-mono text-sm-plus"
+                      placeholder="https://api.example.com/v1"
+                      onChange={(event) => setBaseUrl(event.target.value)}
+                    />
+                  </Field>
+                  <div className="provider-setup-key">
+                    <Field
+                      label={t("settings.apiKey")}
+                      hint={editing ? t("settings.apiKeyKeepHint") : undefined}
+                    >
+                      <Input
+                        ref={apiKeyRef}
+                        type="password"
+                        value={apiKey}
+                        placeholder="sk-…"
+                        className="font-mono text-sm-plus"
+                        autoComplete="off"
+                        onChange={(event) => setApiKey(event.target.value)}
+                      />
+                    </Field>
+                  </div>
+                </>
+              ) : null}
             </div>
+
+            {service ? (
+              <>
+                <button
+                  type="button"
+                  className="provider-setup-advanced-toggle"
+                  aria-expanded={advanced}
+                  onClick={() => setAdvanced((open) => !open)}
+                >
+                  {t("settings.advanced")}
+                </button>
+                {advanced ? (
+                  <div className="provider-setup-advanced">
+                    {named ? (
+                      <Field label={t("settings.name")}>
+                        <Input
+                          value={opencodeGo ? OPENCODE_GO_NAME : name}
+                          readOnly={opencodeGo}
+                          onChange={(event) => setName(event.target.value)}
+                        />
+                      </Field>
+                    ) : null}
+                    {custom ? (
+                      <Field label={t("settings.apiStyle")}>
+                        <Select
+                          value={apiStyle}
+                          onChange={(event) =>
+                            setApiStyle(event.target.value as CatalogApiStyle)
+                          }
+                        >
+                          {API_STYLES.filter((style) => style !== OPENCODE_GO_API_STYLE).map(
+                            (style) => (
+                              <option key={style} value={style}>
+                                {t(API_STYLE_LABEL_KEYS[style])}
+                              </option>
+                            ),
+                          )}
+                        </Select>
+                      </Field>
+                    ) : null}
+                  </div>
+                ) : null}
+              </>
+            ) : null}
 
             {testResult ? (
               <div className="provider-credential-test">

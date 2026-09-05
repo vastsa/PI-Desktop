@@ -131,9 +131,9 @@ base URL 与粘贴的密钥工作。厂商行的样式不由厂商固定：GitHu
 ### 命名端点预设（智谱 / Z.AI）
 
 这些行由添加提供商对话框的**服务**下拉框创建，而不是新的 `apiStyle`。它们仍是
-`type: "openai_compatible"` 且 `apiStyle: "chat_completions"`。对话框锁定端点；
-显示名称仍可编辑。`vendorKey` 使用 models.dev 提供商键，以便目录按 API 与
-Coding Plan 精确匹配。
+`type: "openai_compatible"` 且 `apiStyle: "chat_completions"`。常见路径是服务 +
+API 密钥；已发布主机以摘要显示，显示名称可在高级中编辑。`vendorKey` 使用
+models.dev 提供商键，以便目录按 API 与 Coding Plan 精确匹配。
 
 | vendorKey | 名称 | baseUrl | 说明 |
 |---|---|---|---|

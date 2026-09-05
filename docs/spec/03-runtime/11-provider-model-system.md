@@ -72,7 +72,8 @@ allowlist.
 Zhipu / GLM and Z.AI are named OpenAI-compatible endpoint presets, not new
 wire APIs. The add-provider Service select offers China and international
 standard API plus GLM Coding Plan URLs, persists the matching models.dev
-`vendorKey`, and locks the endpoint. Chat turns still use pi-ai's OpenAI Chat
+`vendorKey`, and uses the published endpoint without showing Name, Base URL,
+or API format on the common path. Chat turns still use pi-ai's OpenAI Chat
 Completions adapter with `thinkingFormat: "zai"` and `zaiToolStream: true`.
 pi-ai's `zai` / `zai-coding-cn` transports remain available; PI-Desktop stores
 the models.dev keys (`zhipuai`, `zhipuai-coding-plan`, `zai`,

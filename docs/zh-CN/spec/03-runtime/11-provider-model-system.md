@@ -67,10 +67,11 @@ Settings / UI
 
 智谱 / GLM 与 Z.AI 是命名的 OpenAI 兼容端点预设，不是新的线路 API。添加服务的
 「服务」下拉框提供国内/国际标准 API 以及 GLM Coding Plan 地址，持久化对应的
-models.dev `vendorKey`，并锁定端点。对话仍走 pi-ai 的 OpenAI Chat Completions
-适配器，并带上 `thinkingFormat: "zai"` 与 `zaiToolStream: true`。PI-Desktop
-存储 models.dev 的键（`zhipuai`、`zhipuai-coding-plan`、`zai`、
-`zai-coding-plan`），以免与 pi-ai 国际 Coding Plan 传输名 `zai` 混淆。
+models.dev `vendorKey`。常见路径是服务 + API 密钥，不展示名称、Base URL 或
+接口格式。对话仍走 pi-ai 的 OpenAI Chat Completions 适配器，并带上
+`thinkingFormat: "zai"` 与 `zaiToolStream: true`。PI-Desktop 存储 models.dev
+的键（`zhipuai`、`zhipuai-coding-plan`、`zai`、`zai-coding-plan`），以免与
+pi-ai 国际 Coding Plan 传输名 `zai` 混淆。
 
 ## 5. 内置供应商矩阵（发货意图）
 

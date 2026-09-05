@@ -197,7 +197,7 @@ Each scenario is documented in this format:
 #### E2E-005: Add a provider and save API key
 
 - **Preconditions**: App running; no provider configured; the models.dev snapshot ships with the build.
-- **Steps**: 1) Open Settings → Model configuration and choose Add provider. 2) Confirm the dialog is ONE form with Service, Name, Base URL and API Key all visible at once, and no stepper, no preset grid and no Next/Back buttons. Service is a compact select (Custom endpoint plus named Zhipu / Z.AI endpoints), not a vendor-card grid. Focus Name and confirm the field plus its 2px accent ring are fully visible inside the dialog (not clipped by the overlay edge or the scrolling body), including on a window narrower than 1040px. 3) Enter a name and a base URL for a service that publishes a `/models` route, then paste an API key. 4) Confirm the models section fills with the models THAT SERVICE returned, not with every model its vendor publishes; confirm a model the deployment does not host is absent. 5) Type in the filter box and confirm the list narrows client-side with no network request per keystroke. 6) Confirm each row shows the models.dev-derived context/output for models the catalog knows, and that a model with no catalog match still lists with generic defaults. 7) Select two models with the checkboxes. 8) Expand Advanced on one chosen row, override its limits and toggle thinking chips; confirm the label and optional hint sit above one compact grouped control and do not force the options onto a second row at normal dialog width; confirm all seven canonical levels are available, that published levels start selected for a known reasoning model, and that a non-reasoning or unknown row shows the same chips unselected with the manual-override hint; enable one level on that row and confirm the other row is unaffected. 9) Open the form-level Advanced and confirm the API format is present but pre-derived. 10) Add a free-form model ID the service did not return; confirm it is added with 128,000 / 8,192 / no-thinking defaults, then enable a thinking level if the endpoint supports it; confirm re-adding the same ID in different letter case is rejected as already added. 11) Save.
+- **Steps**: 1) Open Settings → Model configuration and choose Add provider. 2) Confirm the dialog is ONE form and no stepper, no preset grid and no Next/Back buttons. The first control is Service (Choose a service, Custom endpoint, named Zhipu / Z.AI endpoints, OpenCode Go), not a vendor-card grid. Choose **Custom endpoint**. Confirm Name, Base URL and API Key become visible, and that a focused field plus its 2px accent ring stays fully inside the dialog, including on a window narrower than 1040px. 3) Enter a name and a base URL for a service that publishes a `/models` route, then paste an API key. 4) Confirm the models section fills with the models THAT SERVICE returned, not with every model its vendor publishes; confirm a model the deployment does not host is absent. 5) Type in the filter box and confirm the list narrows client-side with no network request per keystroke. 6) Confirm each row shows the models.dev-derived context/output for models the catalog knows, and that a model with no catalog match still lists with generic defaults. 7) Select two models with the checkboxes. 8) Expand Advanced on one chosen row, override its limits and toggle thinking chips; confirm the label and optional hint sit above one compact grouped control and do not force the options onto a second row at normal dialog width; confirm all seven canonical levels are available, that published levels start selected for a known reasoning model, and that a non-reasoning or unknown row shows the same chips unselected with the manual-override hint; enable one level on that row and confirm the other row is unaffected. 9) Open the form-level Advanced and confirm the API format is present but pre-derived. 10) Add a free-form model ID the service did not return; confirm it is added with 128,000 / 8,192 / no-thinking defaults, then enable a thinking level if the endpoint supports it; confirm re-adding the same ID in different letter case is rejected as already added. 11) Save.
 - **Expected**: The service is asked first and models.dev only enriches the answer and seeds known-model defaults. The settings picker always offers the seven canonical thinking levels, and the Composer later renders the explicit levels saved in the same model binding; an empty or `off`-only binding resolves to `off`. Discovery is debounced ~600 ms and a slow reply from an earlier keystroke never replaces a newer list; an unsaved provider is probed with the typed base URL and key before it exists. The user never types a token limit or picks an API format on the common path. Point a second provider at a base URL with no `/models` route and confirm the list falls back to the catalog, is labelled as coming from models.dev rather than the service, and still saves. The provider appears as a row with its host, model count and secret badge; the key is stored securely (not in plaintext config); `models` contains both bindings and `models[0]` remains the provider default.
 - **Specs linked**: `03-runtime/11-provider-model-system.md`, `03-runtime/12-provider-config-schema.md`, `03-runtime/13-model-catalog-and-selection.md`, `03-runtime/14-secrets-storage.md`, `04-ux/06-settings-ia.md`
 - **Acceptance**: B (multi-model provider configuration, save key)
@@ -219,17 +219,17 @@ Each scenario is documented in this format:
 - **Preconditions**: App running; no OpenCode Go provider configured; the
   OpenCode Go endpoint is reachable with a test API key.
 - **Steps**: 1) Open Settings → Model configuration and open the add-provider
-  dialog. 2) Select **OpenCode Go** in API format. 3) Inspect the name and base
-  URL fields, enter an API key, and wait for model discovery. 4) Select a
-  discovered model and save the provider. 5) Reopen the provider and switch
-  the API format away from OpenCode Go.
-- **Expected**: Selecting the preset fills **OpenCode Go** and
-  `https://opencode.ai/zen/go/v1`, keeps both fields read-only, focuses the API
-  key field, and leaves model selection available. Discovery requests
-  `https://opencode.ai/zen/go/v1/models` with `Authorization: Bearer <key>`;
-  the saved row persists `apiStyle: "opencode_go"` and the key is stored via
-  the secret store. Reopening preserves the fixed identity, and switching to
-  another API style makes the name and endpoint editable again.
+  dialog. 2) Select **OpenCode Go** in Service. 3) Confirm Name and Base URL
+  are not on the common path, enter an API key, and wait for model discovery.
+  4) Select a discovered model and save the provider. 5) Reopen the provider
+  and switch Service to Custom endpoint.
+- **Expected**: Selecting the preset shows Service + API key, a host summary
+  for `opencode.ai/zen/go/v1`, and focuses the API key field. Discovery
+  requests `https://opencode.ai/zen/go/v1/models` with
+  `Authorization: Bearer <key>`; the saved row persists
+  `apiStyle: "opencode_go"` and the key is stored via the secret store.
+  Reopening preserves the fixed identity. Switching to Custom endpoint reveals
+  editable Name and Base URL.
 - **Specs linked**: `03-runtime/11-provider-model-system.md`,
   `03-runtime/12-provider-config-schema.md`, `04-ux/06-settings-ia.md`,
   ADR 0116
@@ -262,18 +262,17 @@ Each scenario is documented in this format:
   snapshot ships with `zhipuai`, `zhipuai-coding-plan`, `zai`, and
   `zai-coding-plan`.
 - **Steps**: 1) Open Settings → Model configuration and open the add-provider
-  dialog. 2) Select **Zhipu AI Coding Plan** in Service. 3) Inspect the name
-  and base URL, enter an API key, and wait for model discovery. 4) Select a
-  discovered model and save. 5) Reopen the provider, switch Service to
-  **Z.AI**, then to **Custom endpoint**.
-- **Expected**: Coding Plan fills a Zhipu name and
-  `https://open.bigmodel.cn/api/coding/paas/v4`, keeps the URL read-only, shows
-  the Coding Plan API-key hint, focuses the API key field, and leaves model
-  selection available. The saved row persists `vendorKey:
-  "zhipuai-coding-plan"`, `apiStyle: "chat_completions"`, and the exact Coding
-  Plan URL. Switching to Z.AI replaces the URL with
-  `https://api.z.ai/api/paas/v4` and `vendorKey: "zai"`. Switching to Custom
-  endpoint makes the URL editable again without a stepper or vendor-card grid.
+  dialog. 2) Select **Zhipu AI Coding Plan** in Service. 3) Confirm the common
+  path is Service + API key with a host summary, enter an API key, and wait
+  for model discovery. 4) Select a discovered model and save. 5) Reopen the
+  provider, switch Service to **Z.AI**, then to **Custom endpoint**.
+- **Expected**: Coding Plan shows Service + API key, a host summary for
+  `open.bigmodel.cn/api/coding/paas/v4`, and focuses the API key field. Name
+  and API format are not on the common path. The saved row persists
+  `vendorKey: "zhipuai-coding-plan"`, `apiStyle: "chat_completions"`, and the
+  exact Coding Plan URL. Switching to Z.AI replaces the host summary with
+  `api.z.ai/api/paas/v4` and `vendorKey: "zai"`. Switching to Custom endpoint
+  reveals editable Name and Base URL without a stepper or vendor-card grid.
   A later Agent turn against a Zhipu URL sends Completions with Zhipu thinking
   (`thinkingFormat: "zai"`) rather than the OpenAI `developer` role.
 - **Specs linked**: `03-runtime/11-provider-model-system.md`,

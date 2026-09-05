@@ -46,6 +46,7 @@ This log freezes previously open questions into concrete decisions.
 | D023 | Provider coverage goal | **Universal market coverage** (not a tiny fixed vendor list) | Globalization + real coding workflows |
 | D024 | Coverage strategy | **pi-ai native providers + first-class OpenAI-compatible + custom providers** | Maximum reach without rewriting every SDK |
 | D308 | Zhipu / Z.AI named endpoint presets | **Amend D024 / ADR 0116: the add-provider Service select offers four OpenAI-compatible Zhipu endpoints — China and international standard API plus GLM Coding Plan — with locked published URLs and models.dev `vendorKey`s (`zhipuai`, `zhipuai-coding-plan`, `zai`, `zai-coding-plan`). No new apiStyle or wire adapter. Completions requests on those URLs use `thinkingFormat: "zai"` and `zaiToolStream: true`. Custom endpoint remains available.** | Users had to know which BigModel / Z.AI URL to paste, and `vendorKey: "custom"` could catalog-match the wrong API vs Coding Plan record. Named presets keep coverage on the existing OpenAI-compatible path. See ADR 0155 and E2E-005D. |
+| D309 | Add-provider common path is Service + key | **Amend D308 / ADR 0116 / ADR 0155: a new add-provider dialog starts with only Service. Named endpoints (Zhipu / Z.AI, OpenCode Go) then show Service + API key and a host summary. Custom endpoint then shows Name, Base URL, and API key. Name (named) and API format (custom) stay in Advanced. OpenCode Go is a Service option. No stepper or vendor-card grid.** | Stacking Name, Base URL, and API format next to Service made a known service look like a generic gateway. The common path should be pick a service and paste a key. See ADR 0156 and E2E-005 / E2E-005B / E2E-005D. |
 | D025 | Model allowlist | **No closed product allowlist** | Models churn; power users need free-form IDs |
 | D026 | Catalog sources | **bundled snapshot + discovery/refresh + user-defined** | Works offline and stays current |
 | D027 | Default identity | **Model selection is `(providerId, modelId)`** | Same model id can exist on many gateways |
@@ -3348,3 +3349,15 @@ D193, and D194.
   and cannot use pi-ai's `zai` / `zai-coding-cn` provider-name detection.
 - Decision D308 amends D024. See ADR 0155, `03-runtime/11-provider-model-system.md`,
   `03-runtime/12-provider-config-schema.md`, and E2E-005D.
+
+## 2026-09-05 — Add-provider common path is Service + key (D309)
+
+- The add-provider form stacked Service, Name, Base URL, API key, and API
+  format. Named endpoints already know name, URL, and wire format.
+- A new dialog starts with Service. Named Zhipu / Z.AI and OpenCode Go then
+  show Service + API key and a host summary. Custom endpoint then shows Name,
+  Base URL, and API key. Advanced keeps Name (named) and API format (custom).
+- OpenCode Go moves into the Service select so users do not look for it under
+  API format.
+- Decision D309 amends D308. See ADR 0156, `04-ux/06-settings-ia.md`, and
+  E2E-005 / E2E-005B / E2E-005D.

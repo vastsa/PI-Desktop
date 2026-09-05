@@ -167,11 +167,12 @@ and application restarts.
 `apiStyle: "opencode_go"` is a first-class OpenCode Go preset layered on the
 OpenAI-compatible provider type. It persists as its own style so the UI can
 identify the service, but runtime requests use the OpenAI Chat Completions
-wire adapter. The preset always uses `name: "OpenCode Go"` and
-`baseUrl: "https://opencode.ai/zen/go/v1"`; the settings dialog displays both
-fields as read-only and accepts only the API key as connection input. Model
-discovery calls the fixed `/models` endpoint with a Bearer key, and the raw key
-continues to follow the normal secret-store path.
+wire adapter. The Service select offers OpenCode Go next to named Zhipu
+endpoints. The preset always uses `name: "OpenCode Go"` and
+`baseUrl: "https://opencode.ai/zen/go/v1"`; the common path is Service + API
+key, with the host shown as a summary. Model discovery calls the fixed
+`/models` endpoint with a Bearer key, and the raw key continues to follow the
+normal secret-store path.
 
 ## 3. Built-in vendor presets
 
@@ -205,9 +206,10 @@ Presets only prefill form defaults; they are not a closed world.
 
 These rows are created from the add-provider **Service** select, not from a
 new `apiStyle`. They remain `type: "openai_compatible"` with
-`apiStyle: "chat_completions"`. The dialog locks the endpoint; the display
-name stays editable. `vendorKey` is the models.dev provider key so catalog
-enrichment follows the exact API vs Coding Plan record.
+`apiStyle: "chat_completions"`. The common path is Service + API key; the
+published host is shown as a summary, and the display name is editable in
+Advanced. `vendorKey` is the models.dev provider key so catalog enrichment
+follows the exact API vs Coding Plan record.
 
 | vendorKey | name | baseUrl | notes |
 |---|---|---|---|

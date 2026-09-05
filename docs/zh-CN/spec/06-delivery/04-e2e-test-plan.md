@@ -207,16 +207,16 @@ M5。
 - **前提条件**：应用已运行；尚未配置智谱提供商；models.dev 快照包含
   `zhipuai`、`zhipuai-coding-plan`、`zai`、`zai-coding-plan`。
 - **步骤**：1) 打开设置 → 模型配置并打开添加提供商对话框。2) 在「服务」中选择
-  **智谱 AI Coding Plan**。3) 检查名称与 Base URL，输入 API Key，等待模型发现。
-  4) 选择发现的模型并保存。5) 重新打开该提供商，将服务切换到 **Z.AI**，再切回
-  **自定义端点**。
-- **预期**：Coding Plan 填入智谱名称和
-  `https://open.bigmodel.cn/api/coding/paas/v4`，URL 只读，显示 Coding Plan
-  API Key 提示，焦点落在密钥框，模型选择仍可用。保存行持久化
-  `vendorKey: "zhipuai-coding-plan"`、`apiStyle: "chat_completions"` 以及精确
-  Coding Plan URL。切到 Z.AI 会换成 `https://api.z.ai/api/paas/v4` 与
-  `vendorKey: "zai"`。切到自定义端点后 URL 重新可编辑。针对智谱 URL 的后续
-  Agent 回合以 Zhipu thinking（`thinkingFormat: "zai"`）发送 Completions。
+  **智谱 AI Coding Plan**。3) 确认常见路径是服务 + API 密钥并带主机摘要，输入
+  API Key，等待模型发现。4) 选择发现的模型并保存。5) 重新打开该提供商，将服务
+  切换到 **Z.AI**，再切到 **自定义端点**。
+- **预期**：Coding Plan 显示服务 + API 密钥、主机摘要
+  `open.bigmodel.cn/api/coding/paas/v4`，焦点落在密钥框。名称与接口格式不在
+  常见路径上。保存行持久化 `vendorKey: "zhipuai-coding-plan"`、
+  `apiStyle: "chat_completions"` 以及精确 Coding Plan URL。切到 Z.AI 会把主机
+  摘要换成 `api.z.ai/api/paas/v4` 与 `vendorKey: "zai"`。切到自定义端点后露出
+  可编辑的名称和 Base URL。针对智谱 URL 的后续 Agent 回合以 Zhipu thinking
+  （`thinkingFormat: "zai"`）发送 Completions。
 - **链接规格**：`03-runtime/11-provider-model-system.md`、
   `03-runtime/12-provider-config-schema.md`、`04-ux/06-settings-ia.md`、ADR 0155
 - **验收**：B（模型配置与密钥存储）
