@@ -671,16 +671,16 @@ parent is blocked in `TaskWait`, `task` is write-once, and every relayed note
 would land in the context delegation exists to protect.
 
 **Tool.** One `A2A` tool joins the seven assignable tools and may appear in a
-definition's `tools:` list. It is built per delegate at spawn time and is
-deliberately **absent from the session tool catalog**, so the parent cannot
-reach it. `SUBAGENT_A2A_TOOLS = ["A2A"]`. A required `action` parameter selects
-the operation:
+definition's `tools:` list. It is built per delegate at spawn time.
+`SUBAGENT_A2A_TOOLS = ["A2A"]`. Agent-mode parents also get a core `A2A` tool
+bound to a `kind: "parent"` registration (ADR 0164); that parent tool can
+address other parents only, never subagents. A required `action` parameter
+selects the operation:
 
-- `A2A(action="discover")` — list the other agents registered on this host
-  (the caller's own Agent Card is excluded), including agents in other
-  sessions. Cards are derived from each delegate's `SubagentDefinition`
-  (name/description/skills) and carry `contextId` so a peer can tell
-  same-session from other-session agents.
+- `A2A(action="discover")` — list the other agents of the caller's kind
+  (`parent` or `subagent`). Subagent cards are derived from each
+  `SubagentDefinition`; parent cards carry the session title. Cards include
+  `kind` and `contextId`.
 - `A2A(action="send", to, parts, configuration?)` — send a message to a peer,
   creating or continuing a task. Returns the resulting task (or a direct
   message reply). `parts` is a typed `Part` list —
@@ -742,12 +742,14 @@ answer that never comes. Oversized payloads are refused with
 `A2A_PAYLOAD_TOO_LARGE`; the send cap with `A2A_SEND_CAP`; addressing with no
 reachable peer with `A2A_NO_PEERS`.
 
-**Boundaries preserved.** A2A traffic never enters the parent's model context;
-the parent still learns only what a report says, and a delegate's prompt says
-so. A definition that declares only the `A2A` tool and no working tool is
+**Boundaries preserved.** Delegate A2A traffic never enters the parent's model
+context; the parent still learns only what a report says, and a delegate's
+prompt says so. Parent-to-parent A2A (ADR 0164) is the parent's own tool
+calls. A definition that declares only the `A2A` tool and no working tool is
 refused at `Task` time. Cross-session coordination on this host is allowed
-(ADR 0162). There is no messaging with the parent, no nested delegation, and
-no remote agents.
+(ADR 0162 / ADR 0164). Kinds do not mix: parents cannot address subagents and
+subagents cannot address parents. There is no nested delegation and no remote
+agents.
 
 **Transcript.** An `A2A` call is a tool call of the delegate that made it, so it
 appears attributed by `parentToolCallId` and `agentName` under the owning `Task`

@@ -59,10 +59,10 @@ Allow A2A discovery and addressing across sessions on the same host.
    `sessionId` (an omitted field keeps today's same-session delivery). This
    stops a broadcast on the shared sidecar pipe from queueing work for the
    wrong session.
-6. **Unchanged boundaries.** The `A2A` tool stays out of the parent's
-   `toolCatalog`. A settled delegate is deregistered. There is still no
-   messaging with the parent, no nested delegation, and no remote or
-   cross-machine transport.
+6. **Unchanged boundaries (amended by ADR 0164).** A settled delegate is
+   deregistered. There is still no nested delegation and no remote or
+   cross-machine transport. Parent-to-parent A2A is ADR 0164; parents still
+   cannot address subagents.
 
 ## Consequences
 
@@ -76,10 +76,10 @@ Allow A2A discovery and addressing across sessions on the same host.
 - `A2A_CROSS_CONTEXT_DENIED` remains a documented code but is unused. New
   cross-session failures are `A2A_UNKNOWN_AGENT`, `A2A_UNKNOWN_TASK`, or
   `A2A_NO_PEERS`.
-- Not addressed: parent-to-delegate A2A, nested delegation, and any network
-  A2A binding. Name reuse after deregister (a later `discussant` reading a
-  stale task that still names `discussant`) is the same intra-session hazard
-  as today.
+- Not addressed: nested delegation and any network A2A binding. Parent-to-
+  parent A2A is decided in ADR 0164. Name reuse after deregister (a later
+  `discussant` reading a stale task that still names `discussant`) is the
+  same intra-session hazard as today.
 
 ## Alternatives considered
 

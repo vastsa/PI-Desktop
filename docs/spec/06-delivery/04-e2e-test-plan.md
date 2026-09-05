@@ -7330,10 +7330,31 @@ This test plan spec is accepted when:
   to the runtime whose `sessionId` equals `recipientContextId`. The stranger
   is rejected with `A2A_UNKNOWN_AGENT`. If both sessions requested the same
   definition name, the second register returns a suffix-uniquified `agentId`
-  and that is the address used in step 3. Parent tool catalogs still omit
-  `A2A`.
+  and that is the address used in step 3. Delegate `discover` does not list
+  parent cards.
 - **Specs linked**: `03-runtime/02-agent-runtime.md` §5f.2,
   `03-runtime/06-host-rpc-protocol.md` §4, ADR 0162
+- **Acceptance**: E (tools & permissions) + C (chat/stream) + Security
+- **Milestone**: M5
+- **Status**: Draft
+
+#### E2E-165d: Parent agents collaborate across conversations
+
+- **Preconditions**: Two Agent-mode sessions on the same host, each with a
+  live runtime (at least one agent prompt this process). The host advertises
+  `"a2a"` at handshake.
+- **Steps**: 1) Session A's parent calls `A2A(action="discover")`. 2) Session
+  A sends a note to session B's parent with `A2A(action="send")`. 3) Session
+  B is idle; the user later sends a prompt in session B. 4) Session A's
+  parent tries `A2A(action="send")` to a running subagent in either session.
+- **Expected**: Discover lists the other session's parent (`kind: "parent"`,
+  title in the description, a different `contextId`) and does not list
+  subagents. The send creates a durable task. Session B's next prompt is
+  prefixed with the inbound A2A note so the parent model can reply. Send to
+  a subagent fails with `A2A_UNKNOWN_AGENT`. Plan/Goal sessions do not
+  expose parent `A2A`.
+- **Specs linked**: `03-runtime/02-agent-runtime.md` §5f.2,
+  `03-runtime/06-host-rpc-protocol.md` §4, ADR 0164
 - **Acceptance**: E (tools & permissions) + C (chat/stream) + Security
 - **Milestone**: M5
 - **Status**: Draft

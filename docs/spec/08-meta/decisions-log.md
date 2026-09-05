@@ -3495,6 +3495,20 @@ D193, and D194.
 - Decision D318 amends ADR 0041 / D119. See `03-runtime/04-data-storage.md`,
   `03-runtime/07-process-model.md`, and E2E-178.
 
+## 2026-09-05 — Parent agents collaborate across conversations (D321)
+
+- Decision D321 amends ADR 0147 / ADR 0162. Agent-mode session runtimes
+  register a `kind: "parent"` A2A card for their lifetime and expose `A2A`
+  as a core parent tool so two conversations on the same host can
+  coordinate.
+- Discovery and send are kind-scoped: parents see other parents, subagents
+  see other subagents. A parent cannot address a subagent, including its
+  own, so `Task*` remains the only channel to delegates.
+- Inbound parent events queue; an idle session prepends them to the next
+  user prompt rather than auto-starting a turn. A conversation is reachable
+  after it has an Agent runtime this process.
+- See ADR 0164, `03-runtime/02-agent-runtime.md` §5f.2, and E2E-165d.
+
 ## 2026-09-05 — Sent file references stay chips and open on click (D320)
 
 - Composer chips serialized to full `@path` text in the user bubble, so the

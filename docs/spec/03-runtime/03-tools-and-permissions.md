@@ -551,31 +551,30 @@ Session-scoped `allow-session` grants are still per `toolName` and per session:
 one delegate's approval of `Bash` applies to the whole session, including the
 parent and other delegates.
 
-### 10.3 A2A tool scope (D277, ADR 0147, ADR 0162)
+### 10.3 A2A tool scope (D277, ADR 0147, ADR 0162, ADR 0164)
 
 `A2A` is a host `a2a.*` call authorized by a host-minted capability token, not
 a workspace tool call, so it carries no `permissionScope` and is not gated by
 path, Bash, or permission-mode rules in §4–§6. It is still audited as the
-delegate's own tool call in the transcript.
+caller's own tool call in the transcript.
 
-Three scope rules hold instead:
+Scope rules:
 
-- It is built **per delegate at spawn** and is absent from the session tool
-  catalog, so the parent session can never call it. Delegation lifecycle
-  control stays with the parent's `Task`/`TaskWait`/`TaskList`/`TaskStop`.
-- The sender is **bound by the runtime**, not by the model: the tool closes over
-  the host-minted token, so a delegate cannot spoof a sender or address the
-  broker as another agent. Recipients are addressed by unique peer id;
-  delegation ids are never exposed to a delegate. Discovery and send span every
-  live agent on the host, including other sessions.
-- It is **opt-in per definition and default-off**. No builtin declares it. A
-  definition that declares `A2A` but no working tool is refused when `Task`
-  runs, so messaging can never be a delegate's only capability.
+- **Delegates.** Built per delegate at spawn. Opt-in per definition and
+  default-off. No builtin declares it. A definition that declares `A2A` but no
+  working tool is refused when `Task` runs. Delegate A2A never enters the
+  parent's model context; the report remains the only thing the parent reads
+  from a delegate. Discovery and send see other **subagents** on the host,
+  including other sessions — never parent agents.
+- **Parents.** Agent mode registers a `kind: "parent"` card for the runtime
+  lifetime and exposes `A2A` as a core tool. Plan/Goal do not. Parents
+  discover and send only to other **parents**. They cannot address subagents,
+  including their own; delegation lifecycle stays with `Task*`.
+- The sender is **bound by the runtime**, not by the model: the tool closes
+  over the host-minted token.
 
 Payload size, task history, sends per run, and the wait ceiling are bounded
-by the broker (`02-agent-runtime.md` §5f.2). A2A traffic never enters the
-parent's model context; a delegate's report remains the only thing the parent
-reads.
+by the broker (`02-agent-runtime.md` §5f.2).
 
 ## 11. Plugin Tools
 

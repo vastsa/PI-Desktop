@@ -1,17 +1,17 @@
 # ADR 0147: A2A Protocol Stack for Subagent Coordination
 
-- Status: Accepted (amended by ADR 0162)
+- Status: Accepted (amended by ADR 0162 and ADR 0164)
 - Date: 2026-09-02
 - Deciders: PI-Desktop core
-- Related: D277, D318, ADR 0062, ADR 0089, ADR 0100, ADR 0162,
+- Related: D277, D318, D321, ADR 0062, ADR 0089, ADR 0100, ADR 0162, ADR 0164,
   `03-runtime/02-agent-runtime.md` §5f.2,
-  `03-runtime/06-host-rpc-protocol.md` §4, E2E-165, E2E-165b, E2E-165c
+  `03-runtime/06-host-rpc-protocol.md` §4, E2E-165, E2E-165b, E2E-165c, E2E-165d
 - Supersedes: ADR 0138 and ADR 0140. The in-process `SubagentMailbox` and the
   single `Peer` tool are removed. The coordination need those ADRs identified
   is preserved; the mechanism is replaced.
-- Amended by: ADR 0162 lifts same-context-only addressing. Discovery, send, and
-  task membership now span every live agent on the host; `A2A_CROSS_CONTEXT_DENIED`
-  is no longer produced.
+- Amended by: ADR 0162 lifts same-context-only addressing. ADR 0164 lets the
+  parent agent register as `kind: "parent"` and call `A2A` to other parents;
+  parents still cannot address subagents.
 
 ## Context
 
@@ -71,10 +71,11 @@ push config, the `a2a.push`) to the counterpart of the caller — a worker's rep
 or completion wakes the requester, a requester's follow-up wakes the worker;
 `a2a.tasks.resubscribe` re-emits to the caller itself. This closes the
 delegation round-trip a worker's completion previously never reached the
-requester. The `A2A` tool is registered/deregistered per
-delegation on spawn/settle, is kept out of the parent's `toolCatalog` (the
-parent cannot use it), and closes over the host-minted token.
+requester. The delegate `A2A` tool is registered/deregistered per
+delegation on spawn/settle and closes over the host-minted token.
 `SUBAGENT_A2A_TOOLS = ["A2A"]` replaces `SUBAGENT_PEER_TOOLS = ["Peer"]`.
+ADR 0164 additionally registers the parent as `kind: "parent"` and puts
+`A2A` in the Agent-mode catalog for parent-to-parent use only.
 
 Bounds are enforced by the broker: `A2A_MAX_TEXT_CHARS = 16000`,
 `A2A_MAX_FILE_BYTES = 20MB`, `A2A_MAX_TASK_HISTORY = 256`,

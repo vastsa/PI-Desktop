@@ -415,25 +415,29 @@ one after the final row would be wrong.
 
 ### A2A (ADR 0147)
 
-The A2A broker runs in host-core; each subagent is a client reaching it over
-this transport. Every method except `a2a.agents.register` carries a host-minted
-capability `token`; the host validates it and authorizes addressing by it.
-`contextId` equals `sessionId` and groups a task with the requester's session.
-Discovery and addressing span every live agent on the host (ADR 0162);
+The A2A broker runs in host-core; each subagent and each Agent-mode parent is
+a client reaching it over this transport. Every method except
+`a2a.agents.register` carries a host-minted capability `token`; the host
+validates it and authorizes addressing by it. `contextId` equals `sessionId`
+and groups a task with the requester's session. Discovery and addressing span
+live agents of the **caller's kind** on the host (ADR 0162 / ADR 0164);
 `A2A_CROSS_CONTEXT_DENIED` is reserved and not produced. A caller that is
 neither a task's requester nor its worker fails with `A2A_UNKNOWN_AGENT`.
+Cards carry `kind: "parent" | "subagent"` (default `subagent`).
 
 - `a2a.agents.register({ contextId, card }) -> { agentId, token }` — register
-  the caller's Agent Card (derived from its `SubagentDefinition`) in the host
-  registry and mint an in-memory capability token. If `card.name` is already
-  taken, the broker suffix-uniquifies it and returns that `agentId`. The token
-  is injected by the runtime and never exposed to the model. The card is
-  stamped with `contextId`.
+  the caller's Agent Card in the host registry and mint an in-memory
+  capability token. Parents register with `kind: "parent"`; delegates with
+  `kind: "subagent"`. If `card.name` is already taken, the broker
+  suffix-uniquifies it and returns that `agentId`. The token is injected by
+  the runtime and never exposed to the model. The card is stamped with
+  `contextId`.
 - `a2a.agents.deregister({ token }) -> { ok }` — remove the caller from the
-  registry and invalidate its token; called when a delegate settles.
+  registry and invalidate its token; called when a delegate settles or a
+  parent runtime disposes.
 - `a2a.agents.list({ token }) -> { agents: AgentCard[] }` — every other live
-  agent on the host, including other sessions; the caller's own card is
-  excluded. Each card carries `contextId`.
+  agent of the caller's kind, including other sessions; the caller's own card
+  is excluded. Each card carries `kind` and `contextId`.
 - `a2a.message.send({ token, message, configuration? }) -> { task } | { message }`
   — send a message to a peer, creating or continuing a task; returns the task or
   a direct message reply. `message.parts` is a typed `Part` list
