@@ -4501,7 +4501,9 @@ Each scenario is documented in this format:
     cannot consume the result.
   - An explicit `path` reaches into the ignored tree; without it the same search
     returns nothing from there. `include`, `outputMode`, and `headLimit` each
-    shrink the payload, and results order newest-modified first.
+    shrink the payload, and results order newest-modified first. When `rg` is
+    on PATH, Grep uses it and still matches that contract; when it is missing
+    or exits 2, Grep falls back in-process (D315).
   - The binary read fails with `TOOL_BINARY_CONTENT` and no binary reaches the
     model; Grep skips it silently.
   - Bash stdout keeps its head, stderr keeps its tail, both markers name which
@@ -4511,7 +4513,7 @@ Each scenario is documented in this format:
     batch with a sentence about what it is doing, never leaves more than one
     batch without new visible text, and ends with a self-contained result.
 - **Specs linked**: `03-runtime/16-tool-result-limits.md`,
-  `03-runtime/02-agent-runtime.md` §7, `08-meta/decisions-log.md` (D194, D306)
+  `03-runtime/02-agent-runtime.md` §7, `08-meta/decisions-log.md` (D194, D306, D315)
 - **Acceptance**: C (chat & stream), E (tools & permissions), Quality
 - **Milestone**: M5
 - **Status**: Unit-covered (host-core `tools` tests, `runtime.test.ts` prompt

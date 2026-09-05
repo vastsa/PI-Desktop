@@ -1,7 +1,7 @@
 # 03. Tools and Permissions
 
 > Decisions applied: D003, D004, D005, D006, D013, D015, D093, D114, D115, D181, D186,
-> D189, D190, D195 (ADR 0057), ADR 0087
+> D189, D190, D195 (ADR 0057), D315, ADR 0087
 
 ## 0. Frozen policy summary
 
@@ -29,7 +29,7 @@ Let the agent get things done, but stay under control by default.
 | `Read` | low | Read files within the workspace; returns line-numbered content and a `[path#TAG]` header |
 | `new_context` | low | Start a new context window at the next turn boundary; takes no parameters and changes no environment state |
 | `Glob` | low | List files by pattern |
-| `Grep` | low | Content search; mints a per-file `tag` |
+| `Grep` | low | Content search; uses system `rg` when installed, else in-process; mints a per-file `tag` |
 | `BrowserPreview` | low | Open a workspace-relative preview in the user-driven Browser panel |
 | `EnterPlanMode` | low | Move the same Agent from Agent to Plan after host validation |
 | `SubmitPlan` | low | Preserve exact Markdown bytes in a new `.pi/plan/*.md` artifact and request approval |
@@ -88,7 +88,10 @@ Native file and search tools enforce distinct path shapes (D208, ADR 0069):
 - `Glob.path` is a directory search root.
 - `Grep.path` may be one file or a directory tree. A directly named file is
   searched without walking siblings, while `include` still filters its base
-  name and every output budget remains unchanged.
+  name and every output budget remains unchanged. Grep prefers a user-installed
+  `rg` on PATH (and the Unix login PATH) and falls back to the in-process
+  searcher when `rg` is missing or fails (D315). The model-facing contract does
+  not change.
 
 Agent mode keeps `Glob`/`Grep` deferred under D185. Each new user prompt resets
 their activation, so directory discovery activates `Glob` through `ToolSearch`

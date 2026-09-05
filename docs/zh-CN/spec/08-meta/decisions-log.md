@@ -2607,3 +2607,11 @@ D193 和 D194。
 - 外观卡的主题仍是三张预览卡。语言改为可搜索选择器：顶部钉住「跟随系统」并显示检测到的本地名称，然后列出已发布语言。搜索匹配本地名称、英文名称和 id。
 - 插件标签和更新日志仍为 `en` + `zh-CN`，其它语言回退到英文。
 - 决策 D314 修订 D073。见 ADR 0160、`04-ux/02-i18n-english-first.md`、`04-ux/06-settings-ia.md` 与 E2E-091。
+
+## 2026-09-05 —— Grep 在本机有 `rg` 时优先使用（D315）
+
+- Codex 在本机有 `rg` 时用 shell 搜索。PI-Desktop 仍把 Grep 作为面向模型的工具，只在进程 PATH 或 Unix login PATH 上找到用户安装的 `rg` 时把它当作实现后端。
+- 结果形状、128KB / `headLimit` 预算、按修改时间新到旧、以及显式 `path` 的 ignore 例外仍由 host 定义。`rg` 以空 stdin 和 argv 直接 exec，不经过 Bash。spawn 失败或 exit 2 回退到进程内 `ignore` + `regex`。`PI_DESKTOP_RG` 指定二进制；`PI_DESKTOP_DISABLE_RG` 强制回退。
+- 代理仍应调用 Grep，而不是在 Bash 里跑 `rg`。Read 不变。安装包不自带 `rg`。
+- 决策 D315 修订 ADR 0057 / D195。见 `03-runtime/03-tools-and-permissions.md`、`03-runtime/02-agent-runtime.md` §7 与 E2E-147。
+

@@ -823,8 +823,10 @@ directory tree. Calls use `Read.offset/limit`, `Glob.path/limit`, and
 `Grep.path/include/outputMode/headLimit`; `filesWithMatches` or `count` avoids
 unneeded content. Workspace-relative paths remain the portable default, with a
 bounded command in the active shell only when native tools are insufficient.
-`rg` is optional rather than assumed, and the agent must not repeat a search
-whose answer is already in context.
+Grep uses a system `rg` when one is installed and an in-process searcher
+otherwise; the agent calls Grep rather than shelling out to `rg`. Bash must
+still not assume `rg` is present. The agent must not repeat a search whose
+answer is already in context.
 
 The edit-discipline block carries the line-anchored `Edit` contract of
 [18-line-anchored-edit-contract](18-line-anchored-edit-contract.md): the op

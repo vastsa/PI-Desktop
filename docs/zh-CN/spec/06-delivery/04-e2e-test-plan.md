@@ -3760,7 +3760,8 @@ IPC 请求无法关闭。
     无法消耗结果。
   - 显式 `path` 到达被忽略的树；没有它同样的搜索
     从那里没有返回任何内容。 `include`、`outputMode` 和 `headLimit` 各一个
-    缩小有效负载，结果按最新修改的顺序排列。
+    缩小有效负载，结果按最新修改的顺序排列。PATH 上有 `rg`
+    时 Grep 使用它且契约不变；缺失或 exit 2 时回退进程内实现（D315）。
 - 二进制读取失败并显示 `TOOL_BINARY_CONTENT`，并且没有二进制文件到达
     模型； Grep 默默地跳过它。
   - Bash stdout 保留其头部，stderr 保留其尾部，两个标记均命名为哪个
@@ -3770,7 +3771,7 @@ IPC 请求无法关闭。
     批处理用一个关于它正在做什么的句子，永远不会留下多个
     批处理没有新的可见文本，并以独立的结果结束。
 - **链接规格**：`03-runtime/16-tool-result-limits.md`，
-  `03-runtime/02-agent-runtime.md` §7、`08-meta/decisions-log.md` (D194、D306)
+  `03-runtime/02-agent-runtime.md` §7、`08-meta/decisions-log.md` (D194、D306、D315)
 - **验收**：C（聊天和直播）、E（工具和权限）、质量
 - **里程碑**：M5
 - **状态**：单位覆盖（host-core `tools` 测试，`runtime.test.ts` 提示

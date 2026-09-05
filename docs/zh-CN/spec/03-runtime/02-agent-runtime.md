@@ -619,8 +619,7 @@ MVP UI 始终至少包括：
 `Grep.path/include/outputMode/headLimit`； `filesWithMatches` 或 `count` 避免
 不需要的内容。工作区相对路径仍然是可移植的默认路径，带有
 仅当本机工具不足时才在活动 shell 中使用有界命令。
-`rg` 是可选的而不是假定的，并且代理不得重复搜索
-他的答案已经在上下文中了。
+Grep 在本机装有 `rg` 时使用它，否则使用进程内搜索器；代理应调用 Grep 而不是在 Bash 里跑 `rg`。Bash 仍不得假定 `rg` 存在。代理不得重复已经在上下文中的搜索。
 
 编辑规范块携带
 [18-line-anchored-edit-contract](/zh-CN/spec/03-runtime/18-line-anchored-edit-contract)

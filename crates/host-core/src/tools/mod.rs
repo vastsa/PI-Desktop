@@ -18,6 +18,7 @@ use tokio::sync::{mpsc, watch};
 
 use crate::workspace::{resolve_tool_path_with_external, ToolRoot};
 
+mod grep_rg;
 pub mod shell;
 
 /// Ceiling on what the streaming capture retains per stream.
@@ -894,7 +895,7 @@ impl<R: BufRead> LineReader<R> {
     }
 }
 
-fn clip_chars(text: String, max_chars: usize) -> (String, bool) {
+pub(super) fn clip_chars(text: String, max_chars: usize) -> (String, bool) {
     match text.char_indices().nth(max_chars) {
         Some((idx, _)) => (text[..idx].to_string(), true),
         None => (text, false),
@@ -1620,6 +1621,32 @@ fn tool_grep(
         .map(|v| v.min(BUDGET_SEARCH.max_lines as u64) as usize)
         .filter(|v| *v > 0)
         .unwrap_or(GREP_DEFAULT_HEAD_LIMIT);
+    let include_pattern = args
+        .get("include")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|p| !p.is_empty());
+    let case_insensitive = args
+        .get("caseInsensitive")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    // Prefer a system `rg` when one is installed (Codex's search default).
+    // The result shape, budgets, newest-first order, and scoped-ignore rule
+    // stay host-defined; a missing or failing binary falls through.
+    if let Some(value) = grep_rg::try_system_rg(grep_rg::SystemGrep {
+        pattern,
+        search_dir: &search_dir,
+        workspace_root: root,
+        root_kind,
+        scoped,
+        include: include_pattern,
+        mode,
+        case_insensitive,
+        head_limit,
+    }) {
+        return Ok(value);
+    }
 
     let (files, mut truncated) = candidate_files(
         &search_dir,
@@ -1690,6 +1717,26 @@ fn tool_grep(
         }
     }
 
+    Ok(grep_output(
+        mode,
+        hits,
+        counts,
+        matched_files,
+        total_matches,
+        clipped_lines,
+        truncated,
+    ))
+}
+
+pub(super) fn grep_output(
+    mode: &str,
+    hits: Vec<Value>,
+    counts: Vec<Value>,
+    matched_files: Vec<String>,
+    total_matches: usize,
+    clipped_lines: usize,
+    truncated: bool,
+) -> Value {
     let mut notes: Vec<String> = Vec::new();
     if truncated {
         notes.push(
@@ -1723,7 +1770,7 @@ fn tool_grep(
     if !notes.is_empty() {
         out["notice"] = json!(notes.join("; "));
     }
-    Ok(out)
+    out
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -2486,9 +2533,10 @@ pub fn builtin_tool_defs() -> Value {
             "name": "Grep",
             "description": format!(
                 "Search file contents by regex, results ordered by file modification time (newest first). \
+                 Uses the system's `rg` when installed, otherwise an in-process searcher; the result shape is the same. \
                  `path` may name one file or a directory tree. \
                  Returns at most `headLimit` matches (default {}, hard budget {}KB) and cuts matching lines at \
-                 {} characters. Scope with `path` and `include` rather than filtering shell `grep` output; use \
+                 {} characters. Scope with `path` and `include` rather than filtering shell `grep`/`rg` output; use \
                  `outputMode: \"filesWithMatches\"` or `\"count\"` when you only need the file list or tallies.",
                 GREP_DEFAULT_HEAD_LIMIT,
                 BUDGET_SEARCH.max_bytes / 1024,
@@ -3191,6 +3239,145 @@ mod tests {
             .contains("headLimit"));
     }
 
+    fn write_fake_rg(dir: &std::path::Path, script: &str) -> std::path::PathBuf {
+        #[cfg(windows)]
+        {
+            let path = dir.join("rg.cmd");
+            std::fs::write(&path, script.replace('\n', "\r\n")).unwrap();
+            path
+        }
+        #[cfg(not(windows))]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let path = dir.join("rg");
+            std::fs::write(&path, format!("#!/bin/sh\n{script}")).unwrap();
+            let mut perms = std::fs::metadata(&path).unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&path, perms).unwrap();
+            path
+        }
+    }
+
+    #[tokio::test]
+    async fn grep_uses_injected_rg_when_present() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.txt"), "needle in workspace\n").unwrap();
+        let fake_dir = tempfile::tempdir().unwrap();
+        let rg = write_fake_rg(
+            fake_dir.path(),
+            if cfg!(windows) {
+                "@echo off\necho {\"type\":\"match\",\"data\":{\"path\":{\"text\":\"from-rg.txt\"},\"line_number\":1,\"lines\":{\"text\":\"hello from rg\"}}}\nexit /b 0\n"
+            } else {
+                "printf '%s\\n' '{\"type\":\"match\",\"data\":{\"path\":{\"text\":\"from-rg.txt\"},\"line_number\":1,\"lines\":{\"text\":\"hello from rg\"}}}'\n"
+            },
+        );
+        let _guard = grep_rg::install_test_rg(rg);
+        let result = execute_tool(
+            Some(dir.path()),
+            None,
+            "Grep",
+            &serde_json::json!({ "pattern": "needle" }),
+            5_000,
+        )
+        .await;
+        assert!(result.ok, "grep failed: {:?}", result.content);
+        assert_eq!(result.content["count"].as_u64(), Some(1));
+        assert_eq!(
+            result.content["matches"][0]["path"].as_str(),
+            Some("from-rg.txt")
+        );
+        assert_eq!(
+            result.content["matches"][0]["text"].as_str(),
+            Some("hello from rg")
+        );
+    }
+
+    #[tokio::test]
+    async fn grep_falls_back_when_rg_exits_with_error() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.txt"), "needle in workspace\n").unwrap();
+        let fake_dir = tempfile::tempdir().unwrap();
+        let rg = write_fake_rg(
+            fake_dir.path(),
+            if cfg!(windows) {
+                "@echo off\nexit /b 2\n"
+            } else {
+                "exit 2\n"
+            },
+        );
+        let _guard = grep_rg::install_test_rg(rg);
+        let result = execute_tool(
+            Some(dir.path()),
+            None,
+            "Grep",
+            &serde_json::json!({ "pattern": "needle" }),
+            5_000,
+        )
+        .await;
+        assert!(result.ok, "grep failed: {:?}", result.content);
+        assert_eq!(result.content["count"].as_u64(), Some(1));
+        assert_eq!(result.content["matches"][0]["path"].as_str(), Some("a.txt"));
+    }
+
+    #[tokio::test]
+    async fn grep_system_rg_honors_scoped_ignore_and_head_limit() {
+        let Some(rg) = super::shell::find_user_program("rg") else {
+            return;
+        };
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(".ignore"), "node_modules\n").unwrap();
+        std::fs::create_dir_all(dir.path().join("node_modules/pkg")).unwrap();
+        std::fs::write(
+            dir.path().join("node_modules/pkg/index.js"),
+            "export const needle = 1;\n",
+        )
+        .unwrap();
+        let body: String = (0..50).map(|_| "needle\n").collect();
+        std::fs::write(dir.path().join("many.txt"), body).unwrap();
+
+        let _guard = grep_rg::install_test_rg(rg);
+        let unscoped = execute_tool(
+            Some(dir.path()),
+            None,
+            "Grep",
+            &serde_json::json!({ "pattern": "needle" }),
+            5_000,
+        )
+        .await;
+        assert_eq!(
+            unscoped.content["count"].as_u64(),
+            Some(50),
+            "ignored tree stays hidden: {:?}",
+            unscoped.content
+        );
+
+        let scoped = execute_tool(
+            Some(dir.path()),
+            None,
+            "Grep",
+            &serde_json::json!({ "pattern": "needle", "path": "node_modules/pkg" }),
+            5_000,
+        )
+        .await;
+        assert_eq!(
+            scoped.content["count"].as_u64(),
+            Some(1),
+            "named ignored tree is searchable: {:?}",
+            scoped.content
+        );
+
+        let limited = execute_tool(
+            Some(dir.path()),
+            None,
+            "Grep",
+            &serde_json::json!({ "pattern": "needle", "path": "many.txt", "headLimit": 5 }),
+            5_000,
+        )
+        .await;
+        assert_eq!(limited.content["count"].as_u64(), Some(5));
+        assert_eq!(limited.content["truncated"].as_bool(), Some(true));
+    }
+
     #[tokio::test]
     async fn search_reaches_explicitly_named_ignored_directories() {
         // The measured failure: the agent asked about a package under
@@ -3709,5 +3896,4 @@ mod tests {
         let written = std::fs::read_to_string(&target).unwrap();
         assert_eq!(written, "line one\r\nline TWO replaced\r\nline three\r\n");
     }
-
 }

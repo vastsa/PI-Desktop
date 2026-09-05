@@ -1,6 +1,6 @@
 # ADR 0057: Permission-gated external paths and portable native search
 
-- Status: Accepted for implementation
+- Status: Accepted for implementation (amended by D315)
 - Date: 2026-08-05
 - Baseline: `0.4.14`
 - Protocol: v9
@@ -58,8 +58,15 @@ The runtime exposes the host's complete bounded search contract:
 schema. The host also normalizes `files_with_matches` and
 `files-with-matches` as compatibility aliases before execution.
 Search guidance prefers workspace-relative paths and the native tools on every
-platform. Bash search is a bounded fallback that follows the selected shell's
-dialect and does not assume POSIX utilities, PowerShell, or `rg` availability.
+platform. Grep may exec a user-installed `rg` when one is on the process PATH
+or the Unix login PATH (D181 / D315). That is an implementation backend, not a
+shell search: stdin is null, arguments are not quoted through a shell, and the
+host still applies budgets, newest-first order, scoped ignore (`--no-ignore-parent`
+when `path` is explicit), and the same JSON shape. A missing, overridden-invalid,
+or failing `rg` (spawn error or exit 2) falls back to the in-process `ignore` +
+`regex` searcher. `PI_DESKTOP_RG` selects a binary; `PI_DESKTOP_DISABLE_RG`
+forces the fallback. Bash search remains a bounded last resort and still does
+not assume POSIX utilities, PowerShell, or `rg` availability.
 
 ## Consequences
 
@@ -90,7 +97,8 @@ directory. Scope and user consent must be evaluated separately.
 
 Rejected because command availability and quoting differ across macOS, Linux,
 and Windows, and unbounded shell output was a measured source of context
-exhaustion.
+exhaustion. Execing `rg` from Grep is not this alternative: the model still
+calls Grep, and host-core owns the result budget.
 
 ## Related docs
 

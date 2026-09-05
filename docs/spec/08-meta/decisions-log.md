@@ -3410,3 +3410,18 @@ D193, and D194.
 - Plugin labels and the changelog stay `en` + `zh-CN` with English fallback.
 - Decision D314 amends D073. See ADR 0160, `04-ux/02-i18n-english-first.md`,
   `04-ux/06-settings-ia.md`, and E2E-091.
+
+## 2026-09-05 — Grep prefers a system `rg` when installed (D315)
+
+- Codex searches with shell `rg` when the machine has it. PI-Desktop keeps
+  Grep as the model-facing tool and uses a user-installed `rg` as its
+  implementation backend when one is on the process PATH or Unix login PATH.
+- The result shape, 128KB / `headLimit` budget, newest-first order, and
+  explicit-`path` ignore exception stay host-defined. `rg` is exec'd with a
+  null stdin and argv, not through Bash. Spawn failure or exit 2 falls back
+  to the in-process `ignore` + `regex` searcher. `PI_DESKTOP_RG` selects a
+  binary; `PI_DESKTOP_DISABLE_RG` forces the fallback.
+- The agent still calls Grep rather than shelling out to `rg`. Read is
+  unchanged. No `rg` binary is bundled.
+- Decision D315 amends ADR 0057 / D195. See `03-runtime/03-tools-and-permissions.md`,
+  `03-runtime/02-agent-runtime.md` §7, and E2E-147.

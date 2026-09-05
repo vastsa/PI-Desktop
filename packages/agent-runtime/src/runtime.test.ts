@@ -335,7 +335,7 @@ describe("DesktopAgentRuntime configuration matching", () => {
       "in Agent mode, activate it with ToolSearch for the current prompt",
     );
     expect(prompt).toContain("Grep takes a file-or-directory `path`");
-    expect(prompt).toContain("use `rg` only when it is available");
+    expect(prompt).toContain("Grep uses the system's `rg` when it is installed");
     expect(prompt).toContain("Workspace-relative paths are portable");
     expect(prompt).toContain(
       "an explicit path outside the workspace and session scratch roots asks for permission",
