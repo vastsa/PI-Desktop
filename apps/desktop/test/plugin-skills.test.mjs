@@ -17,6 +17,10 @@ const skillDoc = readFileSync(
   join(desktopRoot, "resources/skills/plugin-development.md"),
   "utf8",
 );
+const a2aSkillDoc = readFileSync(
+  join(desktopRoot, "resources/skills/a2a-cross-conversation.md"),
+  "utf8",
+);
 const agentRuntimeSrc = readFileSync(
   join(repoRoot, "packages/agent-runtime/src/runtime.ts"),
   "utf8",
@@ -86,8 +90,27 @@ test("the built-in plugin skill only activates for plugin workspaces", () => {
   assert.match(builtinSrc, /isPluginWorkspace/);
   assert.match(builtinSrc, /schemaVersion.*number/s);
   assert.match(builtinSrc, /pluginPaths\.some/);
-  assert.match(builtinSrc, /if \(!isPluginWorkspace\(input\.workspacePath, input\.pluginPaths\)\) return \[\]/);
+  assert.match(builtinSrc, /if \(isPluginWorkspace\(input.workspacePath, input.pluginPaths\)\)/);
+  assert.doesNotMatch(
+    builtinSrc,
+    /if \(!isPluginWorkspace\(input.workspacePath, input.pluginPaths\)\) return \[\]/,
+  );
   assert.match(mainSrc, /builtinSkills\(\{/);
+});
+
+test("the built-in A2A skill is always catalogued", () => {
+  assert.match(builtinSrc, /A2A_CROSS_CONVERSATION_SKILL_ID = "pi-desktop\/a2a-cross-conversation"/);
+  assert.match(builtinSrc, /a2a-cross-conversation.md/);
+  assert.match(a2aSkillDoc, /^---\n/);
+  assert.match(a2aSkillDoc, /description: /);
+  for (const token of [
+    "A2A(action=\"discover\")",
+    "parent-2",
+    "contextId",
+    "session UUID",
+  ]) {
+    assert.ok(a2aSkillDoc.includes(token), `A2A skill must mention ${token}`);
+  }
 });
 
 test("the built-in skill body loads through the same Skill tool", () => {

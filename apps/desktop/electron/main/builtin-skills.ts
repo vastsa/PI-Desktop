@@ -16,6 +16,15 @@ import type { PluginSkillDef } from "@pi-desktop/agent-runtime";
 export const PLUGIN_DEV_SKILL_FILE = "plugin-development.md";
 export const PLUGIN_DEV_SKILL_ID = "pi-desktop/plugin-development";
 
+/** Bundled skill teaching parent-to-parent A2A (ADR 0164, D324). */
+export const A2A_CROSS_CONVERSATION_SKILL_FILE = "a2a-cross-conversation.md";
+export const A2A_CROSS_CONVERSATION_SKILL_ID = "pi-desktop/a2a-cross-conversation";
+
+const BUILTIN_SKILL_FILES: Record<string, string> = {
+  [PLUGIN_DEV_SKILL_ID]: PLUGIN_DEV_SKILL_FILE,
+  [A2A_CROSS_CONVERSATION_SKILL_ID]: A2A_CROSS_CONVERSATION_SKILL_FILE,
+};
+
 /** electron-builder copies `resources/skills` to `<resources>/skills`. */
 function resolveBuiltinSkillPath(fileName: string): string | null {
   const candidates = [
@@ -74,6 +83,22 @@ function readBuiltinSkill(fileName: string): string | null {
   }
 }
 
+function catalogEntry(
+  fileName: string,
+  id: string,
+  fallbackName: string,
+): PluginSkillDef | null {
+  const raw = readBuiltinSkill(fileName);
+  if (!raw?.trim()) return null;
+  const parsed = parseSkillFrontmatter(raw);
+  if (!parsed.body) return null;
+  return {
+    id,
+    name: parsed.name ?? fallbackName,
+    description: parsed.description,
+  };
+}
+
 export type BuiltinSkillInput = {
   workspacePath?: string | null;
   /** Directories of currently loaded plugins, used to detect a dev workspace. */
@@ -83,20 +108,27 @@ export type BuiltinSkillInput = {
 /**
  * Catalog entries for the built-in skills that apply to the given session, read
  * fresh so a packaged update takes effect without a restart.
+ *
+ * Cross-conversation A2A is always catalogued: every Agent session has the
+ * parent `A2A` tool. Plugin development stays workspace-gated.
  */
 export function builtinSkills(input: BuiltinSkillInput): PluginSkillDef[] {
-  if (!isPluginWorkspace(input.workspacePath, input.pluginPaths)) return [];
-  const raw = readBuiltinSkill(PLUGIN_DEV_SKILL_FILE);
-  if (!raw?.trim()) return [];
-  const parsed = parseSkillFrontmatter(raw);
-  if (!parsed.body) return [];
-  return [
-    {
-      id: PLUGIN_DEV_SKILL_ID,
-      name: parsed.name ?? "PI-Desktop plugin development",
-      description: parsed.description,
-    },
-  ];
+  const skills: PluginSkillDef[] = [];
+  const a2a = catalogEntry(
+    A2A_CROSS_CONVERSATION_SKILL_FILE,
+    A2A_CROSS_CONVERSATION_SKILL_ID,
+    "A2A cross-conversation",
+  );
+  if (a2a) skills.push(a2a);
+  if (isPluginWorkspace(input.workspacePath, input.pluginPaths)) {
+    const pluginDev = catalogEntry(
+      PLUGIN_DEV_SKILL_FILE,
+      PLUGIN_DEV_SKILL_ID,
+      "PI-Desktop plugin development",
+    );
+    if (pluginDev) skills.push(pluginDev);
+  }
+  return skills;
 }
 
 /**
@@ -106,14 +138,19 @@ export function builtinSkills(input: BuiltinSkillInput): PluginSkillDef[] {
 export function loadBuiltinSkillBody(
   id: string,
 ): { id: string; name: string; body: string } | null {
-  if (id !== PLUGIN_DEV_SKILL_ID) return null;
-  const raw = readBuiltinSkill(PLUGIN_DEV_SKILL_FILE);
+  const fileName = BUILTIN_SKILL_FILES[id];
+  if (!fileName) return null;
+  const raw = readBuiltinSkill(fileName);
   if (!raw?.trim()) return null;
   const parsed = parseSkillFrontmatter(raw);
   if (!parsed.body) return null;
+  const fallback =
+    id === PLUGIN_DEV_SKILL_ID
+      ? "PI-Desktop plugin development"
+      : "A2A cross-conversation";
   return {
-    id: PLUGIN_DEV_SKILL_ID,
-    name: parsed.name ?? "PI-Desktop plugin development",
+    id,
+    name: parsed.name ?? fallback,
     body: parsed.body,
   };
 }

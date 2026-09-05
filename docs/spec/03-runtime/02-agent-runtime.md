@@ -754,7 +754,9 @@ agents.
 
 **Transcript.** An `A2A` call is a tool call of the delegate that made it, so it
 appears attributed by `parentToolCallId` and `agentName` under the owning `Task`
-row.
+row. Parent `A2A` calls appear as the parent's own tool calls. The built-in
+skill `pi-desktop/a2a-cross-conversation` is always in the skill catalog so a
+parent loads it before answering that other conversations are invisible.
 
 ## 6. Providers & models
 

@@ -3544,3 +3544,14 @@ D193, and D194.
   only on the delegation card (D319) and the nested `.subagent-run`.
 - Decision D323 amends D101 / D297. See `04-ux/08-component-spec.md` §8.4 /
   §9.9 and E2E-059a / US-UI-60.
+
+## 2026-09-05 — Built-in skill teaches cross-conversation A2A (D324)
+
+- Parent agents had the `A2A` tool (D321) but still answered that other
+  conversations were invisible, because nothing in the skill catalog told
+  them to `discover` first or that session UUIDs are not send addresses.
+- `apps/desktop/resources/skills/a2a-cross-conversation.md` is always
+  catalogued as `pi-desktop/a2a-cross-conversation`. Plugin-development
+  stays workspace-gated.
+- Decision D324. See ADR 0164, `07-plugins/10-plugin-devex.md`, and
+  E2E-024I / E2E-165d.
