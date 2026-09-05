@@ -169,3 +169,4 @@ Each ADR includes:
 | 0154 | Reveal the New Task empty destination before host IO | Accepted |
 | 0155 | Add Zhipu / Z.AI named endpoint presets | Accepted |
 | 0156 | Simplify the add-provider common path | Accepted |
+| 0157 | Main-owned GitHub issue feedback | Accepted |

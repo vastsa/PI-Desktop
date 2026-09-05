@@ -1294,6 +1294,18 @@ prompt/enhance({
 提供商/模型和凭据，因此渲染器永远拿不到密钥。空草稿、斜杠命令草稿、缺失模型
 以及提供商失败都返回通用的 `Result` 错误包络。
 
+### app/openFeedback（D313）
+
+```ts
+app/openFeedback() -> { ok: true }
+```
+
+Electron Main 构造固定的 GitHub bug 表单 URL
+（`https://github.com/vastsa/PI-Desktop/issues/new?template=bug_report.yml`），
+并用 `shell.openExternal` 打开。查询字段 `app-version`、`os` 和 `environment`
+由主进程版本信息填充。渲染器不能提供 URL。离开该 origin 或模板的构造会被拒绝。
+此通道不进入 host-core，也不改变 host RPC 协议版本。
+
 ## 14. 错误代码 — 初始注册表（可扩展）
 
 | 代码 | 含义 |

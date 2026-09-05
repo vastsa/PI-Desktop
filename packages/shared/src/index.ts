@@ -16,3 +16,4 @@ export * from "./subagent-definition.js";
 export * from "./a2a.js";
 export * from "./provider-presets.js";
 export * from "./model-catalog.js";
+export * from "./github-feedback.js";

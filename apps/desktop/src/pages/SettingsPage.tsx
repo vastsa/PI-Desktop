@@ -1349,6 +1349,17 @@ export function SettingsPage() {
                     {t("settings.openLogs")}
                   </Button>
                 </SettingsRow>
+                <SettingsRow
+                  title={t("settings.feedback")}
+                  description={t("settings.feedbackDesc")}
+                >
+                  <Button
+                    variant="secondary"
+                    onClick={() => void api.openFeedback().catch(() => undefined)}
+                  >
+                    {t("settings.openFeedback")}
+                  </Button>
+                </SettingsRow>
                 <UpdatesRow currentVersion={version?.version} />
               </SettingsCard>
 

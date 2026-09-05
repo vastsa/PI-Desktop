@@ -103,6 +103,21 @@ unambiguous issue number for this repository.
 - Do not comment on or close unrelated issues. Do not reopen a closed issue
   unless the user explicitly asks.
 
+### GitHub issue templates
+
+`.github/ISSUE_TEMPLATE` is the only public intake path (`blank_issues_enabled:
+false`). English is the source label language; Chinese remains on the same
+fields.
+
+- **Bug report** requires: description, reproduction steps, expected behavior,
+  actual behavior, app version, and OS. Logs, extra environment, and
+  screenshots are optional. Settings → Info prefills version, OS, and
+  environment when opened from the app (D313).
+- **Feature request** requires: problem and proposed change. Alternatives and
+  extra context are optional.
+
+Do not weaken these required fields. Blank issues stay disabled.
+
 ---
 
 ## 2. Development Loop

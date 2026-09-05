@@ -49,6 +49,7 @@ export type WindowControlAction = (typeof WINDOW_CONTROL_ACTIONS)[number];
 export const IPC = {
   invoke: {
     appGetVersion: "pi-desktop/app/getVersion",
+    appOpenFeedback: "pi-desktop/app/openFeedback",
     appHealth: "pi-desktop/app/health",
     appGetOnboarding: "pi-desktop/app/getOnboarding",
     appDismissOnboarding: "pi-desktop/app/dismissOnboarding",

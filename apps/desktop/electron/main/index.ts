@@ -33,6 +33,8 @@ import {
   APP_NAME,
   APP_VERSION,
   APP_MENU_COMMANDS,
+  assertFeedbackIssueUrl,
+  buildBugReportUrl,
   defaultCommandShellForPlatform,
   ErrorCodes as SharedErrorCodes,
   IPC,
@@ -5818,6 +5820,25 @@ function registerIpc() {
       return { visible: false };
     }),
   );
+
+  handle(IPC.invoke.appOpenFeedback, async () => {
+    const hostVersion = host
+      ? await host
+          .call<{ version: string }>("app.getVersion")
+          .then((info) => info.version)
+          .catch(() => undefined)
+      : undefined;
+    const url = buildBugReportUrl({
+      version: APP_VERSION,
+      platform: process.platform,
+      arch: process.arch,
+      protocolVersion: PROTOCOL_VERSION,
+      hostVersion,
+    });
+    assertFeedbackIssueUrl(url);
+    await shell.openExternal(url);
+    return { ok: true };
+  });
 
   handle(IPC.invoke.appGetVersion, async () => {
     const hostVersion = host

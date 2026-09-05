@@ -5529,3 +5529,14 @@ IPC 请求无法关闭。
 - **验收**：C（聊天和直播）、E（工具和权限）
 - **里程碑**：M5
 - **状态**：单元已覆盖（host-core `tools` 测试）
+
+#### E2E-176：设置 → 信息打开预填的 GitHub bug 表单
+
+- **前提条件**：可以打开设置；本机可以启动系统浏览器。
+- **步骤**：1）打开设置 → 信息。2）确认「应用」行显示当前版本。3）用设置搜索查找「问题反馈」。4）点击「打开 GitHub」。
+- **预期**：该行可被设置搜索索引，并停留在信息页。动作调用 `pi-desktop/app/openFeedback`，渲染器不提供 URL。Main 打开 `https://github.com/vastsa/PI-Desktop/issues/new`，带 `template=bug_report.yml`，并预填 `app-version`、`os` 和 `environment`。GitHub bug 表单仍要求描述、复现步骤、预期、实际、版本和操作系统；空白 issue 保持禁用。
+- **链接规格**：`04-ux/06-settings-ia.md`、`03-runtime/01-ipc-protocol.md`、
+  `06-delivery/03-ai-development-workflow.md`、`08-meta/decisions-log.md`（D313）、ADR 0157
+- **验收**：H（诊断）、质量
+- **里程碑**：M6+
+- **状态**：单元/源码契约已覆盖（`github-feedback.test.ts`、`feedback.test.mjs`）；渲染桌面旅程仍待补（除非用户明确要求，否则不要在本地跑 E2E）

@@ -1,38 +1,83 @@
 name: Bug report / Bug 反馈
-description: Report something not working as expected. 报告产品行为异常。
+description: Report something that is not working. 报告产品异常。
 title: "[Bug] "
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        Bug 反馈 · Bug report
-        请描述问题，可附上复现步骤与截图。Describe the issue; steps and screenshots are optional.
+        Fill every required field so we can reproduce the issue.
+        请填写所有必填项，便于复现与排查。
+
+        Settings → Info shows the app version and can open this form with it filled in.
+        「设置 → 信息」可查看版本，并从应用内打开本表单。
   - type: textarea
     id: description
     attributes:
-      label: 问题描述 / Description
-      description: 什么坏了、影响是什么？What is broken and its impact?
-      placeholder: "示例：打开设置页时崩溃，无法进入模型配置。Example: App crashes when opening Settings → Model config."
-      render: markdown
+      label: What happened? / 问题描述
+      description: What broke, and what is the impact?
+      placeholder: Opening Settings → Models crashes before the provider list appears.
     validations:
       required: true
   - type: textarea
     id: reproduce
     attributes:
-      label: 复现步骤 / Steps to reproduce
-      description: 选填。Steps are optional.
-      placeholder: |-
-        示例 / Example:
-        1. 打开应用 / Open the app
-        2. 进入设置 → 模型配置 / Open Settings → Model config
-        3. 点击“添加服务” / Click “Add service”
-        4. 应用崩溃 / App crashes
-      render: bash
+      label: Steps to reproduce / 复现步骤
+      description: Numbered steps from a cold start when possible.
+      placeholder: |
+        1. Open the app
+        2. Open Settings → Models
+        3. Click Add provider
+        4. The window closes
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior / 预期行为
+      placeholder: The add-provider dialog opens.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior / 实际行为
+      placeholder: The app window disappears with no error dialog.
+    validations:
+      required: true
+  - type: input
+    id: app-version
+    attributes:
+      label: App version / 应用版本
+      description: Copy from Settings → Info. Example 0.13.3
+      placeholder: "0.13.3"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system / 操作系统
+      options:
+        - macOS
+        - Windows
+        - Linux
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Extra environment / 其他环境信息
+      description: Architecture, protocol/host versions, and install type (DMG, NSIS, AppImage, deb, development). Settings → Info fills this when opened from the app.
+      placeholder: darwin arm64 · protocol 12 · host 0.13.3 · macOS 15.4
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / 日志
+      description: Settings → Info → Open logs. Paste the relevant lines only.
+      render: shell
   - type: textarea
     id: screenshots
     attributes:
-      label: 截图 / Screenshots
-      description: 选填，可拖拽图片。Optional; drag & drop images.
-      placeholder: "![截图](url)"
-      render: markdown
+      label: Screenshots / 截图
+      description: Optional. Drag and drop images.
