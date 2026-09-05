@@ -48,4 +48,3 @@ coverage/
 .claude/
 .workbuddy
 electron.vite.config.*.mjs
-electron.vite.config.*.mjs
