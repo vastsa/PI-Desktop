@@ -791,15 +791,15 @@ function FileRefChip({
   return (
     <button
       type="button"
-      className="chat-file-chip"
+      className="composer-chip chat-file-chip"
       title={`${html ? t("chat.previewUrl") : t("chat.openFile")} — ${path}`}
       aria-label={`${name} — ${path}`}
       onClick={() => onOpen(path)}
     >
-      <span className="chat-file-chip-icon" aria-hidden>
+      <span className="composer-chip-icon" aria-hidden>
         <Icon size={13} />
       </span>
-      <span className="chat-file-chip-name">{name}</span>
+      <span className="composer-chip-name">{name}</span>
     </button>
   );
 }

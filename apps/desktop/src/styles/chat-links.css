@@ -26,41 +26,20 @@
   text-decoration-color: var(--ds-accent);
 }
 
-/* Composer-like file node inside a sent user message (D320). */
+/* Sent-message file node: same .composer-chip surface, button reset + hover. */
 .chat-file-chip {
-  display: inline-flex;
-  max-width: min(100%, 240px);
-  height: 20px;
-  align-items: center;
-  gap: 4px;
-  margin: 0 2px;
   border: 0;
-  border-radius: var(--radius-md);
-  padding: 0 6px;
-  background: var(--ds-tile-deep);
-  color: var(--ds-text-secondary);
+  padding-right: 6px;
   font: inherit;
-  font-size: var(--text-xs-plus);
-  line-height: var(--leading-compact);
-  vertical-align: middle;
-  white-space: nowrap;
+  text-align: start;
   cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
 }
 .chat-file-chip:hover,
 .chat-file-chip:focus-visible {
   color: var(--ds-text-primary);
   background: var(--ds-tile-hover);
-}
-.chat-file-chip-icon {
-  display: inline-flex;
-  flex: 0 0 auto;
-  color: var(--ds-text-muted);
-}
-.chat-file-chip-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* Path/URL tokens inside plain user-message text. */

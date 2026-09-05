@@ -153,12 +153,10 @@ test("wrapped user links keep plaintext alignment", () => {
   assert.match(userLinkStyles, /overflow-wrap:\s*anywhere;/);
 });
 
-test("user-message file chips ellipsize the leaf name like composer chips", () => {
-  assert.match(
-    stylesSource,
-    /\.chat-file-chip-name[\s\S]*?text-overflow:\s*ellipsis/,
-  );
-  assert.match(transcriptSource, /className=\"chat-file-chip\"/);
+test("user-message file chips reuse the composer chip node", () => {
+  assert.match(transcriptSource, /className=\"composer-chip chat-file-chip\"/);
+  assert.match(transcriptSource, /composer-chip-name/);
+  assert.match(stylesSource, /\.chat-file-chip[\s\S]*?appearance:\s*none/);
 });
 
 test("stopping a turn undoes an unanswered prompt or settles the partial reply", async () => {

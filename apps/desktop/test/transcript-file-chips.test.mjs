@@ -12,11 +12,12 @@ const [transcript, styles, hook, api] = await Promise.all([
 ]);
 
 test("sent user-message file refs render as composer-like chips", () => {
-  assert.match(transcript, /className=\"chat-file-chip\"/);
+  assert.match(transcript, /className=\"composer-chip chat-file-chip\"/);
   assert.match(transcript, /function FileRefChip/);
   assert.match(transcript, /segment\.target\.kind === \"file\"/);
   assert.match(transcript, /useOpenChatFileRef/);
-  assert.match(styles, /\.chat-file-chip-name[\s\S]*?text-overflow: ellipsis/);
+  assert.match(transcript, /composer-chip-name/);
+  assert.match(styles, /\.chat-file-chip[\s\S]*?appearance: none/);
 });
 
 test("user-message file chips open HTML in the browser and other files via fs/open", () => {
