@@ -69,10 +69,11 @@ export type SubagentDefinition = {
  *
  * A single `A2A` tool carries the operations a delegate needs — `discover`,
  * `send`, `get`, `wait` and `cancel` — selected by an `action` parameter, so
- * the capability is counted and declared as one tool. It is a session-local
+ * the capability is counted and declared as one tool. It is a host-local
  * coordination tool, not a delegation tool: it exchanges A2A messages/tasks
- * between running delegates and never exposes delegation ids, the delegation
- * registry, or the ability to start or stop a delegate.
+ * between running delegates on this host (including other sessions) and never
+ * exposes delegation ids, the delegation registry, or the ability to start or
+ * stop a delegate.
  */
 export const SUBAGENT_A2A_TOOLS = ["A2A"] as const;
 

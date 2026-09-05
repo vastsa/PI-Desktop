@@ -41,6 +41,9 @@ pub enum A2aError {
     UnknownToken,
     UnknownAgent,
     UnknownTask,
+    /// Reserved (ADR 0147). Cross-session addressing is allowed (ADR 0162);
+    /// non-parties fail as `UnknownAgent` instead.
+    #[allow(dead_code)]
     CrossContextDenied,
     InvalidTransition,
     TaskTerminal,
@@ -75,7 +78,7 @@ impl A2aError {
             A2aError::InvalidTransition => "illegal task state transition".into(),
             A2aError::TaskTerminal => "task is already in a terminal state".into(),
             A2aError::SendCap => "send cap exceeded for this run".into(),
-            A2aError::NoPeers => "no reachable peers in this context".into(),
+            A2aError::NoPeers => "no reachable peers".into(),
             A2aError::PayloadTooLarge => "file part exceeds the byte limit".into(),
             A2aError::Internal(message) => message.clone(),
         }
@@ -284,6 +287,9 @@ pub struct AgentCard {
     pub capabilities: AgentCapabilities,
     pub default_input_modes: Vec<String>,
     pub default_output_modes: Vec<String>,
+    /// Session id this agent registered under. Stamped by the broker.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub context_id: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -489,6 +495,9 @@ pub struct PushConfigGetResult {
 pub struct TaskEventNotification {
     /// Peer id of the client that should receive this event.
     pub recipient: String,
+    /// Session id of `recipient`. Session runtimes drop events not addressed to them.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub recipient_context_id: Option<String>,
     pub context_id: String,
     pub event: StreamEvent,
 }
@@ -497,6 +506,9 @@ pub struct TaskEventNotification {
 #[serde(rename_all = "camelCase")]
 pub struct PushNotification {
     pub recipient: String,
+    /// Session id of `recipient`. Session runtimes drop events not addressed to them.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub recipient_context_id: Option<String>,
     pub context_id: String,
     pub task_id: String,
     #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -520,7 +532,10 @@ mod tests {
         // Illegal: out of terminal, or a jump the contract forbids.
         assert!(!can_transition(TaskState::Completed, TaskState::Working));
         assert!(!can_transition(TaskState::Canceled, TaskState::Working));
-        assert!(!can_transition(TaskState::InputRequired, TaskState::AuthRequired));
+        assert!(!can_transition(
+            TaskState::InputRequired,
+            TaskState::AuthRequired
+        ));
         assert!(!can_transition(
             TaskState::InputRequired,
             TaskState::Completed
@@ -567,9 +582,7 @@ mod tests {
 
     #[test]
     fn part_kinds_round_trip() {
-        let text = Part::Text {
-            text: "hi".into(),
-        };
+        let text = Part::Text { text: "hi".into() };
         assert_eq!(
             serde_json::to_value(&text).unwrap(),
             serde_json::json!({ "kind": "text", "text": "hi" })

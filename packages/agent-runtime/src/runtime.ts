@@ -2715,7 +2715,7 @@ Delegation rules:
       const self = peerId ?? definition.name;
       blocks.push(
         [
-          `A2A protocol: you are the agent "${self}" and other subagents may be running in this session at the same time. You reach them through the A2A tool over the host's Agent2Agent broker.`,
+          `A2A protocol: you are the agent "${self}" and other subagents may be running in this session or another session at the same time. You reach them through the A2A tool over the host's Agent2Agent broker.`,
           "Use the single A2A tool: A2A(action=discover) lists the peers running alongside you as Agent Cards; A2A(action=send) sends a message to a peer by name (creating or continuing a task); A2A(action=get) reads a task's status and history; A2A(action=wait) blocks until a peer addresses a task to you; A2A(action=cancel) cancels a task you own.",
           "Coordination is the point, not conversation: claim a file before editing it so two agents do not fight over it, correct a peer whose assumption you just disproved, and pass a fact that saves a peer a search. Never ask a peer to do your task, and never wait on a peer to finish yours.",
           "A peer may never reply. A task addressed to you is not an interrupt — you see it only when you `wait` or `get` — so treat every exchange as best effort and keep your own report self-contained. The main agent never sees A2A traffic, so anything that matters must also be in your report.",
@@ -2917,7 +2917,7 @@ Delegation rules:
         // concurrent delegations of the same definition (e.g. three
         // "discussant" subagents in a roundtable) each register a distinct
         // A2A agent card and can address each other individually.
-        const peerId =
+        let peerId =
           hasA2ATool
             ? this.assignPeerId(definition.name)
             : definition.name;
@@ -2942,10 +2942,12 @@ Delegation rules:
         // token — both supplied by the runtime, never by the model (ADR 0146).
         const a2aTools: AgentTool[] = [];
         if (hasA2ATool) {
-          const token = await this.registerA2AAgent(peerId, definition);
-          if (token) {
-            record.a2aToken = token;
-            a2aTools.push(this.buildA2ATool(peerId, token));
+          const registered = await this.registerA2AAgent(peerId, definition);
+          if (registered) {
+            peerId = registered.agentId;
+            record.peerId = peerId;
+            record.a2aToken = registered.token;
+            a2aTools.push(this.buildA2ATool(peerId, registered.token));
           }
         }
         const scopedTools = [
@@ -3028,17 +3030,18 @@ Delegation rules:
 
   /**
    * Register a delegate with the host-core A2A broker at spawn time (ADR
-   * 0146). Returns the host-minted capability token the `A2A` tool authorizes
-   * with, or `undefined` when the host is unavailable — the delegate then runs
-   * without A2A rather than failing outright. The agent card `name` is the
-   * unique peerId so concurrent delegations of one definition stay
-   * individually addressable; `contextId` is the session id, which scopes
-   * discovery and addressing to this session.
+   * 0147 / ADR 0162). Returns the host-minted capability token and the
+   * (possibly uniquified) peer id, or `undefined` when the host is unavailable
+   * — the delegate then runs without A2A rather than failing outright. The
+   * agent card `name` starts as the session-unique peerId; the broker may
+   * suffix it when another session already holds that name so live ids stay
+   * unique across the host. `contextId` is the session id and groups tasks
+   * with this requester; discovery and addressing span every live agent.
    */
   private async registerA2AAgent(
     peerId: string,
     definition: SubagentDefinition,
-  ): Promise<string | undefined> {
+  ): Promise<{ token: string; agentId: string } | undefined> {
     this.ensureA2ASubscription();
     const card: A2AAgentCard = { ...toAgentCard(definition), name: peerId };
     try {
@@ -3046,7 +3049,8 @@ Delegation rules:
         A2A_RPC_METHODS.agentsRegister,
         { contextId: this.sessionId, card },
       );
-      return result?.token;
+      if (!result?.token) return undefined;
+      return { token: result.token, agentId: result.agentId || peerId };
     } catch {
       // Host unavailable or rejected: the delegate keeps its work tools.
       return undefined;
@@ -3083,11 +3087,13 @@ Delegation rules:
       if (method === A2A_NOTIFICATIONS.taskEvent) {
         const note = params as A2ATaskEventNotification;
         if (note && typeof note.recipient === "string" && note.event) {
+          if (!this.isA2AEventForThisSession(note.recipientContextId)) return;
           this.deliverA2AEvent(note.recipient, note.event);
         }
       } else if (method === A2A_NOTIFICATIONS.push) {
         const note = params as A2APushNotification;
         if (note && typeof note.recipient === "string" && note.status) {
+          if (!this.isA2AEventForThisSession(note.recipientContextId)) return;
           this.deliverA2AEvent(note.recipient, {
             kind: "status-update",
             taskId: note.taskId,
@@ -3098,6 +3104,15 @@ Delegation rules:
         }
       }
     });
+  }
+
+  /** Drop events the broker addressed to a different session's runtime. An
+   * omitted `recipientContextId` keeps same-session delivery for older hosts. */
+  private isA2AEventForThisSession(recipientContextId?: string): boolean {
+    if (typeof recipientContextId !== "string" || recipientContextId.length === 0) {
+      return true;
+    }
+    return recipientContextId === this.sessionId;
   }
 
   /** Queue an event for a recipient peer and wake its waiters. */
@@ -3215,8 +3230,8 @@ Delegation rules:
       name: "A2A",
       label: "A2A",
       description: [
-        "Talk to another subagent running right now in this session over the Agent2Agent (A2A) protocol. `action` picks the operation.",
-        "`discover` lists the peers running alongside you as Agent Cards (name, description, skills). Call it first to learn who is available and by what name to address them.",
+        "Talk to another subagent running right now, in this session or another session, over the Agent2Agent (A2A) protocol. `action` picks the operation.",
+        "`discover` lists the other running agents as Agent Cards (name, description, skills, and whether they are in another session). Call it first to learn who is available and by what name to address them.",
         `\`send\` sends a message to a peer, creating a task the peer serves or continuing one via \`taskId\`. Set \`to\` to a peer name from \`discover\`; put your note in \`text\`. Coordinate, do not transfer data: a peer that needs a file reads the file. Keep \`text\` under ${A2A_MAX_TEXT_CHARS} characters. You may send at most ${A2A_MAX_SENDS_PER_RUN} times per run.`,
         "`get` reads a task's current state and message history by `taskId`.",
         `\`wait\` blocks until a peer addresses a task to you and returns it, or returns empty after \`timeoutSeconds\` (default ${A2A_DEFAULT_STREAM_WAIT_SECONDS}, max ${A2A_MAX_STREAM_WAIT_SECONDS}). Only wait when you are genuinely blocked on a peer's reply — a peer under no obligation to answer may never answer, and an empty wait is not a failure. It also returns as soon as your last peer finishes.`,
@@ -3235,7 +3250,7 @@ Delegation rules:
         to: Type.Optional(
           Type.String({
             description:
-              "For `send`: peer name of the recipient (from `discover`). Omit to address the single other running peer.",
+              "For `send`: peer name of the recipient (from `discover`, including other sessions). Omit to address the other peer in this session, or the single other live agent on the host.",
           }),
         ),
         text: Type.Optional(
@@ -3306,7 +3321,13 @@ Delegation rules:
               agents.length === 0
                 ? "No other subagent is running right now. Carry on and put anything that matters in your report."
                 : agents
-                    .map((card) => `- ${card.name}: ${card.description}`)
+                    .map((card) => {
+                      const where =
+                        card.contextId && card.contextId !== this.sessionId
+                          ? " (other session)"
+                          : "";
+                      return `- ${card.name}: ${card.description}${where}`;
+                    })
                     .join("\n");
             return {
               content: [{ type: "text", text: body }],

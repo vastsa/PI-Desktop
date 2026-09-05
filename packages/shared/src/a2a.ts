@@ -180,7 +180,7 @@ export type A2AAgentCapabilities = {
  * returns it from `a2a.agents.list`.
  */
 export type A2AAgentCard = {
-  /** Peer id: unique per running delegation, the address other agents use. */
+  /** Peer id: unique across the live host registry, the address other agents use. */
   name: string;
   description: string;
   version: string;
@@ -188,6 +188,8 @@ export type A2AAgentCard = {
   capabilities: A2AAgentCapabilities;
   defaultInputModes: string[];
   defaultOutputModes: string[];
+  /** Session id this agent registered under. Stamped by the broker. */
+  contextId?: string;
 };
 
 /** Streaming event: a task changed state (A2A `TaskStatusUpdateEvent`). */
@@ -349,12 +351,16 @@ export type A2APushConfigGetResult = {
 export type A2ATaskEventNotification = {
   /** Peer id of the client that should receive this event. */
   recipient: string;
+  /** Session id of `recipient`; session runtimes drop events not addressed to them. */
+  recipientContextId?: string;
   contextId: string;
   event: A2AStreamEvent;
 };
 
 export type A2APushNotification = {
   recipient: string;
+  /** Session id of `recipient`; session runtimes drop events not addressed to them. */
+  recipientContextId?: string;
   contextId: string;
   taskId: string;
   token?: string;

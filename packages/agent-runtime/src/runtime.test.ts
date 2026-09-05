@@ -5360,6 +5360,7 @@ describe("DesktopAgentRuntime subagents", () => {
     // The broker addresses an event to "researcher"; it must wake that wait.
     handler(A2A_NOTIFICATIONS.taskEvent, {
       recipient: "researcher",
+      recipientContextId: "session-1",
       contextId: "session-1",
       event: {
         kind: "status-update",
@@ -5374,6 +5375,82 @@ describe("DesktopAgentRuntime subagents", () => {
     expect(waited.details.events).toHaveLength(1);
     expect(waited.content[0].text).toContain("task-42");
 
+    await runtime.dispose();
+  });
+
+  it("drops A2A events addressed to another session", async () => {
+    const host = a2aHost();
+    const runtime = createRuntime({ subagents: [coordinator], host });
+    (runtime as any).ensureA2ASubscription();
+    const handler = host.onNotification.mock.calls[0][0] as (
+      method: string,
+      params: unknown,
+    ) => void;
+    const a2a = (runtime as any).buildA2ATool("researcher", "tok-researcher") as any;
+
+    const waitPromise = a2a.execute("call-wait", {
+      action: "wait",
+      timeoutSeconds: 1,
+    });
+    handler(A2A_NOTIFICATIONS.taskEvent, {
+      recipient: "researcher",
+      recipientContextId: "session-other",
+      contextId: "session-other",
+      event: {
+        kind: "status-update",
+        taskId: "task-x",
+        contextId: "session-other",
+        status: { state: "working", timestamp: "t" },
+        final: false,
+      },
+    });
+    const waited = await waitPromise;
+    expect(waited.details.timedOut).toBe(true);
+    expect(waited.details.events).toHaveLength(0);
+
+    await runtime.dispose();
+  });
+
+  it("labels other-session peers in discover output", async () => {
+    const host = a2aHost({
+      [A2A_RPC_METHODS.agentsList]: {
+        agents: [
+          { name: "reviewer", description: "Reviews the diff.", contextId: "session-1" },
+          { name: "reviewer-2", description: "Reviews the diff.", contextId: "session-2" },
+        ],
+      },
+    });
+    const runtime = createRuntime({ subagents: [coordinator], host });
+    const a2a = (runtime as any).buildA2ATool("researcher", "tok-researcher") as any;
+    const discovered = await a2a.execute("call-discover", { action: "discover" });
+    expect(discovered.content[0].text).toContain("reviewer: Reviews the diff.");
+    expect(discovered.content[0].text).not.toContain("reviewer: Reviews the diff. (other session)");
+    expect(discovered.content[0].text).toContain("reviewer-2: Reviews the diff. (other session)");
+    await runtime.dispose();
+  });
+
+  it("adopts a broker-uniquified peer id after register", async () => {
+    const host = a2aHost({
+      [A2A_RPC_METHODS.agentsRegister]: {
+        agentId: "coordinator-2",
+        token: "tok-coordinator-2",
+      },
+    });
+    const runtime = createRuntime({ subagents: [coordinator], host });
+    subagentRuns.calls.length = 0;
+    const tool = taskTool(runtime);
+    const result = await tool.execute("task-1", {
+      agent: "coordinator",
+      task: "Coordinate with the other session.",
+    });
+    const record = (runtime as any).delegations.get(
+      (result.details as any).delegationId,
+    );
+    expect(record.peerId).toBe("coordinator-2");
+    expect(record.a2aToken).toBe("tok-coordinator-2");
+    expect(subagentRuns.calls[0].systemPrompt).toContain(
+      'you are the agent "coordinator-2"',
+    );
     await runtime.dispose();
   });
 

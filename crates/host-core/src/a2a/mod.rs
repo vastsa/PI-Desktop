@@ -21,11 +21,11 @@ use uuid::Uuid;
 pub use types::{
     can_transition, is_terminal, A2aError, AgentCard, AgentsDeregisterParams,
     AgentsDeregisterResult, AgentsListParams, AgentsListResult, AgentsRegisterParams,
-    AgentsRegisterResult, Message, MessageSendParams, MessageSendResult, MessageStreamParams,
-    Part, PushConfigGetParams, PushConfigGetResult, PushConfigSetParams, PushConfigSetResult,
-    PushNotification, StreamEvent, Task, TaskEventNotification, TaskKind, TaskResult,
-    TaskStatus, TaskStatusUpdateEvent, TaskState, TasksCancelParams, TasksGetParams,
-    TasksResubscribeParams, TasksStatusParams,
+    AgentsRegisterResult, Message, MessageSendParams, MessageSendResult, MessageStreamParams, Part,
+    PushConfigGetParams, PushConfigGetResult, PushConfigSetParams, PushConfigSetResult,
+    PushNotification, StreamEvent, Task, TaskEventNotification, TaskKind, TaskResult, TaskState,
+    TaskStatus, TaskStatusUpdateEvent, TasksCancelParams, TasksGetParams, TasksResubscribeParams,
+    TasksStatusParams,
 };
 
 /// Host→client notification the RPC layer must emit after a broker call.
@@ -69,20 +69,47 @@ impl A2aBroker {
         self.agents.get(token).ok_or(A2aError::UnknownToken)
     }
 
-    fn authorize_task(task: &Task, caller_name: &str, caller_context: &str) -> Result<(), A2aError> {
-        if task.context_id != caller_context {
-            return Err(A2aError::CrossContextDenied);
-        }
+    fn authorize_task(task: &Task, caller_name: &str) -> Result<(), A2aError> {
         if task.agent_name != caller_name && task.requester_name != caller_name {
             return Err(A2aError::UnknownAgent);
         }
         Ok(())
     }
 
+    fn name_taken(&self, name: &str) -> bool {
+        self.agents.values().any(|agent| agent.agent_id == name)
+    }
+
+    /// Suffix-uniquify `requested` against the live registry (`name`, `name-2`, …).
+    fn unique_agent_name(&self, requested: &str) -> String {
+        if !self.name_taken(requested) {
+            return requested.to_string();
+        }
+        let mut i = 2;
+        loop {
+            let candidate = format!("{requested}-{i}");
+            if !self.name_taken(&candidate) {
+                return candidate;
+            }
+            i += 1;
+        }
+    }
+
+    fn peer_context(&self, name: &str) -> Option<String> {
+        self.agents
+            .values()
+            .find(|agent| agent.agent_id == name)
+            .map(|agent| agent.context_id.clone())
+    }
+
     /// Register a peer under a context, minting a capability token.
-    pub fn register(&mut self, params: AgentsRegisterParams) -> AgentsRegisterResult {
+    /// `card.name` is uniquified against every live agent on the host so
+    /// `agentName` / `requesterName` on a task cannot collide (ADR 0162).
+    pub fn register(&mut self, mut params: AgentsRegisterParams) -> AgentsRegisterResult {
         let token = Uuid::new_v4().to_string();
-        let agent_id = params.card.name.clone();
+        let agent_id = self.unique_agent_name(&params.card.name);
+        params.card.name = agent_id.clone();
+        params.card.context_id = Some(params.context_id.clone());
         self.agents.insert(
             token.clone(),
             RegisteredAgent {
@@ -121,18 +148,16 @@ impl A2aBroker {
         Ok((AgentsDeregisterResult { ok: true }, notifications))
     }
 
-    /// List all OTHER peers registered in the caller's context.
+    /// List all OTHER live peers on the host, including other sessions.
     pub fn list(&self, params: AgentsListParams) -> Result<AgentsListResult, A2aError> {
-        let caller = self.agent_for_token(&params.token)?;
+        let _caller = self.agent_for_token(&params.token)?;
         let mut agents: Vec<AgentCard> = self
             .agents
             .iter()
-            .filter(|(token, agent)| {
-                token.as_str() != params.token && agent.context_id == caller.context_id
-            })
+            .filter(|(token, _)| token.as_str() != params.token)
             .map(|(_, agent)| agent.card.clone())
             .collect();
-        agents.sort_by(|a, b| a.name.cmp(&b.name));
+        agents.sort_by(|a, b| a.name.cmp(&b.name).then(a.context_id.cmp(&b.context_id)));
         Ok(AgentsListResult { agents })
     }
 
@@ -146,7 +171,8 @@ impl A2aBroker {
             .configuration
             .as_ref()
             .and_then(|config| config.push_notification_config.clone());
-        let (task, notifications) = self.dispatch_message(conn, &params.token, params.message, push)?;
+        let (task, notifications) =
+            self.dispatch_message(conn, &params.token, params.message, push)?;
         Ok((MessageSendResult { task }, notifications))
     }
 
@@ -175,13 +201,7 @@ impl A2aBroker {
         };
 
         // Check the cap before dispatch, but only charge successful sends below.
-        if self
-            .send_counts
-            .get(token)
-            .copied()
-            .unwrap_or(0)
-            >= types::A2A_MAX_SENDS_PER_RUN
-        {
+        if self.send_counts.get(token).copied().unwrap_or(0) >= types::A2A_MAX_SENDS_PER_RUN {
             return Err(A2aError::SendCap);
         }
 
@@ -197,7 +217,7 @@ impl A2aBroker {
             .cloned();
 
         let result = if let Some(task_id) = task_id {
-            self.send_to_existing_task(conn, &caller_name, &caller_context, task_id, message, push)
+            self.send_to_existing_task(conn, &caller_name, task_id, message, push)
         } else {
             self.create_task(conn, &caller_name, &caller_context, message, push)
         };
@@ -215,29 +235,11 @@ impl A2aBroker {
         mut message: Message,
         push: Option<types::PushNotificationConfig>,
     ) -> Result<(Task, Vec<Notification>), A2aError> {
-        // Other peers in the same context are the reachable recipients.
-        let mut peers: Vec<String> = self
-            .agents
-            .values()
-            .filter(|agent| agent.context_id == caller_context && agent.agent_id != caller_name)
-            .map(|agent| agent.agent_id.clone())
-            .collect();
-        peers.sort();
-        if peers.is_empty() {
-            return Err(A2aError::NoPeers);
-        }
+        let recipient =
+            self.resolve_recipient(caller_name, caller_context, message.to.as_deref())?;
 
-        let recipient = match message.to.as_ref().filter(|to| !to.trim().is_empty()) {
-            Some(to) => {
-                if !peers.iter().any(|peer| peer == to) {
-                    return Err(A2aError::UnknownAgent);
-                }
-                to.clone()
-            }
-            None => peers[0].clone(),
-        };
-
-        if store::count_tasks_in_context(conn, caller_context)? >= types::A2A_MAX_TASKS_PER_CONTEXT {
+        if store::count_tasks_in_context(conn, caller_context)? >= types::A2A_MAX_TASKS_PER_CONTEXT
+        {
             return Err(A2aError::SendCap);
         }
 
@@ -270,21 +272,76 @@ impl A2aBroker {
         tx.commit().map_err(|e| A2aError::Internal(e.to_string()))?;
 
         // The new task is addressed to the recipient (the worker).
-        let notifications = vec![task_event_notification(&recipient, &task, false)];
+        let notifications = vec![self.task_event_notification(&recipient, &task, false)];
         Ok((task, notifications))
+    }
+
+    /// Pick a reachable peer. Same-session agents win when `to` is omitted or
+    /// when several live agents share a requested name (should not happen after
+    /// register uniquify). Cross-session peers are otherwise addressable.
+    fn resolve_recipient(
+        &self,
+        caller_name: &str,
+        caller_context: &str,
+        to: Option<&str>,
+    ) -> Result<String, A2aError> {
+        let mut others: Vec<&RegisteredAgent> = self
+            .agents
+            .values()
+            .filter(|agent| agent.agent_id != caller_name)
+            .collect();
+        if others.is_empty() {
+            return Err(A2aError::NoPeers);
+        }
+        others.sort_by(|a, b| {
+            a.agent_id
+                .cmp(&b.agent_id)
+                .then(a.context_id.cmp(&b.context_id))
+        });
+
+        let requested = to.map(str::trim).filter(|value| !value.is_empty());
+        if let Some(to) = requested {
+            let matches: Vec<&RegisteredAgent> = others
+                .iter()
+                .copied()
+                .filter(|agent| agent.agent_id == to)
+                .collect();
+            if matches.is_empty() {
+                return Err(A2aError::UnknownAgent);
+            }
+            if let Some(same) = matches
+                .iter()
+                .find(|agent| agent.context_id == caller_context)
+            {
+                return Ok(same.agent_id.clone());
+            }
+            return Ok(matches[0].agent_id.clone());
+        }
+
+        let same: Vec<&RegisteredAgent> = others
+            .iter()
+            .copied()
+            .filter(|agent| agent.context_id == caller_context)
+            .collect();
+        if !same.is_empty() {
+            return Ok(same[0].agent_id.clone());
+        }
+        if others.len() == 1 {
+            return Ok(others[0].agent_id.clone());
+        }
+        Err(A2aError::NoPeers)
     }
 
     fn send_to_existing_task(
         &mut self,
         conn: &Connection,
         caller_name: &str,
-        caller_context: &str,
         task_id: String,
         message: Message,
         push: Option<types::PushNotificationConfig>,
     ) -> Result<(Task, Vec<Notification>), A2aError> {
         let mut task = store::load_task(conn, &task_id)?.ok_or(A2aError::UnknownTask)?;
-        Self::authorize_task(&task, caller_name, caller_context)?;
+        Self::authorize_task(&task, caller_name)?;
         if is_terminal(task.status.state) {
             return Err(A2aError::TaskTerminal);
         }
@@ -314,7 +371,7 @@ impl A2aBroker {
         // Route the event to the other party: a worker's reply wakes the
         // requester, and a requester's follow-up wakes the worker.
         let recipient = counterpart(&task, caller_name);
-        let notifications = vec![task_event_notification(&recipient, &task, false)];
+        let notifications = vec![self.task_event_notification(&recipient, &task, false)];
         Ok((task, notifications))
     }
 
@@ -326,7 +383,7 @@ impl A2aBroker {
     ) -> Result<TaskResult, A2aError> {
         let caller = self.agent_for_token(&params.token)?;
         let mut task = store::load_task(conn, &params.id)?.ok_or(A2aError::UnknownTask)?;
-        Self::authorize_task(&task, &caller.agent_id, &caller.context_id)?;
+        Self::authorize_task(&task, &caller.agent_id)?;
         if let Some(limit) = params.history_length {
             truncate_history(&mut task, limit);
         }
@@ -340,9 +397,8 @@ impl A2aBroker {
         params: TasksCancelParams,
     ) -> Result<(TaskResult, Vec<Notification>), A2aError> {
         let caller_name = self.agent_for_token(&params.token)?.agent_id.clone();
-        let caller_context = self.agent_for_token(&params.token)?.context_id.clone();
         let mut task = store::load_task(conn, &params.id)?.ok_or(A2aError::UnknownTask)?;
-        Self::authorize_task(&task, &caller_name, &caller_context)?;
+        Self::authorize_task(&task, &caller_name)?;
         if is_terminal(task.status.state) {
             return Err(A2aError::TaskTerminal);
         }
@@ -375,7 +431,7 @@ impl A2aBroker {
             (caller.agent_id.clone(), caller.context_id.clone())
         };
         let mut task = store::load_task(conn, &params.id)?.ok_or(A2aError::UnknownTask)?;
-        Self::authorize_task(&task, &caller_name, &caller_context)?;
+        Self::authorize_task(&task, &caller_name)?;
         if is_terminal(task.status.state) {
             return Err(A2aError::TaskTerminal);
         }
@@ -415,7 +471,7 @@ impl A2aBroker {
         let notifications = if is_terminal(task.status.state) {
             self.terminal_notifications(conn, &recipient, &task)?
         } else {
-            vec![task_event_notification(&recipient, &task, false)]
+            vec![self.task_event_notification(&recipient, &task, false)]
         };
         Ok((TaskResult { task }, notifications))
     }
@@ -428,10 +484,10 @@ impl A2aBroker {
     ) -> Result<(TaskResult, Vec<Notification>), A2aError> {
         let caller = self.agent_for_token(&params.token)?;
         let task = store::load_task(conn, &params.id)?.ok_or(A2aError::UnknownTask)?;
-        Self::authorize_task(&task, &caller.agent_id, &caller.context_id)?;
+        Self::authorize_task(&task, &caller.agent_id)?;
         let is_final = is_terminal(task.status.state);
         // Re-emit the current status to the caller who is resubscribing.
-        let notifications = vec![task_event_notification(&caller.agent_id, &task, is_final)];
+        let notifications = vec![self.task_event_notification(&caller.agent_id, &task, is_final)];
         Ok((TaskResult { task }, notifications))
     }
 
@@ -443,7 +499,7 @@ impl A2aBroker {
     ) -> Result<PushConfigSetResult, A2aError> {
         let caller = self.agent_for_token(&params.token)?;
         let task = store::load_task(conn, &params.task_id)?.ok_or(A2aError::UnknownTask)?;
-        Self::authorize_task(&task, &caller.agent_id, &caller.context_id)?;
+        Self::authorize_task(&task, &caller.agent_id)?;
         store::set_push_config(conn, &params.task_id, &params.config)?;
         Ok(PushConfigSetResult {
             config: params.config,
@@ -458,7 +514,7 @@ impl A2aBroker {
     ) -> Result<PushConfigGetResult, A2aError> {
         let caller = self.agent_for_token(&params.token)?;
         let task = store::load_task(conn, &params.task_id)?.ok_or(A2aError::UnknownTask)?;
-        Self::authorize_task(&task, &caller.agent_id, &caller.context_id)?;
+        Self::authorize_task(&task, &caller.agent_id)?;
         let config = store::get_push_config(conn, &params.task_id)?;
         Ok(PushConfigGetResult { config })
     }
@@ -471,10 +527,14 @@ impl A2aBroker {
         recipient: &str,
         task: &Task,
     ) -> Result<Vec<Notification>, A2aError> {
-        let mut notifications = vec![task_event_notification(recipient, task, true)];
+        let mut notifications = vec![self.task_event_notification(recipient, task, true)];
         if let Some(config) = store::get_push_config(conn, &task.id)? {
+            let recipient_context = self
+                .peer_context(recipient)
+                .unwrap_or_else(|| task.context_id.clone());
             let push = PushNotification {
                 recipient: recipient.to_string(),
+                recipient_context_id: Some(recipient_context),
                 context_id: task.context_id.clone(),
                 task_id: task.id.clone(),
                 token: config.token,
@@ -486,6 +546,34 @@ impl A2aBroker {
             });
         }
         Ok(notifications)
+    }
+
+    /// Build an `a2a.task.event` notification for a task's current status.
+    fn task_event_notification(
+        &self,
+        recipient: &str,
+        task: &Task,
+        is_final: bool,
+    ) -> Notification {
+        let event = StreamEvent::StatusUpdate(TaskStatusUpdateEvent {
+            task_id: task.id.clone(),
+            context_id: task.context_id.clone(),
+            status: task.status.clone(),
+            is_final,
+        });
+        let recipient_context = self
+            .peer_context(recipient)
+            .unwrap_or_else(|| task.context_id.clone());
+        let notification = TaskEventNotification {
+            recipient: recipient.to_string(),
+            recipient_context_id: Some(recipient_context),
+            context_id: task.context_id.clone(),
+            event,
+        };
+        Notification {
+            method: NOTIFY_TASK_EVENT.to_string(),
+            params: serde_json::to_value(notification).unwrap_or(Value::Null),
+        }
     }
 
     fn wake_recipient(&mut self, recipient: &str) {
@@ -505,25 +593,6 @@ impl A2aBroker {
                 let _ = waiter.send(());
             }
         }
-    }
-}
-
-/// Build an `a2a.task.event` notification for a task's current status.
-fn task_event_notification(recipient: &str, task: &Task, is_final: bool) -> Notification {
-    let event = StreamEvent::StatusUpdate(TaskStatusUpdateEvent {
-        task_id: task.id.clone(),
-        context_id: task.context_id.clone(),
-        status: task.status.clone(),
-        is_final,
-    });
-    let notification = TaskEventNotification {
-        recipient: recipient.to_string(),
-        context_id: task.context_id.clone(),
-        event,
-    };
-    Notification {
-        method: NOTIFY_TASK_EVENT.to_string(),
-        params: serde_json::to_value(notification).unwrap_or(Value::Null),
     }
 }
 
@@ -592,6 +661,7 @@ mod tests {
             },
             default_input_modes: vec!["text".into()],
             default_output_modes: vec!["text".into()],
+            context_id: None,
         }
     }
 
@@ -617,7 +687,7 @@ mod tests {
     }
 
     #[test]
-    fn register_list_scopes_to_context_and_hides_self() {
+    fn register_list_includes_other_contexts_and_hides_self() {
         let mut broker = A2aBroker::new();
         let a = register(&mut broker, "ctx-1", "alice");
         let _b = register(&mut broker, "ctx-1", "bob");
@@ -625,7 +695,13 @@ mod tests {
 
         let listed = broker.list(AgentsListParams { token: a }).unwrap();
         let names: Vec<&str> = listed.agents.iter().map(|c| c.name.as_str()).collect();
-        assert_eq!(names, vec!["bob"]);
+        assert_eq!(names, vec!["bob", "carol"]);
+        let carol = listed
+            .agents
+            .iter()
+            .find(|card| card.name == "carol")
+            .unwrap();
+        assert_eq!(carol.context_id.as_deref(), Some("ctx-2"));
     }
 
     #[test]
@@ -679,7 +755,7 @@ mod tests {
     }
 
     #[test]
-    fn cross_context_task_access_is_denied() {
+    fn stranger_cannot_read_a_cross_session_task() {
         let (_dir, db) = open_db();
         let mut broker = A2aBroker::new();
         let alice = register(&mut broker, "ctx-1", "alice");
@@ -707,7 +783,115 @@ mod tests {
                 },
             )
             .unwrap_err();
-        assert_eq!(err, A2aError::CrossContextDenied);
+        assert_eq!(err, A2aError::UnknownAgent);
+    }
+
+    #[test]
+    fn cross_session_send_and_complete_round_trip() {
+        let (_dir, db) = open_db();
+        let mut broker = A2aBroker::new();
+        let alice = register(&mut broker, "ctx-1", "alice");
+        let bob = register(&mut broker, "ctx-2", "bob");
+
+        let (created, notes) = broker
+            .message_send(
+                db.conn(),
+                MessageSendParams {
+                    token: alice.clone(),
+                    message: text_message("m1", Some("bob"), None),
+                    configuration: None,
+                },
+            )
+            .unwrap();
+        assert_eq!(created.task.agent_name, "bob");
+        assert_eq!(created.task.requester_name, "alice");
+        assert_eq!(created.task.context_id, "ctx-1");
+        assert_eq!(notes[0].params["recipient"], Value::String("bob".into()));
+        assert_eq!(
+            notes[0].params["recipientContextId"],
+            Value::String("ctx-2".into())
+        );
+
+        let fetched = broker
+            .tasks_get(
+                db.conn(),
+                TasksGetParams {
+                    token: bob.clone(),
+                    id: created.task.id.clone(),
+                    history_length: None,
+                },
+            )
+            .unwrap();
+        assert_eq!(fetched.task.id, created.task.id);
+
+        let (_, done_notes) = broker
+            .tasks_status(
+                db.conn(),
+                TasksStatusParams {
+                    token: bob,
+                    id: created.task.id,
+                    state: TaskState::Completed,
+                    message: None,
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            done_notes[0].params["recipient"],
+            Value::String("alice".into())
+        );
+        assert_eq!(
+            done_notes[0].params["recipientContextId"],
+            Value::String("ctx-1".into())
+        );
+    }
+
+    #[test]
+    fn omitted_to_prefers_same_session_then_unique_remote() {
+        let (_dir, db) = open_db();
+        let mut broker = A2aBroker::new();
+        let alice = register(&mut broker, "ctx-1", "alice");
+        let _bob = register(&mut broker, "ctx-1", "bob");
+        let _carol = register(&mut broker, "ctx-2", "carol");
+
+        let (created, _) = broker
+            .message_send(
+                db.conn(),
+                MessageSendParams {
+                    token: alice,
+                    message: text_message("m1", None, None),
+                    configuration: None,
+                },
+            )
+            .unwrap();
+        assert_eq!(created.task.agent_name, "bob");
+
+        let mut remote_only = A2aBroker::new();
+        let dave = register(&mut remote_only, "ctx-1", "dave");
+        let _erin = register(&mut remote_only, "ctx-2", "erin");
+        let (remote, _) = remote_only
+            .message_send(
+                db.conn(),
+                MessageSendParams {
+                    token: dave,
+                    message: text_message("m2", None, None),
+                    configuration: None,
+                },
+            )
+            .unwrap();
+        assert_eq!(remote.task.agent_name, "erin");
+    }
+
+    #[test]
+    fn register_uniquifies_colliding_names_across_sessions() {
+        let mut broker = A2aBroker::new();
+        let first = register(&mut broker, "ctx-1", "discussant");
+        let second = register(&mut broker, "ctx-2", "discussant");
+        let listed = broker.list(AgentsListParams { token: first }).unwrap();
+        assert_eq!(listed.agents.len(), 1);
+        assert_eq!(listed.agents[0].name, "discussant-2");
+        assert_eq!(listed.agents[0].context_id.as_deref(), Some("ctx-2"));
+        let listed_back = broker.list(AgentsListParams { token: second }).unwrap();
+        assert_eq!(listed_back.agents[0].name, "discussant");
     }
 
     #[test]
@@ -791,7 +975,10 @@ mod tests {
         assert_eq!(notifications[0].method, NOTIFY_TASK_EVENT);
         assert_eq!(notifications[0].params["event"]["final"], Value::Bool(true));
         assert_eq!(notifications[1].method, NOTIFY_PUSH);
-        assert_eq!(notifications[1].params["token"], Value::String("secret".into()));
+        assert_eq!(
+            notifications[1].params["token"],
+            Value::String("secret".into())
+        );
     }
 
     #[test]
@@ -831,10 +1018,16 @@ mod tests {
             .unwrap();
         assert_eq!(done.task.status.state, TaskState::Completed);
         assert_eq!(notifications.len(), 1);
-        assert_eq!(notifications[0].params["recipient"], Value::String("alice".into()));
+        assert_eq!(
+            notifications[0].params["recipient"],
+            Value::String("alice".into())
+        );
         assert_eq!(notifications[0].params["event"]["final"], Value::Bool(true));
         // The completion message is stamped with bob's identity, not the client's.
-        assert_eq!(done.task.status.message.unwrap().from.as_deref(), Some("bob"));
+        assert_eq!(
+            done.task.status.message.unwrap().from.as_deref(),
+            Some("bob")
+        );
     }
 
     #[test]
@@ -867,8 +1060,14 @@ mod tests {
                 },
             )
             .unwrap();
-        assert_eq!(notifications[0].params["recipient"], Value::String("alice".into()));
-        assert_eq!(notifications[0].params["event"]["final"], Value::Bool(false));
+        assert_eq!(
+            notifications[0].params["recipient"],
+            Value::String("alice".into())
+        );
+        assert_eq!(
+            notifications[0].params["event"]["final"],
+            Value::Bool(false)
+        );
     }
 
     #[test]
