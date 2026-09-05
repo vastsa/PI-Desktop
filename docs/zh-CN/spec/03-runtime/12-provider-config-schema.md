@@ -128,22 +128,20 @@ base URL 与粘贴的密钥工作。厂商行的样式不由厂商固定：GitHu
 |---|---|---|---|---|
 | `opencode_go` | `openai_compatible` | `api_key_and_base_url` | `OpenCode Go` | `https://opencode.ai/zen/go/v1` |
 
-### 命名端点预设（智谱 / Z.AI）
+### 命名端点预设
 
-这些行由添加提供商对话框的**服务**下拉框创建，而不是新的 `apiStyle`。它们仍是
-`type: "openai_compatible"` 且 `apiStyle: "chat_completions"`。常见路径是服务 +
-API 密钥；已发布主机以摘要显示，显示名称可在高级中编辑。`vendorKey` 使用
-models.dev 提供商键，以便目录按 API 与 Coding Plan 精确匹配。
+这些行由添加提供商对话框的**服务**下拉框创建。命名服务的常见路径是服务 +
+API 密钥；自定义端点在常见路径上并排显示 API 密钥与接口格式。`vendorKey`
+使用 models.dev 提供商键。
 
-| vendorKey | 名称 | baseUrl | 说明 |
-|---|---|---|---|
-| `zhipuai` | 智谱 AI | `https://open.bigmodel.cn/api/paas/v4` | 国内标准 API |
-| `zhipuai-coding-plan` | 智谱 AI Coding Plan | `https://open.bigmodel.cn/api/coding/paas/v4` | 国内 GLM Coding Plan。pi-ai `zai-coding-cn` 是别名。 |
-| `zai` | Z.AI | `https://api.z.ai/api/paas/v4` | 国际标准 API |
-| `zai-coding-plan` | Z.AI Coding Plan | `https://api.z.ai/api/coding/paas/v4` | 国际 GLM Coding Plan |
+国际：OpenAI、Anthropic、Google Gemini、OpenRouter、Groq、xAI、Mistral、
+Together、Fireworks、OpenCode Go、Z.AI。
 
-当配置的 URL 或 `vendorKey` 匹配这些预设时，Completions 适配器使用
-`thinkingFormat: "zai"` 与 `zaiToolStream: true`。
+国内：DeepSeek、通义千问、月之暗面、智谱 / Coding Plan、硅基流动、火山方舟、
+MiniMax、Kimi 编程。
+
+智谱 / Z.AI 的 Completions 请求仍使用 `thinkingFormat: "zai"` 与
+`zaiToolStream: true`。
 
 ### 厂商账户预设
 

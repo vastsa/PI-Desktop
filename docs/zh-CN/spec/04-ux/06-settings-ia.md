@@ -126,7 +126,7 @@
     全局默认模型
 - **提供商**工作室：
   - OpenAI 兼容的添加提供程序对话框（从添加提供程序/空状态 CTA 打开）
-  - 新建对话框先只显示**服务**。命名端点（智谱 / Z.AI 的 API 与 Coding Plan、OpenCode Go）随后显示服务 + API 密钥，已发布主机以一行摘要出现。自定义端点随后显示服务、名称、Base URL 和 API 密钥。名称（命名行）与接口格式（自定义行）放在高级里。这是紧凑下拉框，不是步进器或厂商卡片网格。智谱命名行写入 models.dev 的 `vendorKey` 并保持 `apiStyle: "chat_completions"`。OpenCode Go 是服务选项，持久化 `apiStyle: "opencode_go"`
+  - 新建对话框先只显示**服务**。命名端点按国际 / 国内分组（OpenAI、Anthropic、Google、OpenRouter、DeepSeek、通义千问、月之暗面、智谱、硅基流动、火山方舟、MiniMax、Kimi 编程等）。选中后显示服务 + API 密钥和主机摘要。自定义端点随后显示名称、Base URL，并在下一行并排显示 API 密钥与接口格式。名称（命名行）放在高级里。
   - 带有头像缩写、主机、默认模型、秘密状态的提供商卡，
     和测试/make-default/删除操作
   - add/edit 对话框配置连接身份（名称、端点、API 样式、模型 ID 和密码）；

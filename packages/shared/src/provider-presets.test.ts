@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   isZhipuEndpoint,
+  matchNamedPreset,
   matchZhipuPreset,
+  namedPresetsInGroup,
   normalizeEndpointUrl,
   zhipuRequestCompat,
 } from "./provider-presets.js";
@@ -73,5 +75,46 @@ describe("Zhipu endpoint presets", () => {
     expect(normalizeEndpointUrl("https://API.z.ai/api/paas/v4/")).toBe(
       "https://api.z.ai/api/paas/v4",
     );
+  });
+});
+
+describe("named endpoint presets", () => {
+  it("groups international and China first-party endpoints", () => {
+    const international = namedPresetsInGroup("international").map((item) => item.id);
+    const china = namedPresetsInGroup("china").map((item) => item.id);
+    expect(international).toEqual(
+      expect.arrayContaining(["openai", "anthropic", "google", "openrouter", "opencode_go"]),
+    );
+    expect(china).toEqual(
+      expect.arrayContaining(["deepseek", "alibaba-cn", "zhipuai", "moonshotai-cn"]),
+    );
+    expect(international).not.toContain("zhipuai");
+  });
+
+  it("binds first-party vendors to their published wire styles", () => {
+    expect(matchNamedPreset({ vendorKey: "openai" })?.apiStyle).toBe("responses");
+    expect(matchNamedPreset({ vendorKey: "anthropic" })?.apiStyle).toBe(
+      "anthropic_messages",
+    );
+    expect(matchNamedPreset({ vendorKey: "google" })?.apiStyle).toBe(
+      "google_generative_ai",
+    );
+    expect(
+      matchNamedPreset({ baseUrl: "https://api.minimaxi.com/anthropic/v1" })?.apiStyle,
+    ).toBe("anthropic_messages");
+  });
+
+  it("maps DashScope and Doubao aliases to China catalog keys", () => {
+    expect(matchNamedPreset({ vendorKey: "dashscope" })?.id).toBe("alibaba-cn");
+    expect(matchNamedPreset({ vendorKey: "doubao" })?.id).toBe("volcengine");
+  });
+
+  it("keeps OpenCode Go as a named service, not a custom URL", () => {
+    expect(
+      matchNamedPreset({
+        apiStyle: "opencode_go",
+        baseUrl: "https://opencode.ai/zen/go/v1",
+      })?.id,
+    ).toBe("opencode_go");
   });
 });

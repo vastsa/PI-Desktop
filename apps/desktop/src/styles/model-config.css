@@ -112,8 +112,7 @@
 }
 
 .provider-setup-fields.is-empty .provider-setup-service,
-.provider-setup-fields.is-custom .provider-setup-service,
-.provider-setup-fields.is-custom .provider-setup-key {
+.provider-setup-fields.is-custom .provider-setup-service {
   grid-column: 1 / -1;
 }
 

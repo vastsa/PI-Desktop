@@ -197,16 +197,17 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
     Removing the current default falls back to the first enabled level; no
     enabled levels disable the default selector and show the model's
     manual-override hint
-  - a new dialog starts with only **Service**. Named endpoints (Zhipu / Z.AI
-    API and Coding Plan, OpenCode Go) then show Service + API key, with the
+  - a new dialog starts with only **Service**. Named endpoints from
+    models.dev (international: OpenAI, Anthropic, Google Gemini, OpenRouter,
+    Groq, xAI, Mistral, Together, Fireworks, OpenCode Go, Z.AI; China:
+    DeepSeek, Qwen/DashScope, Moonshot/Kimi, Zhipu, SiliconFlow, Volcengine
+    Ark, MiniMax, Kimi For Coding) then show Service + API key, with the
     published host as a one-line summary. Custom endpoint then shows Service,
-    Name, Base URL, and API key. Name (named rows) and API format (custom
-    rows) stay behind Advanced. This is a compact select, not a stepper or
-    vendor-card grid. Named Zhipu rows store the models.dev `vendorKey`
-    (`zhipuai`, `zhipuai-coding-plan`, `zai`, `zai-coding-plan`) and
-    `apiStyle: "chat_completions"`. OpenCode Go is a Service option that
-    persists `apiStyle: "opencode_go"` and the fixed endpoint
-    `https://opencode.ai/zen/go/v1`
+    Name, Base URL, then API key beside API format. Named display names stay
+    behind Advanced. This is a compact grouped select, not a stepper or
+    vendor-card grid. Saved named rows store the models.dev `vendorKey` and
+    the preset `apiStyle` (Chat Completions, Responses, Anthropic, Gemini, or
+    `opencode_go`).
   - helper copy stays out of the model cards; labels, status badges, and the
     empty/error state carry the necessary context without explanatory
     paragraphs

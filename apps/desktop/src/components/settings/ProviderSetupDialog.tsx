@@ -1,23 +1,21 @@
 /**
  * One form to add or edit an AI service.
  *
- * The common path is pick a named service and paste a key. Custom endpoint
- * still asks for a name and base URL. API format stays in Advanced, and
- * models come from the service's own endpoint (`useProviderModels`).
+ * Named services: pick a vendor and paste a key. Custom: name, URL, key and
+ * API format on the common path. Models come from the service endpoint.
  */
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   API_STYLES,
+  NAMED_PRESET_GROUPS,
   OPENCODE_GO_API_STYLE,
-  OPENCODE_GO_BASE_URL,
-  OPENCODE_GO_NAME,
-  ZHIPU_ENDPOINT_PRESETS,
-  matchZhipuPreset,
+  matchNamedPreset,
+  namedPresetsInGroup,
   type CatalogApiStyle,
   type ModelBinding,
+  type NamedPresetGroup,
   type ProviderPublic,
-  type ZhipuPresetId,
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { Button, Field, Input, Select } from "../ui";
@@ -36,35 +34,40 @@ const API_STYLE_LABEL_KEYS: Record<CatalogApiStyle, string> = {
   opencode_go: "settings.apiStyleOpenCodeGo",
 };
 
-const ZHIPU_PRESET_LABEL_KEYS: Record<ZhipuPresetId, string> = {
-  zhipuai: "settings.presetZhipuApi",
-  "zhipuai-coding-plan": "settings.presetZhipuCodingPlan",
-  zai: "settings.presetZaiApi",
-  "zai-coding-plan": "settings.presetZaiCodingPlan",
+const GROUP_LABEL_KEYS: Record<NamedPresetGroup, string> = {
+  international: "settings.presetGroupInternational",
+  china: "settings.presetGroupChina",
 };
 
 function serviceIdFor(provider?: ProviderPublic | null): string {
   if (!provider) return "";
-  if (provider.apiStyle === OPENCODE_GO_API_STYLE) return OPENCODE_GO_API_STYLE;
   return (
-    matchZhipuPreset({
+    matchNamedPreset({
       vendorKey: provider.vendorKey,
       baseUrl: provider.baseUrl,
+      apiStyle: provider.apiStyle,
     })?.id ?? CUSTOM_SERVICE
   );
 }
 
 function initialName(provider?: ProviderPublic | null): string {
-  if (provider?.apiStyle === OPENCODE_GO_API_STYLE) return OPENCODE_GO_NAME;
-  return provider?.name ?? "";
+  return (
+    matchNamedPreset({
+      vendorKey: provider?.vendorKey,
+      baseUrl: provider?.baseUrl,
+      apiStyle: provider?.apiStyle,
+    })?.name ??
+    provider?.name ??
+    ""
+  );
 }
 
 function initialBaseUrl(provider?: ProviderPublic | null): string {
-  if (provider?.apiStyle === OPENCODE_GO_API_STYLE) return OPENCODE_GO_BASE_URL;
   return (
-    matchZhipuPreset({
+    matchNamedPreset({
       vendorKey: provider?.vendorKey,
       baseUrl: provider?.baseUrl,
+      apiStyle: provider?.apiStyle,
     })?.baseUrl ??
     provider?.baseUrl ??
     ""
@@ -81,10 +84,8 @@ function endpointHost(url: string): string {
 }
 
 export type ProviderSetupDialogProps = {
-  /** Existing row being edited; absent creates a new service. */
   provider?: ProviderPublic | null;
   onClose: () => void;
-  /** Called after a successful create/update so the caller can refresh. */
   onSaved: (provider: ProviderPublic, models: ModelBinding[]) => void;
 };
 
@@ -110,21 +111,14 @@ export function ProviderSetupDialog({
   const [error, setError] = useState("");
   const [testResult, setTestResult] = useState("");
 
-  const zhipuPreset = ZHIPU_ENDPOINT_PRESETS.find((preset) => preset.id === service);
-  const opencodeGo = service === OPENCODE_GO_API_STYLE;
-  const named = Boolean(zhipuPreset) || opencodeGo;
+  const namedPreset = namedPresetsInGroup("international")
+    .concat(namedPresetsInGroup("china"))
+    .find((preset) => preset.id === service);
+  const named = Boolean(namedPreset);
   const custom = service === CUSTOM_SERVICE;
-  const resolvedName = opencodeGo
-    ? OPENCODE_GO_NAME
-    : zhipuPreset
-      ? name.trim() || zhipuPreset.name
-      : name;
-  const resolvedBaseUrl = zhipuPreset?.baseUrl ?? (opencodeGo ? OPENCODE_GO_BASE_URL : baseUrl);
-  const resolvedApiStyle: CatalogApiStyle = zhipuPreset
-    ? "chat_completions"
-    : opencodeGo
-      ? OPENCODE_GO_API_STYLE
-      : apiStyle;
+  const resolvedName = namedPreset ? name.trim() || namedPreset.name : name;
+  const resolvedBaseUrl = namedPreset?.baseUrl ?? baseUrl;
+  const resolvedApiStyle: CatalogApiStyle = namedPreset?.apiStyle ?? apiStyle;
   const discovery = useProviderModels(
     true,
     { baseUrl: resolvedBaseUrl, apiKey, apiStyle: resolvedApiStyle },
@@ -145,35 +139,23 @@ export function ProviderSetupDialog({
     queueMicrotask(() => apiKeyRef.current?.focus());
   };
 
-  const applyNamedService = (nextName: string, nextUrl: string, nextStyle: CatalogApiStyle) => {
-    const currentName = name.trim();
-    const previous = zhipuPreset;
-    if (
-      !currentName ||
-      currentName === previous?.name ||
-      currentName === OPENCODE_GO_NAME
-    ) {
-      setName(nextName);
-    }
-    setBaseUrl(nextUrl);
-    setApiStyle(nextStyle);
-    focusApiKey();
-  };
-
   const onServiceChange = (next: string) => {
+    const previous = namedPreset;
     setService(next);
-    const preset = ZHIPU_ENDPOINT_PRESETS.find((item) => item.id === next);
-    if (preset) {
-      applyNamedService(preset.name, preset.baseUrl, "chat_completions");
+    const preset = namedPresetsInGroup("international")
+      .concat(namedPresetsInGroup("china"))
+      .find((item) => item.id === next);
+    if (!preset) {
+      if (next === CUSTOM_SERVICE && apiStyle === OPENCODE_GO_API_STYLE) {
+        setApiStyle("chat_completions");
+      }
       return;
     }
-    if (next === OPENCODE_GO_API_STYLE) {
-      applyNamedService(OPENCODE_GO_NAME, OPENCODE_GO_BASE_URL, OPENCODE_GO_API_STYLE);
-      return;
-    }
-    if (next === CUSTOM_SERVICE && apiStyle === OPENCODE_GO_API_STYLE) {
-      setApiStyle("chat_completions");
-    }
+    const currentName = name.trim();
+    if (!currentName || currentName === previous?.name) setName(preset.name);
+    setBaseUrl(preset.baseUrl);
+    setApiStyle(preset.apiStyle);
+    focusApiKey();
   };
 
   const testConnection = async () => {
@@ -213,7 +195,7 @@ export function ProviderSetupDialog({
         const result = await api.updateProvider({
           id: provider.id,
           name: providerName,
-          vendorKey: zhipuPreset?.vendorKey ?? "custom",
+          vendorKey: namedPreset?.vendorKey ?? "custom",
           baseUrl: providerBaseUrl,
           defaultModelId: persisted[0]?.id,
           models: persisted,
@@ -224,7 +206,7 @@ export function ProviderSetupDialog({
       } else {
         const result = await api.createProvider({
           name: providerName,
-          vendorKey: zhipuPreset?.vendorKey ?? "custom",
+          vendorKey: namedPreset?.vendorKey ?? "custom",
           type: "openai_compatible",
           protocol: "openai_compatible",
           baseUrl: providerBaseUrl,
@@ -321,16 +303,15 @@ export function ProviderSetupDialog({
                     <option value={CUSTOM_SERVICE}>
                       {t("settings.presetCustomEndpoint")}
                     </option>
-                    <optgroup label={t("settings.presetGroupZhipu")}>
-                      {ZHIPU_ENDPOINT_PRESETS.map((preset) => (
-                        <option key={preset.id} value={preset.id}>
-                          {t(ZHIPU_PRESET_LABEL_KEYS[preset.id])}
-                        </option>
-                      ))}
-                    </optgroup>
-                    <option value={OPENCODE_GO_API_STYLE}>
-                      {t("settings.apiStyleOpenCodeGo")}
-                    </option>
+                    {NAMED_PRESET_GROUPS.map((group) => (
+                      <optgroup key={group} label={t(GROUP_LABEL_KEYS[group])}>
+                        {namedPresetsInGroup(group).map((preset) => (
+                          <option key={preset.id} value={preset.id}>
+                            {t(preset.labelKey)}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
                   </Select>
                 </Field>
               </div>
@@ -377,27 +358,41 @@ export function ProviderSetupDialog({
                       onChange={(event) => setBaseUrl(event.target.value)}
                     />
                   </Field>
-                  <div className="provider-setup-key">
-                    <Field
-                      label={t("settings.apiKey")}
-                      hint={editing ? t("settings.apiKeyKeepHint") : undefined}
+                  <Field
+                    label={t("settings.apiKey")}
+                    hint={editing ? t("settings.apiKeyKeepHint") : undefined}
+                  >
+                    <Input
+                      ref={apiKeyRef}
+                      type="password"
+                      value={apiKey}
+                      placeholder="sk-…"
+                      className="font-mono text-sm-plus"
+                      autoComplete="off"
+                      onChange={(event) => setApiKey(event.target.value)}
+                    />
+                  </Field>
+                  <Field label={t("settings.apiStyle")}>
+                    <Select
+                      value={apiStyle}
+                      onChange={(event) =>
+                        setApiStyle(event.target.value as CatalogApiStyle)
+                      }
                     >
-                      <Input
-                        ref={apiKeyRef}
-                        type="password"
-                        value={apiKey}
-                        placeholder="sk-…"
-                        className="font-mono text-sm-plus"
-                        autoComplete="off"
-                        onChange={(event) => setApiKey(event.target.value)}
-                      />
-                    </Field>
-                  </div>
+                      {API_STYLES.filter((style) => style !== OPENCODE_GO_API_STYLE).map(
+                        (style) => (
+                          <option key={style} value={style}>
+                            {t(API_STYLE_LABEL_KEYS[style])}
+                          </option>
+                        ),
+                      )}
+                    </Select>
+                  </Field>
                 </>
               ) : null}
             </div>
 
-            {service ? (
+            {named ? (
               <>
                 <button
                   type="button"
@@ -409,33 +404,12 @@ export function ProviderSetupDialog({
                 </button>
                 {advanced ? (
                   <div className="provider-setup-advanced">
-                    {named ? (
-                      <Field label={t("settings.name")}>
-                        <Input
-                          value={opencodeGo ? OPENCODE_GO_NAME : name}
-                          readOnly={opencodeGo}
-                          onChange={(event) => setName(event.target.value)}
-                        />
-                      </Field>
-                    ) : null}
-                    {custom ? (
-                      <Field label={t("settings.apiStyle")}>
-                        <Select
-                          value={apiStyle}
-                          onChange={(event) =>
-                            setApiStyle(event.target.value as CatalogApiStyle)
-                          }
-                        >
-                          {API_STYLES.filter((style) => style !== OPENCODE_GO_API_STYLE).map(
-                            (style) => (
-                              <option key={style} value={style}>
-                                {t(API_STYLE_LABEL_KEYS[style])}
-                              </option>
-                            ),
-                          )}
-                        </Select>
-                      </Field>
-                    ) : null}
+                    <Field label={t("settings.name")}>
+                      <Input
+                        value={name}
+                        onChange={(event) => setName(event.target.value)}
+                      />
+                    </Field>
                   </div>
                 ) : null}
               </>

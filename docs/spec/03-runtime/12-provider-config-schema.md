@@ -202,27 +202,25 @@ Presets only prefill form defaults; they are not a closed world.
 |---|---|---|---|---|
 | `opencode_go` | `openai_compatible` | `api_key_and_base_url` | `OpenCode Go` | `https://opencode.ai/zen/go/v1` |
 
-### Named endpoint presets (Zhipu / Z.AI)
+### Named endpoint presets
 
 These rows are created from the add-provider **Service** select, not from a
-new `apiStyle`. They remain `type: "openai_compatible"` with
-`apiStyle: "chat_completions"`. The common path is Service + API key; the
-published host is shown as a summary, and the display name is editable in
-Advanced. `vendorKey` is the models.dev provider key so catalog enrichment
-follows the exact API vs Coding Plan record.
+new protocol. They remain `type: "openai_compatible"`. The common path is
+Service + API key; the published host is a summary, and the display name is
+editable in Advanced. Custom endpoint shows Name, Base URL, then API key
+beside API format. `vendorKey` is the models.dev provider key.
 
-| vendorKey | name | baseUrl | notes |
-|---|---|---|---|
-| `zhipuai` | Zhipu AI | `https://open.bigmodel.cn/api/paas/v4` | China standard API |
-| `zhipuai-coding-plan` | Zhipu AI Coding Plan | `https://open.bigmodel.cn/api/coding/paas/v4` | China GLM Coding Plan. pi-ai `zai-coding-cn` is an alias. |
-| `zai` | Z.AI | `https://api.z.ai/api/paas/v4` | International standard API |
-| `zai-coding-plan` | Z.AI Coding Plan | `https://api.z.ai/api/coding/paas/v4` | International GLM Coding Plan |
+International: OpenAI (`responses`), Anthropic (`anthropic_messages`), Google
+Gemini (`google_generative_ai`), OpenRouter, Groq, xAI, Mistral, Together AI,
+Fireworks, OpenCode Go (`opencode_go`), Z.AI / Z.AI Coding Plan.
 
-pi-ai names its international Coding Plan transport `zai`, while models.dev
-uses `zai` for the standard API. PI-Desktop persists the models.dev key and
-the exact URL so the two cannot be confused. When the configured URL or
-`vendorKey` matches one of these presets, the Completions adapter receives
-`thinkingFormat: "zai"` and `zaiToolStream: true`.
+China: DeepSeek, Qwen DashScope (`alibaba-cn`), Moonshot (`moonshotai-cn`),
+Zhipu AI / Coding Plan, SiliconFlow (`siliconflow-cn`), Volcengine Ark,
+MiniMax (`anthropic_messages`), Kimi For Coding (`anthropic_messages`).
+
+Zhipu / Z.AI Completions requests still receive `thinkingFormat: "zai"` and
+`zaiToolStream: true`. pi-ai `zai-coding-cn` remains an alias of
+`zhipuai-coding-plan`.
 
 ### Vendor-account presets
 
