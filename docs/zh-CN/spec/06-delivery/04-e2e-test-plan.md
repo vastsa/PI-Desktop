@@ -5343,8 +5343,12 @@ IPC 请求无法关闭。
   8. 把 `~/.agents/subagents/readonly.md` 改成声明 `permission: auto` 并重新加载目录；
      确认该定义仍然加载但带着一条警告，且它的委托仍在会话的有效模式下裁决
      （工作区内的 `Write` 依旧弹出权限卡片）。
+  9. 提示一轮，启动一个委托，让 `TaskWait` 超时使节点仍显示 running，再调用
+     `TaskStop`；确认拓扑节点和 `TaskStop` 行都读作 `stopped` 而不是
+     `running`。结束本轮并重新加载会话；确认卡片不再标为工作中，也不再持续计时。
 - **预期**：`Task` 立即带着 `delegationId` 返回，父级继续工作；`TaskWait`
-  带着每个委托的报告与状态收敛；`TaskList`/`TaskStop` 驱动生命周期；内置 `fixer`
+  带着每个委托的报告与状态收敛；`TaskList`/`TaskStop` 驱动生命周期；`TaskStop`
+  的结果和已结束的一轮都不会留下实时的“子智能体工作中”卡片；内置 `fixer`
   继承所选的会话权限模式，因此 `auto` 也会让明确的外部路径无需重复授权卡，
   而 `ask` 和 `accept-edits` 保留各自的审批边界；项目定义声明的作用域被丢弃；
   每会话 10 个运行委托的上限被强制执行；没有委托活过它所属的一轮；重新加载的

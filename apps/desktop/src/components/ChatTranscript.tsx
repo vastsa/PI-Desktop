@@ -2269,8 +2269,9 @@ const AssistantTurn = memo(function AssistantTurn({
     [entry.parts],
   );
   const turnDelegationStatuses = useMemo(
-    () => collectDelegationStatuses(turnAllActivityItems),
-    [turnAllActivityItems],
+    () =>
+      collectDelegationStatuses(turnAllActivityItems, { turnLive: isActive }),
+    [turnAllActivityItems, isActive],
   );
   const turnDelegationTimings = useMemo(
     () => collectDelegationTimings(turnAllActivityItems),

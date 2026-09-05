@@ -1693,7 +1693,13 @@ Opening a node reveals the blocks the call carries, then the delegate's own rows
   while any of *its* delegates is still running, even when the parent has
   already moved on to a later processing group in the same turn. Elapsed time
   uses that card's own delegation `startedAt`/`completedAt`, not the immediate
-  `Task` tool-call duration and not a later fan-out in the same turn.
+  `Task` tool-call duration and not a later fan-out in the same turn. After
+  the parent turn has ended, leftover `running` nodes reconstruct as
+  `aborted` (the runtime aborts them at run end) unless a `TaskStop` row
+  already marked them `stopped`. `TaskStop`'s `details.stopped[]` is a
+  lifecycle status source, same as `TaskWait`/`TaskList` `delegations[]`; a
+  snapshot that still says `running` is presented as `stopped`. A finished
+  session therefore never keeps a live “Subagent working” card.
 - The expanded card renders a low-noise dotted canvas with one main-agent root
   connected to the `Task` nodes in parent-row order. The runtime exposes no
   delegate dependencies and forbids nested `Task`, so the renderer must not
@@ -1703,7 +1709,7 @@ Opening a node reveals the blocks the call carries, then the delegate's own rows
   `startedAt`/`completedAt` timestamps (and ticks live while the node is
   running), not the immediate `Task` tool-call duration. Outcome prefers the
   structured `Task` result
-  (`completed`, `truncated`, `timed_out`, `aborted`, `failed`) and falls back to transport
+  (`completed`, `truncated`, `timed_out`, `aborted`, `stopped`, `failed`) and falls back to transport
   state (`running`, `error`, `denied`, `success`). Clicking the node expands the
   existing brief/report/counters and nested rows; the report remains printed
   exactly once.

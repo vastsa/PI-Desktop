@@ -160,6 +160,43 @@ test("reads settled delegation status from a persisted TaskWait result", () => {
   );
 });
 
+test("reads stopped status from TaskStop, including a running snapshot", () => {
+  const statuses = collectDelegationStatuses([
+    task("d1", "success", "running"),
+    lifecycle("TaskStop", {
+      stopped: [
+        { delegationId: "d1", agent: "explorer", status: "running" },
+      ],
+    }),
+  ]);
+  assert.equal(statuses.get("d1"), "stopped");
+  assert.equal(
+    subagentOutcome(task("d1", "success", "running").message, statuses),
+    "stopped",
+  );
+});
+
+test("a finished turn treats leftover running delegates as aborted", () => {
+  const live = collectDelegationStatuses(
+    [task("d1", "success", "running")],
+    { turnLive: true },
+  );
+  assert.equal(live.get("d1"), undefined);
+  assert.equal(
+    subagentOutcome(task("d1", "success", "running").message, live),
+    "running",
+  );
+  const settled = collectDelegationStatuses(
+    [task("d1", "success", "running")],
+    { turnLive: false },
+  );
+  assert.equal(settled.get("d1"), "aborted");
+  assert.equal(
+    subagentOutcome(task("d1", "success", "running").message, settled),
+    "aborted",
+  );
+});
+
 test("summarizes partial fan-out without deduplicating repeated agent names", () => {
   assert.deepEqual(
     summarizeSubagentActivity([
@@ -241,6 +278,10 @@ test("TaskStop reads its roster from `stopped`, and Task has none", () => {
   assert.equal(lifecycleKindOf(stop.message), "stop");
   assert.equal(delegationRosterSummary(delegationRoster(stop.message)), "test-runner");
   assert.equal(delegationRosterOutcome(delegationRoster(stop.message)), "stopped");
+  const stale = lifecycle("TaskStop", {
+    stopped: [{ delegationId: "s2", agent: "explorer", status: "running" }],
+  });
+  assert.equal(delegationRosterOutcome(delegationRoster(stale.message)), "stopped");
   // The start call is not a lifecycle row: it keeps the topology card.
   const start = task("one", "running");
   assert.equal(lifecycleKindOf(start.message), null);

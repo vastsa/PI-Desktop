@@ -1482,8 +1482,11 @@ pi-ai 结果信封携带 `details` 中的结构化有效负载并重复它
   发明委托到委托边缘或下游汇总节点。
 - 每个节点显示定义名称、简短描述、明确结果、
   持续时间和步数。结果更喜欢结构化的 `Task` 结果
-  （`completed`、`truncated`、`aborted`、`failed`）并回退到传输
-  状态（`running`、`error`、`denied`、`success`）。单击该节点将展开
+  （`completed`、`truncated`、`aborted`、`stopped`、`failed`）并回退到传输
+  状态（`running`、`error`、`denied`、`success`）。父回合结束后，残留的
+  `running` 节点重建为 `aborted`；`TaskStop` 的 `details.stopped[]` 也是状态来源，
+  快照仍写着 `running` 时呈现为 `stopped`。已结束的会话不会保持“子智能体工作中”
+  的实时卡片。单击该节点将展开
   现有 brief/report/counters 和嵌套行；报告仍处于打印状态
   正好一次。
 - 回合激活时首次出现的拓扑会打开一次，以便进度

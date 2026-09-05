@@ -45,10 +45,12 @@ test("a delegation card reads its outcome from the lifecycle rows", () => {
   // `completed` the moment the fan-out began.
   assert.match(topologySource, /const DELEGATION_STATUSES = new Set<SubagentOutcome>\(\[\s*\n\s*"running",/);
   assert.match(topologySource, /export function collectDelegationStatuses\(/);
-  // TaskWait/TaskList/TaskStop all report `details.delegations[]`; later rows
-  // settle what earlier ones reported as running.
-  assert.match(topologySource, /const delegations = payload\?\.delegations;/);
+  // TaskWait/TaskList report `details.delegations[]`; TaskStop reports
+  // `details.stopped[]`. Later rows settle what earlier ones reported as running.
+  assert.match(topologySource, /payload\.delegations/);
+  assert.match(topologySource, /payload\.stopped/);
   assert.match(topologySource, /statuses\.set\(id, status\)/);
+  assert.match(topologySource, /turnLive/);
   assert.match(
     topologySource,
     /const settled = statuses\?\.get\(delegationId\);\s*\n\s*if \(settled\) return settled;/,
@@ -58,6 +60,10 @@ test("a delegation card reads its outcome from the lifecycle rows", () => {
   assert.match(
     transcriptSource,
     /const delegationStatuses = turnDelegationStatuses \?\? collectDelegationStatuses\(items\)/,
+  );
+  assert.match(
+    transcriptSource,
+    /collectDelegationStatuses\(turnAllActivityItems, \{ turnLive: isActive \}\)/,
   );
 });
 

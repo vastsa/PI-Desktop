@@ -6796,9 +6796,15 @@ This test plan spec is accepted when:
      catalog; confirm the definition still loads but carries a warning, and
      that its delegate still resolves under the session's effective mode (a
      `Write` inside the workspace still raises a permission card).
+  10. Prompt a turn that starts a delegate, lets `TaskWait` time out so the
+      node still says running, then calls `TaskStop`; confirm the topology
+      node and the `TaskStop` row both read `stopped` (not `running`). End the
+      turn and reload the session; confirm the card is not labelled working
+      and does not keep ticking elapsed.
 - **Expected**: `Task` returns immediately with a `delegationId` and the parent
   keeps working; `TaskWait` converges with per-delegation reports and statuses;
-  `TaskList`/`TaskStop` drive the lifecycle; builtin `fixer` inherits the
+  `TaskList`/`TaskStop` drive the lifecycle; a `TaskStop` result and a finished
+  turn never leave a live “Subagent working” card; builtin `fixer` inherits the
   selected session permission mode, so `auto` also covers explicit external
   paths without a duplicate authorization prompt while `ask` and
   `accept-edits` retain their approval boundaries; a global definition's
@@ -6890,7 +6896,10 @@ This test plan spec is accepted when:
   `delegationIds` argument, and no bare UUID appears in a collapsed row. Its
   badge uses the shared subagent status vocabulary: running while any member
   runs, `Failed` / “失败” once a member failed even though a sibling completed,
-  and `Stopped by request` / “已按请求停止” for the stopped delegate. A repeated
+  and `Stopped by request` / “已按请求停止” for the stopped delegate — including
+  when the persisted `TaskStop` snapshot still says `running`. The topology
+  card's node matches that stopped outcome and is not labelled working after
+  the turn ends. A repeated
   definition is counted (`explorer ×2`) rather than listed twice. The expanded
   body shows the joined reports as a notice followed by one named row per
   subagent with status, runtime and turns, and contains no pretty-printed
