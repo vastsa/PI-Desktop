@@ -1,13 +1,19 @@
 import assert from "node:assert/strict";
+import { register } from "node:module";
+import { dirname, join } from "node:path";
 import test from "node:test";
-import {
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const here = dirname(fileURLToPath(import.meta.url));
+register(pathToFileURL(join(here, "helpers/ts-import-hooks.mjs")));
+const {
   assistantTurnContent,
   assistantTurnResponseOutputTokens,
   assistantTurnResponseOutputIsEstimated,
   assistantTurnUsage,
   buildTranscriptEntries,
   subagentRunsEqual,
-} from "../src/lib/assistant-turns.ts";
+} = await import("../src/lib/assistant-turns.ts");
 
 function message(id, role, content, extra = {}) {
   return {
@@ -366,5 +372,45 @@ test("delegate runs compare by rows so memoized groups still update", () => {
       run([{ kind: "tool", message: rowA }], "planner"),
     ),
     false,
+  );
+});
+
+test("parent tools after a Task fan-out stay out of the delegation card (D319)", () => {
+  const { entries } = buildTranscriptEntries([
+    message("user", "user", "Investigate"),
+    message("think-before", "assistant", "", { thinking: "I will delegate." }),
+    message("task-a", "tool", "running", {
+      toolName: "Task",
+      toolCallId: "task-a",
+    }),
+    message("task-b", "tool", "running", {
+      toolName: "Task",
+      toolCallId: "task-b",
+    }),
+    message("think-after", "assistant", "", {
+      thinking: "I will keep working in parallel.",
+    }),
+    message("read", "tool", "file", {
+      toolName: "Read",
+      toolCallId: "read",
+    }),
+    message("wait", "tool", "done", {
+      toolName: "TaskWait",
+      toolCallId: "wait",
+    }),
+  ]);
+
+  const turn = entries[1];
+  assert.equal(turn.kind, "assistant-turn");
+  assert.deepEqual(
+    turn.parts.map((part) => [
+      part.kind,
+      part.items.map((item) => item.message.id),
+    ]),
+    [
+      ["activity", ["think-before"]],
+      ["activity", ["task-a", "task-b"]],
+      ["activity", ["think-after", "read", "wait"]],
+    ],
   );
 });

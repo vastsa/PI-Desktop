@@ -46,6 +46,7 @@ import {
   delegationRoster,
   delegationRosterOutcome,
   delegationRosterSummary,
+  delegationTimingBounds,
   isDelegationActivityItem,
   lifecycleKindOf,
   subagentOutcome,
@@ -1537,13 +1538,22 @@ const ActivityGroup = memo(function ActivityGroup({
     delegateItems,
     delegationStatuses,
   );
-  const [open, setOpen] = useState(isActive && hasSubagentTopology);
+  // Parent tools after a Task fan-out live in a later activity part (D319), so
+  // this card is not the turn's live tail while its delegates are still running.
+  const topologyLive = hasSubagentTopology && subagentSummary.running > 0;
+  const live = isActive || topologyLive;
+  const [open, setOpen] = useState(hasSubagentTopology && live);
   const [now, setNow] = useState(Date.now);
   const [finishedAt, setFinishedAt] = useState<number | null>(null);
-  const wasActiveRef = useRef(isActive);
-  const topologyAutoOpenedRef = useRef(isActive && hasSubagentTopology);
+  const wasActiveRef = useRef(live);
+  const topologyAutoOpenedRef = useRef(hasSubagentTopology && live);
   const messages = items.map((item) => item.message);
-  const startedAt = Date.parse(messages[0]?.createdAt || "") || now;
+  const topologyTiming = hasSubagentTopology
+    ? delegationTimingBounds(delegateItems, delegationTimings)
+    : null;
+  const startedAt =
+    topologyTiming?.startedAt ??
+    (Date.parse(messages[0]?.createdAt || "") || now);
   const fallbackEnd =
     Math.max(
       startedAt,
@@ -1555,12 +1565,13 @@ const ActivityGroup = memo(function ActivityGroup({
       ),
     );
   const completedAt =
-    Date.parse(endedAt || "") ||
-    finishedAt ||
-    (wasActiveRef.current ? now : fallbackEnd);
+    topologyTiming?.completedAt ??
+    (Date.parse(endedAt || "") ||
+      finishedAt ||
+      (wasActiveRef.current ? now : fallbackEnd));
   const elapsedSeconds = Math.max(
     0,
-    Math.floor(((isActive ? now : completedAt) - startedAt) / 1000),
+    Math.floor(((live ? now : completedAt) - startedAt) / 1000),
   );
   const elapsed = formatToolDuration(elapsedSeconds);
   const lastItem = items[items.length - 1];
@@ -1571,7 +1582,7 @@ const ActivityGroup = memo(function ActivityGroup({
   const onlyThinking = items.every((item) => item.kind === "thinking");
   const label = hasSubagentTopology
     ? t(
-        isActive || subagentSummary.running > 0
+        live
           ? "chat.subagentsWorking"
           : subagentSummary.issues > 0
             ? "chat.subagentsFinishedWithIssues"
@@ -1595,19 +1606,19 @@ const ActivityGroup = memo(function ActivityGroup({
   const tail = isActive && !open && lastItem ? activityItemSummary(lastItem, t) : "";
 
   useEffect(() => {
-    if (wasActiveRef.current && !isActive) setFinishedAt(Date.now());
-    wasActiveRef.current = isActive;
-    if (!isActive) return;
+    if (wasActiveRef.current && !live) setFinishedAt(Date.now());
+    wasActiveRef.current = live;
+    if (!live) return;
     setNow(Date.now());
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
-  }, [isActive]);
+  }, [live]);
 
   useEffect(() => {
-    if (!isActive || !hasSubagentTopology || topologyAutoOpenedRef.current) return;
+    if (!live || !hasSubagentTopology || topologyAutoOpenedRef.current) return;
     topologyAutoOpenedRef.current = true;
     setOpen(true);
-  }, [hasSubagentTopology, isActive]);
+  }, [hasSubagentTopology, live]);
 
   const renderActivityItems = () => {
     let renderedTopology = false;
@@ -1647,7 +1658,7 @@ const ActivityGroup = memo(function ActivityGroup({
       className={`tool-activity-group ${hasSubagentTopology ? "has-subagents" : ""} ${
         open ? "open" : ""
       } ${
-        isActive ? "active" : ""
+        live ? "active" : ""
       }`}
     >
       <button

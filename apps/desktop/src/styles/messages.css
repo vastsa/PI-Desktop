@@ -1622,7 +1622,7 @@
   min-height: 42px;
   margin: 0;
   border-radius: 0;
-  padding: 8px 12px;
+  padding: 10px 16px;
 }
 
 .tool-activity-group.has-subagents .tool-activity-caret {
@@ -1649,6 +1649,19 @@
   padding: 0;
 }
 
+/*
+ * Parent thinking/tool rows must not sit on the tile's edge if they still share
+ * this card (D319 splits them out; this is the remaining inset).
+ */
+.tool-activity-group.has-subagents .tool-activity-body > .tool-row {
+  margin-right: 16px;
+  margin-left: 16px;
+}
+
+.tool-activity-group.has-subagents .tool-activity-body > .tool-row:last-child {
+  margin-bottom: 12px;
+}
+
 /* Nodes are raised tiles on the group's tile; connectors are tinted 2px bars
    rather than hairlines, and the dotted canvas is gone (D297). */
 .subagent-topology {
@@ -1656,7 +1669,7 @@
   min-width: 0;
   grid-template-columns: minmax(138px, 0.58fr) 34px minmax(248px, 1.42fr);
   align-items: center;
-  padding: 14px;
+  padding: 8px 16px 16px;
 }
 
 .subagent-topology-root {

@@ -318,3 +318,23 @@ test("an expanded delegate run follows the latest output while pinned (D302)", (
   );
   assert.doesNotMatch(messagesCss, /\.subagent-run \{[^}]*overflow/);
 });
+
+test("the delegation card keeps inset from its tile and stays live off the tail (D319)", () => {
+  // Parent Read/Grep/thinking after a Task fan-out is a later activity part, so
+  // the card is not the turn's live tail while its delegates are still running.
+  assert.match(transcriptSource, /const topologyLive = hasSubagentTopology && subagentSummary\.running > 0/);
+  assert.match(transcriptSource, /const live = isActive \|\| topologyLive/);
+  assert.match(transcriptSource, /delegationTimingBounds\(delegateItems, delegationTimings\)/);
+  assert.match(
+    messagesCss,
+    /\.subagent-topology \{[^}]*padding: 8px 16px 16px/,
+  );
+  assert.match(
+    messagesCss,
+    /\.tool-activity-group\.has-subagents \.tool-activity-header \{[^}]*padding: 10px 16px/,
+  );
+  assert.match(
+    messagesCss,
+    /\.tool-activity-group\.has-subagents \.tool-activity-body > \.tool-row \{[^}]*margin-left: 16px/,
+  );
+});

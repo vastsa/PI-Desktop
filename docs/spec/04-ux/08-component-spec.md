@@ -1552,7 +1552,7 @@ twice.
 - No cross-row activity grouping until turn boundaries are available to the
   transcript component
 
-### 9.9 Delegation cards and fan-out topology (D201, D265, D268, D271, D302, ADR 0062)
+### 9.9 Delegation cards and fan-out topology (D201, D265, D268, D271, D302, D319, ADR 0062)
 
 A `Task` call is presented as a node of a delegation card, not as a compact tool
 row — one delegation reads the same as a fan-out (D265). The node names the
@@ -1671,6 +1671,19 @@ Opening a node reveals the blocks the call carries, then the delegate's own rows
   presents aggregate state, the number of subagents, the settled/total count and
   elapsed time; it keeps the standard disclosure caret. The aggregate state is
   count-aware, so a single delegation is not announced in the plural.
+- **The card contains only those `Task` calls** (D319). Consecutive `Task`
+  starts stay in one topology group so a fan-out still reads as one card.
+  Parent thinking, workspace tools (`Read`/`Grep`/`Bash`/…), and lifecycle rows
+  (`TaskWait`/`TaskList`/`TaskStop`) are a separate processing group — before
+  the card, after it, or both — so the parent's own work is not painted as
+  subagent work. The tile, the “Subagent working” header, and the topology
+  canvas belong only to that Task group. The card keeps 16px inset from its
+  tile edge so the graph and any leftover rows do not sit on the border.
+- A topology group stays live — open once, ticking elapsed, labelled working —
+  while any of *its* delegates is still running, even when the parent has
+  already moved on to a later processing group in the same turn. Elapsed time
+  uses that card's own delegation `startedAt`/`completedAt`, not the immediate
+  `Task` tool-call duration and not a later fan-out in the same turn.
 - The expanded card renders a low-noise dotted canvas with one main-agent root
   connected to the `Task` nodes in parent-row order. The runtime exposes no
   delegate dependencies and forbids nested `Task`, so the renderer must not

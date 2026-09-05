@@ -119,6 +119,39 @@ export function collectDelegationTimings(
 }
 
 /**
+ * Wall-clock span of one topology card, keyed by that card's own Task ids so
+ * a later fan-out in the same turn cannot stretch an earlier card's elapsed
+ * time. `completedAt` is omitted while any of those delegates is still running.
+ */
+export function delegationTimingBounds(
+  items: readonly DelegationActivityItem[],
+  timings: ReadonlyMap<string, SubagentTiming>,
+): { startedAt?: number; completedAt?: number } {
+  let startedAt: number | undefined;
+  let completedAt: number | undefined;
+  let pending = false;
+  for (const item of items) {
+    const payload = asRecord(toolResultPayload(item.message));
+    const id = payload?.delegationId;
+    if (typeof id !== "string" || !id) continue;
+    const timing = timings.get(id);
+    const start = timing?.startedAt ?? timestamp(payload?.startedAt);
+    const end = timing?.completedAt ?? timestamp(payload?.completedAt);
+    if (start !== undefined) {
+      startedAt = startedAt === undefined ? start : Math.min(startedAt, start);
+    }
+    if (end === undefined) pending = true;
+    else {
+      completedAt = completedAt === undefined ? end : Math.max(completedAt, end);
+    }
+  }
+  return {
+    ...(startedAt !== undefined ? { startedAt } : {}),
+    ...(!pending && completedAt !== undefined ? { completedAt } : {}),
+  };
+}
+
+/**
  * Latest status per delegation id, read from the lifecycle tools' results.
  *
  * `Task` returns the moment the delegate starts (ADR 0089), so its own result

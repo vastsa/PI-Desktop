@@ -138,7 +138,9 @@ The report is printed once: in the `Task` body when the delegate produced no
 answer row, as the nested answer row otherwise.
 
 Every `Task` call in an activity group is drawn as a delegation summary, a lone
-one included (D265). Its header derives agent count, settled count, elapsed time
+one included (D265). Consecutive `Task` starts are the only rows in that group
+(D319): parent thinking, workspace tools, and lifecycle rows stay in ordinary
+processing groups around the card. Its header derives agent count, settled count, elapsed time
 and aggregate status from those same tool messages; its expanded body renders a
 one-level main-agent-to-delegate topology. Each delegate node retains the
 original row disclosure, brief, report, counters and nested steps. Live fan-out

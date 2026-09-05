@@ -12,6 +12,7 @@ const {
   delegationRoster,
   delegationRosterOutcome,
   delegationRosterSummary,
+  delegationTimingBounds,
   isDelegationActivityItem,
   lifecycleKindOf,
   subagentOutcome,
@@ -246,4 +247,39 @@ test("TaskStop reads its roster from `stopped`, and Task has none", () => {
   assert.deepEqual(delegationRoster(start.message), []);
   assert.equal(delegationRosterSummary([]), "");
   assert.equal(delegationRosterOutcome([]), null);
+});
+
+test("topology elapsed bounds follow this card's Task ids, not a later fan-out", () => {
+  const first = task("d1", "success", "running", {
+    startedAt: 1_000,
+  });
+  const second = task("d2", "success", "completed", {
+    startedAt: 2_000,
+    completedAt: 5_000,
+  });
+  const later = task("d3", "success", "completed", {
+    startedAt: 10_000,
+    completedAt: 40_000,
+  });
+  const timings = collectDelegationTimings([first, second, later]);
+  const running = delegationTimingBounds([first, second], timings);
+  assert.equal(running.startedAt, 1_000);
+  assert.equal(running.completedAt, undefined);
+  const settled = collectDelegationTimings([
+    task("d1", "success", "completed", { startedAt: 1_000, completedAt: 4_000 }),
+    second,
+  ]);
+  assert.deepEqual(
+    delegationTimingBounds(
+      [
+        task("d1", "success", "completed", {
+          startedAt: 1_000,
+          completedAt: 4_000,
+        }),
+        second,
+      ],
+      settled,
+    ),
+    { startedAt: 1_000, completedAt: 5_000 },
+  );
 });
