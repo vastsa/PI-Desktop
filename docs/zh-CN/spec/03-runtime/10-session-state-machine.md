@@ -138,7 +138,9 @@ accept_prompt
 - 转运行行：开始+终端`session.endTurn`更新
 - 通知行：与看不见的 completed/error 终端相同的交易
   更新；决不会为了可见的当前结果或中止
-- assistant/tool 消息：在 message_end/tool_end 上
+- assistant/tool 消息：在 message_end/tool_end 上。再验证仍在运行的
+  会话时，把有界持久化页按时间顺序缝到实时快照上，使更早的实时
+  行留在该页之前、进行中的尾巴留在该页之后（D317）
 - 未应答的智能停止：标记在现有生命周期中中止的回合，
   然后以原子方式将记录重写为其根用户行之前的前缀；
   结构化输入框快照仅保留渲染器内存

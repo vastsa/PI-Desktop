@@ -153,3 +153,93 @@ test("host echo under the same id replaces the optimistic user row in place (D28
   ]);
   assert.deepEqual(mergeLiveSessionMessages([message("earlier")], before), before);
 });
+
+const at = (id, createdAt, overrides = {}) =>
+  message(id, { createdAt, content: id, ...overrides });
+
+test("a bounded durable page keeps a longer live history in chronological order (D317)", () => {
+  const live = [
+    at("old-1", "2026-09-05T00:00:00.000Z", { role: "user" }),
+    at("old-2", "2026-09-05T00:00:01.000Z"),
+    at("keep-1", "2026-09-05T00:00:02.000Z", { role: "user" }),
+    at("keep-2", "2026-09-05T00:00:03.000Z"),
+    at("prompt", "2026-09-05T00:00:04.000Z", { role: "user" }),
+    at("answer", "2026-09-05T00:00:05.000Z", {
+      content: "partial",
+      status: "streaming",
+    }),
+  ];
+  const durable = live.slice(2, 5);
+  assert.deepEqual(
+    mergeLiveSessionMessages(durable, live).map((row) => row.id),
+    ["old-1", "old-2", "keep-1", "keep-2", "prompt", "answer"],
+  );
+});
+
+test("a shifted durable window keeps the live prefix ahead of the new user row (D317)", () => {
+  const live = [
+    at("drop", "2026-09-05T00:00:00.000Z"),
+    at("keep", "2026-09-05T00:00:01.000Z"),
+    at("prompt", "2026-09-05T00:00:02.000Z", { role: "user" }),
+  ];
+  const durable = [
+    at("keep", "2026-09-05T00:00:01.000Z"),
+    at("prompt", "2026-09-05T00:00:02.000Z", {
+      role: "user",
+      content: "echoed",
+    }),
+  ];
+  const merged = mergeLiveSessionMessages(durable, live);
+  assert.deepEqual(
+    merged.map((row) => row.id),
+    ["drop", "keep", "prompt"],
+  );
+  assert.equal(merged.at(-1).content, "echoed");
+});
+
+test("older live rows appended after the durable page are healed back in front (D317)", () => {
+  const durable = [
+    at("keep-1", "2026-09-05T00:00:02.000Z"),
+    at("prompt", "2026-09-05T00:00:03.000Z", { role: "user" }),
+  ];
+  const live = [
+    ...durable,
+    at("old-1", "2026-09-05T00:00:00.000Z", { role: "user" }),
+    at("old-2", "2026-09-05T00:00:01.000Z"),
+    at("answer", "2026-09-05T00:00:04.000Z", { status: "streaming" }),
+  ];
+  assert.deepEqual(
+    mergeLiveSessionMessages(durable, live).map((row) => row.id),
+    ["old-1", "old-2", "keep-1", "prompt", "answer"],
+  );
+});
+
+test("an older page prepends ahead of the live window without overlap", () => {
+  const older = [
+    at("old-1", "2026-09-05T00:00:00.000Z", { role: "user" }),
+    at("old-2", "2026-09-05T00:00:01.000Z"),
+  ];
+  const live = [
+    at("keep-1", "2026-09-05T00:00:02.000Z", { role: "user" }),
+    at("keep-2", "2026-09-05T00:00:03.000Z"),
+  ];
+  assert.deepEqual(
+    mergeLiveSessionMessages(older, live).map((row) => row.id),
+    ["old-1", "old-2", "keep-1", "keep-2"],
+  );
+});
+
+test("a durable-only new user row stays ahead of a live streaming tail (D317)", () => {
+  const live = [
+    at("keep", "2026-09-05T00:00:01.000Z"),
+    at("answer", "2026-09-05T00:00:03.000Z", { status: "streaming" }),
+  ];
+  const durable = [
+    at("keep", "2026-09-05T00:00:01.000Z"),
+    at("prompt", "2026-09-05T00:00:02.000Z", { role: "user" }),
+  ];
+  assert.deepEqual(
+    mergeLiveSessionMessages(durable, live).map((row) => row.id),
+    ["keep", "prompt", "answer"],
+  );
+});

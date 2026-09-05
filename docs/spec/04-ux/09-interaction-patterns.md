@@ -239,7 +239,11 @@ may be retained while exactly one workspace supplies the visible shell context.
   nothing is dimmed, no skeleton appears, and no transcript remounts. If the
   destination is running, revalidation treats the durable read as a lower-water
   mark and keeps its renderer-owned assistant/tool tail; completed durable rows
-  may be added, but the partial reply cannot be rolled back.
+  may be added, but the partial reply cannot be rolled back. The bounded durable
+  page is stitched onto the live snapshot in chronological order: live rows
+  older than that page stay before it, and an optimistic or streaming tail stays
+  after it. Live-only rows are never appended after the page, which would move
+  the newest turn out of the mounted trailing window (D317 / D261).
 - Switching to a session with no retained pane (cold) leaves the visible pane on
   its own session until the destination commits. Only a thin progress track and
   `aria-busy` mark the wait, the composer stays non-interactive so a prompt cannot

@@ -152,6 +152,9 @@ transcript-file line first, index transaction second.
   `TaskWait` cannot lose its name, args, or duration. A completed tool row is
   replayed through `message_end` as a renderer recovery path, allowing a
   reload that dropped the running row to append the terminal message.
+  Renderer revalidation of a running session stitches the bounded durable page
+  onto the live snapshot in chronological order so older live rows stay before
+  that page and the in-flight tail stays after it (D317)
 - unanswered smart Stop: mark the turn aborted through the existing lifecycle,
   then atomically rewrite the transcript to the prefix before its root user row;
   the structured composer snapshot remains renderer-memory-only

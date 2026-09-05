@@ -106,9 +106,15 @@ export function removeLiveSessionMessage(
  *
  * Streaming assistant/tool rows are not persisted until their terminal event,
  * so a session opened during a reply can receive a detail response that is
- * missing the in-flight tail. Keep those live rows and append any durable rows
- * that arrived since the in-memory snapshot was captured. Completed rows from
- * the durable read remain authoritative when both sides contain the same id.
+ * missing the in-flight tail. Keep those live rows. Completed rows from the
+ * durable read remain authoritative when both sides contain the same id.
+ *
+ * The durable read is a bounded newest page (ADR 0120). A renderer that stayed
+ * on the session already holds older live rows plus any optimistic/in-flight
+ * tail. Those live-only rows must keep their chronological place: older ones
+ * stay before the durable page, newer ones stay after it. Appending them after
+ * the page would move the newest turn out of D261's trailing mounted window,
+ * which is what made a just-sent prompt vanish on switch (D317).
  */
 export function mergeLiveSessionMessages(
   durableMessages: UiMessage[],
@@ -117,27 +123,73 @@ export function mergeLiveSessionMessages(
   const durable = dedupeSessionMessages(durableMessages);
   const liveNormalized = dedupeSessionMessages(liveMessages);
   if (liveNormalized.length === 0) return durable;
+  if (durable.length === 0) return liveNormalized;
 
-  const liveById = new Map(liveNormalized.map((message) => [message.id, message]));
-  let changed = false;
-  const merged = durable.map((durable) => {
-    const live = liveById.get(durable.id);
-    if (!live) return durable;
-    liveById.delete(durable.id);
-    if (isInFlightMessage(live)) {
-      if (live !== durable) changed = true;
-      return live;
-    }
-    return durable;
-  });
+  const durableIds = new Set(durable.map((message) => message.id));
+  const liveIndexById = new Map(
+    liveNormalized.map((message, index) => [message.id, index]),
+  );
 
-  for (const live of liveNormalized) {
-    if (!liveById.has(live.id)) continue;
-    liveById.delete(live.id);
-    merged.push(live);
-    changed = true;
+  let firstSharedLive = -1;
+  let lastSharedLive = -1;
+  for (const [index, message] of liveNormalized.entries()) {
+    if (!durableIds.has(message.id)) continue;
+    if (firstSharedLive < 0) firstSharedLive = index;
+    lastSharedLive = index;
   }
-  return changed ? merged : durable;
+
+  const used = new Set<string>();
+  const merged: UiMessage[] = [];
+  const push = (message: UiMessage) => {
+    if (used.has(message.id)) return;
+    used.add(message.id);
+    merged.push(message);
+  };
+
+  if (firstSharedLive > 0) {
+    for (const message of liveNormalized.slice(0, firstSharedLive)) {
+      if (!durableIds.has(message.id)) push(message);
+    }
+  }
+
+  // A previous append-after-page merge left older live rows after the durable
+  // window. Restore them in front when their timestamps precede the page.
+  const windowStartAt = durable[0]?.createdAt;
+  if (lastSharedLive >= 0 && windowStartAt) {
+    for (const message of liveNormalized.slice(lastSharedLive + 1)) {
+      if (durableIds.has(message.id)) continue;
+      if (message.createdAt && message.createdAt < windowStartAt) {
+        push(message);
+      }
+    }
+  }
+
+  for (const durableMessage of durable) {
+    const liveIndex = liveIndexById.get(durableMessage.id);
+    const live =
+      liveIndex === undefined ? undefined : liveNormalized[liveIndex];
+    push(live && isInFlightMessage(live) ? live : durableMessage);
+    // Live-only rows between two durable ids belong in the overlap. Trailing
+    // rows after the last shared id wait until the durable page is complete
+    // so a not-yet-cached user echo stays ahead of the streaming tail.
+    if (liveIndex === undefined || liveIndex >= lastSharedLive) continue;
+    for (
+      let index = liveIndex + 1;
+      index < liveNormalized.length && !durableIds.has(liveNormalized[index].id);
+      index++
+    ) {
+      push(liveNormalized[index]);
+    }
+  }
+
+  for (const message of liveNormalized) {
+    if (!used.has(message.id)) push(message);
+  }
+
+  const unchanged =
+    merged.length === durable.length &&
+    merged.every((message, index) => message === durable[index]);
+  return unchanged ? durable : merged;
 }
 
 function isInFlightMessage(message: UiMessage): boolean {

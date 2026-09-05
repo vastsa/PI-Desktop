@@ -111,7 +111,9 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
   and its retained snapshot otherwise, so no pane can show another session's rows.
   While a session is running, its renderer-owned live cache is the lower-water
   mark for revalidation: a durable `session.get` result may add newer completed
-  rows but must not erase an in-flight assistant/tool tail. Deleting a session
+  rows but must not erase an in-flight assistant/tool tail, and must keep live
+  rows that the bounded page dropped in chronological order so the newest turn
+  stays in the mounted trailing window (D317). Deleting a session
   releases its pane, snapshot, and live cache.
 - While a destination with no retained pane is resolving, `ChatSurface` keeps the
   visible pane on its own session, exposes `aria-busy`, and shows a 2px progress
@@ -377,7 +379,9 @@ visually distinct from list content.
   painted frame is already correct — no dim, no skeleton, no transcript remount.
   If that destination is still running, the warm frame uses its latest
   renderer-owned live snapshot and later durable revalidation cannot roll the
-  partial reply back. A destination with no retained pane (cold switch) leaves
+  partial reply back or move the newest user/assistant rows out of chronological
+  order by appending a longer live history after the bounded durable page
+  (D317). A destination with no retained pane (cold switch) leaves
   the currently visible
   pane showing its own session until the destination commits; only a thin
   progress track marks the wait, and the composer stays non-interactive until the
