@@ -102,11 +102,12 @@ export function removeLiveSessionMessage(
 }
 
 /**
- * Treat a durable session read as a lower-water mark while a turn is live.
+ * Treat a durable session read as a lower-water mark while live rows exist.
  *
  * Streaming assistant/tool rows are not persisted until their terminal event,
- * so a session opened during a reply can receive a detail response that is
- * missing the in-flight tail. Keep those live rows. Completed rows from the
+ * and a just-completed reply may still sit in the persistence outbox, so a
+ * session opened during or right after a reply can receive a detail response
+ * that is missing that tail. Keep those live rows. Completed rows from the
  * durable read remain authoritative when both sides contain the same id.
  *
  * The durable read is a bounded newest page (ADR 0120). A renderer that stayed
@@ -194,4 +195,21 @@ export function mergeLiveSessionMessages(
 
 function isInFlightMessage(message: UiMessage): boolean {
   return message.status === "streaming" || message.toolStatus === "running";
+}
+
+/**
+ * Whether a durable session page already contains every live row.
+ *
+ * Live provenance can drop only after this is true. Assistant/tool rows are
+ * not persisted until the outbox drains, so an idle switch that replaced the
+ * snapshot with the durable page would drop replies that were already on
+ * screen (D324).
+ */
+export function durableCoversLiveSessionMessages(
+  durableMessages: UiMessage[],
+  liveMessages: UiMessage[] | undefined,
+): boolean {
+  if (!liveMessages || liveMessages.length === 0) return true;
+  const durableIds = new Set(durableMessages.map((message) => message.id));
+  return liveMessages.every((message) => durableIds.has(message.id));
 }

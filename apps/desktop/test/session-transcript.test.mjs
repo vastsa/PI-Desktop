@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   dedupeSessionMessages,
+  durableCoversLiveSessionMessages,
   mergeLiveSessionMessages,
   optimisticUserMessage,
   removeLiveSessionMessage,
@@ -47,6 +48,22 @@ test("live-only terminal rows are retained when detail arrives during a turn", (
   ];
 
   assert.equal(mergeLiveSessionMessages(durable, live).at(-1).id, "answer");
+});
+
+test("a completed live tail is not covered until the durable page has it (D324)", () => {
+  const user = message("user", { role: "user", content: "prompt" });
+  const answer = message("answer", { content: "final", status: "complete" });
+  const durable = [user];
+  const live = [user, answer];
+
+  assert.equal(durableCoversLiveSessionMessages(durable, live), false);
+  assert.equal(durableCoversLiveSessionMessages([user, answer], live), true);
+  assert.equal(durableCoversLiveSessionMessages(durable, undefined), true);
+  assert.equal(durableCoversLiveSessionMessages(durable, []), true);
+  assert.deepEqual(
+    mergeLiveSessionMessages(durable, live).map((row) => row.id),
+    ["user", "answer"],
+  );
 });
 
 test("repeated transcript rows keep one position and the latest value", () => {

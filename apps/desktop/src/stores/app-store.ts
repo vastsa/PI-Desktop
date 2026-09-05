@@ -70,6 +70,7 @@ import {
   removeLiveSessionMessage,
   optimisticUserMessage,
   upsertLiveSessionMessage,
+  durableCoversLiveSessionMessages,
 } from "../lib/session-transcript";
 import {
   latestSessionOutcomes,
@@ -1665,7 +1666,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         : { messageStart: 0, hasMoreBefore: false };
       const currentState = get();
       const liveMessages =
-        (runningAtSelection || currentState.runningSessions[id] === true)
+        (runningAtSelection ||
+          currentState.runningSessions[id] === true ||
+          liveSessionTranscripts.has(id))
           ? currentState.activeSessionId === id
             ? currentState.messages
             : sessionTranscriptCache.get(id) ??
@@ -1680,7 +1683,13 @@ export const useAppStore = create<AppState>((set, get) => ({
         cacheSessionTranscript(id, selectedMessages, historyWindow);
       }
       commitSelection(selectedMessages, false, historyWindow);
-      if (currentState.runningSessions[id] !== true) {
+      if (
+        currentState.runningSessions[id] !== true &&
+        durableCoversLiveSessionMessages(
+          detail.session?.messages ?? [],
+          liveMessages,
+        )
+      ) {
         liveSessionTranscripts.delete(id);
       }
       rememberSessionCompactions(id, detail.session);
@@ -3374,6 +3383,18 @@ export const useAppStore = create<AppState>((set, get) => ({
       // before they settle running/error state.
       streamUpdates.flushNow();
     }
+    if (
+      event.type === "message_start" ||
+      event.type === "message_update" ||
+      event.type === "message_end" ||
+      event.type === "tool_start" ||
+      event.type === "tool_update" ||
+      event.type === "tool_end"
+    ) {
+      // Completed assistant/tool rows can still be ahead of the durable page
+      // after agent_end (D324). Keep live provenance until that page covers them.
+      liveSessionTranscripts.add(envelope.sessionId);
+    }
     // Per-session run state: agents run independently per session, so track
     // running/finished for every envelope, visible session or not.
     if (
@@ -4158,7 +4179,9 @@ useAppStore.subscribe((state, previous) => {
   }
   const id = state.activeSessionId;
   if (!id) return;
-  if (state.runningSessions[id]) liveSessionTranscripts.add(id);
+  if (state.runningSessions[id] || previous.runningSessions[id]) {
+    liveSessionTranscripts.add(id);
+  }
   cacheSessionTranscript(id, state.messages, state.sessionHistory[id]);
   if (state.retainedTranscripts[id] === state.messages) return;
   useAppStore.setState((current) =>

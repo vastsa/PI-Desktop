@@ -170,6 +170,25 @@ test("reopening a running session never lets durable detail erase its live tail"
   assert.match(transcript, /firstCommit \|\| paneRevealed \? messages : deferredMessages/);
 });
 
+test("reopening an idle session keeps a completed live tail until the durable page has it (D324)", () => {
+  const selectBlock =
+    store.match(/selectSession: async[\s\S]*?\n  newSession: async/)?.[0] ?? "";
+  assert.match(
+    selectBlock,
+    /runningAtSelection \|\|\s*currentState\.runningSessions\[id\] === true \|\|\s*liveSessionTranscripts\.has\(id\)/,
+  );
+  assert.match(selectBlock, /durableCoversLiveSessionMessages\(/);
+  assert.doesNotMatch(
+    selectBlock,
+    /if \(currentState\.runningSessions\[id\] !== true\) \{\s*liveSessionTranscripts\.delete\(id\);/,
+  );
+  assert.match(store, /import \{\s*[\s\S]*durableCoversLiveSessionMessages,/);
+  assert.match(
+    store,
+    /event\.type === "message_end" \|\|[\s\S]*?liveSessionTranscripts\.add\(envelope\.sessionId\)/,
+  );
+});
+
 test("a cold switch keeps the visible pane legible instead of dimming it", () => {
   assert.match(chatSurface, /aria-busy=\{sessionSwitching\}/);
   assert.match(chatSurface, /session-switch-progress/);
