@@ -1540,12 +1540,12 @@ Delegation rules:
     const projectPrompt = projectInstructionsPrompt(this.projectInstructions);
     const optionalToolsPrompt = this.optionalToolsPrompt();
     const parentA2APrompt =
-      this.mode === "agent" && this.parentA2AToken
+      this.mode === "agent"
         ? [
             "## Cross-conversation",
-            `You are the parent agent "${this.parentPeerId ?? "parent"}" of this conversation. Other open conversations on this host may be reached with the A2A tool.`,
-            "A2A(action=discover) lists their parent agents (name plus session title). A2A(action=send) sends a note; A2A(action=wait) blocks for a reply during this turn. Inbound notes from another conversation are prepended to the user's next message here — do not expect a conversation that is idle to answer immediately.",
-            "Do not use A2A to talk to subagents, including your own. Delegation stays on Task / TaskWait / TaskList / TaskStop.",
+            `A2A is a core tool in this mode — call it directly, do not ToolSearch for it. You are the parent agent "${this.parentPeerId ?? "parent"}" of this conversation.`,
+            "A2A(action=discover) lists other live parent agents (peer name plus session title). Address them by that peer name, not by a session UUID. A2A(action=send) sends a note; A2A(action=wait) blocks for a reply during this turn. An idle conversation sees your note on its next user prompt.",
+            "If the user asks whether you can see another chat, call A2A(action=discover) before answering. Do not use A2A to talk to subagents. Delegation stays on Task / TaskWait / TaskList / TaskStop.",
           ].join("\n")
         : "";
     return composeModeSystemPrompt(
@@ -2416,21 +2416,14 @@ Delegation rules:
       });
     }
     this.toolCatalog = catalog;
-    if (
-      this.mode === "agent" &&
-      this.parentA2AToken &&
-      this.parentPeerId
-    ) {
-      this.toolCatalog.set(
-        "A2A",
-        {
-          ...this.buildA2ATool(this.parentPeerId, this.parentA2AToken, "parent"),
-          executionMode: "sequential",
-        },
-      );
+    if (this.mode === "agent") {
+      this.toolCatalog.set("A2A", {
+        ...this.buildParentA2ATool(),
+        executionMode: "sequential",
+      });
     }
     this.deferredToolNames = new Set(
-      [...catalog.keys()].filter(
+      [...this.toolCatalog.keys()].filter(
         (name) => !this.isCoreTool(name) && name !== TOOL_SEARCH_NAME,
       ),
     );
@@ -3059,12 +3052,17 @@ Delegation rules:
 
   /**
    * Register this session's parent as an A2A agent (ADR 0164). Idempotent.
-   * Agent mode only; a failed register leaves the parent without the tool.
+   * The parent `A2A` tool is already in the Agent catalog; this only mints
+   * the broker token. A failed register leaves the tool callable so it can
+   * report the error instead of disappearing from the model.
    */
   async ensureParentA2A(): Promise<void> {
     if (this.disposed || this.mode !== "agent") return;
+    if (this.parentA2AToken) return;
     if (this.parentA2APromise) return this.parentA2APromise;
-    this.parentA2APromise = this.registerParentA2A();
+    this.parentA2APromise = this.registerParentA2A().finally(() => {
+      if (!this.parentA2AToken) this.parentA2APromise = undefined;
+    });
     return this.parentA2APromise;
   }
 
@@ -3107,12 +3105,42 @@ Delegation rules:
       if (!result?.token || this.disposed) return;
       this.parentA2AToken = result.token;
       this.parentPeerId = result.agentId || "parent";
-      this.rebuildToolCatalog();
-      this.agent.state.tools = this.activeTools();
       this.agent.state.systemPrompt = this.composeSystemPrompt();
     } catch {
-      this.parentA2APromise = undefined;
+      // Leave the tool in the catalog; the next execute reports the failure.
     }
+  }
+
+  /** Parent `A2A` tool. Always in the Agent catalog; registers on first use. */
+  private buildParentA2ATool(): AgentTool {
+    const template = this.buildA2ATool(
+      this.parentPeerId ?? "parent",
+      this.parentA2AToken ?? "",
+      "parent",
+    );
+    return {
+      ...template,
+      execute: async (toolCallId, params, signal, onUpdate) => {
+        await this.ensureParentA2A();
+        if (!this.parentA2AToken || !this.parentPeerId) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: "A2A is unavailable: this conversation could not register with the host broker.",
+              },
+            ],
+            details: { action: "register", error: "A2A_REGISTER_FAILED" },
+          };
+        }
+        const bound = this.buildA2ATool(
+          this.parentPeerId,
+          this.parentA2AToken,
+          "parent",
+        );
+        return bound.execute(toolCallId, params, signal, onUpdate);
+      },
+    };
   }
 
   /**

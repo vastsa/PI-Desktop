@@ -33,9 +33,9 @@ subagents, `Task`'s brief and report boundary collapses.
    lifetime (first prompt through dispose). The card uses `kind: "parent"`,
    name `parent` (host-uniquified to `parent-2`, …), and a description that
    carries the session title. Plan/Goal runtimes do not register.
-2. **`A2A` is a core Agent-mode parent tool.** It closes over the parent's
-   host-minted token, the same way a delegate's tool does. It stays out of
-   Plan/Goal.
+2. **`A2A` is a core Agent-mode parent tool**, present in the catalog from
+   runtime construction — not after broker register. The first call (or the
+   first prompt) mints the token. It stays out of Plan/Goal.
 3. **Kinds do not mix.** Agent cards carry `kind: "parent" | "subagent"`
    (default `subagent`). `a2a.agents.list` and recipient resolution only
    consider the caller's kind. A parent cannot send to a subagent; a

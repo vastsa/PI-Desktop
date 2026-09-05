@@ -673,9 +673,10 @@ would land in the context delegation exists to protect.
 
 **Tool.** One `A2A` tool joins the seven assignable tools and may appear in a
 definition's `tools:` list. It is built per delegate at spawn time.
-`SUBAGENT_A2A_TOOLS = ["A2A"]`. Agent-mode parents also get a core `A2A` tool
-bound to a `kind: "parent"` registration (ADR 0164); that parent tool can
-address other parents only, never subagents. A required `action` parameter
+`SUBAGENT_A2A_TOOLS = ["A2A"]`. Agent-mode parents always have a core `A2A`
+tool (ADR 0164), even before the broker mints a token; the first call
+registers `kind: "parent"`. That parent tool can address other parents only,
+never subagents. A required `action` parameter
 selects the operation:
 
 - `A2A(action="discover")` — list the other agents of the caller's kind
@@ -754,9 +755,7 @@ agents.
 
 **Transcript.** An `A2A` call is a tool call of the delegate that made it, so it
 appears attributed by `parentToolCallId` and `agentName` under the owning `Task`
-row. Parent `A2A` calls appear as the parent's own tool calls. The built-in
-skill `pi-desktop/a2a-cross-conversation` is always in the skill catalog so a
-parent loads it before answering that other conversations are invisible.
+row.
 
 ## 6. Providers & models
 

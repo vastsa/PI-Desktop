@@ -5085,12 +5085,11 @@ describe("DesktopAgentRuntime subagents", () => {
     return { call, onNotification: vi.fn(() => () => {}) };
   }
 
-  it("exposes parent A2A after registration and keeps it out of deferred tools", async () => {
+  it("exposes parent A2A as a core Agent tool before broker registration", async () => {
     const host = a2aHost({
       "session.get": { session: { title: "Fix login" } },
     });
     const runtime = createRuntime({ subagents: [coordinator, talkerOnly], host });
-    await runtime.ensureParentA2A();
     const catalog = (runtime as any).toolCatalog as Map<string, any>;
     const parentToolNames = (
       (runtime as any).agent.state.tools as Array<any>
@@ -5100,6 +5099,9 @@ describe("DesktopAgentRuntime subagents", () => {
     expect(catalog.has("A2A")).toBe(true);
     expect(parentToolNames).toContain("A2A");
     expect(deferred.has("A2A")).toBe(false);
+    expect((runtime as any).parentA2AToken).toBeUndefined();
+
+    await runtime.ensureParentA2A();
     expect((runtime as any).parentPeerId).toBe("parent");
     expect((runtime as any).parentA2AToken).toBe("tok-parent");
     const registerCall = host.call.mock.calls.find(
@@ -5137,7 +5139,6 @@ describe("DesktopAgentRuntime subagents", () => {
       },
     });
     const runtime = createRuntime({ subagents: [coordinator], host });
-    await runtime.ensureParentA2A();
     const a2a = (runtime as any).toolCatalog.get("A2A") as {
       execute: (id: string, params: unknown) => Promise<{ content: Array<{ text: string }>; details: { agents: unknown[] } }>;
     };
