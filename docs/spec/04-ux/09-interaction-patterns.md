@@ -237,13 +237,16 @@ may be retained while exactly one workspace supplies the visible shell context.
   its own scroll position for its lifetime. Switching to a session that still has
   a pane (warm) reveals it immediately with its retained content and position:
   nothing is dimmed, no skeleton appears, and no transcript remounts. If the
-  destination is running, revalidation treats the durable read as a lower-water
-  mark and keeps its renderer-owned assistant/tool tail; completed durable rows
-  may be added, but the partial reply cannot be rolled back. The bounded durable
-  page is stitched onto the live snapshot in chronological order: live rows
-  older than that page stay before it, and an optimistic or streaming tail stays
-  after it. Live-only rows are never appended after the page, which would move
-  the newest turn out of the mounted trailing window (D317 / D261).
+  destination is running or still holds a completed reply the durable page has
+  not caught up to, revalidation treats the durable read as a lower-water mark
+  and keeps its renderer-owned assistant/tool tail; completed durable rows may
+  be added, but the partial or just-finished reply cannot be rolled back. The
+  bounded durable page is stitched onto the live snapshot in chronological
+  order: live rows older than that page stay before it, and an optimistic,
+  streaming, or not-yet-flushed tail stays after it. Live-only rows are never
+  appended after the page, which would move the newest turn out of the mounted
+  trailing window (D317 / D261 / D324). Live provenance is cleared only once
+  that page already contains every live row.
 - Switching to a session with no retained pane (cold) leaves the visible pane on
   its own session until the destination commits. Only a thin progress track and
   `aria-busy` mark the wait, the composer stays non-interactive so a prompt cannot

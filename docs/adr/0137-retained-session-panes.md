@@ -3,9 +3,9 @@
 - Status: Accepted
 - Date: 2026-08-30
 - Deciders: PI-Desktop core
-- Related: D162, D261, D317, ADR 0120, ADR 0127, ADR 0130, D142,
+- Related: D162, D261, D317, D324, ADR 0120, ADR 0127, ADR 0130, D142,
   `04-ux/08-component-spec.md` §3.5 / §7, `04-ux/09-interaction-patterns.md` §5,
-  E2E-011, E2E-071d, E2E-071g, E2E-177
+  E2E-011, E2E-071d, E2E-071g, E2E-177, E2E-183
 - Amends: D162 (the dimmed keep-alive frame), ADR 0130 clause 4 and clause 5
   (per-session window reset and first-commit hydration), D162's
   "activation resets manual-scroll state" rule for revisits
@@ -62,10 +62,12 @@ Three visible costs followed:
    pane immediately from its retained content. The first frame is already
    correct: no dim, no skeleton, no remount. The revalidated transcript lands in
    the same pane afterwards with no visible change. If the destination is still
-   running, that revalidation stitches the bounded durable page onto the live
+   running, or still holds a completed reply the durable page has not caught up
+   to, that revalidation stitches the bounded durable page onto the live
    snapshot in chronological order (older live rows before the page, in-flight
-   tail after it) so D261's trailing mounted window still shows the newest turn
-   (D317).
+   or not-yet-flushed tail after it) so D261's trailing mounted window still
+   shows the newest turn (D317, D324). Live provenance is cleared only once
+   that page already contains every live row.
 6. A **cold switch** — no retained pane — keeps the currently visible pane
    showing its own session until the destination commits. Only the thin progress
    track marks the wait. The opacity dim is removed entirely.

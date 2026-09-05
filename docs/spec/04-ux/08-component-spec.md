@@ -109,12 +109,13 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
   Evicting a pane makes its session behave like a cold open on the next visit.
 - A pane renders the store's live `messages` while its session is the active one
   and its retained snapshot otherwise, so no pane can show another session's rows.
-  While a session is running, its renderer-owned live cache is the lower-water
-  mark for revalidation: a durable `session.get` result may add newer completed
-  rows but must not erase an in-flight assistant/tool tail, and must keep live
-  rows that the bounded page dropped in chronological order so the newest turn
-  stays in the mounted trailing window (D317). Deleting a session
-  releases its pane, snapshot, and live cache.
+  While a session is running, or still holds live rows the durable page has
+  not caught up to, its renderer-owned live cache is the lower-water mark for
+  revalidation: a durable `session.get` result may add newer completed rows
+  but must not erase an in-flight or not-yet-flushed assistant/tool tail, and
+  must keep live rows that the bounded page dropped in chronological order so
+  the newest turn stays in the mounted trailing window (D317, D324). Deleting
+  a session releases its pane, snapshot, and live cache.
 - While a destination with no retained pane is resolving, `ChatSurface` keeps the
   visible pane on its own session, exposes `aria-busy`, and shows a 2px progress
   track; the destination pane is revealed only once it has committed. A warm
@@ -377,11 +378,12 @@ visually distinct from list content.
   session. A destination that still has a retained pane (warm switch) is revealed
   immediately with its own content and its own scroll position, so the first
   painted frame is already correct — no dim, no skeleton, no transcript remount.
-  If that destination is still running, the warm frame uses its latest
+  If that destination is still running or still holds a completed reply the
+  durable page has not caught up to, the warm frame uses its latest
   renderer-owned live snapshot and later durable revalidation cannot roll the
-  partial reply back or move the newest user/assistant rows out of chronological
-  order by appending a longer live history after the bounded durable page
-  (D317). A destination with no retained pane (cold switch) leaves
+  partial or just-finished reply back or move the newest user/assistant rows
+  out of chronological order by appending a longer live history after the
+  bounded durable page (D317, D324). A destination with no retained pane (cold switch) leaves
   the currently visible
   pane showing its own session until the destination commits; only a thin
   progress track marks the wait, and the composer stays non-interactive until the
@@ -1040,7 +1042,7 @@ storage but compose into one assistant turn until the next user message.
 | State | Behavior |
 |---|---|
 | Session activation | First activation re-pins and positions at the last record during layout, before the pane's first painted frame; a revisited pane restores its own retained scroll position instead |
-| Session transition | A warm destination pane is revealed immediately with its retained content and position. If it is running, its live renderer snapshot survives the durable revalidation read. A cold destination leaves the visible pane on its own session under a thin progress track until it commits; nothing is dimmed, hidden panes stay mounted and inert, and current stream updates are not deferred |
+| Session transition | A warm destination pane is revealed immediately with its retained content and position. If it is running or still holds a not-yet-flushed completed reply, its live renderer snapshot survives the durable revalidation read. A cold destination leaves the visible pane on its own session under a thin progress track until it commits; nothing is dimmed, hidden panes stay mounted and inert, and current stream updates are not deferred |
 | Streaming | New tokens append; auto-scroll only while pinned to bottom |
 | Turn start | Send / retry / regenerate re-pins follow mode and jumps to bottom |
 | Thinking-only streaming | Transcript opens; disclosure stays open; no empty answer bubble or duplicate Working row |

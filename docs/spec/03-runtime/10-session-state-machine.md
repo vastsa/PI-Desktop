@@ -152,9 +152,11 @@ transcript-file line first, index transaction second.
   `TaskWait` cannot lose its name, args, or duration. A completed tool row is
   replayed through `message_end` as a renderer recovery path, allowing a
   reload that dropped the running row to append the terminal message.
-  Renderer revalidation of a running session stitches the bounded durable page
-  onto the live snapshot in chronological order so older live rows stay before
-  that page and the in-flight tail stays after it (D317)
+  Renderer revalidation of a running or just-completed session stitches the
+  bounded durable page onto the live snapshot in chronological order so older
+  live rows stay before that page and the in-flight or not-yet-flushed tail
+  stays after it (D317, D324). Live provenance is cleared only once that page
+  already contains every live row.
 - orphaned session restore: a live JSONL whose sessions row is gone is
   reinserted at host boot and on `session.appendMessage`; a queued outbox
   drains after that restore, and `session.delete` drops that session's
