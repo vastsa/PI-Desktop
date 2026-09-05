@@ -8,7 +8,7 @@
 
 ## 1. Core Immutable Rules
 
-These four rules govern every change to the PI-Desktop codebase and documentation. They cannot be relaxed by an agent without explicit human override.
+These five rules govern every change to the PI-Desktop codebase and documentation. They cannot be relaxed by an agent without explicit human override.
 
 ### R1 — Spec-first / Spec-sync
 
@@ -71,13 +71,46 @@ These four rules govern every change to the PI-Desktop codebase and documentatio
   own worktree and branch, and only after verifying the merge commits are
   present in `main`.
 
+### R5 — Verify linked GitHub issues before work, then reply and close
+
+> **A linked GitHub issue is not a task until the reported problem is shown to exist. After the outcome is conclusive, reply on that issue and close it.**
+
+This rule applies when the user prompt includes a GitHub issue URL or an
+unambiguous issue number for this repository.
+
+- Fetch the issue (title, body, labels, comments, and state) before creating a
+  worktree or changing files for the claimed problem.
+- Independently verify the claim against the current codebase. For a bug,
+  reproduce it or cite concrete code/spec evidence. For a feature or
+  improvement, confirm the requested behavior is actually missing or incomplete
+  and in scope.
+- Do not start implementation until verification confirms the problem exists.
+- If the problem does not exist (already fixed, invalid, or a
+  misunderstanding): comment with the verification evidence and close the issue
+  when that conclusion is clear. If verification is inconclusive, comment with
+  what was tried and leave the issue open.
+- If the problem exists: follow R4, implement the smallest coherent change,
+  and after the request is merged into local `main`, comment with the
+  resolution and close the issue.
+- Write the GitHub comment in the language of the original issue title and
+  body. Code, commits, specs, and other repository documentation stay English.
+- End every such comment with an explicit AI-handled marker:
+  - English issues: `Handled by AI.`
+  - Chinese issues: `本回复由 AI 处理。`
+- An issue link authorizes commenting on and closing **that** issue only. It
+  does not authorize a git push. Remote publishing remains opt-in per R4 and
+  `AGENTS.md`.
+- Do not comment on or close unrelated issues. Do not reopen a closed issue
+  unless the user explicitly asks.
+
 ---
 
 ## 2. Development Loop
 
-Every change follows this sequence. Steps may be iterated if the implementation reveals new requirements.
+Every change follows this sequence. Steps may be iterated if the implementation reveals new requirements. If the prompt includes a GitHub issue, complete R5 verification before step 1.
 
 ```
+0. If a GitHub issue is linked: verify the claim (R5) before any implementation
 1. Sync main + create a request branch and worktree
 2. Read baseline + relevant specs
 3. Plan change + list impacted specs and necessary validation
@@ -97,6 +130,7 @@ Every change follows this sequence. Steps may be iterated if the implementation 
 
 | Step | Action | Output |
 |---|---|---|
+| **0. Issue verify** | When a GitHub issue is linked, fetch it and independently verify that the reported problem exists. Stop here (comment, and close only if conclusive) when it does not. | Verified issue, or an AI-handled comment and close/leave-open decision. |
 | **1. Branch + worktree** | Preserve existing work, update from `origin/main`, and create a dedicated request branch in a dedicated worktree. Reuse the primary checkout's environment where safe. | Isolated task files on current `main` with a consistent development environment. |
 | **2. Read** | Read `00-baseline.md` and any specs relevant to the change area. | Mental model of constraints. |
 | **3. Plan** | Describe the intended change. List every spec, ADR, and e2e scenario that will need updates, and assess whether local validation is necessary. | Change plan + impact and validation list. |
@@ -320,6 +354,9 @@ A change is **Done** when all of the following are true:
 8. No secrets or local data are present in the commit.
 9. The branch was pushed and its PR/MR was reviewed and merged into `main`.
 10. The request worktree was removed and the merged request branch was deleted.
+11. If a GitHub issue was linked: the claim was verified before implementation;
+    the issue received a comment in its language with the AI-handled marker;
+    and the issue was closed when the outcome was conclusive.
 
 ### Release / version-tag gate
 
@@ -355,6 +392,8 @@ D164, and D260. GitHub release notes are not a substitute.
 | Modifying baseline frozen decisions without ADR + version bump | Baseline is frozen; changes need formal process |
 | Committing generated artifacts that CI should rebuild | Repo bloat, merge conflicts |
 | Mixing multiple logical changes in one commit without clear message | Loss of history granularity |
+| Implementing a linked GitHub issue without verifying the problem exists | Violates R5; wastes work on invalid or already-fixed claims |
+| Closing a linked GitHub issue without an AI-handled comment in the issue language | Violates R5; leaves no public record of the AI outcome |
 | Tagging a stable app release without updating `packages/shared/src/changelog.ts` (EN + zh-CN) | Violates D164 / release runbook; in-app What's new is empty for that version |
 | Tagging a stable app release while `README.md` / `README.zh-CN.md` still state an older release line, or bypassing `scripts/check-release-docs.mjs` with `--skip-docs-check` | Violates D260 / release runbook; published documentation advertises a version the release no longer matches |
 
@@ -364,7 +403,7 @@ D164, and D260. GitHub release notes are not a substitute.
 
 This workflow spec itself is accepted when:
 
-- [ ] R1/R2/R3/R4 are stated clearly and cross-linked to relevant specs.
+- [ ] R1/R2/R3/R4/R5 are stated clearly and cross-linked to relevant specs.
 - [ ] Development loop is documented and referenced by `AGENTS.md`.
 - [ ] Spec update matrix covers all change types in the baseline.
 - [ ] Git commit rules match existing repo commit style (`docs:`, `chore:`).
@@ -382,4 +421,7 @@ This workflow spec itself is accepted when:
 - [ ] Definition of Done is complete and actionable.
 - [ ] Forbidden practices list covers known risk areas.
 - [ ] `AGENTS.md` points to this doc, `04-e2e-test-plan.md`, and `05-change-checklist.md`.
+- [ ] Linked GitHub issues are verified before implementation, then commented
+      on in the issue language with an AI-handled marker and closed when
+      conclusive.
 - [ ] All indexes updated (NAV, delivery README, spec README, docs README, BOARD).

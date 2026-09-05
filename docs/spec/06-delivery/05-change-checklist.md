@@ -5,6 +5,28 @@
 
 ---
 
+## 0. GitHub Issue Intake
+
+When the prompt includes a GitHub issue URL or an unambiguous issue number for
+this repository, complete this gate before the request-start checklist:
+
+- [ ] Issue title, body, labels, comments, and state were fetched.
+- [ ] The reported problem was independently verified (reproduced or evidenced
+  for a bug; confirmed missing or incomplete and in scope for a feature).
+- [ ] Implementation started only after the problem was confirmed to exist.
+- [ ] If the problem does not exist: the issue received a verification comment
+  and was closed when the conclusion was clear, or left open when inconclusive.
+- [ ] After a confirmed fix was merged: the issue received a resolution comment
+  and was closed.
+- [ ] The comment uses the issue's language and ends with the AI-handled marker
+  (`Handled by AI.` or `本回复由 AI 处理。`).
+- [ ] No unrelated issue was commented on or closed.
+- [ ] Git push was not inferred from the issue link.
+
+See [R5 — Verify linked GitHub issues](03-ai-development-workflow.md#r5--verify-linked-github-issues-before-work-then-reply-and-close).
+
+---
+
 ## 1. Request Start Checklist
 
 Before editing any file for a new request:
@@ -157,5 +179,6 @@ Before marking work complete, verify **all** of the following:
 | 8 | No secrets or local data in commit | [§4.4 Never commit](03-ai-development-workflow.md#44-never-commit) |
 | 9 | PR/MR merged into `main`; request worktree and branch removed | [R4 — Request branch + worktree + merge gate](03-ai-development-workflow.md#r4--request-branch--worktree--merge-gate) |
 | 10 | No merged worktree left on disk; `git worktree list` has no stale entry for this request | [§6.1 Merge Cleanup Checklist](#61-merge-cleanup-checklist) |
+| 11 | If a GitHub issue was linked: verified before work; commented in the issue language with the AI-handled marker; closed when conclusive | [R5 — Verify linked GitHub issues](03-ai-development-workflow.md#r5--verify-linked-github-issues-before-work-then-reply-and-close) |
 
 If any gate fails, the change is **not Done**.

@@ -10,6 +10,40 @@ Follow:
 
 * [Baseline](docs/spec/00-baseline.md)
 
+## GitHub Issue Handling
+
+When the user provides a GitHub issue URL (or an unambiguous issue number for
+this repository), treat it as an intake gate. Do not start implementation
+until the reported problem has been independently verified.
+
+1. Fetch the issue (title, body, labels, comments, and state).
+2. Decide whether the claim is real in the current codebase:
+   - Bug: reproduce it, or show concrete code/spec evidence that it exists.
+   - Feature or improvement: confirm the requested behavior is actually missing
+     or incomplete, and in scope.
+3. If the problem does **not** exist (already fixed, invalid, or a
+   misunderstanding): comment on the issue with the verification evidence, mark
+   the comment as AI-handled, and close the issue when the conclusion is
+   clear. If verification is inconclusive, comment with what was tried and
+   leave the issue open.
+4. If the problem **does** exist: follow the isolated development workflow,
+   implement the smallest coherent fix, merge into local `main`, then comment
+   on the issue and close it.
+5. Write the issue comment in the issue's language (the language of the
+   original title and body). Repository docs, code, and commits stay English.
+6. End every issue comment with an explicit AI-handled marker:
+   - English issues: `Handled by AI.`
+   - Chinese issues: `本回复由 AI 处理。`
+7. An issue link authorizes commenting on and closing **that** issue. It does
+   not authorize a git push. Remote publishing remains opt-in.
+
+Do not comment on or close unrelated issues. Do not reopen a closed issue
+unless the user explicitly asks.
+
+See:
+
+* [AI development workflow — R5](docs/spec/06-delivery/03-ai-development-workflow.md#r5--verify-linked-github-issues-before-work-then-reply-and-close)
+
 ## AI-Generated Page Content
 
 AI-generated pages must not contain redundant explanatory text. Keep visible
@@ -251,6 +285,9 @@ See:
 * [ ] The merged request branch was deleted
 * [ ] Remote publishing was skipped unless explicitly requested
 * [ ] If pushed, the remote, branch, commit set, and Git identity were verified
+* [ ] If the request included a GitHub issue: the claim was verified before
+      implementation; the issue was commented on in its language, marked as
+      AI-handled, and closed when the outcome was conclusive
 
 ## Final Report
 
@@ -264,3 +301,4 @@ Report:
 * Merge result
 * Worktree and branch cleanup result
 * Push target and result, or confirmation that nothing was pushed
+* Linked GitHub issue, verification result, comment, and close result (or N/A)
