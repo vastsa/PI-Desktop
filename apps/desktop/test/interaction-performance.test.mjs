@@ -65,22 +65,30 @@ test("stream rendering avoids duplicate frame state and coalesces following", ()
   // commit that reveals it, or the reveal shows one empty frame (ADR 0137).
   assert.match(
     transcript,
-    /const renderedMessages =\s*firstCommit \|\| paneRevealed \? messages : deferredMessages/,
+    /const revealSnapshot = firstCommit \|\| paneRevealed;/,
   );
-  assert.match(transcript, /const \{ entries, visible \} = useMemo/);
   assert.match(
     transcript,
-    /buildTranscriptEntries\(renderedMessages, renderedCompactions\)/,
+    /const renderedMessages = revealSnapshot \? messages : deferredMessages/,
+  );
+  assert.match(
+    transcript,
+    /const historyProjection = useMemo\([\s\S]*?buildTranscriptEntries\(renderedMessages, renderedCompactions\)/,
+  );
+  assert.match(
+    transcript,
+    /const liveProjection = useMemo\([\s\S]*?buildTranscriptEntries\(messages, compactions\)/,
   );
   assert.match(transcript, /const TranscriptHistory = memo/);
   assert.match(transcript, /const TranscriptTail = memo/);
   assert.match(transcript, /function transcriptEntryEqual/);
-  // Memoized on `entries`: a re-render that changed no message must hand
-  // `TranscriptHistory` the same array so its comparator bails on identity
-  // instead of deep-walking every mounted row (D261).
+  // Memoized on the history projection: a re-render that changed no message
+  // must hand `TranscriptHistory` the same array so its comparator bails on
+  // identity instead of deep-walking every mounted row (D261). The keys are
+  // strings, so streaming keeps `allHistoryEntries` stable tick after tick.
   assert.match(
     transcript,
-    /const allHistoryEntries = useMemo\(\(\) => entries\.slice\(0, -1\), \[entries\]\)/,
+    /const allHistoryEntries = useMemo\([\s\S]*?tailIsDeferredTail[\s\S]*?historyProjection\.entries/,
   );
   assert.match(transcript, /<TranscriptHistory entries=\{historyEntries\}/);
   assert.match(transcript, /<TranscriptTail[\s\S]*?entry=\{tailEntry\}/);
