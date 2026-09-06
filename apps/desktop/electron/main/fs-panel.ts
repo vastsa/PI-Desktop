@@ -220,7 +220,20 @@ async function resolveReferencedPath(
     );
   }
   if (isAbsolute(trimmed)) {
-    return resolveAbsoluteAttachmentPath(dataRoot, trimmed);
+    // Absolute refs inside the data root resolve through the existing
+    // containment checks. Absolute refs outside both roots are accepted only
+    // when they name a real regular file: the caller is an explicit user click
+    // on a chat file reference (preview intent), never a directory walk. The
+    // file still goes through a real-path existence check, so a dangling or
+    // escaping path can never be served.
+    const insideDataRoot = await resolveAbsoluteAttachmentPath(dataRoot, trimmed);
+    if (insideDataRoot) return insideDataRoot;
+    try {
+      const info = await stat(trimmed);
+      return info.isFile() ? trimmed : null;
+    } catch {
+      return null;
+    }
   }
   return workspaceRoot
     ? resolveRealPathWithinRoot(workspaceRoot, trimmed)
@@ -284,11 +297,44 @@ export async function readWorkspaceFile(
 ): Promise<FsReadResult> {
   const target = await resolveRealPathWithinRoot(root, rel);
   if (!target) throw new Error("path escapes workspace root");
+  return readFileResult(target, rel);
+}
+
+/**
+ * Read a workspace file, a stored message attachment (`attachments/<sha256>`),
+ * or an absolute path inside the data root (scratch/attachments) into a
+ * bounded `FsReadResult` for the work panel file viewer. The ref resolution is
+ * shared with in-chat image display (`resolveReferencedPath`), so an attachment
+ * or pasted-file chip can open in the same viewer without a separate channel.
+ * Every resolution stays inside an allowed root after real-path checks. When a
+ * stored `mimeType` is available it wins over extension sniffing, because
+ * pasted attachments are stored as extension-less `attachments/<sha256>` blobs.
+ */
+export async function readReferencedFile(
+  dataRoot: string,
+  workspaceRoot: string | null,
+  ref: string,
+  mimeType?: string,
+): Promise<FsReadResult> {
+  const target = await resolveReferencedPath(dataRoot, workspaceRoot, ref);
+  if (!target) throw new Error("path outside allowed roots");
+  return readFileResult(target, ref, mimeType);
+}
+
+async function readFileResult(
+  target: string,
+  displayPath: string,
+  mimeType?: string,
+): Promise<FsReadResult> {
   const info = await stat(target);
   if (!info.isFile()) throw new Error("not a file");
 
-  const ext = rel.split(".").pop()?.toLowerCase() ?? "";
-  const imageMime = IMAGE_MIME[ext];
+  const declared = String(mimeType ?? "").trim().toLowerCase();
+  const ext = displayPath.split(".").pop()?.toLowerCase() ?? "";
+  const imageMime =
+    declared.startsWith("image/") && declared !== "image/*"
+      ? declared
+      : (IMAGE_MIME[ext] ?? "");
   if (imageMime) {
     if (info.size > MAX_IMAGE_BYTES) {
       return { kind: "tooLarge", size: info.size };

@@ -151,7 +151,7 @@ import {
   modelInfoFromModelsDev,
 } from "./models-dev-catalog";
 import { OAUTH_AUTH_KIND, VendorOAuth } from "./oauth";
-import { listDir, readReferencedImage, readWorkspaceFile, resolveWithinRoot } from "./fs-panel";
+import { listDir, readReferencedFile, readReferencedImage, readWorkspaceFile, resolveWithinRoot } from "./fs-panel";
 import { getWorkspaceFileIndex } from "./fs-index";
 import { saveComposerPasteFiles } from "./composer-paste";
 import { builtinComposerCommands, builtinPaletteItems } from "./builtin-commands";
@@ -5554,6 +5554,39 @@ async function bootBackends() {
       }
     },
     getAppVersion: () => APP_VERSION,
+    // The Files plugin hands the embedded browser a workspace-relative path
+    // (HTML file) to render as a webpage. Resolution stays inside the
+    // workspace root, mirroring the BrowserPreview tool's containment.
+    openInBrowser: (workspaceRelativePath: string) => {
+      const workspacePath = (globalThis as any).__piWorkspacePath as string | null;
+      // The plugin bridge has no session id; the renderer falls back to the
+      // active session when the event carries an empty one.
+      const sessionId = "";
+      void (async () => {
+        try {
+          const res = (await host?.call("workspace.get")) as
+            | { workspace: { path?: string } | null }
+            | undefined;
+          const root = res?.workspace?.path || workspacePath || "";
+          if (!root) {
+            sendToRenderer(IPC.event.browserPreview, { sessionId, path: workspaceRelativePath });
+            return;
+          }
+          const { resolveLocalFile } = await import("./browser-view");
+          if (!resolveLocalFile(workspaceRelativePath, root)) {
+            logger.app("diagnostics", "warn", "browser preview rejected outside workspace", {
+              data: { path: workspaceRelativePath, root },
+            });
+            return;
+          }
+          sendToRenderer(IPC.event.browserPreview, { sessionId, path: workspaceRelativePath });
+        } catch (error) {
+          logger.app("diagnostics", "warn", "browser preview failed", {
+            data: { path: workspaceRelativePath, error: String(error) },
+          });
+        }
+      })();
+    },
   });
   try {
     const ws = await host!.call<{ workspace: { path?: string } | null }>("workspace.get");
@@ -6799,9 +6832,43 @@ function registerIpc() {
     return { entries: await listDir(root, String(input.path ?? "")) };
   });
 
-  handle(IPC.invoke.fsRead, async (input: { path?: string } = {}) => {
-    const root = await requireWorkspaceRoot();
-    return readWorkspaceFile(root, String(input.path ?? ""));
+  handle(IPC.invoke.fsRead, async (input: { path?: string; mimeType?: string } = {}) => {
+    const requested = String(input.path ?? "").trim();
+    try {
+      // Workspace-relative paths keep the existing behavior. Attachment refs
+      // (`attachments/<sha256>`) and absolute paths inside the data root resolve
+      // through the same containment checks as in-chat image display, so a
+      // message attachment can open in the file viewer too. The stored mimeType
+      // (when present) lets the viewer render extension-less attachment images.
+      if (!requested.startsWith("attachments/") && !isAbsolute(requested)) {
+        const root = await requireWorkspaceRoot();
+        return await readWorkspaceFile(root, requested);
+      }
+      let workspaceRoot: string | null = null;
+      try {
+        workspaceRoot = await requireWorkspaceRoot();
+      } catch {
+        workspaceRoot = null;
+      }
+      return await readReferencedFile(dataDir, workspaceRoot, requested, input.mimeType);
+    } catch (error) {
+      logger.app("diagnostics", "warn", "fs.read failed", {
+        code: "FS_READ_FAILED",
+        data: {
+          path: requested,
+          mimeType: input.mimeType,
+          error: String(error instanceof Error ? error.message : error),
+          workspaceRoot: await (async () => {
+            try {
+              return (await requireWorkspaceRoot());
+            } catch (e) {
+              return String(e instanceof Error ? e.message : e);
+            }
+          })(),
+        },
+      });
+      throw error;
+    }
   });
 
   // In-chat image display (attachments, pasted files, and local Markdown
@@ -6828,8 +6895,14 @@ function registerIpc() {
   );
 
   handle(IPC.invoke.fsReveal, async (input: { path?: string } = {}) => {
-    const root = await requireWorkspaceRoot();
-    const target = resolveWithinRoot(root, String(input.path ?? ""));
+    const requested = String(input.path ?? "").trim();
+    // Workspace-relative paths resolve inside the root; absolute paths to real
+    // files (chat references outside the workspace) reveal directly.
+    const target = isAbsolute(requested)
+      ? existsSync(requested)
+        ? resolve(requested)
+        : null
+      : resolveWithinRoot(await requireWorkspaceRoot(), requested);
     if (!target) {
       throw Object.assign(new Error("path escapes workspace root"), {
         errorCode: ErrorCodes.INVALID_ARGUMENT,

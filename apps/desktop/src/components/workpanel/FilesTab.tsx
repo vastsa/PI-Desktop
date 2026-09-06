@@ -203,33 +203,39 @@ export function FilesTab() {
     [dirs, loadDir],
   );
 
-  const openFile = useCallback(async (rel: string) => {
+  const openFile = useCallback(async (rel: string, mimeType?: string) => {
     setSelected(rel);
     setFile(null);
     setFileError(false);
     try {
-      setFile(await api.fsRead(rel));
+      setFile(await api.fsRead(rel, mimeType));
     } catch {
       setFileError(true);
     }
   }, []);
 
   // Chat-initiated previews: open the file and expand its ancestor folders
-  // so "back" lands on a tree that reveals it.
+  // so "back" lands on a tree that reveals it. Absolute paths and attachment
+  // refs (`attachments/<sha256>`) live outside the workspace tree, so they
+  // only open the file without attempting to expand a folder that cannot
+  // exist in the listing.
   useEffect(() => {
     if (!fileRequest || !root) return;
     if (fileRequest.seq === handledFileRequestSeq) return;
     handledFileRequestSeq = fileRequest.seq;
-    const parts = fileRequest.path.split("/").slice(0, -1);
-    const ancestors: string[] = [];
-    let acc = "";
-    for (const part of parts) {
-      acc = acc ? `${acc}/${part}` : part;
-      ancestors.push(acc);
+    const isExternal = fileRequest.path.startsWith("/") || fileRequest.path.startsWith("attachments/");
+    if (!isExternal) {
+      const parts = fileRequest.path.split("/").slice(0, -1);
+      const ancestors: string[] = [];
+      let acc = "";
+      for (const part of parts) {
+        acc = acc ? `${acc}/${part}` : part;
+        ancestors.push(acc);
+      }
+      setExpanded((prev) => new Set([...prev, ...ancestors]));
+      for (const dir of ancestors) void loadDir(dir);
     }
-    setExpanded((prev) => new Set([...prev, ...ancestors]));
-    for (const dir of ancestors) void loadDir(dir);
-    void openFile(fileRequest.path);
+    void openFile(fileRequest.path, fileRequest.mimeType);
   }, [fileRequest, root, loadDir, openFile]);
 
   const renderDir = (rel: string, depth: number): React.ReactNode => {

@@ -708,7 +708,11 @@ export const api = {
     invoke<BrowserState | null>(IPC.invoke.browserGetState),
   fsList: (path?: string) =>
     invoke<{ entries: FsEntry[] }>(IPC.invoke.fsList, { path: path ?? "" }),
-  fsRead: (path: string) => invoke<FsReadResult>(IPC.invoke.fsRead, { path }),
+  fsRead: (path: string, mimeType?: string) =>
+    invoke<FsReadResult>(IPC.invoke.fsRead, {
+      path,
+      ...(mimeType ? { mimeType } : {}),
+    }),
   fsReadImageDataUrl: (ref: string, mimeType?: string) =>
     invoke<FsImageDataUrlResult>(IPC.invoke.fsReadImageDataUrl, {
       ref,

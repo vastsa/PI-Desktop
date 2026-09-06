@@ -1709,7 +1709,8 @@ function PlanningIndicator({ kind }: { kind: ProposalKind }) {
  * A user-message image attachment rendered as a real thumbnail. The host
  * resolves the ref (workspace-relative, `attachments/<sha256>`, or absolute
  * scratch/attachment) into a bounded data URL; an unresolvable load falls back
- * to the compact chip so the message stays readable.
+ * to the compact chip so the message stays readable. Clicking opens the file
+ * viewer on the attachment (the host resolves the same ref for `fsRead`).
  */
 function MessageAttachmentImage({ attachment }: { attachment: MessageAttachment }) {
   const dataUrl = useReferencedImageDataUrl(attachment.ref, attachment.mimeType);
@@ -1721,9 +1722,6 @@ function MessageAttachmentImage({ attachment }: { attachment: MessageAttachment 
       </div>
     );
   }
-  const canOpenInWorkPanel =
-    !attachment.ref.trim().startsWith("attachments/") &&
-    !attachment.ref.trim().startsWith("/");
   return (
     <button
       type="button"
@@ -1731,9 +1729,9 @@ function MessageAttachmentImage({ attachment }: { attachment: MessageAttachment 
       role="listitem"
       title={`${attachment.name} — ${attachment.ref}`}
       onClick={() => {
-        if (canOpenInWorkPanel) {
-          useAppStore.getState().openFileInWorkPanel(attachment.ref);
-        }
+        useAppStore
+          .getState()
+          .openFileInWorkPanel(attachment.ref, attachment.mimeType);
       }}
     >
       <img src={dataUrl} alt={attachment.name} />
@@ -2613,31 +2611,72 @@ export const ChatTranscript = memo(function ChatTranscript({
     return () => ro.disconnect();
   }, [scheduleFollowScroll]);
 
-  // Streaming tokens are deferred so the full historical transcript tree does
-  // not rebuild at the same priority as the tail. The pane's own first commit is
-  // never deferred: its content must be on screen in the commit that reveals it,
-  // otherwise the reveal shows one empty frame.
+  // The transcript is split into two projections with different freshness
+  // contracts. Rebuilding the completed-turn tree is the expensive half, so it
+  // is allowed to trail a starved deferred render; the mounted row tree keeps
+  // its identity while it lags. The pane's own first commit is never deferred:
+  // its content must be on screen in the commit that reveals it, otherwise the
+  // reveal shows one empty frame.
   const firstCommitRef = useRef(true);
   const firstCommit = firstCommitRef.current;
   // A retained pane can receive a newer live snapshot while it is hidden. Do
   // not let useDeferredValue reveal its previous frame first; the reveal itself
   // is a navigation boundary and must paint the snapshot selected for it.
   const paneRevealed = paneVisible && !wasPaneVisibleRef.current;
+  const revealSnapshot = firstCommit || paneRevealed;
   const deferredMessages = useDeferredValue(messages);
   const deferredCompactions = useDeferredValue(compactions);
-  const renderedMessages =
-    firstCommit || paneRevealed ? messages : deferredMessages;
-  const renderedCompactions =
-    firstCommit || paneRevealed ? compactions : deferredCompactions;
-  const { entries, visible } = useMemo(
+  // History is projected from the deferred snapshot. Streaming tokens update
+  // the tail, so deferring keeps the full historical tree from rebuilding at
+  // the same priority as the tail. The reveal snapshot bypasses the deferral
+  // so the reveal paints the exact snapshot selected for it.
+  const renderedMessages = revealSnapshot ? messages : deferredMessages;
+  const renderedCompactions = revealSnapshot ? compactions : deferredCompactions;
+  const historyProjection = useMemo(
     () => buildTranscriptEntries(renderedMessages, renderedCompactions),
     [renderedMessages, renderedCompactions],
   );
+  // The tail - the newest activity (a just-sent user message or the running
+  // assistant turn) - is projected from the LIVE message list on every commit.
+  // A starved deferred render must never pin the task the user is watching to
+  // an old frame; that is exactly the bug where a long session's transcript
+  // froze on a historical turn's thinking. The live projection is pure list
+  // work over the messages; the deferred projection above is what keeps the
+  // mounted row tree out of the streaming reconciliation path.
+  const liveProjection = useMemo(
+    () => buildTranscriptEntries(messages, compactions),
+    [messages, compactions],
+  );
+  // History and tail may briefly disagree on where the boundary sits while the
+  // deferred snapshot lags the live one. The deferred tail is sliced into the
+  // history only when it is the SAME entry as the live tail (same key, i.e. a
+  // still-running turn whose deferred copy is stale). If the deferred snapshot
+  // is behind by a completed turn, that deferred tail is finished history and
+  // must stay in the history list instead of being sliced away - otherwise the
+  // just-completed turn would vanish until the deferred snapshot caught up.
+  const deferredTailKey = historyProjection.entries.length
+    ? transcriptEntryKey(
+        historyProjection.entries[historyProjection.entries.length - 1],
+      )
+    : undefined;
+  const liveTailKey = liveProjection.entries.length
+    ? transcriptEntryKey(liveProjection.entries[liveProjection.entries.length - 1])
+    : undefined;
+  const tailIsDeferredTail =
+    deferredTailKey !== undefined && deferredTailKey === liveTailKey;
   // Memoized so a re-render that changed no message (jump pill, loading row,
   // window growth) hands `TranscriptHistory` the same array, letting its
-  // comparator bail on identity instead of walking every mounted row.
-  const allHistoryEntries = useMemo(() => entries.slice(0, -1), [entries]);
-  const tailEntry = entries.at(-1);
+  // comparator bail on identity instead of walking every mounted row. The keys
+  // are strings, so streaming a turn changes the tail's content but not this
+  // derivation, keeping `allHistoryEntries` stable tick after tick.
+  const allHistoryEntries = useMemo(
+    () =>
+      tailIsDeferredTail
+        ? historyProjection.entries.slice(0, -1)
+        : historyProjection.entries,
+    [historyProjection.entries, tailIsDeferredTail],
+  );
+  const tailEntry = liveProjection.entries.at(-1);
   // Published for `reachTop`, which is declared above this projection but only
   // runs from a scroll event, long after this render committed.
   historyLengthRef.current = allHistoryEntries.length;
@@ -2718,15 +2757,15 @@ export const ChatTranscript = memo(function ChatTranscript({
 
   // The minimap must describe the mounted rows, not every loaded message: it
   // resolves a click by looking up the marker's node in the scroller, so a dash
-  // for a withheld row would jump nowhere (D261).
+  // for a withheld row would jump nowhere (D261). It is derived from the same
+  // windowed history plus the live tail that are actually rendered, so it stays
+  // truthful whether the transcript window is bounded or not.
   const minimapMessages = useMemo(
     () =>
-      transcriptWindow.bounded
-        ? transcriptEntryMessages(
-            tailEntry ? [...historyEntries, tailEntry] : historyEntries,
-          )
-        : visible,
-    [historyEntries, tailEntry, transcriptWindow.bounded, visible],
+      transcriptEntryMessages(
+        tailEntry ? [...historyEntries, tailEntry] : historyEntries,
+      ),
+    [historyEntries, tailEntry],
   );
   const hasEarlierHistory = transcriptWindow.hiddenAbove > 0 || hasMoreBefore;
 
@@ -2819,7 +2858,11 @@ export const ChatTranscript = memo(function ChatTranscript({
     transcriptWindow.hiddenAbove,
   ]);
 
-  const lastEntry = entries[entries.length - 1];
+  // The "running now" signals must read the LIVE tail: `lastEntry` decides
+  // whether the transcript shows a working row / answer row. If it were derived
+  // from the deferred history snapshot, a starved deferred render would leave a
+  // running task looking idle (or stuck on an old turn's state).
+  const lastEntry = tailEntry;
   const lastTurnPart =
     lastEntry?.kind === "assistant-turn" ? lastEntry.parts.at(-1) : undefined;
   const activeToolGroup = isRunning && lastTurnPart?.kind === "activity";

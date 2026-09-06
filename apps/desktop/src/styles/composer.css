@@ -218,6 +218,15 @@
   white-space: nowrap;
 }
 
+.composer-file-reference-thumb {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  background: var(--ds-bg-secondary);
+}
+
 .composer-file-reference-remove {
   display: inline-flex;
   width: 18px;

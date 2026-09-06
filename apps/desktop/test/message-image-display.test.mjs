@@ -55,7 +55,7 @@ test("user message image attachments render as thumbnails", () => {
   assert.match(transcript, /className="message-attachment-image"/);
   assert.match(
     transcript,
-    /canOpenInWorkPanel =[\s\S]*?openFileInWorkPanel\(attachment\.ref\)/,
+    /className="message-attachment-image"[\s\S]*?openFileInWorkPanel\(\s*attachment\.ref,\s*attachment\.mimeType\s*\)/,
   );
   assert.match(
     transcript,

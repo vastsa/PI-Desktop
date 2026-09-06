@@ -25,8 +25,16 @@ const KNOWN_BARE_NAMES = new Set([
   "CHANGELOG",
 ]);
 
+/**
+ * A pathy token: optional leading `/` (absolute) or `./`/`../` prefix, then
+ * segments of word chars, dots, @, +, - and spaces (spaces only where a path
+ * could plausibly carry them — macOS/Windows paths like
+ * `/Users/name/Documents/My Project/file.ts`), optionally a trailing
+ * `:line[:col]` ref. A bare token must still end with a known extension or
+ * bare name to count as a file (checked by `parseFileRef`).
+ */
 const FILE_TOKEN_RE =
-  /^\/?(?:\.{1,2}\/)?[\w@+.-]+(?:\/[\w@+.-]+)*(?::\d+(?::\d+)?)?$/;
+  /^\/?(?:\.{1,2}\/)?[\w@+.-]+(?:(?:\/|\s)[\w@+.-]+)*(?::\d+(?::\d+)?)?$/;
 
 export function isHttpUrl(text: string): boolean {
   return /^https?:\/\/\S+$/i.test(text.trim());
@@ -67,11 +75,16 @@ export function toWorkspaceRel(path: string, root?: string | null): string | nul
   if (!path) return null;
   if (path.startsWith("~")) return null;
   if (path.startsWith("/")) {
-    if (!root) return null;
+    // Inside the workspace root, shorten to a workspace-relative path so the
+    // file viewer lists it in context. Absolute paths outside the workspace
+    // are passed through as-is: the host's read channel accepts a real file
+    // outside the roots for explicit chat-reference previews, while the file
+    // tree itself stays workspace-scoped.
+    if (!root) return path;
     const cleanRoot = root.replace(/\/+$/, "");
     if (path === cleanRoot) return null;
-    if (!path.startsWith(cleanRoot + "/")) return null;
-    return path.slice(cleanRoot.length + 1);
+    if (path.startsWith(cleanRoot + "/")) return path.slice(cleanRoot.length + 1);
+    return path;
   }
   const rel = path.replace(/^\.\//, "");
   if (!rel || rel.startsWith("../") || rel === "..") return null;
@@ -122,7 +135,7 @@ export type ChatTextSegment =
   | { kind: "target"; text: string; target: ChatPreviewTarget };
 
 const SCAN_RE =
-  /https?:\/\/[^\s<>"'()[\]{}]+|(?:\.{0,2}\/)?[\w@+.-]+(?:\/[\w@+.-]+)+(?::\d+(?::\d+)?)?|[\w@+-][\w@+.-]*\.[A-Za-z0-9]{1,8}\b/g;
+  /https?:\/\/[^\s<>"'()[\]{}]+|(?:\.{0,2}\/)?[\w@+ .-]+(?:\/[\w@+ .-]+)+(?::\d+(?::\d+)?)?|[\w@+-][\w@+.-]*\.[A-Za-z0-9]{1,8}\b/g;
 
 /**
  * Split plain chat text (user messages) into literal runs and previewable
@@ -137,10 +150,13 @@ export function splitChatText(
   for (const match of text.matchAll(SCAN_RE)) {
     const raw = match[0];
     const start = match.index ?? 0;
-    const target = resolvePreviewTarget(raw, root);
+    // The scanner may include a leading space before a path segment; trim
+    // before resolving and display the cleaned token.
+    const cleaned = raw.trim();
+    const target = resolvePreviewTarget(cleaned, root);
     if (!target) continue;
     if (start > last) segments.push({ kind: "text", text: text.slice(last, start) });
-    segments.push({ kind: "target", text: raw, target });
+    segments.push({ kind: "target", text: cleaned, target });
     last = start + raw.length;
   }
   if (segments.length === 0) return [{ kind: "text", text }];

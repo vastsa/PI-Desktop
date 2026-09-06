@@ -8,6 +8,9 @@ export type WorkPanelTab = {
   id: string;
   kind: WorkPanelTabKind;
   resource?: string;
+  /** Stored attachment mimeType, carried so the file viewer can render
+   * extension-less `attachments/<sha256>` images (D-…). */
+  mimeType?: string;
 };
 
 export type WorkPanelTabsState = {
@@ -17,7 +20,7 @@ export type WorkPanelTabsState = {
 
 export type WorkPanelContext = WorkPanelTabsState & {
   open: boolean;
-  fileRequest: { path: string; seq: number } | null;
+  fileRequest: { path: string; seq: number; mimeType?: string } | null;
 };
 
 export type ReviewArtifactEvent = {
@@ -162,9 +165,17 @@ export function normalizeWorkPanelFilePath(path: string): string {
   return absolute ? `/${normalized}` : normalized;
 }
 
-export function fileWorkPanelTab(path: string): WorkPanelTab {
+export function fileWorkPanelTab(
+  path: string,
+  mimeType?: string,
+): WorkPanelTab {
   const resource = normalizeWorkPanelFilePath(path);
-  return { id: `file:${resource}`, kind: "file", resource };
+  return {
+    id: `file:${resource}`,
+    kind: "file",
+    resource,
+    ...(mimeType ? { mimeType } : {}),
+  };
 }
 
 export function toolResultRoot(result: unknown): string | null {

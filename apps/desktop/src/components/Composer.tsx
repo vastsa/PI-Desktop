@@ -32,6 +32,7 @@ import { isActivePlanExecution } from "../lib/plan-mode-state";
 import { headAsk, queuedAskCount } from "../lib/pending-asks";
 import type { QueuedPrompt } from "../lib/queued-prompts";
 import { runPaletteCommand } from "../lib/commands";
+import { useReferencedImageDataUrl } from "../lib/use-referenced-image-data-url";
 import {
   composerModelBadges,
   composerModelMatchesQuery,
@@ -103,6 +104,33 @@ function createFileReference(
     ...(metadata?.mimeType ? { mimeType: metadata.mimeType } : {}),
     ...(metadata?.token ? { token: metadata.token } : {}),
   };
+}
+
+/**
+ * Inline thumbnail for an image file reference in the composer. The host
+ * resolves the ref (workspace-relative, `attachments/<sha256>`, or absolute
+ * scratch/attachment path) into a bounded data URL; an unresolvable load
+ * falls back to the generic image icon so the chip stays readable.
+ */
+function ComposerFileReferenceImage({
+  fileReference,
+}: {
+  fileReference: ComposerFileReference;
+}) {
+  const dataUrl = useReferencedImageDataUrl(
+    fileReference.path,
+    fileReference.mimeType,
+  );
+  if (!dataUrl) {
+    return <IconImage size={13} aria-hidden />;
+  }
+  return (
+    <img
+      className="composer-file-reference-thumb"
+      src={dataUrl}
+      alt={fileReference.name}
+    />
+  );
 }
 
 /**
@@ -1558,7 +1586,7 @@ export function Composer({
                     aria-label={`${fileReference.name} — ${fileReference.path}`}
                   >
                     {fileReference.kind === "image" ? (
-                      <IconImage size={13} aria-hidden />
+                      <ComposerFileReferenceImage fileReference={fileReference} />
                     ) : (
                       <IconFileText size={13} aria-hidden />
                     )}

@@ -507,9 +507,13 @@ function AppShell() {
     // Agent-driven HTML preview: surface the browser tab when the agent
     // opens a workspace file in the embedded browser (BrowserPreview tool).
     const offBrowserPreview = api.onBrowserPreview((event) => {
+      const sessionId =
+        event.sessionId ||
+        useAppStore.getState().activeSessionId ||
+        "";
       useAppStore
         .getState()
-        .openWorkPanelTabForSession(event.sessionId, {
+        .openWorkPanelTabForSession(sessionId, {
           ...toolWorkPanelTab("browser"),
           resource: event.path,
         });

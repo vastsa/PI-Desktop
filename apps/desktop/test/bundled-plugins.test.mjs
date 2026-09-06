@@ -37,6 +37,8 @@ test("the Files view uses only public bridge channels", () => {
   for (const channel of [
     "fs.list",
     "fs.readText",
+    "fs.readImageDataUrl",
+    "fs.previewInBrowser",
     "fs.reveal",
     "workspace.get",
     "app.getAppearance",
@@ -75,6 +77,13 @@ test("the Files view keeps the former browser workflow while staying plugin-owne
   assert.match(view, /fs\.readText/);
   assert.match(view, /fs\.reveal/);
   assert.match(view, /text\.includes\("\\0"\)/);
+  assert.match(view, /renderImage\(dataUrl\)/);
+  assert.match(view, /fs\.readImageDataUrl/);
+  assert.match(view, /\.viewer-image img/);
+  assert.match(view, /fs\.previewInBrowser/);
+  assert.match(view, /renderMarkdown\(text\)/);
+  assert.match(view, /escapeHtml\(/);
+  assert.match(view, /isMarkdownPath/);
   assert.match(view, /appearance:changed/);
   assert.match(view, /locale.*startsWith\("zh"\)/);
   assert.match(view, /retry/);
