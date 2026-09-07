@@ -337,7 +337,7 @@ export function addUsage(
 export type MessageAttachment = {
   kind: "image" | "file";
   name: string;
-  /** Workspace-relative path, `attachments/<sha256>`, or absolute scratch path. */
+  /** Workspace-relative path or session-scratch absolute path. */
   ref: string;
   mimeType?: string;
   size?: number;
@@ -1773,16 +1773,6 @@ export type FsReadResult = {
   /** Base64 data URL when kind is "image". */
   dataUrl?: string;
   size: number;
-};
-
-/** Result of reading a referenced image as a data URL for in-chat display. */
-export type FsImageDataUrlResult = {
-  kind: "image" | "missing" | "notImage" | "tooLarge";
-  /** Base64 data URL when kind is "image". */
-  dataUrl?: string;
-  size?: number;
-  /** Stable error code for callers that need to distinguish failures. */
-  errorCode?: string;
 };
 
 export type AgentInstructionFile = {

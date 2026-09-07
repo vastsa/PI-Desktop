@@ -41,7 +41,6 @@ describe("Plan protocol contracts", () => {
       "pi-desktop/providers/refreshModelCatalog",
     );
     expect(IPC_WHITELIST.has(IPC.invoke.providersRefreshModelCatalog)).toBe(true);
-    expect(IPC_WHITELIST.has(IPC.invoke.fsReadImageDataUrl)).toBe(true);
     expect(IPC_WHITELIST.has(IPC.invoke.windowSetWorkPanelChatWidth)).toBe(true);
     expect(IPC_WHITELIST.has(IPC.event.windowWorkPanelResize)).toBe(true);
     expect(IPC.invoke.appOpenFeedback).toBe("pi-desktop/app/openFeedback");

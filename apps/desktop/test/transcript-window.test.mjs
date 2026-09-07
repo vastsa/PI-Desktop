@@ -251,15 +251,9 @@ test("the minimap keeps message dashes reachable and represents withheld history
   assert.match(transcript, /messages=\{minimapMessages\}/);
   assert.match(transcript, /hasEarlier=\{hasEarlierHistory\}/);
   assert.match(transcript, /onRevealEarlier=\{revealEarlierHistory\}/);
-  // The windowed history is sliced from the bounded projection, then the
-  // minimap derives from the mounted rows plus the live tail.
   assert.match(
     transcript,
-    /transcriptWindow\.bounded\s*\?\s*allHistoryEntries\.slice\(-transcriptWindow\.mounted\)/,
-  );
-  assert.match(
-    transcript,
-    /transcriptEntryMessages\(\s*tailEntry \? \[\.\.\.historyEntries, tailEntry\] : historyEntries/,
+    /transcriptWindow\.bounded\s*\?\s*transcriptEntryMessages\(/,
   );
   assert.match(
     transcript,

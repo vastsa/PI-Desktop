@@ -167,8 +167,7 @@ test("reopening a running session never lets durable detail erase its live tail"
   // A warm pane must not reveal one deferred frame from before the stream was
   // captured; its first visible render uses the selected live snapshot.
   assert.match(transcript, /const paneRevealed = paneVisible && !wasPaneVisibleRef\.current/);
-  assert.match(transcript, /const revealSnapshot = firstCommit \|\| paneRevealed;/);
-  assert.match(transcript, /const renderedMessages = revealSnapshot \? messages : deferredMessages/);
+  assert.match(transcript, /firstCommit \|\| paneRevealed \? messages : deferredMessages/);
 });
 
 test("reopening an idle session keeps a completed live tail until the durable page has it (D324)", () => {
@@ -201,7 +200,7 @@ test("a cold switch keeps the visible pane legible instead of dimming it", () =>
   // left. The transcript keeps full contrast: the dim was itself a visible flash.
   assert.match(
     styles,
-    /\.chat-surface\.session-switching > \.composer-slot \.composer-dock\s*\{\s*pointer-events: none;\s*\}/,
+    /\.chat-surface\.session-switching > \.composer-dock\s*\{\s*pointer-events: none;\s*\}/,
   );
   assert.doesNotMatch(styles, /session-switching[\s\S]{0,200}?opacity: 0\.82/);
   assert.match(
