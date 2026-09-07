@@ -14,7 +14,7 @@ use crate::user_skills::UserSkillRegistry;
 use crate::user_subagents::UserSubagentRegistry;
 use crate::workspace::WorkspaceState;
 
-pub const PROTOCOL_VERSION: u32 = 10;
+pub const PROTOCOL_VERSION: u32 = 11;
 pub const HOST_VERSION: &str = env!("CARGO_PKG_VERSION");
 const BASH_ABORT_TOMBSTONE_TTL: Duration = Duration::from_secs(60);
 const MAX_BASH_ABORT_TOMBSTONES: usize = 1024;
@@ -27,10 +27,6 @@ pub struct AppState {
     pub permissions: PermissionManager,
     pub plans: PlanManager,
     pub plugins: PluginManager,
-    /// A2A (Agent2Agent) broker: in-memory peer registry + task coordination
-    /// with the store, so concurrent subagents discover each other and run
-    /// tasks with a real lifecycle (ADR 0146).
-    pub a2a: crate::a2a::A2aBroker,
     /// MCP servers the user configured directly, without a plugin around them.
     pub mcp_servers: McpServerRegistry,
     /// Skill documents the user wrote or imported directly.
@@ -64,6 +60,24 @@ pub struct AppState {
 impl AppState {
     pub fn open(data_dir: &std::path::Path) -> Result<Self> {
         let db = Database::open_in_dir(data_dir)?;
+        // Replies that were still streaming when the previous process ended
+        // are promoted into their transcripts before any client can read them
+        // (D299). The turn sweep inside `open` has already marked those turns
+        // aborted, so the promoted rows land under an aborted turn.
+        match crate::sessions::recover_orphaned_sessions(&db) {
+            Ok(restored) if restored > 0 => {
+                tracing::info!(count = restored, "restored orphaned session rows from transcripts");
+            }
+            Ok(_) => {}
+            Err(error) => tracing::warn!(%error, "orphaned session sweep failed"),
+        }
+        match crate::sessions::recover_inflight_messages(&db, false) {
+            Ok(recovered) if !recovered.is_empty() => {
+                tracing::info!(count = recovered.len(), "recovered in-flight replies");
+            }
+            Ok(_) => {}
+            Err(error) => tracing::warn!(%error, "in-flight reply sweep failed"),
+        }
         let secrets = SecretStore::open(data_dir)?;
         // The marketplace source is read before the manager builds its first
         // catalog, so a mirror configured for networks without GitHub access
@@ -84,7 +98,6 @@ impl AppState {
             permissions: PermissionManager::default(),
             plans: PlanManager,
             plugins,
-            a2a: crate::a2a::A2aBroker::new(),
             mcp_servers,
             user_skills,
             user_subagents,
@@ -212,7 +225,6 @@ impl AppState {
 
         self.pending_bash_aborts.clear();
         self.plugin_execs.clear();
-        self.a2a.clear();
     }
 
     pub fn uptime_ms(&self) -> u64 {

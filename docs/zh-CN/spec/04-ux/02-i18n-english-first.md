@@ -32,11 +32,11 @@ UI 必须使用 **i18next + React-i18next** (D012)。
 ```text
 packages/i18n/src/locales/
 ├── en/index.ts
-└── zh-CN/index.ts
+├── zh-CN/index.ts
+└── tr/index.ts
 ```
 
-英文目录是翻译目录的源类型。目录平价
-插值奇偶校验由自动化测试强制执行。
+英文目录是翻译目录的源类型。`packages/i18n` 中的注册表列出每个已发布语言（id、本地名称、英文名称）。自动化测试会校验每个已发布语言的目录键和插值变量。新增语言只需加一份目录和一行注册表；语言选择器读取该注册表。
 
 ## 4. 关键约定
 
@@ -87,10 +87,8 @@ domain.section.item
 3. 切换架构支持额外的语言环境
 4. 核心UI路径无中文硬依赖
 5. 目录测试拒绝丢失键或不匹配的插值变量
-6. 导入、项目和临时会话公开本地化的可见和
-   英文和简体中文的无障碍标签
-7. macOS 系统菜单自定义命令和 Windows/Linux 窗口控件公开
-   本地化英文和简体中文标签
+6. 导入、项目和临时会话在每个已发布语言中公开本地化的可见和无障碍标签
+7. macOS 系统菜单自定义命令和 Windows/Linux 窗口控件在每个已发布语言中公开本地化标签
 8. 启动启动画面和渲染器崩溃 chrome 使用目录键（`app.starting`、
    `app.shellName`、`app.tagline`、`app.uiCrashed`)；空屋英雄称号是
    在每个已发布的语言环境中进行翻译
@@ -102,5 +100,5 @@ domain.section.item
     记住批准模式操作、Bash/Auto 突变警告、
     shell catalog/unavailable 状态、故障关闭恢复和共享
 Plan/Goal 错误代码
-    具有匹配的英文和中文键；无聊天操作模式键或命令
+    在每个已发布语言中都有匹配的键；无聊天操作模式键或命令
     已发货

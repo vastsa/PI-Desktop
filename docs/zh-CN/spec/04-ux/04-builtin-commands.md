@@ -21,7 +21,7 @@ builtin.<domain>.<action>
 
 | id | 标题 | 关键词 | 类别 | 风险 | 行为 |
 |---|---|---|---|---|---|
-| `builtin.session.new` | 新建任务 | new、chat、task | Session | 低 | 打开未持久化草稿并聚焦输入框 |
+| `builtin.session.new` | 新建任务 | new、chat、task | Session | 低 | 复用当前分组最新空会话，否则立即露出空首页并创建持久空会话，然后聚焦输入框 |
 | `builtin.agent.compact` | 压缩对话上下文 | compact、context、tokens | Session | 低 | 为当前空闲会话创建模型上下文检查点 |
 | `builtin.mode.agent` | 切换到 Agent | mode、agent | Session | 低 | 将空闲会话模式设为 Agent |
 | `builtin.mode.plan` | 切换到 Plan | mode、plan、planning | Session | 低 | 将空闲会话模式设为 Plan |
@@ -31,7 +31,8 @@ builtin.<domain>.<action>
 
 - 五个 ID 构成完整的第一方 registry。移除的 ID 不会出现在命令面板结果中，
   也不再有渲染器 dispatch case；插件命令仍可独立发现。
-- `New Task` 会打开未持久化草稿；发送第一条消息时才会物化会话。
+- `New Task` 使用当前项目或临时分组。若该组最新会话为空则选中复用；否则
+  在第一帧露出空首页并创建持久空会话。同一分组内该操作是幂等的。
 - `Compact Conversation Context` 在当前会话空闲时可用；活动回合或检查点期间
   继续遵循既有的忙碌与压缩契约。
 - 模式命令使用与 Composer Agent/Plan/Goal 芯片相同的活动会话配置路径，立即更新

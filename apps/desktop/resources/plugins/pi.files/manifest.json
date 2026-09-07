@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "id": "pi.files",
   "name": "Files",
-  "version": "1.0.0",
-  "description": "Browse the open project and read its files in the work panel.",
+  "version": "1.1.0",
+  "description": "Browse, search, preview, and open project files in the work panel.",
   "author": "PI-Desktop",
   "main": "main.js",
   "contributes": {

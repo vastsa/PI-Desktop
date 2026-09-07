@@ -1,5 +1,10 @@
 # PI-Desktop Project Board
 
+> Historical record. The status tables below were last refreshed on
+> 2026-08-11 for the 0.5.x line and are kept for milestone traceability.
+> Current delivery status lives in `packages/shared/src/changelog.ts` and the
+> repository's GitHub Issues.
+
 GitHub Projects requires additional token scopes (`project`).
 Until that is enabled, track delivery with:
 

@@ -23,6 +23,9 @@ test("session reads use a bounded tail and load older pages on demand", () => {
   assert.match(store, /SESSION_TRANSCRIPT_CONTENT_LIMIT = 64 \* 1024/);
   assert.match(store, /loadOlderMessages: async/);
   assert.match(store, /messageBefore: before/);
+  assert.match(store, /const merged = mergeLiveSessionMessages\(page\.messages, cached\)/);
+  assert.match(store, /messages: mergeLiveSessionMessages\(page\.messages, state\.messages\)/);
+  assert.doesNotMatch(store, /messages: \[\.\.\.page\.messages, \.\.\.state\.messages\]/);
   assert.match(api, /messageLimit\?: number/);
   assert.match(api, /contentLimit\?: number/);
   assert.match(main, /messageBefore\?: number/);
@@ -77,6 +80,15 @@ test("only the latest navigation may commit a loaded transcript", () => {
     selection.indexOf("const retainedMessages") <
       selection.indexOf("await alignWorkspaceLatest(summary.projectPath)"),
     "the retained pane must be revealed before workspace alignment is awaited",
+  );
+  // Reusing an empty New Task slot is also a first-frame reveal: there is no
+  // transcript to load, so the previous conversation must not linger.
+  assert.match(selection, /sessionIsReusableEmpty/);
+  assert.match(selection, /commitSelection\(\[\], true, EMPTY_SESSION_WINDOW\)/);
+  assert.ok(
+    selection.indexOf("commitSelection([], true, EMPTY_SESSION_WINDOW)") <
+      selection.indexOf("await alignWorkspaceLatest(summary.projectPath)"),
+    "an empty destination must be revealed before workspace alignment is awaited",
   );
 });
 
@@ -141,7 +153,7 @@ test("a hidden pane does no reading work off screen", () => {
     transcript,
     /const loadOlder = useCallback\(\(\) => \{[\s\S]*?if \(!paneVisibleRef\.current\) return;/,
   );
-  assert.match(transcript, /\{paneVisible \? \(\s*<ConversationMinimap/);
+  assert.match(transcript, /\{paneVisible && !veilCovering \? \(\s*<ConversationMinimap/);
 });
 
 test("reopening a running session never lets durable detail erase its live tail", () => {
@@ -157,6 +169,25 @@ test("reopening a running session never lets durable detail erase its live tail"
   assert.match(transcript, /const paneRevealed = paneVisible && !wasPaneVisibleRef\.current/);
   assert.match(transcript, /const revealSnapshot = firstCommit \|\| paneRevealed;/);
   assert.match(transcript, /const renderedMessages = revealSnapshot \? messages : deferredMessages/);
+});
+
+test("reopening an idle session keeps a completed live tail until the durable page has it (D324)", () => {
+  const selectBlock =
+    store.match(/selectSession: async[\s\S]*?\n  newSession: async/)?.[0] ?? "";
+  assert.match(
+    selectBlock,
+    /runningAtSelection \|\|\s*currentState\.runningSessions\[id\] === true \|\|\s*liveSessionTranscripts\.has\(id\)/,
+  );
+  assert.match(selectBlock, /durableCoversLiveSessionMessages\(/);
+  assert.doesNotMatch(
+    selectBlock,
+    /if \(currentState\.runningSessions\[id\] !== true\) \{\s*liveSessionTranscripts\.delete\(id\);/,
+  );
+  assert.match(store, /import \{\s*[\s\S]*durableCoversLiveSessionMessages,/);
+  assert.match(
+    store,
+    /event\.type === "message_end" \|\|[\s\S]*?liveSessionTranscripts\.add\(envelope\.sessionId\)/,
+  );
 });
 
 test("a cold switch keeps the visible pane legible instead of dimming it", () => {

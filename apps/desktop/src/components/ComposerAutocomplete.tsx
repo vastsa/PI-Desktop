@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import type { ComposerCommand } from "@pi-desktop/shared";
-import type { AutocompleteItem, useComposerAutocomplete } from "../lib/use-composer-autocomplete";
+import type { AutocompleteItem, useComposerAutocomplete } from "../hooks/use-composer-autocomplete";
 import {
   IconFileText,
   IconFolder,

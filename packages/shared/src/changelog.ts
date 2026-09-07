@@ -23,6 +23,136 @@ export type ChangelogEntry = {
 
 const enEntries: ChangelogEntry[] = [
   {
+    version: "0.13.10",
+    date: "2026-09-07",
+    highlights: [
+      "Confirm before quitting (Cmd+Q, tray, or menu) to prevent accidental data loss.",
+    ],
+  },
+  {
+    version: "0.13.9",
+    date: "2026-09-06",
+    highlights: [
+      "Version bump for release infrastructure.",
+    ],
+  },
+  {
+    version: "0.13.8",
+    date: "2026-09-06",
+    highlights: [
+      "Search and preview project files, including images, then open them with the default app from a dedicated viewer page.",
+      "Run the work-panel Browser as a bundled plugin, with the same isolation as other plugin views.",
+      "Keep @ file chips after Enter, and pulse the mode chip while planning.",
+      "Open only http(s) and mailto links from chat, plugins, and previews.",
+    ],
+  },
+  {
+    version: "0.13.7",
+    date: "2026-09-06",
+    highlights: [
+      "Keep completed AI replies after restart, instead of showing only the user messages.",
+      "Keep background subagents running until you stop them or the parent stops them.",
+      "Let the agent choose a Bash timeout up to six hours so long jobs are not killed at 60 seconds.",
+    ],
+  },
+  {
+    version: "0.13.6",
+    date: "2026-09-06",
+    highlights: [
+      "Keep pasted-file user messages sized to their content instead of stretching across the thread.",
+    ],
+  },
+  {
+    version: "0.13.5",
+    date: "2026-09-06",
+    highlights: [
+      "Remove the A2A broker and peer-to-peer conversation tools.",
+      "Fix agent-runtime tests that broke after the A2A removal.",
+    ],
+  },
+  {
+    version: "0.13.4",
+    date: "2026-09-05",
+    highlights: [
+      "Add Turkish and a searchable language picker in Settings → General.",
+      "Make theme a searchable picker like language, including plugin themes.",
+      "Flatten the add-provider Service list, add Xiaomi, Zhipu, and Z.AI, and make Service searchable.",
+      "Report a problem from Settings → Info with version and OS already filled.",
+      "Keep streaming conversation turns in chronological order when the live transcript merges.",
+    ],
+  },
+  {
+    version: "0.13.3",
+    date: "2026-09-05",
+    highlights: [
+      "Open New Task to an empty destination immediately, without keeping the previous transcript on screen.",
+      "Treat a filled Read window as complete and keep the truncated chip for actual cuts.",
+      "Keep later conversation turns when switching regenerate variants, instead of restoring a stale archive.",
+    ],
+  },
+  {
+    version: "0.13.2",
+    date: "2026-09-05",
+    highlights: [
+      "Keep unsent composer drafts, including file chips, when the input remounts or the window is hidden.",
+      "Start new sessions at the model binding's default thinking level instead of always using the strongest.",
+      "Keep expanded subagent runs scrolled to the latest output, with a jump-to-latest control after you scroll up.",
+      "Keep the thinking-level menu available when pinning a level while a turn is running.",
+      "Keep add-provider fields fully visible and focused in a narrow window.",
+      "Match the macOS startup splash to the sidebar glass so the window no longer flashes an opaque panel.",
+    ],
+  },
+  {
+    version: "0.13.1",
+    date: "2026-09-05",
+    highlights: [
+      "Insert atomic attachment chips on the composer input line, with a three-line default height.",
+      "Checkpoint streaming replies so they survive quit, sidecar loss, and Stop without rewriting the transcript.",
+      "Hide successful completions from the notification inbox.",
+      "Remove in-flow borders and dividers, and show scrollbars only on hover or while scrolling.",
+      "Play light and dark GIF mascots on the empty-home screen.",
+    ],
+  },
+  {
+    version: "0.13.0",
+    date: "2026-09-04",
+    highlights: [
+      "Add a rich hover card on sidebar session rows showing workspace, branch, and update time.",
+      "Switch macOS sidebar to the under-window vibrancy material for deeper glass depth.",
+      "Remove the macOS sidebar dock seam for a borderless glass edge.",
+      "Play theme-specific eight-frame waving mascots on the empty-home screen.",
+      "Fix a sidebar crash on first render caused by a forward-referenced variable.",
+    ],
+  },
+  {
+    version: "0.12.4",
+    date: "2026-09-04",
+    highlights: [
+      "Keep the right work panel inside the application window so MainChat reflows like the left sidebar.",
+      "Resize the work panel from its inner divider with pointer or keyboard controls while preserving window bounds.",
+      "Deduplicate paged transcript reads during session switching for smoother navigation.",
+      "Add a native macOS sidebar surface treatment without changing the sidebar's layout behavior.",
+    ],
+  },
+  {
+    version: "0.12.3",
+    date: "2026-09-03",
+    highlights: [
+      "Show context usage against the selected model's published context window.",
+      "Keep model-specific context limits consistent across provider settings, the Composer, and the runtime.",
+      "Keep Composer contextual guidance stable while switching models and during active turns.",
+    ],
+  },
+  {
+    version: "0.12.2",
+    date: "2026-09-03",
+    highlights: [
+      "Fix user message row appearing before host round trip completes.",
+      "Clear draft prompt before sending to prevent stale content.",
+      "Settle long transcripts under a skeleton veil for smoother rendering.",
+    ],
+  },
+  {
     version: "0.12.1",
     date: "2026-09-03",
     highlights: [
@@ -528,6 +658,136 @@ const enEntries: ChangelogEntry[] = [
 ];
 
 const zhCNEntries: ChangelogEntry[] = [
+  {
+    version: "0.13.10",
+    date: "2026-09-07",
+    highlights: [
+      "退出前弹出确认对话框（快捷键、托盘或菜单退出），防止意外丢失数据。",
+    ],
+  },
+  {
+    version: "0.13.9",
+    date: "2026-09-06",
+    highlights: [
+      "版本号更新，用于发布基础设施。",
+    ],
+  },
+  {
+    version: "0.13.8",
+    date: "2026-09-06",
+    highlights: [
+      "可搜索并预览项目文件（含图片），在独立查看页用默认应用打开。",
+      "工作面板浏览器改为随应用打包的插件，隔离方式与其他插件视图相同。",
+      "用 Enter 接受的 @ 文件芯片会保留，规划进行中模式芯片会脉冲提示。",
+      "聊天、插件和预览只打开 http(s) 与 mailto 链接。",
+    ],
+  },
+  {
+    version: "0.13.7",
+    date: "2026-09-06",
+    highlights: [
+      "重启后保留已完成的 AI 回复，不再只显示用户消息。",
+      "后台子智能体一直运行到你或父智能体停止它们。",
+      "智能体可将 Bash 超时设为最长六小时，长时间任务不会在 60 秒被杀掉。",
+    ],
+  },
+  {
+    version: "0.13.6",
+    date: "2026-09-06",
+    highlights: [
+      "粘贴文件后的用户消息按内容宽度显示，不再被撑满整列。",
+    ],
+  },
+  {
+    version: "0.13.5",
+    date: "2026-09-06",
+    highlights: [
+      "移除 A2A 代理和对等对话工具。",
+      "修复 A2A 移除后智能体运行时测试失败的问题。",
+    ],
+  },
+  {
+    version: "0.13.4",
+    date: "2026-09-05",
+    highlights: [
+      "设置 → 常规新增土耳其语，语言改为可搜索选择器。",
+      "主题改为与语言相同的可搜索选择器，插件主题也在同一列表中。",
+      "添加服务商时服务列表改为平铺可搜索，并加入小米、智谱和 Z.AI。",
+      "设置 → 信息可提交问题反馈，并自动带上当前版本和操作系统。",
+      "流式转录合并时保持对话回合的时间顺序。",
+    ],
+  },
+  {
+    version: "0.13.3",
+    date: "2026-09-05",
+    highlights: [
+      "新建任务会立刻显示空会话，不再在宿主读写期间继续展示上一条转录。",
+      "读文件填满窗口时视为完整而非截断，截断标记只用于真正被裁切的结果。",
+      "切换重新生成的版本时保留之后的对话回合，不再用过期归档覆盖后续内容。",
+    ],
+  },
+  {
+    version: "0.13.2",
+    date: "2026-09-05",
+    highlights: [
+      "输入框重新挂载或窗口隐藏后再打开时，未发送的草稿和附件芯片仍会保留。",
+      "新会话使用模型绑定的默认思考级别，而不再总是选最强档。",
+      "展开的子智能体运行会跟随最新输出，上翻后可点回到最新。",
+      "在回合进行中固定思考级别时，思考菜单仍保持可用。",
+      "窄窗口下添加服务商的输入框能完整显示并保持焦点可见。",
+      "macOS 启动闪屏与侧边栏使用同一套毛玻璃，避免先闪出不透明面板。",
+    ],
+  },
+  {
+    version: "0.13.1",
+    date: "2026-09-05",
+    highlights: [
+      "在输入行插入原子附件芯片，并将默认输入高度设为三行。",
+      "对流式回复做检查点，退出、sidecar 断开或点停止时仍保留已生成内容，且不会重写转录。",
+      "成功完成的任务不再进入通知收件箱。",
+      "去掉界面中的内联边框与分隔线，滚动条仅在悬停或滚动时显示。",
+      "首页空状态使用浅色与深色主题的 GIF 吉祥物。",
+    ],
+  },
+  {
+    version: "0.13.0",
+    date: "2026-09-04",
+    highlights: [
+      "侧边栏会话行新增悬浮卡片，显示所属空间、分支和更新时间。",
+      "macOS 侧边栏切换到窗口下方材质，增强毛玻璃深度。",
+      "移除 macOS 侧边栏的底部分隔线，呈现无边框玻璃效果。",
+      "首页空状态按浅色/深色主题播放八帧挥手吉祥物动画。",
+      "修复侧边栏首次渲染时因变量前向引用导致的崩溃。",
+    ],
+  },
+  {
+    version: "0.12.4",
+    date: "2026-09-04",
+    highlights: [
+      "将右侧工作面板保留在应用窗口内部，让 MainChat 像左侧边栏一样重新分配空间。",
+      "支持通过内部拖拽条或键盘调整工作面板宽度，同时保持窗口边界不变。",
+      "会话切换时去重分页转录读取，让导航更流畅。",
+      "为 macOS 增加原生侧边栏表面效果，不改变侧边栏布局逻辑。",
+    ],
+  },
+  {
+    version: "0.12.3",
+    date: "2026-09-03",
+    highlights: [
+      "根据当前选定模型发布的上下文窗口显示准确的上下文用量。",
+      "在服务商设置、编辑器和运行时之间保持模型级上下文限制一致。",
+      "切换模型和进行中的回合时，保持编辑器上下文提示稳定。",
+    ],
+  },
+  {
+    version: "0.12.2",
+    date: "2026-09-03",
+    highlights: [
+      "修复用户消息行在宿主往返完成前出现的问题。",
+      "发送前清空草稿提示以防止内容残留。",
+      "长对话记录在骨架遮罩下结算以获得更流畅的渲染效果。",
+    ],
+  },
   {
     version: "0.12.1",
     date: "2026-09-03",

@@ -1,6 +1,6 @@
 # ADR 0054: Selectable command shell catalog and execution identity
 
-- Status: Accepted for implementation
+- Status: Accepted for implementation (timeout bounds in §4 amended by ADR 0167 / D329)
 - Date: 2026-07-31
 - Baseline: `0.4.14`
 - Protocol: v9

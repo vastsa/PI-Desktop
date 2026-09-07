@@ -84,6 +84,7 @@ const PERMISSION_RISK: Record<string, RiskTier> = {
   "fs.delete.workspace": "high",
   "agent.prompt.inject": "high",
   "agent.tool.register": "high",
+  "browser.cdp": "high",
   // Reading is a tier below writing because what makes a read dangerous is
   // where the data can go, and outbound requests are declared separately.
   "fs.read": "medium",
@@ -1082,7 +1083,7 @@ export function PluginsPage() {
             className="plugins-panel"
           >
             {plugins.length === 0 ? (
-              <div className="settings-panel plugins-empty">
+              <div className="plugins-empty">
                 <span className="plugins-empty-icon" aria-hidden>
                   <IconPlug size={18} />
                 </span>
@@ -1103,7 +1104,7 @@ export function PluginsPage() {
                 </div>
               </div>
             ) : installedGroups.length === 0 ? (
-              <div className="settings-panel plugins-empty">
+              <div className="plugins-empty">
                 <span className="plugins-empty-icon" aria-hidden>
                   <IconSearch size={18} />
                 </span>
@@ -1122,7 +1123,7 @@ export function PluginsPage() {
                     <span className="plugins-group-count">{group.rows.length}</span>
                   </header>
                   <div
-                    className="settings-panel plugins-list"
+                    className="plugins-list"
                     role="list"
                     aria-label={t(GROUP_LABEL_KEYS[group.id])}
                   >
@@ -1396,7 +1397,7 @@ export function PluginsPage() {
                 ))}
               </div>
             ) : visibleMarket.length === 0 ? (
-              <div className="settings-panel plugins-empty">
+              <div className="plugins-empty">
                 <span className="plugins-empty-icon" aria-hidden>
                   <IconSearch size={18} />
                 </span>

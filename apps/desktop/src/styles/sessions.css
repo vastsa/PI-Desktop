@@ -12,8 +12,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--ds-border-subtle);
+  padding: 10px 14px 6px;
 }
 
 .import-select-all {
@@ -52,16 +51,19 @@
   flex-direction: column;
 }
 
+/* Groups are separated by space; each header is a soft band, not a rule. */
 .import-group + .import-group {
-  border-top: 1px solid var(--ds-border-subtle);
+  margin-top: 6px;
 }
 
 .import-group-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 14px;
-  background: var(--ds-bg-secondary);
+  margin: 0 6px;
+  border-radius: var(--radius-sm);
+  padding: 8px 8px;
+  background: var(--ds-tile);
 }
 
 .import-group-toggle {
@@ -118,14 +120,15 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 14px 8px 34px;
+  margin: 0 6px;
+  border-radius: var(--radius-sm);
+  padding: 8px 8px 8px 28px;
   cursor: pointer;
-  border-top: 1px solid var(--ds-border-subtle);
   transition: background var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 .import-row:hover {
-  background: var(--ds-bg-tertiary);
+  background: var(--ds-tile-hover);
 }
 
 .import-row-main {
@@ -560,20 +563,18 @@
   height: 15px;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--ds-border-default);
   border-radius: var(--radius-2xs);
+  background: var(--ds-tile-deep);
   font-size: var(--text-xs);
 }
 
+/* A filled square is the box; the check and the accent tint are the state. */
 .sidebar-checkbox.checked {
-  border-color: var(--ds-accent);
-  background: color-mix(in oklab, var(--ds-accent) 16%, transparent);
+  background: color-mix(in oklab, var(--ds-accent) 22%, transparent);
 }
 
 .sidebar-popover-divider {
-  height: 1px;
-  margin: 5px 2px;
-  background: var(--ds-border-subtle);
+  height: 6px;
 }
 
 .sidebar-session-group-title.project-toggle {
@@ -601,6 +602,111 @@
   line-height: var(--leading-normal);
   overflow-wrap: anywhere;
   pointer-events: none;
+}
+
+/* WorkBuddy-style rich hover card for session rows.
+   Title block at the top, then a row of tag chips, then icon-prefixed
+   metadata rows. The whole surface stays non-interactive (pointer-events:
+   none) so the underlying row keeps receiving pointer events. */
+.sidebar-session-hover-card {
+  position: fixed;
+  z-index: 71;
+  width: min(320px, calc(100vw - 16px));
+  padding: 12px 14px;
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--radius-md);
+  background: var(--ds-bg-elevated-opaque, var(--ds-bg-primary));
+  box-shadow: var(--ds-shadow-dialog);
+  color: var(--ds-text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  line-height: var(--leading-tight);
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: sidebar-hover-card-in var(--motion-duration-fast)
+    var(--motion-ease-out) both;
+}
+
+@keyframes sidebar-hover-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.sidebar-session-hover-card-title {
+  color: var(--ds-text-primary);
+  font-size: var(--text-md);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--leading-tight);
+  overflow-wrap: anywhere;
+}
+
+.sidebar-session-hover-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sidebar-session-hover-card-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: var(--ds-bg-hover);
+  color: var(--ds-text-secondary);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--leading-tight);
+  white-space: nowrap;
+}
+
+.sidebar-session-hover-card-tag-accent {
+  background: color-mix(in oklab, var(--ds-accent) 14%, transparent);
+  color: var(--ds-text-primary);
+}
+
+.sidebar-session-hover-card-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+}
+
+.sidebar-session-hover-card-meta-row {
+  display: grid;
+  grid-template-columns: 14px auto 1fr;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sidebar-session-hover-card-meta-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ds-text-faint);
+}
+
+.sidebar-session-hover-card-meta-label {
+  color: var(--ds-text-faint);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.sidebar-session-hover-card-meta-value {
+  color: var(--ds-text-primary);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+  text-align: end;
+  min-width: 0;
 }
 
 .sidebar-disclosure-icon {

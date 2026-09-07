@@ -38,6 +38,16 @@ export type AnchoredMenuProps = {
   className?: string;
   /** Aligns the menu's right edge with the trigger's; defaults to left. */
   align?: "start" | "end";
+  /**
+   * Where to put focus after the menu is measured. `selected` keeps Enter on
+   * the current option (default-model picker). `input` is for searchable menus.
+   */
+  initialFocus?: "selected" | "input";
+  /**
+   * When false, closing does not move focus back to the trigger. Used when a
+   * selection just revealed another field that should take focus instead.
+   */
+  restoreFocus?: boolean;
 };
 
 export function AnchoredMenu({
@@ -50,6 +60,8 @@ export function AnchoredMenu({
   role = "listbox",
   className,
   align = "start",
+  initialFocus = "selected",
+  restoreFocus = true,
 }: AnchoredMenuProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -71,8 +83,8 @@ export function AnchoredMenu({
     }
     if (!wasOpen.current) return;
     wasOpen.current = false;
-    triggerRef.current?.focus();
-  }, [open]);
+    if (restoreFocus) triggerRef.current?.focus();
+  }, [open, restoreFocus]);
 
   useEffect(() => {
     if (!open) return;
@@ -86,13 +98,18 @@ export function AnchoredMenu({
       }
     };
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key !== "Escape") return;
+      // Capture + stop so a parent overlay (add-provider dialog) does not
+      // close on the same Escape that dismisses this menu.
+      event.preventDefault();
+      event.stopPropagation();
+      onClose();
     };
     window.addEventListener("mousedown", onPointer);
-    window.addEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey, true);
     return () => {
       window.removeEventListener("mousedown", onPointer);
-      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keydown", onKey, true);
     };
   }, [open, onClose]);
 
@@ -137,13 +154,18 @@ export function AnchoredMenu({
     Move focus into the menu once it is measured and visible: a keyboard user
     who opened it would otherwise still be on the trigger, and a
     `visibility: hidden` surface cannot take focus. The current option is
-    preferred so Enter re-confirms rather than silently picking the first row.
+    preferred so Enter re-confirms rather than silently picking the first row;
+    searchable menus opt into the filter field instead.
   */
   useEffect(() => {
     if (!open || !position) return;
     const frame = window.requestAnimationFrame(() => {
       const menu = menuRef.current;
       if (!menu) return;
+      if (initialFocus === "input") {
+        menu.querySelector<HTMLElement>("input:not([disabled])")?.focus();
+        return;
+      }
       const current = menu.querySelector<HTMLElement>(
         '[aria-selected="true"]:not([disabled])',
       );
@@ -152,7 +174,7 @@ export function AnchoredMenu({
       target?.focus();
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [open, position]);
+  }, [initialFocus, open, position]);
 
   useEffect(() => {
     if (!open) return;

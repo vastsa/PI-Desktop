@@ -26,6 +26,22 @@
   text-decoration-color: var(--ds-accent);
 }
 
+/* Sent-message file node: same .composer-chip surface, button reset + hover. */
+.chat-file-chip {
+  border: 0;
+  padding-right: 6px;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.chat-file-chip:hover,
+.chat-file-chip:focus-visible {
+  color: var(--ds-text-primary);
+  background: var(--ds-tile-hover);
+}
+
 /* Path/URL tokens inside plain user-message text. */
 .chat-text-link {
   background: none;
@@ -66,14 +82,13 @@
   font: inherit;
   font-size: var(--text-sm);
   color: var(--ds-text-primary);
-  background: color-mix(in oklab, var(--ds-text-primary) 4%, transparent);
-  border: 1px solid var(--ds-border-default);
+  background: var(--ds-tile);
   border-radius: var(--radius-sm);
   cursor: pointer;
 }
 .chat-image-chip:hover {
   color: var(--ds-accent);
-  border-color: color-mix(in oklab, var(--ds-accent) 45%, transparent);
+  background: var(--ds-tile-hover);
 }
 
 .chat-image-local,
@@ -104,8 +119,7 @@
   margin: 0.65em 0;
   max-width: min(100%, 560px);
   border-radius: var(--radius-md-plus);
-  border: 1px solid var(--ds-border-subtle);
-  background: color-mix(in oklab, var(--ds-text-primary) 3%, transparent);
+  background: var(--ds-tile);
   overflow: hidden;
 }
 
@@ -114,11 +128,6 @@
   width: 100%;
   max-height: 400px;
   outline: none;
-}
-
-:root[data-theme="light"] .chat-video {
-  border-color: color-mix(in oklab, #1a1c1f 10%, transparent);
-  background: #f7f7f7;
 }
 
 /* Row variant without the divider, for copy that leads a full-width control

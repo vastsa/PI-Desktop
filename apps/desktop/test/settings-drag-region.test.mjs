@@ -16,7 +16,7 @@ test("settings exposes a native drag region over the content column", () => {
   );
   assert.match(
     globalStyles,
-    /\.settings-titlebar\s*\{[^}]*height:\s*var\(--ds-toolbar-height\);[^}]*background:\s*var\(--ds-bg-primary\);[^}]*border-bottom:\s*1px solid var\(--ds-border-subtle\);[^}]*-webkit-app-region:\s*drag;/s,
+    /\.settings-titlebar\s*\{[^}]*height:\s*var\(--ds-toolbar-height\);[^}]*background:\s*var\(--ds-bg-primary\);[^}]*border-bottom:\s*0;[^}]*-webkit-app-region:\s*drag;/s,
   );
 });
 

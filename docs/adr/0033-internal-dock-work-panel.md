@@ -1,6 +1,6 @@
 # ADR 0033: Internal-dock work panel (no native window expansion)
 
-- Status: Superseded by ADR 0122
+- Status: Superseded by ADR 0122; internal-dock direction restored by ADR 0151
 - Date: 2026-07-30
 - Related: [01-ui-ia](../spec/04-ux/01-ui-ia.md) ·
   [08-component-spec §5](../spec/04-ux/08-component-spec.md) ·
@@ -26,9 +26,9 @@ Investigation showed the window expansion was only a *room-making* mechanism:
 
 - The former interactive terminal tab did not use a native view; ADR 0108
   removes that surface entirely.
-- Only the **browser** tab uses a native `WebContentsView`, and it is already
-  positioned from the **renderer-measured** panel rect via `browserSetBounds`
-  (see `BrowserPane.setBounds` and `BrowserTab`). The view composites above
+- Native `WebContentsView`s (the host browser guest and plugin views) are
+  positioned from the **renderer-measured** panel rect via `setBounds`
+  (see `BrowserPane.setBounds` and `PluginViewTab`). The view composites above
   renderer content, so it must be told where to sit — but that rect is measured
   wherever the panel visually is, independent of whether the window grew.
 
@@ -88,7 +88,7 @@ failure mode, for no benefit over measuring the in-flow rect.
   in part)
 - `apps/desktop/src/App.tsx` (reservation target set to `0`)
 - `apps/desktop/src/lib/work-panel-resize.ts` (`WORK_PANEL_DEFAULT_WIDTH`)
-- `apps/desktop/src/components/workpanel/BrowserTab.tsx` (`browserSetBounds`
+- `apps/desktop/src/components/workpanel/PluginViewTab.tsx` (`pluginViewSetBounds`
   from measured rect)
 - `apps/desktop/electron/main/browser-view.ts` (`BrowserPane.setBounds`)
 - `docs/spec/06-delivery/04-e2e-test-plan.md` (E2E-056)

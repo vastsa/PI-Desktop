@@ -84,7 +84,7 @@ test("the default picker portals out of the clipped settings panel", async () =>
   assert.match(menuSource, /createPortal\(/);
   assert.match(menuSource, /document\.body/);
   // Escape and an outside press close it; a scrolled-away trigger closes it too.
-  assert.match(menuSource, /event\.key === "Escape"/);
+  assert.match(menuSource, /event\.key !== "Escape"/);
   assert.match(menuSource, /addEventListener\("mousedown", onPointer\)/);
   assert.match(menuSource, /addEventListener\("scroll", onViewportChange, true\)/);
 

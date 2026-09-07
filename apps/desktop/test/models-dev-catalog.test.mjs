@@ -337,6 +337,99 @@ test("maps the OpenAI Codex account to OpenAI models.dev metadata", async () => 
   }
 });
 
+test("matches Zhipu and Z.AI endpoints by catalog URL and vendor aliases", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-models-dev-zhipu-"));
+  const catalogPath = join(dir, "api.json");
+  await writeFile(
+    catalogPath,
+    JSON.stringify({
+      zhipuai: {
+        name: "Zhipu AI",
+        api: "https://open.bigmodel.cn/api/paas/v4",
+        models: {
+          "glm-5": {
+            id: "glm-5",
+            name: "GLM-5",
+            modalities: { input: ["text"], output: ["text"] },
+            limit: { context: 204_800, output: 131_072 },
+          },
+        },
+      },
+      "zhipuai-coding-plan": {
+        name: "Zhipu AI Coding Plan",
+        api: "https://open.bigmodel.cn/api/coding/paas/v4",
+        models: {
+          "glm-5.3": {
+            id: "glm-5.3",
+            name: "GLM-5.3",
+            modalities: { input: ["text"], output: ["text"] },
+            limit: { context: 1_000_000, output: 131_072 },
+          },
+        },
+      },
+      zai: {
+        name: "Z.AI",
+        api: "https://api.z.ai/api/paas/v4",
+        models: {
+          "glm-5.1": {
+            id: "glm-5.1",
+            name: "GLM-5.1",
+            modalities: { input: ["text"], output: ["text"] },
+            limit: { context: 200_000, output: 131_072 },
+          },
+        },
+      },
+      "zai-coding-plan": {
+        name: "Z.AI Coding Plan",
+        api: "https://api.z.ai/api/coding/paas/v4",
+        models: {
+          "glm-5.2": {
+            id: "glm-5.2",
+            name: "GLM-5.2",
+            modalities: { input: ["text"], output: ["text"] },
+            limit: { context: 1_000_000, output: 131_072 },
+          },
+        },
+      },
+    }),
+    "utf8",
+  );
+  try {
+    const catalog = new ModelsDevCatalog({ catalogPath });
+    assert.equal(await catalog.ensureLoaded(), true);
+
+    const chinaApi = catalog.findModel({
+      vendorKey: "custom",
+      baseUrl: "https://open.bigmodel.cn/api/paas/v4",
+      modelId: "glm-5",
+    });
+    assert.equal(chinaApi?.providerKey, "zhipuai");
+
+    const chinaCoding = catalog.findModel({
+      vendorKey: "zai-coding-cn",
+      modelId: "glm-5.3",
+    });
+    assert.equal(chinaCoding?.providerKey, "zhipuai-coding-plan");
+    assert.equal(chinaCoding?.modelId, "glm-5.3");
+
+    const intlCoding = catalog.findModel({
+      vendorKey: "custom",
+      baseUrl: "https://api.z.ai/api/coding/paas/v4",
+      modelId: "glm-5.2",
+    });
+    assert.equal(intlCoding?.providerKey, "zai-coding-plan");
+    assert.equal(
+      catalog.providerKeyForRow({
+        vendorKey: "bigmodel",
+        baseUrl: "https://open.bigmodel.cn/api/paas/v4",
+      }),
+      "zhipuai",
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("models.dev reasoning options map to canonical levels", () => {
   assert.deepEqual(
     thinkingLevelsFromModelsDev(true, [{

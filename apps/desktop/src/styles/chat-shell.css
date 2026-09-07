@@ -4,12 +4,15 @@
 */
 
 /*
-  User bubble. The wrap constraint lives on the column alone — the bubble
-  fills up to 100% of it. Stacking percentage max-widths on both (78% × 78%)
-  is what previously wrapped short prompts at ~60% of the thread width.
+  User bubble. The wrap constraint lives on the column alone. `max-content`
+  (not `fit-content`) sizes to the prompt instead of the available stretch;
+  a percentage max-width on this plate used to inflate short chip+text
+  turns to the 82%/600px ceiling. Stacking percentage max-widths on both
+  (78% × 78%) is what previously wrapped short prompts at ~60% of the
+  thread width.
 */
 .message-row.user .message-bubble {
-  width: fit-content;
+  width: max-content;
   max-width: 100%;
   border-radius: var(--radius-lg-plus);
   border-bottom-right-radius: var(--radius-xs);
@@ -110,7 +113,7 @@
   z-index: 30;
   height: 2px;
   overflow: hidden;
-  background: var(--ds-border-subtle);
+  background: var(--ds-tile-deep);
   pointer-events: none;
 }
 
@@ -210,15 +213,16 @@
   width: 32px;
   height: 32px;
   border-radius: var(--radius-round);
-  border: 1px solid var(--ds-border-default);
-  background: var(--ds-bg-secondary);
+  background: var(--ds-raised);
   color: var(--ds-text-secondary);
+  /* Lifted by shadow alone (D297). */
   box-shadow:
+    var(--ds-raised-shadow),
     0 3px 7.5px rgba(0, 0, 0, 0.039),
     0 0 20px rgba(0, 0, 0, 0.051);
   animation: jump-latest-in var(--motion-duration-normal) var(--motion-ease-out)
     both;
-  transition: background var(--motion-duration-fast) var(--motion-ease-out), color var(--motion-duration-fast) var(--motion-ease-out), border-color var(--motion-duration-fast) var(--motion-ease-out);
+  transition: background var(--motion-duration-fast) var(--motion-ease-out), color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 @keyframes jump-latest-in {
@@ -233,7 +237,7 @@
 }
 
 .jump-latest-btn:hover {
-  background: var(--ds-bg-tertiary);
+  background: var(--ds-raised);
   color: var(--ds-text-primary);
 }
 
@@ -257,6 +261,86 @@
  * do - the surplus sits above the newest turn and is never read as content. */
 .transcript-hydration-spacer {
   min-height: 100vh;
+}
+
+/* Settle veil (D287). Covers the scroller while a long transcript's first frames
+ * still move (expansion, late row heights) and fades once the geometry holds.
+ * Positioned without a z-index so tree order keeps it above the scroller and
+ * beneath the docked composer, which stays usable. It is inside `.thread-wrap`,
+ * not `.thread-scroll`, so wheel input over it reaches no scroller and cannot
+ * unpin the transcript before the veil lifts. */
+.transcript-settle-veil {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--ds-bg-primary);
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.transcript-settle-veil[data-phase="leaving"] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Same band and reserves as `.thread-content`, so the skeleton rows sit where
+ * the settled rows will. They stack from the bottom because that is where the
+ * newest turn, and therefore the reader's attention, lands on reveal. */
+.transcript-settle-veil-band {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 24px;
+  box-sizing: border-box;
+  width: min(100%, var(--chat-content-max-width));
+  padding: calc(var(--ds-toolbar-height) + 20px) 28px
+    calc(var(--composer-dock-height, 228px) + 16px);
+}
+
+.transcript-skeleton-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.transcript-skeleton-row.user {
+  align-items: flex-end;
+}
+
+.transcript-skeleton-line {
+  display: block;
+  height: 14px;
+  border-radius: var(--radius-sm, 6px);
+  background: color-mix(in oklab, var(--ds-text-primary) 8%, transparent);
+  animation: transcript-skeleton-pulse 1.4s var(--motion-ease-standard) infinite;
+}
+
+.transcript-skeleton-row.user .transcript-skeleton-line {
+  height: 18px;
+  background: color-mix(in oklab, var(--ds-text-primary) 11%, transparent);
+}
+
+@keyframes transcript-skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .transcript-settle-veil {
+    transition: none;
+  }
+
+  .transcript-skeleton-line {
+    animation: none;
+  }
 }
 
 .transcript-history-loading {
@@ -320,7 +404,7 @@
   height: min(2px, 100%);
   width: calc(var(--dash-w) * var(--magnify, 1));
   border-radius: var(--radius-full);
-  background: var(--ds-border-strong);
+  background: color-mix(in oklab, var(--ds-text-primary) 14%, transparent);
   transition: width 90ms var(--motion-ease-out),
     background var(--motion-duration-fast) var(--motion-ease-out);
 }
@@ -335,7 +419,7 @@
 
 .minimap-marker.history {
   --dash-w: 13px;
-  --history-marker-color: var(--ds-border-strong);
+  --history-marker-color: color-mix(in oklab, var(--ds-text-primary) 14%, transparent);
 }
 
 .minimap-marker.history::before {
@@ -486,12 +570,39 @@
 }
 
 .home-mascot-logo {
+  display: block;
+  position: relative;
   width: 100px;
   height: 100px;
   flex: 0 0 auto;
-  background-repeat: no-repeat;
-  background-size: 5000px 100px;
-  image-rendering: pixelated;
+  overflow: hidden;
+}
+
+.home-mascot-logo img {
+  display: none;
+  width: 100px;
+  height: 100px;
+  object-fit: contain;
+  pointer-events: none;
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+:root:not([data-theme="light"]) .home-mascot-logo .home-mascot-motion.home-mascot-dark,
+:root[data-theme="light"] .home-mascot-logo .home-mascot-motion.home-mascot-light {
+  display: block;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-theme="light"]) .home-mascot-logo .home-mascot-motion.home-mascot-dark,
+  :root[data-theme="light"] .home-mascot-logo .home-mascot-motion.home-mascot-light {
+    display: none;
+  }
+
+  :root:not([data-theme="light"]) .home-mascot-logo .home-mascot-still.home-mascot-dark,
+  :root[data-theme="light"] .home-mascot-logo .home-mascot-still.home-mascot-light {
+    display: block;
+  }
 }
 
 .empty-hero h1 {

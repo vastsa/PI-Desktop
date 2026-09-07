@@ -51,6 +51,9 @@
 - Shortcuts must not conflict with macOS system shortcuts or common browser shortcuts
 - Never override `Cmd/Ctrl + C`, `Cmd/Ctrl + V`, `Cmd/Ctrl + A`, `Cmd/Ctrl + S`
 - Shortcuts are consistent across macOS (Cmd) and Windows/Linux (Ctrl)
+- A missing shortcut override uses the shared platform default; a valid
+  string uses the custom binding; an explicit `null` means `Unbound` and never
+  dispatches. Unbound actions do not conflict with other bindings.
 - A modifier-only keydown and an IME composition/229 keydown never dispatch a
   command. Repeated keydown events do not repeatedly traverse destination
   history; each back/forward chord advances at most once per physical press.
@@ -61,7 +64,8 @@
   low-level keyboard hook that consumes the system-menu chord and emits an
   Electron host notification, so it works while another application is
   focused. A focused-window fallback remains available if the hook cannot be
-  installed. Custom bindings continue to use Electron's global shortcut API.
+  installed. An unbound launcher disables both the hook and focused-window
+  fallback. Custom bindings continue to use Electron's global shortcut API.
   Electron starts warming the launcher in a hidden window as soon as Electron
   is ready, in parallel with backend and main-window boot; shortcut delivery
   during warm-up joins the same in-flight load. The macOS show path relies on
@@ -148,7 +152,7 @@ recency only breaks ties between equally relevant matches.
   menu, or activating the app from the macOS dock restores and focuses the
   existing window. If the window was closed, the same action creates a fresh
   window.
-- The tray menu is localized with the active English/zh-CN shell locale and
+- The tray menu is localized with the active shipped shell locale and
   exposes Show PI-Desktop plus an explicit Quit PI-Desktop action. Quit uses
   the existing ordered shutdown path. What closing the window does is the
   user's own choice on Windows/Linux (ADR 0090) and a Dock-lifecycle close on
@@ -233,9 +237,16 @@ may be retained while exactly one workspace supplies the visible shell context.
   its own scroll position for its lifetime. Switching to a session that still has
   a pane (warm) reveals it immediately with its retained content and position:
   nothing is dimmed, no skeleton appears, and no transcript remounts. If the
-  destination is running, revalidation treats the durable read as a lower-water
-  mark and keeps its renderer-owned assistant/tool tail; completed durable rows
-  may be added, but the partial reply cannot be rolled back.
+  destination is running or still holds a completed reply the durable page has
+  not caught up to, revalidation treats the durable read as a lower-water mark
+  and keeps its renderer-owned assistant/tool tail; completed durable rows may
+  be added, but the partial or just-finished reply cannot be rolled back. The
+  bounded durable page is stitched onto the live snapshot in chronological
+  order: live rows older than that page stay before it, and an optimistic,
+  streaming, or not-yet-flushed tail stays after it. Live-only rows are never
+  appended after the page, which would move the newest turn out of the mounted
+  trailing window (D317 / D261 / D324). Live provenance is cleared only once
+  that page already contains every live row.
 - Switching to a session with no retained pane (cold) leaves the visible pane on
   its own session until the destination commits. Only a thin progress track and
   `aria-busy` mark the wait, the composer stays non-interactive so a prompt cannot
@@ -243,6 +254,12 @@ may be retained while exactly one workspace supplies the visible shell context.
   with another session's messages. The destination is then revealed at its final
   record without a top-of-history or empty-home flash. An evicted session is
   indistinguishable from a first visit.
+- New Task is not a cold switch. Creating a session reveals the empty home on
+  the first frame (the previous conversation and retained panes clear before
+  `session.create`). Reusing the group's latest empty session commits that empty
+  transcript on the same frame rather than waiting for `session.get`. The
+  durable row is inserted from the `session.create` summary; send and paste wait
+  for that in-flight create instead of opening a second slot (ADR 0154).
 - A first-opened session settles at its newest turn. A revisited pane returns to
   the offset the user left, and a pane still pinned re-anchors to the bottom;
   activation no longer resets manual-scroll state for a revisit (ADR 0137).
@@ -255,10 +272,13 @@ may be retained while exactly one workspace supplies the visible shell context.
   A project/tab switch does not abort a background turn or copy its events into
   the visible transcript. Background message and tool events update that
   session's renderer-owned live cache, so reopening a running session does not
-  lose the partial tail when its durable detail read completes. These events
-  never activate their session, change the visible project/page, or move
+  lose the partial tail when its durable detail read completes. Transcript
+  revalidation and older-page prepends are idempotent by message id and keep the
+  last version at the first row position, so reopening or a stale page response
+  cannot add a second copy of a user message. These events never activate their
+  session, change the visible project/page, or move
   focus. Creating a new session or switching to one that is not running returns
-  the composer to its idle Send state immediately: a turn still streaming in the
+  the composer to its idle Send state on that first frame: a turn still streaming in the
   previously selected session never leaves the destination session's send button
   stuck in the Abort/stop state, and that background turn's later completion
   does not alter the destination composer. Their work-panel artifacts and
@@ -266,14 +286,14 @@ may be retained while exactly one workspace supplies the visible shell context.
   originating session's retained renderer context and do not reveal or resize
   the visible panel. Only an explicit session/notification activation navigates
   and projects the destination session's retained panel context.
-- The composer draft is also session-scoped for the renderer lifetime:
-  switching sessions, projects, empty/transcript layouts, or route-level
-  destinations saves/restores the source text and file references. An uncached
-  destination starts empty, and the home composer has its own draft slot.
-  Creating a new session does not copy another slot. A completed send clears
-  only the draft belonging to the session that submitted it, even if the user
-  navigates while the request is in flight; deleted sessions cannot retain
-  drafts. Renderer reload and application restart clear every slot.
+- The composer draft is also session-scoped in renderer memory (D301): the
+  cache outlives any one Composer mount, so switching sessions, empty-home ↔
+  docked, chat ↔ other pages, or OS windows saves/restores the source text and
+  file references. An uncached destination starts empty, and the home composer
+  has its own draft slot. Creating a new session does not copy another slot. A
+  completed send clears only the draft belonging to the session that submitted
+  it, even if the user switches sessions while the request is in flight;
+  deleted sessions cannot retain drafts.
 - Every tool call resolves `workspaceRoot` from the originating durable
   session, not from the currently selected project tab. Background completion
   refreshes the matching row without redirecting the active conversation.
@@ -339,6 +359,10 @@ may be retained while exactly one workspace supplies the visible shell context.
 
 #### Popover behavior
 
+- The list shows `task.failed` rows only and the bell badge counts only
+  unread failures. `task.completed` rows are still persisted and still drive
+  the sidebar outcome badge and the native notification, but the inbox hides
+  them so failures are not buried under routine completions (D295).
 - Bell click toggles the non-modal popover; a second click, Escape, or outside
   press closes it. Escape restores focus to the bell.
 - Opening preserves the most recently selected `All` / `Unread` filter for the
@@ -357,12 +381,11 @@ may be retained while exactly one workspace supplies the visible shell context.
 
 ### 1.8 Work panel entry and resources (D128, D142, D154, D173, D179, D207, D221)
 
-- The shell starts without a visible work panel. The always-mounted
-  conversation-topbar control and `Cmd/Ctrl + J` toggle the active session's
-  panel: they reveal the retained context without creating a resource tab and
-  collapse it while retaining tabs, active resource, and committed width. The
-  topbar control stays at one viewport position while the panel enters beneath
-  it. The shortcut is a no-op without an active session or while Settings is the
+- The shell starts without a visible work panel. `Cmd/Ctrl + J` toggles the
+  active session's panel: it reveals the retained context without creating a
+  resource tab, and collapses the visible panel through the same path as the
+  header collapse control, retaining tabs, active resource, and committed
+  width. It is a no-op without an active session or while Settings is the
   active page. The panel's context trigger can then create Browser or an
   in-scope plugin view.
 - An artifact trigger atomically creates or reuses its resource, activates it,
@@ -388,14 +411,13 @@ may be retained while exactly one workspace supplies the visible shell context.
   of replacing it, so Browser keeps its URL and Files its selection (D173).
 - Every resource can be closed from the menu, and the active resource has
   a direct header close control. Closing the active resource selects the right
-  neighbor, then the left; closing the final tab hides the panel. The persistent
-  conversation-topbar toggle hides the panel without deleting tabs, and the
-  panel header contains no duplicate collapse control.
-- On every platform, opening, collapse, and final close request native
-  reservation `0`. BrowserWindow bounds remain fixed while the panel's animated
-  flex allocation narrows or restores MainChat. The inner divider previews and
-  commits the bounded panel width; native edges resize the window normally
-  (D287, ADR 0148).
+  neighbor, then the left; closing the final tab hides the panel. The separate
+  panel collapse control in the session pane top-right hides the panel without
+  deleting tabs.
+- On every platform, opening and collapsing the visible panel change only the
+  internal flex allocation; native window bounds remain unchanged. The inner
+  divider updates the renderer-owned panel target between 244px and 720px,
+  while native window edges resize only the fixed application window (ADR 0151).
 - A successful workspace Write/Edit creates or activates Review in its
   originating session. Failed and scratch writes do not. Background-session
   artifacts update only their retained context and never open, activate, resize,
@@ -499,6 +521,14 @@ may be retained while exactly one workspace supplies the visible shell context.
   pinned re-anchors to the bottom, scrolled up returns to the same offset.
   Neither path animates through history, and no pane may ever expose the
   transcript top or another session's scroll position.
+- A first open whose history exceeds the initial mount budget settles under an
+  opaque skeleton veil (D287). The veil is in the same commit as the bounded
+  first paint, covers the scroller but not the composer, and lifts only once the
+  scroller's `scrollHeight` and `clientHeight` have read the same for three
+  consecutive frames, or after a 600ms cap. Every sampled frame re-pins a pinned
+  transcript, so the frame the veil reveals is already at the newest turn. The
+  minimap and the jump control mount after the veil lifts. Short transcripts
+  never show the veil.
 - Auto-scroll to bottom on each new token group (throttled: check every 100ms, not every token)
 - The first upward manual scroll movement pauses auto-scroll immediately and
   cancels any pending follow frame; small trackpad deltas must not snap back to
@@ -649,14 +679,16 @@ may be retained while exactly one workspace supplies the visible shell context.
 - Activating the row reveals clamped output first and raw input second.
 - Each section scrolls internally and exposes its own copy action.
 - The disclosure chevron rotates on expansion. Reduced-motion disables
-  non-essential shimmer/rotation animation.
+  non-essential running-marker pulse and rotation animation.
 
 ### 4.3 Tool result truncation
 
-- Per D033: tool results exceeding 256KB or 4000 lines are truncated with explicit markers
-- Truncation marker: `[truncated: output exceeded 256KB or 4000 lines]` (host-enforced, see [16-tool-result-limits](../03-runtime/16-tool-result-limits.md))
+- Per D306 / D194: budgets are per tool class (see [16-tool-result-limits](../03-runtime/16-tool-result-limits.md)). Search/read results cap at 128KB / 4000 lines; Bash stdout/stderr cap at 96KB / 4000 lines with a spill file.
+- Read/Glob/Grep report `truncated: true` only when this result was cut short (budget, a clipped line, or remaining Grep/Glob hits). A filled Read window of a longer file is not truncated; `notice` names the next offset.
+- Bash markers name which end survived and the spill path, for example `[truncated: kept the first 4000 of 51234 lines; limit 4000 lines / 96KB. …]`.
 - Truncated content is never silently omitted — always marked
 - Disclosure expansion does not load content beyond the host-enforced cap
+- The collapsed-row `truncated` chip follows `details.truncated`
 
 ## 5. Permission interrupt flow
 
@@ -697,6 +729,9 @@ Agent calls a permission-gated tool (including Plan/Goal Bash under Ask or Accep
 2. The Agent investigates with the selected contract tool set. Read/Glob/Grep and
    BrowserPreview are allowed; Bash follows the visible permission mode. A
    contract-mode Bash command may mutate under Auto, so the mode chip remains visible.
+   While that turn is live `planning`, the Composer mode chip pulses and a compact
+   Planning row occupies the same pre-stream slot as Working; tool or answer rows
+   replace that transcript row so it does not sit orphaned above the composer.
 3. The Agent calls `SubmitPlan` or `SubmitGoal` alone in its tool batch.
    Host-core preserves the exact Markdown bytes in a new immutable
    `.pi/plan/*.md` or `.pi/goal/*.md` artifact, records its path/hash/size and structured
@@ -834,24 +869,27 @@ Running turns and pending approvals continue to gate the controls.
 
 ### 8.1 MVP status
 
-Work-panel width resizing is implemented in MVP:
+Work-panel and application-window resizing are implemented in MVP:
 
+- The 10px inner left-edge separator anchors to the press position and
+  starting panel width, then follows pointer delta without jumping. Moving it
+  left grows the panel; moving it right gives space back to MainChat.
+- The inner divider's target clamps to the renderer-owned panel range of
+  `244px–720px`; pointer movement is frame-coalesced and release commits the
+  preferred width. Escape, pointer cancellation, and lost capture restore the
+  press-time panel width.
 - Opening and closing animate the dock's `width` and `flex-basis` together with
-  the bounded opacity/transform feedback. BrowserWindow bounds and the
-  viewport-fixed topbar toggle do not move, so MainChat reflows continuously
-  instead of changing width before the first motion frame.
-- Opening, collapse, and final close request native reservation `0` (ADR 0148).
-  Repeating the target is idempotent; the stable IPC seam remains but does not
-  expand or reposition the window.
-- The panel target remains `244px–720px`. Its inner left divider anchors to the
-  press position and starting panel width, previews with frame-coalesced
-  renderer state, and persists only a changed release value. Escape, pointer
-  cancellation, and lost capture restore the press-time width; ArrowLeft widens,
-  ArrowRight narrows, Home/End reach the bounds, and double-click restores 280px.
-- Every native edge and corner retains ordinary BrowserWindow resize ownership.
-  The internal panel keeps its committed width and MainChat absorbs available
-  client width, including in maximized/fullscreen and constrained work areas.
-- Background-session artifacts never update the visible panel or its layout.
+  the bounded opacity/transform feedback, so MainChat reflows continuously
+  inside the existing client area instead of changing width before the first
+  motion frame.
+- No panel action requests a positive native reservation. The preferred panel
+  width is renderer-local, and native window edges resize only the fixed app
+  window. Background-session artifacts never update the visible panel or window
+  geometry.
+- The native Browser view still follows the renderer-measured panel rectangle;
+  it is detached before collapse motion because it cannot participate in
+  renderer CSS animation. Native bounds recovery and persistence continue to
+  apply to ordinary window resize/move gestures without panel-specific deltas.
 
 Sidebar width resizing is also implemented in MVP:
 
@@ -885,7 +923,7 @@ When drag/drop is implemented, these patterns should apply:
 - Cancel drag with Escape
 - Drag feedback: opacity 0.5 on source, accent outline on target
 
-## 8a. Composer autocomplete and clipboard files (D123–D125, D197, D262, ADR 0131)
+## 8a. Composer autocomplete and clipboard files (D123–D125, D197, D209, D262, D331, ADR 0131)
 
 ### 8a.1 Triggers
 
@@ -901,9 +939,11 @@ When drag/drop is implemented, these patterns should apply:
   trigger token.
 - File results keep each row compact by rendering only the leaf name (with a
   trailing `/` for directories). The full relative path remains available as
-  the row tooltip and accessible name. Accepting a file creates a compact
-  reference backed by the full `entry.path`; accepting a directory keeps the
-  full literal path in the textarea so deeper completion can continue.
+  the row tooltip and accessible name. Accepting a file (Enter/Tab/click)
+  replaces the `@` token with an inline sentinel-backed leaf-name chip at the
+  caret, backed by the full `entry.path`; that confirmation does not send.
+  Accepting a directory keeps the full literal path in the draft so deeper
+  completion can continue.
 
 ### 8a.2 Reference chips and clipboard files
 
@@ -940,7 +980,9 @@ When drag/drop is implemented, these patterns should apply:
   draft instead of being appended or sent as duplicate attachments.
   Successful dispatch clears both; failed or rejected dispatch retains both.
   References are session-scoped and scratch references survive a workspace
-  switch while their owning session remains available.
+  switch while their owning session remains available. Workspace `@` chips
+  are relative to the project that produced them and are removed from the
+  draft, sentinels included, when the workspace changes.
 - When an image reference is active, Composer shows one compact live status
   line. It names visual transport for a model whose pi-ai `input` includes
   `image`, and names the file-path fallback for unknown/non-vision models.
@@ -950,6 +992,12 @@ When drag/drop is implemented, these patterns should apply:
   undo the send. That undo restores the original chip order and labels; it
   never parses serialized `@path` text. Once reply content begins, abort keeps
   the partial transcript and restores no draft.
+- After a successful send, the user bubble parses those serialized `@path`
+  tokens back into composer-matching leaf-name chips for display only. The
+  persisted message and model context stay canonical `@path` text. Clicking a
+  workspace HTML chip previews it in the side browser; clicking any other
+  allowed file opens it with the OS default application (`pi-desktop/fs/open`,
+  contained to the workspace, session scratch, and attachments roots).
 
 ### 8a.3 Keyboard while open
 
@@ -991,11 +1039,22 @@ When drag/drop is implemented, these patterns should apply:
   when the composer collapses after send or an indicator row unmounts) is
   treated as layout noise and re-baselined instead of being mistaken for a
   user scrolling up
+- A pinned transcript re-pins in the same frame the content or the viewport
+  changes size, never one frame later. That includes the composer growing under
+  a multi-line draft: the bottom reserve is padding on the transcript content, so
+  the content is observed on its border box and the newest turn moves up with
+  the composer instead of sliding behind it (D287).
 - User send / retry / regenerate: re-pins, hides the jump control, and positions the latest content in the layout phase so the new turn is visible without a top-of-history flash; subsequent persisted and streamed rows continue to follow the bottom
 - Scroll-to-bottom button: position fixed at bottom-right of transcript area, offset 12px
 - Button appears as soon as upward scrolling releases follow mode
 - Click button: scrolls to bottom, resumes auto-scroll
 - Button disappears when at bottom
+- An expanded delegate run's `.subagent-run-rows` scroller uses that same
+  contract independently of the parent transcript (D302): expanding pins to
+  the latest output, new nested rows keep the viewport at the bottom while
+  pinned, the first upward gesture pauses follow and shows a nested
+  jump-to-latest control, and a layout clamp or programmatic follow `scrollTo`
+  never releases it. Native overflow anchoring is disabled on that scroller.
 
 ### 9.1a Sidebar project path and open folder
 
@@ -1007,6 +1066,24 @@ When drag/drop is implemented, these patterns should apply:
   action.
 - Choosing **Open folder** opens the project directory in the system file
   manager without changing the active session transcript.
+
+### 9.1b Sidebar session hover card
+
+- Hovering or focusing a session row reveals a multi-line hover card after
+  the same 500ms delay used by the project path tooltip; the card never
+  anchors to a torn-down row.
+- The card surfaces the row's metadata in this order, top to bottom: title,
+  tag chips, **Workspace**, branch (when the project exposes one), and
+  **Updated {{when}}**. Temporary/scratch sessions show the localized
+  "Temporary" / "临时对话" placeholder instead of a workspace name.
+- The card is rendered through a portal at `document.body`, never widens
+  beyond 320px, never causes horizontal scroll on the underlying row, and
+  stays non-interactive so the row keeps receiving pointer events.
+- The session row does not set a native `title` attribute. The hover card is
+  the only full-title surface, so the browser tooltip never stacks on the
+  card.
+- The card cancels on pointer leave, focus blur, scroll (any scroll
+  container), resize, and the moment a context menu opens.
 
 ### 9.2 Sidebar scrolling
 
@@ -1082,8 +1159,11 @@ This does not prevent state changes — it makes them instant.
   layout changes (composer height, indicator rows) arrive after the fact and
   look like an upward gesture; because they have no preceding input they are
   ignored and follow mode is preserved.
-- Resize observers schedule work and never synchronously measure every
-  transcript row from their callback.
+- Resize observers never synchronously measure every transcript row from their
+  callback. The one synchronous action they may take is the bottom re-pin of a
+  pinned, visible transcript (a single `scrollTo`), because a frame requested
+  from inside the callback lands after the current frame has already painted
+  the grown content unpinned (D287).
 
 ## 11. Acceptance criteria
 
@@ -1093,7 +1173,7 @@ This does not prevent state changes — it makes them instant.
 3a. Send stays enabled while running, queues prompts per session, and Send now
     finishes the current boundary before releasing its prioritized prompt
 4. Long content (>50 lines for messages, >10 for args, >20 for results) is collapsed by default with expand link
-5. Tool results exceeding 256KB/4000 lines show truncation marker per D033
+5. Tool results that were cut short show a truncation marker or chip per D306; a filled Read window of a longer file does not
 6. Permission interrupt inserts inline card, disables composer, shows countdown, and re-enables after resolution
 7. Toasts used for transient background operations; inline errors used for context-specific failures
 8. Focus returns to composer after session switch, message send, permission resolution, and abort
@@ -1105,7 +1185,9 @@ This does not prevent state changes — it makes them instant.
 9a. Creating a new session or switching to a non-running session returns the
     composer to its idle Send state even while another session is still
     streaming; the destination session's own run state alone decides the
-    send/abort button
+    send/abort button. New Task reveals the empty destination on the first
+    frame rather than leaving the previous transcript visible until host IO
+    completes.
 10. Focus rings visible on `focus-visible` only, 2px accent offset 2px
 11. Command palette traps focus; Escape returns to previous focus
 12. All animations respect `prefers-reduced-motion: reduce` — state changes are instant, no decorative motion
@@ -1126,7 +1208,6 @@ This does not prevent state changes — it makes them instant.
 20. Streamed message updates stay within the chat render boundary; shell
     navigation, composer, completed rows, and work-panel content do not rerender
     solely because the current assistant message appended content
-21. Work-panel open/close keeps BrowserWindow bounds and the top-right toggle
-    fixed while MainChat reflows. The inner divider changes only the bounded
-    panel width, native edges resize the window normally, and cancellation
-    restores the prior panel target (ADR 0148)
+21. The work panel opens and collapses inside the fixed client area; the inner
+    divider changes the renderer-owned panel target within 244px–720px, and
+    divider cancellation restores the prior panel width (ADR 0151)

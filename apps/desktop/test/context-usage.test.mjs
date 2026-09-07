@@ -41,17 +41,64 @@ test("context window prefers the selected model catalog over provider fallback",
         capabilities: ["text"],
         source: "discovered",
       },
+      {
+        modelId: "gpt-5.6-luna",
+        displayName: "GPT-5.6 Luna",
+        providerId: "provider",
+        contextWindow: 1_050_000,
+        capabilities: ["text"],
+        source: "discovered",
+      },
     ],
   };
-  const providers = [{ id: "provider", contextWindow: 64_000 }];
+  const providers = [
+    {
+      id: "provider",
+      contextWindow: 64_000,
+      models: [
+        {
+          id: "gpt-5.6-luna",
+          contextWindow: 128_000,
+          maxTokens: 8_192,
+          thinkingLevels: [],
+        },
+      ],
+    },
+  ];
 
   assert.equal(
     resolveContextWindow("provider", "catalog-model", providerModels, providers),
     256_000,
   );
   assert.equal(
+    resolveContextWindow("provider", "gpt-5.6-luna", providerModels, providers),
+    1_050_000,
+  );
+  assert.equal(
     resolveContextWindow("provider", "unknown-model", providerModels, providers),
     64_000,
+  );
+});
+
+test("context window uses the selected binding before the model list loads", () => {
+  const providers = [
+    {
+      id: "provider",
+      contextWindow: 128_000,
+      models: [
+        {
+          id: "gpt-5.6-luna",
+          contextWindow: 1_050_000,
+          maxTokens: 128_000,
+          thinkingLevels: [],
+        },
+      ],
+    },
+  ];
+
+  assert.equal(
+    resolveContextWindow("provider", "gpt-5.6-luna", {}, providers),
+    1_050_000,
   );
 });
 

@@ -5,7 +5,7 @@
 
 - 基线版本：`0.4.16`
 - 日期：`2026-08-14`
-- 状态：`Frozen for implementation details (Plan checkpoint artifact + approval/execution startup fence + protocol v10 + schema v12 + selectable shell catalog + icon-free composer prompt row + turn-boundary context checkpoint compaction + session-scoped fixed-window work panel + renderer-owned panel resizing + renderer-lifetime composer drafts + pi-owned model metadata + provider/runtime safety + M5 hardening + settings IA + project archive + sidebar organization + app update delivery + three-platform release + Extensions page density and theme-readable actions + custom global UI font)`
+- 状态：`Frozen for implementation details (Plan checkpoint artifact + approval/execution startup fence + protocol v11 + schema v13 + selectable shell catalog + icon-free composer prompt row + turn-boundary context checkpoint compaction + session-scoped work panel + pi-owned model metadata + provider/runtime safety + M5 hardening + settings IA + project archive + sidebar organization + app update delivery + three-platform release + Extensions page density and theme-readable actions + custom global UI font)`
 - 语言政策：**英语优先**
 - 后端策略：**Rust 主机核心 + pi 代理 sidecar**
 
@@ -121,7 +121,7 @@
 36. 提供程序存储：**Rust SQLite 配置 + 操作系统密钥存储引用**
 37. Secrets后端：**safeStorage主+加密文件后备**
 38. 工作区忽略：**拒绝列表 + 默认值 + `.pi-desktopignore`**
-39. 工具结果限制：**256KB / 4000 行，带截断标记**
+39. 工具结果限制：**按工具预算（搜索 128KB / 4000 行，shell 96KB / 4000 行）；仅在结果被切断时 `truncated`**
 40.设置目录：**Basics/模型配置/Import/Project archive/Info**；
     项目档案拥有持久的项目发现、归档、恢复和
     重新开放工作流程；

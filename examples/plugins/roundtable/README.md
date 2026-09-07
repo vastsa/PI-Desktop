@@ -1,17 +1,15 @@
 # Roundtable Discussion Plugin
 
-A PI-Desktop plugin that enables structured multi-agent roundtable discussions.
-Multiple subagents, each playing a distinct expert role, debate a topic through
-peer messaging and converge on a well-reasoned conclusion.
+A PI-Desktop plugin that helps the parent agent run a structured multi-agent
+roundtable. Each role is an independent `Task`; the parent collects reports
+and synthesizes them. Delegates do not message each other.
 
 ## What it provides
 
-- **Skill** (`local.roundtable/roundtable`): Teaches the agent how to
-  orchestrate a roundtable — role selection, the three-phase discussion
-  protocol, peer messaging patterns, and synthesis.
-- **Agent tool** (`roundtable_start`): Returns a detailed orchestration plan
-  that the parent agent follows to set up and run the discussion using Task,
-  the `Peer` tool, and TaskWait.
+- **Skill** (`local.roundtable/roundtable`): When to use a roundtable, how to
+  pick roles, and how to run sequential rounds through `Task` / `TaskWait`.
+- **Agent tool** (`roundtable_start`): Returns an orchestration plan the
+  parent follows using Task and TaskWait.
 
 ## Install (dev-load)
 
@@ -33,15 +31,13 @@ The agent will:
 
 1. Call `roundtable_start` with the topic.
 2. Receive a step-by-step orchestration plan.
-3. Create subagent definitions for each role (default: architect, security
-   reviewer, UX designer).
-4. Start all subagents concurrently with Task.
-5. Wait for them to finish their multi-round discussion.
-6. Synthesize the results into a final recommendation.
+3. Start one `Task` per role concurrently.
+4. Wait with TaskWait and collect independent reports.
+5. Optionally start a later round whose briefs include the first-round
+   reports.
+6. Synthesize a recommendation for the user.
 
 ### Custom roles and options
-
-You can specify roles, round count, and a goal:
 
 > Run a roundtable on our authentication strategy with roles: security-engineer,
 > backend-developer, mobile-developer, devops-engineer. Use 4 rounds and

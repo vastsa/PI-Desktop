@@ -331,21 +331,6 @@ fn rpc_err(code: i64, message: impl Into<String>, error_code: &str) -> JsonRpcEr
     }
 }
 
-/// JSON-RPC numeric code used for every A2A domain error; the contract
-/// discriminator is the `errorCode` string carried in `data`.
-const A2A_JSONRPC_CODE: i64 = 1400;
-
-/// Map a broker [`crate::a2a::A2aError`] to a JSON-RPC error carrying its
-/// contract error-code string (e.g. "A2A_UNKNOWN_TOKEN").
-fn a2a_err(error: crate::a2a::A2aError) -> JsonRpcError {
-    rpc_err(A2A_JSONRPC_CODE, error.message(), error.code())
-}
-
-/// Parse `a2a.*` params into their typed struct at the RPC boundary.
-fn a2a_params<T: serde::de::DeserializeOwned>(params: Value) -> Result<T, JsonRpcError> {
-    serde_json::from_value(params).map_err(|error| rpc_err(1002, error.to_string(), "INVALID_PARAMS"))
-}
-
 /// Parse the optional session thinking selector at the RPC boundary.  A
 /// missing/null value keeps the backwards-compatible default; present values
 /// must be strings from the host's allowlist rather than being silently
@@ -976,7 +961,7 @@ async fn handle_request(
                 "version": HOST_VERSION,
                 "capabilities": [
                     "tools", "sessions", "providers", "secrets", "plugins", "permissions",
-                    "scheduled", "artifacts", "plans", "search", "turns", "notifications", "a2a"
+                    "scheduled", "artifacts", "plans", "search", "turns", "notifications"
                 ]
             }))
         }
@@ -1456,6 +1441,38 @@ async fn handle_request(
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             Ok(json!({ "ok": true }))
         }
+        "session.saveInflightMessage" => {
+            let session_id = params
+                .get("sessionId")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| rpc_err(1002, "sessionId required", "INVALID_PARAMS"))?;
+            let message: UiMessage = serde_json::from_value(
+                params
+                    .get("message")
+                    .cloned()
+                    .ok_or_else(|| rpc_err(1002, "message required", "INVALID_PARAMS"))?,
+            )
+            .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
+            let turn_id = params
+                .get("turnId")
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
+            let st = state.lock().await;
+            let saved = sessions::save_inflight_message(
+                &st.db,
+                session_id,
+                turn_id.as_deref(),
+                &message,
+            )
+            .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            Ok(json!({ "ok": true, "saved": saved }))
+        }
+        "session.recoverInflightMessages" => {
+            let st = state.lock().await;
+            let recovered = sessions::recover_inflight_messages(&st.db, true)
+                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            Ok(json!({ "ok": true, "count": recovered.len() }))
+        }
         "session.appendCompaction" => {
             let session_id = params
                 .get("sessionId")
@@ -1511,13 +1528,24 @@ async fn handle_request(
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
             let st = state.lock().await;
-            let revision = sessions::save_message_revision(
-                &st.db,
-                session_id,
-                root_user_id,
-                &messages,
-                make_active,
-            )
+            // An explicit index refreshes that revision's payload in place
+            // (the branch grew since it was archived); otherwise a new index.
+            let revision = match params.get("revisionIndex").and_then(|v| v.as_i64()) {
+                Some(revision_index) => sessions::refresh_message_revision(
+                    &st.db,
+                    session_id,
+                    root_user_id,
+                    revision_index,
+                    &messages,
+                ),
+                None => sessions::save_message_revision(
+                    &st.db,
+                    session_id,
+                    root_user_id,
+                    &messages,
+                    make_active,
+                ),
+            }
             .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             Ok(json!({ "revision": revision }))
         }
@@ -1636,7 +1664,7 @@ async fn handle_request(
                 .and_then(|v| v.as_str())
                 .unwrap_or("completed");
             let st = state.lock().await;
-            let result = sessions::end_turn(
+            let result = sessions::end_turn_settling(
                 &st.db,
                 turn_id,
                 status,
@@ -1646,11 +1674,18 @@ async fn handle_request(
                     .get("createNotification")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(true),
+                params
+                    .get("recoverInflight")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false),
             )
             .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             let mut response = json!({ "ok": result.updated });
             if let Some(notification) = result.notification {
                 response["notification"] = json!(notification);
+            }
+            if let Some(recovered) = result.recovered {
+                response["recovered"] = json!(recovered);
             }
             Ok(response)
         }
@@ -1706,6 +1741,23 @@ async fn handle_request(
             let hits = sessions::search_messages(&st.db, query, limit)
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             Ok(json!({ "hits": hits }))
+        }
+
+        "stats.getTokenUsageHistory" => {
+            let bucket = params
+                .get("bucket")
+                .and_then(|v| v.as_str())
+                .unwrap_or("day");
+
+            let st = state.lock().await;
+            let history = sessions::get_token_usage_history(
+                &st.db,
+                params.get("startDate").and_then(|v| v.as_i64()),
+                params.get("endDate").and_then(|v| v.as_i64()),
+                bucket,
+            )
+            .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            Ok(history)
         }
 
         "artifacts.list" => {
@@ -3441,116 +3493,6 @@ async fn handle_request(
             Ok(json!({ "ok": true }))
         }
 
-        "a2a.agents.register" => {
-            let params: crate::a2a::AgentsRegisterParams = a2a_params(params)?;
-            let mut st = state.lock().await;
-            let result = st.a2a.register(params);
-            Ok(serde_json::to_value(result).unwrap_or(json!({})))
-        }
-        "a2a.agents.deregister" => {
-            let params: crate::a2a::AgentsDeregisterParams = a2a_params(params)?;
-            let (result, notifications) = {
-                let mut st = state.lock().await;
-                let crate::state::AppState { a2a, db, .. } = &mut *st;
-                a2a.deregister(db.conn(), params).map_err(a2a_err)?
-            };
-            for note in &notifications {
-                emit_notification(&tx, &note.method, note.params.clone()).await;
-            }
-            Ok(serde_json::to_value(result).unwrap_or(json!({})))
-        }
-        "a2a.agents.list" => {
-            let params: crate::a2a::AgentsListParams = a2a_params(params)?;
-            let st = state.lock().await;
-            let result = st.a2a.list(params).map_err(a2a_err)?;
-            Ok(serde_json::to_value(result).unwrap_or(json!({})))
-        }
-        "a2a.message.send" => {
-            let params: crate::a2a::MessageSendParams = a2a_params(params)?;
-            let (result, notifications) = {
-                let mut st = state.lock().await;
-                let crate::state::AppState { a2a, db, .. } = &mut *st;
-                a2a.message_send(db.conn(), params).map_err(a2a_err)?
-            };
-            for note in &notifications {
-                emit_notification(&tx, &note.method, note.params.clone()).await;
-            }
-            Ok(serde_json::to_value(result).unwrap_or(json!({})))
-        }
-        "a2a.message.stream" => {
-            let params: crate::a2a::MessageStreamParams = a2a_params(params)?;
-            let (result, notifications) = {
-                let mut st = state.lock().await;
-                let crate::state::AppState { a2a, db, .. } = &mut *st;
-                a2a.message_stream(db.conn(), params).map_err(a2a_err)?
-            };
-            for note in &notifications {
-                emit_notification(&tx, &note.method, note.params.clone()).await;
-            }
-            Ok(serde_json::to_value(result).unwrap_or(json!({})))
-        }
-        "a2a.tasks.get" => {
-            let params: crate::a2a::TasksGetParams = a2a_params(params)?;
-            let st = state.lock().await;
-            let result = st.a2a.tasks_get(st.db.conn(), params).map_err(a2a_err)?;
-            Ok(serde_json::to_value(result).unwrap_or(json!({})))
-        }
-        "a2a.tasks.cancel" => {
-            let params: crate::a2a::TasksCancelParams = a2a_params(params)?;
-            let (result, notifications) = {
-                let mut st = state.lock().await;
-                let crate::state::AppState { a2a, db, .. } = &mut *st;
-                a2a.tasks_cancel(db.conn(), params).map_err(a2a_err)?
-            };
-            for note in &notifications {
-                emit_notification(&tx, &note.method, note.params.clone()).await;
-            }
-            Ok(serde_json::to_value(result).unwrap_or(json!({})))
-        }
-        "a2a.tasks.status" => {
-            let params: crate::a2a::TasksStatusParams = a2a_params(params)?;
-            let (result, notifications) = {
-                let mut st = state.lock().await;
-                let crate::state::AppState { a2a, db, .. } = &mut *st;
-                a2a.tasks_status(db.conn(), params).map_err(a2a_err)?
-            };
-            for note in &notifications {
-                emit_notification(&tx, &note.method, note.params.clone()).await;
-            }
-            Ok(serde_json::to_value(result).unwrap_or(json!({})))
-        }
-        "a2a.tasks.resubscribe" => {
-            let params: crate::a2a::TasksResubscribeParams = a2a_params(params)?;
-            let (result, notifications) = {
-                let st = state.lock().await;
-                st.a2a
-                    .tasks_resubscribe(st.db.conn(), params)
-                    .map_err(a2a_err)?
-            };
-            for note in &notifications {
-                emit_notification(&tx, &note.method, note.params.clone()).await;
-            }
-            Ok(serde_json::to_value(result).unwrap_or(json!({})))
-        }
-        "a2a.tasks.pushNotificationConfig.set" => {
-            let params: crate::a2a::PushConfigSetParams = a2a_params(params)?;
-            let st = state.lock().await;
-            let result = st
-                .a2a
-                .push_config_set(st.db.conn(), params)
-                .map_err(a2a_err)?;
-            Ok(serde_json::to_value(result).unwrap_or(json!({})))
-        }
-        "a2a.tasks.pushNotificationConfig.get" => {
-            let params: crate::a2a::PushConfigGetParams = a2a_params(params)?;
-            let st = state.lock().await;
-            let result = st
-                .a2a
-                .push_config_get(st.db.conn(), params)
-                .map_err(a2a_err)?;
-            Ok(serde_json::to_value(result).unwrap_or(json!({})))
-        }
-
         _ => Err(rpc_err(
             -32601,
             format!("method not found: {method}"),
@@ -3907,6 +3849,41 @@ mod tests {
         );
         assert!(catalog["choices"].is_array());
         assert!(catalog["effective"].is_object() || catalog["effective"].is_null());
+    }
+
+    #[tokio::test]
+    async fn settings_set_round_trips_an_explicitly_disabled_shortcut() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let state = Arc::new(Mutex::new(app_state));
+        let tx = mpsc::unbounded_channel().0;
+
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "keybindings": { "openSearch": null } }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let disabled = handle_request(state.clone(), "settings.get", json!({}), tx.clone())
+            .await
+            .unwrap();
+        assert_eq!(disabled["keybindings"]["openSearch"], Value::Null);
+
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "theme": "light" }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let preserved = handle_request(state, "settings.get", json!({}), tx)
+            .await
+            .unwrap();
+        assert_eq!(preserved["keybindings"]["openSearch"], Value::Null);
     }
 
     #[tokio::test]
@@ -5864,6 +5841,70 @@ mod tests {
         assert_eq!(listed["models"].as_array().unwrap().len(), 2);
         assert_eq!(listed["models"][1]["modelId"], "model-b");
         assert_eq!(listed["models"][1]["capabilities"][1], "reasoning");
+    }
+
+    #[tokio::test]
+    async fn inflight_checkpoint_rpc_lifecycle() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let session = sessions::create_session(&app_state.db, None, None, None, None, None)
+            .unwrap();
+        let turn = sessions::begin_turn(&app_state.db, &session.id, None, None).unwrap();
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        let saved = handle_request(
+            state.clone(),
+            "session.saveInflightMessage",
+            json!({
+                "sessionId": session.id,
+                "turnId": turn,
+                "message": {
+                    "id": "a1",
+                    "role": "assistant",
+                    "content": "partial reply",
+                    "createdAt": "2026-09-04T00:00:00.000Z",
+                    "status": "streaming"
+                }
+            }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(saved, json!({ "ok": true, "saved": true }));
+
+        // The sidecar is gone: the turn end promotes the checkpoint.
+        let ended = handle_request(
+            state.clone(),
+            "session.endTurn",
+            json!({
+                "turnId": turn,
+                "status": "aborted",
+                "errorCode": "TURN_ABORTED",
+                "createNotification": false,
+                "recoverInflight": true
+            }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(ended["ok"], json!(true));
+        assert_eq!(ended["recovered"]["id"], json!("a1"));
+        assert_eq!(ended["recovered"]["status"], json!("aborted"));
+        assert_eq!(ended["recovered"]["content"], json!("partial reply"));
+
+        let detail = handle_request(
+            state.clone(),
+            "session.get",
+            json!({ "id": session.id }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let messages = detail["session"]["messages"].as_array().unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0]["status"], json!("aborted"));
     }
 
     #[tokio::test]

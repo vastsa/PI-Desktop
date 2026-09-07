@@ -10,10 +10,9 @@ import { WorkTabEmpty } from "./WorkTabEmpty";
  *
  * The surface itself is a main-process `WebContentsView`, the same isolated
  * page a `ui.panel` window hosts; this component renders nothing into it. It
- * measures the placeholder rect and drives visibility, exactly as `BrowserTab`
- * does for the preview browser — the view composites above renderer content, so
- * it must be hidden whenever this tab is not the active surface or a blocking
- * overlay is open.
+ * measures the placeholder rect and drives visibility. The view composites
+ * above renderer content, so it must be hidden whenever this tab is not the
+ * active surface or a blocking overlay is open.
  */
 export function PluginViewTab({
   pluginId,
@@ -21,12 +20,16 @@ export function PluginViewTab({
   title,
   icon,
   blocked = false,
+  sessionId,
+  location,
 }: {
   pluginId: string;
   viewId: string;
   title: string;
   icon?: string;
   blocked?: boolean;
+  sessionId?: string;
+  location?: string;
 }) {
   const { t } = useTranslation();
   const surfaceRef = useRef<HTMLDivElement | null>(null);
@@ -38,7 +41,7 @@ export function PluginViewTab({
   useEffect(() => {
     let current = true;
     const open = () => {
-      void api.pluginViewOpen(pluginId, viewId).then(
+      void api.pluginViewOpen(pluginId, viewId, { sessionId, location }).then(
         () => {
           if (current) setFailed(false);
         },
@@ -56,7 +59,7 @@ export function PluginViewTab({
       current = false;
       off();
     };
-  }, [pluginId, viewId]);
+  }, [pluginId, viewId, sessionId, location]);
 
   useEffect(() => {
     const surface = surfaceRef.current;
@@ -78,14 +81,14 @@ export function PluginViewTab({
     observer.observe(surface);
     window.addEventListener("resize", report);
     report();
-    void api.pluginViewSetVisible(pluginId, viewId, !blocked);
+    void api.pluginViewSetVisible(pluginId, viewId, !blocked, sessionId);
     return () => {
       observer.disconnect();
       window.removeEventListener("resize", report);
       cancelAnimationFrame(frame);
       void api.pluginViewSetVisible(pluginId, viewId, false);
     };
-  }, [pluginId, viewId, blocked, failed]);
+  }, [pluginId, viewId, blocked, failed, sessionId]);
 
   if (failed) {
     return (

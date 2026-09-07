@@ -205,6 +205,7 @@ describe("PLUGIN_PERMISSIONS", () => {
       "fs.read",
       "fs.write",
       "fs.delete",
+      "browser.cdp",
     ]) {
       expect(PLUGIN_PERMISSIONS).toContain(permission);
     }

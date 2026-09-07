@@ -567,7 +567,8 @@ plugin restricted to certain projects does not offer its views in others.
 `examples/plugins/hello` ships a working view at `views/greetings.html`, and
 PI-Desktop's own **Files** panel is a bundled plugin built the same way —
 `apps/desktop/resources/plugins/pi.files` is a complete, non-toy example of a
-view that reads the workspace over the bridge.
+view that reads the workspace over the public `fs.list` / `fs.readPreview` /
+`fs.glob` / `fs.openDefault` / `fs.reveal` bridge.
 
 ### 6.9 MCP server
 

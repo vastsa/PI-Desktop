@@ -1,5 +1,9 @@
 import i18n from "i18next";
-import { resolveLocale } from "@pi-desktop/i18n";
+import {
+  isAppLocale,
+  resolveLocale,
+  type AppLocale,
+} from "@pi-desktop/i18n";
 import type { AppSettings } from "@pi-desktop/shared";
 import { useAppStore } from "../stores/app-store";
 
@@ -24,8 +28,8 @@ export function resolveOsLocale(): string {
 /** Concrete locale for a stored language setting; `auto`/absent follows the OS. */
 export function resolveAppLanguage(
   language: AppSettings["language"],
-): "en" | "zh-CN" {
-  if (language === "en" || language === "zh-CN") return language;
+): AppLocale {
+  if (language && language !== "auto" && isAppLocale(language)) return language;
   return resolveLocale(resolveOsLocale());
 }
 

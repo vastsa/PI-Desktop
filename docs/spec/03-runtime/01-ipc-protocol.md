@@ -29,10 +29,11 @@ Principles:
 | `commandPalette` | Command palette search and execution |
 | `workspace` | Workspace selection and legacy working-tree diagnostics |
 | `browser` | Work panel embedded preview navigation/bounds/visibility + state events |
-| `fs` | Work panel workspace file listing/reading/reveal (read-only) |
-| `window` | Frameless window state, controls, and bounded work-panel reservation/chat-width channels |
+| `fs` | Work panel workspace file listing/reading/reveal, plus user-initiated open with the OS default handler (read-only) |
+| `window` | Frameless window state, controls, and compatibility work-panel geometry channels |
 | `menu` | Allowlisted application-menu commands and native editing/window actions |
 | `notification` | Durable inbox list/read/clear and new/activated events |
+| `stats` | Completed-turn token history for Settings → Usage |
 
 ## 3. Channel Conventions
 
@@ -205,7 +206,15 @@ type AgentAbortRequest = {
 The abort request and response carry no Composer draft or file-reference data.
 If renderer smart Stop undoes an unanswered user turn, restoration comes from
 the renderer's session/turn-scoped pre-serialization snapshot; the existing
-transcript rewrite removes the sent row without changing protocol version.
+transcript rewrite removes the sent row without changing protocol version. That
+rewrite is computed from the full durable transcript (`session.get` without a
+window) merged with the live rows, never from the renderer's paged,
+display-capped window, and it is re-evaluated on that merge: a reply row that
+landed between the abort and the read turns the undo into a settle (D299). A
+Stop that finds a started reply settles it in renderer memory only (streaming
+assistant → `aborted`, running tools → error) and performs no transcript
+rewrite; the durable copy is the runtime's own aborted final row or, if that
+never arrives, the host's promoted in-flight checkpoint.
 
 ### 5.4 compact (protocol v10)
 
@@ -403,7 +412,7 @@ type AgentEvent =
  | { type: "agent_start" }
  | { type: "agent_end"; messageIds: string[] }
  | { type: "turn_start" }
- | { type: "turn_end" }
+ | { type: "turn_end"; subagentUsage?: MessageUsage }
  | { type: "message_start"; message: UiMessage }
  | { type: "message_update"; message: UiMessage;
      deltaText?: string; deltaThinking?: string }
@@ -613,10 +622,13 @@ session-state signal.
 
 Electron main enriches session list/get/create/fork/configure results with
 effective reasoning capability from the local models.dev record for that
-session's exact provider/API URL and model. An ID absent from the snapshot gets
-`supportsReasoning: false` and `off`; cached/provider claims do not replace
-catalog semantics. The Rust host remains authoritative only for the durable
-`thinkingLevel`.
+session's exact provider/API URL and model. Sessions without a pinned
+`providerId`/`modelId` inherit the app default provider/model for this
+enrichment only; the durable ids remain unset so later default-model changes
+still apply. An ID absent from the snapshot, or a session with no resolvable
+default, gets `supportsReasoning: false` and `off`; cached/provider claims do
+not replace catalog semantics. The Rust host remains authoritative only for the
+durable `thinkingLevel`.
 
 The global plugin launcher uses Electron-only allowlisted channels:
 
@@ -633,7 +645,7 @@ for the reserved `Alt+Space` binding. Host-core emits the notification
 keyboard hook detects the chord; the hook consumes that chord so the active
 window system menu does not open. Non-Windows hosts treat the method as a
 no-op. `responseDurationMs` and `responseOutputTokens` are optional transcript
-metadata persisted in message metadata, so protocol v10 and storage schema v12
+metadata persisted in message metadata, so protocol v11 and storage schema v13
 remain unchanged.
 
 The Settings font picker (ADR 0083) reads installed system font families
@@ -721,6 +733,19 @@ report per-tool allocation, so the renderer labels these rows as estimates and
 never merges them into the exact provider total. Older peers may omit all of
 these optional fields without breaking the v6 handshake.
 
+`turn_end.subagentUsage` is the settled subagent total since the previous
+emitted `turn_end` of the same durable turn. Parent `message.usage` stays the
+provider-reported assistant usage (D103). Electron sums parent-message usages
+plus `subagentUsage` into `session.endTurn.usage`.
+
+### stats
+
+- `pi-desktop/stats/getTokenUsageHistory({ startDate?, endDate?, bucket? }) -> TokenUsageHistoryResult`
+
+`bucket` is `day` | `week` | `month`. Omitted dates use the host default window
+(53 weeks / 52 weeks / 24 months) in the host's local calendar. `week` keys use
+ISO week year (`%G-W%V`). The result fills empty buckets in range.
+
 ## 8. Settings / Secrets API
 
 ### settings
@@ -733,8 +758,10 @@ Non-sensitive config that can be returned to the UI:
   host reads missing values as 600 and accepts integers from 1 through 1,000,000
 - permission policy toggles
 - UI preferences, including optional `AppSettings.keybindings` overrides keyed
-  by the shared shortcut action ids; values use portable `Mod+Shift+Key`
-  notation and contain no platform-specific native accelerator strings
+  by the shared shortcut action ids; values are either `null` or portable
+  `Mod+Shift+Key` strings and contain no platform-specific native accelerator
+  strings. A missing entry uses the platform default, while `null` is an
+  explicit disabled/Unbound state
 - optional `AppSettings.developerMode`; absent and `false` both keep developer
   tools disabled
 
@@ -918,7 +945,7 @@ above.
 
 ## 11. Version Compatibility
 
-- IPC/host contract version field: `protocolVersion: 10`
+- IPC/host contract version field: `protocolVersion: 11`
 - Breaking changes must bump the version and record an ADR
 - renderer and main validate the version at startup; on mismatch, prompt to upgrade/reinstall
 - Protocol v4 adds notification records, channels, and the
@@ -1014,7 +1041,12 @@ bridge's `plugin_` namespace (D015).
 User skills are Markdown documents scanned from `~/.agents/skills` and
 `<project>/.agents/skills`. Both direct Markdown files and the conventional
 `<skill>/SKILL.md` shape are accepted. Enablement is stored in
-`<data>/agent-capabilities/skills.json`, never in the document.
+`<data>/agent-capabilities/skills.json`, never in the document. Catalog ids
+are ASCII slugs: the frontmatter `name` when it slugifies, otherwise the
+skill directory name for `SKILL.md` (not a staging folder such as
+`Downloads`), otherwise a stable `skill-<hash>` so a non-ASCII title is still
+listed. Folded YAML `description: >` / `|` blocks flatten into the catalog
+one-liner.
 
 - `skills.list({ level, projectPath? })` → `{ skills: UserSkillRecord[] }`
 - `skills.active({ projectPath? })` → the effective runtime list
@@ -1096,20 +1128,21 @@ visible session's workspace.
   restoring the snapshot; it returns `rolledBack`, `alreadyRolledBack`,
   `conflict`, or `unavailable` and never overwrites a conflicting later edit.
 
-### browser (D100)
+### browser (D100, D333)
 
-- `browser/navigate({url, sessionId?})` (scheme-normalized; http/https work
-  without a workspace, while a local path requires the supplied session's
-  durable project root or the visible workspace for legacy calls),
-  `browser/action({action: back|forward|reload|stop})`,
-  `browser/setBounds({x,y,width,height})` (renderer-measured content rect),
-  `browser/setVisible({visible})`, `browser/openExternal()`,
-  `browser/getState()`
+Chrome and agent CDP live in bundled plugin `pi.browser` over `pi.browser.*`.
+Renderer IPC kept for the Plan-safe preview facade and URL fallback:
+
+- `browser/openExternal({url?})` — allowlisted http(s)/mailto, or the current
+  guest URL when omitted
 - event: `browser/event/state {url, title, isLoading, canGoBack, canGoForward}`
-- agent preview event: `browser/event/preview {sessionId, path}`. Electron Main
-  validates `path` inside that session's project before emitting; the renderer
-  records it in the matching runtime panel context and navigates only when that
-  conversation is visible.
+  (also pushed to plugin views as `browser:state`)
+- agent preview event: `browser/event/preview {sessionId, path?, url?}`.
+  Electron Main validates a workspace `path` inside that session's project,
+  loads the guest when that conversation's plugin view is visible, and the
+  renderer opens `plugin:pi.browser/browser` with `location` in the matching
+  runtime panel context. Navigation of a background session does not steal the
+  visible guest.
 
 ### fs (read-only)
 
@@ -1118,21 +1151,13 @@ visible session's workspace.
   [15-workspace-ignore-rules](15-workspace-ignore-rules.md)
 - `fs/read({path})` → text (≤512KB) / image data URL (≤5MB) / binary / tooLarge
 - `fs/reveal({path})` → reveal in Finder
-- Every path resolves inside the workspace root; traversal outside is
-  rejected (`INVALID_ARGUMENT`).
-
-#### fs/readImageDataUrl — in-chat image display
-
-`fs/readImageDataUrl({ref, mimeType?})` → `FsImageDataUrlResult` (`image` with
-`dataUrl`, or `missing` / `notImage` / `tooLarge` with a stable `errorCode`).
-The ref may be a workspace-relative path, an `attachments/<sha256>` path, or an
-absolute path inside the data root's `scratch/` or `attachments/` directories.
-The host resolves the real path and rejects anything outside those roots, so
-pasted/uploaded message images and local Markdown images render inline in the
-transcript without exposing a generic file read channel. A stored `mimeType`
-wins over extension sniffing, because pasted attachments are stored as
-extension-less `attachments/<sha256>` blobs. Size is bounded by the same 5MB
-image limit as `fs/read`.
+- `fs/open({path})` → open with the OS default application. Relative paths
+  resolve inside the workspace root; absolute paths are accepted only when
+  they already live under the workspace, `<data_dir>/scratch/`, or
+  `<data_dir>/attachments/`. Traversal, `~`, and other escapes are rejected
+  (`INVALID_ARGUMENT`).
+- `fs/list` and `fs/read` resolve inside the workspace root; traversal outside
+  is rejected (`INVALID_ARGUMENT`). `fs/reveal` stays workspace-only.
 
 ## 13b. Desktop Menu and Window APIs
 
@@ -1233,10 +1258,8 @@ Plugin panel chrome uses a separate Electron-local
 but the handler resolves the target strictly from the sender's live panel
 window. The preload consumes this channel internally for its closed-Shadow-DOM
 titlebar; it is not added to `window.pluginBridge` or the shared host protocol.
-The geometry-specific capabilities retain the bounded target-state work-panel
-reservation and chat-width channels for compatibility. D287 / ADR 0148
-supersede their visible-shell ownership: the current renderer always requests
-reservation `0` and resizes the panel inside the fixed client area.
+The work-panel geometry seam is retained for Electron compatibility, but the
+panel is renderer-owned and never changes native window bounds (ADR 0151):
 
 ```ts
 window/setWorkPanelReservation({ width: 0 | number })
@@ -1246,14 +1269,13 @@ window/setWorkPanelReservation({ width: 0 | number })
 `width` must be a finite integer JSON number equal to `0` or inside the
 inclusive `244..720` range. Strings, booleans, null, fractional values, and
 other malformed payloads fail with `INVALID_ARGUMENT` rather than being
-coerced. Zero removes any native reservation. Positive values remain accepted
-for compatibility with older renderer builds, but the current renderer never
-uses them for panel presentation: open, collapse, and final close all request
-zero. `requested` is the accepted current target and `reserved` is native width
-currently added to the normal base window. Calls are idempotent target updates:
-repeating the same width never adds another delta.
+coerced. The internal dock normalizes every valid request to zero and returns
+`{ requested: 0, reserved: 0 }`; positive values are accepted only as a
+backwards-compatible no-op. Repeating a request never changes native bounds.
 
-The legacy positive-reservation resize pair remains allowlisted:
+The legacy chat-width/event shapes remain Electron-local compatibility surfaces,
+but the visible internal dock does not call them or use them to resize the
+window:
 
 ```ts
 window/setWorkPanelChatWidth({ width: number })
@@ -1263,37 +1285,14 @@ window/event/workPanelResize
   -> { phase: "preview" | "commit"; panelWidth: number }
 ```
 
-`window/setWorkPanelChatWidth` accepts only a safe integer in the inclusive
-`1040..10000` range. Main applies it only while a positive reservation is
-active; otherwise it returns the existing base width without changing bounds.
-Likewise, native panel-width preview/commit events are gated behind a positive
-reservation. The current renderer does not subscribe to that event or invoke
-the chat-width channel: its inner divider directly previews and persists the
-bounded `244..720px` renderer panel width, while every native edge resizes the
-BrowserWindow normally.
-
-When an older renderer supplies a positive target in normal state, Main expands
-base bounds toward the right and shifts left only as needed to keep the expanded bounds inside the current display work
-area. A zero target symmetrically removes the added width and reverses that
-reservation-induced shift. Main persists base bounds with both effects removed.
-Native gestures from the left edge or non-right corners update only those base
-bounds, leaving `requested` and the renderer-owned fixed panel width
-unchanged. The outer right edge and right corners update the panel target while
-the base conversation width stays fixed. Maximized and fullscreen windows
-remember the latest target but defer geometry; returning to normal reconciles
-it once against the restored base bounds and current work area. If the window
-manager first compresses or relocates the outer window during a display or
-work-area transition, reconciliation preserves the last confirmed base bounds;
-returning to a roomier work area restores the original chat width. That
-preservation applies to window-manager adjustments only. A cross-display change
-that arrives while the user is dragging the window is attributed to the user
-(D263, ADR 0132): the dropped position becomes the new base bounds, with only
-its origin normalized into the target display work area, and it is the position
-persisted for relaunch. The base size is preserved even when the target work
-area is narrower, so `reserved` shrinks rather than the window. Main defers this
-reconciliation until the native move stream settles, so no reservation geometry
-is applied mid-drag. The current renderer requests only zero, and background
-artifacts cannot change visible reservation geometry.
+`window/setWorkPanelChatWidth` and `window/event/workPanelResize` remain
+available only to older Electron callers. The current renderer divider changes
+the persisted `244..720px` panel width locally, and native window edges resize
+the fixed application window without changing that panel target. The native
+Browser view continues to follow the renderer-measured panel rectangle.
+Window bounds persistence and display reconciliation therefore operate on the
+ordinary application bounds; there is no panel-specific width or x-offset
+reservation, and background artifacts cannot change visible window geometry.
 
 ## 13c. Composer input APIs (D123/D124/D197, ADR 0024/0059)
 
@@ -1389,6 +1388,20 @@ This is an independent, one-shot completion with no session history, tools, or
 attachments. Electron main resolves the provider/model and credentials, so the
 renderer never receives a secret. Empty drafts, slash-command drafts, missing
 models, and provider failures return the common `Result` error envelope.
+
+### app/openFeedback (D313)
+
+```ts
+app/openFeedback() -> { ok: true }
+```
+
+Electron Main builds a fixed GitHub bug-form URL
+(`https://github.com/vastsa/PI-Desktop/issues/new?template=bug_report.yml`)
+and opens it with `shell.openExternal`. Query fields `app-version`, `os`, and
+`environment` are filled from Main-owned version info. The renderer cannot
+supply a URL. Construction that leaves that origin or template is rejected.
+This channel does not cross into host-core and does not change the host RPC
+protocol version.
 
 ## 14. Error Codes — Initial registry (extensible)
 

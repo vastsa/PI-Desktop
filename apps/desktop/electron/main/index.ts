@@ -12,27 +12,24 @@ import {
   shell,
   Tray,
 } from "electron";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import {
-  constants as fsConstants,
-  createReadStream,
   existsSync,
   mkdirSync,
-  readFileSync,
-  realpathSync,
   statSync,
   writeFileSync,
 } from "node:fs";
-import { copyFile, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { listInstalledFonts } from "./system-fonts";
 import {
   APP_ID,
   APP_NAME,
   APP_VERSION,
   APP_MENU_COMMANDS,
+  assertFeedbackIssueUrl,
+  buildBugReportUrl,
   defaultCommandShellForPlatform,
   ErrorCodes as SharedErrorCodes,
   IPC,
@@ -48,7 +45,6 @@ import {
   THINKING_LEVELS,
   WINDOW_CONTROL_ACTIONS,
   err,
-  formatFileInsert,
   isActiveInProject,
   modelIdsMatch,
   ok,
@@ -57,11 +53,9 @@ import {
   type AgentCapabilityQuery,
   type ComposerPasteFile,
   type PluginViewMeta,
+  type BrowserState,
   normalizeMode,
-  normalizeGlobalPermissionMode,
-  normalizeProposalKind,
   type AgentEventEnvelope,
-  type AgentPromptAttachment,
   type AgentPromptRequest,
   type PromptEnhancementRequest,
   type AgentStopRequest,
@@ -87,10 +81,11 @@ import {
   type PlanResolveRequest,
   type Result,
   type Risk,
-  type MessageAttachment,
   type ShortcutPlatform,
   type ThinkingLevel,
   type UiMessage,
+  type MessageUsage,
+  addUsage,
   type UserSkillRecord,
   type UserSubagentRecord,
   type WindowControlAction,
@@ -126,6 +121,7 @@ import {
   shouldCreateTaskNotification as shouldCreateTaskNotificationPolicy,
 } from "./notification-policy";
 import { PersistenceOutbox } from "./persistence-outbox";
+import { InflightCheckpointer } from "./inflight-checkpoint";
 import { AgentSidecar } from "./agent-sidecar";
 import { PluginRuntime } from "./plugin-runtime";
 import { ClipboardHistory, type ClipboardCapture } from "./clipboard-history";
@@ -140,10 +136,16 @@ import { builtinSkills, loadBuiltinSkillBody } from "./builtin-skills";
 import { registerPluginDevTools } from "./plugin-dev-tools";
 import { PluginPanelHost } from "./plugin-panel-host";
 import { PluginViewHost, pluginViewKey } from "./plugin-view-host";
+import { parseAllowedExternalUrl } from "./safe-open-external";
 import type { PluginAppearance } from "../shared/plugin-panel-chrome";
 import { Logger } from "./logger";
 import { collectWorkspaceDiff } from "./git-diff";
 import { BrowserPane, resolveLocalFile } from "./browser-view";
+import {
+  BrowserHost,
+  BROWSER_PLUGIN_ID,
+  BROWSER_VIEW_ID,
+} from "./browser-host";
 import { discoverProviderModels } from "./model-discovery";
 import {
   ModelsDevCatalog,
@@ -151,7 +153,12 @@ import {
   modelInfoFromModelsDev,
 } from "./models-dev-catalog";
 import { OAUTH_AUTH_KIND, VendorOAuth } from "./oauth";
-import { listDir, readReferencedFile, readReferencedImage, readWorkspaceFile, resolveWithinRoot } from "./fs-panel";
+import {
+  listDir,
+  readWorkspaceFile,
+  resolveOpenablePath,
+  resolveWithinRoot,
+} from "./fs-panel";
 import { getWorkspaceFileIndex } from "./fs-index";
 import { saveComposerPasteFiles } from "./composer-paste";
 import { builtinComposerCommands, builtinPaletteItems } from "./builtin-commands";
@@ -163,7 +170,7 @@ import {
 } from "./importers";
 import { installApplicationMenu } from "./application-menu";
 import { AppUpdaterController } from "./updater";
-import { en, resolveLocale, zhCN } from "@pi-desktop/i18n";
+import { catalogs, resolveLocale } from "@pi-desktop/i18n";
 import {
   baseWindowBounds,
   clampBoundsOriginToWorkArea,
@@ -182,6 +189,24 @@ import {
   type WindowBounds,
   type WorkPanelReservationState,
 } from "./work-panel-window";
+import {
+  appendPromptFallbackPaths,
+  durableUserMessageId,
+  preparePromptAttachments,
+  type PreparedPromptAttachment,
+} from "./prompt-attachments";
+import {
+  executionFromResponse,
+  executionListFromResponse,
+  planExecutionFromUnknown,
+} from "./plan-execution";
+import {
+  readCloseBehavior,
+  readWindowState,
+  writeCloseBehavior,
+  writeWindowState,
+} from "./window-preferences";
+import { createPlanUiProbe } from "./plan-ui-probe";
 
 // The shared error-code union is reconciled in the shared lane. Keep desktop
 // source type-safe while that lane is temporarily staged at main.
@@ -254,7 +279,7 @@ let tray: Tray | null = null;
 let pluginLauncherWindow: BrowserWindow | null = null;
 let pluginLauncherCreationPromise: Promise<BrowserWindow> | null = null;
 let pluginLauncherAccelerator: string | null = null;
-let pluginLauncherBinding = "Alt+Space";
+let pluginLauncherBinding: string | null = null;
 let windowCreationPromise: Promise<void> | null = null;
 let applicationBooted = false;
 const isDevelopmentBuild =
@@ -296,6 +321,10 @@ let shutdownPromise: Promise<void> | null = null;
 // close behavior only decides whether a close hides the window to it.
 let closeBehavior: CloseBehavior = "ask";
 let closePromptOpen = false;
+// Set when the user has explicitly confirmed a quit through the confirmation
+// dialog (Cmd+Q, tray quit, etc.). Prevents the dialog from showing again when
+// `app.quit()` is re-issued after the user confirmed.
+let quitConfirmed = false;
 // Windows whose close handler has already decided to let the close through.
 // Per-window rather than a module-level latch, so a real close never leaks
 // permission to close into the next window `ensureWindow()` creates.
@@ -387,6 +416,17 @@ async function readSystemClipboard(): Promise<ClipboardCapture | null> {
 
 const clipboardHistory = new ClipboardHistory({ read: readSystemClipboard });
 
+async function safeOpenExternal(rawUrl: unknown): Promise<void> {
+  const url = parseAllowedExternalUrl(rawUrl);
+  if (!url) {
+    logger.app("permission", "warn", "Blocked disallowed external protocol or URL", {
+      data: { url: typeof rawUrl === "string" ? rawUrl.slice(0, 256) : String(rawUrl) },
+    });
+    throw new Error("DISALLOWED_EXTERNAL_URL");
+  }
+  await shell.openExternal(url);
+}
+
 const pluginPanels = new PluginPanelHost(
   async (pluginId, channel, payload) =>
     plugins.invokePanelBridge(pluginId, channel, payload),
@@ -416,7 +456,7 @@ const plugins = new PluginRuntime({
   requestNotificationPermission: requestPluginNotificationPermission,
   showNativeNotification: showPluginNativeNotification,
   openExternal: async (url) => {
-    await shell.openExternal(url);
+    await safeOpenExternal(url);
   },
   openPath: async (fullPath) => {
     const error = await shell.openPath(stripWinLongPrefix(fullPath));
@@ -510,6 +550,7 @@ const plugins = new PluginRuntime({
     // surface. Drop it; the renderer re-opens it on the pluginChanged event if
     // the tab is still active and the plugin came back.
     pluginViews.closePlugin(pluginId);
+    if (pluginId === BROWSER_PLUGIN_ID) browserHost.disposeGuest();
     sendToRenderer(IPC.event.pluginChanged, { reason: "crash", pluginId });
   },
   // Supervision state is UI-only: the runtime owns restarts, the renderer just
@@ -536,6 +577,7 @@ const plugins = new PluginRuntime({
     });
     // Views were loaded from the previous revision of the plugin's files.
     pluginViews.closePlugin(pluginId);
+    if (pluginId === BROWSER_PLUGIN_ID) browserHost.disposeGuest();
     sendToRenderer(IPC.event.pluginChanged, { reason: "reload", pluginId });
   },
 });
@@ -561,9 +603,12 @@ const pluginScopes = new Map<string, ActivationScope>();
  * can hold sessions on different projects, so this cannot be a single value.
  */
 const sessionProjects = new Map<string, string | null>();
-const browserPane = new BrowserPane((state) =>
-  sendToRenderer(IPC.event.browserState, state),
-);
+const emitBrowserState = (state: BrowserState) => {
+  sendToRenderer(IPC.event.browserState, state);
+  pluginPanels.broadcast("browser:state", state);
+  pluginViews.broadcast("browser:state", state);
+};
+const browserPane = new BrowserPane(emitBrowserState);
 const pluginViews = new PluginViewHost(({ pluginId, url }) => {
   logger.app("plugin", "warn", "plugin.api", {
     pluginId,
@@ -572,6 +617,55 @@ const pluginViews = new PluginViewHost(({ pluginId, url }) => {
   });
 });
 pluginPanels.addSenderResolver((senderId) => pluginViews.pluginIdForSender(senderId));
+const browserHost = new BrowserHost({
+  pane: browserPane,
+  isPluginLoaded: (pluginId) => Boolean(plugins.getLoaded(pluginId)),
+  getFileRoot: async (sessionId) => {
+    if (sessionId) {
+      try {
+        const res = (await host?.call("session.get", { id: sessionId })) as
+          | { session: { projectPath?: string } | null }
+          | undefined;
+        const path = res?.session?.projectPath?.trim();
+        if (path) return path;
+      } catch {
+        // Fall through to the visible workspace.
+      }
+    }
+    return currentWorkspacePath();
+  },
+  getScratchDir: (sessionId) => {
+    if (!sessionId) return null;
+    const root =
+      process.env.PI_DESKTOP_DATA_DIR?.trim() ||
+      join(homedir(), ".pi-desktop");
+    return join(root, "scratch", sessionId);
+  },
+  onState: emitBrowserState,
+});
+pluginViews.onSurface = (surface) => {
+  browserHost.setChromeSurface(surface);
+};
+plugins.setServices({
+  browser: {
+    navigate: (input, sessionId) => browserHost.navigate(input, sessionId),
+    action: (action) => browserHost.action(action),
+    setBounds: (pluginId, hole) => browserHost.setGuestHole(pluginId, hole),
+    setVisible: (pluginId, visible) => browserHost.setGuestVisible(pluginId, visible),
+    getState: () => browserHost.getState(),
+    openExternal: () => browserHost.openExternal(),
+    snapshot: () => browserHost.snapshot(),
+    screenshot: (input, sessionId) => browserHost.screenshot(input, sessionId),
+    click: (uid) => browserHost.click(uid),
+    fill: (uid, text) => browserHost.fill(uid, text),
+    evaluate: (expression) => browserHost.evaluate(expression),
+    console: (limit) => browserHost.console(limit),
+    cdp: (method, params) => browserHost.cdpCommand(method, params),
+  },
+  onPluginUnload: (pluginId) => {
+    if (pluginId === BROWSER_PLUGIN_ID) browserHost.disposeGuest();
+  },
+});
 let scannedImportSessions = new Map<string, ExternalSessionSummary>();
 
 const IMPORT_SOURCES = new Set<ExternalSource>([
@@ -584,284 +678,29 @@ const IMPORT_SOURCES = new Set<ExternalSource>([
 const dataDir =
   process.env.PI_DESKTOP_DATA_DIR || join(homedir(), ".pi-desktop");
 
-const IMAGE_EXTENSIONS = new Set([
-  "avif",
-  "bmp",
-  "gif",
-  "heic",
-  "jpeg",
-  "jpg",
-  "png",
-  "tif",
-  "tiff",
-  "webp",
-]);
-const IMAGE_MIME_TYPES = new Set([
-  "image/avif",
-  "image/bmp",
-  "image/gif",
-  "image/heic",
-  "image/jpeg",
-  "image/png",
-  "image/tiff",
-  "image/webp",
-]);
-const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
-  avif: "image/avif",
-  bmp: "image/bmp",
-  gif: "image/gif",
-  heic: "image/heic",
-  jpeg: "image/jpeg",
-  jpg: "image/jpeg",
-  png: "image/png",
-  tif: "image/tiff",
-  tiff: "image/tiff",
-  webp: "image/webp",
-};
-const MAX_INLINE_IMAGE_BYTES = 20 * 1024 * 1024;
-
-type PromptPath = {
-  absolute: string;
-  root: "project" | "scratch" | "attachment";
-};
-
-type PreparedPromptAttachment = {
-  message: MessageAttachment;
-  fallbackPath: string;
-  inlineData?: string;
-};
-
-function pathInside(root: string, candidate: string): boolean {
-  const child = relative(root, candidate);
-  return child === "" || (!child.startsWith("..") && !isAbsolute(child));
-}
-
-function canonicalPath(path: string): string | undefined {
-  try {
-    return realpathSync(path);
-  } catch {
-    return undefined;
-  }
-}
-
-function promptMimeType(path: string, supplied?: string): string {
-  const value = supplied?.trim().toLowerCase();
-  if (value) return value;
-  const extension = path.split(".").at(-1)?.toLowerCase() ?? "";
-  return IMAGE_MIME_BY_EXTENSION[extension] ?? "application/octet-stream";
-}
-
-function isImagePromptAttachment(
-  attachment: AgentPromptAttachment,
-  path: string,
-): boolean {
-  const mimeType = promptMimeType(path, attachment.mimeType);
-  const extension = path.split(".").at(-1)?.toLowerCase() ?? "";
-  return (
-    attachment.kind === "image" ||
-    mimeType.startsWith("image/") ||
-    IMAGE_MIME_TYPES.has(mimeType) ||
-    IMAGE_EXTENSIONS.has(extension)
-  );
-}
-
-function resolvePromptPath(
-  dataRoot: string,
-  sessionId: string,
-  projectPath: string | undefined,
-  rawPath: string,
-): PromptPath | undefined {
-  const trimmed = rawPath.trim();
-  if (!trimmed) return undefined;
-  const scratchRoot = join(dataRoot, "scratch", sessionId);
-  const attachmentRoot = join(dataRoot, "attachments");
-  const roots: Array<{ path: string; root: PromptPath["root"] }> = [
-    { path: scratchRoot, root: "scratch" },
-    { path: attachmentRoot, root: "attachment" },
-    ...(projectPath ? [{ path: projectPath, root: "project" as const }] : []),
-  ];
-  const candidate = isAbsolute(trimmed)
-    ? resolve(trimmed)
-    : trimmed.startsWith("attachments/")
-      ? resolve(dataRoot, trimmed)
-      : projectPath
-        ? resolve(projectPath, trimmed)
-        : undefined;
-  if (!candidate) return undefined;
-  const realCandidate = canonicalPath(candidate);
-  if (!realCandidate) return undefined;
-  for (const entry of roots) {
-    const realRoot = canonicalPath(entry.path);
-    if (realRoot && pathInside(realRoot, realCandidate)) {
-      try {
-        if (!statSync(realCandidate).isFile()) return undefined;
-      } catch {
-        return undefined;
-      }
-      return { absolute: realCandidate, root: entry.root };
-    }
-  }
-  return undefined;
-}
-
-function displayPromptPath(
-  promptPath: PromptPath,
-  projectPath: string | undefined,
-): string {
-  if (promptPath.root !== "project" || !projectPath) return promptPath.absolute;
-  const relativePath = relative(projectPath, promptPath.absolute);
-  return relativePath && !relativePath.startsWith("..")
-    ? relativePath
-    : promptPath.absolute;
-}
-
-function ensureAttachmentBlob(dataRoot: string, bytes: Buffer): string {
-  const hash = createHash("sha256").update(bytes).digest("hex");
-  const root = join(dataRoot, "attachments");
-  mkdirSync(root, { recursive: true });
-  const target = join(root, hash);
-  if (!existsSync(target)) {
-    try {
-      writeFileSync(target, bytes, { flag: "wx" });
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException)?.code !== "EEXIST") throw error;
-    }
-  }
-  return `attachments/${hash}`;
-}
-
-async function hashFile(path: string): Promise<string> {
-  const hash = createHash("sha256");
-  const stream = createReadStream(path);
-  for await (const chunk of stream) hash.update(chunk as Buffer);
-  return hash.digest("hex");
-}
-
-async function ensureAttachmentBlobFromFile(
-  dataRoot: string,
-  source: string,
-): Promise<string> {
-  const hash = await hashFile(source);
-  const root = join(dataRoot, "attachments");
-  mkdirSync(root, { recursive: true });
-  const target = join(root, hash);
-  if (!existsSync(target)) {
-    try {
-      await copyFile(source, target, fsConstants.COPYFILE_EXCL);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException)?.code !== "EEXIST") throw error;
-    }
-  }
-  return `attachments/${hash}`;
-}
-
-async function fallbackPathForStoredAttachment(
-  dataRoot: string,
-  sessionId: string,
-  source: PromptPath,
-  name: string,
-): Promise<string> {
-  if (source.root !== "attachment") return source.absolute;
-  const root = join(dataRoot, "scratch", sessionId, "replayed");
-  mkdirSync(root, { recursive: true });
-  const safeName = name.replace(/[^\p{L}\p{N}._-]+/gu, "_") || "attachment";
-  const target = join(root, `${safeName}-${createHash("sha256").update(source.absolute).digest("hex").slice(0, 12)}`);
-  if (!existsSync(target)) {
-    try {
-      await copyFile(source.absolute, target, fsConstants.COPYFILE_EXCL);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException)?.code !== "EEXIST") throw error;
-    }
-  }
-  return target;
-}
-
-async function preparePromptAttachments(
-  dataRoot: string,
-  sessionId: string,
-  projectPath: string | undefined,
-  attachments: readonly AgentPromptAttachment[],
-  supportsVision: boolean,
-): Promise<PreparedPromptAttachment[]> {
-  const prepared: PreparedPromptAttachment[] = [];
-  for (const attachment of attachments) {
-    const source = resolvePromptPath(dataRoot, sessionId, projectPath, attachment.path);
-    if (!source) {
-      throw Object.assign(new Error(`Attachment path is outside the session roots: ${attachment.path}`), {
-        errorCode: ErrorCodes.PATH_OUTSIDE_WORKSPACE,
-      });
-    }
-    const name = attachment.name.trim() || source.absolute.split(/[\\/]/).at(-1) || "attachment";
-    const mimeType = promptMimeType(source.absolute, attachment.mimeType);
-    const isImage = isImagePromptAttachment(attachment, source.absolute);
-    if (!isImage) {
-      prepared.push({
-        message: {
-          kind: "file",
-          name,
-          ref: attachment.path,
-          ...(mimeType !== "application/octet-stream" ? { mimeType } : {}),
-          ...(Number.isFinite(attachment.size) ? { size: attachment.size } : {}),
-        },
-        fallbackPath: displayPromptPath(source, projectPath),
-      });
-      continue;
-    }
-
-    const size = statSync(source.absolute).size;
-    const inline = supportsVision && size <= MAX_INLINE_IMAGE_BYTES;
-    const bytes = inline ? await readFile(source.absolute) : undefined;
-    const ref =
-      source.root === "attachment" && attachment.path.trim().startsWith("attachments/")
-        ? attachment.path.trim()
-        : bytes
-          ? ensureAttachmentBlob(dataRoot, bytes)
-          : await ensureAttachmentBlobFromFile(dataRoot, source.absolute);
-    const fallbackPath = inline
-      ? displayPromptPath(source, projectPath)
-      : await fallbackPathForStoredAttachment(
-          dataRoot,
-          sessionId,
-          source,
-          name,
-        );
-    prepared.push({
-      message: {
-        kind: "image",
-        name,
-        ref,
-        mimeType,
-        size,
-      },
-      fallbackPath,
-      ...(bytes
-        ? { inlineData: bytes.toString("base64") }
-        : {}),
-    });
-  }
-  return prepared;
-}
-
-function appendPromptFallbackPaths(
-  content: string,
-  attachments: readonly PreparedPromptAttachment[],
-): string {
-  const paths = attachments
-    .filter((attachment) => !attachment.inlineData)
-    .map((attachment) => formatFileInsert(attachment.fallbackPath, "file"))
-    .join("")
-    .trim();
-  const text = content.trim();
-  if (!text) return paths;
-  return paths ? `${text}\n${paths}` : text;
-}
-
 const logger = new Logger(
   dataDir,
   process.env.NODE_ENV === "production" ? "info" : "debug",
 );
 const persistenceOutbox = new PersistenceOutbox(dataDir, (level, message, data) => {
   logger.app("persistence", level, message, { data });
+});
+// The reply currently streaming in each session, checkpointed to host-core so
+// a quit or crash mid-reply keeps the text the user already saw (D299). A
+// checkpoint is a best-effort write against a live host; the outbox is not
+// involved because a stale checkpoint must never be replayed after the final
+// row.
+const inflightCheckpointer = new InflightCheckpointer(async (checkpoint) => {
+  if (!host || !host.isAvailable()) return;
+  await host.call(
+    "session.saveInflightMessage",
+    {
+      sessionId: checkpoint.sessionId,
+      turnId: checkpoint.turnId,
+      message: checkpoint.message,
+    },
+    5_000,
+  );
 });
 
 /** Product UI locale for dual-locale update notes (mirrored from settings). */
@@ -900,7 +739,9 @@ const vendorOAuth = new VendorOAuth({
     return host.call<T>(method, params);
   },
   emit: (event) => sendToRenderer(IPC.event.providersOauth, event),
-  openExternal: (url) => shell.openExternal(url),
+  openExternal: async (url) => {
+    await safeOpenExternal(url);
+  },
   log: (level, message, data) => logger.app("provider", level, message, { data }),
   modelConfigFor: async ({ vendorKey, option }) => {
     await modelsDevCatalog.ensureLoaded();
@@ -974,8 +815,31 @@ function enrichProvider<T extends RuntimeProvider>(
       : genericModelConfig(modelId, provider.baseUrl ?? ""),
     storedModel,
   );
+  // Provider discovery is lazy in the renderer. Publish the same effective
+  // limits on the provider snapshot so the context inspector is correct before
+  // Composer has loaded the per-provider model list.
+  const models = provider.models?.map((binding) => {
+    const catalogModel = modelsDevModelFor(provider, binding.id);
+    if (!catalogModel) return binding;
+    const effective = modelConfigWithBinding(
+      modelConfigFromModelsDev(catalogModel, provider.baseUrl),
+      binding,
+    );
+    return {
+      ...binding,
+      contextWindow: effective.contextWindow,
+      maxTokens: effective.maxTokens,
+    };
+  });
   return {
     ...provider,
+    ...(models ? { models } : {}),
+    ...(modelsDevModel
+      ? {
+          contextWindow: modelConfig.contextWindow,
+          maxOutputTokens: modelConfig.maxTokens,
+        }
+      : {}),
     ...capabilitiesFromModelConfig(modelConfig),
     supportsVision: visionFromModelConfig(modelConfig),
   };
@@ -1032,12 +896,68 @@ async function enrichProviderList<T extends RuntimeProvider>(result: { providers
   };
 }
 
+type SessionCapabilityDefaults = {
+  defaultProviderId?: string;
+  defaultModelId?: string;
+};
+
+async function loadSessionCapabilityDefaults(): Promise<SessionCapabilityDefaults> {
+  if (!host) return {};
+  try {
+    const settings = await host.call<{
+      defaultProviderId?: string;
+      defaultModelId?: string;
+    }>("settings.get");
+    return {
+      defaultProviderId: settings?.defaultProviderId,
+      defaultModelId: settings?.defaultModelId,
+    };
+  } catch {
+    return {};
+  }
+}
+
+async function sessionCapabilityContext() {
+  const [providers, defaults] = await Promise.all([
+    listRuntimeProviders(),
+    loadSessionCapabilityDefaults(),
+  ]);
+  return { providers, defaults };
+}
+
+function resolveSessionCapabilityTarget(
+  session: RuntimeSession,
+  providers: readonly RuntimeProvider[],
+  defaults?: SessionCapabilityDefaults,
+): { provider: RuntimeProvider; modelId: string } | null {
+  const pinnedProvider = session.providerId
+    ? providers.find((item) => item.id === session.providerId)
+    : undefined;
+  const provider =
+    pinnedProvider ||
+    (defaults?.defaultProviderId
+      ? providers.find((item) => item.id === defaults.defaultProviderId)
+      : undefined);
+  if (!provider) return null;
+  const pinnedModelId = pinnedProvider && session.modelId ? session.modelId : undefined;
+  const inheritedModelId =
+    provider.id === defaults?.defaultProviderId ? defaults.defaultModelId : undefined;
+  const modelId =
+    pinnedModelId ||
+    inheritedModelId ||
+    provider.models?.[0]?.id ||
+    provider.defaultModelId;
+  if (!modelId) return null;
+  return { provider, modelId };
+}
+
 function enrichSession<T extends RuntimeSession>(
   session: T,
   providers: readonly RuntimeProvider[],
+  defaults?: SessionCapabilityDefaults,
 ): T & ThinkingCapabilities & { supportsVision: boolean } {
-  const provider = providers.find((candidate) => candidate.id === session.providerId);
-  if (!provider || !session.modelId) {
+  const target = resolveSessionCapabilityTarget(session, providers, defaults);
+  if (!target) {
     return {
       ...session,
       supportsReasoning: false,
@@ -1045,12 +965,13 @@ function enrichSession<T extends RuntimeSession>(
       supportedThinkingLevels: ["off"],
     };
   }
-  const storedModel = bindingForModel(provider, session.modelId);
-  const modelsDevModel = modelsDevModelFor(provider, session.modelId);
+  const { provider, modelId } = target;
+  const storedModel = bindingForModel(provider, modelId);
+  const modelsDevModel = modelsDevModelFor(provider, modelId);
   const modelConfig = modelConfigWithBinding(
     modelsDevModel
       ? modelConfigFromModelsDev(modelsDevModel, provider.baseUrl)
-      : genericModelConfig(session.modelId, provider.baseUrl ?? ""),
+      : genericModelConfig(modelId, provider.baseUrl ?? ""),
     storedModel,
   );
   return {
@@ -1096,6 +1017,28 @@ function pluginActiveInProject(pluginId: string, projectPath: string | null | un
  */
 function currentWorkspacePath(): string | null {
   return (globalThis as { __piWorkspacePath?: string | null }).__piWorkspacePath ?? null;
+}
+
+function workspaceInfo(
+  path: string | null,
+): { path: string; name: string } | null {
+  if (!path) return null;
+  return { path, name: path.split(/[\\/]/).filter(Boolean).at(-1) || path };
+}
+
+/** Push a panel event to detached windows and docked views. */
+function broadcastPluginPanelEvent(event: string, payload: unknown): void {
+  pluginPanels.broadcast(event, payload);
+  pluginViews.broadcast(event, payload);
+}
+
+function setCurrentWorkspacePath(path: string | null): void {
+  const previous = currentWorkspacePath();
+  (globalThis as { __piWorkspacePath?: string | null }).__piWorkspacePath = path;
+  if (previous === path) return;
+  const payload = workspaceInfo(path);
+  broadcastPluginPanelEvent("workspace:changed", payload);
+  plugins.broadcastEvent("workspace:changed", [payload]);
 }
 
 /** One-line message for an error of unknown shape, for user-facing lists. */
@@ -1458,6 +1401,7 @@ async function resolveAgentRuntimeLaunch(
       subagentBindings.providers[key] = {
         id: row.id,
         name: row.name,
+        ...(row.vendorKey ? { vendorKey: row.vendorKey } : {}),
         ...(row.baseUrl ? { baseUrl: row.baseUrl } : {}),
         modelId: binding.id,
         apiKey,
@@ -1620,7 +1564,7 @@ function restoreMainWindow() {
 
 function updateTrayMenu(locale = app.getLocale()) {
   if (!tray) return;
-  const labels = resolveLocale(locale) === "zh-CN" ? zhCN.tray : en.tray;
+  const labels = catalogs[resolveLocale(locale)].tray;
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: labels.open, click: restoreMainWindow },
@@ -1758,6 +1702,71 @@ function dispatchApplicationMenuCommand(command: AppMenuCommand) {
   });
 }
 
+function executeNativeMenuAction(
+  action: NativeMenuAction,
+  target: BrowserWindow | null = mainWindow,
+) {
+  if (!target || target.isDestroyed()) {
+    return { maximized: false, fullScreen: false };
+  }
+
+  const contents = target.webContents;
+  switch (action) {
+    case "undo":
+      contents.undo();
+      break;
+    case "redo":
+      contents.redo();
+      break;
+    case "cut":
+      contents.cut();
+      break;
+    case "copy":
+      contents.copy();
+      break;
+    case "paste":
+      contents.paste();
+      break;
+    case "selectAll":
+      contents.selectAll();
+      break;
+    case "reload":
+      contents.reload();
+      break;
+    case "zoomIn":
+      contents.setZoomFactor(Math.min(3, contents.getZoomFactor() * 1.1));
+      break;
+    case "zoomOut":
+      contents.setZoomFactor(Math.max(0.5, contents.getZoomFactor() / 1.1));
+      break;
+    case "resetZoom":
+      contents.setZoomFactor(1);
+      break;
+    case "toggleFullScreen":
+      target.setFullScreen(!target.isFullScreen());
+      break;
+    case "minimize":
+      target.minimize();
+      break;
+    case "toggleMaximize":
+      if (target.isMaximized()) target.unmaximize();
+      else target.maximize();
+      break;
+    case "close":
+      target.close();
+      break;
+  }
+
+  return {
+    maximized: !target.isDestroyed() && target.isMaximized(),
+    fullScreen: !target.isDestroyed() && target.isFullScreen(),
+  };
+}
+
+function dispatchNativeMenuAction(action: NativeMenuAction) {
+  void executeNativeMenuAction(action);
+}
+
 let appliedMenuSettings: string | null = null;
 
 /**
@@ -1828,6 +1837,7 @@ function applyApplicationMenuSettings(settings?: {
     keybindings,
     developerMode: devMode,
     dispatch: dispatchApplicationMenuCommand,
+    dispatchNative: dispatchNativeMenuAction,
   });
   updateTrayMenu(locale);
 }
@@ -1862,7 +1872,7 @@ function broadcastAppearance(): void {
   const signature = JSON.stringify(appearance);
   if (signature === broadcastAppearanceSignature) return;
   broadcastAppearanceSignature = signature;
-  pluginPanels.broadcast("appearance:changed", appearance);
+  broadcastPluginPanelEvent("appearance:changed", appearance);
 }
 
 function flushPendingApplicationMenuCommands() {
@@ -1961,6 +1971,14 @@ const inFlightExecutionFinishes = new Set<string>();
 let approvedExecutionDrain: Promise<void> | null = null;
 const turnSettlements = new Map<string, Set<() => void>>();
 const turnFinalizations = new Map<string, Promise<void>>();
+/** sessionId -> last assistant usage recorded for active turn */
+const activeTurnUsages = new Map<string, MessageUsage>();
+
+function addActiveTurnUsage(sessionId: string, usage: MessageUsage | undefined) {
+  if (!usage) return;
+  const next = addUsage(activeTurnUsages.get(sessionId), usage);
+  if (next) activeTurnUsages.set(sessionId, next);
+}
 /** sessionId → scheduled task_run id awaiting completion. */
 const scheduledRunsBySession = new Map<string, string>();
 /** Session currently rendered on the chat page; focus remains Main-owned. */
@@ -2026,61 +2044,6 @@ async function withGitBranch<T extends { path?: string; name?: string } | null |
   }
 }
 
-type WindowState = { x: number; y: number; width: number; height: number };
-
-function windowStatePath() {
-  return join(dataDir, "window-state.json");
-}
-
-async function readWindowState(): Promise<WindowState | null> {
-  const { readFile } = await import("node:fs/promises");
-  try {
-    const raw = JSON.parse(await readFile(windowStatePath(), "utf8"));
-    const s = {
-      x: Number(raw.x),
-      y: Number(raw.y),
-      width: Number(raw.width),
-      height: Number(raw.height),
-    };
-    if (![s.x, s.y, s.width, s.height].every(Number.isFinite)) return null;
-    if (s.width < WINDOW_MIN_WIDTH || s.height < WINDOW_MIN_HEIGHT) return null;
-    return s;
-  } catch {
-    return null;
-  }
-}
-
-function writeWindowState(state: WindowState) {
-  try {
-    mkdirSync(dataDir, { recursive: true });
-    writeFileSync(windowStatePath(), JSON.stringify(state), "utf8");
-  } catch {
-    // best-effort persistence
-  }
-}
-
-function closeBehaviorPath() {
-  return join(dataDir, "close-behavior.json");
-}
-
-function readCloseBehavior(): CloseBehavior | null {
-  try {
-    const raw = JSON.parse(readFileSync(closeBehaviorPath(), "utf8"));
-    return raw === "ask" || raw === "tray" || raw === "quit" ? raw : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeCloseBehavior(behavior: CloseBehavior) {
-  try {
-    mkdirSync(dataDir, { recursive: true });
-    writeFileSync(closeBehaviorPath(), JSON.stringify(behavior), "utf8");
-  } catch {
-    // best-effort persistence
-  }
-}
-
 /**
  * Applies a close-behavior choice. The tray icon is owned by D216 and stays
  * resident on every platform, so switching to "quit" must not destroy it —
@@ -2088,7 +2051,7 @@ function writeCloseBehavior(behavior: CloseBehavior) {
  */
 function applyCloseBehavior(next: CloseBehavior) {
   closeBehavior = next;
-  writeCloseBehavior(next);
+  writeCloseBehavior(dataDir, next);
   if (next === "tray") createTray();
 }
 
@@ -2100,7 +2063,7 @@ function applyCloseBehavior(next: CloseBehavior) {
 async function askCloseBehavior(
   window: BrowserWindow,
 ): Promise<"tray" | "quit" | null> {
-  const labels = resolveLocale(app.getLocale()) === "zh-CN" ? zhCN : en;
+  const labels = catalogs[resolveLocale(app.getLocale())];
   const { response } = await dialog.showMessageBox(window, {
     type: "question",
     title: labels.tray.askTitle,
@@ -2112,6 +2075,32 @@ async function askCloseBehavior(
     noLink: true,
   });
   return response === 1 ? "tray" : response === 2 ? "quit" : null;
+}
+
+/**
+ * Quit-confirmation dialog shown on explicit quit (Cmd+Q, tray quit, menu Quit).
+ * Data is already saved as part of the normal shutdown sequence, but this
+ * gives the user a chance to cancel before that process begins.
+ * Returns `true` when the user confirms, `false` when they cancel.
+ */
+async function confirmQuitDialog(): Promise<boolean> {
+  const labels = catalogs[resolveLocale(app.getLocale())];
+  const parent =
+    mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
+  const options = {
+    type: "warning" as const,
+    title: labels.tray.confirmQuitTitle,
+    message: labels.tray.confirmQuitTitle,
+    detail: labels.tray.confirmQuitBody,
+    buttons: [labels.common.cancel, labels.tray.confirmQuit],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+  };
+  const { response } = parent
+    ? await dialog.showMessageBox(parent, options)
+    : await dialog.showMessageBox(options);
+  return response === 1;
 }
 
 function workPanelMinimumWindowWidth() {
@@ -2158,70 +2147,11 @@ function classifyDisplayTransition(nextDisplayKey: string): DisplayTransition {
 }
 
 function applyWorkPanelReservation(): WorkPanelReservationState {
-  if (
-    !mainWindow ||
-    mainWindow.isDestroyed() ||
-    mainWindow.isFullScreen() ||
-    mainWindow.isMaximized()
-  ) {
-    return workPanelReservation;
-  }
-  if (workPanelNativeResizeActive || workPanelChatResizeActive) {
-    return workPanelReservation;
-  }
-
-  const window = mainWindow;
-  const currentBounds = window.getBounds();
-  const display = screen.getDisplayMatching(currentBounds);
-  const workArea = display.workArea;
-  const nextDisplayKey = displayWorkAreaKey(display.id, workArea);
-  const displayTransition = classifyDisplayTransition(nextDisplayKey);
-  const observedBase = observedWorkPanelBaseBounds(
-    currentBounds,
-    displayTransition,
-  );
-  // A dragged-in base came from the target display's own coordinates, but the
-  // window can still straddle the boundary at drop time. Normalize it to the
-  // target work area so the plan below never reads an off-display origin.
-  const baseBounds =
-    displayTransition === "user-moved"
-      ? clampBoundsOriginToWorkArea(observedBase, workArea)
-      : observedBase;
-  workPanelBaseBounds = baseBounds;
-  workPanelDisplayKey = nextDisplayKey;
-  // The drag has now been accounted for on its target display.
-  if (displayTransition === "user-moved") workPanelUserMovePending = false;
-  const next = planWorkPanelReservation({
-    baseBounds,
-    workArea,
-    requestedWidth: requestedWorkPanelReservation,
-    preserveReservation:
-      displayTransition === "none" && workPanelReservation.width > 0,
-  });
-  const minimumWidth = Math.max(
-    WINDOW_MIN_WIDTH,
-    Math.min(workArea.width, WINDOW_MIN_WIDTH + next.reservation.width),
-  );
-
-  // Lower the minimum before a collapse; raise it after the expanded bounds
-  // exist. The native right edge has its own panel-resize path while the
-  // remaining native edges continue to update the base chat bounds.
-  if (next.bounds.width < currentBounds.width) {
-    window.setMinimumSize(minimumWidth, WINDOW_MIN_HEIGHT);
-  }
-  expectedWorkPanelBounds = next.bounds;
-  window.setBounds(next.bounds, false);
-  if (next.bounds.width >= currentBounds.width) {
-    window.setMinimumSize(minimumWidth, WINDOW_MIN_HEIGHT);
-  }
-
-  const appliedBounds = window.getBounds();
-  expectedWorkPanelBounds = appliedBounds;
-  workPanelLastAppliedBounds = { ...appliedBounds };
-  workPanelReservation = {
-    width: Math.max(0, appliedBounds.width - baseBounds.width),
-    xOffset: appliedBounds.x - baseBounds.x,
-  };
+  // The work panel is rendered inside the existing BrowserWindow. This helper
+  // remains as a no-op for recovery call sites from the old reservation path,
+  // but opening or collapsing the panel must never mutate native bounds.
+  requestedWorkPanelReservation = 0;
+  workPanelReservation = emptyWorkPanelReservationState();
   return workPanelReservation;
 }
 
@@ -2286,7 +2216,7 @@ function createPluginLauncherWindow(): Promise<BrowserWindow> {
       });
     }
     window.webContents.setWindowOpenHandler(({ url }) => {
-      void shell.openExternal(url);
+      void safeOpenExternal(url).catch(() => undefined);
       return { action: "deny" };
     });
     window.webContents.on("will-navigate", (event, url) => {
@@ -2396,21 +2326,16 @@ function applyPluginLauncherShortcut(keybindings?: KeybindingOverrides) {
       );
   }
 
+  if (pluginLauncherAccelerator && pluginLauncherAccelerator !== accelerator) {
+    globalShortcut.unregister(pluginLauncherAccelerator);
+    pluginLauncherAccelerator = null;
+  }
+
   // Windows reserves Alt+Space for the active window system menu. The
   // host-core low-level hook owns this exact binding so it still works while
   // another application is focused; do not ask Electron to register it too.
-  if (process.platform === "win32" && binding === "Alt+Space") {
-    if (pluginLauncherAccelerator) {
-      globalShortcut.unregister(pluginLauncherAccelerator);
-      pluginLauncherAccelerator = null;
-    }
-    return;
-  }
+  if (process.platform === "win32" && binding === "Alt+Space") return;
   if (!accelerator || accelerator === pluginLauncherAccelerator) return;
-  if (pluginLauncherAccelerator) {
-    globalShortcut.unregister(pluginLauncherAccelerator);
-  }
-  pluginLauncherAccelerator = null;
   const registered = globalShortcut.register(accelerator, () => {
     void togglePluginLauncher().catch((error) =>
       logger.app("diagnostics", "error", "plugin launcher shortcut failed", {
@@ -2441,13 +2366,16 @@ async function createWindow() {
   workPanelChatResizeTimer = null;
   workPanelChatResizeActive = false;
   setWorkPanelChatWidthForWindow = null;
-  const savedState = await readWindowState();
+  const savedState = await readWindowState(
+    dataDir,
+    WINDOW_MIN_WIDTH,
+    WINDOW_MIN_HEIGHT,
+  );
   mainWindow = new BrowserWindow({
     ...(savedState ?? { width: 1200, height: 800 }),
     minWidth: WINDOW_MIN_WIDTH,
     minHeight: WINDOW_MIN_HEIGHT,
     title: APP_NAME,
-    backgroundColor: nativeTheme.shouldUseDarkColors ? "#181818" : "#ffffff",
     show: false,
     // Keep native edge/corner resizing explicit. Frameless chrome owns the
     // titlebar only; the OS remains responsible for the resize hit regions.
@@ -2459,8 +2387,15 @@ async function createWindow() {
       ? {
           titleBarStyle: "hiddenInset" as const,
           trafficLightPosition: { x: 16, y: 16 },
+          vibrancy: "under-window" as const,
+          visualEffectState: "followWindow" as const,
+          transparent: true,
+          backgroundColor: "#00000000",
         }
-      : { frame: false }),
+      : {
+          frame: false,
+          backgroundColor: nativeTheme.shouldUseDarkColors ? "#181818" : "#ffffff",
+        }),
     webPreferences: {
       preload: join(__dirname, "../preload/index.cjs"),
       contextIsolation: true,
@@ -2717,7 +2652,7 @@ async function createWindow() {
   window.on("resized", armNativeWorkPanelResizeFinish);
 
   window.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url);
+    void safeOpenExternal(url).catch(() => undefined);
     return { action: "deny" };
   });
   window.webContents.on("did-start-loading", () => {
@@ -3086,7 +3021,7 @@ async function createWindow() {
       }
     }
     if (bounds.width >= WINDOW_MIN_WIDTH && bounds.height >= WINDOW_MIN_HEIGHT) {
-      writeWindowState(bounds);
+      writeWindowState(dataDir, bounds);
     }
   };
   const scheduleStateSave = () => {
@@ -3140,7 +3075,9 @@ async function createWindow() {
       }
       // "quit" means quit: go through the ordered `before-quit` shutdown
       // rather than relying on `window-all-closed`, which stays silent while
-      // the D216 tray is resident.
+      // the D216 tray is resident. Mark `quitConfirmed` because the user
+      // already chose to quit in the close-behavior dialog above.
+      quitConfirmed = true;
       windowsAllowedToClose.add(window);
       app.quit();
     })();
@@ -3745,10 +3682,32 @@ async function createWindow() {
             );
             await setPage("plugins");
             await new Promise((r) => setTimeout(r, 350));
+            // Mounting the page refreshes the store slice from IPC, which
+            // replaces the fixture with the real (near-empty) index; seed again
+            // once the mount effect has settled.
+            await mainWindow!.webContents.executeJavaScript(
+              `window.__PI_DESKTOP__?.seedPlugins?.(4)`,
+            );
+            await new Promise((r) => setTimeout(r, 250));
             await shot("pi-plugins-live");
-            // Row overflow menu on the last row of a group: the list panel
-            // clips its rounded corners, so this scene guards the menu against
-            // being cut off by that clip.
+            // Disclosed row details: capability, service and permission chips
+            // inside the raised detail block (D296).
+            await mainWindow!.webContents.executeJavaScript(`
+              (() => {
+                const details = document.querySelector('.plugins-row-details');
+                if (details) details.open = true;
+              })()
+            `);
+            await new Promise((r) => setTimeout(r, 250));
+            await shot("pi-plugins-row-details");
+            await mainWindow!.webContents.executeJavaScript(`
+              (() => {
+                const details = document.querySelector('.plugins-row-details');
+                if (details) details.open = false;
+              })()
+            `);
+            // Row overflow menu on the last row of a group: rows are separate
+            // tiles, so this scene guards the menu against the tile below.
             await mainWindow!.webContents.executeJavaScript(`
               (() => {
                 const rows = [...document.querySelectorAll('.plugins-row')];
@@ -3764,8 +3723,9 @@ async function createWindow() {
               `document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`,
             );
             await new Promise((r) => setTimeout(r, 150));
-            // The extension tabs, in order: installed, MCP, skills, subagents,
-            // marketplace (D202 inserted the fourth).
+            // The page's segments, in order: installed, marketplace. (MCP,
+            // skills and subagents moved to Settings; their scenes below are
+            // shot from there and only reuse this helper's click plumbing.)
             const extTab = async (index: number, settle = 350) => {
               await mainWindow!.webContents.executeJavaScript(`
                 (() => {
@@ -3861,8 +3821,20 @@ async function createWindow() {
             await new Promise((r) => setTimeout(r, 250));
             // Marketplace tab of the same page (D169 segmented control, fifth
             // since D202).
-            await extTab(4, 900);
+            await extTab(1, 900);
             await shot("pi-plugins-market");
+            // Detail sheet opened from the first card: head, install CTA and
+            // the section stack without rules between them (D296).
+            await mainWindow!.webContents.executeJavaScript(`
+              document.querySelector('.plugins-card-hit')
+                ?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+            `);
+            await new Promise((r) => setTimeout(r, 500));
+            await shot("pi-plugins-sheet");
+            await mainWindow!.webContents.executeJavaScript(
+              `document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`,
+            );
+            await new Promise((r) => setTimeout(r, 250));
             // Template picker behind the overflow menu (D171). Selecting a
             // template only sets state, so no folder dialog opens here.
             await extTab(0, 250);
@@ -3894,7 +3866,7 @@ async function createWindow() {
                window.__PI_DESKTOP__?.seedPluginThemes?.(2)`,
             );
             await setPage("settings");
-            // The general tab carries the theme grid, including plugin themes
+            // The general tab carries the theme picker, including plugin themes
             // (D175); earlier scenes leave the sidebar on the archive tab.
             await setSettingsTab("general");
             // Seeding plugin themes activates one of them, which drags the
@@ -4174,7 +4146,7 @@ function wireHost(h: HostProcess) {
           };
         } else {
           try {
-            const result = await tool.execute(q.args);
+            const result = await tool.execute(q.args, { sessionId: q.sessionId });
             payload = {
               executionId: q.executionId,
               ok: true,
@@ -4257,7 +4229,19 @@ async function startHost(): Promise<void> {
       data: { generation: h.generation },
     });
     void importLegacyScheduled();
-    void persistenceOutbox.flush(() => host);
+    // Drain before the renderer can session.get. Assistant/tool rows live in
+    // this outbox until host-core appends them; a cold start that raced the
+    // flush showed only user prompts (issue #42 / D327). Boot leaves
+    // completed checkpoints in place so this drain can land the finished
+    // row first; leftovers are then promoted as complete.
+    await persistenceOutbox.flush(() => host);
+    try {
+      await h.call("session.recoverInflightMessages");
+    } catch (error) {
+      logger.app("persistence", "warn", "in-flight reply recovery after outbox drain failed", {
+        data: String(error),
+      });
+    }
   } catch (error) {
     if (host === h) host = null;
     logger.flushChild("host");
@@ -4266,341 +4250,11 @@ async function startHost(): Promise<void> {
   }
 }
 
-type PlanUiProbeRequest = {
-  operation?: unknown;
-  workspace?: unknown;
-  sessionId?: unknown;
-  turnId?: unknown;
-  status?: unknown;
-  revision?: unknown;
-  title?: unknown;
-  markdown?: unknown;
-  question?: unknown;
-};
-
-const PLAN_UI_PROBE_GLOBAL = "__PI_DESKTOP_PLAN_UI_PROBE";
-
-function planUiProbeHostChildPid(instance: HostProcess | null): number | null {
-  const child = (
-    instance as unknown as { child?: { pid?: unknown } } | null
-  )?.child;
-  return typeof child?.pid === "number" && Number.isInteger(child.pid)
-    ? child.pid
-    : null;
-}
-
-function planUiProbeIdentity(instance: HostProcess | null = host) {
-  return {
-    electronMainPid: process.pid,
-    hostChildPid: planUiProbeHostChildPid(instance),
-  };
-}
-
-function planUiProbeSidecarChildPid(instance: AgentSidecar | null = sidecar): number | null {
-  const child = (
-    instance as unknown as { child?: { pid?: unknown } } | null
-  )?.child;
-  return typeof child?.pid === "number" && Number.isInteger(child.pid)
-    ? child.pid
-    : null;
-}
-
-function planUiProbeErrorText(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  const secret = process.env.PI_DESKTOP_TEST_API_KEY;
-  if (!secret) return message;
-  return message.split(secret).join("[REDACTED]");
-}
-
-function planUiProbeString(value: unknown, field: string): string {
-  if (typeof value !== "string" || !value.trim()) {
-    throw new Error(`${field} must be a non-empty string`);
-  }
-  return value;
-}
-
-function planUiProbeWorkspace(value: unknown): string {
-  const workspace = planUiProbeString(value, "workspace").trim();
-  const resolved = resolve(workspace);
-  if (!existsSync(resolved) || !statSync(resolved).isDirectory()) {
-    throw new Error(`workspace directory not found: ${resolved}`);
-  }
-  return resolved;
-}
-
-async function planUiProbeLiveSetup(
-  activeHost: HostProcess,
-  workspace: string,
-): Promise<Record<string, unknown>> {
-  const apiKey = process.env.PI_DESKTOP_TEST_API_KEY;
-  const baseUrl = process.env.PI_DESKTOP_TEST_BASE_URL;
-  const modelId = process.env.PI_DESKTOP_TEST_MODEL;
-  const missing = [
-    !apiKey?.trim() ? "PI_DESKTOP_TEST_API_KEY" : null,
-    !baseUrl?.trim() ? "PI_DESKTOP_TEST_BASE_URL" : null,
-    !modelId?.trim() ? "PI_DESKTOP_TEST_MODEL" : null,
-  ].filter((name): name is string => Boolean(name));
-  if (missing.length > 0) {
-    throw new Error(`live Plan UI setup is missing ${missing.join(", ")}`);
-  }
-
-  const providerResponse = await activeHost.call<{
-    provider?: { id?: string; defaultModelId?: string } | null;
-  }>("providers.create", {
-    name: "Plan UI live provider",
-    vendorKey: "custom",
-    type: "openai_compatible",
-    protocol: "openai_compatible",
-    baseUrl,
-    authKind: "api_key_and_base_url",
-    defaultModelId: modelId,
-    secretValue: apiKey,
-    apiStyle: "chat_completions",
-  });
-  const providerId = providerResponse.provider?.id;
-  if (!providerId) throw new Error("live provider creation returned no provider ID");
-
-  const sessionResponse = await activeHost.call<{
-    session?: {
-      id?: string;
-      title?: string;
-      mode?: string;
-      providerId?: string | null;
-      modelId?: string | null;
-      projectPath?: string | null;
-    } | null;
-  }>("session.create", {
-    title: "Plan UI live Agent",
-    mode: "agent",
-    providerId,
-    modelId,
-    projectPath: workspace,
-  });
-  const session = sessionResponse.session;
-  if (!session?.id) throw new Error("live session creation returned no session ID");
-  if (session.mode !== "agent") throw new Error("live session is not Agent mode");
-  if (session.providerId !== providerId || session.modelId !== modelId) {
-    throw new Error("live session provider/model identity mismatch");
-  }
-  if (!session.projectPath) throw new Error("live session is not project-bound");
-  return {
-    ok: true,
-    operation: "liveSetup",
-    providerId,
-    modelId,
-    sessionId: session.id,
-    title: session.title,
-    mode: session.mode,
-    projectPath: session.projectPath,
-  };
-}
-
-async function runPlanUiProbe(request: unknown): Promise<Record<string, unknown>> {
-  try {
-    if (!request || typeof request !== "object" || Array.isArray(request)) {
-      throw new Error("probe request must be an object");
-    }
-    const input = request as PlanUiProbeRequest;
-    const operation = input.operation;
-    if (operation === "identity") {
-      return { ...planUiProbeIdentity(), ok: true, operation };
-    }
-    if (operation === "runtimeIdentity") {
-      if (!sidecar) throw new Error("agent sidecar unavailable");
-      const sessionId = planUiProbeString(input.sessionId, "sessionId").trim();
-      const runtime = await sidecar.call<{
-        runtimeId?: string;
-        sessionId?: string;
-        mode?: string;
-        modelId?: string;
-        status?: Record<string, unknown>;
-      }>("agent.testRuntimeIdentity", { sessionId });
-      if (!runtime.runtimeId) throw new Error("sidecar returned no runtime ID");
-      return {
-        ...planUiProbeIdentity(),
-        sidecarChildPid: planUiProbeSidecarChildPid(),
-        ok: true,
-        operation,
-        runtimeId: runtime.runtimeId,
-        sessionId: runtime.sessionId,
-        mode: runtime.mode,
-        modelId: runtime.modelId,
-        status: runtime.status,
-      };
-    }
-    if (
-      operation !== "seed" &&
-      operation !== "submit" &&
-      operation !== "settle" &&
-      operation !== "liveSetup"
-    ) {
-      throw new Error("probe operation must be identity, runtimeIdentity, seed, submit, settle, or liveSetup");
-    }
-
-    const activeHost = host;
-    if (!activeHost) throw new Error("host unavailable");
-    if (operation === "settle") {
-      const sessionId = planUiProbeString(input.sessionId, "sessionId").trim();
-      const turnId = planUiProbeString(input.turnId, "turnId").trim();
-      const status = input.status;
-      if (status !== "aborted" && status !== "completed") {
-        throw new Error("settle status must be aborted or completed");
-      }
-      const response = await activeHost.call("session.endTurn", {
-        turnId,
-        status,
-        createNotification: false,
-      });
-      if (host !== activeHost) throw new Error("host changed during Plan UI probe");
-      return {
-        ...planUiProbeIdentity(activeHost),
-        ok: true,
-        operation,
-        sessionId,
-        turnId,
-        status,
-        response,
-      };
-    }
-    const workspace = planUiProbeWorkspace(input.workspace);
-    const workspaceResponse = await activeHost.call<{
-      workspace?: { path?: string } | null;
-    }>("workspace.set", { path: workspace });
-    if (!workspaceResponse?.workspace?.path) {
-      throw new Error("workspace.set returned no workspace");
-    }
-
-    if (operation === "liveSetup") {
-      const response = await planUiProbeLiveSetup(activeHost, workspace);
-      if (host !== activeHost) throw new Error("host changed during Plan UI probe");
-      return {
-        ...planUiProbeIdentity(activeHost),
-        ...response,
-      };
-    }
-
-    if (operation === "seed") {
-      const response = await activeHost.call<{
-        session?: {
-          id?: string;
-          title?: string;
-          mode?: string;
-          providerId?: string | null;
-          projectPath?: string | null;
-        } | null;
-      }>("session.create", {
-        title: "Plan UI acceptance",
-        mode: "plan",
-        projectPath: workspace,
-      });
-      const session = response?.session;
-      if (!session?.id) throw new Error("session.create returned no session");
-      if (session.mode !== "plan") throw new Error("seed session is not Plan");
-      if (session.providerId) {
-        throw new Error("seed session unexpectedly requires a provider");
-      }
-      if (!session.projectPath) {
-        throw new Error("seed session is not project-bound");
-      }
-      if (host !== activeHost) throw new Error("host changed during Plan UI probe");
-      return {
-        ...planUiProbeIdentity(activeHost),
-        ok: true,
-        operation,
-        sessionId: session.id,
-        title: session.title,
-        mode: session.mode,
-        projectPath: session.projectPath,
-      };
-    }
-
-    const sessionId = planUiProbeString(input.sessionId, "sessionId").trim();
-    const revision = input.revision;
-    if (revision !== "first" && revision !== "second") {
-      throw new Error("revision must be first or second");
-    }
-    const title = planUiProbeString(input.title, "title");
-    const markdown = planUiProbeString(input.markdown, "markdown");
-    const question = planUiProbeString(input.question, "question");
-    const turnResponse = await activeHost.call<{ turnId?: string }>(
-      "session.beginTurn",
-      { sessionId },
-    );
-    const turnId = turnResponse?.turnId;
-    if (!turnId) throw new Error("session.beginTurn returned no turn");
-    const toolCallId = `plan-ui-probe-${revision}`;
-    const response = await activeHost.call<{
-      status?: string;
-      proposal?: Record<string, any> | null;
-    }>("plans.submit", {
-      sessionId,
-      turnId,
-      toolCallId,
-      title,
-      markdown,
-      question,
-    });
-    const proposal = response?.proposal;
-    if (response?.status !== "pending") {
-      throw new Error(`plans.submit was not pending: ${String(response?.status)}`);
-    }
-    if (!proposal?.id) throw new Error("plans.submit returned no proposal");
-    if (proposal.sessionId !== sessionId) {
-      throw new Error("proposal session identity mismatch");
-    }
-    if (proposal.turnId !== turnId) {
-      throw new Error("proposal turn identity mismatch");
-    }
-    if (proposal.toolCallId !== toolCallId) {
-      throw new Error("proposal tool identity mismatch");
-    }
-    if (proposal.markdown !== markdown) {
-      throw new Error("proposal Markdown is not byte-identical");
-    }
-    if (proposal.title !== title.trim()) {
-      throw new Error("proposal title mismatch");
-    }
-    if (proposal.question !== question.trim()) {
-      throw new Error("proposal question mismatch");
-    }
-    if (!proposal.expiresAt || !proposal.artifact?.relativePath) {
-      throw new Error("proposal is missing expiry or artifact metadata");
-    }
-    if (
-      typeof proposal.artifact.sha256 !== "string" ||
-      !Number.isSafeInteger(proposal.artifact.sizeBytes) ||
-      proposal.artifact.sizeBytes < 0
-    ) {
-      throw new Error("proposal artifact metadata is invalid");
-    }
-    if (host !== activeHost) throw new Error("host changed during Plan UI probe");
-    return {
-      ...planUiProbeIdentity(activeHost),
-      ok: true,
-      operation,
-      sessionId,
-      revision,
-      turnId,
-      toolCallId,
-      status: response.status,
-      proposal,
-    };
-  } catch (error) {
-    return {
-      ...planUiProbeIdentity(),
-      ok: false,
-      error: planUiProbeErrorText(error),
-    };
-  }
-}
-
-function installPlanUiProbe() {
-  if (process.env.PI_DESKTOP_PLAN_UI_PROBE !== "1") return;
-  (globalThis as any)[PLAN_UI_PROBE_GLOBAL] = runPlanUiProbe;
-  logger.app("diagnostics", "info", "Plan UI test probe enabled", {
-    data: planUiProbeIdentity(),
-  });
-}
+const planUiProbe = createPlanUiProbe({
+  getHost: () => host,
+  getSidecar: () => sidecar,
+  logger,
+});
 
 function wireSidecar(s: AgentSidecar) {
   s.onNotification((method, params) => {
@@ -4650,7 +4304,13 @@ function wireSidecar(s: AgentSidecar) {
         if (host) {
           await host.call("plans.abort", { sessionId }).catch(() => undefined);
         }
-        await finishTurn(sessionId, "aborted", "PLAN_APPROVAL_INTERRUPTED");
+        // No final row is coming from a dead sidecar: keep whatever the reply
+        // had streamed so far as an aborted transcript row (D299).
+        await inflightCheckpointer.flush(sessionId);
+        inflightCheckpointer.settle(sessionId);
+        await finishTurn(sessionId, "aborted", "PLAN_APPROVAL_INTERRUPTED", {
+          recoverInflight: true,
+        });
         if (executionId) {
           await finishApprovedExecution(
             executionId,
@@ -4797,13 +4457,21 @@ async function startSidecar(): Promise<void> {
         content: `BrowserPreview: "${raw}" does not resolve to an existing file inside the workspace.`,
       };
     }
+    const preview = await browserHost.previewWorkspaceFile(sessionId, raw, root);
+    if (!preview.ok) {
+      return {
+        ok: false,
+        isError: true,
+        content: preview.content,
+      };
+    }
     sendToRenderer(IPC.event.browserPreview, {
       sessionId,
       path: raw,
     });
     return {
       ok: true,
-      content: `Previewing ${raw} in the built-in browser panel. Live reload is active — subsequent edits to the file or sibling assets re-render automatically.`,
+      content: `Previewing ${raw} in the work-panel Browser plugin. Live reload is active — subsequent edits to the file or sibling assets re-render automatically.`,
     };
   });
   // Plugin skills (D174): the model loads a declared skill document by id.
@@ -4832,11 +4500,14 @@ async function startSidecar(): Promise<void> {
         content: `# Skill: ${skill.name} (${skill.id})\n\n${skill.body}`,
       };
     } catch (error) {
-      const available = plugins
+      const userIds = (await activeUserSkills(projectPath ?? undefined)).map(
+        (skill) => skill.id,
+      );
+      const pluginIds = plugins
         .getSkills()
         .filter((skill) => pluginActiveInProject(skill.pluginId, projectPath))
-        .map((skill) => skill.id)
-        .join(", ");
+        .map((skill) => skill.id);
+      const available = [...userIds, ...pluginIds].join(", ");
       return {
         ok: false,
         isError: true,
@@ -4893,7 +4564,7 @@ function finishTurn(
   sessionId: string,
   status: "completed" | "aborted" | "error",
   errorCode?: string,
-  options: { createNotification?: boolean } = {},
+  options: { createNotification?: boolean; recoverInflight?: boolean } = {},
 ): Promise<void> {
   const existing = turnFinalizations.get(sessionId);
   if (existing) return existing;
@@ -4912,20 +4583,37 @@ function finishTurn(
         const createNotification =
           options.createNotification ??
           (!wasPlanSubmission && shouldCreateTaskNotification(sessionId));
+        const turnUsage = activeTurnUsages.get(sessionId);
+        activeTurnUsages.delete(sessionId);
         try {
           const result = await host.call<{
             ok: boolean;
             notification?: AppNotification;
+            recovered?: UiMessage;
           }>("session.endTurn", {
             turnId,
             status,
             errorCode,
             createNotification,
+            ...(turnUsage ? { usage: turnUsage } : {}),
+            // The reply can no longer finish on its own: promote its last
+            // checkpoint instead of waiting for a final row that never comes.
+            ...(options.recoverInflight ? { recoverInflight: true } : {}),
           });
           if (result.notification) {
             sendToRenderer(IPC.event.notificationChanged, {
               notification: result.notification,
             });
+          }
+          if (result.recovered) {
+            // Settle the renderer's streaming row the same way a final
+            // message_end would have, so it does not stay "streaming" forever.
+            sendToRenderer(IPC.event.agentMessage, {
+              sessionId,
+              turnId,
+              ts: Date.now(),
+              event: { type: "message_end", message: result.recovered },
+            } satisfies AgentEventEnvelope);
           }
         } catch (e) {
           logger.app("persistence", "warn", "endTurn failed", {
@@ -4995,73 +4683,6 @@ function finishTurn(
     },
   );
   return finalization;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function planExecutionFromUnknown(value: unknown): PlanExecution | null {
-  if (!isRecord(value)) return null;
-  const artifact = isRecord(value.artifact) ? value.artifact : null;
-  const state =
-    value.state === "queued" ||
-    value.state === "running" ||
-    value.state === "completed" ||
-    value.state === "interrupted"
-      ? value.state
-      : "queued";
-  if (
-    typeof value.id !== "string" ||
-    typeof value.proposalId !== "string" ||
-    typeof value.sessionId !== "string" ||
-    typeof value.plan !== "string" ||
-    typeof value.title !== "string" ||
-    typeof value.question !== "string" ||
-    !artifact ||
-    typeof artifact.relativePath !== "string" ||
-    typeof artifact.sha256 !== "string" ||
-    typeof artifact.sizeBytes !== "number"
-  ) {
-    return null;
-  }
-  return {
-    id: value.id,
-    proposalId: value.proposalId,
-    sessionId: value.sessionId,
-    // Legacy queued rows predate the discriminator and are Plan by definition.
-    kind: normalizeProposalKind(value.kind),
-    plan: value.plan,
-    title: value.title,
-    question: value.question,
-    artifact: {
-      relativePath: artifact.relativePath,
-      sha256: artifact.sha256,
-      sizeBytes: artifact.sizeBytes,
-    },
-    targetPermissionMode: normalizeGlobalPermissionMode(
-      value.targetPermissionMode,
-    ),
-    state,
-  };
-}
-
-function executionFromResponse(value: unknown): PlanExecution | null {
-  if (isRecord(value) && value.execution) {
-    return planExecutionFromUnknown(value.execution);
-  }
-  return planExecutionFromUnknown(value);
-}
-
-function executionListFromResponse(value: unknown): PlanExecution[] {
-  const raw = Array.isArray(value)
-    ? value
-    : isRecord(value) && Array.isArray(value.executions)
-      ? value.executions
-      : [];
-  return raw
-    .map((candidate) => planExecutionFromUnknown(candidate))
-    .filter((candidate): candidate is PlanExecution => candidate !== null);
 }
 
 async function finishApprovedExecution(
@@ -5188,6 +4809,7 @@ async function dispatchApprovedPlan(rawExecution: unknown): Promise<void> {
     turnId = String(turn.turnId || "").trim();
     if (!turnId) throw new Error("execution turn was not created");
     activeTurns.set(execution.sessionId, turnId);
+    activeTurnUsages.delete(execution.sessionId);
     approvedExecutionIdsBySession.set(execution.sessionId, execution.id);
     approvedExecutionTurns.set(execution.id, {
       sessionId: execution.sessionId,
@@ -5304,6 +4926,19 @@ function persistAgentEvent(envelope: AgentEventEnvelope): UiMessage | undefined 
       planSubmissionTurnKey(envelope.sessionId, envelope.turnId || turnId!),
     );
   }
+  if (event.type === "message_update" && event.message.role === "assistant") {
+    // Checkpoint only the session's own reply (D299). Delegate rows stream in
+    // parallel with the parent's and would thrash a per-session checkpoint;
+    // their loss on a crash is bounded to the Task call's activity.
+    if (!envelope.parentToolCallId) {
+      inflightCheckpointer.observe({
+        sessionId: envelope.sessionId,
+        turnId: envelope.turnId ?? turnId,
+        message: event.message,
+      });
+    }
+    return;
+  }
   if (event.type === "tool_start") {
     activeToolCalls.set(activeToolCallKey(envelope.sessionId, event.toolCallId), {
       toolName: event.toolName,
@@ -5402,7 +5037,28 @@ function persistAgentEvent(envelope: AgentEventEnvelope): UiMessage | undefined 
     })();
     return;
   }
+  if (event.type === "turn_end" && !envelope.parentToolCallId) {
+    addActiveTurnUsage(envelope.sessionId, event.subagentUsage);
+  }
   if (event.type === "message_end" && event.message.role === "assistant") {
+    if (!envelope.parentToolCallId && event.message.usage) {
+      addActiveTurnUsage(envelope.sessionId, event.message.usage);
+    }
+    // Checkpoint the finished snapshot before the outbox append (D327).
+    // Settling first dropped the last interval of text, and endTurn used to
+    // delete the host file while the final row was still queued.
+    if (!envelope.parentToolCallId) {
+      const sessionId = envelope.sessionId;
+      const finalId = event.message.id;
+      inflightCheckpointer.observe({
+        sessionId,
+        turnId: envelope.turnId ?? turnId,
+        message: event.message,
+      });
+      void inflightCheckpointer.flush(sessionId).finally(() => {
+        inflightCheckpointer.settleIf(sessionId, finalId);
+      });
+    }
     // Empty aborted bubbles are not useful transcript rows. Structured
     // provider failures remain durable assistant messages so their details
     // stay attached to the failed turn after reload.
@@ -5554,45 +5210,12 @@ async function bootBackends() {
       }
     },
     getAppVersion: () => APP_VERSION,
-    // The Files plugin hands the embedded browser a workspace-relative path
-    // (HTML file) to render as a webpage. Resolution stays inside the
-    // workspace root, mirroring the BrowserPreview tool's containment.
-    openInBrowser: (workspaceRelativePath: string) => {
-      const workspacePath = (globalThis as any).__piWorkspacePath as string | null;
-      // The plugin bridge has no session id; the renderer falls back to the
-      // active session when the event carries an empty one.
-      const sessionId = "";
-      void (async () => {
-        try {
-          const res = (await host?.call("workspace.get")) as
-            | { workspace: { path?: string } | null }
-            | undefined;
-          const root = res?.workspace?.path || workspacePath || "";
-          if (!root) {
-            sendToRenderer(IPC.event.browserPreview, { sessionId, path: workspaceRelativePath });
-            return;
-          }
-          const { resolveLocalFile } = await import("./browser-view");
-          if (!resolveLocalFile(workspaceRelativePath, root)) {
-            logger.app("diagnostics", "warn", "browser preview rejected outside workspace", {
-              data: { path: workspaceRelativePath, root },
-            });
-            return;
-          }
-          sendToRenderer(IPC.event.browserPreview, { sessionId, path: workspaceRelativePath });
-        } catch (error) {
-          logger.app("diagnostics", "warn", "browser preview failed", {
-            data: { path: workspaceRelativePath, error: String(error) },
-          });
-        }
-      })();
-    },
   });
   try {
     const ws = await host!.call<{ workspace: { path?: string } | null }>("workspace.get");
-    (globalThis as any).__piWorkspacePath = ws.workspace?.path ?? null;
+    setCurrentWorkspacePath(ws.workspace?.path ?? null);
   } catch {
-    (globalThis as any).__piWorkspacePath = null;
+    setCurrentWorkspacePath(null);
   }
 
   // Restore enabled plugins
@@ -5650,6 +5273,25 @@ function registerIpc() {
       return { visible: false };
     }),
   );
+
+  handle(IPC.invoke.appOpenFeedback, async () => {
+    const hostVersion = host
+      ? await host
+          .call<{ version: string }>("app.getVersion")
+          .then((info) => info.version)
+          .catch(() => undefined)
+      : undefined;
+    const url = buildBugReportUrl({
+      version: APP_VERSION,
+      platform: process.platform,
+      arch: process.arch,
+      protocolVersion: PROTOCOL_VERSION,
+      hostVersion,
+    });
+    assertFeedbackIssueUrl(url);
+    await safeOpenExternal(url);
+    return { ok: true };
+  });
 
   handle(IPC.invoke.appGetVersion, async () => {
     const hostVersion = host
@@ -5873,25 +5515,28 @@ function registerIpc() {
 
   handle(IPC.invoke.sessionList, async () => {
     if (!host) throw new Error("host unavailable");
-    const [result, providers] = await Promise.all([
+    const [result, { providers, defaults }] = await Promise.all([
       host.call<{ sessions: RuntimeSession[] }>("session.list"),
-      listRuntimeProviders(),
+      sessionCapabilityContext(),
     ]);
     return {
       ...result,
-      sessions: result.sessions.map((session) => enrichSession(session, providers)),
+      sessions: result.sessions.map((session) =>
+        enrichSession(session, providers, defaults),
+      ),
     };
   });
   handle(IPC.invoke.sessionCreate, async (input = {}) => {
     if (!host) throw new Error("host unavailable");
+    const capabilityPromise = sessionCapabilityContext();
     const res = await host.call<{ session?: (RuntimeSession & { id?: string }) | null }>(
       "session.create",
       input,
     );
     logger.app("session", "info", "session created", { sessionId: res.session?.id });
     if (!res.session) return res;
-    const providers = await listRuntimeProviders();
-    return { ...res, session: enrichSession(res.session, providers) };
+    const { providers, defaults } = await capabilityPromise;
+    return { ...res, session: enrichSession(res.session, providers, defaults) };
   });
   handle(
     IPC.invoke.sessionFork,
@@ -5912,7 +5557,7 @@ function registerIpc() {
       }
       // Resolve enrichment before the mutation so a provider-list failure
       // cannot report a failed IPC after the child has already been committed.
-      const providers = await listRuntimeProviders();
+      const { providers, defaults } = await sessionCapabilityContext();
       let result: { session?: RuntimeSession | null };
       try {
         result = await host.call("session.fork", {
@@ -5936,7 +5581,7 @@ function registerIpc() {
       });
       return {
         ...result,
-        session: enrichSession(result.session, providers),
+        session: enrichSession(result.session, providers, defaults),
       };
     },
   );
@@ -5956,7 +5601,7 @@ function registerIpc() {
       const request = typeof input === "string" ? { id: input } : input ?? {};
       const id = String(request.id ?? "").trim();
       if (!id) throw new Error("session id required");
-      const [result, providers] = await Promise.all([
+      const [result, { providers, defaults }] = await Promise.all([
         host.call<{ session?: RuntimeSession | null }>("session.get", {
           id,
           ...(Number.isInteger(request.messageBefore) && request.messageBefore! >= 0
@@ -5969,16 +5614,17 @@ function registerIpc() {
             ? { contentLimit: request.contentLimit }
             : {}),
         }),
-        listRuntimeProviders(),
+        sessionCapabilityContext(),
       ]);
       return result.session
-        ? { ...result, session: enrichSession(result.session, providers) }
+        ? { ...result, session: enrichSession(result.session, providers, defaults) }
         : result;
     },
   );
   handle(IPC.invoke.sessionDelete, async (id: string) => {
     if (!host) throw new Error("host unavailable");
     const res = await host.call("session.delete", { id });
+    await persistenceOutbox.dropSession(id);
     // Drop the session's pi-agent so a later session with the same id (or a
     // stale runtime) can't answer with this session's context.
     if (sidecar) {
@@ -6093,8 +5739,8 @@ function registerIpc() {
         { id, ...config },
       );
       if (!result.session) return result;
-      const providers = await listRuntimeProviders();
-      return { ...result, session: enrichSession(result.session, providers) };
+      const { providers, defaults } = await sessionCapabilityContext();
+      return { ...result, session: enrichSession(result.session, providers, defaults) };
     },
   );
 
@@ -6669,19 +6315,19 @@ function registerIpc() {
     const res = (await host.call("workspace.set", {
       path: result.filePaths[0],
     })) as { workspace: { path: string; name: string } | null };
-    (globalThis as any).__piWorkspacePath = res.workspace?.path ?? result.filePaths[0];
+    setCurrentWorkspacePath(res.workspace?.path ?? result.filePaths[0]);
     return { workspace: await withGitBranch(res.workspace), canceled: false };
   });
   handle(IPC.invoke.projectSet, async (path: string) => {
     if (!host) throw new Error("host unavailable");
-    (globalThis as any).__piWorkspacePath = path;
+    setCurrentWorkspacePath(path);
     const res = (await host.call("workspace.set", { path })) as {
       workspace: { path: string; name: string } | null;
     };
     return { workspace: await withGitBranch(res.workspace) };
   });
   handle(IPC.invoke.projectClear, async () => {
-    (globalThis as any).__piWorkspacePath = null;
+    setCurrentWorkspacePath(null);
     if (!host) throw new Error("host unavailable");
     return host.call("workspace.clear");
   });
@@ -6754,31 +6400,34 @@ function registerIpc() {
   );
 
   handle(
+    IPC.invoke.statsGetTokenUsageHistory,
+    async (input?: { startDate?: number; endDate?: number; bucket?: string }) => {
+      if (!host) throw new Error("host unavailable");
+      return host.call("stats.getTokenUsageHistory", input ?? {});
+    },
+  );
+
+  handle(
     IPC.invoke.browserNavigate,
     async (input: { url?: string; sessionId?: string } = {}) => {
-      // Workspace root gates file previews (agent-generated HTML); http(s)
-      // navigation works without a workspace.
-      let root: string | null = null;
-      try {
-        if (input.sessionId) {
-          const res = (await host?.call("session.get", { id: input.sessionId })) as
-            | { session: { projectPath?: string } | null }
-            | undefined;
-          root = res?.session?.projectPath?.trim() || null;
-        } else {
-          const res = (await host?.call("workspace.get")) as
-            | { workspace: { path: string } | null }
-            | undefined;
-          root = res?.workspace?.path ?? null;
-        }
-      } catch {
-        root = null;
+      if (!plugins.getLoaded(BROWSER_PLUGIN_ID)) {
+        throw Object.assign(new Error("Browser plugin is disabled"), {
+          errorCode: "UNAVAILABLE",
+        });
       }
-      return browserPane.navigate(String(input.url ?? ""), root);
+      return browserHost.navigate(
+        { url: String(input.url ?? "") },
+        input.sessionId,
+      );
     },
   );
 
   handle(IPC.invoke.browserAction, async (input: { action?: string } = {}) => {
+    if (!plugins.getLoaded(BROWSER_PLUGIN_ID)) {
+      throw Object.assign(new Error("Browser plugin is disabled"), {
+        errorCode: "UNAVAILABLE",
+      });
+    }
     const action = String(input.action ?? "");
     if (
       action === "back" ||
@@ -6786,31 +6435,42 @@ function registerIpc() {
       action === "reload" ||
       action === "stop"
     ) {
-      browserPane.action(action);
+      browserHost.action(action);
     }
     return { ok: true };
   });
 
   handle(
     IPC.invoke.browserSetBounds,
-    async (bounds: { x: number; y: number; width: number; height: number }) => {
-      browserPane.setBounds(bounds ?? { x: 0, y: 0, width: 0, height: 0 });
+    async () => {
+      // Plugin chrome owns the clamped hole. Unclamped renderer bounds must
+      // not place the guest over chat/composer.
       return { ok: true };
     },
   );
 
   handle(IPC.invoke.browserSetVisible, async (input: { visible?: boolean } = {}) => {
-    browserPane.setVisible(input.visible === true);
+    if (!plugins.getLoaded(BROWSER_PLUGIN_ID) || input.visible !== true) {
+      browserHost.setGuestVisible(BROWSER_PLUGIN_ID, false);
+      return { ok: true };
+    }
+    browserHost.setGuestVisible(BROWSER_PLUGIN_ID, true);
     return { ok: true };
   });
 
-  handle(IPC.invoke.browserOpenExternal, async () => {
-    browserPane.openExternal();
+  handle(IPC.invoke.browserOpenExternal, async (input: { url?: string } = {}) => {
+    const raw = String(input.url ?? "").trim();
+    if (raw) {
+      const allowed = parseAllowedExternalUrl(raw);
+      if (allowed) await shell.openExternal(allowed);
+      return { ok: true };
+    }
+    browserHost.openExternal();
     return { ok: true };
   });
 
   handle(IPC.invoke.browserGetState, async () => {
-    return browserPane.getState();
+    return browserHost.getState();
   });
 
   const requireWorkspaceRoot = async () => {
@@ -6832,83 +6492,41 @@ function registerIpc() {
     return { entries: await listDir(root, String(input.path ?? "")) };
   });
 
-  handle(IPC.invoke.fsRead, async (input: { path?: string; mimeType?: string } = {}) => {
-    const requested = String(input.path ?? "").trim();
-    try {
-      // Workspace-relative paths keep the existing behavior. Attachment refs
-      // (`attachments/<sha256>`) and absolute paths inside the data root resolve
-      // through the same containment checks as in-chat image display, so a
-      // message attachment can open in the file viewer too. The stored mimeType
-      // (when present) lets the viewer render extension-less attachment images.
-      if (!requested.startsWith("attachments/") && !isAbsolute(requested)) {
-        const root = await requireWorkspaceRoot();
-        return await readWorkspaceFile(root, requested);
-      }
-      let workspaceRoot: string | null = null;
-      try {
-        workspaceRoot = await requireWorkspaceRoot();
-      } catch {
-        workspaceRoot = null;
-      }
-      return await readReferencedFile(dataDir, workspaceRoot, requested, input.mimeType);
-    } catch (error) {
-      logger.app("diagnostics", "warn", "fs.read failed", {
-        code: "FS_READ_FAILED",
-        data: {
-          path: requested,
-          mimeType: input.mimeType,
-          error: String(error instanceof Error ? error.message : error),
-          workspaceRoot: await (async () => {
-            try {
-              return (await requireWorkspaceRoot());
-            } catch (e) {
-              return String(e instanceof Error ? e.message : e);
-            }
-          })(),
-        },
-      });
-      throw error;
-    }
+  handle(IPC.invoke.fsRead, async (input: { path?: string } = {}) => {
+    const root = await requireWorkspaceRoot();
+    return readWorkspaceFile(root, String(input.path ?? ""));
   });
 
-  // In-chat image display (attachments, pasted files, and local Markdown
-  // images) reads through a bounded, root-checked data URL instead of exposing
-  // a generic file channel. The ref may be workspace-relative, an
-  // `attachments/<sha256>` path, or an absolute scratch/attachment path; the
-  // stored mimeType wins over extension sniffing for extension-less blobs.
-  handle(
-    IPC.invoke.fsReadImageDataUrl,
-    async (input: { ref?: string; mimeType?: string } = {}) => {
-      let workspaceRoot: string | null = null;
-      try {
-        workspaceRoot = await requireWorkspaceRoot();
-      } catch {
-        workspaceRoot = null;
-      }
-      return readReferencedImage(
-        dataDir,
-        workspaceRoot,
-        String(input.ref ?? ""),
-        input.mimeType,
-      );
-    },
-  );
-
   handle(IPC.invoke.fsReveal, async (input: { path?: string } = {}) => {
-    const requested = String(input.path ?? "").trim();
-    // Workspace-relative paths resolve inside the root; absolute paths to real
-    // files (chat references outside the workspace) reveal directly.
-    const target = isAbsolute(requested)
-      ? existsSync(requested)
-        ? resolve(requested)
-        : null
-      : resolveWithinRoot(await requireWorkspaceRoot(), requested);
+    const root = await requireWorkspaceRoot();
+    const target = resolveWithinRoot(root, String(input.path ?? ""));
     if (!target) {
       throw Object.assign(new Error("path escapes workspace root"), {
         errorCode: ErrorCodes.INVALID_ARGUMENT,
       });
     }
     shell.showItemInFolder(stripWinLongPrefix(target));
+    return { ok: true };
+  });
+
+  handle(IPC.invoke.fsOpen, async (input: { path?: string } = {}) => {
+    let workspaceRoot: string | null = null;
+    try {
+      workspaceRoot = await requireWorkspaceRoot();
+    } catch {
+      workspaceRoot = null;
+    }
+    const target = resolveOpenablePath(String(input.path ?? ""), workspaceRoot, [
+      join(dataDir, "scratch"),
+      join(dataDir, "attachments"),
+    ]);
+    if (!target) {
+      throw Object.assign(new Error("path is not openable"), {
+        errorCode: ErrorCodes.INVALID_ARGUMENT,
+      });
+    }
+    const openError = await shell.openPath(stripWinLongPrefix(target));
+    if (openError) throw new Error(openError);
     return { ok: true };
   });
 
@@ -7005,9 +6623,12 @@ function registerIpc() {
         throw new Error("main window unavailable");
       }
 
-      requestedWorkPanelReservation = requested;
-      const reservation = applyWorkPanelReservation();
-      return { requested, reserved: reservation.width };
+      // The work panel is an internal renderer column. Keep this IPC seam for
+      // compatibility, but never let it change BrowserWindow bounds: opening
+      // and collapsing the panel are handled entirely by renderer flex layout.
+      requestedWorkPanelReservation = 0;
+      workPanelReservation = emptyWorkPanelReservationState();
+      return { requested: 0, reserved: 0 };
     },
   );
 
@@ -7108,63 +6729,7 @@ function registerIpc() {
       ) {
         throw new Error("unsupported native menu action");
       }
-      if (!mainWindow || mainWindow.isDestroyed()) {
-        return { maximized: false, fullScreen: false };
-      }
-
-      const window = mainWindow;
-      const action = input.action as NativeMenuAction;
-      const contents = window.webContents;
-      switch (action) {
-        case "undo":
-          contents.undo();
-          break;
-        case "redo":
-          contents.redo();
-          break;
-        case "cut":
-          contents.cut();
-          break;
-        case "copy":
-          contents.copy();
-          break;
-        case "paste":
-          contents.paste();
-          break;
-        case "selectAll":
-          contents.selectAll();
-          break;
-        case "reload":
-          contents.reload();
-          break;
-        case "zoomIn":
-          contents.setZoomFactor(Math.min(3, contents.getZoomFactor() * 1.1));
-          break;
-        case "zoomOut":
-          contents.setZoomFactor(Math.max(0.5, contents.getZoomFactor() / 1.1));
-          break;
-        case "resetZoom":
-          contents.setZoomFactor(1);
-          break;
-        case "toggleFullScreen":
-          window.setFullScreen(!window.isFullScreen());
-          break;
-        case "minimize":
-          window.minimize();
-          break;
-        case "toggleMaximize":
-          if (window.isMaximized()) window.unmaximize();
-          else window.maximize();
-          break;
-        case "close":
-          window.close();
-          break;
-      }
-
-      return {
-        maximized: !window.isDestroyed() && window.isMaximized(),
-        fullScreen: !window.isDestroyed() && window.isFullScreen(),
-      };
+      return executeNativeMenuAction(input.action as NativeMenuAction);
     },
   );
 
@@ -7364,15 +6929,35 @@ function registerIpc() {
             typeof rootUser.revisionRootId === "string" && rootUser.revisionRootId
               ? rootUser.revisionRootId
               : rootUser.id;
-          const listed = await host.call<{ revisions?: Array<{ revisionIndex: number }> }>(
-            "session.listRevisions",
-            { sessionId: req.sessionId, rootUserId: stableRootUserId },
-          );
+          const listed = await host.call<{
+            revisions?: Array<{ revisionIndex: number; isActive?: boolean }>;
+          }>("session.listRevisions", { sessionId: req.sessionId, rootUserId: stableRootUserId });
           const existing = listed.revisions ?? [];
-          // First regenerate only: the original live tail is not stored yet.
-          // Later regenerates already persisted the active branch on agent_end,
-          // so re-archiving here would duplicate variants.
-          if (existing.length === 0) {
+          // The stamp on the discarded root names the variant this tail is.
+          // It beats the DB active flag, which only moves on agent_end: after
+          // a regenerate whose turn failed, the DB still points at the
+          // previous variant and refreshing that would bury it.
+          const stamped =
+            typeof rootUser.activeRevision === "number" ? rootUser.activeRevision : 0;
+          const target =
+            stamped > 0
+              ? existing.find((revision) => revision.revisionIndex === stamped)
+              : existing.find((revision) => revision.isActive);
+          if (target) {
+            // The branch was archived on its agent_end, but every prompt since
+            // then appended to it (and an error-ended turn never re-archived
+            // it). Write the live tail back over that revision so the pager
+            // restores all of it, not a stale copy.
+            await host.call("session.saveRevision", {
+              sessionId: req.sessionId,
+              rootUserId: stableRootUserId,
+              messages: discarded,
+              revisionIndex: target.revisionIndex,
+            });
+          } else {
+            // First regenerate (the original tail is not stored yet), or a
+            // tail stamped by an earlier regenerate whose turn failed before
+            // agent_end archived it: a variant of its own.
             await host.call("session.saveRevision", {
               sessionId: req.sessionId,
               rootUserId: stableRootUserId,
@@ -7437,6 +7022,7 @@ function registerIpc() {
       throw new Error("session.beginTurn returned no turn");
     }
     activeTurns.set(req.sessionId, durableTurnId);
+    activeTurnUsages.delete(req.sessionId);
 
     // Slash template expansion (D123, ADR 0024): templates expand before
     // persistence so reseed replays exactly what the model saw; the typed
@@ -7495,8 +7081,10 @@ function registerIpc() {
           activeRevision?: number;
         }
       | undefined;
+    // The renderer already shows this row under its own id (D288); persisting
+    // and echoing under the same id lets the echo replace it in place.
     const userMessage = {
-      id: crypto.randomUUID(),
+      id: durableUserMessageId(req.messageId, allMessages),
       role: "user" as const,
       content: promptContent,
       createdAt: new Date().toISOString(),
@@ -7919,6 +7507,7 @@ function registerIpc() {
   handle(IPC.invoke.pluginDisable, async (id: string) => {
     if (!host) throw new Error("host unavailable");
     pluginViews.closePlugin(id);
+    if (id === BROWSER_PLUGIN_ID) browserHost.disposeGuest();
     await plugins.unload(id);
     logger.app("plugin", "info", "plugin disabled", { pluginId: id });
     const res = await host.call("plugins.disable", { id });
@@ -8324,9 +7913,21 @@ function registerIpc() {
 
   handle(
     IPC.invoke.pluginViewOpen,
-    async (payload: { pluginId?: string; viewId?: string }) => {
+    async (payload: {
+      pluginId?: string;
+      viewId?: string;
+      sessionId?: string;
+      location?: string;
+    }) => {
       const pluginId = String(payload?.pluginId ?? "");
       const viewId = String(payload?.viewId ?? "");
+      const sessionId = String(payload?.sessionId ?? "").trim();
+      const location = String(payload?.location ?? "").trim();
+      const isBrowserView = pluginId === BROWSER_PLUGIN_ID && viewId === BROWSER_VIEW_ID;
+      if (isBrowserView && sessionId) browserHost.setChromeSession(sessionId);
+      if (isBrowserView && sessionId && location) {
+        browserHost.rememberLocation(sessionId, location);
+      }
       const loaded = plugins.getLoaded(pluginId);
       if (!loaded) throw new Error("plugin not loaded");
       if (!loaded.permissions.has("ui.view")) {
@@ -8349,6 +7950,12 @@ function registerIpc() {
         htmlPath,
         netDomains: loaded.manifest.net?.domains?.map((domain) => String(domain)),
       });
+      if (isBrowserView && location) {
+        void browserHost.navigate(
+          { path: location, url: location },
+          sessionId || undefined,
+        );
+      }
       return { ok: true };
     },
   );
@@ -8371,12 +7978,24 @@ function registerIpc() {
 
   handle(
     IPC.invoke.pluginViewSetVisible,
-    async (payload: { pluginId?: string; viewId?: string; visible?: boolean }) => {
-      pluginViews.setVisible(
-        String(payload?.pluginId ?? ""),
-        String(payload?.viewId ?? ""),
-        payload?.visible === true,
-      );
+    async (payload: {
+      pluginId?: string;
+      viewId?: string;
+      visible?: boolean;
+      sessionId?: string;
+    }) => {
+      const pluginId = String(payload?.pluginId ?? "");
+      const viewId = String(payload?.viewId ?? "");
+      const sessionId = String(payload?.sessionId ?? "").trim();
+      if (
+        payload?.visible === true &&
+        sessionId &&
+        pluginId === BROWSER_PLUGIN_ID &&
+        viewId === BROWSER_VIEW_ID
+      ) {
+        browserHost.setChromeSession(sessionId);
+      }
+      pluginViews.setVisible(pluginId, viewId, payload?.visible === true);
       return { ok: true };
     },
   );
@@ -8539,7 +8158,7 @@ app.whenReady().then(async () => {
   // close handler reads `closeBehavior` synchronously, and a window created
   // while it still held the "ask" default would prompt a user who already
   // chose.
-  const storedBehavior = readCloseBehavior();
+  const storedBehavior = readCloseBehavior(dataDir);
   if (storedBehavior) closeBehavior = storedBehavior;
   createTray();
   app.setAboutPanelOptions({
@@ -8550,6 +8169,7 @@ app.whenReady().then(async () => {
   installApplicationMenu({
     locale: app.getLocale(),
     dispatch: dispatchApplicationMenuCommand,
+    dispatchNative: dispatchNativeMenuAction,
   });
   // Start the retained launcher as soon as Electron is ready. It can load in
   // parallel with host/plugin boot, so the first post-boot Option+Space does
@@ -8560,7 +8180,6 @@ app.whenReady().then(async () => {
   // snapshot stale, so every release performs one bounded update without
   // blocking the first window; Settings can force the same refresh on demand.
   void modelsDevCatalog.ensureLoaded();
-  applyPluginLauncherShortcut();
   updater.startAutoCheck();
   let bootError: unknown = null;
   try {
@@ -8572,7 +8191,7 @@ app.whenReady().then(async () => {
       data: String(e),
     });
   }
-  if (!bootError) installPlanUiProbe();
+  if (!bootError) planUiProbe.install();
   if (host) {
     try {
       const stored = (await host.call("settings.get")) as {
@@ -8583,8 +8202,13 @@ app.whenReady().then(async () => {
       applyApplicationMenuSettings(stored);
       applyDeveloperMode(stored);
     } catch {
-      // keep the OS-locale menu until settings can be read again
+      // Keep the OS-locale menu until settings can be read again, while
+      // retaining the historical default launcher fallback for this failure.
+      applyPluginLauncherShortcut();
     }
+  } else {
+    // If the backend never started, retain the default focused/global path.
+    applyPluginLauncherShortcut();
   }
   await ensureWindow();
   // createWindow awaits the initial load (loadFile resolves on
@@ -8692,6 +8316,45 @@ app.on("window-all-closed", () => {
   app.quit();
 });
 
+/** Upper bound on the time quit spends waiting for streaming replies to settle. */
+const QUIT_TURN_SETTLE_BUDGET_MS = 2_000;
+
+async function settleRunningTurnsForQuit(): Promise<void> {
+  const sessions = [...activeTurns.keys()];
+  const deadline = Date.now() + QUIT_TURN_SETTLE_BUDGET_MS;
+  // The newest snapshot of every streaming reply lands first: it is the
+  // fallback if the abort below does not produce a final row in time.
+  await inflightCheckpointer.flushAll();
+  if (sessions.length === 0) {
+    await persistenceOutbox.flush(() => host);
+    return;
+  }
+  if (sidecar) {
+    const activeSidecar = sidecar;
+    await Promise.allSettled(
+      sessions.map((sessionId) =>
+        Promise.race([
+          activeSidecar.call("agent.abort", { sessionId }),
+          new Promise((resolve) => setTimeout(resolve, 800)),
+        ]),
+      ),
+    );
+  }
+  // The abort surfaces as message_end + error/agent_end, which finishTurn
+  // turns into a settled turn and an outbox append. Wait for that, bounded.
+  while (Date.now() < deadline) {
+    await persistenceOutbox.flush(() => host);
+    if (activeTurns.size === 0 && persistenceOutbox.size() === 0) break;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  await persistenceOutbox.flush(() => host);
+  if (activeTurns.size > 0 || persistenceOutbox.size() > 0) {
+    logger.app("lifecycle", "warn", "quit before streaming replies settled", {
+      data: { running: activeTurns.size, pendingAppends: persistenceOutbox.size() },
+    });
+  }
+}
+
 app.on("before-quit", (event) => {
   // A duplicate launch has no host, sidecar, panel, or outbox of its own, and
   // the shutdown sequence below would write into the running instance's data
@@ -8700,6 +8363,27 @@ app.on("before-quit", (event) => {
   if (shutdownComplete) return;
   event.preventDefault();
   if (shutdownPromise) return;
+
+  // Show a confirmation dialog on the first explicit quit (Cmd+Q, tray quit,
+  // application-menu Quit). The data-saving shutdown runs after confirmation.
+  // Skip confirmation in automated probe/capture modes where no human is
+  // present to interact with the dialog.
+  const isAutomatedMode =
+    process.env.PI_DESKTOP_BOOT_PROBE === "1" ||
+    process.env.PI_DESKTOP_SUPERVISION_PROBE === "1" ||
+    process.env.PI_DESKTOP_CAPTURE === "1";
+  if (!quitConfirmed && !isAutomatedMode) {
+    quitConfirmed = true;
+    void confirmQuitDialog().then((confirmed) => {
+      if (confirmed) {
+        app.quit();
+      } else {
+        // User cancelled: allow future quit requests to prompt again.
+        quitConfirmed = false;
+      }
+    });
+    return;
+  }
 
   quitting = true;
   clipboardHistory.stop();
@@ -8710,6 +8394,11 @@ app.on("before-quit", (event) => {
     pluginLauncherAccelerator = null;
   }
   shutdownPromise = (async () => {
+    // Replies still streaming are stopped through the sidecar first so their
+    // aborted final rows can reach the transcript while host-core is alive;
+    // whatever does not make it in time is covered by the last checkpoint
+    // (D299). Bounded: a quit must not hang on an unresponsive provider.
+    await settleRunningTurnsForQuit();
     const hostShutdown = host?.dispose();
     const pluginPanelShutdown = pluginPanels.closeAll();
     updater.dispose();
@@ -8721,6 +8410,7 @@ app.on("before-quit", (event) => {
     userMcp.disposeAll();
     browserPane.dispose();
     pluginViews.dispose();
+    inflightCheckpointer.dispose();
     const sidecarShutdown = sidecar?.dispose();
 
     try {

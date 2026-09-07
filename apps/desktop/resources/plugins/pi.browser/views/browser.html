@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="pi-plugin-chrome" content="v2" />
+    <title>Browser</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #181818;
+        --surface: #181818;
+        --fg: #ffffff;
+        --muted: color-mix(in oklab, #ffffff 52%, transparent);
+        --faint: color-mix(in oklab, #ffffff 38%, transparent);
+        --border: color-mix(in oklab, #ffffff 5%, transparent);
+        --accent: #ffffff;
+        font: 12px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      }
+      :root[data-base="light"] {
+        color-scheme: light;
+        --bg: #fafafa;
+        --surface: #ffffff;
+        --fg: #1a1c1f;
+        --muted: #5d5d5d;
+        --faint: #afafaf;
+        --border: color-mix(in oklab, #1a1c1f 5%, transparent);
+        --accent: #1a1c1f;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        height: 100%;
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+      }
+      body { padding-top: var(--pi-plugin-titlebar-height, 0px); overflow: hidden; }
+      button, input { font: inherit; color: inherit; }
+      button {
+        background: transparent;
+        border: 0;
+        padding: 0;
+        cursor: pointer;
+      }
+      button:disabled { opacity: 0.35; cursor: default; }
+      button:focus-visible, input:focus-visible {
+        outline: 2px solid color-mix(in oklab, var(--accent) 58%, transparent);
+        outline-offset: -2px;
+      }
+      .app {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        min-height: 0;
+      }
+      .chrome {
+        display: flex;
+        flex: 0 0 auto;
+        align-items: center;
+        gap: 4px;
+        min-height: 36px;
+        padding: 4px 8px;
+        border-bottom: 1px solid var(--border);
+        background: var(--surface);
+      }
+      .icon-btn {
+        display: inline-flex;
+        width: 28px;
+        height: 28px;
+        align-items: center;
+        justify-content: center;
+        border-radius: 6px;
+        color: var(--muted);
+      }
+      .icon-btn:hover:not(:disabled) { background: color-mix(in oklab, var(--fg) 6%, transparent); }
+      form.url {
+        display: flex;
+        flex: 1;
+        min-width: 0;
+      }
+      form.url input {
+        width: 100%;
+        height: 28px;
+        padding: 0 10px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        background: color-mix(in oklab, var(--fg) 4%, transparent);
+      }
+      .guest {
+        position: relative;
+        flex: 1;
+        min-height: 0;
+      }
+      .empty {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 24px;
+        color: var(--muted);
+        text-align: center;
+      }
+      .empty[hidden] { display: none; }
+      .empty h1 {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--fg);
+      }
+      .empty p { margin: 0; max-width: 240px; }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <div class="chrome">
+        <button type="button" class="icon-btn" id="back" disabled title="Back" aria-label="Back">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+        <button type="button" class="icon-btn" id="forward" disabled title="Forward" aria-label="Forward">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+        </button>
+        <button type="button" class="icon-btn" id="reload" disabled title="Reload" aria-label="Reload">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" id="reload-icon"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+        </button>
+        <form class="url" id="form">
+          <input id="url" spellcheck="false" autocapitalize="off" autocorrect="off" />
+        </form>
+        <button type="button" class="icon-btn" id="external" disabled title="Open externally" aria-label="Open externally">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 5h5v5"/><path d="M19 5l-9 9"/><path d="M5 9v10h10"/></svg>
+        </button>
+      </div>
+      <div class="guest" id="guest">
+        <div class="empty" id="empty">
+          <h1 id="empty-title">No page open</h1>
+          <p id="empty-body">Enter an address, or preview an HTML file from the conversation.</p>
+        </div>
+      </div>
+    </div>
+    <script>
+      const bridge = window.pluginBridge;
+      const back = document.getElementById("back");
+      const forward = document.getElementById("forward");
+      const reload = document.getElementById("reload");
+      const external = document.getElementById("external");
+      const form = document.getElementById("form");
+      const input = document.getElementById("url");
+      const guest = document.getElementById("guest");
+      const empty = document.getElementById("empty");
+      const emptyTitle = document.getElementById("empty-title");
+      const emptyBody = document.getElementById("empty-body");
+      let inputFocused = false;
+      let started = false;
+      let locale = "en";
+
+      const copy = {
+        en: {
+          back: "Back",
+          forward: "Forward",
+          reload: "Reload",
+          stop: "Stop",
+          external: "Open externally",
+          placeholder: "Search or enter a URL",
+          emptyTitle: "No page open",
+          emptyBody: "Enter an address, or preview an HTML file from the conversation.",
+        },
+        zh: {
+          back: "后退",
+          forward: "前进",
+          reload: "重新加载",
+          stop: "停止",
+          external: "在外部打开",
+          placeholder: "搜索或输入网址",
+          emptyTitle: "尚未打开页面",
+          emptyBody: "输入地址，或从对话预览 HTML 文件。",
+        },
+      };
+
+      const t = (key) => copy[locale]?.[key] ?? copy.en[key] ?? key;
+
+      const applyCopy = () => {
+        back.title = t("back");
+        back.setAttribute("aria-label", t("back"));
+        forward.title = t("forward");
+        forward.setAttribute("aria-label", t("forward"));
+        external.title = t("external");
+        external.setAttribute("aria-label", t("external"));
+        input.placeholder = t("placeholder");
+        emptyTitle.textContent = t("emptyTitle");
+        emptyBody.textContent = t("emptyBody");
+      };
+
+      const setBaseTheme = (appearance) => {
+        const base = appearance?.base;
+        document.documentElement.dataset.base =
+          base === "light" || base === "dark"
+            ? base
+            : window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+        const next = String(appearance?.locale ?? navigator.language).toLowerCase();
+        locale = next.startsWith("zh") ? "zh" : "en";
+        document.documentElement.lang = locale === "zh" ? "zh-CN" : "en";
+        applyCopy();
+      };
+
+      const paint = (state) => {
+        started = Boolean(state?.url);
+        empty.hidden = started;
+        back.disabled = !state?.canGoBack;
+        forward.disabled = !state?.canGoForward;
+        reload.disabled = !started;
+        external.disabled = !state?.url;
+        reload.title = state?.isLoading ? t("stop") : t("reload");
+        reload.setAttribute("aria-label", reload.title);
+        if (!inputFocused && state?.url) input.value = state.url;
+      };
+
+      const reportHole = () => {
+        const rect = guest.getBoundingClientRect();
+        const hole = {
+          x: Math.round(rect.x),
+          y: Math.round(rect.y),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+        };
+        void bridge.invoke("browser.setBounds", hole);
+        void bridge.invoke("browser.setVisible", { visible: started && hole.width > 0 && hole.height > 0 });
+      };
+
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const value = input.value.trim();
+        if (!value) return;
+        started = true;
+        empty.hidden = true;
+        void bridge.invoke("browser.navigate", { url: value }).then(paint);
+        reportHole();
+      });
+      back.addEventListener("click", () => void bridge.invoke("browser.action", { action: "back" }));
+      forward.addEventListener("click", () => void bridge.invoke("browser.action", { action: "forward" }));
+      reload.addEventListener("click", () => {
+        void bridge.invoke("browser.action", { action: reload.title === t("stop") ? "stop" : "reload" });
+      });
+      external.addEventListener("click", () => void bridge.invoke("browser.openExternal"));
+      input.addEventListener("focus", () => {
+        inputFocused = true;
+        input.select();
+      });
+      input.addEventListener("blur", () => {
+        inputFocused = false;
+      });
+
+      const observer = new ResizeObserver(reportHole);
+      observer.observe(guest);
+      window.addEventListener("resize", reportHole);
+
+      bridge.on("browser:state", paint);
+      bridge.on("appearance:changed", setBaseTheme);
+      bridge.invoke("app.getAppearance").then(setBaseTheme).catch(() => setBaseTheme(null));
+      void bridge.invoke("browser.getState").then((state) => {
+        paint(state);
+        reportHole();
+      });
+      applyCopy();
+    </script>
+  </body>
+</html>

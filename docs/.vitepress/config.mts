@@ -25,7 +25,7 @@ const specSections: SpecSection[] = [
   { directory: '08-meta', en: 'Decisions & metadata', zh: '决策与元数据', collapsed: true },
 ]
 
-const preferredRootFiles = ['README.md', '00-baseline.md', '00-overview.md', 'NAV.md']
+const preferredRootFiles = ['README.md', '00-baseline.md', 'NAV.md']
 
 function titleFromMarkdown(filePath: string): string {
   const source = fs.readFileSync(filePath, 'utf8')

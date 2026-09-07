@@ -33,7 +33,6 @@ html[data-surface="plugin-launcher"] #root {
   align-items: center;
   gap: 12px;
   padding: 0 16px;
-  border-bottom: 1px solid var(--ds-border-subtle);
   color: var(--ds-text-muted);
 }
 
@@ -58,9 +57,8 @@ html[data-surface="plugin-launcher"] #root {
 .plugin-launcher-shortcut {
   flex: 0 0 auto;
   padding: 4px 8px;
-  border: 1px solid var(--ds-border-default);
   border-radius: var(--radius-sm);
-  background: var(--ds-bg-chip);
+  background: var(--ds-tile-deep);
   color: var(--ds-text-muted);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
@@ -102,9 +100,8 @@ html[data-surface="plugin-launcher"] #root {
   flex: 0 0 30px;
   display: grid;
   place-items: center;
-  border: 1px solid var(--ds-border-default);
   border-radius: var(--radius-sm);
-  background: var(--ds-bg-secondary);
+  background: var(--ds-tile-deep);
   color: var(--ds-text-primary);
   font-size: var(--text-sm-plus);
   font-weight: var(--font-weight-semibold);
@@ -155,7 +152,8 @@ html[data-surface="plugin-launcher"] #root {
   align-items: center;
   gap: 14px;
   padding: 0 16px;
-  border-top: 1px solid var(--ds-border-subtle);
+  /* Footer band is a tile, not a rule (D297). */
+  background: var(--ds-tile);
   color: var(--ds-text-faint);
   font-size: var(--text-xs);
 }

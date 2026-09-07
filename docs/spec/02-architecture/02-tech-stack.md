@@ -12,8 +12,8 @@
 | Host backend | **Rust** | stable Rust toolchain | tools/plugins/permissions/persistence adapters |
 | Rust async | tokio | stable | host services |
 | Host RPC | stdio JSON-RPC (NDJSON) | frozen (D001) | Electron main ↔ Rust host |
-| Agent engine | `@earendil-works/pi-agent-core` | ^0.82.1+ | agent loop |
-| Model API | `@earendil-works/pi-ai` | ^0.82.1+ | provider adapters, OAuth, and stream handling |
+| Agent engine | `@earendil-works/pi-agent-core` | 0.85.0 | agent loop |
+| Model API | `@earendil-works/pi-ai` | 0.85.0 | provider adapters, OAuth, and stream handling |
 | Model catalog | `https://models.dev/api.json` | bundled release snapshot + process-local refresh | sole provider/model metadata source |
 
 > pi-ai is not consulted for model names, capabilities, limits, modalities,

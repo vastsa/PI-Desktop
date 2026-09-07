@@ -3,6 +3,7 @@ import test from "node:test";
 
 const {
   activateWorkPanelTabState,
+  browserPluginTab,
   closeWorkPanelTabState,
   emptyWorkPanelContext,
   fileWorkPanelTab,
@@ -44,23 +45,23 @@ test("closing the active tab selects its right neighbor then its left", () => {
     tabs: [
       toolWorkPanelTab("review"),
       fileWorkPanelTab("src/App.tsx"),
-      toolWorkPanelTab("browser"),
+      browserPluginTab(),
     ],
     activeTabId: "file:src/App.tsx",
   };
   const middleClosed = closeWorkPanelTabState(state, "file:src/App.tsx");
-  const endClosed = closeWorkPanelTabState(middleClosed, "browser");
+  const endClosed = closeWorkPanelTabState(middleClosed, browserPluginTab().id);
 
-  assert.equal(middleClosed.activeTabId, "browser");
+  assert.equal(middleClosed.activeTabId, browserPluginTab().id);
   assert.equal(endClosed.activeTabId, "review");
 });
 
 test("closing an inactive tab preserves selection and the last close empties state", () => {
   const state = {
-    tabs: [toolWorkPanelTab("review"), toolWorkPanelTab("browser")],
+    tabs: [toolWorkPanelTab("review"), browserPluginTab()],
     activeTabId: "review",
   };
-  const inactiveClosed = closeWorkPanelTabState(state, "browser");
+  const inactiveClosed = closeWorkPanelTabState(state, browserPluginTab().id);
   const empty = closeWorkPanelTabState(inactiveClosed, "review");
 
   assert.equal(inactiveClosed.activeTabId, "review");
@@ -75,25 +76,29 @@ test("activation ignores stale tab ids", () => {
 test("unknown retained tabs are discarded without losing a known selection", () => {
   const stale = { id: "removed", kind: "removed" };
   const selected = sanitizeWorkPanelTabsState({
-    tabs: [stale, toolWorkPanelTab("browser"), toolWorkPanelTab("review")],
-    activeTabId: "browser",
+    tabs: [stale, browserPluginTab(), toolWorkPanelTab("review")],
+    activeTabId: browserPluginTab().id,
   });
   const staleSelected = sanitizeWorkPanelTabsState({
-    tabs: [toolWorkPanelTab("browser"), stale, toolWorkPanelTab("review")],
+    tabs: [browserPluginTab(), stale, toolWorkPanelTab("review")],
     activeTabId: "removed",
   });
 
   assert.equal(isKnownWorkPanelTab(stale), false);
-  assert.deepEqual(selected.tabs.map((tab) => tab.id), ["browser", "review"]);
-  assert.equal(selected.activeTabId, "browser");
+  assert.deepEqual(selected.tabs.map((tab) => tab.id), [
+    browserPluginTab().id,
+    "review",
+  ]);
+  assert.equal(selected.activeTabId, browserPluginTab().id);
   assert.equal(staleSelected.activeTabId, "review");
 });
 
-test("only Browser and plugin views are launchable tools", () => {
-  assert.equal(isToolWorkPanelTab(toolWorkPanelTab("browser")), true);
+test("only plugin views are launchable tools", () => {
+  assert.equal(isToolWorkPanelTab(browserPluginTab()), true);
   assert.equal(isToolWorkPanelTab(toolWorkPanelTab("review")), false);
   assert.equal(isToolWorkPanelTab(fileWorkPanelTab("README.md")), false);
   assert.equal(isToolWorkPanelTab(pluginWorkPanelTab("pi.files", "files")), true);
+  assert.equal(isKnownWorkPanelTab({ id: "browser", kind: "browser" }), false);
 });
 
 test("review artifacts are recognized independently of the visible session", () => {
@@ -128,14 +133,14 @@ test("empty work panel context has no visible or retained resource state", () =>
 test("switching work panel contexts isolates session tabs and visible state", () => {
   const sessionA = {
     open: true,
-    tabs: [toolWorkPanelTab("browser"), fileWorkPanelTab("src/App.tsx")],
+    tabs: [browserPluginTab(), fileWorkPanelTab("src/App.tsx")],
     activeTabId: "file:src/App.tsx",
     fileRequest: { path: "src/App.tsx", seq: 4 },
   };
   const sessionB = {
     open: false,
-    tabs: [toolWorkPanelTab("browser")],
-    activeTabId: "browser",
+    tabs: [browserPluginTab()],
+    activeTabId: browserPluginTab().id,
     fileRequest: null,
   };
 
@@ -175,7 +180,7 @@ test("switching to a session without context returns an isolated empty state", (
 
   assert.deepEqual(switched.contexts["session-a"], sessionA);
   assert.deepEqual(switched.visible, emptyWorkPanelContext());
-  switched.visible.tabs.push(toolWorkPanelTab("browser"));
+  switched.visible.tabs.push(browserPluginTab());
   assert.deepEqual(switched.contexts["session-a"].tabs, sessionA.tabs);
 });
 

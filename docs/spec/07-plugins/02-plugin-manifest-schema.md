@@ -174,7 +174,8 @@ type PluginPermission =
  | "mcp.server.remote"
  | "background.service"
  | "bus.publish"
- | "bus.subscribe";
+ | "bus.subscribe"
+ | "browser.cdp";
 ```
 
 Unknown permission = validation failure.

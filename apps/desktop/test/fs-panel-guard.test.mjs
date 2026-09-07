@@ -6,8 +6,11 @@ import test from "node:test";
 import {
   isIgnoredName,
   listDir,
+  previewFile,
   readWorkspaceFile,
+  resolveOpenablePath,
   resolveWithinRoot,
+  MAX_TEXT_BYTES,
 } from "../electron/main/fs-panel.ts";
 
 const ROOT = resolve("virtual-workspace");
@@ -67,4 +70,58 @@ test("work panel never follows a workspace link outside the real root", async (t
     readWorkspaceFile(root, "linked/secret.md"),
     /path escapes workspace root/,
   );
+});
+
+test("resolveOpenablePath allows workspace-relative and contained absolute paths", () => {
+  const scratch = join(tmpdir(), "pi-scratch-root");
+  assert.equal(
+    resolveOpenablePath("src/a.ts", ROOT, [scratch]),
+    join(ROOT, "src", "a.ts"),
+  );
+  assert.equal(
+    resolveOpenablePath(join(ROOT, "src", "a.ts"), ROOT, [scratch]),
+    join(ROOT, "src", "a.ts"),
+  );
+  assert.equal(
+    resolveOpenablePath(join(scratch, "sess", "pasted", "x.png"), ROOT, [scratch]),
+    join(scratch, "sess", "pasted", "x.png"),
+  );
+});
+
+test("resolveOpenablePath rejects escapes and relative paths without a workspace", () => {
+  const scratch = join(tmpdir(), "pi-scratch-root");
+  assert.equal(resolveOpenablePath("../outside.ts", ROOT, [scratch]), null);
+  assert.equal(resolveOpenablePath("/etc/passwd", ROOT, [scratch]), null);
+  assert.equal(resolveOpenablePath("src/a.ts", null, [scratch]), null);
+  assert.equal(resolveOpenablePath("~/secret.ts", ROOT, [scratch]), null);
+});
+
+test("previewFile classifies text, images, binary, and oversized files", async (t) => {
+  const fixture = await mkdtemp(join(tmpdir(), "pi-fs-preview-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const textPath = join(fixture, "note.md");
+  const imagePath = join(fixture, "pixel.png");
+  const binaryPath = join(fixture, "blob.bin");
+  const largePath = join(fixture, "large.txt");
+  await writeFile(textPath, "hello\n");
+  await writeFile(
+    imagePath,
+    Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+      "base64",
+    ),
+  );
+  await writeFile(binaryPath, Buffer.from([0, 1, 2, 0]));
+  await writeFile(largePath, "x".repeat(MAX_TEXT_BYTES + 1));
+
+  const text = previewFile(textPath, "note.md");
+  assert.equal(text.kind, "text");
+  assert.equal(text.content, "hello\n");
+
+  const image = previewFile(imagePath, "pixel.png");
+  assert.equal(image.kind, "image");
+  assert.match(String(image.dataUrl), /^data:image\/png;base64,/);
+
+  assert.equal(previewFile(binaryPath, "blob.bin").kind, "binary");
+  assert.equal(previewFile(largePath, "large.txt").kind, "tooLarge");
 });

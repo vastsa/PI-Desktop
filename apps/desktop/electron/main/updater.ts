@@ -22,6 +22,7 @@ import {
   type UpdateState,
 } from "@pi-desktop/shared";
 import type { Logger } from "./logger";
+import { parseAllowedExternalUrl } from "./safe-open-external";
 
 const { autoUpdater } = electronUpdaterPkg;
 
@@ -219,7 +220,9 @@ export class AppUpdaterController {
   }
 
   async openReleases(): Promise<void> {
-    await shell.openExternal(RELEASES_URL);
+    const url = parseAllowedExternalUrl(RELEASES_URL);
+    if (!url) throw new Error("DISALLOWED_EXTERNAL_URL");
+    await shell.openExternal(url);
   }
 
   startAutoCheck() {

@@ -1,5 +1,5 @@
 import { type BrowserWindow, type MessageBoxOptions, dialog } from "electron";
-import { en, resolveLocale, zhCN } from "@pi-desktop/i18n";
+import { catalogs, resolveLocale } from "@pi-desktop/i18n";
 import {
   MAX_DELETES_PER_WINDOW,
   type PluginFsConsentAnswer,
@@ -22,7 +22,7 @@ export function fsConsentDialogOptions(
   request: PluginFsConsentRequest,
   locale: string,
 ): MessageBoxOptions {
-  const strings = resolveLocale(locale) === "zh-CN" ? zhCN.pluginFsConsent : en.pluginFsConsent;
+  const strings = catalogs[resolveLocale(locale)].pluginFsConsent;
   const rate = request.reason === "rate";
   return {
     type: "warning",

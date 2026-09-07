@@ -24,11 +24,6 @@ test("streaming state stays inside the chat render boundary", () => {
   assert.match(chatSurface, /export const ChatSurface = memo/);
   assert.match(chatSurface, /const messages = useAppStore/);
   assert.match(chatSurface, /const StableComposer = memo\(Composer\)/);
-  assert.equal((chatSurface.match(/<StableComposer/g) ?? []).length, 1);
-  assert.match(
-    chatSurface,
-    /<StableComposer variant=\{showEmptyState \? "home" : "docked"\} \/>/,
-  );
 });
 
 test("chat configuration errors still navigate to agent settings", () => {
@@ -65,30 +60,22 @@ test("stream rendering avoids duplicate frame state and coalesces following", ()
   // commit that reveals it, or the reveal shows one empty frame (ADR 0137).
   assert.match(
     transcript,
-    /const revealSnapshot = firstCommit \|\| paneRevealed;/,
+    /const renderedMessages =\s*firstCommit \|\| paneRevealed \? messages : deferredMessages/,
   );
+  assert.match(transcript, /const \{ entries, visible \} = useMemo/);
   assert.match(
     transcript,
-    /const renderedMessages = revealSnapshot \? messages : deferredMessages/,
-  );
-  assert.match(
-    transcript,
-    /const historyProjection = useMemo\([\s\S]*?buildTranscriptEntries\(renderedMessages, renderedCompactions\)/,
-  );
-  assert.match(
-    transcript,
-    /const liveProjection = useMemo\([\s\S]*?buildTranscriptEntries\(messages, compactions\)/,
+    /buildTranscriptEntries\(renderedMessages, renderedCompactions\)/,
   );
   assert.match(transcript, /const TranscriptHistory = memo/);
   assert.match(transcript, /const TranscriptTail = memo/);
   assert.match(transcript, /function transcriptEntryEqual/);
-  // Memoized on the history projection: a re-render that changed no message
-  // must hand `TranscriptHistory` the same array so its comparator bails on
-  // identity instead of deep-walking every mounted row (D261). The keys are
-  // strings, so streaming keeps `allHistoryEntries` stable tick after tick.
+  // Memoized on `entries`: a re-render that changed no message must hand
+  // `TranscriptHistory` the same array so its comparator bails on identity
+  // instead of deep-walking every mounted row (D261).
   assert.match(
     transcript,
-    /const allHistoryEntries = useMemo\([\s\S]*?tailIsDeferredTail[\s\S]*?historyProjection\.entries/,
+    /const allHistoryEntries = useMemo\(\(\) => entries\.slice\(0, -1\), \[entries\]\)/,
   );
   assert.match(transcript, /<TranscriptHistory entries=\{historyEntries\}/);
   assert.match(transcript, /<TranscriptTail[\s\S]*?entry=\{tailEntry\}/);
@@ -161,7 +148,7 @@ test("layout clamps after send cannot release transcript follow as a gesture", (
   );
   assert.match(transcript, /event\.type === "pointerdown"/);
   assert.match(transcript, /el\.addEventListener\("wheel", markScrollGesture/);
-  assert.match(transcript, /className="thread-wrap" ref=\{wrapRef\}/);
+  assert.match(transcript, /className="thread-wrap"\s+ref=\{wrapRef\}/);
   assert.match(
     transcript,
     /const released =\s*transition\.releasedFollow &&\s*isRecentScrollGesture\(/,
@@ -377,25 +364,6 @@ test("motion feedback is composited, bounded, and accessible", () => {
   assert.match(styles, /@keyframes route-surface-in/);
   assert.match(styles, /@keyframes work-panel-in/);
   assert.match(styles, /@keyframes work-panel-out/);
-  assert.match(styles, /@keyframes work-panel-out-windows/);
-  assert.match(styles, /\.work-panel \{[^}]*flex:\s*0 0 var\(--work-panel-width\)/s);
-  assert.match(
-    styles,
-    /@keyframes work-panel-in \{[\s\S]*?flex-basis:\s*0;[\s\S]*?width:\s*0;[\s\S]*?flex-basis:\s*var\(--work-panel-width\);[\s\S]*?width:\s*var\(--work-panel-width\);/,
-  );
-  assert.match(
-    styles,
-    /@keyframes work-panel-out \{[\s\S]*?flex-basis:\s*var\(--work-panel-width\);[\s\S]*?flex-basis:\s*0;[\s\S]*?width:\s*0;/,
-  );
-  assert.doesNotMatch(
-    styles.match(/\.work-panel \{[^}]*\}/s)?.[0] ?? "",
-    /position:\s*(?:absolute|fixed)/,
-  );
-  assert.doesNotMatch(app, /setWorkPanelReservation\((?!0\))/);
-  assert.match(
-    styles,
-    /:root\[data-platform="win32"\] \.work-panel\.is-exiting \{[^}]*animation-name:\s*work-panel-out-windows;/s,
-  );
   assert.match(styles, /translateX\(8px\)/);
   assert.match(styles, /\.composer-shell:focus-within/);
   assert.doesNotMatch(styles, /backdrop-filter:\s*blur/);

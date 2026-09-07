@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { register } from "node:module";
+import { dirname, join } from "node:path";
 import test from "node:test";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   TRANSCRIPT_INITIAL_MOUNT,
   TRANSCRIPT_WINDOW_MIN,
@@ -8,10 +11,12 @@ import {
   growTranscriptWindow,
   reduceTranscriptWindow,
 } from "../src/lib/transcript-window.ts";
-import {
-  buildTranscriptEntries,
-  transcriptEntryMessages,
-} from "../src/lib/assistant-turns.ts";
+
+const here = dirname(fileURLToPath(import.meta.url));
+register(pathToFileURL(join(here, "helpers/ts-import-hooks.mjs")));
+const { buildTranscriptEntries, transcriptEntryMessages } = await import(
+  "../src/lib/assistant-turns.ts"
+);
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 

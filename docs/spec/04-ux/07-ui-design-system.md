@@ -29,6 +29,7 @@ The desktop shell targets a 1:1 visual match with the local Codex desktop client
 | **Restraint** | One accent color family. No rainbow status colors — use semantic token names (success, warning, error). |
 | **Motion as feedback** | Animations convey state change (streaming, loading, expand/collapse). Never decorative. |
 | **Keyboard-first** | Focus rings, tab order, and shortcut labels are primary UX, not afterthoughts. |
+| **Continuous shell chrome** | Titlebars stay borderless and continuous with their surfaces; reserve faint separators for boundaries that clarify ownership, such as the window-control side seam. |
 
 ### 3.1 AI-generated page copy
 
@@ -120,18 +121,14 @@ Codex as a visual reference. The identity contract is deliberately small:
   and NSIS shortcut identity stay aligned so native notifications,
   notification settings, and taskbar groups identify the app as `PI-Desktop`
   rather than Electron.
-- The empty-home hero uses a 100px `HomeMascotLogo` compiled from the remaining
-  supplied `docs/ip` frame sheets into nine static-pose groups (50 transparent
-  frames total). Each mount selects one group at random; after that group
-  finishes, the next group is randomized without immediately repeating the
-  previous one. Frames swap discretely inside the fixed 100px viewport, while
-  the completed pose rests for several seconds before the next selection
-  (single-frame poses rest longer). Reduced motion holds the current group's
-  first frame. The sheet is monochrome with recovered edge alpha: the frames
-  were keyed off a magenta background, so a partially covered pixel carries its
-  own coverage rather than the key colour, and the mascot leaves no coloured
-  fringe on a dark surface. `python3 scripts/clean-mascot-sprite.py` restores
-  that property if the sheet is ever recompiled with a hard alpha threshold.
+- The empty-home hero uses a 100px `HomeMascotLogo` GIF: an eight-frame waving
+  mascot compiled from the supplied light and dark action sets, with a short
+  idle hold on the first frame. CSS selects the pair from
+  `document.documentElement[data-theme]`; anything other than `light` uses the
+  dark artwork. Playback is native to the GIF. There is no random pose
+  selection, JavaScript timer, or hover-driven speed change. Reduced motion
+  swaps the GIF for the matching first-frame PNG without changing the 100px
+  slot.
   `BrandLogo` remains 20px/18px in the expanded/collapsed sidebar and 64px in
   the startup splash. Composer prompt rows do not render a leading brand icon
   in either home or thread-docked mode.
@@ -215,15 +212,14 @@ Neutral gray scale only — no blue-slate surfaces. Chrome components must consu
 
 Shared buttons must use semantic theme tokens for both their surface and ink:
 primary actions pair `--ds-accent` with `--ds-bg-primary`, while secondary
-actions use the opaque `--ds-bg-secondary` surface with primary text and a
-visible semantic border. Hover states use the corresponding accent/tertiary
-tokens rather than opacity-only changes, so actions remain legible in dark
-and light themes.
+actions sit on the `--ds-tile` fill with primary text and no stroke (D297).
+Hover states use the corresponding accent/tile-hover tokens rather than
+opacity-only changes, so actions remain legible in dark and light themes.
 
 Light-surface polish (D148):
 
-- Docked work panel uses quiet inset paper (`#fafafa`) with a white header band and a combined create trigger in the header so the tool column stays on content without a heavy divider.
-- Shared form fields, browser URL, settings segment tracks, and shortcut keycaps use `#f5f5f5` inset fills with a 0.5px ink stroke; focus lifts to white with a neutral ring.
+- Docked work panel uses quiet inset paper (`#fafafa`) with a white header band and a combined create trigger in the header so the tool column stays on content without any divider (D297 removed the remaining edge rules).
+- Shared form fields, browser URL, settings segment tracks, and shortcut keycaps use `--ds-tile` fills with no stroke (D297); focus lifts to white with an accent-tinted ring. An Unbound shortcut uses a localized text state instead of an empty keycap and keeps its recorder and restore controls keyboard-focusable.
 - Settings toggles keep a near-black on-track and force a white knob in light mode.
   Off/on track and knob colours come from the `--ds-switch-*` theme tokens; a
   per-theme `:root[data-theme="…"] .settings-toggle` background override
@@ -467,12 +463,23 @@ build/version chip is right-aligned and remains the update check/release entry
 point. Hover and active states use semantic sidebar surfaces; neither side adds
 a persistent card fill.
 
-Sidebar list scrollers keep their native scroll affordance but use a 6px
-trackless scrollbar whose thumb is transparent at rest and uses a 20%
-semantic-ink color when the list is hovered or focused, including while the
-thumb is dragged. This keeps the navigation tree visually quiet while
-preserving a discoverable control during interaction; chat, code, and settings
-scroll containers keep their own scrollbar treatments.
+Every scroll container in the renderer uses one quiet scrollbar: 8px,
+trackless, with a thumb that is transparent at rest. The thumb appears only
+while the pointer is over the owning scroll region or while that region is
+scrolling (the renderer marks the scrolling element with `data-scrolling` for
+a short hold after the last scroll event, so wheel, trackpad, keyboard, and
+pinned-follow scrolls all reveal it); it strengthens under the pointer and
+while dragged. Scrollbars are styled only through the `::-webkit-scrollbar`
+pseudo-elements. Partials never set `scrollbar-width` or `scrollbar-color`,
+because WebKit and Chromium then ignore the pseudo-elements and the surface
+falls back to an always-visible native bar. Reserved gutters
+(`scrollbar-gutter: stable`) stay where layout needs them; they are simply
+empty at rest.
+
+Sidebar list scrollers narrow that scrollbar to 6px, also reveal it while a
+row has keyboard focus, and use a 20% semantic-ink thumb in every revealed
+state. This keeps the navigation tree visually quiet while preserving a
+discoverable control during interaction.
 
 The expanded sidebar's resize handle keeps its 8px hit area transparent when
 the sidebar surface is merely hovered. Direct handle hover reveals only a
@@ -494,7 +501,9 @@ row and reserve the rightmost 120px for three frameless-window controls. The
 controls retain 112px of full-height hit targets, while the outer band adds an
 8px visual buffer and a divider before adjacent work-panel actions. The band
 paints an opaque `bg-primary` surface so page content never shows through the
-controls. Main, Settings, and work-panel drag regions must terminate before
+controls, and its leading and bottom edges use the same `border-subtle` rule as
+the adjacent titlebar so the 46px chrome reads as one continuous surface. Main,
+Settings, and work-panel drag regions must terminate before
 this reservation rather than overlap it and rely only on descendant `no-drag`,
 so every visible control pixel remains clickable. The band floats over the
 destination pages, so on Windows/Linux a page frame and any right-edge detail
@@ -507,8 +516,8 @@ content.
 
 Composer elevation (Codex `elevation-prominent`):
 
-- stroke: `0 0 0 0.5px` border-heavy mix
 - soft: `0 3px 7.5px rgba(0,0,0,0.039)` + `0 0 20px rgba(0,0,0,0.051)` (Codex `#0000000a` / `#0000000d`, both themes)
+- no stroke (D297): the composer lifts by shadow alone; `--ds-elevation-stroke` remains a token for floating layers only
 
 Shadow token values (light theme only):
 
@@ -520,12 +529,24 @@ shadow-lg:  0 8px 24px rgba(0,0,0,0.12)
 
 ### 6.4 Border rules
 
-| Context | Token | Width | Style |
-|---|---|---|---|
-| Default separators | `border-subtle` | 1px | solid |
-| Card outlines | `border-default` | 1px | solid |
-| Focus rings | accent color | 2px | solid, offset 2px |
-| Active/pressed | accent color | 1px inset | solid |
+In-flow surfaces draw no strokes (D297). Structure inside a page comes from
+three tonal layers plus spacing, and the border tokens are reserved for
+floating layers where an edge is an elevation cue rather than a partition.
+
+| Layer | Token | Use |
+|---|---|---|
+| Page | `--ds-bg-primary` | The route or dialog body itself |
+| Tile | `--ds-tile` (3.5% text mix); hover `--ds-tile-hover` (6%); deep `--ds-tile-deep` (8%) | Panels, list rows, cards, form fields, chips, code blocks, empty states |
+| Raised | `--ds-raised` + `--ds-raised-shadow` | The active pill of a segmented control, a disclosed detail block, a recorder keycap |
+
+| Context | Treatment |
+|---|---|
+| Row / section separators | Spacing (4–6px gap between tile rows, 12–24px between sections); never a rule |
+| Card / panel outlines | `--ds-tile` fill, no ring, in both themes |
+| Selection (theme, language, level) | Deeper tint or raised pill plus the existing check mark; no selected border |
+| Floating layers (menus, popovers, dialogs, tooltips, toasts, hover cards) | `0 0 0 0.5px border-default` + shadow on the container; no rules inside |
+| Focus rings | accent tint, 2px box-shadow |
+| Control affordances (switch off-ring, resize handles) | Allowed; they are the control, not a partition |
 
 ## 7. Iconography
 
@@ -595,6 +616,12 @@ plain status text:
 - Exit: 280ms opacity fade (`startup-splash-out`) once `ready` is true, revealing
   the already-mounted shell underneath
 - Reduced motion: near-zero enter/exit and a static full-width bar
+- macOS: the splash is the same glass as the sidebar (D304) — the
+  `--ds-sidebar-glass-tint` fill plus top/bottom sheen over the native
+  `under-window` vibrancy, so the boot surface never flashes an opaque panel
+  ahead of the translucent sidebar. The mounted shell stays hidden under
+  the glass until the exit fade, then cross-fades in. Other platforms keep
+  the opaque `--ds-bg-primary` fill
 
 This is boot-state feedback, not decorative chrome.
 
@@ -624,8 +651,8 @@ All motion tokens must respect `prefers-reduced-motion: reduce`:
 }
 ```
 
-Boot splash, overlay/dialog enters, streaming pulse, and continuous bars are
-also explicitly suppressed or collapsed to a static state.
+Boot splash, overlay/dialog enters, running-status pulses, and continuous bars
+are also explicitly suppressed or collapsed to a static state.
 
 > See also [09-interaction-patterns.md](09-interaction-patterns.md) §10.
 
@@ -670,11 +697,14 @@ High-frequency workstation feedback must remain compositor-friendly and bounded:
 
 ## 8.0 Home empty stack and bottom composer (D111/D204/D206)
 
-Empty composer placeholder carousel: home starts with `chat.placeholderHome` and
-thread-docked starts with `chat.placeholder`; each rotates every 4 seconds to
-its localized slash-command hint (`chat.placeholderHomeHint` /
-`chat.placeholderHint`) while the draft is empty and inactive. The visible copy
-uses an opacity fade and remains legible on the light and dark composer plates.
+Empty composer placeholder guidance is scoped to the current page and session:
+home starts with `chat.placeholderHome` and thread-docked starts with
+`chat.placeholder`. Within that context the copy remains stable. Switching
+between home/session views or active conversations advances through the localized
+command/file hint (`chat.placeholderHomeHint` / `chat.placeholderHint`) and the
+keyboard hint (`chat.placeholderShortcut`). It does not rotate on a timer or
+because focus, draft, or IME state changes. The visible copy uses an opacity
+fade and remains legible on the light and dark composer plates.
 
 Empty chat home keeps the content and composer in separate vertical regions
 inside `home-main-content` (D111/D204/D206; supersedes the D047 dual-grow portal
@@ -704,12 +734,11 @@ model):
   controls remain icon-only and use the semantic hover wash
 - Empty hero title uses `var(--ds-text-primary)` (light override `#1a1c1f`);
   never hardcode light ink for shared hero styles
-- Empty-home branding stays quiet: the 100px mascot is the sole animated hero
-  mark. A single randomly selected pose group plays at a time, and the
-  supporting line stays short and muted so the composer remains the primary
-  task surface. Pointer hover over the mascot bypasses the idle pause and
-  continuously advances through pose groups; reduced motion still disables
-  the animation.
+- Empty-home branding stays quiet: the 100px eight-frame mascot GIF is the
+  sole animated hero mark. Light and dark themes each use a dedicated asset
+  pair. It loops a short wave with an idle hold so the composer remains the
+  primary task surface. Pointer hover does not change the cadence; reduced
+  motion shows the matching still first frame.
 - Night home composer plate styles are **dark-scoped only** (elevated-primary
   `#212121f5` + standard elevation-prominent)
 - Empty draft row keeps **one visible line / 28px optical minimum** so the
@@ -740,7 +769,9 @@ border, a file glyph, an ellipsized leaf name, and a focus-visible remove
 action. No references means no reserved row or extra composer height. The
 canonical path is tooltip/accessibility metadata and never textarea body copy,
 including after unanswered smart-stop restoration. Dispatch and persisted user
-messages still carry the canonical path required by D124.
+messages still carry the canonical path required by D124. After send, the
+transcript paints those same references as composer-matching leaf-name chips
+rather than full-path text (D320).
 
 Large text pastes use a second presentation: text-only input at or below the
 configured `largePasteThreshold` remains native textarea content, while input
@@ -835,7 +866,8 @@ query still ranks relevance first and uses recency only as a tiebreaker.
   be toggled independently afterward.
 - The trigger is a button with `aria-expanded`, `aria-controls`, and localized
   Show/Hide labels. Collapsed reasoning is hidden from focus and accessibility
-  traversal; reduced-motion mode disables shimmer and disclosure transitions.
+  traversal; reduced-motion mode disables the running marker pulse and
+  disclosure transitions.
 - Thinking never enters the answer bubble, answer copy action, transcript
   minimap excerpt, or searchable answer text.
 - A thinking-only stream opens the transcript surface without an empty answer
@@ -871,35 +903,33 @@ Codex parity decisions (D034/D070) supersede any older value here.
 | Titlebar row height | 46px | Codex toolbar rhythm (D034); traffic lights {x:16,y:16} |
 | Sidebar width (collapsed) | 48px | Icon-only rail |
 | Sidebar width (expanded) | `240px–520px` (default 275px) | Right-edge resize handle; persisted preferred width |
-| Main pane minimum readable width | 360px | Readability target; the internal work panel may reflow chat below it in a constrained client area (D287, ADR 0148) |
+| Main pane minimum readable width | 360px | Target when the panel is closed; an open internal panel may reduce MainChat below this target on small windows |
 | Work panel width (closed) | 0px | Hidden by default |
-| Work panel width (open) | `244px–720px` (default 280px), fixed at the committed width | in-flow internal column; the left divider previews and persists this width while BrowserWindow bounds stay unchanged (D154/D167/D287, ADR 0148) |
+| Work panel width (open) | `244px–720px` (default 280px), fixed at the committed width | the panel is an in-flow column whose width is taken from the existing client area; the renderer owns its divider (ADR 0151) |
 | Composer shell minimum | ~80px | One-line draft + toolbar padding |
 | Composer draft height | 1–7 text lines | Auto-grow; internal scroll beyond line 7 |
 | Chat message max width | 720px assistant / 560px user plate | Prevent eye-span over-stretch; user turns stay compact |
-| Window min width | 1040px | Enforced by Electron; an open internal work panel does not grow the window and may reduce chat below its 360px readability target |
+| Window min width | 1040px | Enforced by Electron for the whole app; opening the panel never changes native bounds |
 | Window min height | 700px | Enforced by Electron |
 
 An open work panel is a fixed-width in-flow column inside the existing client
-area (ADR 0148). The renderer requests native reservation `0`; panel width and
-flex-basis animate from the right while MainChat reflows and BrowserWindow bounds
-stay fixed. The native browser view follows the renderer-measured panel rect.
-Before collapse motion starts, any native Browser preview surface is detached
-because it cannot participate in renderer CSS animation. Windows keeps the
-exiting dock opaque during its bounded slide; macOS and Linux retain the
-fade-and-slide exit.
+area (ADR 0151). Its flex allocation comes from MainChat, and the renderer's
+measured panel rect continues to position the native Browser view. Opening and
+collapsing do not request a positive native reservation or change persisted
+window bounds. Before collapse motion starts, any native Browser preview surface
+is detached because it cannot participate in renderer CSS animation; macOS,
+Windows, and Linux retain the fade-and-slide exit.
 
 ### 10.1 Responsive collapse
 
 - The work panel never participates in responsive collapse. It keeps its
   committed `244..720px` width (default 280px) while visible.
-- The inner panel divider previews and commits the fixed panel target while
-  MainChat reflows inversely. Native window edges resize BrowserWindow normally,
-  and sidebar changes reflow MainChat. The chat may fall below its 360px target
-  when the client area cannot fit panel plus chat.
-- Panel open, collapse, and final close all request native reservation `0`.
-  Native edges keep their OS hit regions; the renderer owns panel-width preview,
-  cancellation, and commit.
+- The inner panel divider changes the panel width in the renderer. Moving it
+  left takes more internal space from MainChat; moving it right returns that
+  space. Native window edges resize only the fixed app window.
+- Panel open and collapse change only the in-flow flex allocation. No positive
+  native reservation is requested, and the panel's preferred width remains a
+  renderer-local setting.
 - The outer shell keeps native edge/corner resizing enabled on every platform.
   Frameless titlebar drag regions never replace the OS resize ownership. A
   300ms stable-bounds settle window prevents recovery logic from competing with
@@ -916,7 +946,7 @@ These are **token-level foundations** for common primitives. Detailed component 
 | Variant | Padding | Height | Font | Radius | Border | Background |
 |---|---|---|---|---|---|---|
 | Primary | px-3 py-1.5 | 32px | text-sm 500 | radius-sm | none | accent |
-| Secondary | px-3 py-1.5 | 32px | text-sm 400 | radius-sm | border-default | bg-secondary |
+| Secondary | px-3 py-1.5 | 32px | text-sm 400 | radius-sm | none (D297) | `--ds-tile`, hover `--ds-tile-hover` |
 | Ghost | px-2 py-1 | 28px | text-sm 400 | radius-sm | none | transparent |
 | Danger | px-3 py-1.5 | 32px | text-sm 500 | radius-sm | none | error |
 
@@ -927,8 +957,8 @@ These are **token-level foundations** for common primitives. Detailed component 
 | Height (single-line) | 32px |
 | Padding | px-3 py-1.5 |
 | Font | text-sm font-mono (for composer); text-sm font-sans (for settings) |
-| Border | 1px border-default; focus → 2px accent ring offset-2 |
-| Background | bg-primary |
+| Border | none (D297); focus → 2px accent-tinted ring |
+| Background | `--ds-tile`; focus lifts to `--ds-raised` |
 | Radius | radius-sm |
 | Text correction (D145) | `spellCheck={false}`, `autoCorrect="off"`, `autoCapitalize="off"` on every text input/textarea |
 
@@ -937,9 +967,9 @@ These are **token-level foundations** for common primitives. Detailed component 
 | Property | Value |
 |---|---|
 | Padding | p-3 |
-| Border | 1px border-default |
+| Border | none (D297) |
 | Radius | radius-lg |
-| Background | bg-secondary |
+| Background | `--ds-tile` |
 | Hover (interactive) | bg-tertiary, no shadow change |
 
 ### 11.4 Dialog / modal

@@ -232,6 +232,15 @@ type ToolBudgetHealth = {
   仅在空闲且没有 pending/queued/running 时才允许配置
   Plan 或 Goal 记录
 - `session.appendMessage`
+- `session.saveInflightMessage` — 仅供 Electron 主进程使用的检查点，保存正在流式
+  输出的助手回复以及 `message_end` 的完成快照：`{ sessionId, turnId?, message }` 原子替换
+  `sessions/<id>.inflight.json`（D299、D327，规格 04 §2.1）。返回 `{ ok, saved }`；
+  消息没有可见文本、或该 id 已被索引（最终行先落盘）时 `saved` 为 false，后一种
+  情况下还会移除残留检查点。非助手角色属于 `INVALID_PARAMS` 类失败。
+  `completed`/`error` 的 `session.endTurn` 仅在该 id 已索引时才删除该文件。
+- `session.recoverInflightMessages` — 仅供 Electron 主进程在 outbox 排空后调用的扫描
+  （D327）。把最终行从未落盘的残留检查点提升写入转录，回合已 `completed` 的提升为
+  `complete`。启动恢复会跳过已完成回合，以便 outbox 先追加。返回 `{ ok, count }`。
 - `session.appendCompaction` — 仅附加最新类型的 sidecar
   模型上下文检查点。它需要非空 checkpoint/summary/boundary
 ids 和非负 `tokensBefore`；它不会插入 message/search 行
@@ -245,20 +254,31 @@ ids 和非负 `tokensBefore`；它不会插入 message/search 行
   通话期间的整个记录：快照的任何重写
   在 RPC 锁之外采取的可以删除附加在其间的消息
 - `session.saveRevision` — 将重新生成分支归档到
-  `(sessionId, rootUserId)`
+  `(sessionId, rootUserId)`。带 `revisionIndex` 时，就地刷新该已有变体的
+  载荷（分支自归档后又生长了），而不是新建索引；DB 行保留身份和活动
+  标志，只更新 `message_count`
 - `session.saveActiveRevision` — 归档最新的分支
   将带有修订版的用户 root 作为其活动修订版并标记该 root 的寻呼机
   元数据，全部位于 RPC 锁下。邮票重写了一行文字记录
   而不是文件，因此并发的 `session.appendMessage` 仍然存在。
   当会话不拥有重新生成历史记录时，返回 `{ saved: null }`。
+  已归档的活动变体会被刷新，而不是跳过。
   回合完成调用者使用它而不是
   `session.get` + `session.replaceMessages`
 - `session.listRevisions` — 列出根用户系列的线性变体
 - `session.activateRevision` — 用 `prefix + branch` 替换实时转录
-  并标记根寻呼机元数据
+  并标记根寻呼机元数据。切换前它先从持久转录本重新归档该系列的实时
+  分支（刷新实时根消息 `activeRevision` 标记所指的变体，或把已标记但从未
+  归档的分支存为新变体），因此上次归档之后追加的内容不会丢失。当该系列
+  存在于持久转录本中时，恢复分支之前的前缀取自转录本而非调用方。幸存
+  消息保留所属的 `turn_id`
 - `session.beginTurn`
 - `session.endTurn` — 以原子方式将正在运行的回合移动到其终止状态，并且
-有条件地返回新创建的 `completed`/`error` 通知；
+有条件地返回新创建的 `completed`/`error` 通知；它还会落定该会话的进行中回复
+  检查点（D299）：`completed`/`error` 移除它；`recoverInflight: true`（sidecar
+  已丢失、不会再有最终行时发送）把最终行从未落盘的检查点提升为 `aborted` 助手消息
+  写入转录并作为 `recovered` 返回；普通的 `aborted`（用户停止）保留检查点，交给
+  即将到达的最终行取代；
   当 `createNotification=false`、`aborted` 或
   对于已经结束的回合
 - `session.import` — 以原子方式导入一个转换后的会话；一个非空的
@@ -334,7 +354,8 @@ off | minimal | low | medium | high | xhigh | max
 
 `session.appendMessage` 通过消息 ID 是幂等的。 Electron 主要可以保留
 当 host-core 重新启动时，消息会附加到其应用程序拥有的发件箱中；
-握手成功后，发件箱会按顺序冲洗。
+握手成功后，发件箱会按顺序冲洗。进行中检查点从不经过发件箱：检查点只对存活的
+主机有意义，在最终行之后重放它是错误的。
 
 ### 权限
 - `permissions.evaluate`
@@ -431,7 +452,7 @@ type ToolsExecuteParams = {
   expectedCommandShellId?: CommandShellId
   /** Bash only: dialect pinned by the same runtime turn. */
   expectedCommandShellDialect?: "powershell" | "cmd" | "posix"
-  /** Bash only: host default 60000; accepted override 1000..300000. */
+  /** Bash only: host default 60000; accepted override 1000..21600000. */
   timeoutMs?: number
 }
 ```

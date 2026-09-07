@@ -328,6 +328,9 @@ Headroom 是 16,384 个代币储备底线的最大值，模型最大输出
 - 更改 mode/provider/model/thinking 级别适用于下一回合，并且
   当任何影响运行时的配置更改时重新创建 pi 运行时；
   运行中的运行时不会观察到排队的渲染器选择。
+- 实时规划指示器跟随正在运行的回合。回合中暂存的模式选择不会把投影的
+  `planning`/`inactive` 提前翻过去；Composer 模式芯片可以立刻显示暂存模式，
+  但只有进行中的回合真正投影 `planning` 时才脉冲，紧凑的成绩单规划行也是同一投影。
 
 实时计划状态的推导和预测为：
 
@@ -476,13 +479,14 @@ Frontmatter 新增 `permission: inherit | ask | accept-edits | auto`（默认
   `minCompleted` 可以在前 N 个完成时提前收敛。已结算的委托立即返回，
   因此按 id 重读报告代价很低。合并结果上限为 `MAX_TASKWAIT_RESULT_CHARS`
   （50k）。`timeoutSeconds` 默认 600 秒并被夹到 900 秒：等待会阻塞回合，
-  所以这个上限决定了会话最长能看起来卡住多久。到点不是失败 —— 委托仍在继续
-  工作，等待会返回已完成的报告、说明这一点并提示再调一次 —— 因此低上限只花
-  一次往返，却换来可响应的停止。发现真正卡死的委托是空闲看门狗的职责，不是
-  这个超时的职责，所以空闲默认值刻意比它更短。
-- `TaskList()` — 报告会话的每个委托及其状态。
-- `TaskStop(delegationIds?)` — 停止正在运行的委托（默认全部）；被停止的
-  委托读作 `stopped`。
+  所以这个上限决定了会话最长能看起来卡住多久。到点不是失败，也不会停掉委托
+  （D328）—— 等待返回心跳（谁、状态、已用时、轮数、最后工具）以及已完成的
+  报告。运行时会保持父级回合打开，并在它们完成时把剩余报告交回，即使父级已经
+  停止调用工具。只有 `TaskStop` 或用户 Stop 才会中止委托。
+- `TaskList()` — 报告会话的每个委托及其状态和运行中心跳。
+- `TaskStop(delegationIds?)` — 停止正在运行的委托（默认全部）；等待每次
+  中止结算后，在 `details.stopped[]` 上持久化 `status: "stopped"` 与
+  `completedAt`。被停止的委托读作 `stopped`。
 
 **委托循环。** `SubagentRun` 是同一 sidecar 进程中的第二个 pi `Agent`，
 使用该定义的系统提示、其（可能已固定的）provider/model、其声明的工具，
@@ -496,20 +500,14 @@ Frontmatter 新增 `permission: inherit | ask | accept-edits | auto`（默认
 `MAX_SUBAGENT_REPORT_CHARS`，12k），其 details 携带 `delegationId`、`agent`、
 `status`、`turns`、`toolCalls`，以及失败或超时时的 `error`。
 
-**委托看门狗。** 每次运行都有 300 秒空闲超时和 21,600 秒（6 小时）总时长
-上限。定义可以用 `idle-timeout`（夹到 10–21,600 秒）和 `max-duration`
-（夹到 60–21,600 秒）覆盖它们；非数值会告警并使用默认值。
+**委托生命周期（D328）。** 运行时不再用空闲或总时长掐死委托。
+`idle-timeout` / `max-duration` 仍会解析以便旧文档能加载，但不会被武装。
+委托一直跑到自己结束、碰到显式 `maxTurns`、失败、被 `TaskStop`，或用户
+Stop / 运行时销毁。主 Agent 用 `TaskStop` 判断要不要取消；运行中只能看到
+一行心跳（谁、状态、已用时、轮数、最后工具）。
 
-空闲超时限制的是*静默*，不是缓慢。任何 agent 事件都算活动，哪怕只是一个
-以 `message_update` 到达的流式 token，因此持续产出的委托无论单轮跑多久都
-不会被判超时。空闲计时器还会从 `tool_execution_start` 暂停到对应的
-`tool_execution_end`，所以长时间的构建或测试命令也不会让它到点，而时长
-计时器在工具执行期间继续计时。只有在整个窗口内完全没有事件的委托才被视为
-卡死。由于该窗口衡量的是静默而非工作量，默认值依据实测的提供程序延迟设定：
-委托从最后一个流式 token 到下一次响应开始之间是静默的，而这段等待实测
-p99.9 为 174 秒。300 秒默认值留有余量，同时明显低于 `TaskWait` 的 600 秒
-默认值，因此卡死的委托会在单次等待内结算为 `timed_out`，而不是占住父级
-一整个窗口甚至更久。
+当父级在委托仍在跑时停止调用工具，运行时吞掉这次 `agent_end`，保持持久
+回合打开，等委托完成后再把报告塞回父级。父级收工不会中止它们。
 
 **模型引脚。** Frontmatter 中的 `model: <provider>/<model>` 已解决一次
 每次在 Electron main 中启动，其中凭证和 pi 目录都存在，针对
@@ -523,14 +521,14 @@ p99.9 为 174 秒。300 秒默认值留有余量，同时明显低于 `TaskWait`
 **事件和上下文。**委托发出的每个事件都携带
 信封上印有 `parentToolCallId` 和 `agentName`，Electron 主副本均印有
 到持久化的行上。当运行时重建模型上下文时，它会跳过每个
-`parentToolCallId` 行：父级只通过 `TaskWait` 看到报告，并且重播
-代表行既会与此相矛盾，也会重新引入上下文成本
+`parentToolCallId` 行：父级只通过 `TaskWait` 或运行时的完成提示（D328）
+看到报告，并且重播代表行既会与此相矛盾，也会重新引入上下文成本
 委托的存在是为了避免。
 
 **回合所有权。** 委托的生命周期永远不会轮到 Electron main
-处理。委托预期在回合内收敛 —— 系统提示词指示父级在 `Task` 之后继续
-自己的主线，并在作答前用 `TaskWait`/`TaskStop` 收敛 —— 运行时会在回合
-结束、父级中止或运行时销毁时中止仍在运行的任何委托。
+处理。父级可以在 `Task` 之后继续自己的主线或对用户说话。如果它在委托仍在
+跑时停止调用工具，运行时保持持久回合打开，并在它们完成时交回报告。只有
+用户 Stop、`TaskStop` 或运行时销毁才会中止仍在运行的委托。
 
 ### 5f.1 委托权限作用域（ADR 0089）
 
@@ -619,8 +617,7 @@ MVP UI 始终至少包括：
 `Grep.path/include/outputMode/headLimit`； `filesWithMatches` 或 `count` 避免
 不需要的内容。工作区相对路径仍然是可移植的默认路径，带有
 仅当本机工具不足时才在活动 shell 中使用有界命令。
-`rg` 是可选的而不是假定的，并且代理不得重复搜索
-他的答案已经在上下文中了。
+Grep 在本机装有 `rg` 时使用它，否则使用进程内搜索器；代理应调用 Grep 而不是在 Bash 里跑 `rg`。Bash 仍不得假定 `rg` 存在。代理不得重复已经在上下文中的搜索。
 
 编辑规范块携带
 [18-line-anchored-edit-contract](/zh-CN/spec/03-runtime/18-line-anchored-edit-contract)

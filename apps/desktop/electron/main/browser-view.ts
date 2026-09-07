@@ -1,9 +1,9 @@
-import { shell, WebContentsView } from "electron";
-import type { BrowserWindow } from "electron";
+import { shell, WebContentsView, type BrowserWindow } from "electron";
 import { statSync, watch, type FSWatcher } from "node:fs";
 import { dirname, isAbsolute, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { BrowserState } from "@pi-desktop/shared";
+import { isAllowedHttpUrl, parseAllowedExternalUrl } from "./safe-open-external";
 
 /**
  * Work panel embedded preview browser (D100, ADR 0019).
@@ -108,6 +108,12 @@ export class BrowserPane {
     };
   }
 
+  getWebContents() {
+    const wc = this.view?.webContents;
+    if (!wc || wc.isDestroyed()) return null;
+    return wc;
+  }
+
   navigate(raw: string, fileRoot: string | null = null): BrowserState | null {
     if (fileRoot) this.fileRoot = fileRoot;
     const localPath = resolveLocalFile(raw, this.fileRoot);
@@ -128,6 +134,34 @@ export class BrowserPane {
       // Navigation failures surface through did-fail-load → state push.
     });
     if (this.visible) this.attach();
+    return this.getState();
+  }
+
+  async navigateAndWait(
+    raw: string,
+    fileRoot: string | null = null,
+    timeoutMs = 15_000,
+  ): Promise<BrowserState | null> {
+    if (fileRoot) this.fileRoot = fileRoot;
+    const localPath = resolveLocalFile(raw, this.fileRoot);
+    const target = localPath
+      ? pathToFileURL(localPath).toString()
+      : normalizeUrl(raw);
+    if (!target) return this.getState();
+    if (localPath) this.watchDirForReload(dirname(localPath));
+    else this.clearLiveReload();
+    const view = this.ensureView();
+    if (this.visible) this.attach();
+    try {
+      await Promise.race([
+        view.webContents.loadURL(target),
+        new Promise<void>((resolve) => {
+          setTimeout(resolve, Math.max(1, timeoutMs));
+        }),
+      ]);
+    } catch {
+      // Load failures surface through did-fail-load → state push.
+    }
     return this.getState();
   }
 
@@ -165,7 +199,19 @@ export class BrowserPane {
 
   openExternal(): void {
     const url = this.view?.webContents.getURL();
-    if (url) void shell.openExternal(url);
+    if (!url) return;
+    const allowed = parseAllowedExternalUrl(url);
+    if (allowed) {
+      void shell.openExternal(allowed);
+      return;
+    }
+    if (this.isAllowedFileUrl(url)) {
+      try {
+        void shell.openPath(fileURLToPath(url));
+      } catch {
+        // Invalid file URL — leave the preview in place.
+      }
+    }
   }
 
   dispose(): void {
@@ -180,7 +226,12 @@ export class BrowserPane {
   private attach(): void {
     if (!this.window || this.window.isDestroyed() || !this.view) return;
     const children = this.window.contentView.children;
-    if (!children.includes(this.view)) {
+    // The guest hole sits on top of plugin chrome. Re-adding a plugin view
+    // after this pane is attached would cover the guest unless we keep it last.
+    if (children.includes(this.view) && children[children.length - 1] !== this.view) {
+      this.window.contentView.removeChildView(this.view);
+    }
+    if (!this.window.contentView.children.includes(this.view)) {
       this.window.contentView.addChildView(this.view);
     }
     this.view.setBounds(this.bounds);
@@ -249,14 +300,15 @@ export class BrowserPane {
     });
     const wc = view.webContents;
     wc.setWindowOpenHandler(({ url }) => {
-      if (/^https?:/i.test(url)) void shell.openExternal(url);
+      const allowed = parseAllowedExternalUrl(url);
+      if (allowed) void shell.openExternal(allowed);
       return { action: "deny" };
     });
     wc.session.setPermissionRequestHandler((_wc, _permission, callback) => {
       callback(false);
     });
     wc.on("will-navigate", (event, url) => {
-      if (/^https?:/i.test(url)) return;
+      if (isAllowedHttpUrl(url)) return;
       // Relative links inside a previewed page may point at sibling files;
       // anything escaping the workspace root stays blocked.
       if (/^file:/i.test(url) && this.isAllowedFileUrl(url)) return;

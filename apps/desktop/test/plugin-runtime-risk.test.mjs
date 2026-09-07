@@ -6,6 +6,9 @@ import { fileURLToPath } from "node:url";
 
 import { en } from "../../../packages/i18n/src/locales/en/index.ts";
 import { zhCN } from "../../../packages/i18n/src/locales/zh-CN/index.ts";
+import { tr } from "../../../packages/i18n/src/locales/tr/index.ts";
+
+const catalogs = { en, "zh-CN": zhCN, tr };
 
 const here = dirname(fileURLToPath(import.meta.url));
 const desktopRoot = join(here, "..");
@@ -74,7 +77,7 @@ test("the plugins page shows the file scope behind a file permission", () => {
   // of the manifest, so an old record simply has no scope to show.
   const hostSrc = readFileSync(join(repoRoot, "crates/host-core/src/plugins.rs"), "utf8");
   assert.match(hostSrc, /fs: manifest\.fs\.clone\(\)/);
-  for (const catalog of [en, zhCN]) {
+  for (const catalog of Object.values(catalogs)) {
     assert.equal(typeof catalog.plugins.legacyFsDowngraded, "string");
     assert.equal(typeof catalog.plugins.fsMode.delete, "string");
     assert.equal(typeof catalog.plugins.permissions["fs.delete"], "string");
@@ -155,7 +158,7 @@ test("marketplace blocks install for a version with no published package", () =>
   assert.match(hostSrc, /installable: latest_version\s*\n\s*\.map\(\|version\| \{/);
   assert.match(hostSrc, /has_package_metadata\(version\)\s*\n\s*&& host_supports_version\(version\)/);
   assert.match(hostSrc, /package_host_allowed\(&version\.url, &catalog_url\)\.is_ok\(\)/);
-  for (const catalog of [en, zhCN]) {
+  for (const catalog of Object.values(catalogs)) {
     assert.equal(typeof catalog.plugins.packagePending, "string");
     assert.equal(typeof catalog.plugins.packagePendingHint, "string");
   }
@@ -193,7 +196,7 @@ test("a withdrawn version is never offered and never silently disabled", () => {
   assert.match(pageSrc, /function versionWithdrawn\(/);
   assert.match(pageSrc, /const detailWithdrawn = versionWithdrawn\(activeVersion\)/);
   assert.match(pageSrc, /t\("plugins\.withdrawnHint", \{ version: installTarget \}\)/);
-  for (const catalog of [en, zhCN]) {
+  for (const catalog of Object.values(catalogs)) {
     assert.equal(typeof catalog.plugins.withdrawn, "string");
     assert.equal(typeof catalog.plugins.withdrawnHint, "string");
     assert.equal(typeof catalog.plugins.withdrawnReason, "string");

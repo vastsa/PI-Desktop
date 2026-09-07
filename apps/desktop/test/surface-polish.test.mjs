@@ -60,22 +60,36 @@ test("button press feedback eases transform instead of snapping", () => {
 });
 
 test("settings and form controls gain light-theme surfaces", () => {
+  // D297: fields are filled wells from the shared tile tokens in both themes,
+  // with no per-theme hex override and no stroke; focus lifts them onto the
+  // raised layer behind an accent ring.
+  const field = styles.match(/\.field-input,\n\.field-select,\n\.field-textarea\s*\{[^}]*\}/)?.[0] ?? "";
+  assert.match(field, /border:\s*0/);
+  assert.match(field, /background:\s*var\(--ds-tile-hover\)/);
+  assert.doesNotMatch(styles, /:root\[data-theme="light"\]\s+\.field-input/);
   assert.match(
     styles,
-    /:root\[data-theme="light"\]\s+\.field-input[\s\S]*?background:\s*#f5f5f5/,
+    /\.field-input:focus,\n\.field-select:focus,\n\.field-textarea:focus\s*\{[^}]*background:\s*var\(--ds-raised\)[^}]*box-shadow:\s*0 0 0 2px/,
   );
   assert.match(
     styles,
     /:root\[data-theme="light"\]\s+\.settings-toggle\.on\s+\.settings-toggle-thumb\s*\{[\s\S]*?background:\s*#ffffff/,
   );
+  // D297: the segment track and keycaps come from the shared tile/raised
+  // tokens, so they need no per-theme override and carry no stroke.
+  assert.doesNotMatch(styles, /:root\[data-theme="light"\]\s+\.settings-segment\s*\{/);
+  assert.match(styles, /\.settings-segment\s*\{[^}]*border-radius:\s*var\(--radius-full\)[^}]*background:\s*color-mix/);
+  assert.doesNotMatch(styles, /\.settings-segment\s*\{[^}]*box-shadow/);
   assert.match(
     styles,
-    /:root\[data-theme="light"\]\s+\.settings-segment\s*\{[\s\S]*?background:\s*color-mix/,
+    /\.settings-segment-item\.active\s*\{[^}]*background:\s*var\(--ds-raised\)[^}]*box-shadow:\s*var\(--ds-raised-shadow\)/,
   );
+  assert.doesNotMatch(styles, /:root\[data-theme="light"\]\s+\.shortcut-keybinding\s+kbd/);
   assert.match(
     styles,
-    /:root\[data-theme="light"\]\s+\.shortcut-keybinding\s+kbd\s*\{[\s\S]*?background:\s*#f5f5f5/,
+    /\.shortcut-keybinding kbd\s*\{[^}]*background:\s*var\(--ds-raised\)[^}]*box-shadow:\s*var\(--ds-raised-shadow\)/,
   );
+  assert.doesNotMatch(styles, /\.shortcut-keybinding kbd\s*\{[^}]*border:/);
   assert.match(
     styles,
     /:root\[data-theme="light"\]\s+\.overlay\s*\{[\s\S]*?background:\s*color-mix\(in oklab,\s*#1a1c1f 28%/,
@@ -101,16 +115,17 @@ test("switch on-track outranks the per-theme off-track", () => {
     styles,
     /\.settings-toggle\.on\s*\{[^}]*background:\s*var\(--ds-accent\)/,
   );
-  // Off state keeps a hairline ring so the empty track still reads as a control.
+  // D297: the off track is a fill alone; no inset ring on either state. Focus
+  // is the only ring, and it sits outside the track.
+  assert.doesNotMatch(styles, /\.settings-toggle(\.on)?\s*\{[^}]*inset 0 0 0 1px/);
   assert.match(
     styles,
-    /\.settings-toggle\s*\{[^}]*box-shadow:\s*inset 0 0 0 1px var\(--ds-switch-ring-off\)/,
+    /\.settings-toggle:focus-visible,\n\.settings-toggle\.on:focus-visible\s*\{[^}]*box-shadow:\s*0 0 0 2px/,
   );
   // Both themes must define the switch tokens, or one falls back to nothing.
   for (const token of [
     "--ds-switch-track-off",
     "--ds-switch-track-off-hover",
-    "--ds-switch-ring-off",
     "--ds-switch-knob-off",
     "--ds-switch-knob-on",
   ]) {

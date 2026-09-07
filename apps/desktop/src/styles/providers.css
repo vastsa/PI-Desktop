@@ -102,9 +102,11 @@
   margin-bottom: 6px;
 }
 
+/* D297: rows are tiles with a gap between them; nothing is ruled off. */
 .provider-row-list {
   display: flex;
   flex-direction: column;
+  gap: 6px;
 }
 
 .provider-row {
@@ -113,11 +115,8 @@
   justify-content: space-between;
   gap: 16px;
   padding: 12px 16px;
-  border-top: 1px solid var(--ds-border-subtle);
-}
-
-.provider-row:first-child {
-  border-top: 0;
+  border-radius: var(--radius-md-plus);
+  background: var(--ds-tile);
 }
 
 .provider-row.is-disabled .provider-row-info {
@@ -200,6 +199,7 @@
   background: color-mix(in oklab, var(--ds-error) 20%, transparent);
 }
 
+/* D297: a tinted pill track; the active item is raised on it by shadow. */
 .settings-segment {
   display: inline-flex;
   align-items: center;
@@ -207,12 +207,6 @@
   padding: 2px;
   border-radius: var(--radius-full);
   background: color-mix(in oklab, var(--ds-text-primary) 6%, transparent);
-  box-shadow: 0 0 0 0.5px var(--ds-border-subtle);
-}
-
-:root[data-theme="light"] .settings-segment {
-  background: color-mix(in oklab, #1a1c1f 6%, transparent);
-  box-shadow: 0 0 0 0.5px color-mix(in oklab, #1a1c1f 8%, transparent);
 }
 
 .settings-segment-item {
@@ -232,17 +226,9 @@
 }
 
 .settings-segment-item.active {
-  background: var(--ds-bg-primary);
+  background: var(--ds-raised);
   color: var(--ds-text-primary);
-  box-shadow: 0 0 0 0.5px var(--ds-border-default);
-}
-
-:root[data-theme="light"] .settings-segment-item.active {
-  background: #ffffff;
-}
-
-:root[data-theme="dark"] .settings-segment-item.active {
-  background: color-mix(in oklab, var(--gray-0) 8%, #212121);
+  box-shadow: var(--ds-raised-shadow);
 }
 
 @media (max-width: 980px) {
@@ -339,7 +325,6 @@
   justify-content: flex-end;
   gap: 8px;
   padding-top: 10px;
-  border-top: 1px solid var(--ds-border-subtle);
 }
 
 .provider-dialog .provider-form-grid {
@@ -368,7 +353,6 @@
   flex-direction: column;
   gap: 8px;
   padding-top: 12px;
-  border-top: 1px solid var(--ds-border-subtle);
 }
 
 .provider-model-config-heading {
@@ -409,9 +393,8 @@
   gap: 2px;
   overflow-y: auto;
   padding: 4px;
-  border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-md-plus);
-  background: color-mix(in oklab, var(--ds-text-primary) 2%, transparent);
+  background: var(--ds-tile);
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
 }
@@ -421,23 +404,22 @@
   flex-direction: column;
   gap: 0;
   padding: 2px 4px;
-  border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
   animation: provider-model-card-in var(--motion-duration-normal) var(--motion-ease-out) both;
   transition:
-    border-color var(--motion-duration-fast) var(--motion-ease-out),
+    box-shadow var(--motion-duration-fast) var(--motion-ease-out),
     background var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 .provider-model-card:hover {
-  border-color: var(--ds-border-subtle);
-  background: var(--ds-bg-hover);
+  background: var(--ds-tile-hover);
 }
 
+/* The open card lifts off the tray instead of drawing a frame (D297). */
 .provider-model-card.is-expanded {
-  border-color: var(--ds-border-default);
-  background: var(--ds-bg-primary);
+  background: var(--ds-raised);
+  box-shadow: var(--ds-raised-shadow);
 }
 
 .provider-model-card-head,
@@ -556,8 +538,7 @@
 }
 
 .provider-model-card-summary > span + span {
-  padding-left: 8px;
-  border-left: 1px solid var(--ds-border-subtle);
+  padding-left: 10px;
 }
 
 .provider-model-card-summary-label {
@@ -591,12 +572,11 @@
   display: flex;
   flex-direction: column;
   gap: 9px;
-  padding: 4px 4px 8px 30px;
-  border-top: 1px solid var(--ds-border-subtle);
+  padding: 6px 4px 8px 30px;
 }
 
 .provider-model-card-metadata {
-  border-top: 1px solid var(--ds-border-subtle);
+  margin-top: 2px;
   color: var(--ds-text-secondary);
 }
 
@@ -731,23 +711,21 @@
 .provider-thinking-chip {
   min-height: 24px;
   padding: 3px 7px;
-  border: 1px solid var(--ds-border-default);
   border-radius: var(--radius-full);
-  background: transparent;
+  background: var(--ds-tile-hover);
   color: var(--ds-text-secondary);
   font-size: var(--text-xs-plus);
   line-height: var(--leading-tighter);
   cursor: pointer;
-  transition: background var(--motion-duration-fast) var(--motion-ease-out), color var(--motion-duration-fast) var(--motion-ease-out), border-color var(--motion-duration-fast) var(--motion-ease-out);
+  transition: background var(--motion-duration-fast) var(--motion-ease-out), color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 .provider-thinking-chip:hover {
-  border-color: var(--ds-border-strong);
+  background: var(--ds-tile-deep);
   color: var(--ds-text-primary);
 }
 
 .provider-thinking-chip.selected {
-  border-color: var(--ds-accent);
   background: var(--ds-accent);
   color: var(--ds-bg-primary);
 }
@@ -790,18 +768,17 @@
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
-  border: 1px solid var(--ds-border-default);
   border-radius: var(--radius-sm);
-  background: var(--ds-bg-primary);
+  background: var(--ds-raised);
+  box-shadow: var(--ds-raised-shadow);
   color: var(--ds-text-primary);
   text-align: left;
   cursor: pointer;
-  transition: border-color var(--motion-duration-fast) var(--motion-ease-out), background var(--motion-duration-fast) var(--motion-ease-out), box-shadow var(--motion-duration-fast) var(--motion-ease-out);
+  transition: background var(--motion-duration-fast) var(--motion-ease-out), box-shadow var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 .provider-model-multi-trigger:hover,
 .provider-model-multi-trigger.is-open {
-  border-color: color-mix(in oklab, var(--ds-accent) 45%, transparent);
   background: var(--ds-bg-hover);
 }
 
@@ -869,8 +846,10 @@
   align-items: center;
   gap: 6px;
   min-height: 30px;
+  margin-bottom: 3px;
   padding: 4px 6px;
-  border-bottom: 1px solid var(--ds-border-subtle);
+  border-radius: var(--radius-xs);
+  background: var(--ds-tile);
   color: var(--ds-text-muted);
   transition: background var(--motion-duration-fast) var(--motion-ease-out), color var(--motion-duration-fast) var(--motion-ease-out);
 }
@@ -960,13 +939,12 @@
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  border: 1px solid var(--ds-border-strong);
   border-radius: var(--radius-3xs);
+  background: var(--ds-tile-deep);
   color: var(--ds-bg-primary);
 }
 
 .provider-model-check.checked {
-  border-color: var(--ds-accent);
   background: var(--ds-accent);
 }
 
@@ -1318,8 +1296,8 @@
   align-items: flex-start;
   gap: 8px;
   padding: 12px;
-  border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-md);
+  background: var(--ds-tile);
 }
 
 .oauth-block-text {
@@ -1354,7 +1332,6 @@
   align-items: center;
   gap: 10px;
   padding: 8px 14px;
-  border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-sm);
   background: var(--ds-bg-inset);
   color: var(--ds-text-primary);
@@ -1381,9 +1358,8 @@
   gap: 2px;
   width: 100%;
   padding: 8px 10px;
-  border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-sm);
-  background: transparent;
+  background: var(--ds-tile);
   color: var(--ds-text-primary);
   text-align: left;
   cursor: pointer;
@@ -1391,7 +1367,7 @@
 }
 
 .oauth-option:hover {
-  background: var(--ds-bg-hover);
+  background: var(--ds-tile-hover);
 }
 
 .oauth-option-label {

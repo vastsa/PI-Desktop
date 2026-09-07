@@ -64,7 +64,7 @@ export type PluginManifest = {
   activationEvents?: string[];
 };
 
-/** A plugin-provided label for the two locales supported by the desktop shell. */
+/** A plugin-provided label. Shell UI may add locales; plugins still ship en + zh-CN. */
 export type PluginLocalizedString = {
   en: string;
   "zh-CN": string;
@@ -303,6 +303,16 @@ export type PluginFsEntry = {
   size?: number;
 };
 
+/** Classified preview returned by `fs.readPreview`. */
+export type PluginFsPreview = {
+  kind: "text" | "image" | "binary" | "tooLarge";
+  /** UTF-8 file content when kind is `"text"`. */
+  content?: string;
+  /** Base64 data URL when kind is `"image"`. */
+  dataUrl?: string;
+  size: number;
+};
+
 export type PluginHostApi = {
   app: {
     getVersion: () => Promise<string>;
@@ -340,6 +350,12 @@ export type PluginHostApi = {
    */
   fs: {
     readText: (pathFromRoot: string) => Promise<string>;
+    /**
+     * Bounded classified preview of one existing readable file. Images return
+     * a data URL; text is capped; binary and oversized files are reported
+     * without dumping their bytes.
+     */
+    readPreview: (pathFromRoot: string) => Promise<PluginFsPreview>;
     /** Open an existing readable file with the operating system's default app. */
     openDefault: (pathFromRoot: string) => Promise<void>;
     /** Reveal an existing readable file in the operating system's file manager. */
@@ -390,6 +406,25 @@ export type PluginHostApi = {
   shell: {
     openExternal: (url: string) => Promise<void>;
   };
+  browser: {
+    navigate: (input: { url?: string; path?: string }) => Promise<unknown>;
+    action: (input: { action: "back" | "forward" | "reload" | "stop" }) => Promise<void>;
+    setBounds: (hole: { x: number; y: number; width: number; height: number }) => Promise<unknown>;
+    setVisible: (visible: boolean | { visible: boolean }) => Promise<void>;
+    getState: () => Promise<unknown>;
+    openExternal: () => Promise<void>;
+    snapshot: () => Promise<{ tree: string; url: string; title: string }>;
+    screenshot: (input?: { fullPage?: boolean }) => Promise<{
+      mimeType: string;
+      data: string;
+      path?: string;
+    }>;
+    click: (input: { uid: string }) => Promise<void>;
+    fill: (input: { uid: string; text: string }) => Promise<void>;
+    evaluate: (input: { expression: string }) => Promise<unknown>;
+    console: (input?: { limit?: number }) => Promise<{ messages: unknown[] }>;
+    cdp: (input: { method: string; params?: unknown }) => Promise<unknown>;
+  };
   net: {
     fetch: (input: {
       url: string;
@@ -431,6 +466,7 @@ export const PLUGIN_PERMISSIONS = [
   "background.service",
   "bus.publish",
   "bus.subscribe",
+  "browser.cdp",
 ] as const;
 
 export type PluginPermission = (typeof PLUGIN_PERMISSIONS)[number];

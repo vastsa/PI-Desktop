@@ -66,7 +66,9 @@
     transform: none;
   }
 
-  .composer-placeholder {
+  .composer-placeholder,
+  .composer-mode-chip-face,
+  .composer-mode-chip[data-planning="true"] svg {
     animation: none;
   }
 

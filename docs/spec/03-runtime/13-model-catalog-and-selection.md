@@ -98,12 +98,20 @@ The stored thinking preference survives restart; the effective request level
 is clamped against the selected model binding's enabled levels at execution
 time. An empty binding or a binding containing only `off` resolves to `off`.
 
-For a newly created session, the renderer resolves the app default provider's
-current default-model capability. A newly added known reasoning model starts at
-the highest enabled level seeded from its published `supportedThinkingLevels`;
-an explicit binding override is authoritative. A non-reasoning or unknown
-model starts at `off` until the user enables a non-`off` level. This is a
-creation default only and never rewrites an existing session's stored choice.
+For a newly created session, the renderer resolves the selected (or app-default)
+model's `ModelBinding`. A reasoning model starts at that binding's
+`defaultThinkingLevel`, clamped onto the enabled levels. When the default is
+unset it falls back to the highest enabled level seeded from published
+`supportedThinkingLevels`. A non-reasoning or unknown model starts at `off`
+until the user enables a non-`off` level. This is a creation default only and
+never rewrites an existing session's stored choice.
+
+Unpinned sessions still advertise that inherited default model's reasoning
+capability on session list/get/create/fork/configure. Enrichment does not pin
+`providerId`/`modelId`. The Composer never treats a `supportsReasoning: false`
+or empty thinking-level snapshot as authoritative when the selected
+catalog/binding model exposes levels, so a mid-turn thinking or model pick
+cannot collapse the menu to Off-only.
 
 ## 5. Capability warnings
 
@@ -194,7 +202,17 @@ field records a models.dev match; a provider cache stores only normalized
 selection fields and is re-decorated from the local raw catalog on the next
 read.
 
-### 9.1 Conversation Composer scope
+### 9.1 Effective context window
+
+The runtime and context inspector use the same effective model window. A positive
+published `limit.context` from models.dev replaces the legacy `128,000` generic
+seed that older bindings may contain; this allows a refreshed catalog record such
+as `gpt-5.6-luna` (`1,050,000` tokens) to stop appearing as a 128k model. A
+non-default value entered through the per-model Advanced control remains the
+explicit user override. Unknown models still use the conservative 128k generic
+window and are never promoted from an ID pattern alone.
+
+### 9.2 Conversation Composer scope
 
 The conversation Composer is a configured-model picker, not a raw discovery
 catalog. For each enabled, runnable provider it renders only the model IDs in
@@ -337,8 +355,9 @@ same model to the check mark, the toggle and the duplicate guard.
       refresh keeps the cached picker populated
 - [ ] capability badges visible
 - [ ] session model change applies to next turn only
-- [ ] a new session defaults a reasoning-capable inherited model to its highest
-      enabled thinking level and otherwise defaults to `off`
+- [ ] a new session defaults a reasoning-capable inherited model to that
+      binding's stored default thinking level (clamped onto the enabled set;
+      strongest-enabled only when unset) and otherwise defaults to `off`
 - [ ] the settings picker always exposes the canonical thinking ladder;
       published levels seed known models and explicit binding levels clamp the
       same way in Composer, Electron main, and the pi sidecar

@@ -83,7 +83,8 @@
   justify-content: space-between;
   gap: 12px;
   padding: 6px 12px;
-  border-top: 1px solid var(--ds-border-subtle);
+  /* Footer band is a tile, not a rule (D297). */
+  background: var(--ds-tile);
   color: var(--ds-text-muted);
   font-size: var(--text-xs-plus, var(--text-sm));
   user-select: none;
@@ -102,8 +103,7 @@
   white-space: nowrap;
   padding: 2px 8px;
   border-radius: var(--radius-md);
-  border: 1px solid var(--ds-border-subtle);
-  background: var(--ds-bg-inset, transparent);
+  background: var(--ds-tile-deep);
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: var(--text-sm-plus, var(--text-md));
 }

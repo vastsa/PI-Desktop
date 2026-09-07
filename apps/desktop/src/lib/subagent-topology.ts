@@ -57,6 +57,30 @@ function asDelegationStatus(value: unknown): SubagentOutcome | null {
     : null;
 }
 
+/** TaskStop listed this row, so a `running` snapshot still means stopped. */
+function stoppedEntryStatus(value: unknown): SubagentOutcome {
+  const status = asDelegationStatus(value);
+  return !status || status === "running" ? "stopped" : status;
+}
+
+function ingestLifecycleStatuses(
+  statuses: Map<string, SubagentOutcome>,
+  entries: unknown,
+  fromStopped: boolean,
+): void {
+  if (!Array.isArray(entries)) return;
+  for (const entry of entries) {
+    const record = asRecord(entry);
+    const id = record?.delegationId;
+    const status = fromStopped
+      ? stoppedEntryStatus(record?.status)
+      : asDelegationStatus(record?.status);
+    // Later rows win: a delegation reported running by an early TaskList is
+    // settled by the TaskWait/TaskStop that follows it.
+    if (typeof id === "string" && id && status) statuses.set(id, status);
+  }
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -119,16 +143,54 @@ export function collectDelegationTimings(
 }
 
 /**
+ * Wall-clock span of one topology card, keyed by that card's own Task ids so
+ * a later fan-out in the same turn cannot stretch an earlier card's elapsed
+ * time. `completedAt` is omitted while any of those delegates is still running.
+ */
+export function delegationTimingBounds(
+  items: readonly DelegationActivityItem[],
+  timings: ReadonlyMap<string, SubagentTiming>,
+): { startedAt?: number; completedAt?: number } {
+  let startedAt: number | undefined;
+  let completedAt: number | undefined;
+  let pending = false;
+  for (const item of items) {
+    const payload = asRecord(toolResultPayload(item.message));
+    const id = payload?.delegationId;
+    if (typeof id !== "string" || !id) continue;
+    const timing = timings.get(id);
+    const start = timing?.startedAt ?? timestamp(payload?.startedAt);
+    const end = timing?.completedAt ?? timestamp(payload?.completedAt);
+    if (start !== undefined) {
+      startedAt = startedAt === undefined ? start : Math.min(startedAt, start);
+    }
+    if (end === undefined) pending = true;
+    else {
+      completedAt = completedAt === undefined ? end : Math.max(completedAt, end);
+    }
+  }
+  return {
+    ...(startedAt !== undefined ? { startedAt } : {}),
+    ...(!pending && completedAt !== undefined ? { completedAt } : {}),
+  };
+}
+
+/**
  * Latest status per delegation id, read from the lifecycle tools' results.
  *
  * `Task` returns the moment the delegate starts (ADR 0089), so its own result
  * says `running` for the rest of the transcript no matter how the delegate
- * ended. TaskWait/TaskList/TaskStop each report `details.delegations[]` with
- * the live status, so their rows — which are deliberately not topology nodes —
+ * ended. TaskWait/TaskList report `details.delegations[]`; TaskStop reports
+ * `details.stopped[]`. Those rows — which are deliberately not topology nodes —
  * are what tells a delegation card how its subagent actually finished.
+ *
+ * When `turnLive` is false the parent turn has ended, so any leftover
+ * `running` node is reconstructed as `aborted` (the runtime aborts them at
+ * run end). A `TaskStop` snapshot that still says `running` is `stopped`.
  */
 export function collectDelegationStatuses(
   items: readonly AssistantActivityItem[],
+  options?: { turnLive?: boolean },
 ): ReadonlyMap<string, SubagentOutcome> {
   const statuses = new Map<string, SubagentOutcome>();
   for (const item of items) {
@@ -138,15 +200,18 @@ export function collectDelegationStatuses(
     const { message } = item;
     if (isDelegationActivityItem(item)) continue;
     const payload = asRecord(toolResultPayload(message));
-    const delegations = payload?.delegations;
-    if (!Array.isArray(delegations)) continue;
-    for (const entry of delegations) {
-      const record = asRecord(entry);
-      const id = record?.delegationId;
-      const status = asDelegationStatus(record?.status);
-      // Later rows win: a delegation reported running by an early TaskList is
-      // settled by the TaskWait that follows it.
-      if (typeof id === "string" && id && status) statuses.set(id, status);
+    if (!payload) continue;
+    ingestLifecycleStatuses(statuses, payload.delegations, false);
+    ingestLifecycleStatuses(statuses, payload.stopped, true);
+  }
+  if (options?.turnLive === false) {
+    for (const item of items) {
+      if (item.kind !== "tool" || !isDelegationActivityItem(item)) continue;
+      const payload = asRecord(toolResultPayload(item.message));
+      const id = payload?.delegationId;
+      if (typeof id !== "string" || !id) continue;
+      const current = statuses.get(id);
+      if (!current || current === "running") statuses.set(id, "aborted");
     }
   }
   return statuses;
@@ -175,27 +240,30 @@ export function delegationRoster(
   if (!delegationLifecycleKind(message.toolName)) return [];
   const payload = asRecord(toolResultPayload(message));
   if (!payload) return [];
-  const entries = [
-    ...(Array.isArray(payload.delegations) ? payload.delegations : []),
-    ...(Array.isArray(payload.stopped) ? payload.stopped : []),
-  ];
   const roster: DelegationRosterEntry[] = [];
-  for (const entry of entries) {
-    const record = asRecord(entry);
-    const delegationId = record?.delegationId;
-    if (typeof delegationId !== "string" || !delegationId) continue;
-    const agent = record?.agent;
-    const startedAt = timestamp(record?.startedAt);
-    const completedAt = timestamp(record?.completedAt);
-    roster.push({
-      delegationId,
-      agentName: typeof agent === "string" ? agent : "",
-      status: asDelegationStatus(record?.status) ?? "running",
-      ...(startedAt !== undefined && completedAt !== undefined
-        ? { durationMs: Math.max(0, completedAt - startedAt) }
-        : {}),
-    });
-  }
+  const pushEntries = (entries: unknown, fromStopped: boolean) => {
+    if (!Array.isArray(entries)) return;
+    for (const entry of entries) {
+      const record = asRecord(entry);
+      const delegationId = record?.delegationId;
+      if (typeof delegationId !== "string" || !delegationId) continue;
+      const agent = record?.agent;
+      const startedAt = timestamp(record?.startedAt);
+      const completedAt = timestamp(record?.completedAt);
+      roster.push({
+        delegationId,
+        agentName: typeof agent === "string" ? agent : "",
+        status: fromStopped
+          ? stoppedEntryStatus(record?.status)
+          : (asDelegationStatus(record?.status) ?? "running"),
+        ...(startedAt !== undefined && completedAt !== undefined
+          ? { durationMs: Math.max(0, completedAt - startedAt) }
+          : {}),
+      });
+    }
+  };
+  pushEntries(payload.delegations, false);
+  pushEntries(payload.stopped, true);
   return roster;
 }
 

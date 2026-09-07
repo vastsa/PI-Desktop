@@ -20,6 +20,8 @@ Main risks:
 - Disabled plugin = code not loaded
 - Unconfirmed high-risk action = not executed
 - Host API not on the allowlist = does not exist
+- `pi.browser.cdp` methods not on the CDP allowlist = `PERMISSION_DENIED` (no
+  cookies, storage, Target, or Fetch; no DevTools websocket)
 
 ## 3. Isolation strategy
 
@@ -211,11 +213,13 @@ Plan is an additional host policy boundary for agent tools:
 ## 8. Network and external links
 
 - `net.fetch` is not granted by default
-- `openExternal` should confirm. `fs.openDefault` and `fs.reveal` are separate:
-  each accepts only an existing root-relative file that already passes the
-  plugin's `fs.read` policy. They are intended for explicit file-view actions,
-  not arbitrary URL or absolute-path opening; `fs.reveal` only asks the OS file
-  manager to select the file.
+- `openExternal` should confirm. The host parses the URL and opens only
+  `http:`, `https:`, and `mailto:` (D330 / ADR 0168); other schemes fail with
+  `INVALID_ARGUMENT` and never reach `shell.openExternal`. `fs.openDefault` and
+  `fs.reveal` are separate: each accepts only an existing root-relative file
+  that already passes the plugin's `fs.read` policy. They are intended for
+  explicit file-view actions, not arbitrary URL or absolute-path opening;
+  `fs.reveal` only asks the OS file manager to select the file.
 - Plugins are forbidden from silently downloading and executing binaries (not done at all in MVP)
 
 ### 8.0 Egress allowlist

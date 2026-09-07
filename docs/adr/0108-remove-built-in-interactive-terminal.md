@@ -27,9 +27,9 @@ invocations and bounded output remain visible in the conversation.
 
 ## Decision
 
-1. Remove the work-panel interactive terminal. The panel retains Browser as the
-   host-built tool, plugin-contributed views including the bundled Files view,
-   and Review/file tabs opened by conversation artifacts.
+1. Remove the work-panel interactive terminal. The panel retains
+   plugin-contributed views including the bundled Files and Browser views
+   (ADR 0170), and Review/file tabs opened by conversation artifacts.
 2. Keep Agent Bash unchanged. It remains a permission-aware, non-interactive
    agent tool whose command, output, status, copy behavior, and `IconTerminal`
    presentation stay in the transcript. Generic lifecycle values such as

@@ -156,8 +156,9 @@ export function serializeComposerFileReferences(
 }
 
 /**
- * Resolve only inline generated tokens. Chip references remain separate
- * attachments and are appended by Electron main when the model needs a path.
+ * Resolve only inline generated tokens (legacy @name strings or single
+ * sentinel characters backing atomic chips). Each resolved token keeps one
+ * separating space so adjacent chips never fuse their @paths together.
  */
 export function serializeInlineComposerFileReferences(
   draft: string,
@@ -167,10 +168,18 @@ export function serializeInlineComposerFileReferences(
   for (const reference of references) {
     const token = reference.token?.trim();
     if (!token || !content.includes(token)) continue;
-    content = content.replace(
-      token,
-      formatFileInsert(reference.path, "file").trim(),
-    );
+    const insert = formatFileInsert(reference.path, "file").trim();
+    let index = content.indexOf(token);
+    while (index !== -1) {
+      const nextChar = content[index + token.length];
+      const separator = nextChar && !/\s/.test(nextChar) ? " " : "";
+      content =
+        content.slice(0, index) +
+        insert +
+        separator +
+        content.slice(index + token.length);
+      index = content.indexOf(token, index + insert.length + separator.length);
+    }
   }
   return content.trim();
 }

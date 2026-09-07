@@ -145,7 +145,7 @@ MVP passes when:
 
 - [x] No crash on the main path — auto:`test:e2e:boot` + `test:e2e:supervision`
 - [x] Errors show a readable message — manual:M2 (AppError message surfaced)
-- [x] Long output does not freeze the UI — manual:M3 (256KB/4000-line truncation)
+- [x] Long output does not freeze the UI — manual:M3 (per-tool budgets; search 128KB / 4000 lines)
 - [x] Key operations show loading/running state — manual:M2
 - [x] Release package has no duplicate renderer/runtime dependency trees —
   auto:desktop package contract + native macOS arm64/Intel x64 package audit:E2E-092

@@ -159,10 +159,12 @@ test("app quit waits for one idempotent teardown before allowing the follow-up q
     shutdownSource,
     /await Promise\.allSettled\(\[pluginPanelShutdown, pluginShutdown, sidecarShutdown\]\)/,
   );
+  const releaseQuit = shutdownSource.match(
+    /const releaseQuit = \(\) => \{[\s\S]*?shutdownComplete = true;[\s\S]*?app\.quit\(\);[\s\S]*?\};/,
+  );
   assert.ok(
-    shutdownSource.indexOf("shutdownComplete = true") <
-      shutdownSource.indexOf("app.quit()"),
-    "the second quit must only be allowed after teardown completes",
+    releaseQuit,
+    "the follow-up quit must run only after shutdownComplete is set",
   );
   assert.match(shutdownSource, /void shutdownPromise\.then\(releaseQuit, releaseQuit\)/);
 });

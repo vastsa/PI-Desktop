@@ -3,6 +3,7 @@ import type {
   MessageUsage,
   UiMessage,
 } from "@pi-desktop/shared";
+import { isDelegationStartTool } from "./tool-display";
 
 export type AssistantActivityItem =
   | { kind: "thinking"; message: UiMessage }
@@ -65,6 +66,12 @@ function isVisibleMessage(message: UiMessage): boolean {
     !messageThinking(message) &&
     !message.error
   );
+}
+
+/** A `Task` start call belongs on the delegation card; parent thinking, workspace
+ * tools, and lifecycle rows (TaskWait/TaskList/TaskStop) do not (D319). */
+function isDelegationStartActivity(item: AssistantActivityItem): boolean {
+  return item.kind === "tool" && isDelegationStartTool(item.message.toolName);
 }
 
 /** Delegate rows grouped by the `Task` call that produced them. */
@@ -142,8 +149,17 @@ export function buildTranscriptEntries(
   const pushActivity = (item: AssistantActivityItem) => {
     const current = ensureTurn(item.message);
     const last = current.parts[current.parts.length - 1];
-    if (last?.kind === "activity") last.items.push(item);
-    else current.parts.push({ kind: "activity", items: [item] });
+    // A delegation card is only the Task fan-out. Mixing the parent's later
+    // Read/Grep/thinking into that group painted them as subagent work (D319).
+    if (
+      last?.kind === "activity" &&
+      last.items.length > 0 &&
+      isDelegationStartActivity(last.items[0]) === isDelegationStartActivity(item)
+    ) {
+      last.items.push(item);
+      return;
+    }
+    current.parts.push({ kind: "activity", items: [item] });
   };
 
   const appendMessage = (message: UiMessage) => {

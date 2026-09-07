@@ -47,7 +47,8 @@
  ├── pi.sqlite.v10.bak    # exact readable backup before v10→v11 destructive work
  ├── sessions/            # transcript file store (D119) — host-core only
  │    ├── <sessionId>.jsonl           # live transcript (header + messages)
- │    └── <sessionId>.revisions.jsonl # regenerate branches, append-only
+ │    ├── <sessionId>.revisions.jsonl # regenerate branches, append-only
+ │    └── <sessionId>.inflight.json   # streaming reply checkpoint (D299), transient
  ├── secrets/             # encrypted secret blobs + .machine-key (unchanged)
  ├── attachments/         # content-addressed blobs (sha256 name), refs from messages
  ├── plugins/             # code + data + registry.json (unchanged, spec 07-11)
@@ -92,12 +93,24 @@ commit 不会删除历史审查证据。
 {"type":"compaction","id":"cp1","summary":"…","firstKeptMessageId":"m2","throughMessageId":"m3","tokensBefore":917000,"retainedTail":[…],"providerId":"…","modelId":"…","createdAt":"…"}
 ```
 
+`sessions/<sessionId>.inflight.json` — 会话中正在流式输出的助手回复，是一个
+`{ schema, sessionId, turnId, savedAt, message }` 对象，host-core 在每次
+`session.saveInflightMessage` 时原子替换（临时文件 + 重命名）（D299）。当
+`message_update` 事件携带可见文本时，Electron 主进程至多每 1.5 秒发送一次检查点，
+因此回复中途退出或崩溃最多丢失最后一个间隔的输出，而不是整条回复。该文件是临时的：
+同一 id 的最终行的 `session.appendMessage` 会移除它；`completed`/`error` 的回合
+结束仅在该 id 已索引时才移除它（D327）；启动扫描以及 sidecar 丢失时的回合结束
+（`recoverInflight`）会把最终行从未落盘的残留检查点提升写入转录——回合已
+`completed` 时为 `complete`，否则为该回合下的 `aborted` 助手消息。它从不追加、
+从不被 sidecar 读取、也从不镜像进 SQLite；针对已被索引的 id 的迟到检查点会被丢弃。
+子代理回复不做检查点。
+
 `sessions/<sessionId>.revisions.jsonl` — 仅附加，每个存档一行
 重新生成分支； *active* 标志仅存在于数据库索引中，因此切换
 修订版永远不会重写此文件：
 
 ```jsonl
-{"type":"revision","rootUserId":"u1","revisionIndex":1,"createdAt":"…","messages":[…message records…]}
+{"type":"revision","rootUserId":"u1","revisionIndex":1,"createdAt":"…","messages":[…message records…],"turns":{"<messageId>":"<turnId>"}}
 ```
 
 规则：
@@ -655,6 +668,16 @@ CREATE INDEX idx_message_revisions_root
   同时持久性发件箱附加的工具行仍然存在。一个
   从主机锁之外拍摄的快照重写整个转录本将
   删除它（ADR 0060）。
+- 分支在归档之后仍会继续生长：之后的提示都追加在它上面，而以错误结束的
+  回合永远到不了 `agent_end`。因此每个会丢弃实时分支的操作都先把它写回
+  所属的修订（D307）：`session.activateRevision` 在切换前从持久转录本重新
+  归档该系列的实时分支；重新生成路径向 `session.saveRevision` 传入
+  `revisionIndex` 刷新被标记的变体；`session.saveActiveRevision` 对已归档
+  的索引做刷新而不是跳过。刷新只是在追加式文件里多写一行（同一
+  `(rootUserId, revisionIndex)` 以最后一条为准）并更新 `message_count`。
+  被刷新的是实时根消息 `activeRevision` 标记所指的变体；已标记但还没有
+  索引行的变体（其回合在归档前失败）作为新变体单独存储，绝不覆盖之前的
+  变体。
 
 ### 4. 10 工件 — 会话生成的文件
 
@@ -829,23 +852,32 @@ CREATE INDEX idx_notifications_unread
 | 事件 | 文件步骤 | index/DB 交易 |
 |---|---|---|
 | 接受提示 | 附加用户消息行 | `last_seq` 分配（返回）+索引行+触摸 `sessions.updated_at`；然后插入 `turns(running)` |
-| assistant/tool 消息结束 | 附加消息行 | 索引行+触摸会话 |
+| assistant/tool 消息结束 | 附加消息行；id 匹配时移除进行中检查点 | 索引行+触摸会话 |
+| 流式回复检查点（`session.saveInflightMessage`，D299） | 原子替换 `<id>.inflight.json`；空消息或已索引的 id 为空操作 | — |
 | 上下文检查点（`session.appendCompaction`） | 在其引用的消息边界之后附加类型化检查点行 | —（检查点是不可搜索的成绩单内容） |
 | 工具成功（Write/Edit） | — | upsert `artifacts` + `audit_log` 行，与结果持久化相同的 tx |
-| 通过 `session.endTurn` 打开终端 | — | 更新 `turns`；对于 completed/error，在同一交易中插入一个通知并修剪至 200 个；中止插入 无 |
+| 通过 `session.endTurn` 打开终端 | `completed`/`error`：仅当该 id 已索引时才移除进行中检查点，否则留给 outbox 或启动恢复（D327）。`recoverInflight`：最终行从未落盘时，回合已 `completed` 则追加为 `complete`，否则为 `aborted` | 更新 `turns`；对于 completed/error，在同一交易中插入一个通知并修剪至 200 个；中止插入 无；被提升的检查点在该回合下获得一个索引行 |
 | plan/goal 提交 | 主机将准确的 Markdown 字节写入新的唯一 `<workspaceRoot>/.pi/<kind>/*.md` 文件 | 在发出批准请求之前插入一个 `plan_approvals(pending)` 行，其中包含类型、结构化 title/question、工件 path/hash/size 和到期时间 |
 | plan/goal 批准 | 验证不可变工件 path/hash/size | 原子地解析 `plan_approvals`，更新 `sessions.mode` 和显式 `permission_mode`，并设置 `execution_state = 'queued'`； reject/expiry 保持合约模式 |
 | 转录本截断/编辑/无应答智能停止 (`session.replaceMessages`) | 原子记录重写（临时+重命名）；只保留边界仍然存在的检查点 | single tx：删除索引行，批量重新插入携带每个幸存消息所属的 `turn_id`，重置 `last_seq`； smart Stop 仅将其结构化输入框快照保留在渲染器内存中 |
 | 会话分叉 (`session.fork`) | 使用重新映射的 message/tool-call id 编写新的转录本； copy/remap 仅当包含其边界时才为检查点 | single tx：克隆会话配置，插入子索引行，设置`last_seq`；失败时删除子文件 |
-| 重新生成分支保存 | 追加修订行 | 带有 `message_count` 的索引行（+ `is_active` 翻转） |
-| 回合完成分支存档 (`session.saveActiveRevision`) | 附加修订行，然后仅重写寻呼机标记的根用户的转录行 | 带有 `message_count` 的索引行（+ `is_active` 翻转）；其他消息的索引行未受影响 |
-| 修订版开关 | 读取分支，原子转录重写 | 翻转 `is_active`，重建索引行，重置 `last_seq` |
+| 重新生成分支保存 | 追加修订行（带 `revisionIndex` 时为该已有变体的刷新行） | 带有 `message_count` 的索引行（+ `is_active` 翻转）；刷新只更新 `message_count` |
+| 回合完成分支存档 (`session.saveActiveRevision`) | 附加修订行（活动变体已归档时为刷新行），然后仅重写寻呼机标记的根用户的转录行 | 带有 `message_count` 的索引行（+ `is_active` 翻转）；其他消息的索引行未受影响 |
+| 修订版开关 | 先为实时分支自身的变体追加刷新行，读取目标分支，原子转录重写并保留锚点仍存在的检查点 | 翻转 `is_active`，重建索引行并带上每条幸存消息所属的 `turn_id`，重置 `last_seq` |
 | 进口 | 写入成绩单文件 | 每个会话一笔交易：会话行 + 索引行；失败时文件将被删除 |
 | 会话删除 | 行删除后删除两个会话文件 | `DELETE FROM sessions`（级联） |
 
 规则：回合开始前用户消息持久（fsync'd 文件行）；
-assistant/tool 线在其最终事件中持久耐用；回合中途发生碰撞损失
-大多数是飞行中回合的尾部，以及回合 `aborted` 的启动扫描标记。
+assistant/tool 行在其结束事件时持久化；正在流式的助手回复另外至多每 1.5 秒
+做一次检查点（D299），并且 `message_end` 的完成快照在 outbox 追加之前先做检查点
+（D327），因此回合中途退出或崩溃最多丢失进行中回复的最后一个检查点
+间隔，加上仍在运行的工具行。启动扫描把最终行从未落盘的残留检查点提升写入转录：
+回合已完成则为 `complete`，否则为 `aborted` 回合下的 `aborted` 助手行。
+`completed`/`error` 的 endTurn 不删除尚未索引的检查点。用户停止不动检查点，因为运行时自己的
+中止最终行仍在路上，到达时会移除它。Electron 握手在冷启动 `session.get` 之前等待
+outbox 排空。渲染器侧的停止绝不重写已有已开始回复的转录
+（规格 01 §5.3）；它唯一的重写是撤销未应答提示，且从完整持久转录与实时行的合并
+结果计算。
 只有在追加成功后，检查点才会安装到实时运行时中；
 因此 failed/crashed 检查点写入会留下先前的完整上下文或
 先前的检查点具有权威性，而不是创建仅内存状态。

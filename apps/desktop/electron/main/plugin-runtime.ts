@@ -10,6 +10,7 @@ import {
 } from "node:fs";
 import { basename, join, dirname, relative, resolve, sep } from "node:path";
 import { homedir } from "node:os";
+import { AsyncLocalStorage } from "node:async_hooks";
 import {
   busTopicAllowed,
   isDeniedFsPath,
@@ -53,12 +54,14 @@ import {
   type PluginSettingDefinition,
 } from "@pi-desktop/shared";
 import {
+  previewFile,
   resolveRealPathForCreateWithinRoot,
   resolveRealPathWithinRoot,
   resolveWithinRoot,
 } from "./fs-panel";
 import { McpServerClient, type McpServerClientOptions } from "./plugin-mcp";
 import { DevPluginWatcher, type DevPluginWatcherDeps } from "./plugin-watcher";
+import { parseAllowedExternalUrl } from "./safe-open-external";
 import type { PluginAppearance } from "../shared/plugin-panel-chrome";
 
 export type RegisteredCommand = {
@@ -77,7 +80,7 @@ export type RegisteredPluginTool = {
   description: string;
   risk?: string;
   schema?: unknown;
-  execute: (args: unknown) => Promise<unknown>;
+  execute: (args: unknown, ctx?: { sessionId?: string }) => Promise<unknown>;
 };
 
 /**
@@ -166,7 +169,8 @@ export type PluginHostServices = {
   /**
    * The appearance the host is currently showing (palette, language, active
    * plugin theme). Panels and plugin processes read it through `app.getAppearance`;
-   * the host broadcasts `appearance:changed` to open panels when it changes.
+   * the host broadcasts `appearance:changed` to open panels and docked views
+   * when it changes. Workspace switches push `workspace:changed` the same way.
    */
   getAppearance?: () => PluginAppearance;
   showToast: (message: string, level?: "info" | "warn" | "error") => void;
@@ -179,12 +183,6 @@ export type PluginHostServices = {
   openExternal: (url: string) => Promise<void>;
   /** Open one already-authorized file with the OS-associated application. */
   openPath: (fullPath: string) => Promise<void>;
-  /**
-   * Preview a workspace file in the app's embedded browser surface (HTML
-   * rendered as a webpage). Implemented by the host; not available to
-   * third-party plugins that do not declare it.
-   */
-  openInBrowser?: (workspaceRelativePath: string) => void;
   /** Reveal one already-authorized file in the OS file manager. */
   revealPath?: (fullPath: string) => Promise<void>;
   readClipboard: () => Promise<string>;
@@ -245,6 +243,29 @@ export type PluginHostServices = {
     ok: boolean;
     message?: string;
   }) => void;
+  /** Work-panel guest + CDP, gated by `browser.cdp` in the runtime. */
+  browser?: {
+    navigate: (
+      input: { url?: string; path?: string },
+      sessionId?: string,
+    ) => Promise<unknown>;
+    action: (action: "back" | "forward" | "reload" | "stop") => void;
+    setBounds: (pluginId: string, hole: unknown) => unknown;
+    setVisible: (pluginId: string, visible: boolean) => void;
+    getState: () => unknown;
+    openExternal: () => void;
+    snapshot: () => Promise<unknown>;
+    screenshot: (
+      input?: { fullPage?: boolean },
+      sessionId?: string,
+    ) => Promise<unknown>;
+    click: (uid: string) => Promise<void>;
+    fill: (uid: string, text: string) => Promise<void>;
+    evaluate: (expression: string) => Promise<unknown>;
+    console: (limit?: number) => unknown;
+    cdp: (method: string, params?: unknown) => Promise<unknown>;
+  };
+  onPluginUnload?: (pluginId: string) => void;
 };
 
 /** Host APIs a plugin process may reach. Anything else does not exist (spec 04 §2). */
@@ -264,8 +285,7 @@ const HOST_API_ALLOWLIST = new Set([
   "ui.showNativeNotification",
   "workspace.get",
   "fs.readText",
-  "fs.readImageDataUrl",
-  "fs.previewInBrowser",
+  "fs.readPreview",
   "fs.openDefault",
   "fs.reveal",
   "fs.writeText",
@@ -281,7 +301,22 @@ const HOST_API_ALLOWLIST = new Set([
   "bus.publish",
   "bus.subscribe",
   "bus.unsubscribe",
+  "browser.navigate",
+  "browser.action",
+  "browser.setBounds",
+  "browser.setVisible",
+  "browser.getState",
+  "browser.openExternal",
+  "browser.snapshot",
+  "browser.screenshot",
+  "browser.click",
+  "browser.fill",
+  "browser.evaluate",
+  "browser.console",
+  "browser.cdp",
 ]);
+
+const toolSession = new AsyncLocalStorage<string>();
 
 /** Load must finish (module eval + onLoad) inside this budget. */
 const PLUGIN_LOAD_TIMEOUT_MS = 15_000;
@@ -547,6 +582,12 @@ export class PluginRuntime {
   private busSubscriptions = new Map<string, BusSubscription>();
   private busRate = new Map<string, { windowStart: number; count: number }>();
   /**
+   * Session of an in-flight `tool.execute`. Child `pi.browser.*` calls arrive
+   * on a later `handleChildMessage` turn, so ALS around `sendToChild` is empty
+   * there — this map is the durable identity for that round trip.
+   */
+  private executingToolSessions = new Map<string, string[]>();
+  /**
    * File accesses the user allowed for the rest of the run, keyed
    * `<mode>:<directory>`. In memory only: a session grant that outlived the
    * session would be a standing permission nobody reviewed.
@@ -800,6 +841,17 @@ export class PluginRuntime {
   }
 
   /**
+   * Push a one-way host event to every loaded plugin process. Panel pages
+   * receive the same names through `pluginBridge.on`; this is the process
+   * half (spec 07 §5).
+   */
+  broadcastEvent(event: string, args: unknown[] = []): void {
+    for (const loaded of this.loaded.values()) {
+      loaded.child?.postMessage({ t: "event", event, args });
+    }
+  }
+
+  /**
    * Validate the manifest, start a dedicated host process and run `onLoad`
    * inside it. Contribution points arrive over RPC while `onLoad` runs; a
    * failure anywhere rolls the whole load back (spec 05 §7).
@@ -948,6 +1000,7 @@ export class PluginRuntime {
       this.devPlugins.delete(pluginId);
     }
     await this.services.closePanel(pluginId);
+    this.services.onPluginUnload?.(pluginId);
     if (loaded) {
       this.services.audit?.({ pluginId, api: "plugin.unload", ok: true, ts: Date.now() });
     }
@@ -1133,11 +1186,8 @@ export class PluginRuntime {
         return { ok: true };
       case "fs.readText":
         return api.fs.readText(String(payload?.path ?? ""));
-      case "fs.readImageDataUrl":
-        return api.fs.readImageDataUrl(String(payload?.path ?? ""));
-      case "fs.previewInBrowser":
-        await api.fs.previewInBrowser(String(payload?.path ?? ""));
-        return { ok: true };
+      case "fs.readPreview":
+        return api.fs.readPreview(String(payload?.path ?? ""));
       case "fs.openDefault":
         await api.fs.openDefault(String(payload?.path ?? ""));
         return { ok: true };
@@ -1179,6 +1229,32 @@ export class PluginRuntime {
         return api.app.getAppearance();
       case "workspace.get":
         return api.workspace.get();
+      case "browser.navigate":
+        return this.invokeBrowser(loaded, "navigate", payload);
+      case "browser.action":
+        return this.invokeBrowser(loaded, "action", payload);
+      case "browser.setBounds":
+        return this.invokeBrowser(loaded, "setBounds", payload);
+      case "browser.setVisible":
+        return this.invokeBrowser(loaded, "setVisible", payload);
+      case "browser.getState":
+        return this.invokeBrowser(loaded, "getState", payload);
+      case "browser.openExternal":
+        return this.invokeBrowser(loaded, "openExternal", payload);
+      case "browser.snapshot":
+        return this.invokeBrowser(loaded, "snapshot", payload);
+      case "browser.screenshot":
+        return this.invokeBrowser(loaded, "screenshot", payload);
+      case "browser.click":
+        return this.invokeBrowser(loaded, "click", payload);
+      case "browser.fill":
+        return this.invokeBrowser(loaded, "fill", payload);
+      case "browser.evaluate":
+        return this.invokeBrowser(loaded, "evaluate", payload);
+      case "browser.console":
+        return this.invokeBrowser(loaded, "console", payload);
+      case "browser.cdp":
+        return this.invokeBrowser(loaded, "cdp", payload);
       default:
         // The panel is the plugin's own UI: any channel the host does not
         // implement itself is forwarded to the plugin's onPanelInvoke so
@@ -1326,14 +1402,29 @@ export class PluginRuntime {
           description: String(descriptor.description ?? ""),
           risk: descriptor.risk,
           schema: descriptor.schema,
-          execute: async (toolArgs) => {
+          execute: async (toolArgs, ctx) => {
             const target = this.loaded.get(pluginId);
             if (!target?.child) throw apiError("NOT_FOUND", `plugin not loaded: ${pluginId}`);
-            return this.sendToChild(
-              target,
-              { t: "call", method: "tool.execute", payload: { name, args: toolArgs } },
-              PLUGIN_TOOL_TIMEOUT_MS,
-            );
+            const sessionId = String(ctx?.sessionId ?? "");
+            const stack = this.executingToolSessions.get(pluginId) ?? [];
+            stack.push(sessionId);
+            this.executingToolSessions.set(pluginId, stack);
+            try {
+              return await toolSession.run(sessionId, () =>
+                this.sendToChild(
+                  target,
+                  {
+                    t: "call",
+                    method: "tool.execute",
+                    payload: { name, args: toolArgs, sessionId },
+                  },
+                  PLUGIN_TOOL_TIMEOUT_MS,
+                ),
+              );
+            } finally {
+              stack.pop();
+              if (stack.length === 0) this.executingToolSessions.delete(pluginId);
+            }
           },
         });
         return { ok: true };
@@ -2185,6 +2276,72 @@ export class PluginRuntime {
     return join(root, "plugins", "data", pluginId.replace(/[^a-zA-Z0-9._-]/g, "_"));
   }
 
+  private browserSessionId(pluginId?: string): string | undefined {
+    const als = toolSession.getStore()?.trim();
+    if (als) return als;
+    if (!pluginId) return undefined;
+    const stack = this.executingToolSessions.get(pluginId);
+    return stack?.at(-1)?.trim() || undefined;
+  }
+
+  private async invokeBrowser(
+    loaded: LoadedPlugin,
+    method: string,
+    payload?: Record<string, unknown>,
+  ): Promise<unknown> {
+    this.assertPermission(loaded, "browser.cdp");
+    const api = this.hostApi(loaded).browser;
+    switch (method) {
+      case "navigate":
+        return api.navigate({
+          url: payload?.url != null ? String(payload.url) : undefined,
+          path: payload?.path != null ? String(payload.path) : undefined,
+        });
+      case "action": {
+        const action = String(payload?.action ?? "");
+        if (
+          action === "back" ||
+          action === "forward" ||
+          action === "reload" ||
+          action === "stop"
+        ) {
+          api.action(action);
+        }
+        return { ok: true };
+      }
+      case "setBounds":
+        return api.setBounds(payload);
+      case "setVisible":
+        api.setVisible(payload?.visible === true);
+        return { ok: true };
+      case "getState":
+        return api.getState();
+      case "openExternal":
+        api.openExternal();
+        return { ok: true };
+      case "snapshot":
+        return api.snapshot();
+      case "screenshot":
+        return api.screenshot({ fullPage: payload?.fullPage === true });
+      case "click":
+        await api.click(String(payload?.uid ?? ""));
+        return { ok: true };
+      case "fill":
+        await api.fill(String(payload?.uid ?? ""), String(payload?.text ?? ""));
+        return { ok: true };
+      case "evaluate":
+        return api.evaluate(String(payload?.expression ?? ""));
+      case "console":
+        return api.console(
+          typeof payload?.limit === "number" ? payload.limit : undefined,
+        );
+      case "cdp":
+        return api.cdp(String(payload?.method ?? ""), payload?.params);
+      default:
+        throw apiError("UNSUPPORTED", `host api not available: browser.${method}`);
+    }
+  }
+
   private assertPermission(loaded: LoadedPlugin, perm: string): void {
     if (!loaded.permissions.has(perm)) {
       this.services.audit?.({
@@ -2555,62 +2712,33 @@ export class PluginRuntime {
           });
           return content;
         },
-        readImageDataUrl: async (pathFromRoot: string): Promise<string> => {
+        readPreview: async (pathFromRoot: string) => {
           const { full, rel } = await this.resolveFsRequest(
             loaded,
             "read",
             pathFromRoot,
           );
-          const info = statSync(full);
-          if (!info.isFile()) {
-            throw apiError("INVALID_ARGUMENT", "only files can be previewed as images");
+          if (!statSync(full).isFile()) {
+            this.services.audit?.({
+              pluginId,
+              api: "fs.readPreview",
+              ok: false,
+              errorCode: "INVALID_ARGUMENT",
+              ts: Date.now(),
+              path: rel,
+            });
+            throw apiError("INVALID_ARGUMENT", "only files can be previewed");
           }
-          if (info.size > 5 * 1024 * 1024) {
-            throw apiError("INVALID_ARGUMENT", "image is too large to preview");
-          }
-          const ext = rel.split(".").pop()?.toLowerCase() ?? "";
-          const mime: Record<string, string> = {
-            png: "image/png",
-            jpg: "image/jpeg",
-            jpeg: "image/jpeg",
-            gif: "image/gif",
-            webp: "image/webp",
-            svg: "image/svg+xml",
-            bmp: "image/bmp",
-            ico: "image/x-icon",
-            avif: "image/avif",
-          };
-          const imageMime = mime[ext];
-          if (!imageMime) {
-            throw apiError("INVALID_ARGUMENT", `unsupported image type: ${ext || "(none)"}`);
-          }
-          const buffer = readFileSync(full);
+          const preview = previewFile(full, rel);
           this.services.audit?.({
             pluginId,
-            api: "fs.readImageDataUrl",
+            api: "fs.readPreview",
             ok: true,
             ts: Date.now(),
             path: rel,
+            data: { kind: preview.kind, size: preview.size },
           });
-          return `data:${imageMime};base64,${buffer.toString("base64")}`;
-        },
-        previewInBrowser: async (pathFromRoot: string) => {
-          const { rel } = await this.resolveFsRequest(
-            loaded,
-            "read",
-            pathFromRoot,
-          );
-          if (!this.services.openInBrowser) {
-            throw apiError("NOT_SUPPORTED", "browser preview is not available");
-          }
-          this.services.openInBrowser(rel);
-          this.services.audit?.({
-            pluginId,
-            api: "fs.previewInBrowser",
-            ok: true,
-            ts: Date.now(),
-            path: rel,
-          });
+          return preview;
         },
         openDefault: async (pathFromRoot: string) => {
           const { full, rel } = await this.resolveFsRequest(
@@ -2964,10 +3092,11 @@ export class PluginRuntime {
       shell: {
         openExternal: async (url: string) => {
           this.assertPermission(loaded, "shell.openExternal");
-          if (!/^https?:\/\//i.test(url) && !/^mailto:/i.test(url)) {
+          const allowed = parseAllowedExternalUrl(url);
+          if (!allowed) {
             throw apiError("INVALID_ARGUMENT", "only http(s)/mailto URLs allowed");
           }
-          await this.services.openExternal(url);
+          await this.services.openExternal(allowed);
           this.services.audit?.({
             pluginId,
             api: "shell.openExternal",
@@ -3050,6 +3179,153 @@ export class PluginRuntime {
         subscribe: async (pattern: string) => this.busSubscribe(loaded, pattern),
         unsubscribe: async (subscriptionId: string) =>
           this.busUnsubscribe(loaded, subscriptionId),
+      },
+      browser: {
+        navigate: async (input: { url?: string; path?: string } = {}) => {
+          this.assertPermission(loaded, "browser.cdp");
+          if (!this.services.browser) {
+            throw apiError("UNAVAILABLE", "browser host missing");
+          }
+          const result = await this.services.browser.navigate(
+            input,
+            this.browserSessionId(pluginId),
+          );
+          this.services.audit?.({
+            pluginId,
+            api: "browser.navigate",
+            ok: true,
+            ts: Date.now(),
+          });
+          return result;
+        },
+        action: (input: "back" | "forward" | "reload" | "stop" | { action?: string }) => {
+          this.assertPermission(loaded, "browser.cdp");
+          if (!this.services.browser) {
+            throw apiError("UNAVAILABLE", "browser host missing");
+          }
+          const action = typeof input === "string" ? input : String(input?.action ?? "");
+          if (
+            action === "back" ||
+            action === "forward" ||
+            action === "reload" ||
+            action === "stop"
+          ) {
+            this.services.browser.action(action);
+          }
+        },
+        setBounds: (hole: unknown) => {
+          this.assertPermission(loaded, "browser.cdp");
+          if (!this.services.browser) {
+            throw apiError("UNAVAILABLE", "browser host missing");
+          }
+          return this.services.browser.setBounds(pluginId, hole);
+        },
+        setVisible: (input: boolean | { visible?: boolean }) => {
+          this.assertPermission(loaded, "browser.cdp");
+          if (!this.services.browser) {
+            throw apiError("UNAVAILABLE", "browser host missing");
+          }
+          const visible = typeof input === "boolean" ? input : input?.visible === true;
+          this.services.browser.setVisible(pluginId, visible);
+        },
+        getState: () => {
+          this.assertPermission(loaded, "browser.cdp");
+          if (!this.services.browser) {
+            throw apiError("UNAVAILABLE", "browser host missing");
+          }
+          return this.services.browser.getState();
+        },
+        openExternal: () => {
+          this.assertPermission(loaded, "browser.cdp");
+          if (!this.services.browser) {
+            throw apiError("UNAVAILABLE", "browser host missing");
+          }
+          this.services.browser.openExternal();
+          this.services.audit?.({
+            pluginId,
+            api: "browser.openExternal",
+            ok: true,
+            ts: Date.now(),
+          });
+        },
+        snapshot: async () => {
+          this.assertPermission(loaded, "browser.cdp");
+          if (!this.services.browser) {
+            throw apiError("UNAVAILABLE", "browser host missing");
+          }
+          return this.services.browser.snapshot();
+        },
+        screenshot: async (input?: { fullPage?: boolean }) => {
+          this.assertPermission(loaded, "browser.cdp");
+          if (!this.services.browser) {
+            throw apiError("UNAVAILABLE", "browser host missing");
+          }
+          return this.services.browser.screenshot(
+            input,
+            this.browserSessionId(pluginId),
+          );
+        },
+        click: async (input: string | { uid?: string }) => {
+          this.assertPermission(loaded, "browser.cdp");
+          if (!this.services.browser) {
+            throw apiError("UNAVAILABLE", "browser host missing");
+          }
+          const uid = typeof input === "string" ? input : String(input?.uid ?? "");
+          await this.services.browser.click(uid);
+        },
+        fill: async (
+          input: string | { uid?: string; text?: string },
+          textArg?: string,
+        ) => {
+          this.assertPermission(loaded, "browser.cdp");
+          if (!this.services.browser) {
+            throw apiError("UNAVAILABLE", "browser host missing");
+          }
+          const uid = typeof input === "string" ? input : String(input?.uid ?? "");
+          const text = typeof input === "string" ? String(textArg ?? "") : String(input?.text ?? "");
+          await this.services.browser.fill(uid, text);
+        },
+        evaluate: async (input: string | { expression?: string }) => {
+          this.assertPermission(loaded, "browser.cdp");
+          if (!this.services.browser) {
+            throw apiError("UNAVAILABLE", "browser host missing");
+          }
+          const expression = typeof input === "string" ? input : String(input?.expression ?? "");
+          this.services.audit?.({
+            pluginId,
+            api: "browser.evaluate",
+            ok: true,
+            ts: Date.now(),
+          });
+          return this.services.browser.evaluate(expression);
+        },
+        console: (input?: number | { limit?: number }) => {
+          this.assertPermission(loaded, "browser.cdp");
+          if (!this.services.browser) {
+            throw apiError("UNAVAILABLE", "browser host missing");
+          }
+          const limit = typeof input === "number" ? input : input?.limit;
+          return this.services.browser.console(limit);
+        },
+        cdp: async (
+          input: string | { method?: string; params?: unknown },
+          paramsArg?: unknown,
+        ) => {
+          this.assertPermission(loaded, "browser.cdp");
+          if (!this.services.browser) {
+            throw apiError("UNAVAILABLE", "browser host missing");
+          }
+          const method = typeof input === "string" ? input : String(input?.method ?? "");
+          const params = typeof input === "string" ? paramsArg : input?.params;
+          this.services.audit?.({
+            pluginId,
+            api: "browser.cdp",
+            ok: true,
+            ts: Date.now(),
+            method,
+          });
+          return this.services.browser.cdp(method, params);
+        },
       },
     };
   }

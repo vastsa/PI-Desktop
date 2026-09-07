@@ -23,8 +23,11 @@
 - `sandbox: true` — preload 是一个完全捆绑的 CJS 文件，没有运行时
   模块分辨率，由 `test:e2e:boot` 进行端到端验证
 - 无远程模块（Electron ≥ 14 默认值）
-- 导航锁定：`setWindowOpenHandler` 否认并转发至
-  操作系统浏览器； `will-navigate` 阻止所有非开发服务器导航
+- 导航锁定：`setWindowOpenHandler` 拒绝应用内窗口，仅把解析后的
+  `http:` / `https:` / `mailto:` URL 转给系统浏览器
+  （`parseAllowedExternalUrl`，D330 / ADR 0168）。`file:`、`javascript:`、
+  `data:` 和自定义 URI scheme 不会到达 `shell.openExternal`。
+  `will-navigate` 阻止所有非开发服务器导航
 - 预加载仅公开经过白名单检查的 ADR/../03-runtime/09-logging-and-observability.md 桥
   （`IPC_WHITELIST` 在 preload 和主侧均强制执行）
 
@@ -76,7 +79,8 @@ Plan 本身并不是工作区安全边界。主机核解决了
 每个 `tools.execute` 调用的持久会话模式并应用 Plan 矩阵
 在权限模式、授予、插件风险或 renderer/sidecar 状态之前。 Plan
 拒绝 Write/Edit/plugin/unknown 工具，而 BrowserPreview 是显式的
-只读 UI 检查异常。 Bash 在 Plan 中仍然可用：询问并
+只读 UI 检查异常（它打开随应用打包的 `pi.browser` chrome；原始
+CDP 插件工具在 Plan 中仍被拒绝）。 Bash 在 Plan 中仍然可用：询问并
 接受编辑提示，自动运行而无需确认，并且可能会改变
 工作区或临时目录。用户界面必须说明这种权衡。 `SubmitPlan`
 在新的唯一 `<workspaceRoot>/.pi/plan/*.md` 中保留精确的 Markdown 字节
@@ -96,9 +100,10 @@ Plan 本身并不是工作区安全边界。主机核解决了
   不可用，目录分辨率故意回退到第一个
   可用的平台外壳；每转引脚其有效 ID/dialect 和
   主机在生成前使用 `COMMAND_SHELL_CHANGED` 拒绝更改的引脚。
-- 超时是强制性的：默认为 60 秒，可覆盖 1-300 秒。输出
-  作为单独的 stdout/stderr 通道进行流传输，并被截断为 256KB / 4000
-  带有 `[truncated: output exceeded 256KB or 4000 lines]` 标记的行
+- 超时是强制性的：默认为 60 秒，可覆盖 1–21,600 秒（D329）。输出
+  作为单独的 stdout/stderr 通道进行流传输，并被截断为 96KB / 4000
+  行，带有标明哪一端幸存的显式 `[truncated: …]` 标记
+  （见 [16-tool-result-limits](/zh-CN/spec/03-runtime/16-tool-result-limits)）
 - 用户中止和超时在工具之前关闭完整的进程树
   关闭；没有孤儿进程可以继续写入输出。
 - 审计日志中记录的完整命令行（SQLite，已编辑），带有 shell ID

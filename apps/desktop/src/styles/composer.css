@@ -70,7 +70,6 @@
   min-width: 0;
   align-items: center;
   gap: 8px;
-  border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-lg);
   padding: 7px 8px 7px 12px;
   background: var(--ds-bg-composer);
@@ -140,10 +139,9 @@
     transform var(--motion-duration-normal) var(--motion-ease-out);
 }
 
+/* Focus deepens the lift; the shell never gains a stroke (D297). */
 .composer-shell:focus-within {
-  box-shadow:
-    var(--ds-elevation-stroke),
-    0 7px 24px color-mix(in oklab, var(--ds-text-primary) 9%, transparent);
+  box-shadow: 0 7px 24px color-mix(in oklab, var(--ds-text-primary) 9%, transparent);
 }
 
 .composer-input-wrap {
@@ -186,51 +184,103 @@
   }
 }
 
-.composer-file-references {
-  display: flex;
-  width: 100%;
-  min-width: 0;
-  flex-wrap: wrap;
-  gap: 5px;
-  margin-bottom: 6px;
-}
-
-.composer-file-reference {
+.composer-mode-chip-face {
   display: inline-flex;
-  max-width: min(100%, 280px);
-  height: 26px;
   min-width: 0;
+  max-width: 100%;
   align-items: center;
-  gap: 5px;
-  border: 1px solid var(--ds-border-subtle);
-  border-radius: var(--radius-md);
-  padding: 0 5px 0 7px;
-  background: var(--ds-bg-inset);
-  color: var(--ds-text-secondary);
-  font-size: var(--text-sm-plus);
-  line-height: var(--leading-compact);
+  gap: 6px;
+  animation: composer-mode-face-in var(--motion-duration-fast)
+    var(--motion-ease-out) both;
 }
 
-.composer-file-reference-name {
+.composer-mode-chip[data-planning="true"] {
+  color: var(--ds-text-primary) !important;
+}
+
+.composer-mode-chip[data-planning="true"] svg {
+  color: var(--ds-purple) !important;
+  animation: composer-mode-planning-pulse 1.2s var(--motion-ease-standard)
+    infinite;
+}
+
+@keyframes composer-mode-face-in {
+  from {
+    opacity: 0;
+    transform: translateX(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes composer-mode-planning-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+.composer-input {
+  width: 100%;
+  min-height: 3lh;
+  max-height: 7lh;
+  overflow-y: hidden;
+  resize: none;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--ds-text-primary);
+  font-size: var(--text-base);
+  line-height: var(--leading-body);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  cursor: text;
+}
+
+/* Atomic inline attachment chip inside the editable draft. */
+.composer-chip {
+  display: inline-flex;
+  max-width: min(100%, 240px);
+  height: 20px;
+  align-items: center;
+  gap: 4px;
+  margin: 0 2px;
+  border-radius: var(--radius-md);
+  padding: 0 4px 0 6px;
+  background: var(--ds-tile-deep);
+  color: var(--ds-text-secondary);
+  font-size: var(--text-xs-plus);
+  line-height: var(--leading-compact);
+  vertical-align: middle;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.composer-chip-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--ds-text-muted);
+}
+
+.composer-chip-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.composer-file-reference-thumb {
-  width: 20px;
-  height: 20px;
-  flex: 0 0 auto;
-  object-fit: cover;
-  border-radius: var(--radius-sm);
-  background: var(--ds-bg-secondary);
-}
-
-.composer-file-reference-remove {
+.composer-chip-remove {
   display: inline-flex;
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
@@ -241,28 +291,10 @@
     color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
-.composer-file-reference-remove:hover:not(:disabled),
-.composer-file-reference-remove:focus-visible {
+.composer-chip-remove:hover,
+.composer-chip-remove:focus-visible {
   background: var(--ds-bg-hover);
   color: var(--ds-text-primary);
-}
-
-.composer-file-reference-remove:disabled {
-  opacity: 0.45;
-}
-
-.composer-input {
-  width: 100%;
-  min-height: 28px;
-  max-height: 7lh;
-  overflow-y: hidden;
-  resize: none;
-  border: 0;
-  outline: none;
-  background: transparent;
-  color: var(--ds-text-primary);
-  font-size: var(--text-base);
-  line-height: var(--leading-body);
 }
 
 .composer-input::placeholder {
@@ -353,7 +385,6 @@
   gap: 8px;
   width: 100%;
   margin: 0 0 8px;
-  border: 1px solid color-mix(in oklab, var(--ds-error) 35%, var(--ds-border-subtle));
   border-radius: var(--radius-lg);
   padding: 8px 10px;
   background: color-mix(in oklab, var(--ds-error) 8%, var(--ds-bg-composer));
@@ -478,10 +509,8 @@
   gap: 10px 14px;
   margin-bottom: 8px;
   padding: 7px 9px;
-  border: 1px solid var(--ds-border-default);
-  border-radius: var(--radius-sm);
-  background: var(--ds-bg-secondary);
-  box-shadow: 0 1px 0 color-mix(in oklab, var(--ds-text-primary) 3%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--ds-tile);
 }
 
 .plan-approval-copy {
@@ -573,8 +602,7 @@
   line-height: var(--leading-compact);
   transition:
     background var(--motion-duration-fast) var(--motion-ease-out),
-    color var(--motion-duration-fast) var(--motion-ease-out),
-    border-color var(--motion-duration-fast) var(--motion-ease-out);
+    color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 .plan-approval-reject {
@@ -596,9 +624,8 @@
   min-width: 0;
   flex: 0 1 220px;
   align-items: stretch;
-  border: 1px solid var(--ds-border-strong);
   border-radius: var(--radius-sm);
-  background: color-mix(in oklab, var(--ds-text-primary) 8%, transparent);
+  background: var(--ds-tile-deep);
 }
 
 .plan-approval-approve-main {
@@ -621,7 +648,6 @@
   flex: 0 0 30px;
   align-items: center;
   justify-content: center;
-  border-left: 1px solid var(--ds-border-strong);
   border-radius: 0 var(--radius-3xs) var(--radius-3xs) 0;
   color: var(--ds-text-secondary);
 }

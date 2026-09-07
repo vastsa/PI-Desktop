@@ -22,7 +22,9 @@ are reaped before their permits are released.
 Electron host supervision is single-flight and generation-aware. A stale host
 generation cannot issue notifications or accept new RPC writes. Assistant and
 tool message appends pass through an Electron-main-owned, file-backed outbox
-and are flushed sequentially after a successful host handshake. Host-side
+and are flushed sequentially after a successful host handshake. The handshake
+**awaits** that drain before the host is advertised ready, so a cold
+`session.get` cannot race a queued assistant/tool row (D327). Host-side
 message append is idempotent by message id.
 
 ## Consequences
@@ -32,6 +34,10 @@ message append is idempotent by message id.
   errors.
 - SQLite ownership remains exclusively in host-core.
 - The application data directory gains one small recovery outbox file.
+- A missing sessions row is restored from the live JSONL (or created as a
+  stub under the same id) so a queued outbox can drain; `session.delete`
+  drops that session's outbox entries so a stub cannot resurrect a deleted
+  conversation (D318).
 - Tool capacity becomes observable through `app.health` and structured logs.
 
 ## Alternatives rejected

@@ -29,11 +29,15 @@ Rules:
 ```text
 packages/i18n/src/locales/
 ├── en/index.ts
-└── zh-CN/index.ts
+├── zh-CN/index.ts
+└── tr/index.ts
 ```
 
-The English catalog is the source type for translated catalogs. Catalog parity
-and interpolation parity are enforced by automated tests.
+The English catalog is the source type for translated catalogs. A registry in
+`packages/i18n` lists every shipped locale (id, native name, English name).
+Catalog parity and interpolation parity are enforced across every shipped
+locale by automated tests. Adding a locale is a catalog file plus a registry
+row; the language picker reads that registry.
 
 ## 4. Key conventions
 
@@ -85,9 +89,9 @@ Plugins may include localized display fields later, but English fields are requi
 4. No Chinese hard dependency in core UI path
 5. Catalog tests reject missing keys or mismatched interpolation variables
 6. Import, Projects, and Temporary sessions expose localized visible and
-   accessible labels in English and Simplified Chinese
+   accessible labels in every shipped locale
 7. macOS system-menu custom commands and Windows/Linux window controls expose
-   localized English and Simplified Chinese labels
+   localized labels in every shipped locale
 8. Boot splash and renderer crash chrome use catalog keys (`app.starting`,
    `app.shellName`, `app.tagline`, `app.uiCrashed`); project, temporary-session,
    and no-session empty-home hero titles/subtitles are translated in every
@@ -100,5 +104,5 @@ Plugins may include localized display fields later, but English fields are requi
     remembered approval-mode actions, Bash/Auto mutation warning,
     shell catalog/unavailable state, fail-closed recovery, and shared
     Plan/Goal error codes
-    have matching English and zh-CN keys; no Chat operating-mode key or command
-    is shipped
+    have matching keys in every shipped locale; no Chat operating-mode key or
+    command is shipped

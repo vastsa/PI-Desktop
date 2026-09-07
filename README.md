@@ -1,211 +1,449 @@
 <div align="center">
 
-<img src="docs/image/readme/logo.png" alt="PI-Desktop logo" width="120" />
+<img src="docs/image/readme/logo.png" alt="PI-Desktop" width="112" />
 
 # PI-Desktop
 
-**A local-first desktop app for AI coding agents.**
+### Your local-first desktop workspace for AI coding agents.
 
-Bring your own models. Keep your code, your keys, and your conversations on your machine.
+**Bring your own model. Open any local project. Let agents work — while you stay in control.**
 
-[![Release](https://img.shields.io/github/v/release/vastsa/PI-Desktop?include_prereleases&label=release)](https://github.com/vastsa/PI-Desktop/releases/latest)
+No PI-Desktop account. No mandatory relay. No editor lock-in.
+
+<br />
+
+[![Release](https://img.shields.io/github/v/release/vastsa/PI-Desktop?label=release)](https://github.com/vastsa/PI-Desktop/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/vastsa/PI-Desktop/total?label=downloads)](https://github.com/vastsa/PI-Desktop/releases)
+[![Stars](https://img.shields.io/github/stars/vastsa/PI-Desktop?style=flat\&label=stars)](https://github.com/vastsa/PI-Desktop/stargazers)
 [![CI](https://github.com/vastsa/PI-Desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/vastsa/PI-Desktop/actions/workflows/ci.yml)
+[![License](https://img.shields.io/github/license/vastsa/PI-Desktop)](LICENSE)
 ![Platforms](https://img.shields.io/badge/platform-macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-4c8dd8)
 
-[Download](#download) · [Getting started](#getting-started) · [Highlights](#highlights) · [Screenshots](docs/guide/screenshots.md) · [How it works](#how-it-works) · [Development](#development) · [简体中文](README.zh-CN.md)
+**[Download PI-Desktop](https://github.com/vastsa/PI-Desktop/releases/latest)** ·
+[Documentation](https://pi-docs.aiuo.net/) ·
+[Screenshots](docs/guide/screenshots.md) ·
+[简体中文](README.zh-CN.md)
 
-<br/>
+<br />
 
-<img src="docs/image/readme/hero.png" alt="PI-Desktop workbench with agent orchestration" width="88%" />
+<img src="docs/image/readme/home.webp" alt="PI-Desktop AI coding workspace" width="92%" />
+
+<sub>A standalone desktop workspace for coding agents, projects, models, tools, and long-running sessions.</sub>
 
 </div>
 
-## What is PI-Desktop?
+---
 
-PI-Desktop puts an AI coding agent in a native desktop app. Point it at a project, describe what you want — explore and understand code, build a feature, review changes, fix a failing test — and watch it work, with every file edit and shell command surfaced for your approval.
+> [!IMPORTANT]
+> **PI-Desktop is currently in Early Preview.**
+>
+> The project is actively developed and already usable for real coding workflows, but APIs, extension interfaces, and some desktop behaviors may continue to evolve.
 
-There is no account, no subscription, and no cloud in the middle: you connect the model provider you already use, and everything else — sessions, settings, API keys — stays local.
+## Why PI-Desktop?
 
-## Highlights
+Most coding agents live inside a terminal, an editor extension, or a hosted service.
 
-- **Any model, your keys.** Anthropic, OpenAI, or anything that speaks an OpenAI-compatible API — hosted relays as well as local gateways like Ollama or LM Studio. Model IDs are free-form (no hardcoded allowlist), with per-model context window, output limit, temperature, and reasoning controls. Configure several models per provider and switch between them from the composer, or sign in to a vendor account with OAuth and keep more than one account per vendor.
-- **Agent, Plan, and Goal modes.** Agent mode reads, edits, and runs commands to get things done. Plan has the same agent inspect the project and submit an immutable implementation checkpoint for approval. Goal lets the agent agree on an outcome and acceptance criteria, then continue autonomously after approval.
-- **You approve every change.** File writes and shell commands ask first, with session-scoped grants and a configurable default policy. Unanswered prompts deny by default.
-- **Background subagents.** Delegate separable work — wide searches, multi-file implementation, adversarial review — to built-in or your own subagents that run in their own context and report back, with per-model delegation choices and a bounded concurrency cap.
-- **Agent-to-agent collaboration.** Coordinate concurrent subagents over the local Agent2Agent (A2A) protocol: discover running peers as Agent Cards, exchange durable tasks and typed messages, and stream task updates.
-- **A real workbench.** Review the agent's edits as message-scoped diffs with guarded rollback, inspect command output in the transcript, preview a local app in a browser, and browse project files — all in side panels, including views that plugins contribute.
-- **Projects and sessions.** Sessions are grouped by project in a multi-project sidebar, with pinning, archiving, sorting, branching, notifications, paged history, and throwaway scratch sessions that keep their own isolated workspace.
-- **Local-first and private.** Transcripts live on disk as plain JSONL with a SQLite index — easy to back up, grep, or delete. API keys go into the OS keychain. Logs stay local; there is no telemetry.
-- **Agent capabilities beyond plugins.** Manage standalone MCP servers, Skills, and global Subagents from Settings → Agent, with project-scoped Skills and MCP overrides. The Extensions page is reserved for installed plugins and the marketplace. Plugins can add commands, panels, work-panel views, agent tools, skills, themes, MCP servers, resident services, and a message bus; the local/official marketplace and `.piplug` package workflow are available today.
-- **A fast daily workflow.** Use slash commands and `@` file references, paste files into session scratch, queue the next prompt while a turn is still running, enhance a draft prompt in one shot, search everything globally with Option/Alt+Space, and create manual or recurring task prompts.
-- **Resilient runs.** Transient provider failures and rate limits are retried with bounded backoff, and an interrupted answer can be continued instead of restarted.
-- **Comfortable to live in.** English and 简体中文, light/dark/system and plugin themes, a global search and command surface, a pickable UI font with bundled OFL faces, tray and close-behavior choices, onboarding checklist, local notifications, context checkpoints, and in-app release notes with update alerts for packaged builds.
-
-Plugin APIs and panels are permission-gated and run out-of-process. Plugin code is still user-trusted code rather than a complete OS sandbox, so review permissions and only install plugins you trust.
+PI-Desktop gives them a workspace of their own.
 
 <table>
-  <tr>
-    <td width="50%"><img src="docs/image/readme/conversation.webp" alt="A conversation with the minimap rail on the right" /></td>
-    <td width="50%"><img src="docs/image/readme/marketplace.webp" alt="The plugin marketplace with installable plugins" /></td>
-  </tr>
-  <tr>
-    <td align="center"><sub>Every turn in one transcript, with a minimap rail for long conversations</sub></td>
-    <td align="center"><sub>Install from the official catalog, a mirror, or a custom URL you configure</sub></td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="docs/image/readme/models.webp" alt="The model menu in the top bar" /></td>
-    <td width="50%"><img src="docs/image/readme/basics.webp" alt="Basics — language, theme, and appearance" /></td>
-  </tr>
-  <tr>
-    <td align="center"><sub>Switch the model per session — any provider you have configured, keys in the OS keychain</sub></td>
-    <td align="center"><sub>Language, theme, and appearance, including themes plugins contribute</sub></td>
-  </tr>
+<tr>
+<td width="50%" valign="top">
+
+### 🖥️ Desktop-first
+
+Work across repositories and sessions without tying your agent workflow to one editor or terminal.
+
+Projects, conversations, reviews, files, previews, notifications, and extensions live in one workspace.
+
+</td>
+<td width="50%" valign="top">
+
+### ✨ Bring your own model
+
+Use OpenAI, Anthropic, local models, hosted gateways, or any OpenAI-compatible API.
+
+Configure multiple providers and models, then switch between them per session.
+
+</td>
+</tr>
+
+<tr>
+<td width="50%" valign="top">
+
+### 🔍 Inspectable by default
+
+Agents can read files, edit code, and run commands — but privileged actions pass through PI-Desktop's permission layer.
+
+Review diffs, inspect command output, and decide how much autonomy each session gets.
+
+</td>
+<td width="50%" valign="top">
+
+### 🧩 Built to extend
+
+Add Skills, MCP servers, Subagents, and installable Plugins.
+
+Plugins can contribute tools, commands, panels, themes, services, skills, and new workspace experiences.
+
+</td>
+</tr>
 </table>
 
-<p align="center"><sub><a href="docs/guide/screenshots.md">See every screen →</a></sub></p>
+---
+
+## From prompt to patch
+
+Getting started only takes a few steps:
+
+1. **Connect a model**
+   Open **Settings → Model configuration**, choose a provider or compatible API, and add your credentials.
+
+2. **Open a project**
+   Add any local repository or project directory from the sidebar.
+
+3. **Choose how the agent should work**
+   Use **Agent** for direct execution, **Plan** when you want to approve the implementation first, or **Goal** when you want to approve the outcome and let the agent decide how to get there.
+
+4. **Review the result**
+   Inspect edits in the Review panel, check command output, preview the application, and continue the conversation without leaving PI-Desktop.
+
+---
+
+## More than a chat window
+
+### Agent, Plan, and Goal
+
+Different tasks need different levels of control.
+
+**Agent** is for hands-on execution.
+The agent can inspect your codebase, edit files, run commands, test changes, and iterate.
+
+**Plan** adds an approval boundary.
+The agent first studies the project and produces an immutable implementation plan. Nothing moves into execution until you approve it.
+
+**Goal** focuses on the outcome.
+Agree on the objective and acceptance criteria, approve them, and let the agent work autonomously toward that goal.
+
+---
+
+### Delegate work to Subagents
+
+Large tasks rarely belong in one context window.
+
+PI-Desktop can delegate independent work to background Subagents for things like:
+
+* codebase exploration
+* multi-file implementation
+* research and investigation
+* test analysis
+* adversarial review
+
+Each Subagent runs in its own context and reports its result back to the parent agent.
+
+---
+
+### A workspace built for long sessions
+
+PI-Desktop is designed for more than one prompt at a time.
+
+You can manage multiple projects and sessions, pin or archive conversations, branch sessions, queue prompts while an agent is running, reference files with `@`, use slash commands, and search across the application.
+
+Streaming responses are checkpointed so interrupted work can survive application restarts or runtime failures whenever possible.
+
+---
+
+## Your models, your choice
+
+PI-Desktop does not lock the agent runtime to a hardcoded model list.
+
+Use:
+
+* OpenAI and Anthropic
+* OpenAI-compatible APIs
+* hosted model gateways
+* local gateways such as Ollama and LM Studio
+* multiple models under the same provider
+* provider OAuth accounts where supported
+
+Model configuration can include context windows, output limits, reasoning controls, temperature, and other model-specific behavior.
+
+Switch models directly from the Composer without recreating your session.
+
+---
+
+## Review the work, not just the answer
+
+The agent workspace includes dedicated surfaces for the things that matter while coding:
+
+<table>
+<tr>
+<td width="50%">
+
+<img src="docs/image/readme/chat_en.png" alt="PI-Desktop conversation" />
+
+<p align="center"><sub>Long-running conversations with transcript navigation</sub></p>
+
+</td>
+<td width="50%">
+
+<img src="docs/image/readme/model_en.png" alt="PI-Desktop model selection" />
+
+<p align="center"><sub>Switch providers, models, and reasoning levels per session</sub></p>
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+<img src="docs/image/readme/plugins_en.png" alt="PI-Desktop plugin marketplace" />
+
+<p align="center"><sub>Extend the workspace through the plugin marketplace</sub></p>
+
+</td>
+<td width="50%">
+
+<img src="docs/image/readme/addmodel_en.png" alt="PI-Desktop model configuration" />
+
+<p align="center"><sub>Add a provider and connect a model</sub></p>
+
+</td>
+</tr>
+</table>
+
+<p align="center">
+<a href="docs/guide/screenshots.md"><strong>Explore all screenshots →</strong></a>
+</p>
+
+---
+
+## Extensions without rebuilding the app
+
+PI-Desktop has several extension layers depending on how deeply you want to customize the agent.
+
+### Skills
+
+Give agents reusable instructions and workflows.
+
+Skills can be installed globally or activated for individual projects.
+
+### MCP
+
+Connect external tools and services through Model Context Protocol servers without baking them into the desktop application.
+
+### Subagents
+
+Create specialized agents with their own instructions, tools, and model choices, then delegate work to them from another agent.
+
+### Plugins
+
+Plugins can extend PI-Desktop itself with:
+
+* agent tools
+* commands
+* workspace panels
+* work-panel views
+* Skills
+* MCP servers
+* Subagents
+* themes
+* resident services
+* inter-plugin messaging
+
+Plugins can be installed locally or through the marketplace using the `.piplug` package workflow.
+
+> [!NOTE]
+> Plugin processes are permission-gated and isolated from the renderer, but plugins are still user-trusted code rather than a complete operating-system sandbox. Only install plugins you trust.
+
+[Build your first plugin →](docs/plugin-development.md)
+
+---
+
+## Local-first, precisely
+
+PI-Desktop is **local-first**, not “nothing ever touches the network.”
+
+| Data                 | Behavior                                                |
+| -------------------- | ------------------------------------------------------- |
+| Conversations        | Stored locally as JSONL with a SQLite index             |
+| Settings             | Stored on your machine                                  |
+| API credentials      | Stored in the operating system keychain                 |
+| Logs                 | Local                                                   |
+| PI-Desktop telemetry | None                                                    |
+| Model requests       | Sent directly to the provider or endpoint you configure |
+
+There is no required PI-Desktop account and no mandatory PI-hosted relay between your machine and your model provider.
+
+If you use a remote model provider, the context required for that model request is naturally sent to that provider according to its own privacy policy.
+
+---
 
 ## Download
 
-Grab the latest build from the [Releases page](https://github.com/vastsa/PI-Desktop/releases/latest).
+Download the latest build from **[GitHub Releases](https://github.com/vastsa/PI-Desktop/releases/latest)**.
 
-| Platform | Package | Status |
-|---|---|---|
-| macOS (Apple Silicon) | `.dmg` / `.zip` | ✅ Published with each release |
-| macOS (Intel) | `.dmg` / `.zip` | ✅ Published with each release |
-| Windows (x64) | NSIS installer | ✅ Published with each release; in-app auto-update |
-| Linux (x64) | `.AppImage` / `.deb` | ✅ Published with each release; AppImage auto-updates in-app |
+| Platform | Architecture  | Package              |
+| -------- | ------------- | -------------------- |
+| macOS    | Apple Silicon | `.dmg` / `.zip`      |
+| macOS    | Intel         | `.dmg` / `.zip`      |
+| Windows  | x64           | NSIS installer       |
+| Linux    | x64           | `.AppImage` / `.deb` |
 
-> **macOS note:** builds are not yet code-signed or notarized. If macOS refuses to open the app, right-click it and choose **Open**, or clear the quarantine flag:
->
-> ```bash
-> xattr -cr /Applications/PI-Desktop.app
-> ```
+Packaged builds can check GitHub Releases for updates and surface new versions inside the application.
 
-Packaged builds check GitHub Releases for new versions and show an in-app update banner.
+### macOS
 
-## Getting started
+macOS builds are not yet code-signed or notarized.
 
-1. **Add a model provider.** Open **Settings → Model configuration → Add provider**: pick the API style, paste the base URL and your API key, then choose or type a model ID. The key is stored in your OS keychain and never shown again.
-2. **Open a project.** Add a project folder from the sidebar — sessions, tools, and permissions are scoped to it.
-3. **Describe the task.** Start in Agent mode to make changes, switch to Plan for an approval checkpoint, or use Goal when you want to approve an outcome rather than prescribe the steps. Review work in the **Review** diff panel before you commit anything.
-4. **Extend the workspace when needed.** Open **Settings → Agent** to manage Skills, MCP servers, and global Subagents; open **Extensions** for installed plugins and the marketplace. Use **Settings → Import** to bring in local sessions from Claude Code, OpenCode, Codex, or Pi.
+If macOS blocks the application, right-click **PI-Desktop.app** and choose **Open**.
 
-## How it works
+If necessary, you can also clear the quarantine attribute:
 
-PI-Desktop keeps renderer privileges narrow and separates the agent loop from the desktop UI:
+```bash
+xattr -cr /Applications/PI-Desktop.app
+```
 
-- **Electron shell** — a sandboxed React renderer plus the main/preload bridge for desktop-only services such as panels, browser preview, updates, and supervision.
-- **Rust host core** — owns SQLite, transcript persistence, secrets, permissions, and workspace access over stdio JSON-RPC.
-- **pi agent sidecar** — a Node process running the pi agent engine (`pi-ai` + `pi-agent-core`) for the actual agent loop.
+Signing and notarization are on the roadmap.
 
-The full picture lives in the [architecture spec](docs/spec/02-architecture/01-architecture.md).
+---
 
-## Status & roadmap
+## Import your existing sessions
 
-PI-Desktop is an early preview under active development. The current 0.12.x line ships the app shell, streaming agent runtime, Agent/Plan/Goal contracts, workspace tools with permissions, the workbench, projects and sessions, imports, agent capability management (MCP/Skills/Subagents), background subagent delegation with local Agent2Agent (A2A) collaboration, discovery-driven provider setup with a models.dev-backed model catalog, multiple models and OAuth accounts per provider, extensions (plugins) with a marketplace, context checkpoints, notifications, in-app release notes, and cross-platform packaging with update delivery.
+Already using another coding agent?
 
-Still in progress: signed and notarized macOS builds (blocked on Apple Developer credentials — the signing lane itself is scripted), Windows/Linux installer-upgrade and rollback qualification, a stronger plugin sandbox and publisher-signature path, and full UI-driven E2E coverage. See the [milestones](docs/spec/06-delivery/01-mvp-milestones.md) and the [project board](docs/project/BOARD.md).
+PI-Desktop can import local sessions from supported tools including:
+
+* Claude Code
+* Codex
+* OpenCode
+* Pi
+
+Open **Settings → Import** to bring existing work into the desktop workspace.
+
+---
+
+## Architecture
+
+PI-Desktop deliberately separates the user interface from privileged host capabilities and the agent loop.
+
+```mermaid
+flowchart TB
+    UI["React Renderer<br/>Chat · Projects · Reviews · Settings"]
+    Electron["Electron Main<br/>Desktop orchestration"]
+    Rust["Rust Host Core<br/>Permissions · Filesystem · SQLite · Secrets"]
+    Agent["pi Agent Sidecar<br/>Agent loop · Models · Streaming"]
+    Provider["Model Provider<br/>Cloud or Local"]
+
+    UI --> Electron
+    Electron --> Rust
+    Electron --> Agent
+    Agent <--> Rust
+    Agent --> Provider
+```
+
+The renderer has no Node integration.
+
+The **Rust Host Core** owns privileged workspace operations, permissions, persistence, and secrets. The **pi Agent Sidecar** owns model interaction and the agent loop. Electron coordinates the desktop lifecycle while keeping those responsibilities separated.
+
+[Read the architecture specification →](docs/spec/02-architecture/01-architecture.md)
+
+---
+
+## Project status
+
+PI-Desktop is an early preview under active development.
+
+The current **0.13.x** line includes the desktop shell, streaming agent runtime, Agent / Plan / Goal workflows, permission-aware workspace tools, projects and sessions, session imports, MCP / Skills / Subagents, background delegation, multi-provider model configuration, plugins and marketplace support, context checkpoints, notifications, release notes, and cross-platform packaging.
+
+Current priorities include:
+
+* macOS code signing and notarization
+* installer upgrade and rollback qualification
+* continued runtime and session-recovery hardening
+* stronger plugin sandboxing and publisher verification
+* broader UI-driven end-to-end coverage
+
+Follow development through the [project board](docs/project/BOARD.md) and [milestones](docs/spec/06-delivery/01-mvp-milestones.md).
+
+---
 
 ## Development
 
-Prerequisites: Node.js `>=22.19` (CI and release builds use Node 24, matching the Node that Electron bundles), pnpm `>=10` (the repository pins pnpm 11), and a stable Rust toolchain.
+### Requirements
+
+* Node.js `>=22.19`
+* pnpm `>=10`
+* stable Rust toolchain
+
+The repository currently pins pnpm 11, while CI and release builds use Node 24.
+
+### Run locally
 
 ```bash
-# build the Rust host core
-cargo build -p host-core
+git clone https://github.com/vastsa/PI-Desktop.git
+cd PI-Desktop
 
-# install JS dependencies and build packages + app
 pnpm install
+
+cargo build -p host-core
 pnpm build:js
 
-# run in dev mode
 pnpm dev
-
-# protocol e2e smoke test
-PI_DESKTOP_TEST_API_KEY=... pnpm test:e2e
-
-# Plan host acceptance (includes the real 60-second default timeout)
-PI_DESKTOP_E2E_LONG_TIMEOUT=1 pnpm test:e2e:plan
-
-# rendered English / Simplified Chinese Plan acceptance through Electron CDP
-pnpm test:e2e:plan-ui
-
-# focused desktop probes
-pnpm test:e2e:boot
-pnpm test:e2e:supervision
-pnpm test:e2e:subagents
-
-# checks CI runs
-pnpm typecheck
-pnpm lint
-pnpm test            # JS unit tests + cargo test -p host-core
-
-# documentation site (VitePress)
-pnpm docs:dev
-pnpm docs:check      # English/Chinese spec parity
 ```
 
-CI runs JS build / typecheck / lint / unit tests plus `cargo test` for
-code-related pull requests and pushes to `main`; documentation-only changes are
-skipped.
-
-Releases are cut by tag. Bumping a stable version means updating every
-version-bearing surface first — the dual-locale in-app changelog, its test
-list, and the release line quoted in both READMEs. `scripts/release.mjs` runs
-that check and refuses to tag while anything disagrees:
+### Validate changes
 
 ```bash
-pnpm check:release-docs                    # verify the current tree is aligned
-node scripts/release.mjs 0.11.2 --tag      # bump versions + commit + tag v0.11.2
-git push origin <branch> v0.11.2           # Release workflow builds & publishes
+pnpm typecheck
+pnpm lint
+pnpm test
 ```
 
-The [release runbook](docs/spec/06-delivery/06-release-runbook.md#41-mandatory-release-version-surface-gate-d164--d260)
-lists the full gate.
+Additional protocol, Plan, supervision, Subagent, and Electron E2E suites are documented in the repository specification.
 
 ### Documentation
 
-- [Plugin development: zero to one](docs/plugin-development.md)
-- [Screens](docs/guide/screenshots.md) — every surface, captured from the running app
-- [Spec index](docs/spec/README.md) — start here
-- [Product scope](docs/spec/01-product/01-product-scope.md)
-- [Baseline decisions](docs/spec/00-baseline.md)
-- [Architecture](docs/spec/02-architecture/01-architecture.md)
-- [UI information architecture](docs/spec/04-ux/01-ui-ia.md)
-- [E2E test plan](docs/spec/06-delivery/04-e2e-test-plan.md)
-- [Release runbook](docs/spec/06-delivery/06-release-runbook.md)
-- [Plugin system](docs/spec/07-plugins/01-plugin-system.md)
-- [ADRs](docs/adr/) · [Milestones](docs/spec/06-delivery/01-mvp-milestones.md) · [Agent guide](AGENTS.md)
+```bash
+pnpm docs:dev
+pnpm docs:check
+```
 
-## Open-source acknowledgements
+Useful references:
 
-PI-Desktop is built with and informed by these open-source projects:
+* [Documentation](https://pi-docs.aiuo.net/)
+* [Specification index](docs/spec/README.md)
+* [Architecture](docs/spec/02-architecture/01-architecture.md)
+* [Product scope](docs/spec/01-product/01-product-scope.md)
+* [Plugin development](docs/plugin-development.md)
+* [E2E test plan](docs/spec/06-delivery/04-e2e-test-plan.md)
+* [Release runbook](docs/spec/06-delivery/06-release-runbook.md)
+* [Repository agent guide](AGENTS.md)
 
-- **Agent runtime:** [pi-mono](https://github.com/badlogic/pi-mono), whose
-  `pi-ai` and `pi-agent-core` packages provide the agent loop and provider
-  abstractions.
-- **Desktop and UI foundation:** [Electron](https://github.com/electron/electron),
-  [React](https://github.com/facebook/react),
-  [Vite](https://github.com/vitejs/vite),
-  [Tailwind CSS](https://github.com/tailwindlabs/tailwindcss),
-  [Lucide](https://github.com/lucide-icons/lucide),
-  [Shiki](https://github.com/shikijs/shiki),
-  [Mermaid](https://github.com/mermaid-js/mermaid),
-  [KaTeX](https://github.com/KaTeX/KaTeX),
-  [TypeBox](https://github.com/sinclairzx81/typebox), and
-  [i18next](https://github.com/i18next/i18next).
-- **Behavioral and visual references:**
-  [OpenAI Codex](https://github.com/openai/codex) informs parts of the shell
-  and context-management UX. [OpenCode DCP](https://github.com/Opencode-DCP/opencode-dynamic-context-pruning)
-  was studied as a behavioral reference for context compaction; it is not a
-  PI-Desktop dependency, and no code is copied from it.
-- **Bundled fonts:** [Geist](https://github.com/vercel/geist-font),
-  [Inter](https://github.com/rsms/inter),
-  [Noto Sans SC](https://github.com/google/fonts) (Source Han Sans lineage),
-  and [LXGW WenKai](https://github.com/lxgw/LxgwWenKai), which includes work
-  from [Klee](https://github.com/fontworks-fonts/Klee). Their SIL Open Font
-  License texts are included under
-  [`apps/desktop/src/assets/fonts/licenses/`](apps/desktop/src/assets/fonts/licenses/).
+---
+
+## Contributing
+
+Issues, bug reports, feature proposals, documentation improvements, and pull requests are welcome.
+
+For larger changes, opening an issue first makes it easier to align the implementation with the existing architecture and product contracts.
+
+When working in the repository, start with [AGENTS.md](AGENTS.md) and the [specification index](docs/spec/README.md).
+
+[Report an issue](https://github.com/vastsa/PI-Desktop/issues/new/choose) ·
+[View open issues](https://github.com/vastsa/PI-Desktop/issues)
+
+---
+
+## Built on open source
+
+PI-Desktop builds on the excellent work of the open-source ecosystem.
+
+The agent runtime uses [`pi-ai`](https://github.com/badlogic/pi-mono) and `pi-agent-core` from **pi-mono**.
+
+The desktop application is built with technologies including Electron, React, TypeScript, Rust, SQLite, Vite, Tailwind CSS, Shiki, Mermaid, KaTeX, TypeBox, and i18next.
+
+Thank you to every project and contributor that makes PI-Desktop possible.
+
+---
 
 ## Model acknowledgements
 
@@ -213,34 +451,52 @@ This project was created by the models below — not by a lone genius, but by a 
 
 | Provider | Model | Tokens |
 | --- | --- | ---: |
-| OpenAI | `gpt-5.6-sol` | 4,799,525,785 |
+| OpenAI | `gpt-5.6-luna` | 5,304,019,817 |
+| OpenAI | `gpt-5.6-sol` | 4,825,458,273 |
 | OpenAI | `gpt-5.4` | 4,213,269,324 |
-| OpenAI | `gpt-5.6-luna` | 3,980,161,792 |
 | Anthropic | `claude-opus-5` | 3,909,952,653 |
 | OpenAI | `gpt-5.5` | 3,800,382,171 |
 | xAI | `grok-4.5` | 1,947,736,115 |
+| xAI | `grok-4.6` | 797,233,571 |
 | DeepSeek | `deepseek-v4-flash` | 329,790,234 |
 | OpenAI | `gpt-5.2-codex` | 320,983,170 |
+| Xiaomi | `mimo-v2.5-pro` | 304,822,052 |
+| Anthropic | `claude-fable-5-1` | 302,580,552 |
 | OpenAI | `gpt-5.6-terra` | 274,107,085 |
 | OpenAI | `gpt-5.3-codex` | 255,366,945 |
-| Xiaomi | `mimo-v2.5-pro` | 234,295,998 |
 | OpenAI | `gpt-5.1-codex-max` | 220,947,212 |
 | OpenAI | `gpt-5.1` | 142,533,699 |
 | — | `Unknown model` | 69,801,632 |
 | Anthropic | `claude-opus-4.6` | 55,223,768 |
 | Zhipu | `stealth/ox-alpha` | 22,954,876 |
+| Anthropic | `claude-fable-5` | 16,116,907 |
 | OpenAI | `gpt-5.1-codex-mini` | 12,895,478 |
-| Xiaomi | `mimo-v2.5-pro-think` | 11,246,210 |
 | Xiaohongshu | `dots-3-note-prev` | 10,166,895 |
 | OpenAI | `gpt-5.1-codex` | 3,916,509 |
 | Xiaomi | `mimo-v2.5` | 3,785,071 |
-| xAI | `grok-4.6` | 3,366,971 |
 
-**Total for listed models:** 24,622,409,593 tokens.
+**Total for listed models:** 27,144,044,009 tokens.
+
+---
+
 ## Community Links
 
 - [Linux.Do](https://linux.do/) — A community for sharing and discussing technology.
 
 ## License
 
-Licensed under the [GNU Lesser General Public License v3.0 or later](LICENSE).
+PI-Desktop is licensed under the **GNU Lesser General Public License v3.0**.
+
+See [LICENSE](LICENSE) for details.
+
+---
+
+<div align="center">
+
+### Build with the model you want. Keep the workflow yours.
+
+**[Download PI-Desktop](https://github.com/vastsa/PI-Desktop/releases/latest)**
+
+<sub>macOS · Windows · Linux</sub>
+
+</div>

@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
 import {
   Agent,
-  buildSessionContext,
+  BACKGROUND_CONTEXT,
   compact,
   convertToLlm,
   estimateContextTokens,
   estimateTokens,
   prepareCompaction,
+  withAbortSignal,
   type AgentContext,
   type AgentEvent,
   type AgentLoopTurnUpdate,
@@ -64,38 +65,17 @@ import type {
   UiMessage,
 } from "@pi-desktop/shared";
 import {
+  addUsage,
   checkpointGeneration,
   contextCompactionMark,
   DEFAULT_SUBAGENT_PERMISSION,
   formatAskToolOutput,
   isCommandShellOption,
-  isSubagentA2ATool,
   isToolsOutputParams,
   MAX_SUBAGENT_CONCURRENCY,
   normalizeSubagentName,
   proposalKindForMode,
   subagentModelKey,
-  subagentUsesA2A,
-  toAgentCard,
-  A2A_RPC_METHODS,
-  A2A_NOTIFICATIONS,
-  A2A_DEFAULT_STREAM_WAIT_SECONDS,
-  A2A_MAX_STREAM_WAIT_SECONDS,
-  A2A_MAX_SENDS_PER_RUN,
-  A2A_MAX_TEXT_CHARS,
-  isA2ATerminalState,
-  isA2ATaskState,
-  type A2AAgentCard,
-  type A2AMessage,
-  type A2ATask,
-  type A2AStreamEvent,
-  type A2ATaskEventNotification,
-  type A2APushNotification,
-  type A2AMessageSendResult,
-  type A2AAgentsListResult,
-  type A2ATasksGetResult,
-  type A2ATasksCancelResult,
-  type A2ATasksStatusResult,
   type ProposalKind,
   type SubagentPermission,
 } from "@pi-desktop/shared";
@@ -106,9 +86,11 @@ import {
   isRecord,
   nowIso,
   timestampMs,
+  toJsonValue,
   usageFromPi,
   usageToPi,
 } from "./agent-messages.js";
+import { buildSessionContext } from "./session-context.js";
 import {
   apiBindingForStyle,
   buildProviderModel,
@@ -133,6 +115,7 @@ import {
   DEFAULT_RUNTIME_SYSTEM_PROMPT,
 } from "./mode-prompts.js";
 import { clampThinkingLevel } from "./thinking-level.js";
+import { visionFromModelConfig } from "./model-capabilities.js";
 import type { ProjectInstructions } from "./project-instructions.js";
 import { projectInstructionsPrompt } from "./project-instructions-prompt.js";
 import {
@@ -248,11 +231,9 @@ const MAX_RETAINED_DELEGATIONS = 100;
 /**
  * `TaskWait` blocks the turn, and the model picks the timeout, so the ceiling
  * is what bounds how long a session can look hung with no way to intervene.
- * Expiry is not a failure — the delegates keep running and the wait returns the
- * finished reports plus a note to call again — so a shorter ceiling costs one
- * cheap round-trip and buys the user a responsive Stop. A hung delegate is not
- * this timeout's job: `DEFAULT_SUBAGENT_IDLE_TIMEOUT_SECONDS` is deliberately
- * shorter, so real silence settles as `timed_out` inside one wait.
+ * Expiry is not a failure and does not stop the delegates (D328) — the wait
+ * returns a heartbeat plus any finished reports, and the runtime delivers the
+ * rest when they finish even if the parent already stopped calling tools.
  */
 const TASKWAIT_DEFAULT_TIMEOUT_SECONDS = 600;
 const TASKWAIT_MAX_TIMEOUT_SECONDS = 900;
@@ -271,27 +252,9 @@ export type DelegationStatus =
  * One background delegation owned by the session runtime. `completion`
  * resolves when the delegate settles; `abort` stops the delegate's agent.
  */
-/** Actions the delegate-facing `A2A` tool multiplexes (ADR 0146). Local to the
- * runtime: the wire contract is the `a2a.*` RPC methods, this is only the
- * single tool's `action` selector. */
-const A2A_TOOL_ACTIONS = ["discover", "send", "get", "wait", "complete", "cancel"] as const;
-type A2AToolAction = (typeof A2A_TOOL_ACTIONS)[number];
-function isA2AToolAction(value: string): value is A2AToolAction {
-  return (A2A_TOOL_ACTIONS as readonly string[]).includes(value);
-}
-
 export type DelegationRecord = {
   delegationId: string;
   agentName: string;
-  /** Unique identity for A2A addressing. Equals `agentName` for the first
-   * delegation of a definition; subsequent concurrent ones get a numeric
-   * suffix so each peer is individually addressable (e.g. "discussant-2").
-   * Doubles as the delegate's registered A2A agent card `name`. */
-  peerId: string;
-  /** Host-minted A2A capability token, present when the delegate registered
-   * (declared the `A2A` tool). Held here so settle can deregister it; never
-   * exposed to the delegate's model. */
-  a2aToken?: string;
   status: DelegationStatus;
   startedAt: number;
   completedAt?: number;
@@ -302,6 +265,10 @@ export type DelegationRecord = {
   /** True when `TaskStop` asked for this stop, so an aborted run reads as
    * `stopped` rather than `aborted`. */
   stopRequested: boolean;
+  turns: number;
+  toolCalls: number;
+  lastToolName?: string;
+  lastActivityAt: number;
 };
 
 function delegationSummary(record: DelegationRecord): Record<string, unknown> {
@@ -310,16 +277,35 @@ function delegationSummary(record: DelegationRecord): Record<string, unknown> {
     agent: record.agentName,
     status: record.status,
     startedAt: record.startedAt,
+    turns: record.result?.turns ?? record.turns,
+    toolCalls: record.result?.toolCalls ?? record.toolCalls,
+    ...(record.lastToolName ? { lastToolName: record.lastToolName } : {}),
     ...(record.completedAt ? { completedAt: record.completedAt } : {}),
-    ...(record.result
-      ? {
-          turns: record.result.turns,
-          toolCalls: record.result.toolCalls,
-          ...(record.result.error ? { error: record.result.error } : {}),
-        }
-      : {}),
+    ...(record.result?.error ? { error: record.result.error } : {}),
   };
 }
+
+function elapsedSeconds(record: DelegationRecord, now = Date.now()): number {
+  const end = record.completedAt ?? now;
+  return Math.max(1, Math.round((end - record.startedAt) / 1000));
+}
+
+function formatDelegationHeartbeat(record: DelegationRecord): string {
+  const parts = [
+    `${record.agentName} (${record.delegationId})`,
+    record.status,
+    `${elapsedSeconds(record)}s`,
+  ];
+  const turns = record.result?.turns ?? record.turns;
+  const toolCalls = record.result?.toolCalls ?? record.toolCalls;
+  if (turns > 0) parts.push(`${turns} turns`);
+  if (toolCalls > 0) parts.push(`${toolCalls} tool calls`);
+  if (record.lastToolName) parts.push(`last tool ${record.lastToolName}`);
+  return parts.join(", ");
+}
+
+const DELEGATION_RESUME_PROMPT =
+  "The following subagents have finished. Integrate their reports and continue the user's original task. Call TaskStop only if you have decided a still-running delegate should not continue.";
 
 /** Join delegation results into one bounded text block for the model. */
 function formatDelegationResults(
@@ -777,15 +763,14 @@ function safeJson(value: unknown): string {
 }
 
 const MIN_COMMAND_TIMEOUT_SECONDS = 1;
-const MAX_COMMAND_TIMEOUT_SECONDS = 300;
+/** Host safety bound so every spawn still has a finite deadline (D329). */
+const MAX_COMMAND_TIMEOUT_SECONDS = 21_600;
 /**
  * Schema ceiling for `Bash.timeout`, not an honoured duration. It has to admit
- * the millisecond values models actually send — one local month topped out at
- * 1_800_000 — so the runtime can read the intent as seconds and clamp it to
- * {@link MAX_COMMAND_TIMEOUT_SECONDS} (D273). An hour is the round bound above
- * every value observed.
+ * millisecond values models send, then the runtime reads those as seconds and
+ * clamps to {@link MAX_COMMAND_TIMEOUT_SECONDS} (D273 / D329).
  */
-const MAX_ACCEPTED_COMMAND_TIMEOUT = 3_600_000;
+const MAX_ACCEPTED_COMMAND_TIMEOUT = 100_000_000;
 /**
  * Argument names models reach for instead of ours, mapped to the canonical
  * name. Every strong model has `file_path`/`query` burned in from pretraining
@@ -852,7 +837,7 @@ function commandShellToolDescription(
     "The protocol tool remains named Bash for compatibility; write commands for the active shell dialect.",
     shellSyntaxGuidance(shell),
     `The session scratch directory variable is ${shellScratchVariable(shell)}.`,
-    "An optional timeout from 1 to 300 seconds may be supplied; without it, the command defaults to a 60-second timeout.",
+    `An optional timeout from 1 to ${MAX_COMMAND_TIMEOUT_SECONDS} seconds may be supplied; without it, the command defaults to a 60-second timeout.`,
     ...(scratchDir ? [`The session scratch directory is ${scratchDir}.`] : []),
   ].join(" ");
 }
@@ -902,14 +887,13 @@ function requireAliasedParams(toolName: string, params: unknown): void {
 function normalizeToolParams(toolName: string, params: unknown): unknown {
   if (!isRecord(params)) return params;
   const aliases = TOOL_PARAM_ALIASES[toolName];
-  // Only a value of at least 1000 reads as milliseconds. Something like 301 is
-  // far more likely a seconds value that overshot the cap, and rewriting it to
-  // 0.301s would be worse than the error it currently earns.
+  // A value above the honoured seconds ceiling is the millisecond habit (D273 /
+  // D329). In-range values, including 600 and 1800, are seconds the agent chose.
   const timeoutIsMs =
     toolName === "Bash" &&
     typeof params.timeout === "number" &&
     Number.isFinite(params.timeout) &&
-    params.timeout >= 1000;
+    params.timeout > MAX_COMMAND_TIMEOUT_SECONDS;
   const aliased = aliases
     ? Object.keys(aliases).filter((alias) => params[alias] !== undefined)
     : [];
@@ -923,8 +907,7 @@ function normalizeToolParams(toolName: string, params: unknown): unknown {
     delete next[alias];
   }
   if (timeoutIsMs) {
-    // A timeout above the 300-second ceiling is only ever milliseconds: the
-    // schema rejects it as seconds, so there is no reading to preserve.
+    // Above the honoured seconds ceiling is milliseconds (D273 / D329).
     next.timeout = Math.min(
       MAX_COMMAND_TIMEOUT_SECONDS,
       Math.max(
@@ -1199,25 +1182,14 @@ export class DesktopAgentRuntime {
    * returns; `TaskWait`/`TaskList`/`TaskStop` drive it afterwards.
    */
   private delegations = new Map<string, DelegationRecord>();
+  /** Set by `abort` / `dispose` so a finishing delegate cannot restart the parent. */
+  private runCancelled = false;
   /**
    * Permission scope of the delegate currently executing one tool call,
    * keyed by tool call id (ADR 0089). The host reads it on `tools.execute` and
    * resolves the delegate's permission under it instead of the session mode.
    */
   private delegatePermissionScopes = new Map<string, SubagentPermission>();
-  /**
-   * A2A streaming events delivered by host-core, keyed by recipient peer id
-   * (ADR 0146). The broker addresses every `a2a.task.event` to the agent that
-   * should act on it, so a delegate waits on its own peer id. Owned by the
-   * runtime, not by any delegate: a delegate reaches A2A only through the
-   * single `A2A` tool the runtime hands it.
-   */
-  private a2aEvents = new Map<
-    string,
-    { queue: A2AStreamEvent[]; wakers: Set<() => void> }
-  >();
-  /** Unsubscribe from host A2A notifications; set on first registration. */
-  private a2aUnsubscribe?: () => void;
   /** Serializes same-path mutations across the parent and its delegates. */
   private writeLocks = new PathMutex();
   /** Complete tool registry; only the active subset is sent to the provider. */
@@ -1310,6 +1282,7 @@ export class DesktopAgentRuntime {
   private contextFallbackReminderClaimed = false;
   private activeToolProgressCleanups = new Set<(flush: boolean) => void>();
   private hostCloseUnsubscribe?: () => void;
+  private turnSubagentUsage?: MessageUsage;
 
   constructor(opts: AgentRuntimeOptions) {
     this.sessionId = opts.sessionId;
@@ -1375,13 +1348,12 @@ Use the Task tool when:
 - Adversarial review: after implementing a non-trivial change, delegate a read-only review of it to code-reviewer before you commit.
 - Implementation: a multi-file change with a complete, self-contained spec — delegate to fixer, which may write inside the workspace.
 - Context economy: wide searches, long logs, multi-file surveys whose intermediate output you do not need — explorer / test-runner.
-- Batch sharding: the same bounded job repeated over many independent targets.${this.subagents.some(subagentUsesA2A) ? `
-- Structured debate / roundtable: start one Task(\"discussant\") per perspective in the same assistant message. Each brief must state: the role name, the topic, the list of other participants (by agent name), the number of discussion rounds, and the protocol (discover peers, open with A2A send, read with A2A wait/get, respond, then close). Never pack multiple roles into a single Task — each role must be its own delegate so they can debate through the A2A protocol.` : ""}
+- Batch sharding: the same bounded job repeated over many independent targets.
 
 Delegation rules:
 - Task returns immediately with a delegation id. Do not sit idle: keep working on your own independent line, then converge with TaskWait (mode="any" + minCompleted to converge early) when you need results, TaskList to check progress, TaskStop to stop.
 - Always fill Task's \`description\` so the user sees what each subagent is doing. Integrate findings and say which subagent produced what.
-- Never end the turn with subagents still running: wait for or stop them.
+- You may talk to the user while subagents run. Do not TaskStop unless you have decided the work should not continue. The runtime keeps them alive and delivers their reports when they finish — ending your turn does not abort them.
 - Never delegate what you can finish in a couple of tool calls, and never delegate anything that needs the user.`,
             ...(this.subagentModelSummary()
               ? [this.subagentModelSummary()!]
@@ -1391,7 +1363,7 @@ Delegation rules:
       // Search-tool steering. Read/Grep/Glob are host-bounded and scopeable;
       // hand-rolled shell pipelines are not, and unbounded shell output is
       // what exhausted context and forced repeated re-searching.
-      "Searching and reading: prefer the Read, Grep, and Glob tools over shell `cat`, `sed`, `head`, `grep`, or `find`. Read accepts only an existing regular text file, never a directory. If a file name is uncertain or a directory must be listed, use Glob instead of guessing a file name or calling Read on the directory; in Agent mode, activate it with ToolSearch for the current prompt when it is unavailable. Scope every search with the native parameters: Grep takes a file-or-directory `path` plus `include`, `outputMode`, and `headLimit`; Glob takes a directory `path` and `limit`; Read takes `offset` and `limit`, always reports `totalLines`, and paginates any supported text file however large; for files beyond the default window, use Grep to locate the target lines first, then Read the relevant range. Use `outputMode: \"filesWithMatches\"` or `\"count\"` when file contents are not needed, and use `include` to avoid scanning generated or vendor trees. These tools bound their own output; a shell pipeline does not, and one unscoped search over a whole workspace costs context you will need later. Workspace-relative paths are portable across macOS, Linux, and Windows; an explicit path outside the workspace and session scratch roots asks for permission unless the effective mode is Auto, so do not retry a denied path blindly. When a search genuinely needs Bash, use the active shell's syntax and a bounded command; use `rg` only when it is available, and never assume POSIX utilities, `/`-based paths, or PowerShell commands on every platform. Do not re-run a search whose answer you already have.",
+      "Searching and reading: prefer the Read, Grep, and Glob tools over shell `cat`, `sed`, `head`, `grep`, or `find`. Read accepts only an existing regular text file, never a directory. If a file name is uncertain or a directory must be listed, use Glob instead of guessing a file name or calling Read on the directory; in Agent mode, activate it with ToolSearch for the current prompt when it is unavailable. Scope every search with the native parameters: Grep takes a file-or-directory `path` plus `include`, `outputMode`, and `headLimit`; Glob takes a directory `path` and `limit`; Read takes `offset` and `limit`, always reports `totalLines`, and paginates any supported text file however large; for files beyond the default window, use Grep to locate the target lines first, then Read the relevant range. Use `outputMode: \"filesWithMatches\"` or `\"count\"` when file contents are not needed, and use `include` to avoid scanning generated or vendor trees. These tools bound their own output; a shell pipeline does not, and one unscoped search over a whole workspace costs context you will need later. Workspace-relative paths are portable across macOS, Linux, and Windows; an explicit path outside the workspace and session scratch roots asks for permission unless the effective mode is Auto, so do not retry a denied path blindly. Grep uses the system's `rg` when it is installed and an in-process searcher otherwise — call Grep, do not shell out to `rg`. When a search genuinely needs Bash, use the active shell's syntax and a bounded command, and never assume POSIX utilities, `/`-based paths, or PowerShell commands on every platform. Do not re-run a search whose answer you already have.",
       // Observed leak: OpenAI-style models sometimes emit the internal
       // `multi_tool_use.parallel` wrapper as assistant text. PI-Desktop has no
       // such tool, so the whole batch is silently lost as prose.
@@ -1798,7 +1770,9 @@ Delegation rules:
       retainedTail:
         retainedTailForContext(checkpoint.retainedTail, checkpoint.details) ??
         [],
-      details: checkpoint.details,
+      details: toJsonValue(checkpoint.details),
+      // Desktop-owned checkpoints are not pi extension-hook compactions.
+      fromHook: false,
       usage: checkpoint.usage as Usage | undefined,
     };
     entries.splice(throughIndex + 1, 0, compactionEntry);
@@ -1838,7 +1812,8 @@ Delegation rules:
           return (
             "Read a bounded window from an existing regular text file, never a directory. " +
             "The result always includes `totalLines` so you know the file\'s scale upfront. " +
-            "For large files, use Grep to locate the target content first, then Read " +
+            "`truncated` is true only when this window was cut short, not merely because the file continues. " +
+            "For files beyond the default window, use Grep to locate the target content first, then Read " +
             "the relevant range with `offset` and `limit`. Activate and use Glob " +
             "when a directory must be listed or the file name is uncertain." +
             `${scratchPathHint}${externalPathHint}`
@@ -1889,7 +1864,7 @@ Delegation rules:
           Type.Number({ minimum: 0, description: "0-based line offset; defaults to 0." }),
         ),
         limit: Type.Optional(
-          Type.Number({ minimum: 1, description: "Maximum lines to return; defaults to 500." }),
+          Type.Number({ minimum: 1, description: "Maximum lines to return; defaults to 2000." }),
         ),
       },
       BrowserPreview: {
@@ -1949,12 +1924,11 @@ Delegation rules:
         timeout: Type.Optional(
           Type.Number({
             minimum: MIN_COMMAND_TIMEOUT_SECONDS,
-            // The honoured ceiling is 300 seconds, but models routinely send
-            // milliseconds; a wider schema bound lets the runtime read the
-            // intent instead of burning the turn (D273).
+            // Models routinely send milliseconds; a wider schema bound lets the
+            // runtime read the intent instead of burning the turn (D273 / D329).
             maximum: MAX_ACCEPTED_COMMAND_TIMEOUT,
             description:
-              "Optional command timeout in seconds from 1 to 300; defaults to 60 seconds.",
+              `Optional command timeout in seconds from 1 to ${MAX_COMMAND_TIMEOUT_SECONDS}; defaults to 60 seconds.`,
           }),
         ),
       },
@@ -2213,14 +2187,51 @@ Delegation rules:
           ...(grantedRecoveryGrace ? { mutationFailureGrace: true } : {}),
           ...(terminateAfterMutationFailure ? { terminate: true } : {}),
         });
-        const text =
-          typeof result.content === "string"
-            ? result.content
-            : JSON.stringify(result.content, null, 2);
+        const rawContent = result.content;
+        const imageBlocks: Array<{ type: "image"; data: string; mimeType: string }> = [];
+        let text: string;
+        let details: unknown = rawContent;
+        if (typeof rawContent === "string") {
+          text = rawContent;
+        } else if (isRecord(rawContent) && Array.isArray(rawContent.images)) {
+          text =
+            typeof rawContent.text === "string"
+              ? rawContent.text
+              : JSON.stringify(
+                  { ...rawContent, images: undefined },
+                  null,
+                  2,
+                );
+          const vision = visionFromModelConfig(this.provider.modelConfig);
+          for (const image of rawContent.images) {
+            if (
+              !isRecord(image) ||
+              typeof image.data !== "string" ||
+              typeof image.mimeType !== "string"
+            ) {
+              continue;
+            }
+            if (vision) {
+              imageBlocks.push({
+                type: "image",
+                data: image.data,
+                mimeType: image.mimeType,
+              });
+            }
+          }
+          const { images: _images, ...rest } = rawContent;
+          details = {
+            ...rest,
+            ...(typeof rawContent.path === "string" ? { path: rawContent.path } : {}),
+            imageCount: imageBlocks.length,
+          };
+        } else {
+          text = JSON.stringify(rawContent, null, 2);
+        }
         if (!result.ok) this.failedHostToolCalls.add(toolCallId);
         return {
-          content: [{ type: "text", text }],
-          details: result.content,
+          content: [{ type: "text", text }, ...imageBlocks],
+          details,
           ...(terminateAfterMutationFailure ? { terminate: true } : {}),
           isError: result.isError === true || result.ok === false,
         };
@@ -2396,7 +2407,7 @@ Delegation rules:
     }
     this.toolCatalog = catalog;
     this.deferredToolNames = new Set(
-      [...catalog.keys()].filter(
+      [...this.toolCatalog.keys()].filter(
         (name) => !this.isCoreTool(name) && name !== TOOL_SEARCH_NAME,
       ),
     );
@@ -2680,12 +2691,12 @@ Delegation rules:
    * collaboration rules are deliberately left out — a delegate has no user to
    * talk to, and its report format is set by `composeSubagentSystemPrompt`.
    */
-  private subagentGuidance(definition: SubagentDefinition, peerId?: string): string[] {
+  private subagentGuidance(definition: SubagentDefinition): string[] {
     const tools = new Set(definition.tools);
     const blocks: string[] = [];
     if (tools.has("Read") || tools.has("Grep") || tools.has("Glob")) {
       blocks.push(
-        "Searching and reading: prefer Read, Grep, and Glob over shell text utilities. Read accepts only an existing regular text file, never a directory. If a file name is uncertain or a directory must be listed, use Glob when it is available; otherwise use a bounded available search or listing tool instead of guessing a file name or reading the directory. Scope every call — Grep takes a file-or-directory `path` plus `include`, `outputMode`, and `headLimit`; Glob takes a directory `path` and `limit`; Read takes `offset` and `limit` and always reports `totalLines`; use Grep to locate content in large files before reading a targeted range. Use `outputMode: \"filesWithMatches\"` or `\"count\"` when contents are not needed. Your context is finite too: an unscoped search over the whole workspace costs the tokens you need to finish.",
+        "Searching and reading: prefer Read, Grep, and Glob over shell text utilities. Read accepts only an existing regular text file, never a directory. If a file name is uncertain or a directory must be listed, use Glob when it is available; otherwise use a bounded available search or listing tool instead of guessing a file name or reading the directory. Scope every call — Grep takes a file-or-directory `path` plus `include`, `outputMode`, and `headLimit`; Glob takes a directory `path` and `limit`; Read takes `offset` and `limit` and always reports `totalLines`; use Grep to locate content in large files before reading a targeted range. Use `outputMode: \"filesWithMatches\"` or `\"count\"` when contents are not needed. Grep uses the system's `rg` when installed and an in-process searcher otherwise — call Grep rather than shelling out to `rg`. Your context is finite too: an unscoped search over the whole workspace costs the tokens you need to finish.",
       );
     }
     if (tools.has("Edit") || tools.has("Write")) {
@@ -2699,21 +2710,6 @@ Delegation rules:
     if (this.scratchDir && (tools.has("Bash") || tools.has("Write"))) {
       blocks.push(
         `Write temporary and intermediate files into the session scratch directory \`${this.scratchDir}\` (in Bash: $PI_SCRATCH_DIR) using absolute paths, never into the workspace.`,
-      );
-    }
-    if (subagentUsesA2A(definition)) {
-      // Named agents, resolved at spawn time: a delegate discovers who is
-      // running through the A2A tool's `discover` action, and addressing is by
-      // agent name (ADR 0146). When multiple delegates share a definition name,
-      // each gets a unique peerId so they can address each other individually.
-      const self = peerId ?? definition.name;
-      blocks.push(
-        [
-          `A2A protocol: you are the agent "${self}" and other subagents may be running in this session at the same time. You reach them through the A2A tool over the host's Agent2Agent broker.`,
-          "Use the single A2A tool: A2A(action=discover) lists the peers running alongside you as Agent Cards; A2A(action=send) sends a message to a peer by name (creating or continuing a task); A2A(action=get) reads a task's status and history; A2A(action=wait) blocks until a peer addresses a task to you; A2A(action=cancel) cancels a task you own.",
-          "Coordination is the point, not conversation: claim a file before editing it so two agents do not fight over it, correct a peer whose assumption you just disproved, and pass a fact that saves a peer a search. Never ask a peer to do your task, and never wait on a peer to finish yours.",
-          "A peer may never reply. A task addressed to you is not an interrupt — you see it only when you `wait` or `get` — so treat every exchange as best effort and keep your own report self-contained. The main agent never sees A2A traffic, so anything that matters must also be in your report.",
-        ].join("\n\n"),
       );
     }
     const projectPrompt = projectInstructionsPrompt(this.projectInstructions);
@@ -2739,26 +2735,6 @@ Delegation rules:
   }
 
   /**
-   * Compute a unique peer identity for a new delegation.  The first delegation
-   * of a given definition keeps its bare name (e.g. "discussant"); each extra
-   * concurrent delegation of the same name gets a numeric suffix ("discussant-2",
-   * "discussant-3", …) so every peer is individually addressable through the
-   * A2A broker.
-   */
-  private assignPeerId(agentName: string): string {
-    // Collect *all* running peerIds, not just those for the same definition,
-    // so a suffix like "discussant-2" never collides with a distinct definition
-    // that happens to be named "discussant-2".
-    const running = this.runningDelegations();
-    const taken = new Set(running.map(r => r.peerId));
-    if (!taken.has(agentName)) return agentName;
-    for (let i = 2; ; i++) {
-      const candidate = `${agentName}-${i}`;
-      if (!taken.has(candidate)) return candidate;
-    }
-  }
-
-  /**
    * `Task`: delegate one bounded piece of work to a subagent (ADR 0062).
    *
    * The catalog of definitions rides in this tool's description rather than in
@@ -2781,7 +2757,7 @@ Delegation rules:
         "Use it when the work is separable: parallel exploration of independent directions (one Task per direction in the same assistant message), a multi-file implementation with a complete spec (fixer), an adversarial read-only review of a change you just made (code-reviewer), or a wide search / long log / multi-file survey whose intermediate output would otherwise fill this context (explorer, test-runner).",
         "Do not delegate what you can finish in a couple of tool calls, and do not delegate anything that needs the user — a subagent cannot ask a question or propose a plan on your behalf.",
         "`task` is the delegate's only instruction. It cannot see this conversation, and you cannot correct it while it runs, so state the goal, the paths and facts it cannot infer, and exactly what to report back.",
-        "To run delegates concurrently, emit several Task calls in one assistant message. A message that mixes Task with any other tool runs one call at a time. Never end the turn with subagents still running: wait for them with TaskWait or stop them with TaskStop.",
+        "To run delegates concurrently, emit several Task calls in one assistant message. A message that mixes Task with any other tool runs one call at a time. You may keep working or talk to the user while they run; the runtime delivers their reports when they finish. Call TaskStop only to cancel.",
         `Available subagents:\n${catalog}`,
       ].join("\n\n"),
       parameters: Type.Object({
@@ -2808,7 +2784,7 @@ Delegation rules:
       // Set in `rebuildToolCatalog`, which owns every execution mode; repeated
       // here so the intent survives a tool built outside that path.
       executionMode: "parallel",
-      execute: async (toolCallId, params, signal) => {
+      execute: async (toolCallId, params) => {
         const requested = isRecord(params) ? String(params.agent ?? "") : "";
         const definition = this.subagents.find(
           (candidate) => candidate.name === normalizeSubagentName(requested),
@@ -2866,25 +2842,12 @@ Delegation rules:
           }
         }
         const tools = definition.tools
-          .filter((name) => !isSubagentA2ATool(name))
           .map((name) => this.toolCatalog.get(name))
           .filter((tool): tool is AgentTool => tool !== undefined);
-        // Check whether the A2A tool is declared. It is built later, after the
-        // unique peerId is assigned and the agent registers with the broker,
-        // because it closes over the peerId and the host-minted token (ADR 0146).
-        const hasA2ATool = definition.tools.some(isSubagentA2ATool);
-        if (tools.length === 0 && !hasA2ATool) {
+        if (tools.length === 0) {
           return this.subagentToolError(
             toolCallId,
             `The ${definition.name} subagent declares no tool available in this session.`,
-          );
-        }
-        if (tools.length === 0) {
-          // Messaging alone cannot accomplish a task; a delegate with only the
-          // A2A tool would burn turns talking with nothing to report.
-          return this.subagentToolError(
-            toolCallId,
-            `The ${definition.name} subagent declares only the A2A tool and no tool to do work with.`,
           );
         }
         const startedAt = Date.now();
@@ -2899,53 +2862,29 @@ Delegation rules:
         // immediately with a delegation id, and TaskWait converges later.
         const delegationId = randomUUID();
         const controller = new AbortController();
-        // Aborts when the parent run aborts OR when TaskStop asks for it.
-        const abortSignal = signal
-          ? AbortSignal.any([signal, controller.signal])
-          : controller.signal;
+        // Only TaskStop, user Stop, and dispose abort a delegate (D328). The
+        // Task tool call returns immediately; tying the background run to that
+        // call's signal would kill it when the parent loop idled.
+        const abortSignal = controller.signal;
         let resolveCompletion: () => void = () => {};
         const completion = new Promise<void>((resolve) => {
           resolveCompletion = resolve;
         });
-        // Assign a unique peer identity *before* creating the record so that
-        // concurrent delegations of the same definition (e.g. three
-        // "discussant" subagents in a roundtable) each register a distinct
-        // A2A agent card and can address each other individually.
-        const peerId =
-          hasA2ATool
-            ? this.assignPeerId(definition.name)
-            : definition.name;
         const record: DelegationRecord = {
           delegationId,
           agentName: definition.name,
-          peerId,
           status: "running",
           startedAt,
           completion,
           resolveCompletion,
           abort: () => controller.abort(),
           stopRequested: false,
+          turns: 0,
+          toolCalls: 0,
+          lastActivityAt: startedAt,
         };
         this.delegations.set(delegationId, record);
-
-        // The A2A tool bypasses `scopeDelegateTools`: it is a host `a2a.*` call
-        // authorized by the delegate's own capability token, not a workspace
-        // tool call, so there is no permission scope to attach for host-core to
-        // gate. Register the agent with the broker to mint its token and
-        // publish its Agent Card, then build the tool bound to the peerId and
-        // token — both supplied by the runtime, never by the model (ADR 0146).
-        const a2aTools: AgentTool[] = [];
-        if (hasA2ATool) {
-          const token = await this.registerA2AAgent(peerId, definition);
-          if (token) {
-            record.a2aToken = token;
-            a2aTools.push(this.buildA2ATool(peerId, token));
-          }
-        }
-        const scopedTools = [
-          ...this.scopeDelegateTools(tools, definition),
-          ...a2aTools,
-        ];
+        const scopedTools = this.scopeDelegateTools(tools, definition);
         new SubagentRun({
           definition,
           sessionId: this.sessionId,
@@ -2959,10 +2898,13 @@ Delegation rules:
           ),
           systemPrompt: composeSubagentSystemPrompt({
             definition,
-            guidance: this.subagentGuidance(definition, peerId),
+            guidance: this.subagentGuidance(definition),
           }),
           tools: scopedTools,
-          onEvent: this.onEvent,
+          onEvent: (envelope) => {
+            this.noteDelegationActivity(record, envelope);
+            this.onEvent(envelope);
+          },
           // A host failure inside a delegate reaches its tool-error channel
           // through the same bookkeeping the parent uses.
           resolveToolOutcome: (context) => this.afterToolCall(context),
@@ -3020,435 +2962,6 @@ Delegation rules:
     };
   }
 
-  /**
-   * Register a delegate with the host-core A2A broker at spawn time (ADR
-   * 0146). Returns the host-minted capability token the `A2A` tool authorizes
-   * with, or `undefined` when the host is unavailable — the delegate then runs
-   * without A2A rather than failing outright. The agent card `name` is the
-   * unique peerId so concurrent delegations of one definition stay
-   * individually addressable; `contextId` is the session id, which scopes
-   * discovery and addressing to this session.
-   */
-  private async registerA2AAgent(
-    peerId: string,
-    definition: SubagentDefinition,
-  ): Promise<string | undefined> {
-    this.ensureA2ASubscription();
-    const card: A2AAgentCard = { ...toAgentCard(definition), name: peerId };
-    try {
-      const result = await this.host.call<{ agentId: string; token: string }>(
-        A2A_RPC_METHODS.agentsRegister,
-        { contextId: this.sessionId, card },
-      );
-      return result?.token;
-    } catch {
-      // Host unavailable or rejected: the delegate keeps its work tools.
-      return undefined;
-    }
-  }
-
-  /** Deregister a settled delegate, invalidating its capability token and
-   * waking any peer waiting on events addressed to it. Best effort: a failed
-   * deregister on a dying host does not block settling. */
-  private deregisterA2AAgent(token: string): void {
-    this.host
-      .call(A2A_RPC_METHODS.agentsDeregister, { token })
-      .catch(() => undefined);
-    // Wake every local waiter so a peer blocked in `A2A(wait)` on the departing
-    // agent re-evaluates instead of waiting out its own timeout. Waiters park
-    // on their own name (the symmetric model), and the departing agent cannot
-    // know which peer was blocked on it, so wake them all; a woken waiter with
-    // an empty queue simply returns early, which is the documented "returns as
-    // soon as your last peer finishes" behavior.
-    for (const recipient of [...this.a2aEvents.keys()]) {
-      this.wakeA2ARecipient(recipient);
-    }
-  }
-
-  /**
-   * Subscribe once to host A2A notifications. The broker addresses every
-   * `a2a.task.event` / `a2a.push` to the peer that should act on it, so the
-   * runtime routes each event into that recipient's queue and wakes anything
-   * blocked in `A2A(wait)` for it.
-   */
-  private ensureA2ASubscription(): void {
-    if (this.a2aUnsubscribe) return;
-    this.a2aUnsubscribe = this.host.onNotification((method, params) => {
-      if (method === A2A_NOTIFICATIONS.taskEvent) {
-        const note = params as A2ATaskEventNotification;
-        if (note && typeof note.recipient === "string" && note.event) {
-          this.deliverA2AEvent(note.recipient, note.event);
-        }
-      } else if (method === A2A_NOTIFICATIONS.push) {
-        const note = params as A2APushNotification;
-        if (note && typeof note.recipient === "string" && note.status) {
-          this.deliverA2AEvent(note.recipient, {
-            kind: "status-update",
-            taskId: note.taskId,
-            contextId: note.contextId,
-            status: note.status,
-            final: isA2ATerminalState(note.status.state),
-          });
-        }
-      }
-    });
-  }
-
-  /** Queue an event for a recipient peer and wake its waiters. */
-  private deliverA2AEvent(recipient: string, event: A2AStreamEvent): void {
-    const entry = this.a2aEvents.get(recipient) ?? {
-      queue: [],
-      wakers: new Set<() => void>(),
-    };
-    entry.queue.push(event);
-    this.a2aEvents.set(recipient, entry);
-    const wakers = [...entry.wakers];
-    entry.wakers.clear();
-    for (const wake of wakers) wake();
-  }
-
-  /** Wake every waiter for a recipient without queueing an event (used when a
-   * peer deregisters, so a blocked `wait` returns instead of timing out). */
-  private wakeA2ARecipient(recipient: string): void {
-    const entry = this.a2aEvents.get(recipient);
-    if (!entry) return;
-    const wakers = [...entry.wakers];
-    entry.wakers.clear();
-    for (const wake of wakers) wake();
-  }
-
-  /** Take and clear the events queued for a recipient. */
-  private drainA2AEvents(recipient: string): A2AStreamEvent[] {
-    const entry = this.a2aEvents.get(recipient);
-    if (!entry || entry.queue.length === 0) return [];
-    const events = entry.queue;
-    entry.queue = [];
-    return events;
-  }
-
-  /** Block until an event is addressed to `self`, the deadline passes, or the
-   * run aborts. Returns the drained events (empty on timeout/abort). */
-  private waitForA2AEvents(
-    self: string,
-    deadline: number,
-    signal?: AbortSignal,
-  ): Promise<A2AStreamEvent[]> {
-    const existing = this.drainA2AEvents(self);
-    if (existing.length > 0) return Promise.resolve(existing);
-    if (signal?.aborted) return Promise.resolve([]);
-    const entry = this.a2aEvents.get(self) ?? {
-      queue: [],
-      wakers: new Set<() => void>(),
-    };
-    this.a2aEvents.set(self, entry);
-    return new Promise<A2AStreamEvent[]>((resolve) => {
-      let done = false;
-      const finish = () => {
-        if (done) return;
-        done = true;
-        clearTimeout(timer);
-        entry.wakers.delete(wake);
-        signal?.removeEventListener("abort", onAbort);
-        resolve(this.drainA2AEvents(self));
-      };
-      const wake = () => finish();
-      const onAbort = () => finish();
-      entry.wakers.add(wake);
-      signal?.addEventListener("abort", onAbort, { once: true });
-      const timer = setTimeout(finish, Math.max(0, deadline - Date.now()));
-    });
-  }
-
-  /** Map a broker error to its A2A contract error code, when present. */
-  private a2aErrorCode(error: unknown): string | undefined {
-    const data = (error as { data?: unknown })?.data;
-    if (data && typeof data === "object" && "errorCode" in data) {
-      const code = (data as { errorCode?: unknown }).errorCode;
-      if (typeof code === "string") return code;
-    }
-    return undefined;
-  }
-
-  /** Render a task's current state and last message for the delegate's model. */
-  private formatA2ATask(task: A2ATask): string {
-    const lines = [
-      `Task ${task.id} owned by ${task.agentName}: ${task.status.state}.`,
-    ];
-    const last = task.history[task.history.length - 1];
-    if (last) {
-      const text = last.parts
-        .map((part) =>
-          part.kind === "text"
-            ? part.text
-            : part.kind === "file"
-              ? `[file ${part.file.name ?? part.file.mimeType ?? "attachment"}]`
-              : "[data]",
-        )
-        .join(" ");
-      lines.push(`Latest from ${last.from ?? last.role}: ${text}`);
-    }
-    return lines.join("\n");
-  }
-
-  /**
-   * Build the single `A2A` tool bound to `self` and its capability `token`
-   * (ADR 0146).
-   *
-   * One tool carries the A2A operations a delegate needs — `discover`, `send`,
-   * `get`, `wait` and `cancel` — selected by the required `action` parameter,
-   * so an opt-in delegate declares one tool. The tool closes over the
-   * delegate's own peer id and its host-minted token: a delegate cannot spoof
-   * a sender or address the broker as another agent because the token is
-   * supplied by the runtime at spawn time, never by the model. It is
-   * deliberately absent from `toolCatalog` — the parent already owns the
-   * delegation lifecycle and must not gain a second, weaker channel to its
-   * delegates.
-   */
-  private buildA2ATool(self: string, token: string): AgentTool {
-    return {
-      name: "A2A",
-      label: "A2A",
-      description: [
-        "Talk to another subagent running right now in this session over the Agent2Agent (A2A) protocol. `action` picks the operation.",
-        "`discover` lists the peers running alongside you as Agent Cards (name, description, skills). Call it first to learn who is available and by what name to address them.",
-        `\`send\` sends a message to a peer, creating a task the peer serves or continuing one via \`taskId\`. Set \`to\` to a peer name from \`discover\`; put your note in \`text\`. Coordinate, do not transfer data: a peer that needs a file reads the file. Keep \`text\` under ${A2A_MAX_TEXT_CHARS} characters. You may send at most ${A2A_MAX_SENDS_PER_RUN} times per run.`,
-        "`get` reads a task's current state and message history by `taskId`.",
-        `\`wait\` blocks until a peer addresses a task to you and returns it, or returns empty after \`timeoutSeconds\` (default ${A2A_DEFAULT_STREAM_WAIT_SECONDS}, max ${A2A_MAX_STREAM_WAIT_SECONDS}). Only wait when you are genuinely blocked on a peer's reply — a peer under no obligation to answer may never answer, and an empty wait is not a failure. It also returns as soon as your last peer finishes.`,
-        "`complete` finishes a task you serve by `taskId`, moving it to a terminal state (default `completed`; set `state` to `failed` or `rejected`, or to `input-required`/`auth-required` to pause for the requester). Put your result in `text`; it becomes the task's final message and wakes the requester.",
-        "`cancel` cancels a task by `taskId`, moving it to a terminal state.",
-        "The main agent never sees A2A traffic, so anything that matters must also be in your report.",
-      ].join("\n\n"),
-      parameters: Type.Object({
-        action: Type.Union(
-          A2A_TOOL_ACTIONS.map((value) => Type.Literal(value)),
-          {
-            description:
-              "Which operation to run: `discover` list peers, `send` a message to a peer, `get` a task, `wait` for a peer to address you, `complete` a task you serve, or `cancel` a task.",
-          },
-        ),
-        to: Type.Optional(
-          Type.String({
-            description:
-              "For `send`: peer name of the recipient (from `discover`). Omit to address the single other running peer.",
-          }),
-        ),
-        text: Type.Optional(
-          Type.String({
-            description: "For `send`: the message. State the fact or the claim, not narration.",
-          }),
-        ),
-        taskId: Type.Optional(
-          Type.String({
-            description:
-              "For `send`: continue an existing task instead of creating one. For `get`/`complete`/`cancel`: the task to read, finish, or cancel.",
-          }),
-        ),
-        state: Type.Optional(
-          Type.Union(
-            (["completed", "failed", "rejected", "input-required", "auth-required"] as const).map(
-              (value) => Type.Literal(value),
-            ),
-            {
-              description:
-                "For `complete`: the target state. Defaults to `completed`.",
-            },
-          ),
-        ),
-        timeoutSeconds: Type.Optional(
-          Type.Number({
-            minimum: 1,
-            maximum: A2A_MAX_STREAM_WAIT_SECONDS,
-            description: `For \`wait\`: max seconds to block; defaults to ${A2A_DEFAULT_STREAM_WAIT_SECONDS}.`,
-          }),
-        ),
-      }),
-      executionMode: "sequential",
-      execute: async (_toolCallId, params, signal) => {
-        const action =
-          isRecord(params) &&
-          typeof params.action === "string" &&
-          isA2AToolAction(params.action)
-            ? params.action
-            : "discover";
-        const to =
-          isRecord(params) && typeof params.to === "string" && params.to.trim()
-            ? params.to.trim()
-            : undefined;
-        const text =
-          isRecord(params) && typeof params.text === "string" ? params.text : "";
-        const taskId =
-          isRecord(params) &&
-          typeof params.taskId === "string" &&
-          params.taskId.trim()
-            ? params.taskId.trim()
-            : undefined;
-        const state =
-          isRecord(params) &&
-          typeof params.state === "string" &&
-          isA2ATaskState(params.state)
-            ? params.state
-            : undefined;
-
-        try {
-          if (action === "discover") {
-            const result = await this.host.call<A2AAgentsListResult>(
-              A2A_RPC_METHODS.agentsList,
-              { token },
-            );
-            const agents = result?.agents ?? [];
-            const body =
-              agents.length === 0
-                ? "No other subagent is running right now. Carry on and put anything that matters in your report."
-                : agents
-                    .map((card) => `- ${card.name}: ${card.description}`)
-                    .join("\n");
-            return {
-              content: [{ type: "text", text: body }],
-              details: { action, agents },
-            };
-          }
-
-          if (action === "send") {
-            const body = text.trim();
-            if (!body) {
-              const msg = "An A2A message needs non-empty text.";
-              return {
-                content: [{ type: "text", text: msg }],
-                details: { action, error: msg },
-              };
-            }
-            const message: A2AMessage = {
-              role: "agent",
-              parts: [{ kind: "text", text: body }],
-              messageId: randomUUID(),
-              ...(taskId ? { taskId } : {}),
-              ...(to ? { to } : {}),
-            };
-            const result = await this.host.call<A2AMessageSendResult>(
-              A2A_RPC_METHODS.messageSend,
-              { token, message },
-            );
-            if ("task" in result) {
-              return {
-                content: [{ type: "text", text: this.formatA2ATask(result.task) }],
-                details: { action, task: result.task },
-              };
-            }
-            return {
-              content: [{ type: "text", text: "Delivered." }],
-              details: { action, message: result.message },
-            };
-          }
-
-          if (action === "get") {
-            if (!taskId) {
-              const msg = "`get` needs a `taskId`.";
-              return {
-                content: [{ type: "text", text: msg }],
-                details: { action, error: msg },
-              };
-            }
-            const result = await this.host.call<A2ATasksGetResult>(
-              A2A_RPC_METHODS.tasksGet,
-              { token, id: taskId },
-            );
-            return {
-              content: [{ type: "text", text: this.formatA2ATask(result.task) }],
-              details: { action, task: result.task },
-            };
-          }
-
-          if (action === "complete") {
-            if (!taskId) {
-              const msg = "`complete` needs a `taskId`.";
-              return {
-                content: [{ type: "text", text: msg }],
-                details: { action, error: msg },
-              };
-            }
-            const targetState = state ?? "completed";
-            const body = text.trim();
-            const message: A2AMessage | undefined = body
-              ? {
-                  role: "agent",
-                  parts: [{ kind: "text", text: body }],
-                  messageId: randomUUID(),
-                  taskId,
-                }
-              : undefined;
-            const result = await this.host.call<A2ATasksStatusResult>(
-              A2A_RPC_METHODS.tasksStatus,
-              { token, id: taskId, state: targetState, ...(message ? { message } : {}) },
-            );
-            return {
-              content: [{ type: "text", text: this.formatA2ATask(result.task) }],
-              details: { action, task: result.task },
-            };
-          }
-
-          if (action === "cancel") {
-            if (!taskId) {
-              const msg = "`cancel` needs a `taskId`.";
-              return {
-                content: [{ type: "text", text: msg }],
-                details: { action, error: msg },
-              };
-            }
-            const result = await this.host.call<A2ATasksCancelResult>(
-              A2A_RPC_METHODS.tasksCancel,
-              { token, id: taskId },
-            );
-            return {
-              content: [{ type: "text", text: this.formatA2ATask(result.task) }],
-              details: { action, task: result.task },
-            };
-          }
-
-          // action === "wait"
-          const timeoutSeconds =
-            isRecord(params) && typeof params.timeoutSeconds === "number"
-              ? Math.min(
-                  Math.max(1, Math.floor(params.timeoutSeconds)),
-                  A2A_MAX_STREAM_WAIT_SECONDS,
-                )
-              : A2A_DEFAULT_STREAM_WAIT_SECONDS;
-          const events = await this.waitForA2AEvents(
-            self,
-            Date.now() + timeoutSeconds * 1000,
-            signal,
-          );
-          if (events.length === 0) {
-            const body = `No peer addressed a task to you within ${timeoutSeconds}s. Do not wait again for the same answer — continue on your own and note the missing input in your report.`;
-            return {
-              content: [{ type: "text", text: body }],
-              details: { action, events, timedOut: true },
-            };
-          }
-          const lines = events.map((event) =>
-            event.kind === "status-update"
-              ? `Task ${event.taskId}: ${event.status.state}${event.final ? " (final)" : ""}.`
-              : `Task ${event.taskId}: artifact ${event.artifact.name ?? event.artifact.artifactId}.`,
-          );
-          lines.push("Use A2A(action=get, taskId=...) to read the full message, then A2A(action=send) to respond.");
-          return {
-            content: [{ type: "text", text: lines.join("\n") }],
-            details: { action, events, timedOut: false },
-          };
-        } catch (error) {
-          const code = this.a2aErrorCode(error);
-          const message =
-            error instanceof Error ? error.message : "A2A call failed.";
-          return {
-            content: [
-              { type: "text", text: code ? `${message} (${code})` : message },
-            ],
-            details: { action, error: message, ...(code ? { code } : {}) },
-          };
-        }
-      },
-    };
-  }
-
   /** Wrap a delegate's tools so each call carries the definition's permission
    * scope to host-core (ADR 0089). Keyed by tool call id, so concurrent
    * delegates with different scopes never cross over. */
@@ -3477,18 +2990,15 @@ Delegation rules:
     result: SubagentRunResult,
   ): void {
     if (record.status !== "running") return;
-    // Deregister from the A2A broker before waking waiters, so a peer blocked
-    // in `A2A(wait)` on this agent returns rather than waiting out its own
-    // timeout once its counterpart has exited (ADR 0146). The token is minted
-    // per delegation; deregistering invalidates it. A delegate that never
-    // registered (no A2A tool) has no token, so this is skipped.
-    if (record.a2aToken) this.deregisterA2AAgent(record.a2aToken);
     record.status =
       record.stopRequested && result.status === "aborted"
         ? "stopped"
         : result.status;
     record.result = result;
     record.completedAt = Date.now();
+    if (result.usage) {
+      this.turnSubagentUsage = addUsage(this.turnSubagentUsage, result.usage);
+    }
     logTiming("subagent", {
       agent: result.agentName,
       delegationId: record.delegationId,
@@ -3522,10 +3032,68 @@ Delegation rules:
     );
   }
 
-  /** Abort every running delegation (turn end, parent abort, dispose). */
+  /** Abort every running delegation (user Stop, dispose, not parent idle). */
   private abortRunningDelegations(): void {
     for (const record of this.runningDelegations()) {
       record.abort();
+    }
+  }
+
+  private noteDelegationActivity(
+    record: DelegationRecord,
+    envelope: AgentEventEnvelope,
+  ): void {
+    record.lastActivityAt = Date.now();
+    const event = envelope.event;
+    if (event.type === "turn_start") {
+      record.turns += 1;
+      return;
+    }
+    if (event.type === "tool_start") {
+      record.toolCalls += 1;
+      record.lastToolName = event.toolName;
+    }
+  }
+
+  /**
+   * Keep the parent turn open until running delegates finish, then feed their
+   * reports back so the main agent can continue (D328). User Stop / dispose
+   * set `runCancelled` and abort the delegates instead.
+   */
+  private async resumeAfterDelegations(): Promise<void> {
+    while (
+      !this.disposed &&
+      !this.runCancelled &&
+      this.runningDelegations().length > 0
+    ) {
+      const targets = this.runningDelegations();
+      await this.waitForDelegations(targets, targets.length, null);
+      if (this.disposed || this.runCancelled) return;
+      const settled = targets.filter((record) => record.status !== "running");
+      if (settled.length === 0) return;
+      const results = settled.map((record) => ({
+        delegationId: record.delegationId,
+        agent: record.agentName,
+        status: record.status,
+        report:
+          record.result?.report ?? `(${record.status} without a report)`,
+      }));
+      const still = this.runningDelegations();
+      const heartbeat =
+        still.length > 0
+          ? `Still running:\n${still.map(formatDelegationHeartbeat).join("\n")}`
+          : "";
+      const text = [
+        DELEGATION_RESUME_PROMPT,
+        formatDelegationResults(results),
+        heartbeat,
+      ]
+        .filter((part) => part.trim())
+        .join("\n\n");
+      this.requestStartedAt = Date.now();
+      await this.agent.prompt(text);
+      await this.agent.waitForIdle();
+      if (!(await this.runPendingRecoveries())) return;
     }
   }
 
@@ -3535,7 +3103,7 @@ Delegation rules:
       name: SUBAGENT_WAIT_TOOL_NAME,
       label: "Task Wait",
       description:
-        "Wait for one or more subagents started by Task and return their reports. `delegationIds` defaults to every running subagent; use mode \"any\" with `minCompleted` to converge as soon as the first (or first N) finish. Settled delegations return immediately, so re-reading a report by id is cheap. Never end the turn with subagents still running: wait for or stop them.",
+        "Wait for one or more subagents started by Task and return their reports. `delegationIds` defaults to every running subagent; use mode \"any\" with `minCompleted` to converge as soon as the first (or first N) finish. Settled delegations return immediately, so re-reading a report by id is cheap. A wait timeout is not a failure: unfinished delegates keep working and the runtime delivers their reports when they finish.",
       parameters: Type.Object({
         delegationIds: Type.Optional(
           Type.Array(
@@ -3615,10 +3183,15 @@ Delegation rules:
           ...(record.completedAt ? { completedAt: record.completedAt } : {}),
           ...(record.result?.error ? { error: record.result.error } : {}),
           report:
-            record.result?.report ?? `(${record.status} without a report)`,
+            record.status === "running"
+              ? formatDelegationHeartbeat(record)
+              : (record.result?.report ?? `(${record.status} without a report)`),
         }));
         const note = timedOut
-          ? `Still running after ${timeoutSeconds}s: ${results.filter((r) => r.status !== "running").length}/${targets.length} finished. This is not a failure and the unfinished delegates keep working — call TaskWait again with the remaining delegationIds, or TaskList to see progress.`
+          ? `Still running after ${timeoutSeconds}s: ${results.filter((r) => r.status !== "running").length}/${targets.length} finished. This is not a failure — unfinished delegates keep working and the runtime will deliver their reports when they finish. Call TaskStop only to cancel.\n${targets
+              .filter((record) => record.status === "running")
+              .map(formatDelegationHeartbeat)
+              .join("\n")}`
           : mode === "any"
             ? `Converged after ${results.filter((r) => r.status !== "running").length} of ${targets.length} finished.`
             : undefined;
@@ -3646,11 +3219,12 @@ Delegation rules:
   /**
    * Resolve once `targetCompleted` of the targets are settled, or the deadline
    * passes, or the calling run aborts. Returns true on timeout/abort.
+   * `deadline` null waits until they settle (D328 auto-resume).
    */
   private waitForDelegations(
     targets: DelegationRecord[],
     targetCompleted: number,
-    deadline: number,
+    deadline: number | null,
     signal?: AbortSignal,
   ): Promise<boolean> {
     const settledCount = () =>
@@ -3661,7 +3235,7 @@ Delegation rules:
       const finish = (timedOut: boolean) => {
         if (done) return;
         done = true;
-        clearTimeout(timer);
+        if (timer !== undefined) clearTimeout(timer);
         signal?.removeEventListener("abort", onAbort);
         resolve(timedOut);
       };
@@ -3675,10 +3249,10 @@ Delegation rules:
       }
       const onAbort = () => finish(true);
       signal?.addEventListener("abort", onAbort, { once: true });
-      const timer = setTimeout(
-        () => finish(true),
-        Math.max(0, deadline - Date.now()),
-      );
+      const timer =
+        deadline === null
+          ? undefined
+          : setTimeout(() => finish(true), Math.max(0, deadline - Date.now()));
     });
   }
 
@@ -3699,10 +3273,7 @@ Delegation rules:
           delegations.length === 0
             ? "No subagents have been started in this session."
             : delegations
-                .map(
-                  (record) =>
-                    `- ${record.delegationId} ${record.agentName}: ${record.status}${record.completedAt ? ` (${Math.round((record.completedAt - record.startedAt) / 1000)}s)` : ""}`,
-                )
+                .map((record) => `- ${formatDelegationHeartbeat(record)}`)
                 .join("\n");
         return {
           content: [{ type: "text", text }],
@@ -3742,6 +3313,9 @@ Delegation rules:
           record.stopRequested = true;
           record.abort();
         }
+        // Persist the settled snapshot: aborting is async, and a `running`
+        // `details.stopped[]` made finished sessions keep a live topology card.
+        await Promise.all(targets.map((record) => record.completion));
         const text =
           targets.length === 0
             ? "No matching running subagents to stop."
@@ -4512,6 +4086,14 @@ Delegation rules:
     };
   }
 
+  /**
+   * Shape the next in-run assistant turn. pi 0.84.4+ calls this only after
+   * `shouldStopAfterTurn` and queued-message checks decide the loop will start
+   * another assistant turn, including between a tool batch and the follow-up
+   * model request. A new user prompt compacts separately in `prompt()` via
+   * `automaticCompactionNeeded`, because that first turn does not go through
+   * this hook.
+   */
   private async prepareNextTurn(
     turn: PrepareNextTurnContext,
     _signal?: AbortSignal,
@@ -4935,8 +4517,10 @@ Delegation rules:
       this.models,
       this.model,
       undefined,
-      signal,
       this.thinkingLevel,
+      undefined,
+      undefined,
+      withAbortSignal(signal, BACKGROUND_CONTEXT),
     );
   }
 
@@ -5570,23 +5154,26 @@ Delegation rules:
         if (
           this.suppressOverflowRunEnd ||
           this.suppressProviderRetryRunEnd ||
-          this.suppressSilentTurnRunEnd
+          this.suppressSilentTurnRunEnd ||
+          (this.runningDelegations().length > 0 && !this.runCancelled)
         )
           break;
-        this.emit({ type: "turn_end" });
+        const subagentUsage = this.turnSubagentUsage;
+        this.turnSubagentUsage = undefined;
+        this.emit({
+          type: "turn_end",
+          ...(subagentUsage ? { subagentUsage } : {}),
+        });
         break;
       case "agent_end":
         if (
           this.suppressOverflowRunEnd ||
           this.suppressProviderRetryRunEnd ||
-          this.suppressSilentTurnRunEnd
+          this.suppressSilentTurnRunEnd ||
+          (this.runningDelegations().length > 0 && !this.runCancelled)
         )
           break;
         this.reportMutationTermination();
-        // Delegation converges inside the turn (ADR 0089): a delegate still
-        // running when the run ends is a prompt violation, and the safety net
-        // is to stop it rather than let it work on without a parent.
-        this.abortRunningDelegations();
         this.emit({
           type: "agent_end",
           messageIds: [],
@@ -5734,6 +5321,7 @@ Delegation rules:
     this.turnId = durableTurnId;
     this.pendingUserMessageId = undefined;
     this.gracefulStopRequested = false;
+    this.runCancelled = false;
     this.resetRunRecoveryState();
     this.currentAssistant = undefined;
     this.requestStartedAt = Date.now();
@@ -5781,7 +5369,8 @@ Delegation rules:
     // Same recovery contract as a user prompt: a plan execution that overflows,
     // hits a retriable stream failure, or comes back silent must not end as a
     // run with no end events at all.
-    await this.runPendingRecoveries();
+    if (!(await this.runPendingRecoveries())) return { turnId: this.turnId };
+    await this.resumeAfterDelegations();
     return { turnId: this.turnId };
   }
 
@@ -5795,6 +5384,8 @@ Delegation rules:
     this.hostTurnId = nextTurnId;
     this.turnId = nextTurnId;
     this.gracefulStopRequested = false;
+    this.runCancelled = false;
+    this.turnSubagentUsage = undefined;
     // Capabilities and path-scoped instruction claims belong to one prompt.
     this.resetDeferredToolsForPrompt();
     this.pathInstructionClaims.clear();
@@ -5840,6 +5431,7 @@ Delegation rules:
       await this.agent.waitForIdle();
 
       if (!(await this.runPendingRecoveries())) return { turnId: this.turnId };
+      await this.resumeAfterDelegations();
     } catch (err) {
       const classifiedError = classifyAgentError(err);
       const diagnosticError =
@@ -5864,8 +5456,10 @@ Delegation rules:
 
   async abort(): Promise<void> {
     this.gracefulStopRequested = false;
+    this.runCancelled = true;
     this.resolvePendingAskTools();
     this.abortRunningDelegations();
+    this.turnSubagentUsage = undefined;
     this.agent.abort();
     this.providerRetryAbort?.abort();
     this.compactionAbort?.abort();
@@ -5883,7 +5477,10 @@ Delegation rules:
   getStatus(): AgentStatus {
     return {
       sessionId: this.sessionId,
-      isRunning: this.agent.state.isStreaming || this.compactionInProgress,
+      isRunning:
+        this.agent.state.isStreaming ||
+        this.compactionInProgress ||
+        this.runningDelegations().length > 0,
       currentTurnId: this.turnId,
       modelId: this.provider.modelId,
       pendingToolConfirmations: 0,
@@ -5894,17 +5491,9 @@ Delegation rules:
 
   async dispose(): Promise<void> {
     this.disposed = true;
+    this.runCancelled = true;
     this.resolvePendingAskTools();
     this.abortRunningDelegations();
-    // Release any delegate still parked in `A2A(wait)` and drop the host
-    // notification subscription so dispose does not wait out a peer timeout
-    // (ADR 0146). Deregistration of live agents rides on their run aborting.
-    for (const recipient of [...this.a2aEvents.keys()]) {
-      this.wakeA2ARecipient(recipient);
-    }
-    this.a2aEvents.clear();
-    this.a2aUnsubscribe?.();
-    this.a2aUnsubscribe = undefined;
     this.pathInstructionClaims.clear();
     this.failedHostToolCalls.clear();
     this.mutationFailureCounts.clear();

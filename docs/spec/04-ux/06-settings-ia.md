@@ -16,20 +16,21 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   exact order:
   1. **General / 常规** — Lucide `SlidersHorizontal` (appearance)
   2. **AI** — Lucide `Sparkles` (permissions, defaults, command shell)
-  3. **Shortcuts / 快捷键** — Lucide `Keyboard` (keyboard shortcuts)
-  4. **Instructions / 指令** — Lucide `FileText` (global and project instruction files)
-  5. **Models / 模型** — Lucide `Bot` (providers and default model)
-  6. **Skills / 技能** — Lucide `BookOpen` (reusable agent instructions)
-  7. **MCP** — Lucide `Server` (agent connections)
-  8. **Subagents / 子智能体** — Lucide `Bot` (personal parallel agents)
-  9. **Import / 导入** — Lucide `Download` (bring sessions in from other tools)
-  10. **Projects / 项目** — Lucide `Archive` (durable project index)
-  11. **Info / 信息** — Lucide `Info` (versions, logs, updates, developer)
+  3. **Usage / 用量** — Lucide `Activity` (completed-turn token totals)
+  4. **Shortcuts / 快捷键** — Lucide `Keyboard` (keyboard shortcuts)
+  5. **Instructions / 指令** — Lucide `FileText` (global and project instruction files)
+  6. **Models / 模型** — Lucide `Bot` (providers and default model)
+  7. **Skills / 技能** — Lucide `BookOpen` (reusable agent instructions)
+  8. **MCP** — Lucide `Server` (agent connections)
+  9. **Subagents / 子智能体** — Lucide `Bot` (personal parallel agents)
+  10. **Import / 导入** — Lucide `Download` (bring sessions in from other tools)
+  11. **Projects / 项目** — Lucide `Archive` (durable project index)
+  12. **Info / 信息** — Lucide `Info` (versions, logs, updates, developer)
   Icons are decorative (`aria-hidden` via the SVG default) and stay monochrome
   with the rail label; do not reuse refresh/rotate glyphs here.
 - The directory remains a flat searchable list in the same exact order. For
   scanability, the destinations are shown in four titled visual clusters:
-  `Preferences` / `偏好` (General, AI, Shortcuts), `Agent` / `智能体`
+  `Preferences` / `偏好` (General, AI, Usage, Shortcuts), `Agent` / `智能体`
   (Instructions, Models, Skills, MCP, Subagents), `Workspace` / `工作区`
   (Import, Projects), and `System` / `系统` (Info). Headings are muted,
   non-interactive labels and use whitespace for separation; no divider lines are
@@ -44,12 +45,19 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
 
 ### General
 - **Appearance** card:
-  - **Theme**: three selectable preview cards (System / Light / Dark, System
-    first) with a live mini-window mockup, a per-option description, and a
-    selected check badge; selection updates `settings.theme`
-  - **Language**: three selectable preview cards (Auto / 简体中文 / English) with
-    a sample-text preview, a per-option description, and a selected check badge;
-    selection updates `settings.language`
+  - **Theme**: a searchable picker row (same anchored-menu pattern as
+    Language). The trigger fills the settings control column and shows the
+    current name. The menu pins System, Light, and Dark at the top, then lists
+    plugin themes after a divider with a "Provided by …" hint. Search matches
+    labels, descriptions, ids, and plugin ids. Selection updates
+    `settings.theme`.
+  - **Language**: a searchable picker row (not a card grid). The trigger fills
+    the settings control column and shows the current native name, or Match
+    system. The menu pins Auto at the top with the detected language inline
+    (e.g. "Currently 简体中文"), then lists every shipped locale with its
+    native name (endonym, never translated) and English name for search and
+    sort. Selection updates `settings.language`. Adding a locale is a catalog
+    plus a registry row; the picker does not hard-code the option list.
   - **Font**: a searchable picker row (trigger shows the current family rendered
     in that face) offering the System default, bundled open-licensed families
     (Geist, Inter, Noto Sans SC, LXGW WenKai — SIL OFL 1.1, shipped locally),
@@ -60,7 +68,7 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
     (bounded font loading) and opening the picker never blocks input
   - **Auto language detection** resolves the OS locale through the main process
     (`app.getLocale()`) rather than the renderer's `navigator.language`, and the
-    Auto card shows the detected language inline (e.g. "当前：简体中文")
+    Auto option shows the detected language inline (e.g. "Currently 简体中文")
   - native select triggers and their opened option lists use the active theme's
     readable foreground/background pairing on macOS, Windows, and Linux; the
     shared native-select contract applies to every app surface
@@ -95,6 +103,20 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   session; the transcript shows where each compaction happened and the context
   usage inspector shows whether a checkpoint is installed.
 
+### Usage (`usage` tab)
+
+- KPI row: total tokens (input + output + cache read + cache write), input,
+  output, and completed-turn count for the selected window
+- Activity matrix for `day` (Monday-first week columns), `week` (ISO week
+  year), and `month` buckets. Cells are keyboard-activatable; selecting one
+  shows that bucket's input/output/turns. Empty cells stay in the grid.
+- Host defaults: last 53 weeks (`day`), 52 weeks (`week`), 24 months (`month`),
+  bucketed in the host machine's local calendar. Turns completed before this
+  build may have zero `turns.input_tokens` because Electron did not previously
+  send `session.endTurn.usage`.
+- Search indexes Total, Input, Activity, and Turns. No subtitle, cost, or
+  pricing.
+
 ### Shortcuts (`shortcuts` tab)
 - **Keyboard shortcuts** card:
   - lists navigation, agent, and window actions from one shared shortcut map
@@ -102,15 +124,21 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
     Windows/Linux) and the platform-specific full-screen default
   - clicking a binding records the next modifier chord or `F1`–`F12`; `Escape`
     cancels recording
+  - each binding can be explicitly set to `Unbound`; the disabled state remains
+    editable and is distinct from restoring the default
   - duplicate application bindings and operating-system/editor-reserved chords
-    are rejected with an inline error
+    are rejected with an inline error; an unbound action never participates in
+    conflict checks
   - each override can be restored independently and all overrides can be
     restored together
-  - overrides persist in optional `AppSettings.keybindings`; macOS native-menu
-    accelerators and renderer-owned shortcuts update from the same map
+  - overrides persist in optional `AppSettings.keybindings`; a missing entry
+    uses the platform default, a valid string uses the custom binding, and
+    `null` disables the action. macOS native-menu accelerators and
+    renderer-owned shortcuts update from the same map
   - the plugin launcher defaults to `Option + Space` on macOS and `Alt + Space`
-    on Windows/Linux; its native global registration follows the same override,
-    while the focused frameless window retains an `Alt + Space` fallback
+    on Windows/Linux; its native global registration follows the same override.
+    An unbound launcher disables Electron registration, the Windows host hook,
+    and the focused-window fallback
 
 ### Model configuration (`agent` tab)
 - **Defaults** card: a compact settings row shows the provider name and exact
@@ -156,8 +184,10 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
     and test / make-default / delete actions
   - Add account and Add provider use the same primary button treatment
   - the add/edit dialog configures connection identity (name, endpoint, API
-    style, and secret), then selects one or more models from a searchable
-    multi-select catalog. Each selected model has an independent, compact
+    style, and secret). It shrinks to the overlay on a narrow window, and a
+    focused credential field keeps its 2px accent ring inside the dialog
+    instead of clipping against the scrolling body. It then selects one or
+    more models from a searchable multi-select catalog. Each selected model has an independent, compact
     configuration row for context window, max output, supported thinking
     levels, and the default thinking level. The row keeps the model ID,
     source, capabilities, and token limits visible at a glance, and expands
@@ -174,7 +204,9 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
     record; provider discovery or a user-entered ID cannot promote an unknown
     model to image transport.
   - model discovery is debounced after a valid endpoint, key, or API style
-    change, including no-auth/local endpoints; the picker remains usable with
+    change, including no-auth/local endpoints; named add-path discovery waits
+    for an API key (editing reuses the stored secret) and does not mark
+    loading until the debounce fires; the picker remains usable with
     free-form custom model IDs when discovery is unavailable
   - thinking chips always render the seven canonical levels in canonical order.
     Published levels seed known-model bindings, while a row with no published
@@ -189,10 +221,18 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
     Removing the current default falls back to the first enabled level; no
     enabled levels disable the default selector and show the model's
     manual-override hint
-  - selecting the **OpenCode Go** API style applies the fixed name
-    **OpenCode Go** and endpoint `https://opencode.ai/zen/go/v1`; those two
-    fields remain visible but read-only, the API key remains editable, and
-    model discovery continues through the fixed endpoint
+  - a new dialog starts with only **Service**. Named endpoints from
+    models.dev (OpenAI, Anthropic, Google Gemini, OpenRouter, Groq, xAI,
+    Mistral, Together, Fireworks, OpenCode Go, Z.AI, DeepSeek, Qwen/DashScope,
+    Moonshot/Kimi, Zhipu, SiliconFlow, Volcengine Ark, MiniMax, Xiaomi, Kimi
+    For Coding) then show Service + API key, with the published host as a
+    one-line summary. Custom endpoint then shows Service, Name, Base URL, then
+    API key beside API format. Named display names stay behind Advanced.
+    Service is a searchable anchored menu of vendors (filter by localized
+    name, vendor key, alias, or host), not a native select, region grouping,
+    stepper, or vendor-card grid. Saved named rows store the models.dev `vendorKey` and
+    the preset `apiStyle` (Chat Completions, Responses, Anthropic, Gemini, or
+    `opencode_go`).
   - helper copy stays out of the model cards; labels, status badges, and the
     empty/error state carry the necessary context without explanatory
     paragraphs
@@ -319,6 +359,10 @@ system while preserving their different data ownership:
 
 ### Info
 - app/host/protocol versions + open logs
+- **Report a problem** row: one action opens the GitHub bug issue form in
+  the system browser. Electron Main owns the URL (`pi-desktop/app/openFeedback`),
+  prefills app version, OS, and environment from Main-owned version info, and
+  never accepts a renderer-supplied destination (D313 / ADR 0157)
 - Updates row with the current delivery state and one applicable action:
   Check for updates, View release, or Restart to update
 - **Developer** card:
@@ -357,8 +401,8 @@ system while preserving their different data ownership:
 ## 4. Acceptance
 
 1. Opening Settings hides the coding app sidebar (full-page takeover)
-2. Rail shows search + back and exactly General / 常规, AI, Shortcuts / 快捷键,
-   Instructions / 指令, Models / 模型, Skills / 技能, MCP,
+2. Rail shows search + back and exactly General / 常规, AI, Usage / 用量,
+   Shortcuts / 快捷键, Instructions / 指令, Models / 模型, Skills / 技能, MCP,
    Subagents / 子智能体, Import / 导入, Projects / 项目, and Info / 信息 in
    that order. The rows are grouped under Preferences / 偏好, Agent / 智能体,
    Workspace / 工作区, and System / 系统.
@@ -367,9 +411,10 @@ system while preserving their different data ownership:
 5. Plugins has no Settings destination; the app-shell Plugins page supports
    load, enable, disable, and uninstall
 6. General shows the host-backed Appearance card; the AI destination shows
-   Permissions and Defaults, including the Command shell row; the Shortcuts
-   destination shows the Keyboard shortcuts card; Info shows the Developer card.
-   No additional settings destinations are rendered
+   Permissions and Defaults, including the Command shell row; the Usage
+   destination shows completed-turn token totals and the activity matrix; the
+   Shortcuts destination shows the Keyboard shortcuts card; Info shows the
+   Developer card. No additional settings destinations are rendered
 7. Provider secrets never display raw key values
 8. Model configuration shows compact Defaults, separate vendor accounts, the
    account edit/add dialogs, and AI service cards rather than a dense always-on
@@ -424,6 +469,8 @@ system while preserving their different data ownership:
 25. Toggling one capability leaves every other row interactive, does not
     replace the list with skeletons, and restores the previous switch position
     if the host rejects the change
+26. Info exposes a Report a problem action that opens the GitHub bug form
+    with version and OS filled in; Settings search indexes the row
 
 ## 5. General chrome metrics
 

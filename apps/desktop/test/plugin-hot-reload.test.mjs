@@ -108,7 +108,10 @@ test("manual reload uses the registry path and refreshes the dev permission ceil
 });
 
 test("watchers are released on teardown and reloads reach the renderer", () => {
-  const quit = slice(mainSrc, 'app.on("before-quit"', "});");
+  const quitStart = mainSrc.indexOf('app.on("before-quit"');
+  const quitEnd = mainSrc.indexOf('app.on("activate"', quitStart);
+  assert.ok(quitStart >= 0 && quitEnd > quitStart, "before-quit handler missing");
+  const quit = mainSrc.slice(quitStart, quitEnd);
   // Quit tears the whole plugin subsystem down; watch disposal rides along
   // inside it rather than being called on its own.
   assert.match(quit, /plugins\.disposeAll\(\)/);

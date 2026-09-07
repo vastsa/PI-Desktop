@@ -1,14 +1,17 @@
 # ADR 0147: A2A Protocol Stack for Subagent Coordination
 
-- Status: Accepted
+- Status: Superseded by ADR 0165
 - Date: 2026-09-02
 - Deciders: PI-Desktop core
-- Related: D277, ADR 0062, ADR 0089, ADR 0100,
+- Related: D277, D318, D321, ADR 0062, ADR 0089, ADR 0100, ADR 0162, ADR 0164,
   `03-runtime/02-agent-runtime.md` §5f.2,
-  `03-runtime/06-host-rpc-protocol.md` §4, E2E-165, E2E-165b
+  `03-runtime/06-host-rpc-protocol.md` §4, E2E-165, E2E-165b, E2E-165c, E2E-165d
 - Supersedes: ADR 0138 and ADR 0140. The in-process `SubagentMailbox` and the
   single `Peer` tool are removed. The coordination need those ADRs identified
   is preserved; the mechanism is replaced.
+- Amended by: ADR 0162 lifts same-context-only addressing. ADR 0164 lets the
+  parent agent register as `kind: "parent"` and call `A2A` to other parents;
+  parents still cannot address subagents.
 
 ## Context
 
@@ -48,9 +51,9 @@ The seven A2A pillars map to local semantics:
 | Push notification | Webhook config | Host-owned push config (`a2a.tasks.pushNotificationConfig.set/get`) plus an `a2a.push` notification `{ recipient, contextId, taskId, token?, status }` |
 | Auth | OAuth / API key | Host-minted per-agent capability token: `a2a.agents.register` returns `{ agentId, token }`, every subsequent `a2a.*` call carries the token, and the host validates it and authorizes addressing by it. The token is injected by the runtime and never visible to the model, preserving the invariant that a sender's `from` cannot be forged |
 
-`contextId` equals the `sessionId`. Addressing defaults to same-context (same
-session) only; cross-context addressing is denied with
-`A2A_CROSS_CONTEXT_DENIED`.
+`contextId` equals the `sessionId` and groups a task with the requester's
+session. Discovery and addressing span every live agent on the host (ADR 0162);
+a stranger still cannot read a task they are not a party to.
 
 The `a2a.*` methods, each carrying a `token` except `register`, are specified in
 `03-runtime/06-host-rpc-protocol.md` §4; `a2a.tasks.status({ token, id, state,
@@ -68,10 +71,11 @@ push config, the `a2a.push`) to the counterpart of the caller — a worker's rep
 or completion wakes the requester, a requester's follow-up wakes the worker;
 `a2a.tasks.resubscribe` re-emits to the caller itself. This closes the
 delegation round-trip a worker's completion previously never reached the
-requester. The `A2A` tool is registered/deregistered per
-delegation on spawn/settle, is kept out of the parent's `toolCatalog` (the
-parent cannot use it), and closes over the host-minted token.
+requester. The delegate `A2A` tool is registered/deregistered per
+delegation on spawn/settle and closes over the host-minted token.
 `SUBAGENT_A2A_TOOLS = ["A2A"]` replaces `SUBAGENT_PEER_TOOLS = ["Peer"]`.
+ADR 0164 additionally registers the parent as `kind: "parent"` and puts
+`A2A` in the Agent-mode catalog for parent-to-parent use only.
 
 Bounds are enforced by the broker: `A2A_MAX_TEXT_CHARS = 16000`,
 `A2A_MAX_FILE_BYTES = 20MB`, `A2A_MAX_TASK_HISTORY = 256`,
@@ -89,9 +93,9 @@ Errors use JSON-RPC numeric code `1400` with `data.errorCode` one of
   and the SSE / webhook transports are mapped onto local RPC, not served.
 - **No real OAuth.** Authorization is a host-minted in-memory capability token,
   not a network OAuth or API-key exchange.
-- **No cross-machine or remote agents.** Every agent is a subagent of the same
-  local session; `contextId = sessionId` and cross-context addressing is
-  refused. There is no agent outside the host process.
+- **No cross-machine or remote agents.** Every agent is a subagent of a local
+  session on this host; there is no agent outside the host process. Cross-session
+  addressing on the same host is allowed (ADR 0162).
 
 ## Consequences
 
@@ -117,8 +121,8 @@ Errors use JSON-RPC numeric code `1400` with `data.errorCode` one of
   the parent's `toolCatalog`; a settled delegate is deregistered, invalidating
   its token; and the stream wait ceiling (120s) stays below the 300-second idle
   watchdog.
-- Not addressed: cross-session (cross-context) agents, messaging with the
-  parent, nested delegation, and any remote or cross-machine transport.
+- Not addressed: messaging with the parent, nested delegation, and any remote
+  or cross-machine transport. Cross-session addressing is decided in ADR 0162.
 
 ## Alternatives considered
 

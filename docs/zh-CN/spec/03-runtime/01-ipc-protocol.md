@@ -32,7 +32,7 @@
 | `commandPalette` | 命令面板搜索和执行 |
 | `workspace` | 工作区选择和遗留工作树诊断 |
 | `browser` | 工作面板嵌入预览 navigation/bounds/visibility + 状态事件 |
-| `fs` | 工作面板工作区文件 listing/reading/reveal（只读） |
+| `fs` | 工作面板工作区文件 listing/reading/reveal，以及用户点击后用系统默认应用打开（只读） |
 | `window` | 无框窗口状态、控件和有界工作面板宽度预留 |
 | `menu` | 列入许可名单的应用程序菜单命令和本机 editing/window 操作 |
 | `notification` | 持久收件箱 list/read/clear 和 new/activated 事件 |
@@ -180,7 +180,12 @@ type AgentAbortRequest = {
 中止请求和响应不携带 Composer 草稿或文件参考数据。
 如果渲染器智能停止撤消未应答的用户回合，则恢复来自
 渲染器的 session/turn-scoped 预序列化快照；现有的
-转录重写会删除发送的行而不更改协议版本。
+转录重写会删除发送的行而不更改协议版本。该重写从完整持久转录（不带窗口的
+`session.get`）与实时行的合并结果计算，绝不使用渲染器分页且显示截断的窗口，并在
+该合并结果上重新判定：在中止与读取之间落盘的回复行会把撤销变成落定（D299）。
+发现回复已开始的停止只在渲染器内存中落定（流式助手 → `aborted`，运行中工具 →
+错误），不做任何转录重写；持久副本是运行时自己的中止最终行，若它始终未到，则是
+主机提升的进行中检查点。
 
 ### 5.4 紧凑型（协议 v10）
 
@@ -575,12 +580,12 @@ type SessionDetail = SessionSummary & {
 };
 ```
 
-Electron 主要丰富了会话 list/get/create/fork/configure 结果
-来自 pi-ai 模型记录的有效推理能力
-精确的 `(providerId, modelId)`。缺少 pi 模型元数据产量
-`supportsReasoning: false` 和 `off`；缓存发现和遗留提供程序
-覆盖不会取代 pi 语义。 Rust 主机仅具有权威性
-打造耐用的 `thinkingLevel`。
+Electron 主进程用该会话精确 provider/API URL 与 model 的本地 models.dev
+记录，丰富 session list/get/create/fork/configure 结果中的有效推理能力。
+未固定 `providerId`/`modelId` 的会话仅在此丰富步骤继承应用默认供应商/模型；
+持久化 id 保持为空，以便之后的默认模型变更仍然生效。快照中没有该 ID、或
+会话无法解析出默认目标时，得到 `supportsReasoning: false` 和 `off`；缓存/
+供应商声明不能取代目录语义。Rust 主机仅对持久化的 `thinkingLevel` 权威。
 
 全局插件启动器使用仅 Electron 允许的通道：
 
@@ -678,8 +683,9 @@ sidecar 用于显示每秒输出令牌的流时间。 `ToolTokenUsage`
   读取为 600，并接受 1 至 1,000,000 的整数
 - 权限策略切换
 - UI 首选项，包括可选的 `AppSettings.keybindings` 覆盖键控
-  通过共享快捷操作 ID；值使用便携式 `Mod+Shift+Key`
-  表示法并且不包含特定于平台的本机加速器字符串
+  通过共享快捷操作 ID；值可以是 `null` 或便携式 `Mod+Shift+Key` 字符串，
+  不包含特定于平台的本机加速器字符串。缺少属性使用平台默认值，`null` 表示
+  明确禁用（未绑定）
 - 可选的 `AppSettings.developerMode`；缺席和 `false` 均保留开发人员
   工具已禁用
 
@@ -949,7 +955,10 @@ type McpServerStatus = {
 
 用户技能是从 `~/.agents/skills` 和 `<project>/.agents/skills` 扫描的 Markdown
 文档，同时接受直接 Markdown 文件和约定的 `<skill>/SKILL.md` 形状。启用状态
-位于 `<data>/agent-capabilities/skills.json`，绝不写回技能文档。
+位于 `<data>/agent-capabilities/skills.json`，绝不写回技能文档。目录 id 是
+ASCII slug：frontmatter `name` 能 slugify 时用它，否则 `SKILL.md` 用技能目录名
+（不是 `Downloads` 这类暂存目录），再否则用稳定的 `skill-<hash>`，这样非 ASCII
+标题仍会被列入。折叠 YAML `description: >` / `|` 会展平进目录里的一行摘要。
 
 - `skills.list({ level, projectPath? })` → `{ skills: UserSkillRecord[] }`
 - `skills.active({ projectPath? })` → 当前项目的有效运行时列表
@@ -1027,20 +1036,18 @@ type AgentCapabilityQuery = {
   恢复快照；它返回 `rolledBack`、`alreadyRolledBack`、
   `conflict` 或 `unavailable` 并且永远不会覆盖冲突的后续编辑。
 
-### 浏览器 (D100)
+### 浏览器 (D100, D333)
 
-- `browser/navigate({url, sessionId?})`（方案标准化；http/https 工作
-  没有工作空间，而本地路径需要提供的会话的
-  持久的项目根目录或遗留调用的可见工作区），
-  `browser/action({action: back|forward|reload|stop})`，
-  `browser/setBounds({x,y,width,height})`（渲染器测量的内容矩形），
-  `browser/setVisible({visible})`、`browser/openExternal()`、
-  `browser/getState()`
+Chrome 和代理 CDP 位于随应用打包的 `pi.browser` 插件中，通过 `pi.browser.*` 访问。
+渲染器 IPC 仅保留给 Plan 安全的预览门面和 URL 回退：
+
+- `browser/openExternal({url?})` — 白名单内的 http(s)/mailto，或省略时使用当前访客页 URL
 - 事件：`browser/event/state {url, title, isLoading, canGoBack, canGoForward}`
-- 代理预览活动：`browser/event/preview {sessionId, path}`。 Electron 主要
-  在发出之前验证该会话项目内的 `path`；渲染器
-  将其记录在匹配的运行时面板上下文中，并仅在该情况下进行导航
-  对话可见。
+  （同时以 `browser:state` 推送给插件视图）
+- 代理预览事件：`browser/event/preview {sessionId, path?, url?}`。
+  Electron Main 会校验工作区 `path` 位于该会话项目内，在该对话的插件视图可见时
+  加载访客页，并由渲染器在匹配的运行时面板上下文中打开
+  `plugin:pi.browser/browser`（带 `location`）。后台会话的导航不会抢走可见访客页。
 
 ### fs（只读）
 
@@ -1049,19 +1056,8 @@ type AgentCapabilityQuery = {
   [15-工作区-忽略-规则](/zh-CN/spec/03-runtime/15-workspace-ignore-rules)
 - `fs/read({path})` → 文本 (≤512KB) / 图像数据 URL (≤5MB) / 二进制 / 太大
 - `fs/reveal({path})` → 在 Finder 中显示
-- 每个路径都在工作空间根目录内解析；外面的遍历是
-  被拒绝（`INVALID_ARGUMENT`）。
-
-#### fs/readImageDataUrl — 会话内图片显示
-
-`fs/readImageDataUrl({ref, mimeType?})` → `FsImageDataUrlResult`（`image` 携带 `dataUrl`，
-或 `missing` / `notImage` / `tooLarge` 及稳定 `errorCode`）。ref 可以是
-工作区相对路径、`attachments/<sha256>` 路径，或数据根目录下 `scratch/` /
-`attachments/` 子目录内的绝对路径。主进程解析真实路径并拒绝这些根之外的
-任何内容，因此粘贴/上传的消息图片和本地 Markdown 图片可在会话框内联渲染，
-而无需暴露通用文件读取通道。存储的 `mimeType` 优先于扩展名推断，因为粘贴的
-附件以无扩展名的 `attachments/<sha256>` 文件存储。大小与 `fs/read` 相同，
-限制为 5MB。
+- `fs/open({path})` → 用系统默认应用打开。相对路径在工作区根内解析；绝对路径仅当已位于工作区、`<data_dir>/scratch/` 或 `<data_dir>/attachments/` 之下时才接受。穿越、`~` 和其他逃逸被拒绝（`INVALID_ARGUMENT`）。
+- `fs/list` 与 `fs/read` 在工作区根内解析；外面的遍历被拒绝（`INVALID_ARGUMENT`）。`fs/reveal` 仍只限工作区。
 
 ## 13b。桌面菜单和窗口 API
 
@@ -1150,9 +1146,8 @@ Maximize/unmaximize 变化也会发出
 `window/event/maximized`。未知的操作失败。这些仅限电子的通道
 不要跨入 host-core，也不要更改主机 RPC 协议版本。
 preload 故意不公开任意的 BrowserWindow 调整大小通道。
-几何相关的目标状态工作面板 reservation channel 继续保留用于旧版兼容。
-D287 / ADR 0148 覆盖其可见 UI 所有权：当前 renderer 始终请求 0，并在固定
-客户区内调整面板宽度。
+特定于几何形状的能力是有界的目标状态工作面板保留与聊天宽度更新
+（D163、D255，ADR 0032/0122）：
 
 ```ts
 window/setWorkPanelReservation({ width: 0 | number })
@@ -1162,17 +1157,38 @@ window/setWorkPanelReservation({ width: 0 | number })
 `width` 必须是等于 `0` 或在 JSON 内的有限整数
 包括 `244..720` 范围。字符串、布尔值、null、小数值和
 其他格式错误的有效负载会因 `INVALID_ARGUMENT` 而失败，而不是
-被胁迫。零会移除原生 reservation。正值仍供旧版 renderer 兼容使用，
-但当前 renderer 在打开、折叠和关闭最后资源时都只请求零。`requested` 是
-接受的当前目标，`reserved` 是当前加到基础窗口上的原生宽度。调用是幂等
-目标更新：重复相同宽度不会添加另一份增量。
+被胁迫。零是 closed/collapsed 目标，正值是
+可见面板的承诺固定宽度。 `requested` 是接受的当前目标。
+`reserved` 是当前添加的原生宽度
+到该目标的正常基本窗口，并且可以小于 `requested`
+仅当显示工作区域不足时。调用是幂等目标
+更新：重复相同的宽度不会添加另一个增量。
 
-旧版 renderer 提供正目标且窗口处于正常状态时，Main 向右扩展基础边界，
-并仅在需要时左移，以把扩展边界保留在当前显示工作区域内。
-零目标会对称移除增加宽度并反转 reservation 引起的偏移。
-Main 仍然保留移除这两种效果后的基础边界。
-本机边缘手势仅更新那些基边界，留下 `requested` 和
-渲染器拥有的固定面板宽度不变。最大化和全屏窗口
+面板打开时，两条可见的调整边界有不同的归属：
+
+```ts
+window/setWorkPanelChatWidth({ width: number })
+  -> { requested: number; applied: number }
+
+window/event/workPanelResize
+  -> { phase: "preview" | "commit"; panelWidth: number }
+```
+
+`window/setWorkPanelChatWidth` 只接受 `1040..10000` 闭区间内的安全整数。
+它是窗口内渲染器拥有的分隔条使用的有界目标状态通道；它改变基础对话
+宽度，同时保留当前生效的面板保留量。工作区紧张时，聊天目标停在仍能容纳
+该保留量的最大基础宽度上；面板绝不会作为副作用被收窄。原生右边缘（以及
+Electron 报告的右侧角）改变的是面板目标。Main 通过
+`window/event/workPanelResize` 预览该原生面板宽度，并在原生调整流稳定后
+提交给渲染器。面板目标仍限定在 `244..720px`。
+
+正常状态下，Main 向右扩展基边界并向左移动
+仅根据需要将扩展边界保留在当前显示工作范围内
+区。零目标对称地消除了增加的宽度并反转了这一点
+保留引起的转变。 Main 仍然保留基界，并且移除了这两种效果。
+来自左边缘或非右侧角的本机手势仅更新那些基边界，留下 `requested` 和
+渲染器拥有的固定面板宽度不变。外侧右边缘和右侧角更新面板目标，而基础
+对话宽度保持固定。最大化和全屏窗口
 记住最新的目标但推迟几何；恢复正常协调
 它一次针对恢复的基础边界和当前工作区域。如果窗户
 管理器首先在显示期间压缩或重新定位外部窗口，或者
@@ -1183,8 +1199,9 @@ Main 仍然保留移除这两种效果后的基础边界。
 规范化进目标显示器工作区域，并且这一位置会被持久化用于下次启动。
 即使目标工作区域更窄，基础尺寸也会保留，因此收缩的是 `reserved`
 而不是窗口。Main 会把这次协调推迟到本机移动流稳定之后，
-所以拖动过程中不会应用任何保留几何。当前 renderer 只请求零，背景工件
-无法更改可见的 reservation 几何。
+所以拖动过程中不会应用任何保留几何。 Renderer 代码
+仅针对当前可见的会话设置此目标：背景工件
+无法更改可见的保留几何形状。
 
 ## 13c。 Composer 输入 API（D123/D124/D197、ADR 0024/0059）
 
@@ -1277,6 +1294,18 @@ prompt/enhance({
 这是一次独立的一次性补全，没有会话历史、工具或附件。Electron main 负责解析
 提供商/模型和凭据，因此渲染器永远拿不到密钥。空草稿、斜杠命令草稿、缺失模型
 以及提供商失败都返回通用的 `Result` 错误包络。
+
+### app/openFeedback（D313）
+
+```ts
+app/openFeedback() -> { ok: true }
+```
+
+Electron Main 构造固定的 GitHub bug 表单 URL
+（`https://github.com/vastsa/PI-Desktop/issues/new?template=bug_report.yml`），
+并用 `shell.openExternal` 打开。查询字段 `app-version`、`os` 和 `environment`
+由主进程版本信息填充。渲染器不能提供 URL。离开该 origin 或模板的构造会被拒绝。
+此通道不进入 host-core，也不改变 host RPC 协议版本。
 
 ## 14. 错误代码 — 初始注册表（可扩展）
 

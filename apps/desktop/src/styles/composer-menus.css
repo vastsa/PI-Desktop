@@ -188,10 +188,9 @@
   color: var(--ds-text-muted);
 }
 
+/* Menu groups are separated by a breath of space, not a rule (D297). */
 .composer-menu-separator {
-  height: 1px;
-  margin: 4px 6px;
-  background: var(--ds-border-subtle);
+  height: 6px;
 }
 
 .composer-model-thinking-menu .composer-model-search {
@@ -297,8 +296,8 @@
 }
 
 .composer-model-option-badge {
-  border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-sm);
+  background: var(--ds-tile-deep);
   padding: 0 4px;
   color: var(--ds-text-faint);
   font-size: var(--text-2xs);
@@ -419,11 +418,4 @@
 .plan-approval-menu-item svg {
   flex: 0 0 auto;
   margin-left: auto;
-}
-
-/* Destination pages — Codex-like project grid + settings shell */
-:root[data-theme="light"] .page-card {
-  background: #ffffff;
-  box-shadow: 0 0 0 0.5px color-mix(in oklab, #1a1c1f 10%, transparent),
-    0 1px 2px rgba(0, 0, 0, 0.03);
 }

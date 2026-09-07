@@ -69,6 +69,15 @@ models from `/models`, and sends chat turns through pi-ai's OpenAI Chat
 Completions adapter. It does not create a second transport or a closed model
 allowlist.
 
+Zhipu / GLM and Z.AI are named OpenAI-compatible endpoint presets among a
+short models.dev-backed Service list of first-party vendors (including
+Xiaomi). The add-provider Service picker persists the matching models.dev
+`vendorKey` and uses the published endpoint without
+showing Name, Base URL, or API format on the named-service path. Chat turns
+still use the selected pi-ai adapter (`chat_completions`, `responses`,
+`anthropic_messages`, `google_generative_ai`, or `opencode_go`). Zhipu / Z.AI
+Completions requests use `thinkingFormat: "zai"` and `zaiToolStream: true`.
+
 ## 5. Built-in vendor matrix (ship intent)
 
 > Model metadata follows the bundled/in-memory models.dev catalog. Provider adapters remain
@@ -154,14 +163,19 @@ PI-Desktop must not permanently restrict users to a short fixed model list.
    preserving all raw records in the file for future surfaces. Image input is
    sent as a transient image content block only when the model accepts image
    input. PDF capability is surfaced and retained in model metadata; because
-   pi-ai 0.84 has no native PDF content block, PDF attachments remain bounded
+   pi-ai 0.85 has no native PDF content block, PDF attachments remain bounded
    file references rather than being incorrectly encoded as images.
 7. User-edited `ModelBinding` values remain explicit provider configuration:
    they control selected request limits, enabled thinking levels, the default
-   thinking level applied to a new session, and the attachment capability
-   overrides. `models.dev` supplies published metadata and seeds the initial
+   thinking level applied to a new home draft and newly persisted session
+   (clamped onto the enabled set; strongest-enabled only when the default is
+   unset), and the attachment capability overrides. `models.dev` supplies published metadata and seeds the initial
    thinking selection for a newly added known model; it is not a runtime gate
-   on a level the user explicitly enables for the endpoint.
+   on a level the user explicitly enables for the endpoint. For compatibility,
+   a binding that still contains the legacy generic `128,000` context seed
+   follows a newly published `limit.context`; a non-default Advanced value
+   remains explicit. This keeps the sidecar and context inspector on the same
+   effective window after a catalog refresh.
 8. Settings renders the seven canonical thinking levels for every binding.
    Published levels begin selected for a known reasoning model. A non-reasoning
    or unknown model shows the same choices unselected, with a short manual
@@ -175,7 +189,7 @@ PI-Desktop must not permanently restrict users to a short fixed model list.
    self-hosted endpoint routinely accepts input its catalog entry omits.
    Enabling image input turns on the transient image content block; enabling PDF
    input records the capability but does not change the encoding, since pi-ai
-   0.84 has no PDF content block and PDFs stay bounded file references.
+   0.85 has no PDF content block and PDFs stay bounded file references.
 10. The settings checkboxes show the effective answer against the published
     baseline, and setting one back to the published value stores "follow the
     catalog" rather than an equal-valued override. Agreeing with models.dev is

@@ -35,7 +35,7 @@ import { useAppStore } from "./stores/app-store";
 import type { ToastOptions } from "./stores/app-store";
 import { api } from "./lib/api";
 import { commitWorkPanelPresentation } from "./lib/work-panel-presentation";
-import { toolWorkPanelTab } from "./lib/work-panel-tabs";
+import { browserPluginTab, toolWorkPanelTab } from "./lib/work-panel-tabs";
 import {
   clampSidebarWidth,
   loadSidebarWidth,
@@ -45,7 +45,6 @@ import { StartupSplash } from "./components/StartupSplash";
 import { cx } from "./components/ui";
 import {
   IconNewSession,
-  IconPanel,
   IconSidebar,
 } from "./components/icons";
 import type {
@@ -134,7 +133,11 @@ function CollapsedTitlebarActions({
     <div className="titlebar-nav no-drag">
       <button
         className="title-nav-btn"
-        title={`${toggleLabel} (${sidebarToggleShortcut})`}
+        title={
+          sidebarToggleShortcut
+            ? `${toggleLabel} (${sidebarToggleShortcut})`
+            : toggleLabel
+        }
         aria-label={toggleLabel}
         aria-expanded={false}
         data-nav="toggle-sidebar"
@@ -253,27 +256,6 @@ function AppShell() {
     workPanelExitingRef.current = workPanelExiting;
   }, [workPanelExiting]);
 
-  const togglePresentedWorkPanel = useCallback(() => {
-    const store = useAppStore.getState();
-    if (workPanelExitingRef.current) {
-      store.openWorkPanel();
-      return;
-    }
-    // Prefer the visible presentation over a briefly stale session projection:
-    // a second click on the same button must always collapse a panel the user
-    // can currently see instead of routing through openWorkPanel again.
-    if (store.workPanelOpen || presentedWorkPanelRef.current) {
-      store.collapseWorkPanel();
-      if (presentedWorkPanelRef.current && !workPanelExitingRef.current) {
-        workPanelExitGeneration.current += 1;
-        workPanelExitingRef.current = true;
-        setWorkPanelExiting(true);
-      }
-      return;
-    }
-    store.openWorkPanel();
-  }, []);
-
   const finishWorkPanelExit = useCallback((generation: number) => {
     if (generation !== workPanelExitGeneration.current) return;
     if (workPanelExitClosing.current) return;
@@ -302,8 +284,9 @@ function AppShell() {
     const request = ++workPanelReservationRequest.current;
 
     if (shouldPresent) {
-      // Cancel any in-flight exit and clear native reservation before mount.
-      // The in-flow panel alone reflows the conversation inside fixed window bounds.
+      // The panel is an internal flex column. Keep the reservation seam
+      // explicitly at zero so opening it can only reflow the existing client
+      // area; it must never grow the native window before mounting.
       workPanelExitGeneration.current += 1;
       workPanelExitClosing.current = false;
       workPanelExitingRef.current = false;
@@ -316,8 +299,9 @@ function AppShell() {
       return;
     }
 
-    // Close: keep the dock mounted through work-panel-out, then confirm the
-    // zero native reservation. Instant path when the shell was never presented.
+    // Close: keep the dock mounted through work-panel-out. The zero
+    // reservation is already native-window-neutral, so only the flex column
+    // collapses and returns its space to MainChat.
     if (presentedWorkPanelRef.current || workPanelExitingRef.current) {
       if (presentedWorkPanelRef.current && !workPanelExitingRef.current) {
         workPanelExitGeneration.current += 1;
@@ -507,15 +491,10 @@ function AppShell() {
     // Agent-driven HTML preview: surface the browser tab when the agent
     // opens a workspace file in the embedded browser (BrowserPreview tool).
     const offBrowserPreview = api.onBrowserPreview((event) => {
-      const sessionId =
-        event.sessionId ||
-        useAppStore.getState().activeSessionId ||
-        "";
       useAppStore
         .getState()
-        .openWorkPanelTabForSession(sessionId, {
-          ...toolWorkPanelTab("browser"),
-          resource: event.path,
+        .openWorkPanelTabForSession(event.sessionId, {
+          ...browserPluginTab(event.path ?? event.url),
         });
     });
     const offHostStatus = api.onHostStatus((status) => {
@@ -687,6 +666,8 @@ function AppShell() {
     const originalRefreshNotifications =
       useAppStore.getState().refreshNotifications;
     const originalListPluginServices = api.listPluginServices;
+    const originalMarketSearch = api.marketSearch;
+    const originalMarketDetail = api.marketGetDetail;
     const originalListMcpServers = api.listMcpServers;
     const originalListUserSkills = api.listUserSkills;
     const originalListUserSubagents = api.listUserSubagents;
@@ -712,8 +693,12 @@ function AppShell() {
           useAppStore.getState().openFileInWorkPanel(resource);
           return;
         }
-        if (kind !== "file") {
-          useAppStore.getState().openWorkPanelTab(toolWorkPanelTab(kind));
+        if (kind === "browser") {
+          useAppStore.getState().openWorkPanelTab(browserPluginTab(resource));
+          return;
+        }
+        if (kind === "review") {
+          useAppStore.getState().openWorkPanelTab(toolWorkPanelTab("review"));
         }
       },
       collapseWorkPanel: () => {
@@ -1074,8 +1059,118 @@ function AppShell() {
         if (count <= 0) {
           useAppStore.setState({ plugins: [] });
           (api as any).listPluginServices = originalListPluginServices;
+          (api as any).marketSearch = originalMarketSearch;
+          (api as any).marketGetDetail = originalMarketDetail;
           return;
         }
+        (api as any).marketGetDetail = async (id: string) => ({
+          plugin: {
+            id,
+            name: "Git Insights",
+            description: "Summarizes repository activity into a review panel.",
+            author: "Pi Labs",
+            latestVersion: "1.5.0",
+            downloads: 12840,
+            updatedAt: "2026-08-21T09:00:00.000Z",
+            categories: ["productivity"],
+            permissionSummary: ["fs.read", "fs.write", "ui.panel", "notify"],
+            permissions: ["fs.read", "fs.write", "ui.panel", "notify"],
+            verified: true,
+            trust: "verified",
+            installed: true,
+            installedVersion: "1.4.2",
+            updateAvailable: true,
+            installable: true,
+            homepage: "https://example.invalid/git-insights",
+            repository: "https://github.com/example/git-insights",
+            safetyNotes: "Writes only under docs/ and Markdown files in the workspace.",
+            readmeMarkdown: "# Git Insights\n\nA review panel for repository activity.",
+            versions: [
+              {
+                version: "1.5.0",
+                publishedAt: "2026-08-21T09:00:00.000Z",
+                changelog: "Adds a per-author heatmap.",
+                shasum: "capture",
+                url: "https://example.invalid/git-insights-1.5.0.piplug",
+                size: 48210,
+              },
+              {
+                version: "1.4.2",
+                publishedAt: "2026-07-02T09:00:00.000Z",
+                changelog: "Fixes a stale cache after branch switches.",
+                shasum: "capture",
+                url: "https://example.invalid/git-insights-1.4.2.piplug",
+                size: 47100,
+              },
+            ],
+          },
+        });
+        // The marketplace tab searches the catalog over IPC, which is offline
+        // in the capture rig; stand in with a card per trust tier and state.
+        (api as any).marketSearch = async () => ({
+          plugins: [
+            {
+              id: "pi.git-insights",
+              name: "Git Insights",
+              description: "Summarizes repository activity into a review panel.",
+              author: "Pi Labs",
+              latestVersion: "1.5.0",
+              downloads: 12840,
+              updatedAt: "2026-08-21T09:00:00.000Z",
+              categories: ["productivity"],
+              permissionSummary: ["fs.read", "fs.write", "ui.panel"],
+              verified: true,
+              trust: "verified",
+              installed: true,
+              installedVersion: "1.4.2",
+              updateAvailable: true,
+              installable: true,
+            },
+            {
+              id: "pi.markdown-tools",
+              name: "Markdown Tools",
+              description: "Formats tables and normalizes headings on demand.",
+              author: "Community",
+              latestVersion: "0.9.0",
+              downloads: 3210,
+              updatedAt: "2026-07-30T09:00:00.000Z",
+              categories: ["editing"],
+              permissionSummary: ["clipboard.read", "clipboard.write"],
+              trust: "community",
+              installed: true,
+              installedVersion: "0.9.0",
+              installable: true,
+            },
+            {
+              id: "pi.deploy-preview",
+              name: "Deploy Preview",
+              description:
+                "Builds a preview deployment for the current branch and links it in the transcript.",
+              author: "Pi Labs",
+              latestVersion: "0.4.1",
+              downloads: 980,
+              updatedAt: "2026-08-02T09:00:00.000Z",
+              categories: ["productivity"],
+              permissionSummary: ["net.fetch", "ui.panel"],
+              verified: true,
+              trust: "verified",
+              installable: true,
+            },
+            {
+              id: "pi.sql-explorer",
+              name: "SQL Explorer",
+              description: "Browse local databases and paste query results into chat.",
+              author: "Data Tools",
+              latestVersion: "2.1.0",
+              downloads: 5602,
+              updatedAt: "2026-08-15T09:00:00.000Z",
+              categories: ["data"],
+              permissionSummary: ["fs.read", "process.spawn"],
+              trust: "community",
+              installable: false,
+            },
+          ],
+        });
         // The rows read service state straight from IPC, which reports nothing
         // for a fixture plugin; stand in for the supervisor here.
         (api as any).listPluginServices = async () => [
@@ -1489,13 +1584,14 @@ function AppShell() {
           "修复 host-core 启动失败并补充错误恢复测试",
           "同步代码",
         ];
+        // The inbox lists failures only, so every fixture row is a failure.
         const notifications = Array.from({ length: count }, (_, index) => ({
           id: `capture-notification-${index}`,
-          kind: index === 1 ? ("task.failed" as const) : ("task.completed" as const),
+          kind: "task.failed" as const,
           sessionId: `capture-session-${index}`,
           sessionTitle: titles[index] ?? `后台任务 ${index + 1}`,
           turnId: `capture-turn-${index}`,
-          ...(index === 1 ? { errorCode: "MODEL_REQUEST_TIMEOUT" } : {}),
+          ...(index % 2 === 1 ? { errorCode: "MODEL_REQUEST_TIMEOUT" } : {}),
           createdAt: new Date(now - (index + 1) * 60_000).toISOString(),
           readAt: index === 2 ? new Date(now - 30_000).toISOString() : null,
         }));
@@ -1712,7 +1808,7 @@ function AppShell() {
             {page === "chat" ? (
               <ConversationTopbar
                 sidebarCollapsed={sidebarCollapsed}
-                workPanelOpen={workPanelOpen}
+                workPanelOpen={presentedWorkPanelOpen}
                 onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
                 onNewTask={() => void runMenuCommand("newTask")}
                 onOpenSearch={() => setSearchOpen(true)}
@@ -1784,20 +1880,9 @@ function AppShell() {
               onExitAnimationEnd={() =>
                 finishWorkPanelExit(workPanelExitGeneration.current)
               }
+              onCollapse={() => useAppStore.getState().collapseWorkPanel()}
             />
           )}
-
-          <button
-            type="button"
-            className="app-work-panel-toggle no-drag"
-            title={t("nav.toggleWorkPanel")}
-            aria-label={t("nav.toggleWorkPanel")}
-            aria-pressed={workPanelOpen || presentedWorkPanelOpen}
-            disabled={!activeSessionId && !presentedWorkPanelOpen && !workPanelExiting}
-            onClick={togglePresentedWorkPanel}
-          >
-            <IconPanel size={15} />
-          </button>
 
           <SearchDialog open={searchOpen} onClose={() => setSearchOpen(false)} />
           <ToastHost />

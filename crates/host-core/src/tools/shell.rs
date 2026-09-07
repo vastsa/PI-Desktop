@@ -451,6 +451,52 @@ fn probe_user_login_path() -> Option<String> {
     (!path.is_empty()).then(|| path.to_string())
 }
 
+/// Locate a user-installed program the way a login shell would: process PATH
+/// first, then the Unix login PATH probe. Windows stays on the host PATH.
+/// Used by Grep to prefer a system `rg` without assuming it exists.
+pub fn find_user_program(name: &str) -> Option<PathBuf> {
+    for candidate in program_names(name) {
+        if let Some(path) = search_path(&candidate, |_| true) {
+            return Some(path);
+        }
+    }
+    #[cfg(unix)]
+    if let Some(login) = user_login_path() {
+        for candidate in program_names(name) {
+            if let Some(path) = search_in_path_value(&candidate, login) {
+                return Some(path);
+            }
+        }
+    }
+    None
+}
+
+fn program_names(name: &str) -> Vec<String> {
+    #[cfg(windows)]
+    {
+        if Path::new(name)
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case(OsStr::new("exe")))
+        {
+            vec![name.to_string()]
+        } else {
+            vec![format!("{name}.exe"), name.to_string()]
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        vec![name.to_string()]
+    }
+}
+
+#[cfg(unix)]
+fn search_in_path_value(name: &str, path_var: &str) -> Option<PathBuf> {
+    env::split_paths(path_var)
+        .filter(|dir| !dir.as_os_str().is_empty())
+        .map(|dir| dir.join(name))
+        .find(|path| is_executable(path))
+}
+
 fn search_path(name: &str, accept: impl Fn(&Path) -> bool) -> Option<PathBuf> {
     let path_var = env::var_os("PATH")?;
     env::split_paths(&path_var)

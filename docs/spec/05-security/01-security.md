@@ -20,8 +20,11 @@ Required (all **implemented**):
 - `sandbox: true` — the preload is a fully bundled CJS file with no runtime
   module resolution, verified end-to-end by `test:e2e:boot`
 - No remote module (Electron ≥ 14 default)
-- Navigation locked down: `setWindowOpenHandler` denies and forwards to the
-  OS browser; `will-navigate` blocks all non-dev-server navigations
+- Navigation locked down: `setWindowOpenHandler` denies in-app windows and
+  forwards only parsed `http:` / `https:` / `mailto:` URLs to the OS browser
+  (`parseAllowedExternalUrl`, D330 / ADR 0168). `file:`, `javascript:`,
+  `data:`, and custom URI schemes never reach `shell.openExternal`.
+  `will-navigate` blocks all non-dev-server navigations
 - Preload exposes a whitelist-checked `invoke`/`on` bridge only
   (`IPC_WHITELIST` enforced on both preload and main sides)
 
@@ -73,7 +76,8 @@ Plan is not itself the workspace security boundary. Host-core resolves the
 durable session mode for every `tools.execute` call and applies the Plan matrix
 before permission modes, grants, plugin risk, or renderer/sidecar state. Plan
 denies Write/Edit/plugin/unknown tools, while BrowserPreview is the explicit
-read-only UI inspection exception. Bash remains available in Plan: Ask and
+read-only UI inspection exception (it reveals bundled `pi.browser` chrome; raw
+CDP plugin tools stay denied in Plan). Bash remains available in Plan: Ask and
 Accept edits prompt, and Auto runs without confirmation and may mutate the
 workspace or scratch directory. The UI must state this tradeoff. `SubmitPlan`
 preserves exact Markdown bytes in a new unique `<workspaceRoot>/.pi/plan/*.md`
@@ -93,9 +97,10 @@ replace an artifact.
   unavailable, catalog resolution intentionally falls back to the first
   available platform shell; each turn pins its effective ID/dialect and the
   host rejects a changed pin before spawn with `COMMAND_SHELL_CHANGED`.
-- Timeouts are mandatory: 60s default with a 1–300s bounded override. Output
-  streams as separate stdout/stderr channels and is truncated at 256KB / 4000
-  lines with the `[truncated: output exceeded 256KB or 4000 lines]` marker
+- Timeouts are mandatory: 60s default with a 1–21,600s bounded override (D329). Output
+  streams as separate stdout/stderr channels and is truncated at 96KB / 4000
+  lines with an explicit `[truncated: …]` marker that names which end survived
+  (see [16-tool-result-limits](../03-runtime/16-tool-result-limits.md))
 - User abort and timeout shut down the complete process tree before the tool
   closes; no orphan process may continue writing output.
 - Full command line recorded in the audit log (SQLite, redacted), with shell ID

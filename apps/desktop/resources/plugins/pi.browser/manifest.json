@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "pi.browser",
+  "name": "Browser",
+  "version": "1.0.0",
+  "description": "Work-panel browser chrome and agent CDP against the host guest page.",
+  "author": "PI-Desktop",
+  "main": "main.js",
+  "contributes": {
+    "views": [
+      {
+        "id": "browser",
+        "title": {
+          "en": "Browser",
+          "zh-CN": "浏览器"
+        },
+        "icon": "browser",
+        "entry": "views/browser.html",
+        "order": 10
+      }
+    ]
+  },
+  "permissions": ["ui.view", "agent.tool.register", "browser.cdp"],
+  "engines": {
+    "piDesktop": ">=0.8.0"
+  }
+}

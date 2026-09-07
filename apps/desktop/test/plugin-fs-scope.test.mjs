@@ -400,6 +400,68 @@ test("file reveal reuses the readable file scope", async (t) => {
   );
 });
 
+test("classified preview reuses the readable file scope", async (t) => {
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    "base64",
+  );
+  const { runtime, ws, audits } = await harness(t, {
+    id: "fs.read-preview.scoped",
+    permissions: ["fs.read"],
+    fs: { read: { scope: ["docs/**", "docs", "pixel.png", "blob.bin"] } },
+    workspace: makeWorkspace({ "pixel.png": "placeholder" }),
+  });
+  writeFileSync(join(ws, "pixel.png"), png);
+  writeFileSync(join(ws, "blob.bin"), Buffer.from([0, 1, 2, 0, 3]));
+
+  const text = await runtime.invokePanelBridge(
+    "fs.read-preview.scoped",
+    "fs.readPreview",
+    { path: "docs/a.md" },
+  );
+  assert.equal(text.kind, "text");
+  assert.equal(text.content, "a");
+  assert.equal(typeof text.size, "number");
+
+  const image = await runtime.invokePanelBridge(
+    "fs.read-preview.scoped",
+    "fs.readPreview",
+    { path: "pixel.png" },
+  );
+  assert.equal(image.kind, "image");
+  assert.match(image.dataUrl, /^data:image\/png;base64,/);
+
+  const binary = await runtime.invokePanelBridge(
+    "fs.read-preview.scoped",
+    "fs.readPreview",
+    { path: "blob.bin" },
+  );
+  assert.equal(binary.kind, "binary");
+  assert.equal(binary.content, undefined);
+
+  assert.ok(
+    audits.some((entry) => entry.api === "fs.readPreview" && entry.ok === true),
+    "previewing a file is audited",
+  );
+
+  await refused(
+    t,
+    runtime.invokePanelBridge("fs.read-preview.scoped", "fs.readPreview", {
+      path: "docs",
+    }),
+    "INVALID_ARGUMENT",
+    /only files can be previewed/,
+  );
+  await refused(
+    t,
+    runtime.invokePanelBridge("fs.read-preview.scoped", "fs.readPreview", {
+      path: "notes.txt",
+    }),
+    "PERMISSION_DENIED",
+    /outside manifest\.fs\.read\.scope/,
+  );
+});
+
 test("list requires the read permission", async (t) => {
   const { runtime } = await harness(t, {
     id: "fs.list.nogrant",

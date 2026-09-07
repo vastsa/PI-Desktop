@@ -92,7 +92,7 @@ test("permission to close does not leak into the next window", () => {
 
 test("the stored close behavior is loaded before the first window", () => {
   const ready = mainSource.slice(mainSource.indexOf("app.whenReady()"));
-  const readIndex = ready.indexOf("readCloseBehavior()");
+  const readIndex = ready.indexOf("readCloseBehavior(dataDir)");
   const windowIndex = ready.indexOf("await ensureWindow()");
   assert.ok(readIndex > -1 && windowIndex > -1);
   assert.ok(

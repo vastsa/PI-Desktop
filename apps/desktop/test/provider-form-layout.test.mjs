@@ -31,11 +31,25 @@ test("the dialog is a fixed-height shell so it cannot grow with the model count"
   const dialog = block(".provider-setup-dialog");
   assert.match(dialog, /height: min\(720px, calc\(100vh - 64px\)\)/);
   assert.match(dialog, /width: min\(1040px, calc\(100vw - 48px\)\)/);
+  // Overlay is flex: auto min-width would keep the 1040px preferred width and
+  // clip the credential fields (and their 2px focus ring) on a narrower window.
+  assert.match(dialog, /min-width: 0/);
+  assert.match(dialog, /max-width: 100%/);
+});
+
+test("the scrolling body keeps the credential focus ring inside the dialog", () => {
+  const body = block(".provider-setup-body");
+  assert.match(body, /overflow-x: hidden/);
+  assert.match(body, /overflow-y: auto/);
+  assert.match(body, /padding: 2px/);
+  const vendorBody = block(".vendor-account-body");
+  assert.match(vendorBody, /overflow-x: hidden/);
+  assert.match(vendorBody, /padding: 2px/);
 });
 
 test("credentials are a 2x2 grid of four peer fields", () => {
   assert.match(setupSource, /className="provider-setup-credentials"/);
-  assert.match(setupSource, /className="provider-setup-fields"/);
+  assert.match(setupSource, /provider-setup-fields/);
   const fields = block(".provider-setup-fields");
   assert.match(fields, /display: grid/);
   assert.match(fields, /grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
@@ -44,29 +58,30 @@ test("credentials are a 2x2 grid of four peer fields", () => {
   assert.doesNotMatch(styles, /\.provider-setup-form\s*\{/);
 });
 
-test("the API format is the fourth field, not a disclosure of its own", () => {
-  // One select did not justify a whole collapsible section.
+test("custom API format sits beside the key, not in a disclosure", () => {
   assert.doesNotMatch(setupSource, /<details/);
   assert.doesNotMatch(setupSource, /provider-advanced/);
   assert.doesNotMatch(setupSource, /advancedOpen/);
   const fieldsBlock = setupSource.slice(
-    setupSource.indexOf('className="provider-setup-fields"'),
+    setupSource.indexOf("provider-setup-fields"),
     setupSource.indexOf("<ModelSelectionPanes"),
   );
   assert.match(fieldsBlock, /settings\.apiStyle"/);
-  assert.match(fieldsBlock, /settings\.apiStyleDerived/);
-  assert.match(fieldsBlock, /API_STYLES\.map/);
-  // The per-model Advanced disclosure is a different control and stays.
+  assert.match(fieldsBlock, /API_STYLES\.filter/);
+  assert.doesNotMatch(fieldsBlock, /settings\.apiStyleDerived/);
+  assert.match(fieldsBlock, /<ServicePicker/);
   assert.match(pickerSource, /provider-chosen-advanced-toggle/);
 });
 
-test("list rows carry no box of their own inside a bordered pane", () => {
-  // Double borders were what made the dialog look coarse.
+test("list rows carry no box of their own inside the inset pane", () => {
+  // Double borders were what made the dialog look coarse; D297 removed the
+  // hairline between rows too — the checkbox and a 2px gap make the list.
   const row = block(".provider-models-row");
-  assert.doesNotMatch(row, /border: 1px solid/);
-  assert.match(styles, /\.provider-models-row \+ \.provider-models-row\s*\{\s*border-top: 1px solid/);
+  assert.doesNotMatch(row, /border:|border-top|box-shadow/);
+  assert.doesNotMatch(styles, /\.provider-models-row \+ \.provider-models-row/);
+  assert.match(block(".provider-models-list"), /gap: 2px/);
   const chosen = block(".provider-chosen-row");
-  assert.doesNotMatch(chosen, /border: 1px solid/);
+  assert.doesNotMatch(chosen, /border:|border-top|box-shadow/);
   // The panes themselves read as wells, not as raised cards.
   for (const selector of [".provider-models", ".provider-chosen"]) {
     assert.match(block(selector), /background: var\(--ds-bg-inset\)/);
@@ -143,11 +158,9 @@ test("each pane is a self-contained panel that scrolls its own list", () => {
   for (const selector of [".provider-models", ".provider-chosen"]) {
     const pane = block(selector);
     assert.match(pane, /min-height: 0/);
-    assert.match(pane, /border: 1px solid var\(--ds-border-subtle\)/);
+    // D297: the inset tone is the pane's edge; no stroke of any kind.
+    assert.doesNotMatch(pane, /border:|border-top|box-shadow/);
     assert.match(pane, /border-radius: var\(--radius-sm\)/);
-    // The divider that separated the old stacked sections would now cut across
-    // the grid, so it must be gone.
-    assert.doesNotMatch(pane, /border-top: 1px solid/);
   }
   for (const selector of [".provider-models-list", ".provider-chosen-list"]) {
     const list = block(selector);
@@ -163,7 +176,9 @@ test("each pane is a self-contained panel that scrolls its own list", () => {
 test("the custom-model row stays pinned under the chosen list", () => {
   const custom = block(".provider-custom-model");
   assert.match(custom, /flex: none/);
-  assert.match(custom, /border-top: 1px solid var\(--ds-border-subtle\)/);
+  // D297: spacing, not a rule, sets it off from the list above.
+  assert.match(custom, /margin-top: 2px/);
+  assert.doesNotMatch(custom, /border-top/);
 });
 
 test("empty panes hold their height instead of collapsing", () => {
@@ -179,7 +194,7 @@ test("the panes stack again before the dialog gets too narrow to read", () => {
   assert.notEqual(at, -1, "missing the two-pane fallback breakpoint");
   const query = styles.slice(at, styles.indexOf("@media", at + 10));
   assert.match(query, /\.provider-setup-panes\s*\{\s*grid-template-columns: minmax\(0, 1fr\)/);
-  assert.match(query, /\.provider-setup-fields\s*\{\s*grid-template-columns: minmax\(0, 1fr\)/);
+  assert.match(query, /\.provider-setup-fields[\s\S]*?\{\s*grid-template-columns: minmax\(0, 1fr\)/);
   // A stacked dialog must be allowed to size to its content again, and both
   // dialogs host the same panes, so both need that release.
   assert.match(
@@ -193,6 +208,8 @@ test("the vendor account dialog hosts the same panes in the same shell", () => {
   // rather than the narrower stacked one it used while it had its own copy.
   const dialog = block(".vendor-account-dialog");
   assert.match(dialog, /width: min\(1040px, calc\(100vw - 48px\)\)/);
+  assert.match(dialog, /max-width: 100%/);
+  assert.match(dialog, /min-width: 0/);
   assert.match(dialog, /height: min\(720px, calc\(100vh - 64px\)\)/);
   assert.match(vendorDialogSource, /<ModelSelectionPanes/);
   // The duplicated chosen-pane and custom-model rules are retired with it.

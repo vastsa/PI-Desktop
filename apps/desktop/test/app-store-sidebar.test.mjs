@@ -47,7 +47,8 @@ test("durable empty sessions render and title heuristics do not filter them", ()
     sidebarSource,
     /candidates\.filter\(\(session\) => !isDefaultSessionTitle\(session\.title\)\)/,
   );
-  assert.match(storeSource, /latestSessionInScope[\s\S]*messageCount === 0/);
+  assert.match(storeSource, /latestSessionInScope/);
+  assert.match(storeSource, /sessionIsReusableEmpty/);
   assert.match(storeSource, /pendingNewSessionRequests/);
   assert.doesNotMatch(sidebarSource, /keptEmptyScopes/);
 });

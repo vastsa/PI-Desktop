@@ -252,6 +252,7 @@ export const api = {
   updatesDownload: () => invoke<UpdateState>(IPC.invoke.updatesDownload),
   updatesInstall: () => invoke(IPC.invoke.updatesInstall),
   updatesOpenReleases: () => invoke(IPC.invoke.updatesOpenReleases),
+  openFeedback: () => invoke(IPC.invoke.appOpenFeedback),
   listNotifications: (input?: { unreadOnly?: boolean; limit?: number }) =>
     invoke<NotificationListResult>(IPC.invoke.notificationList, input ?? {}),
   markNotificationRead: (id: string) =>
@@ -628,8 +629,11 @@ export const api = {
    */
   listPluginViews: () => invoke<PluginViewMeta[]>(IPC.invoke.pluginViews),
   /** Create or reuse the view's web contents. Does not show it. */
-  pluginViewOpen: (pluginId: string, viewId: string) =>
-    invoke(IPC.invoke.pluginViewOpen, { pluginId, viewId }),
+  pluginViewOpen: (
+    pluginId: string,
+    viewId: string,
+    extra?: { sessionId?: string; location?: string },
+  ) => invoke(IPC.invoke.pluginViewOpen, { pluginId, viewId, ...extra }),
   pluginViewClose: (pluginId: string, viewId: string) =>
     invoke(IPC.invoke.pluginViewClose, { pluginId, viewId }),
   pluginViewSetBounds: (bounds: {
@@ -638,8 +642,18 @@ export const api = {
     width: number;
     height: number;
   }) => invoke(IPC.invoke.pluginViewSetBounds, bounds),
-  pluginViewSetVisible: (pluginId: string, viewId: string, visible: boolean) =>
-    invoke(IPC.invoke.pluginViewSetVisible, { pluginId, viewId, visible }),
+  pluginViewSetVisible: (
+    pluginId: string,
+    viewId: string,
+    visible: boolean,
+    sessionId?: string,
+  ) =>
+    invoke(IPC.invoke.pluginViewSetVisible, {
+      pluginId,
+      viewId,
+      visible,
+      sessionId,
+    }),
   marketRefresh: (force = true) =>
     invoke<{
       providerId: string;
@@ -703,7 +717,8 @@ export const api = {
   }) => invoke(IPC.invoke.browserSetBounds, bounds),
   browserSetVisible: (visible: boolean) =>
     invoke(IPC.invoke.browserSetVisible, { visible }),
-  browserOpenExternal: () => invoke(IPC.invoke.browserOpenExternal),
+  browserOpenExternal: (url?: string) =>
+    invoke(IPC.invoke.browserOpenExternal, url ? { url } : {}),
   browserGetState: () =>
     invoke<BrowserState | null>(IPC.invoke.browserGetState),
   fsList: (path?: string) =>
@@ -719,6 +734,7 @@ export const api = {
       ...(mimeType ? { mimeType } : {}),
     }),
   fsReveal: (path: string) => invoke(IPC.invoke.fsReveal, { path }),
+  fsOpen: (path: string) => invoke(IPC.invoke.fsOpen, { path }),
   fsIndex: () => invoke<FsIndexResult>(IPC.invoke.fsIndex),
   composerCommands: () =>
     invoke<{ commands: ComposerCommand[] }>(IPC.invoke.composerCommands),
@@ -742,6 +758,11 @@ export const api = {
     invoke<{ behavior: CloseBehavior }>(IPC.invoke.closeBehaviorSet, {
       behavior,
     }),
+  getTokenUsageHistory: (query?: { startDate?: number; endDate?: number; bucket?: "day" | "week" | "month" }) =>
+    invoke<import("@pi-desktop/shared").TokenUsageHistoryResult>(
+      IPC.invoke.statsGetTokenUsageHistory,
+      query,
+    ),
   menuRendererReady: () =>
     invoke<{ ready: boolean }>(IPC.invoke.menuRendererReady),
   nativeMenuAction: (action: NativeMenuAction) =>
@@ -790,11 +811,11 @@ export const api = {
     );
   },
   onBrowserPreview: (
-    listener: (event: { sessionId: string; path: string }) => void,
+    listener: (event: { sessionId: string; path?: string; url?: string }) => void,
   ) => {
     if (!window.piDesktop?.on) return () => undefined;
     return window.piDesktop.on(IPC.event.browserPreview, (payload) =>
-      listener(payload as { sessionId: string; path: string }),
+      listener(payload as { sessionId: string; path?: string; url?: string }),
     );
   },
   onAgentEvent: (listener: (event: AgentEventEnvelope) => void) => {

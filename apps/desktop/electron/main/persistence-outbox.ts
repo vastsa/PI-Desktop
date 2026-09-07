@@ -61,6 +61,18 @@ export class PersistenceOutbox {
     return this.flushing;
   }
 
+  /**
+   * Drop queued appends for a session that the user deleted so a later
+   * host-side stub recreate cannot resurrect it (D318).
+   */
+  async dropSession(sessionId: string): Promise<void> {
+    await this.loaded;
+    const next = this.entries.filter((entry) => entry.sessionId !== sessionId);
+    if (next.length === this.entries.length) return;
+    this.entries = next;
+    await this.persist();
+  }
+
   size(): number {
     return this.entries.length;
   }

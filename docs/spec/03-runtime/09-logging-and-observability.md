@@ -165,9 +165,9 @@ apart without guessing:
   `turns`, `toolCalls`, `durationMs`, and `errorCode` on failure. Delegate rows
   are attributed in the transcript but their tool and model lines are not, so
   this is what tells a parallel fan-out apart: same `turnId`, one line per
-  delegate, each with its own provider and wall-clock cost. Timeout outcomes
-  carry `status=timed_out` and the corresponding `SUBAGENT_IDLE_TIMEOUT` or
-  `SUBAGENT_DURATION_TIMEOUT` error code.
+  delegate, each with its own provider and wall-clock cost. Idle and duration
+  watchdogs are withdrawn (D328); a stored `timed_out` line may still carry
+  `SUBAGENT_IDLE_TIMEOUT` or `SUBAGENT_DURATION_TIMEOUT`.
 
 The assistant transcript also preserves the successful stream duration as
 `UiMessage.responseDurationMs`. The renderer combines it with provider-reported

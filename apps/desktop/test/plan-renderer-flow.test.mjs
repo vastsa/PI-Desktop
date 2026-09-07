@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
@@ -46,7 +47,7 @@ test("each pending proposal restores the remembered approval choice", () => {
 });
 
 test("pending input is retained but every composer/model mutation control is gated", () => {
-  assert.match(composer, /readOnly=\{inputBlocked\}/);
+  assert.match(composer, /contentEditable=\{!inputBlocked\}/);
   assert.match(composer, /aria-readonly=\{inputBlocked\}/);
   assert.match(composer, /enabled: !inputBlocked/);
   assert.match(composer, /disabled=\{controlsBlocked\}/);
@@ -58,5 +59,9 @@ test("pending input is retained but every composer/model mutation control is gat
 
 test("the normal desktop test command includes source-level renderer contracts", () => {
   const scripts = JSON.parse(packageJson).scripts;
-  assert.match(scripts.test, /src\/\*\.test\.mjs/);
+  assert.match(scripts.test, /test\/\*\.test\.mjs/);
+  assert.ok(
+    existsSync(new URL("./plan-mode-source-contract.test.mjs", import.meta.url)),
+    "the source-level contract test must live under test/ so the glob picks it up",
+  );
 });

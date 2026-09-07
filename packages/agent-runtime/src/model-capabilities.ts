@@ -1,4 +1,5 @@
 import {
+  effectiveContextWindow,
   THINKING_LEVELS,
   type ModelBinding,
   type ModelInfo,
@@ -60,9 +61,10 @@ export function capabilitiesFromModelInfo(model?: ModelInfo | null): ModelCapabi
 }
 
 /**
- * Apply explicit per-provider model settings. Limits and thinking levels come
- * from the user's binding; the catalog only seeds a new binding and supplies
- * the published baseline shown in metadata surfaces.
+ * Apply explicit per-provider model settings. Thinking levels and output limits
+ * come from the user's binding. A legacy/generated 128k context value is treated
+ * as the generic fallback when a published catalog window is available; every
+ * other context value remains an explicit Advanced override.
  */
 export function modelConfigWithBinding(
   model: ModelConfig,
@@ -81,9 +83,16 @@ export function modelConfigWithBinding(
   const enabledThinkingLevels = THINKING_LEVELS.filter((level) =>
     binding.thinkingLevels.includes(level),
   );
+  const contextWindow =
+    effectiveContextWindow(model.contextWindow, binding.contextWindow) ??
+    model.contextWindow;
   return {
     ...model,
-    contextWindow: binding.contextWindow,
+    contextWindow,
+    limit: {
+      ...(model.limit ?? {}),
+      context: contextWindow,
+    },
     maxTokens: binding.maxTokens,
     reasoning: enabledThinkingLevels.some((level) => level !== "off"),
     supportedThinkingLevels: enabledThinkingLevels,

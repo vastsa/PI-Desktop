@@ -35,8 +35,12 @@ import {
   IconWorkflow,
 } from "./icons";
 import { useAppStore } from "../stores/app-store";
-import { useReferencedImageDataUrl } from "../lib/use-referenced-image-data-url";
-import { resolvePreviewTarget, toWorkspaceRel } from "../lib/chat-links";
+import {
+  remarkChatFileLinks,
+  resolvePreviewTarget,
+  safeDecodeUri,
+  toWorkspaceRel,
+} from "../lib/chat-links";
 import {
   isClosedFencedCodeBlock,
   MAX_MERMAID_SOURCE_LENGTH,
@@ -375,6 +379,8 @@ const MarkdownBlockContext = createContext({
   renderDiagrams: true,
 });
 
+const MarkdownBaseDirContext = createContext("");
+
 function extractCode(children: ReactNode): { code: string; lang: string } | null {
   const element = Array.isArray(children)
     ? children.find((child) => isValidElement(child))
@@ -430,12 +436,13 @@ function InlineCode({
   ...rest
 }: ComponentProps<"code"> & { node?: unknown }) {
   const root = useAppStore((s) => s.workspace?.path);
+  const baseDir = useContext(MarkdownBaseDirContext);
   const openFile = useAppStore((s) => s.openFileInWorkPanel);
   const openUrl = useAppStore((s) => s.openUrlInWorkPanel);
   const text = typeof children === "string" ? children : null;
   const target =
     text && !className && !text.includes("\n")
-      ? resolvePreviewTarget(text, root)
+      ? resolvePreviewTarget(text, root, baseDir)
       : null;
   const fileTitle = usePreviewTitle("file");
   const urlTitle = usePreviewTitle("url");
@@ -469,6 +476,7 @@ function Anchor({
   ...rest
 }: ComponentProps<"a"> & { node?: unknown }) {
   const root = useAppStore((s) => s.workspace?.path);
+  const baseDir = useContext(MarkdownBaseDirContext);
   const openFile = useAppStore((s) => s.openFileInWorkPanel);
   const openUrl = useAppStore((s) => s.openUrlInWorkPanel);
   // Plain click previews in the work panel (browser tab for http(s), files
@@ -482,7 +490,7 @@ function Anchor({
       openUrl(href);
       return;
     }
-    const rel = toWorkspaceRel(decodeURI(href), root);
+    const rel = toWorkspaceRel(safeDecodeUri(href), root, baseDir);
     if (rel) {
       e.preventDefault();
       openFile(rel);
@@ -496,11 +504,9 @@ function Anchor({
 }
 
 /**
- * Local image references can't load over the renderer origin directly; the
- * host resolves them into a bounded data URL so they render inline. When the
- * file cannot be resolved (missing, outside allowed roots, or oversized) the
- * image falls back to a chip that opens the files-tab image viewer. Remote
- * images render inline and click through to the browser tab.
+ * Local image references can't load over the renderer origin; render them as
+ * a chip that opens the files-tab image viewer instead of a broken <img>.
+ * Remote images render inline and click through to the browser tab.
  */
 function MarkdownImage({
   node: _node,
@@ -509,24 +515,13 @@ function MarkdownImage({
   ...rest
 }: ComponentProps<"img"> & { node?: unknown }) {
   const root = useAppStore((s) => s.workspace?.path);
+  const baseDir = useContext(MarkdownBaseDirContext);
   const openFile = useAppStore((s) => s.openFileInWorkPanel);
   const openUrl = useAppStore((s) => s.openUrlInWorkPanel);
   const fileTitle = usePreviewTitle("file");
   const urlTitle = usePreviewTitle("url");
   const source = typeof src === "string" ? src : "";
-  const decoded = (() => {
-    try {
-      return decodeURI(source);
-    } catch {
-      return source;
-    }
-  })();
-  const rel = toWorkspaceRel(decoded, root);
-  // Always run the hook before any branch so the hook order stays stable even
-  // when a streaming src flips between remote and local. For remote images the
-  // resolved data URL is null and unused.
-  const dataUrl = useReferencedImageDataUrl(rel ?? decoded);
-  if (/^https?:/i.test(source)) {
+  if (/^https?:\/\//i.test(source)) {
     return (
       <img
         {...rest}
@@ -538,18 +533,7 @@ function MarkdownImage({
       />
     );
   }
-  if (dataUrl) {
-    return (
-      <img
-        {...rest}
-        src={dataUrl}
-        alt={alt ?? ""}
-        className="chat-image-local"
-        title={rel ? fileTitle : source}
-        onClick={rel ? () => openFile(rel) : undefined}
-      />
-    );
-  }
+  const rel = toWorkspaceRel(safeDecodeUri(source), root, baseDir);
   if (rel) {
     return (
       <button
@@ -616,7 +600,7 @@ const markdownComponents: Components = {
   table: Table,
 };
 
-const remarkPlugins = [remarkGfm, remarkMath];
+const staticRemarkPlugins = [remarkGfm, remarkMath];
 
 // Extend the default schema only for the media elements rendered above.
 const sanitizeSchema = {
@@ -686,9 +670,13 @@ function useBlocks(source: string): string[] {
 const Block = memo(function MarkdownBlock({
   raw,
   renderDiagrams,
+  workspaceRoot,
+  baseDir,
 }: {
   raw: string;
   renderDiagrams: boolean;
+  workspaceRoot?: string | null;
+  baseDir?: string;
 }) {
   const context = useMemo(
     () => ({
@@ -696,6 +684,13 @@ const Block = memo(function MarkdownBlock({
       renderDiagrams,
     }),
     [raw, renderDiagrams],
+  );
+  const remarkPlugins = useMemo(
+    () => [
+      ...staticRemarkPlugins,
+      remarkChatFileLinks(workspaceRoot, baseDir),
+    ],
+    [workspaceRoot, baseDir],
   );
   return (
     <MarkdownBlockContext.Provider value={context}>
@@ -713,16 +708,26 @@ const Block = memo(function MarkdownBlock({
 export const Markdown = memo(function Markdown({
   source,
   renderDiagrams = true,
+  baseDir,
 }: {
   source: string;
   renderDiagrams?: boolean;
+  /** Workspace-relative directory of the source file, for `./` / `../` links. */
+  baseDir?: string;
 }) {
+  const workspaceRoot = useAppStore((s) => s.workspace?.path);
   const blocks = useBlocks(source);
   return (
-    <>
+    <MarkdownBaseDirContext.Provider value={baseDir ?? ""}>
       {blocks.map((raw, i) => (
-        <Block key={i} raw={raw} renderDiagrams={renderDiagrams} />
+        <Block
+          key={i}
+          raw={raw}
+          renderDiagrams={renderDiagrams}
+          workspaceRoot={workspaceRoot}
+          baseDir={baseDir}
+        />
       ))}
-    </>
+    </MarkdownBaseDirContext.Provider>
   );
 });

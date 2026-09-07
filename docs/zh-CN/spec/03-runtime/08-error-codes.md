@@ -77,8 +77,8 @@ stdio 与 Tokio 的动态阻塞池隔离，因此后一种情况
 | `STREAM_FAILED` | 是的 | 提供程序流在完整响应之前终止、提前关闭或以其他方式结束；最多四次同回合重试可能会在终止事件之前发生 |
 | `EMPTY_MODEL_RESPONSE` | 是的 | 模型在没有工具调用且没有可见文本的情况下结束了两次：一次是流式传输，一次是在自动重新运行后（规范 02-agent-runtime §5e） |
 | `PROMPT_ENHANCEMENT_EMPTY` | 不 | 一次性增强模型没有返回任何文本 |
-| `SUBAGENT_IDLE_TIMEOUT` | 不 | 委派在其配置的空闲窗口内完全没有发出任何 agent 事件，且计时器在工具执行期间暂停 |
-| `SUBAGENT_DURATION_TIMEOUT` | 不 | 委派超出其配置的总运行时长，包含工具执行时间 |
+| `SUBAGENT_IDLE_TIMEOUT` | 不 | 已撤回（D328）：空闲看门狗不再武装；代码仅为已存储结果保留 |
+| `SUBAGENT_DURATION_TIMEOUT` | 不 | 已撤回（D328）：时长看门狗不再武装；代码仅为已存储结果保留 |
 
 ### 3. 3 工作空间/工具/权限
 

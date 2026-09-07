@@ -14,7 +14,6 @@
  * - a delegate never inherits mutation rights from the parent session.
  */
 
-import type { A2AAgentCard } from "./a2a.js";
 import { THINKING_LEVELS, type ThinkingLevel } from "./types.js";
 
 /**
@@ -60,24 +59,6 @@ export type SubagentDefinition = {
   filePath?: string;
 };
 
-/**
- * A2A capability tool a delegate may declare to talk to its concurrent
- * siblings over the host-core A2A broker (ADR 0146, superseding D277/ADR
- * 0138/0140). It is opt-in per definition: silence means a delegate keeps the
- * ADR 0062 isolation where the parent is the only integration point, so no
- * existing definition changes behaviour.
- *
- * A single `A2A` tool carries the operations a delegate needs — `discover`,
- * `send`, `get`, `wait` and `cancel` — selected by an `action` parameter, so
- * the capability is counted and declared as one tool. It is a session-local
- * coordination tool, not a delegation tool: it exchanges A2A messages/tasks
- * between running delegates and never exposes delegation ids, the delegation
- * registry, or the ability to start or stop a delegate.
- */
-export const SUBAGENT_A2A_TOOLS = ["A2A"] as const;
-
-export type SubagentA2ATool = (typeof SUBAGENT_A2A_TOOLS)[number];
-
 /** Tools a definition may declare. Plugin, skill, mode and meta tools stay out
  * of reach: a delegate is a bounded file/search/shell worker, not a second
  * full session. */
@@ -89,7 +70,6 @@ export const SUBAGENT_ASSIGNABLE_TOOLS = [
   "Bash",
   "Edit",
   "Write",
-  ...SUBAGENT_A2A_TOOLS,
 ] as const;
 
 export type SubagentAssignableTool = (typeof SUBAGENT_ASSIGNABLE_TOOLS)[number];
@@ -107,20 +87,10 @@ export const DEFAULT_SUBAGENT_TOOLS: readonly SubagentAssignableTool[] = [
 
 export const MAX_SUBAGENT_MAX_TURNS = 80;
 /**
- * How long a delegate may be completely silent before it is considered hung.
- *
- * This bounds silence, not work: any agent event re-arms the timer, a single
- * streamed token included, and the timer is paused outright while a tool
- * executes. So a delegate that thinks for twenty minutes while streaming, or
- * runs a five-minute build, never trips it — only one that stops responding
- * does.
- *
- * The value is sized from observed provider latency: a delegate is silent from
- * its last streamed token until the next response begins, and this project's
- * measured pre-token wait reaches 174s at p99.9. 300 seconds clears that with
- * margin while staying well below the 600-second `TaskWait` default, so a
- * genuinely stuck delegate surfaces within one wait instead of holding the
- * parent for a full window and beyond.
+ * Parsed from definition frontmatter for compatibility. Idle and duration
+ * watchdogs are withdrawn (D328): the parent agent decides when to stop a
+ * delegate via TaskStop, and the user via Stop. These constants remain so
+ * existing documents still parse.
  */
 export const DEFAULT_SUBAGENT_IDLE_TIMEOUT_SECONDS = 300;
 export const MIN_SUBAGENT_IDLE_TIMEOUT_SECONDS = 10;
@@ -174,41 +144,6 @@ export function isSubagentAssignableTool(
 
 export function isSubagentMutatingTool(value: string): boolean {
   return (SUBAGENT_MUTATING_TOOLS as readonly string[]).includes(value);
-}
-
-export function isSubagentA2ATool(value: string): value is SubagentA2ATool {
-  return (SUBAGENT_A2A_TOOLS as readonly string[]).includes(value);
-}
-
-/** Whether this delegate opted into A2A messaging (ADR 0146). */
-export function subagentUsesA2A(definition: SubagentDefinition): boolean {
-  return definition.tools.some(isSubagentA2ATool);
-}
-
-/**
- * Derive the A2A Agent Card a delegate advertises through the broker's
- * discovery. `name` is filled in by the runtime at spawn time with the
- * delegate's unique peer id; the card here carries the definition-derived
- * identity and skill so a peer's `discover` returns something meaningful. The
- * card claims streaming and push because the host-core broker serves both.
- */
-export function toAgentCard(definition: SubagentDefinition): A2AAgentCard {
-  return {
-    name: definition.name,
-    description: definition.description,
-    version: "1.0.0",
-    skills: [
-      {
-        id: definition.name,
-        name: definition.name,
-        description: definition.description,
-        tags: definition.tools.filter((tool) => !isSubagentA2ATool(tool)),
-      },
-    ],
-    capabilities: { streaming: true, pushNotifications: true },
-    defaultInputModes: ["text/plain"],
-    defaultOutputModes: ["text/plain"],
-  };
 }
 
 /** Whether this delegate can change the workspace. */

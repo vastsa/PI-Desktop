@@ -23,6 +23,8 @@
 - 禁用插件 = 代码未加载
 - 未经确认的高风险行动=未执行
 - 主机 API 不在允许名单上 = 不存在
+- `pi.browser.cdp` 不在 CDP 白名单上的方法 = `PERMISSION_DENIED`（无
+  cookies、storage、Target 或 Fetch；无 DevTools websocket）
 
 ## 3. 隔离策略
 
@@ -200,7 +202,9 @@ Plan 是代理工具的附加主机策略边界：
 ## 8. 网络和外部链接
 
 - 默认情况下不授予 `net.fetch`
-- `openExternal` 应确认。`fs.openDefault` 和 `fs.reveal` 是独立能力：二者都只接受已经通过插件
+- `openExternal` 应确认。主机解析 URL，只打开 `http:`、`https:` 和 `mailto:`
+  （D330 / ADR 0168）；其他 scheme 以 `INVALID_ARGUMENT` 失败，不会到达
+  `shell.openExternal`。`fs.openDefault` 和 `fs.reveal` 是独立能力：二者都只接受已经通过插件
   `fs.read` 策略检查的现有 root-relative 文件，用于明确的文件查看操作，不允许任意 URL 或绝对
   路径打开；`fs.reveal` 只请求操作系统文件管理器选中该文件。
 - 禁止插件静默下载和执行二进制文件（MVP 中根本没有这样做）

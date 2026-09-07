@@ -213,16 +213,26 @@ The complete visible transcript and the model context are separate views of
 the same session. A durable checkpoint summarizes older model context while
 the renderer continues to show every original user, assistant, and tool row.
 
-PI-Desktop reuses pi-agent-core's `buildSessionContext`, `convertToLlm`,
-`estimateContextTokens`, `prepareCompaction`, and `compact` primitives. The
-desktop runtime owns when they run and how the result crosses the Rust storage
-boundary; OpenCode DCP is an AGPL-3.0 behavioral reference only, not a linked or
-copied dependency.
+PI-Desktop reuses pi-agent-core's `convertToLlm`, `estimateContextTokens`,
+`prepareCompaction`, and `compact` primitives, and applies the same session
+context projection pi used to export as `buildSessionContext` (slice from the
+newest compaction, then `compactionSummary` before the retained tail). pi 0.85
+moved that helper off the public package export and made the remaining
+internal builder async for custom-entry projectors; the desktop runtime keeps
+a synchronous local copy because it synthesizes only message and compaction
+entries. The desktop runtime owns when they run and how the result crosses the
+Rust storage boundary; OpenCode DCP is an AGPL-3.0 behavioral reference only,
+not a linked or copied dependency.
 
 Compaction follows Codex's mechanism (ADR 0064): it always happens inline at a
 turn boundary, the model can request it through `new_context`, every compaction
 adds a transcript row and raises one warning toast, and there is no
 pre-computation anywhere.
+
+pi 0.84.4+ invokes `prepareNextTurn` only when the loop will start another
+assistant turn in the same run — including between a completed tool batch and
+the follow-up model request. A new user prompt still compacts before its first
+provider request through `automaticCompactionNeeded` in `prompt()`.
 
 For every pi loop turn:
 
@@ -355,7 +365,10 @@ counts as running state until durable persistence completes.
   `planning`/`inactive` state mid-turn: the renderer keeps the state of the
   in-flight turn and only moves it to the staged contract mode after the
   terminal event flushes the configuration, so `Plan / planning` surfaces
-  when the next prompt starts under the new mode.
+  when the next prompt starts under the new mode. The Composer mode chip
+  pulse and the compact transcript Planning row are that same live
+  projection: the chip label may already show the staged mode, but it does
+  not pulse until the in-flight turn projects `planning`.
 
 The live planning state is derived and projected as:
 
@@ -498,8 +511,8 @@ the launch.
 
 Frontmatter adds `permission: inherit | ask | accept-edits | auto` (default
 `inherit`), which controls the scope the delegate's tool calls resolve under
-instead of the session mode (§5f.1). It also accepts `idle-timeout` and
-`max-duration` watchdog overrides. Only builtin and user definitions may
+instead of the session mode (§5f.1). `idle-timeout` and `max-duration` still
+parse for compatibility but no longer kill a run (D328). Only builtin and user definitions may
 declare a permission scope —
 both express a choice the user already made, whereas a project definition
 arrives with the repository, so honoring its scope would let cloned code grant
@@ -537,14 +550,16 @@ core set rather than the on-demand catalog of §7.1:
   cheap. The joined result is bounded to `MAX_TASKWAIT_RESULT_CHARS` (50k).
   `timeoutSeconds` defaults to 600 and is clamped to 900: the wait blocks the
   turn, so the ceiling is what bounds how long a session can look hung. Expiry
-  is not a failure — the delegates keep running and the wait returns the
-  finished reports plus a note saying so and to call again — so a low ceiling
-  costs one round-trip and keeps Stop responsive. Detecting a hung delegate is
-  the idle watchdog's job, not this timeout's, which is why the idle default is
-  deliberately shorter than this one.
-- `TaskList()` — reports every delegation of the session with status.
+  is not a failure and does not stop the delegates (D328) — the wait returns a
+  heartbeat (agent, status, elapsed, turns, last tool) plus any finished
+  reports. The runtime keeps the parent turn open and delivers remaining
+  reports when they finish, even if the parent already stopped calling tools.
+  Only `TaskStop` or user Stop aborts a delegate.
+- `TaskList()` — reports every delegation of the session with status and a
+  running heartbeat.
 - `TaskStop(delegationIds?)` — stops running delegations (defaults to all);
-  stopped delegations read as `stopped`.
+  waits for each abort to settle, then persists `status: "stopped"` with
+  `completedAt` on `details.stopped[]`. Stopped delegations read as `stopped`.
 
 **Delegate loop.** A `SubagentRun` is a second pi `Agent` in the same sidecar
 process with the definition's system prompt, its (possibly pinned)
@@ -565,33 +580,21 @@ settled, `turns`, `toolCalls` and, on failure or timeout, `error`. `startedAt` a
 truth for renderer delegation duration; the immediate `Task` tool-call
 duration only covers starting the background work.
 
-**Delegate watchdogs.** Every run has a 300-second idle timeout and a
-21,600-second (6-hour) total duration limit. A definition may override them
-with `idle-timeout` (clamped to 10–21,600 seconds) and `max-duration` (clamped
-to 60–21,600 seconds); non-numeric values warn and use the defaults.
+**Delegate lifetime (D328).** The runtime does not idle-timeout or
+duration-timeout a delegate. `idle-timeout` / `max-duration` frontmatter still
+parses so old documents load, but those values are not armed. A delegate runs
+until it finishes, hits an explicit `maxTurns`, fails, is `TaskStop`'d, or the
+user Stops / the runtime is disposed. The parent agent judges whether to
+cancel via `TaskStop`; a one-line heartbeat (who, status, elapsed, turns, last
+tool) is what it has to go on while the delegate is running.
 
-The idle timeout bounds *silence*, not slowness. Every agent event counts as
-activity, down to one streamed token arriving as `message_update`, so a
-delegate that keeps producing output never trips it however long its turn runs.
-The idle timer is additionally paused from `tool_execution_start` until its
-matching `tool_execution_end`, so a long build or test command cannot expire it
-either, while the duration timer continues through tool execution. Only a
-delegate that emits nothing at all for the whole window is treated as hung.
-Because the window measures dead air rather than work, the default is sized
-from observed provider latency rather than from how long work may take: a
-delegate is silent from its last streamed token until its next response
-begins, and that wait has been measured at 174 seconds at p99.9. The
-300-second default clears that with margin while staying well below the
-600-second `TaskWait` default, so a stuck delegate settles as `timed_out`
-within a single wait instead of holding the parent for a full window and
-beyond.
+When the parent stops calling tools while delegates are still running, the
+runtime swallows that `agent_end`, keeps the durable turn open, waits for the
+delegates, and prompts the parent with their reports. Ending the parent loop
+does not abort them.
 
-Idle expiry returns `timed_out` with `SUBAGENT_IDLE_TIMEOUT`, and
-duration expiry returns `timed_out` with `SUBAGENT_DURATION_TIMEOUT`; both
-include the latest partial assistant output when available and abort the
-delegate immediately. Fatal provider/stream errors, parent aborts, and
-explicit `maxTurns` retain their existing `failed`, `aborted`, and `truncated`
-outcomes.
+Fatal provider/stream errors, parent aborts, and explicit `maxTurns` retain
+their existing `failed`, `aborted`, and `truncated` outcomes.
 
 **Model pins.** `model: <provider>/<model>` in the frontmatter is resolved once
 per launch in Electron main, where credentials and the models.dev snapshot live, against
@@ -606,15 +609,15 @@ nearest-supported rule as §5c.
 `parentToolCallId` and `agentName` on its envelope, and Electron main copies both
 onto the persisted row. When the runtime rebuilds model context it skips every
 row with `parentToolCallId`: the parent only ever saw reports through
-`TaskWait`, and replaying delegate rows would both contradict that and
-reintroduce the context cost delegation exists to avoid.
+`TaskWait` or the runtime's completion prompt (D328), and replaying delegate
+rows would both contradict that and reintroduce the context cost delegation
+exists to avoid.
 
 **Turn ownership.** A delegate's lifecycle never reaches Electron main's turn
-handling. Delegation is expected to converge inside the turn — the system
-prompt instructs the parent to continue its own work after `Task` and to
-`TaskWait`/`TaskStop` before answering — and the runtime aborts any delegate
-still running when the run ends, when the parent aborts, or when the runtime is
-disposed.
+handling. The parent may keep working or talk to the user after `Task`. If it
+stops calling tools while delegates still run, the runtime keeps the durable
+turn open and delivers the reports when they finish. Only user Stop, `TaskStop`,
+or runtime dispose aborts a still-running delegate.
 
 ### 5f.1 Delegate permission scope (ADR 0089)
 
@@ -639,100 +642,19 @@ delegate may call), `04-data-storage.md` §4.7a (persisted attribution),
 `04-ux/03-permission-ux.md` §6a (more than one pending request) and
 `04-ux/08-component-spec.md` §9.9 (how a delegation reads).
 
-### 5f.2 Agent-to-agent coordination via A2A (D277, ADR 0147)
+### 5f.2 No sibling or parent-to-parent channel (D326, ADR 0165)
 
-Concurrent delegates coordinate through a real **A2A (Agent2Agent) protocol
-stack** instead of routing everything through the parent. The A2A broker lives
-in the Rust host-core process; each delegate is an A2A **client** that reaches
-the broker over the existing stdio JSON-RPC / NDJSON transport through the
-`a2a.*` method domain (see `06-host-rpc-protocol.md` §4). This replaces the
-in-process `SubagentMailbox` and `Peer` tool of ADR 0138 / ADR 0140. It is
-**opt-in per definition**: a definition that names no A2A tool behaves exactly
-as before, and none of the four builtins name one.
+Concurrent delegates do not message each other, and parent agents do not
+message other conversations. The in-process `Peer` mailbox (ADR 0138 / ADR
+0140) and the host-core A2A broker (ADR 0147 / ADR 0162 / ADR 0164) are
+withdrawn.
 
-**Why it exists.** Delegates fan out on briefs the parent wrote before any of
-them started, so the parent cannot always know the directions are truly
-independent. Three failures follow and none are solvable by the path lock, which
-prevents a torn write but not a stale premise: two write-capable delegates
-discovering they need the same file, one delegate disproving an assumption every
-brief was written against, and one delegate about to search for a fact another
-already found. Routing coordination through the parent does not work either — the
-parent is blocked in `TaskWait`, `task` is write-once, and every relayed note
-would land in the context delegation exists to protect.
-
-**Tool.** One `A2A` tool joins the seven assignable tools and may appear in a
-definition's `tools:` list. It is built per delegate at spawn time and is
-deliberately **absent from the session tool catalog**, so the parent cannot
-reach it. `SUBAGENT_A2A_TOOLS = ["A2A"]`. A required `action` parameter selects
-the operation:
-
-- `A2A(action="discover")` — list the other agents registered in this session
-  (the caller's own Agent Card is excluded). Cards are derived from each
-  delegate's `SubagentDefinition` (name/description/skills).
-- `A2A(action="send", to, parts, configuration?)` — send a message to a peer,
-  creating or continuing a task. Returns the resulting task (or a direct
-  message reply). `parts` is a typed `Part` list —
-  `TextPart | FilePart | DataPart`.
-- `A2A(action="get", id, historyLength?)` — read a task and its bounded message
-  history by id.
-- `A2A(action="wait", id?, timeoutSeconds?)` — block until a task event
-  addressed to this agent arrives (a streamed `TaskStatusUpdateEvent` /
-  `TaskArtifactUpdateEvent`), the timeout expires, or the run aborts. Default
-  30s, ceiling 120s.
-- `A2A(action="complete", taskId, state?)` — finish a task this delegate serves,
-  moving it to a terminal state (default `completed`; `state` may be
-  `completed | failed | rejected | input-required | auth-required`). The call's
-  text becomes the task's final message and wakes the requester (via
-  `a2a.tasks.status`).
-- `A2A(action="cancel", id)` — cancel a task the agent owns; the task moves to
-  the terminal `canceled` state.
-
-**Registration and identity.** Each delegate is registered with the broker at
-spawn via `a2a.agents.register({ contextId, card })`, which returns
-`{ agentId, token }`. The runtime injects that capability **token** into every
-subsequent `a2a.*` call the `A2A` tool makes; the token is never a model input
-and never visible to the model, so a delegate can neither forge its `from`
-identity nor address on another agent's behalf. On settle the delegate is
-deregistered (`a2a.agents.deregister`), which invalidates its token. `contextId`
-equals the `sessionId`: discovery and addressing are scoped to the same session,
-and cross-context addressing is refused (`A2A_CROSS_CONTEXT_DENIED`).
-
-**Task lifecycle.** A send creates a durable task in host-core with states
-`submitted → working → input-required / auth-required → completed`, plus the
-terminal `canceled`, `failed`, and `rejected`. The last four are terminal and
-never transition again; the broker enforces legal transitions and rejects
-illegal ones (`A2A_INVALID_TRANSITION`, `A2A_TASK_TERMINAL`). A delegate re-reads
-a task with `get`, so history survives a restart rather than being destroyed on
-read.
-
-**Streaming.** A task event is delivered as a host→client JSON-RPC notification
-`a2a.task.event` shaped `{ recipient, contextId, event }`. Routing is
-counterpart-based: task creation addresses the new task to the worker, while a
-`send` on an existing task, a `complete`/`a2a.tasks.status`, and a `cancel`
-address the event to the caller's counterpart — a worker's reply or completion
-wakes the requester, and a requester's follow-up wakes the worker. A delegate
-parked in `A2A(action="wait")` wakes on events addressed to itself. Host-owned
-push config (`a2a.tasks.pushNotificationConfig.set/get`) and the `a2a.push`
-notification carry task-status pushes for subscribed tasks.
-
-**Bounds.** The broker enforces `A2A_MAX_TEXT_CHARS = 16000`,
-`A2A_MAX_FILE_BYTES = 20MB`, `A2A_MAX_TASK_HISTORY = 256`,
-`A2A_MAX_TASKS_PER_CONTEXT = 128`, `A2A_MAX_SENDS_PER_RUN = 200`, and a wait
-ceiling of `A2A_MAX_STREAM_WAIT_SECONDS = 120` (default 30) — deliberately below
-the 300-second idle watchdog so a delegate cannot expire itself waiting for an
-answer that never comes. Oversized payloads are refused with
-`A2A_PAYLOAD_TOO_LARGE`; the send cap with `A2A_SEND_CAP`; addressing an empty
-session with `A2A_NO_PEERS`.
-
-**Boundaries preserved.** A2A traffic never enters the parent's model context;
-the parent still learns only what a report says, and a delegate's prompt says
-so. A definition that declares only the `A2A` tool and no working tool is
-refused at `Task` time. There is no cross-session (cross-context) coordination,
-no messaging with the parent, no nested delegation, and no remote agents.
-
-**Transcript.** An `A2A` call is a tool call of the delegate that made it, so it
-appears attributed by `parentToolCallId` and `agentName` under the owning `Task`
-row.
+Coordination stays on the existing delegation contract: the parent writes
+independent briefs, starts `Task`s, and collects self-contained reports through
+`TaskWait` / `TaskList` / `TaskStop`. A later round of work, if needed, is a
+new `Task` whose brief includes earlier reports. `A2A` and `Peer` are not
+assignable tools; a definition that names either is treated as an unknown
+tool name and dropped with a parse warning.
 
 ## 6. Providers & models
 
@@ -813,8 +735,10 @@ directory tree. Calls use `Read.offset/limit`, `Glob.path/limit`, and
 `Grep.path/include/outputMode/headLimit`; `filesWithMatches` or `count` avoids
 unneeded content. Workspace-relative paths remain the portable default, with a
 bounded command in the active shell only when native tools are insufficient.
-`rg` is optional rather than assumed, and the agent must not repeat a search
-whose answer is already in context.
+Grep uses a system `rg` when one is installed and an in-process searcher
+otherwise; the agent calls Grep rather than shelling out to `rg`. Bash must
+still not assume `rg` is present. The agent must not repeat a search whose
+answer is already in context.
 
 The edit-discipline block carries the line-anchored `Edit` contract of
 [18-line-anchored-edit-contract](18-line-anchored-edit-contract.md): the op

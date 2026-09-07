@@ -106,8 +106,9 @@
 }
 
 /*
-  One search field for the whole index. The ring lives on the wrapper because
+  One search field for the whole index. The fill lives on the wrapper because
   the clear button sits inside it, matching `.agent-capability-search-wrap`.
+  Filled at rest, accent ring only while focused (D297).
 */
 .projects-search-wrap {
   display: inline-flex;
@@ -118,28 +119,17 @@
   align-items: center;
   gap: 6px;
   border-radius: var(--radius-full);
-  background: color-mix(in oklab, var(--ds-text-primary) 5%, transparent);
+  background: var(--ds-tile-hover);
   padding: 0 11px;
   color: var(--ds-text-muted);
-  box-shadow: 0 0 0 0.5px var(--ds-border-default);
   transition:
     background var(--motion-duration-fast) var(--motion-ease-out),
     box-shadow var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 .projects-search-wrap:focus-within {
-  background: color-mix(in oklab, var(--ds-text-primary) 7%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in oklab, var(--ds-accent) 45%, transparent);
-}
-
-:root[data-theme="light"] .projects-search-wrap {
-  background: #f3f3f3;
-  box-shadow: none;
-}
-
-:root[data-theme="light"] .projects-search-wrap:focus-within {
-  background: #ffffff;
-  box-shadow: 0 0 0 1px color-mix(in oklab, var(--ds-accent) 35%, transparent);
+  background: var(--ds-raised);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--ds-accent) 40%, transparent);
 }
 
 .projects-search-wrap > svg {
@@ -190,20 +180,14 @@
   color: var(--ds-text-primary);
 }
 
-/* Group divider inside the panel: Pinned, Projects, Archived — and how many. */
+/* Group label above its rows: Pinned, Projects, Archived — and how many. It
+   is a bare label, not a banded strip (D297). */
 .projects-group-head {
   display: flex;
   min-width: 0;
   align-items: center;
   gap: 8px;
-  border-top: 1px solid var(--ds-border-subtle);
-  background: var(--ds-bg-chip);
-  padding: 7px 14px;
-}
-
-/* First strip sits flush with the panel's own top edge. */
-.projects-group:first-child .projects-group-head {
-  border-top: 0;
+  padding: 0 4px 8px;
 }
 
 .projects-group-label {
@@ -227,12 +211,24 @@
   line-height: var(--leading-normal);
 }
 
+/*
+  The index is a stack of groups, each a label above soft tile rows with a
+  small gap between them (D297) — the same language as the Extensions page.
+  The shared `.settings-panel` frame is neutralised here so nothing clips the
+  row menus and no ring wraps the stack.
+*/
 .projects-list {
+  display: flex;
   min-width: 0;
+  flex-direction: column;
+  gap: 20px;
+  overflow: visible;
+  background: transparent;
+  box-shadow: none;
 }
 
 /*
-  Each group is a labelled section wrapping its own `role="list"`, so the strip
+  Each group is a labelled section wrapping its own `role="list"`, so the label
   stays out of the list's required-children contract while the rows keep their
   group name in the accessibility tree.
 */
@@ -241,29 +237,28 @@
   min-width: 0;
 }
 
+.projects-group-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .projects-row-block {
   position: relative;
+  border-radius: var(--radius-md-plus);
+  background: var(--ds-tile);
   transition: background var(--motion-duration-fast) var(--motion-ease-out);
-}
-
-.projects-row-block + .projects-row-block {
-  border-top: 1px solid var(--ds-border-subtle);
-}
-
-/* The strip already draws the divider above the group's first row. */
-.projects-group-rows > .projects-row-block:first-child {
-  border-top: 0;
 }
 
 .projects-row-block:hover,
 .projects-row-block:focus-within,
 .projects-row-block.menu-open {
-  background: var(--ds-bg-hover);
+  background: var(--ds-tile-hover);
 }
 
+/* The open project is the deepest tile; no accent bar. */
 .projects-row-block.active {
-  background: color-mix(in oklab, var(--ds-text-primary) 3.5%, transparent);
-  box-shadow: inset 2px 0 0 var(--ds-accent);
+  background: var(--ds-tile-deep);
 }
 
 /* Archived rows stay listed; the section label carries the state, so the row is
@@ -345,7 +340,6 @@
   border-radius: var(--radius-md);
   color: #fff;
   flex: 0 0 auto;
-  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.14);
 }
 
 .projects-name-copy {
@@ -427,9 +421,8 @@
 }
 
 .projects-tag.is-archived {
-  background: transparent;
+  background: var(--ds-tile-deep);
   color: var(--ds-text-muted);
-  box-shadow: inset 0 0 0 0.5px var(--ds-border-strong);
 }
 
 .projects-updated {
@@ -508,10 +501,9 @@
   background: color-mix(in oklab, var(--ds-error) 12%, transparent);
 }
 
+/* Menu sections are separated by space, not a rule (D297). */
 .projects-menu-sep {
-  height: 1px;
-  margin: 5px 6px;
-  background: var(--ds-border-subtle);
+  height: 6px;
 }
 
 /*

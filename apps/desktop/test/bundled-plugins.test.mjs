@@ -36,9 +36,9 @@ test("Files ships as an ordinary plugin, not a privileged one", () => {
 test("the Files view uses only public bridge channels", () => {
   for (const channel of [
     "fs.list",
-    "fs.readText",
-    "fs.readImageDataUrl",
-    "fs.previewInBrowser",
+    "fs.readPreview",
+    "fs.glob",
+    "fs.openDefault",
     "fs.reveal",
     "workspace.get",
     "app.getAppearance",
@@ -66,6 +66,8 @@ test("the Files view keeps the former browser workflow while staying plugin-owne
     'id="back"',
     'id="viewer-body"',
     'id="reveal"',
+    'id="open"',
+    'id="search"',
     'role="tree"',
     'role", "treeitem"',
     'aria-expanded',
@@ -74,16 +76,14 @@ test("the Files view keeps the former browser workflow while staying plugin-owne
   ]) {
     assert.ok(view.includes(marker), `expected Files view marker: ${marker}`);
   }
-  assert.match(view, /fs\.readText/);
+  assert.match(view, /fs\.readPreview/);
+  assert.match(view, /fs\.openDefault/);
   assert.match(view, /fs\.reveal/);
-  assert.match(view, /text\.includes\("\\0"\)/);
-  assert.match(view, /renderImage\(dataUrl\)/);
-  assert.match(view, /fs\.readImageDataUrl/);
-  assert.match(view, /\.viewer-image img/);
-  assert.match(view, /fs\.previewInBrowser/);
-  assert.match(view, /renderMarkdown\(text\)/);
-  assert.match(view, /escapeHtml\(/);
-  assert.match(view, /isMarkdownPath/);
+  assert.match(view, /fs\.glob/);
+  assert.match(view, /workspace:changed/);
+  assert.match(view, /kind === "image"/);
+  assert.match(view, /kind === "tooLarge"/);
+  assert.match(view, /content\.includes\("\\0"\)/);
   assert.match(view, /appearance:changed/);
   assert.match(view, /locale.*startsWith\("zh"\)/);
   assert.match(view, /retry/);
@@ -91,6 +91,9 @@ test("the Files view keeps the former browser workflow while staying plugin-owne
   assert.match(view, /mini-spinner/);
   assert.match(view, /aria-busy/);
   assert.match(view, /direction:\s*rtl/);
+  assert.match(view, /globFromQuery/);
+  assert.doesNotMatch(view, /setInterval/);
+  assert.doesNotMatch(view, /SPLIT_MIN|app\.split/);
   // The main app is intentionally monochrome; the bundled view must not
   // drift back to the blue accent it used before joining the host palette.
   assert.doesNotMatch(view, /#7aa2f7|#2563eb|#22c55e/);
@@ -99,19 +102,11 @@ test("the Files view keeps the former browser workflow while staying plugin-owne
   assert.doesNotMatch(view, /fsReveal|ipcRenderer|require\(/);
 });
 
-test("the host no longer offers Files as a built-in tool", () => {
-  const tools = panelSource.slice(
-    panelSource.indexOf("const HEADER_TOOLS = ["),
-    panelSource.indexOf("] as const;", panelSource.indexOf("const HEADER_TOOLS = [")),
-  );
-  assert.doesNotMatch(tools, /kind: "file"/);
-  // Review left the launcher too, in the other direction: it is an artifact
-  // panel, opened by the conversation's Write/Edit records rather than picked.
-  assert.doesNotMatch(tools, /kind: "review"/);
-  // The built-in interactive terminal is removed; Browser is the only host tool.
-  assert.doesNotMatch(tools, /kind: "terminal"/);
-  assert.match(tools, /kind: "browser"/);
-  // Both absent kinds still render: they are live tabs, just not launchable.
+test("the host no longer offers Files or Browser as built-in tools", () => {
+  assert.doesNotMatch(panelSource, /const HEADER_TOOLS/);
+  assert.doesNotMatch(panelSource, /kind: "browser"/);
+  assert.doesNotMatch(panelSource, /kind: "terminal"/);
+  // Review and file remain artifact/resource surfaces the conversation opens.
   assert.match(panelSource, /activeTab\?\.kind === "file"/);
   assert.match(panelSource, /activeTab\?\.kind === "review"/);
 });
@@ -121,6 +116,25 @@ test("Review still opens itself from workspace edit artifacts", () => {
   const storeSource = read("src/stores/app-store.ts");
   assert.match(storeSource, /shouldOpenReviewArtifact\(\{/);
   assert.match(storeSource, /toolWorkPanelTab\("review"\)/);
+});
+
+test("Browser ships as an ordinary plugin over the public CDP API", () => {
+  const browserManifest = JSON.parse(read("resources/plugins/pi.browser/manifest.json"));
+  const browserMain = read("resources/plugins/pi.browser/main.js");
+  const browserView = read("resources/plugins/pi.browser/views/browser.html");
+  assert.equal(browserManifest.id, "pi.browser");
+  assert.deepEqual(browserManifest.contributes.views.map((v) => v.id), ["browser"]);
+  assert.deepEqual(
+    [...browserManifest.permissions].sort(),
+    ["agent.tool.register", "browser.cdp", "ui.view"],
+  );
+  assert.equal(typeof browserManifest.contributes.views[0].title.en, "string");
+  assert.equal(typeof browserManifest.contributes.views[0].title["zh-CN"], "string");
+  assert.match(browserMain, /pi\.agent\.registerTool/);
+  assert.match(browserMain, /pi\.browser\.(navigate|snapshot|cdp)/);
+  assert.match(browserView, /pluginBridge/);
+  assert.match(browserView, /browser\.setBounds/);
+  assert.doesNotMatch(browserView, /require\(|ipcRenderer|webview/);
 });
 
 test("bundled plugins are packaged and located at runtime", () => {

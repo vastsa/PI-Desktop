@@ -1,5 +1,6 @@
 import type { SVGProps } from "react";
 import {
+  Activity,
   AppWindow,
   Archive,
   ArchiveRestore,
@@ -29,6 +30,7 @@ import {
   Dot,
   ExternalLink,
   FileDiff,
+  FileSpreadsheet,
   FileText,
   Folder,
   FolderOpen,
@@ -49,6 +51,7 @@ import {
   Monitor,
   Moon,
   MoreHorizontal,
+  Music,
   Palette,
   PanelLeft,
   PanelRight,
@@ -79,6 +82,7 @@ import {
   TriangleAlert,
   UserRound,
   Undo2,
+  Video,
   Webhook,
   Workflow,
   Wrench,
@@ -104,6 +108,7 @@ export const IconBookOpen = icon(BookOpen);
 export const IconClipboard = icon(ClipboardPaste);
 export const IconArchive = icon(Archive);
 export const IconArchiveRestore = icon(ArchiveRestore);
+export const IconActivity = icon(Activity);
 export const IconArrowUpDown = icon(ArrowUpDown);
 export const IconSearch = icon(Search);
 export const IconChat = icon(MessageSquare);
@@ -148,6 +153,10 @@ export const IconCloudDown = icon(CloudDownload);
 export const IconDownload = icon(Download);
 export const IconImage = icon(Image);
 export const IconCamera = icon(Camera);
+/* Composer attachment chips: one glyph per file family. */
+export const IconSheet = icon(FileSpreadsheet);
+export const IconAudio = icon(Music);
+export const IconVideo = icon(Video);
 export const IconReview = icon(RefreshCw);
 export const IconKeyboard = icon(Keyboard);
 export const IconMic = icon(Mic);

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import test from "node:test";
 import { loadStyles } from "./helpers/styles.mjs";
 
@@ -41,7 +41,7 @@ test("renderer surfaces the PI-Desktop brand instead of the Codex shell brand", 
   assert.match(chinese, /importSourceCodex:\s*"Codex"/);
 });
 
-test("app chrome uses the shared brand asset without branding the composer input", () => {
+test("app chrome uses the shared brand asset without branding the composer input", async () => {
   // Renderer-sized brand marks, not the 1024px electron-builder installer icons.
   assert.match(brandLogo, /import brandLogoUrlLight from\s*"\.\.\/assets\/brand\/logo-light\.png"/);
   assert.match(brandLogo, /import brandLogoUrlDark from\s*"\.\.\/assets\/brand\/logo-dark\.png"/);
@@ -50,34 +50,49 @@ test("app chrome uses the shared brand asset without branding the composer input
   assert.match(brandLogo, /src=\{.*brandLogoUrl/);
   assert.match(icons, /export const IconNewSession/);
   assert.doesNotMatch(icons, /IconCodexHome|IconCompose|IconPiMark|IconPiHome/);
+  await access(new URL("../src/assets/home-mascot-dark.gif", import.meta.url));
+  await access(new URL("../src/assets/home-mascot-light.gif", import.meta.url));
+  await access(new URL("../src/assets/home-mascot-still-dark.png", import.meta.url));
+  await access(new URL("../src/assets/home-mascot-still-light.png", import.meta.url));
+  await assert.rejects(
+    () => access(new URL("../src/assets/home-mascot-groups.png", import.meta.url)),
+  );
   assert.match(chatSurface, /<HomeMascotLogo \/>/);
-  assert.match(mascotLogo, /home-mascot-groups\.png/);
-  assert.match(mascotLogo, /Math\.random\(\)/);
-  assert.match(mascotLogo, /useState\(\(\) => chooseMascotGroupIndex\(\)\)/);
-  assert.match(mascotLogo, /useState\(0\)/);
-  assert.match(mascotLogo, /setTimeout/);
-  assert.match(mascotLogo, /chooseMascotGroupIndex\(current\)/);
-  assert.match(mascotLogo, /index !== previousIndex/);
-  assert.match(mascotLogo, /FRAME_DURATION_MS = 160/);
-  assert.match(mascotLogo, /randomDuration\(GROUP_PAUSE_MIN_MS, GROUP_PAUSE_MAX_MS\)/);
-  assert.match(mascotLogo, /randomDuration\(STATIC_GROUP_PAUSE_MIN_MS, STATIC_GROUP_PAUSE_MAX_MS\)/);
-  assert.match(mascotLogo, /const isLastFrame/);
-  assert.match(mascotLogo, /useState\(false\)/);
-  assert.match(mascotLogo, /isHovered\s*\?\s*FRAME_DURATION_MS/);
-  assert.match(mascotLogo, /onMouseEnter=\{\(\) => setIsHovered\(true\)\}/);
-  assert.match(mascotLogo, /onMouseLeave=\{\(\) => setIsHovered\(false\)\}/);
-  assert.match(mascotLogo, /backgroundPosition: `-\$\{frame\}px 0`/);
-  assert.match(mascotLogo, /matchMedia\("\(prefers-reduced-motion: reduce\)"\)/);
-  assert.equal((mascotLogo.match(/startFrame:/g) ?? []).length, 9);
-  assert.equal((mascotLogo.match(/frameCount:/g) ?? []).length, 9);
-  assert.match(mascotLogo, /startFrame:\s*44,\s*frameCount:\s*6/);
+  assert.match(mascotLogo, /import mascotMotionDarkUrl from\s*"\.\.\/assets\/home-mascot-dark\.gif"/);
+  assert.match(mascotLogo, /import mascotMotionLightUrl from\s*"\.\.\/assets\/home-mascot-light\.gif"/);
+  assert.match(mascotLogo, /import mascotStillDarkUrl from\s*"\.\.\/assets\/home-mascot-still-dark\.png"/);
+  assert.match(mascotLogo, /import mascotStillLightUrl from\s*"\.\.\/assets\/home-mascot-still-light\.png"/);
+  assert.match(mascotLogo, /className="home-mascot-logo"/);
+  assert.match(mascotLogo, /aria-hidden="true"/);
+  assert.match(mascotLogo, /className="home-mascot-motion home-mascot-dark"/);
+  assert.match(mascotLogo, /className="home-mascot-motion home-mascot-light"/);
+  assert.match(mascotLogo, /className="home-mascot-still home-mascot-dark"/);
+  assert.match(mascotLogo, /className="home-mascot-still home-mascot-light"/);
+  assert.doesNotMatch(mascotLogo, /<svg/);
+  assert.doesNotMatch(
+    mascotLogo,
+    /home-mascot-groups\.png|home-mascot-orbit|Math\.random\(\)|setTimeout|backgroundPosition|onMouseEnter|onMouseLeave|useState|useEffect|matchMedia/,
+  );
   assert.doesNotMatch(chatSurface, /<BrandLogo/);
   assert.match(styles, /\.empty-hero-icon\s*\{[\s\S]*?height:\s*100px;[\s\S]*?width:\s*100px;/);
   assert.match(
     styles,
-    /\.home-mascot-logo\s*\{[\s\S]*?background-repeat:\s*no-repeat;[\s\S]*?background-size:\s*5000px 100px;[\s\S]*?image-rendering:\s*pixelated;/,
+    /\.home-mascot-logo\s*\{[\s\S]*?display:\s*block;[\s\S]*?width:\s*100px;[\s\S]*?height:\s*100px;/,
   );
-  assert.doesNotMatch(styles, /@keyframes home-mascot-group/);
+  assert.match(
+    styles,
+    /:root:not\(\[data-theme="light"\]\) \.home-mascot-logo \.home-mascot-motion\.home-mascot-dark/,
+  );
+  assert.match(
+    styles,
+    /:root\[data-theme="light"\] \.home-mascot-logo \.home-mascot-motion\.home-mascot-light/,
+  );
+  assert.match(
+    styles,
+    /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.home-mascot-still\.home-mascot-dark,[\s\S]*?\.home-mascot-still\.home-mascot-light[\s\S]*?display:\s*block;/,
+  );
+  assert.doesNotMatch(styles, /@keyframes home-mascot-orbit|@keyframes home-mascot-breathe|@keyframes home-mascot-blink/);
+  assert.doesNotMatch(styles, /background-size:\s*5000px 100px|image-rendering:\s*pixelated/);
   assert.doesNotMatch(composer, /<BrandLogo/);
   assert.doesNotMatch(composer, /composer-thread-mark/);
   assert.doesNotMatch(styles, /\.composer-thread-mark/);

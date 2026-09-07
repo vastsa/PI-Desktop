@@ -136,14 +136,14 @@ Each ADR includes:
 | 0119 | Event-driven subagent timeouts | Accepted for implementation |
 | 0120 | Bounded session history windows | Accepted |
 | 0121 | Keep Composer prompt enhancement one-shot and main-owned | Accepted |
-| 0122 | Reserve native width while the work panel is visible | Superseded by 0148 |
+| 0122 | Reserve native width while the work panel is visible | Superseded by 0151 |
 | 0123 | Use native taskbar minimize for Windows/Linux window controls | Accepted |
 | 0124 | Bind temporary sessions to their own scratch workspace | Accepted |
 | 0125 | Renderer-derived brand marks and minified renderer output | Accepted |
 | 0126 | Agent capability workbench | Accepted |
 | 0127 | Transcript layout index and identity-based truncation | Accepted |
 | 0128 | Share one bounded budget for transient provider failures | Accepted |
-| 0129 | The subagent idle watchdog bounds silence, not slowness | Accepted for implementation |
+| 0129 | The subagent idle watchdog bounds silence, not slowness | Amended by 0166 (watchdogs no longer kill) |
 | 0130 | Bounded mounted transcript window | Accepted |
 | 0131 | Spill large composer text pastes into session scratch | Accepted |
 | 0132 | Attribute cross-display window moves to the user | Accepted |
@@ -158,7 +158,29 @@ Each ADR includes:
 | 0142 | Allow non-loopback HTTP MCP endpoints with explicit risk disclosure | Accepted |
 | 0144 | Allow user-configured thinking-level overrides | Accepted |
 | 0145 | Publish native macOS Intel artifacts | Accepted |
-| 0146 | Assign outer and inner work-panel resize ownership by boundary | Partially superseded by 0148 |
-| 0147 | A2A protocol stack for subagent coordination | Accepted (supersedes 0138 / 0140) |
-| 0148 | Keep the work panel inside the application window | Accepted (supersedes 0122 / part of 0146) |
-| 0149 | Keep composer drafts for the renderer lifetime | Accepted |
+| 0146 | Assign outer and inner work-panel resize ownership by boundary | Superseded by 0151 |
+| 0147 | A2A protocol stack for subagent coordination | Superseded by 0165 |
+| 0148 | Explicitly disable application keyboard shortcuts | Accepted |
+| 0149 | Calm transcript running-status motion | Accepted |
+| 0150 | Inline SVG empty-home agent mark | Superseded by 0152 |
+| 0151 | Keep the work panel inside the fixed application window | Accepted |
+| 0152 | Eight-frame empty-home mascot GIF | Accepted |
+| 0153 | Checkpoint the streaming reply beside the transcript | Accepted |
+| 0154 | Reveal the New Task empty destination before host IO | Accepted |
+| 0155 | Add Zhipu / Z.AI named endpoint presets | Accepted |
+| 0156 | Simplify the add-provider common path | Accepted |
+| 0157 | Main-owned GitHub issue feedback | Accepted |
+| 0158 | Keep approval cards focused and remember the selected mode | Accepted |
+| 0159 | Generated plugin settings and plugin-local shortcuts | Accepted |
+| 0160 | Shipped locale registry and searchable language picker | Accepted |
+| 0161 | Searchable theme picker matching language | Accepted |
+| 0162 | Cross-session A2A addressing | Superseded by 0165 |
+| 0163 | Transcript file references render as previewable chips | Accepted |
+| 0164 | Parent agents collaborate across conversations | Superseded by 0165 |
+| 0165 | Withdraw the A2A / Peer coordination stack | Accepted (supersedes 0147 / 0162 / 0164) |
+| 0166 | Parent-judged subagent lifetime | Accepted (amends 0089 / 0119 / 0129) |
+| 0167 | Agent-chosen Bash timeout | Accepted (amends 0054 / D190 / D273) |
+| 0168 | Main-owned http(s)/mailto allowlist for `openExternal` | Accepted (amends 0109) |
+| 0169 | Classified file preview and live workspace events for plugin views | Accepted (amends 0104 / 0105 / 0109 / 0111) |
+| 0170 | Ship the work-panel browser as a bundled plugin over public CDP | Accepted (amends 0019 / 0104 / 0105) |
+| 0171 | Host-owned completed-turn token history | Accepted |

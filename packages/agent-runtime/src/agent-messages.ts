@@ -5,6 +5,7 @@
  * shape, so the conversions live here instead of being duplicated per loop.
  */
 
+import type { JsonValue } from "@earendil-works/pi-agent-core";
 import type { Usage } from "@earendil-works/pi-ai";
 import type { MessageUsage } from "@pi-desktop/shared";
 
@@ -28,6 +29,16 @@ export function timestampMs(timestamp: unknown): number {
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** JSON-clone an opaque value so it satisfies pi 0.85 `JsonValue`. */
+export function toJsonValue(value: unknown): JsonValue | undefined {
+  if (value === undefined) return undefined;
+  try {
+    return JSON.parse(JSON.stringify(value)) as JsonValue;
+  } catch {
+    return undefined;
+  }
 }
 
 export function usageFromPi(

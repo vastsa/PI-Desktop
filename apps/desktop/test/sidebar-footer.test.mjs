@@ -58,12 +58,13 @@ test("footer exposes settings, plugins and notifications in one row", () => {
   }
 });
 
-test("footer sits on the sidebar content grid under a hairline", () => {
+test("footer sits on the sidebar content grid without a hairline", () => {
   const block = globalStyles.match(/\.sidebar-footer\s*\{[^}]+\}/)?.[0] ?? "";
   // Zero side padding keeps the chip text and trailing icon aligned with the
-  // nav rows that .sidebar-body already insets by 8px.
-  assert.match(block, /padding:\s*5px 0 2px/);
-  assert.match(block, /border-top:\s*1px solid/);
+  // nav rows that .sidebar-body already insets by 8px. D297: the footer is set
+  // apart from the nav by `margin-top: auto` and its own padding, not a rule.
+  assert.match(block, /padding:\s*7px 0 2px/);
+  assert.doesNotMatch(block, /border-top/);
   assert.match(globalStyles, /\.footer-build\s*\{[^}]*padding:\s*5px 8px/s);
 });
 

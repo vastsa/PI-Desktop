@@ -484,6 +484,7 @@ const MODEL_VENDOR_PREFIXES = new Set([
   "qwen",
   "z-ai",
   "zai",
+  "zhipuai",
   "x-ai",
   "xai",
 ]);
@@ -528,6 +529,13 @@ const KNOWN_PROVIDER_BASE_URLS: Record<string, string[]> = {
   xai: ["https://api.x.ai/v1"],
   groq: ["https://api.groq.com/openai/v1"],
   togetherai: ["https://api.together.xyz/v1"],
+  deepseek: ["https://api.deepseek.com"],
+  openrouter: ["https://openrouter.ai/api/v1"],
+  "fireworks-ai": ["https://api.fireworks.ai/inference/v1"],
+  "alibaba-cn": ["https://dashscope.aliyuncs.com/compatible-mode/v1"],
+  "moonshotai-cn": ["https://api.moonshot.cn/v1"],
+  "siliconflow-cn": ["https://api.siliconflow.cn/v1"],
+  volcengine: ["https://ark.cn-beijing.volces.com/api/v3"],
 };
 
 const PROVIDER_ALIASES: Record<string, string[]> = {
@@ -546,7 +554,16 @@ const PROVIDER_ALIASES: Record<string, string[]> = {
   "google-vertex": ["google-vertex"],
   "azure-openai-responses": ["azure", "azure-cognitive-services"],
   "vercel-ai-gateway": ["vercel"],
-  "zai-coding-cn": ["zai", "zai-coding-plan"],
+  "zai-coding-cn": ["zhipuai-coding-plan", "zai-coding-cn"],
+  "zhipuai-coding-plan": ["zhipuai-coding-plan", "zai-coding-cn"],
+  zhipu: ["zhipuai"],
+  bigmodel: ["zhipuai"],
+  dashscope: ["alibaba-cn"],
+  qwen: ["alibaba-cn"],
+  moonshot: ["moonshotai-cn", "moonshotai"],
+  doubao: ["volcengine"],
+  ark: ["volcengine"],
+  minimax: ["minimax-cn", "minimax"],
   "lm-studio": ["lmstudio", "lm-studio"],
   lmstudio: ["lmstudio", "lm-studio"],
 };

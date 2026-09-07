@@ -3,7 +3,8 @@
 - **Status:** Accepted
 - **Date:** 2026-08-21
 - **Supersedes:** ADR 0084 / D220
-- **Related:** D088 · D093 · E2E-011b · E2E-011d · E2E-011e
+- **Related:** D088 · D093 · D305 · E2E-011b · E2E-011d · E2E-011e · E2E-011g
+- **Amended by:** ADR 0154 (first-frame empty reveal; reuse without a blocking list refresh)
 
 ## Context
 
@@ -23,10 +24,13 @@ message count after append and rewrite operations.
 When New Task is invoked for a project or the path-less Temporary group:
 
 1. Sort that group's non-archived sessions by `updatedAt` descending.
-2. If the most recent session has `messageCount = 0`, select it. Selecting the
-   already active row is a no-op.
-3. Otherwise create a real empty session through `session.create`, refresh the
-   sidebar immediately, and select the new session.
+2. If the most recent session is empty (`messageCount = 0` and the renderer
+   has no live rows, running turn, or submitted draft), select it and reveal
+   its empty transcript on the first frame. Selecting the already active row
+   is a no-op.
+3. Otherwise reveal the empty home on the first frame, create a real empty
+   session through `session.create`, and insert the returned summary into the
+   sidebar. Do not block on `session.list` or `session.get` (ADR 0154).
 
 Renderer requests for the same group are serialized. This makes rapid repeated
 clicks observe the first completed empty slot instead of racing multiple

@@ -1,6 +1,6 @@
 {
   "name": "@pi-desktop/desktop",
-  "version": "0.12.1",
+  "version": "0.13.10",
   "private": true,
   "description": "PI-Desktop Electron application",
   "homepage": "https://github.com/vastsa/PI-Desktop",
@@ -18,7 +18,7 @@
     "preview": "electron-vite preview",
     "postinstall": "electron-builder install-app-deps",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --test test/*.test.mjs src/*.test.mjs",
+    "test": "node --test test/*.test.mjs",
     "lint": "node ../../scripts/check-style-tokens.mjs",
     "clean": "node -e \"fs.rmSync('out',{recursive:true,force:true});fs.rmSync('dist',{recursive:true,force:true})\"",
     "build:host-release": "cargo build --release --manifest-path ../../Cargo.toml -p host-core",
@@ -33,7 +33,7 @@
     "electron-updater": "^6.8.9"
   },
   "devDependencies": {
-    "@earendil-works/pi-ai": "0.84.3",
+    "@earendil-works/pi-ai": "0.85.0",
     "@pi-desktop/agent-runtime": "workspace:*",
     "@pi-desktop/i18n": "workspace:*",
     "@pi-desktop/plugin-devkit": "workspace:*",
@@ -94,7 +94,8 @@
     "electronLanguages": [
       "en-US",
       "zh-CN",
-      "zh_CN"
+      "zh_CN",
+      "tr"
     ],
     "extraResources": [
       {

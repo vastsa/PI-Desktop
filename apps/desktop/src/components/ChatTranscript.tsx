@@ -14,7 +14,6 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import type {
   ContextCompactionMark,
-  MessageAttachment,
   MessageUsage,
   PlanningState,
   ProposalKind,
@@ -47,6 +46,7 @@ import {
   delegationRoster,
   delegationRosterOutcome,
   delegationRosterSummary,
+  delegationTimingBounds,
   isDelegationActivityItem,
   lifecycleKindOf,
   subagentOutcome,
@@ -55,22 +55,32 @@ import {
   type SubagentOutcome,
   type SubagentTiming,
 } from "../lib/subagent-topology";
-import { useOpenPreviewTarget } from "../lib/use-preview-target";
-import { useReferencedImageDataUrl } from "../lib/use-referenced-image-data-url";
+import {
+  useOpenChatFileRef,
+  useOpenPreviewTarget,
+} from "../hooks/use-preview-target";
 import {
   getToolPreviewTarget,
+  isHtmlFilePath,
   splitChatText,
 } from "../lib/chat-links";
 import {
   isRecentScrollGesture,
   reduceTranscriptScroll,
 } from "../lib/transcript-scroll";
+import { useFollowScroll } from "../hooks/use-follow-scroll";
 import {
   growTranscriptWindow,
   reduceTranscriptWindow,
   TRANSCRIPT_INITIAL_MOUNT,
   TRANSCRIPT_WINDOW_MIN,
 } from "../lib/transcript-window";
+import {
+  createTranscriptSettleState,
+  reduceTranscriptSettle,
+  TRANSCRIPT_SKELETON_ROWS,
+  TRANSCRIPT_VEIL_FADE_MS,
+} from "../lib/transcript-settle";
 import {
   assistantTurnContent,
   assistantTurnMessages,
@@ -86,6 +96,7 @@ import {
   type AssistantActivityItem,
   type AssistantTurnEntry,
   type SubagentRun,
+  type SubagentRunItem,
   type TranscriptEntry,
 } from "../lib/assistant-turns";
 import {
@@ -107,11 +118,15 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconCopy,
+  IconArchive,
+  IconAudio,
+  IconCode,
   IconFileText,
   IconFolder,
   IconGlobe,
   IconImage,
-  IconListChecks,
+  IconSheet,
+  IconVideo,
   IconPencil,
   IconSearch,
   IconReview,
@@ -739,27 +754,80 @@ function ToolActionIcon({ action }: { action: ToolAction }) {
 /** Actions whose path/url argument makes sense to preview in the panel. */
 const PREVIEWABLE_ACTIONS = new Set<ToolAction>(["read", "write", "edit", "fetch"]);
 
-/** Plain user text with file paths and URLs linkified to the work panel. */
+function fileChipIcon(name: string, kind?: "image" | "file") {
+  if (kind === "image" || /\.(avif|bmp|gif|heic|jpe?g|png|tiff?|webp)$/i.test(name)) {
+    return IconImage;
+  }
+  if (
+    /\.(cjs|css|go|html?|java|js|json|jsx|kt|mjs|php|py|rb|rs|sh|sql|svelte|swift|toml|ts|tsx|vue|ya?ml)$/i.test(
+      name,
+    )
+  ) {
+    return IconCode;
+  }
+  if (/\.(7z|bz2|gz|jar|rar|tar|zip)$/i.test(name)) return IconArchive;
+  if (/\.(csv|ods|xls|xlsx)$/i.test(name)) return IconSheet;
+  if (/\.(flac|m4a|mp3|ogg|wav)$/i.test(name)) return IconAudio;
+  if (/\.(avi|mkv|m4v|mov|mp4|webm)$/i.test(name)) return IconVideo;
+  return IconFileText;
+}
+
+/** Compact leaf-name chip matching the composer file node (D320). */
+function FileRefChip({
+  name,
+  path,
+  kind,
+  onOpen,
+}: {
+  name: string;
+  path: string;
+  kind?: "image" | "file";
+  onOpen: (path: string) => void;
+}) {
+  const { t } = useTranslation();
+  const Icon = fileChipIcon(name, kind);
+  const html = isHtmlFilePath(path) || isHtmlFilePath(name);
+  return (
+    <button
+      type="button"
+      className="composer-chip chat-file-chip"
+      title={`${html ? t("chat.previewUrl") : t("chat.openFile")} — ${path}`}
+      aria-label={`${name} — ${path}`}
+      onClick={() => onOpen(path)}
+    >
+      <span className="composer-chip-icon" aria-hidden>
+        <Icon size={13} />
+      </span>
+      <span className="composer-chip-name">{name}</span>
+    </button>
+  );
+}
+
+/** Plain user text: @paths become composer-like chips; URLs stay text links. */
 function LinkifiedText({ text }: { text: string }) {
   const { t } = useTranslation();
   const root = useAppStore((s) => s.workspace?.path);
   const openTarget = useOpenPreviewTarget();
+  const openFileRef = useOpenChatFileRef();
   const segments = useMemo(() => splitChatText(text, root), [text, root]);
   return (
     <>
       {segments.map((segment, index) =>
         segment.kind === "text" ? (
           <span key={index}>{segment.text}</span>
+        ) : segment.target.kind === "file" ? (
+          <FileRefChip
+            key={index}
+            name={segment.label}
+            path={segment.target.path}
+            onOpen={openFileRef}
+          />
         ) : (
           <button
             key={index}
             type="button"
             className="chat-text-link"
-            title={
-              segment.target.kind === "file"
-                ? t("chat.previewFile")
-                : t("chat.previewUrl")
-            }
+            title={t("chat.previewUrl")}
             onClick={() => openTarget(segment.target)}
           >
             {segment.text}
@@ -1224,41 +1292,90 @@ function SubagentRunRows({
           {t("chat.processingSteps", { count: run.items.length })}
         </span>
       </div>
+      <SubagentRunFollow headingId={headingId} items={run.items} />
+    </div>
+  );
+}
+
+/**
+ * Nested follow-scroll for one expanded delegate (D302). Mounted only once
+ * the run has rows, so the first layout pins to the latest output instead of
+ * to an empty scroller.
+ */
+function SubagentRunFollow({
+  headingId,
+  items,
+}: {
+  headingId: string;
+  items: SubagentRunItem[];
+}) {
+  const { t } = useTranslation();
+  const {
+    scrollRef,
+    contentRef,
+    showJump,
+    handleScroll,
+    jumpToLatest,
+    scheduleFollowScroll,
+  } = useFollowScroll();
+
+  useLayoutEffect(() => {
+    scheduleFollowScroll();
+  }, [items, scheduleFollowScroll]);
+
+  return (
+    <div className="subagent-run-follow">
       {/* The rows scroll inside the run rather than growing the transcript
-        * (D271). Labelled and focusable so a keyboard reader can reach the
-        * scroll area the pointer can already use. */}
+        * (D271). Follow sticks to the latest output while pinned (D302).
+        * Labelled and focusable so a keyboard reader can reach the scroll
+        * area the pointer can already use. */}
       <div
+        ref={scrollRef}
         className="subagent-run-rows"
         role="group"
         tabIndex={0}
         aria-labelledby={headingId}
+        onScroll={handleScroll}
       >
-        {run.items.map((item) =>
-          item.kind === "tool" ? (
-            <Fragment key={item.message.id}>
-              <ToolRow message={item.message} />
-              <ReviewChangeCard message={item.message} />
-            </Fragment>
-          ) : item.kind === "thinking" ? (
-            <ThinkingRow
-              key={`thinking-${item.message.id}`}
-              message={item.message}
-              streaming={item.message.status === "streaming"}
-            />
-          ) : (
-            <div className="subagent-answer" key={`answer-${item.message.id}`}>
-              {item.message.content ? (
-                <div className="prose-chat">
-                  <Markdown source={item.message.content} />
-                </div>
-              ) : null}
-              {item.message.error ? (
-                <AssistantErrorMessage message={item.message} />
-              ) : null}
-            </div>
-          ),
-        )}
+        <div ref={contentRef}>
+          {items.map((item) =>
+            item.kind === "tool" ? (
+              <Fragment key={item.message.id}>
+                <ToolRow message={item.message} />
+                <ReviewChangeCard message={item.message} />
+              </Fragment>
+            ) : item.kind === "thinking" ? (
+              <ThinkingRow
+                key={`thinking-${item.message.id}`}
+                message={item.message}
+                streaming={item.message.status === "streaming"}
+              />
+            ) : (
+              <div className="subagent-answer" key={`answer-${item.message.id}`}>
+                {item.message.content ? (
+                  <div className="prose-chat">
+                    <Markdown source={item.message.content} />
+                  </div>
+                ) : null}
+                {item.message.error ? (
+                  <AssistantErrorMessage message={item.message} />
+                ) : null}
+              </div>
+            ),
+          )}
+        </div>
       </div>
+      {showJump ? (
+        <button
+          type="button"
+          className="jump-latest-btn"
+          aria-label={t("chat.scrollToBottom")}
+          title={t("chat.scrollToBottom")}
+          onClick={jumpToLatest}
+        >
+          <IconArrowDown size={14} />
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -1482,13 +1599,22 @@ const ActivityGroup = memo(function ActivityGroup({
     delegateItems,
     delegationStatuses,
   );
-  const [open, setOpen] = useState(isActive && hasSubagentTopology);
+  // Parent tools after a Task fan-out live in a later activity part (D319), so
+  // this card is not the turn's live tail while its delegates are still running.
+  const topologyLive = hasSubagentTopology && subagentSummary.running > 0;
+  const live = isActive || topologyLive;
+  const [open, setOpen] = useState(hasSubagentTopology && live);
   const [now, setNow] = useState(Date.now);
   const [finishedAt, setFinishedAt] = useState<number | null>(null);
-  const wasActiveRef = useRef(isActive);
-  const topologyAutoOpenedRef = useRef(isActive && hasSubagentTopology);
+  const wasActiveRef = useRef(live);
+  const topologyAutoOpenedRef = useRef(hasSubagentTopology && live);
   const messages = items.map((item) => item.message);
-  const startedAt = Date.parse(messages[0]?.createdAt || "") || now;
+  const topologyTiming = hasSubagentTopology
+    ? delegationTimingBounds(delegateItems, delegationTimings)
+    : null;
+  const startedAt =
+    topologyTiming?.startedAt ??
+    (Date.parse(messages[0]?.createdAt || "") || now);
   const fallbackEnd =
     Math.max(
       startedAt,
@@ -1500,12 +1626,13 @@ const ActivityGroup = memo(function ActivityGroup({
       ),
     );
   const completedAt =
-    Date.parse(endedAt || "") ||
-    finishedAt ||
-    (wasActiveRef.current ? now : fallbackEnd);
+    topologyTiming?.completedAt ??
+    (Date.parse(endedAt || "") ||
+      finishedAt ||
+      (wasActiveRef.current ? now : fallbackEnd));
   const elapsedSeconds = Math.max(
     0,
-    Math.floor(((isActive ? now : completedAt) - startedAt) / 1000),
+    Math.floor(((live ? now : completedAt) - startedAt) / 1000),
   );
   const elapsed = formatToolDuration(elapsedSeconds);
   const lastItem = items[items.length - 1];
@@ -1516,7 +1643,7 @@ const ActivityGroup = memo(function ActivityGroup({
   const onlyThinking = items.every((item) => item.kind === "thinking");
   const label = hasSubagentTopology
     ? t(
-        isActive || subagentSummary.running > 0
+        live
           ? "chat.subagentsWorking"
           : subagentSummary.issues > 0
             ? "chat.subagentsFinishedWithIssues"
@@ -1540,19 +1667,19 @@ const ActivityGroup = memo(function ActivityGroup({
   const tail = isActive && !open && lastItem ? activityItemSummary(lastItem, t) : "";
 
   useEffect(() => {
-    if (wasActiveRef.current && !isActive) setFinishedAt(Date.now());
-    wasActiveRef.current = isActive;
-    if (!isActive) return;
+    if (wasActiveRef.current && !live) setFinishedAt(Date.now());
+    wasActiveRef.current = live;
+    if (!live) return;
     setNow(Date.now());
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
-  }, [isActive]);
+  }, [live]);
 
   useEffect(() => {
-    if (!isActive || !hasSubagentTopology || topologyAutoOpenedRef.current) return;
+    if (!live || !hasSubagentTopology || topologyAutoOpenedRef.current) return;
     topologyAutoOpenedRef.current = true;
     setOpen(true);
-  }, [hasSubagentTopology, isActive]);
+  }, [hasSubagentTopology, live]);
 
   const renderActivityItems = () => {
     let renderedTopology = false;
@@ -1592,7 +1719,7 @@ const ActivityGroup = memo(function ActivityGroup({
       className={`tool-activity-group ${hasSubagentTopology ? "has-subagents" : ""} ${
         open ? "open" : ""
       } ${
-        isActive ? "active" : ""
+        live ? "active" : ""
       }`}
     >
       <button
@@ -1676,7 +1803,12 @@ function WorkingIndicator() {
       role="status"
       aria-live="polite"
     >
-      <span className="shimmer-text">{t("chat.running")}</span>
+      <span className="working-indicator-mark" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </span>
+      <span className="working-indicator-label">{t("chat.running")}</span>
       {elapsed > 0 ? (
         <span className="working-elapsed" aria-hidden="true">
           {formatToolDuration(elapsed)}
@@ -1694,48 +1826,15 @@ function PlanningIndicator({ kind }: { kind: ProposalKind }) {
       role="status"
       aria-live="polite"
       data-kind={kind}
+      data-testid="planning-indicator"
     >
-      {kind === "goal" ? (
-        <IconTarget size={14} aria-hidden />
-      ) : (
-        <IconListChecks size={14} aria-hidden />
-      )}
+      <span className="working-indicator-mark" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </span>
       <span>{t(`${kind}.planning`)}</span>
     </div>
-  );
-}
-
-/**
- * A user-message image attachment rendered as a real thumbnail. The host
- * resolves the ref (workspace-relative, `attachments/<sha256>`, or absolute
- * scratch/attachment) into a bounded data URL; an unresolvable load falls back
- * to the compact chip so the message stays readable. Clicking opens the file
- * viewer on the attachment (the host resolves the same ref for `fsRead`).
- */
-function MessageAttachmentImage({ attachment }: { attachment: MessageAttachment }) {
-  const dataUrl = useReferencedImageDataUrl(attachment.ref, attachment.mimeType);
-  if (!dataUrl) {
-    return (
-      <div className="message-attachment" role="listitem" title={attachment.ref}>
-        <IconImage size={13} aria-hidden />
-        <span>{attachment.name}</span>
-      </div>
-    );
-  }
-  return (
-    <button
-      type="button"
-      className="message-attachment-image"
-      role="listitem"
-      title={`${attachment.name} — ${attachment.ref}`}
-      onClick={() => {
-        useAppStore
-          .getState()
-          .openFileInWorkPanel(attachment.ref, attachment.mimeType);
-      }}
-    >
-      <img src={dataUrl} alt={attachment.name} />
-    </button>
   );
 }
 
@@ -1751,6 +1850,8 @@ const MessageRow = memo(function MessageRow({
   const activateMessageRevision = useAppStore((s) => s.activateMessageRevision);
   const deleteMessage = useAppStore((s) => s.deleteMessage);
   const isUser = message.role === "user";
+  const workspaceRoot = useAppStore((s) => s.workspace?.path);
+  const openFileRef = useOpenChatFileRef();
   // Slash prompts are stored expanded; editing works on the typed form so the
   // resent turn re-expands the template (D123).
   const editSeed = (isUser && message.command) || message.content || "";
@@ -1767,6 +1868,16 @@ const MessageRow = memo(function MessageRow({
   const revisionCount = message.revisionCount ?? 0;
   const activeRevision = message.activeRevision ?? revisionCount;
   const showRevisionPager = isUser && revisionCount > 1;
+  const extraAttachments = useMemo(() => {
+    const attachments = message.attachments;
+    if (!attachments?.length) return [];
+    const inline = new Set(
+      splitChatText(String(message.content || ""), workspaceRoot)
+        .filter((segment): segment is { kind: "target"; text: string; label: string; target: { kind: "file"; path: string } } => segment.kind === "target" && segment.target.kind === "file")
+        .map((segment) => segment.target.path),
+    );
+    return attachments.filter((attachment) => !inline.has(attachment.ref));
+  }, [message.attachments, message.content, workspaceRoot]);
   const cancelEdit = () => {
     setEditValue(editSeed);
     setEditing(false);
@@ -1832,30 +1943,25 @@ const MessageRow = memo(function MessageRow({
               </div>
             ) : isUser ? (
               <>
-                {message.attachments?.length ? (
+                {extraAttachments.length ? (
                   <div
                     className="message-attachments"
                     role="list"
                     aria-label={t("chat.messageAttachments")}
                   >
-                    {message.attachments.map((attachment) =>
-                      attachment.kind === "image" ? (
-                        <MessageAttachmentImage
-                          key={`${attachment.ref}:${attachment.name}`}
-                          attachment={attachment}
+                    {extraAttachments.map((attachment) => (
+                      <span
+                        key={`${attachment.ref}:${attachment.name}`}
+                        role="listitem"
+                      >
+                        <FileRefChip
+                          name={attachment.name}
+                          path={attachment.ref}
+                          kind={attachment.kind}
+                          onOpen={openFileRef}
                         />
-                      ) : (
-                        <div
-                          key={`${attachment.ref}:${attachment.name}`}
-                          className="message-attachment"
-                          role="listitem"
-                          title={attachment.ref}
-                        >
-                          <IconFileText size={13} aria-hidden />
-                          <span>{attachment.name}</span>
-                        </div>
-                      ),
-                    )}
+                      </span>
+                    ))}
                   </div>
                 ) : null}
                 {message.content ? (
@@ -2163,8 +2269,9 @@ const AssistantTurn = memo(function AssistantTurn({
     [entry.parts],
   );
   const turnDelegationStatuses = useMemo(
-    () => collectDelegationStatuses(turnAllActivityItems),
-    [turnAllActivityItems],
+    () =>
+      collectDelegationStatuses(turnAllActivityItems, { turnLive: isActive }),
+    [turnAllActivityItems, isActive],
   );
   const turnDelegationTimings = useMemo(
     () => collectDelegationTimings(turnAllActivityItems),
@@ -2470,6 +2577,19 @@ export const ChatTranscript = memo(function ChatTranscript({
     });
   }, [scrollToBottom]);
 
+  // Re-pins before the browser paints. A ResizeObserver callback runs after
+  // layout and before paint, so a `requestAnimationFrame` requested from it
+  // lands in the *next* frame: the current frame painted the grown content
+  // unpinned and the next one snapped it back, which read as the transcript
+  // twitching whenever a row changed height after mount (D287). Scrolling from
+  // inside the callback costs nothing extra (layout is already clean) and
+  // cannot resize the observed box, so it never re-triggers the observer.
+  const followScrollNow = useCallback(() => {
+    if (!paneVisibleRef.current || !pinnedRef.current) return;
+    cancelFollowScroll();
+    scrollToBottom();
+  }, [cancelFollowScroll, scrollToBottom]);
+
   useEffect(() => cancelFollowScroll, [cancelFollowScroll]);
 
   const loadOlder = useCallback(() => {
@@ -2601,82 +2721,49 @@ export const ChatTranscript = memo(function ChatTranscript({
     scheduleFollowScroll,
   ]);
 
-  // Streamed Markdown and expanded activity rows can change content height, so
-  // keep pinned follow synchronized with the observed layout.
+  // Streamed Markdown, expanded activity rows, late images, and diagrams change
+  // the content height without a React commit, so pinned follow is kept in sync
+  // from the observed layout. The content is observed on its border box: the
+  // bottom padding is the composer's published height, and a multi-line draft
+  // growing that padding must re-pin too, or the newest turn slides behind the
+  // composer until the next commit happens to re-pin it. The content box does
+  // not include padding and would miss that change entirely. The scroller is
+  // observed as well so a window or work-panel resize keeps the bottom in view.
   useEffect(() => {
-    const el = contentRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(scheduleFollowScroll);
-    ro.observe(el);
+    const content = contentRef.current;
+    const scroller = scrollRef.current;
+    if (!content || !scroller || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(followScrollNow);
+    ro.observe(content, { box: "border-box" });
+    ro.observe(scroller, { box: "border-box" });
     return () => ro.disconnect();
-  }, [scheduleFollowScroll]);
+  }, [followScrollNow]);
 
-  // The transcript is split into two projections with different freshness
-  // contracts. Rebuilding the completed-turn tree is the expensive half, so it
-  // is allowed to trail a starved deferred render; the mounted row tree keeps
-  // its identity while it lags. The pane's own first commit is never deferred:
-  // its content must be on screen in the commit that reveals it, otherwise the
-  // reveal shows one empty frame.
+  // Streaming tokens are deferred so the full historical transcript tree does
+  // not rebuild at the same priority as the tail. The pane's own first commit is
+  // never deferred: its content must be on screen in the commit that reveals it,
+  // otherwise the reveal shows one empty frame.
   const firstCommitRef = useRef(true);
   const firstCommit = firstCommitRef.current;
   // A retained pane can receive a newer live snapshot while it is hidden. Do
   // not let useDeferredValue reveal its previous frame first; the reveal itself
   // is a navigation boundary and must paint the snapshot selected for it.
   const paneRevealed = paneVisible && !wasPaneVisibleRef.current;
-  const revealSnapshot = firstCommit || paneRevealed;
   const deferredMessages = useDeferredValue(messages);
   const deferredCompactions = useDeferredValue(compactions);
-  // History is projected from the deferred snapshot. Streaming tokens update
-  // the tail, so deferring keeps the full historical tree from rebuilding at
-  // the same priority as the tail. The reveal snapshot bypasses the deferral
-  // so the reveal paints the exact snapshot selected for it.
-  const renderedMessages = revealSnapshot ? messages : deferredMessages;
-  const renderedCompactions = revealSnapshot ? compactions : deferredCompactions;
-  const historyProjection = useMemo(
+  const renderedMessages =
+    firstCommit || paneRevealed ? messages : deferredMessages;
+  const renderedCompactions =
+    firstCommit || paneRevealed ? compactions : deferredCompactions;
+  const { entries, visible } = useMemo(
     () => buildTranscriptEntries(renderedMessages, renderedCompactions),
     [renderedMessages, renderedCompactions],
   );
-  // The tail - the newest activity (a just-sent user message or the running
-  // assistant turn) - is projected from the LIVE message list on every commit.
-  // A starved deferred render must never pin the task the user is watching to
-  // an old frame; that is exactly the bug where a long session's transcript
-  // froze on a historical turn's thinking. The live projection is pure list
-  // work over the messages; the deferred projection above is what keeps the
-  // mounted row tree out of the streaming reconciliation path.
-  const liveProjection = useMemo(
-    () => buildTranscriptEntries(messages, compactions),
-    [messages, compactions],
-  );
-  // History and tail may briefly disagree on where the boundary sits while the
-  // deferred snapshot lags the live one. The deferred tail is sliced into the
-  // history only when it is the SAME entry as the live tail (same key, i.e. a
-  // still-running turn whose deferred copy is stale). If the deferred snapshot
-  // is behind by a completed turn, that deferred tail is finished history and
-  // must stay in the history list instead of being sliced away - otherwise the
-  // just-completed turn would vanish until the deferred snapshot caught up.
-  const deferredTailKey = historyProjection.entries.length
-    ? transcriptEntryKey(
-        historyProjection.entries[historyProjection.entries.length - 1],
-      )
-    : undefined;
-  const liveTailKey = liveProjection.entries.length
-    ? transcriptEntryKey(liveProjection.entries[liveProjection.entries.length - 1])
-    : undefined;
-  const tailIsDeferredTail =
-    deferredTailKey !== undefined && deferredTailKey === liveTailKey;
   // Memoized so a re-render that changed no message (jump pill, loading row,
   // window growth) hands `TranscriptHistory` the same array, letting its
-  // comparator bail on identity instead of walking every mounted row. The keys
-  // are strings, so streaming a turn changes the tail's content but not this
-  // derivation, keeping `allHistoryEntries` stable tick after tick.
-  const allHistoryEntries = useMemo(
-    () =>
-      tailIsDeferredTail
-        ? historyProjection.entries.slice(0, -1)
-        : historyProjection.entries,
-    [historyProjection.entries, tailIsDeferredTail],
-  );
-  const tailEntry = liveProjection.entries.at(-1);
+  // comparator bail on identity instead of walking every mounted row.
+  const allHistoryEntries = useMemo(() => entries.slice(0, -1), [entries]);
+  const tailEntry = entries.at(-1);
   // Published for `reachTop`, which is declared above this projection but only
   // runs from a scroll event, long after this render committed.
   historyLengthRef.current = allHistoryEntries.length;
@@ -2727,6 +2814,19 @@ export const ChatTranscript = memo(function ChatTranscript({
     // re-evaluates instead of holding a stale frame.
   }, [hydrationBounded, hydrationTick]);
 
+  // Settle veil (D287). A bounded first commit means the transcript is long
+  // enough for its geometry to keep moving for several frames after mount: the
+  // expansion, then rows whose height resolves only once laid out. Rather than
+  // painting that motion, an opaque skeleton covers the scroller until the
+  // geometry has held still (or a hard time cap passes) and then fades out.
+  // Short transcripts mount in one commit and never show the veil. The phase is
+  // initialised from the first render's own gate so the veil is in the commit
+  // that reveals the pane, not one frame later.
+  const [veilPhase, setVeilPhase] = useState<"covering" | "leaving" | "off">(
+    () => (hydrationBounded ? "covering" : "off"),
+  );
+  const veilCovering = veilPhase === "covering";
+
   const transcriptWindow = reduceTranscriptWindow({
     historyLength: allHistoryEntries.length,
     windowSize,
@@ -2755,17 +2855,57 @@ export const ChatTranscript = memo(function ChatTranscript({
     scrollToBottom();
   }, [cancelFollowScroll, hydrationBounded, hydrationTick, scrollToBottom]);
 
+  // Sample the scroller once per frame from the expansion commit onward and
+  // lift the veil once the geometry has stopped moving. The bounded commit
+  // itself is not sampled: the expansion that follows it changes the height by
+  // design. Each sample also re-pins a still-pinned transcript, so the frame the
+  // veil reveals is already at the newest turn. A hidden pane pauses sampling
+  // (its scroller reports no usable geometry) and resumes when revealed.
+  useEffect(() => {
+    if (!veilCovering || hydrationBounded || !paneVisible) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    let state = createTranscriptSettleState(performance.now());
+    let frame = 0;
+    const sample = () => {
+      frame = 0;
+      if (pinnedRef.current) scrollToBottom();
+      const step = reduceTranscriptSettle(
+        state,
+        { scrollHeight: el.scrollHeight, clientHeight: el.clientHeight },
+        performance.now(),
+      );
+      state = step.state;
+      if (step.settled) {
+        setVeilPhase("leaving");
+        return;
+      }
+      frame = requestAnimationFrame(sample);
+    };
+    frame = requestAnimationFrame(sample);
+    return () => cancelAnimationFrame(frame);
+  }, [hydrationBounded, paneVisible, scrollToBottom, veilCovering]);
+
+  useEffect(() => {
+    if (veilPhase !== "leaving") return;
+    const timer = window.setTimeout(
+      () => setVeilPhase("off"),
+      TRANSCRIPT_VEIL_FADE_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [veilPhase]);
+
   // The minimap must describe the mounted rows, not every loaded message: it
   // resolves a click by looking up the marker's node in the scroller, so a dash
-  // for a withheld row would jump nowhere (D261). It is derived from the same
-  // windowed history plus the live tail that are actually rendered, so it stays
-  // truthful whether the transcript window is bounded or not.
+  // for a withheld row would jump nowhere (D261).
   const minimapMessages = useMemo(
     () =>
-      transcriptEntryMessages(
-        tailEntry ? [...historyEntries, tailEntry] : historyEntries,
-      ),
-    [historyEntries, tailEntry],
+      transcriptWindow.bounded
+        ? transcriptEntryMessages(
+            tailEntry ? [...historyEntries, tailEntry] : historyEntries,
+          )
+        : visible,
+    [historyEntries, tailEntry, transcriptWindow.bounded, visible],
   );
   const hasEarlierHistory = transcriptWindow.hiddenAbove > 0 || hasMoreBefore;
 
@@ -2858,11 +2998,7 @@ export const ChatTranscript = memo(function ChatTranscript({
     transcriptWindow.hiddenAbove,
   ]);
 
-  // The "running now" signals must read the LIVE tail: `lastEntry` decides
-  // whether the transcript shows a working row / answer row. If it were derived
-  // from the deferred history snapshot, a starved deferred render would leave a
-  // running task looking idle (or stuck on an old turn's state).
-  const lastEntry = tailEntry;
+  const lastEntry = entries[entries.length - 1];
   const lastTurnPart =
     lastEntry?.kind === "assistant-turn" ? lastEntry.parts.at(-1) : undefined;
   const activeToolGroup = isRunning && lastTurnPart?.kind === "activity";
@@ -2880,20 +3016,31 @@ export const ChatTranscript = memo(function ChatTranscript({
     planningState !== "planning" &&
     !activeToolGroup &&
     !assistantIsAnswering;
+  // Same pre-stream slot as Working: once tools or an answer exist, activity
+  // rows carry the live state so a Planning label does not sit orphaned above
+  // the composer. The Composer mode chip keeps pulsing for the turn.
   const showPlanning =
     isRunning &&
     planningState === "planning" &&
     !approvalPending &&
     !pendingPermission &&
-    !askPending;
+    !askPending &&
+    !activeToolGroup &&
+    !assistantIsAnswering;
 
   return (
-    <div className="thread-wrap" ref={wrapRef}>
+    <div
+      className="thread-wrap"
+      ref={wrapRef}
+      data-transcript-settling={veilCovering ? "true" : undefined}
+    >
       {/* The minimap measures row positions against a rendered scroller. A
         * hidden pane has none, so measuring there would cache junk offsets and
         * reuse them on reveal. It is out of flow and re-measures on mount, so
-        * leaving it out while hidden costs nothing. */}
-      {paneVisible ? (
+        * leaving it out while hidden costs nothing. It also waits for the
+        * settle veil to lift: mounting it against still-moving rows would cache
+        * offsets the settled layout no longer matches. */}
+      {paneVisible && !veilCovering ? (
         <ConversationMinimap
           scrollRef={scrollRef}
           messages={minimapMessages}
@@ -2949,7 +3096,37 @@ export const ChatTranscript = memo(function ChatTranscript({
           {showWorking ? <WorkingIndicator /> : null}
         </div>
       </div>
-      {showJump ? (
+      {veilPhase !== "off" ? (
+        // Positioned without a z-index on purpose: it paints above the scroller
+        // in tree order and stays beneath the docked composer, so the user can
+        // keep typing while the transcript settles.
+        <div
+          className="transcript-settle-veil"
+          data-phase={veilPhase}
+          role="status"
+          aria-busy={veilCovering}
+          aria-label={t("chat.loadingSession")}
+        >
+          <div className="transcript-settle-veil-band">
+            {TRANSCRIPT_SKELETON_ROWS.map((row, rowIndex) => (
+              <div
+                key={rowIndex}
+                className={`transcript-skeleton-row ${row.role}`}
+                aria-hidden
+              >
+                {row.lines.map((width, lineIndex) => (
+                  <span
+                    key={lineIndex}
+                    className="transcript-skeleton-line"
+                    style={{ width }}
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {showJump && !veilCovering ? (
         <button
           className="jump-latest-btn"
           aria-label={t("chat.scrollToBottom")}

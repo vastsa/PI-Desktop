@@ -3,7 +3,7 @@ import { HighlightedCode, useCopy } from "./Markdown";
 import { IconCheck, IconCircleAlert, IconCopy, IconInfo } from "./icons";
 import { cx } from "./ui";
 import { toWorkspaceRel } from "../lib/chat-links";
-import { useOpenPreviewTarget } from "../lib/use-preview-target";
+import { useOpenPreviewTarget } from "../hooks/use-preview-target";
 import { useAppStore } from "../stores/app-store";
 import type { ToolBlock, ToolChip } from "../lib/tool-presentation";
 

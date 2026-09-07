@@ -14,7 +14,7 @@ Provide a permission–capability–risk–default-policy reference table for re
 | `clipboard.read` | medium | `clipboard.readText`, `clipboard.getHistory` | Confirm on first use | May read sensitive information and retained clipboard history |
 | `clipboard.write` | medium | `clipboard.writeText` | Confirm on first use | Prevents clipboard pollution |
 | `notify` | low | `ui.notify`, `ui.getNotificationPermission`, `ui.requestNotificationPermission`, `ui.showNativeNotification` | Can be granted by default | Native delivery is OS-controlled; avoid notification-spam abuse |
-| `fs.read` | medium | `fs.readText` / `fs.openDefault` / `fs.reveal` / `fs.glob` / `fs.list` / `fs.requestDirectory` | Granted at install, bounded by `manifest.fs.read` | `fs.openDefault` and `fs.reveal` are limited to an explicit file and the same read scope; all file calls remain root- and deny-list-checked |
+| `fs.read` | medium | `fs.readText` / `fs.readPreview` / `fs.openDefault` / `fs.reveal` / `fs.glob` / `fs.list` / `fs.requestDirectory` | Granted at install, bounded by `manifest.fs.read` | `fs.readPreview`, `fs.openDefault`, and `fs.reveal` are limited to an explicit file and the same read scope; all file calls remain root- and deny-list-checked |
 | `fs.write` | high | `fs.writeText` | Granted at install, bounded by `manifest.fs.write` | Scope is required; a whole-tree pattern fails validation. Out of scope asks the user |
 | `fs.delete` | high | `fs.remove` | Granted at install, bounded by `manifest.fs.delete` | Two tiers (`own` / `scope`), always via the OS trash, non-recursive, rate-braked (§2B) |
 | `fs.read.workspace` | medium | — | Downgraded on load to `fs.read` with a whole-tree scope | Legacy name; predates scopes |
@@ -29,6 +29,7 @@ Provide a permission–capability–risk–default-policy reference table for re
 | `background.service` | medium | Start `contributes.services` and keep the plugin process resident | Confirm at install | Supervised with backoff; visible on the Plugins page |
 | `bus.publish` | medium | `bus.publish` to declared topics | Confirm at install | Other plugins can act on the message |
 | `bus.subscribe` | medium | `bus.subscribe` to declared patterns | Confirm at install | Can observe another plugin's messages |
+| `browser.cdp` | high | `pi.browser.*` against the host work-panel guest | Confirm at install | Guest bounds are clamped to the calling plugin view; CDP is allowlisted |
 
 ## 2A. A permission is the switch; the manifest carries the range
 
@@ -115,6 +116,7 @@ so "Modify the files it lists" is followed by the list.
 | `background.service` | Keep a background service running | 保持后台服务运行 |
 | `bus.publish` | Send messages to other plugins | 向其他插件发送消息 |
 | `bus.subscribe` | Receive messages from other plugins | 接收其他插件的消息 |
+| `browser.cdp` | Control the work-panel browser | 控制工作面板浏览器 |
 
 ## 5. Adding permissions on upgrade
 

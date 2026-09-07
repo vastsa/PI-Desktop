@@ -8,13 +8,11 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import type { PluginViewMeta } from "@pi-desktop/shared";
-import { api } from "../../lib/api";
 import {
   isKnownWorkPanelTab,
   isToolWorkPanelTab,
   parsePluginViewRef,
   pluginWorkPanelTab,
-  toolWorkPanelTab,
 } from "../../lib/work-panel-tabs";
 import { pluginViewIcon, pluginViewInitial } from "../../lib/plugin-view-icons";
 import { useAppStore } from "../../stores/app-store";
@@ -22,20 +20,18 @@ import type { WorkPanelTab } from "../../stores/app-store";
 import { cx } from "../ui";
 import {
   IconChevronDown,
+  IconChevronRight,
   IconClose,
   IconDiff,
   IconFileText,
-  IconGlobe,
   IconPanel,
   IconPlug,
 } from "../icons";
 import { ReviewTab } from "./ReviewTab";
-import { BrowserTab } from "./BrowserTab";
 import { FilesTab } from "./FilesTab";
 import { PluginViewTab } from "./PluginViewTab";
 import { WorkTabEmpty } from "./WorkTabEmpty";
 import {
-  WORK_PANEL_DEFAULT_WIDTH,
   WORK_PANEL_MAX_WIDTH,
   WORK_PANEL_MIN_WIDTH,
   clampWorkPanelWidth,
@@ -43,33 +39,17 @@ import {
 
 const TAB_ICONS = {
   review: IconDiff,
-  browser: IconGlobe,
   file: IconFileText,
   plugin: IconPlug,
 } as const;
 
-/**
- * Tools the host itself provides — the panel's manually launchable surfaces.
- *
- * The host provides one built-in tool and two artifact/resource surfaces:
- *
- * - **Browser** opens a live preview surface for agent-generated HTML or a URL.
- * - **Files** is supplied by the bundled `pi.files` plugin through the same
- *   `contributes.views` channel a third-party plugin uses.
- * - **Review** is an *artifact* panel, opened by the conversation's Write/Edit
- *   records rather than picked from a launcher; its records remain
- *   message-owned (ADR 0043).
- *
- * `review` and `file` therefore remain live tab *kinds* while only `browser`
- * appears in this launcher list; see the panel body below.
- */
-const HEADER_TOOLS = [{ kind: "browser", Icon: IconGlobe }] as const;
-
-type HeaderToolKind = (typeof HEADER_TOOLS)[number]["kind"];
-
-function headerToolTab(kind: HeaderToolKind): WorkPanelTab {
-  return toolWorkPanelTab(kind);
-}
+type WorkPanelResizeState = {
+  pointerId: number;
+  startClientX: number;
+  startWidth: number;
+  currentWidth: number;
+  frame: number;
+};
 
 function tabLabel(
   tab: WorkPanelTab,
@@ -89,6 +69,7 @@ function tabLabel(
 
 export function WorkPanel({
   panelBlocked = false,
+  onCollapse,
   exiting = false,
   onExitAnimationEnd,
 }: {
@@ -98,6 +79,7 @@ export function WorkPanel({
    * blocking overlay must suppress them alike.
    */
   panelBlocked?: boolean;
+  onCollapse?: () => void;
   /** Plays work-panel-out; parent unmounts after animationend. */
   exiting?: boolean;
   onExitAnimationEnd?: () => void;
@@ -117,14 +99,8 @@ export function WorkPanel({
   /** Resources opened from the transcript; tools and plugin views list above. */
   const resourceTabs = tabs.filter((tab) => !isToolWorkPanelTab(tab));
 
-  const [dragWidth, setDragWidth] = useState<number | null>(null);
-  const resizeState = useRef<{
-    pointerId: number;
-    startClientX: number;
-    startWidth: number;
-    width: number;
-    frame: number;
-  } | null>(null);
+  const [panelDragWidth, setPanelDragWidth] = useState<number | null>(null);
+  const panelResizeState = useRef<WorkPanelResizeState | null>(null);
   const contextRef = useRef<HTMLDivElement | null>(null);
   const contextButtonRef = useRef<HTMLButtonElement | null>(null);
   /** Where focus lands when the menu opens: the active row, or its last row. */
@@ -133,8 +109,8 @@ export function WorkPanel({
   const [nativeSurfaceReadyForExit, setNativeSurfaceReadyForExit] =
     useState(false);
 
-  const renderPanelWidth = clampWorkPanelWidth(dragWidth ?? width);
-  const isResizing = dragWidth !== null;
+  const renderPanelWidth = clampWorkPanelWidth(panelDragWidth ?? width);
+  const isResizing = panelDragWidth !== null;
 
   useEffect(() => {
     if (isResizing) {
@@ -167,19 +143,9 @@ export function WorkPanel({
       setNativeSurfaceReadyForExit(false);
       return;
     }
-
-    let current = true;
-    // WebContentsView is composited above the renderer and cannot follow the
-    // panel's CSS animation. Detach it before the dock starts moving.
-    void api
-      .browserSetVisible(false)
-      .catch(() => undefined)
-      .then(() => {
-        if (current) setNativeSurfaceReadyForExit(true);
-      });
-    return () => {
-      current = false;
-    };
+    // Plugin views (and the host guest clamped to them) hide via `blocked`
+    // before the dock CSS animation starts.
+    setNativeSurfaceReadyForExit(true);
   }, [exiting]);
 
   useEffect(() => {
@@ -250,18 +216,6 @@ export function WorkPanel({
     [activateTab, closeContext],
   );
 
-  const openTool = useCallback(
-    (kind: HeaderToolKind) => {
-      // Reuse the singleton tab so an open tool keeps its resource instead of
-      // being replaced by a blank one.
-      const existing = tabs.find((tab) => tab.id === kind);
-      if (existing) activateTab(existing.id);
-      else openWorkPanelTab(headerToolTab(kind));
-      closeContext();
-    },
-    [activateTab, closeContext, openWorkPanelTab, tabs],
-  );
-
   const openPluginView = useCallback(
     (view: PluginViewMeta) => {
       // Same singleton rule as the built-in tools: one tab per view, so
@@ -311,96 +265,105 @@ export function WorkPanel({
     items[next]?.focus();
   };
 
-  const finishResize = useCallback(
-    (target: HTMLDivElement, pointerId: number, commit: boolean) => {
-      const drag = resizeState.current;
+  const finishPanelResize = useCallback(
+    (target: HTMLDivElement, pointerId: number, cancelled: boolean) => {
+      const drag = panelResizeState.current;
       if (drag?.pointerId !== pointerId) return;
-      resizeState.current = null;
+      panelResizeState.current = null;
       if (drag.frame) cancelAnimationFrame(drag.frame);
       if (target.hasPointerCapture(pointerId)) {
         target.releasePointerCapture(pointerId);
       }
-      setDragWidth(null);
-      if (commit && drag.width !== drag.startWidth) setWidth(drag.width);
+      setPanelDragWidth(null);
+      if (!cancelled && drag.currentWidth !== drag.startWidth) {
+        setWidth(drag.currentWidth);
+      }
     },
     [setWidth],
   );
 
-  const onResizeStart = useCallback(
+  const onPanelResizeStart = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
-      if (event.button !== 0) return;
+      if (event.button !== 0 || panelResizeState.current) return;
       event.preventDefault();
-      event.currentTarget.focus({ preventScroll: true });
       event.stopPropagation();
-      resizeState.current = {
+      event.currentTarget.focus({ preventScroll: true });
+      const startWidth = clampWorkPanelWidth(width);
+      panelResizeState.current = {
         pointerId: event.pointerId,
         startClientX: event.clientX,
-        startWidth: renderPanelWidth,
-        width: renderPanelWidth,
+        startWidth,
+        currentWidth: startWidth,
         frame: 0,
       };
+      setPanelDragWidth(startWidth);
       event.currentTarget.setPointerCapture(event.pointerId);
-      setDragWidth(renderPanelWidth);
     },
-    [renderPanelWidth],
+    [width],
   );
 
-  const onResizeMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    const drag = resizeState.current;
-    if (drag?.pointerId !== event.pointerId) return;
-    drag.width = clampWorkPanelWidth(
-      drag.startWidth + drag.startClientX - event.clientX,
-    );
-    if (drag.frame) return;
-    drag.frame = requestAnimationFrame(() => {
-      if (resizeState.current !== drag) return;
-      drag.frame = 0;
-      setDragWidth(drag.width);
-    });
-  }, []);
-
-  const onResizeCommit = useCallback(
+  const onPanelResizeMove = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
-      finishResize(event.currentTarget, event.pointerId, true);
+      const drag = panelResizeState.current;
+      if (drag?.pointerId !== event.pointerId) return;
+      // The divider is on the panel's left edge: moving it left makes the
+      // panel wider, while moving it right gives that space back to chat.
+      drag.currentWidth = clampWorkPanelWidth(
+        drag.startWidth + drag.startClientX - event.clientX,
+      );
+      if (drag.frame) return;
+      drag.frame = requestAnimationFrame(() => {
+        if (panelResizeState.current !== drag) return;
+        drag.frame = 0;
+        setPanelDragWidth(drag.currentWidth);
+      });
     },
-    [finishResize],
+    [],
   );
 
-  const onResizeCancel = useCallback(
+  const onPanelResizeCommit = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
-      finishResize(event.currentTarget, event.pointerId, false);
+      finishPanelResize(event.currentTarget, event.pointerId, false);
     },
-    [finishResize],
+    [finishPanelResize],
+  );
+
+  const onPanelResizeCancel = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      finishPanelResize(event.currentTarget, event.pointerId, true);
+    },
+    [finishPanelResize],
   );
 
   useEffect(
     () => () => {
-      const drag = resizeState.current;
+      const drag = panelResizeState.current;
       if (drag?.frame) cancelAnimationFrame(drag.frame);
+      panelResizeState.current = null;
       document.documentElement.removeAttribute("data-work-panel-resizing");
     },
     [],
   );
 
-  const onResizeKeyDown = useCallback(
+  const onPanelResizeKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLDivElement>) => {
-      const drag = resizeState.current;
+      const drag = panelResizeState.current;
       if (event.key === "Escape" && drag) {
         event.preventDefault();
-        finishResize(event.currentTarget, drag.pointerId, false);
+        finishPanelResize(event.currentTarget, drag.pointerId, true);
         return;
       }
       const step = event.shiftKey ? 32 : 16;
       let nextWidth: number | null = null;
-      if (event.key === "ArrowLeft") nextWidth = renderPanelWidth + step;
-      else if (event.key === "ArrowRight") nextWidth = renderPanelWidth - step;
+      if (event.key === "ArrowLeft") nextWidth = width + step;
+      else if (event.key === "ArrowRight") nextWidth = width - step;
       else if (event.key === "Home") nextWidth = WORK_PANEL_MIN_WIDTH;
       else if (event.key === "End") nextWidth = WORK_PANEL_MAX_WIDTH;
       if (nextWidth === null) return;
       event.preventDefault();
       setWidth(clampWorkPanelWidth(nextWidth));
     },
-    [finishResize, renderPanelWidth, setWidth],
+    [finishPanelResize, setWidth, width],
   );
   const activeLabel = activeTab ? tabLabel(activeTab, t, pluginViews) : t("panel.title");
   const activePluginView =
@@ -444,15 +407,14 @@ export function WorkPanel({
         aria-label={t("panel.resize")}
         aria-valuemin={WORK_PANEL_MIN_WIDTH}
         aria-valuemax={WORK_PANEL_MAX_WIDTH}
-        aria-valuenow={Math.round(renderPanelWidth)}
+        aria-valuenow={Math.round(panelDragWidth ?? renderPanelWidth)}
         tabIndex={0}
-        onPointerDown={onResizeStart}
-        onPointerMove={onResizeMove}
-        onPointerUp={onResizeCommit}
-        onPointerCancel={onResizeCancel}
-        onLostPointerCapture={onResizeCancel}
-        onDoubleClick={() => setWidth(WORK_PANEL_DEFAULT_WIDTH)}
-        onKeyDown={onResizeKeyDown}
+        onPointerDown={onPanelResizeStart}
+        onPointerMove={onPanelResizeMove}
+        onPointerUp={onPanelResizeCommit}
+        onPointerCancel={onPanelResizeCancel}
+        onLostPointerCapture={onPanelResizeCancel}
+        onKeyDown={onPanelResizeKeyDown}
       />
       <div className="work-panel-main">
         <header className="work-panel-header" data-work-panel-section="current">
@@ -490,78 +452,12 @@ export function WorkPanel({
                 aria-label={t("panel.title")}
                 onKeyDown={onContextKeyDown}
               >
-                {/* Tools keep fixed positions so switching stays muscle
-                    memory; open tools carry their own close control here
-                    instead of repeating in a second list. */}
-                <div
-                  className="work-panel-menu-group"
-                  role="group"
-                  aria-labelledby="work-panel-menu-tools"
-                >
-                  <div className="work-panel-menu-title" id="work-panel-menu-tools">
-                    {t("panel.tools")}
-                  </div>
-                  {HEADER_TOOLS.map(({ kind, Icon }, index) => {
-                    const tab = tabs.find((candidate) => candidate.id === kind);
-                    const selected = tab?.id === activeTabId;
-                    const label = t(`panel.tabs.${kind}`);
-                    return (
-                      <div
-                        className={cx("work-panel-menu-row", selected && "active")}
-                        role="none"
-                        key={kind}
-                      >
-                        <button
-                          type="button"
-                          role="menuitemradio"
-                          aria-checked={selected}
-                          tabIndex={-1}
-                          data-work-panel-menu-item=""
-                          data-work-panel-close-id={tab ? tab.id : undefined}
-                          data-action={`open-work-panel-${kind}`}
-                          className="work-panel-menu-item"
-                          title={label}
-                          onClick={() => openTool(kind)}
-                        >
-                          <Icon size={15} />
-                          <span className="work-panel-menu-label">{label}</span>
-                          {tab && !selected && (
-                            <span className="work-panel-open-dot" aria-hidden />
-                          )}
-                        </button>
-                        <span className="work-panel-menu-slot">
-                          {tab && (
-                            <button
-                              type="button"
-                              tabIndex={-1}
-                              data-work-panel-menu-close=""
-                              className="work-panel-menu-close"
-                              title={t("panel.closeTab", { name: label })}
-                              aria-label={t("panel.closeTab", { name: label })}
-                              onClick={() => closeTabFromMenu(tab.id, index)}
-                            >
-                              <IconClose size={12} />
-                            </button>
-                          )}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
                 {pluginViews.length > 0 && (
-                  <>
-                    <div className="work-panel-context-divider" />
-                    {/* Plugin views sit with the tools rather than the opened
-                        resources: they are entry points the user picks, not
-                        things the transcript produced. Rows mirror the tool
-                        rows exactly — edge marker, open dot, reserved close
-                        slot — so a plugin surface is not visibly second-class
-                        next to a built-in one. */}
-                    <div
-                      className="work-panel-menu-group"
-                      role="group"
-                      aria-labelledby="work-panel-menu-plugin-views"
-                    >
+                  <div
+                    className="work-panel-menu-group"
+                    role="group"
+                    aria-labelledby="work-panel-menu-plugin-views"
+                  >
                       <div
                         className="work-panel-menu-title"
                         id="work-panel-menu-plugin-views"
@@ -573,7 +469,7 @@ export function WorkPanel({
                         const tab = tabs.find((candidate) => candidate.id === tabId);
                         const selected = tab?.id === activeTabId;
                         const Icon = pluginViewIcon(view.icon);
-                        const itemIndex = HEADER_TOOLS.length + index;
+                        const itemIndex = index;
                         return (
                           <div
                             className={cx("work-panel-menu-row", selected && "active")}
@@ -622,12 +518,13 @@ export function WorkPanel({
                           </div>
                         );
                       })}
-                    </div>
-                  </>
+                  </div>
                 )}
                 {resourceTabs.length > 0 && (
                   <>
-                    <div className="work-panel-context-divider" />
+                    {pluginViews.length > 0 && (
+                      <div className="work-panel-context-divider" />
+                    )}
                     <div
                       className="work-panel-menu-group"
                       role="group"
@@ -645,8 +542,7 @@ export function WorkPanel({
                         const selected = tab.id === activeTabId;
                         // Focus restoration after a close counts menu rows, so
                         // this index has to include every group drawn above.
-                        const itemIndex =
-                          HEADER_TOOLS.length + pluginViews.length + index;
+                        const itemIndex = pluginViews.length + index;
                         return (
                           <div
                             className={cx("work-panel-menu-row", selected && "active")}
@@ -703,6 +599,18 @@ export function WorkPanel({
                 <IconClose size={14} />
               </button>
             )}
+            {onCollapse && (
+              <button
+                type="button"
+                className="work-panel-toolbar-collapse"
+                data-action="collapse-work-panel"
+                title={t("panel.collapse")}
+                aria-label={t("panel.collapse")}
+                onClick={onCollapse}
+              >
+                <IconChevronRight size={16} />
+              </button>
+            )}
           </div>
         </header>
         <div className="work-panel-body">
@@ -714,23 +622,6 @@ export function WorkPanel({
               aria-labelledby={`work-panel-title-${activeTab.id}`}
             >
               <ReviewTab />
-            </div>
-          )}
-          {activeTab?.kind === "browser" && (
-            <div
-              key={`${activeSessionId ?? "none"}:${activeTab.id}`}
-              id={`work-panel-surface-${activeTab.id}`}
-              className="work-panel-tabpane"
-              role="tabpanel"
-              aria-labelledby={`work-panel-title-${activeTab.id}`}
-            >
-              <BrowserTab
-                blocked={
-                  exiting || panelBlocked || contextOpen || isResizing
-                }
-                sessionId={activeSessionId}
-                initialUrl={activeTab.resource}
-              />
             </div>
           )}
           {activeTab?.kind === "file" && (
@@ -765,6 +656,8 @@ export function WorkPanel({
                     viewId={ref.viewId}
                     title={activeLabel}
                     icon={activePluginView?.icon}
+                    sessionId={activeSessionId ?? undefined}
+                    location={activeTab.location}
                     blocked={
                       exiting || panelBlocked || contextOpen || isResizing
                     }
@@ -774,9 +667,8 @@ export function WorkPanel({
             })()}
           {/* `Cmd/Ctrl+J` reveals the panel without creating a resource, so the
               body can be empty. No tab exists to label a tabpanel here; the
-              same entries the header menu offers — built-in tools first, then
-              plugin views — are listed inline so the revealed panel is not a
-              dead end. */}
+              same plugin views the header menu offers are listed inline so the
+              revealed panel is not a dead end. */}
           {!activeTab && (
             <div className="work-panel-tabpane" data-testid="work-panel-empty">
               <WorkTabEmpty
@@ -789,18 +681,6 @@ export function WorkPanel({
                   role="group"
                   aria-label={t("panel.tools")}
                 >
-                  {HEADER_TOOLS.map(({ kind, Icon }) => (
-                    <button
-                      key={kind}
-                      type="button"
-                      className="work-panel-empty-tool"
-                      data-action={`open-work-panel-${kind}`}
-                      onClick={() => openTool(kind)}
-                    >
-                      <Icon size={15} />
-                      <span>{t(`panel.tabs.${kind}`)}</span>
-                    </button>
-                  ))}
                   {pluginViews.map((view) => {
                     const Icon = pluginViewIcon(view.icon);
                     return (

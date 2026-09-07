@@ -18,7 +18,7 @@ import type {
 import {
   fileReferenceLabel,
   formatTokenCount,
-  highestSupportedThinkingLevel,
+  initialThinkingLevelForBinding,
   modelIdsMatch,
   normalizeLargePasteThreshold,
   PERMISSION_MODES,
@@ -27,21 +27,35 @@ import {
 } from "@pi-desktop/shared";
 import { materializeDraftSession, useAppStore } from "../stores/app-store";
 import type { ComposerDraftSnapshot } from "../lib/composer-smart-stop";
+import {
+  HOME_DRAFT_KEY,
+  captureComposerDraft,
+  deleteComposerDraft,
+  draftKeyForSession,
+  draftOwnerSessionId,
+  flushScheduledHomeDraftAdopt,
+  pruneComposerDrafts,
+  readComposerDraft,
+  writeComposerDraft,
+} from "../lib/composer-draft-cache";
 import { api } from "../lib/api";
 import { isActivePlanExecution } from "../lib/plan-mode-state";
 import { headAsk, queuedAskCount } from "../lib/pending-asks";
 import type { QueuedPrompt } from "../lib/queued-prompts";
 import { runPaletteCommand } from "../lib/commands";
-import { useReferencedImageDataUrl } from "../lib/use-referenced-image-data-url";
 import {
   composerModelBadges,
   composerModelMatchesQuery,
   composerModelsForProvider,
 } from "../lib/composer-models";
 import {
+  providerThinkingLevels,
+  resolveComposerThinkingProvider,
+} from "../lib/session-thinking";
+import {
   resolveComposerCommand,
   useComposerAutocomplete,
-} from "../lib/use-composer-autocomplete";
+} from "../hooks/use-composer-autocomplete";
 import { ComposerAutocomplete } from "./ComposerAutocomplete";
 import { AskToolCard } from "./AskToolCard";
 import { PlanApprovalBar } from "./PlanApprovalBar";
@@ -59,14 +73,23 @@ import {
   IconListChecks,
   IconSparkles,
   IconTarget,
-  IconFileText,
-  IconImage,
   IconX,
 } from "./icons";
 
 const COMPOSER_MIN_HEIGHT_PX = 28;
 const COMPOSER_MAX_VISIBLE_ROWS = 7;
-const PLACEHOLDER_CAROUSEL_INTERVAL_MS = 4_000;
+const PLACEHOLDER_KEYS = {
+  home: [
+    "chat.placeholderHome",
+    "chat.placeholderHomeHint",
+    "chat.placeholderShortcut",
+  ],
+  docked: [
+    "chat.placeholder",
+    "chat.placeholderHint",
+    "chat.placeholderShortcut",
+  ],
+} as const;
 let composerFileReferenceSequence = 0;
 const EMPTY_QUEUED_PROMPTS: QueuedPrompt[] = [];
 
@@ -82,6 +105,260 @@ type ComposerFileReference = {
 
 function isImageFilePath(path: string): boolean {
   return /\.(avif|bmp|gif|heic|jpe?g|png|tiff?|webp)$/i.test(path);
+}
+
+/** Paste/scratch files keep absolute paths; `@` menu entries are workspace-relative. */
+function isPersistedScratchReference(path: string): boolean {
+  return path.startsWith("/") || /^[A-Za-z]:[\\/]/.test(path) || path.startsWith("\\\\");
+}
+
+const CODE_FILE_PATTERN =
+  /\.(cjs|css|go|java|js|json|jsx|kt|mjs|php|py|rb|rs|sh|sql|svelte|swift|toml|ts|tsx|vue|ya?ml)$/i;
+const ARCHIVE_FILE_PATTERN = /\.(7z|bz2|gz|jar|rar|tar|zip)$/i;
+const SHEET_FILE_PATTERN = /\.(csv|ods|xls|xlsx)$/i;
+const AUDIO_FILE_PATTERN = /\.(flac|m4a|mp3|ogg|wav)$/i;
+const VIDEO_FILE_PATTERN = /\.(avi|mkv|m4v|mov|mp4|webm)$/i;
+
+/**
+ * Inline attachment chips live inside the editable draft as one sentinel
+ * character each (private-use code points, unique per chip). The editable
+ * renders each sentinel as an atomic `composer-chip` element; serialization
+ * swaps the sentinel back for the real @path at send time.
+ */
+const CHIP_TOKEN_BASE = 0xe000;
+const CHIP_TOKEN_END = 0xf8ff;
+let chipTokenSequence = 0;
+
+function nextChipToken(): string {
+  const range = CHIP_TOKEN_END - CHIP_TOKEN_BASE + 1;
+  chipTokenSequence = (chipTokenSequence + 1) % range;
+  return String.fromCodePoint(CHIP_TOKEN_BASE + chipTokenSequence);
+}
+
+function isChipTokenChar(char: string): boolean {
+  if (char.length !== 1) return false;
+  const code = char.codePointAt(0) ?? 0;
+  return code >= CHIP_TOKEN_BASE && code <= CHIP_TOKEN_END;
+}
+
+function isChipElement(node: Node): boolean {
+  return (
+    node.nodeType === Node.ELEMENT_NODE &&
+    (node as HTMLElement).classList.contains("composer-chip")
+  );
+}
+
+/** Rendered length of a node in draft-string characters (chip = 1 char). */
+function editorNodeLength(node: Node): number {
+  if (node.nodeType === Node.TEXT_NODE) return (node.nodeValue ?? "").length;
+  if (isChipElement(node)) return 1;
+  if (node.nodeType === Node.ELEMENT_NODE) {
+    const element = node as HTMLElement;
+    if (element.tagName === "BR") return 1;
+    let total = 0;
+    for (const child of Array.from(node.childNodes)) total += editorNodeLength(child);
+    return total;
+  }
+  return 0;
+}
+
+/** Read the editable's DOM back into the plain draft string. */
+function readEditorValue(el: HTMLElement): string {
+  let out = "";
+  const walk = (node: Node, blockStart: boolean): void => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      out += node.nodeValue ?? "";
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    const element = node as HTMLElement;
+    if (isChipElement(element)) {
+      const token = element.dataset.token ?? "";
+      out += isChipTokenChar(token) ? token : "";
+      return;
+    }
+    if (element.tagName === "BR") {
+      out += "\n";
+      return;
+    }
+    if (
+      element !== el &&
+      (element.tagName === "DIV" || element.tagName === "P")
+    ) {
+      // Native undo can reintroduce block wrappers; normalize them back
+      // to newline-separated text so the value round-trips.
+      if (!blockStart && out.length > 0 && !out.endsWith("\n")) out += "\n";
+      for (const child of Array.from(element.childNodes)) walk(child, out.length === 0);
+      return;
+    }
+    for (const child of Array.from(element.childNodes)) walk(child, blockStart && out.length === 0);
+  };
+  for (const child of Array.from(el.childNodes)) walk(child, true);
+  return out;
+}
+
+/** Map a DOM point inside the editable to a draft-string index. */
+function editorIndexAt(el: HTMLElement, node: Node, offset: number): number {
+  try {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    range.setEnd(node, offset);
+    const fragment = range.cloneContents();
+    let total = 0;
+    const walk = (parent: DocumentFragment | HTMLElement): void => {
+      for (const child of Array.from(parent.childNodes)) {
+        if (child.nodeType === Node.TEXT_NODE) {
+          total += (child.nodeValue ?? "").length;
+        } else if (isChipElement(child) || (child as HTMLElement).tagName === "BR") {
+          total += 1;
+        } else if (child.nodeType === Node.ELEMENT_NODE) {
+          walk(child as HTMLElement);
+        }
+      }
+    };
+    walk(fragment);
+    return total;
+  } catch {
+    return 0;
+  }
+}
+
+/** Ordered [start, end] draft-string indices covered by the selection. */
+function editorSelectionRange(el: HTMLElement): { start: number; end: number } {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) {
+    return { start: readEditorValue(el).length, end: readEditorValue(el).length };
+  }
+  const range = selection.getRangeAt(0);
+  if (!el.contains(range.startContainer) || !el.contains(range.endContainer)) {
+    const end = readEditorValue(el).length;
+    return { start: end, end };
+  }
+  const a = editorIndexAt(el, range.startContainer, range.startOffset);
+  const b = editorIndexAt(el, range.endContainer, range.endOffset);
+  return { start: Math.min(a, b), end: Math.max(a, b) };
+}
+
+/** Draft-string index → DOM caret point. */
+function editorCaretPoint(el: HTMLElement, target: number): { node: Node; offset: number } {
+  let remaining = target;
+  let point: { node: Node; offset: number } | null = null;
+  const descend = (parent: Node): boolean => {
+    const children = Array.from(parent.childNodes);
+    for (let index = 0; index < children.length; index += 1) {
+      const child = children[index];
+      const length = editorNodeLength(child);
+      if (child.nodeType === Node.TEXT_NODE) {
+        if (point === null && remaining <= length) {
+          point = { node: child, offset: remaining };
+          return true;
+        }
+        remaining -= length;
+      } else if (isChipElement(child) || (child as HTMLElement).tagName === "BR") {
+        if (point === null && remaining <= 1) {
+          point = { node: parent, offset: remaining === 0 ? index : index + 1 };
+          return true;
+        }
+        remaining -= 1;
+      } else if (child.nodeType === Node.ELEMENT_NODE && descend(child)) {
+        return true;
+      }
+    }
+    return false;
+  };
+  descend(el);
+  return point ?? { node: el, offset: el.childNodes.length };
+}
+
+function setEditorCaret(el: HTMLElement, index: number): void {
+  const point = editorCaretPoint(el, Math.max(0, index));
+  const selection = window.getSelection();
+  if (!selection) return;
+  const maxOffset =
+    point.node.nodeType === Node.TEXT_NODE
+      ? (point.node.nodeValue ?? "").length
+      : point.node.childNodes.length;
+  const range = document.createRange();
+  range.setStart(point.node, Math.min(point.offset, maxOffset));
+  range.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+/** One glyph per file family on attachment chips, as inline SVG strings. */
+const CHIP_ICON_SVG: Record<string, string> = {
+  image:
+    '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
+  code: '<path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/>',
+  archive:
+    '<rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/>',
+  sheet:
+    '<path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/>',
+  audio:
+    '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
+  video:
+    '<path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/>',
+  file: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>',
+  x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+};
+
+function chipIconKey(reference: ComposerFileReference): string {
+  const mime = reference.mimeType ?? "";
+  if (reference.kind === "image" || mime.startsWith("image/")) return "image";
+  const name = reference.name;
+  if (CODE_FILE_PATTERN.test(name) || /javascript|typescript|json|python/i.test(mime)) {
+    return "code";
+  }
+  if (ARCHIVE_FILE_PATTERN.test(name) || /zip|compressed|tar$/i.test(mime)) {
+    return "archive";
+  }
+  if (SHEET_FILE_PATTERN.test(name) || /csv|spreadsheet/i.test(mime)) {
+    return "sheet";
+  }
+  if (AUDIO_FILE_PATTERN.test(name) || mime.startsWith("audio/")) return "audio";
+  if (VIDEO_FILE_PATTERN.test(name) || mime.startsWith("video/")) return "video";
+  return "file";
+}
+
+function chipSvg(key: string, size = 13): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${CHIP_ICON_SVG[key] ?? CHIP_ICON_SVG.file}</svg>`;
+}
+
+/** Build the atomic inline chip element for one attachment reference. */
+function buildChipElement(
+  reference: ComposerFileReference,
+  token: string,
+  removeLabel: string,
+  onRemove: (token: string) => void,
+): HTMLElement {
+  const chip = document.createElement("span");
+  chip.className = "composer-chip";
+  chip.contentEditable = "false";
+  chip.dataset.token = token;
+  chip.title = reference.path;
+  chip.setAttribute("role", "listitem");
+  chip.setAttribute("aria-label", `${reference.name} — ${reference.path}`);
+
+  const icon = document.createElement("span");
+  icon.className = "composer-chip-icon";
+  icon.innerHTML = chipSvg(chipIconKey(reference));
+
+  const nameSpan = document.createElement("span");
+  nameSpan.className = "composer-chip-name";
+  nameSpan.textContent = reference.name;
+
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "composer-chip-remove";
+  remove.title = removeLabel;
+  remove.setAttribute("aria-label", removeLabel);
+  remove.innerHTML = chipSvg("x", 11);
+  // Swallow the mousedown so removing a chip never moves the editable caret.
+  remove.addEventListener("mousedown", (event) => event.preventDefault());
+  remove.addEventListener("click", () => onRemove(token));
+
+  chip.append(icon, nameSpan, remove);
+  return chip;
 }
 
 function createFileReference(
@@ -106,31 +383,46 @@ function createFileReference(
   };
 }
 
-/**
- * Inline thumbnail for an image file reference in the composer. The host
- * resolves the ref (workspace-relative, `attachments/<sha256>`, or absolute
- * scratch/attachment path) into a bounded data URL; an unresolvable load
- * falls back to the generic image icon so the chip stays readable.
- */
-function ComposerFileReferenceImage({
-  fileReference,
-}: {
-  fileReference: ComposerFileReference;
-}) {
-  const dataUrl = useReferencedImageDataUrl(
-    fileReference.path,
-    fileReference.mimeType,
-  );
-  if (!dataUrl) {
-    return <IconImage size={13} aria-hidden />;
+/** Paint the contenteditable from the draft string. Used on programmatic
+ *  value changes and when a hidden window wiped the native editable. */
+function paintEditorValue(
+  el: HTMLElement,
+  value: string,
+  referenceByToken: Map<string, ComposerFileReference>,
+  removeLabelFor: (name: string) => string,
+  onRemove: (token: string) => void,
+): void {
+  el.replaceChildren();
+  let textBuffer = "";
+  const flush = () => {
+    if (textBuffer) {
+      el.appendChild(document.createTextNode(textBuffer));
+      textBuffer = "";
+    }
+  };
+  for (const char of Array.from(value)) {
+    if (isChipTokenChar(char)) {
+      flush();
+      const reference = referenceByToken.get(char);
+      if (reference) {
+        el.appendChild(
+          buildChipElement(
+            reference,
+            char,
+            removeLabelFor(reference.name),
+            onRemove,
+          ),
+        );
+      }
+      continue;
+    }
+    textBuffer += char;
   }
-  return (
-    <img
-      className="composer-file-reference-thumb"
-      src={dataUrl}
-      alt={fileReference.name}
-    />
-  );
+  flush();
+  if (el.childNodes.length === 0) {
+    // Chromium needs at least one node for reliable caret placement.
+    el.appendChild(document.createTextNode(""));
+  }
 }
 
 /**
@@ -220,16 +512,6 @@ const PERMISSION_MODE_I18N_KEYS: Record<PermissionMode, string> = {
   auto: "chat.permissionAuto",
 };
 
-function providerThinkingLevels(provider?: ProviderPublic | null): ThinkingLevel[] {
-  if (!provider?.supportsReasoning) return [];
-  const declared = new Set(
-    Array.isArray(provider.supportedThinkingLevels)
-      ? provider.supportedThinkingLevels
-      : [],
-  );
-  return THINKING_LEVELS.filter((level) => declared.has(level));
-}
-
 /**
  * Preserve the current level when changing providers, but never carry a
  * reasoning level into a provider that cannot accept it.
@@ -297,31 +579,12 @@ export type ComposerPrefill = {
   token: number;
 };
 
-const HOME_DRAFT_KEY = "__home__";
-const composerDraftCache = new Map<string, ComposerDraftSnapshot>();
-const composerDraftVersions = new Map<string, number>();
-
-function composerDraftVersion(key: string) {
-  return composerDraftVersions.get(key) ?? 0;
-}
-
-function invalidateComposerDraft(key: string) {
-  composerDraftCache.delete(key);
-  const nextVersion = composerDraftVersion(key) + 1;
-  composerDraftVersions.set(key, nextVersion);
-  return nextVersion;
-}
-
 type ComposerMenuView = "root" | "model" | "thinking";
 
 type PromptEnhancementError = {
   message: string;
   code: string;
 };
-
-function draftKeyForSession(sessionId: string | null | undefined) {
-  return sessionId ?? HOME_DRAFT_KEY;
-}
 
 export function Composer({
   variant = "docked",
@@ -336,6 +599,9 @@ export function Composer({
   const sendQueuedNow = useAppStore((s) => s.sendQueuedNow);
   const abort = useAppStore((s) => s.abort);
   const isRunning = useAppStore((s) => s.isRunning);
+  const planningState = useAppStore((s) =>
+    s.activeSessionId ? s.planningStates[s.activeSessionId] : undefined,
+  );
   const settings = useAppStore((s) => s.settings);
   const sessions = useAppStore((s) => s.sessions);
   const activeSessionId = useAppStore((s) => s.activeSessionId);
@@ -361,22 +627,21 @@ export function Composer({
       ? s.queuedPrompts[s.activeSessionId] ?? EMPTY_QUEUED_PROMPTS
       : EMPTY_QUEUED_PROMPTS,
   );
-  const [value, setValue] = useState(
-    () => composerDraftCache.get(draftKeyForSession(activeSessionId))?.text ?? "",
-  );
+  const draftKey = draftKeyForSession(activeSessionId);
+  const referenceSessionId = activeSessionId ?? "";
+  const initialDraft = readComposerDraft(draftKey);
+  const [value, setValue] = useState(() => initialDraft?.text ?? "");
   const [fileReferences, setFileReferences] = useState<ComposerFileReference[]>(() =>
-    composerDraftCache
-      .get(draftKeyForSession(activeSessionId))
-      ?.fileReferences.map((fileReference) =>
-        createFileReference(
-          fileReference.path,
-          fileReference.name,
-          activeSessionId ?? "",
-          fileReference,
-        ),
-      ) ?? [],
+    (initialDraft?.fileReferences ?? []).map((fileReference) =>
+      createFileReference(
+        fileReference.path,
+        fileReference.name,
+        referenceSessionId,
+        fileReference,
+      ),
+    ),
   );
-  const [cursor, setCursor] = useState(0);
+  const [cursor, setCursor] = useState(() => initialDraft?.text.length ?? 0);
   // `onSelect` fires on every caret move, so an unchanged cursor must not
   // re-render the composer or re-run autocomplete trigger detection.
   const updateCursor = (next: number) =>
@@ -384,9 +649,9 @@ export function Composer({
   const [composing, setComposing] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
-  // Clearing a draft releases the focus pause so guidance can resume after a
-  // send, even when the textarea keeps focus. A new focus starts paused again.
-  const placeholderFocusPauseReleasedRef = useRef(false);
+  const placeholderContextRef = useRef(
+    `${variant}:${activeSessionId ?? HOME_DRAFT_KEY}`,
+  );
   const [permissionOpen, setPermissionOpen] = useState(false);
   const permissionRef = useRef<HTMLDivElement>(null);
   const [modelThinkingOpen, setModelThinkingOpen] = useState(false);
@@ -407,44 +672,45 @@ export function Composer({
     useState<PromptEnhancementError | null>(null);
   const enhancementVersionRef = useRef(0);
   const enhancementRequestRef = useRef<symbol | null>(null);
-  const ref = useRef<HTMLTextAreaElement>(null);
+  const ref = useRef<HTMLDivElement>(null);
   const dockRef = useRef<HTMLDivElement>(null);
   const publishedDockHeightRef = useRef(-1);
-  const draftKey = draftKeyForSession(activeSessionId);
   const draftKeyRef = useRef(draftKey);
-  const draftVersionRef = useRef(composerDraftVersion(draftKey));
   const approvalPending = planCheckpoint?.status === "pending";
   const executionActive = isActivePlanExecution(planCheckpoint);
   const runActive = isRunning || executionActive;
   const inputBlocked = approvalPending || pasting;
   const controlsBlocked = approvalPending;
   const sendBlocked = approvalPending || pasting;
-  const referenceSessionId = activeSessionId ?? "";
   const activeFileReferences = fileReferences.filter(
     (fileReference) => fileReference.sessionId === referenceSessionId,
   );
+  // Chips are inline now: every attachment occupies one sentinel character in
+  // the draft, so "inline" is the only kind of reference.
   const activeInlineFileReferences = activeFileReferences.filter(
     (fileReference) =>
       Boolean(fileReference.token && value.includes(fileReference.token)),
   );
-  const activeChipFileReferences = activeFileReferences.filter(
-    (fileReference) => !fileReference.token,
+  const referenceByToken = useMemo(() => {
+    const map = new Map<string, ComposerFileReference>();
+    for (const fileReference of activeFileReferences) {
+      if (fileReference.token) map.set(fileReference.token, fileReference);
+    }
+    return map;
+  }, [activeFileReferences]);
+  // Draft-string value currently reflected in the editable DOM. `null` forces
+  // the first paint (including a hydrated cache hit) because React does not
+  // render children into the contenteditable. Typing keeps them equal so the
+  // sync effect never rewrites (and never drops) the caret; programmatic
+  // value changes diverge and trigger a rebuild.
+  const editorValueRef = useRef<string | null>(null);
+  const pendingEditorCaretRef = useRef<number | null>(
+    initialDraft?.text ? initialDraft.text.length : null,
   );
+  const placeholderKeys = PLACEHOLDER_KEYS[variant];
   const placeholderKey =
-    variant === "home"
-      ? placeholderIndex === 0
-        ? "chat.placeholderHome"
-        : "chat.placeholderHomeHint"
-      : placeholderIndex === 0
-        ? "chat.placeholder"
-        : "chat.placeholderHint";
+    placeholderKeys[placeholderIndex % placeholderKeys.length] ?? placeholderKeys[0];
   const placeholderText = t(placeholderKey);
-  const placeholderPaused =
-    value.length > 0 ||
-    activeChipFileReferences.length > 0 ||
-    activeInlineFileReferences.length > 0 ||
-    composing ||
-    (inputFocused && !placeholderFocusPauseReleasedRef.current);
 
   const invalidatePromptEnhancement = () => {
     enhancementVersionRef.current += 1;
@@ -452,18 +718,17 @@ export function Composer({
     setEnhancementError(null);
   };
 
+  // Keep one guidance copy stable until the user changes page or session.
+  // Advancing here, rather than on a timer or draft/focus update, keeps the
+  // composer quiet while it is available for writing.
   useEffect(() => {
-    setPlaceholderIndex(0);
-    placeholderFocusPauseReleasedRef.current = false;
-  }, [variant]);
-
-  useEffect(() => {
-    if (placeholderPaused) return;
-    const timer = window.setInterval(() => {
-      setPlaceholderIndex((current) => (current + 1) % 2);
-    }, PLACEHOLDER_CAROUSEL_INTERVAL_MS);
-    return () => window.clearInterval(timer);
-  }, [placeholderPaused, variant]);
+    const nextContext = `${variant}:${activeSessionId ?? HOME_DRAFT_KEY}`;
+    if (placeholderContextRef.current === nextContext) return;
+    placeholderContextRef.current = nextContext;
+    setPlaceholderIndex(
+      (current) => (current + 1) % PLACEHOLDER_KEYS[variant].length,
+    );
+  }, [activeSessionId, variant]);
 
   // Keep a live ref so the draft cache can snapshot the latest value without
   // re-running a serialization effect on every keystroke.
@@ -471,35 +736,129 @@ export function Composer({
   valueRef.current = value;
   const fileReferencesRef = useRef(fileReferences);
   fileReferencesRef.current = fileReferences;
+  const referenceByTokenRef = useRef(referenceByToken);
+  referenceByTokenRef.current = referenceByToken;
+  const removeChipByTokenRef = useRef<(token: string) => void>(() => {});
+
+  const liveDraftText = () =>
+    ref.current ? readEditorValue(ref.current) : valueRef.current;
+
+  const persistDraft = (key = draftKeyRef.current) =>
+    captureComposerDraft(key, liveDraftText(), fileReferencesRef.current);
+
+  const paintCurrentDraft = (el: HTMLElement, nextValue: string) => {
+    paintEditorValue(
+      el,
+      nextValue,
+      referenceByTokenRef.current,
+      (name) => t("chat.removeFileReference", { name }),
+      (token) => removeChipByTokenRef.current(token),
+    );
+    editorValueRef.current = nextValue;
+  };
+
+  // Rebuild the editable DOM only for programmatic value changes. Typing
+  // updates the DOM natively and keeps editorValueRef in sync via onInput,
+  // so this effect never fights the caret.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (editorValueRef.current === value) return;
+    paintCurrentDraft(el, value);
+    const pendingCaret = pendingEditorCaretRef.current;
+    if (pendingCaret !== null) {
+      pendingEditorCaretRef.current = null;
+      setEditorCaret(el, pendingCaret);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- removeChipByToken is a stable ref callback
+  }, [value, referenceByToken]);
+
+  // The caret position feeds autocomplete trigger detection; contenteditable
+  // selection changes only surface through the document-level event.
+  useEffect(() => {
+    const handler = () => {
+      const el = ref.current;
+      if (!el) return;
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) return;
+      const anchor = selection.anchorNode;
+      if (anchor && !el.contains(anchor)) return;
+      const { start } = editorSelectionRange(el);
+      updateCursor(start);
+    };
+    document.addEventListener("selectionchange", handler);
+    return () => document.removeEventListener("selectionchange", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- updateCursor is stable
+  }, []);
+
+  const removeChipByToken = (token: string) => {
+    const el = ref.current;
+    if (!el) return;
+    const source = readEditorValue(el);
+    const index = source.indexOf(token);
+    if (index === -1) return;
+    const next = source.slice(0, index) + source.slice(index + 1);
+    invalidatePromptEnhancement();
+    // Leave editorValueRef stale so the layout effect rebuilds the DOM
+    // without the chip. Setting it here would skip the paint.
+    pendingEditorCaretRef.current = index;
+    setValue(next);
+    setCursor(index);
+    setFileReferences((current) => current.filter((fileReference) => fileReference.token !== token));
+  };
+  removeChipByTokenRef.current = removeChipByToken;
+
+  /** Commit a manual DOM edit back into React state (no input event fires). */
+  const commitEditorDom = () => {
+    const el = ref.current;
+    if (!el) return;
+    const nextValue = readEditorValue(el);
+    const { start } = editorSelectionRange(el);
+    invalidatePromptEnhancement();
+    editorValueRef.current = nextValue;
+    valueRef.current = nextValue;
+    setValue(nextValue);
+    setFileReferences((current) => {
+      const next = current.filter(
+        (fileReference) =>
+          !fileReference.token || nextValue.includes(fileReference.token),
+      );
+      return next.length === current.length ? current : next;
+    });
+    updateCursor(start);
+  };
+
+  /** Enter inside the editable inserts a bare "\n" text node (pre-wrap CSS). */
+  const insertNewlineInEditor = () => {
+    const el = ref.current;
+    if (!el) return;
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+    const range = selection.getRangeAt(0);
+    if (!el.contains(range.startContainer) || !el.contains(range.endContainer)) return;
+    range.deleteContents();
+    const node = document.createTextNode("\n");
+    range.insertNode(node);
+    const after = document.createRange();
+    after.setStart(node, 1);
+    after.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(after);
+    commitEditorDom();
+  };
 
   useEffect(() => {
     const previousKey = draftKeyRef.current;
     if (previousKey !== draftKey) {
       invalidatePromptEnhancement();
-      // Persist the outgoing draft unless an async completion already cleared
-      // this exact cache generation before the switch effect could run.
-      if (draftVersionRef.current === composerDraftVersion(previousKey)) {
-        composerDraftCache.set(previousKey, {
-          text: valueRef.current,
-          fileReferences: fileReferencesRef.current
-            .filter(
-              (fileReference) =>
-                fileReference.sessionId ===
-                (previousKey === HOME_DRAFT_KEY ? "" : previousKey),
-            )
-            .map(({ path, name, kind, mimeType, token }) => ({
-              path,
-              name,
-              kind,
-              ...(mimeType ? { mimeType } : {}),
-              ...(token ? { token } : {}),
-            })),
-        });
+      // Persist the outgoing draft before switching. Capture from the live
+      // editable so a keystroke that has not re-rendered yet is not dropped.
+      persistDraft(previousKey);
+      if (previousKey === HOME_DRAFT_KEY) {
+        flushScheduledHomeDraftAdopt(draftKey);
       }
       draftKeyRef.current = draftKey;
-      draftVersionRef.current = composerDraftVersion(draftKey);
-      const nextDraft = composerDraftCache.get(draftKey);
-      placeholderFocusPauseReleasedRef.current = false;
+      const nextDraft = readComposerDraft(draftKey);
       setValue(nextDraft?.text ?? "");
       setFileReferences(
         nextDraft?.fileReferences.map((fileReference) =>
@@ -514,59 +873,64 @@ export function Composer({
       setCursor(nextDraft?.text.length ?? 0);
       return;
     }
-    // For the current draftKey the cache is updated lazily (on switch or
-    // snapshot) via valueRef/fileReferencesRef; no per-keystroke serialization.
+    // For the current draftKey the cache is updated lazily (on switch,
+    // unmount, or snapshot) via persistDraft; no per-keystroke serialization.
   }, [draftKey, referenceSessionId]);
 
   // Keep the draft cache warm on file-reference changes (infrequent) while
   // skipping the expensive serialization on plain text edits.
   useEffect(() => {
-    if (draftVersionRef.current !== composerDraftVersion(draftKey)) return;
-    composerDraftCache.set(draftKey, {
-      text: valueRef.current,
-      fileReferences: fileReferences
-        .filter((fileReference) => fileReference.sessionId === referenceSessionId)
-        .map(({ path, name, kind, mimeType, token }) => ({
-          path,
-          name,
-          kind,
-          ...(mimeType ? { mimeType } : {}),
-          ...(token ? { token } : {}),
-        })),
-    });
+    captureComposerDraft(draftKey, valueRef.current, fileReferences);
   }, [draftKey, fileReferences, referenceSessionId]);
 
-  useEffect(
-    () => () => {
-      const key = draftKeyRef.current;
-      if (draftVersionRef.current !== composerDraftVersion(key)) return;
-      composerDraftCache.set(key, {
-        text: valueRef.current,
-        fileReferences: fileReferencesRef.current
-          .filter(
-            (fileReference) =>
-              fileReference.sessionId === (key === HOME_DRAFT_KEY ? "" : key),
-          )
-          .map(({ path, name, kind, mimeType, token }) => ({
-            path,
-            name,
-            kind,
-            ...(mimeType ? { mimeType } : {}),
-            ...(token ? { token } : {}),
-          })),
-      });
-    },
-    [],
-  );
-
   useEffect(() => {
-    const sessionIds = new Set(sessions.map((session) => session.id));
-    for (const key of composerDraftCache.keys()) {
-      if (key !== HOME_DRAFT_KEY && key !== draftKey && !sessionIds.has(key)) {
-        invalidateComposerDraft(key);
-      }
-    }
+    pruneComposerDrafts([
+      HOME_DRAFT_KEY,
+      draftKey,
+      ...sessions.map((session) => session.id),
+    ]);
   }, [draftKey, sessions]);
+
+  // Survive remounts (empty-home ↔ docked, chat ↔ other pages) by writing
+  // the live draft on unmount. Layout cleanup still sees the editable node.
+  // The next Composer instance hydrates from the module cache.
+  useLayoutEffect(() => {
+    return () => {
+      persistDraft(draftKeyRef.current);
+    };
+  }, []);
+
+  // Switching OS windows can wipe a contenteditable without unmounting React.
+  // Persist while hidden; if the DOM comes back empty, paint the cached value.
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        persistDraft();
+        return;
+      }
+      const el = ref.current;
+      if (!el) return;
+      const live = readEditorValue(el);
+      const expected = valueRef.current;
+      if (live === expected) return;
+      if (!live && expected) {
+        paintCurrentDraft(el, expected);
+        setEditorCaret(el, expected.length);
+        return;
+      }
+      commitEditorDom();
+    };
+    const onWindowBlur = () => persistDraft();
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("focus", onVisibility);
+    window.addEventListener("blur", onWindowBlur);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", onVisibility);
+      window.removeEventListener("blur", onWindowBlur);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- persist/paint close over refs
+  }, []);
 
   useEffect(() => {
     if (!controlsBlocked) return;
@@ -577,10 +941,39 @@ export function Composer({
   useEffect(() => {
     // Relative autocomplete references belong to the workspace that produced
     // them. Session scratch references remain valid across project switches.
-    setFileReferences((current) => {
-      const next = current.filter((fileReference) => Boolean(fileReference.token));
-      return next.length === current.length ? current : next;
-    });
+    // Inline chips use sentinels for every file, so token presence is no
+    // longer the discriminator — absolute paste/scratch paths are.
+    const current = fileReferencesRef.current;
+    const kept = current.filter((fileReference) =>
+      isPersistedScratchReference(fileReference.path),
+    );
+    if (kept.length === current.length) return;
+    const droppedTokens = new Set(
+      current
+        .filter((fileReference) => !isPersistedScratchReference(fileReference.path))
+        .flatMap((fileReference) => (fileReference.token ? [fileReference.token] : [])),
+    );
+    if (droppedTokens.size > 0) {
+      const el = ref.current;
+      const source = el ? readEditorValue(el) : valueRef.current;
+      const caret = el ? editorSelectionRange(el).start : source.length;
+      let nextValue = "";
+      let nextCaret = caret;
+      let index = 0;
+      for (const char of Array.from(source)) {
+        if (droppedTokens.has(char)) {
+          if (index < caret) nextCaret -= char.length;
+        } else {
+          nextValue += char;
+        }
+        index += char.length;
+      }
+      const nextIndex = Math.max(0, Math.min(nextCaret, nextValue.length));
+      pendingEditorCaretRef.current = nextIndex;
+      setValue(nextValue);
+      setCursor(nextIndex);
+    }
+    setFileReferences(kept);
   }, [workspacePath]);
 
   useEffect(() => {
@@ -605,8 +998,7 @@ export function Composer({
       const el = ref.current;
       if (!el) return;
       el.focus();
-      const len = el.value.length;
-      el.setSelectionRange(len, len);
+      setEditorCaret(el, readEditorValue(el).length);
     });
   }, [activeSessionId, composerPrefill, clearComposerPrefill]);
 
@@ -618,8 +1010,7 @@ export function Composer({
       const el = ref.current;
       if (!el) return;
       el.focus();
-      const len = el.value.length;
-      el.setSelectionRange(len, len);
+      setEditorCaret(el, readEditorValue(el).length);
     });
   }, [prefill]);
 
@@ -737,6 +1128,10 @@ export function Composer({
   const mode: Mode = activeSession
     ? activeSession.mode
     : (draftConfiguration?.mode ?? settings?.defaultMode ?? "agent");
+  const planningLive =
+    isRunning &&
+    planningState === "planning" &&
+    (mode === "plan" || mode === "goal");
   // Permission mode (D115/D132): inherited sessions still resolve through the
   // global setting, but the composer presents only the effective mode.
   const globalPermissionMode: PermissionMode =
@@ -772,23 +1167,21 @@ export function Composer({
     modelId,
     selectedModelCatalog,
   );
-  const thinkingProvider =
-    provider &&
-    activeSession?.providerId === provider.id &&
-    activeSession.modelId === modelId &&
-    typeof activeSession.supportsReasoning === "boolean"
-      ? {
-          ...provider,
-          supportsReasoning: activeSession.supportsReasoning,
-          supportedThinkingLevels:
-            activeSession.supportedThinkingLevels ?? (["off"] as ThinkingLevel[]),
-        }
-      : catalogThinkingProvider;
-  // A draft without a session starts at the strongest level enabled by its
-  // inherited model binding; published metadata seeds that binding on add.
-  const draftThinkingLevel = thinkingProvider?.supportsReasoning
-    ? highestSupportedThinkingLevel(thinkingProvider.supportedThinkingLevels)
-    : "off";
+  const thinkingProvider = resolveComposerThinkingProvider({
+    provider,
+    modelId,
+    activeSession,
+    catalogThinkingProvider,
+  });
+  const selectedBinding = provider?.models.find((candidate) =>
+    modelIdsMatch(candidate.id, modelId ?? ""),
+  );
+  // A draft without a session starts at the selected model's stored default
+  // thinking level, clamped onto that binding's enabled ladder.
+  const draftThinkingLevel = initialThinkingLevelForBinding(
+    selectedBinding,
+    thinkingProvider?.supportedThinkingLevels,
+  );
   const sessionThinkingLevel =
     activeSession?.thinkingLevel ??
     (!activeSession ? draftConfiguration?.thinkingLevel : undefined) ??
@@ -859,11 +1252,9 @@ export function Composer({
   const largePasteThreshold = normalizeLargePasteThreshold(
     settings?.largePasteThreshold,
   );
-  const hasDraftContent = Boolean(
-    value.trim() ||
-      activeChipFileReferences.length ||
-      activeInlineFileReferences.length,
-  );
+  // Chips occupy sentinel characters, which `trim()` preserves — text and
+  // attachments share one content check.
+  const hasDraftContent = Boolean(value.trim());
 
   useEffect(() => {
     if (!modelThinkingOpen || modelThinkingView !== "model") return;
@@ -948,11 +1339,15 @@ export function Composer({
         nextModelId,
         providerModels[candidate.id],
       );
+      const nextBinding = candidate.models.find((entry) =>
+        modelIdsMatch(entry.id, nextModelId),
+      );
       const nextThinkingLevel = activeSession
         ? thinkingLevelForProvider(nextModelProvider, thinkingLevel)
-        : nextModelProvider?.supportsReasoning
-          ? highestSupportedThinkingLevel(nextModelProvider.supportedThinkingLevels)
-          : "off";
+        : initialThinkingLevelForBinding(
+            nextBinding,
+            nextModelProvider?.supportedThinkingLevels,
+          );
       await configureActiveSession({
         mode,
         providerId: candidate.id,
@@ -1038,20 +1433,50 @@ export function Composer({
 
   const clearDraftForKey = (key: string) => {
     invalidatePromptEnhancement();
-    const nextVersion = invalidateComposerDraft(key);
+    deleteComposerDraft(key);
     const currentKey = draftKeyForSession(useAppStore.getState().activeSessionId);
     if (currentKey !== key) return;
-    if (draftKeyRef.current === key) draftVersionRef.current = nextVersion;
-    placeholderFocusPauseReleasedRef.current = true;
     valueRef.current = "";
+    if (ref.current) paintCurrentDraft(ref.current, "");
     setValue("");
-    const referenceKey = key === HOME_DRAFT_KEY ? "" : key;
-    const nextReferences = fileReferencesRef.current.filter(
-      (fileReference) => fileReference.sessionId !== referenceKey,
-    );
-    fileReferencesRef.current = nextReferences;
-    setFileReferences(nextReferences);
+    const owner = draftOwnerSessionId(key);
+    setFileReferences((current) => {
+      const next = current.filter(
+        (fileReference) => fileReference.sessionId !== owner,
+      );
+      return next.length === current.length ? current : next;
+    });
     setCursor(0);
+  };
+
+  // Undo an optimistic clear after the store rejected the send. The draft
+  // returns only where it can be seen again: into the box if the user is still
+  // on that session and has not typed anything new, otherwise into the cache
+  // that the next switch back reads. Text typed after the failed send wins.
+  const restoreDraftForKey = (key: string, snapshot: ComposerDraftSnapshot) => {
+    const activeSessionId = useAppStore.getState().activeSessionId;
+    const currentKey = draftKeyForSession(activeSessionId);
+    if (currentKey !== key) {
+      if (!readComposerDraft(key)?.text) {
+        writeComposerDraft(key, snapshot);
+      }
+      return;
+    }
+    if (valueRef.current.trim()) return;
+    const sessionId = activeSessionId ?? "";
+    setValue(snapshot.text);
+    setFileReferences((current) => [
+      ...current.filter((fileReference) => fileReference.sessionId !== sessionId),
+      ...snapshot.fileReferences.map((fileReference) =>
+        createFileReference(
+          fileReference.path,
+          fileReference.name,
+          sessionId,
+          fileReference,
+        ),
+      ),
+    ]);
+    setCursor(snapshot.text.length);
   };
 
   const draftSnapshot = (text: string): ComposerDraftSnapshot => ({
@@ -1068,43 +1493,6 @@ export function Composer({
         ...(token ? { token } : {}),
       })),
   });
-
-  const sendComposerPrompt = async (
-    content: string,
-    snapshot: ComposerDraftSnapshot,
-  ) => {
-    let sessionId = activeSessionId;
-    let submittedKey = draftKey;
-    if (!sessionId) {
-      const materializedSessionId = await materializeDraftSession();
-      if (!materializedSessionId) return false;
-      sessionId = materializedSessionId;
-      // The durable session now owns the home draft. Versioning the old key
-      // prevents the pending session-switch effect from writing it back.
-      composerDraftCache.set(materializedSessionId, snapshot);
-      invalidateComposerDraft(HOME_DRAFT_KEY);
-      submittedKey = materializedSessionId;
-      if (draftKeyRef.current === materializedSessionId) {
-        const restoredReferences = snapshot.fileReferences.map((fileReference) =>
-          createFileReference(
-            fileReference.path,
-            fileReference.name,
-            materializedSessionId,
-            fileReference,
-          ),
-        );
-        draftVersionRef.current = composerDraftVersion(materializedSessionId);
-        valueRef.current = snapshot.text;
-        fileReferencesRef.current = restoredReferences;
-        setValue(snapshot.text);
-        setFileReferences(restoredReferences);
-        setCursor(snapshot.text.length);
-      }
-    }
-    const accepted = await sendPrompt(content, snapshot, sessionId);
-    if (accepted) clearDraftForKey(submittedKey);
-    return accepted;
-  };
 
   const enhancePrompt = async () => {
     const sourceText = value;
@@ -1156,7 +1544,7 @@ export function Composer({
         const textarea = ref.current;
         if (!textarea) return;
         textarea.focus();
-        textarea.setSelectionRange(enhancedDraft.length, enhancedDraft.length);
+        setEditorCaret(textarea, enhancedDraft.length);
       });
     } catch (error) {
       const currentKey = draftKeyForSession(useAppStore.getState().activeSessionId);
@@ -1188,17 +1576,27 @@ export function Composer({
       const textarea = ref.current;
       if (!textarea) return;
       textarea.focus();
-      textarea.setSelectionRange(enhancementUndoText.length, enhancementUndoText.length);
+      setEditorCaret(textarea, enhancementUndoText.length);
     });
   };
 
   const submit = async () => {
+    // The editable is what the user sees. Under load a state update from a
+    // late input event can still be pending when Enter arrives; sending the
+    // DOM value rather than the closure's `value` never drops characters.
+    const text = ref.current ? readEditorValue(ref.current) : value;
     const inlineContent = serializeInlineComposerFileReferences(
-      value,
+      text,
       activeFileReferences,
     );
-    const serializedContent = serializeComposerFileReferences(value, activeFileReferences);
-    if (!serializedContent || sendBlocked) return;
+    const serializedContent = serializeComposerFileReferences(text, activeFileReferences);
+    if (!serializedContent) return;
+    if (sendBlocked) {
+      // A paste that is still being saved is the one blocked state the user
+      // cannot see, so it has to be said rather than swallowed.
+      if (pasting) showToast(t("chat.pasteInProgress"), { variant: "info" });
+      return;
+    }
     invalidatePromptEnhancement();
     const submittedDraftKey = draftKey;
     // Slash dispatch (D123): builtin/plugin aliases execute locally without
@@ -1225,19 +1623,20 @@ export function Composer({
         if (isModeCommand && commandBody) {
           try {
             await runPaletteCommand(command.id);
-            const visibleDraft = value.trim();
+            const visibleDraft = text.trim();
             const visibleCommandEnd = visibleDraft.search(/\s/);
             const visibleCommandBody =
               visibleCommandEnd === -1
                 ? ""
                 : visibleDraft.slice(visibleCommandEnd).trim();
-            await sendComposerPrompt(
+            const accepted = await sendPrompt(
               serializeInlineComposerFileReferences(
                 visibleCommandBody,
                 activeFileReferences,
               ),
               draftSnapshot(visibleCommandBody),
             );
+            if (accepted) clearDraftForKey(submittedDraftKey);
           } catch (e) {
             showToast(e instanceof Error ? e.message : String(e), {
               variant: "error",
@@ -1263,108 +1662,153 @@ export function Composer({
         }
       }
     }
-    if (!modelReady) return;
-    await sendComposerPrompt(inlineContent, draftSnapshot(value));
+    if (!modelReady) {
+      showToast(t("errors.MODEL_NOT_CONFIGURED"), { variant: "error" });
+      return;
+    }
+    // Clear before the round trip (D287): the prompt leaves the box the moment
+    // Enter is pressed, so a slow host cannot make a send look ignored or invite
+    // a second Enter that would queue the same prompt twice. A rejected send
+    // puts the draft back.
+    const submittedDraft = draftSnapshot(text);
+    clearDraftForKey(submittedDraftKey);
+    const accepted = await sendPrompt(inlineContent, submittedDraft);
+    if (!accepted) restoreDraftForKey(submittedDraftKey, submittedDraft);
   };
 
-  const pasteClipboardFiles = async (event: ClipboardEvent<HTMLTextAreaElement>) => {
+  /** Programmatic draft application: state + pending caret for the sync effect. */
+  const applyEditorDraft = (
+    nextText: string,
+    nextReferences: ComposerFileReference[],
+    caret: number,
+  ) => {
+    pendingEditorCaretRef.current = caret;
+    setValue(nextText);
+    setCursor(caret);
+    setFileReferences(nextReferences);
+    requestAnimationFrame(() => {
+      const el = ref.current;
+      if (!el) return;
+      el.focus();
+      setEditorCaret(el, caret);
+    });
+  };
+
+  /** Clean snapshot references (drop runtime-only fields). */
+  const snapshotReferences = (sourceSessionId: string) =>
+    fileReferencesRef.current
+      .filter((fileReference) => fileReference.sessionId === sourceSessionId)
+      .map(({ path, name, kind, mimeType, token }) => ({
+        path,
+        name,
+        kind,
+        ...(mimeType ? { mimeType } : {}),
+        ...(token ? { token } : {}),
+      }));
+
+  const pasteClipboardFiles = async (event: ClipboardEvent<HTMLDivElement>) => {
     if (inputBlocked) return;
     const files = clipboardFiles(event.clipboardData);
     const text = event.clipboardData.getData("text/plain");
     const textLength = Array.from(text).length;
     const isLargeTextPaste = !files.length && textLength > largePasteThreshold;
-    if (isLargeTextPaste) {
+    if (isLargeTextPaste || files.length) {
       event.preventDefault();
-      const selectionStart = event.currentTarget.selectionStart ?? cursor;
-      const selectionEnd = event.currentTarget.selectionEnd ?? selectionStart;
+      const editor = event.currentTarget;
+      const { start: selectionStart, end: selectionEnd } = editorSelectionRange(editor);
+      const sourceValue = readEditorValue(editor);
       const sourceSessionId = activeSessionId;
       const sourceDraftKey = draftKey;
-      const sourceValue = valueRef.current;
-      const sourceReferenceSessionId = sourceSessionId ?? "";
       setPasting(true);
       try {
+        const payload = files.length
+          ? await Promise.all(
+              files.map(async (file) => ({
+                name: file.name || undefined,
+                mimeType: file.type || undefined,
+                data: await file.arrayBuffer(),
+              })),
+            )
+          : (() => {
+              const bytes = new TextEncoder().encode(text);
+              return [
+                {
+                  name: `pasted-text-${crypto.randomUUID().slice(0, 8)}.txt`,
+                  mimeType: "text/plain",
+                  data: bytes.buffer.slice(
+                    bytes.byteOffset,
+                    bytes.byteOffset + bytes.byteLength,
+                  ) as ArrayBuffer,
+                },
+              ];
+            })();
         let sessionId = sourceSessionId;
         if (!sessionId) {
-          // Large text is real input: persist the draft so the file has a
-          // durable session owner before it is written.
+          // Pastes count as real input: persist the draft so the files have
+          // a durable session owner before they are written.
           sessionId = (await materializeDraftSession()) ?? "";
         }
         if (!sessionId) throw new Error("session unavailable");
 
-        const bytes = new TextEncoder().encode(text);
-        const data = bytes.buffer.slice(
-          bytes.byteOffset,
-          bytes.byteOffset + bytes.byteLength,
-        ) as ArrayBuffer;
-        const name = `pasted-text-${crypto.randomUUID().slice(0, 8)}.txt`;
-        const result = await api.pasteFiles(sessionId, [
-          { name, mimeType: "text/plain", data },
-        ]);
-        const pasted = result.files[0];
-        if (!pasted) throw new Error("temporary paste file was not created");
-
-        const displayName = pasted.name || name;
-        const token = `@${displayName}`;
-        const nextValue =
-          sourceValue.slice(0, selectionStart) +
-          token +
-          " " +
-          sourceValue.slice(selectionEnd);
-        const previousReferences = fileReferencesRef.current
-          .filter((fileReference) => fileReference.sessionId === sourceReferenceSessionId)
-          .map(({ path, name: referenceName, kind, mimeType, token: referenceToken }) => ({
-            path,
-            name: referenceName,
-            kind,
-            ...(mimeType ? { mimeType } : {}),
-            ...(referenceToken ? { token: referenceToken } : {}),
-          }));
-        const nextSnapshot: ComposerDraftSnapshot = {
-          text: nextValue,
-          fileReferences: [
-            ...previousReferences,
-            {
-              path: pasted.path,
-              name: displayName,
-              kind: "file",
-              mimeType: pasted.mimeType,
+        const result = await api.pasteFiles(sessionId, payload);
+        // Every pasted item attaches as an atomic inline chip at the caret:
+        // one sentinel character in the draft, rendered as a non-editable
+        // pill. Serialization swaps sentinels for real @paths at send time.
+        const chips = result.files.map((file) => {
+          const token = nextChipToken();
+          return {
+            token,
+            reference: createFileReference(file.path, file.name, sessionId, {
+              kind: file.kind,
+              mimeType: file.mimeType,
               token,
-            },
-          ],
-        };
+            }),
+          };
+        });
+        const inserted = chips.map((chip) => chip.token).join("");
+        const nextText =
+          sourceValue.slice(0, selectionStart) +
+          inserted +
+          sourceValue.slice(selectionEnd);
+        const previousReferences = snapshotReferences(sourceSessionId ?? "");
+        const nextReferences = [
+          ...previousReferences.map((reference) =>
+            createFileReference(reference.path, reference.name, sessionId, reference),
+          ),
+          ...chips.map((chip) => chip.reference),
+        ];
         // Materialization can change the active session while the IPC call is
         // in flight. Cache the result by its durable target rather than
         // allowing a late response to contaminate another session's draft.
-        composerDraftCache.set(sessionId, nextSnapshot);
+        writeComposerDraft(sessionId, {
+          text: nextText,
+          fileReferences: [
+            ...previousReferences,
+            ...chips.map((chip) => ({
+              path: chip.reference.path,
+              name: chip.reference.name,
+              kind: chip.reference.kind,
+              ...(chip.reference.mimeType ? { mimeType: chip.reference.mimeType } : {}),
+              token: chip.token,
+            })),
+          ],
+        });
         const currentSessionId = useAppStore.getState().activeSessionId;
         if (currentSessionId === sessionId) {
-          setValue(nextValue);
-          setFileReferences(
-            nextSnapshot.fileReferences.map((fileReference) =>
-              createFileReference(
-                fileReference.path,
-                fileReference.name,
-                sessionId,
-                fileReference,
-              ),
-            ),
-          );
-          setCursor(selectionStart + token.length + 1);
-          requestAnimationFrame(() => {
-            const el = ref.current;
-            if (!el) return;
-            el.focus();
-            const nextCursor = selectionStart + token.length + 1;
-            el.setSelectionRange(nextCursor, nextCursor);
-          });
+          applyEditorDraft(nextText, nextReferences, selectionStart + inserted.length);
         } else if (sourceDraftKey === HOME_DRAFT_KEY) {
           // The home slot is intentionally not reused after materialization;
           // keep it empty while the new session owns the converted draft.
-          invalidateComposerDraft(HOME_DRAFT_KEY);
+          deleteComposerDraft(HOME_DRAFT_KEY);
         }
-        showToast(t("chat.largeTextPasted", { name: displayName }), {
-          variant: "success",
-        });
+        showToast(
+          files.length
+            ? t("chat.filesPasted", { count: result.files.length })
+            : t("chat.largeTextPasted", {
+                name: result.files[0]?.name ?? "pasted-text",
+              }),
+          { variant: "success" },
+        );
       } catch (error) {
         showToast(error instanceof Error ? error.message : String(error), {
           variant: "error",
@@ -1374,62 +1818,28 @@ export function Composer({
       }
       return;
     }
-    if (!files.length) return;
 
+    // Small text paste: force plain text into the editable (the default
+    // contenteditable insertion would paste rich HTML markup).
     event.preventDefault();
-    const selectionStart = event.currentTarget.selectionStart ?? cursor;
-    const selectionEnd = event.currentTarget.selectionEnd ?? selectionStart;
-    setPasting(true);
-    try {
-      const payload = await Promise.all(
-        files.map(async (file) => ({
-          name: file.name || undefined,
-          mimeType: file.type || undefined,
-          data: await file.arrayBuffer(),
-        })),
-      );
-      let sessionId = activeSessionId;
-      if (!sessionId) {
-        // Pasting files counts as real input: persist the draft so the files
-        // have a session to attach to.
-        sessionId = (await materializeDraftSession()) ?? "";
-      }
-      if (!sessionId) throw new Error("session unavailable");
-      if (!activeSessionId) {
-        setFileReferences((current) =>
-          current.map((fileReference) =>
-            fileReference.sessionId === ""
-              ? { ...fileReference, sessionId }
-              : fileReference,
-          ),
-        );
-      }
-
-      const result = await api.pasteFiles(sessionId, payload);
-      setFileReferences((current) => [
-        ...current,
-        ...result.files.map((file) =>
-          createFileReference(file.path, file.name, sessionId, {
-            kind: file.kind,
-            mimeType: file.mimeType,
-          }),
-        ),
-      ]);
-      requestAnimationFrame(() => {
-        const el = ref.current;
-        if (!el) return;
-        el.focus();
-        el.setSelectionRange(selectionStart, selectionEnd);
-      });
-      showToast(t("chat.filesPasted", { count: result.files.length }), {
-        variant: "success",
-      });
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : String(error), {
-        variant: "error",
-      });
-    } finally {
-      setPasting(false);
+    if (!text) return;
+    if (!document.execCommand("insertText", false, text)) {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) return;
+      const range = selection.getRangeAt(0);
+      range.deleteContents();
+      range.insertNode(document.createTextNode(text));
+      range.collapse(false);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      const el = ref.current;
+      if (!el) return;
+      const nextValue = readEditorValue(el);
+      const { start } = editorSelectionRange(el);
+      invalidatePromptEnhancement();
+      editorValueRef.current = nextValue;
+      setValue(nextValue);
+      updateCursor(start);
     }
   };
 
@@ -1443,26 +1853,34 @@ export function Composer({
   const acceptCompletion = (index: number) => {
     const result = composerAc.accept(index);
     if (!result) return;
-    setValue(result.value);
-    setCursor(result.cursor);
+    invalidatePromptEnhancement();
+    // File accept strips the @ token (empty insert) and used to store a
+    // token-less chip above the textarea. Inline chips only paint when a
+    // sentinel is in the draft, so Enter looked like the reference vanished.
     const acceptedFileReference = result.fileReference;
-    if (acceptedFileReference) {
-      setFileReferences((current) => [
-        ...current,
+    if (!acceptedFileReference) {
+      applyEditorDraft(result.value, fileReferencesRef.current, result.cursor);
+      return;
+    }
+    const token = nextChipToken();
+    const nextText =
+      result.value.slice(0, result.cursor) + token + result.value.slice(result.cursor);
+    applyEditorDraft(
+      nextText,
+      [
+        ...fileReferencesRef.current,
         createFileReference(
           acceptedFileReference.path,
           acceptedFileReference.name,
           referenceSessionId,
-          { kind: isImageFilePath(acceptedFileReference.path) ? "image" : "file" },
+          {
+            kind: isImageFilePath(acceptedFileReference.path) ? "image" : "file",
+            token,
+          },
         ),
-      ]);
-    }
-    requestAnimationFrame(() => {
-      const el = ref.current;
-      if (!el) return;
-      el.focus();
-      el.setSelectionRange(result.cursor, result.cursor);
-    });
+      ],
+      result.cursor + token.length,
+    );
   };
 
   // Keep the transcript's bottom reserve in sync with the composer's real
@@ -1571,78 +1989,50 @@ export function Composer({
             <ComposerAutocomplete ac={composerAc} onAccept={acceptCompletion} />
           ) : null}
           <div className="composer-input-wrap">
-            {activeChipFileReferences.length ? (
-              <div
-                className="composer-file-references"
-                role="list"
-                aria-label={t("chat.fileReferences")}
-              >
-                {activeChipFileReferences.map((fileReference) => (
-                  <div
-                    key={fileReference.id}
-                    className="composer-file-reference"
-                    role="listitem"
-                    title={fileReference.path}
-                    aria-label={`${fileReference.name} — ${fileReference.path}`}
-                  >
-                    {fileReference.kind === "image" ? (
-                      <ComposerFileReferenceImage fileReference={fileReference} />
-                    ) : (
-                      <IconFileText size={13} aria-hidden />
-                    )}
-                    <span className="composer-file-reference-name">
-                      {fileReference.name}
-                    </span>
-                    <button
-                      type="button"
-                      className="composer-file-reference-remove"
-                      title={t("chat.removeFileReference", {
-                        name: fileReference.name,
-                      })}
-                      aria-label={t("chat.removeFileReference", {
-                        name: fileReference.name,
-                      })}
-                      disabled={inputBlocked}
-                      onClick={() => {
-                        if (activeChipFileReferences.length === 1) {
-                          placeholderFocusPauseReleasedRef.current = true;
-                        }
-                        setFileReferences((current) =>
-                          current.filter(
-                            (candidate) => candidate.id !== fileReference.id,
-                          ),
-                        );
-                        requestAnimationFrame(() => ref.current?.focus());
-                      }}
-                    >
-                      <IconX size={11} aria-hidden />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : null}
             <div className="composer-input-stage">
-              <textarea
+              {/* Rich editable draft: plain text plus one atomic inline chip
+                per attachment, WorkBuddy-style. DOM is owned imperatively —
+                React never renders children into this node. */}
+              <div
                 ref={ref}
                 className="composer-input"
-                readOnly={inputBlocked}
+                role="textbox"
+                aria-multiline="true"
                 aria-readonly={inputBlocked}
                 aria-busy={pasting}
-                rows={2}
-                placeholder={placeholderText}
+                aria-placeholder={placeholderText}
+                contentEditable={!inputBlocked}
+                suppressContentEditableWarning
                 spellCheck={false}
                 autoCorrect="off"
                 autoCapitalize="off"
-                value={value}
+                translate="no"
                 onPaste={pasteClipboardFiles}
-                onChange={(e) => {
-                  const nextValue = e.target.value;
+                onBeforeInput={(e) => {
+                  // Normalize Enter into a plain "\n" text node so the draft
+                  // string round-trips without block wrappers.
+                  const native = e.nativeEvent as InputEvent;
+                  if (
+                    native.inputType === "insertParagraph" ||
+                    native.inputType === "insertLineBreak"
+                  ) {
+                    e.preventDefault();
+                    insertNewlineInEditor();
+                  }
+                }}
+                onInput={(e) => {
+                  const el = e.currentTarget;
+                  const nextValue = readEditorValue(el);
+                  const { start } = editorSelectionRange(el);
                   invalidatePromptEnhancement();
-                  placeholderFocusPauseReleasedRef.current = nextValue.length === 0;
+                  editorValueRef.current = nextValue;
+                  valueRef.current = nextValue;
                   setValue(nextValue);
                   // `filter` allocates even when it drops nothing, and a new
                   // array identity per keystroke re-runs the draft-cache
-                  // serialization effect that keys off it.
+                  // serialization effect that keys off it. A sentinel that
+                  // left the draft (chip deleted natively) drops its
+                  // reference here.
                   setFileReferences((current) => {
                     const next = current.filter(
                       (fileReference) =>
@@ -1651,23 +2041,20 @@ export function Composer({
                     );
                     return next.length === current.length ? current : next;
                   });
-                  updateCursor(e.target.selectionStart ?? nextValue.length);
-                }}
-                onSelect={(e) => {
-                  updateCursor(e.currentTarget.selectionStart ?? 0);
+                  updateCursor(start);
                 }}
                 onCompositionStart={() => setComposing(true)}
                 onCompositionEnd={(e) => {
                   setComposing(false);
-                  updateCursor(e.currentTarget.selectionStart ?? 0);
+                  const { start } = editorSelectionRange(e.currentTarget);
+                  updateCursor(start);
                 }}
                 onFocus={() => {
-                  placeholderFocusPauseReleasedRef.current = false;
                   setInputFocused(true);
                 }}
                 onBlur={() => {
-                  placeholderFocusPauseReleasedRef.current = false;
                   setInputFocused(false);
+                  persistDraft();
                 }}
                 onKeyDown={(e) => {
                   // An Enter that confirms an IME candidate (isComposing, or the
@@ -1675,23 +2062,6 @@ export function Composer({
                   // never drive the autocomplete menu (D125).
                   if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229)
                     return;
-                  if (
-                    e.key === "Backspace" &&
-                    value.length === 0 &&
-                    activeChipFileReferences.length
-                  ) {
-                    e.preventDefault();
-                    const lastReference = activeChipFileReferences.at(-1);
-                    if (activeChipFileReferences.length === 1) {
-                      placeholderFocusPauseReleasedRef.current = true;
-                    }
-                    setFileReferences((current) =>
-                      current.filter(
-                        (fileReference) => fileReference.id !== lastReference?.id,
-                      ),
-                    );
-                    return;
-                  }
                   if (composerAc.open && e.key === "Escape") {
                     // Escape closes only the menu; overlay handlers must not
                     // also fire on the same press.
@@ -1738,7 +2108,11 @@ export function Composer({
             <div className="composer-left">
               <button
                 className="icon-btn mode-chip composer-mode-chip"
-                title={t("settings.mode")}
+                data-mode={mode}
+                data-planning={planningLive ? "true" : undefined}
+                title={
+                  planningLive ? t(`${mode}.planning`) : t("settings.mode")
+                }
                 disabled={controlsBlocked}
                 onClick={async () => {
                   setModelThinkingOpen(false);
@@ -1758,8 +2132,12 @@ export function Composer({
                   }
                 }}
               >
-                <ModeIcon mode={mode} />
-                <span className="text-sm">{t(MODE_LABEL_KEYS[mode])}</span>
+                <span className="composer-mode-chip-face" key={mode}>
+                  <ModeIcon mode={mode} />
+                  <span className="composer-mode-chip-label text-sm">
+                    {t(MODE_LABEL_KEYS[mode])}
+                  </span>
+                </span>
               </button>
               {mode === "agent" || mode === "plan" || mode === "goal" ? (
                 <div className="composer-permission" ref={permissionRef}>

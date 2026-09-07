@@ -206,6 +206,7 @@ const MODEL_VENDOR_PREFIXES = new Set([
   "qwen",
   "z-ai",
   "zai",
+  "zhipuai",
   "x-ai",
   "xai",
 ]);
@@ -299,6 +300,39 @@ export type MessageUsage = {
   reasoningTokens?: number;
   totalTokens: number;
 };
+
+/** Sum two provider usage records. Used for turn rollups, never to rewrite a message. */
+export function addUsage(
+  total: MessageUsage | undefined,
+  next: MessageUsage | undefined,
+): MessageUsage | undefined {
+  if (!next) return total;
+  if (!total) return next;
+  return {
+    inputTokens: total.inputTokens + next.inputTokens,
+    outputTokens: total.outputTokens + next.outputTokens,
+    ...(total.cacheReadTokens !== undefined || next.cacheReadTokens !== undefined
+      ? {
+          cacheReadTokens:
+            (total.cacheReadTokens ?? 0) + (next.cacheReadTokens ?? 0),
+        }
+      : {}),
+    ...(total.cacheWriteTokens !== undefined ||
+    next.cacheWriteTokens !== undefined
+      ? {
+          cacheWriteTokens:
+            (total.cacheWriteTokens ?? 0) + (next.cacheWriteTokens ?? 0),
+        }
+      : {}),
+    ...(total.reasoningTokens !== undefined || next.reasoningTokens !== undefined
+      ? {
+          reasoningTokens:
+            (total.reasoningTokens ?? 0) + (next.reasoningTokens ?? 0),
+        }
+      : {}),
+    totalTokens: total.totalTokens + next.totalTokens,
+  };
+}
 
 export type MessageAttachment = {
   kind: "image" | "file";
@@ -510,6 +544,15 @@ export type AgentPromptRequest = {
    */
   truncateFromMessageId?: string;
   /**
+   * Renderer-chosen id for the new user message (D288). The renderer inserts
+   * the row under this id before the host round trip, and the host persists
+   * and echoes the durable row under the same id so the echo replaces the
+   * optimistic row in place instead of adding a second one. Must be a UUID
+   * that is not already in the session; anything else is ignored and the host
+   * mints its own.
+   */
+  messageId?: string;
+  /**
    * Renderer snapshot of the chat session visible when the prompt was sent.
    * Electron installs it before asynchronous turn setup for notification
    * suppression; missing, null, or mismatched values fail safe.
@@ -635,7 +678,7 @@ export type AgentEvent =
   | { type: "agent_start" }
   | { type: "agent_end"; messageIds: string[] }
   | { type: "turn_start" }
-  | { type: "turn_end" }
+  | { type: "turn_end"; subagentUsage?: MessageUsage }
   | { type: "message_start"; message: UiMessage }
   | {
       type: "message_update";
@@ -1022,7 +1065,7 @@ export type AppSettings = {
   defaultPermissionMode?: GlobalPermissionMode;
   theme: ThemePreference;
   /** UI language; `auto` (and absent) follows the OS locale. */
-  language?: "auto" | "en" | "zh-CN";
+  language?: "auto" | "en" | "zh-CN" | "tr";
   /**
    * Global UI font stack (CSS `font-family` value). Absent means the built-in
    * token stack; bundled open-source families and installed system families
@@ -1760,3 +1803,34 @@ export type FsIndexResult = {
   /** True when the index hit its entry cap and results were dropped. */
   truncated: boolean;
 };
+
+export type TokenUsageBucket = "day" | "week" | "month";
+
+export type TokenUsageHistoryItem = {
+  date: string;
+  timestamp: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  reasoningTokens: number;
+  turnCount: number;
+};
+
+export type TokenUsageHistoryResult = {
+  bucket: TokenUsageBucket;
+  rangeStart: number;
+  rangeEnd: number;
+  items: TokenUsageHistoryItem[];
+  totals: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    cacheReadTokens: number;
+    cacheWriteTokens: number;
+    reasoningTokens: number;
+    turnCount: number;
+  };
+};
+

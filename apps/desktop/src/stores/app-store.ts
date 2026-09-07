@@ -34,8 +34,9 @@ import type {
 import {
   contextCompactionMark,
   ErrorCodes as SharedErrorCodes,
-  highestSupportedThinkingLevel,
+  initialThinkingLevelForBinding,
   modeForProposalKind,
+  modelIdsMatch,
   normalizeMode,
   normalizeProposalKind,
   PROTOCOL_VERSION,
@@ -43,12 +44,18 @@ import {
 import { api } from "../lib/api";
 import type { SettingsTabId } from "../lib/settings-search";
 import { createNavigationIntentController } from "../lib/navigation-intent";
+import { scheduleHomeDraftAdopt } from "../lib/composer-draft-cache";
 import {
   commitForkedSessionState,
   forkedSessionMessages,
   FORKED_SESSION_WINDOW,
 } from "../lib/session-fork";
+import {
+  EMPTY_SESSION_WINDOW,
+  sessionIsReusableEmpty,
+} from "../lib/session-create";
 import { rememberProject, setProjectPinned } from "../lib/recent-projects";
+import { applyOptimisticSessionConfiguration } from "../lib/session-thinking";
 import {
   RETAINED_SESSION_PANE_LIMIT,
   clearSessionPanes,
@@ -58,9 +65,12 @@ import {
 } from "../lib/session-panes";
 import { normalizeProjectPath, sessionMatchesProject } from "../lib/sidebar-session-groups";
 import {
+  dedupeSessionMessages,
   mergeLiveSessionMessages,
   removeLiveSessionMessage,
+  optimisticUserMessage,
   upsertLiveSessionMessage,
+  durableCoversLiveSessionMessages,
 } from "../lib/session-transcript";
 import {
   latestSessionOutcomes,
@@ -96,6 +106,7 @@ import {
   shouldOpenReviewArtifact,
   switchWorkPanelContextState,
   toolWorkPanelTab,
+  browserPluginTab,
   type WorkPanelContext,
   type WorkPanelTab,
 } from "../lib/work-panel-tabs";
@@ -307,13 +318,26 @@ function latestSessionInScope(
     .find((session) => !sessionIsArchived(session.id, sessionMeta));
 }
 
+function liveMessageCountForSession(
+  id: string,
+  state: { activeSessionId?: string; messages: UiMessage[]; retainedTranscripts: Record<string, UiMessage[]> },
+): number {
+  if (state.activeSessionId === id) return state.messages.length;
+  return (
+    sessionTranscriptCache.get(id)?.length ??
+    state.retainedTranscripts[id]?.length ??
+    0
+  );
+}
+
 function cacheSessionTranscript(
   id: string,
   messages: UiMessage[],
   window?: SessionHistoryWindow,
 ) {
+  const normalized = dedupeSessionMessages(messages);
   sessionTranscriptCache.delete(id);
-  sessionTranscriptCache.set(id, messages);
+  sessionTranscriptCache.set(id, normalized);
   if (window) sessionHistoryCache.set(id, window);
   while (sessionTranscriptCache.size > SESSION_TRANSCRIPT_CACHE_LIMIT) {
     const oldestId = sessionTranscriptCache.keys().next().value;
@@ -370,6 +394,46 @@ async function loadFullSessionMessages(id: string): Promise<UiMessage[] | null> 
   const messages = detail.session.messages ?? [];
   cacheSessionTranscript(id, messages, { messageStart: 0, hasMoreBefore: false });
   return messages;
+}
+
+/**
+ * Show the user's prompt the moment it is sent (D288). The visible session
+ * appends the row to its transcript; a background session receives it through
+ * its renderer cache, exactly where the host echo will land.
+ */
+function insertOptimisticUserMessage(sessionId: string, message: UiMessage): void {
+  const state = useAppStore.getState();
+  if (state.activeSessionId === sessionId) {
+    useAppStore.setState((s) => ({
+      messages: upsertLiveSessionMessage(s.messages, message),
+    }));
+    return;
+  }
+  const cached = sessionTranscriptCache.get(sessionId);
+  if (cached) {
+    sessionTranscriptCache.set(sessionId, upsertLiveSessionMessage(cached, message));
+  }
+}
+
+/**
+ * Undo the optimistic row when the send never reached the host. Only the
+ * renderer's own object is removed: once the host has echoed the durable row
+ * under the same id the failure happened after persistence, and the row stays.
+ */
+function retractOptimisticUserMessage(sessionId: string, message: UiMessage): void {
+  const state = useAppStore.getState();
+  if (state.activeSessionId === sessionId) {
+    useAppStore.setState((s) =>
+      s.messages.includes(message)
+        ? { messages: removeLiveSessionMessage(s.messages, message.id) }
+        : s,
+    );
+    return;
+  }
+  const cached = sessionTranscriptCache.get(sessionId);
+  if (cached?.includes(message)) {
+    sessionTranscriptCache.set(sessionId, removeLiveSessionMessage(cached, message.id));
+  }
 }
 
 /**
@@ -1429,12 +1493,12 @@ export const useAppStore = create<AppState>((set, get) => ({
         // A newer navigation or another prepend wins; never duplicate a page
         // after a stale response arrives.
         if (cachedStart !== before && cached.length > 0) return;
-        const merged = [...page.messages, ...cached];
+        const merged = mergeLiveSessionMessages(page.messages, cached);
         cacheSessionTranscript(sessionId, merged, nextWindow);
         set((state) =>
           state.activeSessionId === sessionId
             ? {
-                messages: [...page.messages, ...state.messages],
+                messages: mergeLiveSessionMessages(page.messages, state.messages),
                 sessionHistory: {
                   ...state.sessionHistory,
                   [sessionId]: nextWindow,
@@ -1565,6 +1629,19 @@ export const useAppStore = create<AppState>((set, get) => ({
         sessionTranscriptCache.get(id) ?? get().retainedTranscripts[id];
       if (retainedMessages && get().activeSessionId !== id && summary) {
         commitSelection(retainedMessages, true);
+      } else if (
+        summary &&
+        get().activeSessionId !== id &&
+        sessionIsReusableEmpty(summary, {
+          running: runningAtSelection,
+          liveMessageCount: retainedMessages?.length ?? 0,
+          submitted: submittedComposerDrafts.has(id),
+        })
+      ) {
+        // An empty destination has nothing to load. Reveal it on this frame
+        // instead of leaving the previous transcript up during session.get.
+        cacheSessionTranscript(id, [], EMPTY_SESSION_WINDOW);
+        commitSelection([], true, EMPTY_SESSION_WINDOW);
       }
       if (summary) {
         if (!(await alignWorkspaceLatest(summary.projectPath))) return;
@@ -1590,7 +1667,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         : { messageStart: 0, hasMoreBefore: false };
       const currentState = get();
       const liveMessages =
-        (runningAtSelection || currentState.runningSessions[id] === true)
+        (runningAtSelection ||
+          currentState.runningSessions[id] === true ||
+          liveSessionTranscripts.has(id))
           ? currentState.activeSessionId === id
             ? currentState.messages
             : sessionTranscriptCache.get(id) ??
@@ -1605,7 +1684,13 @@ export const useAppStore = create<AppState>((set, get) => ({
         cacheSessionTranscript(id, selectedMessages, historyWindow);
       }
       commitSelection(selectedMessages, false, historyWindow);
-      if (currentState.runningSessions[id] !== true) {
+      if (
+        currentState.runningSessions[id] !== true &&
+        durableCoversLiveSessionMessages(
+          detail.session?.messages ?? [],
+          liveMessages,
+        )
+      ) {
         liveSessionTranscripts.delete(id);
       }
       rememberSessionCompactions(id, detail.session);
@@ -1655,25 +1740,27 @@ export const useAppStore = create<AppState>((set, get) => ({
         if (!navigationIntentIsCurrent(intent)) return;
       }
 
-      // Refresh before deciding: a session may have received its first user
-      // message while its turn is still streaming, before the next normal
-      // sidebar refresh at agent_end.
-      await get().refreshSessions();
-      if (!navigationIntentIsCurrent(intent)) return;
+      // Reuse against renderer state: a just-sent first message is already
+      // visible as a running session, live rows, or a submitted draft, even
+      // when session.list has not yet refreshed messageCount.
       const latest = latestSessionInScope(
         get().sessions,
         requestedProjectPath,
         get().sessionMeta,
       );
-      if (latest && latest.messageCount === 0) {
+      if (
+        latest &&
+        sessionIsReusableEmpty(latest, {
+          running: get().runningSessions[latest.id] === true,
+          liveMessageCount: liveMessageCountForSession(latest.id, get()),
+          submitted: submittedComposerDrafts.has(latest.id),
+        })
+      ) {
         if (get().activeSessionId === latest.id && get().page === "chat") return;
         await get().selectSession(latest.id, { navigationIntent: intent });
         return;
       }
 
-      // A New Task click is itself the materialization trigger now. The
-      // returned session is real immediately, so refreshSessions exposes its
-      // zero-message row before the transcript is selected.
       await persistSessionAndSelect({
         intent,
         projectPath: requestedProjectPath,
@@ -1783,7 +1870,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       pendingSessionConfigurations.set(sessionId, config);
       set((state) => ({
         sessions: state.sessions.map((session) =>
-          session.id === sessionId ? { ...session, ...config } : session,
+          session.id === sessionId
+            ? applyOptimisticSessionConfiguration(session, config)
+            : session,
         ),
       }));
       return;
@@ -1950,6 +2039,15 @@ export const useAppStore = create<AppState>((set, get) => ({
       latestTurnResults: withoutRecordKey(s.latestTurnResults, startedIn),
       sessionOutcomes: withoutRecordKey(s.sessionOutcomes, startedIn),
     }));
+    // The prompt is on screen before the host round trip (D288). The host
+    // persists and echoes the row under this same id, so the echo replaces
+    // the optimistic row instead of adding a second one.
+    const optimisticMessage = optimisticUserMessage(
+      crypto.randomUUID(),
+      content,
+      submission.draft.fileReferences,
+    );
+    insertOptimisticUserMessage(startedIn, optimisticMessage);
     try {
       const current = get().sessions.find((s) => s.id === sessionId);
       if (isDefaultSessionTitle(current?.title)) {
@@ -1963,6 +2061,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
       if (get().pendingPlans[sessionId]?.status === "pending") {
         submittedComposerDrafts.delete(startedIn);
+        retractOptimisticUserMessage(startedIn, optimisticMessage);
         set((s) => ({
           isRunning: s.activeSessionId === startedIn ? false : s.isRunning,
           runningSessions: { ...s.runningSessions, [startedIn]: false },
@@ -1970,12 +2069,14 @@ export const useAppStore = create<AppState>((set, get) => ({
         return false;
       }
       if (submission.abortResolution && (await submission.abortResolution)) {
+        // Smart stop already pulled the row back into the composer.
         submittedComposerDrafts.delete(startedIn);
         return false;
       }
       await api.prompt({
         sessionId,
         content,
+        messageId: optimisticMessage.id,
         viewingSessionId: viewingSessionIdForPrompt(get(), sessionId),
         attachments: draft
           ? promptAttachmentsFromDraft(draft.fileReferences)
@@ -1987,6 +2088,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       return true;
     } catch (e) {
       submittedComposerDrafts.delete(startedIn);
+      retractOptimisticUserMessage(startedIn, optimisticMessage);
       const messageError = messageErrorFromUnknown(e);
       set((s) => ({
         // The user may have switched sessions while the request was in
@@ -2104,9 +2206,23 @@ export const useAppStore = create<AppState>((set, get) => ({
     // index into the deduplicated renderer array are different coordinate
     // spaces, and mixing them cuts the wrong message on a paged transcript.
     const truncateFromMessageId = state.messages[userIndex].id;
+    // The rewritten prompt shows in place of the old row before the host
+    // round trip (D288); the durable echo replaces it under the same id.
+    const optimisticMessage = optimisticUserMessage(
+      crypto.randomUUID(),
+      prompt,
+      (attachments ?? state.messages[userIndex].attachments ?? []).map(
+        (attachment) => ({
+          path: attachment.ref,
+          name: attachment.name,
+          kind: attachment.kind,
+          mimeType: attachment.mimeType,
+        }),
+      ),
+    );
 
     set((s) => ({
-      messages: kept,
+      messages: [...kept, optimisticMessage],
       isRunning: true,
       error: null,
       errorCode: null,
@@ -2120,6 +2236,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       await api.prompt({
         sessionId,
         content: prompt,
+        messageId: optimisticMessage.id,
         viewingSessionId: viewingSessionIdForPrompt(get(), sessionId),
         attachments: promptAttachments,
         truncateFromMessageId,
@@ -2300,25 +2417,25 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   deleteMessage: async (messageId) => {
-    let state = get();
-    const sessionId = state.activeSessionId;
-    if (!sessionId || state.isRunning) return;
-    if (state.sessionHistory[sessionId]?.hasMoreBefore) {
-      const fullMessages = await loadFullSessionMessages(sessionId);
-      if (!fullMessages || get().activeSessionId !== sessionId) return;
-      set((current) =>
-        current.activeSessionId === sessionId
-          ? {
-              messages: fullMessages,
-              sessionHistory: {
-                ...current.sessionHistory,
-                [sessionId]: { messageStart: 0, hasMoreBefore: false },
-              },
-            }
-          : {},
-      );
-      state = get();
-    }
+    const sessionId = get().activeSessionId;
+    if (!sessionId || get().isRunning) return;
+    // The rewrite below replaces the whole transcript, so it must start from
+    // the full durable copy: the renderer's window is paged and display-capped
+    // (D299), and writing it back would truncate long rows on disk.
+    const fullMessages = await loadFullSessionMessages(sessionId);
+    if (!fullMessages || get().activeSessionId !== sessionId) return;
+    set((current) =>
+      current.activeSessionId === sessionId
+        ? {
+            messages: fullMessages,
+            sessionHistory: {
+              ...current.sessionHistory,
+              [sessionId]: { messageStart: 0, hasMoreBefore: false },
+            },
+          }
+        : {},
+    );
+    const state = get();
     const index = state.messages.findIndex((message) => message.id === messageId);
     if (index < 0) return;
     const target = state.messages[index];
@@ -2431,7 +2548,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         sessionId,
       ),
     }));
-    let state = get();
+    const state = get();
     if (state.activeSessionId !== sessionId) {
       submittedDraft?.resolveAbort?.(false);
       submittedComposerDrafts.delete(sessionId);
@@ -2440,82 +2557,87 @@ export const useAppStore = create<AppState>((set, get) => ({
       }));
       return;
     }
-    let messages = state.messages;
-    if (state.sessionHistory[sessionId]?.hasMoreBefore) {
+    const smartStop = resolveComposerSmartStop(state.messages, submittedDraft);
+    if (smartStop.kind === "restore") {
+      // Nothing came back yet — undo the send: pull the prompt into the
+      // composer and drop the turn from the transcript. The rewrite must start
+      // from the full durable transcript, never from the windowed, display-
+      // capped copy the renderer holds (D299), and it must keep any reply row
+      // the host persisted between the abort and this read.
       const fullMessages = await loadFullSessionMessages(sessionId);
       if (!fullMessages || get().activeSessionId !== sessionId) {
         submittedDraft?.resolveAbort?.(false);
         submittedComposerDrafts.delete(sessionId);
         return;
       }
-      set((current) =>
-        current.activeSessionId === sessionId
+      const merged = mergeLiveSessionMessages(fullMessages, get().messages);
+      const fullStop = resolveComposerSmartStop(merged, submittedDraft);
+      if (fullStop.kind === "restore") {
+        submittedComposerDrafts.delete(sessionId);
+        submittedDraft?.resolveAbort?.(true);
+        const fullWindow = { messageStart: 0, hasMoreBefore: false };
+        cacheSessionTranscript(sessionId, fullStop.kept, fullWindow);
+        set((s) => ({
+          messages: fullStop.kept,
+          sessionHistory: { ...s.sessionHistory, [sessionId]: fullWindow },
+          composerPrefill: { ...fullStop.draft, sessionId },
+          isRunning: false,
+          runningSessions: { ...s.runningSessions, [sessionId]: false },
+        }));
+        if (fullStop.kept.length < merged.length) {
+          try {
+            await api.replaceSessionMessages(sessionId, fullStop.kept);
+          } catch {
+            // Best effort — the local transcript already reflects the undo.
+          }
+        }
+        void flushPendingSessionConfiguration(sessionId);
+        return;
+      }
+      // The reply had started after all (its row landed while we looked).
+      // Fall through and settle it in place on the full transcript.
+      set((s) =>
+        s.activeSessionId === sessionId
           ? {
-              messages: fullMessages,
+              messages: merged,
               sessionHistory: {
-                ...current.sessionHistory,
+                ...s.sessionHistory,
                 [sessionId]: { messageStart: 0, hasMoreBefore: false },
               },
             }
           : {},
       );
-      state = get();
-      messages = state.messages;
-    }
-    const smartStop = resolveComposerSmartStop(messages, submittedDraft);
-    if (smartStop.kind === "restore") {
-      // Nothing came back yet — undo the send: pull the prompt into the
-      // composer and drop the turn from the transcript. Prefer the renderer
-      // snapshot so serialized file paths return as compact references.
-      submittedComposerDrafts.delete(sessionId);
-      submittedDraft?.resolveAbort?.(true);
-      set((s) => ({
-        messages: smartStop.kept,
-        composerPrefill: { ...smartStop.draft, sessionId },
-        isRunning: false,
-        runningSessions: { ...s.runningSessions, [sessionId]: false },
-      }));
-      if (smartStop.kept.length < messages.length) {
-        try {
-          await api.replaceSessionMessages(sessionId, smartStop.kept);
-        } catch {
-          // Best effort — the local transcript already reflects the undo.
-        }
-      }
-      void flushPendingSessionConfiguration(sessionId);
-      return;
     }
     submittedDraft?.resolveAbort?.(false);
     submittedComposerDrafts.delete(sessionId);
     // A partial reply exists: settle it in place. Streaming assistant text
-    // becomes an aborted-but-kept answer; still-running tools close out.
-    const settled = messages.map((message) => {
-      if (message.role === "assistant" && message.status === "streaming") {
-        return {
-          ...settleStoppedAssistantMetrics(message, stoppedAtMs),
-          status: "aborted" as const,
-        };
-      }
-      if (message.role === "tool" && message.toolStatus === "running") {
-        return {
-          ...message,
-          toolStatus: "error" as const,
-          status: "aborted" as const,
-          toolCompletedAt: message.toolCompletedAt ?? new Date().toISOString(),
-        };
-      }
-      return message;
-    });
+    // becomes an aborted-but-kept answer; still-running tools close out. The
+    // durable copy is the runtime's own aborted final row (or its last
+    // checkpoint), so the renderer does not rewrite the transcript here: a
+    // rewrite from this snapshot raced that row and could delete it (D299).
+    const stoppedRows = (rows: UiMessage[]) =>
+      rows.map((message) => {
+        if (message.role === "assistant" && message.status === "streaming") {
+          return {
+            ...settleStoppedAssistantMetrics(message, stoppedAtMs),
+            status: "aborted" as const,
+          };
+        }
+        if (message.role === "tool" && message.toolStatus === "running") {
+          return {
+            ...message,
+            toolStatus: "error" as const,
+            status: "aborted" as const,
+            toolCompletedAt: message.toolCompletedAt ?? new Date().toISOString(),
+          };
+        }
+        return message;
+      });
     set((s) => ({
-      messages: settled,
+      messages: s.activeSessionId === sessionId ? stoppedRows(s.messages) : s.messages,
       isRunning: false,
       runningSessions: { ...s.runningSessions, [sessionId]: false },
     }));
-    try {
-      await api.replaceSessionMessages(sessionId, settled);
-    } catch {
-      // Best effort — the host may persist its own copy of the turn.
-    }
     void flushPendingSessionConfiguration(sessionId);
   },
 
@@ -3261,6 +3383,18 @@ export const useAppStore = create<AppState>((set, get) => ({
       // Terminal and control events must observe every pending partial update
       // before they settle running/error state.
       streamUpdates.flushNow();
+    }
+    if (
+      event.type === "message_start" ||
+      event.type === "message_update" ||
+      event.type === "message_end" ||
+      event.type === "tool_start" ||
+      event.type === "tool_update" ||
+      event.type === "tool_end"
+    ) {
+      // Completed assistant/tool rows can still be ahead of the durable page
+      // after agent_end (D324). Keep live provenance until that page covers them.
+      liveSessionTranscripts.add(envelope.sessionId);
     }
     // Per-session run state: agents run independently per session, so track
     // running/finished for every envelope, visible session or not.
@@ -4025,7 +4159,16 @@ export const useAppStore = create<AppState>((set, get) => ({
     get().openWorkPanelTab(fileWorkPanelTab(path, mimeType));
   },
   openUrlInWorkPanel: (url) => {
-    get().openWorkPanelTab({ ...toolWorkPanelTab("browser"), resource: url });
+    const hasBrowser = get().pluginViews.some(
+      (view) => view.pluginId === "pi.browser" && view.viewId === "browser",
+    );
+    if (!hasBrowser) {
+      if (/^https?:\/\//i.test(url.trim())) {
+        void api.browserOpenExternal(url.trim());
+      }
+      return;
+    }
+    get().openWorkPanelTab(browserPluginTab(url));
   },
 
   clearComposerPrefill: () => set({ composerPrefill: null }),
@@ -4049,7 +4192,9 @@ useAppStore.subscribe((state, previous) => {
   }
   const id = state.activeSessionId;
   if (!id) return;
-  if (state.runningSessions[id]) liveSessionTranscripts.add(id);
+  if (state.runningSessions[id] || previous.runningSessions[id]) {
+    liveSessionTranscripts.add(id);
+  }
   cacheSessionTranscript(id, state.messages, state.sessionHistory[id]);
   if (state.retainedTranscripts[id] === state.messages) return;
   useAppStore.setState((current) =>
@@ -4157,10 +4302,81 @@ type PersistSessionOptions = {
 };
 
 /**
+ * Drop the previous transcript on this frame so New Task does not leave the
+ * old conversation on screen while `session.create` is in flight (D305).
+ */
+function revealEmptyCreatingSession(intent: number): void {
+  if (!navigationIntentIsCurrent(intent)) return;
+  useAppStore.setState((state) => {
+    if (
+      !state.activeSessionId &&
+      state.page === "chat" &&
+      state.messages.length === 0 &&
+      state.retainedSessionIds.length === 0
+    ) {
+      return {};
+    }
+    return {
+      ...switchWorkPanelSession(state, undefined),
+      ...clearSessionPanes(),
+      activeSessionId: undefined,
+      selectingSessionId: undefined,
+      messages: [],
+      page: "chat" as const,
+      isRunning: false,
+    };
+  });
+}
+
+function commitCreatedEmptySession(
+  summary: SessionSummary,
+  options: { activate: boolean },
+): void {
+  const messages: UiMessage[] = [];
+  cacheSessionTranscript(summary.id, messages, EMPTY_SESSION_WINDOW);
+  if (options.activate) scheduleHomeDraftAdopt(summary.id);
+  useAppStore.setState((current) => {
+    const commit = commitForkedSessionState(current, summary, {
+      activate: options.activate,
+    });
+    const shared: Partial<AppState> = {
+      sessions: decorateSessions(commit.sessions, current.sessionMeta),
+      sessionHistory: {
+        ...current.sessionHistory,
+        [summary.id]: EMPTY_SESSION_WINDOW,
+      },
+      planningStates: {
+        ...current.planningStates,
+        [summary.id]: summary.mode === "plan" ? "planning" : "inactive",
+      },
+    };
+    if (!commit.activated) return shared;
+    return {
+      ...switchWorkPanelSession(current, summary.id),
+      ...shared,
+      ...retainSessionPane(current, summary.id, messages),
+      activeSessionId: summary.id,
+      selectingSessionId: undefined,
+      draftConfiguration: null,
+      messages,
+      page: "chat" as const,
+      // The composer follows the visible session's own run state: a turn
+      // still streaming in the previously selected session must not leave
+      // the fresh session's send button stuck in the stop/abort state
+      // (the old session's agent_end is a cross-session event and never
+      // clears the active flag).
+      isRunning: current.runningSessions[summary.id] ?? false,
+      navStack: commit.navStack as AppState["navStack"],
+      navIndex: commit.navIndex,
+    };
+  });
+}
+
+/**
  * Create a durable empty session and select it. The same path is used by an
  * explicit New Task click and by the legacy home draft when its first message
  * or pasted file needs a session. Returns null when navigation was superseded
- * after the host mutation, leaving the refreshed session list authoritative.
+ * after the host mutation; the created row is still inserted into the list.
  */
 async function persistSessionAndSelect(
   options: PersistSessionOptions = {},
@@ -4168,15 +4384,6 @@ async function persistSessionAndSelect(
   const active = options.intent ?? beginNavigationIntent();
   const state = useAppStore.getState();
   const settings = state.settings;
-  const defaultProvider = state.providers.find(
-    (provider) => provider.id === settings?.defaultProviderId,
-  );
-  // New reasoning sessions start at the strongest level enabled by the
-  // inherited model binding. Catalog metadata seeds that binding, while an
-  // empty or off-only binding remains the conservative off fallback.
-  const defaultThinkingLevel = defaultProvider?.supportsReasoning
-    ? highestSupportedThinkingLevel(defaultProvider.supportedThinkingLevels)
-    : "off";
   // No providerId/modelId here unless the user pinned a pick on the draft:
   // sessions without an explicit pick resolve them at prompt time, so later
   // default-model changes apply everywhere. The Composer pins both onto the
@@ -4189,53 +4396,52 @@ async function persistSessionAndSelect(
     options && "draftConfiguration" in options
       ? options.draftConfiguration
       : state.draftConfiguration;
-  const created = await api.createSession({
-    title: untitledTaskTitle(),
-    mode: draftConfig?.mode ?? normalizeMode(settings?.defaultMode),
-    thinkingLevel: draftConfig?.thinkingLevel ?? defaultThinkingLevel,
-    permissionMode: draftConfig?.permissionMode,
-    providerId: draftConfig?.providerId,
-    modelId: draftConfig?.modelId,
-    projectPath: projectPath ?? undefined,
-  });
-  await useAppStore.getState().refreshSessions();
-  if (!navigationIntentIsCurrent(active)) return null;
-  const detail = await api.getSession(created.session.id);
-  if (!navigationIntentIsCurrent(active)) return null;
+  const defaultProvider = state.providers.find(
+    (provider) =>
+      provider.id === (draftConfig?.providerId ?? settings?.defaultProviderId),
+  );
+  const inheritedModelId =
+    draftConfig?.modelId ??
+    settings?.defaultModelId ??
+    defaultProvider?.defaultModelId;
+  const inheritedBinding = defaultProvider?.models.find((candidate) =>
+    modelIdsMatch(candidate.id, inheritedModelId ?? ""),
+  );
+  // New reasoning sessions start at the selected model's stored default
+  // thinking level, clamped onto the enabled ladder. Catalog metadata seeds
+  // that default when the model is added; strongest-enabled is only the
+  // fallback when Settings has not stored a default.
+  const defaultThinkingLevel = initialThinkingLevelForBinding(
+    inheritedBinding,
+    defaultProvider?.supportedThinkingLevels,
+  );
+  const previousSessionId = state.activeSessionId;
+  revealEmptyCreatingSession(active);
+  let created: Awaited<ReturnType<typeof api.createSession>>;
+  try {
+    created = await api.createSession({
+      title: untitledTaskTitle(),
+      mode: draftConfig?.mode ?? normalizeMode(settings?.defaultMode),
+      thinkingLevel: draftConfig?.thinkingLevel ?? defaultThinkingLevel,
+      permissionMode: draftConfig?.permissionMode,
+      providerId: draftConfig?.providerId,
+      modelId: draftConfig?.modelId,
+      projectPath: projectPath ?? undefined,
+    });
+  } catch (error) {
+    if (previousSessionId && navigationIntentIsCurrent(active)) {
+      void useAppStore.getState().selectSession(previousSessionId, {
+        navigationIntent: active,
+      });
+    }
+    throw error;
+  }
   const sessionId = created.session.id;
-  const initialMessages = detail.session?.messages ?? [];
-  const initialHistoryWindow = { messageStart: 0, hasMoreBefore: false };
-  cacheSessionTranscript(sessionId, initialMessages, initialHistoryWindow);
-  useAppStore.setState((s) => {
-    const stack = s.navStack.slice(0, s.navIndex + 1);
-    const entry = { page: "chat" as const, sessionId };
-    const nextStack = [...stack, entry].slice(-50);
-    return {
-      ...switchWorkPanelSession(s, sessionId),
-      ...retainSessionPane(s, sessionId, initialMessages),
-      activeSessionId: sessionId,
-      draftConfiguration: null,
-      messages: initialMessages,
-      sessionHistory: {
-        ...s.sessionHistory,
-        [sessionId]: initialHistoryWindow,
-      },
-      page: "chat" as const,
-      planningStates: {
-        ...s.planningStates,
-        [sessionId]: created.session.mode === "plan" ? "planning" : "inactive",
-      },
-      navStack: nextStack,
-      navIndex: nextStack.length - 1,
-      // The composer follows the visible session's own run state: a turn
-      // still streaming in the previously selected session must not leave
-      // the fresh session's send button stuck in the stop/abort state
-      // (the old session's agent_end is a cross-session event and never
-      // clears the active flag).
-      isRunning: s.runningSessions[sessionId] ?? false,
-    };
-  });
-  void useAppStore.getState().restorePendingPlan(sessionId);
+  if (!navigationIntentIsCurrent(active)) {
+    commitCreatedEmptySession(created.session, { activate: false });
+    return null;
+  }
+  commitCreatedEmptySession(created.session, { activate: true });
   return sessionId;
 }
 
@@ -4247,5 +4453,13 @@ async function persistSessionAndSelect(
 export async function materializeDraftSession(
   intent?: number,
 ): Promise<string | null> {
+  const state = useAppStore.getState();
+  const scopeKey = newSessionScopeKey(state.workspace?.path ?? null);
+  const pending = pendingNewSessionRequests.get(scopeKey);
+  if (pending) {
+    await pending;
+    const activeId = useAppStore.getState().activeSessionId;
+    if (activeId) return activeId;
+  }
   return persistSessionAndSelect({ intent });
 }

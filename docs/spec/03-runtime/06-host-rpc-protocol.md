@@ -114,7 +114,7 @@ Params:
 
 ```ts
 type HandshakeParams = {
-  protocolVersion: 10
+  protocolVersion: 11
   client: "electron-main"
   clientVersion: string
   locale: string // default "en"
@@ -125,11 +125,11 @@ Result:
 
 ```ts
 type HandshakeResult = {
-  protocolVersion: 10
+  protocolVersion: 11
   host: "rust-host-core"
   hostVersion: string
   features: string[]
-  capabilities: string[] // includes "a2a" at protocol v10
+  capabilities: string[] // does not include "a2a"
 }
 ```
 
@@ -150,17 +150,20 @@ Rules:
    permission, shell catalog identity and dialect pin, streamed command output,
    and scheduled-task mode projection from `config_json`. A v7 or incompatible
    v8 host must be rejected before the UI becomes interactive.
-8. Version 10 adds the A2A protocol stack (ADR 0147): the host-core A2A broker,
+8. Version 10 added the A2A protocol stack (ADR 0147): the host-core A2A broker,
    the `a2a.*` method domain, and the `a2a.task.event` / `a2a.push` host→client
-   notifications. The `capabilities` array now advertises `"a2a"`; a v9 host
-   that cannot advertise `a2a` is rejected before the UI becomes interactive,
-   because subagent coordination would otherwise silently fall back to nothing.
+   notifications. The `capabilities` array advertised `"a2a"`; a v9 host that
+   could not advertise `a2a` was rejected before the UI became interactive.
+9. Version 11 withdraws that stack (ADR 0165 / D326). The `a2a.*` methods and
+   `a2a.task.event` / `a2a.push` notifications are gone. Handshake no longer
+   advertises `"a2a"`. A v10 host or client is rejected before the UI becomes
+   interactive, so a mixed pair cannot call a missing domain.
 
-Protocol v10 is paired with host-core storage schema v12 (v12 adds the
-`a2a_agents`, `a2a_tasks`, `a2a_messages`, `a2a_artifacts`, and
-`a2a_push_configs` tables via `migrate_v11_to_v12`; A2A capability tokens are
-in-memory only and are invalidated on deregister). The schema version
-is an internal persistence invariant, not an additional JSON-RPC field; the
+Protocol v11 is paired with host-core storage schema v13. Schema v12 had added
+the A2A tables (`a2a_tasks`, `a2a_messages`, `a2a_artifacts`,
+`a2a_push_configs`) via `migrate_v11_to_v12`; `migrate_v12_to_v13` drops those
+tables, and a fresh database never creates them. The schema version is an
+internal persistence invariant, not an additional JSON-RPC field; the
 checkpoint architecture remains host-owned.
 
 ## 4. Method catalog (MVP)
@@ -257,6 +260,19 @@ reach this protocol — see [14-secrets-storage](14-secrets-storage.md) §10.
   configuration is allowed only while idle and without a pending/queued/running
   Plan or Goal record
 - `session.appendMessage`
+- `session.saveInflightMessage` — Electron-main-only checkpoint of the
+  assistant reply currently streaming, including the finished `message_end`
+  snapshot: `{ sessionId, turnId?, message }`
+  atomically replaces `sessions/<id>.inflight.json` (D299, D327, spec 04 §2.1).
+  Returns `{ ok, saved }`; `saved` is false for a message without visible text
+  or for an id that is already indexed (the final row landed first), and in the
+  latter case any leftover checkpoint is removed. Non-assistant roles are
+  `INVALID_PARAMS`-class failures. A `completed`/`error` `session.endTurn`
+  deletes the file only when that id is already indexed.
+- `session.recoverInflightMessages` — Electron-main-only post-drain sweep
+  (D327). Promotes leftover checkpoints whose final row never landed,
+  including `completed` turns as `complete`. Boot recovery skips completed
+  leftovers so the outbox can append first. Returns `{ ok, count }`.
 - `session.appendCompaction` — sidecar-only append of the newest typed
   model-context checkpoint. It requires non-empty checkpoint/summary/boundary
   ids and non-negative `tokensBefore`; it does not insert a message/search row
@@ -270,25 +286,51 @@ reach this protocol — see [14-secrets-storage](14-secrets-storage.md) §10.
   the whole transcript for the duration of the call: any rewrite from a snapshot
   taken outside the RPC lock can delete a message appended in between
 - `session.saveRevision` — archive a regenerate branch under
-  `(sessionId, rootUserId)`
+  `(sessionId, rootUserId)`. With `revisionIndex`, refresh that existing
+  variant's payload in place (the branch grew since it was archived) instead
+  of minting a new index; the DB row keeps its identity and active flag and
+  only `message_count` changes
 - `session.saveActiveRevision` — archive the branch of the newest
   revision-bearing user root as its active revision and stamp that root's pager
   metadata, all under the RPC lock. The stamp rewrites one transcript line
   instead of the file, so a concurrent `session.appendMessage` survives.
   Returns `{ saved: null }` when the session owns no regenerate history.
+  An already-archived active variant is refreshed, not skipped.
   Turn-completion callers use this instead of
   `session.get` + `session.replaceMessages`
 - `session.listRevisions` — list linear variants for a root user family
 - `session.activateRevision` — replace live transcript with `prefix + branch`
-  and stamp root pager metadata
+  and stamp root pager metadata. Before the switch it re-archives the live
+  branch of that family from the durable transcript (refreshing the variant
+  the live root's `activeRevision` stamp names, or storing a stamped but
+  never-archived branch as its own variant), so nothing appended since the
+  last archive is lost. When the family is present in the durable transcript,
+  the prefix in front of the restored branch is taken from there rather than
+  from the caller. Surviving messages keep their owning `turn_id`
 - `session.beginTurn`
 - `session.endTurn` — atomically moves a running turn to its terminal state and
   conditionally returns the newly created notification for `completed`/`error`;
   returns no notification when `createNotification=false`, for `aborted`, or
-  for an already-terminal turn
+  for an already-terminal turn. It also settles the session's in-flight reply
+  checkpoint (D299): `completed`/`error` remove it; `recoverInflight: true`
+  (sent when the sidecar is gone and no final row can follow) promotes a
+  checkpoint whose final row never landed into the transcript as an `aborted`
+  assistant message and returns it as `recovered`; a plain `aborted` (user
+  Stop) leaves the checkpoint for the arriving final row to supersede
 - `session.import` — atomically imports one converted session; a non-empty
   project path is normalized and upserted into `projects` before the session
   references it; returns `{ imported, skipped }`
+
+### Stats
+
+- `stats.getTokenUsageHistory` — roll up completed `turns` token columns and
+  `usage_json` cache/reasoning fields into local-calendar `day` / `week` /
+  `month` buckets. Additive RPC; no protocol version bump. Default range is
+  bounded (53 weeks / 52 weeks / 24 months). `week` uses ISO week year.
+  Empty buckets in range are returned as zero rows so the Settings matrix is a
+  complete calendar. `session.endTurn.usage` is the durable turn total: parent
+  assistant messages plus settled subagent usage, not a rewrite of
+  `message.usage`.
 
 ### Plan and Goal state and approvals
 
@@ -359,7 +401,12 @@ releasing the execution slot.
 
 `session.appendMessage` is idempotent by message id. Electron main may keep
 message appends in its application-owned outbox while host-core is restarting;
-the outbox flushes in order after a successful handshake.
+the outbox flushes in order after a successful handshake. A missing sessions
+row is restored from the live JSONL (or created as a stub under the same id
+when the file is gone) so a queued outbox can drain (D318). `session.delete`
+drops that session's outbox entries. In-flight checkpoints never go through
+the outbox: a checkpoint is only meaningful against a live host, and replaying
+one after the final row would be wrong.
 
 ### Permissions
 - `permissions.evaluate`
@@ -385,77 +432,6 @@ the outbox flushes in order after a successful handshake.
 - `notification.markRead`
 - `notification.markAllRead`
 - `notification.clear`
-
-### A2A (ADR 0147)
-
-The A2A broker runs in host-core; each subagent is a client reaching it over
-this transport. Every method except `a2a.agents.register` carries a host-minted
-capability `token`; the host validates it and authorizes addressing by it.
-`contextId` equals `sessionId`, and addressing is same-context only —
-cross-context calls fail with `A2A_CROSS_CONTEXT_DENIED`.
-
-- `a2a.agents.register({ contextId, card }) -> { agentId, token }` — register
-  the caller's Agent Card (derived from its `SubagentDefinition`) in the session
-  registry and mint an in-memory capability token. The token is injected by the
-  runtime and never exposed to the model.
-- `a2a.agents.deregister({ token }) -> { ok }` — remove the caller from the
-  registry and invalidate its token; called when a delegate settles.
-- `a2a.agents.list({ token }) -> { agents: AgentCard[] }` — the other agents in
-  the caller's context; the caller's own card is excluded.
-- `a2a.message.send({ token, message, configuration? }) -> { task } | { message }`
-  — send a message to a peer, creating or continuing a task; returns the task or
-  a direct message reply. `message.parts` is a typed `Part` list
-  (`TextPart | FilePart | DataPart`).
-- `a2a.message.stream({ token, message }) -> { task }` — like `send`, and the
-  caller then receives `a2a.task.event` notifications for the task.
-- `a2a.tasks.get({ token, id, historyLength? }) -> { task }` — read a durable
-  task and its bounded message history.
-- `a2a.tasks.cancel({ token, id }) -> { task }` — cancel a task the caller owns;
-  the task moves to the terminal `canceled` state.
-- `a2a.tasks.status({ token, id, state, message? }) -> { task }` — drive a task
-  to a new `state` (an A2ATaskState: the completion / failure / interactive-pause
-  path). The broker validates the transition against the task-state table,
-  rejecting moves out of a terminal state with `A2A_TASK_TERMINAL` and illegal
-  jumps with `A2A_INVALID_TRANSITION`. An optional `message` (an A2A Message) is
-  stamped with the caller's `from`/`contextId` (broker-owned provenance, never
-  trusted from the client) and appended to task history. On success it emits an
-  `a2a.task.event` (and, for a terminal state with a push config, an `a2a.push`).
-- `a2a.tasks.resubscribe({ token, id }) -> { task }` — re-attach to a task's
-  event stream after a disconnect.
-- `a2a.tasks.pushNotificationConfig.set({ token, taskId, config }) -> { config }`
-  — set the host-owned push config for a task.
-- `a2a.tasks.pushNotificationConfig.get({ token, taskId }) -> { config | null }`
-  — read the current push config, or `null` when none is set.
-
-Task states are `submitted, working, input-required, auth-required, completed,
-canceled, failed, rejected`; the last four are terminal and never transition
-again. The broker enforces legal transitions. Each `Task` carries both
-`agentName` (the worker that serves it) and `requesterName` (the peer id of the
-agent that requested the task — the sender of the first message).
-
-Two host→client JSON-RPC notifications carry task updates:
-
-- `a2a.task.event` — `{ recipient, contextId, event }`, where `event` is a
-  `TaskStatusUpdateEvent` or `TaskArtifactUpdateEvent`. Routing is
-  counterpart-based: task creation addresses the new task to the worker
-  (`agentName`); `a2a.message.send` on an existing task, `a2a.tasks.status`, and
-  `a2a.tasks.cancel` address the event to the counterpart of the caller (a
-  worker's reply or completion wakes the requester; a requester's follow-up
-  wakes the worker); `a2a.tasks.resubscribe` re-emits to the caller itself. So
-  `recipient` is the peer id the event is meant to wake, not always the task's
-  worker.
-- `a2a.push` — `{ recipient, contextId, taskId, token?, status }`, delivered for
-  tasks with a push config; its `recipient` follows the same counterpart
-  routing.
-
-A2A errors use JSON-RPC numeric code `1400` with `data.errorCode` one of
-`A2A_UNKNOWN_TOKEN`, `A2A_UNKNOWN_AGENT`, `A2A_UNKNOWN_TASK`,
-`A2A_CROSS_CONTEXT_DENIED`, `A2A_INVALID_TRANSITION`, `A2A_TASK_TERMINAL`,
-`A2A_SEND_CAP`, `A2A_NO_PEERS`, `A2A_PAYLOAD_TOO_LARGE`. Bounds:
-`A2A_MAX_TEXT_CHARS = 16000`, `A2A_MAX_FILE_BYTES = 20MB`,
-`A2A_MAX_TASK_HISTORY = 256`, `A2A_MAX_TASKS_PER_CONTEXT = 128`,
-`A2A_MAX_SENDS_PER_RUN = 200`, `A2A_MAX_STREAM_WAIT_SECONDS = 120`,
-`A2A_DEFAULT_STREAM_WAIT_SECONDS = 30`.
 
 ## 4a. Notification contracts (protocol v4)
 
@@ -527,7 +503,7 @@ type ToolsExecuteParams = {
   expectedCommandShellId?: CommandShellId
   /** Bash only: dialect pinned by the same runtime turn. */
   expectedCommandShellDialect?: "powershell" | "cmd" | "posix"
-  /** Bash only: host default 60000; accepted override 1000..300000. */
+  /** Bash only: host default 60000; accepted override 1000..21600000. */
   timeoutMs?: number
 }
 ```

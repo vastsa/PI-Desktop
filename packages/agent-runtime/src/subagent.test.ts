@@ -344,126 +344,7 @@ describe("SubagentRun watchdogs", () => {
     return { abort };
   }
 
-  it("times out after inactivity and keeps the partial report", async () => {
-    vi.useFakeTimers();
-    try {
-      const { run } = createRun({
-        definition: definition({
-          idleTimeoutSeconds: 10,
-          maxDurationSeconds: 60,
-        }),
-      });
-      const { abort } = holdAgent(run, () => {
-        run.handleEvent({ type: "turn_start" });
-        run.handleEvent({
-          type: "message_start",
-          message: assistantMessage({
-            content: [{ type: "text", text: "Partial findings" }],
-          }),
-        });
-      });
-
-      const resultPromise = run.run();
-      await vi.advanceTimersByTimeAsync(9_999);
-      expect(abort).not.toHaveBeenCalled();
-      await vi.advanceTimersByTimeAsync(1);
-      const result = await resultPromise;
-
-      expect(result.status).toBe("timed_out");
-      expect(result.error).toEqual({
-        code: "SUBAGENT_IDLE_TIMEOUT",
-        message: "The subagent produced no activity for 10 seconds.",
-      });
-      expect(result.report).toContain("Partial findings");
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("keeps a slow but streaming delegate alive past the idle window", async () => {
-    vi.useFakeTimers();
-    try {
-      const { run } = createRun({
-        definition: definition({
-          idleTimeoutSeconds: 10,
-          maxDurationSeconds: 600,
-        }),
-      });
-      const { abort } = holdAgent(run, () => {
-        run.handleEvent({ type: "turn_start" });
-        run.handleEvent({
-          type: "message_start",
-          message: assistantMessage({ content: [{ type: "text", text: "a" }] }),
-        });
-      });
-
-      const resultPromise = run.run();
-      // One streamed token every 9s, with no other event between them: slow,
-      // but never silent for a full idle window.
-      let text = "a";
-      for (let tick = 0; tick < 6; tick += 1) {
-        await vi.advanceTimersByTimeAsync(9_000);
-        text += "a";
-        run.handleEvent({
-          type: "message_update",
-          message: assistantMessage({ content: [{ type: "text", text }] }),
-          assistantMessageEvent: { type: "text_delta", delta: "a" },
-        });
-      }
-      expect(abort).not.toHaveBeenCalled();
-
-      // Silence alone trips it.
-      await vi.advanceTimersByTimeAsync(10_000);
-      const result = await resultPromise;
-      expect(result.status).toBe("timed_out");
-      expect(result.error?.code).toBe("SUBAGENT_IDLE_TIMEOUT");
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("pauses the idle watchdog while a tool is executing", async () => {
-    vi.useFakeTimers();
-    try {
-      const { run } = createRun({
-        definition: definition({
-          idleTimeoutSeconds: 10,
-          maxDurationSeconds: 60,
-        }),
-      });
-      const { abort } = holdAgent(run, () => {
-        run.handleEvent({ type: "turn_start" });
-        run.handleEvent({
-          type: "tool_execution_start",
-          toolCallId: "long-tool",
-          toolName: "Bash",
-          args: { command: "long-running" },
-        });
-      });
-
-      const resultPromise = run.run();
-      await vi.advanceTimersByTimeAsync(20_000);
-      expect(abort).not.toHaveBeenCalled();
-
-      run.handleEvent({
-        type: "tool_execution_end",
-        toolCallId: "long-tool",
-        result: { content: [{ type: "text", text: "done" }] },
-        isError: false,
-      });
-      await vi.advanceTimersByTimeAsync(9_999);
-      expect(abort).not.toHaveBeenCalled();
-      await vi.advanceTimersByTimeAsync(1);
-      const result = await resultPromise;
-
-      expect(result.status).toBe("timed_out");
-      expect(result.error?.code).toBe("SUBAGENT_IDLE_TIMEOUT");
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("enforces the total duration limit during tool execution", async () => {
+  it("does not idle- or duration-timeout a silent or long-running delegate", async () => {
     vi.useFakeTimers();
     try {
       const { run } = createRun({
@@ -483,13 +364,11 @@ describe("SubagentRun watchdogs", () => {
       });
 
       const resultPromise = run.run();
-      await vi.advanceTimersByTimeAsync(19_999);
+      await vi.advanceTimersByTimeAsync(60_000);
       expect(abort).not.toHaveBeenCalled();
-      await vi.advanceTimersByTimeAsync(1);
+      (abort as unknown as () => void)();
       const result = await resultPromise;
-
-      expect(result.status).toBe("timed_out");
-      expect(result.error?.code).toBe("SUBAGENT_DURATION_TIMEOUT");
+      expect(result.status).not.toBe("timed_out");
     } finally {
       vi.useRealTimers();
     }

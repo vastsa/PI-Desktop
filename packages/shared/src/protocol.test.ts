@@ -24,9 +24,9 @@ import {
 } from "./index.js";
 
 describe("Plan protocol contracts", () => {
-  it("uses protocol v10/schema v12 and exposes the plan, schedule, and shell channels", () => {
-    expect(PROTOCOL_VERSION).toBe(10);
-    expect(SCHEMA_VERSION).toBe(12);
+  it("uses protocol v11/schema v13 and exposes the plan, schedule, and shell channels", () => {
+    expect(PROTOCOL_VERSION).toBe(11);
+    expect(SCHEMA_VERSION).toBe(13);
     expect(IPC_WHITELIST.has(IPC.invoke.plansPending)).toBe(true);
     expect(IPC_WHITELIST.has(IPC.invoke.plansResolve)).toBe(true);
     expect(IPC_WHITELIST.has(IPC.event.plansChanged)).toBe(true);
@@ -44,6 +44,14 @@ describe("Plan protocol contracts", () => {
     expect(IPC_WHITELIST.has(IPC.invoke.fsReadImageDataUrl)).toBe(true);
     expect(IPC_WHITELIST.has(IPC.invoke.windowSetWorkPanelChatWidth)).toBe(true);
     expect(IPC_WHITELIST.has(IPC.event.windowWorkPanelResize)).toBe(true);
+    expect(IPC.invoke.appOpenFeedback).toBe("pi-desktop/app/openFeedback");
+    expect(IPC_WHITELIST.has(IPC.invoke.appOpenFeedback)).toBe(true);
+    expect(IPC.invoke.fsOpen).toBe("pi-desktop/fs/open");
+    expect(IPC_WHITELIST.has(IPC.invoke.fsOpen)).toBe(true);
+    expect(IPC.invoke.statsGetTokenUsageHistory).toBe(
+      "pi-desktop/stats/getTokenUsageHistory",
+    );
+    expect(IPC_WHITELIST.has(IPC.invoke.statsGetTokenUsageHistory)).toBe(true);
   });
 
   it("exposes the vendor-account OAuth channels through the preload whitelist", () => {

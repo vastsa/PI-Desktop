@@ -1,16 +1,16 @@
 /**
  * One form to add or edit an AI service.
  *
- * Name, base URL and key are entered together, and the model list comes from
- * the service's own endpoint (`useProviderModels`) rather than from a browsable
- * catalog. models.dev only enriches the rows the service returned, which is why
- * context/output limits need no manual entry on the common path. Choosing among
- * those rows is `ModelSelectionPanes`, shared with the vendor account editor.
+ * Named services: pick a vendor and paste a key. Custom: name, URL, key and
+ * API format on the common path. Models come from the service endpoint.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   API_STYLES,
+  NAMED_ENDPOINT_PRESETS,
+  OPENCODE_GO_API_STYLE,
+  matchNamedPreset,
   type CatalogApiStyle,
   type ModelBinding,
   type ProviderPublic,
@@ -19,6 +19,7 @@ import { api } from "../../lib/api";
 import { Button, Field, Input, Select } from "../ui";
 import { useProviderModels } from "./useProviderModels";
 import { ModelSelectionPanes, useModelSelection } from "./ModelSelectionPanes";
+import { CUSTOM_SERVICE, ServicePicker } from "./ServicePicker";
 
 const API_STYLE_LABEL_KEYS: Record<CatalogApiStyle, string> = {
   chat_completions: "settings.apiStyleChatCompletions",
@@ -30,11 +31,53 @@ const API_STYLE_LABEL_KEYS: Record<CatalogApiStyle, string> = {
   opencode_go: "settings.apiStyleOpenCodeGo",
 };
 
+function serviceIdFor(provider?: ProviderPublic | null): string {
+  if (!provider) return "";
+  return (
+    matchNamedPreset({
+      vendorKey: provider.vendorKey,
+      baseUrl: provider.baseUrl,
+      apiStyle: provider.apiStyle,
+    })?.id ?? CUSTOM_SERVICE
+  );
+}
+
+function initialName(provider?: ProviderPublic | null): string {
+  return (
+    matchNamedPreset({
+      vendorKey: provider?.vendorKey,
+      baseUrl: provider?.baseUrl,
+      apiStyle: provider?.apiStyle,
+    })?.name ??
+    provider?.name ??
+    ""
+  );
+}
+
+function initialBaseUrl(provider?: ProviderPublic | null): string {
+  return (
+    matchNamedPreset({
+      vendorKey: provider?.vendorKey,
+      baseUrl: provider?.baseUrl,
+      apiStyle: provider?.apiStyle,
+    })?.baseUrl ??
+    provider?.baseUrl ??
+    ""
+  );
+}
+
+function endpointHost(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.host}${parsed.pathname.replace(/\/+$/, "")}`;
+  } catch {
+    return url;
+  }
+}
+
 export type ProviderSetupDialogProps = {
-  /** Existing row being edited; absent creates a new service. */
   provider?: ProviderPublic | null;
   onClose: () => void;
-  /** Called after a successful create/update so the caller can refresh. */
   onSaved: (provider: ProviderPublic, models: ModelBinding[]) => void;
 };
 
@@ -45,19 +88,36 @@ export function ProviderSetupDialog({
 }: ProviderSetupDialogProps) {
   const { t } = useTranslation();
   const editing = !!provider;
-  const [name, setName] = useState(provider?.name ?? "");
-  const [baseUrl, setBaseUrl] = useState(provider?.baseUrl ?? "");
+  const apiKeyRef = useRef<HTMLInputElement>(null);
+  const [service, setService] = useState(() => serviceIdFor(provider));
+  const [name, setName] = useState(() => initialName(provider));
+  const [baseUrl, setBaseUrl] = useState(() => initialBaseUrl(provider));
   const [apiKey, setApiKey] = useState("");
   const [apiStyle, setApiStyle] = useState<CatalogApiStyle>(
     (provider?.apiStyle as CatalogApiStyle) ?? "chat_completions",
   );
+  const [advanced, setAdvanced] = useState(false);
   const [models, setModels] = useState<ModelBinding[]>(provider?.models ?? []);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [error, setError] = useState("");
   const [testResult, setTestResult] = useState("");
 
-  const discovery = useProviderModels(true, { baseUrl, apiKey, apiStyle }, provider);
+  const namedPreset = NAMED_ENDPOINT_PRESETS.find((preset) => preset.id === service);
+  const named = Boolean(namedPreset);
+  const custom = service === CUSTOM_SERVICE;
+  const resolvedName = namedPreset ? name.trim() || namedPreset.name : name;
+  const resolvedBaseUrl = namedPreset?.baseUrl ?? baseUrl;
+  const resolvedApiStyle: CatalogApiStyle = namedPreset?.apiStyle ?? apiStyle;
+  // Named add-path waits for a key so picking a vendor does not 401-probe.
+  // Editing reuses the stored secret. Custom still probes a valid URL alone.
+  const discoveryActive =
+    Boolean(service) && (custom || Boolean(apiKey.trim()) || Boolean(provider));
+  const discovery = useProviderModels(
+    discoveryActive,
+    { baseUrl: resolvedBaseUrl, apiKey, apiStyle: resolvedApiStyle },
+    provider,
+  );
   const selection = useModelSelection(discovery, models, setModels);
 
   useEffect(() => {
@@ -68,6 +128,32 @@ export function ProviderSetupDialog({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose, saving]);
+
+  const nameRef = useRef<HTMLInputElement>(null);
+  const focusAfterServiceChange = (next: string) => {
+    window.setTimeout(() => {
+      if (next === CUSTOM_SERVICE) nameRef.current?.focus();
+      else if (next) apiKeyRef.current?.focus();
+    }, 0);
+  };
+
+  const onServiceChange = (next: string) => {
+    const previous = namedPreset;
+    setService(next);
+    const preset = NAMED_ENDPOINT_PRESETS.find((item) => item.id === next);
+    if (!preset) {
+      if (next === CUSTOM_SERVICE && apiStyle === OPENCODE_GO_API_STYLE) {
+        setApiStyle("chat_completions");
+      }
+      focusAfterServiceChange(next);
+      return;
+    }
+    const currentName = name.trim();
+    if (!currentName || currentName === previous?.name) setName(preset.name);
+    setBaseUrl(preset.baseUrl);
+    setApiStyle(preset.apiStyle);
+    focusAfterServiceChange(next);
+  };
 
   const testConnection = async () => {
     if (!provider) return;
@@ -95,11 +181,9 @@ export function ProviderSetupDialog({
   };
 
   const save = async () => {
-    const providerName = name.trim();
-    const providerBaseUrl = baseUrl.trim();
+    const providerName = resolvedName.trim();
+    const providerBaseUrl = resolvedBaseUrl.trim();
     if (!providerName || !providerBaseUrl || models.length === 0) return;
-    // Only levels the model publishes are stored; the runtime would drop the
-    // rest while this dialog kept counting them as enabled.
     const persisted = selection.bindingsToPersist;
     setSaving(true);
     setError("");
@@ -108,22 +192,18 @@ export function ProviderSetupDialog({
         const result = await api.updateProvider({
           id: provider.id,
           name: providerName,
+          vendorKey: namedPreset?.vendorKey ?? "custom",
           baseUrl: providerBaseUrl,
           defaultModelId: persisted[0]?.id,
           models: persisted,
-          apiStyle,
-          // An empty key on edit means "keep the stored one", so the secret is
-          // only sent when the user actually typed a new value.
+          apiStyle: resolvedApiStyle,
           ...(apiKey ? { secretValue: apiKey } : {}),
         });
         onSaved(result.provider ?? provider, persisted);
       } else {
         const result = await api.createProvider({
           name: providerName,
-          // Only the main process knows how a base URL maps onto a models.dev
-          // provider key, and no renderer-safe mapping is exported; the host
-          // resolves the catalog identity from baseUrl when it enriches models.
-          vendorKey: "custom",
+          vendorKey: namedPreset?.vendorKey ?? "custom",
           type: "openai_compatible",
           protocol: "openai_compatible",
           baseUrl: providerBaseUrl,
@@ -131,7 +211,7 @@ export function ProviderSetupDialog({
           defaultModelId: persisted[0]?.id,
           models: persisted,
           secretValue: apiKey || undefined,
-          apiStyle,
+          apiStyle: resolvedApiStyle,
         });
         onSaved(result.provider, persisted);
       }
@@ -142,7 +222,12 @@ export function ProviderSetupDialog({
     }
   };
 
-  const canSave = !saving && !!name.trim() && !!baseUrl.trim() && models.length > 0;
+  const canSave =
+    !saving &&
+    !!service &&
+    !!resolvedName.trim() &&
+    !!resolvedBaseUrl.trim() &&
+    models.length > 0;
 
   return (
     <div
@@ -164,12 +249,6 @@ export function ProviderSetupDialog({
           <h3 id="provider-setup-title" className="provider-setup-title">
             {editing ? t("settings.editProviderTitle") : t("settings.addProviderTitle")}
           </h3>
-          {/*
-            The dialog's actions live here instead of a footer bar, so Save sits
-            where the close affordance used to be. Cancel keeps the leftmost slot
-            of the group so a stray click near the corner discards rather than
-            saves, and Escape still closes the dialog.
-          */}
           <div className="provider-setup-head-actions">
             {provider ? (
               <Button
@@ -196,59 +275,128 @@ export function ProviderSetupDialog({
         </div>
 
         <div className="provider-setup-body">
-          {/* A save failure belongs next to the fields, not under the panes. */}
           {error ? <div className="provider-setup-error">{error}</div> : null}
 
           <div className="provider-setup-credentials">
-            <div className="provider-setup-fields">
-              <Field label={t("settings.name")}>
-                <Input
-                  value={name}
-                  autoFocus
-                  onChange={(event) => setName(event.target.value)}
-                />
-              </Field>
+            <div
+              className={
+                named
+                  ? "provider-setup-fields is-named"
+                  : custom
+                    ? "provider-setup-fields is-custom"
+                    : "provider-setup-fields is-empty"
+              }
+            >
+              <div className="provider-setup-service">
+                <Field label={t("settings.service")}>
+                  <ServicePicker
+                    value={service}
+                    autoFocus={!named && !custom}
+                    disabled={saving}
+                    onChange={onServiceChange}
+                  />
+                </Field>
+              </div>
 
-              <Field label={t("settings.baseUrl")}>
-                <Input
-                  value={baseUrl}
-                  className="font-mono text-sm-plus"
-                  placeholder="https://api.example.com/v1"
-                  onChange={(event) => setBaseUrl(event.target.value)}
-                />
-              </Field>
+              {named ? (
+                <>
+                  <Field
+                    label={t("settings.apiKey")}
+                    hint={editing ? t("settings.apiKeyKeepHint") : undefined}
+                  >
+                    <Input
+                      ref={apiKeyRef}
+                      type="password"
+                      value={apiKey}
+                      placeholder="sk-…"
+                      className="font-mono text-sm-plus"
+                      autoComplete="off"
+                      autoFocus
+                      onChange={(event) => setApiKey(event.target.value)}
+                    />
+                  </Field>
+                  {resolvedBaseUrl ? (
+                    <div className="provider-setup-host" title={resolvedBaseUrl}>
+                      {endpointHost(resolvedBaseUrl)}
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
 
-              <Field
-                label={t("settings.apiKey")}
-                hint={editing ? t("settings.apiKeyKeepHint") : t("settings.apiKeyHint")}
-              >
-                <Input
-                  type="password"
-                  value={apiKey}
-                  placeholder="sk-…"
-                  className="font-mono text-sm-plus"
-                  autoComplete="off"
-                  onChange={(event) => setApiKey(event.target.value)}
-                />
-              </Field>
-
-              {/*
-                Derived from the endpoint, but a plain fourth field: a whole
-                disclosure for one select was more chrome than the setting.
-              */}
-              <Field label={t("settings.apiStyle")} hint={t("settings.apiStyleDerived")}>
-                <Select
-                  value={apiStyle}
-                  onChange={(event) => setApiStyle(event.target.value as CatalogApiStyle)}
-                >
-                  {API_STYLES.map((style) => (
-                    <option key={style} value={style}>
-                      {t(API_STYLE_LABEL_KEYS[style])}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
+              {custom ? (
+                <>
+                  <Field label={t("settings.name")}>
+                    <Input
+                      ref={nameRef}
+                      value={name}
+                      autoFocus
+                      onChange={(event) => setName(event.target.value)}
+                    />
+                  </Field>
+                  <Field label={t("settings.baseUrl")}>
+                    <Input
+                      value={baseUrl}
+                      className="font-mono text-sm-plus"
+                      placeholder="https://api.example.com/v1"
+                      onChange={(event) => setBaseUrl(event.target.value)}
+                    />
+                  </Field>
+                  <Field
+                    label={t("settings.apiKey")}
+                    hint={editing ? t("settings.apiKeyKeepHint") : undefined}
+                  >
+                    <Input
+                      ref={apiKeyRef}
+                      type="password"
+                      value={apiKey}
+                      placeholder="sk-…"
+                      className="font-mono text-sm-plus"
+                      autoComplete="off"
+                      onChange={(event) => setApiKey(event.target.value)}
+                    />
+                  </Field>
+                  <Field label={t("settings.apiStyle")}>
+                    <Select
+                      value={apiStyle}
+                      onChange={(event) =>
+                        setApiStyle(event.target.value as CatalogApiStyle)
+                      }
+                    >
+                      {API_STYLES.filter((style) => style !== OPENCODE_GO_API_STYLE).map(
+                        (style) => (
+                          <option key={style} value={style}>
+                            {t(API_STYLE_LABEL_KEYS[style])}
+                          </option>
+                        ),
+                      )}
+                    </Select>
+                  </Field>
+                </>
+              ) : null}
             </div>
+
+            {named ? (
+              <>
+                <button
+                  type="button"
+                  className="provider-setup-advanced-toggle"
+                  aria-expanded={advanced}
+                  onClick={() => setAdvanced((open) => !open)}
+                >
+                  {t("settings.advanced")}
+                </button>
+                {advanced ? (
+                  <div className="provider-setup-advanced">
+                    <Field label={t("settings.name")}>
+                      <Input
+                        value={name}
+                        onChange={(event) => setName(event.target.value)}
+                      />
+                    </Field>
+                  </div>
+                ) : null}
+              </>
+            ) : null}
 
             {testResult ? (
               <div className="provider-credential-test">

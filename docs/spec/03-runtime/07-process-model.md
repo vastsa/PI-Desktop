@@ -71,7 +71,10 @@ Supervision parameters (implemented in Electron main):
   generation; stale generation requests and notifications are rejected before
   they reach the current bridge.
 - Host persistence appends are buffered in an Electron-main-owned outbox while
-  the host is unavailable and flushed sequentially after a new handshake.
+  the host is unavailable and flushed sequentially after a new handshake. A
+  missing sessions row is restored from the live transcript (or created as a
+  stub) before those appends apply; deleting a session drops its outbox
+  entries (D318).
 - Host-core's stdin/stdout control path uses one dedicated OS thread per
   direction rather than Tokio's dynamic blocking pool. Transient pipe resource
   errors are retried; control-thread creation failures are surfaced as a boot
@@ -106,7 +109,11 @@ Supervision parameters (implemented in Electron main):
 ## 5. Shutdown order
 
 1. Reject new prompts
-2. Abort active turns
+2. Flush the in-flight reply checkpoints, then abort active turns through the
+   sidecar and wait, bounded (2 s total), for their aborted final rows to
+   drain through the persistence outbox while host-core is still alive (D299).
+   An idle quit still awaits the outbox. The next handshake awaits any
+   leftover drain before the renderer can `session.get` (D327).
 3. Interrupt pending/queued/running Plan and Goal work and reject late responses
 4. Unload plugins
 5. Stop Node agent sidecar
@@ -114,6 +121,13 @@ Supervision parameters (implemented in Electron main):
 7. Stop Rust host
 8. Dispose update polling
 9. Close windows / exit
+
+A quit that runs out of its budget logs `quit before streaming replies settled`
+and proceeds; the next host boot promotes whatever checkpoint remains. An
+unexpected sidecar exit takes the same recovery path immediately: the last
+checkpoint of every running session is flushed and `session.endTurn` is asked
+to `recoverInflight`, so the streamed text becomes the turn's `aborted` row
+instead of vanishing with the process.
 
 Minimizing the main window is a resident-shell action, not an application
 shutdown. On Windows/Linux, explicit application minimize actions use the

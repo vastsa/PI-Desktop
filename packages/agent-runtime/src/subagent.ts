@@ -8,15 +8,15 @@
  * containment path as the parent's.
  *
  * Two boundaries define the design:
- * - The parent's model context only ever gains the delegate's final report.
- *   Child messages and tool rows are emitted for the transcript and persisted
- *   for review, but the session runtime filters them out when it rebuilds
- *   model context.
+ * - The parent's model context only ever gains the delegate's final report
+ *   (and a one-line heartbeat while it runs). Child messages and tool rows
+ *   are emitted for the transcript and persisted for review, but the session
+ *   runtime filters them out when it rebuilds model context.
  * - A delegate's lifecycle never reaches Electron main's turn handling. It
- *   runs in the background under the session runtime (ADR 0089): `Task`
- *   starts it and returns, `TaskWait` converges on it, and its termination —
- *   success, failure, cap, abort, or timeout — collapses into the `TaskWait` result, so
- *   the parent turn stays the only thing that can end a turn.
+ *   runs in the background under the session runtime (ADR 0089 / D328):
+ *   `Task` starts it and returns, `TaskWait` may converge early, and when it
+ *   finishes the runtime delivers the report to the parent even if the parent
+ *   already stopped calling tools. Only user Stop or `TaskStop` aborts it.
  */
 
 import { randomUUID } from "node:crypto";
@@ -30,17 +30,16 @@ import {
 } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import {
+  addUsage,
   DEFAULT_SUBAGENT_IDLE_TIMEOUT_SECONDS,
   DEFAULT_SUBAGENT_MAX_DURATION_SECONDS,
   subagentCanMutate,
+  type AgentEventEnvelope,
+  type MessageUsage,
   type SubagentDefinition,
   type SubagentRunStatus as SharedSubagentRunStatus,
-} from "@pi-desktop/shared";
-import type {
-  AgentEventEnvelope,
-  MessageUsage,
-  ThinkingLevel,
-  UiMessage,
+  type ThinkingLevel,
+  type UiMessage,
 } from "@pi-desktop/shared";
 import { classifyAgentError } from "./agent-errors.js";
 import {
@@ -151,7 +150,7 @@ export function composeSubagentSystemPrompt(options: {
     subagentCanMutate(definition)
       ? "You may change files, but only the ones the task is about; leave everything else untouched."
       : "You have no tools that change files or run commands, so never report an edit you could not have made.",
-    "Your final message is the only thing the main agent receives — nothing else you write reaches it. Make it self-contained: what you did, what you found with exact paths and line numbers, and anything you could not finish.",
+    "Your final message is the report the main agent receives when you finish. Make it self-contained: what you did, what you found with exact paths and line numbers, and anything you could not finish.",
     "Keep the report tight. Report findings, not narration, and never pad it with a summary of your own process.",
   ].join("\n");
   return [framing, definition.prompt, ...(options.guidance ?? [])]
@@ -169,37 +168,7 @@ function boundedReport(value: string): string {
   return `${text.slice(0, head)}${marker}${text.slice(-tail)}`;
 }
 
-function addUsage(
-  total: MessageUsage | undefined,
-  next: MessageUsage | undefined,
-): MessageUsage | undefined {
-  if (!next) return total;
-  if (!total) return next;
-  return {
-    inputTokens: total.inputTokens + next.inputTokens,
-    outputTokens: total.outputTokens + next.outputTokens,
-    ...(total.cacheReadTokens !== undefined || next.cacheReadTokens !== undefined
-      ? {
-          cacheReadTokens:
-            (total.cacheReadTokens ?? 0) + (next.cacheReadTokens ?? 0),
-        }
-      : {}),
-    ...(total.cacheWriteTokens !== undefined ||
-    next.cacheWriteTokens !== undefined
-      ? {
-          cacheWriteTokens:
-            (total.cacheWriteTokens ?? 0) + (next.cacheWriteTokens ?? 0),
-        }
-      : {}),
-    ...(total.reasoningTokens !== undefined || next.reasoningTokens !== undefined
-      ? {
-          reasoningTokens:
-            (total.reasoningTokens ?? 0) + (next.reasoningTokens ?? 0),
-        }
-      : {}),
-    totalTokens: total.totalTokens + next.totalTokens,
-  };
-}
+export { addUsage };
 
 /** One delegate execution. Instances are single-use. */
 export class SubagentRun {
@@ -451,19 +420,11 @@ export class SubagentRun {
     });
   }
 
-  private startWatchdogs(): void {
-    if (this.watchdogsStarted) return;
-    this.watchdogsStarted = true;
-    this.durationTimer = setTimeout(
-      () =>
-        this.timeout(
-          "SUBAGENT_DURATION_TIMEOUT",
-          `The subagent exceeded its ${this.maxDurationSeconds()}-second total duration limit.`,
-        ),
-      this.maxDurationSeconds() * 1000,
-    );
-    this.armIdleTimer();
-  }
+  /**
+   * Idle and duration watchdogs are withdrawn (D328). Stopping a delegate is
+   * the parent agent's `TaskStop` or the user's Stop, not a timer.
+   */
+  private startWatchdogs(): void {}
 
   private stopWatchdogs(): void {
     if (!this.watchdogsStarted) return;

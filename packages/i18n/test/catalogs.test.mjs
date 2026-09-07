@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import {
+  catalogs,
   en,
   flattenCatalog,
+  listedLocales,
   resolveLocale,
+  supportedLocales,
   zhCN,
-} from "../dist/index.js";
+} from "../src/index.ts";
 
 function placeholders(value) {
   return [...value.matchAll(/{{\s*([^},\s]+)[^}]*}}/g)]
@@ -13,18 +16,19 @@ function placeholders(value) {
     .sort();
 }
 
-test("shipped catalogs have identical keys and interpolation variables", () => {
-  const english = flattenCatalog(en);
-  const chinese = flattenCatalog(zhCN);
+const english = flattenCatalog(en);
 
-  assert.deepEqual(Object.keys(chinese).sort(), Object.keys(english).sort());
-  for (const key of Object.keys(english)) {
-    assert.deepEqual(placeholders(chinese[key]), placeholders(english[key]), key);
+test("every shipped catalog matches English keys and interpolation variables", () => {
+  for (const [id, catalog] of Object.entries(catalogs)) {
+    const flat = flattenCatalog(catalog);
+    assert.deepEqual(Object.keys(flat).sort(), Object.keys(english).sort(), id);
+    for (const key of Object.keys(english)) {
+      assert.deepEqual(placeholders(flat[key]), placeholders(english[key]), `${id} ${key}`);
+    }
   }
 });
 
 test("settings subagent empty-state copy uses a non-conflicting key", () => {
-  const english = flattenCatalog(en);
   const chinese = flattenCatalog(zhCN);
 
   assert.equal(english["settings.subagentsEmpty"], "No subagents of your own yet");
@@ -34,11 +38,11 @@ test("settings subagent empty-state copy uses a non-conflicting key", () => {
 });
 
 test("settings rail labels stay concise and parallel across locales", () => {
-  const english = flattenCatalog(en);
   const chinese = flattenCatalog(zhCN);
   const keys = [
     "general",
     "ai",
+    "usage",
     "shortcuts",
     "instructions",
     "models",
@@ -55,6 +59,7 @@ test("settings rail labels stay concise and parallel across locales", () => {
     [
       "General",
       "AI",
+      "Usage",
       "Shortcuts",
       "Instructions",
       "Models",
@@ -71,6 +76,7 @@ test("settings rail labels stay concise and parallel across locales", () => {
     [
       "常规",
       "AI",
+      "用量",
       "快捷键",
       "指令",
       "模型",
@@ -89,7 +95,6 @@ test("settings rail labels stay concise and parallel across locales", () => {
 });
 
 test("import, project, and temporary-session copy is catalog-backed", () => {
-  const english = flattenCatalog(en);
   for (const key of [
     "nav.temporarySessions",
     "nav.newTemporarySession",
@@ -105,15 +110,43 @@ test("import, project, and temporary-session copy is catalog-backed", () => {
   }
 });
 
-test("locale resolution maps Chinese variants and falls back to English", () => {
+test("locale resolution maps variants onto shipped catalogs and falls back to English", () => {
   assert.equal(resolveLocale("zh-CN"), "zh-CN");
   assert.equal(resolveLocale("zh-TW"), "zh-CN");
+  assert.equal(resolveLocale("zh"), "zh-CN");
   assert.equal(resolveLocale("en-US"), "en");
+  assert.equal(resolveLocale("tr"), "tr");
+  assert.equal(resolveLocale("tr-TR"), "tr");
+  assert.equal(resolveLocale("tr_TR"), "tr");
   assert.equal(resolveLocale(), "en");
+  assert.equal(resolveLocale("fr-FR"), "en");
 });
 
+test("the locale registry lists English first, then other locales by English name", () => {
+  assert.deepEqual(
+    supportedLocales.map((locale) => locale.id),
+    ["en", "zh-CN", "tr"],
+  );
+  assert.deepEqual(
+    listedLocales().map((locale) => locale.id),
+    ["en", "zh-CN", "tr"],
+  );
+  assert.equal(localeInfoNative("tr"), "Türkçe");
+  assert.equal(english["settings.languageSearchPlaceholder"], "Search languages…");
+  assert.equal(english["settings.themeSearchPlaceholder"], "Search themes…");
+  assert.equal(english["settings.languageAutoDesc"], "Currently {{state}}");
+  const turkish = flattenCatalog(catalogs.tr);
+  assert.equal(turkish["settings.language"], "Dil");
+  assert.equal(turkish["settings.languageAuto"], "Sistem dilini kullan");
+  assert.equal(turkish["settings.languageSearchPlaceholder"], "Dil ara…");
+  assert.notEqual(turkish["app.tagline"], english["app.tagline"]);
+});
+
+function localeInfoNative(id) {
+  return supportedLocales.find((locale) => locale.id === id)?.nativeName;
+}
+
 test("inline review cards expose localized accessible labels", () => {
-  const english = flattenCatalog(en);
   const chinese = flattenCatalog(zhCN);
 
   assert.equal(

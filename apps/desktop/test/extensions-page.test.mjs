@@ -7,6 +7,9 @@ import { fileURLToPath } from "node:url";
 import { loadStyles } from "./helpers/styles.mjs";
 import { en } from "../../../packages/i18n/src/locales/en/index.ts";
 import { zhCN } from "../../../packages/i18n/src/locales/zh-CN/index.ts";
+import { tr } from "../../../packages/i18n/src/locales/tr/index.ts";
+
+const catalogs = { en, "zh-CN": zhCN, tr };
 
 const here = dirname(fileURLToPath(import.meta.url));
 const extDir = join(here, "../src/components/extensions");
@@ -56,12 +59,16 @@ function translationKeys(source) {
 test("every active extensions key exists in both catalogs", () => {
   const keys = translationKeys(allSources);
   assert.ok(keys.size > 40, `expected many extensions keys, saw ${keys.size}`);
-  const missing = { en: [], "zh-CN": [] };
+  const missing = Object.fromEntries(Object.keys(catalogs).map((id) => [id, []]));
   for (const key of keys) {
-    if (typeof lookup(en, key) !== "string") missing.en.push(key);
-    if (typeof lookup(zhCN, key) !== "string") missing["zh-CN"].push(key);
+    for (const [id, catalog] of Object.entries(catalogs)) {
+      if (typeof lookup(catalog, key) !== "string") missing[id].push(key);
+    }
   }
-  assert.deepEqual(missing, { en: [], "zh-CN": [] });
+  assert.deepEqual(
+    missing,
+    Object.fromEntries(Object.keys(catalogs).map((id) => [id, []])),
+  );
 });
 
 test("count interpolations carry plural forms in both catalogs", () => {
@@ -73,10 +80,7 @@ test("count interpolations carry plural forms in both catalogs", () => {
   }
   assert.ok(counted.size >= 2, `expected counted keys, saw ${counted.size}`);
   for (const key of counted) {
-    for (const [name, catalog] of [
-      ["en", en],
-      ["zh-CN", zhCN],
-    ]) {
+    for (const [name, catalog] of Object.entries(catalogs)) {
       assert.equal(typeof lookup(catalog, `${key}_one`), "string", `${name} ${key}_one`);
       assert.equal(typeof lookup(catalog, `${key}_other`), "string", `${name} ${key}_other`);
     }

@@ -6,6 +6,10 @@ const transcriptSource = await readFile(
   new URL("../src/components/ChatTranscript.tsx", import.meta.url),
   "utf8",
 );
+const followScrollSource = await readFile(
+  new URL("../src/hooks/use-follow-scroll.ts", import.meta.url),
+  "utf8",
+);
 const storeSource = await readFile(
   new URL("../src/stores/app-store.ts", import.meta.url),
   "utf8",
@@ -30,6 +34,10 @@ const chineseCatalogSource = await readFile(
   new URL("../../../packages/i18n/src/locales/zh-CN/index.ts", import.meta.url),
   "utf8",
 );
+const turkishCatalogSource = await readFile(
+  new URL("../../../packages/i18n/src/locales/tr/index.ts", import.meta.url),
+  "utf8",
+);
 
 test("a delegation card reads its outcome from the lifecycle rows", () => {
   // `Task` returns as soon as the delegate starts, so its own payload says
@@ -37,10 +45,12 @@ test("a delegation card reads its outcome from the lifecycle rows", () => {
   // `completed` the moment the fan-out began.
   assert.match(topologySource, /const DELEGATION_STATUSES = new Set<SubagentOutcome>\(\[\s*\n\s*"running",/);
   assert.match(topologySource, /export function collectDelegationStatuses\(/);
-  // TaskWait/TaskList/TaskStop all report `details.delegations[]`; later rows
-  // settle what earlier ones reported as running.
-  assert.match(topologySource, /const delegations = payload\?\.delegations;/);
+  // TaskWait/TaskList report `details.delegations[]`; TaskStop reports
+  // `details.stopped[]`. Later rows settle what earlier ones reported as running.
+  assert.match(topologySource, /payload\.delegations/);
+  assert.match(topologySource, /payload\.stopped/);
   assert.match(topologySource, /statuses\.set\(id, status\)/);
+  assert.match(topologySource, /turnLive/);
   assert.match(
     topologySource,
     /const settled = statuses\?\.get\(delegationId\);\s*\n\s*if \(settled\) return settled;/,
@@ -50,6 +60,10 @@ test("a delegation card reads its outcome from the lifecycle rows", () => {
   assert.match(
     transcriptSource,
     /const delegationStatuses = turnDelegationStatuses \?\? collectDelegationStatuses\(items\)/,
+  );
+  assert.match(
+    transcriptSource,
+    /collectDelegationStatuses\(turnAllActivityItems, \{ turnLive: isActive \}\)/,
   );
 });
 
@@ -149,10 +163,14 @@ test("memoized activity rows compare delegate runs by their rows", () => {
 });
 
 test("the nested run is visibly one level inside the call", () => {
+  // D297: the run is a soft tile; the collapse rail draws nothing at rest and
+  // only shows its bar as a hover/focus affordance.
+  assert.match(messagesCss, /\.subagent-run \{[^}]*background: var\(--ds-tile\)/);
   assert.match(
     messagesCss,
-    /\.subagent-run > \.disclosure-collapse-rail::before \{[^}]*background: var\(--ds-border-default\)/,
+    /\.disclosure-collapse-rail::before \{[^}]*background: transparent/,
   );
+  assert.doesNotMatch(messagesCss, /\.subagent-run > \.disclosure-collapse-rail::before/);
   assert.match(messagesCss, /\.subagent-run \{[^}]*margin: 2px 0 8px 24px/);
   assert.match(messagesCss, /\.subagent-run-count \{[^}]*margin-inline-start: auto/);
   assert.match(messagesCss, /\.tool-row-agent \{/);
@@ -186,6 +204,7 @@ test("the aggregate label counts, so a lone delegation is not called plural", ()
   for (const [locale, source] of [
     ["en", englishCatalogSource],
     ["zh-CN", chineseCatalogSource],
+    ["tr", turkishCatalogSource],
   ]) {
     for (const key of [
       "subagentsWorking",
@@ -211,7 +230,15 @@ test("the aggregate label counts, so a lone delegation is not called plural", ()
 test("the topology uses semantic low-noise surfaces and responsive connectors", () => {
   assert.match(messagesCss, /\.tool-activity-group\.has-subagents \{/);
   assert.match(messagesCss, /\.subagent-topology \{[^}]*display: grid/);
-  assert.match(messagesCss, /\.subagent-topology-node \{[^}]*var\(--ds-border-default\)/);
+  // D297: nodes are raised tiles on the group's tile, connectors are tinted
+  // bars, and the dotted canvas is gone.
+  assert.match(messagesCss, /\.subagent-topology-node \{[^}]*background: var\(--ds-raised\)/);
+  assert.doesNotMatch(messagesCss, /\.subagent-topology-node \{[^}]*border:/);
+  assert.match(messagesCss, /\.tool-activity-group\.has-subagents \{[^}]*background: var\(--ds-tile\)/);
+  assert.doesNotMatch(messagesCss, /\.tool-activity-group\.has-subagents \{[^}]*border:/);
+  assert.doesNotMatch(messagesCss, /\.subagent-topology \{[^}]*background-image/);
+  assert.match(messagesCss, /\.subagent-topology-connector \{[^}]*background: var\(--ds-tile-deep\)/);
+  assert.match(messagesCss, /\.subagent-topology-node::before \{[^}]*height: 2px/);
   assert.match(messagesCss, /\.subagent-topology-node\.outcome-completed/);
   assert.match(messagesCss, /\.subagent-topology-node\.outcome-failed/);
   assert.match(messagesCss, /\.subagent-topology-node\.outcome-timed-out/);
@@ -246,6 +273,10 @@ test("a delegate's rows scroll in place instead of growing the page (D271)", () 
     messagesCss,
     /\.subagent-run-rows \{[^}]*overscroll-behavior-y: contain/,
   );
+  assert.match(
+    messagesCss,
+    /\.subagent-run-rows \{[^}]*overflow-anchor: none/,
+  );
   // A keyboard user can reach the scroll area the pointer already can.
   assert.match(messagesCss, /\.subagent-run-rows:focus-visible \{/);
   // `.subagent-run` itself must stay unclipped so the rail survives.
@@ -253,4 +284,63 @@ test("a delegate's rows scroll in place instead of growing the page (D271)", () 
   // Every field table is bounded too, so a long roster scrolls as well.
   assert.match(messagesCss, /\.tool-fields \{[^}]*max-height: 260px/);
   assert.match(messagesCss, /\.tool-fields \{[^}]*overflow: auto/);
+});
+
+test("an expanded delegate run follows the latest output while pinned (D302)", () => {
+  // Nested follow is a dedicated hook so the main transcript's history,
+  // veil, and pane-visibility machinery stay out of the run scroller.
+  assert.match(transcriptSource, /function SubagentRunFollow\(/);
+  assert.match(transcriptSource, /const \{[^}]*scrollRef,[^}]*\} = useFollowScroll\(\)/);
+  assert.match(transcriptSource, /<SubagentRunFollow headingId=\{headingId\} items=\{run\.items\} \/>/);
+  assert.match(
+    transcriptSource,
+    /className="subagent-run-rows"[\s\S]*?onScroll=\{handleScroll\}/,
+  );
+  assert.match(transcriptSource, /className="subagent-run-follow"/);
+  assert.match(
+    transcriptSource,
+    /className="jump-latest-btn"[\s\S]*?onClick=\{jumpToLatest\}/,
+  );
+
+  assert.match(followScrollSource, /export function useFollowScroll\(/);
+  assert.match(followScrollSource, /reduceTranscriptScroll\(/);
+  assert.match(followScrollSource, /isRecentScrollGesture\(/);
+  assert.match(
+    followScrollSource,
+    /const followScrollNow = useCallback\(\(\) => \{\s*if \(!pinnedRef\.current\) return;\s*cancelFollowScroll\(\);\s*scrollToBottom\(\);/,
+  );
+  assert.match(followScrollSource, /new ResizeObserver\(followScrollNow\)/);
+  assert.doesNotMatch(
+    followScrollSource,
+    /new ResizeObserver\(scheduleFollowScroll\)/,
+  );
+
+  // The jump control overlays the bounded scroller; overflow stays off
+  // `.subagent-run` so the collapse rail is not clipped.
+  assert.match(messagesCss, /\.subagent-run-follow \{[^}]*position: relative/);
+  assert.match(
+    messagesCss,
+    /\.subagent-run-follow > \.jump-latest-btn \{[^}]*bottom: 8px/,
+  );
+  assert.doesNotMatch(messagesCss, /\.subagent-run \{[^}]*overflow/);
+});
+
+test("the delegation card keeps inset from its tile and stays live off the tail (D319)", () => {
+  // Parent Read/Grep/thinking after a Task fan-out is a later activity part, so
+  // the card is not the turn's live tail while its delegates are still running.
+  assert.match(transcriptSource, /const topologyLive = hasSubagentTopology && subagentSummary\.running > 0/);
+  assert.match(transcriptSource, /const live = isActive \|\| topologyLive/);
+  assert.match(transcriptSource, /delegationTimingBounds\(delegateItems, delegationTimings\)/);
+  assert.match(
+    messagesCss,
+    /\.subagent-topology \{[^}]*padding: 8px 16px 16px/,
+  );
+  assert.match(
+    messagesCss,
+    /\.tool-activity-group\.has-subagents \.tool-activity-header \{[^}]*padding: 10px 16px/,
+  );
+  assert.match(
+    messagesCss,
+    /\.tool-activity-group\.has-subagents \.tool-activity-body > \.tool-row \{[^}]*margin-left: 16px/,
+  );
 });

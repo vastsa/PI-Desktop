@@ -34,16 +34,19 @@ function canDiscover(baseUrl: string): boolean {
   }
   // Discovery is also useful for local/no-auth gateways, so an API key is never
   // required here. A provider can still answer with an auth error, which leaves
-  // the custom-model path available.
+  // the custom-model path available. Named add-path gating happens at the call
+  // site via `active`.
   return true;
 }
 
 /**
  * Discover the models a service publishes while its form is edited.
  *
- * Debounced on baseUrl/apiKey/apiStyle. A saved provider paints its cached list
- * first and then refreshes live; the stored secret is reused when no key is
- * typed (the main process reads the keychain for `providerId`).
+ * Debounced on baseUrl/apiKey/apiStyle. Loading is not painted until that
+ * window elapses, so typing a key or picking a service does not re-render the
+ * panes on every change. A saved provider paints its cached list first and
+ * then refreshes live; the stored secret is reused when no key is typed (the
+ * main process reads the keychain for `providerId`).
  */
 export function useProviderModels(
   active: boolean,
@@ -54,11 +57,17 @@ export function useProviderModels(
   // Only the newest request may commit: a slow reply from an older keystroke
   // must never overwrite a newer result.
   const requestSeq = useRef(0);
+  const endpointRef = useRef<string | null>(null);
 
   const { baseUrl, apiKey, apiStyle } = form;
   const providerId = editingProvider?.id;
 
   useEffect(() => {
+    const endpoint = `${baseUrl.trim()}|${apiStyle}`;
+    const first = endpointRef.current === null;
+    const endpointChanged = !first && endpointRef.current !== endpoint;
+    endpointRef.current = endpoint;
+
     if (!active || !canDiscover(baseUrl)) {
       requestSeq.current += 1;
       setState(IDLE);
@@ -66,9 +75,12 @@ export function useProviderModels(
     }
 
     const requestId = ++requestSeq.current;
-    setState((prev) => ({ status: "loading", models: prev.models }));
+    if (endpointChanged) setState(IDLE);
 
     const run = async () => {
+      if (requestSeq.current !== requestId) return;
+      setState((prev) => ({ status: "loading", models: prev.models }));
+
       let cachedModels: ModelInfo[] = [];
       if (providerId) {
         try {
@@ -127,8 +139,9 @@ export function useProviderModels(
       }
     };
 
-    // An existing provider opens with a known-good config — fetch right away.
-    const immediate = !!providerId && !apiKey;
+    // An existing provider opens with a known-good config — fetch right away
+    // unless the endpoint itself just changed.
+    const immediate = !!providerId && !apiKey && !endpointChanged;
     const timer = setTimeout(() => void run(), immediate ? 0 : FETCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [active, baseUrl, apiKey, apiStyle, providerId]);

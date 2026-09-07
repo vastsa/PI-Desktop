@@ -1,7 +1,7 @@
 # 03. Tools and Permissions
 
 > Decisions applied: D003, D004, D005, D006, D013, D015, D093, D114, D115, D181, D186,
-> D189, D190, D195 (ADR 0057), ADR 0087
+> D189, D190, D195 (ADR 0057), D315, ADR 0087
 
 ## 0. Frozen policy summary
 
@@ -29,8 +29,8 @@ Let the agent get things done, but stay under control by default.
 | `Read` | low | Read files within the workspace; returns line-numbered content and a `[path#TAG]` header |
 | `new_context` | low | Start a new context window at the next turn boundary; takes no parameters and changes no environment state |
 | `Glob` | low | List files by pattern |
-| `Grep` | low | Content search; mints a per-file `tag` |
-| `BrowserPreview` | low | Open a workspace-relative preview in the user-driven Browser panel |
+| `Grep` | low | Content search; uses system `rg` when installed, else in-process; mints a per-file `tag` |
+| `BrowserPreview` | low | Open a workspace-relative preview in the bundled Browser plugin (fails if `pi.browser` is disabled) |
 | `EnterPlanMode` | low | Move the same Agent from Agent to Plan after host validation |
 | `SubmitPlan` | low | Preserve exact Markdown bytes in a new `.pi/plan/*.md` artifact and request approval |
 | `EnterGoalMode` | low | Move the same Agent from Agent to Goal after host validation |
@@ -88,7 +88,10 @@ Native file and search tools enforce distinct path shapes (D208, ADR 0069):
 - `Glob.path` is a directory search root.
 - `Grep.path` may be one file or a directory tree. A directly named file is
   searched without walking siblings, while `include` still filters its base
-  name and every output budget remains unchanged.
+  name and every output budget remains unchanged. Grep prefers a user-installed
+  `rg` on PATH (and the Unix login PATH) and falls back to the in-process
+  searcher when `rg` is missing or fails (D315). The model-facing contract does
+  not change.
 
 Agent mode keeps `Glob`/`Grep` deferred under D185. Each new user prompt resets
 their activation, so directory discovery activates `Glob` through `ToolSearch`
@@ -105,10 +108,10 @@ before the host sees the call (D273):
 
 Both spellings are optional in the schema and the runtime requires exactly one;
 a call naming neither fails with `INVALID_ARGUMENT`. When a call carries both,
-the canonical name wins. `Bash.timeout` accepts up to 3600000 in the schema so a
-millisecond value validates: a value of at least 1000 is read as milliseconds and
-converted to seconds, then clamped to the honoured 300-second ceiling. A value
-between 301 and 999 is still rejected as an out-of-range seconds value.
+the canonical name wins. `Bash.timeout` accepts up to 100000000 in the schema so a
+millisecond value validates: a value above the honoured 21,600-second ceiling
+is read as milliseconds and converted to seconds, then clamped to 21,600
+seconds (D273 / D329). In-range values, including 600 and 1800, are seconds.
 
 - For a durable `sessionId`, `workspaceRoot` is resolved from that session's
   persisted project binding. A path-less temporary session instead binds its
@@ -314,7 +317,7 @@ Host execution baseline:
 - A project-bound session workspace is required
 - Default cwd = the originating session's `workspaceRoot`
 - Confirmation required by default
-- Set a mandatory 60s timeout; accept only a bounded 1s–300s override
+- Set a mandatory 60s timeout; accept a 1s–21,600s override (D329)
 - Stream stdout and stderr separately, then return bounded final output
 - Truncate large output without mixing the two streams
 - No interactive TTY (MVP)
@@ -508,14 +511,12 @@ delegate with `Bash`, `Edit` or `Write` would drive straight through them.
 
 A definition declares the tools its delegate may call, drawn only from the seven
 working tools `Read`, `Glob`, `Grep`, `BrowserPreview`, `Bash`, `Edit` and
-`Write`, plus the peer messaging tool `Peer` (D277, §10.3; its `send`/`inbox`/
-`wait` operations are selected by an `action` parameter, ADR 0140). A
-definition that declares none gets `Read`, `Glob`,
-`Grep`; `tools: "*"` means all seven working tools and no peer tool, since peer
-messaging is opt-in by name. An unrecognized name is dropped with a parse
-warning. Plugin tools, `Skill`, `ToolSearch`, `new_context`, the mode tools and
-`Task` itself are never assignable: a delegate is a bounded file/search/shell
-worker, not a second session.
+`Write`. A definition that declares none gets `Read`, `Glob`, `Grep`;
+`tools: "*"` means all seven working tools. An unrecognized name — including
+the withdrawn `A2A` and `Peer` tools (D326 / ADR 0165) — is dropped with a
+parse warning. Plugin tools, `Skill`, `ToolSearch`, `new_context`, the mode
+tools and `Task` itself are never assignable: a delegate is a bounded
+file/search/shell worker, not a second session.
 
 A delegate's available tools are its definition's, never its session's. It
 cannot gain a tool because the parent has it, and a session cannot lend
@@ -547,32 +548,6 @@ card can say which delegate wants the call (see `04-ux/03-permission-ux.md`
 Session-scoped `allow-session` grants are still per `toolName` and per session:
 one delegate's approval of `Bash` applies to the whole session, including the
 parent and other delegates.
-
-### 10.3 Peer messaging tool scope (D277, ADR 0138, ADR 0140)
-
-`Peer` is the only assignable tool that is **not** a host tool call. It moves
-text between running delegates of one session inside the sidecar, so it touches
-no file, process, or network, carries no `permissionScope`, never reaches
-`tools.execute`, consumes no tool budget, and is never audited as a host call.
-Nothing in §4, §5 or §6 applies to it because there is no resource to gate.
-
-Three scope rules hold instead:
-
-- It is built **per delegate at spawn** and is absent from the session tool
-  catalog, so the parent session can never call it. Delegation lifecycle
-  control stays with the parent's `Task`/`TaskWait`/`TaskList`/`TaskStop`.
-- The sender is **bound by the runtime**, not by the model: the tool closes over
-  its own delegate's agent name, so a delegate cannot spoof a sender or read
-  another delegate's inbox. Recipients are addressed by agent name; delegation
-  ids are never exposed to a delegate.
-- It is **opt-in per definition and default-off**. No builtin declares it. A
-  definition that declares `Peer` but no working tool is refused when `Task`
-  runs, so messaging can never be a delegate's only capability.
-
-Message size, inbox depth, sends per run, and the wait ceiling are bounded
-by the runtime (`02-agent-runtime.md` §5f.2). Peer traffic never enters the
-parent's model context; a delegate's report remains the only thing the parent
-reads.
 
 ## 11. Plugin Tools
 

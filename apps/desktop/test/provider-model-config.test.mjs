@@ -87,11 +87,10 @@ test("token limits are adopted from the published record, never typed by default
   assert.match(pickerSource, /expandedModelId/);
 });
 
-test("the API format stays derived rather than asked for", () => {
-  // It is a plain field in the credential grid now, but it must still explain
-  // that its value is derived, so nobody treats it as a required choice.
-  assert.match(setupSource, /settings\.apiStyleDerived/);
+test("custom API format is a common-path choice, named services skip it", () => {
+  assert.match(setupSource, /settings\.apiStyle/);
   assert.match(setupSource, /API_STYLES/);
+  assert.match(setupSource, /custom \? \(/);
   assert.doesNotMatch(setupSource, /provider-advanced/);
 });
 

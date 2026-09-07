@@ -99,6 +99,7 @@ test("the built-in skill body loads through the same Skill tool", () => {
     mainSrc,
     /loadBuiltinSkillBody\(id\) \?\?\s*\(await loadUserSkillBody\(id, projectPath\)\) \?\?\s*plugins\.loadSkillBody\(id\)/,
   );
+  assert.match(mainSrc, /const userIds = \(await activeUserSkills/);
 });
 
 test("the built-in skill ships as a packaged resource with a dev fallback", () => {

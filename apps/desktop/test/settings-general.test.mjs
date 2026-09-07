@@ -58,6 +58,10 @@ const zhLocaleSource = await readFile(
   new URL("../../../packages/i18n/src/locales/zh-CN/index.ts", import.meta.url),
   "utf8",
 );
+const trLocaleSource = await readFile(
+  new URL("../../../packages/i18n/src/locales/tr/index.ts", import.meta.url),
+  "utf8",
+);
 const mainSource = await readFile(
   new URL("../src/main.tsx", import.meta.url),
   "utf8",
@@ -85,9 +89,10 @@ test("Basics and AI tabs expose their respective app and AI controls", () => {
   const generalSource = settingsPageSource.slice(generalStart, aiStart);
   const aiSource = settingsPageSource.slice(aiStart, shortcutsStart);
 
-  assert.match(generalSource, /settings\.language/);
-  assert.match(generalSource, /settings\.languageAuto/);
-  assert.match(generalSource, /"zh-CN"/);
+  assert.match(generalSource, /<ThemeRow /);
+  assert.match(generalSource, /<LanguageRow /);
+  assert.match(generalSource, /<FontFamilyRow /);
+  assert.doesNotMatch(generalSource, /\(\["auto", "zh-CN", "en"\] as const\)/);
   assert.doesNotMatch(generalSource, /defaultMode: value/);
   assert.doesNotMatch(generalSource, /enterToSend: !settings\.enterToSend/);
   assert.doesNotMatch(generalSource, /settings\.defaultsTitle/);
@@ -107,7 +112,7 @@ test("Basics and AI tabs expose their respective app and AI controls", () => {
 });
 
 test("language persists as part of shared app settings", () => {
-  assert.match(sharedTypesSource, /language\?: "auto" \| "en" \| "zh-CN"/);
+  assert.match(sharedTypesSource, /language\?: "auto" \| "en" \| "zh-CN" \| "tr"/);
   assert.match(sharedTypesSource, /largePasteThreshold\?: number/);
 });
 
@@ -227,6 +232,7 @@ test("OAuth account identity is provider-scoped across IPC and pi-ai", () => {
 test("settings nav icons map each destination to a semantic lucide glyph", () => {
   assert.match(settingsPageSource, /general: <IconSliders/);
   assert.match(settingsPageSource, /ai: <IconSparkles/);
+  assert.match(settingsPageSource, /usage: <IconActivity/);
   assert.match(settingsPageSource, /shortcuts: <IconKeyboard/);
   assert.match(settingsPageSource, /instructions: <IconFileText/);
   assert.match(settingsPageSource, /agent: <IconBot/);
@@ -256,11 +262,13 @@ test("settings nav keeps a flat searchable index with titled visual groups", () 
     assert.match(settingsSearchSource, new RegExp(key.replace(".", "\\.")));
     assert.match(enLocaleSource, new RegExp(`${key.split(".")[1]}:`));
     assert.match(zhLocaleSource, new RegExp(`${key.split(".")[1]}:`));
+    assert.match(trLocaleSource, new RegExp(`${key.split(".")[1]}:`));
   }
   assert.doesNotMatch(settingsSearchSource, /id: "extensions"/);
   const navOrder = [
     "general",
     "ai",
+    "usage",
     "shortcuts",
     "instructions",
     "agent",
@@ -272,9 +280,10 @@ test("settings nav keeps a flat searchable index with titled visual groups", () 
   assert.deepEqual(navOrder, [...navOrder].sort((a, b) => a - b));
   const generalStart = settingsSearchSource.indexOf('id: "general"');
   const aiStart = settingsSearchSource.indexOf('id: "ai"');
+  const usageStart = settingsSearchSource.indexOf('id: "usage"');
   const shortcutsStart = settingsSearchSource.indexOf('id: "shortcuts"');
   const generalEntry = settingsSearchSource.slice(generalStart, aiStart);
-  const aiEntry = settingsSearchSource.slice(aiStart, shortcutsStart);
+  const aiEntry = settingsSearchSource.slice(aiStart, usageStart);
   assert.doesNotMatch(generalEntry, /settings\.defaultsTitle/);
   assert.match(aiEntry, /settings\.defaultsTitle/);
   assert.match(aiEntry, /settings\.commandShell/);
@@ -294,6 +303,7 @@ test("settings rail uses short parallel labels and descriptive page titles", () 
   const navKeys = [
     "settings.nav.general",
     "settings.nav.ai",
+    "settings.nav.usage",
     "settings.nav.shortcuts",
     "settings.nav.instructions",
     "settings.nav.models",
@@ -308,6 +318,7 @@ test("settings rail uses short parallel labels and descriptive page titles", () 
     assert.match(settingsSearchSource, new RegExp(key.replaceAll(".", "\\.")));
     assert.match(enLocaleSource, new RegExp(`${key.split(".").at(-1)}:`));
     assert.match(zhLocaleSource, new RegExp(`${key.split(".").at(-1)}:`));
+    assert.match(trLocaleSource, new RegExp(`${key.split(".").at(-1)}:`));
   }
   assert.match(settingsSearchSource, /titleKey: "settings\.configuration"/);
   assert.match(settingsSearchSource, /titleKey: "settings\.projectArchive"/);

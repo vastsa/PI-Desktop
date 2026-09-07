@@ -6,10 +6,11 @@ import test from "node:test";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-const [composer, api, main, saver, protocol, sidecar] = await Promise.all([
+const [composer, api, main, attachments, saver, protocol, sidecar] = await Promise.all([
   read("../src/components/Composer.tsx"),
   read("../src/lib/api.ts"),
   read("../electron/main/index.ts"),
+  read("../electron/main/prompt-attachments.ts"),
   read("../electron/main/composer-paste.ts"),
   read("../../../packages/shared/src/protocol.ts"),
   read("../../../packages/agent-runtime/src/sidecar.ts"),
@@ -20,29 +21,63 @@ test("composer converts oversized text paste and materializes clipboard files", 
   assert.match(composer, /const text = event\.clipboardData\.getData\("text\/plain"\)/);
   assert.match(composer, /const textLength = Array\.from\(text\)\.length/);
   assert.match(composer, /!files\.length && textLength > largePasteThreshold/);
-  assert.match(composer, /const name = `pasted-text-\$\{crypto\.randomUUID\(\)\.slice\(0, 8\)\}\.txt`/);
+  assert.match(composer, /pasted-text-\$\{crypto\.randomUUID\(\)\.slice\(0, 8\)\}\.txt/);
   assert.match(composer, /mimeType: "text\/plain"/);
-  assert.match(composer, /const token = `@\$\{displayName\}`/);
-  assert.match(composer, /composerDraftCache\.set\(sessionId, nextSnapshot\)/);
-  assert.match(composer, /if \(!files\.length\) return;/);
-  assert.match(composer, /event\.preventDefault\(\);/);
+  // Oversized pastes attach as atomic inline chips: one sentinel character
+  // inserted at the caret inside an editable draft, never an editable
+  // @token that later edits could corrupt or silently drop.
+  assert.doesNotMatch(composer, /const token = `@\$\{displayName\}`/);
+  assert.match(composer, /sourceValue\.slice\(0, selectionStart\) \+/);
+  assert.match(composer, /writeComposerDraft\(sessionId, \{/);
+  assert.match(composer, /if \(isLargeTextPaste \|\| files\.length\) \{/);
   assert.match(composer, /file\.arrayBuffer\(\)/);
   assert.match(
     composer,
     /createFileReference\(file\.path, file\.name, sessionId, \{[\s\S]*kind: file\.kind/,
   );
-  assert.match(composer, /setFileReferences\(\(current\) => \[/);
+  assert.match(composer, /serializeComposerFileReferences\(text, activeFileReferences\)/);
   assert.match(
     composer,
-    /serializeComposerFileReferences\(value, activeFileReferences\)/,
+    /const serializedContent = serializeComposerFileReferences\(text, activeFileReferences\)/,
   );
-  assert.match(
-    composer,
-    /const serializedContent = serializeComposerFileReferences\(value, activeFileReferences\)/,
-  );
-  assert.match(composer, /el\.setSelectionRange\(selectionStart, selectionEnd\)/);
-  assert.doesNotMatch(composer, /formatFileInsert\(file\.path, "file"\)/);
+  // The draft is a contenteditable rich field: sentinels render as atomic
+  // chips and every caret write goes through the DOM-range helper.
+  assert.match(composer, /contentEditable=\{!inputBlocked\}/);
+  assert.match(composer, /function readEditorValue\(/);
+  assert.match(composer, /function setEditorCaret\(/);
+  assert.doesNotMatch(composer, /<textarea/);
+  assert.doesNotMatch(composer, /setSelectionRange\(/);
   assert.match(composer, /await materializeDraftSession\(\)/);
+});
+
+test("chip sentinels stay unique inside the private-use range", () => {
+  const baseLiteral = composer.match(/const CHIP_TOKEN_BASE = (0x[0-9a-f]+);/)?.[1];
+  const endLiteral = composer.match(/const CHIP_TOKEN_END = (0x[0-9a-f]+);/)?.[1];
+  const body = composer.match(
+    /function nextChipToken\(\): string \{[\s\S]*?\n\}/,
+  )?.[0];
+  assert.ok(baseLiteral && endLiteral && body, "sentinel helpers missing");
+
+  // Execute the real arithmetic (not a re-implementation): a past regression
+  // computed `(seq - BASE + 1) % range`, which produced Hangul code points
+  // that rendered as raw garbage text instead of chips.
+  const snippet = [
+    `const CHIP_TOKEN_BASE = ${baseLiteral};`,
+    `const CHIP_TOKEN_END = ${endLiteral};`,
+    "let chipTokenSequence = 0;",
+    body.replace(/: string/g, ""),
+    "return nextChipToken;",
+  ].join("\n");
+  const nextChipToken = new Function(snippet)();
+
+  const seen = new Set();
+  for (let i = 0; i < 128; i += 1) {
+    const token = nextChipToken();
+    const code = token.codePointAt(0) ?? 0;
+    assert.ok(code >= 0xe000 && code <= 0xf8ff, `token ${i} left the PUA range`);
+    assert.ok(!seen.has(token), `token ${i} repeated within a cycle`);
+    seen.add(token);
+  }
 });
 
 test("paste IPC is a typed renderer-to-main bridge", () => {
@@ -63,11 +98,11 @@ test("pasted bytes stay in the session scratch directory", () => {
 });
 
 test("large image attachments avoid whole-file startup reads", () => {
-  assert.match(main, /async function hashFile\(path: string\)/);
-  assert.match(main, /createReadStream\(path\)/);
-  assert.match(main, /const inline = supportsVision && size <= MAX_INLINE_IMAGE_BYTES/);
-  assert.match(main, /await copyFile\(source, target, fsConstants\.COPYFILE_EXCL\)/);
-  assert.doesNotMatch(main, /const bytes = readFileSync\(source\.absolute\)/);
+  assert.match(attachments, /async function hashFile\(path: string\)/);
+  assert.match(attachments, /createReadStream\(path\)/);
+  assert.match(attachments, /const inline = supportsVision && size <= MAX_INLINE_IMAGE_BYTES/);
+  assert.match(attachments, /await copyFile\(source, target, fsConstants\.COPYFILE_EXCL\)/);
+  assert.doesNotMatch(attachments, /const bytes = readFileSync\(source\.absolute\)/);
   assert.match(sidecar, /const size = \(await stat\(canonical\)\)\.size/);
   assert.match(sidecar, /shouldInline && size <= MAX_INLINE_IMAGE_BYTES/);
   assert.match(sidecar, /await copyFile\(source, target, fsConstants\.COPYFILE_EXCL\)/);

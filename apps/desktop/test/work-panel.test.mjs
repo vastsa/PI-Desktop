@@ -28,10 +28,6 @@ const panelSource = await readFile(
   new URL("../src/components/workpanel/WorkPanel.tsx", import.meta.url),
   "utf8",
 );
-const topbarSource = await readFile(
-  new URL("../src/components/ConversationTopbar.tsx", import.meta.url),
-  "utf8",
-);
 const transcriptSource = await readFile(
   new URL("../src/components/ChatTranscript.tsx", import.meta.url),
   "utf8",
@@ -52,9 +48,9 @@ test("work panel replaces the context panel overlay", async () => {
   assert.match(appSource, /case "openWorkPanel"/);
   assert.match(appSource, /useAppStore\.getState\(\)\.toggleWorkPanel\(\)/);
   assert.match(storeSource, /openWorkPanel:\s*\(\) => \{/);
-  // The panel is toggled inside the renderer store; no main-process navigation
-  // bridge may own the interaction.
-  assert.doesNotMatch(appSource, /api\.(?:nav|toggleWorkPanel)/);
+  // The panel is toggled inside the renderer store; the legacy main-process
+  // nav bridge that resized the OS window must stay gone.
+  assert.doesNotMatch(appSource, /nav\.toggleWorkPanel/);
   assert.doesNotMatch(appSource, /key\.toLowerCase\(\) === "j"/);
 });
 
@@ -69,38 +65,44 @@ test("the work panel shortcut closes the panel it opened", () => {
   assert.match(toggleBody, /openWorkPanel\(\)/);
 });
 
-test("work panel reflows the shell without changing native window bounds", () => {
+test("work panel uses the fixed-window internal dock", () => {
   assert.match(appSource, /presentedWorkPanelOpen/);
   assert.match(appSource, /setPresentedWorkPanelOpen/);
   assert.match(appSource, /workPanelExiting/);
+  // The renderer keeps the reservation seam at zero: opening and collapsing
+  // only change the in-flow flex allocation inside the existing window.
+  assert.match(appSource, /setWorkPanelReservation\(0\)/);
+  assert.doesNotMatch(appSource, /requestedWidth\s*=\s*Math\.round\(workPanelWidth\)/);
+  assert.match(mainSource, /requestedWorkPanelReservation = 0/);
+  assert.match(mainSource, /return \{ requested: 0, reserved: 0 \}/);
   assert.match(appSource, /commitWorkPanelPresentation/);
-  assert.doesNotMatch(appSource, /Math\.round\(workPanelWidth\)/);
-  assert.doesNotMatch(appSource, /setWorkPanelReservation\((?!0\))/);
-  assert.ok(
-    (appSource.match(/setWorkPanelReservation\(0\)/g) ?? []).length >= 2,
-    "open and close presentation paths must both request zero reservation",
-  );
   assert.doesNotMatch(appSource, /\.finally\(\(\) => \{[\s\S]*setPresentedWorkPanelOpen/);
   // Mount follows presentation commit; exit keep-alive plays work-panel-out
-  // before confirming zero reservation and unmounting.
+  // before unmounting, so MainChat reflows continuously in both directions.
   assert.match(
     appSource,
-    /<\/section>[\s\S]*?\{\(presentedWorkPanelOpen \|\| workPanelExiting\) && \(?\s*<WorkPanel[\s\S]*?className="app-work-panel-toggle no-drag"/,
+    /<\/section>\s*\{\(presentedWorkPanelOpen \|\| workPanelExiting\) && \(?\s*<WorkPanel/,
   );
   assert.doesNotMatch(
     appSource,
     /<\/section>\s*\{workPanelOpen && \(?\s*<WorkPanel/,
   );
   assert.match(appSource, /finishWorkPanelExit/);
-  assert.match(appSource, /setWorkPanelReservation\(0\)/);
   assert.match(appSource, /onExitAnimationEnd=\{\(\) =>/);
   assert.match(appSource, /finishWorkPanelExit\(workPanelExitGeneration\.current\)/);
-  assert.match(panelSource, /browserSetVisible\(false\)/);
+  // Native surfaces hide via `blocked` before work-panel-out starts, so the
+  // guest clamped to the plugin view is gone before the dock CSS animation.
+  assert.match(
+    panelSource,
+    /blocked=\{\s*exiting \|\| panelBlocked \|\| contextOpen \|\| isResizing/,
+  );
   assert.match(panelSource, /nativeSurfaceReadyForExit/);
   assert.match(panelSource, /is-exit-pending/);
   assert.match(panelSource, /exitAnimationReady && "is-exiting"/);
   assert.match(panelSource, /if \(!exitAnimationReady\) return/);
   assert.match(panelSource, /animationName\.startsWith\("work-panel-out"\)/);
+  assert.match(panelSource, /renderPanelWidth = clampWorkPanelWidth\(panelDragWidth \?\? width\)/);
+  assert.match(panelSource, /setWidth\(drag\.currentWidth\)/);
   // The panel remains a fixed-width in-flow shell sibling; its flex allocation
   // is animated with the dock so the main pane does not jump before motion.
   assert.match(globalStyles, /\.work-panel \{[^}]*flex: 0 0 var\(--work-panel-width\)/s);
@@ -110,11 +112,7 @@ test("work panel reflows the shell without changing native window bounds", () =>
     /position:\s*absolute/,
   );
   assert.match(globalStyles, /@keyframes work-panel-out/);
-  assert.match(globalStyles, /@keyframes work-panel-out-windows/);
-  assert.match(
-    globalStyles,
-    /:root\[data-platform="win32"\] \.work-panel\.is-exiting \{[^}]*animation-name:\s*work-panel-out-windows;/s,
-  );
+  assert.doesNotMatch(globalStyles, /@keyframes work-panel-out-windows/);
   assert.match(
     globalStyles,
     /@keyframes work-panel-in \{[^}]*flex-basis:\s*0;[^}]*width:\s*0;[^}]*translateX\(8px\)/s,
@@ -125,52 +123,6 @@ test("work panel reflows the shell without changing native window bounds", () =>
   );
 });
 
-test("app shell owns the sole viewport-fixed work panel toggle", () => {
-  assert.match(appSource, /className="app-work-panel-toggle no-drag"/);
-  assert.match(appSource, /t\("nav\.toggleWorkPanel"\)/);
-  assert.match(appSource, /aria-pressed=\{workPanelOpen \|\| presentedWorkPanelOpen\}/);
-  assert.match(
-    appSource,
-    /disabled=\{!activeSessionId && !presentedWorkPanelOpen && !workPanelExiting\}/,
-  );
-  assert.match(appSource, /onClick=\{togglePresentedWorkPanel\}/);
-  const buttonToggle = appSource.slice(
-    appSource.indexOf("const togglePresentedWorkPanel = useCallback"),
-    appSource.indexOf("const finishWorkPanelExit = useCallback"),
-  );
-  assert.match(
-    buttonToggle,
-    /if \(workPanelExitingRef\.current\) \{\s*store\.openWorkPanel\(\);\s*return;/,
-  );
-  assert.match(buttonToggle, /store\.workPanelOpen \|\| presentedWorkPanelRef\.current/);
-  assert.match(buttonToggle, /store\.collapseWorkPanel\(\)/);
-  assert.match(buttonToggle, /presentedWorkPanelRef\.current && !workPanelExitingRef\.current/);
-  assert.match(buttonToggle, /workPanelExitingRef\.current = true/);
-  assert.match(buttonToggle, /setWorkPanelExiting\(true\)/);
-  assert.match(buttonToggle, /store\.openWorkPanel\(\)/);
-  assert.match(appSource, /<IconPanel size=\{15\}/);
-  assert.doesNotMatch(topbarSource, /app-work-panel-toggle|onToggleWorkPanel|IconPanel/);
-  assert.doesNotMatch(panelSource, /onCollapse|work-panel-toolbar-collapse|IconChevronRight/);
-  assert.match(
-    globalStyles,
-    /\.app-work-panel-toggle \{[^}]*position:\s*fixed;[^}]*right:\s*12px;[^}]*z-index:\s*30;[^}]*pointer-events:\s*auto;[^}]*-webkit-app-region:\s*no-drag;/s,
-  );
-  assert.match(
-    globalStyles,
-    /\.app-work-panel-toggle\[aria-pressed="true"\] \{[^}]*background:\s*var\(--ds-bg-active\);[^}]*color:\s*var\(--ds-text-primary\);/s,
-  );
-  assert.match(globalStyles, /\.conversation-topbar \{[^}]*z-index:\s*10;/s);
-  assert.match(
-    globalStyles,
-    /:root\[data-platform="win32"\] \.app-work-panel-toggle,[\s\S]*?right:\s*calc\(var\(--ds-window-controls-width\) \+ 12px\);/,
-  );
-  assert.match(
-    globalStyles,
-    /\.window-controls\.window-controls-in-pane\s*\{[^}]*position:\s*fixed;/s,
-  );
-  assert.match(globalStyles, /\.work-panel-header \{[^}]*padding:\s*0 47px 0 8px;/s);
-});
-
 test("work panel header exposes one unified menu with no duplicated entries", () => {
   const headerIndex = panelSource.indexOf('className="work-panel-header"');
   const contextIndex = panelSource.indexOf('className="work-panel-context no-drag"');
@@ -179,16 +131,15 @@ test("work panel header exposes one unified menu with no duplicated entries", ()
 
   assert.ok(contextIndex > headerIndex);
   assert.ok(actionsIndex > contextIndex && bodyIndex > actionsIndex);
-  assert.match(panelSource, /HEADER_TOOLS\.map\(\(\{ kind, Icon \}, index\)/);
+  assert.match(panelSource, /pluginViews\.map\(\(view, index\) =>/);
   assert.match(panelSource, /aria-expanded=\{contextOpen\}/);
   assert.match(panelSource, /aria-controls="work-panel-context-menu"/);
-  assert.match(panelSource, /data-action=\{`open-work-panel-\$\{kind\}`\}/);
-  assert.match(panelSource, /function headerToolTab\(kind: HeaderToolKind\): WorkPanelTab/);
-  // Browsing the project is the bundled `pi.files` plugin now, so the host's
-  // tool list no longer carries a Files entry. The `file` *kind* remains: a
-  // `file:<path>` tab is a transcript artifact, not a launcher entry.
+  assert.match(panelSource, /data-work-panel-plugin-view=\{view\.ref\}/);
+  assert.doesNotMatch(panelSource, /HEADER_TOOLS|headerToolTab|HeaderToolKind/);
+  // Launchable tools are plugin views (`pi.files`, `pi.browser`, …). The
+  // `file` *kind* remains: a `file:<path>` tab is a transcript artifact.
   assert.doesNotMatch(panelSource, /\{ kind: "file", Icon/);
-  assert.match(panelSource, /openWorkPanelTab\(headerToolTab\(kind\)\)/);
+  assert.match(panelSource, /openPluginView\(view\)/);
   assert.match(panelSource, /className="work-panel-context-menu"/);
   assert.match(panelSource, /id=\{activeTab \? `work-panel-title-\$\{activeTab\.id\}`/);
   assert.match(panelSource, /role="menuitemradio"/);
@@ -208,12 +159,17 @@ test("work panel header exposes one unified menu with no duplicated entries", ()
   assert.match(panelSource, /\{resourceTabs\.length > 0 && \(/);
   assert.match(panelSource, /resourceTabs\.map\(\(tab, index\) =>/);
   assert.doesNotMatch(panelSource, /tabs\.map\(\(tab, index\) =>/);
-  // Reopening an already-open tool must reuse its tab so the browser keeps its
-  // resource instead of being replaced by a blank singleton.
-  assert.match(panelSource, /const existing = tabs\.find\(\(tab\) => tab\.id === kind\)/);
+  // Reopening an already-open plugin view must reuse its tab so the browser
+  // keeps its location instead of being replaced by a blank singleton.
+  assert.match(
+    panelSource,
+    /const existing = tabs\.find\(\(candidate\) => candidate\.id === tab\.id\)/,
+  );
   assert.match(panelSource, /if \(existing\) activateTab\(existing\.id\)/);
-  assert.doesNotMatch(panelSource, /collapsePanel|onCollapse/);
-  assert.doesNotMatch(panelSource, /work-panel-collapse|work-panel-toolbar-collapse/);
+  assert.doesNotMatch(panelSource, /collapsePanel/);
+  assert.doesNotMatch(panelSource, /work-panel-collapse/);
+  assert.match(panelSource, /onCollapse/);
+  assert.match(panelSource, /work-panel-toolbar-collapse/);
   assert.match(panelSource, /data-work-panel-section="current"/);
   assert.match(panelSource, /panel\.tools/);
   assert.match(panelSource, /panel\.openItems/);
@@ -300,29 +256,30 @@ test("work panel starts closed with no tabs and persists width only", () => {
   assert.doesNotMatch(persistenceBlock, /workPanelContexts|tabs|open/);
 });
 
-test("work panel divider previews internally and commits its width once", () => {
+test("work panel width is renderer-owned inside the fixed window", () => {
   assert.equal(MAIN_PANE_MIN_WIDTH, 360);
   assert.equal(WORK_PANEL_MIN_WIDTH, 244);
   assert.equal(WORK_PANEL_MAX_WIDTH, 720);
-  assert.match(panelSource, /renderPanelWidth = clampWorkPanelWidth\(dragWidth \?\? width\)/);
-  assert.match(
-    panelSource,
-    /drag\.startWidth \+ drag\.startClientX - event\.clientX/,
-  );
-  assert.match(panelSource, /setDragWidth\(drag\.width\)/);
-  assert.match(panelSource, /if \(commit && drag\.width !== drag\.startWidth\) setWidth\(drag\.width\)/);
-  assert.doesNotMatch(panelSource, /api\.setWorkPanelChatWidth|onWorkPanelResize/);
+  assert.match(panelSource, /renderPanelWidth = clampWorkPanelWidth\(panelDragWidth \?\? width\)/);
+  assert.match(panelSource, /setWidth\(drag\.currentWidth\)/);
+  assert.match(panelSource, /startWidth \+ drag\.startClientX - event\.clientX/);
+  assert.doesNotMatch(panelSource, /api\.setWorkPanelChatWidth/);
+  assert.doesNotMatch(panelSource, /api\.onWorkPanelResize/);
   assert.doesNotMatch(panelSource, /\.sidebar, \.sidebar-rail/);
   assert.match(globalStyles, /\.main-pane \{[^}]*min-width:\s*0;/s);
-  // Reservation zero keeps the legacy native edge path gated, so OS edge
-  // resizing remains ordinary BrowserWindow resizing.
-  assert.match(
-    mainSource,
-    /nativeWorkPanelResize \|\|\s*requestedWorkPanelReservation <= 0/,
+  assert.match(globalStyles, /\.work-panel \{[^}]*flex: 0 0 var\(--work-panel-width\)/s);
+  // The Electron seam remains available for old callers but is deliberately
+  // inert, so no positive target can expand the native window.
+  const reservationHandler = mainSource.slice(
+    mainSource.indexOf("IPC.invoke.windowSetWorkPanelReservation"),
+    mainSource.indexOf("IPC.invoke.windowSetWorkPanelChatWidth"),
   );
+  assert.match(reservationHandler, /requestedWorkPanelReservation = 0/);
+  assert.match(reservationHandler, /return \{ requested: 0, reserved: 0 \}/);
+  assert.doesNotMatch(reservationHandler, /applyWorkPanelReservation/);
 });
 
-test("work panel reservation has a complete renderer-to-main IPC path", () => {
+test("work panel keeps its compatibility IPC seams without native geometry", () => {
   assert.match(
     protocolSource,
     /windowSetWorkPanelReservation:\s*"pi-desktop\/window\/setWorkPanelReservation"/,
@@ -332,7 +289,8 @@ test("work panel reservation has a complete renderer-to-main IPC path", () => {
     /setWorkPanelReservation:\s*\(width: number\)[\s\S]*IPC\.invoke\.windowSetWorkPanelReservation/,
   );
   assert.match(mainSource, /IPC\.invoke\.windowSetWorkPanelReservation/);
-  assert.match(mainSource, /planWorkPanelReservation/);
+  assert.match(mainSource, /parseWorkPanelReservationWidth/);
+  assert.match(mainSource, /return \{ requested: 0, reserved: 0 \}/);
   assert.match(
     protocolSource,
     /windowSetWorkPanelChatWidth:\s*"pi-desktop\/window\/setWorkPanelChatWidth"/,
@@ -347,39 +305,38 @@ test("work panel reservation has a complete renderer-to-main IPC path", () => {
   assert.match(mainSource, /IPC\.event\.windowWorkPanelResize/);
 });
 
-test("native reservation resize seams remain gated behind a positive target", () => {
-  assert.doesNotMatch(panelSource, /onWorkPanelResize|setWorkPanelChatWidth/);
-  assert.match(mainSource, /requestedWorkPanelReservation <= 0/);
-  assert.match(mainSource, /if \(requestedWorkPanelReservation > 0\)/);
-  assert.doesNotMatch(
-    storeSource,
-    /windowResizeBy|panelWindowGrowth|expandWindowForPanel|shrinkWindowForPanel/,
+test("native window edges never own the internal panel width", () => {
+  assert.doesNotMatch(panelSource, /onWorkPanelResize/);
+  assert.doesNotMatch(panelSource, /setWorkPanelChatWidth/);
+  assert.match(panelSource, /setWidth\(drag\.currentWidth\)/);
+  assert.match(mainSource, /resizable:\s*true/);
+  const reservationHandler = mainSource.slice(
+    mainSource.indexOf("IPC.invoke.windowSetWorkPanelReservation"),
+    mainSource.indexOf("IPC.invoke.windowSetWorkPanelChatWidth"),
   );
-  assert.doesNotMatch(mainSource, /windowResizeBy|panelWindowWidthOffset/);
-  assert.match(mainSource, /baseWindowBounds/);
-  assert.match(mainSource, /window\.getNormalBounds\(\)/);
-  assert.match(mainSource, /window\.on\("close", \(event\) =>/);
-  assert.match(mainSource, /persistNormalWindowState\(\)/);
+  assert.doesNotMatch(reservationHandler, /applyWorkPanelReservation/);
+  assert.match(reservationHandler, /return \{ requested: 0, reserved: 0 \}/);
 });
 
-test("work panel separator exposes pointer and keyboard resizing", () => {
+test("work panel separator exposes internal panel width resizing", () => {
   assert.match(panelSource, /role="separator"/);
   assert.match(panelSource, /aria-label=\{t\("panel\.resize"\)\}/);
   assert.match(panelSource, /aria-valuemin=\{WORK_PANEL_MIN_WIDTH\}/);
   assert.match(panelSource, /aria-valuemax=\{WORK_PANEL_MAX_WIDTH\}/);
-  assert.match(panelSource, /aria-valuenow=\{Math\.round\(renderPanelWidth\)\}/);
+  assert.match(panelSource, /aria-valuenow=\{Math\.round\(panelDragWidth \?\? renderPanelWidth\)\}/);
   assert.match(panelSource, /tabIndex=\{0\}/);
   assert.match(panelSource, /startClientX:\s*event\.clientX/);
-  assert.match(panelSource, /startWidth:\s*renderPanelWidth/);
-  assert.match(panelSource, /onPointerDown=\{onResizeStart\}/);
+  assert.match(panelSource, /startWidth/);
+  assert.match(panelSource, /startWidth \+ drag\.startClientX - event\.clientX/);
+  assert.match(panelSource, /onPointerDown=\{onPanelResizeStart\}/);
   assert.match(panelSource, /requestAnimationFrame/);
   assert.match(panelSource, /event\.key === "ArrowLeft"/);
   assert.match(panelSource, /event\.key === "ArrowRight"/);
   assert.match(panelSource, /event\.key === "Escape" && drag/);
-  assert.match(panelSource, /onPointerUp=\{onResizeCommit\}/);
-  assert.match(panelSource, /onPointerCancel=\{onResizeCancel\}/);
-  assert.match(panelSource, /onLostPointerCapture=\{onResizeCancel\}/);
-  assert.match(panelSource, /onDoubleClick=\{\(\) => setWidth\(WORK_PANEL_DEFAULT_WIDTH\)\}/);
+  assert.match(panelSource, /onPointerUp=\{onPanelResizeCommit\}/);
+  assert.match(panelSource, /onPointerCancel=\{onPanelResizeCancel\}/);
+  assert.match(panelSource, /onLostPointerCapture=\{onPanelResizeCancel\}/);
+  assert.match(panelSource, /onKeyDown=\{onPanelResizeKeyDown\}/);
   assert.match(panelSource, /data-work-panel-resizing/);
   assert.match(globalStyles, /\.work-panel-resize \{[^}]*width:\s*10px;/s);
   assert.match(globalStyles, /touch-action:\s*none/);
@@ -397,7 +354,7 @@ test("built-in terminal is absent while the work panel keeps its other surfaces"
   assert.doesNotMatch(panelSource, /TerminalTab|terminalOpen|kind: "terminal"/);
   assert.doesNotMatch(panelSource, /work-panel-surface-terminal|activeTab\?\.kind !== "terminal"/);
   assert.match(panelSource, /activeTab\?\.kind === "review"/);
-  assert.match(panelSource, /activeTab\?\.kind === "browser"/);
+  assert.match(panelSource, /activeTab\?\.kind === "plugin"/);
   assert.match(panelSource, /activeTab\?\.kind === "file"/);
   assert.match(transcriptSource, /action === "run"/);
   assert.doesNotMatch(transcriptSource, /openTerminal|terminalArtifact|chat\.openTerminal/);
@@ -500,9 +457,9 @@ test("revealing the panel with no tab shows the empty body and its tool list", a
   assert.match(panelSource, /panel\.empty\.title/);
   assert.match(panelSource, /panel\.empty\.body/);
   assert.match(panelSource, /className="work-panel-empty-tools"/);
-  assert.match(panelSource, /HEADER_TOOLS\.map[\s\S]*work-panel-empty-tool/);
-  assert.match(panelSource, /data-action=\{`open-work-panel-\$\{kind\}`\}/);
-  assert.match(panelSource, /onClick=\{\(\) => openTool\(kind\)\}/);
+  assert.match(panelSource, /pluginViews\.map[\s\S]*work-panel-empty-tool/);
+  assert.match(panelSource, /data-work-panel-plugin-view=\{view\.ref\}/);
+  assert.match(panelSource, /onClick=\{\(\) => openPluginView\(view\)\}/);
   // No tab exists to label a tabpanel, so the empty body is a plain group.
   const emptyBlock = panelSource.match(/\{!activeTab && \([\s\S]*?\n {10}\)\}/)?.[0] ?? "";
   assert.ok(emptyBlock, "the empty body branch is a single JSX block");

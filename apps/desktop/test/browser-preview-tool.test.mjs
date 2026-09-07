@@ -14,10 +14,6 @@ const appSource = await readFile(
   new URL("../src/App.tsx", import.meta.url),
   "utf8",
 );
-const browserTabSource = await readFile(
-  new URL("../src/components/workpanel/BrowserTab.tsx", import.meta.url),
-  "utf8",
-);
 const apiSource = await readFile(
   new URL("../src/lib/api.ts", import.meta.url),
   "utf8",
@@ -61,6 +57,7 @@ test("main serves BrowserPreview from its originating session workspace", () => 
   assert.match(handler, /host\?\.call\("session\.get", \{ id: sessionId \}\)/);
   assert.match(handler, /res\?\.session\?\.projectPath/);
   assert.doesNotMatch(handler, /workspace\.get/);
+  assert.match(handler, /browserHost\.previewWorkspaceFile\(sessionId, raw, root\)/);
   assert.ok(
     handler.indexOf("resolveLocalFile(raw, root)") <
       handler.indexOf("sendToRenderer(IPC.event.browserPreview"),
@@ -76,28 +73,19 @@ test("main serves BrowserPreview from its originating session workspace", () => 
 test("renderer routes browser preview events to the originating session", () => {
   assert.match(
     apiSource,
-    /onBrowserPreview:[\s\S]*event: \{ sessionId: string; path: string \}/,
+    /onBrowserPreview:[\s\S]*event: \{ sessionId: string; path\?: string; url\?: string \}/,
   );
   const previewHandler =
     appSource.match(/api\.onBrowserPreview\([\s\S]*?\n\s*\}\);/)?.[0] ?? "";
   assert.ok(previewHandler, "browser preview renderer handler exists");
   assert.match(
     previewHandler,
-    /openWorkPanelTabForSession\((?:event\.)?sessionId,[\s\S]*toolWorkPanelTab\("browser"\)/,
-  );
-  assert.match(
-    previewHandler,
-    /resource:\s*(?:event\.)?path/,
+    /openWorkPanelTabForSession\((?:event\.)?sessionId,[\s\S]*browserPluginTab/,
   );
   assert.doesNotMatch(
     appSource,
     /api\.onBrowserPreview\(\(\) => \{\s*useAppStore\.getState\(\)\.openWorkPanelTab/,
   );
-  assert.match(
-    browserTabSource,
-    /api\.browserNavigate\(initialUrl, sessionId\)/,
-  );
-  assert.doesNotMatch(browserTabSource, /workPanel\.browserUrl|LAST_URL_KEY/);
   assert.match(appSource, /offBrowserPreview\(\);/);
 });
 

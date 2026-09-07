@@ -138,7 +138,16 @@ accept_prompt
 - 转运行行：开始+终端`session.endTurn`更新
 - 通知行：与看不见的 completed/error 终端相同的交易
   更新；决不会为了可见的当前结果或中止
-- assistant/tool 消息：在 message_end/tool_end 上
+- assistant/tool 消息：在 message_end/tool_end 上。完成的助手快照在
+  outbox 追加之前先做检查点；握手在冷启动 `session.get` 之前等待该
+  排空（D327）。再验证仍在运行或
+  刚完成、实时行尚未刷入磁盘的会话时，把有界持久化页按时间顺序缝
+  到实时快照上，使更早的实时行留在该页之前、进行中或尚未刷入的尾巴
+  留在该页之后（D317、D324）。只有当该页已包含每一条实时行时才清掉
+  实时来源标记。
+- 孤儿会话恢复：活着的 JSONL 若 sessions 行已不在，则在主机启动和
+  `session.appendMessage` 时重新插入；排队的 outbox 在恢复后排空，
+  `session.delete` 丢掉该会话的 outbox 条目（D318）
 - 未应答的智能停止：标记在现有生命周期中中止的回合，
   然后以原子方式将记录重写为其根用户行之前的前缀；
   结构化输入框快照仅保留渲染器内存

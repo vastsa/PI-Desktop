@@ -14,11 +14,11 @@ test("shared Input/Textarea primitives default text correction off", async () =>
   const src = await read("../src/components/ui.tsx");
   assert.match(
     src,
-    /export function Input\(\{ className, spellCheck = false, autoCorrect = "off", autoCapitalize = "off"/,
+    /export function Input\(\{[\s\S]*?spellCheck = false[\s\S]*?autoCorrect = "off"[\s\S]*?autoCapitalize = "off"/,
   );
   assert.match(
     src,
-    /export function Textarea\(\{ className, spellCheck = false, autoCorrect = "off", autoCapitalize = "off"/,
+    /export function Textarea\(\{[\s\S]*?spellCheck = false[\s\S]*?autoCorrect = "off"[\s\S]*?autoCapitalize = "off"/,
   );
   assert.match(src, /spellCheck=\{spellCheck\}/);
   assert.match(src, /autoCorrect=\{autoCorrect\}/);
@@ -30,7 +30,6 @@ test("primary editable surfaces disable browser text correction", async () => {
     "../src/components/Composer.tsx",
     "../src/components/ChatTranscript.tsx",
     "../src/components/SearchDialog.tsx",
-    "../src/components/workpanel/BrowserTab.tsx",
     "../src/pages/SettingsPage.tsx",
     "../src/pages/ProjectsPage.tsx",
     "../src/pages/PluginsPage.tsx",
@@ -43,4 +42,13 @@ test("primary editable surfaces disable browser text correction", async () => {
       assert.ok(src.includes(token), `${rel} must include ${token}`);
     }
   }
+});
+
+test("bundled browser URL bar disables text correction", async () => {
+  const src = await read(
+    "../resources/plugins/pi.browser/views/browser.html",
+  );
+  assert.ok(src.includes('spellcheck="false"'));
+  assert.ok(src.includes('autocorrect="off"'));
+  assert.ok(src.includes('autocapitalize="off"'));
 });

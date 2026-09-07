@@ -8,6 +8,7 @@
 export type SettingsTabId =
   | "general"
   | "ai"
+  | "usage"
   | "shortcuts"
   | "instructions"
   | "agent"
@@ -53,6 +54,7 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.appearance",
       "settings.theme",
       "settings.language",
+      "settings.languageAuto",
       "settings.font",
       "settings.closeBehaviorTitle",
       "settings.closeBehaviorTray",
@@ -75,6 +77,18 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.commandShell",
       "settings.enterToSend",
       "settings.largePasteThreshold",
+    ],
+  },
+  {
+    id: "usage",
+    labelKey: "settings.nav.usage",
+    titleKey: "settings.usage",
+    group: "preferences",
+    keywordKeys: [
+      "settings.usageTotal",
+      "settings.usageInput",
+      "settings.usageActivity",
+      "settings.usageTurns",
     ],
   },
   {
@@ -204,6 +218,7 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
     keywordKeys: [
       "settings.application",
       "settings.logs",
+      "settings.feedback",
       "updates.title",
       "settings.developer",
       "settings.developerMode",

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildSessionContext, estimateTokens } from "@earendil-works/pi-agent-core";
+import { estimateTokens } from "@earendil-works/pi-agent-core";
+import { buildSessionContext } from "./session-context.js";
 import {
   DesktopAgentRuntime,
   PATH_INSTRUCTION_RESOLUTION_TIMEOUT_MS,
@@ -80,11 +81,8 @@ vi.mock("./subagent.js", async (importOriginal) => {
   };
 });
 import {
-  A2A_NOTIFICATIONS,
-  A2A_RPC_METHODS,
   DEFAULT_SUBAGENT_IDLE_TIMEOUT_SECONDS,
   MAX_SUBAGENT_CONCURRENCY,
-  SUBAGENT_A2A_TOOLS,
 } from "@pi-desktop/shared";
 import type {
   ContextCompactionRecord,
@@ -150,7 +148,7 @@ function createRuntime(
   }> = {},
 ) {
   return new DesktopAgentRuntime({
-    host: (overrides.host ?? { call: vi.fn() }) as never,
+    host: (overrides.host ?? { call: vi.fn(), onNotification: vi.fn(() => () => {}) }) as never,
     sessionId: "session-1",
     mode: overrides.mode === "chat" ? "plan" : overrides.mode ?? "agent",
     turnId: overrides.turnId,
@@ -334,7 +332,7 @@ describe("DesktopAgentRuntime configuration matching", () => {
       "in Agent mode, activate it with ToolSearch for the current prompt",
     );
     expect(prompt).toContain("Grep takes a file-or-directory `path`");
-    expect(prompt).toContain("use `rg` only when it is available");
+    expect(prompt).toContain("Grep uses the system's `rg` when it is installed");
     expect(prompt).toContain("Workspace-relative paths are portable");
     expect(prompt).toContain(
       "an explicit path outside the workspace and session scratch roots asks for permission",
@@ -371,6 +369,12 @@ describe("DesktopAgentRuntime configuration matching", () => {
       ]),
     );
     expect(byName("Read").description).toContain("never a directory");
+    expect(byName("Read").description).toContain(
+      "truncated` is true only when this window was cut short",
+    );
+    expect(byName("Read").parameters.properties.limit.description).toContain(
+      "defaults to 2000",
+    );
     expect(byName("Read").parameters.properties.path.description).toContain(
       "Existing regular file only",
     );
@@ -879,9 +883,8 @@ describe("DesktopAgentRuntime configuration matching", () => {
     expect((bash.parameters as any).properties.timeout).toMatchObject({
       type: "number",
       minimum: 1,
-      // Accepts a millisecond value so the runtime can read it as seconds; the
-      // honoured ceiling stays 300 seconds (D273).
-      maximum: 3_600_000,
+      // Accepts a millisecond value so the runtime can read it as seconds.
+      maximum: 100_000_000,
     });
     expect(runtimeMatches(runtime, { commandShell: powershell })).toBe(true);
     expect(runtimeMatches(runtime, { commandShell })).toBe(false);
@@ -937,13 +940,18 @@ describe("DesktopAgentRuntime configuration matching", () => {
       "tools.execute",
       expect.objectContaining({ timeoutMs: 1_000 }),
     );
-    await bash.execute("bash-max", { command: "printf max", timeout: 300 });
+    await bash.execute("bash-max", { command: "printf max", timeout: 21_600 });
     expect(host.call).toHaveBeenLastCalledWith(
       "tools.execute",
-      expect.objectContaining({ timeoutMs: 300_000 }),
+      expect.objectContaining({ timeoutMs: 21_600_000 }),
+    );
+    await bash.execute("bash-half-hour", { command: "printf half", timeout: 1_800 });
+    expect(host.call).toHaveBeenLastCalledWith(
+      "tools.execute",
+      expect.objectContaining({ timeoutMs: 1_800_000 }),
     );
 
-    for (const timeout of [Number.NaN, Number.POSITIVE_INFINITY, 0.999, 300.001]) {
+    for (const timeout of [Number.NaN, Number.POSITIVE_INFINITY, 0.999]) {
       await expect(
         bash.execute(`bash-invalid-${String(timeout)}`, {
           command: "printf invalid",
@@ -951,7 +959,7 @@ describe("DesktopAgentRuntime configuration matching", () => {
         }),
       ).rejects.toMatchObject({ errorCode: "INVALID_ARGUMENT" });
     }
-    expect(host.call).toHaveBeenCalledTimes(2);
+    expect(host.call).toHaveBeenCalledTimes(3);
     await runtime.dispose();
   });
 
@@ -970,22 +978,27 @@ describe("DesktopAgentRuntime configuration matching", () => {
       expect.objectContaining({ timeoutMs: 120_000 }),
     );
 
-    // Above the ceiling once converted: honour the intent, apply the cap.
-    await bash.execute("bash-ms-over", {
+    // 30 minutes in milliseconds: honour as 1800 seconds, no longer clamped to 300.
+    await bash.execute("bash-ms-half-hour", {
       command: "printf over",
       timeout: 1_800_000,
     });
     expect(host.call).toHaveBeenLastCalledWith(
       "tools.execute",
-      expect.objectContaining({ timeoutMs: 300_000 }),
+      expect.objectContaining({ timeoutMs: 1_800_000 }),
     );
 
-    // Just over the cap is a seconds value that overshot, not milliseconds.
-    await expect(
-      bash.execute("bash-over-cap", { command: "printf cap", timeout: 301 }),
-    ).rejects.toMatchObject({ errorCode: "INVALID_ARGUMENT" });
+    // Above the honoured seconds ceiling once converted: clamp.
+    await bash.execute("bash-ms-over", {
+      command: "printf over",
+      timeout: 30_000_000,
+    });
+    expect(host.call).toHaveBeenLastCalledWith(
+      "tools.execute",
+      expect.objectContaining({ timeoutMs: 21_600_000 }),
+    );
 
-    expect(host.call).toHaveBeenCalledTimes(2);
+    expect(host.call).toHaveBeenCalledTimes(3);
     await runtime.dispose();
   });
 
@@ -1252,6 +1265,8 @@ describe("DesktopAgentRuntime deferred tool catalog", () => {
       "new_context",
       "ToolSearch",
     ]);
+    expect(names).not.toContain("A2A");
+    expect(names).not.toContain("Peer");
     expect(names).not.toContain("BrowserPreview");
     expect(names).not.toContain("PluginCheck");
     expect(names).not.toContain("plugin_demo_validate");
@@ -3442,6 +3457,87 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
     await runtime.dispose();
   });
 
+  it("keeps parent message usage provider-only and reports subagent usage on turn_end", async () => {
+    const onEvent = vi.fn();
+    const runtime = createRuntime({ onEvent });
+    const handleAgentEvent = (runtime as any).handleAgentEvent.bind(runtime);
+    const settleDelegation = (runtime as any).settleDelegation.bind(runtime);
+
+    settleDelegation(
+      {
+        delegationId: "del-1",
+        toolCallId: "tool-1",
+        agentName: "explorer",
+        prompt: "sub-prompt",
+        startedAt: Date.now(),
+        status: "running",
+        resolveCompletion: () => {},
+        abort: () => {},
+      },
+      {
+        agentName: "explorer",
+        status: "completed",
+        report: "subagent done",
+        turns: 1,
+        toolCalls: 0,
+        usage: {
+          inputTokens: 100,
+          outputTokens: 50,
+          totalTokens: 150,
+        },
+      },
+    );
+
+    (runtime as any).currentAssistant = {
+      id: "asst-1",
+      role: "assistant",
+      content: "Hello",
+      status: "streaming",
+    };
+
+    await handleAgentEvent({
+      type: "message_end",
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "Hello" }],
+        usage: {
+          input: 200,
+          output: 80,
+          totalTokens: 280,
+        },
+      },
+    });
+
+    const events = onEvent.mock.calls.map(([envelope]) => (envelope as any).event);
+    const endEvent = events.find((e) => e.type === "message_end");
+    expect(endEvent).toBeDefined();
+    expect(endEvent.message.usage).toEqual({
+      inputTokens: 200,
+      outputTokens: 80,
+      totalTokens: 280,
+    });
+
+    onEvent.mockClear();
+    await handleAgentEvent({ type: "turn_end" });
+    const turnEnd = onEvent.mock.calls
+      .map(([envelope]) => (envelope as any).event)
+      .find((e) => e.type === "turn_end");
+    expect(turnEnd.subagentUsage).toEqual({
+      inputTokens: 100,
+      outputTokens: 50,
+      totalTokens: 150,
+    });
+
+    onEvent.mockClear();
+    await handleAgentEvent({ type: "turn_end" });
+    const secondTurnEnd = onEvent.mock.calls
+      .map(([envelope]) => (envelope as any).event)
+      .find((e) => e.type === "turn_end");
+    expect(secondTurnEnd.subagentUsage).toBeUndefined();
+
+    await runtime.dispose();
+  });
+
   it("lets the model ask for a new window, and compacts at the next boundary", async () => {
     const runtime = createRuntime();
     const tool = (runtime as any).agent.state.tools.find(
@@ -4184,7 +4280,7 @@ describe("DesktopAgentRuntime inline context compaction", () => {
 
   it("counts checkpoint generations so the inspector can show how often a session compacted", async () => {
     const runtime = createRuntime({
-      host: { call: vi.fn().mockResolvedValue(undefined) },
+      host: { call: vi.fn().mockResolvedValue(undefined), onNotification: vi.fn(() => () => {}) },
       history,
     });
     const preparation = {
@@ -4214,7 +4310,7 @@ describe("DesktopAgentRuntime inline context compaction", () => {
 
   it("reports the session as running while it compacts", async () => {
     const runtime = createRuntime({
-      host: { call: vi.fn().mockResolvedValue(undefined) },
+      host: { call: vi.fn().mockResolvedValue(undefined), onNotification: vi.fn(() => () => {}) },
       history,
     });
     budgetSpy(runtime);
@@ -4238,7 +4334,7 @@ describe("DesktopAgentRuntime inline context compaction", () => {
 
   it("does not compact when automatic protection is disabled", async () => {
     const runtime = createRuntime({
-      host: { call: vi.fn().mockResolvedValue(undefined) },
+      host: { call: vi.fn().mockResolvedValue(undefined), onNotification: vi.fn(() => () => {}) },
       history,
       compactionSettings: {
         enabled: false,
@@ -4852,9 +4948,10 @@ describe("DesktopAgentRuntime subagents", () => {
     // TaskStop stops the still-running second delegate and reports "stopped".
     const stopped = await stop.execute("stop-1", { delegationIds: [secondId] });
     expect(stopped.details.stopped).toHaveLength(1);
-    await vi.waitFor(() => {
-      expect((runtime as any).delegations.get(secondId).status).toBe("stopped");
-    });
+    expect((stopped.details.stopped as Array<{ status: string }>)[0].status).toBe(
+      "stopped",
+    );
+    expect((runtime as any).delegations.get(secondId).status).toBe("stopped");
     const afterStop = await wait.execute("wait-2", {
       delegationIds: [secondId],
     });
@@ -4912,7 +5009,7 @@ describe("DesktopAgentRuntime subagents", () => {
     await runtime.dispose();
   });
 
-  it("aborts running delegates when the run ends or the runtime is disposed", async () => {
+  it("keeps running delegates after the parent run ends", async () => {
     const runtime = createRuntime({ subagents: [explorer] });
     subagentRuns.calls.length = 0;
     subagentRuns.instances.length = 0;
@@ -4927,15 +5024,101 @@ describe("DesktopAgentRuntime subagents", () => {
     const delegationId = (started.details as any).delegationId as string;
     expect((runtime as any).runningDelegations()).toHaveLength(1);
 
-    // agent_end (the run finishing) is the safety net: leftover delegates are
-    // stopped rather than left to work without a parent.
     await (runtime as any).handleAgentEvent({ type: "agent_end" });
+    expect((runtime as any).delegations.get(delegationId).status).toBe(
+      "running",
+    );
+    expect((runtime as any).runningDelegations()).toHaveLength(1);
+
+    subagentRuns.deferred = false;
+    await runtime.dispose();
+  });
+
+  it("aborts running delegates on user abort or dispose, not on parent idle", async () => {
+    const runtime = createRuntime({ subagents: [explorer] });
+    subagentRuns.calls.length = 0;
+    subagentRuns.instances.length = 0;
+    subagentRuns.deferred = true;
+    subagentRuns.resolveRun = undefined;
+    const tool = taskTool(runtime);
+
+    const started = await tool.execute("task-1", {
+      agent: "explorer",
+      task: "Find it.",
+    });
+    const delegationId = (started.details as any).delegationId as string;
+
+    await runtime.abort();
     await vi.waitFor(() => {
       expect((runtime as any).delegations.get(delegationId).status).toBe(
         "aborted",
       );
     });
     expect((runtime as any).runningDelegations()).toHaveLength(0);
+
+    subagentRuns.deferred = false;
+    await runtime.dispose();
+  });
+
+  it("feeds finished reports back after the parent run ends", async () => {
+    const runtime = createRuntime({ subagents: [explorer] });
+    subagentRuns.calls.length = 0;
+    subagentRuns.instances.length = 0;
+    subagentRuns.deferred = true;
+    subagentRuns.resolveRun = undefined;
+    const tool = taskTool(runtime);
+    const prompt = vi.fn(async () => undefined);
+    const waitForIdle = vi.fn(async () => undefined);
+    (runtime as any).agent.prompt = prompt;
+    (runtime as any).agent.waitForIdle = waitForIdle;
+
+    await tool.execute("task-1", {
+      agent: "explorer",
+      task: "Find it.",
+    });
+
+    const resume = (runtime as any).resumeAfterDelegations();
+    subagentRuns.resolveRun!({
+      agentName: "explorer",
+      status: "completed",
+      report: "src/app.ts:12 misses the null check.",
+      turns: 2,
+      toolCalls: 3,
+    });
+    await resume;
+
+    expect(prompt).toHaveBeenCalledTimes(1);
+    const delivered = String(
+      (prompt.mock.calls as unknown as unknown[][])[0]?.[0] ?? "",
+    );
+    expect(delivered).toContain("src/app.ts:12 misses the null check.");
+    expect(delivered).toContain("Integrate their reports");
+
+    subagentRuns.deferred = false;
+    await runtime.dispose();
+  });
+
+  it("lists a heartbeat for a running delegate", async () => {
+    const runtime = createRuntime({ subagents: [explorer] });
+    subagentRuns.calls.length = 0;
+    subagentRuns.instances.length = 0;
+    subagentRuns.deferred = true;
+    subagentRuns.resolveRun = undefined;
+    const task = taskTool(runtime);
+    const list = (runtime as any).agent.state.tools.find(
+      (candidate: { name: string }) => candidate.name === "TaskList",
+    );
+
+    const started = await task.execute("task-1", {
+      agent: "explorer",
+      task: "Find it.",
+    });
+    const listed = await list.execute("list-1", {});
+    expect(listed.content[0].text).toContain("running");
+    expect(listed.content[0].text).toContain("explorer");
+    expect(listed.content[0].text).toContain(
+      (started.details as { delegationId: string }).delegationId,
+    );
 
     subagentRuns.deferred = false;
     await runtime.dispose();
@@ -4961,6 +5144,7 @@ describe("DesktopAgentRuntime subagents", () => {
         }
         return Promise.resolve({ ok: true, content: {} });
       }),
+      onNotification: vi.fn(() => () => {}),
     };
     const runtime = createRuntime({
       subagents: [mutator],
@@ -5034,482 +5218,5 @@ describe("DesktopAgentRuntime subagents", () => {
     expect(ids).not.toContain("assistant-child");
 
     await runtime.dispose();
-  });
-
-  // A2A protocol wiring (ADR 0146). The broker itself lives in Rust host-core;
-  // here only the runtime's client wiring is under test, so the host is mocked
-  // and each `a2a.*` call is asserted against the wire contract.
-  const coordinator: SubagentDefinition = {
-    name: "coordinator",
-    description: "Coordinate with peers while it works.",
-    tools: ["Read", "A2A"],
-    maxTurns: 6,
-    prompt: "Claim a file before editing it.",
-    source: "builtin",
-  };
-  const talkerOnly: SubagentDefinition = {
-    name: "talker",
-    description: "Only knows how to message peers.",
-    tools: ["A2A"],
-    maxTurns: 6,
-    prompt: "Talk to the others.",
-    source: "user",
-    filePath: "/home/.agents/subagents/talker.md",
-  };
-
-  /**
-   * A host mock that answers the `a2a.*` broker calls the runtime makes at
-   * spawn/settle and from the A2A tool. `register` mints a per-agent token so
-   * the runtime builds the tool; every call is recorded for assertions.
-   */
-  function a2aHost(
-    responses: Record<string, unknown> = {},
-  ): { call: ReturnType<typeof vi.fn>; onNotification: ReturnType<typeof vi.fn> } {
-    const call = vi.fn(async (method: string, params: any) => {
-      if (method in responses) return responses[method];
-      if (method === A2A_RPC_METHODS.agentsRegister) {
-        return { agentId: params.card.name, token: `tok-${params.card.name}` };
-      }
-      if (method === A2A_RPC_METHODS.agentsDeregister) return { ok: true };
-      if (method === A2A_RPC_METHODS.agentsList) return { agents: [] };
-      return {};
-    });
-    return { call, onNotification: vi.fn(() => () => {}) };
-  }
-
-  it("never exposes the A2A tool to the parent agent", async () => {
-    const runtime = createRuntime({ subagents: [coordinator, talkerOnly] });
-    const catalog = (runtime as any).toolCatalog as Map<string, any>;
-    const parentToolNames = (
-      (runtime as any).agent.state.tools as Array<any>
-    ).map((tool) => tool.name);
-    const deferred = (runtime as any).deferredToolNames as Set<string>;
-
-    // The definition declares the A2A tool, yet it is built per delegate: the
-    // parent already owns delegation, so it must not gain a second channel.
-    for (const name of SUBAGENT_A2A_TOOLS) {
-      expect(catalog.has(name)).toBe(false);
-      expect(parentToolNames).not.toContain(name);
-      expect(deferred.has(name)).toBe(false);
-    }
-    expect(taskTool(runtime)).toBeDefined();
-
-    await runtime.dispose();
-  });
-
-  it("refuses a definition whose only tool is the A2A tool", async () => {
-    const runtime = createRuntime({ subagents: [talkerOnly], host: a2aHost() });
-    subagentRuns.calls.length = 0;
-    const tool = taskTool(runtime);
-
-    const result = await tool.execute("task-1", {
-      agent: "talker",
-      task: "Tell the others what you found.",
-    });
-
-    expect(result.content[0].text).toContain(
-      "declares only the A2A tool and no tool to do work with",
-    );
-    // Messaging alone cannot do work, so no delegate is started at all.
-    expect(subagentRuns.calls).toHaveLength(0);
-    await expect(
-      (runtime as any).agent.afterToolCall({ toolCall: { id: "task-1" } }),
-    ).resolves.toEqual({ isError: true });
-
-    await runtime.dispose();
-  });
-
-  it("registers the agent and builds the A2A tool for a mixed definition", async () => {
-    const host = a2aHost();
-    const runtime = createRuntime({ subagents: [coordinator], host });
-    subagentRuns.calls.length = 0;
-    subagentRuns.instances.length = 0;
-    subagentRuns.deferred = true;
-    subagentRuns.resolveRun = undefined;
-    const tool = taskTool(runtime);
-
-    const result = await tool.execute("task-1", {
-      agent: "coordinator",
-      task: "Edit src/app.ts and tell the others which file you own.",
-    });
-
-    expect(result.details).toMatchObject({
-      agent: "coordinator",
-      status: "running",
-    });
-    const delegationId = (result.details as any).delegationId as string;
-    expect(delegationId.length).toBeGreaterThan(0);
-    const record = (runtime as any).delegations.get(delegationId);
-    expect(record.status).toBe("running");
-
-    // Spawning registered the delegate with the broker, scoped to the session,
-    // and minted its capability token — kept on the record, never in the model.
-    const registerCall = host.call.mock.calls.find(
-      ([method]) => method === A2A_RPC_METHODS.agentsRegister,
-    );
-    expect(registerCall).toBeDefined();
-    expect(registerCall![1]).toMatchObject({
-      contextId: "session-1",
-      card: { name: "coordinator" },
-    });
-    expect(record.a2aToken).toBe("tok-coordinator");
-
-    // The delegate got its work tools plus the single A2A tool.
-    expect(subagentRuns.calls).toHaveLength(1);
-    expect(
-      subagentRuns.calls[0].tools.map((entry: any) => entry.name),
-    ).toEqual(["Read", "A2A"]);
-    await expect(
-      (runtime as any).agent.afterToolCall({ toolCall: { id: "task-1" } }),
-    ).resolves.toBeUndefined();
-
-    subagentRuns.resolveRun!({
-      agentName: "coordinator",
-      status: "completed",
-      report: "src/app.ts is mine.",
-      turns: 1,
-      toolCalls: 1,
-    });
-    await vi.waitFor(() => {
-      expect((runtime as any).delegations.get(delegationId).status).toBe(
-        "completed",
-      );
-    });
-    // Settling deregisters the delegate, invalidating its token so the broker
-    // drops it from discovery.
-    await vi.waitFor(() => {
-      expect(
-        host.call.mock.calls.some(
-          ([method, params]) =>
-            method === A2A_RPC_METHODS.agentsDeregister &&
-            (params as any).token === "tok-coordinator",
-        ),
-      ).toBe(true);
-    });
-    subagentRuns.deferred = false;
-
-    await runtime.dispose();
-  });
-
-  it("keeps a delegate's work tools when the broker refuses registration", async () => {
-    // A host that cannot mint a token must not strip the delegate of its work
-    // tools — the A2A tool is simply absent.
-    const host = a2aHost({ [A2A_RPC_METHODS.agentsRegister]: undefined });
-    const runtime = createRuntime({ subagents: [coordinator], host });
-    subagentRuns.calls.length = 0;
-    subagentRuns.instances.length = 0;
-    subagentRuns.deferred = true;
-    subagentRuns.resolveRun = undefined;
-    const tool = taskTool(runtime);
-
-    const result = await tool.execute("task-1", {
-      agent: "coordinator",
-      task: "Edit src/app.ts.",
-    });
-    const delegationId = (result.details as any).delegationId as string;
-    expect((runtime as any).delegations.get(delegationId).a2aToken).toBeUndefined();
-    expect(
-      subagentRuns.calls[0].tools.map((entry: any) => entry.name),
-    ).toEqual(["Read"]);
-
-    subagentRuns.resolveRun!({
-      agentName: "coordinator",
-      status: "completed",
-      report: "done",
-      turns: 1,
-      toolCalls: 1,
-    });
-    await vi.waitFor(() => {
-      expect((runtime as any).delegations.get(delegationId).status).toBe(
-        "completed",
-      );
-    });
-    subagentRuns.deferred = false;
-    await runtime.dispose();
-  });
-
-  it("exposes one A2A tool that dispatches discover, send, get, wait and complete by action", async () => {
-    const task = {
-      id: "task-9",
-      contextId: "session-1",
-      agentName: "reviewer",
-      status: { state: "working", timestamp: "t" },
-      history: [
-        {
-          role: "agent",
-          from: "researcher",
-          parts: [{ kind: "text", text: "I own src/a.ts" }],
-          messageId: "m1",
-        },
-      ],
-      artifacts: [],
-    };
-    const host = a2aHost({
-      [A2A_RPC_METHODS.agentsList]: {
-        agents: [
-          { name: "reviewer", description: "Reviews the diff." },
-        ],
-      },
-      [A2A_RPC_METHODS.messageSend]: { task },
-      [A2A_RPC_METHODS.tasksGet]: { task },
-      [A2A_RPC_METHODS.tasksStatus]: {
-        task: { ...task, status: { state: "completed", timestamp: "t" } },
-      },
-    });
-    const runtime = createRuntime({ subagents: [coordinator], host });
-    const a2a = (runtime as any).buildA2ATool("researcher", "tok-researcher") as any;
-    expect(a2a.name).toBe("A2A");
-    // A single tool carries every operation; `action` is its only required
-    // parameter, so the model cannot blur the operations together.
-    expect(a2a.parameters.required).toEqual(["action"]);
-
-    // discover lists running peers as Agent Cards, carrying the closure token.
-    const discovered = await a2a.execute("call-discover", { action: "discover" });
-    expect(discovered.details.action).toBe("discover");
-    expect(discovered.details.agents).toHaveLength(1);
-    expect(discovered.content[0].text).toContain("reviewer: Reviews the diff.");
-    const listCall = host.call.mock.calls.find(
-      ([method]) => method === A2A_RPC_METHODS.agentsList,
-    );
-    // The token is supplied by the runtime, never chosen by the model.
-    expect(listCall![1]).toEqual({ token: "tok-researcher" });
-
-    // send creates/continues a task and reports its state back to the model.
-    const sent = await a2a.execute("call-send", {
-      action: "send",
-      to: "reviewer",
-      text: "I own src/a.ts",
-    });
-    expect(sent.details.action).toBe("send");
-    expect(sent.details.task.id).toBe("task-9");
-    const sendCall = host.call.mock.calls.find(
-      ([method]) => method === A2A_RPC_METHODS.messageSend,
-    );
-    expect(sendCall![1].token).toBe("tok-researcher");
-    expect(sendCall![1].message).toMatchObject({
-      role: "agent",
-      to: "reviewer",
-      parts: [{ kind: "text", text: "I own src/a.ts" }],
-    });
-
-    // An empty send is rejected locally without hitting the broker.
-    const empty = await a2a.execute("call-empty", { action: "send", to: "reviewer" });
-    expect(empty.details.error).toContain("non-empty text");
-
-    // get reads a task by id.
-    const got = await a2a.execute("call-get", { action: "get", taskId: "task-9" });
-    expect(got.details.action).toBe("get");
-    expect(got.details.task.id).toBe("task-9");
-
-    // wait with a short timeout returns empty when no event arrives, without
-    // blocking forever.
-    const waited = await a2a.execute("call-wait", {
-      action: "wait",
-      timeoutSeconds: 1,
-    });
-    expect(waited.details.action).toBe("wait");
-    expect(waited.details.events).toHaveLength(0);
-    expect(waited.details.timedOut).toBe(true);
-
-    // complete finishes a task the peer serves via tasks.status, defaulting to
-    // the `completed` state and carrying the closure token.
-    const completed = await a2a.execute("call-complete", {
-      action: "complete",
-      taskId: "task-9",
-      text: "done",
-    });
-    expect(completed.details.action).toBe("complete");
-    expect(completed.details.task.status.state).toBe("completed");
-    const statusCall = host.call.mock.calls.find(
-      ([method]) => method === A2A_RPC_METHODS.tasksStatus,
-    );
-    expect(statusCall![1]).toMatchObject({
-      token: "tok-researcher",
-      id: "task-9",
-      state: "completed",
-    });
-    expect(statusCall![1].message).toMatchObject({
-      parts: [{ kind: "text", text: "done" }],
-    });
-
-    await runtime.dispose();
-  });
-
-  it("delivers a broker task event to the addressed peer's wait", async () => {
-    const host = a2aHost();
-    const runtime = createRuntime({ subagents: [coordinator], host });
-    // Subscribe to broker notifications, then capture the registered handler.
-    (runtime as any).ensureA2ASubscription();
-    const handler = host.onNotification.mock.calls[0][0] as (
-      method: string,
-      params: unknown,
-    ) => void;
-    const a2a = (runtime as any).buildA2ATool("researcher", "tok-researcher") as any;
-
-    const waitPromise = a2a.execute("call-wait", {
-      action: "wait",
-      timeoutSeconds: 5,
-    });
-    // The broker addresses an event to "researcher"; it must wake that wait.
-    handler(A2A_NOTIFICATIONS.taskEvent, {
-      recipient: "researcher",
-      contextId: "session-1",
-      event: {
-        kind: "status-update",
-        taskId: "task-42",
-        contextId: "session-1",
-        status: { state: "working", timestamp: "t" },
-        final: false,
-      },
-    });
-    const waited = await waitPromise;
-    expect(waited.details.timedOut).toBe(false);
-    expect(waited.details.events).toHaveLength(1);
-    expect(waited.content[0].text).toContain("task-42");
-
-    await runtime.dispose();
-  });
-
-  it("wakes a blocked wait when a peer deregisters on settle", async () => {
-    const host = a2aHost();
-    const runtime = createRuntime({ subagents: [coordinator], host });
-    const a2a = (runtime as any).buildA2ATool("researcher", "tok-researcher") as any;
-
-    // "researcher" blocks waiting for a peer's reply.
-    const waitPromise = a2a.execute("call-wait", {
-      action: "wait",
-      timeoutSeconds: 30,
-    });
-    // A different peer settles and deregisters. The departing agent cannot know
-    // who was waiting on it, so every waiter must be woken to re-evaluate
-    // instead of waiting out its 30s timeout.
-    (runtime as any).deregisterA2AAgent("tok-reviewer");
-    const waited = await waitPromise;
-    // No event was queued for "researcher", so the woken wait returns empty —
-    // early, not after the full timeout.
-    expect(waited.details.action).toBe("wait");
-    expect(waited.details.events).toHaveLength(0);
-    expect(waited.details.timedOut).toBe(true);
-    expect(
-      host.call.mock.calls.some(
-        ([method, params]) =>
-          method === A2A_RPC_METHODS.agentsDeregister &&
-          (params as any).token === "tok-reviewer",
-      ),
-    ).toBe(true);
-
-    await runtime.dispose();
-  });
-
-  it("adds the A2A guidance block only when the A2A tool is declared", async () => {
-    const runtime = createRuntime({ subagents: [coordinator, explorer] });
-
-    const withA2A = (
-      (runtime as any).subagentGuidance(coordinator) as string[]
-    ).join("\n\n");
-    expect(withA2A).toContain("A2A protocol:");
-    expect(withA2A).toContain('you are the agent "coordinator"');
-    expect(withA2A).toContain("A2A(action=discover)");
-    expect(withA2A).toContain("Never ask a peer to do your task");
-
-    const withoutA2A = (
-      (runtime as any).subagentGuidance(explorer) as string[]
-    ).join("\n\n");
-    expect(withoutA2A).not.toContain("A2A protocol:");
-
-    // The guidance names the delegate by its resolved peerId.
-    const named = (
-      (runtime as any).subagentGuidance(coordinator, "coordinator-2") as string[]
-    ).join("\n\n");
-    expect(named).toContain('you are the agent "coordinator-2"');
-
-    await runtime.dispose();
-  });
-
-  it("assigns unique peerIds to concurrent delegations of the same definition", async () => {
-    const discussant: SubagentDefinition = {
-      name: "discussant",
-      description: "Participate in a multi-agent roundtable.",
-      tools: ["Read", "A2A"],
-      maxTurns: 6,
-      prompt: "Debate the topic.",
-      source: "user" as const,
-      filePath: "/home/.agents/subagents/discussant.md",
-    };
-    const host = a2aHost();
-    const runtime = createRuntime({ subagents: [discussant], host });
-    subagentRuns.calls.length = 0;
-    subagentRuns.instances.length = 0;
-    subagentRuns.deferred = true;
-    subagentRuns.resolveRun = undefined;
-    const tool = taskTool(runtime);
-
-    // Launch three concurrent delegations of the same definition.
-    const result1 = await tool.execute("task-1", {
-      agent: "discussant",
-      task: "Role: REST advocate",
-    });
-    const result2 = await tool.execute("task-2", {
-      agent: "discussant",
-      task: "Role: GraphQL advocate",
-    });
-    const result3 = await tool.execute("task-3", {
-      agent: "discussant",
-      task: "Role: Pragmatist",
-    });
-
-    // All three should be running.
-    expect((result1.details as any).status).toBe("running");
-    expect((result2.details as any).status).toBe("running");
-    expect((result3.details as any).status).toBe("running");
-
-    const delegations = runtime as any;
-    const d1 = delegations.delegations.get((result1.details as any).delegationId);
-    const d2 = delegations.delegations.get((result2.details as any).delegationId);
-    const d3 = delegations.delegations.get((result3.details as any).delegationId);
-
-    // All share the same agentName but have unique peerIds.
-    expect(d1.agentName).toBe("discussant");
-    expect(d2.agentName).toBe("discussant");
-    expect(d3.agentName).toBe("discussant");
-    expect(new Set([d1.peerId, d2.peerId, d3.peerId]).size).toBe(3);
-
-    // Each delegation registered its own Agent Card under its unique peerId,
-    // so the broker can address each individually.
-    const registeredNames = host.call.mock.calls
-      .filter(([method]) => method === A2A_RPC_METHODS.agentsRegister)
-      .map(([, params]) => (params as any).card.name);
-    expect(new Set(registeredNames)).toEqual(
-      new Set([d1.peerId, d2.peerId, d3.peerId]),
-    );
-
-    subagentRuns.deferred = false;
-    await runtime.dispose();
-  });
-
-  it("includes roundtable delegation guidance when an A2A-enabled subagent exists", async () => {
-    const discussant: SubagentDefinition = {
-      name: "discussant",
-      description: "Participate in a multi-agent roundtable.",
-      tools: ["Read", "A2A"],
-      maxTurns: 6,
-      prompt: "Debate the topic.",
-      source: "user" as const,
-      filePath: "/home/.agents/subagents/discussant.md",
-    };
-    // With an A2A-enabled subagent, the delegation section includes the
-    // roundtable pattern.
-    const withPeer = createRuntime({ subagents: [discussant, explorer] });
-    const promptWithPeer = (withPeer as any).agent.state.systemPrompt as string;
-    expect(promptWithPeer).toContain("Structured debate / roundtable");
-    expect(promptWithPeer).toContain('one Task("discussant") per perspective');
-    expect(promptWithPeer).toContain("Never pack multiple roles into a single Task");
-    await withPeer.dispose();
-
-    // Without any A2A-enabled subagent, the roundtable bullet is absent.
-    const withoutPeer = createRuntime({ subagents: [explorer] });
-    const promptWithoutPeer = (withoutPeer as any).agent.state.systemPrompt as string;
-    expect(promptWithoutPeer).not.toContain("Structured debate / roundtable");
-    await withoutPeer.dispose();
   });
 });

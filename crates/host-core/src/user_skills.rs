@@ -1,7 +1,7 @@
 use crate::activation::ActivationScope;
 use crate::agent_capabilities::{
-    capability_dir, file_timestamp, normalize_project_path, parse_front_matter, slugify,
-    sorted_files, CapabilityLevel, CapabilityState,
+    capability_dir, capability_id, file_timestamp, normalize_project_path, parse_front_matter,
+    path_stem_for_id, slugify, sorted_files, valid_capability_id, CapabilityLevel, CapabilityState,
 };
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
@@ -66,12 +66,7 @@ fn clip(value: &str, max_chars: usize) -> String {
 }
 
 fn valid_id(id: &str) -> bool {
-    !id.is_empty()
-        && id.len() <= 64
-        && id.starts_with(|c: char| c.is_ascii_alphanumeric())
-        && id
-            .chars()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    valid_capability_id(id, 64)
 }
 
 fn render_document(name: &str, description: Option<&str>, body: &str) -> String {
@@ -176,18 +171,15 @@ impl UserSkillRegistry {
             if body.trim().is_empty() {
                 continue;
             }
-            let fallback = path
-                .file_stem()
-                .and_then(|value| value.to_str())
-                .unwrap_or("skill");
+            let fallback = path_stem_for_id(&path);
             let name = clip(
-                front.get("name").map(String::as_str).unwrap_or(fallback),
+                front.get("name").map(String::as_str).unwrap_or(&fallback),
                 MAX_NAME_CHARS,
             );
             if name.is_empty() {
                 continue;
             }
-            let id = slugify(&name, 64);
+            let id = capability_id(&name, &path, 64);
             if !valid_id(&id) || !seen.insert(id.clone()) {
                 continue;
             }
@@ -344,12 +336,9 @@ impl UserSkillRegistry {
         if body.trim().is_empty() {
             bail!("SKILL_INVALID: document is empty");
         }
-        let fallback = source_path
-            .file_stem()
-            .and_then(|value| value.to_str())
-            .unwrap_or("skill");
+        let fallback = path_stem_for_id(&source_path);
         let name = clip(
-            front.get("name").map(String::as_str).unwrap_or(fallback),
+            front.get("name").map(String::as_str).unwrap_or(&fallback),
             MAX_NAME_CHARS,
         );
         let id = input
@@ -357,7 +346,7 @@ impl UserSkillRegistry {
             .as_deref()
             .filter(|value| valid_id(value))
             .map(str::to_string)
-            .unwrap_or_else(|| slugify(&name, 64));
+            .unwrap_or_else(|| capability_id(&name, &source_path, 64));
         if !valid_id(&id) {
             bail!("SKILL_INVALID: the file needs a name or a valid id");
         }
@@ -630,5 +619,61 @@ mod tests {
             .join("agent-capabilities/skills.json")
             .to_string_lossy()
             .contains(".agents"));
+    }
+
+    #[test]
+    fn import_uses_parent_directory_when_name_is_not_ascii() {
+        let app = tempdir().unwrap();
+        let source_dir = app.path().join("incoming/code-review");
+        fs::create_dir_all(&source_dir).unwrap();
+        let source = source_dir.join("SKILL.md");
+        fs::write(
+            &source,
+            "---\nname: 代码审查\ndescription: >\n  Review diffs before merge.\n---\n\nCheck the patch.\n",
+        )
+        .unwrap();
+        let mut registry = UserSkillRegistry::new(app.path());
+        let record = registry
+            .import(
+                source.to_str().unwrap(),
+                input("Ignored", "project", Some(app.path().to_str().unwrap())),
+            )
+            .unwrap();
+        assert_eq!(record.id, "code-review");
+        assert_eq!(record.name, "代码审查");
+        assert_eq!(
+            record.description.as_deref(),
+            Some("Review diffs before merge.")
+        );
+        let listed = registry
+            .list(CapabilityLevel::Project, Some(app.path().to_str().unwrap()))
+            .unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].id, "code-review");
+        assert_eq!(listed[0].name, "代码审查");
+    }
+
+    #[test]
+    fn directory_skills_do_not_collide_on_the_skill_file_stem() {
+        let app = tempdir().unwrap();
+        let project = app.path().to_str().unwrap();
+        fs::create_dir_all(app.path().join(".agents/skills/pdf")).unwrap();
+        fs::create_dir_all(app.path().join(".agents/skills/docx")).unwrap();
+        fs::write(
+            app.path().join(".agents/skills/pdf/SKILL.md"),
+            "# PDF\n\nExtract text.\n",
+        )
+        .unwrap();
+        fs::write(
+            app.path().join(".agents/skills/docx/SKILL.md"),
+            "# DOCX\n\nEdit documents.\n",
+        )
+        .unwrap();
+        let mut registry = UserSkillRegistry::new(app.path());
+        let listed = registry
+            .list(CapabilityLevel::Project, Some(project))
+            .unwrap();
+        let ids: Vec<_> = listed.iter().map(|record| record.id.as_str()).collect();
+        assert_eq!(ids, vec!["docx", "pdf"]);
     }
 }

@@ -21,12 +21,13 @@ test("user turns keep a compact right-aligned plate", () => {
   assert.match(stylesSource, /\.message-row\.user \{\s*justify-content:\s*flex-end;/);
   assert.match(
     stylesSource,
-    /\.message-row\.user \.message-col \{[\s\S]*?max-width:\s*min\(82%,\s*600px\);[\s\S]*?align-items:\s*flex-end;/,
+    /\.message-row\.user \.message-col \{[\s\S]*?width:\s*min\(max-content,\s*82%,\s*600px\);[\s\S]*?max-width:\s*min\(82%,\s*600px\);[\s\S]*?align-items:\s*flex-end;/,
   );
-  // The wrap constraint lives on the column alone; the bubble fills it.
+  // The wrap constraint lives on the column; the bubble is max-content so a
+  // percentage chip cap cannot stretch it to the 82%/600px ceiling.
   assert.match(
     userBubbleStyles,
-    /max-width:\s*100%;[\s\S]*?background:\s*color-mix\(in oklab,\s*var\(--ds-text-primary\) 8%,\s*transparent\);/,
+    /width:\s*max-content;[\s\S]*?max-width:\s*100%;[\s\S]*?background:\s*color-mix\(in oklab,\s*var\(--ds-text-primary\) 8%,\s*transparent\);/,
   );
   assert.doesNotMatch(userBubbleStyles, /var\(--ds-accent\)/);
 });
@@ -77,6 +78,12 @@ test("tool block bodies stay bounded and role-coded", () => {
     stylesSource,
     /\.tool-file-list,\s*\.tool-match-list \{[\s\S]*?max-height:\s*260px;[\s\S]*?overflow:\s*auto;/,
   );
+  // Stretched <button> paths stay start-aligned; Chromium must not justify
+  // the path glyphs across the row (same contract as Grep path headings).
+  const fileItem = stylesSource.match(/\.tool-file-item \{([^}]*)\}/)?.[1];
+  assert.ok(fileItem);
+  assert.match(fileItem, /display:\s*block;/);
+  assert.match(fileItem, /width:\s*100%;/);
   // stderr and error notes carry the error hue, host notices stay neutral.
   assert.match(stylesSource, /\.tool-row-content\.is-error \{[\s\S]*?var\(--ds-error\)/);
   assert.match(stylesSource, /\.tool-chip\.is-error \{[\s\S]*?var\(--ds-error\)/);
@@ -99,9 +106,23 @@ test("assistant turns stay transparent full-width prose", () => {
     stylesSource,
     /\.message-row\.assistant[\s\S]*?\.message-col[\s\S]*?width:\s*min\(100%,\s*720px\);/,
   );
+  // D323: the live parent turn stays transparent; no rail, no reserved
+  // inset, no whole-turn tile. The tile belongs only to the delegation card.
+  assert.doesNotMatch(
+    stylesSource,
+    /\.message-row\.assistant-turn \.message-col\s*\{[^}]*padding-left:\s*14px/,
+  );
+  assert.doesNotMatch(
+    stylesSource,
+    /\.message-row\.assistant-turn \.message-col\s*\{[^}]*border-left/,
+  );
+  assert.doesNotMatch(
+    stylesSource,
+    /\.message-row\.assistant-turn\.streaming \.message-col\s*\{[^}]*background:\s*var\(--ds-tile\)/,
+  );
   assert.match(
     stylesSource,
-    /\.message-row\.assistant-turn\.streaming \.message-col\s*\{[\s\S]*?border-left-color:/,
+    /\.tool-activity-group\.has-subagents\s*\{[^}]*background:\s*var\(--ds-tile\)/,
   );
 });
 
@@ -143,24 +164,46 @@ test("wrapped user links keep plaintext alignment", () => {
   assert.match(userLinkStyles, /overflow-wrap:\s*anywhere;/);
 });
 
+test("user-message file chips reuse the composer chip node", () => {
+  assert.match(transcriptSource, /className=\"composer-chip chat-file-chip\"/);
+  assert.match(transcriptSource, /composer-chip-name/);
+  assert.match(stylesSource, /\.chat-file-chip[\s\S]*?appearance:\s*none/);
+  // Definite cap inside the shrink-to-fit plate; `min(100%, 240px)` stretches it.
+  assert.match(
+    stylesSource,
+    /\.message-row\.user \.composer-chip \{[\s\S]*?max-width:\s*240px;/,
+  );
+});
+
 test("stopping a turn undoes an unanswered prompt or settles the partial reply", async () => {
   const storeSource = await readFile(
     new URL("../src/stores/app-store.ts", import.meta.url),
     "utf8",
   );
   assert.match(storeSource, /const submittedDraft = submittedComposerDrafts\.get\(sessionId\)/);
-  assert.match(storeSource, /resolveComposerSmartStop\(messages, submittedDraft\)/);
-  assert.match(storeSource, /composerPrefill:\s*\{ \.\.\.smartStop\.draft, sessionId \}/);
+  assert.match(storeSource, /resolveComposerSmartStop\(state\.messages, submittedDraft\)/);
+  assert.match(storeSource, /composerPrefill:\s*\{ \.\.\.fullStop\.draft, sessionId \}/);
   assert.match(storeSource, /submittedDraft\?\.resolveAbort\?\.\(true\)/);
   assert.match(storeSource, /submittedDraft\?\.resolveAbort\?\.\(false\)/);
   assert.match(storeSource, /submittedComposerDrafts\.delete\(sessionId\)/);
   assert.match(storeSource, /smartStop\.kind === "restore"/);
   assert.match(storeSource, /status:\s*"aborted" as const/);
+  // The undo rewrite starts from the full durable transcript merged with the
+  // live rows, never from the renderer's paged, display-capped window (D299).
   assert.match(
     storeSource,
-    /replaceSessionMessages\(sessionId,\s*smartStop\.kept\)/,
+    /const merged = mergeLiveSessionMessages\(fullMessages, get\(\)\.messages\)/,
   );
-  assert.match(storeSource, /replaceSessionMessages\(sessionId,\s*settled\)/);
+  assert.match(storeSource, /resolveComposerSmartStop\(merged, submittedDraft\)/);
+  assert.match(
+    storeSource,
+    /replaceSessionMessages\(sessionId,\s*fullStop\.kept\)/,
+  );
+  // Settling a partial reply is renderer-only: the runtime's aborted final row
+  // (or its checkpoint) is the durable copy, and a rewrite from this snapshot
+  // could delete it.
+  assert.doesNotMatch(storeSource, /replaceSessionMessages\(sessionId,\s*settled\)/);
+  assert.doesNotMatch(storeSource, /replaceSessionMessages\(sessionId,\s*smartStop\.kept\)/);
 });
 
 test("delete remains on user turns and is removed from assistant toolbar", async () => {

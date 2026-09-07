@@ -25,8 +25,9 @@ has a different ownership boundary.
    read APIs.
 3. Only the Files *tool* migrates. Transcript-owned `file:<path>` resources and
    Review artifacts remain host-rendered and message/session scoped.
-4. Browser remains the host-built work-panel tool because its embedded
-   WebContentsView and navigation controls are host window machinery.
+4. Browser chrome and agent CDP ship as bundled plugin `pi.browser` (ADR 0170).
+   The guest `WebContentsView` and debugger remain host window machinery,
+   reached only through the public `pi.browser.*` API.
 5. The former proposal to keep an interactive terminal in the host is
    superseded by ADR 0108. There is no plugin PTY API and no private bundled
    plugin channel.

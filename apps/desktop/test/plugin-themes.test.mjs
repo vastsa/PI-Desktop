@@ -12,6 +12,7 @@ const runtimeSrc = readFileSync(join(desktopRoot, "electron/main/plugin-runtime.
 const mainSrc = readFileSync(join(desktopRoot, "electron/main/index.ts"), "utf8");
 const appSrc = readFileSync(join(desktopRoot, "src/App.tsx"), "utf8");
 const settingsSrc = readFileSync(join(desktopRoot, "src/pages/SettingsPage.tsx"), "utf8");
+const themeRowSrc = readFileSync(join(desktopRoot, "src/components/settings/ThemeRow.tsx"), "utf8");
 const storeSrc = readFileSync(join(desktopRoot, "src/stores/app-store.ts"), "utf8");
 const protocolSrc = readFileSync(join(repoRoot, "packages/shared/src/protocol.ts"), "utf8");
 
@@ -59,16 +60,12 @@ test("an unavailable plugin theme falls back to the system palette", () => {
   assert.match(effect, /document\.head\.append\(style\)/);
 });
 
-test("settings offers plugin themes in the same card grid", () => {
-  assert.match(settingsSrc, /pluginThemes\.map\(\(pluginTheme\)/);
-  assert.match(settingsSrc, /saveSettings\(\{ theme: pluginTheme\.id \}\)/);
-  assert.match(settingsSrc, /settings\.themeFromPlugin/);
-  const grid = settingsSrc.slice(
-    settingsSrc.lastIndexOf('aria-label={t("settings.theme")}'),
-  );
-  // Plugin cards live inside the built-in `settings-theme-grid` radiogroup.
-  assert.ok(
-    grid.indexOf("pluginThemes.map") < grid.indexOf("</SettingsCard>"),
-    "plugin theme cards must render inside the theme grid",
-  );
+test("settings offers plugin themes in the searchable picker", () => {
+  assert.match(settingsSrc, /<ThemeRow /);
+  assert.match(themeRowSrc, /pluginThemes\.map/);
+  assert.match(themeRowSrc, /saveSettings\(\{ theme: id \}\)/);
+  assert.match(themeRowSrc, /settings\.themeFromPlugin/);
+  assert.match(themeRowSrc, /kind: "plugin"/);
+  assert.doesNotMatch(settingsSrc, /settings-theme-grid/);
+  assert.doesNotMatch(settingsSrc, /settings-theme-card/);
 });

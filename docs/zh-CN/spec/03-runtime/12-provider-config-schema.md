@@ -128,6 +128,21 @@ base URL 与粘贴的密钥工作。厂商行的样式不由厂商固定：GitHu
 |---|---|---|---|---|
 | `opencode_go` | `openai_compatible` | `api_key_and_base_url` | `OpenCode Go` | `https://opencode.ai/zen/go/v1` |
 
+### 命名端点预设
+
+这些行由添加提供商对话框的**服务**下拉框创建。命名服务的常见路径是服务 +
+API 密钥；自定义端点在常见路径上并排显示 API 密钥与接口格式。`vendorKey`
+使用 models.dev 提供商键。
+
+国际：OpenAI、Anthropic、Google Gemini、OpenRouter、Groq、xAI、Mistral、
+Together、Fireworks、OpenCode Go、Z.AI。
+
+国内：DeepSeek、通义千问、月之暗面、智谱 / Coding Plan、硅基流动、火山方舟、
+MiniMax、Kimi 编程。
+
+智谱 / Z.AI 的 Completions 请求仍使用 `thinkingFormat: "zai"` 与
+`zaiToolStream: true`。
+
 ### 厂商账户预设
 
 这些行由登录创建（设置 → 模型配置 → 厂商账户），而不是由自定义提供商
@@ -160,6 +175,10 @@ type ModelCatalogCacheRecord = {
   raw?: unknown
 }
 ```
+
+上下文窗口解析与 sidecar 保持一致：若 models.dev 已发布正数
+`limit.context`，它会替换旧 binding 中的 128k 通用种子；用户在模型
+Advanced 控件中设置的非默认值仍优先。未知模型继续使用 128k 的保守后备。
 
 ## 5. IPC / 主机方法（提供商域）
 

@@ -32,7 +32,7 @@ const [appSource, chatSurfaceSource, sessionPaneSource, composerSource, transcri
     read("../src/components/PermissionCard.tsx"),
     read("../src/components/AskToolCard.tsx"),
     read("../src/stores/app-store.ts"),
-    read("../src/components/workpanel/BrowserTab.tsx"),
+    read("../src/components/workpanel/PluginViewTab.tsx"),
     read("../src/styles/messages.css"),
   ]);
 

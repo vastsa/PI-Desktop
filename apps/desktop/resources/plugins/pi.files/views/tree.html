@@ -1,10 +1,10 @@
 <!doctype html>
 <html lang="en">
   <head>
-      <meta charset="UTF-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-      <meta name="pi-plugin-chrome" content="v2" />
-      <title>Files</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="pi-plugin-chrome" content="v2" />
+    <title>Files</title>
     <style>
       :root {
         color-scheme: dark;
@@ -40,9 +40,7 @@
         --accent: #1a1c1f;
         --danger: #e02e2a;
       }
-      * {
-        box-sizing: border-box;
-      }
+      * { box-sizing: border-box; }
       body {
         height: 100vh;
         margin: 0;
@@ -51,10 +49,9 @@
         background: var(--bg);
         color: var(--fg);
       }
-      button {
-        font: inherit;
-      }
-      button:focus-visible {
+      button, input { font: inherit; color: inherit; }
+      button:focus-visible,
+      input:focus-visible {
         outline: 2px solid color-mix(in oklab, var(--accent) 58%, transparent);
         outline-offset: -2px;
       }
@@ -69,8 +66,7 @@
         min-height: 36px;
         flex: 0 0 auto;
         align-items: center;
-        justify-content: space-between;
-        gap: 10px;
+        gap: 8px;
         padding: 4px 8px 4px 10px;
         border-bottom: 1px solid var(--border);
         background: var(--surface);
@@ -78,6 +74,7 @@
       .toolbar-title {
         display: flex;
         min-width: 0;
+        flex: 0 1 auto;
         align-items: center;
         gap: 7px;
       }
@@ -88,8 +85,6 @@
         flex: 0 0 auto;
         align-items: center;
         justify-content: center;
-        border: 0;
-        border-radius: 0;
         color: var(--secondary);
       }
       .toolbar-copy {
@@ -98,21 +93,47 @@
         align-items: baseline;
         gap: 6px;
       }
-      .toolbar-name,
       .toolbar-subtitle {
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
       }
-      .toolbar-name {
-        font-size: 12.5px;
-        font-weight: 500;
-        letter-spacing: -0.01em;
-      }
       .toolbar-subtitle {
         min-width: 0;
         color: var(--muted);
         font-size: 11px;
+      }
+      .search {
+        display: flex;
+        min-width: 72px;
+        height: 26px;
+        flex: 1 1 120px;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid var(--border-strong);
+        border-radius: 8px;
+        padding: 0 8px;
+        background: color-mix(in oklab, var(--fg) 4%, transparent);
+        color: var(--muted);
+      }
+      .search:focus-within {
+        border-color: color-mix(in oklab, var(--accent) 40%, var(--border-strong));
+        color: var(--fg);
+      }
+      .search input {
+        width: 100%;
+        min-width: 0;
+        border: 0;
+        background: transparent;
+        color: var(--fg);
+        outline: none;
+      }
+      .search input::placeholder { color: var(--faint); }
+      .toolbar-actions {
+        display: flex;
+        flex: 0 0 auto;
+        align-items: center;
+        gap: 2px;
       }
       .icon-button {
         display: inline-flex;
@@ -142,24 +163,20 @@
         animation: spin 800ms linear infinite;
       }
       .content {
+        display: flex;
         min-height: 0;
         flex: 1;
         overflow: hidden;
       }
       .view {
-        height: 100%;
-        min-height: 0;
-      }
-      /* The view sections set their own display (flex) for layout, which would
-         otherwise override the UA `[hidden] { display: none }` rule and leave
-         the tree and the viewer visible at the same time when switching.
-         Re-assert the hidden contract so toggling works. */
-      .view[hidden] {
-        display: none !important;
-      }
-      .tree-view {
         display: flex;
+        min-width: 0;
+        min-height: 0;
+        flex: 1;
         flex-direction: column;
+      }
+      .view[hidden] {
+        display: none;
       }
       .section-bar {
         display: flex;
@@ -178,6 +195,7 @@
         color: var(--faint);
         font-variant-numeric: tabular-nums;
         letter-spacing: normal;
+        text-transform: none;
       }
       #tree {
         min-height: 0;
@@ -214,9 +232,7 @@
         color: var(--fg);
         box-shadow: inset 2px 0 0 var(--accent);
       }
-      .tree-row[aria-expanded="true"] {
-        color: var(--fg);
-      }
+      .tree-row[aria-expanded="true"] { color: var(--fg); }
       .tree-caret {
         display: inline-flex;
         width: 12px;
@@ -227,9 +243,7 @@
         color: var(--faint);
         transition: transform 150ms ease-out;
       }
-      .tree-row[aria-expanded="true"] .tree-caret {
-        transform: rotate(90deg);
-      }
+      .tree-row[aria-expanded="true"] .tree-caret { transform: rotate(90deg); }
       .tree-icon {
         display: inline-flex;
         width: 15px;
@@ -239,9 +253,7 @@
         justify-content: center;
         color: var(--muted);
       }
-      .tree-row[aria-expanded="true"] .tree-icon {
-        color: var(--secondary);
-      }
+      .tree-row[aria-expanded="true"] .tree-icon { color: var(--secondary); }
       .tree-name {
         min-width: 0;
         overflow: hidden;
@@ -268,9 +280,7 @@
         padding: 3px 12px;
         text-align: left;
       }
-      .tree-note.error {
-        color: var(--danger);
-      }
+      .tree-note.error { color: var(--danger); }
       .tree-retry {
         margin-left: auto;
         border: 0;
@@ -325,16 +335,12 @@
         font-size: 13px;
         line-height: 1.55;
       }
-      .viewer-view {
-        display: flex;
-        flex-direction: column;
-      }
       .viewer-header {
         display: flex;
         min-height: 42px;
         flex: 0 0 auto;
         align-items: center;
-        gap: 6px;
+        gap: 4px;
         padding: 6px 8px;
         border-bottom: 1px solid var(--border);
         background: var(--surface);
@@ -362,23 +368,6 @@
         flex: 1;
         overflow: auto;
       }
-      .viewer-image {
-        display: flex;
-        min-height: 0;
-        height: 100%;
-        align-items: center;
-        justify-content: center;
-        padding: 16px;
-        overflow: auto;
-        background:
-          repeating-conic-gradient(var(--border) 0% 25%, transparent 0% 50%) 0 0 / 16px 16px;
-      }
-      .viewer-image img {
-        max-width: 100%;
-        max-height: 100%;
-        object-fit: contain;
-        border-radius: 4px;
-      }
       .viewer-loading,
       .viewer-message {
         display: flex;
@@ -390,6 +379,21 @@
         color: var(--muted);
         text-align: center;
       }
+      .viewer-image {
+        display: flex;
+        height: 100%;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+      }
+      .viewer-image img {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+        background:
+          linear-gradient(45deg, color-mix(in oklab, var(--fg) 8%, transparent) 25%, transparent 25%) 0 0 / 12px 12px,
+          linear-gradient(45deg, transparent 75%, color-mix(in oklab, var(--fg) 8%, transparent) 75%) 6px 6px / 12px 12px;
+      }
       .code {
         min-width: max-content;
         margin: 0;
@@ -399,10 +403,7 @@
         tab-size: 2;
         white-space: pre;
       }
-      .code-line {
-        display: flex;
-        min-height: 1.55em;
-      }
+      .code-line { display: flex; min-height: 1.55em; }
       .line-number {
         width: 42px;
         flex: 0 0 auto;
@@ -411,96 +412,73 @@
         text-align: right;
         user-select: none;
       }
-      .line-content {
-        padding-right: 16px;
-      }
+      .line-content { padding-right: 16px; }
       .truncated {
         padding: 10px 16px 0 58px;
         color: var(--muted);
         font: 10px/1.5 var(--mono);
       }
-      .markdown-body {
-        max-width: 760px;
-        padding: 16px 20px 28px;
-        color: var(--fg);
-        font-size: 13px;
-        line-height: 1.65;
-        overflow-wrap: break-word;
+      .menu {
+        position: fixed;
+        z-index: 20;
+        min-width: 168px;
+        padding: 4px;
+        border: 1px solid var(--border-strong);
+        border-radius: 10px;
+        background: var(--surface);
+        box-shadow: 0 10px 28px color-mix(in oklab, #000 28%, transparent);
       }
-      .markdown-body h1,
-      .markdown-body h2,
-      .markdown-body h3,
-      .markdown-body h4 {
-        margin: 1.2em 0 0.5em;
-        font-weight: 600;
-        line-height: 1.3;
-      }
-      .markdown-body h1 { font-size: 1.5em; border-bottom: 1px solid var(--border); padding-bottom: 0.3em; }
-      .markdown-body h2 { font-size: 1.25em; }
-      .markdown-body h3 { font-size: 1.1em; }
-      .markdown-body p { margin: 0.6em 0; }
-      .markdown-body ul,
-      .markdown-body ol { margin: 0.6em 0; padding-left: 1.6em; }
-      .markdown-body li { margin: 0.2em 0; }
-      .markdown-body a { color: var(--accent); text-decoration: none; }
-      .markdown-body a:hover { text-decoration: underline; }
-      .markdown-body code {
-        padding: 0.15em 0.4em;
-        border-radius: 4px;
-        background: var(--surface-hover);
-        font: 11.5px/1.4 var(--mono);
-      }
-      .markdown-body pre {
-        margin: 0.8em 0;
-        padding: 12px 14px;
+      .menu[hidden] { display: none; }
+      .menu button {
+        display: block;
+        width: 100%;
+        border: 0;
         border-radius: 6px;
-        background: var(--surface-hover);
-        overflow: auto;
+        padding: 6px 8px;
+        background: transparent;
+        color: var(--fg);
+        cursor: pointer;
+        text-align: left;
       }
-      .markdown-body pre code { padding: 0; background: none; }
-      .markdown-body blockquote {
-        margin: 0.8em 0;
-        padding: 2px 14px;
-        border-left: 3px solid var(--border);
-        color: var(--muted);
+      .menu button:hover,
+      .menu button:focus-visible { background: var(--surface-hover); }
+      .menu button:disabled {
+        color: var(--faint);
+        cursor: default;
       }
-      .markdown-body hr { border: 0; border-top: 1px solid var(--border); margin: 1.2em 0; }
-      .markdown-body table { border-collapse: collapse; margin: 0.8em 0; }
-      .markdown-body th,
-      .markdown-body td { border: 1px solid var(--border); padding: 4px 10px; }
-      .markdown-body th { background: var(--surface-hover); }
-      .markdown-body img { max-width: 100%; border-radius: 4px; }
       @media (prefers-reduced-motion: reduce) {
         .tree-caret,
         .icon-button,
-        .tree-row {
-          transition: none;
-        }
+        .tree-row { transition: none; }
         .icon-button[data-loading="true"] svg,
-        .mini-spinner {
-          animation: none;
-        }
+        .mini-spinner { animation: none; }
       }
-      @keyframes spin {
-        to { transform: rotate(360deg); }
-      }
+      @keyframes spin { to { transform: rotate(360deg); } }
     </style>
   </head>
   <body>
-    <div class="app">
+    <div class="app" id="app">
       <header class="toolbar">
         <div class="toolbar-title">
           <span class="toolbar-icon" aria-hidden="true">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 6.5h6l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5h-14A1.5 1.5 0 0 1 3.5 18z"/><path d="M3.5 6.5V5A1.5 1.5 0 0 1 5 3.5h4l2 2h6"/></svg>
           </span>
           <span class="toolbar-copy">
-            <span class="toolbar-name" id="toolbar-name">Files</span>
             <span class="toolbar-subtitle" id="toolbar-subtitle">Project files</span>
           </span>
         </div>
-        <button class="icon-button" id="refresh" type="button" title="Refresh" aria-label="Refresh" disabled>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.9-3.9L3 9"/><path d="M3 4v5h5"/><path d="M4 13a8 8 0 0 0 14.9 3.9L21 15"/><path d="M21 20v-5h-5"/></svg>
-        </button>
+        <label class="search" id="search-wrap">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>
+          <input id="search" type="search" spellcheck="false" autocomplete="off" />
+        </label>
+        <div class="toolbar-actions">
+          <button class="icon-button" id="collapse" type="button" disabled>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14M5 16h14"/></svg>
+          </button>
+          <button class="icon-button" id="refresh" type="button" disabled>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.9-3.9L3 9"/><path d="M3 4v5h5"/><path d="M4 13a8 8 0 0 0 14.9 3.9L21 15"/><path d="M21 20v-5h-5"/></svg>
+          </button>
+        </div>
       </header>
       <main class="content">
         <section class="view tree-view" id="tree-view" aria-labelledby="tree-label">
@@ -512,12 +490,18 @@
         </section>
         <section class="view viewer-view" id="viewer-view" aria-labelledby="viewer-path" hidden>
           <header class="viewer-header">
-            <button class="icon-button" id="back" type="button" title="Back to files" aria-label="Back to files">
+            <button class="icon-button back-only" id="back" type="button">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
             </button>
             <span class="viewer-path" id="viewer-path" title=""></span>
             <span class="viewer-meta" id="viewer-meta"></span>
-            <button class="icon-button" id="reveal" type="button" title="Show in folder" aria-label="Show in folder" disabled>
+            <button class="icon-button" id="copy" type="button" disabled>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="1.5"/><path d="M5 15H4.5A1.5 1.5 0 0 1 3 13.5v-9A1.5 1.5 0 0 1 4.5 3h9A1.5 1.5 0 0 1 15 4.5V5"/></svg>
+            </button>
+            <button class="icon-button" id="open" type="button" disabled>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 5h5v5"/><path d="M10 14 19 5"/><path d="M19 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h6"/></svg>
+            </button>
+            <button class="icon-button" id="reveal" type="button" disabled>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 7.5h6l2 2h9l-2 9a1.5 1.5 0 0 1-1.5 1.2h-14a1.5 1.5 0 0 1-1.5-1.8z"/><path d="M3.5 7.5V5A1.5 1.5 0 0 1 5 3.5h4l2 2h6"/></svg>
             </button>
           </header>
@@ -525,6 +509,7 @@
         </section>
       </main>
     </div>
+    <div class="menu" id="menu" hidden role="menu"></div>
 
     <script>
       const bridge = window.pluginBridge;
@@ -536,12 +521,15 @@
       const viewerMeta = document.getElementById("viewer-meta");
       const viewerBody = document.getElementById("viewer-body");
       const refreshButton = document.getElementById("refresh");
+      const collapseButton = document.getElementById("collapse");
       const revealButton = document.getElementById("reveal");
-      const toolbarName = document.getElementById("toolbar-name");
+      const openButton = document.getElementById("open");
+      const copyButton = document.getElementById("copy");
+      const searchInput = document.getElementById("search");
+      const menu = document.getElementById("menu");
       const toolbarSubtitle = document.getElementById("toolbar-subtitle");
 
       const MAX_LINES = 5000;
-      const MAX_TEXT_BYTES = 512 * 1024;
       const expanded = new Set();
       const directories = new Map();
       const fileSizes = new Map();
@@ -552,12 +540,21 @@
       let locale = "en";
       let isRefreshing = false;
       let isRevealing = false;
+      let isOpening = false;
       let viewerState = null;
+      let searchQuery = "";
+      let searchHits = null;
+      let searchTimer = 0;
+      let typeahead = "";
+      let typeaheadTimer = 0;
+      let menuTarget = null;
 
       const copy = {
         en: {
-          files: "Files",
           projectFiles: "Project files",
+          search: "Search files",
+          searchEmpty: "No matching files.",
+          searchTruncated: "Showing first {count} matches.",
           noWorkspace: "Open a project to browse its files.",
           noWorkspaceTitle: "No project open",
           noWorkspaceCopy: "Choose a project from the sidebar, then come back here to inspect its files.",
@@ -567,21 +564,30 @@
           error: "Could not load this folder.",
           retry: "Retry",
           refresh: "Refresh",
+          collapse: "Collapse folders",
           back: "Back to files",
           binary: "This file cannot be previewed as text.",
-          image: "Image preview is not available in the plugin view.",
           tooLarge: "This file is too large to preview.",
           readError: "Could not read this file.",
           reveal: "Show in folder",
           revealing: "Showing…",
           revealError: "Could not show this file in its folder.",
+          open: "Open with default app",
+          opening: "Opening…",
+          openError: "Could not open this file.",
+          copyPath: "Copy path",
+          copied: "Copied path",
+          copyError: "Could not copy the path.",
+          preview: "Preview",
           truncated: "Preview truncated after {count} lines.",
           folder: "folder",
           file: "file",
         },
         zh: {
-          files: "文件",
           projectFiles: "项目文件",
+          search: "搜索文件",
+          searchEmpty: "没有匹配的文件。",
+          searchTruncated: "仅显示前 {count} 条匹配。",
           noWorkspace: "打开项目后即可浏览文件。",
           noWorkspaceTitle: "尚未打开项目",
           noWorkspaceCopy: "请先从侧边栏选择项目，再回到这里查看文件。",
@@ -591,14 +597,21 @@
           error: "无法加载此文件夹。",
           retry: "重试",
           refresh: "刷新",
+          collapse: "折叠文件夹",
           back: "返回文件列表",
           binary: "此文件无法以文本方式预览。",
-          image: "插件视图暂不支持图片预览。",
           tooLarge: "此文件过大，无法预览。",
           readError: "无法读取此文件。",
           reveal: "在文件夹中显示",
           revealing: "显示中…",
           revealError: "无法在文件夹中显示此文件。",
+          open: "用默认应用打开",
+          opening: "打开中…",
+          openError: "无法打开此文件。",
+          copyPath: "复制路径",
+          copied: "已复制路径",
+          copyError: "无法复制路径。",
+          preview: "预览",
           truncated: "预览已截断，仅显示前 {count} 行。",
           folder: "文件夹",
           file: "文件",
@@ -613,23 +626,47 @@
       const svg = {
         folder: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 6.5h6l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5h-14A1.5 1.5 0 0 1 3.5 18z"/><path d="M3.5 6.5V5A1.5 1.5 0 0 1 5 3.5h4l2 2h6"/></svg>',
         file: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.5h8l4 4V20a.5.5 0 0 1-.5.5h-11A.5.5 0 0 1 6 20z"/><path d="M14 3.5V8h4"/><path d="M9 12h6M9 15.5h6"/></svg>',
+        image: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="1.5"/><circle cx="9" cy="10" r="1.4"/><path d="m8 16 3.2-3.2L15 16l2-2 3 3"/></svg>',
         caret: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>',
       };
 
       const isImagePath = (path) => /\.(?:png|jpe?g|gif|webp|svg|ico|bmp|avif)$/i.test(path);
-      const isMarkdownPath = (path) => /\.(?:md|mdx|markdown)$/i.test(path);
-      const isHtmlPath = (path) => /\.(?:html?|htm)$/i.test(path);
       const formatSize = (bytes) => {
         if (typeof bytes !== "number") return "";
         if (bytes < 1024) return `${bytes} B`;
         if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
         return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
       };
-      const childPath = (parent, name) => parent ? `${parent}/${name}` : name;
+      const childPath = (parent, name) => (parent ? `${parent}/${name}` : name);
+      const parentPath = (path) => {
+        const index = String(path ?? "").lastIndexOf("/");
+        return index === -1 ? "" : path.slice(0, index);
+      };
+      const fileIcon = (path) => (isImagePath(path) ? svg.image : svg.file);
       const sortedEntries = (entries) => [
         ...entries.filter((entry) => entry.isDirectory),
         ...entries.filter((entry) => !entry.isDirectory),
       ];
+      const toast = (message, level = "info") =>
+        bridge.invoke("ui.showToast", { message, level }).catch(() => {});
+
+      const applyLabels = () => {
+        toolbarSubtitle.textContent = workspace?.name || t("projectFiles");
+        document.getElementById("tree-label").textContent =
+          searchQuery ? t("search") : t("projectFiles");
+        searchInput.placeholder = t("search");
+        searchInput.setAttribute("aria-label", t("search"));
+        const pair = (el, key) => {
+          el.title = t(key);
+          el.setAttribute("aria-label", t(key));
+        };
+        pair(refreshButton, isRefreshing ? "refreshing" : "refresh");
+        pair(collapseButton, "collapse");
+        pair(document.getElementById("back"), "back");
+        pair(copyButton, "copyPath");
+        pair(openButton, isOpening ? "opening" : "open");
+        pair(revealButton, isRevealing ? "revealing" : "reveal");
+      };
 
       const setBaseTheme = (appearance) => {
         const base = appearance?.base;
@@ -640,23 +677,11 @@
         const nextLocale = String(appearance?.locale ?? navigator.language).toLowerCase();
         locale = nextLocale.startsWith("zh") ? "zh" : "en";
         document.documentElement.lang = locale === "zh" ? "zh-CN" : "en";
-        toolbarName.textContent = t("files");
-        toolbarSubtitle.textContent = workspace?.name || t("projectFiles");
-        document.getElementById("tree-label").textContent = t("projectFiles");
-        refreshButton.title = t("refresh");
-        refreshButton.setAttribute("aria-label", t("refresh"));
-        document.getElementById("back").title = t("back");
-        document.getElementById("back").setAttribute("aria-label", t("back"));
-        revealButton.title = t("reveal");
-        revealButton.setAttribute("aria-label", t("reveal"));
-        if (!viewerView.hidden && selected) viewerPath.title = selected;
+        applyLabels();
         renderTree();
         if (!viewerView.hidden && viewerState) {
           if (viewerState.type === "text") renderText(viewerState.text);
-          else if (viewerState.type === "markdown" && typeof viewerState.text === "string")
-            renderMarkdown(viewerState.text);
-          else if (viewerState.type === "image" && typeof viewerState.dataUrl === "string")
-            renderImage(viewerState.dataUrl);
+          else if (viewerState.type === "image") renderImage(viewerState.dataUrl, viewerState.alt);
           else if (viewerState.type !== "loading") showViewerMessage(viewerState.type);
         }
       };
@@ -668,20 +693,19 @@
         const loading = isRefreshing || rootLoading;
         refreshButton.disabled = !workspace || loading;
         refreshButton.dataset.loading = String(loading);
-        const label = loading ? t("refreshing") : t("refresh");
-        refreshButton.title = label;
-        refreshButton.setAttribute("aria-label", label);
         refreshButton.setAttribute("aria-busy", String(loading));
+        collapseButton.disabled = !workspace || expanded.size === 0;
+        applyLabels();
       };
 
-      const updateRevealButton = () => {
-        const active = !viewerView.hidden && Boolean(selected);
+      const updateViewerButtons = () => {
+        const active = Boolean(selected) && !viewerView.hidden;
+        copyButton.disabled = !active;
+        openButton.disabled = !active || isOpening;
         revealButton.disabled = !active || isRevealing;
+        openButton.dataset.loading = String(isOpening);
         revealButton.dataset.loading = String(isRevealing);
-        const label = isRevealing ? t("revealing") : t("reveal");
-        revealButton.title = label;
-        revealButton.setAttribute("aria-label", label);
-        revealButton.setAttribute("aria-busy", String(isRevealing));
+        applyLabels();
       };
 
       async function loadDirectory(path, force = false) {
@@ -716,9 +740,9 @@
           spinner.setAttribute("aria-hidden", "true");
           note.append(spinner);
         }
-        const copy = document.createElement("span");
-        copy.textContent = message;
-        note.append(copy);
+        const label = document.createElement("span");
+        label.textContent = message;
+        note.append(label);
         if (retry) {
           const button = document.createElement("button");
           button.className = "tree-retry";
@@ -752,7 +776,7 @@
           row.querySelector(".tree-name").textContent = entry.name;
         } else {
           row.setAttribute("aria-current", String(selected === path));
-          row.innerHTML = `<span class="tree-caret"></span><span class="tree-icon">${svg.file}</span><span class="tree-name"></span><span class="tree-size"></span>`;
+          row.innerHTML = `<span class="tree-caret"></span><span class="tree-icon">${fileIcon(path)}</span><span class="tree-name"></span><span class="tree-size"></span>`;
           row.querySelector(".tree-name").textContent = entry.name;
           row.querySelector(".tree-size").textContent = formatSize(entry.size);
         }
@@ -786,37 +810,70 @@
         }
       };
 
+      const emptyState = (title, body) => {
+        const empty = document.createElement("div");
+        empty.className = "empty";
+        empty.innerHTML = `<div class="empty-inner"><span class="empty-icon">${svg.folder}</span><span class="empty-title"></span><span class="empty-copy"></span></div>`;
+        empty.querySelector(".empty-title").textContent = title;
+        empty.querySelector(".empty-copy").textContent = body;
+        empty.querySelector(".empty-icon").setAttribute("aria-hidden", "true");
+        return empty;
+      };
+
       function renderTree() {
+        const scroll = tree.scrollTop;
+        const focused = document.activeElement?.classList?.contains("tree-row")
+          ? document.activeElement.dataset.path
+          : null;
         tree.replaceChildren();
-        tree.setAttribute("aria-busy", String(!directoryState("")));
+        applyLabels();
         if (!workspace) {
-          const empty = document.createElement("div");
-          empty.className = "empty";
-          empty.innerHTML = `<div class="empty-inner"><span class="empty-icon">${svg.folder}</span><span class="empty-title"></span><span class="empty-copy"></span></div>`;
-          empty.querySelector(".empty-title").textContent = t("noWorkspaceTitle");
-          empty.querySelector(".empty-copy").textContent = t("noWorkspaceCopy");
-          empty.querySelector(".empty-icon").setAttribute("aria-hidden", "true");
-          tree.append(empty);
+          tree.append(emptyState(t("noWorkspaceTitle"), t("noWorkspaceCopy")));
           treeCount.textContent = "";
+          tree.setAttribute("aria-busy", "false");
           updateRefreshButton();
+          return;
+        }
+        if (searchHits) {
+          tree.setAttribute("aria-busy", "false");
+          if (!searchHits.length) {
+            tree.append(emptyState(t("searchEmpty"), t("search")));
+            treeCount.textContent = "0";
+          } else {
+            const fragment = document.createDocumentFragment();
+            for (const path of searchHits) {
+              const name = path.split("/").pop() || path;
+              fragment.append(makeRow({ name, path, isDirectory: false, size: fileSizes.get(path) }, 0));
+            }
+            tree.append(fragment);
+            treeCount.textContent = String(searchHits.length);
+          }
+          updateRefreshButton();
+          if (focused) {
+            tree.querySelector(`.tree-row[data-path="${CSS.escape(focused)}"]`)?.focus();
+          }
+          tree.scrollTop = scroll;
           return;
         }
         tree.setAttribute("aria-busy", String(!directoryState("")));
         const fragment = document.createDocumentFragment();
         renderDirectory("", 0, fragment);
-        tree.replaceChildren(fragment);
+        tree.append(fragment);
         const root = directoryState("");
         const count = root?.entries?.length;
         treeCount.textContent = typeof count === "number" ? String(count) : "";
-        toolbarSubtitle.textContent = workspace.name || t("projectFiles");
         updateRefreshButton();
+        if (focused) {
+          tree.querySelector(`.tree-row[data-path="${CSS.escape(focused)}"]`)?.focus();
+        }
+        tree.scrollTop = scroll;
       }
 
       const showTree = () => {
         viewerView.hidden = true;
         treeView.hidden = false;
-        updateRevealButton();
-        const row = selected && document.querySelector(`.tree-row[data-path="${CSS.escape(selected)}"]`);
+        updateViewerButtons();
+        const row = selected && tree.querySelector(`.tree-row[data-path="${CSS.escape(selected)}"]`);
         row?.focus();
       };
 
@@ -826,7 +883,7 @@
         viewerState = { type: "loading" };
         viewerPath.textContent = path;
         viewerPath.title = path;
-        viewerMeta.textContent = "";
+        viewerMeta.textContent = formatSize(fileSizes.get(path));
         viewerBody.replaceChildren();
         const loading = document.createElement("div");
         loading.className = "viewer-loading";
@@ -836,7 +893,7 @@
         loading.append(spinner, document.createTextNode(t("loading")));
         loading.setAttribute("role", "status");
         viewerBody.append(loading);
-        updateRevealButton();
+        updateViewerButtons();
       };
 
       const showViewerMessage = (messageKey) => {
@@ -846,153 +903,24 @@
         message.setAttribute("role", "status");
         message.textContent = t(messageKey);
         viewerBody.replaceChildren(message);
+        updateViewerButtons();
       };
 
-      const escapeHtml = (value) =>
-        String(value)
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;")
-          .replace(/'/g, "&#39;");
-
-      const inlineMarkdown = (text) =>
-        escapeHtml(text)
-          .replace(/`([^`]+)`/g, "<code>$1</code>")
-          .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-          .replace(/__([^_]+)__/g, "<strong>$1</strong>")
-          .replace(/\*([^*]+)\*/g, "<em>$1</em>")
-          .replace(/_([^_]+)_/g, "<em>$1</em>")
-          .replace(
-            /\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g,
-            (_, label, href) => {
-              if (/^(https?:|mailto:)/i.test(href)) {
-                return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
-              }
-              return `<a href="${escapeHtml(href)}">${label}</a>`;
-            },
-          )
-          .replace(
-            /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g,
-            (_, alt, srcUrl) => `<img src="${escapeHtml(srcUrl)}" alt="${escapeHtml(alt || "")}" />`,
-          );
-
-      const renderMarkdown = (text) => {
-        viewerState = { type: "markdown", text };
-        const wrap = document.createElement("div");
-        wrap.className = "markdown-body";
-        const source = String(text || "").replace(/\r\n?/g, "\n");
-        const lines = source.split("\n");
-        const html = [];
-        let inCode = false;
-        let codeLang = "";
-        let codeBuf = [];
-        let inList = null;
-        let inTable = false;
-        let tableRows = [];
-        const flushList = () => {
-          if (inList === "ul") html.push("</ul>");
-          else if (inList === "ol") html.push("</ol>");
-          inList = null;
-        };
-        const flushTable = () => {
-          if (!inTable) return;
-          html.push("<table><thead><tr>" + tableRows[0].map((c) => `<th>${c}</th>`).join("") + "</tr></thead><tbody>");
-          for (const row of tableRows.slice(1)) html.push("<tr>" + row.map((c) => `<td>${c}</td>`).join("") + "</tr>");
-          html.push("</tbody></table>");
-          inTable = false;
-          tableRows = [];
-        };
-        for (const raw of lines) {
-          const line = raw.trimEnd();
-          if (line.trim().startsWith("```")) {
-            if (!inCode) {
-              flushList();
-              flushTable();
-              inCode = true;
-              codeLang = line.trim().slice(3).trim();
-              codeBuf = [];
-            } else {
-              html.push(`<pre><code>${codeBuf.join("\n")}</code></pre>`);
-              inCode = false;
-            }
-            continue;
-          }
-          if (inCode) { codeBuf.push(escapeHtml(line)); continue; }
-          if (!line.trim()) {
-            flushList();
-            flushTable();
-            html.push("");
-            continue;
-          }
-          if (/^\s*(?:#{1,6})\s+/.test(line)) {
-            flushList(); flushTable();
-            const level = line.match(/^(#{1,6})/)[1].length;
-            html.push(`<h${level}>${inlineMarkdown(line.replace(/^\s*#{1,6}\s*/, ""))}</h${level}>`);
-            continue;
-          }
-          if (/^\s*([-*+])\s+/.test(line)) {
-            if (inList !== "ul") { flushList(); flushTable(); html.push("<ul>"); inList = "ul"; }
-            html.push(`<li>${inlineMarkdown(line.replace(/^\s*[-*+]\s+/, ""))}</li>`);
-            continue;
-          }
-          if (/^\s*\d+[.)]\s+/.test(line)) {
-            if (inList !== "ol") { flushList(); flushTable(); html.push("<ol>"); inList = "ol"; }
-            html.push(`<li>${inlineMarkdown(line.replace(/^\s*\d+[.)]\s+/, ""))}</li>`);
-            continue;
-          }
-          if (/^\s*([-*_])\s*\1\s*\1(?:\s*\1)*\s*$/.test(line)) {
-            flushList(); flushTable();
-            html.push("<hr>");
-            continue;
-          }
-          if (/^\s*&gt;\s*/.test(line)) {
-            flushList();
-            html.push(`<blockquote>${inlineMarkdown(line.replace(/^\s*&gt;\s*/, ""))}</blockquote>`);
-            continue;
-          }
-          if (line.includes("|") && /^\s*\|?\s*:?-{2,}:?\s*(?:\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(line) && !inTable) {
-            // separator row for the table above
-            continue;
-          }
-          if (line.includes("|")) {
-            if (inTable) {
-              tableRows.push(line.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => inlineMarkdown(c.trim())));
-            } else {
-              flushList();
-              inTable = true;
-              tableRows = [line.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => inlineMarkdown(c.trim()))];
-            }
-            continue;
-          }
-          if (inTable) { flushTable(); }
-          flushList();
-          html.push(`<p>${inlineMarkdown(line)}</p>`);
-        }
-        flushList();
-        flushTable();
-        if (inCode) html.push(`<pre><code>${codeBuf.join("\n")}</code></pre>`);
-        wrap.innerHTML = html.join("\n");
-        viewerBody.replaceChildren(wrap);
-        viewerMeta.textContent = formatSize(fileSizes.get(selected));
-      };
-
-      const renderImage = (dataUrl) => {
-        viewerState = { type: "image", dataUrl };
+      const renderImage = (dataUrl, alt) => {
+        viewerState = { type: "image", dataUrl, alt };
         const wrap = document.createElement("div");
         wrap.className = "viewer-image";
         const img = document.createElement("img");
         img.src = dataUrl;
-        img.alt = selected || "";
+        img.alt = alt;
         wrap.append(img);
         viewerBody.replaceChildren(wrap);
-        viewerMeta.textContent = formatSize(fileSizes.get(selected));
       };
 
       const renderText = (text) => {
         viewerState = { type: "text", text };
         const lines = text.split("\n");
-        const truncated = lines.length > MAX_LINES || text.length > MAX_TEXT_BYTES;
+        const truncated = lines.length > MAX_LINES;
         const visible = lines.slice(0, MAX_LINES);
         const pre = document.createElement("pre");
         pre.className = "code";
@@ -1023,58 +951,140 @@
       async function openFile(path) {
         selected = path;
         showViewer(path);
-        viewerMeta.textContent = formatSize(fileSizes.get(path));
-        if (isHtmlPath(path)) {
-          try {
-            await bridge.invoke("fs.previewInBrowser", { path });
-          } catch {
-            showViewerMessage("readError");
-          }
-          return;
-        }
-        if (isImagePath(path)) {
-          try {
-            const dataUrl = await bridge.invoke("fs.readImageDataUrl", { path });
-            if (selected !== path) return;
-            renderImage(dataUrl);
-          } catch {
-            showViewerMessage("readError");
-          }
-          return;
-        }
+        renderTree();
         try {
-          const text = await bridge.invoke("fs.readText", { path });
+          const preview = await bridge.invoke("fs.readPreview", { path });
           if (selected !== path) return;
-          if (typeof text !== "string" || text.includes("\0")) {
+          if (typeof preview?.size === "number") fileSizes.set(path, preview.size);
+          if (preview?.kind === "image" && preview.dataUrl) {
+            viewerMeta.textContent = formatSize(preview.size);
+            renderImage(preview.dataUrl, path);
+            return;
+          }
+          if (preview?.kind === "tooLarge") {
+            viewerMeta.textContent = formatSize(preview.size);
+            showViewerMessage("tooLarge");
+            return;
+          }
+          if (preview?.kind === "binary" || typeof preview?.content !== "string" || preview.content.includes("\0")) {
+            viewerMeta.textContent = formatSize(preview?.size ?? fileSizes.get(path));
             showViewerMessage("binary");
             return;
           }
-          if (isMarkdownPath(path)) {
-            renderMarkdown(text);
-          } else {
-            renderText(text);
-          }
+          renderText(preview.content);
         } catch {
           showViewerMessage("readError");
         }
       }
 
-      revealButton.addEventListener("click", async () => {
-        if (!selected || isRevealing) return;
-        isRevealing = true;
-        updateRevealButton();
+      async function openDefault(path) {
+        if (!path || isOpening) return;
+        isOpening = true;
+        updateViewerButtons();
         try {
-          await bridge.invoke("fs.reveal", { path: selected });
+          await bridge.invoke("fs.openDefault", { path });
         } catch {
-          await bridge.invoke("ui.showToast", {
-            message: t("revealError"),
-            level: "error",
-          }).catch(() => {});
+          await toast(t("openError"), "error");
+        } finally {
+          isOpening = false;
+          updateViewerButtons();
+        }
+      }
+
+      async function revealPath(path) {
+        if (!path || isRevealing) return;
+        isRevealing = true;
+        updateViewerButtons();
+        try {
+          await bridge.invoke("fs.reveal", { path });
+        } catch {
+          await toast(t("revealError"), "error");
         } finally {
           isRevealing = false;
-          updateRevealButton();
+          updateViewerButtons();
         }
-      });
+      }
+
+      async function copyPath(path) {
+        if (!path) return;
+        try {
+          if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(path);
+          } else {
+            throw new Error("clipboard unavailable");
+          }
+          await toast(t("copied"));
+        } catch {
+          const field = document.createElement("textarea");
+          field.value = path;
+          field.setAttribute("readonly", "");
+          field.style.position = "fixed";
+          field.style.left = "-9999px";
+          document.body.append(field);
+          field.select();
+          const ok = document.execCommand("copy");
+          field.remove();
+          await toast(ok ? t("copied") : t("copyError"), ok ? "info" : "error");
+        }
+      }
+
+      const hideMenu = () => {
+        menu.hidden = true;
+        menu.replaceChildren();
+        menuTarget = null;
+      };
+
+      const showMenu = (event, path, isDirectory) => {
+        event.preventDefault();
+        menuTarget = { path, isDirectory };
+        const item = (label, enabled, action) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.setAttribute("role", "menuitem");
+          button.textContent = label;
+          button.disabled = !enabled;
+          button.addEventListener("click", () => {
+            hideMenu();
+            action();
+          });
+          return button;
+        };
+        menu.replaceChildren(
+          item(t("preview"), !isDirectory, () => void openFile(path)),
+          item(t("open"), !isDirectory, () => void openDefault(path)),
+          item(t("reveal"), !isDirectory, () => void revealPath(path)),
+          item(t("copyPath"), true, () => void copyPath(path)),
+        );
+        menu.hidden = false;
+        const x = Math.min(event.clientX, window.innerWidth - 180);
+        const y = Math.min(event.clientY, window.innerHeight - 160);
+        menu.style.left = `${Math.max(6, x)}px`;
+        menu.style.top = `${Math.max(6, y)}px`;
+        menu.querySelector("button:not(:disabled)")?.focus();
+      };
+
+      const globFromQuery = (query) => {
+        const safe = query.trim().replace(/[*?[\]{}\\]/g, "");
+        return safe ? `**/*${safe}*` : "";
+      };
+
+      async function runSearch(query) {
+        searchQuery = query.trim();
+        const pattern = globFromQuery(searchQuery);
+        if (!searchQuery || !pattern || !workspace) {
+          searchHits = null;
+          renderTree();
+          return;
+        }
+        try {
+          const matches = await bridge.invoke("fs.glob", { pattern });
+          searchHits = Array.isArray(matches) ? matches : [];
+          renderTree();
+        } catch {
+          searchHits = [];
+          renderTree();
+        }
+      }
 
       tree.addEventListener("click", (event) => {
         const row = event.target.closest(".tree-row");
@@ -1091,11 +1101,24 @@
         }
       });
 
+      tree.addEventListener("dblclick", (event) => {
+        const row = event.target.closest(".tree-row");
+        if (!row || row.dataset.directory === "true") return;
+        void openDefault(row.dataset.path);
+      });
+
+      tree.addEventListener("contextmenu", (event) => {
+        const row = event.target.closest(".tree-row");
+        if (!row?.dataset.path) return;
+        showMenu(event, row.dataset.path, row.dataset.directory === "true");
+      });
+
       tree.addEventListener("keydown", (event) => {
         const row = event.target.closest(".tree-row");
         if (!row) return;
         const rows = [...tree.querySelectorAll(".tree-row")];
         const index = rows.indexOf(row);
+        const path = row.dataset.path;
         if (event.key === "ArrowDown" || event.key === "ArrowUp") {
           event.preventDefault();
           rows[Math.max(0, Math.min(rows.length - 1, index + (event.key === "ArrowDown" ? 1 : -1)))]?.focus();
@@ -1107,18 +1130,43 @@
           row.click();
         } else if (event.key === "ArrowRight" && row.dataset.directory === "true") {
           event.preventDefault();
-          const path = row.dataset.path;
           expanded.add(path);
           void loadDirectory(path);
           renderTree();
-        } else if (event.key === "ArrowLeft" && row.dataset.directory === "true" && expanded.has(row.dataset.path)) {
+        } else if (event.key === "ArrowLeft") {
           event.preventDefault();
-          expanded.delete(row.dataset.path);
-          renderTree();
+          if (row.dataset.directory === "true" && expanded.has(path)) {
+            expanded.delete(path);
+            renderTree();
+          } else {
+            const parent = parentPath(path);
+            tree.querySelector(`.tree-row[data-path="${CSS.escape(parent)}"]`)?.focus();
+          }
+        } else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "c") {
+          event.preventDefault();
+          void copyPath(path);
+        } else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "o") {
+          event.preventDefault();
+          if (row.dataset.directory !== "true") void openDefault(path);
+        } else if (event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey) {
+          typeahead += event.key.toLowerCase();
+          window.clearTimeout(typeaheadTimer);
+          typeaheadTimer = window.setTimeout(() => { typeahead = ""; }, 700);
+          const match = rows.find((item) =>
+            (item.querySelector(".tree-name")?.textContent ?? "").toLowerCase().startsWith(typeahead),
+          );
+          match?.focus();
         }
       });
 
       document.getElementById("back").addEventListener("click", showTree);
+      copyButton.addEventListener("click", () => void copyPath(selected));
+      openButton.addEventListener("click", () => void openDefault(selected));
+      revealButton.addEventListener("click", () => void revealPath(selected));
+      collapseButton.addEventListener("click", () => {
+        expanded.clear();
+        renderTree();
+      });
       refreshButton.addEventListener("click", async () => {
         if (!workspace || isRefreshing) return;
         isRefreshing = true;
@@ -1129,14 +1177,48 @@
         try {
           await loadDirectory("");
           await Promise.all([...expanded].map((path) => loadDirectory(path)));
+          if (searchQuery) await runSearch(searchQuery);
         } finally {
           isRefreshing = false;
           renderTree();
         }
       });
 
-      async function syncWorkspace() {
-        const nextWorkspace = await bridge.invoke("workspace.get").catch(() => null);
+      searchInput.addEventListener("input", () => {
+        window.clearTimeout(searchTimer);
+        searchTimer = window.setTimeout(() => void runSearch(searchInput.value), 160);
+      });
+      searchInput.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+          searchInput.value = "";
+          void runSearch("");
+          tree.querySelector(".tree-row")?.focus();
+        }
+      });
+
+      document.addEventListener("click", (event) => {
+        if (!menu.hidden && !menu.contains(event.target)) hideMenu();
+      });
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+          if (!menu.hidden) {
+            hideMenu();
+            return;
+          }
+          if (searchQuery) {
+            searchInput.value = "";
+            void runSearch("");
+            return;
+          }
+          if (selected && !viewerView.hidden) showTree();
+        } else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
+          event.preventDefault();
+          searchInput.focus();
+          searchInput.select();
+        }
+      });
+
+      async function syncWorkspace(nextWorkspace) {
         const changed = !workspaceLoaded || nextWorkspace?.path !== workspace?.path;
         workspace = nextWorkspace;
         workspaceLoaded = true;
@@ -1148,20 +1230,29 @@
         expanded.clear();
         selected = null;
         viewerState = null;
+        searchHits = null;
+        searchQuery = "";
+        searchInput.value = "";
         viewerView.hidden = true;
         treeView.hidden = false;
-        updateRevealButton();
+        viewerPath.textContent = "";
+        viewerPath.title = "";
+        viewerMeta.textContent = "";
+        viewerBody.replaceChildren();
+        updateViewerButtons();
         renderTree();
         if (workspace) await loadDirectory("");
       }
 
       bridge.on("appearance:changed", setBaseTheme);
+      bridge.on("workspace:changed", (payload) => {
+        void syncWorkspace(payload ?? null);
+      });
+      window.addEventListener("focus", () => {
+        void bridge.invoke("workspace.get").then(syncWorkspace).catch(() => {});
+      });
       bridge.invoke("app.getAppearance").then(setBaseTheme).catch(() => setBaseTheme(null));
-      void syncWorkspace();
-      // The public panel bridge currently pushes appearance changes but not a
-      // workspace event. A low-frequency check keeps a long-lived view from
-      // showing the previous project's tree after a sidebar project switch.
-      window.setInterval(() => void syncWorkspace(), 2000);
+      void bridge.invoke("workspace.get").then(syncWorkspace).catch(() => syncWorkspace(null));
     </script>
   </body>
 </html>

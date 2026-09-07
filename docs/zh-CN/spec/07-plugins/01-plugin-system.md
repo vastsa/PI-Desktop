@@ -484,6 +484,8 @@ MCP、技能和子代理由设置 > 智能体下的三个独立页面管理，�
 
 - 技能页面使用 `~/.agents/skills` 和 `<project>/.agents/skills` 下的全局/项目栏。
 - 每栏只有一个原生单文件“导入”操作；主机会物理复制文件并扫描 frontmatter。
+- 导入或扫描 `SKILL.md` 时，若 frontmatter 名称不是 ASCII slug，则用父目录名作为
+  id；折叠 YAML 描述仍进入目录。可读文档不会因为标题是非 ASCII 而被丢掉。
 - 描述作为目录摘要，模型调用 `Skill` 时才读取正文 (D174、D194)。
 
 ## 13. 开发者经验

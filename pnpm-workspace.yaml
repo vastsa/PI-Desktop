@@ -35,3 +35,10 @@ overrides:
   # a major its parent has not declared. Verified against `docs:build` and
   # `docs:dev` (serves 200); drop it for vitepress 2 once that ships stable.
   vite@5: '>=6.4.3 <7'
+# Same-day 0.85.0 pin: pnpm's supply-chain age gate rejects packages published
+# within the last day. Drop this list once 0.85.0 is older than that cutoff.
+minimumReleaseAgeExclude:
+  - '@earendil-works/chord@0.85.0'
+  - '@earendil-works/pi-agent-core@0.85.0'
+  - '@earendil-works/pi-ai@0.85.0'
+  - '@earendil-works/pi-telemetry@0.85.0'

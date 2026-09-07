@@ -57,7 +57,7 @@ export function MarketplaceSourceSettings({
 
   return (
     <section
-      className="settings-panel plugins-market-settings"
+      className="plugins-market-settings"
       aria-labelledby="plugins-market-settings-title"
     >
       <div className="plugins-market-settings-head">

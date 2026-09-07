@@ -12,6 +12,7 @@ const {
   delegationRoster,
   delegationRosterOutcome,
   delegationRosterSummary,
+  delegationTimingBounds,
   isDelegationActivityItem,
   lifecycleKindOf,
   subagentOutcome,
@@ -159,6 +160,43 @@ test("reads settled delegation status from a persisted TaskWait result", () => {
   );
 });
 
+test("reads stopped status from TaskStop, including a running snapshot", () => {
+  const statuses = collectDelegationStatuses([
+    task("d1", "success", "running"),
+    lifecycle("TaskStop", {
+      stopped: [
+        { delegationId: "d1", agent: "explorer", status: "running" },
+      ],
+    }),
+  ]);
+  assert.equal(statuses.get("d1"), "stopped");
+  assert.equal(
+    subagentOutcome(task("d1", "success", "running").message, statuses),
+    "stopped",
+  );
+});
+
+test("a finished turn treats leftover running delegates as aborted", () => {
+  const live = collectDelegationStatuses(
+    [task("d1", "success", "running")],
+    { turnLive: true },
+  );
+  assert.equal(live.get("d1"), undefined);
+  assert.equal(
+    subagentOutcome(task("d1", "success", "running").message, live),
+    "running",
+  );
+  const settled = collectDelegationStatuses(
+    [task("d1", "success", "running")],
+    { turnLive: false },
+  );
+  assert.equal(settled.get("d1"), "aborted");
+  assert.equal(
+    subagentOutcome(task("d1", "success", "running").message, settled),
+    "aborted",
+  );
+});
+
 test("summarizes partial fan-out without deduplicating repeated agent names", () => {
   assert.deepEqual(
     summarizeSubagentActivity([
@@ -240,10 +278,49 @@ test("TaskStop reads its roster from `stopped`, and Task has none", () => {
   assert.equal(lifecycleKindOf(stop.message), "stop");
   assert.equal(delegationRosterSummary(delegationRoster(stop.message)), "test-runner");
   assert.equal(delegationRosterOutcome(delegationRoster(stop.message)), "stopped");
+  const stale = lifecycle("TaskStop", {
+    stopped: [{ delegationId: "s2", agent: "explorer", status: "running" }],
+  });
+  assert.equal(delegationRosterOutcome(delegationRoster(stale.message)), "stopped");
   // The start call is not a lifecycle row: it keeps the topology card.
   const start = task("one", "running");
   assert.equal(lifecycleKindOf(start.message), null);
   assert.deepEqual(delegationRoster(start.message), []);
   assert.equal(delegationRosterSummary([]), "");
   assert.equal(delegationRosterOutcome([]), null);
+});
+
+test("topology elapsed bounds follow this card's Task ids, not a later fan-out", () => {
+  const first = task("d1", "success", "running", {
+    startedAt: 1_000,
+  });
+  const second = task("d2", "success", "completed", {
+    startedAt: 2_000,
+    completedAt: 5_000,
+  });
+  const later = task("d3", "success", "completed", {
+    startedAt: 10_000,
+    completedAt: 40_000,
+  });
+  const timings = collectDelegationTimings([first, second, later]);
+  const running = delegationTimingBounds([first, second], timings);
+  assert.equal(running.startedAt, 1_000);
+  assert.equal(running.completedAt, undefined);
+  const settled = collectDelegationTimings([
+    task("d1", "success", "completed", { startedAt: 1_000, completedAt: 4_000 }),
+    second,
+  ]);
+  assert.deepEqual(
+    delegationTimingBounds(
+      [
+        task("d1", "success", "completed", {
+          startedAt: 1_000,
+          completedAt: 4_000,
+        }),
+        second,
+      ],
+      settled,
+    ),
+    { startedAt: 1_000, completedAt: 5_000 },
+  );
 });

@@ -25,7 +25,7 @@ mod windows {
     const VK_SPACE: u32 = 0x20;
     const LLKHF_ALTDOWN: u32 = 0x20;
 
-    static ENABLED: AtomicBool = AtomicBool::new(true);
+    static ENABLED: AtomicBool = AtomicBool::new(false);
     static NOTIFY_TX: OnceLock<mpsc::UnboundedSender<String>> = OnceLock::new();
     static STARTED: AtomicBool = AtomicBool::new(false);
     static SPACE_DOWN: AtomicBool = AtomicBool::new(false);

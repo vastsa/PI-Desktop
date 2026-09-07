@@ -123,23 +123,39 @@ html {
   accent-color: var(--ds-accent);
 }
 
+/*
+  Scrollbars are quiet at rest: 8px, trackless, thumb transparent. The thumb
+  appears only while the pointer is over the owning scroll region (`:hover`) or
+  while that region is scrolling (`[data-scrolling]`, set by
+  lib/scrollbar-reveal.ts for a short hold after the last scroll event), then
+  strengthens under the pointer. Everything goes through the
+  ::-webkit-scrollbar pseudo-elements: WebKit and Chromium ignore them on any
+  element that also sets `scrollbar-width` or `scrollbar-color`, so partials
+  must not use those standard properties (a per-surface width override on
+  `::-webkit-scrollbar` is fine).
+*/
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
+::-webkit-scrollbar-track {
+  background: transparent;
+}
 ::-webkit-scrollbar-thumb {
-  background: color-mix(in oklab, var(--ds-text-primary) 16%, transparent);
+  background: transparent;
   border-radius: var(--radius-full);
   border: 2px solid transparent;
   background-clip: content-box;
 }
-::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in oklab, var(--ds-text-primary) 28%, transparent);
-  border: 2px solid transparent;
+:hover::-webkit-scrollbar-thumb,
+[data-scrolling]::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--ds-text-primary) 16%, transparent);
   background-clip: content-box;
 }
-::-webkit-scrollbar-track {
-  background: transparent;
+::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:active {
+  background: color-mix(in oklab, var(--ds-text-primary) 28%, transparent);
+  background-clip: content-box;
 }
 
 .app-shell {

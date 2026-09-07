@@ -15,13 +15,12 @@
 | 主机后端 | **Rust** | 稳定的 Rust 工具链 | tools/plugins/permissions/persistence 适配器 |
 | Rust 异步 | 东京 | 稳定 | 主机服务 |
 | 主机 RPC | stdio JSON-RPC (NDJSON) | 冷冻（D001） | Electron 主 ↔ Rust 主机 |
-| Agent 引擎 | `@earendil-works/pi-agent-core` | ^0.82.1+ | 代理循环 |
-| 模型 API | `@earendil-works/pi-ai` | ^0.82.1+ | 提供商 |
+| Agent 引擎 | `@earendil-works/pi-agent-core` | 0.85.0 | 代理循环 |
+| 模型 API | `@earendil-works/pi-ai` | 0.85.0 | 提供商 |
 | 模型目录 | `https://models.dev/api.json` | 随发版内置的快照 + 进程内刷新 | 唯一的提供商/模型元数据来源 |
 
-> Claude Opus 5 目录元数据需要 Pin **^0.82.1+**
->（`claude-opus-5`，1M 上下文，适应性思维）。早期的 0.82.0 版本
-> 将该 id 视为未知的自由形式模型。
+> 当前引脚为 **0.85.0**。Claude Opus 5 目录元数据从 **0.82.1** 起可用
+>（`claude-opus-5`，1M 上下文，适应性思维）。
 | Node 运行时 | Node.js | `>= 22.19` | 圆周率要求 |
 | 数据库 | SQLite | Rust host-core 通过 `rusqlite` | sessions/settings |
 | 包装 | 电子制造商 | 稳定 | macOS arm64、Intel x64、Windows x64 和 Linux x64 释放通道 |

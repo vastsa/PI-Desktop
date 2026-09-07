@@ -63,12 +63,14 @@ destination, chat as the home surface, tools and permissions inline.
   `hiddenInset` traffic lights and the system application menu. The expanded
   sidebar keeps Search and Collapse sidebar in the same 46px row, aligned to
   the right outside the traffic-light safety area; no logo/title is rendered
-  there, including in fullscreen.
+  there, including in fullscreen. When the work panel is open, the native
+  window controls stay at the conversation pane's right edge while the panel
+  header uses its full width for the active resource.
   Windows/Linux use a menu-free frameless 46px row with sidebar actions on the
-  left and accessible minimize / maximize-or-restore / close controls fixed at
-  the viewport right edge (D129). The work-panel toggle remains immediately
-  ahead of that control band while the panel animates; the panel header reserves
-  both regions so its resource actions remain clickable. Destination history is shortcut-only (`Cmd/Ctrl+[` and
+  left and accessible minimize / maximize-or-restore / close controls at the
+  right edge of the conversation pane (D129). When the work panel is open, the
+  controls stay with the conversation pane and the panel header uses its full
+  width for resource actions. Destination history is shortcut-only (`Cmd/Ctrl+[` and
   `Cmd/Ctrl+]`); no back/forward buttons are rendered. The main titlebar has no
   notification action; the durable local inbox opens from the sidebar footer
   bell instead (D130/D117).
@@ -85,30 +87,27 @@ destination, chat as the home surface, tools and permissions inline.
   resource tab and collapsing it without discarding one; the create trigger
   remains unavailable while the panel is closed. A
   successful active-session workspace Write/Edit artifact opens Review;
-  scratch, failed, and background-session writes never steal focus. One
-  AppShell-owned toggle stays at the same viewport position in the topbar band
-  on every non-Settings route; the work-panel header contains no duplicate
-  collapse control. Each session retains its own runtime open state, tab set,
-  active tab, and Browser resource in renderer memory. Selecting another
-  session swaps the visible panel context without deleting either session's
-  state; selecting a workspace without an active conversation hides the panel
-  rather than reinterpreting relative resources. Background artifacts update
-  only their originating session's retained panel context and never open,
-  activate, or resize the visible panel. Startup is closed with no retained
-  session contexts, and only the preferred panel width persists across launches.
-  The work panel remains an in-flow column inside fixed BrowserWindow bounds.
-  Opening, collapse, and final-resource close all request reservation `0`; its
-  width/flex animation narrows or restores MainChat inside the current client
-  area. The inner divider previews and commits the panel width from 244px to
-  720px, while every native edge resizes BrowserWindow normally. Maximized and
-  fullscreen states use the same internal layout. Background artifacts never
-  change the visible panel or reservation (D287, ADR 0148). The outer
-  window remains natively resizable from all OS edges and corners; its minimum
-  supported size is 1040×700. Native bounds recovery waits until the resize or
-  move stream is idle, and the last stable base bounds are persisted after a
-  short debounce so a slow drag cannot be overwritten mid-gesture.
-  Replaces the former context-panel overlay; workspace/model/status info lives
-  in the composer chips and Settings instead.
+  scratch, failed, and background-session writes never steal focus. The outer
+  inner divider resizes the panel from 244px to 720px; moving it left takes
+  more space from MainChat and moving it right gives space back. The sole
+  panel-level control collapses the panel; each session retains its own runtime
+  open state, tab set, active tab, and Browser resource in renderer memory.
+  Selecting another session swaps the visible panel context without deleting
+  either session's state; selecting a workspace without an active conversation
+  hides the panel rather than reinterpreting relative resources. Background
+  artifacts update only their originating session's retained panel context and
+  never open, activate, or resize the visible panel. Startup is closed with no
+  retained session contexts, and only the preferred panel width persists across
+  launches.
+  The work panel remains a fixed-width in-flow column beside MainChat inside
+  the existing client area (ADR 0151). Opening and collapsing change only the
+  shell's internal flex allocation and never expand or shrink native window
+  bounds. The renderer-measured panel rectangle continues to position the
+  native Browser view. Native window edges resize the app window only; they do
+  not change the panel target. The outer window remains natively resizable from
+  all OS edges and corners, with a minimum supported size of 1040×700. Replaces
+  the former context-panel overlay; workspace/model/status info lives in the
+  composer chips and Settings instead.
 - **Composer**: workspace-agnostic floating pill anchored to the conversation
   destination — centered empty-home content above a bottom-reserved composer
   (D111/D204/D206), bottom-docked in a transcript, with no project / Local / branch
@@ -203,8 +202,11 @@ execution.
 
 The Extensions destination is a focused plugin surface with a compact header and
 only two tabs: **Installed** and **Marketplace**. Installed groups plugin rows
-by state — Needs attention / Updates available / Active / Turned off — inside
-one hairline-separated panel. Marketplace remains the browse/install card grid.
+by state — Needs attention / Updates available / Active / Turned off — as soft
+tiles stacked under a group label (D296). Marketplace remains the browse/install
+card grid. The page draws no dividers: header, toolbar, rows, source settings,
+cards and the detail sheet's sections are set apart by tone and spacing, and
+hairlines are reserved for floating layers (menus, sheet, dialogs).
 MCP, Skills, and Subagents are not tabs or sections of Extensions.
 
 ### 3.6 Settings (full-page takeover)
@@ -257,7 +259,7 @@ shared capability contract:
 | Command palette | Cmd/Ctrl+K (also Cmd/Ctrl+Shift+P per D014) | builtin + plugin commands |
 | Model menu | Composer-right model × reasoning chip | configured provider/model choices + settings entry (D091) |
 | Profile menu | sidebar footer | Settings / Logs / Theme cycle (D041) |
-| Notification inbox | sidebar footer bell | All/Unread views, task completion/failure rows, mark-all-read and clear actions (D130/D117) |
+| Notification inbox | sidebar footer bell | All/Unread views, task failure rows only (successful completions are hidden, D295), mark-all-read and clear actions (D130/D117) |
 | Toasts | events (plugin toast, backend restored, copy) | top-center; 4s default, 8s for errors |
 
 ## 5. Navigation model
@@ -314,9 +316,11 @@ shared capability contract:
 - Completed/failed turn not already visible → host-core appends one durable
   inbox row. A result shown in the visible, focused current chat and every
   `aborted` turn append none. Background sessions and any turn finishing while
-  the window is unfocused still append. The sidebar footer bell badge shows the
-  unread count; selecting a row marks it read and activates its bound
-  project/session.
+  the window is unfocused still append. The sidebar footer bell lists only
+  `task.failed` rows and its badge counts only unread failures; successful
+  completions stay in the durable record for the sidebar outcome badge and
+  native notification but never appear in the inbox (D295). Selecting a row
+  marks it read and activates its bound project/session.
   Electron additionally presents a native system notification only when the
   app window is unfocused, and clicking it focuses the window before activating
   the same session (D117). Receiving either the durable or native notification
@@ -342,6 +346,6 @@ shared capability contract:
 
 ## 8. i18n
 
-English is the source locale; zh-CN ships in parallel for shell chrome
-(labels asserted by US-UI e2e scenarios). Copy rules live in
-[02-i18n-english-first](02-i18n-english-first.md).
+English is the source locale. Shipped translations (currently zh-CN and
+Turkish) cover shell chrome; labels are asserted by US-UI e2e scenarios.
+Copy rules live in [02-i18n-english-first](02-i18n-english-first.md).

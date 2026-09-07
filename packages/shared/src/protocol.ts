@@ -1,8 +1,8 @@
-export const PROTOCOL_VERSION = 10 as const;
-export const SCHEMA_VERSION = 12 as const;
+export const PROTOCOL_VERSION = 11 as const;
+export const SCHEMA_VERSION = 13 as const;
 export const APP_ID = "com.pi-desktop.app";
 export const APP_NAME = "PI-Desktop";
-export const APP_VERSION = "0.12.1";
+export const APP_VERSION = "0.13.10";
 
 export const APP_MENU_COMMANDS = [
   "newTask",
@@ -49,6 +49,7 @@ export type WindowControlAction = (typeof WINDOW_CONTROL_ACTIONS)[number];
 export const IPC = {
   invoke: {
     appGetVersion: "pi-desktop/app/getVersion",
+    appOpenFeedback: "pi-desktop/app/openFeedback",
     appHealth: "pi-desktop/app/health",
     appGetOnboarding: "pi-desktop/app/getOnboarding",
     appDismissOnboarding: "pi-desktop/app/dismissOnboarding",
@@ -194,8 +195,9 @@ export const IPC = {
     browserGetState: "pi-desktop/browser/getState",
     fsList: "pi-desktop/fs/list",
     fsRead: "pi-desktop/fs/read",
-    fsReadImageDataUrl: "pi-desktop/fs/readImageDataUrl",
+    statsGetTokenUsageHistory: "pi-desktop/stats/getTokenUsageHistory",
     fsReveal: "pi-desktop/fs/reveal",
+    fsOpen: "pi-desktop/fs/open",
     fsIndex: "pi-desktop/fs/index",
     windowSetWorkPanelReservation:
       "pi-desktop/window/setWorkPanelReservation",

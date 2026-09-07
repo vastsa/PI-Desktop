@@ -177,19 +177,25 @@ Go.`);
     // Plugin, skill and mode tools stay out of a delegate's reach.
     expect(result.definition.tools).not.toContain("Task");
     expect(result.definition.tools).not.toContain("ToolSearch");
+    expect(result.definition.tools).not.toContain("A2A");
+    expect(result.definition.tools).not.toContain("Peer");
   });
 
   it("drops unknown tools with a warning instead of failing", () => {
     const result = parse(`---
 description: Reads code.
-tools: [Read, Teleport]
+tools: [Read, Teleport, A2A, Peer]
 ---
 Read it.`);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.definition.tools).toEqual(["Read"]);
-    expect(result.warnings).toEqual(['ignoring unknown tool "Teleport"']);
+    expect(result.warnings).toEqual([
+      'ignoring unknown tool "Teleport"',
+      'ignoring unknown tool "A2A"',
+      'ignoring unknown tool "Peer"',
+    ]);
   });
 
   it("rejects a tools list where nothing survives", () => {

@@ -47,6 +47,4 @@ coverage/
 .playwright-mcp/
 .claude/
 .workbuddy
-
-# Local dev launcher (machine-specific: sandbox flags, prebuilt host-core)
-dev.sh
+electron.vite.config.*.mjs

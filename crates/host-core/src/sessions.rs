@@ -880,6 +880,139 @@ fn insert_index_row(
     Ok(())
 }
 
+fn recovered_session_title(records: &[MessageRecord]) -> String {
+    let title = records
+        .iter()
+        .find(|record| record.role == "user")
+        .and_then(record_index_text)
+        .map(|text| {
+            text.split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+                .chars()
+                .take(48)
+                .collect::<String>()
+        })
+        .unwrap_or_default();
+    if title.is_empty() {
+        "Recovered session".into()
+    } else {
+        title
+    }
+}
+
+fn insert_recovered_session_row(
+    tx: &rusqlite::Transaction<'_>,
+    session_id: &str,
+    title: &str,
+    last_seq: i64,
+    created_at: i64,
+    updated_at: i64,
+) -> Result<()> {
+    tx.prepare_cached(
+        "INSERT INTO sessions (
+            id, title, last_seq, thinking_level, permission_mode, created_at, updated_at
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+    )?
+    .execute(params![
+        session_id,
+        title,
+        last_seq,
+        default_thinking_level(),
+        default_permission_mode(),
+        created_at,
+        updated_at
+    ])?;
+    Ok(())
+}
+
+/// Restore a missing sessions row (and its search index) from an orphaned
+/// JSONL transcript. Returns true when a row was inserted (D318).
+pub fn restore_orphaned_session(db: &Database, session_id: &str) -> Result<bool> {
+    if session_created_at(db, session_id).is_ok() {
+        return Ok(false);
+    }
+    let path = transcripts::transcript_path(db.data_dir(), session_id)?;
+    if !path.exists() {
+        return Ok(false);
+    }
+    let records = dedupe_records(transcripts::read_transcript(db.data_dir(), session_id)?);
+    let created_at = records
+        .first()
+        .map(|record| ts_to_ms(&record.created_at))
+        .unwrap_or_else(now_ms);
+    let updated_at = records
+        .last()
+        .map(|record| ts_to_ms(&record.created_at))
+        .unwrap_or(created_at);
+    let title = recovered_session_title(&records);
+    let conn = db.conn();
+    let tx = conn.unchecked_transaction()?;
+    insert_recovered_session_row(
+        &tx,
+        session_id,
+        &title,
+        records.len() as i64,
+        created_at,
+        updated_at,
+    )?;
+    for (seq, record) in records.iter().enumerate() {
+        insert_index_row(
+            &tx,
+            session_id,
+            seq as i64,
+            None,
+            record,
+            record_index_text(record).as_deref(),
+        )?;
+    }
+    tx.commit()?;
+    tracing::info!(
+        %session_id,
+        messages = records.len(),
+        "restored orphaned session row from transcript"
+    );
+    Ok(true)
+}
+
+/// Boot sweep: every live transcript whose sessions row is gone is reinserted
+/// so the sidebar and the persistence outbox can see it again (D318).
+pub fn recover_orphaned_sessions(db: &Database) -> Result<usize> {
+    let mut restored = 0;
+    for session_id in transcripts::list_transcript_sessions(db.data_dir())? {
+        match restore_orphaned_session(db, &session_id) {
+            Ok(true) => restored += 1,
+            Ok(false) => {}
+            Err(error) => {
+                tracing::warn!(%session_id, %error, "orphaned session restore failed");
+            }
+        }
+    }
+    Ok(restored)
+}
+
+fn ensure_session_for_append(db: &Database, session_id: &str) -> Result<String> {
+    match session_created_at(db, session_id) {
+        Ok(created) => Ok(created),
+        Err(error) if error.to_string().starts_with("session not found") => {
+            if restore_orphaned_session(db, session_id)? {
+                return session_created_at(db, session_id);
+            }
+            let now = now_ms();
+            let conn = db.conn();
+            let tx = conn.unchecked_transaction()?;
+            insert_recovered_session_row(&tx, session_id, "Recovered session", 0, now, now)?;
+            tx.commit()?;
+            tracing::warn!(
+                %session_id,
+                "recreated missing session row so a persistence outbox can drain"
+            );
+            session_created_at(db, session_id)
+        }
+        Err(error) => Err(error),
+    }
+}
+
 /// The session's created_at (RFC3339, used as the transcript header stamp) —
 /// doubles as the existence check before any transcript file is touched.
 fn session_created_at(db: &Database, session_id: &str) -> Result<String> {
@@ -1405,25 +1538,53 @@ pub fn append_message(
     message: &UiMessage,
     turn_id: Option<&str>,
 ) -> Result<()> {
-    let session_created = session_created_at(db, session_id)?;
+    let session_created = ensure_session_for_append(db, session_id)?;
     let (record, text) = ui_to_record(message);
     // Electron may replay an outbox entry after a host restart. Message ids
     // are globally unique, so an existing row is already the durable result.
-    let already_appended: Option<i64> = db
+    if message_indexed(db, session_id, &record.id)? {
+        return Ok(());
+    }
+    append_record(db, session_id, &session_created, &record, text.as_deref(), turn_id)?;
+    // The final assistant row supersedes any checkpoint of the same message
+    // (D299). A checkpoint for a different id belongs to a newer fragment and
+    // stays until its own final row or the turn end settles it.
+    if record.role == "assistant" {
+        if let Some(inflight) = transcripts::read_inflight(db.data_dir(), session_id)? {
+            if inflight.message.id == record.id {
+                transcripts::remove_inflight(db.data_dir(), session_id)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Whether the session's index already carries `message_id`.
+fn message_indexed(db: &Database, session_id: &str, message_id: &str) -> Result<bool> {
+    let existing: Option<i64> = db
         .conn()
         .query_row(
             "SELECT mid FROM messages WHERE id = ?1 AND session_id = ?2",
-            params![record.id, session_id],
+            params![message_id, session_id],
             |row| row.get(0),
         )
         .optional()?;
-    if already_appended.is_some() {
-        return Ok(());
-    }
+    Ok(existing.is_some())
+}
+
+/// Append one canonical record: transcript line first, then the index row.
+fn append_record(
+    db: &Database,
+    session_id: &str,
+    session_created: &str,
+    record: &MessageRecord,
+    text: Option<&str>,
+    turn_id: Option<&str>,
+) -> Result<()> {
     // File first: the transcript is the source of truth. A crash before the
     // index commit costs one derived row (self-healed by the next rewrite),
     // never message content.
-    transcripts::append_message(db.data_dir(), session_id, &session_created, &record)?;
+    transcripts::append_message(db.data_dir(), session_id, session_created, record)?;
     let conn = db.conn();
     let tx = conn.unchecked_transaction()?;
     let now = now_ms();
@@ -1437,9 +1598,137 @@ pub fn append_message(
     let Some(seq) = seq else {
         return Err(anyhow!("session not found: {session_id}"));
     };
-    insert_index_row(&tx, session_id, seq - 1, turn_id, &record, text.as_deref())?;
+    insert_index_row(&tx, session_id, seq - 1, turn_id, record, text)?;
     tx.commit()?;
     Ok(())
+}
+
+/// Checkpoint the assistant message currently streaming for `session_id`
+/// (D299). The checkpoint is a single atomically replaced file beside the
+/// transcript, never a transcript line, so a long reply does not bloat the
+/// file with one copy per checkpoint. An empty message is not worth keeping;
+/// a message whose final row already landed must not be resurrected by a
+/// checkpoint that was still in flight when the row was appended.
+pub fn save_inflight_message(
+    db: &Database,
+    session_id: &str,
+    turn_id: Option<&str>,
+    message: &UiMessage,
+) -> Result<bool> {
+    session_created_at(db, session_id)?;
+    if message.role != "assistant" {
+        return Err(anyhow!("in-flight checkpoint must be an assistant message"));
+    }
+    let has_text = !message.content.trim().is_empty()
+        || message
+            .thinking
+            .as_deref()
+            .map_or(false, |thinking| !thinking.trim().is_empty());
+    if !has_text {
+        return Ok(false);
+    }
+    if message_indexed(db, session_id, &message.id)? {
+        transcripts::remove_inflight(db.data_dir(), session_id)?;
+        return Ok(false);
+    }
+    let (record, _) = ui_to_record(message);
+    transcripts::write_inflight(
+        db.data_dir(),
+        session_id,
+        &transcripts::InflightRecord {
+            schema: transcripts::INFLIGHT_SCHEMA,
+            session_id: session_id.to_string(),
+            turn_id: turn_id.map(str::to_string),
+            saved_at: ms_to_ts(now_ms()),
+            message: record,
+        },
+    )?;
+    Ok(true)
+}
+
+/// Settle the session's in-flight checkpoint once its turn can no longer
+/// finish on its own (D299, D327). The checkpoint is removed when the final
+/// row already landed; otherwise it is promoted into the transcript. A
+/// completed turn whose outbox append never arrived is promoted as
+/// `complete`; every other leftover is `aborted`. Returns the promoted
+/// message so the caller can echo it to the renderer.
+pub fn recover_inflight_message(
+    db: &Database,
+    session_id: &str,
+    include_completed: bool,
+) -> Result<Option<UiMessage>> {
+    let Some(inflight) = transcripts::read_inflight(db.data_dir(), session_id)? else {
+        return Ok(None);
+    };
+    let session_created = match session_created_at(db, session_id) {
+        Ok(created) => created,
+        // The session is gone; its checkpoint was an orphan.
+        Err(_) => {
+            transcripts::remove_inflight(db.data_dir(), session_id)?;
+            return Ok(None);
+        }
+    };
+    if message_indexed(db, session_id, &inflight.message.id)? {
+        transcripts::remove_inflight(db.data_dir(), session_id)?;
+        return Ok(None);
+    }
+    // A leftover checkpoint whose final row never landed is the durable
+    // reply. Boot skips `completed` turns so the outbox can still append the
+    // finished row first (D327). A later pass with `include_completed`
+    // promotes whatever the outbox did not land as `complete`. Mid-stream
+    // loss and sidecar-loss recovery stay aborted.
+    let turn_status: Option<String> = match inflight.turn_id.as_deref() {
+        Some(turn_id) => db
+            .conn()
+            .prepare_cached("SELECT status FROM turns WHERE id = ?1")?
+            .query_row(params![turn_id], |r| r.get(0))
+            .optional()?,
+        None => None,
+    };
+    let completed = turn_status.as_deref() == Some("completed");
+    if completed && !include_completed {
+        return Ok(None);
+    }
+    transcripts::remove_inflight(db.data_dir(), session_id)?;
+    let promoted_status = if completed { "complete" } else { "aborted" };
+    let mut record = inflight.message;
+    let mut meta = match record.meta.take() {
+        Some(Value::Object(map)) => map,
+        _ => serde_json::Map::new(),
+    };
+    meta.insert("status".into(), json!(promoted_status));
+    record.meta = Some(Value::Object(meta));
+    let text = record_index_text(&record);
+    append_record(
+        db,
+        session_id,
+        &session_created,
+        &record,
+        text.as_deref(),
+        inflight.turn_id.as_deref(),
+    )?;
+    Ok(Some(record_to_ui(record)))
+}
+
+/// Boot sweep companion to `Database::boot_maintenance` (D299, D327): every
+/// checkpoint left behind by a quit or crash is promoted or discarded before
+/// the first client request can read its session. A leftover whose turn
+/// already completed is promoted as `complete`.
+pub fn recover_inflight_messages(
+    db: &Database,
+    include_completed: bool,
+) -> Result<Vec<(String, UiMessage)>> {
+    let mut recovered = Vec::new();
+    for session_id in transcripts::list_inflight_sessions(db.data_dir())? {
+        match recover_inflight_message(db, &session_id, include_completed) {
+            Ok(Some(message)) => recovered.push((session_id, message)),
+            Ok(None) => {}
+            Err(error) => {
+                tracing::warn!(%session_id, %error, "in-flight reply recovery failed");
+            }
+        }
+    }
+    Ok(recovered)
 }
 
 pub fn append_compaction(
@@ -1607,6 +1896,7 @@ pub fn save_message_revision(
         .unwrap_or(1);
     let created = now_ms();
     let (records, _) = records_and_texts(messages);
+    let turns = owning_turns_for(db, session_id, messages)?;
     transcripts::append_revision(
         db.data_dir(),
         session_id,
@@ -1615,6 +1905,7 @@ pub fn save_message_revision(
             revision_index: next_index,
             created_at: ms_to_ts(created),
             messages: records,
+            turns,
         },
     )?;
     let tx = conn.unchecked_transaction()?;
@@ -1648,6 +1939,148 @@ pub fn save_message_revision(
         created_at: ms_to_ts(created),
         message_count: messages.len() as i64,
     })
+}
+
+/// Owning turn per message id, for the messages of one branch. The turn is
+/// index-row state, so an archived branch carries it explicitly.
+fn owning_turns_for(db: &Database, session_id: &str, messages: &[UiMessage]) -> Result<HashMap<String, String>> {
+    let mut stmt = db.conn().prepare_cached(
+        "SELECT id, turn_id FROM messages
+         WHERE session_id = ?1 AND turn_id IS NOT NULL",
+    )?;
+    let rows = stmt.query_map(params![session_id], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    let mut all: HashMap<String, String> = HashMap::new();
+    for row in rows {
+        let (id, turn_id) = row?;
+        all.insert(id, turn_id);
+    }
+    Ok(messages
+        .iter()
+        .filter_map(|message| {
+            all.remove(&message.id)
+                .map(|turn_id| (message.id.clone(), turn_id))
+        })
+        .collect())
+}
+
+/// Re-archive an existing revision with the branch as it stands now.
+///
+/// A branch keeps growing after its first archive: every later prompt appends
+/// to it, and error-ended turns never reach the agent_end archive at all. The
+/// revisions file is append-only and `read_revision` takes the last record for
+/// a (root, index) pair, so a refresh is one more line plus a count update, and
+/// the DB stamp (identity, ordering, active flag) is untouched.
+pub fn refresh_message_revision(
+    db: &Database,
+    session_id: &str,
+    root_user_id: &str,
+    revision_index: i64,
+    messages: &[UiMessage],
+) -> Result<MessageRevisionSummary> {
+    if messages.is_empty() {
+        return Err(anyhow!("messages required"));
+    }
+    let conn = db.conn();
+    let (is_active, created): (i64, i64) = conn
+        .query_row(
+            "SELECT is_active, created_at FROM message_revisions
+             WHERE session_id = ?1 AND root_user_id = ?2 AND revision_index = ?3",
+            params![session_id, root_user_id, revision_index],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?
+        .ok_or_else(|| anyhow!("revision not found"))?;
+    let (records, _) = records_and_texts(messages);
+    let turns = owning_turns_for(db, session_id, messages)?;
+    transcripts::append_revision(
+        db.data_dir(),
+        session_id,
+        &RevisionRecord {
+            root_user_id: root_user_id.to_string(),
+            revision_index,
+            created_at: ms_to_ts(created),
+            messages: records,
+            turns,
+        },
+    )?;
+    conn.prepare_cached(
+        "UPDATE message_revisions SET message_count = ?4
+         WHERE session_id = ?1 AND root_user_id = ?2 AND revision_index = ?3",
+    )?
+    .execute(params![
+        session_id,
+        root_user_id,
+        revision_index,
+        messages.len() as i64
+    ])?;
+    Ok(MessageRevisionSummary {
+        revision_index,
+        is_active: is_active != 0,
+        created_at: ms_to_ts(created),
+        message_count: messages.len() as i64,
+    })
+}
+
+/// Where a revision family starts in the live transcript: the root itself, or
+/// (after a regenerate gave the live prompt a new id) the first user message
+/// stamped with that family key.
+fn live_branch_start(messages: &[UiMessage], root_user_id: &str) -> Option<usize> {
+    messages
+        .iter()
+        .position(|message| message.id == root_user_id)
+        .or_else(|| {
+            messages.iter().position(|message| {
+                message.role == "user" && message.revision_root_id.as_deref() == Some(root_user_id)
+            })
+        })
+}
+
+/// Write the live branch of `root_user_id` back over the revision it belongs to
+/// before a switch replaces it. Anything appended since the last archive
+/// (later prompts, error-ended turns that never hit agent_end) would otherwise
+/// vanish the moment the user pages away and back.
+///
+/// Returns the branch start in `live` when the family is present at all.
+fn archive_live_branch(
+    db: &Database,
+    session_id: &str,
+    root_user_id: &str,
+    live: &[UiMessage],
+) -> Result<Option<usize>> {
+    let Some(start) = live_branch_start(live, root_user_id) else {
+        return Ok(None);
+    };
+    let branch = &live[start..];
+    if branch.is_empty() {
+        return Ok(Some(start));
+    }
+    let existing = list_message_revisions(db, session_id, root_user_id)?;
+    // The stamp on the live root names the variant this branch is. It beats
+    // the DB active flag, which only moves on agent_end: after a regenerate
+    // whose turn failed, the DB still points at the previous variant, and
+    // refreshing that would bury the previous branch under this one.
+    let stamped = live[start].active_revision.unwrap_or(0);
+    let target = if stamped > 0 {
+        existing
+            .iter()
+            .find(|revision| revision.revision_index == stamped)
+    } else {
+        existing.iter().find(|revision| revision.is_active)
+    }
+    .map(|revision| revision.revision_index);
+    match target {
+        Some(index) => {
+            refresh_message_revision(db, session_id, root_user_id, index, branch)?;
+        }
+        None => {
+            // Stamped but never archived (or never stamped at all): the live
+            // tail is a variant of its own.
+            save_message_revision(db, session_id, root_user_id, branch, true)?;
+        }
+    }
+    Ok(Some(start))
 }
 
 pub fn list_message_revisions(
@@ -1730,7 +2163,17 @@ pub fn save_active_branch_revision(
         existing.len() as i64 + 1
     };
     let mut archived = false;
-    if !already_archived {
+    if already_archived {
+        // The branch grew past its stored copy (this turn appended to it).
+        // Refresh the payload so paging away and back restores all of it.
+        refresh_message_revision(
+            db,
+            session_id,
+            &root_user_id,
+            desired_active,
+            &messages[root_index..],
+        )?;
+    } else {
         let saved =
             save_message_revision(db, session_id, &root_user_id, &messages[root_index..], true)?;
         active = saved.revision_index;
@@ -1758,7 +2201,8 @@ pub fn save_active_branch_revision(
 }
 
 /// Activate a stored revision: replace the live transcript with prefix + branch.
-/// `prefix` is every message before the root user turn.
+/// `prefix` is every message before the root user turn, as the renderer sees
+/// it; the durable transcript wins over it whenever the family is found there.
 pub fn activate_message_revision(
     db: &Database,
     session_id: &str,
@@ -1767,21 +2211,37 @@ pub fn activate_message_revision(
     prefix: &[UiMessage],
 ) -> Result<Vec<UiMessage>> {
     let session_created = session_created_at(db, session_id)?;
-    let conn = db.conn();
-    let known: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM message_revisions
-         WHERE session_id = ?1 AND root_user_id = ?2 AND revision_index = ?3",
-        params![session_id, root_user_id, revision_index],
-        |row| row.get(0),
-    )?;
-    if known == 0 {
-        return Err(anyhow!("revision not found"));
+    {
+        let conn = db.conn();
+        let known: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM message_revisions
+             WHERE session_id = ?1 AND root_user_id = ?2 AND revision_index = ?3",
+            params![session_id, root_user_id, revision_index],
+            |row| row.get(0),
+        )?;
+        if known == 0 {
+            return Err(anyhow!("revision not found"));
+        }
     }
+    // The switch below throws the live branch away. Archive it first, from the
+    // durable transcript rather than the renderer's copy, so every message that
+    // landed since the last archive survives the round trip.
+    let live = get_session(db, session_id)?
+        .map(|detail| detail.messages)
+        .unwrap_or_default();
+    let live_start = archive_live_branch(db, session_id, root_user_id, &live)?;
+    let prefix: &[UiMessage] = match live_start {
+        Some(start) => &live[..start],
+        None => prefix,
+    };
+
     let revision =
         transcripts::read_revision(db.data_dir(), session_id, root_user_id, revision_index)?
             .ok_or_else(|| anyhow!("revision payload missing from revisions file"))?;
+    let archived_turns = revision.turns;
     let branch: Vec<UiMessage> = revision.messages.into_iter().map(record_to_ui).collect();
 
+    let conn = db.conn();
     let total: i64 = conn.query_row(
         "SELECT COUNT(*) FROM message_revisions
          WHERE session_id = ?1 AND root_user_id = ?2",
@@ -1814,8 +2274,42 @@ pub fn activate_message_revision(
     }
 
     let (records, texts) = records_and_texts(&combined);
+    // A checkpoint whose anchors survive the switch stays valid; the rest is
+    // dropped with the branch it summarised, exactly as on truncation.
+    let compactions: Vec<CompactionRecord> =
+        transcripts::read_compactions(db.data_dir(), session_id)?
+            .into_iter()
+            .filter(|record| compaction_valid_for_records(record, &records))
+            .collect();
     invalidate_transcript_layout(session_id);
-    transcripts::write_transcript(db.data_dir(), session_id, &session_created, &records)?;
+    transcripts::write_transcript_with_compactions(
+        db.data_dir(),
+        session_id,
+        &session_created,
+        &records,
+        &compactions,
+    )?;
+    // Reseating the index rows must carry each surviving message's owning turn
+    // across, or the whole session loses its turn/token attribution on switch.
+    let mut owning_turns: HashMap<String, String> = HashMap::new();
+    {
+        let mut stmt = conn.prepare_cached(
+            "SELECT id, turn_id FROM messages
+             WHERE session_id = ?1 AND turn_id IS NOT NULL",
+        )?;
+        let rows = stmt.query_map(params![session_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        for row in rows {
+            let (id, turn_id) = row?;
+            owning_turns.insert(id, turn_id);
+        }
+    }
+    // Restored messages left the index with the branch; their turns come back
+    // from the archive. A live row's own turn is never overridden.
+    for (id, turn_id) in archived_turns {
+        owning_turns.entry(id).or_insert(turn_id);
+    }
     let tx = conn.unchecked_transaction()?;
     tx.prepare_cached(
         "UPDATE message_revisions
@@ -1830,7 +2324,7 @@ pub fn activate_message_revision(
             &tx,
             session_id,
             seq as i64,
-            None,
+            owning_turns.get(&record.id).map(String::as_str),
             record,
             texts[seq].as_deref(),
         )?;
@@ -1976,8 +2470,12 @@ pub fn begin_turn(
 pub struct EndTurnResult {
     pub updated: bool,
     pub notification: Option<Notification>,
+    /// In-flight reply promoted into the transcript by this turn end (D299).
+    pub recovered: Option<UiMessage>,
 }
 
+/// Test-facing shorthand for `end_turn_settling` without checkpoint recovery.
+#[cfg(test)]
 pub fn end_turn(
     db: &Database,
     turn_id: &str,
@@ -1985,6 +2483,21 @@ pub fn end_turn(
     error_code: Option<&str>,
     usage: Option<&Value>,
     create_notification: bool,
+) -> Result<EndTurnResult> {
+    end_turn_settling(db, turn_id, status, error_code, usage, create_notification, false)
+}
+
+/// `end_turn` that also settles the session's in-flight reply checkpoint
+/// (D299). `recover_inflight` promotes a checkpoint whose final row can no
+/// longer arrive; it is what a caller passes when the sidecar is gone.
+pub fn end_turn_settling(
+    db: &Database,
+    turn_id: &str,
+    status: &str,
+    error_code: Option<&str>,
+    usage: Option<&Value>,
+    create_notification: bool,
+    recover_inflight: bool,
 ) -> Result<EndTurnResult> {
     let status = match status {
         "completed" | "aborted" | "error" => status,
@@ -1996,6 +2509,11 @@ pub fn end_turn(
     let output_tokens = usage
         .and_then(|u| u.get("outputTokens"))
         .and_then(|v| v.as_i64());
+    let session_id: Option<String> = db
+        .conn()
+        .prepare_cached("SELECT session_id FROM turns WHERE id = ?1")?
+        .query_row(params![turn_id], |r| r.get(0))
+        .optional()?;
     let tx = db.conn().unchecked_transaction()?;
     let n = tx
         .prepare_cached(
@@ -2020,9 +2538,31 @@ pub fn end_turn(
         None
     };
     tx.commit()?;
+    // Settle the in-flight checkpoint (D299, D327). A caller that knows the
+    // reply can never finish (sidecar gone) asks for recovery. A completed or
+    // error turn drops the checkpoint only once its final row is indexed —
+    // otherwise the outbox may still be draining, and a quit would lose the
+    // reply the user already saw. A user stop leaves the checkpoint alone:
+    // the aborted final row is still on its way and removes it on arrival,
+    // and the boot sweep settles a row that never came.
+    let recovered = match session_id.as_deref() {
+        Some(session_id) if recover_inflight => {
+            recover_inflight_message(db, session_id, true)?
+        }
+        Some(session_id) if status != "aborted" => {
+            if let Some(inflight) = transcripts::read_inflight(db.data_dir(), session_id)? {
+                if message_indexed(db, session_id, &inflight.message.id)? {
+                    transcripts::remove_inflight(db.data_dir(), session_id)?;
+                }
+            }
+            None
+        }
+        _ => None,
+    };
     Ok(EndTurnResult {
         updated: n > 0,
         notification,
+        recovered,
     })
 }
 
@@ -2082,6 +2622,272 @@ pub fn search_messages(db: &Database, query: &str, limit: i64) -> Result<Vec<Sea
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
+}
+
+fn normalize_usage_bucket(bucket: &str) -> &'static str {
+    match bucket {
+        "week" => "week",
+        "month" => "month",
+        _ => "day",
+    }
+}
+
+fn local_from_ms(ms: i64) -> Option<chrono::DateTime<chrono::Local>> {
+    chrono::DateTime::from_timestamp_millis(ms).map(|dt| dt.with_timezone(&chrono::Local))
+}
+
+fn usage_bucket_key(dt: &chrono::DateTime<chrono::Local>, bucket: &str) -> String {
+    match bucket {
+        "month" => dt.format("%Y-%m").to_string(),
+        "week" => dt.format("%G-W%V").to_string(),
+        _ => dt.format("%Y-%m-%d").to_string(),
+    }
+}
+
+fn default_history_start(
+    end: chrono::DateTime<chrono::Local>,
+    bucket: &str,
+) -> chrono::DateTime<chrono::Local> {
+    match bucket {
+        "month" => end - chrono::Duration::days(365 * 2),
+        "week" => end - chrono::Duration::weeks(52),
+        _ => end - chrono::Duration::weeks(53),
+    }
+}
+
+fn resolve_history_range(
+    start_date: Option<i64>,
+    end_date: Option<i64>,
+    bucket: &str,
+) -> (i64, i64) {
+    let now = chrono::Local::now();
+    let end = end_date.filter(|v| *v > 0).and_then(local_from_ms).unwrap_or(now);
+    let start = start_date
+        .filter(|v| *v > 0)
+        .and_then(local_from_ms)
+        .unwrap_or_else(|| default_history_start(end, bucket));
+    if start <= end {
+        (start.timestamp_millis(), end.timestamp_millis())
+    } else {
+        (end.timestamp_millis(), start.timestamp_millis())
+    }
+}
+
+fn naive_local_midnight(date: chrono::NaiveDate) -> Option<chrono::DateTime<chrono::Local>> {
+    use chrono::TimeZone;
+    let naive = date.and_hms_opt(0, 0, 0)?;
+    match chrono::Local.from_local_datetime(&naive) {
+        chrono::LocalResult::Single(dt) => Some(dt),
+        chrono::LocalResult::Ambiguous(dt, _) => Some(dt),
+        chrono::LocalResult::None => None,
+    }
+}
+
+fn filled_history_keys(start_ms: i64, end_ms: i64, bucket: &str) -> Vec<(String, i64)> {
+    use chrono::{Datelike, TimeZone};
+    let start = local_from_ms(start_ms).unwrap_or_else(chrono::Local::now);
+    let end = local_from_ms(end_ms).unwrap_or_else(chrono::Local::now);
+    let mut keys = Vec::new();
+    match bucket {
+        "month" => {
+            let mut year = start.year();
+            let mut month = start.month();
+            let end_y = end.year();
+            let end_m = end.month();
+            loop {
+                if let chrono::LocalResult::Single(dt)
+                | chrono::LocalResult::Ambiguous(dt, _) =
+                    chrono::Local.with_ymd_and_hms(year, month, 1, 0, 0, 0)
+                {
+                    keys.push((dt.format("%Y-%m").to_string(), dt.timestamp_millis()));
+                }
+                if year > end_y || (year == end_y && month >= end_m) {
+                    break;
+                }
+                month += 1;
+                if month == 13 {
+                    month = 1;
+                    year += 1;
+                }
+            }
+        }
+        "week" => {
+            let weekday = start.weekday().num_days_from_monday() as i64;
+            let mut cursor = start.date_naive() - chrono::Duration::days(weekday);
+            let end_date = end.date_naive();
+            while cursor <= end_date {
+                if let Some(dt) = naive_local_midnight(cursor) {
+                    keys.push((dt.format("%G-W%V").to_string(), dt.timestamp_millis()));
+                }
+                cursor += chrono::Duration::days(7);
+            }
+        }
+        _ => {
+            let mut cursor = start.date_naive();
+            let end_date = end.date_naive();
+            while cursor <= end_date {
+                if let Some(dt) = naive_local_midnight(cursor) {
+                    keys.push((dt.format("%Y-%m-%d").to_string(), dt.timestamp_millis()));
+                }
+                cursor += chrono::Duration::days(1);
+            }
+        }
+    }
+    keys
+}
+
+#[derive(Default, Clone, Copy)]
+struct UsageBucketAcc {
+    input: i64,
+    output: i64,
+    cache_read: i64,
+    cache_write: i64,
+    reasoning: i64,
+    turns: i64,
+    timestamp: i64,
+}
+
+impl UsageBucketAcc {
+    fn add(
+        &mut self,
+        input: i64,
+        output: i64,
+        cache_read: i64,
+        cache_write: i64,
+        reasoning: i64,
+        ts: i64,
+    ) {
+        if self.turns == 0 {
+            self.timestamp = ts;
+        }
+        self.input += input;
+        self.output += output;
+        self.cache_read += cache_read;
+        self.cache_write += cache_write;
+        self.reasoning += reasoning;
+        self.turns += 1;
+    }
+
+    fn total_tokens(&self) -> i64 {
+        self.input + self.output + self.cache_read + self.cache_write
+    }
+
+    fn to_json(&self, date: &str) -> Value {
+        json!({
+            "date": date,
+            "timestamp": self.timestamp,
+            "inputTokens": self.input,
+            "outputTokens": self.output,
+            "totalTokens": self.total_tokens(),
+            "cacheReadTokens": self.cache_read,
+            "cacheWriteTokens": self.cache_write,
+            "reasoningTokens": self.reasoning,
+            "turnCount": self.turns,
+        })
+    }
+}
+
+pub fn get_token_usage_history(
+    db: &Database,
+    start_date: Option<i64>,
+    end_date: Option<i64>,
+    bucket: &str,
+) -> Result<Value> {
+    let bucket = normalize_usage_bucket(bucket);
+    let (range_start, range_end) = resolve_history_range(start_date, end_date, bucket);
+    let mut stmt = db.conn().prepare_cached(
+        "SELECT ended_at, input_tokens, output_tokens, usage_json
+         FROM turns
+         WHERE status = 'completed' AND ended_at IS NOT NULL AND ended_at >= ?1 AND ended_at <= ?2
+         ORDER BY ended_at ASC",
+    )?;
+
+    let rows = stmt.query_map(params![range_start, range_end], |row| {
+        Ok((
+            row.get::<_, i64>(0)?,
+            row.get::<_, i64>(1)?,
+            row.get::<_, i64>(2)?,
+            row.get::<_, Option<String>>(3)?,
+        ))
+    })?;
+
+    use std::collections::BTreeMap;
+    let mut bucket_map: BTreeMap<String, UsageBucketAcc> = BTreeMap::new();
+    let mut total_input = 0i64;
+    let mut total_output = 0i64;
+    let mut total_turns = 0i64;
+    let mut total_cache_read = 0i64;
+    let mut total_cache_write = 0i64;
+    let mut total_reasoning = 0i64;
+
+    for row in rows {
+        let (ended_at, input_tokens, output_tokens, usage_json) = row?;
+        let Some(dt) = local_from_ms(ended_at) else {
+            continue;
+        };
+        total_turns += 1;
+        total_input += input_tokens;
+        total_output += output_tokens;
+
+        let parsed_usage = usage_json
+            .as_deref()
+            .and_then(|s| serde_json::from_str::<Value>(s).ok());
+        let cache_read = parsed_usage
+            .as_ref()
+            .and_then(|u| u.get("cacheReadTokens"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        let cache_write = parsed_usage
+            .as_ref()
+            .and_then(|u| u.get("cacheWriteTokens"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        let reasoning = parsed_usage
+            .as_ref()
+            .and_then(|u| u.get("reasoningTokens"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        total_cache_read += cache_read;
+        total_cache_write += cache_write;
+        total_reasoning += reasoning;
+
+        let key = usage_bucket_key(&dt, bucket);
+        bucket_map.entry(key).or_default().add(
+            input_tokens,
+            output_tokens,
+            cache_read,
+            cache_write,
+            reasoning,
+            ended_at,
+        );
+    }
+
+    let items: Vec<Value> = filled_history_keys(range_start, range_end, bucket)
+        .into_iter()
+        .map(|(date, timestamp)| {
+            let mut acc = bucket_map.remove(&date).unwrap_or_default();
+            if acc.turns == 0 {
+                acc.timestamp = timestamp;
+            }
+            acc.to_json(&date)
+        })
+        .collect();
+
+    Ok(json!({
+        "bucket": bucket,
+        "rangeStart": range_start,
+        "rangeEnd": range_end,
+        "items": items,
+        "totals": {
+            "inputTokens": total_input,
+            "outputTokens": total_output,
+            "totalTokens": total_input + total_output + total_cache_read + total_cache_write,
+            "cacheReadTokens": total_cache_read,
+            "cacheWriteTokens": total_cache_write,
+            "reasoningTokens": total_reasoning,
+            "turnCount": total_turns,
+        }
+    }))
 }
 
 #[cfg(test)]
@@ -3067,6 +3873,99 @@ mod tests {
     }
 
     #[test]
+    fn missing_session_row_is_restored_from_transcript() {
+        let db = test_db();
+        let session = create_session(&db, Some("Keep me".into()), None, None, None, None).unwrap();
+        append_message(
+            &db,
+            &session.id,
+            &user_msg("u1", "hello world", "2025-05-01T00:00:00Z"),
+            None,
+        )
+        .unwrap();
+        append_message(
+            &db,
+            &session.id,
+            &user_msg("u2", "second", "2025-05-01T00:00:01Z"),
+            None,
+        )
+        .unwrap();
+        db.conn()
+            .execute("DELETE FROM sessions WHERE id = ?1", params![session.id])
+            .unwrap();
+        assert!(get_session(&db, &session.id).unwrap().is_none());
+
+        assert!(restore_orphaned_session(&db, &session.id).unwrap());
+        let restored = get_session(&db, &session.id).unwrap().unwrap();
+        assert_eq!(restored.messages.len(), 2);
+        assert_eq!(restored.messages[0].content, "hello world");
+        assert_eq!(restored.summary.title, "hello world");
+        assert_eq!(restored.summary.message_count, 2);
+        assert!(!restore_orphaned_session(&db, &session.id).unwrap());
+    }
+
+    #[test]
+    fn recover_orphaned_sessions_restores_transcript_files_without_rows() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        append_message(
+            &db,
+            &session.id,
+            &user_msg("u1", "keep", "2025-05-01T00:00:00Z"),
+            None,
+        )
+        .unwrap();
+        db.conn()
+            .execute("DELETE FROM sessions WHERE id = ?1", params![session.id])
+            .unwrap();
+        assert_eq!(recover_orphaned_sessions(&db).unwrap(), 1);
+        assert!(get_session(&db, &session.id).unwrap().is_some());
+        assert_eq!(recover_orphaned_sessions(&db).unwrap(), 0);
+    }
+
+    #[test]
+    fn append_recreates_a_missing_session_row_so_the_outbox_can_drain() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        append_message(
+            &db,
+            &session.id,
+            &user_msg("u1", "first", "2025-05-01T00:00:00Z"),
+            None,
+        )
+        .unwrap();
+        db.conn()
+            .execute("DELETE FROM sessions WHERE id = ?1", params![session.id])
+            .unwrap();
+        append_message(
+            &db,
+            &session.id,
+            &user_msg("u2", "queued", "2025-05-01T00:00:01Z"),
+            None,
+        )
+        .unwrap();
+        let restored = get_session(&db, &session.id).unwrap().unwrap();
+        assert_eq!(restored.messages.len(), 2);
+        assert_eq!(restored.messages[1].content, "queued");
+    }
+
+    #[test]
+    fn append_creates_a_stub_session_when_the_transcript_is_also_gone() {
+        let db = test_db();
+        let id = "11111111-2222-4333-8444-555555555555";
+        append_message(
+            &db,
+            id,
+            &user_msg("u1", "from outbox", "2025-05-01T00:00:00Z"),
+            None,
+        )
+        .unwrap();
+        let restored = get_session(&db, id).unwrap().unwrap();
+        assert_eq!(restored.summary.title, "Recovered session");
+        assert_eq!(restored.messages[0].content, "from outbox");
+    }
+
+    #[test]
     fn get_session_dedupes_retried_file_lines_keep_last() {
         let db = test_db();
         let session = create_session(&db, None, None, None, None, None).unwrap();
@@ -3590,6 +4489,204 @@ mod tests {
     }
 
     #[test]
+    fn save_active_branch_revision_refreshes_an_already_archived_branch() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let mut root = user_msg("u1", "hello", "2025-05-01T00:00:00Z");
+        root.revision_count = Some(1);
+        root.active_revision = Some(1);
+        append_message(&db, &session.id, &root, None).unwrap();
+        save_message_revision(&db, &session.id, "u1", &[root.clone()], true).unwrap();
+
+        // A later prompt on the same branch: the archived copy is now short.
+        append_message(
+            &db,
+            &session.id,
+            &user_msg("u2", "and then", "2025-05-01T00:01:00Z"),
+            None,
+        )
+        .unwrap();
+        let mut answer = user_msg("a2", "done", "2025-05-01T00:01:01Z");
+        answer.role = "assistant".into();
+        append_message(&db, &session.id, &answer, None).unwrap();
+
+        let saved = save_active_branch_revision(&db, &session.id)
+            .unwrap()
+            .unwrap();
+        assert!(!saved.archived, "no new index is minted");
+        assert_eq!(saved.revision_count, 1);
+        let branch = transcripts::read_revision(db.data_dir(), &session.id, "u1", 1)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            branch
+                .messages
+                .iter()
+                .map(|m| m.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["u1", "u2", "a2"],
+        );
+        let listed = list_message_revisions(&db, &session.id, "u1").unwrap();
+        assert_eq!(listed[0].message_count, 3);
+        assert!(listed[0].is_active);
+    }
+
+    /// The incident shape: a branch archived on agent_end kept growing (later
+    /// prompts, an error-ended turn that never re-archived it). Paging away and
+    /// back must restore all of it, not the copy taken at the first archive.
+    #[test]
+    fn activate_message_revision_archives_the_grown_live_branch_first() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let turn = begin_turn(&db, &session.id, Some("p1"), Some("m1")).unwrap();
+        let prefix_msg = user_msg("u0", "earlier", "2025-04-29T00:00:00Z");
+        append_message(&db, &session.id, &prefix_msg, Some(&turn)).unwrap();
+        // Regenerate archived the original tail as revision 1 ...
+        let mut discarded = user_msg("u1", "do it", "2025-04-30T00:00:00Z");
+        discarded.revision_root_id = Some("u1".into());
+        let mut discarded_answer = user_msg("a1", "old answer", "2025-04-30T00:00:01Z");
+        discarded_answer.role = "assistant".into();
+        save_message_revision(
+            &db,
+            &session.id,
+            "u1",
+            &[discarded, discarded_answer],
+            false,
+        )
+        .unwrap();
+        // ... and the rewritten prompt finished and was archived as revision 2.
+        let mut root = user_msg("u2", "redo it", "2025-05-01T00:00:00Z");
+        root.revision_root_id = Some("u1".into());
+        root.revision_count = Some(2);
+        root.active_revision = Some(2);
+        append_message(&db, &session.id, &root, Some(&turn)).unwrap();
+        let mut answer = user_msg("a2", "new answer", "2025-05-01T00:00:01Z");
+        answer.role = "assistant".into();
+        append_message(&db, &session.id, &answer, Some(&turn)).unwrap();
+        save_message_revision(&db, &session.id, "u1", &[root, answer], true).unwrap();
+        // The conversation went on; this turn ended in an error, so nothing
+        // re-archived the branch.
+        append_message(
+            &db,
+            &session.id,
+            &user_msg("u3", "continue", "2025-05-01T00:05:00Z"),
+            Some(&turn),
+        )
+        .unwrap();
+        let mut failed = user_msg("a3", "", "2025-05-01T00:05:01Z");
+        failed.role = "assistant".into();
+        failed.status = Some("error".into());
+        append_message(&db, &session.id, &failed, Some(&turn)).unwrap();
+
+        // Page back to the original, with a deliberately wrong renderer prefix:
+        // the durable transcript decides what stays in front of the branch.
+        let back = activate_message_revision(&db, &session.id, "u1", 1, &[]).unwrap();
+        assert_eq!(
+            back.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            vec!["u0", "u1", "a1"],
+        );
+        let listed = list_message_revisions(&db, &session.id, "u1").unwrap();
+        assert_eq!(listed.len(), 2, "no extra variant was minted");
+        assert_eq!(
+            listed[1].message_count, 4,
+            "revision 2 now holds the grown branch"
+        );
+
+        // Page forward again: the whole grown branch is back, including the
+        // failed turn, and the prefix kept its owning turn.
+        let forward = activate_message_revision(&db, &session.id, "u1", 2, &[]).unwrap();
+        assert_eq!(
+            forward.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            vec!["u0", "u2", "a2", "u3", "a3"],
+        );
+        assert_eq!(forward[1].active_revision, Some(2));
+        assert_eq!(forward[1].revision_count, Some(2));
+        let detail = get_session(&db, &session.id).unwrap().unwrap();
+        assert_eq!(detail.messages.len(), 5);
+        let prefix_turn: Option<String> = db
+            .conn()
+            .query_row(
+                "SELECT turn_id FROM messages WHERE session_id = ?1 AND id = 'u0'",
+                params![session.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(prefix_turn.as_deref(), Some(turn.as_str()));
+        let restored_with_turn: i64 = db
+            .conn()
+            .query_row(
+                "SELECT COUNT(*) FROM messages
+                 WHERE session_id = ?1 AND turn_id = ?2 AND id IN ('u2', 'a2', 'u3', 'a3')",
+                params![session.id, turn],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            restored_with_turn, 4,
+            "rows that left the index with the branch get their turn back"
+        );
+    }
+
+    /// A regenerate stamped the new prompt as variant 2, then its turn failed
+    /// before agent_end archived it. Paging away must store that tail as its
+    /// own variant instead of writing it over variant 1.
+    #[test]
+    fn activate_message_revision_keeps_a_stamped_unarchived_branch_as_its_own_variant() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let mut discarded = user_msg("u1", "do it", "2025-04-30T00:00:00Z");
+        discarded.revision_root_id = Some("u1".into());
+        let mut discarded_answer = user_msg("a1", "old answer", "2025-04-30T00:00:01Z");
+        discarded_answer.role = "assistant".into();
+        save_message_revision(
+            &db,
+            &session.id,
+            "u1",
+            &[discarded, discarded_answer],
+            false,
+        )
+        .unwrap();
+        let mut root = user_msg("u2", "redo it", "2025-05-01T00:00:00Z");
+        root.revision_root_id = Some("u1".into());
+        root.revision_count = Some(2);
+        root.active_revision = Some(2);
+        append_message(&db, &session.id, &root, None).unwrap();
+        let mut failed = user_msg("a2", "", "2025-05-01T00:00:01Z");
+        failed.role = "assistant".into();
+        failed.status = Some("error".into());
+        append_message(&db, &session.id, &failed, None).unwrap();
+
+        let back = activate_message_revision(&db, &session.id, "u1", 1, &[]).unwrap();
+        assert_eq!(
+            back.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            vec!["u1", "a1"],
+        );
+        let listed = list_message_revisions(&db, &session.id, "u1").unwrap();
+        assert_eq!(listed.len(), 2);
+        let original = transcripts::read_revision(db.data_dir(), &session.id, "u1", 1)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            original.messages.last().unwrap().id,
+            "a1",
+            "variant 1 is intact"
+        );
+        let forward = activate_message_revision(&db, &session.id, "u1", 2, &[]).unwrap();
+        assert_eq!(
+            forward.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            vec!["u2", "a2"],
+        );
+    }
+
+    #[test]
+    fn refresh_message_revision_rejects_an_unknown_index() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let root = user_msg("u1", "hello", "2025-05-01T00:00:00Z");
+        assert!(refresh_message_revision(&db, &session.id, "u1", 1, &[root]).is_err());
+    }
+
+    #[test]
     fn replace_messages_preserves_owning_turn_ids() {
         let db = test_db();
         let session = create_session(&db, None, None, None, None, None).unwrap();
@@ -3614,5 +4711,295 @@ mod tests {
             )
             .unwrap();
         assert_eq!(owning.as_deref(), Some(turn.as_str()));
+    }
+
+    fn streaming_assistant(id: &str, content: &str) -> UiMessage {
+        let mut message = user_msg(id, content, "2025-05-01T00:00:01Z");
+        message.role = "assistant".into();
+        message.status = Some("streaming".into());
+        message.thinking = Some("still thinking".into());
+        message
+    }
+
+    #[test]
+    fn inflight_checkpoint_is_promoted_as_aborted_after_reopen() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pi.sqlite");
+        let db = Database::open(&path).unwrap();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let turn = begin_turn(&db, &session.id, None, None).unwrap();
+        append_message(&db, &session.id, &user_msg("u1", "hello", "2025-05-01T00:00:00Z"), Some(&turn))
+            .unwrap();
+
+        // Two checkpoints of the same reply: the file is replaced, not appended.
+        assert!(save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a1", "par")).unwrap());
+        assert!(save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a1", "partial")).unwrap());
+        assert!(transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
+        assert_eq!(get_session(&db, &session.id).unwrap().unwrap().messages.len(), 1);
+        drop(db);
+
+        // A new process: the boot sweep aborts the turn, then the checkpoint
+        // becomes the aborted tail of the transcript.
+        let db = Database::open(&path).unwrap();
+        let recovered = recover_inflight_messages(&db, false).unwrap();
+        assert_eq!(recovered.len(), 1);
+        assert_eq!(recovered[0].0, session.id);
+        assert_eq!(recovered[0].1.content, "partial");
+        assert_eq!(recovered[0].1.status.as_deref(), Some("aborted"));
+        assert!(!transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
+
+        let messages = get_session(&db, &session.id).unwrap().unwrap().messages;
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[1].id, "a1");
+        assert_eq!(messages[1].thinking.as_deref(), Some("still thinking"));
+        assert_eq!(messages[1].status.as_deref(), Some("aborted"));
+        let owning: Option<String> = db
+            .conn()
+            .query_row("SELECT turn_id FROM messages WHERE id = 'a1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(owning.as_deref(), Some(turn.as_str()));
+        // Running it again finds nothing to do.
+        assert!(recover_inflight_messages(&db, false).unwrap().is_empty());
+    }
+
+    #[test]
+    fn final_row_supersedes_checkpoint_and_late_checkpoint_cannot_resurrect_it() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let turn = begin_turn(&db, &session.id, None, None).unwrap();
+        assert!(save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a1", "partial")).unwrap());
+
+        let mut final_row = streaming_assistant("a1", "partial and complete");
+        final_row.status = Some("complete".into());
+        append_message(&db, &session.id, &final_row, Some(&turn)).unwrap();
+        assert!(!transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
+
+        // A checkpoint call that was already in flight when the final row landed.
+        assert!(!save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a1", "partial")).unwrap());
+        assert!(!transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
+        assert!(recover_inflight_message(&db, &session.id, true).unwrap().is_none());
+
+        let messages = get_session(&db, &session.id).unwrap().unwrap().messages;
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].content, "partial and complete");
+        assert_eq!(messages[0].status.as_deref(), Some("complete"));
+    }
+
+    #[test]
+    fn checkpoint_for_a_newer_fragment_survives_an_older_final_row() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let turn = begin_turn(&db, &session.id, None, None).unwrap();
+        assert!(save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a2", "second")).unwrap());
+
+        let mut earlier = streaming_assistant("a1", "first");
+        earlier.status = Some("complete".into());
+        append_message(&db, &session.id, &earlier, Some(&turn)).unwrap();
+        assert!(transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
+    }
+
+    #[test]
+    fn empty_streaming_message_is_not_checkpointed() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let mut empty = streaming_assistant("a1", "   ");
+        empty.thinking = None;
+        assert!(!save_inflight_message(&db, &session.id, None, &empty).unwrap());
+        assert!(!transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
+        assert!(save_inflight_message(&db, &session.id, None, &user_msg("u1", "x", "2025-05-01T00:00:00Z")).is_err());
+    }
+
+    #[test]
+    fn completed_turn_end_keeps_an_unindexed_checkpoint() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let turn = begin_turn(&db, &session.id, None, None).unwrap();
+        assert!(save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a1", "partial")).unwrap());
+
+        let ended = end_turn_settling(&db, &turn, "completed", None, None, false, false).unwrap();
+        assert!(ended.updated);
+        assert!(ended.recovered.is_none());
+        assert!(
+            transcripts::inflight_path(db.data_dir(), &session.id)
+                .unwrap()
+                .exists(),
+            "outbox may still be draining; do not drop the only copy (D327)"
+        );
+        assert!(get_session(&db, &session.id).unwrap().unwrap().messages.is_empty());
+
+        assert!(
+            recover_inflight_messages(&db, false).unwrap().is_empty(),
+            "boot leaves a completed leftover for the outbox"
+        );
+        assert!(
+            transcripts::inflight_path(db.data_dir(), &session.id)
+                .unwrap()
+                .exists()
+        );
+
+        let recovered = recover_inflight_messages(&db, true).unwrap();
+        assert_eq!(recovered.len(), 1);
+        assert_eq!(recovered[0].1.content, "partial");
+        assert_eq!(recovered[0].1.status.as_deref(), Some("complete"));
+        let messages = get_session(&db, &session.id).unwrap().unwrap().messages;
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].id, "a1");
+        assert_eq!(messages[0].status.as_deref(), Some("complete"));
+    }
+
+    #[test]
+    fn completed_turn_end_drops_checkpoint_once_the_final_row_landed() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let turn = begin_turn(&db, &session.id, None, None).unwrap();
+        assert!(save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a1", "partial")).unwrap());
+        let mut final_row = streaming_assistant("a1", "partial and complete");
+        final_row.status = Some("complete".into());
+        append_message(&db, &session.id, &final_row, Some(&turn)).unwrap();
+
+        let ended = end_turn_settling(&db, &turn, "completed", None, None, false, false).unwrap();
+        assert!(ended.updated);
+        assert!(ended.recovered.is_none());
+        assert!(!transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
+        let messages = get_session(&db, &session.id).unwrap().unwrap().messages;
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].content, "partial and complete");
+        assert_eq!(messages[0].status.as_deref(), Some("complete"));
+    }
+
+    #[test]
+    fn sidecar_loss_recovers_the_checkpoint_at_turn_end() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let turn = begin_turn(&db, &session.id, None, None).unwrap();
+        assert!(save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a1", "partial")).unwrap());
+
+        let ended = end_turn_settling(&db, &turn, "aborted", Some("TURN_ABORTED"), None, false, true).unwrap();
+        assert!(ended.updated);
+        let recovered = ended.recovered.expect("checkpoint promoted");
+        assert_eq!(recovered.id, "a1");
+        assert_eq!(recovered.status.as_deref(), Some("aborted"));
+        assert!(!transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
+        let messages = get_session(&db, &session.id).unwrap().unwrap().messages;
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].content, "partial");
+
+        // The final row for the same id, should it still arrive, is a no-op.
+        let mut late = streaming_assistant("a1", "partial");
+        late.status = Some("aborted".into());
+        append_message(&db, &session.id, &late, Some(&turn)).unwrap();
+        assert_eq!(get_session(&db, &session.id).unwrap().unwrap().messages.len(), 1);
+    }
+
+    #[test]
+    fn user_stop_keeps_the_checkpoint_until_the_final_row_lands() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let turn = begin_turn(&db, &session.id, None, None).unwrap();
+        assert!(save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a1", "partial")).unwrap());
+
+        let ended = end_turn_settling(&db, &turn, "aborted", Some("TURN_ABORTED"), None, false, false).unwrap();
+        assert!(ended.updated);
+        assert!(ended.recovered.is_none());
+        assert!(transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
+
+        let mut final_row = streaming_assistant("a1", "partial");
+        final_row.status = Some("aborted".into());
+        append_message(&db, &session.id, &final_row, Some(&turn)).unwrap();
+        assert!(!transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
+        assert_eq!(get_session(&db, &session.id).unwrap().unwrap().messages.len(), 1);
+    }
+
+    #[test]
+    fn delete_session_removes_the_checkpoint_file() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        assert!(save_inflight_message(&db, &session.id, None, &streaming_assistant("a1", "partial")).unwrap());
+        let path = transcripts::inflight_path(db.data_dir(), &session.id).unwrap();
+        assert!(path.exists());
+        assert!(delete_session(&db, &session.id).unwrap());
+        assert!(!path.exists());
+        assert!(recover_inflight_messages(&db, true).unwrap().is_empty());
+    }
+
+    #[test]
+    fn token_usage_history_aggregation() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let turn = begin_turn(&db, &session.id, None, None).unwrap();
+
+        let usage = json!({
+            "inputTokens": 120,
+            "outputTokens": 80,
+            "cacheReadTokens": 40,
+            "cacheWriteTokens": 10,
+            "reasoningTokens": 20
+        });
+
+        let ended = end_turn_settling(&db, &turn, "completed", None, Some(&usage), false, false).unwrap();
+        assert!(ended.updated);
+        let ended_at: i64 = db
+            .conn()
+            .query_row("SELECT ended_at FROM turns WHERE id = ?1", params![turn], |r| r.get(0))
+            .unwrap();
+
+        let history = get_token_usage_history(&db, Some(ended_at - 1_000), Some(ended_at + 1_000), "day").unwrap();
+        let totals = history.get("totals").unwrap();
+        assert_eq!(totals.get("inputTokens").unwrap().as_i64(), Some(120));
+        assert_eq!(totals.get("outputTokens").unwrap().as_i64(), Some(80));
+        assert_eq!(totals.get("totalTokens").unwrap().as_i64(), Some(250));
+        assert_eq!(totals.get("cacheReadTokens").unwrap().as_i64(), Some(40));
+        assert_eq!(totals.get("turnCount").unwrap().as_i64(), Some(1));
+
+        let items = history.get("items").unwrap().as_array().unwrap();
+        assert!(!items.is_empty());
+        let active = items
+            .iter()
+            .find(|item| item.get("turnCount").and_then(|v| v.as_i64()) == Some(1))
+            .expect("active day");
+        assert_eq!(active.get("totalTokens").unwrap().as_i64(), Some(250));
+    }
+
+    #[test]
+    fn token_usage_history_uses_iso_week_year() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let turn = begin_turn(&db, &session.id, None, None).unwrap();
+        let usage = json!({ "inputTokens": 1, "outputTokens": 1 });
+        end_turn_settling(&db, &turn, "completed", None, Some(&usage), false, false).unwrap();
+        // Monday 2025-12-29 is ISO week 1 of 2026.
+        let ended_at = chrono::TimeZone::with_ymd_and_hms(&chrono::Utc, 2025, 12, 29, 12, 0, 0)
+            .unwrap()
+            .timestamp_millis();
+        db.conn()
+            .execute(
+                "UPDATE turns SET ended_at = ?1 WHERE id = ?2",
+                params![ended_at, turn],
+            )
+            .unwrap();
+
+        let history = get_token_usage_history(
+            &db,
+            Some(ended_at - 86_400_000),
+            Some(ended_at + 86_400_000),
+            "week",
+        )
+        .unwrap();
+        let items = history.get("items").unwrap().as_array().unwrap();
+        let active = items
+            .iter()
+            .find(|item| item.get("turnCount").and_then(|v| v.as_i64()) == Some(1))
+            .expect("iso week");
+        assert_eq!(active.get("date").and_then(|v| v.as_str()), Some("2026-W01"));
+    }
+
+    #[test]
+    fn token_usage_history_defaults_to_a_bounded_window() {
+        let db = test_db();
+        let history = get_token_usage_history(&db, None, None, "day").unwrap();
+        let items = history.get("items").unwrap().as_array().unwrap();
+        assert!(items.len() >= 365);
+        assert!(items.len() <= 53 * 7 + 1);
+        assert_eq!(history.get("totals").unwrap().get("turnCount").unwrap().as_i64(), Some(0));
     }
 }
