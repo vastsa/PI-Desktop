@@ -14,6 +14,7 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import type {
   ContextCompactionMark,
+  MessageAttachment,
   MessageUsage,
   PlanningState,
   ProposalKind,
@@ -59,6 +60,7 @@ import {
   useOpenChatFileRef,
   useOpenPreviewTarget,
 } from "../hooks/use-preview-target";
+import { useReferencedImageDataUrl } from "../lib/use-referenced-image-data-url";
 import {
   getToolPreviewTarget,
   isHtmlFilePath,
@@ -799,6 +801,44 @@ function FileRefChip({
         <Icon size={13} />
       </span>
       <span className="composer-chip-name">{name}</span>
+    </button>
+  );
+}
+
+/**
+ * User-message image attachment as a thumbnail. The host resolves the ref
+ * into a bounded data URL; an unresolvable load falls back to the file chip.
+ * Clicking opens the files viewer on the same contained ref.
+ */
+function MessageAttachmentImage({
+  attachment,
+  onOpenFile,
+}: {
+  attachment: MessageAttachment;
+  onOpenFile: (path: string) => void;
+}) {
+  const dataUrl = useReferencedImageDataUrl(attachment.ref, attachment.mimeType);
+  if (!dataUrl) {
+    return (
+      <FileRefChip
+        name={attachment.name}
+        path={attachment.ref}
+        kind="image"
+        onOpen={onOpenFile}
+      />
+    );
+  }
+  return (
+    <button
+      type="button"
+      className="message-attachment-image"
+      role="listitem"
+      title={`${attachment.name} — ${attachment.ref}`}
+      onClick={() =>
+        useAppStore.getState().openFileInWorkPanel(attachment.ref, attachment.mimeType)
+      }
+    >
+      <img src={dataUrl} alt={attachment.name} />
     </button>
   );
 }
@@ -1949,19 +1989,27 @@ const MessageRow = memo(function MessageRow({
                     role="list"
                     aria-label={t("chat.messageAttachments")}
                   >
-                    {extraAttachments.map((attachment) => (
-                      <span
-                        key={`${attachment.ref}:${attachment.name}`}
-                        role="listitem"
-                      >
-                        <FileRefChip
-                          name={attachment.name}
-                          path={attachment.ref}
-                          kind={attachment.kind}
-                          onOpen={openFileRef}
+                    {extraAttachments.map((attachment) =>
+                      attachment.kind === "image" ? (
+                        <MessageAttachmentImage
+                          key={`${attachment.ref}:${attachment.name}`}
+                          attachment={attachment}
+                          onOpenFile={openFileRef}
                         />
-                      </span>
-                    ))}
+                      ) : (
+                        <span
+                          key={`${attachment.ref}:${attachment.name}`}
+                          role="listitem"
+                        >
+                          <FileRefChip
+                            name={attachment.name}
+                            path={attachment.ref}
+                            kind={attachment.kind}
+                            onOpen={openFileRef}
+                          />
+                        </span>
+                      ),
+                    )}
                   </div>
                 ) : null}
                 {message.content ? (

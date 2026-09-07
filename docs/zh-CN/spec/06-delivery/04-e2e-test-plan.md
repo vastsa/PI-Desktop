@@ -5677,3 +5677,17 @@ IPC 请求无法关闭。
 - **里程碑**：M5
 - **状态**：单元已覆盖（`safe-open-external.test.mjs`、`feedback.test.mjs`）；完整 UI
   旅程仍为草稿（除非用户明确要求，否则不要在本地跑 E2E）
+
+#### E2E-187：历史附件与本地 Markdown 图片内联显示
+
+- **前提条件**：工作区含 `docs/pixel.png` 的 Agent 会话。用户曾粘贴图片，会话 JSONL 存有带 mimeType 的 `attachments/<sha256>` 图片引用。
+- **步骤**：
+  1. 重新打开该会话。确认粘贴图片渲染为缩略图，而不只是文件芯片。
+  2. 点击缩略图。确认宿主文件查看器打开该附件引用并显示图片。
+  3. 发送一回合，助手 Markdown 含 `![](docs/pixel.png)` 和 `![](/etc/passwd)`。确认工作区图片内联显示，工作区外路径不加载文件字节。
+  4. 确认 `fs/readImageDataUrl` 在 `ref: "/etc/passwd"` 且 `mimeType: "image/png"` 时返回 `missing`，而不是 data URL。
+- **预期**：受限图片引用在 5MB 上限内内联显示；工作区外路径与对非图片扩展名的 mime 伪造保持关闭；点击已解析缩略图打开宿主 `file:` 选项卡，而不是系统默认应用。
+- **链接规格**：`03-runtime/01-ipc-protocol.md`、`04-ux/08-component-spec.md` §8.3、ADR 0172、`08-meta/decisions-log.md`（D334）
+- **验收**：C（对话与流）、D（工作区）、安全、质量
+- **里程碑**：M5
+- **状态**：单元已覆盖（`fs-panel-guard.test.mjs`、`message-image-display.test.mjs`）；完整 UI 旅程仍为草稿（除非用户明确要求，否则不要在本地跑 E2E）

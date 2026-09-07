@@ -1054,10 +1054,11 @@ Chrome 和代理 CDP 位于随应用打包的 `pi.browser` 插件中，通过 `p
 - `fs/list({path})` → 条目首先按目录排序；忽略 `.git`，
   `node_modules`，默认忽略子集
   [15-工作区-忽略-规则](/zh-CN/spec/03-runtime/15-workspace-ignore-rules)
-- `fs/read({path})` → 文本 (≤512KB) / 图像数据 URL (≤5MB) / 二进制 / 太大
-- `fs/reveal({path})` → 在 Finder 中显示
-- `fs/open({path})` → 用系统默认应用打开。相对路径在工作区根内解析；绝对路径仅当已位于工作区、`<data_dir>/scratch/` 或 `<data_dir>/attachments/` 之下时才接受。穿越、`~` 和其他逃逸被拒绝（`INVALID_ARGUMENT`）。
-- `fs/list` 与 `fs/read` 在工作区根内解析；外面的遍历被拒绝（`INVALID_ARGUMENT`）。`fs/reveal` 仍只限工作区。
+- `fs/read({path, mimeType?})` → 文本 (≤512KB) / 图像数据 URL (≤5MB) / 二进制 / 太大。相对路径在工作区根内解析；`attachments/<sha256>` 以及已位于工作区、`<data_dir>/scratch/` 或 `<data_dir>/attachments/` 下的绝对路径在 realpath 校验后也可读（D334 / ADR 0172）。已知图片扩展名优先于 `mimeType`；无扩展名 blob 只接受图片 MIME 白名单。穿越、`~` 和其他逃逸被拒绝（`INVALID_ARGUMENT`）。
+- `fs/readImageDataUrl({ref, mimeType?})` → `FsImageDataUrlResult`（`image` 带 `dataUrl`，或 `missing` / `notImage` / `tooLarge`）。包含范围与 `fs/read` 相同。从不返回非图片字节。仅渲染器使用，不是插件宿主 API。
+- `fs/reveal({path})` → 在 Finder 中显示。包含范围与 `fs/read` 相同。
+- `fs/open({path})` → 用系统默认应用打开。词法包含范围与 `fs/read` 相同（读取额外做 realpath）。
+- `fs/list` 仍只限工作区；外面的遍历被拒绝（`INVALID_ARGUMENT`）。
 
 ## 13b。桌面菜单和窗口 API
 

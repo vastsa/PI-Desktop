@@ -24,6 +24,7 @@ import type {
   ComposerPasteFile,
   ComposerPastedFile,
   FsEntry,
+  FsImageDataUrlResult,
   FsIndexResult,
   FsReadResult,
   HostHealth,
@@ -722,7 +723,16 @@ export const api = {
     invoke<BrowserState | null>(IPC.invoke.browserGetState),
   fsList: (path?: string) =>
     invoke<{ entries: FsEntry[] }>(IPC.invoke.fsList, { path: path ?? "" }),
-  fsRead: (path: string) => invoke<FsReadResult>(IPC.invoke.fsRead, { path }),
+  fsRead: (path: string, mimeType?: string) =>
+    invoke<FsReadResult>(IPC.invoke.fsRead, {
+      path,
+      ...(mimeType ? { mimeType } : {}),
+    }),
+  fsReadImageDataUrl: (ref: string, mimeType?: string) =>
+    invoke<FsImageDataUrlResult>(IPC.invoke.fsReadImageDataUrl, {
+      ref,
+      ...(mimeType ? { mimeType } : {}),
+    }),
   fsReveal: (path: string) => invoke(IPC.invoke.fsReveal, { path }),
   fsOpen: (path: string) => invoke(IPC.invoke.fsOpen, { path }),
   fsIndex: () => invoke<FsIndexResult>(IPC.invoke.fsIndex),

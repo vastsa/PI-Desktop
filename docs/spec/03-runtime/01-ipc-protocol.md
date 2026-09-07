@@ -1149,15 +1149,23 @@ Renderer IPC kept for the Plan-safe preview facade and URL fallback:
 - `fs/list({path})` → entries sorted dirs-first; ignores `.git`,
   `node_modules`, and the default ignore subset of
   [15-workspace-ignore-rules](15-workspace-ignore-rules.md)
-- `fs/read({path})` → text (≤512KB) / image data URL (≤5MB) / binary / tooLarge
-- `fs/reveal({path})` → reveal in Finder
-- `fs/open({path})` → open with the OS default application. Relative paths
-  resolve inside the workspace root; absolute paths are accepted only when
-  they already live under the workspace, `<data_dir>/scratch/`, or
-  `<data_dir>/attachments/`. Traversal, `~`, and other escapes are rejected
+- `fs/read({path, mimeType?})` → text (≤512KB) / image data URL (≤5MB) /
+  binary / tooLarge. Relative paths resolve inside the workspace root;
+  `attachments/<sha256>` blobs and absolute paths already inside the
+  workspace, `<data_dir>/scratch/`, or `<data_dir>/attachments/` are also
+  accepted after a realpath check (D334 / ADR 0172). A known image extension
+  wins over `mimeType`; extension-less blobs accept only the image MIME
+  allowlist. Traversal, `~`, and other escapes are rejected
   (`INVALID_ARGUMENT`).
-- `fs/list` and `fs/read` resolve inside the workspace root; traversal outside
-  is rejected (`INVALID_ARGUMENT`). `fs/reveal` stays workspace-only.
+- `fs/readImageDataUrl({ref, mimeType?})` → `FsImageDataUrlResult`
+  (`image` with `dataUrl`, or `missing` / `notImage` / `tooLarge`). Same
+  containment as `fs/read`. Never returns non-image bytes. Renderer-only;
+  not a plugin host API.
+- `fs/reveal({path})` → reveal in Finder. Same containment as `fs/read`.
+- `fs/open({path})` → open with the OS default application. Same lexical
+  containment as `fs/read` (without the extra realpath step used by reads).
+- `fs/list` stays workspace-only; traversal outside is rejected
+  (`INVALID_ARGUMENT`).
 
 ## 13b. Desktop Menu and Window APIs
 

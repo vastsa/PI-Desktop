@@ -891,7 +891,7 @@ export type AppState = {
   workPanelContexts: Record<string, WorkPanelContext>;
   workPanelWidth: number;
   /** Chat-initiated "preview this file" request consumed by the files tab. */
-  workPanelFileRequest: { path: string; seq: number } | null;
+  workPanelFileRequest: { path: string; seq: number; mimeType?: string } | null;
   /** Reveal the active session's retained work panel without creating a tab. */
   openWorkPanel: () => void;
   /** Flip the work panel between revealed and collapsed for the active session. */
@@ -904,8 +904,8 @@ export type AppState = {
   /** Hide the visible panel while retaining its session-owned context. */
   resetWorkPanelContext: () => void;
   setWorkPanelWidth: (width: number) => void;
-  /** Open a workspace-relative file in the work panel files viewer. */
-  openFileInWorkPanel: (path: string) => void;
+  /** Open a workspace-relative file or attachment ref in the files viewer. */
+  openFileInWorkPanel: (path: string, mimeType?: string) => void;
   /** Open a URL in the work panel browser tab. */
   openUrlInWorkPanel: (url: string) => void;
 };
@@ -4023,6 +4023,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           ? {
               path: tab.resource,
               seq: ++workPanelFileRequestSeq,
+              ...(tab.mimeType ? { mimeType: tab.mimeType } : {}),
             }
           : context.fileRequest;
       const nextContext: WorkPanelContext = {
@@ -4069,6 +4070,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           ? {
               path: activeTab.resource,
               seq: ++workPanelFileRequestSeq,
+              ...(activeTab.mimeType ? { mimeType: activeTab.mimeType } : {}),
             }
           : state.workPanelFileRequest;
       const nextContext: WorkPanelContext = {
@@ -4106,6 +4108,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           ? {
               path: activeTab.resource,
               seq: ++workPanelFileRequestSeq,
+              ...(activeTab.mimeType ? { mimeType: activeTab.mimeType } : {}),
             }
           : state.workPanelFileRequest;
       const nextContext: WorkPanelContext = {
@@ -4152,8 +4155,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     saveWorkPanelWidth(get().workPanelWidth);
   },
 
-  openFileInWorkPanel: (path) => {
-    get().openWorkPanelTab(fileWorkPanelTab(path));
+  openFileInWorkPanel: (path, mimeType) => {
+    get().openWorkPanelTab(fileWorkPanelTab(path, mimeType));
   },
   openUrlInWorkPanel: (url) => {
     const hasBrowser = get().pluginViews.some(

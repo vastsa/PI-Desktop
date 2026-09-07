@@ -4,11 +4,16 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 import {
+  imageMimeFor,
+  isAttachmentBlobRef,
   isIgnoredName,
   listDir,
   previewFile,
+  readOpenableFile,
+  readOpenableImage,
   readWorkspaceFile,
   resolveOpenablePath,
+  resolveRealOpenablePath,
   resolveWithinRoot,
   MAX_TEXT_BYTES,
 } from "../electron/main/fs-panel.ts";
@@ -96,6 +101,23 @@ test("resolveOpenablePath rejects escapes and relative paths without a workspace
   assert.equal(resolveOpenablePath("~/secret.ts", ROOT, [scratch]), null);
 });
 
+test("resolveOpenablePath maps attachment blobs onto the attachments extra root", () => {
+  const attachments = join(tmpdir(), "attachments");
+  const hash = "a".repeat(64);
+  assert.equal(isAttachmentBlobRef(`attachments/${hash}`), true);
+  assert.equal(isAttachmentBlobRef("attachments/not-a-hash.png"), false);
+  assert.equal(
+    resolveOpenablePath(`attachments/${hash}`, ROOT, [attachments]),
+    join(attachments, hash),
+  );
+  assert.equal(
+    resolveOpenablePath("attachments/notes.png", ROOT, [attachments]),
+    join(ROOT, "attachments", "notes.png"),
+  );
+  assert.equal(resolveOpenablePath(`attachments/${hash}`, ROOT, []), null);
+  assert.equal(resolveOpenablePath("/etc/passwd", ROOT, [attachments]), null);
+});
+
 test("previewFile classifies text, images, binary, and oversized files", async (t) => {
   const fixture = await mkdtemp(join(tmpdir(), "pi-fs-preview-"));
   t.after(() => rm(fixture, { recursive: true, force: true }));
@@ -124,4 +146,74 @@ test("previewFile classifies text, images, binary, and oversized files", async (
 
   assert.equal(previewFile(binaryPath, "blob.bin").kind, "binary");
   assert.equal(previewFile(largePath, "large.txt").kind, "tooLarge");
+});
+
+test("imageMimeFor prefers a known extension and allowlists declared mime for blobs", () => {
+  assert.equal(imageMimeFor("pixel.png"), "image/png");
+  assert.equal(imageMimeFor("notes.md", "image/png"), undefined);
+  assert.equal(imageMimeFor("a".repeat(64), "image/png"), "image/png");
+  assert.equal(imageMimeFor("a".repeat(64), "image/*"), undefined);
+  assert.equal(imageMimeFor("a".repeat(64), "text/html"), undefined);
+});
+
+test("readOpenableImage serves attachment blobs and rejects escapes", async (t) => {
+  const fixture = await mkdtemp(join(tmpdir(), "pi-fs-openable-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const workspace = join(fixture, "workspace");
+  const attachments = join(fixture, "attachments");
+  const outside = join(fixture, "outside");
+  await Promise.all([mkdir(workspace), mkdir(attachments), mkdir(outside)]);
+  const hash = "b".repeat(64);
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    "base64",
+  );
+  await writeFile(join(attachments, hash), png);
+  await writeFile(join(workspace, "pixel.png"), png);
+  await writeFile(join(workspace, "secret.md"), "secret");
+  await writeFile(join(outside, "leak.png"), png);
+
+  const extra = [attachments];
+  const blob = await readOpenableImage(
+    `attachments/${hash}`,
+    workspace,
+    extra,
+    "image/png",
+  );
+  assert.equal(blob.kind, "image");
+  assert.match(String(blob.dataUrl), /^data:image\/png;base64,/);
+
+  const workspaceImage = await readOpenableImage("pixel.png", workspace, extra);
+  assert.equal(workspaceImage.kind, "image");
+
+  const missing = await readOpenableImage("/etc/passwd", workspace, extra, "image/png");
+  assert.equal(missing.kind, "missing");
+
+  const spoofed = await readOpenableImage("secret.md", workspace, extra, "image/png");
+  assert.equal(spoofed.kind, "notImage");
+
+  const outsideAbs = await readOpenableImage(join(outside, "leak.png"), workspace, extra);
+  assert.equal(outsideAbs.kind, "missing");
+
+  await assert.rejects(
+    readOpenableFile("/etc/passwd", workspace, extra, "image/png"),
+    /path outside allowed roots/,
+  );
+
+  const link = join(attachments, "c".repeat(64));
+  try {
+    await symlink(join(outside, "leak.png"), link);
+  } catch (error) {
+    if (error?.code === "EPERM" || error?.code === "EACCES") {
+      t.skip("creating a link is not permitted on this host");
+      return;
+    }
+    throw error;
+  }
+  const escaped = await resolveRealOpenablePath(
+    `attachments/${"c".repeat(64)}`,
+    workspace,
+    extra,
+  );
+  assert.equal(escaped, null);
 });

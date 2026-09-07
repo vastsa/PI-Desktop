@@ -12,7 +12,7 @@ import {
   shell,
   Tray,
 } from "electron";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
 import {
@@ -154,10 +154,12 @@ import {
 } from "./models-dev-catalog";
 import { OAUTH_AUTH_KIND, VendorOAuth } from "./oauth";
 import {
+  isAttachmentBlobRef,
   listDir,
-  readWorkspaceFile,
+  readOpenableFile,
+  readOpenableImage,
   resolveOpenablePath,
-  resolveWithinRoot,
+  resolveRealOpenablePath,
 } from "./fs-panel";
 import { getWorkspaceFileIndex } from "./fs-index";
 import { saveComposerPasteFiles } from "./composer-paste";
@@ -6492,16 +6494,70 @@ function registerIpc() {
     return { entries: await listDir(root, String(input.path ?? "")) };
   });
 
-  handle(IPC.invoke.fsRead, async (input: { path?: string } = {}) => {
-    const root = await requireWorkspaceRoot();
-    return readWorkspaceFile(root, String(input.path ?? ""));
-  });
+  const fsExtraRoots = () => [
+    join(dataDir, "scratch"),
+    join(dataDir, "attachments"),
+  ];
+
+  const optionalWorkspaceRoot = async (): Promise<string | null> => {
+    try {
+      return await requireWorkspaceRoot();
+    } catch {
+      return null;
+    }
+  };
+
+  handle(
+    IPC.invoke.fsRead,
+    async (input: { path?: string; mimeType?: string } = {}) => {
+      const requested = String(input.path ?? "").trim();
+      let workspaceRoot: string | null = null;
+      try {
+        workspaceRoot = await requireWorkspaceRoot();
+      } catch (error) {
+        if (!isAbsolute(requested) && !isAttachmentBlobRef(requested)) {
+          throw error;
+        }
+      }
+      return readOpenableFile(
+        requested,
+        workspaceRoot,
+        fsExtraRoots(),
+        input.mimeType,
+      );
+    },
+  );
+
+  handle(
+    IPC.invoke.fsReadImageDataUrl,
+    async (input: { ref?: string; mimeType?: string } = {}) => {
+      const requested = String(input.ref ?? "").trim();
+      return readOpenableImage(
+        requested,
+        await optionalWorkspaceRoot(),
+        fsExtraRoots(),
+        input.mimeType,
+      );
+    },
+  );
 
   handle(IPC.invoke.fsReveal, async (input: { path?: string } = {}) => {
-    const root = await requireWorkspaceRoot();
-    const target = resolveWithinRoot(root, String(input.path ?? ""));
+    const requested = String(input.path ?? "").trim();
+    let workspaceRoot: string | null = null;
+    try {
+      workspaceRoot = await requireWorkspaceRoot();
+    } catch (error) {
+      if (!isAbsolute(requested) && !isAttachmentBlobRef(requested)) {
+        throw error;
+      }
+    }
+    const target = await resolveRealOpenablePath(
+      requested,
+      workspaceRoot,
+      fsExtraRoots(),
+    );
     if (!target) {
-      throw Object.assign(new Error("path escapes workspace root"), {
+      throw Object.assign(new Error("path outside allowed roots"), {
         errorCode: ErrorCodes.INVALID_ARGUMENT,
       });
     }
@@ -6510,16 +6566,8 @@ function registerIpc() {
   });
 
   handle(IPC.invoke.fsOpen, async (input: { path?: string } = {}) => {
-    let workspaceRoot: string | null = null;
-    try {
-      workspaceRoot = await requireWorkspaceRoot();
-    } catch {
-      workspaceRoot = null;
-    }
-    const target = resolveOpenablePath(String(input.path ?? ""), workspaceRoot, [
-      join(dataDir, "scratch"),
-      join(dataDir, "attachments"),
-    ]);
+    const workspaceRoot = await optionalWorkspaceRoot();
+    const target = resolveOpenablePath(String(input.path ?? ""), workspaceRoot, fsExtraRoots());
     if (!target) {
       throw Object.assign(new Error("path is not openable"), {
         errorCode: ErrorCodes.INVALID_ARGUMENT,
@@ -6532,14 +6580,6 @@ function registerIpc() {
 
   // Composer input APIs (D123/D124, ADR 0024). Both fail soft: the menus
   // simply have less to show when the workspace or host is unavailable.
-  const optionalWorkspaceRoot = async (): Promise<string | null> => {
-    try {
-      return await requireWorkspaceRoot();
-    } catch {
-      return null;
-    }
-  };
-
   let composerTemplateCache: {
     key: string;
     at: number;

@@ -1775,6 +1775,14 @@ export type FsReadResult = {
   size: number;
 };
 
+/** Bounded in-chat image read. Non-images never include file bytes. */
+export type FsImageDataUrlResult = {
+  kind: "image" | "missing" | "notImage" | "tooLarge";
+  dataUrl?: string;
+  size?: number;
+  errorCode?: string;
+};
+
 export type AgentInstructionFile = {
   scope: "global" | "project";
   path: string;

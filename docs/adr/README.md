@@ -184,3 +184,4 @@ Each ADR includes:
 | 0169 | Classified file preview and live workspace events for plugin views | Accepted (amends 0104 / 0105 / 0109 / 0111) |
 | 0170 | Ship the work-panel browser as a bundled plugin over public CDP | Accepted (amends 0019 / 0104 / 0105) |
 | 0171 | Host-owned completed-turn token history | Accepted |
+| 0172 | Contained in-chat image display | Accepted (amends fs/read workspace-only clause) |

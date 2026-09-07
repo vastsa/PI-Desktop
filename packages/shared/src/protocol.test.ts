@@ -51,6 +51,8 @@ describe("Plan protocol contracts", () => {
       "pi-desktop/stats/getTokenUsageHistory",
     );
     expect(IPC_WHITELIST.has(IPC.invoke.statsGetTokenUsageHistory)).toBe(true);
+    expect(IPC.invoke.fsReadImageDataUrl).toBe("pi-desktop/fs/readImageDataUrl");
+    expect(IPC_WHITELIST.has(IPC.invoke.fsReadImageDataUrl)).toBe(true);
   });
 
   it("exposes the vendor-account OAuth channels through the preload whitelist", () => {

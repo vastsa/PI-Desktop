@@ -1186,16 +1186,22 @@ Single message render — either user (plaintext) or assistant (markdown streami
   only trailing/leading composer trim is applied, never internal newline
   collapse. Serialized `@path` file references render as compact leaf-name
   chips matching the composer node (icon + ellipsized name; canonical path in
-  the tooltip and accessible name). Clicking a workspace HTML chip previews it
-  in the side browser; clicking any other allowed file opens it with the OS
-  default application for that suffix. HTTP(S) URLs remain inline text links
+  the tooltip and accessible name). Image attachments that are not already
+  inlined as `@path` chips render as bounded thumbnails (data URL from
+  `fs/readImageDataUrl`); unresolved loads keep the chip. Clicking a
+  workspace HTML chip previews it in the side browser; clicking a resolved
+  image thumbnail opens the host files viewer on that ref; clicking any other
+  allowed file opens it with the OS default application for that suffix.
+  HTTP(S) URLs remain inline text links
   that open in the side browser; long URL links wrap within the plate and
   keep logical-start alignment instead of inheriting the browser's centered
   button text.
 - Assistant: transparent surface, left-aligned, markdown rendered at full
   content width. Workspace file paths in that markdown are previewable:
-  inline code, markdown links/images, and bare path tokens (with a known
-  extension) open the work-panel files viewer. Unprefixed relative paths
+  inline code, markdown links, and bare path tokens (with a known
+  extension) open the work-panel files viewer. Local markdown images render
+  inline via the same contained data-URL channel, with a chip fallback.
+  Unprefixed relative paths
   resolve from the workspace root; `./` and `../` resolve from the workspace
   root in chat, and from the viewed file's directory when previewing a
   markdown document in the files tab. Parent escapes stay inert.

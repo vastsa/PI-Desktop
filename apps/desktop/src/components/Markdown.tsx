@@ -35,6 +35,7 @@ import {
   IconWorkflow,
 } from "./icons";
 import { useAppStore } from "../stores/app-store";
+import { useReferencedImageDataUrl } from "../lib/use-referenced-image-data-url";
 import {
   remarkChatFileLinks,
   resolvePreviewTarget,
@@ -504,9 +505,10 @@ function Anchor({
 }
 
 /**
- * Local image references can't load over the renderer origin; render them as
- * a chip that opens the files-tab image viewer instead of a broken <img>.
- * Remote images render inline and click through to the browser tab.
+ * Local image references can't load over the renderer origin; the host
+ * resolves them into a bounded data URL so they render inline. Missing,
+ * escaped, or oversized files fall back to a chip. Remote images render
+ * inline and click through to the browser tab.
  */
 function MarkdownImage({
   node: _node,
@@ -521,7 +523,18 @@ function MarkdownImage({
   const fileTitle = usePreviewTitle("file");
   const urlTitle = usePreviewTitle("url");
   const source = typeof src === "string" ? src : "";
-  if (/^https?:\/\//i.test(source)) {
+  const isRemote = /^https?:/i.test(source);
+  const decoded = safeDecodeUri(source);
+  const rel = isRemote ? null : toWorkspaceRel(decoded, root, baseDir);
+  const attachmentRef =
+    !isRemote && /^attachments\/[0-9a-f]{64}$/i.test(decoded.replace(/\\/g, "/"))
+      ? decoded.replace(/\\/g, "/")
+      : null;
+  const localRef = rel ?? attachmentRef;
+  // Always run the hook before any branch so hook order stays stable when a
+  // streaming src flips between remote and local. Remote images pass null.
+  const dataUrl = useReferencedImageDataUrl(isRemote ? null : localRef);
+  if (isRemote) {
     return (
       <img
         {...rest}
@@ -533,17 +546,28 @@ function MarkdownImage({
       />
     );
   }
-  const rel = toWorkspaceRel(safeDecodeUri(source), root, baseDir);
-  if (rel) {
+  if (dataUrl) {
+    return (
+      <img
+        {...rest}
+        src={dataUrl}
+        alt={alt ?? ""}
+        className="chat-image-local"
+        title={rel ? fileTitle : source}
+        onClick={localRef ? () => openFile(localRef) : undefined}
+      />
+    );
+  }
+  if (localRef) {
     return (
       <button
         type="button"
         className="chat-image-chip"
         title={fileTitle}
-        onClick={() => openFile(rel)}
+        onClick={() => openFile(localRef)}
       >
         <IconImage size={14} aria-hidden />
-        <span>{alt || rel.split("/").pop()}</span>
+        <span>{alt || localRef.split("/").pop()}</span>
       </button>
     );
   }

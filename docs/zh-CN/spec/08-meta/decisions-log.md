@@ -2702,3 +2702,9 @@ D193 和 D194。
   插件禁用时失败。不升协议/schema。
 - 决策 D333 修订 ADR 0019 / 0104 / 0105 / 0108。见 ADR 0170、
   `07-plugins/03-plugin-api.md` 与 E2E-008b。
+
+## 2026-09-07 —— 受限的会话内图片显示（D334）
+
+- 粘贴/上传的图片存为无扩展名的 `attachments/<sha256>` blob。渲染器源无法加载它们，历史回合只显示芯片；`fs/open` 还把该引用当成工作区相对路径。
+- `fs/read`、`fs/reveal`、`fs/open` 共用 `resolveOpenablePath`（工作区、scratch、attachments，以及 blob 引用）。读取会 `realpath`。`fs/readImageDataUrl` 只返回有界图片 data URL。客户端 `mimeType` 不能把非图片扩展名重新分类。
+- 决策 D334 记录为 ADR 0172。见 `03-runtime/01-ipc-protocol.md`、`04-ux/08-component-spec.md` §8.3 与 E2E-187。

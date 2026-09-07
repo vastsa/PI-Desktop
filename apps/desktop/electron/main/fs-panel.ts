@@ -1,7 +1,7 @@
 import { readFileSync, statSync } from "node:fs";
 import { readdir, realpath, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import type { FsEntry, FsReadResult } from "@pi-desktop/shared";
+import type { FsEntry, FsImageDataUrlResult, FsReadResult } from "@pi-desktop/shared";
 
 /**
  * Read-only workspace file access for the work panel files tab
@@ -39,6 +39,15 @@ export const IMAGE_MIME: Record<string, string> = {
   bmp: "image/bmp",
   avif: "image/avif",
 };
+
+const ALLOWED_IMAGE_MIME = new Set(Object.values(IMAGE_MIME));
+
+/** Content-addressed paste/upload blobs: `attachments/<sha256>`. */
+const ATTACHMENT_BLOB_RE = /^attachments\/[0-9a-f]{64}$/i;
+
+export function isAttachmentBlobRef(path: string): boolean {
+  return ATTACHMENT_BLOB_RE.test(String(path ?? "").trim().replace(/\\/g, "/"));
+}
 
 /**
  * Resolve `rel` inside `root`, rejecting absolute inputs and `..` escapes.
@@ -82,7 +91,19 @@ export function resolveOpenablePath(
   if (allowed.length === 0) return null;
 
   let candidate: string;
-  if (isAbsolute(raw)) {
+  if (isAttachmentBlobRef(raw)) {
+    const extraResolved = extraRoots
+      .filter((root) => typeof root === "string" && root.trim())
+      .map((root) => resolve(root));
+    const attachmentRoot = extraResolved.find((root) => basename(root) === "attachments");
+    if (!attachmentRoot) return null;
+    const relativePath = resolveWithinRoot(
+      attachmentRoot,
+      raw.replace(/\\/g, "/").slice("attachments/".length),
+    );
+    if (!relativePath) return null;
+    candidate = relativePath;
+  } else if (isAbsolute(raw)) {
     candidate = resolve(raw);
   } else {
     if (!workspaceRoot) return null;
@@ -92,6 +113,42 @@ export function resolveOpenablePath(
   }
 
   return allowed.some((root) => pathIsWithin(root, candidate)) ? candidate : null;
+}
+
+/**
+ * Same containment as `resolveOpenablePath`, then `realpath` so a symlink
+ * inside an allowed root cannot be used to read a file outside it.
+ */
+export async function resolveRealOpenablePath(
+  path: string,
+  workspaceRoot: string | null | undefined,
+  extraRoots: readonly string[] = [],
+): Promise<string | null> {
+  const lexical = resolveOpenablePath(path, workspaceRoot, extraRoots);
+  if (!lexical) return null;
+  const allowed = [
+    ...(workspaceRoot ? [resolve(workspaceRoot)] : []),
+    ...extraRoots
+      .filter((root) => typeof root === "string" && root.trim())
+      .map((root) => resolve(root)),
+  ];
+  try {
+    const targetReal = await realpath(lexical);
+    const realRoots = await Promise.all(
+      allowed.map(async (root) => {
+        try {
+          return await realpath(root);
+        } catch {
+          return null;
+        }
+      }),
+    );
+    return realRoots.some((root) => root && pathIsWithin(root, targetReal))
+      ? targetReal
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Resolve an existing path and its root through links before containment. */
@@ -206,25 +263,46 @@ function looksBinary(buffer: Buffer): boolean {
 }
 
 /**
+ * Image MIME for in-app preview. A known image extension always wins so a
+ * client cannot reclassify `notes.md` as `image/png`. Extension-less
+ * `attachments/<sha256>` blobs use an allowlisted stored mimeType.
+ */
+export function imageMimeFor(displayPath: string, mimeType?: string): string | undefined {
+  const base = displayPath.replace(/\\/g, "/").split("/").pop() ?? "";
+  const dot = base.lastIndexOf(".");
+  const ext = dot > 0 ? base.slice(dot + 1).toLowerCase() : "";
+  if (ext && IMAGE_MIME[ext]) return IMAGE_MIME[ext];
+  if (ext) return undefined;
+  const declared = String(mimeType ?? "").trim().toLowerCase();
+  return ALLOWED_IMAGE_MIME.has(declared) ? declared : undefined;
+}
+
+/**
  * Classify one already-contained regular file for in-app preview.
  * Used by the host Files tab and by `pi.fs.readPreview` so the two
  * surfaces cannot drift on size caps or image detection.
  */
-export function previewFile(fullPath: string, rel: string): FsReadResult {
+export function previewFile(
+  fullPath: string,
+  rel: string,
+  mimeType?: string,
+): FsReadResult {
   const info = statSync(fullPath);
   if (!info.isFile()) throw new Error("not a file");
 
-  const ext = rel.split(".").pop()?.toLowerCase() ?? "";
-  const imageMime = IMAGE_MIME[ext];
+  const imageMime = imageMimeFor(rel, mimeType);
   if (imageMime) {
     if (info.size > MAX_IMAGE_BYTES) {
       return { kind: "tooLarge", size: info.size };
     }
     const buffer = readFileSync(fullPath);
+    if (buffer.length > MAX_IMAGE_BYTES) {
+      return { kind: "tooLarge", size: buffer.length };
+    }
     return {
       kind: "image",
       dataUrl: `data:${imageMime};base64,${buffer.toString("base64")}`,
-      size: info.size,
+      size: buffer.length,
     };
   }
 
@@ -247,4 +325,51 @@ export async function readWorkspaceFile(
   const info = await stat(target);
   if (!info.isFile()) throw new Error("not a file");
   return previewFile(target, rel);
+}
+
+/**
+ * Read a workspace file, a content-addressed `attachments/<sha256>` blob, or
+ * an absolute path already inside scratch/attachments. Containment matches
+ * `fs/open` (D320) plus a realpath check.
+ */
+export async function readOpenableFile(
+  path: string,
+  workspaceRoot: string | null | undefined,
+  extraRoots: readonly string[],
+  mimeType?: string,
+): Promise<FsReadResult> {
+  const target = await resolveRealOpenablePath(path, workspaceRoot, extraRoots);
+  if (!target) throw new Error("path outside allowed roots");
+  const info = await stat(target);
+  if (!info.isFile()) throw new Error("not a file");
+  return previewFile(target, path, mimeType);
+}
+
+/**
+ * Bounded image data URL for in-chat display. Never returns file bytes for
+ * non-images, so a markdown `![](secret.txt)` cannot dump text into the
+ * renderer cache.
+ */
+export async function readOpenableImage(
+  path: string,
+  workspaceRoot: string | null | undefined,
+  extraRoots: readonly string[],
+  mimeType?: string,
+): Promise<FsImageDataUrlResult> {
+  const target = await resolveRealOpenablePath(path, workspaceRoot, extraRoots);
+  if (!target) {
+    return { kind: "missing", errorCode: "PATH_OUTSIDE_ALLOWED_ROOT" };
+  }
+  try {
+    const result = previewFile(target, path, mimeType);
+    if (result.kind === "image" && result.dataUrl) {
+      return { kind: "image", dataUrl: result.dataUrl, size: result.size };
+    }
+    if (result.kind === "tooLarge") {
+      return { kind: "tooLarge", size: result.size, errorCode: "IMAGE_TOO_LARGE" };
+    }
+    return { kind: "notImage", size: result.size, errorCode: "NOT_AN_IMAGE" };
+  } catch {
+    return { kind: "missing", errorCode: "FILE_NOT_FOUND" };
+  }
 }
