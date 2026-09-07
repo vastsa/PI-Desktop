@@ -101,8 +101,8 @@ Getting started only takes a few steps:
 2. **Open a project**
    Add any local repository or project directory from the sidebar.
 
-3. **Choose how the agent should work**
-   Use **Agent** for direct execution, **Plan** when you want to approve the implementation first, or **Goal** when you want to approve the outcome and let the agent decide how to get there.
+3. **Pick Agent, Plan, or Goal**
+   **Agent** starts working. **Plan** waits until you approve a frozen implementation plan. **Goal** waits until you approve the outcome, then the agent chooses the path.
 
 4. **Review the result**
    Inspect edits in the Review panel, check command output, preview the application, and continue the conversation without leaving PI-Desktop.
@@ -113,16 +113,19 @@ Getting started only takes a few steps:
 
 ### Agent, Plan, and Goal
 
-Different tasks need different levels of control.
+Same agent. Three gates. Privileged tools still go through the permission layer in every mode.
 
-**Agent** is for hands-on execution.
-The agent can inspect your codebase, edit files, run commands, test changes, and iterate.
+| | **Agent** | **Plan** | **Goal** |
+| --- | --- | --- | --- |
+| You approve | Nothing extra | The implementation plan | The outcome and acceptance criteria |
+| The agent does | Reads, edits, runs commands, tests, iterates | Studies the repo, writes a frozen plan, then waits | Picks the path and works until the goal is met |
+| Use when | You want it to just do the work | The change is large or risky and you want the approach first | You care about the result, not the route |
 
-**Plan** adds an approval boundary.
-The agent first studies the project and produces an immutable implementation plan. Nothing moves into execution until you approve it.
+**Agent** is the default loop: inspect the tree, patch files, run commands, and keep going.
 
-**Goal** focuses on the outcome.
-Agree on the objective and acceptance criteria, approve them, and let the agent work autonomously toward that goal.
+**Plan** is the approval boundary. The agent researches first and produces an immutable implementation plan. Execution does not start until you sign off.
+
+**Goal** is outcome-first. You lock the objective and acceptance criteria; the agent decides how to get there.
 
 ---
 
