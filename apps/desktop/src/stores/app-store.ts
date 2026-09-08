@@ -55,7 +55,11 @@ import {
   EMPTY_SESSION_WINDOW,
   sessionIsReusableEmpty,
 } from "../lib/session-create";
-import { rememberProject, setProjectPinned } from "../lib/recent-projects";
+import {
+  rememberProject,
+  renameRecentProject,
+  setProjectPinned,
+} from "../lib/recent-projects";
 import { applyOptimisticSessionConfiguration } from "../lib/session-thinking";
 import {
   RETAINED_SESSION_PANE_LIMIT,
@@ -88,6 +92,7 @@ import {
   sessionIsPinned,
   sortProjects,
   sortSessions,
+  normalizeProjectName,
   type ProjectMeta,
   type ProjectSort,
   type SessionMeta,
@@ -840,6 +845,7 @@ export type AppState = {
   setSessionArchiveVisibility: (show: boolean) => void;
   setSessionView: (view: Partial<SessionView> | boolean) => void;
   setShowArchived: (show: boolean) => void;
+  renameProject: (path: string, name: string) => void;
   toggleProjectPinned: (path: string, pinned?: boolean) => void;
   toggleProjectArchived: (path: string) => void;
   restoreProject: (path: string) => void;
@@ -1033,6 +1039,15 @@ function upsertWorkspace(
   return next;
 }
 
+function withProjectDisplayName(
+  workspace: ProjectWorkspace,
+  projectMeta: Record<string, ProjectMeta>,
+): ProjectWorkspace {
+  const key = normalizeProjectPath(workspace.path);
+  const name = key ? projectMeta[key]?.name : undefined;
+  return name ? { ...workspace, name } : workspace;
+}
+
 function preferencesFromState(state: Pick<
   AppState,
   | "sessionMeta"
@@ -1161,7 +1176,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     sortBy: initialSidebarPreferences.sessionView.sort,
     showArchived: initialSidebarPreferences.sessionView.archived,
   },
-  openProjects: initialSidebarPreferences.openProjectPaths.map(projectWorkspaceFromPath),
+  openProjects: initialSidebarPreferences.openProjectPaths.map((path) =>
+    withProjectDisplayName(
+      projectWorkspaceFromPath(path),
+      initialSidebarPreferences.projectMeta,
+    ),
+  ),
   openProjectPaths: initialSidebarPreferences.openProjectPaths,
   activeProjectPath: undefined,
   projectMeta: initialSidebarPreferences.projectMeta,
@@ -1282,7 +1302,9 @@ export const useAppStore = create<AppState>((set, get) => ({
           )
         ).filter((entry): entry is readonly [string, ModelInfo[]] => entry !== null),
       );
-      const currentWorkspace = project.workspace;
+      const currentWorkspace = project.workspace
+        ? withProjectDisplayName(project.workspace, get().projectMeta)
+        : null;
       const persistedPaths = get().openProjectPaths;
       // Only explicitly retained tabs are restored. Historical sessions stay
       // available in Projects, but must not silently reopen a tab that was
@@ -1290,7 +1312,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       const openProjectPaths = currentWorkspace?.path
         ? promoteProjectPath(persistedPaths, currentWorkspace.path)
         : persistedPaths;
-      const openProjects = openProjectPaths.map((path) => projectWorkspaceFromPath(path));
+      const openProjects = openProjectPaths.map((path) =>
+        withProjectDisplayName(projectWorkspaceFromPath(path), get().projectMeta),
+      );
       const hydratedProjects = currentWorkspace
         ? upsertWorkspace(openProjects, currentWorkspace)
         : openProjects;
@@ -2659,7 +2683,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!requestedPath) return null;
     const result = await api.setProject(requestedPath);
     if (!navigationIntentIsCurrent(intent)) return null;
-    const workspace = result.workspace;
+    const workspace = result.workspace
+      ? withProjectDisplayName(result.workspace, get().projectMeta)
+      : null;
     if (!workspace?.path) return null;
     if (
       normalizeProjectPath(get().activeProjectPath) !==
@@ -2742,7 +2768,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const result = await api.openProject();
     if (!navigationIntentIsCurrent(intent)) return;
     if (!result.canceled && result.workspace) {
-      const workspace = result.workspace;
+      const workspace = withProjectDisplayName(result.workspace, get().projectMeta);
       if (
         normalizeProjectPath(get().activeProjectPath) !==
         normalizeProjectPath(workspace.path)
@@ -3012,6 +3038,36 @@ export const useAppStore = create<AppState>((set, get) => ({
       setProjectPinned(path, projectIsPinned(key, get().projectMeta));
     } catch {
       // The durable recent-project index is optional in restricted contexts.
+    }
+    persistCurrentSidebar(get);
+  },
+
+  renameProject: (path, name) => {
+    const key = normalizeProjectPath(path);
+    if (!key) return;
+    const normalizedName = normalizeProjectName(name);
+    if (!normalizedName) {
+      throw new Error("Project name must be between 1 and 80 characters");
+    }
+    set((state) => ({
+      projectMeta: {
+        ...state.projectMeta,
+        [key]: { ...(state.projectMeta[key] || {}), name: normalizedName },
+      },
+      openProjects: state.openProjects.map((project) =>
+        normalizeProjectPath(project.path) === key
+          ? { ...project, name: normalizedName }
+          : project,
+      ),
+      workspace:
+        state.workspace && normalizeProjectPath(state.workspace.path) === key
+          ? { ...state.workspace, name: normalizedName }
+          : state.workspace,
+    }));
+    try {
+      renameRecentProject(path, normalizedName);
+    } catch {
+      // Recent projects are a best-effort renderer cache.
     }
     persistCurrentSidebar(get);
   },

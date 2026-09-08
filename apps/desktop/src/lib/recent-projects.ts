@@ -12,6 +12,11 @@ const MAX = 24;
 
 const COLORS = ["#6b6b6b", "#5d5d5d", "#4f4f4f", "#414141", "#383838", "#303030"];
 
+function normalizedProjectPath(path: string): string {
+  const normalized = path.trim().replace(/\\/g, "/").replace(/\/+$/, "");
+  return normalized || "/";
+}
+
 export function projectColor(path: string): string {
   let h = 0;
   for (let i = 0; i < path.length; i++) h = (h * 31 + path.charCodeAt(i)) >>> 0;
@@ -55,6 +60,16 @@ export function rememberProject(input: {
 export function setProjectPinned(path: string, pinned: boolean): RecentProject[] {
   const next = loadRecentProjects().map((p) => (p.path === path ? { ...p, pinned } : p));
   next.sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || b.openedAt - a.openedAt);
+  localStorage.setItem(KEY, JSON.stringify(next));
+  return next;
+}
+
+export function renameRecentProject(path: string, name: string): RecentProject[] {
+  const key = normalizedProjectPath(path);
+  const next = loadRecentProjects().map((project) => {
+    const projectKey = normalizedProjectPath(project.path);
+    return projectKey === key ? { ...project, name } : project;
+  });
   localStorage.setItem(KEY, JSON.stringify(next));
   return next;
 }

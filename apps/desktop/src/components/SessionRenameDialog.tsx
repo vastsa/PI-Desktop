@@ -3,22 +3,44 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { MAX_SESSION_TITLE_LENGTH } from "@pi-desktop/shared";
 import type { SessionSummary } from "@pi-desktop/shared";
+import { MAX_PROJECT_NAME_CHARS } from "../lib/sidebar-preferences";
 import { Button } from "./ui";
 import { IconClose, IconPencil } from "./icons";
 
-export function SessionRenameDialog({
-  session,
+type RenameDialogProps = {
+  value: string;
+  title: string;
+  description: string;
+  label: string;
+  hint: string;
+  cancelLabel: string;
+  saveLabel: string;
+  savingLabel: string;
+  maxLength: number;
+  inputId: string;
+  dialogId: string;
+  onClose: () => void;
+  onSave: (value: string) => Promise<void>;
+  onError: (error: unknown) => void;
+};
+
+function RenameDialog({
+  value,
+  title,
+  description,
+  label,
+  hint,
+  cancelLabel,
+  saveLabel,
+  savingLabel,
+  maxLength,
+  inputId,
+  dialogId,
   onClose,
   onSave,
   onError,
-}: {
-  session: Pick<SessionSummary, "id" | "title">;
-  onClose: () => void;
-  onSave: (title: string) => Promise<void>;
-  onError: (error: unknown) => void;
-}) {
-  const { t } = useTranslation();
-  const [draft, setDraft] = useState(session.title);
+}: RenameDialogProps) {
+  const [draft, setDraft] = useState(value);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -65,12 +87,12 @@ export function SessionRenameDialog({
 
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const title = draft.trim();
-    if (!title || savingRef.current) return;
+    const nextValue = draft.trim();
+    if (!nextValue || savingRef.current) return;
     savingRef.current = true;
     setSaving(true);
     try {
-      await onSave(title);
+      await onSave(nextValue);
       onClose();
     } catch (error) {
       onError(error);
@@ -93,25 +115,25 @@ export function SessionRenameDialog({
         className="dialog session-rename-dialog"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="session-rename-dialog-title"
-        aria-describedby="session-rename-dialog-description"
+        aria-labelledby={`${dialogId}-title`}
+        aria-describedby={`${dialogId}-description`}
         onClick={(event) => event.stopPropagation()}
       >
         <div className="session-rename-dialog-head">
           <div>
-            <h2 id="session-rename-dialog-title" className="session-rename-dialog-title">
+            <h2 id={`${dialogId}-title`} className="session-rename-dialog-title">
               <IconPencil size={16} aria-hidden />
-              {t("session.renameTitle")}
+              {title}
             </h2>
-            <p id="session-rename-dialog-description" className="session-rename-dialog-description">
-              {t("session.renameDescription")}
+            <p id={`${dialogId}-description`} className="session-rename-dialog-description">
+              {description}
             </p>
           </div>
           <button
             type="button"
             className="session-rename-dialog-close"
-            aria-label={t("session.renameCancel")}
-            title={t("session.renameCancel")}
+            aria-label={cancelLabel}
+            title={cancelLabel}
             disabled={saving}
             onClick={onClose}
           >
@@ -119,35 +141,35 @@ export function SessionRenameDialog({
           </button>
         </div>
         <form onSubmit={(event) => void save(event)}>
-          <label className="session-rename-dialog-label" htmlFor="session-rename-input">
-            {t("session.renameLabel")}
+          <label className="session-rename-dialog-label" htmlFor={inputId}>
+            {label}
           </label>
           <input
             className="field-input"
             ref={inputRef}
-            id="session-rename-input"
+            id={inputId}
             value={draft}
             onChange={(event) =>
-              setDraft(Array.from(event.target.value).slice(0, MAX_SESSION_TITLE_LENGTH).join(""))
+              setDraft(Array.from(event.target.value).slice(0, maxLength).join(""))
             }
-            aria-label={t("session.renameLabel")}
+            aria-label={label}
             spellCheck={false}
             autoCorrect="off"
             autoCapitalize="off"
             disabled={saving}
           />
           <div className="session-rename-dialog-meta">
-            <span>{t("session.renameHint")}</span>
+            <span>{hint}</span>
             <span>
-              {Array.from(draft).length}/{MAX_SESSION_TITLE_LENGTH}
+              {Array.from(draft).length}/{maxLength}
             </span>
           </div>
           <div className="session-rename-dialog-actions">
             <Button type="button" variant="ghost" disabled={saving} onClick={onClose}>
-              {t("session.renameCancel")}
+              {cancelLabel}
             </Button>
             <Button type="submit" variant="primary" disabled={!draft.trim() || saving}>
-              {saving ? t("session.renameSaving") : t("session.renameSave")}
+              {saving ? savingLabel : saveLabel}
             </Button>
           </div>
         </form>
@@ -158,4 +180,68 @@ export function SessionRenameDialog({
   return typeof document === "undefined"
     ? dialog
     : createPortal(dialog, document.body);
+}
+
+export function SessionRenameDialog({
+  session,
+  onClose,
+  onSave,
+  onError,
+}: {
+  session: Pick<SessionSummary, "id" | "title">;
+  onClose: () => void;
+  onSave: (title: string) => Promise<void>;
+  onError: (error: unknown) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <RenameDialog
+      value={session.title}
+      title={t("session.renameTitle")}
+      description={t("session.renameDescription")}
+      label={t("session.renameLabel")}
+      hint={t("session.renameHint")}
+      cancelLabel={t("session.renameCancel")}
+      saveLabel={t("session.renameSave")}
+      savingLabel={t("session.renameSaving")}
+      maxLength={MAX_SESSION_TITLE_LENGTH}
+      inputId="session-rename-input"
+      dialogId="session-rename-dialog"
+      onClose={onClose}
+      onSave={onSave}
+      onError={onError}
+    />
+  );
+}
+
+export function ProjectRenameDialog({
+  project,
+  onClose,
+  onSave,
+  onError,
+}: {
+  project: { path: string; name: string };
+  onClose: () => void;
+  onSave: (name: string) => Promise<void>;
+  onError: (error: unknown) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <RenameDialog
+      value={project.name}
+      title={t("project.renameTitle")}
+      description={t("project.renameDescription")}
+      label={t("project.renameLabel")}
+      hint={t("project.renameHint")}
+      cancelLabel={t("project.renameCancel")}
+      saveLabel={t("project.renameSave")}
+      savingLabel={t("project.renameSaving")}
+      maxLength={MAX_PROJECT_NAME_CHARS}
+      inputId="project-rename-input"
+      dialogId="project-rename-dialog"
+      onClose={onClose}
+      onSave={onSave}
+      onError={onError}
+    />
+  );
 }

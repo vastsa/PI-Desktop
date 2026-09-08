@@ -426,9 +426,10 @@ visually distinct from list content.
   visually hidden at rest
 - Right-click the `Sessions` heading or empty standalone-list chrome: open a
   single-item create menu that applies the same temporary-group reuse rule
-- Project overflow: switch, open folder, pin/unpin, archive/restore, close
-  retained tab. Open folder reveals the project directory in the system file
-  manager for the selected project row.
+- Project overflow: switch, open folder, rename, pin/unpin, archive/restore,
+  close retained tab. Rename edits the local display name only; open folder
+  reveals the project directory in the system file manager for the selected
+  project row.
 - Conversation overflow: pin/unpin, archive/restore, Create branch, delete.
   Create branch is disabled while that conversation is running; success
   activates the independent child session and focuses the composer.

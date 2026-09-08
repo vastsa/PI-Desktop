@@ -7,6 +7,7 @@ import {
   projectIsArchived,
   projectIsCollapsed,
   projectIsPinned,
+  normalizeProjectName,
   saveSidebarPreferences,
   saveSidebarWidth,
   SIDEBAR_WIDTH_DEFAULT,
@@ -15,6 +16,7 @@ import {
   sortProjects,
   sortSessions,
 } from "../src/lib/sidebar-preferences.ts";
+import { loadRecentProjects, renameRecentProject } from "../src/lib/recent-projects.ts";
 
 function session(overrides = {}) {
   return {
@@ -75,6 +77,57 @@ test("project metadata uses normalized paths", () => {
   assert.equal(projectIsPinned("/work/app/", meta), true);
   assert.equal(projectIsArchived("/work/app/", meta), true);
   assert.equal(projectIsCollapsed("/work/app/", meta), true);
+});
+
+test("project display names are trimmed, persisted, and bounded by Unicode characters", () => {
+  assert.equal(normalizeProjectName("  API workspace  "), "API workspace");
+  assert.equal(normalizeProjectName("界".repeat(80)), "界".repeat(80));
+  assert.equal(normalizeProjectName("界".repeat(81)), undefined);
+  assert.equal(normalizeProjectName("   "), undefined);
+
+  const values = new Map();
+  const previousStorage = globalThis.localStorage;
+  globalThis.localStorage = {
+    getItem(key) {
+      return values.get(key) ?? null;
+    },
+    setItem(key, value) {
+      values.set(key, String(value));
+    },
+    removeItem(key) {
+      values.delete(key);
+    },
+    clear() {
+      values.clear();
+    },
+    key() {
+      return null;
+    },
+    get length() {
+      return values.size;
+    },
+  };
+
+  try {
+    saveSidebarPreferences({
+      sessionMeta: {},
+      projectMeta: {
+        "/work/api/": { name: "  API workspace  ", pinned: true },
+        "/work/invalid": { name: "界".repeat(81), archived: true },
+      },
+      projectSort: "recent",
+      sessionView: { sort: "recent", archived: false },
+      openProjectPaths: [],
+    });
+    const loaded = loadSidebarPreferences();
+    assert.deepEqual(loaded.projectMeta["/work/api"], {
+      name: "API workspace",
+      pinned: true,
+    });
+    assert.deepEqual(loaded.projectMeta["/work/invalid"], { archived: true });
+  } finally {
+    globalThis.localStorage = previousStorage;
+  }
 });
 
 test("projects sort by name while retaining pinned priority", () => {
@@ -312,6 +365,49 @@ test("clamps and persists the expanded sidebar width", () => {
     assert.equal(loadSidebarWidth(), SIDEBAR_WIDTH_MAX);
     saveSidebarWidth(SIDEBAR_WIDTH_MIN - 100);
     assert.equal(loadSidebarWidth(), SIDEBAR_WIDTH_MIN);
+  } finally {
+    globalThis.localStorage = previousStorage;
+  }
+});
+
+test("renames a recent project without changing its recency", () => {
+  const values = new Map([
+    [
+      "pi.desktop.recentProjects",
+      JSON.stringify([
+        { path: "/work/api/", name: "api", openedAt: 42, pinned: true },
+        { path: "/work/web", name: "web", openedAt: 7 },
+      ]),
+    ],
+  ]);
+  const previousStorage = globalThis.localStorage;
+  globalThis.localStorage = {
+    getItem(key) {
+      return values.get(key) ?? null;
+    },
+    setItem(key, value) {
+      values.set(key, String(value));
+    },
+    removeItem(key) {
+      values.delete(key);
+    },
+    clear() {
+      values.clear();
+    },
+    key() {
+      return null;
+    },
+    get length() {
+      return values.size;
+    },
+  };
+
+  try {
+    renameRecentProject("/work/api", "API workspace");
+    const renamed = loadRecentProjects();
+    assert.equal(renamed[0].name, "API workspace");
+    assert.equal(renamed[0].openedAt, 42);
+    assert.equal(renamed[0].pinned, true);
   } finally {
     globalThis.localStorage = previousStorage;
   }

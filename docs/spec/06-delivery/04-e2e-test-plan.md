@@ -1988,6 +1988,27 @@ Each scenario is documented in this format:
 - **Status**: Unit-covered (`sidebar-preferences.test.mjs` for metadata,
   filtering, and sort behavior); full UI scenario Draft
 
+#### E2E-048b: Rename a project display name and retain it across restart
+
+- **Preconditions**: One retained project is visible in the sidebar and in
+  Settings → Project archive; its directory name is distinct from the desired
+  display name.
+- **Steps**: 1) Open the project's overflow menu in the sidebar and choose
+  Rename project. 2) Enter a non-empty name and save. 3) Inspect the sidebar
+  row and Settings → Project archive. 4) Restart the app and inspect both
+  surfaces again. 5) Open the project folder and verify the filesystem path.
+- **Expected**: The rename action is available from both project menus and the
+  modal keeps focus contained, trims surrounding whitespace, and limits input
+  to 80 Unicode characters. The custom display name replaces the basename in
+  the sidebar and Project archive, survives restart, and does not alter the
+  normalized project path, workspace identity, sessions, or on-disk folder.
+- **Specs linked**: `04-ux/01-ui-ia.md`, `04-ux/08-component-spec.md`,
+  `04-ux/09-interaction-patterns.md`
+- **Acceptance**: D (workspace identity), F (local presentation persistence)
+- **Milestone**: M5
+- **Status**: Unit-covered (`project-rename.test.mjs`,
+  `sidebar-preferences.test.mjs`); rendered scenario Draft
+
 #### E2E-048A: Project session lists fold after the ten most recent rows
 
 - **Preconditions**: One retained project contains more than ten durable

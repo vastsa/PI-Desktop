@@ -31,7 +31,7 @@ import {
   sessionMatchesProject,
 } from "../lib/sidebar-session-groups";
 import { ProjectInstructionsDialog } from "../components/ProjectInstructionsDialog";
-import { SessionRenameDialog } from "../components/SessionRenameDialog";
+import { ProjectRenameDialog, SessionRenameDialog } from "../components/SessionRenameDialog";
 
 const INITIAL_VISIBLE_SESSION_COUNT = 8;
 
@@ -102,6 +102,7 @@ export function ProjectsPage() {
   const activateProject = useAppStore((s) => s.activateProject);
   const clearProject = useAppStore((s) => s.clearProject);
   const closeProject = useAppStore((s) => s.closeProject);
+  const renameProject = useAppStore((s) => s.renameProject);
   const toggleProjectPinned = useAppStore((s) => s.toggleProjectPinned);
   const archiveProject = useAppStore((s) => s.archiveProject);
   const restoreProject = useAppStore((s) => s.restoreProject);
@@ -120,6 +121,10 @@ export function ProjectsPage() {
   const [visibleSessionCounts, setVisibleSessionCounts] = useState<Record<string, number>>({});
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [renameFor, setRenameFor] = useState<SessionSummary | null>(null);
+  const [renameProjectFor, setRenameProjectFor] = useState<{
+    path: string;
+    name: string;
+  } | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const [instructionsFor, setInstructionsFor] = useState<{
@@ -215,6 +220,7 @@ export function ProjectsPage() {
       const meta = projectMeta[normalizeProjectPath(project.path) || project.path] ?? {};
       return {
         ...project,
+        name: meta.name ?? project.name,
         pinned: meta.pinned ?? project.pinned,
         archived: meta.archived === true,
       };
@@ -674,6 +680,21 @@ export function ProjectsPage() {
                                 <IconFileText size={14} />
                                 {t("project.editInstructions")}
                               </button>
+                              <button
+                                type="button"
+                                role="menuitem"
+                                data-action="rename-project"
+                                onClick={() => {
+                                  setMenuFor(null);
+                                  setRenameProjectFor({
+                                    path: project.path,
+                                    name: project.name,
+                                  });
+                                }}
+                              >
+                                <IconPencil size={14} />
+                                {t("project.rename", { defaultValue: "Rename project" })}
+                              </button>
                               <div className="projects-menu-sep" role="separator" />
                               <button
                                 type="button"
@@ -834,6 +855,20 @@ export function ProjectsPage() {
           session={renameFor}
           onClose={() => setRenameFor(null)}
           onSave={(title) => renameSession(renameFor.id, title)}
+          onError={(error) =>
+            showToast(error instanceof Error ? error.message : String(error), {
+              variant: "error",
+            })
+          }
+        />
+      ) : null}
+      {renameProjectFor ? (
+        <ProjectRenameDialog
+          project={renameProjectFor}
+          onClose={() => setRenameProjectFor(null)}
+          onSave={async (name) => {
+            renameProject(renameProjectFor.path, name);
+          }}
           onError={(error) =>
             showToast(error instanceof Error ? error.message : String(error), {
               variant: "error",

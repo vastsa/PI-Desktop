@@ -159,10 +159,13 @@ destination, chat as the home surface, tools and permissions inline.
   collapse/expand affects only child visibility, and adjacent groups form one
   dense tree rather than detached cards. Hovering or focusing the project title
   reveals the full project path.
-- **Project actions**: open folder reveals the project directory; pin/unpin
-  changes presentation priority; archive/restore hides or restores the group in
-  the default view; close removes the retained tab without deleting or
-  archiving project/session data.
+- **Project actions**: open folder reveals the project directory; rename edits
+  the renderer-local display name while the normalized path remains the
+  project identity; pin/unpin changes presentation priority; archive/restore
+  hides or restores the group in the default view; close removes the retained
+  tab without deleting or archiving project/session data. Custom display names
+  are stored with sidebar preferences and are used by both the sidebar and
+  Project archive after restart.
 - **Conversation actions**: rename, pin/unpin, archive/restore, fork, and
   delete remain separate actions. Rename edits the task label only; archive
   never removes the transcript. Open folder is a project action, not a

@@ -60,7 +60,7 @@ import {
 } from "../lib/sidebar-preferences";
 import { BrandLogo } from "./BrandLogo";
 import { NotificationCenter } from "./NotificationCenter";
-import { SessionRenameDialog } from "./SessionRenameDialog";
+import { ProjectRenameDialog, SessionRenameDialog } from "./SessionRenameDialog";
 import { useUpdateState } from "../hooks/use-update-state";
 import {
   IconArchive,
@@ -258,6 +258,7 @@ export function Sidebar({
   const clearProject = useAppStore((s) => s.clearProject);
   const activateProject = useAppStore((s) => s.activateProject);
   const closeProjectAction = useAppStore((s) => s.closeProject);
+  const renameProject = useAppStore((s) => s.renameProject);
   const toggleSessionPinned = useAppStore((s) => s.toggleSessionPinned);
   const archiveSessionAction = useAppStore((s) => s.archiveSession);
   const restoreSession = useAppStore((s) => s.restoreSession);
@@ -279,6 +280,7 @@ export function Sidebar({
   const [sortOpen, setSortOpen] = useState(false);
   const [sessionMenu, setSessionMenu] = useState<string | null>(null);
   const [renameFor, setRenameFor] = useState<SessionSummary | null>(null);
+  const [renameProjectFor, setRenameProjectFor] = useState<ProjectEntry | null>(null);
   const [projectMenu, setProjectMenu] = useState<string | null>(null);
   const [sectionMenu, setSectionMenu] = useState<"sessions" | "projects" | null>(null);
   const [menuPosition, setMenuPosition] = useState<{
@@ -685,14 +687,15 @@ export function Sidebar({
         if (branch && !existing.branch) existing.branch = branch;
         return;
       }
+      const meta = projectMetaFor(rawPath, projectMeta);
       byPath.set(normalized, {
         path: rawPath,
         key: normalized,
-        name: projectName(rawPath, name),
+        name: projectName(rawPath, meta.name ?? name),
         sessions: [],
         open,
         active: normalized === activeProjectPath,
-        meta: projectMetaFor(rawPath, projectMeta),
+        meta,
         branch,
       });
     };
@@ -1052,6 +1055,10 @@ export function Sidebar({
     } catch (error) {
       reportError(error);
     }
+  };
+
+  const renameProjectEntry = async (entry: ProjectEntry, name: string) => {
+    renameProject(entry.path, name);
   };
 
   const forkSession = async (session: SessionSummary) => {
@@ -1589,6 +1596,18 @@ export function Sidebar({
             <button
               type="button"
               role="menuitem"
+              data-action="rename-project"
+              onClick={() => {
+                closeMenus(false);
+                setRenameProjectFor(entry);
+              }}
+            >
+              <IconPencil size={14} />
+              {t("project.rename", { defaultValue: "Rename project" })}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
               data-action="toggle-project-pin"
               onClick={() => toggleProjectPin(entry)}
             >
@@ -1956,6 +1975,14 @@ export function Sidebar({
           session={renameFor}
           onClose={() => setRenameFor(null)}
           onSave={(title) => renameSession(renameFor.id, title)}
+          onError={reportError}
+        />
+      ) : null}
+      {renameProjectFor ? (
+        <ProjectRenameDialog
+          project={renameProjectFor}
+          onClose={() => setRenameProjectFor(null)}
+          onSave={(name) => renameProjectEntry(renameProjectFor, name)}
           onError={reportError}
         />
       ) : null}
