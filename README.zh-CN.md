@@ -305,7 +305,15 @@ Ubuntu 20.04、Debian 11、Fedora 35 及更旧的发行版无法加载自带的 
 
 ### macOS
 
-带标签发布工作流程会在发布前使用 Developer ID 凭据完成 macOS 工件的签名、公证和装订。
+带标签发布默认产出**未签名**的 macOS 工件。只有维护者以 `sign_macos: true` 手动触发 Release 工作流时，才会使用 Developer ID 凭据完成签名、公证和装订；详见[发布运行手册](docs/zh-CN/spec/06-delivery/06-release-runbook.md)。
+
+对未签名的构建，macOS 可能提示 **PI-Desktop.app** 已损坏、无法打开。把应用移动到 `/Applications`，再清除隔离属性：
+
+```bash
+xattr -cr /Applications/PI-Desktop.app
+```
+
+每个 DMG 也附带写有相同步骤的 `PI-Desktop-macOS-opening-help.txt`。仅对你从可信 PI-Desktop 来源获取的应用使用该命令；已签名并公证的构建不需要它。
 
 ---
 

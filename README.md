@@ -305,8 +305,22 @@ Ubuntu 20.04, Debian 11, Fedora 35, and older releases cannot load the bundled h
 
 ### macOS
 
-The tagged-release workflow signs, notarizes, and staples macOS artifacts with
-Developer ID credentials before publication.
+Tagged releases publish macOS artifacts **unsigned by default**. The Release
+workflow signs, notarizes, and staples with Developer ID credentials only when a
+maintainer manually dispatches it with `sign_macos: true`; see the
+[release runbook](docs/spec/06-delivery/06-release-runbook.md).
+
+For an unsigned build, macOS may report that **PI-Desktop.app** is damaged and
+cannot be opened. Move the app to `/Applications`, then clear the quarantine
+attribute:
+
+```bash
+xattr -cr /Applications/PI-Desktop.app
+```
+
+Every DMG also ships `PI-Desktop-macOS-opening-help.txt` with the same steps.
+Use them only for an app obtained from a trusted PI-Desktop source; signed and
+notarized builds do not need this command.
 
 ---
 
