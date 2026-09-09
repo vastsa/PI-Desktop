@@ -153,9 +153,13 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: |
           set -euo pipefail
-          # Artifact names are defined in apps/desktop/package.json so every
-          # macOS packaging path uses the same architecture-labelled names.
-          pnpm --filter @pi-desktop/desktop run dist:mac -- --${{ matrix.arch }}
+          package_args=(--${{ matrix.arch }})
+          # DMG naming is shared in apps/desktop/package.json. ZIP supports a
+          # target-specific override so its macOS marker remains explicit.
+          package_args+=(
+            '-c.zip.artifactName=PI-Desktop-${version}-${{ matrix.arch }}-mac.${ext}'
+          )
+          pnpm --filter @pi-desktop/desktop run dist:mac -- "${package_args[@]}"
 
       - name: Package signed and notarized macOS installer
         if: matrix.platform == 'macos' && inputs.sign_macos == true
@@ -167,9 +171,13 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
-          # Artifact names are defined in apps/desktop/package.json so every
-          # macOS packaging path uses the same architecture-labelled names.
-          pnpm --filter @pi-desktop/desktop run dist:mac -- --${{ matrix.arch }} \
+          package_args=(--${{ matrix.arch }})
+          # DMG naming is shared in apps/desktop/package.json. ZIP supports a
+          # target-specific override so its macOS marker remains explicit.
+          package_args+=(
+            '-c.zip.artifactName=PI-Desktop-${version}-${{ matrix.arch }}-mac.${ext}'
+          )
+          pnpm --filter @pi-desktop/desktop run dist:mac -- "${package_args[@]}" \
             -c.mac.forceCodeSigning=true \
             -c.mac.notarize=true
 

@@ -177,9 +177,6 @@
         }
       ]
     },
-    "zip": {
-      "artifactName": "PI-Desktop-${version}-${arch}-mac.${ext}"
-    },
     "win": {
       "executableName": "PI-Desktop",
       "target": [

@@ -4221,8 +4221,8 @@ Each scenario is documented in this format:
      executable and `Resources/bin/pi-desktop-host-core`; confirm arm64 and
      x86_64 packages contain only their declared architecture and that the
      Rust host matches the Electron app. Confirm the shared
-     `apps/desktop/package.json` artifact configuration produces arm64 assets
-     named `PI-Desktop-X.Y.Z-arm64.dmg` and
+     `apps/desktop/package.json` DMG configuration and the release-path ZIP
+     override produce arm64 assets named `PI-Desktop-X.Y.Z-arm64.dmg` and
      `PI-Desktop-X.Y.Z-arm64-mac.zip`, while the Intel assets use
      `PI-Desktop-X.Y.Z-x64.dmg` and `PI-Desktop-X.Y.Z-x64-mac.zip`; confirm the
      release directory has both DMG and ZIP artifacts and one merged

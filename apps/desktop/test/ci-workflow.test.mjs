@@ -156,19 +156,19 @@ test("release matrix packages both native macOS architectures", () => {
     "DMG names include the target architecture",
   );
   assert.equal(
-    JSON.parse(desktopPackageSource).build.zip.artifactName,
-    "PI-Desktop-${version}-${arch}-mac.${ext}",
-    "ZIP names include the target architecture",
+    JSON.parse(desktopPackageSource).build.zip,
+    undefined,
+    "ZIP is not an unsupported top-level electron-builder option",
+  );
+  assert.equal(
+    (releaseWorkflowSource.match(/-c\.zip\.artifactName=PI-Desktop-\$\{version\}-\$\{\{ matrix\.arch \}\}-mac\.\$\{ext\}/g) ?? []).length,
+    2,
+    "both macOS lanes apply the supported ZIP naming override",
   );
   assert.match(
     releaseWorkflowSource,
-    /Package unsigned macOS installer[\s\S]*?pnpm --filter @pi-desktop\/desktop run dist:mac -- --\$\{\{ matrix\.arch \}\}/,
-    "unsigned macOS builds use the shared artifact naming config",
-  );
-  assert.doesNotMatch(
-    releaseWorkflowSource,
-    /dmg\.artifactName|zip\.artifactName/,
-    "release workflow does not duplicate target naming overrides",
+    /Package unsigned macOS installer[\s\S]*?pnpm --filter @pi-desktop\/desktop run dist:mac -- \"\$\{package_args\[@\]\}\"/,
+    "unsigned macOS builds use shared DMG config and target-specific ZIP config",
   );
   assert.match(
     releaseWorkflowSource,
@@ -231,7 +231,12 @@ test("the signed local macOS lane selects the native runner architecture", () =>
   assert.match(releaseMacScriptSource, /electron-builder --mac "--\$\{MAC_ARCH\}"/);
   assert.doesNotMatch(
     releaseMacScriptSource,
-    /dmg\.artifactName|zip\.artifactName/,
-    "the signed local macOS lane uses the shared artifact naming config",
+    /dmg\.artifactName/,
+    "the signed local macOS lane uses the shared DMG naming config",
+  );
+  assert.match(
+    releaseMacScriptSource,
+    /zip\.artifactName=PI-Desktop-\\\$\{version\}-\$\{MAC_ARCH\}-mac/,
+    "the signed local macOS lane labels ZIP artifacts by architecture",
   );
 });

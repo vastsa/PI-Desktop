@@ -3308,11 +3308,12 @@ IPC 请求无法关闭。
   3. 对每个 macOS 软件包使用 `file`（或 `lipo -info`）检查应用程序
      可执行文件和 `Resources/bin/pi-desktop-host-core`；确认 arm64 和
      x86_64 软件包只包含声明的架构，且 Rust 主机与 Electron 应用一致。
-     确认共享的 `apps/desktop/package.json` 工件配置生成 arm64 文件
-     `PI-Desktop-X.Y.Z-arm64.dmg` 和 `PI-Desktop-X.Y.Z-arm64-mac.zip`，
-     Intel 工件使用 `PI-Desktop-X.Y.Z-x64.dmg` 和
-     `PI-Desktop-X.Y.Z-x64-mac.zip`；确认发布目录包含 DMG、ZIP 和合并后的
-     `latest-mac.yml` 更新源，且更新源中的 URL 和校验和与这些打包工件一致。
+     确认共享的 `apps/desktop/package.json` DMG 配置及发布路径中的 ZIP 覆盖
+     生成 arm64 文件 `PI-Desktop-X.Y.Z-arm64.dmg` 和
+     `PI-Desktop-X.Y.Z-arm64-mac.zip`，Intel 工件使用
+     `PI-Desktop-X.Y.Z-x64.dmg` 和 `PI-Desktop-X.Y.Z-x64-mac.zip`；确认发布目录
+     包含 DMG、ZIP 和合并后的 `latest-mac.yml` 更新源，且更新源中的 URL 和
+     校验和与这些打包工件一致。
   4. 配置环回装置提供程序，禁用外部出口，然后
      从干净的配置文件启动。英文和简体切换
      中文，要求确定性响应，渲染通用
