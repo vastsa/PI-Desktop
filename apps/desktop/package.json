@@ -156,6 +156,7 @@
       ]
     },
     "dmg": {
+      "artifactName": "PI-Desktop-${version}-${arch}.${ext}",
       "contents": [
         {
           "x": 130,
@@ -175,6 +176,9 @@
           "path": "PI-Desktop-macOS-opening-help.txt"
         }
       ]
+    },
+    "zip": {
+      "artifactName": "PI-Desktop-${version}-${arch}-mac.${ext}"
     },
     "win": {
       "executableName": "PI-Desktop",

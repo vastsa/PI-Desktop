@@ -153,15 +153,9 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: |
           set -euo pipefail
-          package_args=(--${{ matrix.arch }})
-          # Keep every macOS download distinct by architecture. These
-          # target-specific patterns are passed to electron-builder so the
-          # generated updater metadata keeps the asset URLs and checksums in sync.
-          package_args+=(
-            '-c.dmg.artifactName=PI-Desktop-${version}-${{ matrix.arch }}.${ext}'
-            '-c.zip.artifactName=PI-Desktop-${version}-${{ matrix.arch }}-mac.${ext}'
-          )
-          pnpm --filter @pi-desktop/desktop run dist:mac -- "${package_args[@]}"
+          # Artifact names are defined in apps/desktop/package.json so every
+          # macOS packaging path uses the same architecture-labelled names.
+          pnpm --filter @pi-desktop/desktop run dist:mac -- --${{ matrix.arch }}
 
       - name: Package signed and notarized macOS installer
         if: matrix.platform == 'macos' && inputs.sign_macos == true
@@ -173,15 +167,9 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
-          package_args=(--${{ matrix.arch }})
-          # Keep every macOS download distinct by architecture. These
-          # target-specific patterns are passed to electron-builder so the
-          # generated updater metadata keeps the asset URLs and checksums in sync.
-          package_args+=(
-            '-c.dmg.artifactName=PI-Desktop-${version}-${{ matrix.arch }}.${ext}'
-            '-c.zip.artifactName=PI-Desktop-${version}-${{ matrix.arch }}-mac.${ext}'
-          )
-          pnpm --filter @pi-desktop/desktop run dist:mac -- "${package_args[@]}" \
+          # Artifact names are defined in apps/desktop/package.json so every
+          # macOS packaging path uses the same architecture-labelled names.
+          pnpm --filter @pi-desktop/desktop run dist:mac -- --${{ matrix.arch }} \
             -c.mac.forceCodeSigning=true \
             -c.mac.notarize=true
 
@@ -200,6 +188,30 @@ jobs:
       - name: Export Linux ASAR release asset
         if: matrix.platform == 'linux'
         run: node scripts/export-linux-asar.mjs
+
+      - name: Verify macOS artifact names
+        if: matrix.platform == 'macos'
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          expected_dmg=(apps/desktop/release/PI-Desktop-*-${{ matrix.arch }}.dmg)
+          expected_dmg_blockmap=(apps/desktop/release/PI-Desktop-*-${{ matrix.arch }}.dmg.blockmap)
+          expected_zip=(apps/desktop/release/PI-Desktop-*-${{ matrix.arch }}-mac.zip)
+          expected_zip_blockmap=(apps/desktop/release/PI-Desktop-*-${{ matrix.arch }}-mac.zip.blockmap)
+          if [[ "${#expected_dmg[@]}" -ne 1 || "${#expected_dmg_blockmap[@]}" -ne 1 || "${#expected_zip[@]}" -ne 1 || "${#expected_zip_blockmap[@]}" -ne 1 ]]; then
+            echo "::error::Expected exactly one ${{ matrix.arch }} DMG, DMG blockmap, ZIP, and ZIP blockmap."
+            printf '%s\n' apps/desktop/release/* || true
+            exit 1
+          fi
+          for artifact in apps/desktop/release/PI-Desktop-*; do
+            case "$artifact" in
+              *-${{ matrix.arch }}.dmg|*-${{ matrix.arch }}.dmg.blockmap|*-${{ matrix.arch }}-mac.zip|*-${{ matrix.arch }}-mac.zip.blockmap) ;;
+              *)
+                echo "::error::Unexpected unlabelled or wrong-architecture macOS artifact: $artifact"
+                exit 1
+                ;;
+            esac
+          done
 
       - name: Disambiguate macOS update metadata
         if: matrix.platform == 'macos'
@@ -268,6 +280,19 @@ jobs:
           File.write("latest-mac.yml", merged.to_yaml)
           RUBY
           rm latest-mac-arm64.yml latest-mac-x64.yml
+
+      - name: Remove stale GitHub Release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            exit 0
+          fi
+          while IFS= read -r asset; do
+            [[ -z "$asset" || -f "dist/$asset" ]] && continue
+            gh release delete-asset "$GITHUB_REF_NAME" "$asset" --yes
+          done < <(gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name')
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

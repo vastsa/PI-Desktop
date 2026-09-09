@@ -7,6 +7,7 @@ const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 const [
   ciWorkflowSource,
   releaseWorkflowSource,
+  desktopPackageSource,
   linuxPackageWorkflowSource,
   agentRuntimePackageSource,
   i18nPackageSource,
@@ -17,6 +18,7 @@ const [
 ] = await Promise.all([
   read("../../../.github/workflows/ci.yml"),
   read("../../../.github/workflows/release.yml"),
+  read("../package.json"),
   read("../../../.github/workflows/linux-package.yml"),
   read("../../../packages/agent-runtime/package.json"),
   read("../../../packages/i18n/package.json"),
@@ -148,34 +150,39 @@ test("release matrix packages both native macOS architectures", () => {
     releaseWorkflowSource,
     /name: Package installers \(\$\{\{ matrix\.dist \}\}\)[\s\S]*?if: matrix\.platform != 'macos'[\s\S]*?run: pnpm --filter @pi-desktop\/desktop run \$\{\{ matrix\.dist \}\} -- --\$\{\{ matrix\.arch \}\}/,
   );
-  const macPackageBlocks = [
-    ...releaseWorkflowSource.matchAll(
-      /- name: Package (?:unsigned|signed and notarized) macOS installer[\s\S]*?(?=\n      - name:)/g,
-    ),
-  ].map(([block]) => block);
-  assert.equal(macPackageBlocks.length, 2, "both macOS packaging lanes are present");
-  for (const artifactName of [
-    "'-c.dmg.artifactName=PI-Desktop-${version}-${{ matrix.arch }}.${ext}'",
-    "'-c.zip.artifactName=PI-Desktop-${version}-${{ matrix.arch }}-mac.${ext}'",
-  ]) {
-    assert.equal(
-      releaseWorkflowSource.split(artifactName).length - 1,
-      2,
-      `${artifactName} is applied to both macOS packaging lanes`,
-    );
-    assert.ok(
-      macPackageBlocks.every((block) => block.includes(artifactName)),
-      `${artifactName} is present in each macOS packaging lane`,
-    );
-  }
+  assert.equal(
+    JSON.parse(desktopPackageSource).build.dmg.artifactName,
+    "PI-Desktop-${version}-${arch}.${ext}",
+    "DMG names include the target architecture",
+  );
+  assert.equal(
+    JSON.parse(desktopPackageSource).build.zip.artifactName,
+    "PI-Desktop-${version}-${arch}-mac.${ext}",
+    "ZIP names include the target architecture",
+  );
+  assert.match(
+    releaseWorkflowSource,
+    /Package unsigned macOS installer[\s\S]*?pnpm --filter @pi-desktop\/desktop run dist:mac -- --\$\{\{ matrix\.arch \}\}/,
+    "unsigned macOS builds use the shared artifact naming config",
+  );
   assert.doesNotMatch(
     releaseWorkflowSource,
-    /artifactName=PI-Desktop-\$\{version\}-Intel/,
-    "macOS artifact names use standard architecture labels",
+    /dmg\.artifactName|zip\.artifactName/,
+    "release workflow does not duplicate target naming overrides",
   );
   assert.match(
     releaseWorkflowSource,
     /latest-mac-\$\{\{ matrix\.arch \}\}\.yml/,
+  );
+  assert.match(
+    releaseWorkflowSource,
+    /name: Verify macOS artifact names[\s\S]*?Expected exactly one[\s\S]*?Unexpected unlabelled or wrong-architecture macOS artifact/,
+    "macOS publication rejects ambiguous artifact names",
+  );
+  assert.match(
+    releaseWorkflowSource,
+    /Remove stale GitHub Release assets[\s\S]*?dist\/\$asset[\s\S]*?gh release delete-asset/,
+    "reruns remove obsolete release assets",
   );
   assert.match(releaseWorkflowSource, /Merge macOS updater metadata[\s\S]*?ruby/);
 });
@@ -222,13 +229,9 @@ test("the signed local macOS lane selects the native runner architecture", () =>
   assert.match(releaseMacScriptSource, /MAC_ARCH="\$\{MAC_ARCH:-\$DEFAULT_MAC_ARCH\}"/);
   assert.match(releaseMacScriptSource, /must match the host/);
   assert.match(releaseMacScriptSource, /electron-builder --mac "--\$\{MAC_ARCH\}"/);
-  for (const artifactName of [
-    "-c.dmg.artifactName=PI-Desktop-\\${version}-${MAC_ARCH}.\\${ext}",
-    "-c.zip.artifactName=PI-Desktop-\\${version}-${MAC_ARCH}-mac.\\${ext}",
-  ]) {
-    assert.ok(
-      releaseMacScriptSource.includes(artifactName),
-      `${artifactName} is applied to the signed local macOS lane`,
-    );
-  }
+  assert.doesNotMatch(
+    releaseMacScriptSource,
+    /dmg\.artifactName|zip\.artifactName/,
+    "the signed local macOS lane uses the shared artifact naming config",
+  );
 });

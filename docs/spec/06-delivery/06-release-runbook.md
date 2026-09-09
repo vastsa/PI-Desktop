@@ -198,14 +198,20 @@ artifact upload. The per-architecture
 `latest-mac.yml` files are renamed before upload; the publish job merges them
 into one feed after downloading both artifacts.
 
-The macOS package commands override the target-specific artifact patterns so
-both public architectures are explicit: the arm64 lane publishes
+The shared electron-builder configuration defines target-specific artifact
+patterns so both public architectures are explicit: the arm64 lane publishes
 `PI-Desktop-<version>-arm64.dmg` and `PI-Desktop-<version>-arm64-mac.zip`, while
 the Intel x64 lane publishes `PI-Desktop-<version>-x64.dmg` and
 `PI-Desktop-<version>-x64-mac.zip`. This applies to both unsigned and signed
-macOS lanes. Because the patterns are applied during electron-builder
-execution, each generated per-architecture updater feed references its
-architecture-labelled asset names and matching checksums.
+macOS lanes, including local release builds. Keeping the patterns in
+`apps/desktop/package.json` avoids workflow- or script-specific overrides and
+ensures each generated updater feed references its architecture-labelled asset
+names and matching checksums. Before upload, each macOS runner requires exactly
+one architecture-labelled DMG and ZIP (including blockmaps) and rejects any
+unlabelled or wrong-architecture macOS artifact. If a tag release is rerun,
+the publish job removes Release assets that are not present in the current
+build, preventing obsolete generic filenames from remaining alongside the
+architecture-labelled files.
 
 Every macOS DMG and ZIP also includes
 `PI-Desktop-macOS-opening-help.txt` at the package root. It tells users how to

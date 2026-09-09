@@ -64,8 +64,6 @@ pnpm -r --filter '!@pi-desktop/desktop' build
 echo "==> Building + packaging desktop (signed, $MAC_ARCH)"
 pnpm --filter @pi-desktop/desktop exec electron-vite build
 pnpm --filter @pi-desktop/desktop exec electron-builder --mac "--${MAC_ARCH}" \
-  "-c.dmg.artifactName=PI-Desktop-\${version}-${MAC_ARCH}.\${ext}" \
-  "-c.zip.artifactName=PI-Desktop-\${version}-${MAC_ARCH}-mac.\${ext}" \
   -c.mac.identity="${MAC_SIGNING_IDENTITY}" \
   -c.mac.forceCodeSigning=true \
   -c.mac.notarize=true
