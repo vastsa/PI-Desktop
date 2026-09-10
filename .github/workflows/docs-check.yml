@@ -42,7 +42,7 @@ jobs:
 
       - uses: pnpm/action-setup@v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           # Same Node as ci.yml (matches the runtime Electron 43 bundles).
           node-version: 24
