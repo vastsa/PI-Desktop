@@ -13,9 +13,14 @@ function markdownFiles(directory) {
     .sort()
 }
 
-const englishFiles = markdownFiles(englishRoot)
-const missing = []
-const invalid = []
+/**
+ * Route the Chinese notice must link, built from a path relative to `docs/spec`.
+ * Routed links are POSIX, but `path.relative` separates with backslashes on
+ * Windows, so normalize the separators before assembling the route.
+ */
+export function noticeRoute(relativePath) {
+  return `/spec/${relativePath.split(path.sep).join('/').replace(/\.md$/, '')}`
+}
 
 function tableShape(source) {
   return source.split('\n')
@@ -24,34 +29,50 @@ function tableShape(source) {
     .map((line) => [...line].filter((character) => character === '|').length)
 }
 
-for (const relativePath of englishFiles) {
-  const translatedPath = path.join(chineseRoot, relativePath)
-  if (!fs.existsSync(translatedPath)) {
-    missing.push(relativePath)
-    continue
+export function verifyLocalePairs() {
+  const englishFiles = markdownFiles(englishRoot)
+  const missing = []
+  const invalid = []
+
+  for (const relativePath of englishFiles) {
+    const translatedPath = path.join(chineseRoot, relativePath)
+    if (!fs.existsSync(translatedPath)) {
+      missing.push(relativePath)
+      continue
+    }
+
+    const source = fs.readFileSync(translatedPath, 'utf8')
+    const englishSource = fs.readFileSync(path.join(englishRoot, relativePath), 'utf8')
+    const englishRoute = noticeRoute(relativePath)
+    const tableStructureMatches = JSON.stringify(tableShape(source)) === JSON.stringify(tableShape(englishSource))
+    const fenceStructureMatches = (source.match(/^```/gm) ?? []).length === (englishSource.match(/^```/gm) ?? []).length
+    if (
+      !/^#\s+\S+/m.test(source)
+      || !/[\u3400-\u9fff]/.test(source)
+      || !source.includes(`[英文源规格](${englishRoute})`)
+      || source.includes('PIHOLDTOKEN')
+      || !tableStructureMatches
+      || !fenceStructureMatches
+    ) {
+      invalid.push(relativePath)
+    }
   }
 
-  const source = fs.readFileSync(translatedPath, 'utf8')
-  const englishSource = fs.readFileSync(path.join(englishRoot, relativePath), 'utf8')
-  const englishRoute = `/spec/${relativePath.replace(/\.md$/, '')}`
-  const tableStructureMatches = JSON.stringify(tableShape(source)) === JSON.stringify(tableShape(englishSource))
-  const fenceStructureMatches = (source.match(/^```/gm) ?? []).length === (englishSource.match(/^```/gm) ?? []).length
-  if (
-    !/^#\s+\S+/m.test(source)
-    || !/[\u3400-\u9fff]/.test(source)
-    || !source.includes(`[英文源规格](${englishRoute})`)
-    || source.includes('PIHOLDTOKEN')
-    || !tableStructureMatches
-    || !fenceStructureMatches
-  ) {
-    invalid.push(relativePath)
+  return { englishFiles, missing, invalid }
+}
+
+function main() {
+  const { englishFiles, missing, invalid } = verifyLocalePairs()
+
+  if (missing.length || invalid.length) {
+    if (missing.length) console.error(`Missing Chinese specifications:\n${missing.join('\n')}`)
+    if (invalid.length) console.error(`Invalid Chinese source notices:\n${invalid.join('\n')}`)
+    process.exitCode = 1
+  } else {
+    console.log(`Verified ${englishFiles.length} English/Chinese specification pairs.`)
   }
 }
 
-if (missing.length || invalid.length) {
-  if (missing.length) console.error(`Missing Chinese specifications:\n${missing.join('\n')}`)
-  if (invalid.length) console.error(`Invalid Chinese source notices:\n${invalid.join('\n')}`)
-  process.exitCode = 1
-} else {
-  console.log(`Verified ${englishFiles.length} English/Chinese specification pairs.`)
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main()
 }
