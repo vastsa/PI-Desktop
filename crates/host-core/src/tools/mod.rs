@@ -16,7 +16,7 @@ use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::process::{ChildStderr, ChildStdin, ChildStdout, Command};
 use tokio::sync::{mpsc, watch};
 
-use crate::workspace::{resolve_tool_path_with_external, ToolRoot};
+use crate::workspace::{resolve_tool_path_with_external, simple_canonicalize, ToolRoot};
 
 mod grep_rg;
 pub mod hashline;
@@ -2625,7 +2625,13 @@ fn relative_display(root: &Path, path: &Path) -> String {
     // `path` comes back canonicalized from the resolver; strip against the
     // canonical root spelling too, or symlinked roots (macOS /var vs
     // /private/var) would render absolute.
-    let canonical_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+    //
+    // The resolver spells paths with `simple_canonicalize`, so the root must
+    // use that same spelling: std `Path::canonicalize` keeps the Windows
+    // `\\?\` prefix, which never matches a resolved path and made every
+    // workspace-relative label fall back to an absolute one.
+    let canonical_root =
+        simple_canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
     path.strip_prefix(&canonical_root)
         .or_else(|_| path.strip_prefix(root))
         .unwrap_or(path)
