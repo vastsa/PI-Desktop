@@ -97,7 +97,7 @@
   left: 8px;
   z-index: 1;
   height: 2px;
-  border-radius: 1px;
+  border-radius: var(--radius-full);
   background: var(--ds-accent);
   content: "";
   pointer-events: none;
