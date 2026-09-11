@@ -17,6 +17,7 @@ const anchoredSurfaceSources = await Promise.all(
     "../src/components/Composer.tsx",
     "../src/components/ComposerAutocomplete.tsx",
     "../src/components/PlanApprovalBar.tsx",
+    "../src/components/HomeProjectSwitcher.tsx",
   ].map((path) => readFile(new URL(path, import.meta.url), "utf8")),
 );
 
@@ -40,6 +41,7 @@ const dropdownSurfaces = [
   "plan-approval-menu",
   "composer-autocomplete",
   "context-inspector-popover",
+  "home-project-switcher-menu",
 ];
 
 function findSurfaceRule(className) {

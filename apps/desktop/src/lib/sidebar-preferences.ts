@@ -353,3 +353,94 @@ export function projectWorkspaceFromPath(path: string): ProjectWorkspace {
   const parts = normalized.split("/").filter(Boolean);
   return { path, name: parts[parts.length - 1] || path };
 }
+
+export type SwitcherProject = {
+  key: string;
+  path: string;
+  name: string;
+  pinned: boolean;
+  openedAt?: number;
+};
+
+export function switcherProjectName(
+  path: string,
+  fallback?: string | null,
+): string {
+  const named = fallback?.trim();
+  if (named) return named;
+  return projectWorkspaceFromPath(path).name;
+}
+
+/**
+ * Open sidebar projects in the same set the home switcher lists: retained
+ * tabs, the active workspace, minus archived records.
+ */
+export function listSwitcherProjects(input: {
+  openProjectPaths: readonly string[];
+  openProjects: readonly { path: string; name?: string }[];
+  workspace?: { path?: string | null; name?: string | null } | null;
+  projectMeta: Record<string, ProjectMeta>;
+  projectSort: ProjectSort;
+}): SwitcherProject[] {
+  const byKey = new Map<string, SwitcherProject>();
+  const add = (
+    rawPath: string | null | undefined,
+    name?: string | null,
+    openedAt?: number,
+  ) => {
+    const trimmed = rawPath?.trim();
+    const key = normalizeProjectPath(trimmed);
+    if (!trimmed || !key) return;
+    if (projectIsArchived(trimmed, input.projectMeta)) return;
+    const existing = byKey.get(key);
+    const metaName = input.projectMeta[key]?.name;
+    const display = switcherProjectName(
+      trimmed,
+      metaName ?? name ?? existing?.name,
+    );
+    if (existing) {
+      existing.name = display;
+      existing.pinned ||= projectIsPinned(trimmed, input.projectMeta);
+      if (typeof openedAt === "number") {
+        existing.openedAt = Math.max(existing.openedAt ?? 0, openedAt);
+      }
+      return;
+    }
+    byKey.set(key, {
+      key,
+      path: trimmed,
+      name: display,
+      pinned: projectIsPinned(trimmed, input.projectMeta),
+      openedAt,
+    });
+  };
+
+  for (const [index, path] of input.openProjectPaths.entries()) {
+    const record = input.openProjects.find(
+      (project) => normalizeProjectPath(project.path) === normalizeProjectPath(path),
+    );
+    add(path, record?.name, index + 1);
+  }
+  if (input.workspace?.path) {
+    add(
+      input.workspace.path,
+      input.workspace.name,
+      input.openProjectPaths.length + 1,
+    );
+  }
+
+  return sortProjects([...byKey.values()], input.projectMeta, input.projectSort);
+}
+
+export function filterSwitcherProjects(
+  projects: readonly SwitcherProject[],
+  query: string,
+): SwitcherProject[] {
+  const needle = query.trim().toLocaleLowerCase();
+  if (!needle) return [...projects];
+  return projects.filter(
+    (project) =>
+      project.name.toLocaleLowerCase().includes(needle) ||
+      project.path.toLocaleLowerCase().includes(needle),
+  );
+}

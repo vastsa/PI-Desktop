@@ -15,6 +15,8 @@ import {
   SIDEBAR_WIDTH_MIN,
   sortProjects,
   sortSessions,
+  filterSwitcherProjects,
+  listSwitcherProjects,
 } from "../src/lib/sidebar-preferences.ts";
 import { loadRecentProjects, renameRecentProject } from "../src/lib/recent-projects.ts";
 
@@ -482,4 +484,84 @@ test("renames a recent project without changing its recency", () => {
   } finally {
     globalThis.localStorage = previousStorage;
   }
+});
+
+test("home switcher lists retained sidebar projects and the active workspace", () => {
+  const projects = listSwitcherProjects({
+    openProjectPaths: ["/Users/lan/PI-Desktop", "/Users/lan/pi-desktop-plugins"],
+    openProjects: [
+      { path: "/Users/lan/PI-Desktop", name: "PI-Desktop" },
+      { path: "/Users/lan/pi-desktop-plugins", name: "pi-desktop-plugins" },
+    ],
+    workspace: { path: "/Users/lan/other", name: "other" },
+    projectMeta: {},
+    projectSort: "name",
+  });
+
+  assert.deepEqual(
+    projects.map((project) => project.name),
+    ["other", "PI-Desktop", "pi-desktop-plugins"],
+  );
+});
+
+test("home switcher hides archived projects and prefers renamed labels", () => {
+  const projects = listSwitcherProjects({
+    openProjectPaths: ["/tmp/alpha", "/tmp/beta"],
+    openProjects: [
+      { path: "/tmp/alpha", name: "alpha" },
+      { path: "/tmp/beta", name: "beta" },
+    ],
+    workspace: { path: "/tmp/alpha", name: "alpha" },
+    projectMeta: {
+      "/tmp/alpha": { name: "Alpha App" },
+      "/tmp/beta": { archived: true },
+    },
+    projectSort: "name",
+  });
+
+  assert.deepEqual(
+    projects.map((project) => ({ name: project.name, path: project.path })),
+    [{ name: "Alpha App", path: "/tmp/alpha" }],
+  );
+});
+
+test("home switcher search matches name or path and ignores case", () => {
+  const projects = [
+    { key: "/tmp/pi-desktop", path: "/tmp/pi-desktop", name: "PI-Desktop", pinned: false },
+    {
+      key: "/tmp/plugins",
+      path: "/tmp/plugins",
+      name: "pi-desktop-plugins",
+      pinned: false,
+    },
+  ];
+
+  assert.deepEqual(
+    filterSwitcherProjects(projects, "PLUGIN").map((project) => project.name),
+    ["pi-desktop-plugins"],
+  );
+  assert.deepEqual(
+    filterSwitcherProjects(projects, "/tmp/pi-desktop").map((project) => project.name),
+    ["PI-Desktop"],
+  );
+  assert.equal(filterSwitcherProjects(projects, "   ").length, 2);
+});
+
+test("home switcher collapses aliased paths and follows retained-tab recency", () => {
+  const projects = listSwitcherProjects({
+    openProjectPaths: ["/tmp/older", "/tmp/alpha/"],
+    openProjects: [
+      { path: "/tmp/older", name: "older" },
+      { path: "/tmp/alpha", name: "alpha" },
+    ],
+    workspace: { path: "/tmp/alpha" },
+    projectMeta: {},
+    projectSort: "recent",
+  });
+
+  assert.deepEqual(
+    projects.map((project) => project.name),
+    ["alpha", "older"],
+  );
+  assert.equal(projects.length, 2);
 });

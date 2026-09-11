@@ -643,18 +643,24 @@ may be retained while exactly one workspace supplies the visible shell context.
 
 ### 3.4 Queued send
 
-- While a session is running, Send remains enabled alongside Abort. Accepted
-  prompts clear the composer and append to that session's renderer-local FIFO
-  queue; session switching never moves or clears another session's queue.
+- While a session is running, the composer shows Send when the draft has
+  content and Stop when it is empty. Accepted prompts clear the composer and
+  append to that session's Host-owned, persisted FIFO queue; session switching
+  never moves or clears another session's queue.
 - The queue renders above the composer. Each row has an independently
   keyboard-reachable Remove action and a Send now action.
 - Send now moves its row to the head and requests the new `agent/stop` channel.
   The current assistant response and completed tool batch finish normally;
-  after `agent_end`, the promoted row is dispatched through the normal
-  `agent/prompt` flow before the remaining rows. An idle Send now dispatches
-  immediately.
-- Abort remains immediate and never clears the queue. Queued prompts are
-  intentionally lost on application restart because the queue is not durable.
+  after `agent_end` and durable turn finalization, the promoted row is
+  dispatched through the normal `agent/prompt` flow before the remaining rows.
+  An idle Send now dispatches immediately.
+- Without Send now, the next FIFO row starts automatically after the active
+  turn completes, fails, or is aborted. A terminal event can arrive before
+  persistence releases the session; finalization must wake the queue again
+  after releasing ownership. No additional send or session switch is required.
+- Abort remains immediate and never clears the queue. Queued prompts survive
+  application restart and remain held until a controller attaches (ADR 0213).
+  Finalization during application shutdown must not start another queued turn.
 
 ## 3A. Context checkpoint lifecycle
 

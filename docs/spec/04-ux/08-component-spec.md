@@ -677,7 +677,7 @@ reading surface of the workstation.
 
 | State | Behavior |
 |---|---|
-| Empty | Restrained hero + optional onboarding checklist in a scrollable content region, with a bottom-reserved home composer and no starter-card or contextual quick-action layer (D111/D204/D206) |
+| Empty | Restrained hero + optional onboarding checklist in a scrollable content region, with a bottom-reserved home composer and no starter-card or contextual quick-action layer (D111/D204/D206). A project-bound empty session underlines the project name; the control opens a searchable switcher of the sidebar's open projects rather than the folder picker. |
 | Streaming | Auto-scroll follows while pinned; new tokens append |
 | Active progress | Immediately after send, before the first assistant or tool event, a compact localized `Working…` status with elapsed time appears inline. Its model and subagent elapsed labels use the carried-unit format in §9.1. When the runtime names a quiet interval, that same row identifies starting, waiting for the model, preparing the next request, compacting context, recovering an empty response, retrying, or waiting for delegated work (with each running subagent's latest coarse action). It yields to concrete thinking, tool, and answer rows, while a permission card owns the approval state; no large generic progress card is rendered. A retrying row remains compact at rest; hovering or focusing it reveals an error-styled tooltip with the localized error summary, stable code/HTTP status, and bounded provider message. |
 | Turn outcome | After a failed turn, a session-scoped recovery card summarizes the interruption and tool evidence. Completed turns use the existing transcript and message-scoped InlineReviewCard without an extra success card; failed turns can continue through one localized prompt without losing the transcript. |
@@ -2664,7 +2664,9 @@ Guidance surfaces when key data is absent. Must always provide an **action link*
 
 - Chat home empty: single scrollable stack (hero → optional checklist) centered
   in MainChat, with a bottom-reserved composer sibling; task entry starts
-  directly in that composer without a starter-card or quick-action layer
+  directly in that composer without a starter-card or quick-action layer. The
+  underlined project name in a project-bound hero is a switcher, not a folder
+  picker.
 - Other empty surfaces: text-xl heading + text-sm description + primary action
 - Icon (48px Lucide / brand mark) above heading where applicable
 - Background: bg-primary (transparent, not a card)

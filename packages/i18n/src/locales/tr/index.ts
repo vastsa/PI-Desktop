@@ -1127,6 +1127,7 @@ export const tr = {
     emptyBody: "Araçların, sohbetlerin ve ana ekranın nerede çalıştığınızı bilmesi için bir proje klasörü ekleyin.",
     active: "Etkin",
     switch: "Geç",
+    switchProject: "Projeyi değiştir",
     close: "Kapat",
     branch: "Dal",
     pin: "Projeyi sabitle",

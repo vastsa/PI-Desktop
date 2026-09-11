@@ -1108,6 +1108,7 @@ export const fr = {
     "emptyBody": "Ajoutez un dossier de projet pour que les outils, les discussions et l'écran d'accueil sachent où vous travaillez.",
     "active": "Actif",
     "switch": "Commutateur",
+    "switchProject": "Changer de projet",
     "close": "Fermer",
     "branch": "Branche",
     "pin": "Épingler le projet",

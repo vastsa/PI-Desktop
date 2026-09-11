@@ -1108,6 +1108,7 @@ export const de = {
     "emptyBody": "Fügen Sie einen Projektordner hinzu, damit Tools, Chats und der Startbildschirm wissen, wo Sie arbeiten.",
     "active": "Aktiv",
     "switch": "Wechseln",
+    "switchProject": "Projekt wechseln",
     "close": "Schließen",
     "branch": "Zweig",
     "pin": "Projekt anpinnen",

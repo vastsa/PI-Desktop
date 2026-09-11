@@ -1117,6 +1117,7 @@ export const zhTW = {
     emptyBody: "新增專案資料夾後，工具、對話和首頁都會圍繞這個專案展開。",
     active: "當前",
     switch: "切換",
+    switchProject: "切換專案",
     close: "關閉",
     branch: "分支",
     pin: "置頂專案",

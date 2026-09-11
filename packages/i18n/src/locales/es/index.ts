@@ -1108,6 +1108,7 @@ export const es = {
     "emptyBody": "Agregue una carpeta de proyecto para que las herramientas, los chats y la pantalla de inicio sepan dónde está trabajando.",
     "active": "Activo",
     "switch": "Cambiar",
+    "switchProject": "Cambiar de proyecto",
     "close": "Cerrar",
     "branch": "Rama",
     "pin": "Fijar proyecto",

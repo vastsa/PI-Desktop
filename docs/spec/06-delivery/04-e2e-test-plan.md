@@ -1094,7 +1094,11 @@ Each scenario is documented in this format:
   in B, then return to A before either run completes. 5) Choose Send now on A's
   remaining queued row. 6) Observe A through the current tool/reply boundary
   and then the next turn. 7) Start another run in A, clear the draft to expose
-  the single Stop button, press Stop, and inspect the queue.
+  the single Stop button, press Stop, and inspect the queue. 8) Repeat with
+  two queued prompts, let the active turn finish without Send now, and delay
+  its host `session.endTurn` response until after `agent_end` is delivered.
+  Release finalization and observe both follow-ups through their turn
+  boundaries. Repeat with a provider error and an immediate abort.
 - **Expected**: The single submit slot contains exactly one button in every
   state: disabled Send while idle and empty, enabled Send while running with
   content (which queues the prompt), and Stop while running with an empty
@@ -1103,13 +1107,21 @@ Each scenario is documented in this format:
   current batch completes with a normal `agent_end`/completed turn, then the
   selected row starts before any remaining FIFO rows without `AGENT_BUSY`.
   Immediate Stop aborts the current reply and preserves A's queued row;
-  switching sessions preserves both queues.
+  switching sessions preserves both queues. Ordinary completion, provider
+  failure, and abort all resume queued sending automatically after durable
+  finalization releases the session. No queued prompt starts while finalization
+  is pending; each subsequent turn starts once in FIFO order, without another
+  click or session switch. Repeated terminal handling does not double-dispatch.
+  Other sessions' queues remain unchanged, and quitting while finalization is
+  pending preserves queued work without starting another turn.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md` (§5.2),
   `04-ux/08-component-spec.md` (§11),
-  `04-ux/09-interaction-patterns.md` (§3.4), ADR 0118
+  `04-ux/09-interaction-patterns.md` (§3.4), ADR 0118, ADR 0213
 - **Acceptance**: C (chat, stream, and session isolation), Quality
 - **Milestone**: M6+
-- **Status**: Source-level regression covered; full UI scenario Draft
+- **Status**: Source-level regression and deterministic desktop finalization /
+  Agent Host integration covered (`queued-turn-finalization.test.mjs`); full
+  UI scenario Draft
 
 #### E2E-011g: New Task does not leave the previous transcript on screen
 
@@ -8131,8 +8143,8 @@ This test plan spec is accepted when:
 - **Steps**:
   1. Create or select a temporary session while the project remains recently
      active, then inspect the empty-home hero.
-  2. Confirm the hero uses the temporary-session copy and has no project
-     underline or folder-open action; confirm a project session and no active
+     2. Confirm the hero uses the temporary-session copy and has no project
+     underline or project switcher; confirm a project session and no active
      session still use their own hero states.
   3. In the temporary session, use Read/Glob/Grep on a file under its
      `<data_dir>/scratch/<sessionId>` root, then Write/Edit a file with a
@@ -8145,8 +8157,9 @@ This test plan spec is accepted when:
   `scratch/<sessionId>` directory, never to the visible or recently active
   project. Relative paths work inside that scratch root, containment and
   permission rules remain active, and no project artifact is created. The
-  temporary hero is localized and has no project action; project and no-session
-  hero states remain unchanged. Plan/Goal retain their project-root boundary.
+  temporary hero is localized and has no project switcher; project and
+  no-session hero states remain unchanged. Plan/Goal retain their project-root
+  boundary.
 - **Specs linked**: `03-runtime/03-tools-and-permissions.md` §4/§4b,
   `03-runtime/10-session-state-machine.md`, `04-ux/01-ui-ia.md`,
   `04-ux/02-i18n-english-first.md`, ADR 0124
@@ -10182,3 +10195,28 @@ sample extensions under `apps/desktop/test/fixtures/pi-extensions/`.
 - **Status**: Unit-covered (`packages/shared/src/composer-trigger.test.ts`,
   `apps/desktop/test/composer-ime.test.mjs`); rendered desktop journey Draft
   (do not run E2E locally unless explicitly requested)
+
+#### E2E-256: Empty-home project name switches among sidebar projects
+
+- **Preconditions**: At least two local projects are open in the sidebar; the
+  visible chat is an empty project-bound session.
+- **Steps**:
+  1. Confirm the hero title underlines the current project name.
+  2. Click the underlined name and inspect the menu.
+  3. Search for a sidebar project, select a different one, and inspect the
+     hero and sidebar.
+  4. Reopen the menu and choose New project / Open project, then pick a
+     folder or cancel.
+  5. Open a temporary empty session and confirm the underline is absent.
+- **Expected**: The click opens a searchable, fixed switcher of the sidebar's
+  open projects instead of the folder picker. Choosing another project
+  activates it and lands on that project's empty home (reusing an empty
+  session when one exists). New/Open project still uses the folder picker.
+  Temporary and no-session heroes stay without the switcher. Escape and
+  outside click dismiss the menu.
+- **Specs linked**: `04-ux/01-ui-ia.md`, `04-ux/08-component-spec.md`
+- **Acceptance**: Quality (navigation and accessibility)
+- **Milestone**: M5
+- **Status**: Unit-covered (`home-project-switcher.test.mjs`,
+  `sidebar-preferences.test.mjs`); full UI scenario Draft (do not run E2E
+  locally unless explicitly requested)

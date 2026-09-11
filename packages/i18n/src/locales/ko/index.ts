@@ -1127,6 +1127,7 @@ export const ko = {
     emptyBody: "도구, 채팅 및 홈 화면이 작업 위치를 알 수 있도록 프로젝트 폴더를 추가하세요.",
     active: "활성",
     switch: "전환",
+    switchProject: "프로젝트 전환",
     close: "닫기",
     branch: "브랜치",
     pin: "프로젝트 고정",

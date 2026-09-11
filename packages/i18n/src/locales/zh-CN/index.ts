@@ -1117,6 +1117,7 @@ export const zhCN = {
     emptyBody: "添加项目文件夹后，工具、对话和首页都会围绕这个项目展开。",
     active: "当前",
     switch: "切换",
+    switchProject: "切换项目",
     close: "关闭",
     branch: "分支",
     pin: "置顶项目",

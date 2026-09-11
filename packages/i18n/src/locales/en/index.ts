@@ -1125,6 +1125,7 @@ export const en = {
     emptyBody: "Add a project folder so tools, chats, and the home screen know where you're working.",
     active: "Active",
     switch: "Switch",
+    switchProject: "Switch project",
     close: "Close",
     branch: "Branch",
     pin: "Pin project",

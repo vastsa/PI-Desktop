@@ -134,11 +134,13 @@ destination, chat as the home surface, tools and permissions inline.
 ## 3. Destinations
 
 ### 3.1 Chat home (default)
-- Empty state: a restrained hero title ("What can I help you build?" — project name
-  becomes a dotted-underline button when a workspace is open), an optional
-  first-run checklist, and a bottom-reserved composer. Task entry starts
-  directly in the composer; no redundant supporting paragraph, developer
-  starter cards, or contextual quick-action row is rendered (D204/D206).
+- Empty state: a restrained hero title ("What can I help you build?" — a
+  project-bound session turns the project name into a dotted-underline
+  switcher that lists the sidebar's open projects, can search them, and
+  can open another local folder), an optional first-run checklist, and a
+  bottom-reserved composer. Task entry starts directly in the composer; no
+  redundant supporting paragraph, developer starter cards, or contextual
+  quick-action row is rendered (D204/D206).
 - With transcript: message stream + tool disclosure rows (D071), a contextual
   message-scoped review card immediately after each successful workspace
   Write/Edit row, docked composer, and a session-scoped permission card inline.
@@ -281,6 +283,7 @@ shared capability contract:
 | Profile menu | sidebar footer | Settings / Logs / Theme cycle (D041) |
 | Notification inbox | sidebar footer bell | All/Unread views, task failure rows only (successful completions are hidden, D295), mark-all-read and clear actions (D130/D117) |
 | Toasts | events (plugin toast, backend restored, copy) | top-center; 4s default, 8s for errors |
+| Project switcher | empty-home underlined project name | sidebar open projects + search + new/open project |
 
 ## 5. Navigation model
 
@@ -295,9 +298,11 @@ shared capability contract:
   `chat`. Selecting a temporary thread clears the visible active workspace
   before loading it.
 - Empty home has three explicit session states: a project-bound session shows
-  the existing project-underlined welcome; a temporary session shows dedicated
-  temporary-chat copy with no project underline or folder-open action; and no
-  active session keeps the generic welcome title.
+  the project-underlined welcome; clicking the name opens a searchable
+  switcher of the sidebar's open projects instead of the folder picker. A
+  temporary session shows dedicated temporary-chat copy with no project
+  underline or switcher; and no active session keeps the generic welcome
+  title.
 - New task resolves the current project or temporary group by its most recent
   session: if that session has `messageCount = 0`, it is selected and reused;
   otherwise a durable empty session is created immediately and appears in the
