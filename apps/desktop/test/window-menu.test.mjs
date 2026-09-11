@@ -161,7 +161,7 @@ test("Windows and Linux use menu-free frameless chrome with window controls", ()
   );
   assert.match(
     stylesSource,
-    /\.window-controls\.window-controls-in-pane\s*\{[^}]*position:\s*absolute;/s,
+    /\.window-controls\.window-controls-in-pane\s*\{[^}]*position:\s*fixed;/s,
   );
   assert.match(
     stylesSource,

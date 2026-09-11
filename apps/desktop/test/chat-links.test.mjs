@@ -42,9 +42,12 @@ test("parseFileRef rejects non-path text", () => {
   assert.equal(parseFileRef("foo.bar()"), null);
 });
 
-test("toWorkspaceRel maps absolute paths under the root and rejects escapes", () => {
+test("toWorkspaceRel maps absolute paths under the root and passes through real outside paths", () => {
   assert.equal(toWorkspaceRel(`${ROOT}/src/a.ts`, ROOT), "src/a.ts");
-  assert.equal(toWorkspaceRel("/elsewhere/a.ts", ROOT), null);
+  // Absolute paths outside the workspace pass through as-is: the host read
+  // channel accepts a real file outside the roots for explicit chat-reference
+  // previews, while the file tree itself stays workspace-scoped.
+  assert.equal(toWorkspaceRel("/elsewhere/a.ts", ROOT), "/elsewhere/a.ts");
   assert.equal(toWorkspaceRel(ROOT, ROOT), null);
   assert.equal(toWorkspaceRel("src/a.ts", ROOT), "src/a.ts");
   assert.equal(toWorkspaceRel("./src/a.ts", ROOT), "src/a.ts");
@@ -92,6 +95,12 @@ test("resolvePreviewTarget classifies urls and workspace files", () => {
     kind: "file",
     path: "src/a.ts",
   });
+  // Outside-root absolute paths preview as files; existence is enforced by
+  // the host read channel, not the renderer classifier.
+  assert.deepEqual(resolvePreviewTarget("/outside/root.ts", ROOT), {
+    kind: "file",
+    path: "/outside/root.ts",
+  });
   assert.deepEqual(resolvePreviewTarget("./README.md", ROOT, "docs"), {
     kind: "file",
     path: "docs/README.md",
@@ -100,7 +109,6 @@ test("resolvePreviewTarget classifies urls and workspace files", () => {
     kind: "file",
     path: "src/a.ts",
   });
-  assert.equal(resolvePreviewTarget("/outside/root.ts", ROOT), null);
   assert.equal(isHttpUrl("ftp://example.com"), false);
 });
 
@@ -113,7 +121,10 @@ test("getToolPreviewTarget reads path-like args and fetch urls", () => {
     getToolPreviewTarget({ file_path: "src/b.ts" }, ROOT),
     { kind: "file", path: "src/b.ts" },
   );
-  assert.equal(getToolPreviewTarget({ path: "/outside/a.ts" }, ROOT), null);
+  assert.deepEqual(
+    getToolPreviewTarget({ path: "/outside/a.ts" }, ROOT),
+    { kind: "file", path: "/outside/a.ts" },
+  );
   assert.deepEqual(
     getToolPreviewTarget({ url: "https://example.com" }, ROOT),
     { kind: "url", url: "https://example.com" },

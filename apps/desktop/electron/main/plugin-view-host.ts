@@ -292,6 +292,19 @@ export class PluginViewHost {
       if (allowed) void shell.openExternal(allowed);
       return { action: "deny" };
     });
+    // Surface view JS errors and load failures into the app log so a broken
+    // bundled/third-party view is diagnosable without DevTools.
+    wc.on("console-message", (_event, level, message, line, sourceId) => {
+      if (level >= 2) {
+        console.error(`[plugin-view ${request.pluginId}] ${message} (${sourceId}:${line})`);
+      }
+    });
+    wc.on("render-process-gone", (_event, details) => {
+      console.error(`[plugin-view ${request.pluginId}] renderer gone: ${details.reason}`);
+    });
+    wc.on("did-fail-load", (_event, errorCode, errorDescription) => {
+      console.error(`[plugin-view ${request.pluginId}] load failed: ${errorCode} ${errorDescription}`);
+    });
     return view;
   }
 }

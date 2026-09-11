@@ -7,7 +7,7 @@
   "homepage": "https://github.com/vastsa/PI-Desktop",
   "author": {
     "name": "vastsa",
-    "email": "hhxk666@gmail.com"
+    "email": "dev@pi-desktop.app"
   },
   "main": "./out/main/index.js",
   "type": "module",

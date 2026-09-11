@@ -134,10 +134,9 @@
   -webkit-app-region: drag;
 }
 
-/* The header follows a "context on the left, actions on the right" model:
-   the current-resource switcher anchors the left, and the close and collapse
-   controls are pinned to the right edge so they never shift with the label
-   length. The gap between them stays a window-drag region. */
+/* The header follows a "context on the left, actions on the right" model.
+   Its trailing padding reserves the viewport-fixed panel toggle so the current
+   tab close remains independently clickable. */
 .work-panel-actions {
   display: flex;
   flex: 0 0 auto;
@@ -145,6 +144,11 @@
   gap: 2px;
   margin-left: auto;
   padding-left: 6px;
+}
+
+:root[data-platform="win32"] .work-panel-header,
+:root[data-platform="linux"] .work-panel-header {
+  padding-right: calc(var(--ds-window-controls-width) + 47px);
 }
 
 :root[data-theme="light"] .work-panel-header {
@@ -375,27 +379,6 @@
 
 .work-panel-switcher-chevron.open {
   transform: rotate(180deg);
-}
-
-.work-panel-collapse {
-  flex: 0 0 auto;
-}
-
-.work-panel-toolbar-collapse {
-  display: inline-flex;
-  width: 32px;
-  height: 32px;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-sm);
-  color: var(--ds-text-muted);
-  transition: background var(--motion-duration-fast) var(--motion-ease-out), color var(--motion-duration-fast) var(--motion-ease-out);
-}
-
-.work-panel-toolbar-collapse:hover {
-  color: var(--ds-text-primary);
-  background: var(--ds-bg-hover);
 }
 
 .work-panel-body {

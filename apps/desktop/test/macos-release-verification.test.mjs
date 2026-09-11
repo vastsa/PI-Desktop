@@ -3,15 +3,14 @@ import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-const verifyScript = new URL(
-  "../../../scripts/verify-macos-release.sh",
-  import.meta.url,
+const verifyScript = fileURLToPath(
+  new URL("../../../scripts/verify-macos-release.sh", import.meta.url),
 );
-const stapleScript = new URL(
-  "../../../scripts/staple-macos-release-dmg.sh",
-  import.meta.url,
+const stapleScript = fileURLToPath(
+  new URL("../../../scripts/staple-macos-release-dmg.sh", import.meta.url),
 );
 
 test("macOS release finalization staples the generated DMG", async (t) => {
@@ -31,7 +30,7 @@ test("macOS release finalization staples the generated DMG", async (t) => {
   );
   await chmod(join(bin, "xcrun"), 0o755);
 
-  const result = spawnSync("bash", [stapleScript.pathname, release], {
+  const result = spawnSync("bash", [stapleScript, release], {
     encoding: "utf8",
     env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, STAPLE_LOG: log },
   });
@@ -71,7 +70,7 @@ test("macOS release verification requires a notarized Developer ID app and DMG",
     ["codesign", "spctl", "xcrun"].map((name) => chmod(join(bin, name), 0o755)),
   );
 
-  const result = spawnSync("bash", [verifyScript.pathname, release], {
+  const result = spawnSync("bash", [verifyScript, release], {
     encoding: "utf8",
     env: {
       ...process.env,
@@ -112,7 +111,7 @@ test("macOS release verification rejects a Developer ID app without notarization
     ["codesign", "spctl", "xcrun"].map((name) => chmod(join(bin, name), 0o755)),
   );
 
-  const result = spawnSync("bash", [verifyScript.pathname, release], {
+  const result = spawnSync("bash", [verifyScript, release], {
     encoding: "utf8",
     env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
   });

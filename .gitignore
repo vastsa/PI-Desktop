@@ -48,3 +48,6 @@ coverage/
 .claude/
 .workbuddy
 electron.vite.config.*.mjs
+
+# Local dev launcher (machine-specific: sandbox flags, prebuilt host-core)
+dev.sh

@@ -345,7 +345,29 @@ function buildChipElement(
 
   const icon = document.createElement("span");
   icon.className = "composer-chip-icon";
-  icon.innerHTML = chipSvg(chipIconKey(reference));
+  const iconKey = chipIconKey(reference);
+  // Image references render a real thumbnail instead of a generic icon. The
+  // host resolves the ref (workspace-relative, attachments/<sha256>, or an
+  // absolute path) into a bounded data URL; failures keep the icon so the
+  // chip stays readable.
+  if (iconKey === "image") {
+    const img = document.createElement("img");
+    img.className = "composer-file-reference-thumb";
+    img.alt = reference.name;
+    img.setAttribute("aria-hidden", "true");
+    icon.append(img);
+    void api
+      .fsReadImageDataUrl(reference.path, reference.mimeType)
+      .then((result) => {
+        if (result.kind === "image" && result.dataUrl) img.src = result.dataUrl;
+      })
+      .catch(() => {
+        icon.replaceChildren();
+        icon.innerHTML = chipSvg("image");
+      });
+  } else {
+    icon.innerHTML = chipSvg(iconKey);
+  }
 
   const nameSpan = document.createElement("span");
   nameSpan.className = "composer-chip-name";

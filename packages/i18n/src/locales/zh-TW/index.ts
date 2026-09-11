@@ -136,6 +136,7 @@ export const zhTW = {
     newChat: "新對話",
     conversation: "對話",
     toggleSidebar: "切換側邊欄",
+    toggleWorkPanel: "切換工作面板",
     sessions: "會話",
     commandPalette: "命令面板",
     back: "後退",

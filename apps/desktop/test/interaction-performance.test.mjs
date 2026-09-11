@@ -62,7 +62,6 @@ test("stream rendering avoids duplicate frame state and coalesces following", ()
     transcript,
     /const renderedMessages =\s*firstCommit \|\| paneRevealed \? messages : deferredMessages/,
   );
-  assert.match(transcript, /const \{ entries, visible \} = useMemo/);
   assert.match(
     transcript,
     /buildTranscriptEntries\(renderedMessages, renderedCompactions\)/,

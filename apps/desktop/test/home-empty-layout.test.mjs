@@ -24,7 +24,8 @@ test("empty home uses a single scrollable stack instead of dual-grow portals", (
     /empty-hero-subtitle|emptySubtitle(?:Temporary)?/,
   );
   assert.match(chatSurface, /<OnboardingChecklist \/>/);
-  assert.match(chatSurface, /<div className="home-composer-wrap">/);
+  assert.match(chatSurface, /className=\{`composer-slot\$\{showEmptyState \? " home-composer-wrap" : ""\}`\}/);
+  assert.equal((chatSurface.match(/<StableComposer/g) ?? []).length, 1);
   assert.doesNotMatch(
     chatSurface,
     /HomeQuickActions|HomeSuggestions|HomeStarterPrompts|home-quick-actions|home-suggestion-card|home-starter-card|home-suggestions-block|home-upper|home-lower|home-suggestions-portal/,
@@ -50,27 +51,17 @@ test("empty home uses a single scrollable stack instead of dual-grow portals", (
 });
 
 test("empty home keeps the primary task surface focused", () => {
-  // Anchor on the empty-state element itself rather than on the shape of the
-  // surrounding ternary: the session-loading skeleton (D262) turned
-  // `{!hasTranscript ? (` into `) : !hasTranscript ? (`, and a branch added
-  // later would break a source-text anchor again.
   const emptyStart = chatSurface.indexOf('data-testid="home-empty"');
+  const onboardingAt = chatSurface.indexOf("<OnboardingChecklist />", emptyStart);
+  const composerAt = chatSurface.indexOf("<StableComposer", onboardingAt);
   assert.notEqual(emptyStart, -1, "empty home block must exist");
-  const emptyEnd = chatSurface.indexOf("<SessionPane", emptyStart);
-  assert.notEqual(emptyEnd, -1, "the pane branch must follow the empty block");
-  const emptyBlock = chatSurface.slice(emptyStart, emptyEnd);
-  const onboardingAt = emptyBlock.indexOf("<OnboardingChecklist />");
-  const composerAt = emptyBlock.indexOf("home-composer-wrap");
-  assert.notEqual(onboardingAt, -1);
-  assert.notEqual(composerAt, -1);
+  assert.notEqual(onboardingAt, -1, "onboarding must remain in the empty home");
+  assert.notEqual(composerAt, -1, "the stable composer must follow home content");
   assert.ok(onboardingAt < composerAt, "onboarding must precede composer in markup");
-  assert.match(
-    emptyBlock,
-    /<div className="home-scroll">[\s\S]*?<\/div>\s*<div className="home-composer-wrap">/,
-  );
-  assert.doesNotMatch(emptyBlock, /empty-hero-copy/);
+  assert.match(chatSurface, /<StableComposer variant=\{showEmptyState \? "home" : "docked"\} \/>/);
+  assert.doesNotMatch(chatSurface, /empty-hero-copy/);
   assert.doesNotMatch(
-    emptyBlock,
+    chatSurface,
     /HomeQuickActions|HomeSuggestions|HomeStarterPrompts|home-quick-actions|home-suggestion-card|home-starter-card/,
   );
 });

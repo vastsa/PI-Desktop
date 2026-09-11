@@ -132,6 +132,7 @@ export const fr = {
     "newChat": "Nouvelle discussion",
     "conversation": "Conversation",
     "toggleSidebar": "Basculer la barre latérale",
+    "toggleWorkPanel": "Basculer le panneau de travail",
     "sessions": "Sessions",
     "commandPalette": "Palette de commandes",
     "back": "Retour",

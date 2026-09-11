@@ -143,6 +143,7 @@ export const tr = {
     newChat: "Yeni sohbet",
     conversation: "Sohbet",
     toggleSidebar: "Kenar çubuğunu aç/kapat",
+    toggleWorkPanel: "Çalışma panelini aç/kapat",
     sessions: "Oturumlar",
     commandPalette: "Komut paleti",
     back: "Geri",

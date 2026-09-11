@@ -30,8 +30,16 @@ const KNOWN_BARE_NAMES = new Set([
   "CHANGELOG",
 ]);
 
+/**
+ * A pathy token: optional leading `/` (absolute) or `./`/`../` prefix, then
+ * segments of word chars, dots, @, +, - and spaces (spaces only where a path
+ * could plausibly carry them — macOS/Windows paths like
+ * `/Users/name/Documents/My Project/file.ts`), optionally a trailing
+ * `:line[:col]` ref. A bare token must still end with a known extension or
+ * bare name to count as a file (checked by `parseFileRef`).
+ */
 const FILE_TOKEN_RE =
-  /^\/?(?:\.{1,2}\/)?[\w@+.-]+(?:\/[\w@+.-]+)*(?::\d+(?::\d+)?)?$/;
+  /^\/?(?:\.{1,2}\/)?[\w@+.-]+(?:(?:\/|\s)[\w@+.-]+)*(?::\d+(?::\d+)?)?$/;
 
 const AT_QUOTED_RE = /^@"([^"\n]+)"$/;
 const AT_UNQUOTED_RE = /^@(\/?[^\s]+)$/;
@@ -159,11 +167,23 @@ export function toWorkspaceRel(
 
   let rel: string;
   if (path.startsWith("/")) {
-    if (!root) return null;
+    // Inside the workspace root, shorten to a workspace-relative path so the
+    // file viewer lists it in context. Absolute paths outside the workspace
+    // are passed through as-is: the host's read channel accepts a real file
+    // outside the roots for explicit chat-reference previews, while the file
+    // tree itself stays workspace-scoped.
+    if (!root) return path;
     const cleanRoot = root.replace(/\/+$/, "");
     if (path === cleanRoot) return null;
-    if (!path.startsWith(cleanRoot + "/")) return null;
-    rel = path.slice(cleanRoot.length + 1);
+    if (path.startsWith(cleanRoot + "/")) {
+      rel = path.slice(cleanRoot.length + 1);
+    } else {
+      // Absolute path outside the workspace: pass through as-is. The host's
+      // read channel accepts a real file outside the roots for explicit
+      // chat-reference previews, while the file tree itself stays
+      // workspace-scoped.
+      return path;
+    }
   } else if (isDotRelative(path)) {
     const base = (baseDir ?? "").replaceAll("\\", "/").replace(/\/+$/, "");
     rel = base ? `${base}/${path}` : path;
@@ -232,7 +252,7 @@ export type ChatTextSegment =
     };
 
 const SCAN_RE =
-  /@"[^"\n]+"|@[^\s]+|https?:\/\/[^\s<>"'()[\]{}]+|\.{1,2}\/(?:[\w@+.-]+\/)*[\w@+.-]+(?::\d+(?::\d+)?)?|(?:[\w@+.-]+\/)+[\w@+.-]+(?::\d+(?::\d+)?)?|[\w@+-][\w@+.-]*\.[A-Za-z0-9]{1,8}\b/g;
+  /@"[^"\n]+"|@[^\s]+|https?:\/\/[^\s<>"'()[\]{}]+|\/(?:[\w@+ .-]+\/)*[\w@+ .-]+(?::\d+(?::\d+)?)?|\.{1,2}\/(?:[\w@+.-]+\/)*[\w@+.-]+(?::\d+(?::\d+)?)?|(?:[\w@+.-]+\/)+[\w@+.-]+(?::\d+(?::\d+)?)?|[\w@+-][\w@+.-]*\.[A-Za-z0-9]{1,8}\b/g;
 
 /**
  * Split plain chat text (user messages) into literal runs and previewable
@@ -249,12 +269,15 @@ export function splitChatText(
   for (const match of text.matchAll(SCAN_RE)) {
     const raw = match[0];
     const start = match.index ?? 0;
-    const target = resolvePreviewTarget(raw, root, baseDir);
+    // The scanner may include a leading space before a path segment; trim
+    // before resolving and display the cleaned token.
+    const cleaned = raw.trim();
+    const target = resolvePreviewTarget(cleaned, root, baseDir);
     if (!target) continue;
     if (start > last) segments.push({ kind: "text", text: text.slice(last, start) });
     const label =
-      target.kind === "file" ? leafName(target.path) : raw;
-    segments.push({ kind: "target", text: raw, label, target });
+      target.kind === "file" ? leafName(target.path) : cleaned;
+    segments.push({ kind: "target", text: cleaned, label, target });
     last = start + raw.length;
   }
   if (segments.length === 0) return [{ kind: "text", text }];

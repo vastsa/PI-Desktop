@@ -197,6 +197,12 @@ export type PluginHostServices = {
   openExternal: (url: string) => Promise<void>;
   /** Open one already-authorized file with the OS-associated application. */
   openPath: (fullPath: string) => Promise<void>;
+  /**
+   * Preview a workspace file in the app's embedded browser surface (HTML
+   * rendered as a webpage). Implemented by the host; not available to
+   * third-party plugins that do not declare it.
+   */
+  openInBrowser?: (workspaceRelativePath: string) => void;
   /** Reveal one already-authorized file in the OS file manager. */
   revealPath?: (fullPath: string) => Promise<void>;
   readClipboard: () => Promise<string>;
@@ -306,6 +312,8 @@ const HOST_API_ALLOWLIST = new Set([
   "ui.showNativeNotification",
   "workspace.get",
   "fs.readText",
+  "fs.readImageDataUrl",
+  "fs.previewInBrowser",
   "fs.stat",
   "fs.readRange",
   "fs.readPreview",
@@ -1226,6 +1234,11 @@ export class PluginRuntime {
         return { ok: true };
       case "fs.readText":
         return api.fs.readText(String(payload?.path ?? ""));
+      case "fs.readImageDataUrl":
+        return api.fs.readImageDataUrl(String(payload?.path ?? ""));
+      case "fs.previewInBrowser":
+        await api.fs.previewInBrowser(String(payload?.path ?? ""));
+        return { ok: true };
       case "fs.stat":
         return api.fs.stat(
           String(payload?.path ?? ""),
@@ -3000,6 +3013,63 @@ export class PluginRuntime {
             path: rel,
           });
           return content;
+        },
+        readImageDataUrl: async (pathFromRoot: string): Promise<string> => {
+          const { full, rel } = await this.resolveFsRequest(
+            loaded,
+            "read",
+            pathFromRoot,
+          );
+          const info = statSync(full);
+          if (!info.isFile()) {
+            throw apiError("INVALID_ARGUMENT", "only files can be previewed as images");
+          }
+          if (info.size > 5 * 1024 * 1024) {
+            throw apiError("INVALID_ARGUMENT", "image is too large to preview");
+          }
+          const ext = rel.split(".").pop()?.toLowerCase() ?? "";
+          const mime: Record<string, string> = {
+            png: "image/png",
+            jpg: "image/jpeg",
+            jpeg: "image/jpeg",
+            gif: "image/gif",
+            webp: "image/webp",
+            svg: "image/svg+xml",
+            bmp: "image/bmp",
+            ico: "image/x-icon",
+            avif: "image/avif",
+          };
+          const imageMime = mime[ext];
+          if (!imageMime) {
+            throw apiError("INVALID_ARGUMENT", `unsupported image type: ${ext || "(none)"}`);
+          }
+          const buffer = readFileSync(full);
+          this.services.audit?.({
+            pluginId,
+            api: "fs.readImageDataUrl",
+            ok: true,
+            ts: Date.now(),
+            path: rel,
+          });
+          return `data:${imageMime};base64,${buffer.toString("base64")}`;
+        },
+        previewInBrowser: async (pathFromRoot: string) => {
+          const { rel } = await this.resolveFsRequest(
+            loaded,
+            "read",
+            pathFromRoot,
+          );
+          if (!this.services.openInBrowser) {
+            throw apiError("NOT_SUPPORTED", "browser preview is not available");
+          }
+          this.services.openInBrowser(rel);
+          this.services.audit?.({
+            pluginId,
+            api: "fs.previewInBrowser",
+            ok: true,
+            ts: Date.now(),
+            path: rel,
+          });
         },
         stat: async (pathFromRoot: string, grantId?: string) => {
           const { full, rel } = await this.resolveFsRequest(loaded, "read", pathFromRoot, {

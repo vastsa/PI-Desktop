@@ -49,8 +49,10 @@ test("work panel replaces the context panel overlay", async () => {
   assert.match(appSource, /useAppStore\.getState\(\)\.toggleWorkPanel\(\)/);
   assert.match(storeSource, /openWorkPanel:\s*\(\) => \{/);
   // The panel is toggled inside the renderer store; the legacy main-process
-  // nav bridge that resized the OS window must stay gone.
-  assert.doesNotMatch(appSource, /nav\.toggleWorkPanel/);
+  // nav bridge that resized the OS window must stay gone. The i18n key
+  // `nav.toggleWorkPanel` (used by the in-app toggle button title) is fine;
+  // the bridge channel `IPC.invoke.nav.toggleWorkPanel` is not.
+  assert.doesNotMatch(appSource, /IPC\.invoke\.nav\.toggleWorkPanel|navToggleWorkPanel/);
   assert.doesNotMatch(appSource, /key\.toLowerCase\(\) === "j"/);
 });
 

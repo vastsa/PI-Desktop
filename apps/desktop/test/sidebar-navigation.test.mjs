@@ -16,6 +16,10 @@ const panelSource = await readFile(
   new URL("../src/components/workpanel/WorkPanel.tsx", import.meta.url),
   "utf8",
 );
+const topbarSource = await readFile(
+  new URL("../src/components/ConversationTopbar.tsx", import.meta.url),
+  "utf8",
+);
 const shortcutSource = await readFile(
   new URL("../../../packages/shared/src/keyboard-shortcuts.ts", import.meta.url),
   "utf8",
@@ -53,22 +57,23 @@ test("sidebar header retains non-mac branding and keeps collapse beside search",
   assert.doesNotMatch(appSource, /IconChevronLeft|IconChevronRight/);
 });
 
-test("work panel collapse control lives in the switcher menu", () => {
-  assert.match(panelSource, /onCollapse/);
-  assert.match(panelSource, /work-panel-toolbar-collapse/);
-  assert.match(panelSource, /IconChevronRight/);
-  assert.match(appSource, /collapseWorkPanel\(\)/);
-  assert.doesNotMatch(panelSource, /work-panel-collapse/);
-  assert.doesNotMatch(panelSource, /collapsePanel/);
+test("work panel toggle stays viewport-fixed in the app shell", () => {
+  assert.match(appSource, /className="app-work-panel-toggle no-drag"/);
+  assert.match(appSource, /aria-pressed=\{workPanelOpen \|\| presentedWorkPanelOpen\}/);
+  assert.match(appSource, /<IconPanel/);
+  assert.match(appSource, /useAppStore\.getState\(\)\.toggleWorkPanel\(\)/);
+  assert.doesNotMatch(topbarSource, /app-work-panel-toggle|IconPanel/);
+  // The viewport-fixed toggle button lives in the app shell, never inside the
+  // work panel header (which keeps its own in-panel collapse affordance).
+  assert.doesNotMatch(panelSource, /app-work-panel-toggle/);
   assert.match(
     globalStyles,
-    /\.main-titlebar\.work-panel-open\s*\{[^}]*padding-right:\s*0;/s,
+    /\.app-work-panel-toggle\s*\{[^}]*position:\s*fixed;/s,
   );
   assert.match(
     globalStyles,
-    /:root\[data-platform="win32"\] \.main-titlebar\.work-panel-open,[\s\S]*:root\[data-platform="linux"\] \.main-titlebar\.work-panel-open\s*\{[^}]*right:\s*var\(--ds-window-controls-width\);/,
+    /:root\[data-platform="win32"\] \.work-panel-header,[\s\S]*padding-right:\s*calc\(var\(--ds-window-controls-width\) \+ 47px\);/,
   );
-  assert.doesNotMatch(globalStyles, /\.work-panel-header\s*\{[^}]*margin-right:/s);
 });
 
 test("macOS hides sidebar branding and keeps header actions beside traffic lights", () => {

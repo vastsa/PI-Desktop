@@ -46,6 +46,7 @@ import { StartupSplash } from "./components/StartupSplash";
 import { cx } from "./components/ui";
 import {
   IconNewSession,
+  IconPanel,
   IconSidebar,
 } from "./components/icons";
 import type {
@@ -273,6 +274,27 @@ function AppShell() {
     workPanelExitingRef.current = workPanelExiting;
   }, [workPanelExiting]);
 
+  const togglePresentedWorkPanel = useCallback(() => {
+    const store = useAppStore.getState();
+    if (workPanelExitingRef.current) {
+      store.openWorkPanel();
+      return;
+    }
+    // Prefer the visible presentation over a briefly stale session projection:
+    // a second click on the same button must always collapse a panel the user
+    // can currently see instead of routing through openWorkPanel again.
+    if (store.workPanelOpen || presentedWorkPanelRef.current) {
+      store.collapseWorkPanel();
+      if (presentedWorkPanelRef.current && !workPanelExitingRef.current) {
+        workPanelExitGeneration.current += 1;
+        workPanelExitingRef.current = true;
+        setWorkPanelExiting(true);
+      }
+      return;
+    }
+    store.openWorkPanel();
+  }, []);
+
   const finishWorkPanelExit = useCallback((generation: number) => {
     if (generation !== workPanelExitGeneration.current) return;
     if (workPanelExitClosing.current) return;
@@ -302,9 +324,8 @@ function AppShell() {
     const request = ++workPanelReservationRequest.current;
 
     if (shouldPresent) {
-      // The panel is an internal flex column. Keep the reservation seam
-      // explicitly at zero so opening it can only reflow the existing client
-      // area; it must never grow the native window before mounting.
+      // Cancel any in-flight exit and clear native reservation before mount.
+      // The in-flow panel alone reflows the conversation inside fixed window bounds.
       workPanelExitGeneration.current += 1;
       workPanelExitClosing.current = false;
       workPanelExitingRef.current = false;
@@ -317,9 +338,8 @@ function AppShell() {
       return;
     }
 
-    // Close: keep the dock mounted through work-panel-out. The zero
-    // reservation is already native-window-neutral, so only the flex column
-    // collapses and returns its space to MainChat.
+    // Close: keep the dock mounted through work-panel-out, then confirm the
+    // zero native reservation. Instant path when the shell was never presented.
     if (presentedWorkPanelRef.current || workPanelExitingRef.current) {
       if (presentedWorkPanelRef.current && !workPanelExitingRef.current) {
         workPanelExitGeneration.current += 1;
@@ -516,9 +536,13 @@ function AppShell() {
     // Agent-driven HTML preview: surface the browser tab when the agent
     // opens a workspace file in the embedded browser (BrowserPreview tool).
     const offBrowserPreview = api.onBrowserPreview((event) => {
+      const sessionId =
+        event.sessionId ||
+        useAppStore.getState().activeSessionId ||
+        "";
       useAppStore
         .getState()
-        .openWorkPanelTabForSession(event.sessionId, {
+        .openWorkPanelTabForSession(sessionId, {
           ...browserPluginTab(event.path ?? event.url),
         });
     });
@@ -1848,7 +1872,7 @@ function AppShell() {
             {page === "chat" ? (
               <ConversationTopbar
                 sidebarCollapsed={sidebarCollapsed}
-                workPanelOpen={presentedWorkPanelOpen}
+                workPanelOpen={workPanelOpen}
                 onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
                 onNewTask={() => void runMenuCommand("newTask")}
                 onOpenSearch={() => setSearchOpen(true)}
@@ -1936,6 +1960,18 @@ function AppShell() {
               }}
             />
           )}
+
+          <button
+            type="button"
+            className="app-work-panel-toggle no-drag"
+            title={t("nav.toggleWorkPanel")}
+            aria-label={t("nav.toggleWorkPanel")}
+            aria-pressed={workPanelOpen || presentedWorkPanelOpen}
+            disabled={!activeSessionId && !presentedWorkPanelOpen && !workPanelExiting}
+            onClick={togglePresentedWorkPanel}
+          >
+            <IconPanel size={15} />
+          </button>
 
           <SearchDialog open={searchOpen} onClose={() => setSearchOpen(false)} />
           <ToastHost />

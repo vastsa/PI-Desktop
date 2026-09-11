@@ -103,7 +103,7 @@
 /* A cold switch keeps the current pane fully legible: only the progress track
  * marks the wait, and the composer is what goes inert, so a prompt cannot be
  * sent to the session being left. */
-.chat-surface.session-switching > .composer-dock {
+.chat-surface.session-switching > .composer-slot .composer-dock {
   pointer-events: none;
 }
 

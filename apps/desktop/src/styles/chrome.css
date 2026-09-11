@@ -488,6 +488,7 @@
 .conversation-topbar .ct-right {
   flex: 0 0 auto;
   justify-content: flex-end;
+  padding-right: 36px;
 }
 
 .conversation-topbar .ct-title-wrap {
@@ -515,7 +516,8 @@
   line-height: var(--leading-compact);
 }
 
-.conversation-topbar .ct-icon-btn {
+.conversation-topbar .ct-icon-btn,
+.app-work-panel-toggle {
   display: inline-flex;
   height: 28px;
   width: 28px;
@@ -530,12 +532,14 @@
     color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
-.conversation-topbar .ct-icon-btn:hover:not(:disabled) {
+.conversation-topbar .ct-icon-btn:hover:not(:disabled),
+.app-work-panel-toggle:hover:not(:disabled) {
   background: var(--ds-bg-hover);
   color: var(--ds-text-primary);
 }
 
-.conversation-topbar .ct-icon-btn:disabled {
+.conversation-topbar .ct-icon-btn:disabled,
+.app-work-panel-toggle:disabled {
   opacity: 0.4;
   cursor: default;
 }
@@ -552,6 +556,29 @@
   display: inline-flex;
   align-items: center;
   gap: 2px;
+}
+
+/* Keep the sole work-panel toggle anchored to the viewport while the in-flow
+ * panel changes MainPane width. AppShell ownership keeps it available on every
+ * non-Settings route and above the panel header throughout both animations. */
+.app-work-panel-toggle {
+  position: fixed;
+  top: 9px;
+  right: 12px;
+  z-index: 30;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.app-work-panel-toggle[aria-pressed="true"] {
+  background: var(--ds-bg-active);
+  color: var(--ds-text-primary);
+}
+
+:root[data-platform="win32"] .app-work-panel-toggle,
+:root[data-platform="linux"] .app-work-panel-toggle {
+  right: calc(var(--ds-window-controls-width) + 12px);
 }
 
 /* macOS traffic lights occupy the top-left ~76px; only reserve that space
@@ -922,10 +949,10 @@
   /* Continuous with the adjacent titlebar: no side seam (D297). */
 }
 
-/* The main shell puts the controls inside the conversation pane so the right
- * work panel can use its own complete header without inheriting app chrome. */
+/* The main shell keeps one control band mounted inside MainPane, but its
+ * viewport-fixed position must not follow MainPane while the work panel reflows. */
 .window-controls.window-controls-in-pane {
-  position: absolute;
+  position: fixed;
 }
 
 .window-control-btn {

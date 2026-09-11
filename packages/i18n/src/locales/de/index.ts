@@ -132,6 +132,7 @@ export const de = {
     "newChat": "Neuer Chat",
     "conversation": "Konversation",
     "toggleSidebar": "Seitenleiste umschalten",
+    "toggleWorkPanel": "Arbeitspanel umschalten",
     "sessions": "Sitzungen",
     "commandPalette": "Befehlspalette",
     "back": "Zurück",
