@@ -230,6 +230,37 @@ test("every compaction announces itself once, on top of the specific toasts", ()
   assert.match(enLocale, /longThreadWarning:/);
 });
 
+test("a failed compaction checkpoint still restores a non-empty context", () => {
+  // A retained-tail fallback must not persist an empty tail on a completed
+  // turn: with no real summary to carry the boundary, an empty tail restores
+  // as an empty context after a runtime rebuild (model switch / restart) —
+  // the session reads as if it had just started (#224).
+  assert.match(
+    runtime,
+    /const retainedTail =\s*preparation\.retainedTail\.length > 0\s*\? preparation\.retainedTail\s*: selectRetainedUserMessages\(/,
+  );
+  assert.match(
+    runtime,
+    /fallback: "retained_tail" satisfies ContextCompactionFallback,/,
+  );
+});
+
+test("a fallback notice is never treated as a real summary", () => {
+  // pi copies `previousSummary` from the previous compaction entry. When that
+  // entry was a fallback, its summary is the recovery notice — feeding it to
+  // the next run makes the model update a summary that never existed. Both
+  // the normal and the rebuild path must strip the notice so the next
+  // summarization regenerates a real summary (#224).
+  assert.match(
+    runtime,
+    /previousSummary\?\.includes\(\s*COMPACTION_FALLBACK_MARKER,\s*\)/,
+  );
+  assert.match(
+    runtime,
+    /previousSummary: terminal\.summary\.includes\(COMPACTION_FALLBACK_MARKER\)/,
+  );
+});
+
 test("the transcript shows one row per compaction, the inspector the newest", () => {
   assert.match(types, /type ContextCompactionMark = ContextCompactionStatus & \{/);
   assert.match(types, /mark\?: ContextCompactionMark/);

@@ -4856,10 +4856,26 @@ Delegation rules:
       keepRecentTokens: budget.keepRecentTokens,
     } satisfies CompactionSettings);
     if (!prepared.ok || !prepared.value) return prepared;
+    // pi picks `previousSummary` straight from the previous compaction entry.
+    // When that entry was a retained-tail fallback its "summary" is the
+    // carried-forward recovery notice, not a real summary: feeding it to the
+    // next run makes the model *update* a summary that never existed,
+    // cementing the failure. Drop it so the next summarization request builds
+    // a real summary from the transcript instead (#224).
+    const previousSummary = prepared.value.previousSummary?.includes(
+      COMPACTION_FALLBACK_MARKER,
+    )
+      ? undefined
+      : prepared.value.previousSummary;
     return {
       ok: true as const,
       value: this.codexShapedPreparation(
-        prepared.value,
+        {
+          ...prepared.value,
+          ...(previousSummary === prepared.value.previousSummary
+            ? {}
+            : { previousSummary }),
+        },
         retainedUserTokens,
         retentionMode,
       ),
@@ -5182,8 +5198,26 @@ Delegation rules:
       "The automatic summary request did not complete. Older messages before this checkpoint are omitted from the next model request.",
       `The complete transcript remains available in the session. ${continuation}`,
     ].join("\n\n");
+    // A completed-turn checkpoint normally retains no naked user messages, but
+    // an empty tail plus a carried-forward (or absent) summary leaves the next
+    // model request with nothing before the boundary: after a runtime rebuild
+    // — model switch, restart — the session restores as if it had just started.
+    // Fall back to the newest user messages under the same budget so the
+    // failure path still restores a bounded, non-empty context (#224).
+    const retainedTail =
+      preparation.retainedTail.length > 0
+        ? preparation.retainedTail
+        : selectRetainedUserMessages(
+            preparation.messagesToSummarize.filter(
+              (message): message is UserMessage => message.role === "user",
+            ),
+            preparation.settings.keepRecentTokens,
+          );
     return this.createCheckpoint(
-      preparation,
+      {
+        ...preparation,
+        retainedTail,
+      },
       throughMessageId,
       summary,
       undefined,
@@ -5324,7 +5358,12 @@ Delegation rules:
     if (!sourceInput.ok || !sourceInput.value) return preparation;
     return {
       ...sourceInput.value,
-      previousSummary: terminal.summary,
+      // Same rule as `prepareCompactionInput`: a fallback notice is not a
+      // summary. Carrying it forward here would chain recovery notices
+      // instead of ever recovering a real one (#224).
+      previousSummary: terminal.summary.includes(COMPACTION_FALLBACK_MARKER)
+        ? sourceInput.value.previousSummary
+        : terminal.summary,
     };
   }
 
