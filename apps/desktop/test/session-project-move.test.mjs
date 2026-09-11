@@ -86,9 +86,10 @@ test("sidebar sessions drag onto project groups and offer a menu fallback", () =
   assert.match(sidebar, /onDragEnd=\{endSessionDrag\}/);
   assert.match(sidebar, /is-dragging/);
   assert.match(sidebar, /onProjectDropTargetOver\(event, entry\)/);
-  assert.match(sidebar, /handleProjectDragOver\(event, entry\.key\)/);
   assert.match(sidebar, /onProjectDropTargetDrop\(event, entry\)/);
-  assert.match(sidebar, /handleProjectDrop\(event, entry\.key\)/);
+  // The transfer payload is authoritative: a stale dragging id must never
+  // move a session the user did not drag.
+  assert.match(sidebar, /sessionIdFromDrag\(event\.dataTransfer\)/);
   assert.match(sidebar, /dropProjectKey === entry\.key \? "is-drop-target" : ""/);
   assert.match(sidebar, /data-action="move-session-to-project"/);
   assert.match(sidebar, /nav\.moveToProject/);
@@ -203,9 +204,13 @@ test("session move and prompt setup share a per-session critical section", () =>
 });
 
 test("drag ordering keeps priority buckets and rejects malformed ranks", () => {
-  assert.match(sidebar, /Boolean\(source\.meta\.archived\)/);
-  assert.match(sidebar, /Boolean\(source\.meta\.pinned\)/);
-  assert.match(sidebar, /const sourceKey = draggingProjectKey/);
+  // Project reordering moved from HTML5 drag events to a long-press pointer
+  // flow; the bucket guard now lives in sidebar-project-reorder.ts.
+  const reorderLib = read("../src/lib/sidebar-project-reorder.ts");
+  assert.match(reorderLib, /Boolean\(source\.archived\) === Boolean\(target\.archived\)/);
+  assert.match(reorderLib, /Boolean\(source\.pinned\) === Boolean\(target\.pinned\)/);
+  assert.match(sidebar, /projectReorderShouldArm\(/);
+  assert.match(sidebar, /sameProjectReorderBucket\(source\.meta, destination\.meta\)/);
   assert.match(sidebarPreferences, /Number\.isSafeInteger\(value\)/);
   assert.match(sidebarPreferences, /manualOrder\(meta\[ak\]\?\.order\)/);
 });
