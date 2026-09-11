@@ -76,7 +76,9 @@ type CommandExecutionResult =
 | `/goal-mode` | `builtin.mode.goal` |
 
 别名与模板和插件命令名称共享一个命名空间；冲突时优先使用内置别名，其次是项目模板、
-用户模板和插件命令。选择别名会插入 `/alias `；单独发送 `/new` 或 `/compact` 时，
+用户模板、插件命令、扩展命令，最后是激活的用户技能（`~/.agents/skills` /
+`<project>/.agents/skills`，按激活范围过滤，与其他面向应用的界面一致）。选择别名会插入
+`/alias `；单独发送 `/new` 或 `/compact` 时，
 会在本地执行，不会创建空提示。Agent/Plan/Goal 别名支持附带提示词：
 `/agent-mode <prompt>`、`/plan-mode <prompt>` 或 `/goal-mode <prompt>` 会切换空闲会话
 （或下一个会话默认值），并通过正常提示路径发送 `<prompt>`。不带正文的模式别名仍然

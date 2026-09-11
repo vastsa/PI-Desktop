@@ -87,7 +87,10 @@ in the same registry that feeds palette search
 
 Aliases share one namespace with template and plugin command names; builtin
 aliases win collisions, then project templates, then user templates, then
-plugin commands. Selecting an alias inserts `/alias `; sending `/new` or
+plugin commands, then extension commands, then active user skills
+(`~/.agents/skills` / `<project>/.agents/skills`, scope-filtered like the
+rest of the app-facing surfaces). Selecting an alias inserts `/alias `;
+sending `/new` or
 `/compact` alone executes locally without creating an empty prompt. The
 Agent/Plan/Goal aliases also support a prompt body:
 `/agent-mode <prompt>`, `/plan-mode <prompt>`, or `/goal-mode <prompt>` switches

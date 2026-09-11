@@ -683,6 +683,29 @@ Each scenario is documented in this format:
 - **Status**: Unit-covered (stream processor terminates on the terminal
   event via the pi-ai patch); live-proxy scenario Draft
 
+#### E2E-249: User skills appear in the composer "/" menu and expand on send
+
+- **Preconditions**: At least one enabled global user skill exists under
+  `~/.agents/skills` (or a project skill under `<project>/.agents/skills`);
+  a workspace is open; no template shares the skill's id.
+- **Steps**: 1) Type `/` in the composer. 2) Confirm the skill appears under
+  its own group with name, description, and the skill icon. 3) Type the
+  skill's id to filter and accept the row. 4) Append optional free text and
+  send. 5) Disable the skill in Settings → Agent → Skills, then type `/`
+  again.
+- **Expected**: The "/" menu lists active user skills alongside app, plugin,
+  extension, and template commands, scope-filtered by the open workspace.
+  Sending `/skill-id extra text` persists a prompt whose content is the
+  `<skill>` block (same shape the `Skill` tool returns) followed by the
+  extra text as additional instructions, with `command` set to the typed
+  invocation. Disabled or out-of-scope skills disappear from the menu, and
+  an unknown `/name` stays literal text.
+- **Specs linked**: `04-ux/04-builtin-commands.md` (§7),
+  `03-runtime/03-tools-and-permissions.md`
+- **Acceptance**: C (skills discovery and invocation)
+- **Milestone**: M2
+- **Status**: Documented; automation pending
+
 #### E2E-005E: DeepSeek thinking replay includes reasoning_content on aggregator endpoints
 
 - **Preconditions**: An OpenAI-compatible provider whose base URL is not
