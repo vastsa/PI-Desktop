@@ -220,6 +220,7 @@ export const en = {
     slashGroupApp: "App commands",
     slashGroupPlugins: "Plugin commands",
     slashGroupExtensions: "Extension commands",
+    "slashGroupSkills": "Skill commands",
     slashEmpty: "No matching commands",
     fileMenu: "File references",
     fileReferences: "Files referenced by this draft",

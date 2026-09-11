@@ -213,6 +213,7 @@ export const fr = {
     "slashGroupApp": "Commandes d'application",
     "slashGroupPlugins": "Commandes du plug-in",
     "slashGroupExtensions": "Commandes d'extension",
+    "slashGroupSkills": "Commandes de skill",
     "slashEmpty": "Aucune commande correspondante",
     "fileMenu": "Références de fichiers",
     "fileReferences": "Fichiers référencés par ce brouillon",

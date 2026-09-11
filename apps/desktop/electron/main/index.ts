@@ -1503,6 +1503,32 @@ async function loadUserSkillBody(
   return { id: skill.id, name: skill.name, body: result.body };
 }
 
+/**
+ * Expand a leading `/skill-id extra instructions` draft into the same
+ * `<skill>` block the `Skill` tool returns (issue #142), with the extra text
+ * appended as additional instructions. Returns null when the name is not an
+ * active user skill, so templates and unknown /names keep their existing
+ * behavior.
+ */
+async function expandSkillInvocation(
+  content: string,
+  projectPath: string | null,
+): Promise<{ expanded: string; command: string } | null> {
+  if (!content.startsWith("/")) return null;
+  const tokenEnd = content.search(/[\s]/);
+  const token = tokenEnd === -1 ? content : content.slice(0, tokenEnd);
+  const id = token.slice(1);
+  if (!id || id.includes("/")) return null;
+  const skill = await loadUserSkillBody(id, projectPath).catch(() => null);
+  if (!skill) return null;
+  const rest = tokenEnd === -1 ? "" : content.slice(tokenEnd).trim();
+  const skillBlock = `<skill name="${skill.name}" location="${skill.id}">\n\n${skill.body}\n</skill>`;
+  return {
+    expanded: rest ? `${skillBlock}\n\n${rest}` : skillBlock,
+    command: content.trim(),
+  };
+}
+
 async function resolveEffectiveCommandShell(): Promise<CommandShellCatalog> {
   if (!host) throw new Error("host unavailable");
   const catalog = await host.call<CommandShellCatalog>("commandShells.list");
@@ -7532,8 +7558,20 @@ function registerIpc() {
       description: command.description ?? command.extensionLabel,
       id: trustedExtensionCommandId(command.name),
     }));
+    // User skills (issue #142): active skills join the "/" namespace so they
+    // are discoverable and invocable like templates. Activation scope uses
+    // the window's project, matching the other app-facing surfaces.
+    const skillCommands = (await activeUserSkills(root ?? undefined)).map(
+      (skill) => ({
+        name: skill.id,
+        kind: "skill" as const,
+        title: skill.name,
+        ...(skill.description ? { description: skill.description } : {}),
+      }),
+    );
     // One namespace: builtin aliases win, then project templates, then user
-    // templates, then plugin commands, then extension commands (spec 04 §7).
+    // templates, then plugin commands, then extension commands, then user
+    // skills (spec 04 §7).
     const merged = new Map<
       string,
       ReturnType<typeof builtinComposerCommands>[number]
@@ -7543,6 +7581,7 @@ function registerIpc() {
       ...templateCommands,
       ...pluginCommands,
       ...extensionCommands,
+      ...skillCommands,
     ]) {
       if (!merged.has(command.name)) merged.set(command.name, command);
     }
@@ -7998,7 +8037,9 @@ function registerIpc() {
     // persistence so reseed replays exactly what the model saw; the typed
     // form rides along as `command` for transcript display. Builtin/plugin
     // slash aliases never reach this channel, and unknown /names stay
-    // literal text.
+    // literal text. A /name matching an active user skill expands to the
+    // same <skill> block the `Skill` tool returns (issue #142), with any
+    // extra text appended as additional instructions.
     let promptContent = req.content;
     let slashCommand: string | undefined;
     if (req.content.startsWith("/")) {
@@ -8009,6 +8050,15 @@ function registerIpc() {
         if (expansion) {
           promptContent = expansion.expanded;
           slashCommand = expansion.command;
+        } else {
+          const skillExpansion = await expandSkillInvocation(
+            req.content,
+            root ?? null,
+          );
+          if (skillExpansion) {
+            promptContent = skillExpansion.expanded;
+            slashCommand = skillExpansion.command;
+          }
         }
       } catch (error) {
         logger.app("session", "warn", "slash expansion failed; sending literal text", {

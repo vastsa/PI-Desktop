@@ -213,6 +213,7 @@ export const de = {
     "slashGroupApp": "App-Befehle",
     "slashGroupPlugins": "Plugin-Befehle",
     "slashGroupExtensions": "Erweiterungsbefehle",
+    "slashGroupSkills": "Skill-Befehle",
     "slashEmpty": "Keine übereinstimmenden Befehle",
     "fileMenu": "Dateiverweise",
     "fileReferences": "Von diesem Entwurf referenzierte Dateien",

@@ -213,6 +213,7 @@ export const es = {
     "slashGroupApp": "Comandos de aplicaciones",
     "slashGroupPlugins": "Comandos de complemento",
     "slashGroupExtensions": "Comandos de extensión",
+    "slashGroupSkills": "Comandos de skill",
     "slashEmpty": "No hay comandos coincidentes",
     "fileMenu": "Referencias de archivos",
     "fileReferences": "Archivos a los que hace referencia este borrador",

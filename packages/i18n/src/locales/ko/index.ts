@@ -222,6 +222,7 @@ export const ko = {
     slashGroupApp: "앱 명령",
     slashGroupPlugins: "플러그인 명령",
     slashGroupExtensions: "확장 명령",
+    "slashGroupSkills": "스킬 명령",
     slashEmpty: "일치하는 명령 없음",
     fileMenu: "파일 참조",
     fileReferences: "이 초안에서 참조하는 파일",

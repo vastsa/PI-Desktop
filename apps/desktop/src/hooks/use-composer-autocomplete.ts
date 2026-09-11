@@ -41,7 +41,7 @@ let filesCache: {
   truncated: boolean;
 } | null = null;
 
-const COMMAND_GROUP_ORDER = { template: 0, builtin: 1, plugin: 2, extension: 3 } as const;
+const COMMAND_GROUP_ORDER = { template: 0, builtin: 1, plugin: 2, extension: 3, skill: 4 } as const;
 
 function filterCommands(
   commands: ComposerCommand[],

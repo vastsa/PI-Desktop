@@ -215,6 +215,7 @@ export const zhCN = {
     slashGroupApp: "应用命令",
     slashGroupPlugins: "插件命令",
     slashGroupExtensions: "扩展命令",
+    "slashGroupSkills": "技能命令",
     slashEmpty: "没有匹配的指令",
     fileMenu: "引用文件",
     fileReferences: "此草稿引用的文件",

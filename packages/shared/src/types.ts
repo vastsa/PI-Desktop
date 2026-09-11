@@ -1689,7 +1689,7 @@ export type CommandItem = {
 export type ComposerCommand = {
   /** Slash name typed after "/"; unique across the merged list. */
   name: string;
-  kind: "template" | "builtin" | "plugin" | "extension";
+  kind: "template" | "builtin" | "plugin" | "extension" | "skill";
   /** Display title (templates use their name). */
   title: string;
   description?: string;

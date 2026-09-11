@@ -222,6 +222,7 @@ export const tr = {
     slashGroupApp: "Uygulama komutları",
     slashGroupPlugins: "Eklenti komutları",
     slashGroupExtensions: "Uzantı komutları",
+    "slashGroupSkills": "Skill komutları",
     slashEmpty: "Eşleşen komut yok",
     fileMenu: "Dosya başvuruları",
     fileReferences: "Bu taslağın başvurduğu dosyalar",
