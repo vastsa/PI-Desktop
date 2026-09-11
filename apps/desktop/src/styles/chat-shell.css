@@ -658,7 +658,7 @@
 .empty-hero .project-underline:focus-visible {
   outline: 2px solid var(--ds-focus);
   outline-offset: 3px;
-  border-radius: 4px;
+  border-radius: var(--radius-3xs);
 }
 
 .home-project-switcher-menu {
