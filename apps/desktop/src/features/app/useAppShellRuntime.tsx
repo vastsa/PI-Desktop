@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type AnimationEvent as ReactAnimationEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type AnimationEvent as ReactAnimationEvent } from "react";
 import { useTranslation } from "react-i18next";
 import {
   KEYBOARD_SHORTCUTS,
@@ -16,6 +16,10 @@ import { api } from "../../lib/api";
 import { installRendererApi } from "../../capture/renderer-api";
 import { commitWorkPanelPresentation } from "../../lib/work-panel-presentation";
 import { browserPluginTab } from "../../lib/work-panel-tabs";
+import {
+  MAIN_PANE_MIN_WIDTH,
+  workPanelWidthForSidebarReopen,
+} from "../../lib/work-panel-resize";
 import {
   clampSidebarWidth,
   loadSidebarWidth,
@@ -48,6 +52,7 @@ export function useAppShellRuntime() {
   const subagentPanel = useAppStore((s) => s.subagentPanel);
   const closeSubagentPanel = useAppStore((s) => s.closeSubagentPanel);
   const workPanelOpen = useAppStore((s) => s.workPanelOpen);
+  const workPanelWidth = useAppStore((s) => s.workPanelWidth);
   const subagentPanelOpen = Boolean(
     page === "chat" &&
       subagentPanel &&
@@ -57,11 +62,42 @@ export function useAppShellRuntime() {
   const refreshPluginThemes = useAppStore((s) => s.refreshPluginThemes);
   const plugins = useAppStore((s) => s.plugins);
   const projectPath = useAppStore((s) => s.workspace?.path ?? null);
+  const workPanelVisible = workPanelOpen || subagentPanelOpen;
 
   const [searchOpen, setSearchOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(() => loadSidebarWidth());
   const [sidebarExiting, setSidebarExiting] = useState(false);
+  const [shellWidth, setShellWidth] = useState(0);
+  const appShellRef = useRef<HTMLDivElement>(null);
+  const sidebarCollapsedRef = useRef(sidebarCollapsed);
+  const sidebarWidthRef = useRef(sidebarWidth);
+  const shellWidthRef = useRef(shellWidth);
+  const workPanelWidthRef = useRef(workPanelWidth);
+  const workPanelOpenRef = useRef(workPanelVisible);
+  const autoCollapsedSidebarRef = useRef(false);
+  sidebarCollapsedRef.current = sidebarCollapsed;
+  sidebarWidthRef.current = sidebarWidth;
+  shellWidthRef.current = shellWidth;
+  workPanelWidthRef.current = workPanelWidth;
+  workPanelOpenRef.current = workPanelVisible;
+
+  // The shell is a fixed client area: the three-column budget needs its real
+  // measured width, not the native window bounds, because the reservation seam
+  // stays at zero.
+  useLayoutEffect(() => {
+    const shell = appShellRef.current;
+    if (!shell) return;
+    const update = () => setShellWidth(Math.round(shell.clientWidth));
+    update();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", update);
+      return () => window.removeEventListener("resize", update);
+    }
+    const observer = new ResizeObserver(update);
+    observer.observe(shell);
+    return () => observer.disconnect();
+  }, []);
   const handleSidebarWidthChange = useCallback((width: number) => {
     setSidebarWidth(clampSidebarWidth(width));
   }, []);
@@ -70,11 +106,44 @@ export function useAppShellRuntime() {
     setSidebarWidth(nextWidth);
     saveSidebarWidth(nextWidth);
   }, []);
+  // Reopening prefers the right column: the work panel gives up width first so
+  // MainChat keeps the width it already had, and only a would-be breach of the
+  // 360px floor falls back to the 370px reopen target.
+  const reopenSidebar = useCallback(() => {
+    if (!sidebarCollapsedRef.current) return;
+    if (workPanelOpenRef.current) {
+      const currentPanelWidth = workPanelWidthRef.current;
+      const width =
+        appShellRef.current?.clientWidth ||
+        shellWidthRef.current ||
+        currentPanelWidth + MAIN_PANE_MIN_WIDTH;
+      const nextPanelWidth = workPanelWidthForSidebarReopen({
+        containerWidth: width,
+        sidebarWidth: sidebarWidthRef.current,
+        currentPanelWidth,
+      });
+      useAppStore.getState().setWorkPanelWidth(nextPanelWidth);
+    }
+    autoCollapsedSidebarRef.current = false;
+    setSidebarCollapsed(false);
+  }, []);
+
   // Stable identity: the keydown and native-menu handlers register once and
-  // must never capture a stale `sidebarCollapsed`. A functional update keeps
-  // the toggle symmetrical, so the second Cmd/Ctrl+B re-expands the sidebar.
+  // must never capture a stale `sidebarCollapsed`. Every invocation is a user
+  // action, so it clears an automatic-collapse record before toggling.
   const toggleSidebar = useCallback(() => {
-    setSidebarCollapsed((collapsed) => !collapsed);
+    autoCollapsedSidebarRef.current = false;
+    if (sidebarCollapsedRef.current) reopenSidebar();
+    else setSidebarCollapsed(true);
+  }, [reopenSidebar]);
+
+  // The layout, not the user, yields the sidebar when the panel would push
+  // MainChat under its floor. The record is remembered only until the panel
+  // closes.
+  const autoCollapseSidebar = useCallback(() => {
+    if (sidebarCollapsedRef.current) return;
+    autoCollapsedSidebarRef.current = true;
+    setSidebarCollapsed(true);
   }, []);
   // Keep the exit flag in sync with the collapsed state so collapsing plays
   // the sidebar-out keyframe and expanding cancels it (mirrors the work-panel
@@ -193,6 +262,10 @@ export function useAppShellRuntime() {
         setWorkPanelExiting(false);
         workPanelExitingRef.current = false;
         workPanelExitClosing.current = false;
+        if (autoCollapsedSidebarRef.current) {
+          autoCollapsedSidebarRef.current = false;
+          setSidebarCollapsed(false);
+        }
       },
     }).then((committed) => {
       // Reservation failed or was superseded — allow a later exit retry.
@@ -249,6 +322,23 @@ export function useAppShellRuntime() {
     }, 220);
     return () => window.clearTimeout(timer);
   }, [workPanelExiting, finishWorkPanelExit]);
+
+  // If the panel disappears without an exit commit (the active session closed
+  // it, or the route changed), restore a sidebar this layout mechanism
+  // collapsed — but never one the user collapsed manually.
+  const previousWorkPanelOpen = useRef(workPanelVisible);
+  useEffect(() => {
+    if (
+      previousWorkPanelOpen.current &&
+      !workPanelVisible &&
+      !presentedWorkPanelRef.current &&
+      autoCollapsedSidebarRef.current
+    ) {
+      autoCollapsedSidebarRef.current = false;
+      setSidebarCollapsed(false);
+    }
+    previousWorkPanelOpen.current = workPanelVisible;
+  }, [workPanelVisible]);
 
   const runMenuCommand = useCallback(
     async (command: AppMenuCommand) => {
@@ -732,6 +822,11 @@ export function useAppShellRuntime() {
     handleSidebarWidthChange,
     handleSidebarWidthCommit,
     toggleSidebar,
+    reopenSidebar,
+    autoCollapseSidebar,
+    appShellRef,
+    shellWidth,
+    workPanelWidth,
     runMenuCommand,
     handleSidebarAnimationEnd,
     presentedWorkPanelOpen,

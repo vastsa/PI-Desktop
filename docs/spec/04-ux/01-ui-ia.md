@@ -94,9 +94,10 @@ destination, chat as the home surface, tools and permissions inline.
   closed. Closing the final tab keeps the panel open and shows the New launcher.
   A
   successful active-session workspace Write/Edit artifact opens Review;
-  scratch, failed, and background-session writes never steal focus. The outer
-  inner divider resizes the panel from 244px to 720px; moving it left takes
-  more space from MainChat and moving it right gives space back. The sole
+  scratch, failed, and background-session writes never steal focus. The inner
+  divider resizes the panel through the shared three-column budget; moving it
+  left takes space until MainChat reaches 360px, at which point the expanded
+  sidebar yields immediately, and moving it right gives space back. The sole
   panel-level control is the viewport-fixed toggle; each session retains its own runtime
   open state, tab set, active tab, and Browser resource in renderer memory.
   Selecting another session swaps the visible panel context without deleting
@@ -107,10 +108,15 @@ destination, chat as the home surface, tools and permissions inline.
   retained session contexts, and only the preferred panel width persists across
   launches.
   The work panel remains a fixed-width in-flow column beside MainChat inside
-  the existing client area (ADR 0151). MainChat reserves a 515px minimum for
-  the composer, and neither side dock may consume or paint over that width.
-  Opening and collapsing change only the shell's internal flex allocation and
-  never expand or shrink native window bounds. The renderer-measured panel
+  the existing client area (ADR 0033 / ADR 0151). MainChat keeps a hard 360px
+  minimum; the work panel's effective maximum is the remaining client width
+  after the expanded sidebar and that floor (ADR 0237). When the budget is
+  exhausted the sidebar collapses immediately through its existing animation
+  (the budget still counts it while `sidebar-out` occupies flex space) and
+  returns when the panel closes. Opening and collapsing change only the
+  shell's internal flex allocation and never expand or shrink native window
+  bounds; no panel action requests a positive native reservation. The
+  renderer-measured panel
   rectangle continues to position the native Browser view. Native window edges
   resize the app window only; they do not change the panel target. The outer
   window remains natively resizable from all OS edges and corners, with a

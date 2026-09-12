@@ -939,22 +939,26 @@ Codex parity decisions (D034/D070) supersede any older value here.
 | Titlebar row height | 46px | Codex toolbar rhythm (D034); traffic lights {x:16,y:16} |
 | Sidebar width (collapsed) | 48px | Icon-only rail |
 | Sidebar width (expanded) | `240px–520px` (default 275px) | Right-edge resize handle; persisted preferred width |
-| Main pane minimum readable width | 515px | Reserved by the MainPane flex item; the sidebar and work panel cannot consume this width |
+| Main pane minimum readable width | 360px | The MainChat hard floor; the sidebar yields before it is breached (ADR 0237) |
 | Work panel width (closed) | 0px | Hidden by default |
-| Work panel width (open) | `244px–720px` (new-profile default 360px), fixed at the committed width | the panel is an in-flow column whose width is taken from the existing client area; the renderer owns its divider (ADR 0151); saved widths remain unchanged |
+| Work panel width (open) | `244px–720px` (new-profile default 360px), capped by `client width - 360px - expanded sidebar` | the panel is an in-flow column whose width is taken from the existing client area; the renderer owns its divider (ADR 0033 / ADR 0151 / ADR 0237); saved widths remain unchanged |
 | Composer shell minimum | ~80px | One-line draft + toolbar padding |
-| Composer toolbar | MainChat `≥515px` | Left/right control groups stay on one row and do not shrink; mode/permission labels stay single-line and ellipsize |
+| Composer toolbar | MainChat `≥360px` | Left/right control groups stay on one row and do not shrink; mode/permission labels stay single-line and ellipsize |
 | Composer draft height | 1–7 text lines | Auto-grow; internal scroll beyond line 7 |
 | Chat message max width | 720px assistant / 560px user plate | Prevent eye-span over-stretch; user turns stay compact |
 | Window min width | 1040px | Enforced by Electron for the whole app; opening the panel never changes native bounds |
 | Window min height | 700px | Enforced by Electron |
 
 An open work panel is a fixed-width in-flow column inside the existing client
-area (ADR 0151). Its flex allocation comes from MainChat, but MainPane retains a
-515px minimum reservation for the composer. Side-dock resizing therefore cannot
-paint over or claim the composer width. The renderer's measured panel rect
-continues to position the native Browser view. Opening and collapsing do not
-request a positive native reservation or change persisted window bounds. Before
+area (ADR 0033 / ADR 0151). Its flex allocation comes from MainChat, but MainPane
+retains a 360px hard minimum and the panel's effective maximum is the remaining
+client width after the expanded sidebar and that floor (ADR 0237). When the
+budget is exhausted the expanded sidebar collapses immediately, and the shared
+budget keeps counting it while `sidebar-out` occupies flex space. Side-dock
+resizing therefore cannot paint over or claim MainChat's floor. The renderer's
+measured panel rect continues to position the native Browser view. Opening and
+collapsing do not request a positive native reservation or change persisted
+window bounds. Before
 collapse motion starts, any native Browser preview surface is detached because
 it cannot participate in renderer CSS animation; macOS, Windows, and Linux
 retain the fade-and-slide exit.
@@ -962,12 +966,12 @@ retain the fade-and-slide exit.
 ### 10.1 Responsive collapse
 
 - The work panel never participates in responsive collapse. It keeps its
-  committed `244..720px` width (new-profile default 360px) while visible; saved
-  widths remain unchanged.
+  committed `244..720px` width (new-profile default 360px) while visible, capped
+  by the shared budget; saved widths remain unchanged.
 - The inner panel divider changes the panel width in the renderer. Moving it
-  left takes more internal space from MainChat until the 515px reservation is
-  reached; moving it right returns that space. Native window edges resize only
-  the fixed app window.
+  left takes internal space from MainChat until the 360px floor is reached, at
+  which point the expanded sidebar yields; moving it right returns that space.
+  Native window edges resize only the fixed app window.
 - Panel open and collapse change only the in-flow flex allocation. No positive
   native reservation is requested, and the panel's preferred width remains a
   renderer-local setting.

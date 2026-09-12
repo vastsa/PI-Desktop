@@ -156,7 +156,7 @@ test("work panel uses the fixed-window internal dock", () => {
   assert.match(panelSource, /exitAnimationReady && "is-exiting"/);
   assert.match(panelSource, /if \(!exitAnimationReady\) return/);
   assert.match(panelSource, /animationName\.startsWith\("work-panel-out"\)/);
-  assert.match(panelSource, /renderPanelWidth = clampWorkPanelWidth\(panelDragWidth \?\? width\)/);
+  assert.match(panelSource, /const renderPanelWidth = layout\.panelWidth/);
   assert.match(panelSource, /setWidth\(drag\.currentWidth\)/);
   // The panel remains a fixed-width in-flow shell sibling; its flex allocation
   // is animated with the dock so the main pane does not jump before motion.
@@ -281,18 +281,24 @@ test("closing the final tab keeps the panel open for the New launcher", () => {
 });
 
 test("work panel width is renderer-owned inside the fixed window", () => {
-  assert.equal(MAIN_PANE_MIN_WIDTH, 515);
+  assert.equal(MAIN_PANE_MIN_WIDTH, 360);
   assert.equal(WORK_PANEL_DEFAULT_WIDTH, 360);
   assert.equal(WORK_PANEL_MIN_WIDTH, 244);
   assert.equal(WORK_PANEL_MAX_WIDTH, 720);
-  assert.match(panelSource, /renderPanelWidth = clampWorkPanelWidth\(panelDragWidth \?\? width\)/);
+  assert.match(panelSource, /const renderPanelWidth = layout\.panelWidth/);
   assert.match(panelSource, /setWidth\(drag\.currentWidth\)/);
   assert.match(panelSource, /startWidth \+ drag\.startClientX - event\.clientX/);
   assert.doesNotMatch(panelSource, /api\.setWorkPanelChatWidth/);
   assert.doesNotMatch(panelSource, /api\.onWorkPanelResize/);
   assert.doesNotMatch(panelSource, /\.sidebar, \.sidebar-rail/);
-  assert.match(globalStyles, /\.main-pane \{[^}]*min-width:\s*515px;/s);
-  assert.match(globalStyles, /\.chat-surface,[\s\S]*?\.route-page \{[^}]*min-width:\s*515px;/s);
+  assert.match(
+    globalStyles,
+    /\.main-pane \{[^}]*min-width:\s*var\(--ds-main-pane-min-width, 360px\);/s,
+  );
+  assert.match(
+    globalStyles,
+    /\.chat-surface,[\s\S]*?\.route-page \{[^}]*min-width:\s*var\(--ds-main-pane-min-width, 360px\);/s,
+  );
   assert.match(globalStyles, /\.work-panel \{[^}]*flex: 0 0 var\(--work-panel-width\)/s);
   // The Electron seam remains available for old callers but is deliberately
   // inert, so no positive target can expand the native window.
@@ -347,8 +353,8 @@ test("native window edges never own the internal panel width", () => {
 test("work panel separator exposes internal panel width resizing", () => {
   assert.match(panelSource, /role="separator"/);
   assert.match(panelSource, /aria-label=\{t\("panel\.resize"\)\}/);
-  assert.match(panelSource, /aria-valuemin=\{WORK_PANEL_MIN_WIDTH\}/);
-  assert.match(panelSource, /aria-valuemax=\{WORK_PANEL_MAX_WIDTH\}/);
+  assert.match(panelSource, /aria-valuemin=\{Math\.min\(/);
+  assert.match(panelSource, /aria-valuemax=\{Math\.max\(/);
   assert.match(panelSource, /aria-valuenow=\{Math\.round\(panelDragWidth \?\? renderPanelWidth\)\}/);
   assert.match(panelSource, /tabIndex=\{0\}/);
   assert.match(panelSource, /startClientX:\s*event\.clientX/);
@@ -519,4 +525,31 @@ test("work panel empty states match the app's other empty-state proportions", ()
     globalStyles,
     /\.work-panel-launcher-row:focus-visible \{\s*outline: 2px solid var\(--ds-focus\)/,
   );
+});
+
+test("the shell budgets the three columns inside the fixed client area", () => {
+  // MainChat is the first-priority column: the panel is capped by the shared
+  // budget and the expanded sidebar is the column that yields.
+  assert.equal(MAIN_PANE_MIN_WIDTH, 360);
+  assert.match(
+    globalStyles,
+    /\.main-pane \{[^}]*min-width:\s*var\(--ds-main-pane-min-width, 360px\);/s,
+  );
+  assert.match(
+    globalStyles,
+    /\.chat-surface,[\s\S]*?\.route-page \{[^}]*min-width:\s*var\(--ds-main-pane-min-width, 360px\);/s,
+  );
+  assert.match(panelSource, /const renderPanelWidth = layout\.panelWidth/);
+  assert.match(panelSource, /maxWidth: layout\.maxPanelWidth/);
+  assert.match(panelSource, /sidebarOccupiesBudget = !sidebarCollapsed \|\| sidebarExiting/);
+  assert.match(panelSource, /layout\.shouldCollapseSidebar\) onAutoCollapseSidebar/);
+  assert.match(appSource, /onAutoCollapseSidebar=\{autoCollapseSidebar\}/);
+  assert.match(appSource, /containerWidth=\{shellWidth\}/);
+  assert.match(appSource, /sidebarExiting=\{sidebarExiting\}/);
+  assert.match(appSource, /workPanelWidthForSidebarReopen/);
+  assert.match(appSource, /if \(sidebarCollapsedRef\.current\) reopenSidebar\(\)/);
+  // The window itself never changes: the native reservation seam stays at
+  // zero and no committed panel width is mirrored through it.
+  assert.match(appSource, /setWorkPanelReservation\(0\)/);
+  assert.doesNotMatch(appSource, /setWorkPanelReservation\(Math\.round\(/);
 });
