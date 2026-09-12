@@ -145,9 +145,12 @@ export function ProjectCreateDialog() {
         onClick={(event) => event.stopPropagation()}
       >
         <div className="project-create-dialog-head">
-          <h2 id="project-create-dialog-title" className="project-create-dialog-title">
-            {t("project.createTitle")}
-          </h2>
+          <div className="project-create-dialog-heading">
+            <span className="project-create-dialog-kicker">{t("project.title")}</span>
+            <h2 id="project-create-dialog-title" className="project-create-dialog-title">
+              {t("project.createTitle")}
+            </h2>
+          </div>
           <TooltipButton
             type="button"
             className="project-create-dialog-close"
@@ -167,14 +170,18 @@ export function ProjectCreateDialog() {
             void submit();
           }}
         >
-          <span className="project-create-dialog-field-label">
-            {t("project.createNameLabel")}
-          </span>
-          <label className="project-create-dialog-name-field" htmlFor="project-create-name">
+          <div className="project-create-dialog-field-head">
+            <label className="project-create-dialog-field-label" htmlFor="project-create-name">
+              {t("project.createNameLabel")}
+            </label>
+            <span className="project-create-dialog-name-count" aria-live="polite">
+              {name.length}/{MAX_PROJECT_NAME_CHARS}
+            </span>
+          </div>
+          <div className="project-create-dialog-name-field">
             <span className="project-create-dialog-name-icon" aria-hidden>
               <IconFolder size={18} />
             </span>
-            <span className="sr-only">{t("project.createNameLabel")}</span>
             <input
               ref={inputRef}
               id="project-create-name"
@@ -188,9 +195,9 @@ export function ProjectCreateDialog() {
               autoCorrect="off"
               autoCapitalize="off"
             />
-          </label>
+          </div>
 
-          <div className="project-create-dialog-memory-hint">
+          <div id="project-create-memory-hint" className="project-create-dialog-memory-hint">
             <span className="project-create-dialog-memory-icon" aria-hidden>
               <IconSparkles size={16} />
             </span>
@@ -240,6 +247,7 @@ export function ProjectCreateDialog() {
             ))}
             <button
               type="button"
+              aria-label={t("project.createAddFolder")}
               className="project-create-add-folder"
               onClick={() => void addFolders()}
               disabled={busy}
