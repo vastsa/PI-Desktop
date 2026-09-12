@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readMainSource } from "./helpers/main-source.mjs";
 
 const read = (relativePath) => readFile(new URL(relativePath, import.meta.url), "utf8");
 
@@ -9,10 +10,10 @@ const [dialog, page, api, protocol, main, runtime, sidecar, db, rpc] = await Pro
   read("../src/pages/ProjectsPage.tsx"),
   read("../src/lib/api.ts"),
   read("../../../packages/shared/src/protocol.ts"),
-  read("../electron/main/index.ts"),
+  readMainSource(),
   read("../../../packages/agent-runtime/src/runtime.ts"),
   read("../../../packages/agent-runtime/src/sidecar.ts"),
-  read("../../../crates/host-core/src/db.rs"),
+  read("../../../crates/host-core/src/db/repositories.rs"),
   read("../../../crates/host-core/src/rpc/mod.rs"),
 ]);
 

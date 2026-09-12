@@ -1,15 +1,17 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readMainSource } from "./helpers/main-source.mjs";
+import { readStoreSource } from "./helpers/store-source.mjs";
 
 const read = (relativePath) => readFile(new URL(relativePath, import.meta.url), "utf8");
 
 const [dialog, store, api, protocol, main, styles] = await Promise.all([
   read("../src/components/ProjectCreateDialog.tsx"),
-  read("../src/stores/app-store.ts"),
+  readStoreSource(),
   read("../src/lib/api.ts"),
   read("../../../packages/shared/src/protocol.ts"),
-  read("../electron/main/index.ts"),
+  readMainSource(),
   read("../src/styles/project-create-dialog.css"),
 ]);
 
@@ -39,8 +41,8 @@ test("project creation keeps one primary workspace and retains additional folder
 test("folder picker is a renderer-only multi-directory selection", () => {
   assert.match(protocol, /projectPickFolders:\s*"pi-desktop\/project\/pickFolders"/);
   assert.match(api, /pickProjectFolders: \(\) =>[\s\S]*?projectPickFolders/);
-  const start = main.indexOf("handle(IPC.invoke.projectPickFolders");
-  const end = main.indexOf("handle(IPC.invoke.projectClone", start);
+  const start = main.indexOf("IPC.invoke.projectPickFolders");
+  const end = main.indexOf("IPC.invoke.projectClone", start);
   const handler = main.slice(start, end);
   assert.ok(start >= 0 && end > start, "folder picker handler should exist");
   assert.match(handler, /openDirectory/);

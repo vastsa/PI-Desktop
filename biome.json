@@ -1,0 +1,32 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.5.13/schema.json",
+	"files": {
+		"includes": [
+			"apps/desktop/src/features/app/**/*.ts",
+			"apps/desktop/src/features/app/**/*.tsx",
+			"apps/desktop/src/features/chat/composer/**/*.ts",
+			"apps/desktop/src/features/chat/composer/**/*.tsx",
+			"apps/desktop/src/features/plugins/**/*.ts",
+			"apps/desktop/src/features/plugins/**/*.tsx",
+			"apps/desktop/src/features/settings/**/*.ts",
+			"apps/desktop/src/features/settings/**/*.tsx",
+			"apps/desktop/electron/main/runtime/session-launch.ts",
+			"apps/desktop/electron/main/ipc/workspace-ipc.ts",
+			"packages/shared/src/types/**/*.ts",
+			"scripts/check-architecture.mjs",
+			"scripts/e2e/*.mjs"
+		]
+	},
+	"formatter": {
+		"enabled": false
+	},
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"preset": "none",
+			"correctness": {
+				"noUnusedVariables": "error"
+			}
+		}
+	}
+}

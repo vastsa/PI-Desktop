@@ -1,3 +1,4 @@
+import { readMainSource, readMainModule } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import {
   mkdir,
@@ -15,10 +16,10 @@ const devScriptUrl = new URL(
   import.meta.url,
 );
 
-const mainSource = await readFile(
-  new URL("../electron/main/index.ts", import.meta.url),
-  "utf8",
-);
+const mainSource = await readMainSource();
+const mainIndexSource = await readMainModule("index.ts");
+const brandingSource = await readMainModule("bootstrap/app-lifecycle.ts");
+const startupSource = await readMainModule("bootstrap/startup.ts");
 const iconScriptSource = await readFile(
   new URL("../../../scripts/make-icon.py", import.meta.url),
   "utf8",
@@ -37,13 +38,11 @@ const protocolSource = await readFile(
 
 test("Windows runtime registers the canonical native application identity", () => {
   const appId = protocolSource.match(/APP_ID = "([^"]+)"/)?.[1];
-  const readinessIndex = mainSource.indexOf("app.whenReady()");
-
   assert.equal(appId, packageJson.build.appId);
-  assert.ok(readinessIndex > 0, "main process readiness hook");
-  assert.match(mainSource.slice(0, readinessIndex), /app\.setName\(APP_NAME\)/);
+  assert.ok(startupSource.includes("app.whenReady()"), "main process readiness hook");
+  assert.match(mainIndexSource, /app\.setName\(APP_NAME\)/);
   assert.match(
-    mainSource.slice(0, readinessIndex),
+    mainIndexSource,
     /process\.platform === "win32"[\s\S]*app\.setAppUserModelId\(APP_ID\)/,
   );
 });
@@ -60,22 +59,22 @@ test("Linux packages align the desktop entry with the Wayland app identity", () 
 
 test("macOS development uses the canonical PI-Desktop Dock icon", () => {
   assert.match(
-    mainSource,
+    brandingSource,
     /process\.platform !== "darwin" \|\| !isDevelopmentBuild \|\| !app\.dock/,
   );
   assert.match(
-    mainSource,
+    brandingSource,
     /join\(app\.getAppPath\(\), "build", "icon_1024\.png"\)/,
   );
-  assert.match(mainSource, /nativeImage\.createFromPath\(iconPath\)/);
-  assert.match(mainSource, /if \(icon\.isEmpty\(\)\)/);
-  assert.match(mainSource, /app\.dock\.setIcon\(icon\)/);
+  assert.match(brandingSource, /nativeImage\.createFromPath\(iconPath\)/);
+  assert.match(brandingSource, /if \(icon\.isEmpty\(\)\)/);
+  assert.match(brandingSource, /app\.dock\.setIcon\(icon\)/);
   // Branding is the first thing readiness does, after the only statement that
   // may precede it: the bail for a launch that lost the single-instance lock
   // and must not touch the running app's Dock tile.
   assert.match(
-    mainSource,
-    /app\.whenReady\(\)\.then\(async \(\) => \{(?:\n\s+\/\/[^\n]*)*\n\s+if \(!hasSingleInstanceLock\) return;\s+applyDevelopmentBranding\(\);/,
+    startupSource,
+    /if \(!hasSingleInstanceLock\) return;\s+applyDevelopmentBranding\(\);/,
   );
 });
 

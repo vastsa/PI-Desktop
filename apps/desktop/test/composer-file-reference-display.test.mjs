@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readComposerSource } from "./helpers/composer-source.mjs";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
@@ -9,7 +10,7 @@ const [autocomplete, autocompleteHook, autocompleteStyles, composer, composerSty
     read("../src/components/ComposerAutocomplete.tsx"),
     read("../src/hooks/use-composer-autocomplete.ts"),
     read("../src/styles/composer-autocomplete.css"),
-    read("../src/components/Composer.tsx"),
+    readComposerSource(),
     read("../src/styles/composer.css"),
   ]);
 
@@ -117,7 +118,7 @@ test("unanswered stop restores compact references instead of serialized paths", 
   assert.match(composer, /composerPrefill\.sessionId !== activeSessionId/);
   assert.match(
     composer,
-    /createFileReference\(\s*fileReference\.path,\s*fileReference\.name,\s*composerPrefill\.sessionId/,
+    /createFileReferenceFromSnapshot\(fileReference,\s*composerPrefill\.sessionId\)/,
   );
   assert.doesNotMatch(composer, /setValue\(composerPrefill\);/);
 });

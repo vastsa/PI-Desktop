@@ -1,11 +1,9 @@
+import { readComposerSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const composerSource = await readFile(
-  new URL("../src/components/Composer.tsx", import.meta.url),
-  "utf8",
-);
+const composerSource = await readComposerSource();
 
 test("Agent and Plan permission menus present only effective selectable modes", () => {
   const permissionControlSource = composerSource.slice(

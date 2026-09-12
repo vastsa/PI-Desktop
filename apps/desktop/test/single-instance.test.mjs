@@ -1,11 +1,9 @@
+import { readMainSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const mainSource = await readFile(
-  new URL("../electron/main/index.ts", import.meta.url),
-  "utf8",
-);
+const mainSource = await readMainSource();
 
 test("the single-instance lock is taken before anything touches the data directory", () => {
   // Electron keeps the lock under `userData`, which is derived from the app

@@ -1,3 +1,4 @@
+import { readStoreModule } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -6,10 +7,8 @@ import {
   sessionIsReusableEmpty,
 } from "../src/lib/session-create.ts";
 
-const store = await readFile(
-  new URL("../src/stores/app-store.ts", import.meta.url),
-  "utf8",
-);
+const sessionSlice = await readStoreModule("slices/session-slice.ts");
+const sessionCoordination = await readStoreModule("runtime/session-coordination.ts");
 
 test("an empty latest session is reusable only when the renderer agrees", () => {
   const empty = { messageCount: 0 };
@@ -38,7 +37,7 @@ test("empty sessions have a whole, already-known transcript window", () => {
 
 test("new task reuses renderer-empty sessions without a blocking list refresh", () => {
   const newSession =
-    store.match(/newSession: async [\s\S]*?\n  forkSession: async/)?.[0] ?? "";
+    sessionSlice.match(/newSession: async [\s\S]*?\n    forkSession: async/)?.[0] ?? "";
   assert.ok(newSession.length > 0, "newSession implementation not found");
   assert.match(newSession, /sessionIsReusableEmpty/);
   assert.match(newSession, /liveMessageCountForSession/);
@@ -49,8 +48,8 @@ test("new task reuses renderer-empty sessions without a blocking list refresh", 
 
 test("creating a session reveals the empty destination before host IO", () => {
   const persist =
-    store.match(
-      /async function persistSessionAndSelect[\s\S]*?\n  return sessionId;\n\}\n/,
+    sessionCoordination.match(
+      /async function persistSessionAndSelect[\s\S]*?\n  }\n\n  async function materializeDraftSession/,
     )?.[0] ?? "";
   assert.ok(persist.length > 0, "persistSessionAndSelect not found");
   assert.ok(
@@ -61,14 +60,14 @@ test("creating a session reveals the empty destination before host IO", () => {
   assert.doesNotMatch(persist, /refreshSessions/);
   assert.doesNotMatch(persist, /api\.getSession/);
   assert.match(persist, /commitCreatedEmptySession/);
-  assert.match(store, /function commitCreatedEmptySession/);
-  assert.match(store, /scheduleHomeDraftAdopt/);
+  assert.match(sessionCoordination, /function commitCreatedEmptySession/);
+  assert.match(sessionCoordination, /scheduleHomeDraftAdopt/);
 });
 
 test("send and paste wait for an in-flight New Task instead of creating a second session", () => {
   const materialize =
-    store.match(
-      /export async function materializeDraftSession[\s\S]*?\n\}/,
+    sessionCoordination.match(
+      /async function materializeDraftSession[\s\S]*?\n  }\n\n  return/,
     )?.[0] ?? "";
   assert.match(materialize, /pendingNewSessionRequests/);
   assert.match(materialize, /await pending/);

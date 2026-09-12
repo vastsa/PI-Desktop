@@ -1,3 +1,4 @@
+import { readAppSourceSync, readMainSourceSync } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
@@ -11,8 +12,8 @@ const protocol = readFileSync(
   "utf8",
 );
 const api = readFileSync(join(desktopRoot, "src/lib/api.ts"), "utf8");
-const app = readFileSync(join(desktopRoot, "src/App.tsx"), "utf8");
-const main = readFileSync(join(desktopRoot, "electron/main/index.ts"), "utf8");
+const app = readAppSourceSync();
+const main = readMainSourceSync();
 
 test("plugin session mutations use the host-owned renderer refresh event", () => {
   assert.match(protocol, /sessionsChanged:\s*"pi-desktop\/session\/event\/changed"/);

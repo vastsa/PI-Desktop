@@ -1,3 +1,4 @@
+import { readAppSourceSync } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -6,7 +7,7 @@ import test from "node:test";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const read = (path) => readFileSync(join(here, path), "utf8");
-const app = read("../src/App.tsx");
+const app = readAppSourceSync();
 const rendererApi = read("../src/capture/renderer-api.ts");
 const captureRig = read("../src/capture/capture-rig.ts");
 const main = read("../src/main.tsx");

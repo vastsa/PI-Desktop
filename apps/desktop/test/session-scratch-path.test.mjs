@@ -1,3 +1,4 @@
+import { readMainSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -9,7 +10,7 @@ const [protocolSource, apiSource, mainSource, sidebarSource, english, chinese] =
   await Promise.all([
     read("../../../packages/shared/src/protocol.ts"),
     read("../src/lib/api.ts"),
-    read("../electron/main/index.ts"),
+    readMainSource(),
     read("../src/components/Sidebar.tsx"),
     read("../../../packages/i18n/src/locales/en/index.ts"),
     read("../../../packages/i18n/src/locales/zh-CN/index.ts"),

@@ -1,28 +1,33 @@
+import {
+  readComposerModule,
+  readComposerSource,
+  readMainModule,
+  readStoreModule,
+  readStoreSource,
+  readTranscriptModule,
+  readTranscriptSource,
+} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { loadStyles } from "./helpers/styles.mjs";
 
-const composerSource = await readFile(
-  new URL("../src/components/Composer.tsx", import.meta.url),
-  "utf8",
-);
-const transcriptSource = await readFile(
-  new URL("../src/components/ChatTranscript.tsx", import.meta.url),
-  "utf8",
-);
+const composerSource = await readComposerSource();
+const composerToolbarSource = await readComposerModule("ComposerToolbar.tsx");
+const composerModelPickerSource = await readComposerModule("ComposerModelPicker.tsx");
+const transcriptSource = await readTranscriptSource();
+const transcriptSharedSource = await readTranscriptModule("shared.tsx");
+const transcriptToolRowSource = await readTranscriptModule("ToolRow.tsx");
+const transcriptActivityGroupSource = await readTranscriptModule("ActivityGroup.tsx");
 const appSource = await readFile(
   new URL("../src/components/ChatSurface.tsx", import.meta.url),
   "utf8",
 );
-const mainSource = await readFile(
-  new URL("../electron/main/index.ts", import.meta.url),
-  "utf8",
-);
-const storeSource = await readFile(
-  new URL("../src/stores/app-store.ts", import.meta.url),
-  "utf8",
-);
+const providerCatalogSource = await readMainModule("runtime/provider-catalog.ts");
+const sessionIpcSource = await readMainModule("ipc/session-ipc.ts");
+const sessionLaunchSource = await readMainModule("runtime/session-launch.ts");
+const storeSource = await readStoreSource();
+const sessionCoordinationSource = await readStoreModule("runtime/session-coordination.ts");
 // Agent/Plan mode and model selection are owned by the Composer; the
 // conversation top bar only hosts the task title and window actions.
 const topbarSource = await readFile(
@@ -82,9 +87,8 @@ test("Composer owns the mode and model controls", () => {
     'className="icon-btn mode-chip composer-mode-chip"',
   );
   const permissionControl = leftToolbar.indexOf('className="composer-permission"');
-  const rightToolbar = composerSource.slice(
-    composerSource.indexOf('<div className="composer-right">'),
-    composerSource.indexOf('<div className="composer-right">') + 12000,
+  const rightToolbar = composerToolbarSource.slice(
+    composerToolbarSource.indexOf('<div className="composer-right">'),
   );
 
   assert.ok(modeControl >= 0);
@@ -93,10 +97,10 @@ test("Composer owns the mode and model controls", () => {
   assert.doesNotMatch(topbarSource, /ModelSelect|model-chip/);
   assert.doesNotMatch(topbarSource, /ct-mode|ct-mode-btn|configureActiveSession/);
   assert.doesNotMatch(stylesSource, /\.conversation-topbar \.ct-mode/);
-  assert.match(rightToolbar, /composer-model-thinking-chip/);
-  assert.match(rightToolbar, /composer-model-thinking-menu/);
-  assert.match(rightToolbar, /composer-menu-entry/);
-  assert.match(rightToolbar, /composer-menu-back/);
+  assert.match(composerModelPickerSource, /composer-model-thinking-chip/);
+  assert.match(composerModelPickerSource, /composer-model-thinking-menu/);
+  assert.match(composerModelPickerSource, /composer-menu-entry/);
+  assert.match(composerModelPickerSource, /composer-menu-back/);
 });
 
 test("conversation topbar keeps the title and actions free of a running indicator", () => {
@@ -162,8 +166,8 @@ test("draft Composer thinking follows the exact model selected in its menu", () 
 
 test("new sessions default to the selected model binding's thinking level", () => {
   const materializeSource =
-    storeSource.match(
-      /async function persistSessionAndSelect[\s\S]*?\n  return sessionId;\n}\n/,
+    sessionCoordinationSource.match(
+      /async function persistSessionAndSelect[\s\S]*?\n  }\n\n  async function materializeDraftSession/,
     )?.[0] ?? "";
   assert.ok(
     materializeSource.length > 0,
@@ -179,16 +183,16 @@ test("new sessions default to the selected model binding's thinking level", () =
 });
 
 test("main resolves reasoning from each session's exact selected model", () => {
-  assert.match(mainSource, /function enrichSession/);
-  assert.match(mainSource, /function resolveSessionCapabilityTarget/);
-  assert.match(mainSource, /defaults\?\.defaultProviderId/);
-  assert.match(mainSource, /modelsDevModelFor\(provider, modelId\)/);
-  assert.match(mainSource, /sessions:\s*result\.sessions\.map/);
-  assert.match(mainSource, /modelConfigFromModelsDev\(modelsDevModel, provider\.baseUrl\)/);
+  assert.match(providerCatalogSource, /const enrichSession/);
+  assert.match(providerCatalogSource, /const resolveSessionCapabilityTarget/);
+  assert.match(providerCatalogSource, /defaults\?\.defaultProviderId/);
+  assert.match(providerCatalogSource, /modelsDevModelFor\(provider, modelId\)/);
+  assert.match(sessionIpcSource, /sessions:\s*result\.sessions\.map/);
+  assert.match(providerCatalogSource, /modelConfigFromModelsDev\(\s*modelsDevModel,\s*provider\.baseUrl\s*\)/);
   // models.dev records stamp reasoning capability per exact model id.
-  assert.match(mainSource, /capabilitiesFromModelConfig\(modelConfig\)/);
-  assert.match(mainSource, /supportsReasoning/);
-  assert.doesNotMatch(mainSource, /resolvePiModelConfig/);
+  assert.match(providerCatalogSource, /capabilitiesFromModelConfig\(modelConfig\)/);
+  assert.match(providerCatalogSource, /supportsReasoning/);
+  assert.doesNotMatch(providerCatalogSource, /resolvePiModelConfig/);
 });
 
 test("transcript keeps assistant thinking in a separate disclosure", () => {
@@ -208,15 +212,15 @@ test("transcript keeps assistant thinking in a separate disclosure", () => {
 
 test("expanded assistant activity rails collapse their disclosures", () => {
   assert.match(
-    transcriptSource,
+    transcriptSharedSource,
     /function DisclosureCollapseRail\([\s\S]*?className="disclosure-collapse-rail"[\s\S]*?ariaLabel=\{label\}[\s\S]*?tooltip=\{label\}[\s\S]*?onClick=\{onCollapse\}/,
   );
   assert.match(
-    transcriptSource,
-    /className="tool-row-body"[\s\S]*?<DisclosureCollapseRail[\s\S]*?onCollapse=\{collapseDisclosure\}/,
+    transcriptToolRowSource,
+    /className="tool-row-body"[\s\S]*?<DisclosureCollapseRail[\s\S]*?onCollapse=\{collapseRow\}/,
   );
   assert.match(
-    transcriptSource,
+    transcriptActivityGroupSource,
     /className="tool-activity-body"[\s\S]*?<DisclosureCollapseRail[\s\S]*?onCollapse=\{collapseDisclosure\}/,
   );
   assert.match(
@@ -280,10 +284,10 @@ test("provider settings persist model-local limits and thinking configuration", 
 });
 
 test("main forwards the complete models.dev model record to the sidecar", () => {
-  assert.match(mainSource, /modelConfigFromModelsDev/);
-  assert.doesNotMatch(mainSource, /resolvePiModelConfig/);
-  assert.match(mainSource, /\.\.\.\(modelConfig \? \{ modelConfig \} : \{\}\)/);
-  assert.doesNotMatch(mainSource, /modelCompat/);
+  assert.match(sessionLaunchSource, /modelConfigFromModelsDev/);
+  assert.doesNotMatch(sessionLaunchSource, /resolvePiModelConfig/);
+  assert.match(sessionLaunchSource, /\.\.\.\(modelConfig \? \{ modelConfig \} : \{\}\)/);
+  assert.doesNotMatch(sessionLaunchSource, /modelCompat/);
 });
 
 test("settings offers the canonical thinking levels for explicit overrides", () => {

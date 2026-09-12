@@ -1,3 +1,4 @@
+import { readStoreSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -9,7 +10,7 @@ const [sidebarSource, projectsSource, dialogSource, storeSource, apiSource, host
     read("../src/components/Sidebar.tsx"),
     read("../src/pages/ProjectsPage.tsx"),
     read("../src/components/SessionRenameDialog.tsx"),
-    read("../src/stores/app-store.ts"),
+    readStoreSource(),
     read("../src/lib/api.ts"),
     read("../../../crates/host-core/src/sessions.rs"),
     read("../../../crates/host-core/src/rpc/mod.rs"),

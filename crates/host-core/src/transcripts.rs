@@ -582,9 +582,8 @@ pub fn read_transcript_window_with_layout(
 
     // Every offset that has to be visited, in ascending file order, so one
     // forward-only reader can serve both kinds without seeking backwards.
-    let mut wanted: Vec<(u64, bool)> = Vec::with_capacity(
-        end.saturating_sub(start) + layout.compaction_offsets.len(),
-    );
+    let mut wanted: Vec<(u64, bool)> =
+        Vec::with_capacity(end.saturating_sub(start) + layout.compaction_offsets.len());
     wanted.extend(
         layout.message_offsets[start..end]
             .iter()
@@ -906,17 +905,33 @@ mod tests {
     #[test]
     fn append_after_torn_tail_terminates_the_torn_line_first() {
         let dir = tempdir().unwrap();
-        append_message(dir.path(), "s1", "2026-07-26T00:00:00Z", &record("m1", "one")).unwrap();
+        append_message(
+            dir.path(),
+            "s1",
+            "2026-07-26T00:00:00Z",
+            &record("m1", "one"),
+        )
+        .unwrap();
         let path = dir.path().join("sessions").join("s1.jsonl");
         // Simulate a crash mid-append: a partial record without its newline.
         {
             let mut file = OpenOptions::new().append(true).open(&path).unwrap();
             file.write_all(br#"{"type":"message","id":"torn""#).unwrap();
         }
-        append_message(dir.path(), "s1", "2026-07-26T00:00:00Z", &record("m2", "two")).unwrap();
+        append_message(
+            dir.path(),
+            "s1",
+            "2026-07-26T00:00:00Z",
+            &record("m2", "two"),
+        )
+        .unwrap();
         let read = read_transcript(dir.path(), "s1").unwrap();
         let ids: Vec<&str> = read.iter().map(|m| m.id.as_str()).collect();
-        assert_eq!(ids, vec!["m1", "m2"], "the record after a torn tail must survive");
+        assert_eq!(
+            ids,
+            vec!["m1", "m2"],
+            "the record after a torn tail must survive"
+        );
     }
 
     fn record(id: &str, text: &str) -> MessageRecord {
@@ -947,7 +962,6 @@ mod tests {
         }
     }
 
-
     #[test]
     fn layout_records_message_offsets_and_grows_incrementally() {
         let dir = tempdir().unwrap();
@@ -963,7 +977,13 @@ mod tests {
         assert_eq!(same.message_count(), 3);
 
         // A later append extends the same layout.
-        append_message(dir.path(), "s1", "2026-07-26T00:00:00Z", &record("m4", "m4")).unwrap();
+        append_message(
+            dir.path(),
+            "s1",
+            "2026-07-26T00:00:00Z",
+            &record("m4", "m4"),
+        )
+        .unwrap();
         let grown = refresh_layout(dir.path(), "s1", same).unwrap();
         assert_eq!(grown.message_count(), 4);
         assert!(grown.file_len > layout.file_len);
@@ -990,15 +1010,20 @@ mod tests {
 
         // The same window is produced by the sequential reader.
         let sequential = read_transcript_window(dir.path(), "s1", 7, Some(3)).unwrap();
-        let sequential_ids: Vec<&str> =
-            sequential.messages.iter().map(|m| m.id.as_str()).collect();
+        let sequential_ids: Vec<&str> = sequential.messages.iter().map(|m| m.id.as_str()).collect();
         assert_eq!(ids, sequential_ids);
     }
 
     #[test]
     fn layout_window_always_returns_the_whole_compaction_chain() {
         let dir = tempdir().unwrap();
-        append_message(dir.path(), "s1", "2026-07-26T00:00:00Z", &record("m1", "one")).unwrap();
+        append_message(
+            dir.path(),
+            "s1",
+            "2026-07-26T00:00:00Z",
+            &record("m1", "one"),
+        )
+        .unwrap();
         append_compaction(dir.path(), "s1", "2026-07-26T00:00:00Z", &compaction()).unwrap();
         for id in ["m2", "m3"] {
             append_message(dir.path(), "s1", "2026-07-26T00:00:00Z", &record(id, id)).unwrap();
@@ -1059,13 +1084,12 @@ mod tests {
             "sessionId": "legacy",
             "type": "session",
         });
-        fs::write(
-            &path,
-            format!("{legacy_header}\n{legacy_message}\n"),
-        )
-        .unwrap();
+        fs::write(&path, format!("{legacy_header}\n{legacy_message}\n")).unwrap();
 
-        assert_eq!(sniff_line_kind(&legacy_message.to_string()), Some("message"));
+        assert_eq!(
+            sniff_line_kind(&legacy_message.to_string()),
+            Some("message")
+        );
         let sequential = read_transcript(dir.path(), "legacy").unwrap();
         assert_eq!(sequential.len(), 1);
         assert_eq!(sequential[0].id, "m1");
@@ -1140,7 +1164,10 @@ mod tests {
 
     #[test]
     fn sniffing_classifies_lines_without_full_parsing() {
-        assert_eq!(sniff_line_kind(r#"{"type":"message","id":"m1"}"#), Some("message"));
+        assert_eq!(
+            sniff_line_kind(r#"{"type":"message","id":"m1"}"#),
+            Some("message")
+        );
         assert_eq!(
             sniff_line_kind(r#"{"schema":1,"type":"session"}"#),
             Some("session")
@@ -1283,9 +1310,21 @@ mod tests {
     #[test]
     fn every_appended_compaction_survives_a_reload() {
         let dir = tempdir().unwrap();
-        append_message(dir.path(), "s1", "2026-07-26T00:00:00Z", &record("m1", "one")).unwrap();
+        append_message(
+            dir.path(),
+            "s1",
+            "2026-07-26T00:00:00Z",
+            &record("m1", "one"),
+        )
+        .unwrap();
         append_compaction(dir.path(), "s1", "2026-07-26T00:00:00Z", &compaction()).unwrap();
-        append_message(dir.path(), "s1", "2026-07-26T00:00:00Z", &record("m2", "two")).unwrap();
+        append_message(
+            dir.path(),
+            "s1",
+            "2026-07-26T00:00:00Z",
+            &record("m2", "two"),
+        )
+        .unwrap();
         let second = CompactionRecord {
             id: "compact-2".into(),
             summary: "later summary".into(),

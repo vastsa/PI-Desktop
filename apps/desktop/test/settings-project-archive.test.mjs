@@ -1,12 +1,10 @@
+import { readAppSource, readSettingsSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { loadStyles } from "./helpers/styles.mjs";
 
-const settingsPageSource = await readFile(
-  new URL("../src/pages/SettingsPage.tsx", import.meta.url),
-  "utf8",
-);
+const settingsPageSource = await readSettingsSource();
 const projectsPageSource = await readFile(
   new URL("../src/pages/ProjectsPage.tsx", import.meta.url),
   "utf8",
@@ -19,10 +17,7 @@ const searchDialogSource = await readFile(
   new URL("../src/components/SearchDialog.tsx", import.meta.url),
   "utf8",
 );
-const appSource = await readFile(
-  new URL("../src/App.tsx", import.meta.url),
-  "utf8",
-);
+const appSource = await readAppSource();
 const projectsStyleSource = await loadStyles();
 // The archive partial on its own: `loadStyles` inlines the whole cascade, so
 // assertions that a rule is *gone* have to look at the file that owned it.

@@ -277,19 +277,19 @@ If you use a remote model provider, the context required for that model request 
 
 ## From install to first patch
 
-1. **Download PI-Desktop**  
+1. **Download PI-Desktop**
    Get the latest build from [GitHub Releases](https://github.com/vastsa/PI-Desktop/releases/latest).
 
-2. **Connect a model**  
+2. **Connect a model**
    Open **Settings → Model configuration**, choose a provider or compatible API, and add your credentials.
 
-3. **Open a project**  
+3. **Open a project**
    Add any local repository or project directory from the sidebar.
 
-4. **Choose Agent, Plan, or Goal**  
+4. **Choose Agent, Plan, or Goal**
    Start immediately, approve an implementation plan first, or define the outcome and let the agent choose the path.
 
-5. **Review the result**  
+5. **Review the result**
    Inspect edits in the Review panel, check command output, preview the application, and continue without leaving PI-Desktop.
 
 ---

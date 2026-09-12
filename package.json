@@ -32,11 +32,13 @@
     "docs:build": "pnpm --filter @pi-desktop/docs build",
     "docs:preview": "pnpm --filter @pi-desktop/docs preview",
     "docs:check": "pnpm --filter @pi-desktop/docs check:locales",
-    "lint": "pnpm -r --if-present lint",
+    "lint": "pnpm lint:biome && pnpm -r --if-present lint",
     "host:dev": "cargo run -p host-core",
-    "clean": "pnpm -r --if-present clean && cargo clean"
+    "clean": "pnpm -r --if-present clean && cargo clean",
+    "lint:biome": "biome lint"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.13",
     "@pi-desktop/plugin-devkit": "workspace:*"
   }
 }

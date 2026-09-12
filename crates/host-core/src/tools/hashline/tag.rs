@@ -207,10 +207,9 @@ mod tests {
     fn tag_is_four_uppercase_hex_and_stable() {
         let tag = tag_of_lf_text("hello\n");
         assert_eq!(tag.len(), 4);
-        assert!(
-            tag.bytes()
-                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_lowercase())
-        );
+        assert!(tag
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_lowercase()));
         assert_eq!(tag, tag_of_lf_text("hello\n"));
         assert_ne!(tag, tag_of_lf_text("hello"));
     }
