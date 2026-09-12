@@ -180,6 +180,11 @@ import { createSessionSlice } from "./slices/session-slice";
 import { createQueueSlice } from "./slices/queue-slice";
 import { createTranscriptSlice } from "./slices/transcript-slice";
 import { createProjectSlice } from "./slices/project-slice";
+import { createCatalogSlice } from "./slices/catalog-slice";
+import {
+  createCatalogRuntime,
+  type CatalogRuntime,
+} from "./runtime/catalog-runtime";
 export type {
   AgentTurnResult,
   DraftSessionConfiguration,
@@ -441,11 +446,6 @@ const toolStartsByCallId = new Map<
   }
 >();
 const TOOL_NAME_CACHE_LIMIT = 512;
-const providerModelLoads = new Map<string, Promise<void>>();
-const refreshedProviderModels = new Set<string>();
-let providerModelsGeneration = 0;
-let pluginRefreshInFlight: Promise<void> | null = null;
-
 function decorateSessions(
   sessions: SessionSummary[],
   meta: Record<string, SessionMeta>,
@@ -611,6 +611,7 @@ const runtimeStoreAccess: StoreAccess = {
   },
 };
 const sessionRuntime: SessionRuntime = createSessionRuntime(runtimeStoreAccess);
+const catalogRuntime: CatalogRuntime = createCatalogRuntime();
 const planResolutionRequests = new Map<string, Promise<PlanResolutionResult>>();
 const {
   pendingNewSessionRequests,
@@ -704,6 +705,15 @@ export const useAppStore = create<AppState>((set, get) => {
     removeProjectPath,
     upsertWorkspace,
     persistCurrentSidebar,
+  }),
+
+  ...createCatalogSlice({
+    get,
+    set,
+    catalogRuntime,
+    sessionRuntime,
+    decorateSessions,
+    withoutRecordKey,
   }),
 
   bootstrap: async () => {
@@ -892,231 +902,6 @@ export const useAppStore = create<AppState>((set, get) => {
         ...(recoveredSettings ? { settings: recoveredSettings } : {}),
         error: e instanceof Error ? e.message : String(e),
       });
-    }
-  },
-
-  refreshProviders: async () => {
-    const [providers, sessions, settings, onboarding] = await Promise.all([
-      api.listProviders(),
-      api.listSessions(),
-      api.getSettings(),
-      api.getOnboarding(),
-    ]);
-    providerModelsGeneration += 1;
-    refreshedProviderModels.clear();
-    set((state) => ({
-      providers: providers.providers,
-      // Provider edits may change discovery settings. The next load hydrates
-      // from SQLite first, then refreshes without presenting an empty menu.
-      providerModels: {},
-      sessions: decorateSessions(sessions.sessions, state.sessionMeta),
-      settings,
-      onboarding,
-    }));
-  },
-
-  loadProviderModels: async (providerId) => {
-    if (refreshedProviderModels.has(providerId)) return;
-    const generation = providerModelsGeneration;
-    const existing = providerModelLoads.get(providerId);
-    if (existing) {
-      await existing;
-      if (providerModelLoads.get(providerId) === existing) {
-        providerModelLoads.delete(providerId);
-      }
-      if (!refreshedProviderModels.has(providerId)) {
-        await get().loadProviderModels(providerId);
-      }
-      return;
-    }
-
-    const load = (async () => {
-      let hydrated = (get().providerModels[providerId]?.length ?? 0) > 0;
-      if (!hydrated) {
-        try {
-          const cached = await api.listProviderModels({ providerId, source: "cache" });
-          if (generation !== providerModelsGeneration) return;
-          hydrated = cached.models.length > 0;
-          set((state) => ({
-            providerModels: {
-              ...state.providerModels,
-              [providerId]: cached.models,
-            },
-          }));
-        } catch {
-          // Continue to live discovery when the local cache is unavailable.
-        }
-      }
-
-      try {
-        const refreshed = await api.listProviderModels({
-          providerId,
-          source: "refresh",
-        });
-        if (generation !== providerModelsGeneration) return;
-        // A catalog-derived list is still a usable answer for an endpoint that
-        // publishes no /models route, so it commits like a remote one.
-        if (
-          (refreshed.source === "remote" || refreshed.source === "catalog") &&
-          refreshed.models.length > 0
-        ) {
-          set((state) => ({
-            providerModels: {
-              ...state.providerModels,
-              [providerId]: refreshed.models,
-            },
-          }));
-        } else if (!hydrated && refreshed.models.length > 0) {
-          set((state) => ({
-            providerModels: {
-              ...state.providerModels,
-              [providerId]: refreshed.models,
-            },
-          }));
-        }
-      } catch {
-        // Keep the cached catalog; the menu already has a usable fallback.
-      } finally {
-        if (generation === providerModelsGeneration) {
-          refreshedProviderModels.add(providerId);
-        }
-      }
-    })();
-    providerModelLoads.set(providerId, load);
-    try {
-      await load;
-    } finally {
-      if (providerModelLoads.get(providerId) === load) {
-        providerModelLoads.delete(providerId);
-      }
-    }
-  },
-
-  refreshPlugins: async () => {
-    // Plugin crash/restart events can arrive in a burst. Share one host request
-    // across the app shell and the Extensions page so a transient event storm
-    // cannot consume every host RPC slot with identical list reads.
-    if (pluginRefreshInFlight) return pluginRefreshInFlight;
-    const load = (async () => {
-      const plugins = await api.listPlugins();
-      set({ plugins: plugins.plugins });
-    })();
-    pluginRefreshInFlight = load;
-    try {
-      await load;
-    } finally {
-      if (pluginRefreshInFlight === load) pluginRefreshInFlight = null;
-    }
-  },
-
-  refreshPluginThemes: async () => {
-    try {
-      set({ pluginThemes: await api.listPluginThemes() });
-    } catch {
-      // A missing channel (older main process) must not break the shell; the
-      // built-in themes keep working.
-      set({ pluginThemes: [] });
-    }
-  },
-
-  refreshPluginViews: async () => {
-    try {
-      set({ pluginViews: await api.listPluginViews() });
-    } catch {
-      // Same reasoning as themes: an older main process without the channel
-      // leaves the panel with its built-in tool only, rather than breaking it.
-      set({ pluginViews: [] });
-    }
-  },
-
-  refreshNotifications: async () => {
-    const result = await api.listNotifications({ limit: 200 });
-    set((state) => ({
-      notifications: result.notifications,
-      unreadNotificationCount: result.unreadCount,
-      sessionOutcomes: {
-        ...state.sessionOutcomes,
-        ...latestSessionOutcomes(result.notifications),
-      },
-    }));
-  },
-
-  receiveNotification: (notification) => {
-    set((state) => {
-      const withoutCurrent = state.notifications.filter(
-        (item) => item.id !== notification.id,
-      );
-      const notifications = [notification, ...withoutCurrent].slice(0, 200);
-      return {
-        notifications,
-        sessionOutcomes: {
-          ...state.sessionOutcomes,
-          [notification.sessionId]:
-            notification.kind === "task.failed" ? "failed" : "completed",
-        },
-        unreadNotificationCount: notifications.reduce(
-          (count, item) => count + (item.readAt ? 0 : 1),
-          0,
-        ),
-      };
-    });
-  },
-
-  markNotificationRead: async (id) => {
-    const item = get().notifications.find((notification) => notification.id === id);
-    if (!item || item.readAt) return;
-    await api.markNotificationRead(id);
-    const readAt = new Date().toISOString();
-    set((state) => ({
-      notifications: state.notifications.map((notification) =>
-        notification.id === id ? { ...notification, readAt } : notification,
-      ),
-      unreadNotificationCount: Math.max(0, state.unreadNotificationCount - 1),
-    }));
-  },
-
-  markAllNotificationsRead: async () => {
-    if (get().unreadNotificationCount === 0) return;
-    await api.markAllNotificationsRead();
-    const readAt = new Date().toISOString();
-    set((state) => ({
-      notifications: state.notifications.map((notification) =>
-        notification.readAt ? notification : { ...notification, readAt },
-      ),
-      unreadNotificationCount: 0,
-    }));
-  },
-
-  clearNotifications: async () => {
-    await api.clearNotifications();
-    set({ notifications: [], unreadNotificationCount: 0 });
-  },
-
-  openNotification: async (id) => {
-    const intent = beginNavigationIntent();
-    const notification = get().notifications.find((item) => item.id === id);
-    if (!notification) return;
-    await get().markNotificationRead(id);
-    if (!navigationIntentIsCurrent(intent)) return;
-    await get().selectSession(notification.sessionId, {
-      navigationIntent: intent,
-    });
-  },
-
-  acknowledgeSessionOutcome: async (sessionId) => {
-    // The sidebar check / cross flags an unseen result, so opening the
-    // conversation clears it. Reading the backing notifications keeps it
-    // cleared across a notification refresh or an app restart.
-    set((s) =>
-      s.sessionOutcomes[sessionId]
-        ? { sessionOutcomes: withoutRecordKey(s.sessionOutcomes, sessionId) }
-        : {},
-    );
-    const unread = get().notifications.filter(
-      (item) => item.sessionId === sessionId && !item.readAt,
-    );
-    for (const item of unread) {
-      await get().markNotificationRead(item.id);
     }
   },
 
