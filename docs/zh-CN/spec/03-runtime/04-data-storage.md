@@ -200,6 +200,7 @@ CREATE TABLE kv (
 | `ui` | 渲染器要求主机保留的非关键 UI 状态 |
 | `cache` | 模型刷新标记，最近的模型参考（规范 13 §3） |
 | `plugin:<id>` | 每个插件的设置；卸载=`DELETE WHERE ns = ?` |
+| `projectMemory` | 按规范项目路径键控的持久用户创作上下文；结构化值包含 `format: "entries-v1"`、视觉 `entries`、派生 `content` 与 `updatedAt` |
 
 新的配置域（例如 MCP 服务器）作为命名空间启动；他们毕业到
 仅当表需要关系或索引时才使用它们。
