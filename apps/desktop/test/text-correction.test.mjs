@@ -1,6 +1,9 @@
+import { readSettingsSource, readPluginsSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readComposerSource } from "./helpers/composer-source.mjs";
+import { readTranscriptSource } from "./helpers/transcript-source.mjs";
 
 const read = (rel) => readFile(new URL(rel, import.meta.url), "utf8");
 
@@ -27,17 +30,19 @@ test("shared Input/Textarea primitives default text correction off", async () =>
 
 test("primary editable surfaces disable browser text correction", async () => {
   const files = [
-    "../src/components/Composer.tsx",
-    "../src/components/ChatTranscript.tsx",
-    "../src/components/SearchDialog.tsx",
-    "../src/pages/SettingsPage.tsx",
-    "../src/pages/ProjectsPage.tsx",
-    "../src/pages/PluginsPage.tsx",
-    "../src/components/settings/ModelSelectionPanes.tsx",
+    ["../src/components/Composer.tsx", await readComposerSource()],
+    ["../src/components/ChatTranscript.tsx", await readTranscriptSource()],
+    ["../src/components/SearchDialog.tsx", await read("../src/components/SearchDialog.tsx")],
+    ["../src/pages/SettingsPage.tsx", await readSettingsSource()],
+    ["../src/pages/ProjectsPage.tsx", await read("../src/pages/ProjectsPage.tsx")],
+    ["../src/pages/PluginsPage.tsx", await readPluginsSource()],
+    [
+      "../src/components/settings/ModelSelectionPanes.tsx",
+      await read("../src/components/settings/ModelSelectionPanes.tsx"),
+    ],
   ];
 
-  for (const rel of files) {
-    const src = await read(rel);
+  for (const [rel, src] of files) {
     for (const token of NO_CORRECTION) {
       assert.ok(src.includes(token), `${rel} must include ${token}`);
     }

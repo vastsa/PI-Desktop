@@ -1,3 +1,8 @@
+import {
+  readStoreModuleSync,
+  readStoreSourceSync,
+  readComposerSourceSync,
+} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -8,16 +13,16 @@ const readDesktop = (relativePath) =>
 
 const [store, planState, approvalBar, composer, packageJson] =
   await Promise.all([
-    readDesktop("src/stores/app-store.ts"),
+    readStoreSourceSync(),
     readDesktop("src/lib/plan-mode-state.ts"),
     readDesktop("src/components/PlanApprovalBar.tsx"),
-    readDesktop("src/components/Composer.tsx"),
+    readComposerSourceSync(),
     readDesktop("package.json"),
   ]);
+const eventsSource = readStoreModuleSync("slices/events-slice.ts");
 
 test("rejection clears only the live gate and a later proposal replaces the checkpoint", () => {
-  const hostPlanBlock =
-    store.match(/handlePlansChanged: \(event\) =>[\s\S]*?\n  handleAgentEvent:/)?.[0] ?? "";
+  const hostPlanBlock = eventsSource.slice(eventsSource.indexOf("handlePlansChanged: (event) =>"));
   assert.match(hostPlanBlock, /mergePlanCheckpoint/);
   assert.match(hostPlanBlock, /planCheckpoints: checkpoint/);
   assert.match(hostPlanBlock, /const pendingPlans = activeProposal/);

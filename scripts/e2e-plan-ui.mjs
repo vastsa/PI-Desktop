@@ -3,16 +3,16 @@
 import { createServer } from "node:net";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { desktopPaths, repositoryRoot, resolveElectronBinary } from "./e2e/boot.mjs";
+import { resolveHostBinary } from "./e2e/host.mjs";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const root = join(__dirname, "..");
-const appDir = join(root, "apps", "desktop");
+const root = repositoryRoot();
+const { appDir } = desktopPaths(root);
 
 const REQUIRED_CASE_IDS = [
   "E2E-106-renderer",
@@ -117,48 +117,6 @@ function classifyExpectedDiagnostic(text, source) {
   if (!expectedDiagnostic(text)) return false;
   console.log(`EXPECTED ${source} provider-not-configured outcome - ${shortText(text)}`);
   return true;
-}
-
-function addCandidate(candidates, value) {
-  if (value && !candidates.includes(value)) candidates.push(value);
-}
-
-function resolveHostBinary() {
-  const candidates = [];
-  const configured = process.env.PI_DESKTOP_HOST_BIN?.trim();
-  if (configured) {
-    const absolute = resolve(configured);
-    addCandidate(candidates, absolute);
-    if (process.platform === "win32" && !absolute.toLowerCase().endsWith(".exe")) {
-      addCandidate(candidates, `${absolute}.exe`);
-    }
-  }
-
-  const binaryName = `pi-desktop-host-core${process.platform === "win32" ? ".exe" : ""}`;
-  addCandidate(candidates, join(root, "target", "debug", binaryName));
-  addCandidate(candidates, join(root, "..", "..", "..", "target", "debug", binaryName));
-
-  const binary = candidates.find((candidate) => existsSync(candidate));
-  if (!binary) {
-    throw new Error(`host binary missing; tried: ${candidates.join(", ")}`);
-  }
-  return resolve(binary);
-}
-
-function resolveElectronBinary() {
-  // Spawn the real executable, not the `.bin/electron` shim: the shim is a
-  // Node wrapper whose PID is not Electron main, so the probe identity check
-  // (electronMainPid === child.pid) would never hold. `path.txt` is written by
-  // electron's postinstall and names the platform executable.
-  const electronDir = join(appDir, "node_modules", "electron");
-  const pathFile = join(electronDir, "path.txt");
-  const binary = existsSync(pathFile)
-    ? join(electronDir, "dist", readFileSync(pathFile, "utf8").trim())
-    : process.platform === "win32"
-      ? join(electronDir, "dist", "electron.exe")
-      : join(electronDir, "dist", "electron");
-  assert(existsSync(binary), `Electron binary missing: ${binary}`);
-  return binary;
 }
 
 async function allocatePort() {
@@ -1685,7 +1643,7 @@ async function main() {
     workspace: null,
     artifactDir: null,
     hostBinary: resolveHostBinary(),
-    electronBinary: resolveElectronBinary(),
+    electronBinary: resolveElectronBinary(root).electronBinary,
     cdpPort: await allocatePort(),
     inspectorPort: await allocatePort(),
     electron: null,

@@ -1,3 +1,7 @@
+import {
+  readMainModuleSync,
+  readMainSourceSync,
+} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
@@ -9,7 +13,12 @@ const desktopRoot = join(here, "..");
 
 const watcherSrc = readFileSync(join(desktopRoot, "electron/main/plugin-watcher.ts"), "utf8");
 const runtimeSrc = readFileSync(join(desktopRoot, "electron/main/plugin-runtime.ts"), "utf8");
-const mainSrc = readFileSync(join(desktopRoot, "electron/main/index.ts"), "utf8");
+const mainSrc = readMainSourceSync();
+const pluginIpcSrc = readMainModuleSync("ipc/plugin-ipc.ts");
+const sidecarSrc = readMainModuleSync("runtime/sidecar.ts");
+const lifecycleSrc = readMainModuleSync("runtime/lifecycle.ts");
+const shutdownSrc = readMainModuleSync("bootstrap/shutdown.ts");
+const pluginServicesSrc = readMainModuleSync("services/plugin-services.ts");
 
 function slice(source, from, to) {
   const start = source.indexOf(from);
@@ -88,11 +97,11 @@ test("a broken plugin stays watched so the next save can fix it", () => {
 
 test("every path that loads a dev plugin arms the watcher", () => {
   // Folder picker, template scaffold, agent tool, startup restore, re-enable.
-  assert.match(mainSrc, /if \(loaded\.plugin\?\.id\) plugins\.watchDevPlugin\(loaded\.plugin\.id\)/);
-  assert.match(mainSrc, /plugins\.watchDevPlugin\(created\.id\)/);
-  assert.match(mainSrc, /plugins\.watchDevPlugin\(manifest\.id\)/);
-  assert.match(mainSrc, /if \(p\.source === "dev"\) plugins\.watchDevPlugin\(p\.id\)/);
-  assert.match(mainSrc, /if \(res\.plugin\.source === "dev"\) plugins\.watchDevPlugin\(id\)/);
+  assert.match(pluginIpcSrc, /if \(loaded\.plugin\?\.id\) plugins\.watchDevPlugin\(loaded\.plugin\.id\)/);
+  assert.match(pluginIpcSrc, /plugins\.watchDevPlugin\(created\.id\)/);
+  assert.match(sidecarSrc, /plugins\.watchDevPlugin\(manifest\.id\)/);
+  assert.match(lifecycleSrc, /if \(plugin\.source === "dev"\) plugins\.watchDevPlugin\(plugin\.id\)/);
+  assert.match(pluginIpcSrc, /if \(res\.plugin\.source === "dev"\) plugins\.watchDevPlugin\(id\)/);
 });
 
 test("manual reload uses the registry path and refreshes the dev permission ceiling", () => {
@@ -108,16 +117,14 @@ test("manual reload uses the registry path and refreshes the dev permission ceil
 });
 
 test("watchers are released on teardown and reloads reach the renderer", () => {
-  const quitStart = mainSrc.indexOf('app.on("before-quit"');
-  const quitEnd = mainSrc.indexOf('app.on("activate"', quitStart);
-  assert.ok(quitStart >= 0 && quitEnd > quitStart, "before-quit handler missing");
-  const quit = mainSrc.slice(quitStart, quitEnd);
   // Quit tears the whole plugin subsystem down; watch disposal rides along
   // inside it rather than being called on its own.
-  assert.match(quit, /plugins\.disposeAll\(\)/);
+  assert.match(shutdownSrc, /plugins\.disposeAll\(\)/);
   const disposeAll = slice(runtimeSrc, "async disposeAll(", "\n  }");
   assert.match(disposeAll, /this\.disposeWatchers\(\)/);
-  const reported = slice(mainSrc, "onPluginReloaded:", "\n  },");
+  const reported = pluginServicesSrc.slice(
+    pluginServicesSrc.indexOf("onPluginReloaded:"),
+  );
   assert.match(reported, /IPC\.event\.toast/);
   assert.match(reported, /IPC\.event\.pluginChanged,\s*\{ reason: "reload", pluginId \}/);
   assert.match(reported, /Reload failed/);

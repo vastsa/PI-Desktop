@@ -1,11 +1,10 @@
+import { readStoreSource, readStoreModule } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const storeSource = await readFile(
-  new URL("../src/stores/app-store.ts", import.meta.url),
-  "utf8",
-);
+const storeSource = await readStoreSource();
+const projectSliceSource = await readStoreModule("slices/project-slice.ts");
 const sidebarSource = await readFile(
   new URL("../src/components/Sidebar.tsx", import.meta.url),
   "utf8",
@@ -30,8 +29,8 @@ test("project activation separates visible transcript state from background run 
 });
 
 test("sidebar hover refreshes the active project branch without activating a project", () => {
-  const refreshBlock = storeSource.match(
-    /refreshProject: async[\s\S]*?\n  openProjectPath:/,
+  const refreshBlock = projectSliceSource.match(
+    /refreshProject: async[\s\S]*?\n    openProjectPath:/,
   )?.[0] ?? "";
   assert.match(refreshBlock, /api\.getProject\(\)/);
   assert.match(refreshBlock, /normalizeProjectPath\(workspace\.path\) !== requestedKey/);

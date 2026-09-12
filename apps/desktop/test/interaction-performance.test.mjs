@@ -1,3 +1,10 @@
+import {
+  readAppSource,
+  readStoreSource,
+  readTranscriptModule,
+  readTranscriptSource,
+  readComposerSource,
+} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -5,16 +12,19 @@ import { loadStyles } from "./helpers/styles.mjs";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-const [app, chatSurface, pane, transcript, minimap, composer, styles, store] =
+const [app, appShell, chatSurface, pane, transcript, toolRow, transcriptShared, minimap, composer, styles, store] =
   await Promise.all([
-    read("../src/App.tsx"),
+    readAppSource(),
+    read("../src/features/app/AppShell.tsx"),
     read("../src/components/ChatSurface.tsx"),
     read("../src/components/SessionPane.tsx"),
-    read("../src/components/ChatTranscript.tsx"),
+    readTranscriptSource(),
+    readTranscriptModule("ToolRow.tsx"),
+    readTranscriptModule("shared.tsx"),
     read("../src/components/ConversationMinimap.tsx"),
-    read("../src/components/Composer.tsx"),
+    readComposerSource(),
     loadStyles(),
-    read("../src/stores/app-store.ts"),
+    readStoreSource(),
   ]);
 
 test("streaming state stays inside the chat render boundary", () => {
@@ -32,10 +42,10 @@ test("chat configuration errors still navigate to agent settings", () => {
 });
 
 test("secondary destinations stay outside the initial shell bundle", () => {
-  assert.match(app, /const SettingsPage = lazy/);
-  assert.match(app, /import\("\.\/pages\/SettingsPage"\)/);
-  assert.match(app, /import\("\.\/pages\/PluginsPage"\)/);
-  assert.match(app, /<Suspense fallback=\{<RoutePending \/>\}>/);
+  assert.match(appShell, /const SettingsPage = lazy/);
+  assert.match(appShell, /import\("\.\.\/\.\.\/pages\/SettingsPage"\)/);
+  assert.match(appShell, /import\("\.\.\/\.\.\/pages\/PluginsPage"\)/);
+  assert.match(appShell, /<Suspense fallback=\{<RoutePending \/>\}>/);
 });
 
 test("bootstrap cannot replay navigation after destination state changes", () => {
@@ -108,14 +118,14 @@ test("stream event bursts are coalesced until a paint or terminal event", () => 
 });
 
 test("tool errors stay local to their rows instead of failing the activity group", () => {
-  assert.doesNotMatch(transcript, /const hasFailure = items\.some/);
-  assert.doesNotMatch(transcript, /processingFailedAfter/);
-  assert.doesNotMatch(transcript, /tool-activity-group[\s\S]*?failed/);
+  assert.doesNotMatch(toolRow, /const hasFailure = items\.some/);
+  assert.doesNotMatch(toolRow, /processingFailedAfter/);
+  assert.doesNotMatch(toolRow, /tool-activity-group[\s\S]*?failed/);
   // Failures remain visible in the row header, but their payload stays
   // collapsed until the user opens it.
-  assert.match(transcript, /const disclosure = useAutomaticDisclosure\(false\)/);
-  assert.match(transcript, /if \(userInteractedRef\.current\) return/);
-  assert.match(transcript, /status === "error"\s*\? t\("chat\.toolFailed"\)/);
+  assert.match(toolRow, /const disclosure = useAutomaticDisclosure\(false\)/);
+  assert.match(`${toolRow}\n${transcriptShared}`, /if \(userInteractedRef\.current\) return/);
+  assert.match(toolRow, /status === "error"\s*\? t\("chat\.toolFailed"\)/);
 });
 
 test("manual upward scrolling cancels pending transcript follow work", () => {

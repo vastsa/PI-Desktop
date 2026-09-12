@@ -1,3 +1,4 @@
+import { readTranscriptSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { register } from "node:module";
@@ -21,7 +22,7 @@ const { buildTranscriptEntries, transcriptEntryMessages } = await import(
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
 const [transcript, minimap, surface] = await Promise.all([
-  read("../src/components/ChatTranscript.tsx"),
+  readTranscriptSource(),
   read("../src/components/ConversationMinimap.tsx"),
   read("../src/components/ChatSurface.tsx"),
 ]);

@@ -1,3 +1,4 @@
+import { readMainModule } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { setImmediate } from "node:timers/promises";
@@ -9,7 +10,7 @@ import { createAgentHostBridge } from "../electron/main/agent-host-bridge.ts";
 
 // Exercise the actual desktop finalizer with the real bridge and Agent Host,
 // without booting Electron or making a provider request.
-const main = await readFile(new URL("../electron/main/index.ts", import.meta.url), "utf8");
+const main = await readMainModule("runtime/plans.ts");
 const start = main.indexOf("function finishTurn(");
 const end = main.indexOf("async function finishApprovedExecution(", start);
 assert.ok(start >= 0 && end > start);
@@ -43,6 +44,7 @@ function fixture() {
     logger: { app() {} },
     setTimeout: () => ({ unref() {} }),
     quitting: false,
+    isQuitting: () => context.quitting,
   };
   const host = {
     async call(method, params) {
@@ -80,7 +82,11 @@ function fixture() {
       return { accepted: true, turnId };
     },
   });
-  Object.assign(context, { host, agentHostBridge: bridge });
+  Object.assign(context, {
+    host,
+    agentHostBridge: bridge,
+    runtimeState: { host, agentHostBridge: bridge },
+  });
   const finishTurn = runInNewContext(`${finalizer}\nfinishTurn;`, context);
   bridge.ingest({ sessionId: "s1", turnId: "initial", ts: Date.now(), event: { type: "agent_start" } });
 

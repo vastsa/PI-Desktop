@@ -1,3 +1,4 @@
+import { readComposerSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -9,7 +10,7 @@ import {
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
 const [composer, api, preload, styles] = await Promise.all([
-  read("../src/components/Composer.tsx"),
+  readComposerSource(),
   read("../src/lib/api.ts"),
   read("../electron/preload/index.ts"),
   read("../src/styles/composer.css"),

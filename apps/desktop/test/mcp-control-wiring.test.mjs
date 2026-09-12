@@ -1,3 +1,8 @@
+import {
+  readAppSourceSync,
+  readMainModuleSync,
+  readMainSourceSync,
+} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
@@ -15,8 +20,13 @@ const {
   createMcpControlOperations,
 } = await import("../electron/main/mcp-control.ts");
 
-const main = readFileSync(join(desktopRoot, "electron/main/index.ts"), "utf8");
-const app = readFileSync(join(desktopRoot, "src/App.tsx"), "utf8");
+const main = readMainSourceSync();
+const startup = readMainModuleSync("bootstrap/startup.ts");
+const shutdown = readMainModuleSync("bootstrap/shutdown.ts");
+const pluginIpc = readMainModuleSync("ipc/plugin-ipc.ts");
+const workspaceIpc = readMainModuleSync("ipc/workspace-ipc.ts");
+const extensionIpc = readMainModuleSync("agent-extensions-ipc.ts");
+const app = readAppSourceSync();
 const api = readFileSync(join(desktopRoot, "src/lib/api.ts"), "utf8");
 const protocol = readFileSync(
   join(desktopRoot, "../../packages/shared/src/protocol.ts"),
@@ -29,13 +39,13 @@ function ipcInvokeKeys(source) {
 }
 
 test("the optional MCP control server reuses IPC and synchronizes renderer state", () => {
-  assert.match(main, /const invokeIpc = registerIpc\(\)/);
-  assert.match(main, /process\.env\.PI_DESKTOP_MCP_CONTROL === "1"/);
-  assert.match(main, /channels: IPC\.invoke/);
-  assert.match(main, /version: APP_VERSION/);
-  assert.match(main, /mcpControlRendererEvent/);
-  assert.match(main, /process\.env\.PI_DESKTOP_MCP_PORT/);
-  assert.match(main, /mcpControl\?\.stop\(\)/);
+  assert.match(startup, /const invokeIpc = registerIpc\(\)/);
+  assert.match(startup, /process\.env\.PI_DESKTOP_MCP_CONTROL === "1"/);
+  assert.match(startup, /channels: IPC\.invoke/);
+  assert.match(startup, /version: APP_VERSION/);
+  assert.match(startup, /mcpControlRendererEvent/);
+  assert.match(startup, /process\.env\.PI_DESKTOP_MCP_PORT/);
+  assert.match(shutdown, /getMcpControl\(\)\?\.stop\(\)/);
   assert.match(api, /projectPath\?: string \| null/);
   assert.match(api, /selectSessionId\?: string/);
   assert.match(app, /event\.projectPath/);
@@ -46,12 +56,14 @@ test("the optional MCP control server reuses IPC and synchronizes renderer state
 test("native picker handlers and secret-write channels stay out of the MCP catalog", () => {
   const pickerKeys = [];
   const handlePattern = /handle(?:WithEvent)?\(\s*IPC\.invoke\.([A-Za-z0-9_]+)/g;
-  const starts = [...main.matchAll(handlePattern)];
-  for (let index = 0; index < starts.length; index += 1) {
-    const from = starts[index].index ?? 0;
-    const to = index + 1 < starts.length ? (starts[index + 1].index ?? main.length) : main.length;
-    const block = main.slice(from, to);
-    if (block.includes("showOpenDialog")) pickerKeys.push(starts[index][1]);
+  for (const source of [pluginIpc, workspaceIpc, extensionIpc]) {
+    const starts = [...source.matchAll(handlePattern)];
+    for (let index = 0; index < starts.length; index += 1) {
+      const from = starts[index].index ?? 0;
+      const to = index + 1 < starts.length ? (starts[index + 1].index ?? source.length) : source.length;
+      const block = source.slice(from, to);
+      if (block.includes("showOpenDialog")) pickerKeys.push(starts[index][1]);
+    }
   }
   assert.ok(pickerKeys.includes("pluginLoadDev"));
   assert.ok(pickerKeys.includes("projectOpen"));

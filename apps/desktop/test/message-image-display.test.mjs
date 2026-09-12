@@ -1,3 +1,4 @@
+import { readTranscriptSource, readMainSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -5,10 +6,10 @@ import test from "node:test";
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
 const [transcript, markdown, api, main, panel, protocol, hook] = await Promise.all([
-  read("../src/components/ChatTranscript.tsx"),
+  readTranscriptSource(),
   read("../src/components/Markdown.tsx"),
   read("../src/lib/api.ts"),
-  read("../electron/main/index.ts"),
+  readMainSource(),
   read("../electron/main/fs-panel.ts"),
   read("../../../packages/shared/src/protocol.ts"),
   read("../src/lib/use-referenced-image-data-url.ts"),

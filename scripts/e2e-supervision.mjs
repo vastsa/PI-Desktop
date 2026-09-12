@@ -5,18 +5,16 @@
  * supervisor restarts it and RPCs recover (SUPERVISION_PROBE line).
  */
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync, existsSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { rmSync, existsSync } from "node:fs";
+import { join } from "node:path";
+import {
+  createTempDataDir,
+  repositoryRoot,
+  resolveElectronBinary,
+} from "./e2e/boot.mjs";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const root = join(__dirname, "..");
-const appDir = join(root, "apps/desktop");
-const electronBin =
-  process.platform === "win32"
-    ? join(appDir, "node_modules/electron/dist/electron.exe")
-    : join(appDir, "node_modules/.bin/electron");
+const root = repositoryRoot();
+const { appDir, electronBinary: electronBin } = resolveElectronBinary(root);
 
 if (!existsSync(join(appDir, "out/main/index.js"))) {
   console.error("desktop app not built. Run: pnpm --filter @pi-desktop/desktop build");
@@ -27,7 +25,7 @@ if (!existsSync(electronBin)) {
   process.exit(1);
 }
 
-const dataDir = mkdtempSync(join(tmpdir(), "pi-desktop-sup-"));
+const dataDir = createTempDataDir("pi-desktop-sup-");
 const child = spawn(electronBin, ["."], {
   cwd: appDir,
   env: {

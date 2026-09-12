@@ -1,3 +1,4 @@
+import { readTranscriptSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -17,10 +18,7 @@ const mermaidSource = await readFile(
   new URL("../src/lib/mermaid.ts", import.meta.url),
   "utf8",
 );
-const transcriptSource = await readFile(
-  new URL("../src/components/ChatTranscript.tsx", import.meta.url),
-  "utf8",
-);
+const transcriptSource = await readTranscriptSource();
 const stylesSource = await loadStyles();
 
 test("closed fence detection waits for the complete streamed block", () => {

@@ -1,3 +1,7 @@
+import {
+  readStoreModuleSync,
+  readMainSourceSync,
+} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
@@ -63,16 +67,15 @@ test("prioritizes in-progress and selected states over terminal outcomes", () =>
 });
 
 test("opening a conversation acknowledges its outcome badge", () => {
-  const store = fs.readFileSync(
-    new URL("../src/stores/app-store.ts", import.meta.url),
-    "utf8",
-  );
-  const selectBlock = store.match(/selectSession: async[\s\S]*?\n  newSession:/)?.[0] ?? "";
+  const sessionSource = readStoreModuleSync("slices/session-slice.ts");
+  const catalogSource = readStoreModuleSync("slices/catalog-slice.ts");
+  const selectBlock = sessionSource.match(/selectSession: async[\s\S]*?\n    newSession:/)?.[0] ?? "";
   assert.match(selectBlock, /acknowledgeSessionOutcome\(id\)/);
 
-  const ackBlock =
-    store.match(/acknowledgeSessionOutcome: async[\s\S]*?\n  handleAgentEvent:/)?.[0] ?? "";
-  assert.match(ackBlock, /withoutRecordKey\(s\.sessionOutcomes, sessionId\)/);
+  const ackBlock = catalogSource.slice(
+    catalogSource.indexOf("acknowledgeSessionOutcome: async"),
+  );
+  assert.match(ackBlock, /withoutRecordKey\(state\.sessionOutcomes, sessionId\)/);
   assert.match(ackBlock, /markNotificationRead\(item\.id\)/);
 });
 
@@ -88,10 +91,7 @@ test("renders semantic, shape-distinct sidebar status indicators", () => {
     new URL("../src/capture/capture-rig.ts", import.meta.url),
     "utf8",
   );
-  const main = fs.readFileSync(
-    new URL("../electron/main/index.ts", import.meta.url),
-    "utf8",
-  );
+  const main = readMainSourceSync();
 
   assert.match(sidebar, /sessionSelected[\s\S]*sessionCompleted[\s\S]*sessionFailed/);
   assert.match(sidebar, /IconCheck[\s\S]*IconCircleAlert/);

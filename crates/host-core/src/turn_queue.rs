@@ -86,7 +86,10 @@ pub fn push(db: &Database, input: QueuedTurnInput) -> Result<QueuedTurn> {
             .prepare_cached(&format!(
                 "{SELECT} WHERE session_id = ?1 AND principal = ?2 AND idempotency_key = ?3"
             ))?
-            .query_row(params![input.session_id, input.principal, key], row_to_entry)
+            .query_row(
+                params![input.session_id, input.principal, key],
+                row_to_entry,
+            )
             .optional()?;
         if let Some(existing) = existing {
             if existing.input_hash == input.input_hash {
@@ -245,7 +248,13 @@ mod tests {
         assert_eq!(second.position, 2);
         assert!(!first.created_at.is_empty());
         let listed = list(&db, Some(&session_id)).unwrap();
-        assert_eq!(listed.iter().map(|e| e.content.as_str()).collect::<Vec<_>>(), ["one", "two"]);
+        assert_eq!(
+            listed
+                .iter()
+                .map(|e| e.content.as_str())
+                .collect::<Vec<_>>(),
+            ["one", "two"]
+        );
         assert!(remove(&db, &first.id).unwrap());
         assert!(!remove(&db, &first.id).unwrap());
         assert_eq!(list(&db, None).unwrap().len(), 1);
@@ -277,7 +286,10 @@ mod tests {
         chosen.attachments = Some(serde_json::json!([{ "name": "a.txt" }]));
         let entry = push(&db, chosen).unwrap();
         assert_eq!(entry.id, "turn_client_1");
-        assert_eq!(list(&db, Some(&session_id)).unwrap()[0].attachments, entry.attachments);
+        assert_eq!(
+            list(&db, Some(&session_id)).unwrap()[0].attachments,
+            entry.attachments
+        );
     }
 
     #[test]

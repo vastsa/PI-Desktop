@@ -21,10 +21,10 @@ use crate::review;
 use crate::scheduled;
 use crate::scratch;
 use crate::sessions::{self, UiMessage};
-use crate::turn_queue;
 use crate::state::{AppState, HOST_VERSION, PROTOCOL_VERSION};
 use crate::tools::{self, ToolsExecuteParams};
 use crate::transcripts::CompactionRecord;
+use crate::turn_queue;
 use crate::workspace;
 
 #[derive(Debug, Deserialize)]
@@ -145,7 +145,6 @@ fn peek_jsonrpc_id(prefix: &str) -> Value {
 
 const STDOUT_WRITER_SHUTDOWN: Duration = Duration::from_secs(5);
 
-
 /// Tokio's stdio adapter delegates every read/write to the blocking pool. If
 /// the OS temporarily refuses another worker thread, Tokio panics instead of
 /// returning an error. The host's control pipe must not share that failure
@@ -187,9 +186,7 @@ fn spawn_stdin_reader(tx: mpsc::UnboundedSender<StdinEvent>) -> io::Result<threa
                                     Ok(0) => break,
                                     Ok(n) if discard[..n].contains(&b'\n') => break,
                                     Ok(_) => {}
-                                    Err(error)
-                                        if error.kind() == io::ErrorKind::Interrupted =>
-                                    {
+                                    Err(error) if error.kind() == io::ErrorKind::Interrupted => {
                                         continue;
                                     }
                                     Err(error) if is_transient_io_error(&error) => {
@@ -1778,24 +1775,19 @@ async fn handle_request(
                 .filter(|id| !id.is_empty());
             let truncate_before = params.get("truncateBefore").and_then(|v| v.as_i64());
             let st = state.lock().await;
-            let truncated = sessions::truncate_from(
-                &st.db,
-                session_id,
-                from_message_id,
-                truncate_before,
-            )
-            .map_err(|e| {
-                let message = e.to_string();
-                if message.starts_with("NOT_FOUND") {
-                    rpc_err(1007, message, "NOT_FOUND")
-                } else if message.starts_with("INVALID_PARAMS") {
-                    rpc_err(1002, message, "INVALID_PARAMS")
-                } else {
-                    rpc_err(1000, message, "INTERNAL")
-                }
-            })?;
-            serde_json::to_value(truncated)
-                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))
+            let truncated =
+                sessions::truncate_from(&st.db, session_id, from_message_id, truncate_before)
+                    .map_err(|e| {
+                        let message = e.to_string();
+                        if message.starts_with("NOT_FOUND") {
+                            rpc_err(1007, message, "NOT_FOUND")
+                        } else if message.starts_with("INVALID_PARAMS") {
+                            rpc_err(1002, message, "INVALID_PARAMS")
+                        } else {
+                            rpc_err(1000, message, "INTERNAL")
+                        }
+                    })?;
+            serde_json::to_value(truncated).map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))
         }
 
         "session.saveRevision" => {
@@ -1946,7 +1938,11 @@ async fn handle_request(
                 .ok_or_else(|| rpc_err(1002, "pluginId required", "INVALID_PARAMS"))?;
             let mut st = state.lock().await;
             if !st.allow_plugin_import(plugin_id, true) {
-                return Err(rpc_err(1006, "plugin batch import rate exceeded", "RATE_LIMITED"));
+                return Err(rpc_err(
+                    1006,
+                    "plugin batch import rate exceeded",
+                    "RATE_LIMITED",
+                ));
             }
             let result = plugin_sessions::import_batch(&st.db, plugin_id, &params)
                 .map_err(plugin_session_rpc_err)?;
@@ -3107,7 +3103,14 @@ async fn handle_request(
                 let mut result = if tools::is_desktop_dispatched(&p.tool_name) {
                     // Plugin dispatch keeps its existing bounded default timeout;
                     // command-shell timeout semantics apply only to Bash.
-                    execute_plugin_tool(&state, &tx, &p, p.timeout_ms.unwrap_or(60_000), &durable_mode).await
+                    execute_plugin_tool(
+                        &state,
+                        &tx,
+                        &p,
+                        p.timeout_ms.unwrap_or(60_000),
+                        &durable_mode,
+                    )
+                    .await
                 } else {
                     tools::execute_tool_with_path_access(
                         ws_path.as_deref(),
@@ -5987,7 +5990,6 @@ mod tests {
         .unwrap_err();
         assert_eq!(missing.data.unwrap()["errorCode"], "NOT_FOUND");
     }
-
 
     /// D137: the audit row for a tool call must carry the three segments
     /// separately, so "the tool was slow" can be told apart from "the user
