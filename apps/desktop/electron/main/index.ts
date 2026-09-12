@@ -5,23 +5,12 @@ import {
   globalShortcut,
   ipcMain,
   Menu,
-  nativeImage,
   nativeTheme,
   screen,
-  shell,
   Tray,
-  type IpcMainInvokeEvent,
 } from "electron";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { execFileSync } from "node:child_process";
+import { join } from "node:path";
 import { homedir } from "node:os";
-import {
-  existsSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
-import { readFile } from "node:fs/promises";
-import { cloneGitRepository } from "./git-clone";
 import {
   applyNetworkProxyFromAppSettings,
   currentNetworkProxy,
@@ -31,103 +20,33 @@ import {
   APP_ID,
   APP_NAME,
   APP_VERSION,
-  APP_MENU_COMMANDS,
-  defaultCommandShellForPlatform,
   ErrorCodes as SharedErrorCodes,
   IPC,
   IPC_WHITELIST,
   KEYBOARD_SHORTCUTS,
   keybindingToElectronAccelerator,
   resolveKeybinding,
-  isCommandShellCatalog,
-  isCommandShellId,
-  isGlobalPermissionMode,
-  NATIVE_MENU_ACTIONS,
-  PROTOCOL_VERSION,
-  THINKING_LEVELS,
-  WINDOW_CONTROL_ACTIONS,
   err,
   isActiveInProject,
-  modelIdsMatch,
   ok,
-  parseMcpImport,
   type ActivationScope,
-  type AgentCapabilityQuery,
-  type PluginViewMeta,
-  type BrowserState,
-  normalizeMode,
   type AgentEventEnvelope,
-  type AgentPromptRequest,
-  type PromptEnhancementRequest,
-  type SessionSummarizeTitleRequest,
-  type AgentStopRequest,
-  type AskToolResolution,
   type AppMenuCommand,
-  type AppNotification,
   type CloseBehavior,
-  type CommandShellCatalog,
-  type CommandShellId,
-  type ComposerCommand,
-  type GlobalPermissionMode,
   type KeybindingOverrides,
-  type McpServerInput,
-  type McpServerRecord,
-  type McpServerStatus,
-  type ModelBinding,
-  type Mode,
-  type NativeMenuAction,
-  type OAuthRespondInput,
-  type PlanExecution,
-  type PlanExecutionFinishStatus,
-  type PlanResolutionResult,
-  type PlanResolveRequest,
   type Result,
-  type Risk,
   type ShortcutPlatform,
-  type ThinkingLevel,
-  type UiMessage,
   type MessageUsage,
+  type PlanExecutionFinishStatus,
   addUsage,
-  type UserSkillRecord,
-  type UserSubagentRecord,
-  type WindowControlAction,
-  validateNetworkProxy,
-  trustedExtensionCommandId,
-  trustedExtensionCommandName,
 } from "@pi-desktop/shared";
 import {
-  capabilitiesFromModelConfig,
-  clampThinkingLevel,
   genericModelConfig,
-  modelConfigWithBinding,
-  visionFromModelConfig,
-  expandSlashInvocation,
-  enhancePromptDraft,
   summarizeSessionTitle,
-  completeOneShot,
-  loadComposerTemplates,
-  loadInstructionChain,
-  loadSubagentDefinitions,
-  resolveSubagentProviders,
-  mergeProviderHeaders,
-  optionalProviderHeaders,
-  type ComposerTemplate,
-  type ThinkingCapabilities,
-  type RuntimeProviderConfig,
-  type UserSubagentDocument,
 } from "@pi-desktop/agent-runtime";
 import { AgentExtensionBridge } from "./agent-extensions";
 import { registerAgentExtensionIpc } from "./agent-extensions-ipc";
 import { isTemplateName, scaffold } from "@pi-desktop/plugin-devkit";
-import type { PluginCompleteResult } from "@pi-desktop/plugin-sdk";
-import { resolvePluginLocalizedString } from "@pi-desktop/plugin-sdk";
-import {
-  asPluginThinkingLevel,
-  listReadyPluginModels,
-  parsePluginModelKey,
-  pluginCompleteContext,
-  pluginSessionContextFromSession,
-} from "./plugin-agent-complete";
 
 import { HostProcess } from "./host-process";
 import {
@@ -137,59 +56,18 @@ import {
 import { PersistenceOutbox } from "./persistence-outbox";
 import { InflightCheckpointer } from "./inflight-checkpoint";
 import { AgentSidecar } from "./agent-sidecar";
-import { PluginRuntime, resolveInsidePlugin as resolveInsidePluginRoot } from "./plugin-runtime";
-import { createFsConsentService } from "./plugin-fs-consent";
-import { createDesktopConsentService } from "./plugin-desktop-consent";
-import { UserMcpRuntime } from "./user-mcp";
-import {
-  MCP_CALL_TIMEOUT_MS,
-  MCP_CONNECT_TIMEOUT_MS,
-  McpServerClient,
-} from "./plugin-mcp";
-import { builtinSkills, loadBuiltinSkillBody } from "./builtin-skills";
-import { registerPluginDevTools } from "./plugin-dev-tools";
-import { PluginPanelHost } from "./plugin-panel-host";
-import { PluginViewHost, pluginViewKey } from "./plugin-view-host";
-import type { PluginAppearance } from "../shared/plugin-panel-chrome";
 import { Logger, ignoreBrokenStdio } from "./logger";
 import {
   isDbSchemaTooNewError,
 } from "./host-boot-diagnostics";
-import { collectWorkspaceDiff } from "./git-diff";
-import { BrowserPane, resolveLocalFile } from "./browser-view";
-import {
-  BrowserHost,
-  BROWSER_PLUGIN_ID,
-  BROWSER_VIEW_ID,
-} from "./browser-host";
-import { discoverProviderModels } from "./model-discovery";
 import {
   ModelsDevCatalog,
   modelConfigFromModelsDev,
-  modelInfoFromModelsDev,
 } from "./models-dev-catalog";
-import { OAUTH_AUTH_KIND, VendorOAuth } from "./oauth";
-import {
-  isAttachmentBlobRef,
-  listDir,
-  readOpenableFile,
-  readOpenableImage,
-  resolveOpenablePath,
-  resolveRealOpenablePath,
-} from "./fs-panel";
-import { getWorkspaceFileIndex } from "./fs-index";
-import {
-  importComposerFiles,
-  saveComposerPasteFiles,
-} from "./composer-paste";
-import {
-  consumeComposerPickerSelection,
-  rememberComposerPickerSelection,
-} from "./composer-picker";
-import { builtinComposerCommands, builtinPaletteItems } from "./builtin-commands";
-import { installApplicationMenu } from "./application-menu";
+import { VendorOAuth } from "./oauth";
 import { AppUpdaterController } from "./updater";
 import { catalogs, resolveLocale } from "@pi-desktop/i18n";
+import { installApplicationMenu } from "./application-menu";
 import {
   baseWindowBounds,
   clampBoundsOriginToWorkArea,
@@ -232,7 +110,6 @@ import {
   mcpControlRendererEvent,
 } from "./mcp-control";
 import { createAgentHostBridge, type AgentHostBridge } from "./agent-host-bridge";
-import type { AgentQueuePushRequest } from "@pi-desktop/shared";
 import { registerAppIpc } from "./ipc/app-ipc";
 import { registerNotificationIpc } from "./ipc/notification-ipc";
 import { registerSessionIpc } from "./ipc/session-ipc";
@@ -251,9 +128,7 @@ import { registerScheduledIpc } from "./ipc/scheduled-ipc";
 import { registerAgentIpc } from "./ipc/agent-ipc";
 import { registerIpcHandlers } from "./ipc/register";
 import {
-  createWindow as createWindowInBootstrap,
   type WindowLifecycleState,
-  type WindowMenuRendererReadyGate,
 } from "./bootstrap/window";
 import type { RuntimeState } from "./runtime/context";
 import { createHostRuntime } from "./runtime/host";
@@ -263,18 +138,21 @@ import { createPlanRuntime, type PlanRuntimeState } from "./runtime/plans";
 import { createRuntimeLifecycle } from "./runtime/lifecycle";
 import {
   createProviderCatalogRuntime,
-  type RuntimeProvider,
 } from "./runtime/provider-catalog";
 import { createSessionLaunchRuntime } from "./runtime/session-launch";
 import { createDesktopServices } from "./services/desktop-services";
 import { createPluginServices } from "./services/plugin-services";
+import {
+  createApplicationLifecycle,
+  type ApplicationAppearanceState,
+  type ApplicationLifecycleState,
+} from "./bootstrap/app-lifecycle";
 import { registerDiagnosticsIpc } from "./ipc/diagnostics-ipc";
 import { registerMarketIpc } from "./ipc/market-ipc";
 import { registerMcpIpc } from "./ipc/mcp-ipc";
 import { registerPluginIpc } from "./ipc/plugin-ipc";
 import { registerPluginUiIpc } from "./ipc/plugin-ui-ipc";
 import { registerSkillsIpc } from "./ipc/skills-ipc";
-import type { IpcRegistrar } from "./ipc/types";
 
 // The shared error-code union is reconciled in the shared lane. Keep desktop
 // source type-safe while that lane is temporarily staged at main.
@@ -571,6 +449,8 @@ const runtimeState: RuntimeState = {
   },
 };
 
+let applicationLifecycle: ReturnType<typeof createApplicationLifecycle> | null = null;
+
 const desktopServices = createDesktopServices({
   getLogger: () => logger,
 });
@@ -697,7 +577,12 @@ const pluginServices = createPluginServices({
   showPluginNativeNotification,
   getUpdaterLocale: () => updaterLocale,
   getPluginPanelTheme: () => pluginPanelTheme,
-  getAppearance: () => resolveAppearance(),
+  getAppearance: () => {
+    if (!applicationLifecycle) {
+      throw new Error("application lifecycle is not initialized");
+    }
+    return applicationLifecycle.resolveAppearance();
+  },
   getWorkspacePath: currentWorkspacePath,
   isHostUnavailable,
   resolveAgentRuntimeLaunch: (...args) => {
@@ -849,103 +734,11 @@ function isHostUnavailable(error: unknown): boolean {
 }
 
 /** Pull the user's MCP server records from host-core into the local runtime. */
-function applyDevelopmentBranding() {
-  if (process.platform !== "darwin" || !isDevelopmentBuild || !app.dock) return;
-
-  const iconPath = join(app.getAppPath(), "build", "icon_1024.png");
-  const icon = nativeImage.createFromPath(iconPath);
-  if (icon.isEmpty()) {
-    logger.app("lifecycle", "warn", "development dock icon missing", {
-      data: { iconPath },
-    });
-    return;
-  }
-
-  app.dock.setIcon(icon);
-}
-
-function trayIconPath() {
-  const resourceRoot = app.isPackaged
-    ? process.resourcesPath
-    : join(app.getAppPath(), "build");
-  const candidates =
-    process.platform === "darwin"
-      ? [
-          join(resourceRoot, "tray-icon-mac.png"),
-          join(resourceRoot, app.isPackaged ? "tray-icon.png" : "icon.png"),
-        ]
-      : [join(resourceRoot, app.isPackaged ? "tray-icon.png" : "icon.png")];
-  return candidates.find((candidate) => existsSync(candidate)) ?? null;
-}
-
-function hasVisibleWindow(): boolean {
-  return BrowserWindow.getAllWindows().some(
-    (window) => !window.isDestroyed() && window.isVisible(),
-  );
-}
-
-function restoreMainWindow() {
-  void ensureWindow()
-    .then(() => {
-      const window = mainWindow;
-      if (!window || window.isDestroyed()) return;
-      if (window.isMinimized()) window.restore();
-      window.show();
-      window.focus();
-    })
-    .catch((error) => {
-      logger.app("diagnostics", "error", "tray restore failed", {
-        data: String(error),
-      });
-    });
-}
-
-function updateTrayMenu(locale = app.getLocale()) {
-  if (!tray) return;
-  const labels = catalogs[resolveLocale(locale)].tray;
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      { label: labels.open, click: restoreMainWindow },
-      { type: "separator" },
-      { label: labels.quit, click: () => app.quit() },
-    ]),
-  );
-}
-
-function createTray() {
-  if (tray) return;
-  const iconPath = trayIconPath();
-  if (!iconPath) {
-    logger.app("lifecycle", "warn", "tray icon missing", {
-      data: { packaged: app.isPackaged, resourcesPath: process.resourcesPath },
-    });
-    return;
-  }
-
-  const source = nativeImage.createFromPath(iconPath);
-  if (source.isEmpty()) {
-    logger.app("lifecycle", "warn", "tray icon could not be loaded", {
-      data: { iconPath },
-    });
-    return;
-  }
-  const icon = source.resize({
-    width: process.platform === "darwin" ? 18 : 16,
-    height: process.platform === "darwin" ? 18 : 16,
-  });
-  if (process.platform === "darwin") icon.setTemplateImage(true);
-
-  tray = new Tray(icon);
-  tray.setToolTip(APP_NAME);
-  tray.on("click", restoreMainWindow);
-  tray.on("double-click", restoreMainWindow);
-  updateTrayMenu();
-}
-
-
 function sendToRenderer(channel: string, payload: unknown) {
   if (channel === IPC.event.pluginChanged) {
-    applyNativeThemeSource({ theme: appThemePreference });
+    applicationLifecycle?.applyNativeThemeSource({
+      theme: applicationAppearanceState.appThemePreference,
+    });
   }
   if (!IPC_WHITELIST.has(channel)) return;
   const window = mainWindow;
@@ -967,184 +760,6 @@ function sendToRenderer(channel: string, payload: unknown) {
   }
 }
 
-function resetMenuRendererReady(window: BrowserWindow) {
-  menuRendererReadyGate?.resolve();
-  let resolve: () => void = () => undefined;
-  const promise = new Promise<void>((ready) => {
-    resolve = ready;
-  });
-  menuRendererReadyGate = {
-    window,
-    ready: false,
-    promise,
-    resolve,
-  };
-}
-
-function markMenuRendererReady(window: BrowserWindow): boolean {
-  const gate = menuRendererReadyGate;
-  if (gate?.window !== window || window.isDestroyed()) return false;
-  gate.ready = true;
-  gate.resolve();
-  return true;
-}
-
-async function waitForMenuRenderer(window: BrowserWindow): Promise<boolean> {
-  const gate = menuRendererReadyGate;
-  if (gate?.window !== window) return false;
-  await gate.promise;
-  return (
-    menuRendererReadyGate === gate &&
-    gate.ready &&
-    mainWindow === window &&
-    !window.isDestroyed() &&
-    !window.webContents.isDestroyed()
-  );
-}
-
-function createWindowForLifecycle(): Promise<void> {
-  return createWindowInBootstrap({
-    state: windowLifecycleState,
-    dataDir,
-    windowMinWidth: WINDOW_MIN_WIDTH,
-    windowMinHeight: WINDOW_MIN_HEIGHT,
-    windowBoundsSettleMs: WINDOW_BOUNDS_SETTLE_MS,
-    workPanelNativeResizeSettleMs: WORK_PANEL_NATIVE_RESIZE_SETTLE_MS,
-    windowsAllowedToClose,
-    applyWorkPanelReservation,
-    markWorkPanelChatResizeActive,
-    workPanelMinimumWindowWidth,
-    observedWorkPanelBaseBounds,
-    classifyDisplayTransition,
-    resetMenuRendererReady,
-    markMenuRendererReady,
-    sendToRenderer,
-    safeOpenExternal,
-    showPluginLauncher,
-    askCloseBehavior,
-    applyCloseBehavior,
-    createTray,
-    browserPane,
-    pluginViews,
-    plugins,
-    logger,
-  });
-}
-
-async function ensureWindow(): Promise<boolean> {
-  if (windowCreationPromise) {
-    await windowCreationPromise;
-    return true;
-  }
-  if (mainWindow && !mainWindow.isDestroyed()) return false;
-
-  const creation = createWindowForLifecycle();
-  windowCreationPromise = creation;
-  try {
-    await creation;
-    return true;
-  } finally {
-    if (windowCreationPromise === creation) windowCreationPromise = null;
-  }
-}
-
-async function deliverApplicationMenuCommand(command: AppMenuCommand) {
-  await ensureWindow();
-  const window = mainWindow;
-  if (!window || window.isDestroyed()) return;
-  if (!(await waitForMenuRenderer(window))) return;
-  if (window.isMinimized()) window.restore();
-  window.show();
-  window.focus();
-  sendToRenderer(IPC.event.menuCommand, { command });
-}
-
-function dispatchApplicationMenuCommand(command: AppMenuCommand) {
-  if (!APP_MENU_COMMANDS.includes(command)) return;
-  if (!applicationBooted) {
-    pendingApplicationMenuCommands.push(command);
-    return;
-  }
-  void deliverApplicationMenuCommand(command).catch((error) => {
-    logger.app("diagnostics", "error", "application menu command failed", {
-      data: String(error),
-    });
-  });
-}
-
-function executeNativeMenuAction(
-  action: NativeMenuAction,
-  target: BrowserWindow | null = mainWindow,
-) {
-  if (action === "restoreMainWindow") {
-    restoreMainWindow();
-    const window = mainWindow;
-    return {
-      maximized: Boolean(window && !window.isDestroyed() && window.isMaximized()),
-      fullScreen: Boolean(window && !window.isDestroyed() && window.isFullScreen()),
-    };
-  }
-  if (!target || target.isDestroyed()) {
-    return { maximized: false, fullScreen: false };
-  }
-
-  const contents = target.webContents;
-  switch (action) {
-    case "undo":
-      contents.undo();
-      break;
-    case "redo":
-      contents.redo();
-      break;
-    case "cut":
-      contents.cut();
-      break;
-    case "copy":
-      contents.copy();
-      break;
-    case "paste":
-      contents.paste();
-      break;
-    case "selectAll":
-      contents.selectAll();
-      break;
-    case "reload":
-      contents.reload();
-      break;
-    case "zoomIn":
-      contents.setZoomFactor(Math.min(3, contents.getZoomFactor() * 1.1));
-      break;
-    case "zoomOut":
-      contents.setZoomFactor(Math.max(0.5, contents.getZoomFactor() / 1.1));
-      break;
-    case "resetZoom":
-      contents.setZoomFactor(1);
-      break;
-    case "toggleFullScreen":
-      target.setFullScreen(!target.isFullScreen());
-      break;
-    case "minimize":
-      target.minimize();
-      break;
-    case "toggleMaximize":
-      if (target.isMaximized()) target.unmaximize();
-      else target.maximize();
-      break;
-    case "close":
-      target.close();
-      break;
-  }
-
-  return {
-    maximized: !target.isDestroyed() && target.isMaximized(),
-    fullScreen: !target.isDestroyed() && target.isFullScreen(),
-  };
-}
-
-function dispatchNativeMenuAction(action: NativeMenuAction) {
-  void executeNativeMenuAction(action);
-}
-
 let appliedMenuSettings: string | null = null;
 
 /**
@@ -1154,144 +769,106 @@ let appliedMenuSettings: string | null = null;
  */
 let developerMode = false;
 
-function applyDeveloperMode(settings?: { developerMode?: unknown } | null) {
-  const next = settings?.developerMode === true;
-  if (next === developerMode) return;
-  developerMode = next;
-  // Leaving developer mode should not strand an open console.
-  if (!next && mainWindow && !mainWindow.isDestroyed()) {
-    if (mainWindow.webContents.isDevToolsOpened()) {
-      mainWindow.webContents.closeDevTools();
-    }
-  }
-}
+const applicationLifecycleState: ApplicationLifecycleState = {
+  get windowCreationPromise() {
+    return windowCreationPromise;
+  },
+  set windowCreationPromise(value) {
+    windowCreationPromise = value;
+  },
+  get applicationBooted() {
+    return applicationBooted;
+  },
+  set applicationBooted(value) {
+    applicationBooted = value;
+  },
+  pendingApplicationMenuCommands,
+  get appliedMenuSettings() {
+    return appliedMenuSettings;
+  },
+  set appliedMenuSettings(value) {
+    appliedMenuSettings = value;
+  },
+};
 
-/**
- * Drive Chromium and macOS native chrome (menus, vibrancy) from the same
- * theme preference the renderer paints. `system` keeps following the OS;
- * an explicit or plugin base locks the native appearance so a dark dock
- * cannot sit on a light Liquid Glass plate (D348). Missing `plugin:` themes
- * fall back to `system`, matching the renderer.
- */
-function applyNativeThemeSource(settings?: { theme?: unknown } | null) {
-  const preference = settings?.theme;
-  let next: "system" | "light" | "dark" = "system";
-  if (preference === "light" || preference === "dark") {
-    next = preference;
-  } else if (typeof preference === "string" && preference.startsWith("plugin:")) {
-    const pluginTheme = plugins.getThemes().find((theme) => theme.id === preference);
-    if (pluginTheme?.base === "light" || pluginTheme?.base === "dark") {
-      next = pluginTheme.base;
-    }
-  }
-  if (nativeTheme.themeSource === next) return;
-  nativeTheme.themeSource = next;
-  if (process.platform === "darwin" && mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.setVibrancy("sidebar");
-  }
-}
+const applicationAppearanceState: ApplicationAppearanceState = {
+  get updaterLocale() {
+    return updaterLocale;
+  },
+  set updaterLocale(value) {
+    updaterLocale = value;
+  },
+  get pluginPanelTheme() {
+    return pluginPanelTheme;
+  },
+  set pluginPanelTheme(value) {
+    pluginPanelTheme = value;
+  },
+  get appThemePreference() {
+    return appThemePreference;
+  },
+  set appThemePreference(value) {
+    appThemePreference = value;
+  },
+  get broadcastAppearanceSignature() {
+    return broadcastAppearanceSignature;
+  },
+  set broadcastAppearanceSignature(value) {
+    broadcastAppearanceSignature = value;
+  },
+};
 
-/** Keep native labels and accelerators aligned with persisted app settings. */
-function applyApplicationMenuSettings(settings?: {
-  language?: unknown;
-  theme?: unknown;
-  keybindings?: unknown;
-  developerMode?: unknown;
-} | null) {
-  const locale =
-    typeof settings?.language === "string" &&
-    settings.language &&
-    settings.language !== "auto"
-      ? settings.language
-      : app.getLocale();
-  if (locale !== updaterLocale) {
-    updaterLocale = locale;
-    updater.refreshReleaseNotes();
-  }
-  const preference = settings?.theme;
-  appThemePreference =
-    preference === "light" || preference === "dark"
-      ? preference
-      : typeof preference === "string" && preference.startsWith("plugin:")
-        ? preference
-        : "system";
-  applyNativeThemeSource(settings);
-  if (preference === "light" || preference === "dark") {
-    pluginPanelTheme = preference;
-  } else if (typeof preference === "string" && preference.startsWith("plugin:")) {
-    const pluginTheme = plugins.getThemes().find((theme) => theme.id === preference);
-    pluginPanelTheme =
-      pluginTheme?.base ?? (nativeTheme.shouldUseDarkColors ? "dark" : "light");
-  } else {
-    pluginPanelTheme = nativeTheme.shouldUseDarkColors ? "dark" : "light";
-  }
-  // Panels mirror the app's palette/language live; push any change now.
-  broadcastAppearance();
-  const keybindings =
-    settings?.keybindings && typeof settings.keybindings === "object"
-      ? (settings.keybindings as KeybindingOverrides)
-      : undefined;
-  applyPluginLauncherShortcut(keybindings);
-  applySummonWindowShortcut(keybindings);
-  const devMode = settings?.developerMode === true;
-  const signature = JSON.stringify({ locale, keybindings, devMode });
-  if (appliedMenuSettings === signature) return;
-  appliedMenuSettings = signature;
-  installApplicationMenu({
-    locale,
-    keybindings,
-    developerMode: devMode,
-    dispatch: dispatchApplicationMenuCommand,
-    dispatchNative: dispatchNativeMenuAction,
-  });
-  updateTrayMenu(locale);
-}
-
-/**
- * The appearance the host is currently showing, served to plugin panels and
- * plugin processes through `app.getAppearance`.
- *
- * The resolved `base` mirrors the window-chrome logic in `applyApplicationMenuSettings`:
- * an explicit light/dark preference wins, a `plugin:` preference resolves through
- * the contributed theme registry (falling back to `system` when the theme is gone),
- * and anything else follows the OS.
- */
-function resolveAppearance(): PluginAppearance {
-  let base: PluginAppearance["base"] = pluginPanelTheme;
-  let pluginTheme: PluginAppearance["pluginTheme"] = null;
-  if (appThemePreference.startsWith("plugin:")) {
-    const theme = plugins.getThemes().find((item) => item.id === appThemePreference);
-    if (theme) {
-      base = theme.base;
-      pluginTheme = { id: theme.id, base: theme.base, css: theme.css };
-    } else {
-      base = "system";
-    }
-  }
-  return { theme: appThemePreference, base, locale: updaterLocale, pluginTheme };
-}
-
-/** Push the current appearance to every open plugin panel, when it changed. */
-function broadcastAppearance(): void {
-  const appearance = resolveAppearance();
-  const signature = JSON.stringify(appearance);
-  if (signature === broadcastAppearanceSignature) return;
-  broadcastAppearanceSignature = signature;
-  broadcastPluginPanelEvent("appearance:changed", appearance);
-}
-
-function flushPendingApplicationMenuCommands() {
-  const commands = pendingApplicationMenuCommands.splice(0);
-  void (async () => {
-    for (const command of commands) {
-      await deliverApplicationMenuCommand(command);
-    }
-  })().catch((error) => {
-    logger.app("diagnostics", "error", "queued application menu command failed", {
-      data: String(error),
-    });
-  });
-}
+applicationLifecycle = createApplicationLifecycle({
+  state: windowLifecycleState,
+  appState: applicationLifecycleState,
+  appearanceState: applicationAppearanceState,
+  dataDir,
+  isDevelopmentBuild,
+  windowsAllowedToClose,
+  windowMinWidth: WINDOW_MIN_WIDTH,
+  windowMinHeight: WINDOW_MIN_HEIGHT,
+  windowBoundsSettleMs: WINDOW_BOUNDS_SETTLE_MS,
+  workPanelNativeResizeSettleMs: WORK_PANEL_NATIVE_RESIZE_SETTLE_MS,
+  applyWorkPanelReservation,
+  markWorkPanelChatResizeActive,
+  workPanelMinimumWindowWidth,
+  observedWorkPanelBaseBounds,
+  classifyDisplayTransition,
+  sendToRenderer,
+  safeOpenExternal,
+  showPluginLauncher,
+  askCloseBehavior,
+  applyCloseBehavior,
+  browserPane,
+  pluginViews,
+  plugins,
+  logger,
+  refreshReleaseNotes: () => updater.refreshReleaseNotes(),
+  applyPluginLauncherShortcut,
+  applySummonWindowShortcut,
+  broadcastPluginPanelEvent,
+});
+const {
+  applyDevelopmentBranding,
+  hasVisibleWindow,
+  restoreMainWindow,
+  updateTrayMenu,
+  createTray,
+  resetMenuRendererReady,
+  markMenuRendererReady,
+  waitForMenuRenderer,
+  ensureWindow,
+  deliverApplicationMenuCommand,
+  dispatchApplicationMenuCommand,
+  executeNativeMenuAction,
+  dispatchNativeMenuAction,
+  applyDeveloperMode,
+  applyNativeThemeSource,
+  applyApplicationMenuSettings,
+  resolveAppearance,
+  broadcastAppearance,
+  flushPendingApplicationMenuCommands,
+} = applicationLifecycle;
 
 function wrap<T>(fn: () => Promise<T>): Promise<Result<T>> {
   return fn()
@@ -1694,7 +1271,7 @@ function prewarmPluginLauncher(): void {
 }
 
 async function showPluginLauncher(): Promise<void> {
-  if (!applicationBooted) return;
+  if (!applicationLifecycleState.applicationBooted) return;
   const window = await createPluginLauncherWindow();
   if (window.isDestroyed()) return;
   window.setBounds(pluginLauncherBounds(), false);
@@ -2179,7 +1756,7 @@ app.whenReady().then(async () => {
   // event subscriptions before pushing the boot outcome.
   setTimeout(() => {
     sendToRenderer(IPC.event.hostStatus, bootHostStatus(bootError));
-    applicationBooted = true;
+    applicationLifecycleState.applicationBooted = true;
     flushPendingApplicationMenuCommands();
   }, 300);
 
@@ -2417,7 +1994,11 @@ app.on("second-instance", () => {
 // plugin panel must not drag the main window up with it (ADR 0086).
 if (process.platform === "darwin") {
   app.on("did-become-active", () => {
-    if (quitting || !applicationBooted || hasVisibleWindow()) return;
+    if (
+      quitting ||
+      !applicationLifecycleState.applicationBooted ||
+      hasVisibleWindow()
+    ) return;
     restoreMainWindow();
   });
 }
