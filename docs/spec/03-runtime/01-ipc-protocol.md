@@ -1438,8 +1438,8 @@ Plugin panel chrome uses a separate Electron-local
 but the handler resolves the target strictly from the sender's live panel
 window. The preload consumes this channel internally for its closed-Shadow-DOM
 titlebar; it is not added to `window.pluginBridge` or the shared host protocol.
-The work-panel geometry seam is retained for Electron compatibility, but the
-panel is renderer-owned and never changes native window bounds (ADR 0151):
+The work-panel geometry seam remains Electron-local and the panel itself stays
+renderer-owned (ADR 0235):
 
 ```ts
 window/setWorkPanelReservation({ width: 0 | number })
@@ -1447,11 +1447,13 @@ window/setWorkPanelReservation({ width: 0 | number })
 ```
 
 `width` must be a finite integer JSON number equal to `0` or inside the
-inclusive `244..720` range. Strings, booleans, null, fractional values, and
+inclusive `1..720` range. Strings, booleans, null, fractional values, and
 other malformed payloads fail with `INVALID_ARGUMENT` rather than being
-coerced. The internal dock normalizes every valid request to zero and returns
-`{ requested: 0, reserved: 0 }`; positive values are accepted only as a
-backwards-compatible no-op. Repeating a request never changes native bounds.
+coerced. A normal non-maximized window applies the requested width subject to
+the display work area and returns the actual `{ requested, reserved }` pair;
+maximized/fullscreen windows return a zero reservation while retaining the
+requested width for the restore transition. Repeating a request is
+idempotent.
 
 The legacy chat-width/event shapes remain Electron-local compatibility surfaces,
 but the visible internal dock does not call them or use them to resize the
@@ -1466,9 +1468,9 @@ window/event/workPanelResize
 ```
 
 `window/setWorkPanelChatWidth` and `window/event/workPanelResize` remain
-available only to older Electron callers. The current renderer divider changes
-the persisted `244..720px` panel width locally, and native window edges resize
-the fixed application window without changing that panel target. The native
+available to Electron's native edge-resize path. The renderer divider changes
+the persisted preferred panel target locally; the shell budget may cap the
+effective width at `clientWidth - 360px - expandedSidebarWidth`. The native
 Browser view continues to follow the renderer-measured panel rectangle.
 Window bounds persistence and display reconciliation therefore operate on the
 ordinary application bounds; there is no panel-specific width or x-offset

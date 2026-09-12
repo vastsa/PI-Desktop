@@ -55,7 +55,7 @@ test("sidebar hover does not paint a full-height resize rail", () => {
 test("the chat reserves one row for unsqueezed composer controls", () => {
   assert.match(
     globalStyles,
-    /\.main-pane\s*\{[\s\S]*?min-width:\s*515px;/,
+    /\.main-pane\s*\{[\s\S]*?min-width:\s*var\(--ds-main-pane-min-width, 360px\);/,
   );
   assert.match(
     globalStyles,

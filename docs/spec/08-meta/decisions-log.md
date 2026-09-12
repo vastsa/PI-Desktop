@@ -4695,4 +4695,20 @@ D193, and D194.
 - macOS ZIP packages retain both the opening note and the executable helper.
   The note provides the narrow Terminal fallback for trusted unsigned builds;
   signed and notarized builds do not need it.
+
+## 2026-09-12 — Prioritize MainChat in the three-column shell (D407)
+
+- Issue #267 and ADR 0235 replace the fixed 515px side-dock trade-off with a
+  shared three-column budget: MainChat has a hard 360px minimum, the work panel
+  receives `min(720px, clientWidth - 360px - expandedSidebarWidth)`, and the
+  expanded sidebar collapses immediately when that target would cross the
+  threshold, including during pointer preview and shell resize.
+- Manual sidebar reopen spends right-panel width first and targets 370px for
+  MainChat when preserving its current width is not possible. This path may
+  persist a positive compact panel width below the ordinary 244px minimum.
+- Automatic sidebar collapse is recorded and restored when the work panel
+  closes; manual collapse/reopen clears the record. Normal windows mirror the
+  committed panel width through `setWorkPanelReservation`, while
+  maximized/fullscreen windows use renderer budgeting and return zero reserved
+  width. No host protocol or storage schema changes.
 - Decision D406 amends D371 / ADR 0204. See ADR 0232 and E2E-196b.

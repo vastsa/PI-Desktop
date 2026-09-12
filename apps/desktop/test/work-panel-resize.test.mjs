@@ -3,15 +3,71 @@ import test from "node:test";
 import {
   WORK_PANEL_CHAT_MAX_WIDTH,
   WORK_PANEL_CHAT_MIN_WIDTH,
+  MAIN_PANE_MIN_WIDTH,
+  MAIN_PANE_REOPEN_TARGET_WIDTH,
   WORK_PANEL_DEFAULT_WIDTH,
+  WORK_PANEL_COMPACT_MIN_WIDTH,
   WORK_PANEL_MAX_WIDTH,
   WORK_PANEL_MIN_WIDTH,
   clampWorkPanelChatWidth,
   clampWorkPanelWidth,
   committedWorkPanelChatWidth,
   parseWorkPanelChatWidth,
+  workPanelLayout,
   workPanelChatWidthFromPointer,
+  workPanelWidthForSidebarReopen,
 } from "../src/lib/work-panel-resize.ts";
+
+test("the three-column budget protects MainChat and collapses the sidebar at the threshold", () => {
+  assert.equal(MAIN_PANE_MIN_WIDTH, 360);
+  assert.equal(MAIN_PANE_REOPEN_TARGET_WIDTH, 370);
+  const layout = workPanelLayout({
+    containerWidth: 1040,
+    sidebarWidth: 275,
+    sidebarCollapsed: false,
+    requestedPanelWidth: 720,
+  });
+
+  assert.equal(layout.maxPanelWidth, 405);
+  assert.equal(layout.panelWidth, 405);
+  assert.equal(layout.mainWidth, MAIN_PANE_MIN_WIDTH);
+  assert.equal(layout.shouldCollapseSidebar, true);
+});
+
+test("a collapsed sidebar exposes the full dynamic right-column budget", () => {
+  const layout = workPanelLayout({
+    containerWidth: 1040,
+    sidebarWidth: 275,
+    sidebarCollapsed: true,
+    requestedPanelWidth: 720,
+  });
+
+  assert.equal(layout.maxPanelWidth, 680);
+  assert.equal(layout.panelWidth, 680);
+  assert.equal(layout.mainWidth, MAIN_PANE_MIN_WIDTH);
+  assert.equal(layout.shouldCollapseSidebar, false);
+});
+
+test("sidebar reopen spends right-panel width before using the 370px target", () => {
+  assert.equal(
+    workPanelWidthForSidebarReopen({
+      containerWidth: 1040,
+      sidebarWidth: 275,
+      currentPanelWidth: 600,
+      currentMainWidth: 440,
+    }),
+    325,
+  );
+  assert.equal(
+    workPanelWidthForSidebarReopen({
+      containerWidth: 1040,
+      sidebarWidth: 520,
+      currentPanelWidth: 244,
+      currentMainWidth: 796,
+    }),
+    WORK_PANEL_COMPACT_MIN_WIDTH,
+  );
+});
 
 test("clamps the work panel to its fixed width range", () => {
   assert.equal(clampWorkPanelWidth(900), WORK_PANEL_MAX_WIDTH);

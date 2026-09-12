@@ -1,6 +1,6 @@
 # ADR 0226: Reserve Chat Width for Composer Controls
 
-- Status: Accepted
+- Status: Superseded by [ADR 0235](0235-three-column-width-priority.md)
 - Date: 2026-09-11
 - Amends: [ADR 0151](0151-internal-work-panel-dock.md)
 - Related: [07-ui-design-system §10](../spec/04-ux/07-ui-design-system.md) ·

@@ -169,7 +169,7 @@ Each ADR includes:
 | 0148 | Explicitly disable application keyboard shortcuts | Accepted |
 | 0149 | Calm transcript running-status motion | Accepted |
 | 0150 | Inline SVG empty-home agent mark | Superseded by 0152 |
-| 0151 | Keep the work panel inside the fixed application window | Accepted |
+| 0151 | Keep the work panel inside the fixed application window | Accepted (amended by 0235) |
 | 0152 | Eight-frame empty-home mascot GIF | Accepted |
 | 0153 | Checkpoint the streaming reply beside the transcript | Accepted |
 | 0154 | Reveal the New Task empty destination before host IO | Accepted |
@@ -243,7 +243,7 @@ Each ADR includes:
 | 0223 | Context Usage Display Preference | Accepted (amends 0184) |
 | 0224 | Right panel tab strip and data-driven add menu | Accepted (issue #229) |
 | 0225 | Restore deferred tools from effective session context | Accepted (issue #225) |
-| 0226 | Reserve chat width for composer controls | Accepted |
+| 0226 | Reserve chat width for composer controls | Superseded by 0235 |
 | 0227 | Project group manual ordering | Accepted (amended by 0228) |
 | 0228 | Long-press the project title to reorder | Accepted (amended by 0229) |
 | 0229 | Press-and-move project title reorder | Accepted (amends 0228) |
@@ -252,3 +252,4 @@ Each ADR includes:
 | 0232 | Keep macOS DMG opening guidance text-only | Accepted (amends D371 / ADR 0204) |
 | 0233 | Renderer-owned multi-folder project creation | Accepted (amends ADR 0011 / ADR 0016) |
 | 0234 | Keep project memory host-owned and path-scoped | Accepted |
+| 0235 | Prioritize MainChat in the three-column shell | Accepted |

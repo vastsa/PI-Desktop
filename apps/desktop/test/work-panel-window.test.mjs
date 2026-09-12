@@ -441,6 +441,8 @@ test("a drag onto a smaller display keeps the base size restorable", () => {
 
 test("reservation width parsing rejects coerced and malformed IPC input", () => {
   assert.equal(parseWorkPanelReservationWidth({ width: 0 }), 0);
+  assert.equal(parseWorkPanelReservationWidth({ width: 1 }), 1);
+  assert.equal(parseWorkPanelReservationWidth({ width: 243 }), 243);
   assert.equal(parseWorkPanelReservationWidth({ width: 244 }), 244);
   assert.equal(parseWorkPanelReservationWidth({ width: 720 }), 720);
 
@@ -452,7 +454,6 @@ test("reservation width parsing rejects coerced and malformed IPC input", () => 
     {},
     { width: "420" },
     { width: false },
-    { width: 243 },
     { width: 720.5 },
     { width: 721 },
     { width: Number.NaN },

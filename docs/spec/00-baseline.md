@@ -1,8 +1,8 @@
 # PI-Desktop Baseline Freeze
 
-- Baseline Version: `0.4.16`
-- Date: `2026-08-14`
-- Status: `Frozen for implementation details (Plan checkpoint artifact + approval/execution startup fence + protocol v11 + schema v15 + host-owned plugin session import/read/update/delete P0/P1 + selectable shell catalog + icon-free composer prompt row + turn-boundary context checkpoint compaction + session-scoped work panel + edge-specific work-panel/chat resize ownership + models.dev model catalog with a bundled release snapshot + provider/runtime safety + M5 hardening + settings IA + project archive + sidebar organization + app update delivery + three-platform release + Extensions page density and theme-readable actions + custom global UI font)`
+- Baseline Version: `0.4.17`
+- Date: `2026-09-12`
+- Status: `Frozen for implementation details (Plan checkpoint artifact + approval/execution startup fence + protocol v11 + schema v15 + host-owned plugin session import/read/update/delete P0/P1 + selectable shell catalog + icon-free composer prompt row + turn-boundary context checkpoint compaction + session-scoped work panel + three-column width priority and sidebar coordination + models.dev model catalog with a bundled release snapshot + provider/runtime safety + M5 hardening + settings IA + project archive + sidebar organization + app update delivery + three-platform release + Extensions page density and theme-readable actions + custom global UI font)`
 - Language policy: **English-first**
 - Backend policy: **Rust host core + pi agent sidecar**
 
@@ -77,6 +77,15 @@
 > families are enumerated by Electron main through the additive allowlisted
 > channel `pi-desktop/app/systemFonts`. No host protocol or storage schema
 > changes.
+
+> `0.4.17` replaces the 515px fixed-window side-dock trade-off with the
+> three-column priority contract from issue #267 and ADR 0235: MainChat keeps a
+> hard 360px minimum, the work panel receives the dynamic remaining budget, an
+> expanded sidebar yields immediately at that threshold, manual reopen spends
+> right-panel width first with a 370px target, and automatic collapse restores
+> on panel close. Non-maximized windows mirror the committed panel width through
+> the existing native reservation seam; maximized/fullscreen windows remain
+> renderer-budgeted. No host protocol or storage schema changes.
 
 > The current post-baseline amendments add the P0/P1 host-owned plugin session
 > API through ADR 0200 / D367, explicit project ids plus host-owned session

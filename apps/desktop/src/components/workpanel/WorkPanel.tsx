@@ -37,9 +37,12 @@ import { PluginViewTab } from "./PluginViewTab";
 import { SubagentPanel } from "./SubagentPanel";
 import type { SubagentPanelSelection } from "../../lib/subagent-panel";
 import {
+  MAIN_PANE_MIN_WIDTH,
+  WORK_PANEL_COMPACT_MIN_WIDTH,
   WORK_PANEL_MAX_WIDTH,
   WORK_PANEL_MIN_WIDTH,
   clampWorkPanelWidth,
+  workPanelLayout,
 } from "../../lib/work-panel-resize";
 
 const TAB_ICONS = {
@@ -53,6 +56,7 @@ type WorkPanelResizeState = {
   pointerId: number;
   startClientX: number;
   startWidth: number;
+  minimumWidth: number;
   currentWidth: number;
   frame: number;
 };
@@ -126,6 +130,11 @@ export function WorkPanel({
   onExitAnimationEnd,
   subagentPanel = null,
   onCloseSubagentPanel,
+  containerWidth = 0,
+  sidebarCollapsed = false,
+  sidebarWidth = 0,
+  nativePanelWidth = null,
+  onAutoCollapseSidebar,
 }: {
   /**
    * Hides every native surface in the panel. Both the preview browser and a
@@ -139,6 +148,15 @@ export function WorkPanel({
   /** Temporarily replaces the resource body with the selected subagent detail. */
   subagentPanel?: SubagentPanelSelection | null;
   onCloseSubagentPanel?: () => void;
+  /** Current renderer shell width used for the three-column budget. */
+  containerWidth?: number;
+  /** Sidebar state is part of the shared shell budget. */
+  sidebarCollapsed?: boolean;
+  sidebarWidth?: number;
+  /** Transient native right-edge resize preview; committed on the native event. */
+  nativePanelWidth?: number | null;
+  /** Called on the first frame where the main pane would hit its hard floor. */
+  onAutoCollapseSidebar?: () => void;
 }) {
   const { t } = useTranslation();
   const rawTabs = useAppStore((s) => s.workPanelTabs);
@@ -163,8 +181,32 @@ export function WorkPanel({
   const [nativeSurfaceReadyForExit, setNativeSurfaceReadyForExit] =
     useState(false);
 
-  const renderPanelWidth = clampWorkPanelWidth(panelDragWidth ?? width);
+  const requestedPanelWidth = panelDragWidth ?? nativePanelWidth ?? width;
+  const panelMinimum =
+    requestedPanelWidth < WORK_PANEL_MIN_WIDTH
+      ? WORK_PANEL_COMPACT_MIN_WIDTH
+      : WORK_PANEL_MIN_WIDTH;
+  // The first render can precede ResizeObserver's first notification. Use a
+  // conservative shell estimate for that frame; the measured width takes over
+  // before a user can interact with the divider.
+  const budgetWidth =
+    containerWidth > 0
+      ? containerWidth
+      : requestedPanelWidth +
+        (sidebarCollapsed ? 0 : sidebarWidth) +
+        MAIN_PANE_MIN_WIDTH;
+  const layout = workPanelLayout({
+    containerWidth: budgetWidth,
+    sidebarWidth,
+    sidebarCollapsed,
+    requestedPanelWidth,
+  });
+  const renderPanelWidth = layout.panelWidth;
   const isResizing = panelDragWidth !== null;
+
+  useLayoutEffect(() => {
+    if (!exiting && layout.shouldCollapseSidebar) onAutoCollapseSidebar?.();
+  }, [exiting, layout.shouldCollapseSidebar, onAutoCollapseSidebar]);
 
   useEffect(() => {
     if (isResizing) {
@@ -277,18 +319,19 @@ export function WorkPanel({
       event.preventDefault();
       event.stopPropagation();
       event.currentTarget.focus({ preventScroll: true });
-      const startWidth = clampWorkPanelWidth(width);
+      const startWidth = clampWorkPanelWidth(renderPanelWidth, panelMinimum);
       panelResizeState.current = {
         pointerId: event.pointerId,
         startClientX: event.clientX,
         startWidth,
+        minimumWidth: panelMinimum,
         currentWidth: startWidth,
         frame: 0,
       };
       setPanelDragWidth(startWidth);
       event.currentTarget.setPointerCapture(event.pointerId);
     },
-    [width],
+    [panelMinimum, renderPanelWidth],
   );
 
   const onPanelResizeMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
@@ -296,6 +339,7 @@ export function WorkPanel({
     if (drag?.pointerId !== event.pointerId) return;
     drag.currentWidth = clampWorkPanelWidth(
       drag.startWidth + drag.startClientX - event.clientX,
+      drag.minimumWidth,
     );
     if (drag.frame) return;
     drag.frame = requestAnimationFrame(() => {
@@ -338,16 +382,18 @@ export function WorkPanel({
         return;
       }
       const step = event.shiftKey ? 32 : 16;
+      const minimum = Math.min(panelMinimum, layout.maxPanelWidth);
+      const maximum = Math.max(minimum, layout.maxPanelWidth);
       let nextWidth: number | null = null;
-      if (event.key === "ArrowLeft") nextWidth = width + step;
-      else if (event.key === "ArrowRight") nextWidth = width - step;
-      else if (event.key === "Home") nextWidth = WORK_PANEL_MIN_WIDTH;
-      else if (event.key === "End") nextWidth = WORK_PANEL_MAX_WIDTH;
+      if (event.key === "ArrowLeft") nextWidth = renderPanelWidth + step;
+      else if (event.key === "ArrowRight") nextWidth = renderPanelWidth - step;
+      else if (event.key === "Home") nextWidth = minimum;
+      else if (event.key === "End") nextWidth = maximum;
       if (nextWidth === null) return;
       event.preventDefault();
-      setWidth(clampWorkPanelWidth(nextWidth));
+      setWidth(clampWorkPanelWidth(nextWidth, minimum));
     },
-    [finishPanelResize, setWidth, width],
+    [finishPanelResize, layout.maxPanelWidth, panelMinimum, renderPanelWidth, setWidth],
   );
 
   const activePluginView =
@@ -360,6 +406,7 @@ export function WorkPanel({
   const exitAnimationReady = exiting && nativeSurfaceReadyForExit;
   const panelStyle = {
     width: renderPanelWidth,
+    maxWidth: layout.maxPanelWidth,
     "--work-panel-width": `${renderPanelWidth}px`,
   } as CSSProperties;
 
@@ -386,8 +433,14 @@ export function WorkPanel({
         role="separator"
         aria-orientation="vertical"
         aria-label={t("panel.resize")}
-        aria-valuemin={WORK_PANEL_MIN_WIDTH}
-        aria-valuemax={WORK_PANEL_MAX_WIDTH}
+        aria-valuemin={Math.min(
+          panelMinimum,
+          Math.max(WORK_PANEL_COMPACT_MIN_WIDTH, layout.maxPanelWidth),
+        )}
+        aria-valuemax={Math.max(
+          Math.min(panelMinimum, layout.maxPanelWidth),
+          Math.min(WORK_PANEL_MAX_WIDTH, layout.maxPanelWidth),
+        )}
         aria-valuenow={Math.round(panelDragWidth ?? renderPanelWidth)}
         tabIndex={0}
         onPointerDown={onPanelResizeStart}

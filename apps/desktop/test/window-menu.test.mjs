@@ -215,7 +215,7 @@ test("Windows and Linux use menu-free frameless chrome with window controls", ()
     stylesSource,
     /\.toast\s*\{[^}]*-webkit-app-region:\s*no-drag;[^}]*pointer-events:\s*auto;/s,
   );
-  assert.match(mainSource, /window\.on\("maximize", sendMaximized\)/);
+  assert.match(mainSource, /window\.on\("maximize", \(\) => \{/);
   assert.match(
     mainSource,
     /window\.on\("unmaximize", \(\) => \{[\s\S]*process\.platform !== "darwin"[\s\S]*scheduleWorkPanelReservation\(\)/,

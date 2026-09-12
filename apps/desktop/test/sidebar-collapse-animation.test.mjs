@@ -217,15 +217,14 @@ test("reduced motion drops the collapse animation and its top-bar tracking", () 
 });
 
 test("the sidebar toggle never captures a stale collapsed state", () => {
-  // The keydown and native-menu handlers register once; toggleSidebar must be
-  // a stable callback driven by a functional update. Otherwise the second
-  // Cmd/Ctrl+B reuses the first render's closure (collapsed=false) and keeps
-  // collapsing instead of re-expanding the sidebar.
+  // The keydown and native-menu handlers register once; toggleSidebar must use
+  // refs for current layout state. Otherwise the second Cmd/Ctrl+B reuses the
+  // first render's closure and can reopen the sidebar with stale panel width.
   assert.match(
     appSource,
-    /const toggleSidebar = useCallback\(\(\) => \{\s*setSidebarCollapsed\(\(collapsed\) => !collapsed\);/,
+    /const toggleSidebar = useCallback\(\(\) => \{[\s\S]*?autoCollapsedSidebarRef\.current = false;[\s\S]*?sidebarCollapsedRef\.current[\s\S]*?reopenSidebar\(\)/,
   );
-  assert.match(appSource, /\},\s*\[\]\);/);
+  assert.match(appSource, /\},\s*\[reopenSidebar\]\);/);
   // The exit flag is adjusted during render, never in an effect: an effect runs
   // after the commit, so the collapsing render unmounts the dock outright and
   // the effect remounts it — one painted frame with no dock at all.

@@ -317,3 +317,70 @@ Behavior is identified but the scenario is incomplete or not yet accepted.
 ## Documented
 
 Scenario is fully specified but no automated implementation currently
+
+## E2E-LAYOUT-three-column-width-priority
+
+### Title
+
+Three-column width priority keeps MainChat usable and coordinates sidebar
+collapse/reopen with the work panel.
+
+### Preconditions
+
+- A desktop session is open in a non-Settings route.
+- The sidebar is expanded and the work panel has a persisted width in
+  `pi.desktop.workPanel`.
+- The window can be tested both at a normal size and in maximized/fullscreen
+  state.
+
+### Steps
+
+1. Open the work panel and drag its left divider toward MainChat's left edge.
+2. Continue dragging after MainChat reaches 360px, including during pointer
+   preview, then release.
+3. Resize the native window and enter/leave fullscreen with the panel open.
+4. Manually reopen the sidebar after it was automatically collapsed.
+5. Close the work panel and repeat the flow after manually collapsing the
+   sidebar.
+6. Repeat divider changes with ArrowLeft, ArrowRight, Home, and End.
+
+### Expected
+
+- MainChat never measures below 360px.
+- The expanded sidebar collapses immediately at the 360px threshold, and the
+  panel may continue using the newly available width.
+- The effective panel maximum is the client width minus the 360px MainChat
+  floor and expanded sidebar width, capped at 720px.
+- Manual sidebar reopen spends right-panel width first; the MainChat width is
+  preserved where possible and otherwise reaches the 370px reopen target.
+- Closing a panel restores only a sidebar collapsed automatically by the layout
+  mechanism. A manually collapsed sidebar remains collapsed.
+- Keyboard and pointer paths expose the same effective ARIA minimum/maximum and
+  never violate the MainChat floor.
+- A normal window reports matching requested/reserved native panel width with
+  no visible width jump. Maximized/fullscreen uses renderer budgeting and
+  reports zero native reservation.
+
+### Specs
+
+- `docs/adr/0235-three-column-width-priority.md`
+- `docs/spec/04-ux/01-ui-ia.md`
+- `docs/spec/04-ux/07-ui-design-system.md` §10
+- `docs/spec/04-ux/08-component-spec.md` §1 and §5
+- `docs/spec/04-ux/09-interaction-patterns.md` §8
+
+### Acceptance
+
+Issue #267 acceptance checklist: all width-priority, automatic-collapse,
+manual-reopen, restoration, ARIA, persistence, and native-reservation bullets
+must pass.
+
+### Milestone
+
+Post-M6 desktop shell maintenance.
+
+### Status
+
+Documented. No dedicated automation currently exists; targeted unit tests cover
+the budget and state inputs, while Electron UI verification remains required in
+a capable desktop E2E environment.

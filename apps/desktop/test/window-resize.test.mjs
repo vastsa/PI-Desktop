@@ -28,21 +28,19 @@ test("bounds recovery waits for a stable native resize snapshot", () => {
   assert.match(mainSource, /scheduleBoundsCheck\(\)/);
 });
 
-test("work-panel reservation is an inert compatibility seam", () => {
+test("work-panel reservation mirrors the requested committed width", () => {
   assert.match(reservationHandler, /parseWorkPanelReservationWidth/);
-  assert.match(reservationHandler, /requestedWorkPanelReservation = 0/);
-  assert.match(reservationHandler, /workPanelReservation = emptyWorkPanelReservationState\(\)/);
-  assert.match(reservationHandler, /return \{ requested: 0, reserved: 0 \}/);
-  assert.doesNotMatch(reservationHandler, /applyWorkPanelReservation/);
+  assert.match(reservationHandler, /requestedWorkPanelReservation = requested/);
+  assert.match(reservationHandler, /applyWorkPanelReservation/);
+  assert.match(reservationHandler, /return \{ requested, reserved: reservation\.width \}/);
 });
 
-test("native window resize does not change the internal work-panel target", () => {
-  // Native edges remain available for resizing the fixed app window, but no
-  // right-edge path previews or commits a panel width anymore.
+test("native right-edge resize participates in the shared panel budget", () => {
   assert.match(mainSource, /window\.on\("will-resize"/);
   assert.match(mainSource, /window\.on\("resized"/);
-  assert.match(mainSource, /requestedWorkPanelReservation <= 0/);
-  assert.match(mainSource, /workPanelReservation = emptyWorkPanelReservationState\(\)/);
+  assert.match(mainSource, /isWorkPanelOuterResizeEdge/);
+  assert.match(mainSource, /sendWorkPanelResize\("preview", panelWidth\)/);
+  assert.match(mainSource, /sendWorkPanelResize\("commit", panelWidth\)/);
 });
 
 test("native bounds timers are cleaned up with the window", () => {

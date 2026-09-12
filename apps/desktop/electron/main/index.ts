@@ -238,6 +238,7 @@ import {
   reconcileBaseWindowBounds,
   WORK_PANEL_MAX_WIDTH,
   WORK_PANEL_MIN_WIDTH,
+  WORK_PANEL_RESERVATION_MIN_WIDTH,
   windowBoundsEqual,
   type DisplayTransition,
   type WindowBounds,
@@ -2595,11 +2596,67 @@ function classifyDisplayTransition(nextDisplayKey: string): DisplayTransition {
 }
 
 function applyWorkPanelReservation(): WorkPanelReservationState {
-  // The work panel is rendered inside the existing BrowserWindow. This helper
-  // remains as a no-op for recovery call sites from the old reservation path,
-  // but opening or collapsing the panel must never mutate native bounds.
-  requestedWorkPanelReservation = 0;
-  workPanelReservation = emptyWorkPanelReservationState();
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return workPanelReservation;
+  }
+  if (mainWindow.isFullScreen() || mainWindow.isMaximized()) {
+    // Native fullscreen/maximized bounds are not ours to resize. Keep the
+    // requested width for the restore transition, but expose no reservation
+    // while the renderer owns the constrained client area.
+    workPanelReservation = emptyWorkPanelReservationState();
+    return workPanelReservation;
+  }
+  if (workPanelNativeResizeActive || workPanelChatResizeActive) {
+    return workPanelReservation;
+  }
+
+  const window = mainWindow;
+  const currentBounds = window.getBounds();
+  const display = screen.getDisplayMatching(currentBounds);
+  const workArea = display.workArea;
+  const nextDisplayKey = displayWorkAreaKey(display.id, workArea);
+  const displayTransition = classifyDisplayTransition(nextDisplayKey);
+  const observedBase = observedWorkPanelBaseBounds(
+    currentBounds,
+    displayTransition,
+  );
+  const baseBounds =
+    displayTransition === "user-moved"
+      ? clampBoundsOriginToWorkArea(observedBase, workArea)
+      : observedBase;
+  workPanelBaseBounds = baseBounds;
+  workPanelDisplayKey = nextDisplayKey;
+  if (displayTransition === "user-moved") workPanelUserMovePending = false;
+
+  const next = planWorkPanelReservation({
+    baseBounds,
+    workArea,
+    requestedWidth: requestedWorkPanelReservation,
+    preserveReservation:
+      requestedWorkPanelReservation > 0 &&
+      displayTransition === "none" &&
+      workPanelReservation.width > 0,
+  });
+  const minimumWidth = Math.max(
+    WINDOW_MIN_WIDTH,
+    Math.min(workArea.width, WINDOW_MIN_WIDTH + next.reservation.width),
+  );
+  if (next.bounds.width < currentBounds.width) {
+    window.setMinimumSize(minimumWidth, WINDOW_MIN_HEIGHT);
+  }
+  expectedWorkPanelBounds = next.bounds;
+  window.setBounds(next.bounds, false);
+  if (next.bounds.width >= currentBounds.width) {
+    window.setMinimumSize(minimumWidth, WINDOW_MIN_HEIGHT);
+  }
+
+  const appliedBounds = window.getBounds();
+  expectedWorkPanelBounds = appliedBounds;
+  workPanelLastAppliedBounds = { ...appliedBounds };
+  workPanelReservation = {
+    width: Math.max(0, appliedBounds.width - baseBounds.width),
+    xOffset: appliedBounds.x - baseBounds.x,
+  };
   return workPanelReservation;
 }
 
@@ -2939,7 +2996,9 @@ async function createWindow() {
 
   const nativePanelWidth = (bounds: WindowBounds, baseBounds: WindowBounds) =>
     Math.max(
-      WORK_PANEL_MIN_WIDTH,
+      requestedWorkPanelReservation < WORK_PANEL_MIN_WIDTH
+        ? WORK_PANEL_RESERVATION_MIN_WIDTH
+        : WORK_PANEL_MIN_WIDTH,
       Math.min(WORK_PANEL_MAX_WIDTH, bounds.width - baseBounds.width),
     );
 
@@ -3029,7 +3088,13 @@ async function createWindow() {
     workPanelNativeResizeActive = true;
     // Let the right edge reach the panel minimum while the base chat width
     // remains fixed. The normal minimum is restored after the gesture settles.
-    window.setMinimumSize(baseBounds.width + WORK_PANEL_MIN_WIDTH, WINDOW_MIN_HEIGHT);
+    window.setMinimumSize(
+      baseBounds.width +
+        (requestedWorkPanelReservation < WORK_PANEL_MIN_WIDTH
+          ? WORK_PANEL_RESERVATION_MIN_WIDTH
+          : WORK_PANEL_MIN_WIDTH),
+      WINDOW_MIN_HEIGHT,
+    );
     return nativeWorkPanelResize;
   };
 
@@ -3191,7 +3256,10 @@ async function createWindow() {
       fullScreen: window.isFullScreen(),
     });
   };
-  window.on("enter-full-screen", sendFullScreen);
+  window.on("enter-full-screen", () => {
+    sendFullScreen();
+    scheduleWorkPanelReservation();
+  });
   window.on("leave-full-screen", () => {
     sendFullScreen();
     scheduleWorkPanelReservation();
@@ -3207,7 +3275,10 @@ async function createWindow() {
   // Custom window controls (Windows/Linux) need maximize state to swap the
   // maximize/restore glyph.
   if (process.platform !== "darwin") {
-    window.on("maximize", sendMaximized);
+    window.on("maximize", () => {
+      sendMaximized();
+      scheduleWorkPanelReservation();
+    });
     // Native-runner E2E fixture: establish the initial native state before
     // the renderer mounts, then let WindowControls query it through IPC.
     if (process.env.PI_DESKTOP_START_MAXIMIZED === "1") window.maximize();
@@ -7856,12 +7927,9 @@ function registerIpc() {
         throw new Error("main window unavailable");
       }
 
-      // The work panel is an internal renderer column. Keep this IPC seam for
-      // compatibility, but never let it change BrowserWindow bounds: opening
-      // and collapsing the panel are handled entirely by renderer flex layout.
-      requestedWorkPanelReservation = 0;
-      workPanelReservation = emptyWorkPanelReservationState();
-      return { requested: 0, reserved: 0 };
+      requestedWorkPanelReservation = requested;
+      const reservation = applyWorkPanelReservation();
+      return { requested, reserved: reservation.width };
     },
   );
 

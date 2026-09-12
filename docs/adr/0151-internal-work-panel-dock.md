@@ -1,13 +1,18 @@
 # ADR 0151: Keep the work panel inside the fixed application window
 
-- Status: Accepted
+- Status: Accepted (amended by ADR 0235)
 - Date: 2026-09-03
 - Related: [01-ui-ia](../spec/04-ux/01-ui-ia.md) ·
   [08-component-spec §5](../spec/04-ux/08-component-spec.md) ·
   [09-interaction-patterns §8](../spec/04-ux/09-interaction-patterns.md) ·
   [01-ipc-protocol](../spec/03-runtime/01-ipc-protocol.md) · E2E-056 · E2E-167
 - Supersedes: ADR 0122 and the work-panel boundary clauses of ADR 0146
+- Amended by: [ADR 0235](0235-three-column-width-priority.md)
 - Restores the internal-dock direction from ADR 0033
+
+> ADR 0235 amends the width-priority, MainChat minimum, native reservation,
+> and responsive sidebar clauses below. The remaining sections preserve the
+> historical renderer-owned in-flow dock decision.
 
 ## Context
 
