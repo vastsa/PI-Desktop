@@ -121,7 +121,7 @@ export function createSessionLaunchRuntime({
       return [];
     }
   }
-  
+
   /** The user's own skills, filtered to the ones a session on this project sees. */
   async function activeUserSkills(
     projectPath: string | undefined,
@@ -139,7 +139,7 @@ export function createSessionLaunchRuntime({
       return [];
     }
   }
-  
+
   /**
    * The user's own subagent definitions, filtered to the ones a session on this
    * project sees, as documents the runtime can parse (D202).
@@ -184,7 +184,7 @@ export function createSessionLaunchRuntime({
     }
     return documents;
   }
-  
+
   /**
    * Load one of the user's own skill documents by id, or `null` if there is no
    * such skill — so the caller can fall through to the plugin catalog.
@@ -209,7 +209,7 @@ export function createSessionLaunchRuntime({
     }
     return { id: skill.id, name: skill.name, body: result.body };
   }
-  
+
   async function resolveEffectiveCommandShell(): Promise<CommandShellCatalog> {
     if (!runtimeState.host) throw new Error("host unavailable");
     const catalog = await runtimeState.host!.call<CommandShellCatalog>("commandShells.list");
@@ -226,7 +226,7 @@ export function createSessionLaunchRuntime({
     }
     return catalog;
   }
-  
+
   async function resolveAgentRuntimeLaunch(
     sessionId: string,
     session: any,
@@ -472,7 +472,7 @@ export function createSessionLaunchRuntime({
         };
       }
     }
-  
+
     const subagentDiagnostics = [
       ...subagentCatalog.diagnostics,
       ...subagentBindings.diagnostics,
@@ -575,7 +575,7 @@ export function createSessionLaunchRuntime({
       },
     };
   }
-  
+
   return {
     refreshUserMcp,
     activeUserSkills,

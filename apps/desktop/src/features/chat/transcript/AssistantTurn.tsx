@@ -356,4 +356,3 @@ export function CompactionRow({ mark }: { mark: ContextCompactionMark }) {
     </div>
   );
 }
-

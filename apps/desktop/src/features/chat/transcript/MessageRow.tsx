@@ -251,4 +251,3 @@ export const MessageRow = memo(function MessageRow({
     </div>
   );
 });
-

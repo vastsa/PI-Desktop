@@ -252,4 +252,3 @@ export type AgentEventEnvelope = {
   /** Definition name of the emitting subagent. */
   agentName?: string;
 };
-

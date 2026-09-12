@@ -96,4 +96,3 @@ export type ScheduledTask = {
   updatedAt: string;
   lastRunAt?: string;
 };
-

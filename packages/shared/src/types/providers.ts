@@ -172,4 +172,3 @@ export type OAuthRespondInput = {
   /** Absent cancels the prompt, which aborts the login flow. */
   value?: string;
 };
-

@@ -97,7 +97,7 @@ export function createApplicationLifecycle({
 
   function applyDevelopmentBranding() {
     if (process.platform !== "darwin" || !isDevelopmentBuild || !app.dock) return;
-  
+
     const iconPath = join(app.getAppPath(), "build", "icon_1024.png");
     const icon = nativeImage.createFromPath(iconPath);
     if (icon.isEmpty()) {
@@ -106,10 +106,10 @@ export function createApplicationLifecycle({
       });
       return;
     }
-  
+
     app.dock.setIcon(icon);
   }
-  
+
   function trayIconPath() {
     const resourceRoot = app.isPackaged
       ? process.resourcesPath
@@ -123,13 +123,13 @@ export function createApplicationLifecycle({
         : [join(resourceRoot, app.isPackaged ? "tray-icon.png" : "icon.png")];
     return candidates.find((candidate) => existsSync(candidate)) ?? null;
   }
-  
+
   function hasVisibleWindow(): boolean {
     return BrowserWindow.getAllWindows().some(
       (window) => !window.isDestroyed() && window.isVisible(),
     );
   }
-  
+
   function restoreMainWindow() {
     void ensureWindow()
       .then(() => {
@@ -145,7 +145,7 @@ export function createApplicationLifecycle({
         });
       });
   }
-  
+
   function updateTrayMenu(locale = app.getLocale()) {
     if (!state.tray) return;
   const labels = catalogs[resolveLocale(locale)].tray;
@@ -157,7 +157,7 @@ export function createApplicationLifecycle({
       ]),
     );
   }
-  
+
   function createTray() {
     if (state.tray) return;
     const iconPath = trayIconPath();
@@ -167,7 +167,7 @@ export function createApplicationLifecycle({
       });
       return;
     }
-  
+
     const source = nativeImage.createFromPath(iconPath);
     if (source.isEmpty()) {
     logger.app("lifecycle", "warn", "tray icon could not be loaded", {
@@ -180,16 +180,16 @@ export function createApplicationLifecycle({
       height: process.platform === "darwin" ? 18 : 16,
     });
     if (process.platform === "darwin") icon.setTemplateImage(true);
-  
+
     state.tray = new Tray(icon);
     state.tray.setToolTip(APP_NAME);
     state.tray.on("click", restoreMainWindow);
     state.tray.on("double-click", restoreMainWindow);
     updateTrayMenu();
   }
-  
-  
-  
+
+
+
   function resetMenuRendererReady(window: BrowserWindow) {
     state.menuRendererReadyGate?.resolve();
     let resolve: () => void = () => undefined;
@@ -203,7 +203,7 @@ export function createApplicationLifecycle({
       resolve,
     };
   }
-  
+
   function markMenuRendererReady(window: BrowserWindow): boolean {
     const gate = state.menuRendererReadyGate;
     if (gate?.window !== window || window.isDestroyed()) return false;
@@ -211,7 +211,7 @@ export function createApplicationLifecycle({
     gate.resolve();
     return true;
   }
-  
+
   async function waitForMenuRenderer(window: BrowserWindow): Promise<boolean> {
     const gate = state.menuRendererReadyGate;
     if (gate?.window !== window) return false;
@@ -224,7 +224,7 @@ export function createApplicationLifecycle({
       !window.webContents.isDestroyed()
     );
   }
-  
+
   function createWindowForLifecycle(): Promise<void> {
     return createWindow({
       state: state,
@@ -253,14 +253,14 @@ export function createApplicationLifecycle({
       logger,
     });
   }
-  
+
   async function ensureWindow(): Promise<boolean> {
     if (appState.windowCreationPromise) {
       await appState.windowCreationPromise;
       return true;
     }
     if (state.mainWindow && !state.mainWindow.isDestroyed()) return false;
-  
+
     const creation = createWindowForLifecycle();
     appState.windowCreationPromise = creation;
     try {
@@ -270,7 +270,7 @@ export function createApplicationLifecycle({
       if (appState.windowCreationPromise === creation) appState.windowCreationPromise = null;
     }
   }
-  
+
   async function deliverApplicationMenuCommand(command: AppMenuCommand) {
     await ensureWindow();
     const window = state.mainWindow;
@@ -281,7 +281,7 @@ export function createApplicationLifecycle({
     window.focus();
     sendToRenderer(IPC.event.menuCommand, { command });
   }
-  
+
   function dispatchApplicationMenuCommand(command: AppMenuCommand) {
     if (!APP_MENU_COMMANDS.includes(command)) return;
     if (!appState.applicationBooted) {
@@ -294,7 +294,7 @@ export function createApplicationLifecycle({
       });
     });
   }
-  
+
   function executeNativeMenuAction(
     action: NativeMenuAction,
     target: BrowserWindow | null = state.mainWindow,
@@ -310,7 +310,7 @@ export function createApplicationLifecycle({
     if (!target || target.isDestroyed()) {
       return { maximized: false, fullScreen: false };
     }
-  
+
     const contents = target.webContents;
     switch (action) {
       case "undo":
@@ -357,18 +357,18 @@ export function createApplicationLifecycle({
         target.close();
         break;
     }
-  
+
     return {
       maximized: !target.isDestroyed() && target.isMaximized(),
       fullScreen: !target.isDestroyed() && target.isFullScreen(),
     };
   }
-  
+
   function dispatchNativeMenuAction(action: NativeMenuAction) {
     void executeNativeMenuAction(action);
   }
-  
-  
+
+
   function applyDeveloperMode(settings?: { developerMode?: unknown } | null) {
     const next = settings?.developerMode === true;
     if (next === state.developerMode) return;
@@ -380,7 +380,7 @@ export function createApplicationLifecycle({
       }
     }
   }
-  
+
   /**
    * Drive Chromium and macOS native chrome (menus, vibrancy) from the same
    * theme preference the renderer paints. `system` keeps following the OS;
@@ -388,7 +388,7 @@ export function createApplicationLifecycle({
    * cannot sit on a light Liquid Glass plate (D348). Missing `plugin:` themes
    * fall back to `system`, matching the renderer.
    */
-  
+
   function applyNativeThemeSource(settings?: { theme?: unknown } | null) {
     const preference = settings?.theme;
     let next: "system" | "light" | "dark" = "system";
@@ -406,7 +406,7 @@ export function createApplicationLifecycle({
       state.mainWindow.setVibrancy("sidebar");
     }
   }
-  
+
   /** Keep native labels and accelerators aligned with persisted app settings. */
   function applyApplicationMenuSettings(settings?: {
     language?: unknown;
@@ -462,7 +462,7 @@ export function createApplicationLifecycle({
     });
     updateTrayMenu(locale);
   }
-  
+
   /**
    * The appearance the host is currently showing, served to plugin panels and
    * plugin processes through `app.getAppearance`.
@@ -486,7 +486,7 @@ export function createApplicationLifecycle({
     }
     return { theme: appearanceState.appThemePreference, base, locale: appearanceState.updaterLocale, pluginTheme };
   }
-  
+
   /** Push the current appearance to every open plugin panel, when it changed. */
   function broadcastAppearance(): void {
     const appearance = resolveAppearance();
@@ -495,7 +495,7 @@ export function createApplicationLifecycle({
     appearanceState.broadcastAppearanceSignature = signature;
     broadcastPluginPanelEvent("appearance:changed", appearance);
   }
-  
+
   function flushPendingApplicationMenuCommands() {
     const commands = appState.pendingApplicationMenuCommands.splice(0);
     void (async () => {
@@ -508,7 +508,7 @@ export function createApplicationLifecycle({
       });
     });
   }
-  
+
   return {
     applyDevelopmentBranding,
     hasVisibleWindow,

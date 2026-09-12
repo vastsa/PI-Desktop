@@ -48,4 +48,3 @@ export function delegateThinkingLevel(message: UiMessage): ThinkingLevel | undef
  * Copies a run row's command from its head. The expanded body holds only the
  * output, so this is the one place the command can be taken from (D226).
  */
-

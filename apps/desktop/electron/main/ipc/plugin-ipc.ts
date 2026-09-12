@@ -294,4 +294,3 @@ export function registerPluginIpc({
   // host-core persists and validates; this side owns the connections, so every
   // mutation is followed by a refresh that drops stale ones.
 }
-
