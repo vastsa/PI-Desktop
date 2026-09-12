@@ -1403,9 +1403,16 @@ Single message render — either user (plaintext) or assistant (markdown streami
   generic binding seed, while a non-default per-model Advanced value remains
   explicit. Unknown models use the provider's generic default window. The
   panel is portaled to the document body as a fixed viewport overlay, flips
-  above or below the trigger, clamps to viewport margins, and repositions on
-  scroll or window resize so no clipping ancestor can hide it (D103, D184,
-  D244, D347). When the active session has an installed context checkpoint,
+  above or below the trigger, clamps its horizontal bounds to the
+  conversation pane — the work panel's native browser/plugin surfaces
+  composite above every renderer layer, so anything crossing the pane's
+  right edge would be covered regardless of z-index (D357) — and
+  repositions on scroll, window resize, or conversation-pane geometry
+  changes (sidebar and work-panel toggle, resize, and entrance animation
+  are observed through a pane `ResizeObserver`, since none of them emit
+  resize or scroll events) so no clipping ancestor or native surface can
+  hide it (D103, D184, D244, D347). When the active session has an
+  installed context checkpoint,
   the panel adds one muted summary line for the compaction count and newest
   summary's estimated token cost; the transcript still shows one row per
   compaction (D203).
