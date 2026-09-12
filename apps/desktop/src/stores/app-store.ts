@@ -103,20 +103,9 @@ import { settleStoppedAssistantMetrics } from "../lib/context-usage";
 import { formatToolValue } from "../lib/tool-display";
 import { withReviewChangeState } from "../lib/workspace-review";
 import {
-  activateWorkPanelTabState,
-  closeWorkPanelTabState,
-  emptyWorkPanelContext,
   fileWorkPanelTab,
-  openWorkPanelTabState,
-  newWorkPanelTab,
-  replaceWorkPanelTabState,
-  sanitizeWorkPanelTabsState,
   shouldOpenReviewArtifact,
-  switchWorkPanelContextState,
   toolWorkPanelTab,
-  browserPluginTab,
-  type WorkPanelContext,
-  type WorkPanelTab,
 } from "../lib/work-panel-tabs";
 import {
   clearSessionPermissions,
@@ -164,6 +153,31 @@ import {
 import type { AgentQueueChangedEvent, QueuedTurnSummary } from "@pi-desktop/shared";
 import { settleBootstrapRequests } from "../lib/bootstrap-result";
 import type { SubagentPanelSelection } from "../lib/subagent-panel";
+import {
+  createWorkPanelSlice,
+  currentWorkPanelContext,
+  switchWorkPanelSession,
+} from "./slices/work-panel-slice";
+import {
+  createInitialState,
+  initialSidebarPreferences,
+} from "./slices/initial-state";
+import type {
+  AgentTurnResult,
+  DraftSessionConfiguration,
+  PendingPlanRefreshResult,
+  ToastItem,
+  ToastOptions,
+  ToastVariant,
+} from "./app-state";
+export type {
+  AgentTurnResult,
+  DraftSessionConfiguration,
+  PendingPlanRefreshResult,
+  ToastItem,
+  ToastOptions,
+  ToastVariant,
+} from "./app-state";
 
 const ErrorCodes = {
   ...SharedErrorCodes,
@@ -318,31 +332,6 @@ async function triggerAutoTitleSummarization(sessionId: string) {
   }
 }
 
-export type ToastVariant = "info" | "success" | "warning" | "error";
-
-export type ToastItem = {
-  id: number;
-  message: string;
-  variant: ToastVariant;
-  /** Auto-dismiss delay in ms; 0 keeps the toast until dismissed. */
-  duration: number;
-};
-
-export type ToastOptions = {
-  variant?: ToastVariant;
-  /** Override the variant default (4s, error 8s); 0 disables auto-dismiss. */
-  duration?: number;
-};
-
-export type AgentTurnResult = {
-  status: "completed" | "failed";
-  turnId: string;
-  finishedAt: number;
-  errorCode?: string;
-};
-export type PendingPlanRefreshResult = "pending" | "terminal" | "unavailable";
-
-const WORK_PANEL_STORAGE_KEY = "pi.desktop.workPanel";
 const SESSION_TRANSCRIPT_CACHE_LIMIT = 20;
 export const SESSION_TRANSCRIPT_PAGE_SIZE = 100;
 export const SESSION_TRANSCRIPT_CONTENT_LIMIT = 64 * 1024;
@@ -350,7 +339,6 @@ export { RETAINED_SESSION_PANE_LIMIT };
 // Preserve the original 320px tool-content minimum beside the 44px activity rail.
 export { WORK_PANEL_DEFAULT_WIDTH, WORK_PANEL_MIN_WIDTH };
 
-let workPanelFileRequestSeq = 0;
 const navigationIntents = createNavigationIntentController();
 let pendingSessionSelection: { id: string; intent: number } | null = null;
 let sessionWorkspaceQueue: Promise<void> = Promise.resolve();
@@ -728,35 +716,6 @@ function assistantErrorMessage(error: AppError): UiMessage {
   };
 }
 
-function loadWorkPanelWidth(): number {
-  try {
-    const raw = localStorage.getItem(WORK_PANEL_STORAGE_KEY);
-    if (!raw) return WORK_PANEL_DEFAULT_WIDTH;
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    const width = Number(parsed.width);
-    return Number.isFinite(width)
-      ? Math.max(
-          WORK_PANEL_MIN_WIDTH,
-          Math.min(WORK_PANEL_MAX_WIDTH, Math.round(width)),
-        )
-      : WORK_PANEL_DEFAULT_WIDTH;
-  } catch {
-    return WORK_PANEL_DEFAULT_WIDTH;
-  }
-}
-
-function saveWorkPanelWidth(width: number) {
-  try {
-    localStorage.setItem(
-      WORK_PANEL_STORAGE_KEY,
-      JSON.stringify({ width }),
-    );
-  } catch {
-    // best-effort persistence
-  }
-}
-
-
 // Design-system §11.8: default 4s auto-dismiss, errors linger 8s.
 const TOAST_DURATION_MS = 4000;
 const TOAST_ERROR_DURATION_MS = 8000;
@@ -778,282 +737,7 @@ export function isDefaultSessionTitle(title?: string | null) {
   );
 }
 
-export type SessionView = {
-  sort: SessionSort;
-  /** Alias retained for sidebar consumers that use the explicit name. */
-  sortBy?: SessionSort;
-  /** Whether archived sessions are included in sidebar queries. */
-  archived: boolean;
-  showArchived?: boolean;
-};
-
-/** Toolbar selections made on the unpersisted new-task draft. They are
- * applied when the first message materializes the draft into a session
- * instead of creating a history row for a toolbar-only interaction. */
-export type DraftSessionConfiguration = {
-  mode: Mode;
-  thinkingLevel: ThinkingLevel;
-  providerId?: string;
-  modelId?: string;
-  permissionMode?: PermissionMode;
-};
-
-export type AppState = {
-  ready: boolean;
-  version?: AppVersionInfo;
-  healthOk: boolean;
-  settings?: AppSettings;
-  sessions: SessionSummary[];
-  /** Renderer-owned conversation presentation metadata. */
-  sessionMeta: Record<string, SessionMeta>;
-  sessionView: SessionView;
-  /** Open project tabs and the host's currently active workspace. */
-  openProjects: ProjectWorkspace[];
-  openProjectPaths: string[];
-  activeProjectPath?: string;
-  projectMeta: Record<string, ProjectMeta>;
-  /** Kept as a flat map for lightweight consumers (Sidebar). */
-  projectCollapsed: Record<string, boolean>;
-  projectSort: ProjectSort;
-  activeSessionId?: string;
-  /** Composer toolbar choices retained on the draft while it has no session
-   * yet; cleared once the draft is materialized into a session. */
-  draftConfiguration: DraftSessionConfiguration | null;
-  /** Latest user-selected session while its transcript/workspace is resolving. */
-  selectingSessionId?: string;
-  messages: UiMessage[];
-  /**
-   * Session ids whose panes stay mounted, most recently visible first and
-   * bounded by `RETAINED_SESSION_PANE_LIMIT` (ADR 0137). The head is the
-   * session the chat surface shows.
-   */
-  retainedSessionIds: string[];
-  /**
-   * Last transcript each retained pane painted. A pane reads the live
-   * `messages` projection while it owns the active session and falls back to
-   * this snapshot once another session takes over, so leaving a session cannot
-   * blank the pane the user is coming back to.
-   */
-  retainedTranscripts: Record<string, UiMessage[]>;
-  /** Renderer-owned range metadata for the lazily loaded active transcript. */
-  sessionHistory: Record<string, SessionHistoryWindow>;
-  isRunning: boolean;
-  /** Run state per session id — sessions run independent agents. */
-  runningSessions: Record<string, boolean>;
-  /** Runtime-owned phase for explaining quiet intervals in active turns. */
-  agentStatuses: Record<string, AgentStatus>;
-  /** Latest in-memory result for each session, used by the active transcript. */
-  latestTurnResults: Record<string, AgentTurnResult>;
-  /** Latest terminal outcome per session for compact sidebar feedback. */
-  sessionOutcomes: Record<string, SidebarSessionOutcome>;
-  /**
-   * Every checkpoint a session has installed, oldest first. The transcript
-   * renders one divider row each and the context inspector reads the last one.
-   */
-  sessionCompactions: Record<string, ContextCompactionMark[]>;
-  providers: ProviderPublic[];
-  /** Discovered model lists per provider id (composer model menu). */
-  providerModels: Record<string, ModelInfo[]>;
-  workspace?: ProjectWorkspace | null;
-  onboarding?: OnboardingState;
-  plugins: PluginSummary[];
-  /** Themes contributed by loaded plugins, with their sanitized CSS. */
-  pluginThemes: PluginTheme[];
-  /** Work panel views contributed by loaded plugins, in menu order. */
-  pluginViews: PluginViewMeta[];
-  /** Per-session permission queue, oldest first; parallel delegates can each
-   * be waiting on one (ADR 0062). */
-  pendingPermissions: PermissionQueues;
-  /** Inline asktool requests, queued per session without an expiry. */
-  pendingAsks: AskQueues;
-  /** Renderer-owned, in-memory prompt queue, isolated by session. */
-  queuedPrompts: QueuedPrompts;
-  /** Planning state is durable per session, including sessions outside view. */
-  planningStates: Record<string, PlanningState>;
-  /** Live host approval rows keyed by session; only pending rows form the gate. */
-  pendingPlans: Record<string, PlanProposal>;
-  /** Latest immutable Plan checkpoint/execution snapshot per session. */
-  planCheckpoints: Record<string, PlanProposal>;
-  toasts: ToastItem[];
-  notifications: AppNotification[];
-  unreadNotificationCount: number;
-  page: "chat" | "pulls" | "scheduled" | "plugins" | "settings";
-  /** Tab ids come from the shared settings index so nav, search, and the
-   * page cannot drift apart. */
-  settingsTab: SettingsTabId;
-  /** Pending row anchor (i18n key) to flash after landing on a settings tab. */
-  settingsAnchor: string | null;
-  navStack: Array<{ page: AppState["page"]; sessionId?: string }>;
-  navIndex: number;
-  error?: string | null;
-  errorCode?: string | null;
-  /** Whether the current error is worth a one-click retry (agent errors). */
-  errorRetriable?: boolean | null;
-  bootstrap: () => Promise<void>;
-  refreshSessions: () => Promise<void>;
-  prefetchSession: (id: string) => Promise<void>;
-  loadOlderMessages: (sessionId: string) => Promise<void>;
-  selectSession: (
-    id: string,
-    opts?: { record?: boolean } & NavigationOptions,
-  ) => Promise<void>;
-  newSession: (options?: { projectPath?: string | null }) => Promise<void>;
-  forkSession: (id: string) => Promise<void>;
-  forkAssistantMessage: (messageId: string) => Promise<void>;
-  configureActiveSession: (config: {
-    mode: Mode;
-    providerId?: string;
-    modelId?: string;
-    thinkingLevel: ThinkingLevel;
-    permissionMode?: PermissionMode;
-  }) => Promise<void>;
-  /** Returns true once accepted unless concurrent smart Stop restores it. */
-  sendPrompt: (
-    content: string,
-    draft?: ComposerDraftSnapshot,
-    targetSessionId?: string,
-  ) => Promise<boolean>;
-  enqueuePrompt: (
-    content: string,
-    draft?: ComposerDraftSnapshot,
-    sessionId?: string,
-  ) => void;
-  removeQueuedPrompt: (promptId: string) => void;
-  sendQueuedNow: (promptId: string) => Promise<void>;
-  refreshQueuedPrompts: (sessionId: string) => Promise<void>;
-  applyQueueChanged: (event: AgentQueueChangedEvent) => void;
-  compactContext: () => Promise<void>;
-  retryAssistantMessage: (messageId: string) => Promise<void>;
-  /** Replace a user prompt and regenerate from it; the old branch stays in the revision pager. */
-  editUserMessage: (
-    messageId: string,
-    content: string,
-    attachments?: UiMessage["attachments"],
-  ) => Promise<boolean>;
-  retryLastPrompt: () => Promise<void>;
-  clearError: () => void;
-  activateMessageRevision: (rootUserId: string, revisionIndex: number) => Promise<void>;
-  deleteMessage: (messageId: string) => Promise<void>;
-  rollbackWorkspaceChange: (
-    messageId: string,
-    snapshotId: string,
-  ) => Promise<ReviewRollbackResult | null>;
-  abort: () => Promise<void>;
-  openProject: () => Promise<void>;
-  cloneProject: (url: string) => Promise<ProjectWorkspace | null>;
-  /** Re-read the active workspace metadata without changing the visible project. */
-  refreshProject: (path: string) => Promise<ProjectWorkspace | null>;
-  activateProject: (
-    path: string,
-    opts?: NavigationOptions,
-  ) => Promise<ProjectWorkspace | null>;
-  openProjectPath: (path: string) => Promise<ProjectWorkspace | null>;
-  switchProjectPath: (path: string) => Promise<ProjectWorkspace | null>;
-  closeProjectPath: (path: string) => Promise<void>;
-  clearProject: (opts?: NavigationOptions) => Promise<void>;
-  toggleSessionPinned: (id: string) => void;
-  toggleSessionArchived: (id: string) => void;
-  archiveSession: (id: string) => void;
-  restoreSession: (id: string) => void;
-  renameSession: (id: string, title: string) => Promise<void>;
-  /** Move an idle session into an already-known project, preserving history. */
-  moveSessionProject: (id: string, projectPath: string) => Promise<boolean>;
-  deleteSession: (id: string) => Promise<void>;
-  setSessionSort: (sort: SessionSort) => void;
-  setSessionArchiveVisibility: (show: boolean) => void;
-  setSessionView: (view: Partial<SessionView> | boolean) => void;
-  setShowArchived: (show: boolean) => void;
-  renameProject: (path: string, name: string) => void;
-  toggleProjectPinned: (path: string, pinned?: boolean) => void;
-  toggleProjectArchived: (path: string) => void;
-  restoreProject: (path: string) => void;
-  archiveProject: (path: string) => void;
-  setProjectCollapsed: (path: string, collapsed?: boolean) => void;
-  toggleProjectCollapsed: (path: string) => void;
-  closeProject: (path: string) => Promise<void>;
-  setProjectSort: (sort: ProjectSort) => void;
-  reorderProjects: (paths: string[]) => void;
-  getVisibleSessions: (options?: {
-    projectPath?: string | null;
-    includeArchived?: boolean;
-  }) => SessionSummary[];
-  getSortedProjects: () => ProjectWorkspace[];
-  refreshProviders: () => Promise<void>;
-  /** Load a provider's model list into the cache (no-op when cached). */
-  loadProviderModels: (providerId: string) => Promise<void>;
-  refreshPlugins: () => Promise<void>;
-  /** Reload contributed themes (plugins may come and go at runtime). */
-  refreshPluginThemes: () => Promise<void>;
-  /** Reload contributed work panel views (scope and lifecycle change them). */
-  refreshPluginViews: () => Promise<void>;
-  refreshNotifications: () => Promise<void>;
-  receiveNotification: (notification: AppNotification) => void;
-  markNotificationRead: (id: string) => Promise<void>;
-  markAllNotificationsRead: () => Promise<void>;
-  clearNotifications: () => Promise<void>;
-  openNotification: (id: string) => Promise<void>;
-  /** Drop a session's sidebar outcome badge and read its task notifications. */
-  acknowledgeSessionOutcome: (sessionId: string) => Promise<void>;
-  restorePendingPlan: (sessionId: string) => Promise<PendingPlanRefreshResult>;
-  refreshPlanCheckpoints: () => Promise<void>;
-  handleAgentEvent: (envelope: AgentEventEnvelope) => void;
-  handlePlansChanged: (event: PlanningStateEvent) => void;
-  setPage: (page: AppState["page"], opts?: { record?: boolean }) => void;
-  setSettingsTab: (tab: AppState["settingsTab"]) => void;
-  setSettingsAnchor: (key: string | null) => void;
-  navBack: () => void;
-  navForward: () => void;
-  canNavBack: () => boolean;
-  canNavForward: () => boolean;
-  resolvePermission: (
-    sessionId: string,
-    requestId: string,
-    decision: "allow-once" | "allow-session" | "deny",
-  ) => Promise<void>;
-  resolveAsk: (
-    sessionId: string,
-    resolution: AskToolResolution,
-  ) => Promise<void>;
-  resolvePlan: (resolution: PlanResolveRequest) => Promise<PlanResolutionResult>;
-  showToast: (message: string, options?: ToastOptions) => void;
-  dismissToast: (id: number) => void;
-  composerPrefill: ComposerPrefill | null;
-  clearComposerPrefill: () => void;
-  /** Renderer-only subagent details selected from the transcript. */
-  subagentPanel: SubagentPanelSelection | null;
-  workPanelOpen: boolean;
-  workPanelTabs: WorkPanelTab[];
-  activeWorkPanelTabId: string | null;
-  /** Runtime-only work panel state owned by each conversation. */
-  workPanelContexts: Record<string, WorkPanelContext>;
-  workPanelWidth: number;
-  /** Chat-initiated "preview this file" request consumed by the files tab. */
-  workPanelFileRequest: { path: string; seq: number; mimeType?: string } | null;
-  /** Toggle the selected subagent detail, replacing another selection when needed. */
-  toggleSubagentPanel: (delegationId: string) => void;
-  /** Close the selected subagent detail without changing resource tabs. */
-  closeSubagentPanel: () => void;
-  /** Reveal the active session's retained work panel without creating a tab. */
-  openWorkPanel: () => void;
-  /** Flip the work panel between revealed and collapsed for the active session. */
-  toggleWorkPanel: () => void;
-  openWorkPanelTab: (tab: WorkPanelTab) => void;
-  /** Create and activate a new blank tool launcher page. */
-  openNewWorkPanelTab: () => void;
-  /** Open a tool from a blank launcher page, reusing an existing tool tab. */
-  replaceWorkPanelTab: (sourceTabId: string, tab: WorkPanelTab) => void;
-  openWorkPanelTabForSession: (sessionId: string, tab: WorkPanelTab) => void;
-  activateWorkPanelTab: (tabId: string) => void;
-  closeWorkPanelTab: (tabId: string) => void;
-  collapseWorkPanel: () => void;
-  /** Hide the visible panel while retaining its session-owned context. */
-  resetWorkPanelContext: () => void;
-  setWorkPanelWidth: (width: number) => void;
-  /** Open a workspace-relative file or attachment ref in the files viewer. */
-  openFileInWorkPanel: (path: string, mimeType?: string) => void;
-  /** Open a URL in the work panel browser tab. */
-  openUrlInWorkPanel: (url: string) => void;
-};
+export type AppState = import("./app-state").AppState;
 
 function openPlanArtifact(
   proposal: PlanProposal,
@@ -1067,49 +751,8 @@ function openPlanArtifact(
   );
 }
 
-const initialSidebarPreferences = loadSidebarPreferences();
 for (const [sessionId, meta] of Object.entries(initialSidebarPreferences.sessionMeta)) {
   if (meta.manualTitle) manuallyRenamedSessionIds.add(sessionId);
-}
-const initialWorkPanelWidth = loadWorkPanelWidth();
-
-function currentWorkPanelContext(state: AppState): WorkPanelContext {
-  const tabs = sanitizeWorkPanelTabsState({
-    tabs: state.workPanelTabs,
-    activeTabId: state.activeWorkPanelTabId,
-  });
-  return {
-    open: state.workPanelOpen,
-    tabs: tabs.tabs,
-    activeTabId: tabs.activeTabId,
-    fileRequest: state.workPanelFileRequest,
-  };
-}
-
-function switchWorkPanelSession(
-  state: AppState,
-  nextSessionId?: string,
-): Pick<
-  AppState,
-  | "workPanelContexts"
-  | "workPanelOpen"
-  | "workPanelTabs"
-  | "activeWorkPanelTabId"
-  | "workPanelFileRequest"
-> {
-  const switched = switchWorkPanelContextState(
-    state.workPanelContexts,
-    state.activeSessionId,
-    currentWorkPanelContext(state),
-    nextSessionId,
-  );
-  return {
-    workPanelContexts: switched.contexts,
-    workPanelOpen: switched.visible.open,
-    workPanelTabs: switched.visible.tabs,
-    activeWorkPanelTabId: switched.visible.activeTabId,
-    workPanelFileRequest: switched.visible.fileRequest,
-  };
 }
 
 // Cross-session tool calls never enter `messages`, and a renderer reload can
@@ -1299,71 +942,7 @@ const streamUpdates = createFrameBatcher<AgentEventEnvelope>((envelopes) => {
 });
 
 export const useAppStore = create<AppState>((set, get) => ({
-  ready: false,
-  healthOk: false,
-  sessions: [],
-  sessionMeta: initialSidebarPreferences.sessionMeta,
-  sessionView: {
-    ...initialSidebarPreferences.sessionView,
-    sortBy: initialSidebarPreferences.sessionView.sort,
-    showArchived: initialSidebarPreferences.sessionView.archived,
-  },
-  openProjects: initialSidebarPreferences.openProjectPaths.map((path) =>
-    withProjectDisplayName(
-      projectWorkspaceFromPath(path),
-      initialSidebarPreferences.projectMeta,
-    ),
-  ),
-  openProjectPaths: initialSidebarPreferences.openProjectPaths,
-  activeProjectPath: undefined,
-  projectMeta: initialSidebarPreferences.projectMeta,
-  projectCollapsed: Object.fromEntries(
-    Object.entries(initialSidebarPreferences.projectMeta)
-      .filter(([, meta]) => meta.collapsed === true)
-      .map(([path]) => [path, true]),
-  ),
-  subagentPanel: null,
-  workPanelOpen: false,
-  workPanelTabs: [],
-  activeWorkPanelTabId: null,
-  workPanelContexts: {},
-  workPanelWidth: initialWorkPanelWidth,
-  workPanelFileRequest: null,
-  projectSort: initialSidebarPreferences.projectSort,
-  messages: [],
-  retainedSessionIds: [],
-  retainedTranscripts: {},
-  sessionHistory: {},
-  draftConfiguration: null,
-  isRunning: false,
-  runningSessions: {},
-  agentStatuses: {},
-  latestTurnResults: {},
-  sessionOutcomes: {},
-  sessionCompactions: {},
-  providers: [],
-  providerModels: {},
-  plugins: [],
-  pluginThemes: [],
-  pluginViews: [],
-  pendingPermissions: {},
-  pendingAsks: {},
-  queuedPrompts: {},
-  planningStates: {},
-  pendingPlans: {},
-  planCheckpoints: {},
-  page: "chat",
-  settingsTab: "general",
-  settingsAnchor: null,
-  navStack: [{ page: "chat" }],
-  navIndex: 0,
-  toasts: [],
-  notifications: [],
-  unreadNotificationCount: 0,
-  composerPrefill: null,
-  error: null,
-  errorCode: null,
-  errorRetriable: null,
+  ...createInitialState(),
 
   bootstrap: async () => {
     let recoveredSettings: AppSettings | undefined;
@@ -4350,263 +3929,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   dismissToast: (id) =>
     set((state) => ({ toasts: state.toasts.filter((item) => item.id !== id) })),
 
-  toggleSubagentPanel: (delegationId) => {
-    const state = get();
-    const sessionId = state.activeSessionId;
-    const id = delegationId.trim();
-    if (!sessionId || !id) return;
-    if (
-      state.subagentPanel?.sessionId === sessionId &&
-      state.subagentPanel.delegationId === id
-    ) {
-      set({ subagentPanel: null });
-      return;
-    }
-    set({ subagentPanel: { sessionId, delegationId: id } });
-  },
-  closeSubagentPanel: () => set({ subagentPanel: null }),
+  ...createWorkPanelSlice({
+    get,
+    set,
+    isSessionSelectionPending: (sessionId) =>
+      pendingSessionSelection?.id === sessionId,
+  }),
 
-  openWorkPanel: () => {
-    const state = get();
-    const sessionId = state.activeSessionId;
-    if (!sessionId) return;
-    const context = currentWorkPanelContext(state);
-    set({
-      workPanelOpen: true,
-      workPanelContexts: {
-        ...state.workPanelContexts,
-        [sessionId]: { ...context, open: true },
-      },
-    });
-  },
-
-  toggleWorkPanel: () => {
-    const state = get();
-    if (state.subagentPanel) {
-      state.closeSubagentPanel();
-      if (get().workPanelOpen) get().collapseWorkPanel();
-      return;
-    }
-    if (state.workPanelOpen) {
-      state.collapseWorkPanel();
-      return;
-    }
-    state.openWorkPanel();
-  },
-
-  openWorkPanelTabForSession: (sessionId, tab) => {
-    if (!sessionId) return;
-    set((state) => {
-      const affectsVisibleSession =
-        state.activeSessionId === sessionId &&
-        (pendingSessionSelection === null ||
-          pendingSessionSelection.id === sessionId);
-      const context = affectsVisibleSession
-        ? currentWorkPanelContext(state)
-        : state.workPanelContexts[sessionId] ?? emptyWorkPanelContext();
-      const next = openWorkPanelTabState(
-        {
-          tabs: context.tabs,
-          activeTabId: context.activeTabId,
-        },
-        tab,
-      );
-      const fileRequest =
-        tab.kind === "file" && tab.resource
-          ? {
-              path: tab.resource,
-              seq: ++workPanelFileRequestSeq,
-              ...(tab.mimeType ? { mimeType: tab.mimeType } : {}),
-            }
-          : context.fileRequest;
-      const nextContext: WorkPanelContext = {
-        open: true,
-        tabs: next.tabs,
-        activeTabId: next.activeTabId,
-        fileRequest,
-      };
-      return {
-        workPanelContexts: {
-          ...state.workPanelContexts,
-          [sessionId]: nextContext,
-        },
-        ...(affectsVisibleSession
-          ? {
-              workPanelOpen: true,
-              workPanelTabs: next.tabs,
-              activeWorkPanelTabId: next.activeTabId,
-              workPanelFileRequest: fileRequest,
-            }
-          : {}),
-      };
-    });
-  },
-  openWorkPanelTab: (tab) => {
-    const sessionId = get().activeSessionId;
-    if (!sessionId) return;
-    get().openWorkPanelTabForSession(sessionId, tab);
-  },
-  openNewWorkPanelTab: () => {
-    const sessionId = get().activeSessionId;
-    if (!sessionId) return;
-    get().openWorkPanelTabForSession(sessionId, newWorkPanelTab());
-  },
-  replaceWorkPanelTab: (sourceTabId, tab) => {
-    set((state) => {
-      const sessionId = state.activeSessionId;
-      if (!sessionId) return {};
-      const next = replaceWorkPanelTabState(
-        {
-          tabs: state.workPanelTabs,
-          activeTabId: state.activeWorkPanelTabId,
-        },
-        sourceTabId,
-        tab,
-      );
-      const activeTab = next.tabs.find((item) => item.id === next.activeTabId);
-      const fileRequest =
-        activeTab?.kind === "file" && activeTab.resource
-          ? {
-              path: activeTab.resource,
-              seq: ++workPanelFileRequestSeq,
-              ...(activeTab.mimeType ? { mimeType: activeTab.mimeType } : {}),
-            }
-          : state.workPanelFileRequest;
-      const nextContext: WorkPanelContext = {
-        open: true,
-        tabs: next.tabs,
-        activeTabId: next.activeTabId,
-        fileRequest,
-      };
-      return {
-        workPanelOpen: true,
-        workPanelTabs: next.tabs,
-        activeWorkPanelTabId: next.activeTabId,
-        workPanelFileRequest: fileRequest,
-        workPanelContexts: {
-          ...state.workPanelContexts,
-          [sessionId]: nextContext,
-        },
-      };
-    });
-  },
-  activateWorkPanelTab: (tabId) => {
-    set((state) => {
-      const sessionId = state.activeSessionId;
-      if (!sessionId) return {};
-      const next = activateWorkPanelTabState(
-        {
-          tabs: state.workPanelTabs,
-          activeTabId: state.activeWorkPanelTabId,
-        },
-        tabId,
-      );
-      const activeTab = next.tabs.find((tab) => tab.id === next.activeTabId);
-      const fileRequest =
-        activeTab?.kind === "file" && activeTab.resource
-          ? {
-              path: activeTab.resource,
-              seq: ++workPanelFileRequestSeq,
-              ...(activeTab.mimeType ? { mimeType: activeTab.mimeType } : {}),
-            }
-          : state.workPanelFileRequest;
-      const nextContext: WorkPanelContext = {
-        open: state.workPanelOpen,
-        tabs: next.tabs,
-        activeTabId: next.activeTabId,
-        fileRequest,
-      };
-      return {
-        activeWorkPanelTabId: next.activeTabId,
-        workPanelFileRequest: fileRequest,
-        workPanelContexts: {
-          ...state.workPanelContexts,
-          [sessionId]: nextContext,
-        },
-      };
-    });
-  },
-  closeWorkPanelTab: (tabId) => {
-    set((state) => {
-      const sessionId = state.activeSessionId;
-      if (!sessionId) return {};
-      const next = closeWorkPanelTabState(
-        {
-          tabs: state.workPanelTabs,
-          activeTabId: state.activeWorkPanelTabId,
-        },
-        tabId,
-      );
-      const activeTab = next.tabs.find((tab) => tab.id === next.activeTabId);
-      const fileRequest =
-        activeTab?.kind === "file" && activeTab.resource
-          ? {
-              path: activeTab.resource,
-              seq: ++workPanelFileRequestSeq,
-              ...(activeTab.mimeType ? { mimeType: activeTab.mimeType } : {}),
-            }
-          : state.workPanelFileRequest;
-      const nextContext: WorkPanelContext = {
-        // Closing the final tab leaves the panel open so the user can choose
-        // another tool from the new-tab launcher instead of losing the dock.
-        open: state.workPanelOpen,
-        tabs: next.tabs,
-        activeTabId: next.activeTabId,
-        fileRequest,
-      };
-      return {
-        workPanelTabs: next.tabs,
-        activeWorkPanelTabId: next.activeTabId,
-        workPanelOpen: state.workPanelOpen,
-        workPanelFileRequest: fileRequest,
-        workPanelContexts: {
-          ...state.workPanelContexts,
-          [sessionId]: nextContext,
-        },
-      };
-    });
-  },
-  collapseWorkPanel: () => {
-    const state = get();
-    const sessionId = state.activeSessionId;
-    if (!sessionId || !state.workPanelOpen) return;
-    set({
-      workPanelOpen: false,
-      workPanelContexts: {
-        ...state.workPanelContexts,
-        [sessionId]: { ...currentWorkPanelContext(state), open: false },
-      },
-    });
-  },
-  resetWorkPanelContext: () => {
-    set((state) => switchWorkPanelSession(state));
-  },
-  setWorkPanelWidth: (width) => {
-    const committedWidth = Math.round(width);
-    set({
-      workPanelWidth: Math.max(
-        WORK_PANEL_MIN_WIDTH,
-        Math.min(WORK_PANEL_MAX_WIDTH, committedWidth),
-      ),
-    });
-    saveWorkPanelWidth(get().workPanelWidth);
-  },
-
-  openFileInWorkPanel: (path, mimeType) => {
-    get().openWorkPanelTab(fileWorkPanelTab(path, mimeType));
-  },
-  openUrlInWorkPanel: (url) => {
-    const hasBrowser = get().pluginViews.some(
-      (view) => view.pluginId === "pi.browser" && view.viewId === "browser",
-    );
-    if (!hasBrowser) {
-      if (/^https?:\/\//i.test(url.trim())) {
-        void api.browserOpenExternal(url.trim());
-      }
-      return;
-    }
-    get().openWorkPanelTab(browserPluginTab(url));
-  },
 
   clearComposerPrefill: () => set({ composerPrefill: null }),
 }));
