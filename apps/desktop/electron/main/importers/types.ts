@@ -8,7 +8,12 @@ export interface ExternalSessionSummary {
   model: string | null;
   createdAt: string;
   updatedAt: string;
-  messageCount: number;
+  /**
+   * Exact item count for fully scanned files; null when the file was too
+   * large to scan without sampling (the UI renders an em dash). Transient
+   * scan metadata only — imported sessions always know their real count.
+   */
+  messageCount: number | null;
   filePath: string;
 }
 

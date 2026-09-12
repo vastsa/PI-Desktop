@@ -716,6 +716,7 @@ export const tr = {
     importMessages: "{{count}} ileti",
     importMessages_one: "1 ileti",
     importMessages_other: "{{count}} ileti",
+    importMessagesUnknown: "—",
     importNoProject: "Proje yok",
     importSessionCount: "{{count}} oturum",
     importSessionCount_one: "1 oturum",

@@ -706,6 +706,7 @@ export const fr = {
     "importMessages": "{{count}} messages",
     "importMessages_one": "1 message",
     "importMessages_other": "{{count}} messages",
+    "importMessagesUnknown": "—",
     "importNoProject": "Aucun projet",
     "importSessionCount": "{{count}} sessions",
     "importSessionCount_one": "1 session",

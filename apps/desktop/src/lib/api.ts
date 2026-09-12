@@ -115,7 +115,8 @@ export interface ImportCandidate {
   model: string | null;
   createdAt: string;
   updatedAt: string;
-  messageCount: number;
+  /** null when the source file was too large to scan without sampling. */
+  messageCount: number | null;
 }
 
 export interface ImportRunResult {

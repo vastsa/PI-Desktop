@@ -1,4 +1,6 @@
-import { promises as fs } from "node:fs";
+import { createReadStream } from "node:fs";
+import fs, { type FileHandle } from "node:fs/promises";
+import { createInterface } from "node:readline";
 import os from "node:os";
 import path from "node:path";
 import type {
@@ -108,7 +110,7 @@ async function parseFile(filePath: string): Promise<ParsedCodexFile | null> {
   return parsed.items.length > 0 ? parsed : null;
 }
 
-async function listSessionFiles(): Promise<string[]> {
+async function listSessionFiles(dir: string = SESSIONS_DIR): Promise<string[]> {
   const out: string[] = [];
   const walk = async (dir: string, depth: number) => {
     let entries: string[] = [];
@@ -126,38 +128,241 @@ async function listSessionFiles(): Promise<string[]> {
       }
     }
   };
-  await walk(SESSIONS_DIR, 0);
+  await walk(dir, 0);
   return out;
+}
+
+// ---------- Scan (#264): sampled metadata extraction for large archives ----------
+//
+// A real Codex archive accumulates gigabytes of `.jsonl`, and the scan only
+// needs the session title (first real user message), timestamps, cwd, and a
+// count. Fully reading and JSON-parsing every file blocked the main process
+// for ~8s at 865 files / 2.6GB. Files at or below the threshold keep the
+// exact full parse; larger files are sampled:
+//
+// - head chunk: parsed line by line for session_meta/header fields and the
+//   first real user message (if the head runs out first, streaming continues
+//   until the message is found, so sampled scans never drop a session);
+// - tail chunk: the last `"timestamp"` value, falling back to startedAt like
+//   the full parse does;
+// - messageCount: null (the UI shows "—" — counting items exactly would
+//   require reading the whole file, which sampling exists to avoid).
+
+export const CODEX_SCAN_FULL_PARSE_MAX_BYTES = 5 * 1024 * 1024;
+const CODEX_SCAN_HEAD_BYTES = 1024 * 1024;
+const CODEX_SCAN_TAIL_BYTES = 256 * 1024;
+
+interface CodexScanMeta {
+  externalId: string;
+  cwd: string | null;
+  startedAt: string | null;
+  lastAt: string | null;
+  /** Exact item count, or null when the file was too large to scan fully. */
+  itemCount: number | null;
+  /** Whether any item line was seen (mirrors `parsed.items.length > 0`). */
+  sawItem: boolean;
+  firstUserText: string | null;
+}
+
+function newScanMeta(): CodexScanMeta {
+  return {
+    externalId: "",
+    cwd: null,
+    startedAt: null,
+    lastAt: null,
+    itemCount: 0,
+    sawItem: false,
+    firstUserText: null,
+  };
+}
+
+/** Mirrors parseFile's per-line semantics for the fields scan() reads. */
+function applyCodexLine(line: string, meta: CodexScanMeta): void {
+  const trimmed = line.trim();
+  if (!trimmed) return;
+  let obj: Record<string, any>;
+  try {
+    obj = JSON.parse(trimmed);
+  } catch {
+    return;
+  }
+  // Newer format wraps everything in {timestamp, type, payload}.
+  if (obj.type === "session_meta" && obj.payload) {
+    meta.externalId = obj.payload.id ?? meta.externalId;
+    meta.cwd = obj.payload.cwd ?? meta.cwd;
+    meta.startedAt = obj.payload.timestamp ?? obj.timestamp ?? meta.startedAt;
+    return;
+  }
+  if (obj.type === "response_item" && obj.payload) {
+    if (meta.itemCount !== null) meta.itemCount += 1;
+    meta.sawItem = true;
+    if (obj.timestamp) meta.lastAt = obj.timestamp;
+    if (meta.firstUserText === null) {
+      const item = obj.payload as CodexItem;
+      if (item.type === "message" && item.role === "user") {
+        const text = itemText(item);
+        if (text && !isSyntheticUserText(text)) meta.firstUserText = text;
+      }
+    }
+    return;
+  }
+  // Older format: first line is a bare session header, items are bare lines.
+  if (!meta.externalId && obj.id && obj.timestamp && !obj.type) {
+    meta.externalId = obj.id;
+    meta.startedAt = obj.timestamp;
+    meta.cwd = obj.cwd ?? null;
+    return;
+  }
+  if (
+    obj.type === "message" ||
+    obj.type === "function_call" ||
+    obj.type === "function_call_output"
+  ) {
+    if (meta.itemCount !== null) meta.itemCount += 1;
+    meta.sawItem = true;
+    if (obj.timestamp) meta.lastAt = obj.timestamp;
+    if (meta.firstUserText === null && obj.type === "message" && obj.role === "user") {
+      const text = itemText(obj as CodexItem);
+      if (text && !isSyntheticUserText(text)) meta.firstUserText = text;
+    }
+  }
+}
+
+const CODEX_LAST_TIMESTAMP_RE = /"timestamp":"([^"]*)"/g;
+
+/** Last top-level timestamp in the final tail bytes, or null. */
+async function readTailTimestamp(
+  handle: fs.FileHandle,
+  size: number,
+): Promise<string | null> {
+  const start = Math.max(0, size - CODEX_SCAN_TAIL_BYTES);
+  const length = size - start;
+  const buf = Buffer.alloc(length);
+  const read = await handle.read(buf, 0, length, start);
+  // Drop the (possibly partial) first line unless the tail starts at BOF.
+  let from = 0;
+  if (start > 0) {
+    const firstNewline = buf.indexOf(0x0a);
+    if (firstNewline === -1) return null;
+    from = firstNewline + 1;
+  }
+  const text = buf.toString("utf8", from, read.bytesRead);
+  let last: string | null = null;
+  for (const match of text.matchAll(CODEX_LAST_TIMESTAMP_RE)) {
+    last = match[1];
+  }
+  return last;
+}
+
+/**
+ * Sampled scan for files above the full-parse threshold. Returns null when the
+ * file holds no items at all (mirroring the full parse), so callers can skip it.
+ */
+async function scanLargeFile(
+  filePath: string,
+  size: number,
+  handle: fs.FileHandle,
+): Promise<CodexScanMeta | null> {
+  const meta = newScanMeta();
+  meta.itemCount = null;
+
+  // Head: parse the leading complete lines for meta fields and the title.
+  const headLength = Math.min(CODEX_SCAN_HEAD_BYTES, size);
+  const headBuf = Buffer.alloc(headLength);
+  const head = await handle.read(headBuf, 0, headLength, 0);
+  const headLastNewline = headBuf.lastIndexOf(0x0a, head.bytesRead - 1);
+  const headBytes = headLastNewline === -1 ? head.bytesRead : headLastNewline + 1;
+  for (const line of headBuf.toString("utf8", 0, headBytes).split("\n")) {
+    applyCodexLine(line, meta);
+  }
+
+  if (meta.firstUserText === null) {
+    // The title lives deeper than the head chunk (large synthetic preamble):
+    // stream on from the head boundary, parsing until it is found.
+    const stream = createReadStream(filePath, {
+      start: headBytes,
+      encoding: "utf8",
+    });
+    const lines = createInterface({
+      input: stream,
+      crlfDelay: Infinity,
+    });
+    for await (const line of lines) {
+      applyCodexLine(line, meta);
+      if (meta.firstUserText !== null) break;
+    }
+    lines.close();
+    stream.destroy();
+  }
+
+  if (meta.startedAt !== null && headBytes < size) {
+    const tail = await readTailTimestamp(handle, size);
+    if (tail !== null) meta.lastAt = tail;
+  }
+  if (!meta.sawItem) return null;
+  if (!meta.externalId) meta.externalId = path.basename(filePath, ".jsonl");
+  return meta;
+}
+
+async function scanFile(filePath: string): Promise<CodexScanMeta | null> {
+  let handle: fs.FileHandle;
+  let size: number;
+  try {
+    handle = await fs.open(filePath, "r");
+    size = (await handle.stat()).size;
+  } catch {
+    return null;
+  }
+  try {
+    if (size <= CODEX_SCAN_FULL_PARSE_MAX_BYTES) {
+      const meta = newScanMeta();
+      const stream = createReadStream(filePath, { encoding: "utf8" });
+      const lines = createInterface({ input: stream, crlfDelay: Infinity });
+      for await (const line of lines) {
+        applyCodexLine(line, meta);
+      }
+      lines.close();
+      stream.destroy();
+      if (!meta.sawItem) return null;
+      if (!meta.externalId) meta.externalId = path.basename(filePath, ".jsonl");
+      return meta;
+    }
+    return await scanLargeFile(filePath, size, handle);
+  } catch {
+    return null;
+  } finally {
+    await handle.close();
+  }
+}
+
+export async function scanCodexSessions(
+  dir: string = SESSIONS_DIR,
+): Promise<ExternalSessionSummary[]> {
+  const files = await listSessionFiles(dir);
+  const summaries: ExternalSessionSummary[] = [];
+  for (const filePath of files) {
+    const meta = await scanFile(filePath);
+    if (!meta || meta.firstUserText === null) continue;
+    summaries.push({
+      source: "codex",
+      externalId: meta.externalId,
+      title: truncateTitle(meta.firstUserText) || meta.externalId,
+      projectPath: meta.cwd,
+      model: null,
+      createdAt: toIso(meta.startedAt),
+      updatedAt: toIso(meta.lastAt, toIso(meta.startedAt)),
+      messageCount: meta.itemCount,
+      filePath,
+    });
+  }
+  return summaries;
 }
 
 export const codexImporter: SessionImporter = {
   source: "codex",
 
   async scan(): Promise<ExternalSessionSummary[]> {
-    const files = await listSessionFiles();
-    const summaries: ExternalSessionSummary[] = [];
-    for (const filePath of files) {
-      const parsed = await parseFile(filePath);
-      if (!parsed) continue;
-      const firstUser = parsed.items.find(({ item }) => {
-        if (item.type !== "message" || item.role !== "user") return false;
-        const text = itemText(item);
-        return !!text && !isSyntheticUserText(text);
-      });
-      if (!firstUser) continue;
-      summaries.push({
-        source: "codex",
-        externalId: parsed.externalId,
-        title: truncateTitle(itemText(firstUser.item)) || parsed.externalId,
-        projectPath: parsed.cwd,
-        model: null,
-        createdAt: toIso(parsed.startedAt),
-        updatedAt: toIso(parsed.lastAt, toIso(parsed.startedAt)),
-        messageCount: parsed.items.length,
-        filePath,
-      });
-    }
-    return summaries;
+    return scanCodexSessions();
   },
 
   async convert(summary: ExternalSessionSummary): Promise<ImportedSession> {

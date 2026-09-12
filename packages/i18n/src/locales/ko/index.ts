@@ -716,6 +716,7 @@ export const ko = {
     importMessages: "메시지 {{count}}개",
     importMessages_one: "메시지 1개",
     importMessages_other: "메시지 {{count}}개",
+    importMessagesUnknown: "—",
     importNoProject: "프로젝트 없음",
     importSessionCount: "세션 {{count}}개",
     importSessionCount_one: "세션 1개",
