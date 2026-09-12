@@ -7313,6 +7313,15 @@ function registerIpc() {
     setCurrentWorkspacePath(res.workspace?.path ?? result.filePaths[0]);
     return { workspace: await withGitBranch(res.workspace), canceled: false };
   });
+  handle(IPC.invoke.projectPickFolders, async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ["openDirectory", "multiSelections", "createDirectory"],
+    });
+    return {
+      folders: result.canceled ? [] : result.filePaths,
+      canceled: result.canceled,
+    };
+  });
   handle(IPC.invoke.projectClone, async (input: { url?: string } = {}) => {
     const parentDefault = currentWorkspacePath()
       ? dirname(currentWorkspacePath()!)

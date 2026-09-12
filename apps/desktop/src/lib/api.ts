@@ -467,6 +467,8 @@ export const api = {
     invoke<{ workspace: ProjectWorkspace | null; canceled?: boolean }>(
       IPC.invoke.projectOpen,
     ),
+  pickProjectFolders: () =>
+    invoke<{ folders: string[]; canceled?: boolean }>(IPC.invoke.projectPickFolders),
   cloneProject: (url: string) =>
     invoke<{ workspace: ProjectWorkspace | null; canceled?: boolean }>(
       IPC.invoke.projectClone,

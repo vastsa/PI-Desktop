@@ -445,6 +445,10 @@ system while preserving their different data ownership:
   the destination still has no visibility toggle
 - Supports project search, add, activate, project-session expansion, pin,
   archive/restore, and close
+- Add project opens the Create project dialog. The user supplies a display name
+  and can select multiple local folders in one native picker; the first folder
+  is the Primary workspace and the remaining folders are retained as open
+  project tabs after creation.
 - The destination is one workbench, not a stack of bands (D267, revising D168):
   a quiet intro line above a single toolbar above a single elevated panel. It
   reuses the same composition, control height, and row rhythm as the agent

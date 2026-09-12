@@ -434,10 +434,13 @@ visually distinct from list content.
 - Click the viewport-fixed work-panel toggle to reveal or hide the panel
   without deleting tabs; the work-panel header keeps its tab strip and fixed `+`
   menu, while each tab owns resource closing
-- Click the `Projects` heading folder-plus action: open the project picker and
-  retain the selected project
+- Click the `Projects` heading folder-plus action: open the Create project
+  dialog. The dialog accepts a project name and one or more local folders,
+  lists every selected folder with a remove action, and marks the first folder
+  as Primary. The primary folder is activated and named after creation; every
+  other selected folder is retained as an open project tab.
 - Right-click the `Projects` heading or empty project-list chrome: open a
-  single-item create menu that runs the same new-project picker action
+  single-item create menu that runs the same Create project dialog action
 - Click project `+`: activate that project, then select its most recent empty
   session or create a durable empty session bound to its exact path
 - Click the `Sessions` heading message-plus action: clear the workspace, then

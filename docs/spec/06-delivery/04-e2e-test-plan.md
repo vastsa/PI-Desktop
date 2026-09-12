@@ -1358,6 +1358,31 @@ Each scenario is documented in this format:
 - **Milestone**: M3
 - **Status**: Draft
 
+#### E2E-012a: Create a named project from multiple folders
+
+- **Preconditions**: App running; no project dialog open; at least two local
+  folders are available.
+- **Steps**: 1) Invoke Add project from Settings → Project archive or the
+  sidebar Projects heading. 2) Enter a project name. 3) Add two folders with
+  the folder picker. 4) Confirm both rows render and the first row is marked
+  Primary. 5) Remove one row, add it again, and create the project.
+- **Expected**: The dialog traps focus, closes on Escape or outside click while
+  idle, and keeps the name and selected folders visible without horizontal
+  overflow. The native picker allows multiple directories in one selection.
+  Removing a folder updates the count and never removes another row. Create is
+  disabled until both a name and one folder are present. On creation the
+  primary folder receives the entered display name and becomes the active
+  workspace; every selected folder is retained as an open project tab. The
+  dialog is unavailable while creation is in flight and returns focus to the
+  invoking control after close.
+- **Specs linked**: `03-runtime/01-ipc-protocol.md` (§9),
+  `04-ux/06-settings-ia.md` (Project archive),
+  `04-ux/08-component-spec.md` (§3.5)
+- **Acceptance**: C (project creation UI), D (multi-folder project setup),
+  Accessibility, Localization
+- **Milestone**: M3
+- **Status**: Source-level regression covered; full UI scenario Draft
+
 #### E2E-013: Read-only tools work in project
 
 - **Preconditions**: Project directory open.
@@ -4021,7 +4046,7 @@ Each scenario is documented in this format:
 - **Expected**:
   - Sessions context menus apply the temporary-group empty-session reuse rule
     and focus the composer; a new durable row is visible before any message.
-  - Projects context menus open the same folder picker as the heading
+  - Projects context menus open the same Create project dialog as the heading
     folder-plus control.
   - Existing row context menus and heading glyph buttons remain available; the
     section menus stay one-item and theme-matched with other sidebar menus.
