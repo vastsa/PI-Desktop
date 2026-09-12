@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import {
   BUILTIN_MCP_CATALOG,
@@ -10,9 +10,8 @@ import {
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../stores/app-store";
-import { CapabilityButton, CapabilityEmpty, CapabilityPanel, CapabilityRow } from "./AgentCapabilityLayout";
 import { IconChevronLeft, IconServer, IconTerminal, IconX } from "../icons";
-import { Button, Field, Input, TooltipButton, cx } from "../ui";
+import { Field, Input, TooltipButton, cx } from "../ui";
 
 const CATEGORIES: readonly McpCatalogCategory[] = [
   "devtools",
@@ -87,19 +86,34 @@ export function McpMarketPanel({
 
   const installSheet = installFor ? (
     <div
-      className="overlay ext-sheet-overlay"
+      className="overlay ext-sheet-overlay mcpm-overlay"
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget && !saving) setInstallFor(null);
       }}
     >
-      <div className="dialog ext-sheet" role="dialog" aria-modal aria-labelledby="mcp-market-title">
+      <div className="dialog ext-sheet mcpm-sheet" role="dialog" aria-modal aria-labelledby="mcpm-sheet-title">
         <div className="ext-sheet-head">
-          <div>
-            <h3 id="mcp-market-title" className="ext-sheet-title">
-              {installFor.name}
-            </h3>
-            <p className="ext-sheet-sub">{installFor.description}</p>
+          <div className="mcpm-sheet-head">
+            <span
+              className={cx(
+                "mcpm-glyph",
+                `is-${installFor.categories?.[0] ?? "devtools"}`,
+              )}
+              aria-hidden
+            >
+              {installFor.transport === "http" ? (
+                <IconServer size={18} />
+              ) : (
+                <IconTerminal size={18} />
+              )}
+            </span>
+            <div>
+              <h3 id="mcpm-sheet-title" className="ext-sheet-title">
+                {installFor.name}
+              </h3>
+              <p className="ext-sheet-sub">{installFor.description}</p>
+            </div>
           </div>
           <TooltipButton
             type="button"
@@ -115,7 +129,7 @@ export function McpMarketPanel({
         <div className="ext-sheet-body">
           <div className="ext-field-group">
             <div className="ext-field-label">{t("settings.mcpMarket.willRun")}</div>
-            <code className="agent-capability-command">
+            <code className="mcpm-cmd is-block">
               {installFor.transport === "http"
                 ? installFor.url
                 : [installFor.command, ...(installFor.args ?? [])].join(" ")}
@@ -123,14 +137,14 @@ export function McpMarketPanel({
           </div>
 
           {installFor.prerequisites?.length ? (
-            <p className="ext-field-hint">
-              {t("settings.mcpMarket.prerequisites")}
+            <p className="mcpm-note">
+              <span className="mcpm-note-label">{t("settings.mcpMarket.prerequisites")}</span>
               {installFor.prerequisites.join("；")}
             </p>
           ) : null}
           {installFor.notes ? (
-            <p className="ext-field-hint">
-              {t("settings.mcpMarket.notes")}
+            <p className="mcpm-note">
+              <span className="mcpm-note-label">{t("settings.mcpMarket.notes")}</span>
               {installFor.notes}
             </p>
           ) : null}
@@ -168,12 +182,22 @@ export function McpMarketPanel({
         <div className="ext-sheet-actions">
           <span className="ext-sheet-note">{t("settings.mcpMarket.sheetNote")}</span>
           <div className="ext-sheet-actions-end">
-            <Button variant="ghost" onClick={() => setInstallFor(null)} disabled={saving}>
+            <button
+              type="button"
+              className="mcpm-install is-ghost"
+              onClick={() => setInstallFor(null)}
+              disabled={saving}
+            >
               {t("common.cancel")}
-            </Button>
-            <Button variant="primary" onClick={() => void install()} disabled={saving}>
+            </button>
+            <button
+              type="button"
+              className="mcpm-install"
+              onClick={() => void install()}
+              disabled={saving}
+            >
               {saving ? t("common.saving") : t("settings.mcpMarket.install")}
-            </Button>
+            </button>
           </div>
         </div>
       </div>
@@ -181,34 +205,35 @@ export function McpMarketPanel({
   ) : null;
 
   return (
-    <div className="agent-capability-page">
-      <div className="agent-capability-toolbar">
-        <div className="agent-capability-toolbar-actions">
-          <CapabilityButton title={t("settings.mcpMarket.back")} onClick={onBack}>
+    <div className="mcpm">
+      <div className="mcpm-head">
+        <div className="mcpm-head-copy">
+          <button type="button" className="mcpm-back" onClick={onBack}>
             <IconChevronLeft size={14} />
             {t("settings.mcpMarket.back")}
-          </CapabilityButton>
+          </button>
+          <h3 className="mcpm-title">{t("settings.mcpMarket.title")}</h3>
+          <p className="mcpm-subtitle">{t("settings.mcpMarket.subtitle")}</p>
         </div>
-        <div className="agent-capability-search-wrap">
+        <div className="mcpm-search">
           <Input
-            className="agent-capability-search"
+            className="mcpm-search-input"
             value={search}
             placeholder={t("settings.mcpMarket.searchPlaceholder")}
+            aria-label={t("settings.mcpMarket.searchPlaceholder")}
             onChange={(event) => setSearch(event.target.value)}
           />
         </div>
       </div>
 
-      <p className="ext-field-hint">{t("settings.mcpMarket.subtitle")}</p>
-
-      <div className="settings-segment agent-capability-segment" role="tablist">
+      <div className="mcpm-cats" role="tablist" aria-label={t("settings.mcpMarket.title")}>
         {(["all", ...CATEGORIES] as const).map((id) => (
           <button
             key={id}
             type="button"
             role="tab"
             aria-selected={category === id}
-            className={cx("settings-segment-option", category === id && "is-active")}
+            className={cx("mcpm-chip", category === id && "is-active")}
             onClick={() => setCategory(id)}
           >
             {id === "all"
@@ -218,56 +243,68 @@ export function McpMarketPanel({
         ))}
       </div>
 
-      <CapabilityPanel loading={false} refreshing={false} loadingLabel="">
-        <div className="agent-capability-list" role="list">
-          {visible.length === 0 ? (
-            <CapabilityEmpty message={t("settings.mcpMarket.empty")} icon={<IconServer size={18} />} />
-          ) : (
-            visible.map((entry) => {
-              const installed = installedIds.includes(entry.id);
-              return (
-                <CapabilityRow
-                  key={entry.id}
-                  glyph={
-                    entry.transport === "http" ? <IconServer size={16} /> : <IconTerminal size={16} />
-                  }
-                  name={entry.name}
-                  command={
-                    entry.transport === "http"
+      <div className="mcpm-list" role="list">
+        {visible.length === 0 ? (
+          <p className="mcpm-empty">{t("settings.mcpMarket.empty")}</p>
+        ) : (
+          visible.map((entry, index) => {
+            const installed = installedIds.includes(entry.id);
+            return (
+              <article
+                key={entry.id}
+                role="listitem"
+                className="mcpm-card"
+                style={{ "--stagger": Math.min(index, 8) } as CSSProperties}
+              >
+                <span
+                  className={cx("mcpm-glyph", `is-${entry.categories?.[0] ?? "devtools"}`)}
+                  aria-hidden
+                >
+                  {entry.transport === "http" ? (
+                    <IconServer size={17} />
+                  ) : (
+                    <IconTerminal size={17} />
+                  )}
+                </span>
+                <div className="mcpm-card-body">
+                  <div className="mcpm-card-title">
+                    <span className="mcpm-name">{entry.name}</span>
+                    {entry.verified ? (
+                      <span className="mcpm-badge is-verified">
+                        ✓ {t("settings.mcpMarket.verified")}
+                      </span>
+                    ) : null}
+                    {(entry.categories ?? []).slice(0, 1).map((id) => (
+                      <span key={id} className="mcpm-badge">
+                        {t(`settings.mcpMarket.category.${id}`)}
+                      </span>
+                    ))}
+                  </div>
+                  <code className="mcpm-cmd">
+                    {entry.transport === "http"
                       ? (entry.url ?? "")
-                      : [entry.command, ...(entry.args ?? [])].join(" ")
-                  }
-                  description={entry.description || entry.notes || ""}
-                  badges={
-                    <>
-                      {entry.verified ? (
-                        <span className="agent-capability-badge is-level">
-                          ✓ {t("settings.mcpMarket.verified")}
-                        </span>
-                      ) : null}
-                      {(entry.categories ?? []).map((id) => (
-                        <span key={id} className="agent-capability-badge">
-                          {t(`settings.mcpMarket.category.${id}`)}
-                        </span>
-                      ))}
-                    </>
-                  }
-                  actions={
-                    <CapabilityButton
-                      variant="primary"
-                      disabled={installed}
-                      title={entry.homepage}
-                      onClick={() => openInstall(entry)}
-                    >
-                      {installed ? t("settings.mcpMarket.installed") : t("settings.mcpMarket.install")}
-                    </CapabilityButton>
-                  }
-                />
-              );
-            })
-          )}
-        </div>
-      </CapabilityPanel>
+                      : [entry.command, ...(entry.args ?? [])].join(" ")}
+                  </code>
+                  <p className="mcpm-desc">{entry.description || entry.notes || ""}</p>
+                </div>
+                <div className="mcpm-card-actions">
+                  <button
+                    type="button"
+                    className={cx("mcpm-install", installed && "is-installed")}
+                    disabled={installed}
+                    title={entry.homepage}
+                    onClick={() => openInstall(entry)}
+                  >
+                    {installed
+                      ? t("settings.mcpMarket.installed")
+                      : t("settings.mcpMarket.install")}
+                  </button>
+                </div>
+              </article>
+            );
+          })
+        )}
+      </div>
 
       {installSheet}
     </div>
