@@ -1,89 +1,74 @@
-我结合了你现在仓库里的 `AGENTS.md` 来重写。现有版本里 **Issue 验证、PR 尊重贡献者、独立 branch/worktree、Spec/ADR 同步、Marketplace 诊断门禁、Release 规则** 都值得保留。
-
-这次我重点补强了：**架构边界、God Module 防回归、代码规模 ratchet、异步/资源生命周期、兼容性、Definition of Done，以及最重要的 PR 强制 E2E**。当前仓库已经有 `test:e2e`、`plan`、`plan-ui`、`boot`、`supervision`、`subagents` 这些正式脚本，可以直接作为门禁。
-
 # AGENTS.md
 
-Mandatory rules for AI coding agents working in this repository.
+Mandatory rules for AI coding agents working in PI-Desktop.
 
-PI-Desktop is a released, actively used desktop application. Treat every code change as production software maintenance, not prototype work.
+PI-Desktop is released software with real users. Treat every change as production maintenance, not prototype work.
 
-The priorities are:
+Optimize for:
 
 1. Correctness
-2. Backward compatibility
-3. User data safety
-4. Security boundaries
+2. User data safety
+3. Security
+4. Backward compatibility
 5. Architectural integrity
 6. Testability
 7. Maintainability
 8. Delivery speed
 
-Do not optimize for writing code quickly at the cost of making the system harder to change safely.
+> Optimize for changing the system safely, not merely changing it quickly.
 
 ---
 
-# 1. Language
+## 1. Read Before You Change
 
-Use English for:
+Before implementation, read:
 
-* Code
-* Identifiers
-* Comments
-* Commits
-* Specifications
-* ADRs
-* Repository documentation
+* `docs/spec/00-baseline.md`
+* relevant documents under `docs/spec/`
+* relevant ADRs under `docs/adr/`
 
-GitHub issue and pull request comments should follow the language of the original issue or pull request.
+For development and validation rules, follow:
 
-Read and follow:
+* `docs/spec/06-delivery/03-ai-development-workflow.md`
+* `docs/spec/06-delivery/04-e2e-test-plan.md`
+* `docs/spec/06-delivery/05-change-checklist.md`
 
-* [Baseline](docs/spec/00-baseline.md)
-* [AI development workflow](docs/spec/06-delivery/03-ai-development-workflow.md)
-* Relevant domain specifications under `docs/spec/`
-* Relevant ADRs under `docs/adr/`
+Use English for code, identifiers, comments, commits, specifications, ADRs, and repository documentation.
+
+GitHub issue / PR discussion should normally use the language of the original author.
 
 ---
 
-# 2. Core Engineering Principle
+## 2. Preserve Existing Behavior by Default
 
-The default rule for every task is:
+Unless the task explicitly requires behavior to change:
 
-> Preserve existing behavior unless behavior change is explicitly part of the task.
+* do not remove existing functionality
+* do not change user-visible behavior
+* do not change default values
+* do not change persisted data semantics
+* do not change IPC / RPC contracts
+* do not change Plugin SDK contracts
+* do not weaken security or permissions
+* do not introduce breaking changes
 
-Unless explicitly required, do not change:
+Refactoring must be behavior-preserving by default.
 
-* Existing user behavior
-* Default values
-* Existing UI semantics
-* IPC contracts
-* Host RPC contracts
-* Plugin SDK contracts
-* Plugin manifest semantics
-* Persisted data formats
-* Database behavior
-* Configuration formats
-* Existing extension behavior
-* Existing public APIs
+If a breaking change is truly required, document:
 
-If a change must intentionally break compatibility, clearly identify it as a breaking change and document:
+* what breaks
+* why it is necessary
+* affected surfaces
+* migration path
+* compatibility impact
 
-* Why it is necessary
-* What is affected
-* Migration behavior
-* Backward compatibility behavior
-* Rollback implications
-
-Never hide a breaking change inside a refactor.
+Never hide behavior changes inside a `refactor` commit.
 
 ---
 
-# 3. Architecture Is a Constraint
+## 3. Respect the Architecture
 
-The frozen architecture remains authoritative.
-
-PI-Desktop follows this high-level process model:
+The frozen process model is:
 
 ```text
 Renderer
@@ -97,47 +82,104 @@ Rust Host Core / Node Agent Runtime
 pi-ai / pi-agent-core
 ```
 
-Core ownership rules:
+Ownership rules:
 
 ```text
-Renderer        = UI and interaction
-Electron Main   = thin orchestrator
-Rust Host Core  = persistence, native host services, authoritative host state
-Agent Runtime   = agent execution
-Plugin SDK      = public extension contract
-Shared          = cross-boundary contracts and schemas
+Renderer       = UI and interaction
+Electron Main  = thin orchestrator
+Rust Host Core = persistence and authoritative host/native state
+Agent Runtime  = agent execution
+Plugin SDK     = extension contract
+Shared         = cross-boundary contracts and schemas
 ```
 
-Do not bypass these boundaries merely because doing so is easier.
+Mandatory boundaries:
 
-In particular:
-
-* Renderer must not open SQLite directly.
+* Renderer must not access SQLite directly.
 * Renderer must not depend on Electron Main implementation internals.
-* Renderer must not directly perform privileged native operations.
-* Electron Main must not become the default location for business logic.
-* SQLite remains exclusively owned by Rust host-core.
-* Agent execution remains outside the renderer.
-* Shared packages must not depend on desktop implementation details.
-* Plugin APIs must respect the plugin permission and sandbox model.
+* SQLite remains owned exclusively by Rust host-core.
+* Agent execution must not move into the renderer.
+* Electron Main must remain a thin orchestrator.
+* Shared packages must not depend on desktop implementation code.
+* Plugin permissions and sandbox boundaries must not be bypassed.
 
-Any change to these architectural boundaries requires an ADR.
+Changing a frozen architecture, public interface, data ownership model, or security boundary requires an ADR.
 
 ---
 
-# 4. Prevent Architectural Entropy
+## 4. Multi-Agent Isolation Is Mandatory
 
-New features must not continuously increase architectural entropy.
+Assume multiple agents are working concurrently.
 
-Before adding code to an existing module, ask:
+Every development request must use:
 
-> Does this responsibility actually belong here?
+```text
+1 request
+=
+1 branch
++
+1 dedicated worktree
+```
 
-Do not automatically append new functionality to the nearest large file.
+Never:
 
-Prefer domain ownership over convenience.
+* develop directly on `main`
+* develop in the primary checkout
+* reuse another task's worktree
+* modify another agent's branch
+* delete another agent's branch or worktree
+* reset or discard unrelated work
+* include unrelated changes in your task
 
-The following files are known historical architecture hotspots and must be treated as **shrink-or-stable zones**:
+Start from current `main`:
+
+```bash
+git fetch origin main
+
+git worktree add \
+  -b <type>/<short-description> \
+  <worktree-path> \
+  origin/main
+
+cd <worktree-path>
+```
+
+Before integration, refresh against the latest `main` and resolve conflicts inside your own worktree.
+
+---
+
+## 5. Keep Changes Small and Coherent
+
+Prefer:
+
+```text
+small diff
+clear responsibility
+one coherent purpose
+easy review
+easy rollback
+```
+
+Avoid:
+
+* feature + unrelated refactor
+* drive-by cleanup
+* mass formatting
+* unrelated dependency upgrades
+* giant commits
+* big-bang rewrites
+
+Use incremental, behavior-preserving extraction for large refactors.
+
+Every intermediate stage should remain buildable and testable.
+
+---
+
+## 6. Architecture Ratchet
+
+New work must not continuously increase architectural entropy.
+
+Known hotspots include:
 
 ```text
 apps/desktop/electron/main/index.ts
@@ -148,147 +190,43 @@ crates/host-core/src/plugins.rs
 crates/host-core/src/db.rs
 crates/host-core/src/providers.rs
 crates/host-core/src/plans.rs
-apps/desktop/src/pages/PluginsPage.tsx
-apps/desktop/src/pages/SettingsPage.tsx
-apps/desktop/src/App.tsx
 ```
 
-Do not add substantial new responsibilities to these files unless there is a strong architectural reason.
+Treat them as:
 
-When touching one of these files, prefer extracting an existing responsibility or placing new behavior in the correct domain module.
+```text
+SHRINK OR STAY STABLE
+```
+
+Do not use a historical God Module as the default place for new functionality.
+
+Also do not solve one God Module by creating another.
+
+Split by real:
+
+* domain
+* responsibility
+* ownership
+* lifecycle
+
+not arbitrary line count.
+
+As a guideline:
+
+* new TS / TSX modules should normally stay below ~500 LOC
+* reconsider responsibilities around ~800 LOC
+* new Rust modules should normally stay below ~700 LOC
+* reconsider responsibilities around ~1000 LOC
+
+Generated files, locales, changelogs, fixtures, and declarative data are exempt.
 
 ---
 
-# 5. No New God Modules
+## 7. State, UI, and Host Responsibilities
 
-Do not solve an existing God Module by creating a new one.
+### Renderer stores
 
-Bad outcome:
-
-```text
-main/index.ts        → plugin-service.ts with 4000 lines
-app-store.ts         → session-service.ts with 3500 lines
-plugins.rs           → manager.rs with 5000 lines
-```
-
-Split by:
-
-* Domain
-* Responsibility
-* Ownership
-* Lifecycle
-* Dependency direction
-
-Do not split files mechanically every N lines.
-
-A module boundary must represent a real conceptual boundary.
-
----
-
-# 6. Architecture Ratchet
-
-File size is not the only quality metric, but uncontrolled file growth is a strong warning signal.
-
-Use the following ratchet.
-
-## New TypeScript / TSX source files
-
-Target:
-
-```text
-≤ 500 LOC
-```
-
-A file exceeding approximately:
-
-```text
-800 LOC
-```
-
-requires explicit reconsideration of its responsibilities before proceeding.
-
-## New Rust modules
-
-Target:
-
-```text
-≤ 700 LOC
-```
-
-A module exceeding approximately:
-
-```text
-1000 LOC
-```
-
-requires explicit reconsideration of its responsibilities.
-
-## Existing large files
-
-Legacy large files follow:
-
-```text
-NO SIGNIFICANT NET GROWTH
-```
-
-If a large file is touched for a new feature, prefer keeping it stable or making it smaller.
-
-Exceptions include:
-
-* Generated files
-* Locale data
-* Changelogs
-* Snapshots
-* Fixtures
-* Large declarative datasets
-* Generated metadata
-
-Do not classify business logic as “data” merely to bypass the rule.
-
----
-
-# 7. Electron Main Must Stay Thin
-
-`apps/desktop/electron/main/` is an orchestration layer.
-
-The main entrypoint should primarily contain:
-
-* Bootstrap
-* Dependency construction
-* Window creation
-* IPC registration
-* Runtime startup
-* Application lifecycle
-* Shutdown
-
-Domain behavior should live in appropriate modules such as:
-
-```text
-bootstrap/
-ipc/
-services/
-runtime/
-```
-
-Do not put large feature implementations directly into:
-
-```text
-electron/main/index.ts
-```
-
-IPC registration and domain implementation should remain separate whenever practical.
-
----
-
-# 8. Renderer State Rules
-
-Zustand stores should primarily contain:
-
-* State
-* State transitions
-* Small state-oriented actions
-
-Use this ownership model:
+Prefer:
 
 ```text
 State               → Store
@@ -297,320 +235,101 @@ Pure transformation → Reducer / helper
 External side effect→ Service / runtime
 ```
 
-Do not continuously move these responsibilities into a central Store:
+Do not keep pushing complex workflows into a central Zustand store.
 
-* Network orchestration
-* Multi-step session workflows
-* Native notifications
-* Filesystem interaction
-* Complex cache synchronization
-* Transcript reconciliation algorithms
-* Long-running async workflows
-* Cross-domain lifecycle management
+### React
 
-If maintaining `useAppStore` as a compatibility facade, compose domain slices behind it rather than building another monolithic store.
+Components should primarily handle:
 
----
+* rendering
+* interaction wiring
+* local UI state
 
-# 9. React Component Rules
+Complex workflows should move into hooks, models, or services.
 
-React components should primarily handle:
+### Rust host-core
 
-* Rendering
-* User interaction wiring
-* Local presentation state
+Keep persistence, schema, migration, repository, domain logic, and filesystem responsibilities separated when they represent distinct concerns.
 
-Move complex behavior into:
-
-```text
-hooks/
-model/
-services/
-helpers/
-```
-
-A component should be reconsidered when it simultaneously owns:
-
-* Data loading
-* API calls
-* Caching
-* Large transformations
-* Cross-domain state
-* Lifecycle coordination
-* Complex event processing
-* Rendering
-
-Avoid multi-thousand-line UI components.
-
-Do not extract meaningless one-use wrappers solely to satisfy a line-count target.
+Do not create abstraction layers without a real responsibility boundary.
 
 ---
 
-# 10. Rust Host-Core Rules
+## 8. Async and Lifecycle Safety
 
-Rust modules should follow domain boundaries rather than accumulate unrelated responsibilities.
+For changes involving sessions, transcripts, agents, plans, plugins, MCP, IPC, filesystem, or background processes, consider:
 
-Large domains may use structures such as:
-
-```text
-mod.rs
-model.rs
-repository.rs
-service.rs
-validation.rs
-```
-
-Use only the modules that represent real responsibilities.
-
-For persistence-heavy domains, keep distinct concepts separate when appropriate:
-
-```text
-schema
-migration
-repository
-domain logic
-filesystem artifacts
-validation
-```
-
-Do not create abstraction layers that add ceremony without reducing coupling.
-
----
-
-# 11. Database Rules
-
-SQLite remains host-owned and single-writer.
-
-Any schema change must include:
-
-* A migration
-* Correct schema version updates
-* Migration coverage
-* Upgrade compatibility with existing user databases
-* Relevant specification changes
-* Correct comments/documentation
-
-Never assume users start from an empty database.
-
-Never silently discard incompatible persisted data.
-
-Database migrations must be forward-safe for supported upgrade paths.
-
----
-
-# 12. Plugin SDK Is a Public Contract
-
-Treat the following as public extension surfaces:
-
-* Plugin SDK
-* Plugin DevKit
-* Plugin manifest
-* Permissions
-* Agent tools
-* Skills integration
-* MCP integration
-* Plugin events
-* Plugin storage
-* Plugin views
-* Plugin message bus
-* Plugin-related IPC
-
-Default requirement:
-
-```text
-BACKWARD COMPATIBLE
-```
-
-Breaking plugin changes require explicit design justification, versioning, migration strategy, documentation, and changelog coverage.
-
-Do not weaken plugin security or permission boundaries for convenience.
-
----
-
-# 13. Shared Package Rules
-
-`packages/shared` should contain genuine cross-process or cross-package contracts such as:
-
-* Types
-* Schemas
-* Protocols
-* Error contracts
-* Shared constants
-
-Do not use `shared` as a dumping ground for arbitrary business implementation.
-
-Avoid creating permanent catch-all files such as:
-
-```text
-utils.ts
-types.ts
-helpers.ts
-common.ts
-```
-
-when clear domain modules are possible.
-
-Shared must not depend on desktop implementation layers.
-
----
-
-# 14. Async and Concurrency Safety
-
-Any change involving:
-
-* Sessions
-* Agent turns
-* Transcript
-* Plan
-* Plugins
-* MCP
-* Filesystem operations
-* IPC
-* Sidecars
-* Background services
-
-must explicitly consider:
-
-* Race conditions
-* Stale async results
-* Cancellation
-* Duplicate invocation
-* Session changes during `await`
-* Runtime disposal
-* Window disposal
-* Plugin unload
-* Process termination
-* Retry behavior
+* stale async results
+* cancellation
+* duplicate execution
+* session/project changes during `await`
+* runtime restart
+* renderer reload
+* process disposal
+* race conditions
 
 Never assume state is unchanged across an `await`.
 
-When an operation depends on identity or generation, validate that identity again before committing the result.
-
----
-
-# 15. Resource Lifecycle
-
-Any new resource must have a defined owner and cleanup path.
+Every long-lived resource must have an owner and cleanup path.
 
 Examples:
 
-* Event listeners
+* event listeners
 * IPC listeners
-* Timers
-* Intervals
-* File watchers
+* timers
+* watchers
 * WebSockets
 * MCP connections
-* Child processes
-* Sidecars
-* Plugin services
-* Native handles
+* child processes
+* sidecars
+* plugin services
 
-Check cleanup during relevant lifecycle events:
-
-```text
-reload
-session switch
-plugin disable
-plugin uninstall
-window close
-runtime restart
-application shutdown
-```
-
-Do not introduce listeners or processes that accumulate across reloads.
+Check cleanup during relevant reload, disable, uninstall, close, restart, and shutdown paths.
 
 ---
 
-# 16. Mutable Global State
+## 9. Compatibility and Persistence
 
-Avoid casually adding module-level mutable state such as:
+Database and persisted-state changes must preserve existing user data.
 
-```text
-Map
-Set
-cache
-pendingRequests
-activeSessions
-global timers
-mutable singleton state
-```
+Database changes require:
 
-If module-level state is necessary, define:
+* migration
+* schema version update
+* upgrade compatibility
+* relevant tests
+* relevant spec updates
 
-* Ownership
-* Lifetime
-* Cleanup
-* Concurrency assumptions
-* Session/project isolation rules
+Never assume an empty database.
 
-Global state without an explicit lifecycle is architectural debt.
+Plugin SDK / DevKit and other extension contracts are backward-compatible by default.
+
+Do not casually change public plugin behavior.
 
 ---
 
-# 17. Security Rules
+## 10. Security and Error Handling
 
-Changes involving these areas require extra scrutiny:
+Use least privilege for:
 
-* Filesystem
-* Shell execution
-* Browser integration
-* External URLs
-* Network access
-* Plugins
+* filesystem
+* shell
+* network
+* browser
+* external URLs
+* plugins
 * MCP
-* Clipboard
-* Credentials
-* OAuth
-* Secrets
-* Native APIs
+* clipboard
+* credentials
+* secrets
 
-Follow least privilege.
-
-Do not “fix” a feature by weakening:
-
-* Permission checks
-* Filesystem boundaries
-* Shell restrictions
-* URL validation
-* Plugin sandboxing
-* Network restrictions
-* Credential isolation
-
-Security bypasses are landing blockers.
-
----
-
-# 18. Error Handling
+Never fix functionality by weakening permission checks, sandbox boundaries, URL validation, filesystem restrictions, or credential isolation.
 
 Do not silently swallow unexpected errors.
 
-Avoid:
+Do not bypass type or error systems merely to finish faster.
 
-```ts
-try {
-  ...
-} catch {}
-```
-
-unless failure is intentionally ignorable and the reason is documented.
-
-Errors should be:
-
-* Handled
-* Logged
-* Translated into a domain error
-* Or propagated
-
-Never suppress errors only to make tests pass.
-
----
-
-# 19. TypeScript Safety
-
-Do not bypass the type system to finish faster.
-
-Avoid introducing unnecessary:
+Avoid unnecessary:
 
 ```text
 any
@@ -619,235 +338,79 @@ as any
 @ts-nocheck
 ```
 
-Prefer:
-
-* `unknown`
-* Type guards
-* Explicit interfaces
-* Discriminated unions
-* Validated boundary parsing
-
-If an unsafe cast is unavoidable, keep it narrow and document why it is safe.
+and avoid using Rust `unwrap()` / `expect()` for normal external failure paths.
 
 ---
 
-# 20. Rust Safety
+## 11. Specs Stay Synchronized
 
-Avoid `unwrap()` and `expect()` on paths that can fail due to:
+Observable behavior changes must update the relevant spec.
 
-* User input
-* Filesystem state
-* Database state
-* Network state
-* Plugin input
-* External process behavior
+Changes affecting architecture, public interfaces, data ownership, security boundaries, or frozen decisions require an ADR.
 
-Prefer `Result` with meaningful error context.
+User-visible or protocol-visible behavior changes must update the corresponding E2E scenario documentation.
 
-Panics should not be normal application error handling.
+Pure behavior-preserving refactors normally do not require product-spec changes.
 
 ---
 
-# 21. Dependency Rules
+## 12. GitHub Issue Intake
 
-Before adding a dependency, determine:
+A linked GitHub issue is an intake request, not proof that the reported problem exists.
 
-* Whether existing dependencies already solve the problem
-* Whether the dependency is maintained
-* Bundle/build impact
-* Security implications
-* License compatibility
-* Long-term maintenance cost
+Before implementation:
 
-Do not add a large framework to replace a small amount of straightforward code.
+1. Fetch the issue.
+2. Read title, body, comments, labels, and state.
+3. Verify the claim against current code.
+4. For bugs, reproduce it or provide concrete evidence.
+5. For features, verify the requested behavior is actually missing.
 
----
+If the issue is invalid or already fixed, report the evidence and close it only when the conclusion is clear.
 
-# 22. Avoid Premature Abstraction
+If verification is inconclusive, report what was checked and leave it open.
 
-Do not create abstractions merely because they may theoretically be useful later.
-
-Extract abstractions when there is evidence of:
-
-* A real domain boundary
-* Multiple implementations
-* Meaningful duplication
-* Lifecycle ownership
-* Dependency inversion need
-
-Prefer understandable concrete code over speculative architecture.
+Do not implement first and investigate later.
 
 ---
 
-# 23. GitHub Issue Handling
+## 13. GitHub Pull Request Intake
 
-When the user provides a GitHub issue URL or an unambiguous issue number for this repository, treat it as an intake gate.
+For a linked pull request, evaluate whether its **principle and direction** are sound before replacing anything.
 
-Do not start implementation until the reported problem has been independently verified.
+If the direction is sound:
 
-1. Fetch the issue title, body, labels, comments, and state.
-2. Verify the claim against the current codebase.
-3. For a bug, reproduce it or provide concrete code/spec evidence.
-4. For a feature or improvement, confirm the behavior is actually missing or incomplete.
-5. If the problem does not exist, comment with evidence and close only when the conclusion is clear.
-6. If verification is inconclusive, comment with what was tried and leave it open.
-7. If the problem exists, follow the isolated development workflow.
-8. After the fix lands, comment with the result and close the issue when appropriate.
+* preserve the contributor's work
+* preserve authorship
+* do not ask them to restart for minor style/completeness issues
+* make only minimal landing fixes when necessary
 
-Write issue comments in the issue's language.
+Do not force-push a contributor's branch.
 
-Repository code, specs, documentation, and commits remain English.
+Do not merge a draft PR unless explicitly authorized or marked ready.
 
-An issue URL authorizes actions only on that issue. It does not authorize unrelated changes or remote pushes.
+The following are landing blockers:
 
-Do not reopen a closed issue unless explicitly requested.
+* build failure
+* typecheck failure
+* relevant test failure
+* required E2E failure
+* merge conflict
+* data corruption risk
+* security violation
+* secret leakage
+* privilege/sandbox bypass
+* unresolved incompatible protocol change
 
----
-
-# 24. GitHub Pull Request Handling
-
-When the user provides a GitHub pull request URL or unambiguous PR number, review the contributor's work rather than replacing it.
-
-First determine whether the principle of the change is sound.
-
-Evaluate:
-
-* Whether it solves a real in-scope problem
-* Whether the direction is compatible with the baseline
-* Whether security boundaries remain valid
-* Whether architecture remains valid
-* Whether it creates unacceptable compatibility risk
-
-Do not reject or rewrite a sound contribution merely because of:
-
-* Naming nits
-* Formatting
-* Minor style issues
-* Minor documentation omissions
-* Small cleanup opportunities
-
-However, the following are **landing blockers**:
-
-* Build failure
-* Typecheck failure
-* Relevant test failure
-* Relevant E2E failure
-* Merge conflict
-* Data corruption risk
-* Security boundary violation
-* Secret leakage
-* Privilege/sandbox bypass
-* Unresolved protocol breakage
-* Clearly destructive behavior
-
-Preserve contributor authorship.
-
-Do not force-push a contributor branch.
-
-Do not merge a draft PR unless explicitly requested or the author marks it ready.
+A sound idea does not override a failing landing gate.
 
 ---
 
-# 25. Mandatory Isolated Development
+## 14. Testing Is Part of Implementation
 
-Every development request must use its own dedicated branch and worktree.
+A code change is not complete because the code was written.
 
-Before modifying files:
-
-1. Update the primary checkout's local `main`
-2. Create a unique branch from updated `main`
-3. Create a dedicated worktree
-4. Enter the request worktree
-5. Only then begin development
-
-Example:
-
-```bash
-git switch main
-git pull --ff-only
-git worktree add ../worktrees/<request-id> -b <type>/<request-id> main
-cd ../worktrees/<request-id>
-```
-
-Never implement directly in the primary checkout.
-
-Never implement directly on `main`.
-
----
-
-# 26. Multi-Agent Isolation
-
-Multiple agents may work concurrently.
-
-Each agent must:
-
-* Use its own branch
-* Use its own worktree
-* Modify only its own request worktree
-* Avoid changing another agent's branch
-* Avoid deleting another agent's worktree
-* Avoid including unrelated changes
-* Avoid committing local environment state
-* Avoid committing secrets or local databases
-
-The primary checkout exists for synchronization and integration.
-
----
-
-# 27. Spec Synchronization
-
-Every behavior change must update the relevant `docs/spec/` document.
-
-Architectural changes additionally require an ADR when they affect:
-
-* Process architecture
-* Public interfaces
-* Data ownership
-* Security boundaries
-* Frozen decisions
-* Protocol contracts
-
-Pure behavior-preserving refactors normally do not require spec changes.
-
-Do not change behavior first and leave specifications knowingly stale.
-
----
-
-# 28. E2E Documentation
-
-Every user-visible or protocol-visible behavior change must add or update the corresponding scenario in:
-
-```text
-docs/spec/06-delivery/04-e2e-test-plan.md
-```
-
-User-visible includes:
-
-* UI
-* User interactions
-* Dialogs
-* Notifications
-* Observable workflows
-
-Protocol-visible includes:
-
-* IPC
-* Host RPC
-* Plugin APIs
-* Event payloads
-* Persisted protocol behavior
-
-E2E documentation and E2E execution are both required where applicable.
-
-One does not replace the other.
-
----
-
-# 29. Testing Is Part of Implementation
-
-A change is not complete when the code merely compiles.
-
-The development loop is:
+The normal lifecycle is:
 
 ```text
 implement
@@ -855,38 +418,15 @@ implement
 → typecheck
 → unit/integration validation
 → relevant E2E
-→ review complete diff
+→ diff review
 → commit
-→ PR
-→ required remote checks
+→ PR checks
 → merge
 ```
 
-Never announce a task as complete before required validation has finished.
+Run validation appropriate to the affected source tree.
 
----
-
-# 30. Mandatory PR Validation
-
-Any code-bearing PR must pass validation against the exact commit intended to merge.
-
-A code-bearing PR includes changes affecting runtime or build behavior under areas such as:
-
-```text
-apps/
-packages/
-crates/
-scripts/
-build configuration
-CI configuration
-runtime configuration
-```
-
-Documentation-only changes may use documentation-specific validation and do not require application E2E unless they also alter executable behavior.
-
-Before a code PR is considered ready for merge, run the relevant baseline checks.
-
-Typical repository-wide checks include:
+Typical checks include:
 
 ```bash
 pnpm build:js
@@ -899,252 +439,121 @@ cargo test -p host-core --locked
 cargo clippy -p host-core --all-targets
 ```
 
-Select additional focused checks based on the changed subsystem.
-
-Do not report a command as passing unless it was actually executed successfully.
+Never report a skipped command as passing.
 
 ---
 
-# 31. E2E Is a PR Merge Gate
+## 15. E2E Is a Merge Gate
 
-For every code-bearing PR:
+Every **code-bearing PR** must pass relevant E2E before merge.
 
-> Relevant E2E testing is mandatory before merge.
+Build, typecheck, unit tests, or manual inspection do not replace E2E.
 
-This is not optional.
+Select suites according to the affected regression surface as defined in:
 
-This is not merely recommended.
+`docs/spec/06-delivery/04-e2e-test-plan.md`
 
-A PR with unverified relevant E2E coverage must not be merged.
+The root `package.json` is the source of truth for available E2E commands.
 
-Available repository suites currently include:
+If the current environment cannot run required E2E:
 
-```bash
-pnpm test:e2e
-pnpm test:e2e:plan
-pnpm test:e2e:plan-ui
-pnpm test:e2e:boot
-pnpm test:e2e:supervision
-pnpm test:e2e:subagents
-```
+* the branch may be committed
+* a Draft / blocked PR may be opened
+* the PR is **not merge-ready**
 
-Use the current `package.json` as the source of truth for command names.
-
-Run suites based on impact.
-
-Examples:
-
-```text
-Electron bootstrap/lifecycle
-→ test:e2e:boot + smoke
-
-Plan behavior
-→ test:e2e:plan
-→ test:e2e:plan-ui when UI is affected
-
-Agent supervision/lifecycle
-→ test:e2e:supervision
-
-Subagents
-→ test:e2e:subagents
-
-General user workflow
-→ test:e2e
-```
-
-If a change crosses multiple domains, run multiple relevant suites.
-
-Passing unit tests does not replace E2E.
-
-Passing typecheck does not replace E2E.
-
-Manual inspection does not replace E2E.
-
----
-
-# 32. E2E Before Opening or Merging PRs
-
-When the environment supports the relevant E2E suite:
-
-Run it before presenting the PR as ready for review.
-
-If the agent cannot execute the required E2E because of a genuine environment limitation, for example:
-
-```text
-no GUI
-missing display server
-unsupported operating system
-required hardware unavailable
-required secrets unavailable
-```
-
-the agent may prepare or open the PR as **Draft / Not Ready**, but must clearly report:
+Record:
 
 ```text
 E2E: NOT RUN
+Suite:
 Reason:
-Affected suites:
-Alternative validation performed:
+Alternative validation:
 Remaining risk:
 ```
 
-The PR must not be considered merge-ready until the required E2E passes on:
+Required E2E must pass in CI or another capable trusted environment before merge.
 
-* CI
-* A capable development machine
-* Or another trusted execution environment
+Never claim an E2E suite passed unless it actually ran successfully.
 
-Environment limitations are not a permanent E2E waiver.
+If executable code changes after E2E passes, rerun the affected suite.
 
 ---
 
-# 33. Third-Party Fork PRs
+## 16. Never Hide Test Failures
 
-Fork PRs require additional caution because repository secrets and privileged CI paths may not be available.
+Do not make validation green by:
 
-Before merging a code-bearing fork PR:
+* deleting tests
+* skipping tests
+* commenting out assertions
+* weakening expectations without product justification
+* hiding errors
+* adding retries only to mask deterministic failures
 
-* Run the relevant E2E against the contributor's head when possible.
-* Confirm the exact commit tested.
-* Record the result in the PR discussion or merge report.
-* Treat E2E failure as a landing blocker.
-
-Do not assume missing CI coverage means the change is safe.
-
----
-
-# 34. Test Failure Rules
-
-Never make CI green by weakening the validation.
-
-Do not:
-
-* Delete a failing regression test
-* Skip a test without justification
-* Disable an assertion
-* Reduce an assertion merely to accept incorrect behavior
-* Comment out E2E
-* Hide an error
-* Change expected output simply because implementation currently disagrees
-
-Determine whether:
+Classify failures first:
 
 ```text
-implementation is wrong
+product regression
+test regression
+environment failure
+infrastructure failure
+known flake
 ```
 
-or:
+Fix the underlying cause.
 
-```text
-intended behavior intentionally changed
-```
-
-Only intentional behavior changes justify changing expected behavior, and such changes require corresponding spec updates.
+Bug fixes should normally add regression coverage.
 
 ---
 
-# 35. Bug Fix Regression Tests
+## 17. Multi-Agent-Safe E2E IDs
 
-Bug fixes should normally add a regression test.
+Do not create new globally sequential E2E identifiers.
 
-Preferred sequence:
+Existing numeric IDs such as:
 
 ```text
-reproduce
-→ add failing regression test
-→ implement fix
-→ verify regression test
-→ run surrounding test coverage
-→ run relevant E2E
+E2E-001
+E2E-097
+E2E-146a
+E2E-220
 ```
 
-The goal is to prevent the same bug from silently returning.
+are frozen legacy identifiers.
 
----
+Do not renumber or recycle them.
 
-# 36. Test Scope Must Match Change Scope
+New scenarios must use:
 
-Use risk-based validation in addition to mandatory PR gates.
+```text
+E2E-<DOMAIN>-<semantic-slug>
+```
 
 Examples:
 
-## Session changes
+```text
+E2E-SESSION-switch-does-not-show-stale-transcript
+E2E-PLAN-approval-survives-renderer-reload
+E2E-PLUGIN-disable-cleans-runtime
+E2E-MCP-reconnect-after-runtime-restart
+E2E-SUBAGENT-parent-cancel-stops-child
+```
 
-Consider:
+Rules:
 
-* Session creation
-* Session switching
-* Session persistence
-* Session recovery
-* Running-turn behavior
+* use the narrowest stable domain
+* describe product behavior, not implementation details
+* search for equivalent scenarios before creating one
+* reuse/update an existing scenario when it covers the same contract
+* once merged into `main`, treat the identifier as stable
 
-## Transcript changes
-
-Consider:
-
-* User message submission
-* Streaming
-* Cancellation
-* Session switching
-* Reload
-* Transcript restoration
-
-## Plan changes
-
-Run relevant Plan unit/integration and E2E coverage.
-
-## Agent runtime changes
-
-Consider:
-
-* Startup
-* Turn lifecycle
-* Cancellation
-* Supervision
-* Subagents
-* Recovery
-
-## Plugin changes
-
-Consider:
-
-* Installation
-* Loading
-* Enabling
-* Disabling
-* Reloading
-* Uninstalling
-* Permission enforcement
-
-## MCP changes
-
-Consider:
-
-* Configuration
-* Connection
-* Invocation
-* Failure
-* Disconnect
-* Reload
-* Cleanup
-
-Do not blindly run unrelated expensive tests when they cannot exercise the changed behavior, but do not under-test cross-cutting changes.
+Do not introduce other manually allocated global counters for multi-agent work unless an authoritative centralized allocator exists.
 
 ---
 
-# 37. Commit Every Logical Change
+## 18. Commits and Diff Hygiene
 
-Every completed logical change must be committed.
-
-Requirements:
-
-* One logical concern per commit
-* No large uncommitted piles
-* No unrelated cleanup
-* No accidental generated output
-* Leave the request worktree clean
-
-Use conventional commits:
+Use Conventional Commits:
 
 ```text
 type(scope): description
@@ -1164,558 +573,176 @@ build
 ci
 ```
 
-Examples:
+Use English.
 
-```text
-refactor(main): extract plugin ipc handlers
+Keep one logical concern per commit.
 
-fix(session): prevent stale transcript after session switch
+Before delivery, review the complete diff for:
 
-test(plan): cover approval restore flow
-```
-
-Commits are English only.
-
----
-
-# 38. Keep Refactor and Behavior Change Separate
-
-Clearly distinguish:
-
-```text
-behavior-preserving refactor
-```
-
-from:
-
-```text
-behavior change
-```
-
-and:
-
-```text
-bug fix
-```
-
-Do not hide feature changes inside refactor commits.
-
-When a refactor reveals an unrelated bug:
-
-* Record it
-* Add a regression test when practical
-* Fix it separately
-
-unless the bug directly blocks safe completion of the refactor.
+* debug logging
+* temporary code
+* commented-out implementation
+* unrelated cleanup
+* accidental formatting
+* generated junk
+* secrets
+* credentials
+* local paths
+* local databases
+* disabled tests
+* test bypasses
 
 ---
 
-# 39. Pull Request Scope
+## 19. Remote Publishing
 
-PRs should have one coherent purpose.
+Do not push merely because local development is complete unless remote delivery is part of the task or the user has authorized it.
 
-Do not combine unrelated:
+Before pushing, verify:
 
-* Features
-* Refactors
-* Dependency upgrades
-* UI redesigns
-* Bug fixes
-* Formatting sweeps
-
-A small amount of directly necessary cleanup is acceptable.
-
-Drive-by cleanup that significantly enlarges review scope is not.
-
----
-
-# 40. Pull Request Description Requirements
-
-Every code-bearing PR should report:
-
-```text
-## What changed
-
-## Why
-
-## Architecture impact
-
-## Compatibility impact
-
-## Tests
-
-## E2E
-
-## Risks
-
-## Screenshots
-(if UI changed)
-```
-
-The `Tests` and `E2E` sections must contain actual results.
-
-Good:
-
-```text
-✅ pnpm build:js
-✅ pnpm --filter @pi-desktop/desktop typecheck
-✅ cargo test -p host-core --locked
-
-✅ pnpm test:e2e
-✅ pnpm test:e2e:boot
-```
-
-Bad:
-
-```text
-Tests should pass.
-```
-
-Bad:
-
-```text
-E2E not needed.
-```
-
-without a concrete non-code exemption.
-
----
-
-# 41. Review the Diff Before Delivery
-
-Before committing or opening a PR, review the complete diff.
-
-Check for:
-
-* Debug logging
-* Temporary code
-* Commented-out implementation
-* Accidental formatting noise
-* Unrelated changes
-* Generated junk
-* Credentials
-* Secrets
-* Local filesystem paths
-* Test bypasses
-* Unnecessary dependency changes
-
-Do not assume generated changes are harmless.
-
----
-
-# 42. AI Self-Review Gate
-
-Before declaring implementation complete, explicitly review the change from these perspectives.
-
-## Architecture
-
-* Did this create a new God Module?
-* Did responsibilities move to the correct domain?
-* Did dependency direction remain valid?
-* Did a known hotspot grow unnecessarily?
-
-## Compatibility
-
-* Did IPC change?
-* Did RPC change?
-* Did persisted data change?
-* Did Plugin SDK behavior change?
-* Did default user behavior change?
-
-## Async
-
-* Could stale async work mutate newer state?
-* Is cancellation correct?
-* Is duplicate execution possible?
-* Can session/project identity change during `await`?
-
-## Lifecycle
-
-* Were listeners added?
-* Are they removed?
-* Are processes/connections cleaned up?
-* Is shutdown safe?
-* Is plugin reload safe?
-
-## Security
-
-* Did privilege increase?
-* Did permission checks weaken?
-* Did network/filesystem/shell scope expand?
-
-## Tests
-
-* Were relevant unit/integration checks run?
-* Were required E2E suites run?
-* Were failures resolved rather than hidden?
-
-## Scope
-
-* Does the diff contain unrelated work?
-
-A task is not complete until this review is satisfactory.
-
----
-
-# 43. GitHub PR Contributor Preservation
-
-For an existing external PR whose principle is sound:
-
-* Preserve the contributor's commits and authorship.
-* Do not silently replace their implementation with your own.
-* Make only the smallest necessary landing-blocker fixes on top when needed.
-* Follow-up architectural cleanup may happen separately after merge.
-
-However:
-
-> Relevant E2E is a landing requirement.
-
-A sound idea does not override a demonstrated runtime regression.
-
-If the contributor PR fails required E2E, resolve the failure before merging.
-
----
-
-# 44. Marketplace and Update Diagnosis Gate
-
-When a request concerns:
-
-* Plugin versions
-* Marketplace updates
-* Installed plugin version mismatch
-* Unexpected latest version
-* Marketplace installation failures
-
-do not immediately modify application code.
-
-First:
-
-1. Record plugin ID, installed version, displayed latest version, expected release version, catalog URL, and observation time.
-2. Fetch and inspect the live catalog.
-3. Inspect cached catalog and installed registry separately.
-4. Classify the failure boundary.
-5. Run:
-
-```bash
-pnpm check:marketplace -- --url <catalog-url> --plugin <id>
-```
-
-6. Check release metadata such as checksum, package URL, package size, permissions, and author shape.
-7. Reproduce the exact behavior with a deterministic fixture where practical.
-8. Add the narrowest regression test for the actual failing layer.
-9. Only then modify client code.
-
-Possible failure classifications include:
-
-```text
-publisher/catalog data
-remote fetch/cache fallback
-host version comparison
-IPC propagation
-renderer presentation
-```
-
-Do not make invalid marketplace releases installable merely to hide bad catalog data.
-
-The final report must identify the evidence and failure classification.
-
----
-
-# 45. Stable Release Rule
-
-Before creating a stable application version tag, update every version surface, including:
-
-```text
-packages/shared/src/changelog*.ts
-packages/shared/src/changelog.test.ts
-package.json
-apps/*
-packages/*
-docs/
-Cargo.toml
-Cargo.lock
-packages/shared/src/protocol.ts
-README.md
-README.zh-CN.md
-```
-
-Run:
-
-```bash
-pnpm check:release-docs
-```
-
-before tagging.
-
-README files are release surfaces.
-
-If a release changes user-visible behavior, update affected Highlights, Download, Getting Started, Status, or Development claims in both supported README locales.
-
----
-
-# 46. Merge and Worktree Cleanup
-
-After development:
-
-1. Complete required validation.
-2. Review the complete diff.
-3. Commit all logical changes.
-4. Refresh the request branch against current `main`.
-5. Resolve conflicts in the request worktree.
-6. Ensure required PR checks and E2E are green.
-7. Merge through the repository's accepted workflow.
-8. Verify the expected commits landed.
-9. Remove the request worktree.
-10. Delete the merged request branch.
-
-Example cleanup:
-
-```bash
-git worktree remove ../worktrees/<request-id>
-git branch -d <type>/<request-id>
-git worktree prune
-```
-
-Use `git branch -d`, not `-D`, unless explicitly authorized for an exceptional case.
-
-Never remove another agent's worktree.
-
-Never discard another agent's work.
-
----
-
-# 47. Remote Publishing
-
-Remote publishing is opt-in unless the task explicitly involves preparing or completing a PR workflow that necessarily requires publishing the request branch.
-
-Before any push:
-
-* Verify remote
-* Verify branch
-* Verify commit set
-* Verify Git identity
+* remote
+* branch
+* commit set
+* Git identity
 
 Never force-push unless explicitly authorized for that exact operation.
 
-Never infer permission to push unrelated changes.
+A linked issue does not authorize unrelated publishing.
+
+A linked PR authorizes actions necessary to review or land that PR within repository policy.
 
 ---
 
-# 48. AI Must Implement, Not Merely Diagnose
+## 20. Integration and Cleanup
 
-When the user asks for implementation, do not stop after writing:
+Before integration:
 
-```text
-I recommend...
-You could...
-Suggested architecture...
+1. refresh against current `main`
+2. resolve conflicts carefully
+3. run required validation
+4. review the final diff
+5. verify required PR checks and E2E
+
+After merge:
+
+1. verify expected commits are present in `main`
+2. remove your request worktree
+3. delete your merged local branch
+4. prune stale worktree metadata
+
+Example:
+
+```bash
+git worktree remove <worktree-path>
+git branch -d <type>/<short-description>
+git worktree prune
 ```
 
-Perform the work.
-
-The expected flow is:
-
-```text
-inspect
-→ understand
-→ implement
-→ validate
-→ E2E
-→ review
-→ commit/deliver
-```
-
-Do not leave straightforward implementation work unfinished merely because additional engineering decisions arise.
-
-Make reasonable low-risk engineering decisions independently.
-
-Ask the user only when necessary, such as when:
-
-* Product behavior is genuinely ambiguous
-* A breaking change requires approval
-* User data may be irreversibly affected
-* A security boundary must change
-* Multiple incompatible product decisions exist
-
-Do not repeatedly ask about ordinary internal implementation details.
+Delete only your own worktree and branch.
 
 ---
 
-# 49. Definition of Done
+## 21. Specialized Workflows
 
-A code task is Done only when all applicable items are true:
+Do not duplicate detailed procedures in this file.
 
-```text
-implementation complete
-architecture boundaries preserved
-compatibility reviewed
-specs synchronized
-ADR added when required
-E2E documentation synchronized
-format passes
-typecheck passes
-lint passes
-relevant unit/integration tests pass
-relevant E2E passes
-complete diff reviewed
-logical changes committed
-PR gates satisfied
-no known regression introduced
-```
+Follow the existing repository specifications for:
 
-“Code written” is not Done.
+* Marketplace/update diagnosis
+* Stable release/version surfaces
+* Packaging/signing
+* E2E suite selection
+* Release qualification
+* Domain-specific acceptance criteria
 
-“Build passes” alone is not Done.
-
-“Unit tests pass” alone is not Done.
-
-For a PR, “E2E not run” means the PR is not merge-ready unless the change is genuinely documentation-only/non-executable.
+When one of those workflows applies, read the relevant spec before implementation.
 
 ---
 
-# 50. Boy Scout Rule
+## 22. Definition of Done
 
-When touching code, it is acceptable to leave the directly affected code slightly better than before.
+A code task is Done only when all applicable conditions are true:
 
-Examples:
-
-* Remove obvious duplication
-* Add a missing type
-* Extract an already-clear responsibility
-* Correct a stale comment
-* Simplify directly affected control flow
-
-Do not use this rule to expand a focused task into a broad cleanup project.
-
----
-
-# 51. Completion Checklist
-
-Before completion, verify:
-
-* [ ] Current `main` was synchronized before development
-* [ ] A unique request branch was created
-* [ ] A dedicated worktree was used
-* [ ] No other agent's worktree or branch was modified
-* [ ] Baseline and relevant specifications were reviewed
-* [ ] Existing behavior was preserved unless intentionally changed
-* [ ] Architectural boundaries remain valid
+* [ ] Dedicated branch and worktree were used
+* [ ] Work started from current `main`
+* [ ] Relevant specs / ADRs were reviewed
+* [ ] Implementation is complete
+* [ ] Existing behavior and compatibility were reviewed
+* [ ] Architecture boundaries remain valid
 * [ ] No new God Module was introduced
-* [ ] Known architecture hotspots did not grow unnecessarily
-* [ ] Relevant specs were updated
-* [ ] ADR was added if architecture/security/data ownership changed
-* [ ] E2E test-plan scenarios were updated when applicable
-* [ ] Formatting passed
-* [ ] Typecheck passed
-* [ ] Lint passed
-* [ ] Relevant unit/integration tests passed
-* [ ] Relevant E2E suites passed
-* [ ] E2E results correspond to the commit intended to merge
-* [ ] Failed tests were not hidden or weakened
-* [ ] Bug fixes include regression coverage where practical
+* [ ] Known hotspots did not grow unnecessarily
+* [ ] Relevant specs were synchronized
+* [ ] ADR was added when required
+* [ ] E2E documentation was updated when required
+* [ ] New E2E IDs use the multi-agent-safe semantic format
+* [ ] Relevant static / unit / integration checks pass
+* [ ] Relevant E2E passes for code-bearing PRs
+* [ ] Test evidence applies to the intended merge code
 * [ ] Complete diff was reviewed
 * [ ] No secrets, local data, or unrelated changes are included
-* [ ] Logical changes were committed separately
-* [ ] PR description contains real validation results
-* [ ] Required remote checks passed
-* [ ] Merge result was verified
-* [ ] Request worktree was removed after merge
-* [ ] Merged request branch was deleted
-* [ ] Remote publishing occurred only within authorized scope
-* [ ] Linked GitHub issue was verified and handled correctly
-* [ ] Linked GitHub PR preserved contributor work where applicable
+* [ ] Logical changes are committed
+* [ ] Required merge gates pass
+* [ ] Worktree and branch cleanup are complete after integration
+
+The following are **not** equivalent to Done:
+
+```text
+code written
+build passes
+typecheck passes
+unit tests pass
+looks correct
+```
+
+when required validation or merge gates remain unresolved.
 
 ---
 
-# 52. Final Report
+## 23. Final Handoff
 
-The agent's final report must include:
+Report only factual results.
+
+Include, when applicable:
 
 ```text
-Branch:
-Worktree:
-
 What changed:
-
-Architecture impact:
-
-Compatibility impact:
-
-Specs / ADRs updated:
-
+Architecture / compatibility impact:
+Specs / ADRs:
 Validation:
-- command
-- result
-
 E2E:
-- suite
-- result
-
-Not run:
-- command
-- reason
-- remaining risk
-
 Commits:
-
-PR / merge result:
-
-Worktree cleanup:
-
-Push result:
-
-Linked issue:
-- verification
-- comment
-- close result
-
-Linked PR:
-- principle review
-- contributor preservation
-- E2E result
-- merge result
-
-Remaining risks / technical debt:
+PR / merge status:
+Remaining risk:
 ```
 
-Never claim tests or E2E passed unless they actually ran and passed.
+If something was not run, say so.
+
+Never claim:
+
+```text
+passed
+verified
+tested
+```
+
+unless it actually was.
 
 ---
 
-# 53. Final Engineering Principle
+## Final Principles
 
-Always optimize for:
+> Preserve behavior unless change is intentional.
 
-> Changing the system safely, not merely changing it quickly.
+> Respect process and ownership boundaries.
 
-Every feature should leave PI-Desktop with:
+> New features must not increase architectural entropy by default.
 
-```text
-working functionality
-+
-clear ownership
-+
-preserved compatibility
-+
-test coverage
-+
-E2E verification
-+
-no unnecessary architectural entropy
-```
+> Multiple agents must never depend on shared manual counters.
 
-A feature that works today but makes the next change substantially harder is not fully finished.
+> E2E IDs are stable semantic contract references, not sequence numbers.
 
-还有一个**必须一起改的地方**：你现在的 `docs/spec/06-delivery/03-ai-development-workflow.md` 仍明确规定“E2E 只有用户主动要求才运行”，甚至 Development Loop 第 7 步也是这么写的。
+> A test that did not run did not pass.
 
-所以不能只替换 `AGENTS.md`，否则 AI 会同时读到两套互相冲突的规则。建议把这次修改作为一个独立 PR：
+> A refactor should reduce coupling, not move it into a differently named file.
 
-**`docs: enforce architecture and e2e development gates`**
-
-同时修改：
-
-`AGENTS.md`
-`docs/spec/06-delivery/03-ai-development-workflow.md`
-`docs/spec/06-delivery/04-e2e-test-plan.md`（如需要说明执行门禁）
-
-然后再把 **E2E workflow 设置为 GitHub Required Check**。这样“必须 E2E”就不只是提示词，而是真正做到 **没绿就合不了 PR**。
+> A feature that works today but makes tomorrow's change substantially harder is not fully finished.
