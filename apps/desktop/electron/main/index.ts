@@ -1,10 +1,7 @@
 import {
   app,
   BrowserWindow,
-  dialog,
-  globalShortcut,
   ipcMain,
-  Menu,
   nativeTheme,
   screen,
   Tray,
@@ -35,10 +32,7 @@ import {
   type CloseBehavior,
   type KeybindingOverrides,
   type Result,
-  type ShortcutPlatform,
-  type MessageUsage,
   type PlanExecutionFinishStatus,
-  addUsage,
 } from "@pi-desktop/shared";
 import {
   genericModelConfig,
@@ -67,7 +61,6 @@ import {
 import { VendorOAuth } from "./oauth";
 import { AppUpdaterController } from "./updater";
 import { catalogs, resolveLocale } from "@pi-desktop/i18n";
-import { installApplicationMenu } from "./application-menu";
 import {
   baseWindowBounds,
   clampBoundsOriginToWorkArea,
@@ -98,18 +91,12 @@ import {
   planExecutionFromUnknown,
 } from "./plan-execution";
 import {
-  readCloseBehavior,
   readWindowState,
-  writeCloseBehavior,
   writeWindowState,
 } from "./window-preferences";
 import { createPlanUiProbe } from "./plan-ui-probe";
-import {
-  createMcpControlController,
-  McpControlServer,
-  mcpControlRendererEvent,
-} from "./mcp-control";
-import { createAgentHostBridge, type AgentHostBridge } from "./agent-host-bridge";
+import type { McpControlController, McpControlServer } from "./mcp-control";
+import type { AgentHostBridge } from "./agent-host-bridge";
 import { registerAppIpc } from "./ipc/app-ipc";
 import { registerNotificationIpc } from "./ipc/notification-ipc";
 import { registerSessionIpc } from "./ipc/session-ipc";
@@ -140,6 +127,8 @@ import {
   createProviderCatalogRuntime,
 } from "./runtime/provider-catalog";
 import { createSessionLaunchRuntime } from "./runtime/session-launch";
+import { createSessionCoordination } from "./runtime/session-coordination";
+import { createScheduledRuntime } from "./runtime/scheduled";
 import { createDesktopServices } from "./services/desktop-services";
 import { createPluginServices } from "./services/plugin-services";
 import {
@@ -147,6 +136,17 @@ import {
   type ApplicationAppearanceState,
   type ApplicationLifecycleState,
 } from "./bootstrap/app-lifecycle";
+import {
+  registerApplicationStartup,
+  type StartupState,
+} from "./bootstrap/startup";
+import {
+  createLauncher,
+  type LauncherState,
+} from "./bootstrap/launcher";
+import { createWorkPanelRuntime } from "./bootstrap/work-panel";
+import { createCloseBehaviorRuntime } from "./bootstrap/close-behavior";
+import { registerShutdownHandlers, type ShutdownState } from "./bootstrap/shutdown";
 import { registerDiagnosticsIpc } from "./ipc/diagnostics-ipc";
 import { registerMarketIpc } from "./ipc/market-ipc";
 import { registerMcpIpc } from "./ipc/mcp-ipc";
@@ -231,6 +231,26 @@ let pluginLauncherCreationPromise: Promise<BrowserWindow> | null = null;
 let pluginLauncherAccelerator: string | null = null;
 let pluginLauncherBinding: string | null = null;
 let summonWindowAccelerator: string | null = null;
+const launcherState: LauncherState = {
+  get creationPromise() {
+    return pluginLauncherCreationPromise;
+  },
+  set creationPromise(value) {
+    pluginLauncherCreationPromise = value;
+  },
+  get pluginLauncherAccelerator() {
+    return pluginLauncherAccelerator;
+  },
+  set pluginLauncherAccelerator(value) {
+    pluginLauncherAccelerator = value;
+  },
+  get summonWindowAccelerator() {
+    return summonWindowAccelerator;
+  },
+  set summonWindowAccelerator(value) {
+    summonWindowAccelerator = value;
+  },
+};
 let windowCreationPromise: Promise<void> | null = null;
 let applicationBooted = false;
 const isDevelopmentBuild =
@@ -266,7 +286,7 @@ let host: HostProcess | null = null;
 let sidecar: AgentSidecar | null = null;
 let mcpControl: McpControlServer | null = null;
 let agentHostBridge: AgentHostBridge | null = null;
-let desktopControl: ReturnType<typeof createMcpControlController> | null = null;
+let desktopControl: McpControlController | null = null;
 let quitting = false;
 let shutdownComplete = false;
 let shutdownPromise: Promise<void> | null = null;
@@ -450,6 +470,51 @@ const runtimeState: RuntimeState = {
 };
 
 let applicationLifecycle: ReturnType<typeof createApplicationLifecycle> | null = null;
+let launcherRuntime: ReturnType<typeof createLauncher> | null = null;
+let closeBehaviorRuntime: ReturnType<typeof createCloseBehaviorRuntime> | null = null;
+const showPluginLauncherForLifecycle = (): Promise<void> => {
+  if (!launcherRuntime) {
+    return Promise.reject(new Error("launcher is not initialized"));
+  }
+  return launcherRuntime.showPluginLauncher();
+};
+const applyPluginLauncherShortcutForLifecycle = (
+  keybindings?: KeybindingOverrides,
+) => {
+  launcherRuntime?.applyPluginLauncherShortcut(keybindings);
+};
+const applySummonWindowShortcutForLifecycle = (
+  keybindings?: KeybindingOverrides,
+) => {
+  launcherRuntime?.applySummonWindowShortcut(keybindings);
+};
+const applyCloseBehaviorForLifecycle = (next: CloseBehavior) => {
+  if (!closeBehaviorRuntime) {
+    throw new Error("close behavior runtime is not initialized");
+  }
+  closeBehaviorRuntime.applyCloseBehavior(next);
+};
+const askCloseBehaviorForLifecycle = (
+  window: BrowserWindow,
+): Promise<CloseBehavior | null> => {
+  if (!closeBehaviorRuntime) {
+    return Promise.reject(new Error("close behavior runtime is not initialized"));
+  }
+  return closeBehaviorRuntime.askCloseBehavior(window);
+};
+
+const workPanelRuntime = createWorkPanelRuntime({
+  state: windowLifecycleState,
+  windowMinWidth: WINDOW_MIN_WIDTH,
+  chatResizeSettleMs: WORK_PANEL_CHAT_RESIZE_SETTLE_MS,
+});
+const {
+  workPanelMinimumWindowWidth,
+  observedWorkPanelBaseBounds,
+  markWorkPanelChatResizeActive,
+  classifyDisplayTransition,
+  applyWorkPanelReservation,
+} = workPanelRuntime;
 
 const desktopServices = createDesktopServices({
   getLogger: () => logger,
@@ -491,6 +556,12 @@ const logger = new Logger(
 const persistenceOutbox = new PersistenceOutbox(dataDir, (level, message, data) => {
   logger.app("persistence", level, message, { data });
 });
+const scheduledRuntime = createScheduledRuntime({
+  dataDir,
+  getHost: () => host,
+  logger,
+});
+const { importLegacyScheduled } = scheduledRuntime;
 // The reply currently streaming in each session, checkpointed to host-core so
 // a quit or crash mid-reply keeps the text the user already saw (D299). A
 // checkpoint is a best-effort write against a live host; the outbox is not
@@ -836,16 +907,16 @@ applicationLifecycle = createApplicationLifecycle({
   classifyDisplayTransition,
   sendToRenderer,
   safeOpenExternal,
-  showPluginLauncher,
-  askCloseBehavior,
-  applyCloseBehavior,
+  showPluginLauncher: showPluginLauncherForLifecycle,
+  askCloseBehavior: askCloseBehaviorForLifecycle,
+  applyCloseBehavior: applyCloseBehaviorForLifecycle,
   browserPane,
   pluginViews,
   plugins,
   logger,
   refreshReleaseNotes: () => updater.refreshReleaseNotes(),
-  applyPluginLauncherShortcut,
-  applySummonWindowShortcut,
+  applyPluginLauncherShortcut: applyPluginLauncherShortcutForLifecycle,
+  applySummonWindowShortcut: applySummonWindowShortcutForLifecycle,
   broadcastPluginPanelEvent,
 });
 const {
@@ -870,6 +941,36 @@ const {
   flushPendingApplicationMenuCommands,
 } = applicationLifecycle;
 
+closeBehaviorRuntime = createCloseBehaviorRuntime({
+  state: windowLifecycleState,
+  dataDir,
+  getLocale: () => updaterLocale,
+  createTray,
+});
+const {
+  applyCloseBehavior,
+  askCloseBehavior,
+  confirmQuitDialog,
+} = closeBehaviorRuntime;
+
+const createdLauncher = createLauncher({
+  state: windowLifecycleState,
+  launcherState,
+  appState: applicationLifecycleState,
+  getHost: () => host,
+  logger,
+  safeOpenExternal,
+  restoreMainWindow,
+});
+launcherRuntime = createdLauncher;
+const {
+  prewarmPluginLauncher,
+  showPluginLauncher,
+  togglePluginLauncher,
+  applyPluginLauncherShortcut,
+  applySummonWindowShortcut,
+} = createdLauncher;
+
 function wrap<T>(fn: () => Promise<T>): Promise<Result<T>> {
   return fn()
     .then((data) => ok(data))
@@ -882,60 +983,8 @@ function wrap<T>(fn: () => Promise<T>): Promise<Result<T>> {
     );
 }
 
-function scheduledPath() {
-  return join(dataDir, "scheduled-tasks.json");
-}
-
-/// Scheduled tasks live in host-core SQLite (schema v2, D086). This one-shot
-/// import moves the legacy Electron JSON store into the host, then renames the
-/// file so it never imports twice. Idempotent on the host side too.
-async function importLegacyScheduled() {
-  if (!host) return;
-  const { readFile, rename } = await import("node:fs/promises");
-  const path = scheduledPath();
-  try {
-    const raw = await readFile(path, "utf8");
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      const res = await host.call<{ imported: number }>("scheduled.import", {
-        tasks: parsed,
-      });
-      logger.app("persistence", "info", "legacy scheduled tasks imported", {
-        data: { imported: res.imported, total: parsed.length },
-      });
-    }
-    await rename(path, `${path}.imported.bak`);
-  } catch (e: any) {
-    if (e?.code !== "ENOENT") {
-      logger.app("persistence", "warn", "legacy scheduled import failed", { data: String(e) });
-    }
-  }
-}
-
 /** sessionId → open host turn id, for turn bookkeeping across agent events. */
 const activeTurns = new Map<string, string>();
-const sessionOperationTails = new Map<string, Promise<void>>();
-
-async function acquireSessionOperation(sessionId: string): Promise<() => void> {
-  const id = sessionId.trim();
-  const previous = sessionOperationTails.get(id) ?? Promise.resolve();
-  let resolveCurrent!: () => void;
-  const current = new Promise<void>((resolve) => {
-    resolveCurrent = resolve;
-  });
-  const tail = previous.then(() => current);
-  sessionOperationTails.set(id, tail);
-  await previous;
-  let released = false;
-  return () => {
-    if (released) return;
-    released = true;
-    resolveCurrent();
-    if (sessionOperationTails.get(id) === tail) {
-      sessionOperationTails.delete(id);
-    }
-  };
-}
 /** Plan submission turns end without a task-complete notification. */
 const planSubmissionTurnIds = new Set<string>();
 /** sessionId → host execution id for an approved plan currently dispatched. */
@@ -965,16 +1014,8 @@ const planRuntimeState: PlanRuntimeState = {
     approvedExecutionDrain = value;
   },
 };
-const turnSettlements = new Map<string, Set<() => void>>();
 const turnFinalizations = new Map<string, Promise<void>>();
-/** sessionId -> last assistant usage recorded for active turn */
-const activeTurnUsages = new Map<string, MessageUsage>();
 
-function addActiveTurnUsage(sessionId: string, usage: MessageUsage | undefined) {
-  if (!usage) return;
-  const next = addUsage(activeTurnUsages.get(sessionId), usage);
-  if (next) activeTurnUsages.set(sessionId, next);
-}
 /** sessionId → scheduled task_run id awaiting completion. */
 const scheduledRunsBySession = new Map<string, string>();
 /** Session currently rendered on the chat page; focus remains Main-owned. */
@@ -994,33 +1035,21 @@ const activeToolCalls = new Map<
   }
 >();
 
-function activeToolCallKey(sessionId: string, toolCallId: string) {
-  return `${sessionId}:${toolCallId}`;
-}
-
-function planSubmissionTurnKey(sessionId: string, turnId: string) {
-  return `${sessionId}:${turnId}`;
-}
-
-function waitForTurnSettlement(sessionId: string, turnId: string): Promise<void> {
-  if (activeTurns.get(sessionId) !== turnId) return Promise.resolve();
-  const key = planSubmissionTurnKey(sessionId, turnId);
-  return new Promise((resolve) => {
-    const waiters = turnSettlements.get(key) ?? new Set<() => void>();
-    waiters.add(resolve);
-    turnSettlements.set(key, waiters);
-  });
-}
-
-function shouldCreateTaskNotification(sessionId: string) {
-  const liveWindow = mainWindow !== null && !mainWindow.isDestroyed();
-  return shouldCreateTaskNotificationPolicy({
-    finishingSessionId: sessionId,
-    viewingSessionId: notificationViewingSessionId,
-    windowVisible: liveWindow && mainWindow?.isVisible() === true,
-    windowFocused: liveWindow && mainWindow?.isFocused() === true,
-  });
-}
+const sessionCoordination = createSessionCoordination({
+  activeTurns,
+  getMainWindow: () => mainWindow,
+  getViewingSessionId: () => notificationViewingSessionId,
+});
+const {
+  turnSettlements,
+  activeTurnUsages,
+  acquireSessionOperation,
+  addActiveTurnUsage,
+  activeToolCallKey,
+  planSubmissionTurnKey,
+  waitForTurnSettlement,
+  shouldCreateTaskNotification,
+} = sessionCoordination;
 
 async function withGitBranch<T extends { path?: string; name?: string } | null | undefined>(
   workspace: T,
@@ -1045,347 +1074,6 @@ async function withGitBranch<T extends { path?: string; name?: string } | null |
  * resident on every platform, so switching to "quit" must not destroy it —
  * minimize-to-tray still needs it to bring the window back.
  */
-function applyCloseBehavior(next: CloseBehavior) {
-  closeBehavior = next;
-  writeCloseBehavior(dataDir, next);
-  if (next === "tray") createTray();
-}
-
-/**
- * First-close prompt on Windows/Linux: asks whether closing the window
- * should hide the app to the tray or exit it. The choice is persisted and
- * can be changed later in Settings. Returns null when the user cancels.
- */
-async function askCloseBehavior(
-  window: BrowserWindow,
-): Promise<"tray" | "quit" | null> {
-  const labels = catalogs[resolveLocale(updaterLocale)];
-  const { response } = await dialog.showMessageBox(window, {
-    type: "question",
-    title: labels.tray.askTitle,
-    message: labels.tray.askTitle,
-    detail: labels.tray.askBody,
-    buttons: [labels.common.cancel, labels.tray.closeToTray, labels.tray.quit],
-    defaultId: 1,
-    cancelId: 0,
-    noLink: true,
-  });
-  return response === 1 ? "tray" : response === 2 ? "quit" : null;
-}
-
-/**
- * Quit-confirmation dialog shown on explicit quit (Cmd+Q, tray quit, menu Quit).
- * Data is already saved as part of the normal shutdown sequence, but this
- * gives the user a chance to cancel before that process begins.
- * Returns `true` when the user confirms, `false` when they cancel.
- */
-async function confirmQuitDialog(): Promise<boolean> {
-  const labels = catalogs[resolveLocale(updaterLocale)];
-  const parent =
-    mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
-  const options = {
-    type: "warning" as const,
-    title: labels.tray.confirmQuitTitle,
-    message: labels.tray.confirmQuitTitle,
-    detail: labels.tray.confirmQuitBody,
-    buttons: [labels.common.cancel, labels.tray.confirmQuit],
-    defaultId: 0,
-    cancelId: 0,
-    noLink: true,
-  };
-  const { response } = parent
-    ? await dialog.showMessageBox(parent, options)
-    : await dialog.showMessageBox(options);
-  return response === 1;
-}
-
-function workPanelMinimumWindowWidth() {
-  return WINDOW_MIN_WIDTH + workPanelReservation.width;
-}
-
-function observedWorkPanelBaseBounds(
-  currentBounds: WindowBounds,
-  displayTransition: DisplayTransition,
-) {
-  if (!workPanelBaseBounds || !workPanelLastAppliedBounds) {
-    return baseWindowBounds(currentBounds, workPanelReservation);
-  }
-  return reconcileBaseWindowBounds({
-    baseBounds: workPanelBaseBounds,
-    lastAppliedBounds: workPanelLastAppliedBounds,
-    currentBounds,
-    displayTransition,
-    reservation: workPanelReservation,
-  });
-}
-
-function markWorkPanelChatResizeActive() {
-  workPanelChatResizeActive = true;
-  if (workPanelChatResizeTimer) clearTimeout(workPanelChatResizeTimer);
-  workPanelChatResizeTimer = setTimeout(() => {
-    workPanelChatResizeTimer = null;
-    workPanelChatResizeActive = false;
-  }, WORK_PANEL_CHAT_RESIZE_SETTLE_MS);
-}
-
-/**
- * Classifies a display change. A user drag is the only transition that follows
- * a native move stream, so a pending move is the signal that separates it from
- * an OS re-fit (D263). Without that split, dragging a window to another display
- * replanned the reservation from the previous display's base bounds and snapped
- * the window back (issue #18).
- */
-function classifyDisplayTransition(nextDisplayKey: string): DisplayTransition {
-  if (workPanelDisplayKey === null || nextDisplayKey === workPanelDisplayKey) {
-    return "none";
-  }
-  return workPanelUserMovePending ? "user-moved" : "os-adjusted";
-}
-
-function applyWorkPanelReservation(): WorkPanelReservationState {
-  // The work panel is rendered inside the existing BrowserWindow. This helper
-  // remains as a no-op for recovery call sites from the old reservation path,
-  // but opening or collapsing the panel must never mutate native bounds.
-  requestedWorkPanelReservation = 0;
-  workPanelReservation = emptyWorkPanelReservationState();
-  return workPanelReservation;
-}
-
-const PLUGIN_LAUNCHER_WIDTH = 620;
-const PLUGIN_LAUNCHER_HEIGHT = 440;
-
-function pluginLauncherBounds() {
-  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
-  const { x, y, width, height } = display.workArea;
-  return {
-    x: Math.round(x + (width - PLUGIN_LAUNCHER_WIDTH) / 2),
-    y: Math.round(y + (height - PLUGIN_LAUNCHER_HEIGHT) / 2),
-    width: PLUGIN_LAUNCHER_WIDTH,
-    height: PLUGIN_LAUNCHER_HEIGHT,
-  };
-}
-
-function createPluginLauncherWindow(): Promise<BrowserWindow> {
-  if (pluginLauncherCreationPromise) return pluginLauncherCreationPromise;
-  if (pluginLauncherWindow && !pluginLauncherWindow.isDestroyed()) {
-    return Promise.resolve(pluginLauncherWindow);
-  }
-
-  const creation = (async () => {
-    const window = new BrowserWindow({
-      ...pluginLauncherBounds(),
-      title: `${APP_NAME} Plugin Launcher`,
-      show: false,
-      frame: false,
-      transparent: true,
-      backgroundColor: "#00000000",
-      resizable: false,
-      minimizable: false,
-      maximizable: false,
-      fullscreenable: false,
-      skipTaskbar: true,
-      alwaysOnTop: true,
-      hasShadow: true,
-      autoHideMenuBar: true,
-      ...(process.platform === "darwin" ? { type: "panel" as const } : {}),
-      webPreferences: {
-        preload: join(__dirname, "../preload/index.cjs"),
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true,
-        additionalArguments: [`--pi-desktop-locale=${app.getLocale()}`],
-      },
-    });
-    pluginLauncherWindow = window;
-
-    if (process.platform === "darwin") {
-      // Join every Space and float above this app's own fullscreen window, but
-      // never let Electron transform the process type. Without
-      // `skipTransformProcessType`, `visibleOnFullScreen` runs
-      // TransformProcessType(kProcessTransformToUIElementApplication) on the
-      // whole process, which removes PI-Desktop from the Dock and Cmd+Tab for
-      // as long as this window exists — and the launcher is prewarmed during
-      // boot, so that would apply to every session (ADR 0086).
-      window.setVisibleOnAllWorkspaces(true, {
-        visibleOnFullScreen: true,
-        skipTransformProcessType: true,
-      });
-    }
-    window.webContents.setWindowOpenHandler(({ url }) => {
-      void safeOpenExternal(url).catch(() => undefined);
-      return { action: "deny" };
-    });
-    window.webContents.on("will-navigate", (event, url) => {
-      const devOrigin = process.env.ELECTRON_RENDERER_URL;
-      if (devOrigin && url.startsWith(devOrigin)) return;
-      event.preventDefault();
-    });
-    window.on("blur", () => {
-      if (!window.isDestroyed() && !window.webContents.isDevToolsOpened()) {
-        window.hide();
-      }
-    });
-    window.on("closed", () => {
-      if (pluginLauncherWindow === window) pluginLauncherWindow = null;
-    });
-
-    try {
-      if (process.env.ELECTRON_RENDERER_URL) {
-        const url = new URL(process.env.ELECTRON_RENDERER_URL);
-        url.searchParams.set("surface", "plugin-launcher");
-        await window.loadURL(url.toString());
-      } else {
-        await window.loadFile(join(__dirname, "../renderer/index.html"), {
-          query: { surface: "plugin-launcher" },
-        });
-      }
-      return window;
-    } catch (error) {
-      if (!window.isDestroyed()) window.destroy();
-      throw error;
-    }
-  })();
-
-  pluginLauncherCreationPromise = creation;
-  void creation.then(
-    () => {
-      if (pluginLauncherCreationPromise === creation) {
-        pluginLauncherCreationPromise = null;
-      }
-    },
-    () => {
-      if (pluginLauncherCreationPromise === creation) {
-        pluginLauncherCreationPromise = null;
-      }
-    },
-  );
-  return creation;
-}
-
-function prewarmPluginLauncher(): void {
-  void createPluginLauncherWindow().catch((error) => {
-    logger.app("diagnostics", "warn", "plugin launcher warm-up failed", {
-      data: String(error),
-    });
-  });
-}
-
-async function showPluginLauncher(): Promise<void> {
-  if (!applicationLifecycleState.applicationBooted) return;
-  const window = await createPluginLauncherWindow();
-  if (window.isDestroyed()) return;
-  window.setBounds(pluginLauncherBounds(), false);
-  window.show();
-  // `show()` already activates and focuses a macOS panel. Avoid a second
-  // native focus/activation and window-stack move there; each adds visible
-  // compositor work when another app owns the foreground window. Windows and
-  // Linux retain the explicit focus and move for their frameless utility
-  // window.
-  if (process.platform !== "darwin") {
-    window.focus();
-    window.moveTop();
-  }
-  window.webContents.send(IPC.event.pluginLauncherShown);
-}
-
-async function togglePluginLauncher(): Promise<void> {
-  const window = pluginLauncherWindow;
-  if (window && !window.isDestroyed() && window.isVisible()) {
-    window.hide();
-    return;
-  }
-  await showPluginLauncher();
-}
-
-function applyPluginLauncherShortcut(keybindings?: KeybindingOverrides) {
-  const shortcut = KEYBOARD_SHORTCUTS.find(
-    (candidate) => candidate.id === "openPluginLauncher",
-  );
-  if (!shortcut || !app.isReady()) return;
-  const platform: ShortcutPlatform =
-    process.platform === "darwin"
-      ? "darwin"
-      : process.platform === "win32"
-        ? "win32"
-        : "linux";
-  const binding = resolveKeybinding(shortcut, keybindings, platform);
-  const accelerator = keybindingToElectronAccelerator(binding, platform);
-  pluginLauncherBinding = binding;
-
-  if (process.platform === "win32" && host?.isAvailable()) {
-    void host
-      .call("keyboard.setGlobalShortcut", { binding })
-      .catch((error) =>
-        logger.app("diagnostics", "warn", "Windows global shortcut mode update failed", {
-          data: String(error),
-        }),
-      );
-  }
-
-  if (pluginLauncherAccelerator && pluginLauncherAccelerator !== accelerator) {
-    globalShortcut.unregister(pluginLauncherAccelerator);
-    pluginLauncherAccelerator = null;
-  }
-
-  // Windows reserves Alt+Space for the active window system menu. The
-  // host-core low-level hook owns this exact binding so it still works while
-  // another application is focused; do not ask Electron to register it too.
-  if (process.platform === "win32" && binding === "Alt+Space") return;
-  if (!accelerator || accelerator === pluginLauncherAccelerator) return;
-  const registered = globalShortcut.register(accelerator, () => {
-    void togglePluginLauncher().catch((error) =>
-      logger.app("diagnostics", "error", "plugin launcher shortcut failed", {
-        data: String(error),
-      }),
-    );
-  });
-  if (registered) {
-    pluginLauncherAccelerator = accelerator;
-  } else {
-    logger.app("diagnostics", "error", "plugin launcher shortcut unavailable", {
-      data: { accelerator, platform: process.platform },
-    });
-  }
-}
-
-/**
- * Register the summon-window shortcut (D384). The default `Mod+Shift+W`
- * brings a hidden/minimized-to-tray window back into focus; this is the
- * symmetrical counterpart to `closeWindow` (`Mod+W`).
- */
-function applySummonWindowShortcut(keybindings?: KeybindingOverrides) {
-  const shortcut = KEYBOARD_SHORTCUTS.find(
-    (candidate) => candidate.id === "summonWindow",
-  );
-  if (!shortcut || !app.isReady()) return;
-  const platform: ShortcutPlatform =
-    process.platform === "darwin"
-      ? "darwin"
-      : process.platform === "win32"
-        ? "win32"
-        : "linux";
-  const binding = resolveKeybinding(shortcut, keybindings, platform);
-  const accelerator = keybindingToElectronAccelerator(binding, platform);
-
-  if (summonWindowAccelerator && summonWindowAccelerator !== accelerator) {
-    globalShortcut.unregister(summonWindowAccelerator);
-    summonWindowAccelerator = null;
-  }
-
-  if (!accelerator || accelerator === summonWindowAccelerator) return;
-  const registered = globalShortcut.register(accelerator, () => {
-    restoreMainWindow();
-  });
-  if (registered) {
-    summonWindowAccelerator = accelerator;
-  } else {
-    logger.app("diagnostics", "warn", "summon window shortcut unavailable", {
-      data: { accelerator, platform: process.platform },
-    });
-  }
-}
-
-
 let runtimeLifecycle: ReturnType<typeof createRuntimeLifecycle> | null = null;
 const superviseRestart = (kind: "host" | "sidecar"): Promise<void> => {
   if (!runtimeLifecycle) {
@@ -1636,340 +1324,137 @@ app.on("web-contents-created", (_event, contents) => {
   });
 });
 
-app.whenReady().then(async () => {
-  // A launch that lost the single-instance lock is already quitting. Never
-  // create a window, a tray, or a child process on top of the running app.
-  if (!hasSingleInstanceLock) return;
-  applyDevelopmentBranding();
-  // Load the close-behavior preference before the first window exists: the
-  // close handler reads `closeBehavior` synchronously, and a window created
-  // while it still held the "ask" default would prompt a user who already
-  // chose.
-  const storedBehavior = readCloseBehavior(dataDir);
-  if (storedBehavior) closeBehavior = storedBehavior;
-  createTray();
-  app.setAboutPanelOptions({
-    applicationName: APP_NAME,
-    applicationVersion: APP_VERSION,
-    version: APP_VERSION,
-  });
-  installApplicationMenu({
-    locale: app.getLocale(),
-    dispatch: dispatchApplicationMenuCommand,
-    dispatchNative: dispatchNativeMenuAction,
-  });
-  // Start the retained launcher as soon as Electron is ready. It can load in
-  // parallel with host/plugin boot, so the first post-boot Option+Space does
-  // not race the renderer allocation just because backend startup was slow.
-  prewarmPluginLauncher();
-  const invokeIpc = registerIpc();
-  agentHostBridge = createAgentHostBridge({
-    invoke: invokeIpc,
-    channels: IPC.invoke,
-    getHost: () => host,
-    isSessionBusy: (sessionId) => activeTurns.has(sessionId) || turnFinalizations.has(sessionId),
-    onQueueChange: (event) => sendToRenderer(IPC.event.agentQueueChanged, event),
-    log: (level, message, data) => logger.app("runtime", level, message, { data }),
-  });
-  const control = createMcpControlController({
-    invoke: invokeIpc,
-    channels: IPC.invoke,
-    onOperationComplete: async (operation, result, args) => {
-      const event = mcpControlRendererEvent(operation, result, args);
-      if (event) sendToRenderer(IPC.event.sessionsChanged, event);
-    },
-  });
-  desktopControl = control;
-  plugins.setServices({ desktopControl: control });
-  // Load the local model snapshot immediately. A changed APP_VERSION marks the
-  // snapshot stale, so every release performs one bounded update without
-  // blocking the first window; Settings can force the same refresh on demand.
-  void modelsDevCatalog.ensureLoaded();
-  let bootError: unknown = null;
-  try {
-    await bootBackends();
-  } catch (e) {
-    bootError = e;
-    logger.app("runtime", "error", "backend boot failed", {
-      code: ErrorCodes.HOST_UNAVAILABLE,
-      data: String(e),
-    });
-  }
-  if (!bootError) planUiProbe.install();
-  if (!bootError && agentHostBridge) {
-    // Restore the persisted turn queue now that host-core answers. Restored
-    // entries stay held until a controller attaches (D375).
-    agentHostBridge.agentHost.start().catch((error) => {
-      logger.app("runtime", "warn", "agent host queue restore failed", { data: String(error) });
-    });
-  }
-  if (host) {
-    try {
-      const stored = (await host.call("settings.get")) as {
-        language?: unknown;
-        theme?: unknown;
-        keybindings?: unknown;
-        developerMode?: unknown;
-      } | null;
-      applyApplicationMenuSettings(stored);
-      applyDeveloperMode(stored);
-      await applyNetworkProxyFromAppSettings(stored);
-    } catch {
-      // Keep the OS-locale menu until settings can be read again, while
-      // retaining the historical default launcher fallback for this failure.
-      applyPluginLauncherShortcut();
-      applySummonWindowShortcut();
-    }
-  } else {
-    // If the backend never started, retain the default focused/global path.
-    applyPluginLauncherShortcut();
-    applySummonWindowShortcut();
-  }
-  await ensureWindow();
-  if (process.env.PI_DESKTOP_MCP_CONTROL === "1") {
-    try {
-      mcpControl = new McpControlServer({
-        dataDir,
-        invoke: invokeIpc,
-        channels: IPC.invoke,
-        version: APP_VERSION,
-        port: process.env.PI_DESKTOP_MCP_PORT
-          ? Number(process.env.PI_DESKTOP_MCP_PORT)
-          : undefined,
-        controller: desktopControl ?? undefined,
-        log: (level, message, data) => logger.app("runtime", level, message, { data }),
-      });
-      await mcpControl.start();
-    } catch (error) {
-      logger.app("runtime", "warn", "MCP control server failed to start", {
-        data: String(error),
-      });
-      mcpControl = null;
-    }
-  }
-  // GitHub discovery is delayed and time-bounded. Never start it before the
-  // first window exists: a hung feed used to sit in "checking" for ~60s and
-  // compete with boot for the net stack.
-  updater.startAutoCheck();
-  // createWindow awaits the initial load (loadFile resolves on
-  // did-finish-load), so the page is up; give React a beat to mount its
-  // event subscriptions before pushing the boot outcome.
-  setTimeout(() => {
-    sendToRenderer(IPC.event.hostStatus, bootHostStatus(bootError));
-    applicationLifecycleState.applicationBooted = true;
-    flushPendingApplicationMenuCommands();
-  }, 300);
+const startupState: StartupState = {
+  get applicationBooted() {
+    return applicationLifecycleState.applicationBooted;
+  },
+  set applicationBooted(value) {
+    applicationLifecycleState.applicationBooted = value;
+  },
+  get closeBehavior() {
+    return closeBehavior;
+  },
+  set closeBehavior(value) {
+    closeBehavior = value;
+  },
+  get agentHostBridge() {
+    return agentHostBridge;
+  },
+  set agentHostBridge(value) {
+    agentHostBridge = value;
+  },
+  get desktopControl() {
+    return desktopControl;
+  },
+  set desktopControl(value) {
+    desktopControl = value;
+  },
+  get mcpControl() {
+    return mcpControl;
+  },
+  set mcpControl(value) {
+    mcpControl = value;
+  },
+};
 
-  // Headless boot probe for automated e2e (scripts/e2e-electron-boot.mjs):
-  // verifies sandboxed preload bridge + a full IPC round-trip, then quits.
-  if (process.env.PI_DESKTOP_BOOT_PROBE === "1") {
-    setTimeout(() => {
-      void (async () => {
-        try {
-          const probe = await mainWindow!.webContents.executeJavaScript(
-            `(async () => {
-               const api = window.piDesktop;
-               if (!api || typeof api.invoke !== "function") {
-                 return { ok: false, reason: "preload api missing" };
-               }
-               const version = await api.invoke(api.channels.invoke.appGetVersion);
-               const windowState =
-                 api.platform === "darwin"
-                   ? null
-                   : await api.invoke(api.channels.invoke.windowControl, {
-                       action: "getState",
-                     });
-               return {
-                 ok: version?.ok === true,
-                 version: version?.data?.version,
-                 hostProtocol: version?.data?.hostProtocolVersion,
-                 platform: api.platform,
-                 maximized: windowState?.data?.maximized ?? null,
-               };
-             })()`,
-          );
-          probe.appName = app.getName();
-          probe.menuCount = Menu.getApplicationMenu()?.items.length ?? 0;
-          console.log("BOOT_PROBE", JSON.stringify(probe));
-        } catch (e) {
-          console.log(
-            "BOOT_PROBE",
-            JSON.stringify({ ok: false, reason: String(e) }),
-          );
-        } finally {
-          app.quit();
-        }
-      })();
-    }, 800);
-  }
-  // Supervision probe (scripts/e2e-supervision.mjs): SIGKILL our own
-  // host-core child, then assert the supervisor brings a fresh one back
-  // that answers RPCs. Deterministic crash-recovery e2e without pid hunts.
-  if (process.env.PI_DESKTOP_SUPERVISION_PROBE === "1") {
-    const initialHost = host;
-    setTimeout(() => {
-      logger.app("runtime", "info", "supervision probe: killing host-core");
-      (initialHost as any)?.child?.kill("SIGKILL");
-    }, 1500);
-    const t0 = Date.now();
-    const poll = setInterval(() => {
-      void (async () => {
-        if (Date.now() - t0 > 30_000) {
-          clearInterval(poll);
-          console.log(
-            "SUPERVISION_PROBE",
-            JSON.stringify({ ok: false, reason: "timeout" }),
-          );
-          app.quit();
-          return;
-        }
-        if (!host || host === initialHost) return;
-        try {
-          const health = await host.call<{ ok: boolean }>("app.health");
-          clearInterval(poll);
-          console.log(
-            "SUPERVISION_PROBE",
-            JSON.stringify({ ok: health.ok === true, restarted: true }),
-          );
-          app.quit();
-        } catch {
-          // restart still settling; keep polling
-        }
-      })();
-    }, 500);
-  }
+registerApplicationStartup({
+  hasSingleInstanceLock,
+  state: startupState,
+  dataDir,
+  logger,
+  updater,
+  modelsDevCatalog,
+  plugins,
+  activeTurns,
+  turnFinalizations,
+  getHost: () => host,
+  getMainWindow: () => mainWindow,
+  sendToRenderer,
+  applyDevelopmentBranding,
+  createTray,
+  dispatchApplicationMenuCommand,
+  dispatchNativeMenuAction,
+  prewarmPluginLauncher,
+  registerIpc,
+  bootBackends,
+  planUiProbe,
+  applyApplicationMenuSettings,
+  applyDeveloperMode,
+  applyPluginLauncherShortcut,
+  applySummonWindowShortcut,
+  ensureWindow,
+  bootHostStatus,
+  flushPendingApplicationMenuCommands,
 });
 
-app.on("window-all-closed", () => {
-  // The D216 tray is resident on every platform, so its presence says nothing
-  // about whether the app should survive a closed window — the user's close
-  // behavior does. Under "tray" a window destroyed for any reason must not
-  // take the app down (the tray click recreates it); otherwise closing the
-  // last window on Windows/Linux exits the app as before.
-  if (process.platform === "darwin") return;
-  if (closeBehavior === "tray" && tray) return;
-  app.quit();
-});
+const shutdownState: ShutdownState = {
+  get shutdownComplete() {
+    return shutdownComplete;
+  },
+  set shutdownComplete(value) {
+    shutdownComplete = value;
+  },
+  get shutdownPromise() {
+    return shutdownPromise;
+  },
+  set shutdownPromise(value) {
+    shutdownPromise = value;
+  },
+  get quitting() {
+    return quitting;
+  },
+  set quitting(value) {
+    quitting = value;
+  },
+  get quitConfirmed() {
+    return quitConfirmed;
+  },
+  set quitConfirmed(value) {
+    quitConfirmed = value;
+  },
+  get closeBehavior() {
+    return closeBehavior;
+  },
+  set closeBehavior(value) {
+    closeBehavior = value;
+  },
+  get tray() {
+    return tray;
+  },
+  set tray(value) {
+    tray = value;
+  },
+  get pluginLauncherAccelerator() {
+    return pluginLauncherAccelerator;
+  },
+  set pluginLauncherAccelerator(value) {
+    pluginLauncherAccelerator = value;
+  },
+  get summonWindowAccelerator() {
+    return summonWindowAccelerator;
+  },
+  set summonWindowAccelerator(value) {
+    summonWindowAccelerator = value;
+  },
+};
 
-/** Upper bound on the time quit spends waiting for streaming replies to settle. */
-const QUIT_TURN_SETTLE_BUDGET_MS = 2_000;
-
-async function settleRunningTurnsForQuit(): Promise<void> {
-  const sessions = [...activeTurns.keys()];
-  const deadline = Date.now() + QUIT_TURN_SETTLE_BUDGET_MS;
-  // The newest snapshot of every streaming reply lands first: it is the
-  // fallback if the abort below does not produce a final row in time.
-  await inflightCheckpointer.flushAll();
-  if (sessions.length === 0) {
-    await persistenceOutbox.flush(() => host);
-    return;
-  }
-  if (sidecar) {
-    const activeSidecar = sidecar;
-    await Promise.allSettled(
-      sessions.map((sessionId) =>
-        Promise.race([
-          activeSidecar.call("agent.abort", { sessionId }),
-          new Promise((resolve) => setTimeout(resolve, 800)),
-        ]),
-      ),
-    );
-  }
-  // The abort surfaces as message_end + error/agent_end, which finishTurn
-  // turns into a settled turn and an outbox append. Wait for that, bounded.
-  while (Date.now() < deadline) {
-    await persistenceOutbox.flush(() => host);
-    if (activeTurns.size === 0 && persistenceOutbox.size() === 0) break;
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  await persistenceOutbox.flush(() => host);
-  if (activeTurns.size > 0 || persistenceOutbox.size() > 0) {
-    logger.app("lifecycle", "warn", "quit before streaming replies settled", {
-      data: { running: activeTurns.size, pendingAppends: persistenceOutbox.size() },
-    });
-  }
-}
-
-app.on("before-quit", (event) => {
-  // A duplicate launch has no host, sidecar, panel, or outbox of its own, and
-  // the shutdown sequence below would write into the running instance's data
-  // directory. Let it exit straight away.
-  if (!hasSingleInstanceLock) return;
-  if (shutdownComplete) return;
-  event.preventDefault();
-  if (shutdownPromise) return;
-
-  // Show a confirmation dialog on the first explicit quit (Cmd+Q, tray quit,
-  // application-menu Quit). The data-saving shutdown runs after confirmation.
-  // Skip confirmation in automated probe/capture modes where no human is
-  // present to interact with the dialog.
-  const isAutomatedMode =
-    process.env.PI_DESKTOP_BOOT_PROBE === "1" ||
-    process.env.PI_DESKTOP_SUPERVISION_PROBE === "1" ||
-    process.env.PI_DESKTOP_CAPTURE === "1";
-  if (!quitConfirmed && !isAutomatedMode) {
-    quitConfirmed = true;
-    void confirmQuitDialog().then((confirmed) => {
-      if (confirmed) {
-        app.quit();
-      } else {
-        // User cancelled: allow future quit requests to prompt again.
-        quitConfirmed = false;
-      }
-    });
-    return;
-  }
-
-  quitting = true;
-  tray?.destroy();
-  tray = null;
-  if (pluginLauncherAccelerator) {
-    globalShortcut.unregister(pluginLauncherAccelerator);
-    pluginLauncherAccelerator = null;
-  }
-  if (summonWindowAccelerator) {
-    globalShortcut.unregister(summonWindowAccelerator);
-    summonWindowAccelerator = null;
-  }
-  shutdownPromise = (async () => {
-    // Replies still streaming are stopped through the sidecar first so their
-    // aborted final rows can reach the transcript while host-core is alive;
-    // whatever does not make it in time is covered by the last checkpoint
-    // (D299). Bounded: a quit must not hang on an unresponsive provider.
-    await settleRunningTurnsForQuit();
-    const hostShutdown = host?.dispose();
-    const mcpShutdown = mcpControl?.stop();
-    const pluginPanelShutdown = pluginPanels.closeAll();
-    updater.dispose();
-    logger.app("lifecycle", "info", "app shutdown");
-    // Plugin hosts are stopped as a shutdown, not left for the process teardown
-    // to kill: an unannounced exit is indistinguishable from a crash, and would
-    // end every quit in error logs, toasts, and restarts into a closing app.
-    const pluginShutdown = plugins.disposeAll();
-    userMcp.disposeAll();
-    browserPane.dispose();
-    pluginViews.dispose();
-    inflightCheckpointer.dispose();
-    const sidecarShutdown = sidecar?.dispose();
-
-    try {
-      await hostShutdown;
-    } catch (error) {
-      logger.app("lifecycle", "warn", "host shutdown failed", { data: String(error) });
-    }
-    await Promise.allSettled([
-      pluginPanelShutdown,
-      pluginShutdown,
-      sidecarShutdown,
-      mcpShutdown,
-    ]);
-  })();
-
-  const releaseQuit = () => {
-    shutdownComplete = true;
-    app.quit();
-  };
-  void shutdownPromise.then(releaseQuit, releaseQuit);
+registerShutdownHandlers({
+  hasSingleInstanceLock,
+  state: shutdownState,
+  getHost: () => host,
+  getSidecar: () => sidecar,
+  getMcpControl: () => mcpControl,
+  activeTurns,
+  persistenceOutbox,
+  inflightCheckpointer,
+  pluginPanels,
+  plugins,
+  userMcp,
+  browserPane,
+  pluginViews,
+  updater,
+  logger,
+  confirmQuitDialog,
 });
 
 app.on("activate", () => {
