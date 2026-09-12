@@ -203,6 +203,20 @@ export function ContextUsageInspector({
     return () => observer.disconnect();
   }, [open, updatePopoverPosition]);
 
+  // Sidebar toggle/resize, work-panel open/resize, and the panel's entrance
+  // animation all move the pane's right edge without emitting a window resize
+  // or a scroll event (#246). A stale clamp would leave part of the popover
+  // under the panel's native surfaces, so the open popover observes the pane
+  // and re-runs placement whenever its box changes.
+  useEffect(() => {
+    if (!open || typeof ResizeObserver === "undefined") return;
+    const pane = triggerRef.current?.closest(".main-pane");
+    if (!pane) return;
+    const observer = new ResizeObserver(updatePopoverPosition);
+    observer.observe(pane);
+    return () => observer.disconnect();
+  }, [open, updatePopoverPosition]);
+
   useEffect(() => {
     if (!open) return;
     const handlePointerDown = (event: PointerEvent) => {
