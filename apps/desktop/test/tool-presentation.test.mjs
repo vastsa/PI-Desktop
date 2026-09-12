@@ -322,7 +322,7 @@ test("Grep's other output modes and host notices stay readable", () => {
   assert.match(noticed[1].text, /raise limit/);
 });
 
-test("a paginated Read window keeps its content, size and notice", () => {
+test("a paginated Read window shows its line range and notice", () => {
   const message = {
     toolName: "Read",
     toolArgs: { path: "big.txt", offset: 200, limit: 2 },
@@ -342,9 +342,44 @@ test("a paginated Read window keeps its content, size and notice", () => {
   assert.deepEqual(roles(blocks), ["content", "notice"]);
   assert.equal(blocks[0].text, "line 201\nline 202");
   assert.deepEqual(toolResultChips(message), [
-    { role: "size", text: "2.0 KB" },
+    { role: "lines", text: "2,L201-L202" },
     { role: "truncated" },
   ]);
+});
+
+test("a complete Read window uses its returned line count, not file size", () => {
+  const message = {
+    toolName: "Read",
+    toolArgs: { path: "small.txt" },
+    toolResult: envelope({
+      path: "small.txt",
+      root: "workspace",
+      content: "line 1\nline 2\nline 3",
+      offset: 0,
+      lineCount: 3,
+      totalLines: 3,
+      fileBytes: 169_600,
+      truncated: false,
+    }),
+  };
+
+  assert.deepEqual(toolResultChips(message), [
+    { role: "lines", text: "3,L1-L3" },
+  ]);
+});
+
+test("a historical Read without line metadata does not fake a size chip", () => {
+  assert.deepEqual(
+    toolResultChips({
+      toolName: "Read",
+      toolResult: envelope({
+        path: "legacy.txt",
+        content: "1: legacy line",
+        fileBytes: 2048,
+      }),
+    }),
+    [],
+  );
 });
 
 test("a failed tool leads with the error note and keeps the arguments", () => {

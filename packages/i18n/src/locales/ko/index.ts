@@ -361,6 +361,7 @@ export const ko = {
     toolChipReplacements_other: "교체 {{count}}개",
     toolChipTruncated: "잘림",
     toolChipScratch: "임시",
+    toolChipLines: "{{range}}",
     toolChipSize: "{{size}}",
     toolRead: "읽음",
     toolListed: "목록 표시됨",

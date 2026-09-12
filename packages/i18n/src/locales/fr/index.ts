@@ -352,6 +352,7 @@ export const fr = {
     "toolChipReplacements_other": "{{count}} remplacements",
     "toolChipTruncated": "tronqué",
     "toolChipScratch": "scratch",
+    "toolChipLines": "{{range}}",
     "toolChipSize": "{{size}}",
     "toolRead": "Lire",
     "toolListed": "Répertorié",
