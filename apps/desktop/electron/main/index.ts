@@ -264,6 +264,9 @@ import {
 import {
   registerComposerIpc,
 } from "./ipc/composer-ipc";
+import { registerWindowIpc } from "./ipc/window-ipc";
+import { registerPullsIpc } from "./ipc/pulls-ipc";
+import { registerScheduledIpc } from "./ipc/scheduled-ipc";
 import type { IpcRegistrar } from "./ipc/types";
 
 // The shared error-code union is reconciled in the shared lane. Keep desktop
@@ -6045,6 +6048,28 @@ function registerIpc() {
     pluginActiveInProject,
     loadComposerTemplatesCached,
   });
+  registerWindowIpc({
+    registrar,
+    getMainWindow: () => mainWindow,
+    getWorkPanelReservationWidth: () => requestedWorkPanelReservation,
+    setWorkPanelReservationWidth: (width) => {
+      requestedWorkPanelReservation = width;
+    },
+    setWorkPanelReservation: (state) => {
+      workPanelReservation = state;
+    },
+    getWorkPanelChatWidthSetter: () => setWorkPanelChatWidthForWindow,
+    applyCloseBehavior,
+    getCloseBehavior: () => closeBehavior,
+    markMenuRendererReady,
+    executeNativeMenuAction,
+  });
+  registerPullsIpc({ registrar, getHost: () => host });
+  registerScheduledIpc({
+    registrar,
+    getHost: () => host,
+    scheduledRunsBySession,
+  });
   registerWorkspaceIpc({
     registrar,
     getHost: () => host,
@@ -6079,236 +6104,6 @@ function registerIpc() {
       if (!sidecar) throw new Error("agent sidecar unavailable");
       return sidecar.call<{ handled: boolean }>("extensions.command.run", input);
     },
-  });
-
-  handle(
-    IPC.invoke.windowSetWorkPanelReservation,
-    async (input: unknown = {}) => {
-      const requested = parseWorkPanelReservationWidth(input);
-      if (requested === null) {
-        throw Object.assign(new Error("invalid work panel reservation width"), {
-          errorCode: ErrorCodes.INVALID_ARGUMENT,
-        });
-      }
-      if (!mainWindow || mainWindow.isDestroyed()) {
-        throw new Error("main window unavailable");
-      }
-
-      // The work panel is an internal renderer column. Keep this IPC seam for
-      // compatibility, but never let it change BrowserWindow bounds: opening
-      // and collapsing the panel are handled entirely by renderer flex layout.
-      requestedWorkPanelReservation = 0;
-      workPanelReservation = emptyWorkPanelReservationState();
-      return { requested: 0, reserved: 0 };
-    },
-  );
-
-  handle(
-    IPC.invoke.windowSetWorkPanelChatWidth,
-    async (input: unknown = {}) => {
-      const requested = parseWorkPanelChatWidth(input);
-      if (requested === null) {
-        throw Object.assign(new Error("invalid work panel chat width"), {
-          errorCode: ErrorCodes.INVALID_ARGUMENT,
-        });
-      }
-      if (!mainWindow || mainWindow.isDestroyed()) {
-        throw new Error("main window unavailable");
-      }
-      if (!setWorkPanelChatWidthForWindow || requestedWorkPanelReservation <= 0) {
-        throw new Error("work panel unavailable");
-      }
-      const applied = setWorkPanelChatWidthForWindow(requested);
-      return { requested, applied };
-    },
-  );
-
-  handle(IPC.invoke.windowSetBackgroundColor, async (input: unknown = {}) => {
-    const theme = (input as { theme?: unknown })?.theme;
-    if (theme !== "light" && theme !== "dark") {
-      throw Object.assign(new Error("invalid window background theme"), {
-        errorCode: ErrorCodes.INVALID_ARGUMENT,
-      });
-    }
-    // macOS uses a transparent window with native sidebar vibrancy. Do not make
-    // this renderer-driven fallback opaque on that platform.
-    if (process.platform === "darwin") return { applied: false, theme };
-    if (!mainWindow || mainWindow.isDestroyed()) {
-      throw new Error("main window unavailable");
-    }
-    mainWindow.setBackgroundColor(theme === "light" ? "#ffffff" : "#181818");
-    return { applied: true, theme };
-  });
-
-  // Custom window-chrome buttons on Windows/Linux (renderer-drawn).
-  handle(
-    IPC.invoke.windowControl,
-    async (input: { action?: string } = {}) => {
-      if (
-        !input.action ||
-        !WINDOW_CONTROL_ACTIONS.includes(input.action as WindowControlAction)
-      ) {
-        throw new Error("unsupported window control action");
-      }
-      if (!mainWindow || mainWindow.isDestroyed()) return { maximized: false };
-      const window = mainWindow;
-      switch (input.action as WindowControlAction) {
-        case "getState":
-          break;
-        case "minimize":
-          window.minimize();
-          break;
-        case "toggleMaximize":
-          if (window.isMaximized()) window.unmaximize();
-          else window.maximize();
-          break;
-        case "close":
-          window.close();
-          break;
-      }
-      return {
-        maximized: !window.isDestroyed() && window.isMaximized(),
-      };
-    },
-  );
-
-  // Close-behavior preference (Windows/Linux): read/write the choice the
-  // settings UI and the first-close prompt share. Only "tray" and "quit"
-  // are settable — the "ask" state is transient (first close prompts once)
-  // and once a choice is made it cannot be reverted to prompting.
-  handle(IPC.invoke.closeBehaviorGet, async () => ({
-    behavior: closeBehavior,
-    supported: process.platform !== "darwin",
-  }));
-
-  handle(IPC.invoke.closeBehaviorSet, async (input: unknown = {}) => {
-    // macOS keeps the native Dock lifecycle and has no close behavior to set.
-    if (process.platform === "darwin") {
-      throw Object.assign(new Error("close behavior is not configurable"), {
-        errorCode: ErrorCodes.INVALID_ARGUMENT,
-      });
-    }
-    const behavior = (input as { behavior?: unknown })?.behavior;
-    if (behavior !== "tray" && behavior !== "quit") {
-      throw Object.assign(new Error("invalid close behavior"), {
-        errorCode: ErrorCodes.INVALID_ARGUMENT,
-      });
-    }
-    applyCloseBehavior(behavior);
-    return { behavior };
-  });
-
-  ipcMain.handle(IPC.invoke.menuRendererReady, async (event) =>
-    wrap(async () => {
-      const window = BrowserWindow.fromWebContents(event.sender);
-      if (!window || window !== mainWindow || !markMenuRendererReady(window)) {
-        throw new Error("menu renderer is not attached to the main window");
-      }
-      return { ready: true };
-    }),
-  );
-
-  handle(
-    IPC.invoke.nativeMenuAction,
-    async (input: { action?: string } = {}) => {
-      if (
-        !input.action ||
-        !NATIVE_MENU_ACTIONS.includes(input.action as NativeMenuAction)
-      ) {
-        throw new Error("unsupported native menu action");
-      }
-      return executeNativeMenuAction(input.action as NativeMenuAction);
-    },
-  );
-
-  handle(IPC.invoke.pullsList, async () => {
-    if (!host) throw new Error("host unavailable");
-    const res = (await host.call("workspace.get")) as {
-      workspace: { path: string; name: string } | null;
-    };
-    const cwd = res.workspace?.path;
-    if (!cwd) {
-      return { pulls: [], error: "NO_WORKSPACE" as const };
-    }
-    const { spawn } = await import("node:child_process");
-    const run = (cmd: string, args: string[]) =>
-      new Promise<{ code: number; stdout: string; stderr: string }>((resolve) => {
-        const child = spawn(cmd, args, { cwd, env: process.env });
-        let stdout = "";
-        let stderr = "";
-        child.stdout.on("data", (d) => (stdout += String(d)));
-        child.stderr.on("data", (d) => (stderr += String(d)));
-        child.on("close", (code) => resolve({ code: code ?? 1, stdout, stderr }));
-        child.on("error", (err) =>
-          resolve({ code: 1, stdout: "", stderr: String(err) }),
-        );
-      });
-    const result = await run("gh", [
-      "pr",
-      "list",
-      "--limit",
-      "30",
-      "--json",
-      "number,title,url,author,headRefName,baseRefName,updatedAt,isDraft",
-    ]);
-    if (result.code !== 0) {
-      return {
-        pulls: [],
-        error: result.stderr.trim() || result.stdout.trim() || "GH_FAILED",
-      };
-    }
-    try {
-      const pulls = JSON.parse(result.stdout || "[]") as Array<Record<string, unknown>>;
-      return {
-        pulls: pulls.map((p) => ({
-          number: Number(p.number),
-          title: String(p.title || ""),
-          url: String(p.url || ""),
-          author:
-            typeof p.author === "object" && p.author
-              ? String((p.author as any).login || "")
-              : undefined,
-          headRefName: p.headRefName ? String(p.headRefName) : undefined,
-          baseRefName: p.baseRefName ? String(p.baseRefName) : undefined,
-          updatedAt: p.updatedAt ? String(p.updatedAt) : undefined,
-          isDraft: Boolean(p.isDraft),
-        })),
-      };
-    } catch (e) {
-      return { pulls: [], error: e instanceof Error ? e.message : String(e) };
-    }
-  });
-
-  handle(IPC.invoke.scheduledList, async () => {
-    if (!host) throw new Error("host unavailable");
-    return host.call("scheduled.list");
-  });
-  handle(IPC.invoke.scheduledCreate, async (input: any = {}) => {
-    if (!host) throw new Error("host unavailable");
-    const prompt = String(input.prompt || "").trim();
-    if (!prompt) throw new Error("prompt required");
-    return host.call("scheduled.create", { ...input, prompt });
-  });
-  handle(IPC.invoke.scheduledUpdate, async (input: any = {}) => {
-    if (!host) throw new Error("host unavailable");
-    return host.call("scheduled.update", input);
-  });
-  handle(IPC.invoke.scheduledDelete, async (id: string) => {
-    if (!host) throw new Error("host unavailable");
-    return host.call("scheduled.delete", { id });
-  });
-  handle(IPC.invoke.scheduledRun, async (id: string) => {
-    if (!host) throw new Error("host unavailable");
-    const res = await host.call<{
-      sessionId: string;
-      prompt: string;
-      task: unknown;
-      runId: string;
-    }>("scheduled.run", { id });
-    // The renderer sends the prompt through the normal agent path; remember
-    // the run so agent_end can close it via scheduled.finishRun.
-    scheduledRunsBySession.set(res.sessionId, res.runId);
-    return res;
   });
 
   handle(IPC.invoke.promptEnhance, async (req: PromptEnhancementRequest) => {
