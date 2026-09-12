@@ -20,7 +20,10 @@ test("plugin session mutations use the host-owned renderer refresh event", () =>
   assert.match(api, /onSessionsChanged:/);
   assert.match(api, /IPC\.event\.sessionsChanged/);
   assert.match(app, /const offSessionsChanged = api\.onSessionsChanged/);
-  assert.match(app, /refreshSessions\(\)\s*\.then\(/);
+  assert.match(
+    app,
+    /refreshSessions\(\s*revealImportedProjects \? \{ revealImportedProjects: true \} : undefined,\s*\)\s*\.then\(/,
+  );
   assert.match(main, /method === "plugin\.session\.import"/);
   assert.match(main, /method === "plugin\.session\.importBatch"/);
   assert.match(main, /sendToRenderer\(IPC\.event\.sessionsChanged/);

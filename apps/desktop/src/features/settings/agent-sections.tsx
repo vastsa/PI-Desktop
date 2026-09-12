@@ -234,7 +234,7 @@ export function SessionImportPanel() {
     setImporting(true);
     try {
       const res = await api.runImportSessions(items);
-      await refreshSessions();
+      await refreshSessions({ revealImportedProjects: true });
       showToast(
         t("settings.importResult", {
           imported: res.imported,

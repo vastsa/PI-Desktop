@@ -81,6 +81,11 @@ export type NavigationOptions = {
   navigationIntent?: number;
 };
 
+export type RefreshSessionsOptions = {
+  /** Restore archived project presentation state for newly imported sessions. */
+  revealImportedProjects?: boolean;
+};
+
 /** Toolbar selections retained on the unpersisted new-task draft. */
 export type DraftSessionConfiguration = {
   mode: Mode;
@@ -168,7 +173,7 @@ export type AppState = {
   /** Whether the current error is worth a one-click retry. */
   errorRetriable?: boolean | null;
   bootstrap: () => Promise<void>;
-  refreshSessions: () => Promise<void>;
+  refreshSessions: (options?: RefreshSessionsOptions) => Promise<void>;
   prefetchSession: (id: string) => Promise<void>;
   loadOlderMessages: (sessionId: string) => Promise<void>;
   selectSession: (
@@ -251,6 +256,7 @@ export type AppState = {
   toggleProjectPinned: (path: string, pinned?: boolean) => void;
   toggleProjectArchived: (path: string) => void;
   restoreProject: (path: string) => void;
+  restoreProjects: (paths: string[]) => void;
   archiveProject: (path: string) => void;
   setProjectCollapsed: (path: string, collapsed?: boolean) => void;
   toggleProjectCollapsed: (path: string) => void;

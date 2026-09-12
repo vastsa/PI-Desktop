@@ -98,6 +98,7 @@ export function createProjectSlice({
   | "renameProject"
   | "toggleProjectArchived"
   | "restoreProject"
+  | "restoreProjects"
   | "setProjectCollapsed"
   | "toggleProjectCollapsed"
   | "setProjectSort"
@@ -589,6 +590,26 @@ export function createProjectSlice({
           [key]: { ...(state.projectMeta[key] || {}), archived: false },
         },
       }));
+      persistCurrentSidebar(get);
+    },
+
+    restoreProjects: (paths) => {
+      const keys = new Set<string>();
+      for (const path of paths) {
+        const key = normalizeProjectPath(path);
+        if (key) keys.add(key);
+      }
+      const archivedKeys = [...keys].filter((key) =>
+        projectIsArchived(key, get().projectMeta),
+      );
+      if (archivedKeys.length === 0) return;
+      set((state) => {
+        const projectMeta = { ...state.projectMeta };
+        for (const key of archivedKeys) {
+          projectMeta[key] = { ...(projectMeta[key] || {}), archived: false };
+        }
+        return { projectMeta };
+      });
       persistCurrentSidebar(get);
     },
 

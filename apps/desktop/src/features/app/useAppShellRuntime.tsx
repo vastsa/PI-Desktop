@@ -479,8 +479,13 @@ export function useAppShellRuntime() {
     });
     const offSessionsChanged = api.onSessionsChanged((event) => {
       const store = useAppStore.getState();
+      const revealImportedProjects =
+        event.reason === "plugin.session.import" ||
+        event.reason === "plugin.session.importBatch";
       void store
-        .refreshSessions()
+        .refreshSessions(
+          revealImportedProjects ? { revealImportedProjects: true } : undefined,
+        )
         .then(async () => {
           if (event.projectPath) {
             await useAppStore.getState().openProjectPath(event.projectPath);
