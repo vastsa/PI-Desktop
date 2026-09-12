@@ -95,5 +95,10 @@ test("formats cyclic values without throwing and humanizes plugin names", () => 
 test("formats processing time in the compact transcript style", () => {
   assert.equal(formatToolDuration(0), "0s");
   assert.equal(formatToolDuration(59.9), "59s");
+  assert.equal(formatToolDuration(60), "1m");
   assert.equal(formatToolDuration(65), "1m 5s");
+  assert.equal(formatToolDuration(3_599), "59m 59s");
+  assert.equal(formatToolDuration(3_600), "1h");
+  assert.equal(formatToolDuration(3_665), "1h 1m 5s");
+  assert.equal(formatToolDuration(5_400), "1h 30m");
 });

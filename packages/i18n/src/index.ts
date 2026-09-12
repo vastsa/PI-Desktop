@@ -2,12 +2,27 @@ export { en, type EnglishCatalog } from "./locales/en/index.js";
 export { default as enDefault } from "./locales/en/index.js";
 export { zhCN } from "./locales/zh-CN/index.js";
 export { default as zhCNDefault } from "./locales/zh-CN/index.js";
+export { zhTW } from "./locales/zh-TW/index.js";
+export { default as zhTWDefault } from "./locales/zh-TW/index.js";
 export { tr } from "./locales/tr/index.js";
 export { default as trDefault } from "./locales/tr/index.js";
+export { es } from "./locales/es/index.js";
+export { default as esDefault } from "./locales/es/index.js";
+export { fr } from "./locales/fr/index.js";
+export { default as frDefault } from "./locales/fr/index.js";
+export { de } from "./locales/de/index.js";
+export { default as deDefault } from "./locales/de/index.js";
+export { ko } from "./locales/ko/index.js";
+export { default as koDefault } from "./locales/ko/index.js";
 
 import { en, type EnglishCatalog } from "./locales/en/index.js";
 import { zhCN } from "./locales/zh-CN/index.js";
+import { zhTW } from "./locales/zh-TW/index.js";
 import { tr } from "./locales/tr/index.js";
+import { es } from "./locales/es/index.js";
+import { fr } from "./locales/fr/index.js";
+import { de } from "./locales/de/index.js";
+import { ko } from "./locales/ko/index.js";
 
 export const defaultLocale = "en";
 
@@ -18,7 +33,12 @@ export const defaultLocale = "en";
 export const supportedLocales = [
   { id: "en", nativeName: "English", englishName: "English" },
   { id: "zh-CN", nativeName: "简体中文", englishName: "Chinese (Simplified)" },
+  { id: "zh-TW", nativeName: "繁體中文", englishName: "Chinese (Traditional)" },
+  { id: "de", nativeName: "Deutsch", englishName: "German" },
+  { id: "es", nativeName: "Español", englishName: "Spanish" },
   { id: "tr", nativeName: "Türkçe", englishName: "Turkish" },
+  { id: "fr", nativeName: "Français", englishName: "French" },
+  { id: "ko", nativeName: "한국어", englishName: "Korean" },
 ] as const;
 
 export type AppLocale = (typeof supportedLocales)[number]["id"];
@@ -27,7 +47,12 @@ export type AppLanguageSetting = "auto" | AppLocale;
 export const catalogs: Record<AppLocale, EnglishCatalog> = {
   en,
   "zh-CN": zhCN,
+  "zh-TW": zhTW,
   tr,
+  de,
+  es,
+  fr,
+  ko,
 };
 
 export function isAppLocale(value: string | null | undefined): value is AppLocale {
@@ -58,8 +83,24 @@ export function resolveLocale(input?: string | null): AppLocale {
   const raw = (input || "").trim();
   if (!raw) return "en";
   const lower = raw.replaceAll("_", "-").toLowerCase();
+  if (
+    lower === "zh-tw" ||
+    lower.startsWith("zh-tw-") ||
+    lower === "zh-hant" ||
+    lower.startsWith("zh-hant-") ||
+    lower === "zh-hk" ||
+    lower.startsWith("zh-hk-") ||
+    lower === "zh-mo" ||
+    lower.startsWith("zh-mo-")
+  ) {
+    return "zh-TW";
+  }
   if (lower === "zh" || lower.startsWith("zh-")) return "zh-CN";
   if (lower === "tr" || lower.startsWith("tr-")) return "tr";
+  if (lower === "de" || lower.startsWith("de-")) return "de";
+  if (lower === "es" || lower.startsWith("es-")) return "es";
+  if (lower === "fr" || lower.startsWith("fr-")) return "fr";
+  if (lower === "ko" || lower.startsWith("ko-")) return "ko";
   const exact = supportedLocales.find((locale) => locale.id.toLowerCase() === lower);
   if (exact) return exact.id;
   const prefix = supportedLocales.find(

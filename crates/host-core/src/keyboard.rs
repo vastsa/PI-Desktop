@@ -5,6 +5,10 @@
 //! reject the launcher's default binding. The low-level hook below is kept
 //! deliberately narrow: it only consumes Alt+Space while enabled and emits
 //! an ordinary host notification for Electron to handle.
+//!
+//! The notify channel is stored as a weak sender. A strong clone would keep
+//! the stdout writer thread alive after stdin EOF, so `serve()` could never
+//! return on Windows (issue #211).
 
 #[cfg(windows)]
 mod windows {
@@ -26,7 +30,7 @@ mod windows {
     const LLKHF_ALTDOWN: u32 = 0x20;
 
     static ENABLED: AtomicBool = AtomicBool::new(false);
-    static NOTIFY_TX: OnceLock<mpsc::UnboundedSender<String>> = OnceLock::new();
+    static NOTIFY_TX: OnceLock<mpsc::WeakUnboundedSender<String>> = OnceLock::new();
     static STARTED: AtomicBool = AtomicBool::new(false);
     static SPACE_DOWN: AtomicBool = AtomicBool::new(false);
 
@@ -52,7 +56,7 @@ mod windows {
                 && key.flags & LLKHF_ALTDOWN != 0
                 && !SPACE_DOWN.swap(true, Ordering::AcqRel)
             {
-                if let Some(tx) = NOTIFY_TX.get() {
+                if let Some(tx) = NOTIFY_TX.get().and_then(|weak| weak.upgrade()) {
                     let notification = json!({
                         "jsonrpc": "2.0",
                         "method": "keyboard.shortcut",
@@ -72,8 +76,13 @@ mod windows {
         CallNextHookEx(std::ptr::null_mut(), code, w_param, l_param)
     }
 
+    /// Store a weak clone so dropping serve's sender still closes stdout.
+    pub(super) fn retain_notify_sender(tx: mpsc::UnboundedSender<String>) -> bool {
+        NOTIFY_TX.set(tx.downgrade()).is_ok()
+    }
+
     pub fn start(tx: mpsc::UnboundedSender<String>) {
-        if NOTIFY_TX.set(tx).is_err() {
+        if !retain_notify_sender(tx) {
             return;
         }
         if STARTED.swap(true, Ordering::AcqRel) {
@@ -131,4 +140,24 @@ pub fn set_enabled(_enabled: bool) {}
 /// Enable the native hook only for the Windows-reserved default binding.
 pub fn uses_windows_fallback(binding: &str) -> bool {
     cfg!(windows) && binding == "Alt+Space"
+}
+
+#[cfg(test)]
+mod tests {
+    use tokio::sync::mpsc;
+
+    #[test]
+    fn start_does_not_keep_the_stdout_channel_open() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        #[cfg(windows)]
+        {
+            assert!(super::windows::retain_notify_sender(tx.clone()));
+        }
+        #[cfg(not(windows))]
+        {
+            super::start(tx.clone());
+        }
+        drop(tx);
+        assert_eq!(rx.blocking_recv(), None);
+    }
 }

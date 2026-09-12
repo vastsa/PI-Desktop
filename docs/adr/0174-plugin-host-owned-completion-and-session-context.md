@@ -8,10 +8,9 @@
 
 ## Context
 
-Pi CLI extensions such as `@juicesharp/rpiv-advisor` let the executor model
-call a zero-parameter `advisor()` tool. The host serializes the resolved LLM
-context and runs a one-shot completion against a stronger reviewer using the
-user's existing credentials.
+Pi CLI extensions can let an executor model call a zero-parameter reviewer
+tool. The host serializes the resolved LLM context and runs a one-shot
+completion against a stronger reviewer using the user's existing credentials.
 
 PI-Desktop plugins can already register tools, commands, settings, and skills,
 but they cannot:
@@ -63,13 +62,9 @@ hands a secret to the renderer.
    `modelKey` / `thinkingLevel` without that permission because those are
    session configuration, not transcript.
 
-7. **Official advisor ships as bundled plugin `pi.advisor`.** It uses only
-   these public APIs (plus `agent.tool.register`, `agent.prompt.inject`,
-   `ui.panel`). Disabled by default (`enabledByDefault: false`), enableable,
-   not uninstallable. The user's enable/disable choice is preserved across
-   launches. The `advisor` tool stays unregistered until the user picks a
-   reviewer with `/advisor` or plugin settings, so an unused advisor costs no
-   completion and no tool schema.
+7. **Bundled Advisor is temporarily not shipped.** The public APIs remain
+   available to explicitly installed plugins, but PI-Desktop does not bundle a
+   first-party reviewer command, panel, skill, or agent tool for now.
 
 No host-protocol or storage schema bump. Completions are Electron-local, like
 `prompt/enhance`.
@@ -81,27 +76,26 @@ No host-protocol or storage schema bump. Completions are Electron-local, like
 - `session.read` + `agent.complete` is a legitimate conversation-exfil
   channel to another model the user already pays for. Install UI must show
   both permissions and their help text.
-- Plugin tools keep the D015 prefix (`plugin_pi_advisor_advisor`). Plan and
-  Goal still hard-deny plugin tools.
-- Advisor spend is a side completion: it is audited on the plugin call and
-  is not merged into the parent assistant usage chip (ADR 0171).
+- Plugin tools keep the D015 prefix. Plan and Goal still hard-deny plugin tools.
+- One-shot completion spend is audited on the plugin call and is not merged
+  into the parent assistant usage chip (ADR 0171).
 
 ## Alternatives rejected
 
 ### Load the npm Pi CLI extension in the sidecar
 
-The sidecar is not the Pi TUI extension host. `/advisor` requires a TTY and
-fails under RPC.
+The sidecar is not the Pi TUI extension host. The CLI reviewer command requires
+a TTY and fails under RPC.
 
 ### Let the plugin call providers through `net.fetch`
 
 Would require secrets in plugin settings (D018) or a user-pasted key, and
 would skip host retry, OAuth, and audit.
 
-### First-party builtin `advisor` tool instead of a plugin
+### First-party reviewer tool instead of a plugin
 
-Rejected for this change: the point is to prove the public channel, the same
-way Files and Browser did. A later builtin remains possible.
+Deferred for now: the bundled reviewer experience is temporarily removed while
+the public host APIs remain available for explicitly installed plugins.
 
 ### Give plugins an arbitrary `sessionId` argument
 

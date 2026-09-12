@@ -94,11 +94,17 @@ describe("main-supplied model capabilities", () => {
   });
 
   it("applies binding limits and preserves explicit thinking levels", () => {
-    const configured = modelConfigWithBinding(knownModel(), {
-      contextWindow: 64_000,
-      maxTokens: 4_000,
-      thinkingLevels: ["off", "minimal", "low", "max"],
-    });
+    const configured = modelConfigWithBinding(
+      {
+        ...knownModel(),
+        thinkingLevelMap: { xhigh: null, max: null },
+      },
+      {
+        contextWindow: 64_000,
+        maxTokens: 4_000,
+        thinkingLevels: ["off", "minimal", "low", "max"],
+      },
+    );
     expect(configured.contextWindow).toBe(64_000);
     expect(configured.maxTokens).toBe(4_000);
     expect(configured.reasoning).toBe(true);
@@ -108,6 +114,7 @@ describe("main-supplied model capabilities", () => {
       "low",
       "max",
     ]);
+    expect(configured.thinkingLevelMap).toMatchObject({ max: "max" });
 
     const unknown = modelConfigWithBinding(genericModelConfig("unknown"), {
       contextWindow: 16_000,

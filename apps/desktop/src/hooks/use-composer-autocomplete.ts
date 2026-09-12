@@ -41,7 +41,13 @@ let filesCache: {
   truncated: boolean;
 } | null = null;
 
-const COMMAND_GROUP_ORDER = { template: 0, builtin: 1, plugin: 2 } as const;
+const COMMAND_GROUP_ORDER = {
+  template: 0,
+  builtin: 1,
+  plugin: 2,
+  extension: 3,
+  skill: 4,
+} as const;
 
 function filterCommands(
   commands: ComposerCommand[],
@@ -99,9 +105,10 @@ function filterFiles(entries: FsIndexEntry[], query: string): AutocompleteItem[]
 }
 
 /**
- * Resolve a typed "/name" against the merged command list at send time
- * (builtin/plugin dispatch); templates and unknown names return as-is/null
- * and stay on the prompt path. Reuses the menu's TTL cache when warm.
+ * Resolve a typed "/name" against the merged command and skill list at send
+ * time (builtin/plugin dispatch and skill validation); templates and unknown
+ * names return as-is/null and stay on the prompt path. Reuses the menu's TTL
+ * cache when warm.
  */
 export async function resolveComposerCommand(
   name: string,

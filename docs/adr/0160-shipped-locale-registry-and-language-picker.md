@@ -1,6 +1,6 @@
 # ADR 0160: Shipped locale registry and searchable language picker
 
-- Status: Accepted
+- Status: Accepted (amended by ADR 0182)
 - Date: 2026-09-05
 - Decision owners: PI-Desktop desktop/i18n maintainers
 - Related: D012, D073, ADR 0009
@@ -13,15 +13,16 @@ needed a hard-coded card, sample glyph, and catalog keys for its name.
 The product now ships more than two UI locales, starting with Turkish, so
 the picker and the locale list have to come from one registry.
 
-Plugin labels and the product changelog remain dual-locale (`en` + `zh-CN`)
-with English fallback. Requiring every plugin and every changelog entry to
-gain Turkish would be a breaking contract for a shell-only expansion.
+Plugin labels retain the `en` + `zh-CN` contract with English fallback.
+The product changelog originally shipped those two locales; ADR 0182 adds
+Traditional Chinese without requiring plugins to gain every shell locale.
 
 ## Decision
 
 1. `@pi-desktop/i18n` owns a `supportedLocales` registry: id, native name
    (endonym, never translated), and English name. `resolveLocale` maps OS
-   tags onto that list (`tr` / `tr-TR` → `tr`, `zh*` → `zh-CN`, else `en`).
+   tags onto that list (`tr` / `tr-TR` → `tr`, Simplified Chinese tags →
+   `zh-CN`, Traditional Chinese tags → `zh-TW`, else `en`).
    `catalogs[locale]` is the lookup used by the renderer, application menu,
    tray, and native consent dialogs.
 2. `AppSettings.language` is `"auto"` plus every registry id. Auto still
@@ -32,8 +33,9 @@ gain Turkish would be a breaking contract for a shell-only expansion.
    shipped locales by native name. Search matches native name, English name,
    and locale id.
 4. Plugin `PluginLocalizedString` still requires `en` and `zh-CN`. Other
-   shell locales fall back to English. The changelog catalog stays `en` /
-   `zh-CN` with the same fallback.
+   shell locales fall back to English. The changelog follows shipped shell
+   locales when a translation exists and falls back to English otherwise;
+   its initial `en` / `zh-CN` set is amended by ADR 0182 with `zh-TW`.
 
 ## Consequences
 

@@ -36,7 +36,7 @@ test("footer exposes settings, plugins and notifications in one row", () => {
   assert.match(sidebarSource, /data-nav="settings"/);
   assert.match(sidebarSource, /data-nav="plugins"/);
   const pluginsAction = sidebarSource.match(
-    /<button[\s\S]*?data-nav="plugins"[\s\S]*?<\/button>/,
+    /<TooltipButton[\s\S]*?data-nav="plugins"[\s\S]*?<\/TooltipButton>/,
   )?.[0] ?? "";
   assert.match(pluginsAction, /<IconPlug size=\{14\} aria-hidden \/>/);
   assert.doesNotMatch(sidebarSource, /data-nav="theme"/);
@@ -48,13 +48,13 @@ test("footer exposes settings, plugins and notifications in one row", () => {
   assert.doesNotMatch(sidebarSource, /openLogs/);
   // Every action is icon-only, so each needs a label for pointer and AT users.
   const actions = sidebarSource
-    .split("<button")
+    .split("<TooltipButton")
     .filter((chunk) => /className=(?:"footer-action"|\{`footer-action )/.test(chunk));
   assert.equal(actions.length, 2);
   for (const action of actions) {
     const attrs = action.slice(0, action.indexOf(">"));
-    assert.match(attrs, /title=/);
-    assert.match(attrs, /aria-label=/);
+    assert.match(attrs, /tooltip=/);
+    assert.match(attrs, /ariaLabel=/);
   }
 });
 

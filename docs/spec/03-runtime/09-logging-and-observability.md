@@ -2,10 +2,10 @@
 
 ## 1. Goals
 
-1. Diagnose failures quickly
-2. Audit sensitive tool/plugin actions
-3. Avoid leaking secrets
-4. Keep MVP simple (local files first)
+1. Diagnose failures quickly.
+2. Audit sensitive tool and plugin actions.
+3. Avoid leaking secrets.
+4. Keep the MVP local-first and quiet during normal operation.
 
 ## 2. Log levels
 
@@ -16,54 +16,47 @@
 
 Default runtime level:
 
-- dev: `debug`
+- development: `debug`
 - release: `info`
 
 ## 3. Channels
 
 | channel | content | location |
 |---|---|---|
-| app | boot, ipc, window, process supervision | `~/.pi-desktop/logs/app/<category>.log` |
-| host | rust host-core events (stderr capture) | `~/.pi-desktop/logs/host/<category>.log` |
-| agent | pi sidecar turn/provider events (stderr capture) | `~/.pi-desktop/logs/agent/<category>.log` |
-| audit | permissions/tools/plugins sensitive actions | host-core SQLite `audit_log` table |
+| app | boot, IPC, window, process supervision | `~/.pi-desktop/logs/app/<category>.log` |
+| host | Rust host-core events (stderr capture) | `~/.pi-desktop/logs/host/<category>.log` |
+| agent | pi sidecar events (stderr capture) | `~/.pi-desktop/logs/agent/<category>.log` |
+| audit | sensitive permission, tool, and plugin actions | host-core SQLite `audit_log` table |
 | plugin | per-plugin logs | `~/.pi-desktop/plugins/logs/<id>.log` |
 
-Notes:
-
-- `app`/`host`/`agent` are NDJSON files written by the Electron main
-  `Logger` (`apps/desktop/electron/main/logger.ts`); host/agent stderr lines
-  are wrapped into records on their channel.
-- The audit channel is stored in SQLite (owned by host-core, D006) instead of
-  a flat file: it needs queryability and longer retention than debug logs.
-  `logs folder` diagnostics still apply to the three file channels.
+`app`, `host`, and `agent` are NDJSON files written by the Electron main
+`Logger` (`apps/desktop/electron/main/logger.ts`). Host and agent stderr lines
+are wrapped into records on their channel. The audit channel is stored in
+SQLite, owned exclusively by host-core, so it remains queryable independently
+of rotating diagnostic files.
 
 ### 3a. Category routing
 
-The three process channels are directories, not aggregate files. The main
-process writes each record to `<channel>/<category>.log`, so high-volume
-session, tool, timing, and provider records can be inspected independently.
+The three process channels are directories, not aggregate files. Main-process
+call sites choose a category. Host and agent stderr uses marker-based
+classification; unknown child output uses `runtime`.
 
-The app channel uses these categories:
+The application categories are:
 
 - `lifecycle` — boot, shutdown, and application supervision
 - `session` — prompts, turns, session lifecycle, and compaction
 - `tool` — tool start/end events
 - `permission` — permission requests and decisions
 - `plugin` — plugin loading, services, and plugin tool execution
-- `provider` — provider/model discovery and cache failures
+- `provider` — provider/model discovery, retries, and cache failures
 - `persistence` — transcript and outbox persistence failures
-- `updater` — electron-updater diagnostics
+- `updater` — updater diagnostics and errors
 - `diagnostics` — blocked navigation, menu, and template diagnostics
-- `runtime` — host/sidecar lifecycle events
+- `runtime` — host/sidecar lifecycle and uncategorized child output
 
-Host and agent stderr is classified into the same categories when the line
-contains a recognizable subsystem marker. Timing lines are always routed to
-`host/timing.log` or `agent/timing.log`; unknown child output goes to that
-channel's `runtime.log`. Every record includes its `category` field.
-
-The flat `app.log`, `host.log`, and `agent.log` names are no longer written.
-Existing legacy files are left untouched during the layout transition.
+There is no dedicated `timing` category. Timing files from older application
+runs are left untouched, but current code does not create or append to them.
+Flat legacy `app.log`, `host.log`, and `agent.log` files are also left untouched.
 
 ## 4. Required fields
 
@@ -86,131 +79,92 @@ type LogRecord = {
 }
 ```
 
-Format MVP: NDJSON files.
+Format: NDJSON files.
 
 ## 5. What must be logged
 
 ### Always
-- app boot/shutdown
-- host/agent spawn + handshake result
-- session create/delete
-- prompt accepted/aborted
-- tool start/end
-- permission request/decision/timeout
-- Plan artifact creation (unique path, SHA-256, byte size), approval/expiry/
-  reject, execution transition, and startup interruption
-- shell ID/effective dialect, availability/fallback or changed-selection failure, stream
-  byte counts, timeout, and process-tree shutdown
-- plugin enable/disable/load/error
-- tool admission rejection, queue depth, active class budgets, and shell spawn
-  resource exhaustion
+
+- app boot and shutdown;
+- host/agent spawn, handshake, and unexpected exit;
+- session create/delete;
+- prompt accepted/aborted;
+- tool start/end and permission request/decision/timeout;
+- Plan artifact creation, approval, expiry, rejection, execution transition,
+  and startup interruption;
+- shell identity, timeout, abort, and process-tree shutdown;
+- plugin enable/disable/load/error;
+- tool admission rejection, queue/resource exhaustion, and updater errors.
+
+These records should identify the relevant session, turn, tool call, plugin, or
+stable error code when available. Normal successful operations should not emit
+per-phase or per-request latency records.
 
 ### Never
-- API keys / raw secrets
-- full secure storage payloads
-- unnecessary full file contents for huge reads in audit (use hashes/previews)
+
+- API keys or raw secrets;
+- full secure-storage payloads; or
+- unnecessary full file contents for large reads in audit records.
 
 ## 6. Redaction rules
 
-1. Keys matching `/token|secret|password|api[_-]?key/i` redacted
-2. Authorization headers redacted
-3. Tool args preview truncated (e.g. 2KB)
-4. Long command output is counted/truncated in audit; stdout/stderr chunks are
-   never logged wholesale in normal channels
+1. Keys matching `/token|secret|password|api[_-]?key/i` are redacted.
+2. Authorization headers are redacted.
+3. Tool argument previews are bounded (for example, 2KB).
+4. Long command output is counted or truncated in audit records; stdout/stderr
+   chunks are not written wholesale to normal channels.
 
 ## 7. Trace correlation
 
 Use one `traceId` per user-visible action when possible:
 
-- prompt → turnId
-- tool call → toolCallId
-- permission flow shares toolCallId/requestId
+- prompt → `turnId`;
+- tool call → `toolCallId`; and
+- permission flow → `toolCallId` / `requestId`.
 
-Renderer, Electron, host, agent should propagate these IDs.
+Renderer, Electron, host, and agent should propagate these identifiers.
 
-## 7a. Latency segmentation (D183)
+## 7a. Functional duration metadata
 
-A slow agent turn is almost never slow inside the tool. The wait belongs to
-one of three stages, and each stage is logged separately so they can be told
-apart without guessing:
+The application still preserves bounded duration metadata needed by product
+features: `ToolsExecuteResult.duration_ms`, transcript `toolDurationMs` and
+`responseDurationMs`, delegation start/completion timestamps, and bounded
+provider diagnostics. These values support the transcript, context inspector,
+throughput display, and audit records; they do not create timing log lines.
 
-| stage | where | field |
-|---|---|---|
-| approval | host-core `tools.execute` | `permission_wait_ms` |
-| tool body | host-core tool implementation | `execute_ms` (`durationMs` in audit) |
-| host bookkeeping | host-core (workspace resolve, lock, artifacts, audit) | `overhead_ms` |
-| instruction preflight | sidecar, path-scoped chain before `tools.execute` | `instructionResolveMs` |
-| host round trip incl. IPC | sidecar around `tools.execute` | `hostRttMs` |
-| provider first token | sidecar, request → `message_start` | `providerWaitMs` |
-| provider streaming | sidecar, `message_start` → `message_end` | `streamMs` |
-
-- host-core emits one `tool timing` line per call on the `host` channel with
-  `prompted`, `permission_wait_ms`, `execute_ms`, `overhead_ms`, `total_ms`,
-  and `outcome` (`ok` / `error` / `denied`); the same fields are persisted on
-  the `tool_execute` / `tool_denied` audit rows.
-- the sidecar writes greppable `[timing] kind=<tool|model|subagent> key=value`
-  lines to stderr, which the Electron `Logger` wraps into the `agent` channel.
-  Set `PI_DESKTOP_TIMING=0` (or `off`/`false`) to suppress them.
-- `hostRttMs` minus the host's `total_ms` for the same `toolCallId` is the
-  stdio/IPC cost; `providerWaitMs` covers pi-ai's own retry backoff, so a
-  provider that burns its retries shows up there rather than as a slow tool.
-- `instructionResolveMs` measures the path-scoped instruction preflight and
-  does not belong to the command body. `instructionCacheHit=true` identifies a
-  same-prompt directory claim; `instructionFallback=base` identifies a
-  timeout or resolver failure that continued with the runtime's base chain.
-- failed or aborted turns still emit a `kind=model` line with the outcome, so
-  a turn that never produced tokens is still measurable.
-- one `kind=subagent` line closes every `Task` call (D201, ADR 0062) with
-  `agent`, `toolCallId`, `sessionId`, `turnId`, `provider`, `model`, `status`,
-  `turns`, `toolCalls`, `durationMs`, and `errorCode` on failure. Delegate rows
-  are attributed in the transcript but their tool and model lines are not, so
-  this is what tells a parallel fan-out apart: same `turnId`, one line per
-  delegate, each with its own provider and wall-clock cost. Idle and duration
-  watchdogs are withdrawn (D328); a stored `timed_out` line may still carry
-  `SUBAGENT_IDLE_TIMEOUT` or `SUBAGENT_DURATION_TIMEOUT`.
-
-The assistant transcript also preserves the successful stream duration as
-`UiMessage.responseDurationMs`. The renderer combines it with provider-reported
-output tokens to show generation speed in `tokens/s`; this is a presentation
-projection of the same `streamMs` interval, not a second timing source. Tool
-rows carry a separate estimated argument/result footprint for context
-inspection, while exact provider input/output usage remains authoritative.
-
-Plan and shell records use the same `sessionId`, `turnId`, and `toolCallId`
-correlation fields. Artifact logs include only the unique relative path under
-`.pi/plan/`, hash, and size; shell logs include the catalog ID and dialect,
-never an arbitrary executable command line or path hash from the renderer.
+Host-core audit rows may retain the existing permission and execution timing
+fields for forensic inspection. They are structured audit data, not a separate
+`timing.log` stream.
 
 ## 8. User-facing diagnostics
 
 MVP provides:
 
-1. in-app error text with code
-2. “Open logs folder” command
-3. optional copy error details (code + traceId)
+1. in-app error text with a stable code;
+2. an “Open logs folder” command; and
+3. optional copy of error details (code and `traceId`).
 
-Not in MVP:
-
-- remote telemetry pipeline
-- cloud crash analytics (can be added later behind consent)
+There is no remote telemetry pipeline or cloud crash analytics in the MVP.
 
 ## 9. Retention
 
-- app/host/agent category logs: size-capped rotation — rotate each category
-  file at 5 MB, keep 2 rotated files beside it (`<category>.1.log`,
-  `<category>.2.log`)
-- audit log (SQLite): retained with the database; longer than debug logs
-- rotation must never fail the caller; disk trouble is swallowed
+- app/host/agent category logs: rotate each category file at 5 MB and keep two
+  rotated files beside it (`<category>.1.log`, `<category>.2.log`);
+- audit log (SQLite): retained with the database and pruned according to the
+  host retention policy; and
+- rotation and logging failures must never fail the caller.
+
+Session transcripts are user data and are not deleted by log rotation.
 
 ## 10. Acceptance
 
-1. Failed tool call can be traced by toolCallId across logs
-2. secrets never appear in log files during normal flows
-3. logs folder openable from app/command palette
-4. a slow tool call can be attributed to approval, execution, or the provider
-   from the logs alone (D183)
-5. a host resource incident exposes active/queued tool budgets and a single
-   restart generation instead of repeated stale-pipe errors
-6. Plan startup interruption and shell changed-selection/timeout/process abort
-   can be diagnosed from session/turn/tool-call correlation and stable error
-   code
+1. Failed tool calls can be traced by `toolCallId` across key logs.
+2. Secrets never appear in log files during normal flows.
+3. The logs folder can be opened from the app/command palette.
+4. Boot, host, sidecar, plugin, updater, and renderer paths emit only their
+   lifecycle, state-change, error, or security-relevant records; no timing
+   category files are created for normal operation.
+5. Logging or console mirroring never crashes the main process when stdout is a
+   broken pipe.
+6. Host restart, permission failure, shell timeout, and process abort remain
+   diagnosable from stable lifecycle records and error codes.

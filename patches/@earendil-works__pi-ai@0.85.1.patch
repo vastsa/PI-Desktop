@@ -1,0 +1,42 @@
+diff --git a/dist/api/openai-completions.js b/dist/api/openai-completions.js
+index 48464f2bf56b9369d5c202e4f02fc4f13d35b412..fd36bd0f3daab13023c0220bb44c475503ec0c28 100644
+--- a/dist/api/openai-completions.js
++++ b/dist/api/openai-completions.js
+@@ -1141,6 +1141,22 @@ export function convertMessages(model, context, compat, options) {
+         }
+         lastRole = msg.role;
+     }
++    // DeepSeek-style endpoints reject a history in which only some assistant
++    // messages carry reasoning_content, while all-or-none is accepted. The
++    // per-message backfill above only runs for models flagged `reasoning`,
++    // which a relayed model outside the catalogue is not, even though its
++    // persisted turns still carry thinking. Whenever any assistant message
++    // ends up with reasoning_content, give the rest an empty one.
++    if (compat.requiresReasoningContentOnAssistantMessages &&
++        params.some((m) => m.role === "assistant" &&
++            typeof m.reasoning_content === "string" &&
++            m.reasoning_content.length > 0)) {
++        for (const m of params) {
++            if (m.role === "assistant" && m.reasoning_content === undefined) {
++                m.reasoning_content = "";
++            }
++        }
++    }
+     return params;
+ }
+ function convertTools(tools, compat) {
+diff --git a/dist/api/openai-responses-shared.js b/dist/api/openai-responses-shared.js
+index 43e463dbfd1e6cc437ebc680468036f47678de26..364c8c0426d12543c1b64daa8e6eaa22f35f6f60 100644
+--- a/dist/api/openai-responses-shared.js
++++ b/dist/api/openai-responses-shared.js
+@@ -636,6 +636,10 @@ export async function processResponsesStream(openaiStream, output, stream, model
+         }
+         else if (event.type === "response.completed" || event.type === "response.incomplete") {
+             finalizeResponse(event.response);
++            // The response is fully delivered: stop consuming the stream so the
++            // request does not hang when the server (or a reverse proxy) never
++            // closes the connection after the terminal event.
++            break;
+         }
+         else if (event.type === "error") {
+             throw new Error(`Error Code ${event.code}: ${event.message}` || "Unknown error");

@@ -16,7 +16,7 @@ import {
 } from "@pi-desktop/shared";
 import { useAppStore } from "../stores/app-store";
 import { api } from "../lib/api";
-import type { ImportCandidate } from "../lib/api";
+import type { ImportCandidate, ModelConfigImportCandidate } from "../lib/api";
 import { useUpdateState } from "../hooks/use-update-state";
 import {
   DEFAULT_IMPORT_GROUP_BY,
@@ -24,12 +24,13 @@ import {
   groupImportCandidates,
   type ImportGroupBy,
 } from "../lib/import-groups";
-import { Badge, Button, Input, Select, cx } from "../components/ui";
+import { Badge, Button, Input, Select, TooltipButton, cx } from "../components/ui";
 import {
   SETTINGS_NAV,
   SETTINGS_NAV_GROUP_LABELS,
   type SettingsNavGroupId,
 } from "../lib/settings-search";
+import { resolveContextUsageDisplay } from "../lib/context-usage";
 import {
   IconArchive,
   IconBookOpen,
@@ -47,6 +48,7 @@ import {
 import { ModelConfigPage } from "../components/settings/ModelConfigPage";
 import { KeyboardShortcutsSection } from "../components/settings/KeyboardShortcutsSection";
 import { FontFamilyRow } from "../components/settings/FontFamilyRow";
+import { FontSizeRow } from "../components/settings/FontSizeRow";
 import { LanguageRow } from "../components/settings/LanguageRow";
 import { ThemeRow } from "../components/settings/ThemeRow";
 import { NetworkProxySection } from "../components/settings/NetworkProxySection";
@@ -236,6 +238,94 @@ function CommandShellRow({
             {t("settings.commandShellSaveError")}
           </span>
         ) : null}
+      </div>
+    </SettingsRow>
+  );
+}
+
+function LinkOpenTargetRow({
+  settings,
+  saveSettings,
+}: {
+  settings: AppSettings;
+  saveSettings: (patch: Partial<AppSettings>) => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const current = settings.linkOpenTarget ?? "workpanel";
+  return (
+    <SettingsRow
+      title={t("settings.linkOpenTarget")}
+      description={t("settings.linkOpenTargetDesc")}
+    >
+      <div
+        className="settings-segment"
+        role="group"
+        aria-label={t("settings.linkOpenTarget")}
+      >
+        {([
+          ["workpanel", "settings.linkOpenTargetWorkpanel"],
+          ["external", "settings.linkOpenTargetExternal"],
+        ] as const).map(([value, labelKey]) => (
+          <button
+            key={value}
+            type="button"
+            className={cx(
+              "settings-segment-item",
+              current === value && "active",
+            )}
+            aria-pressed={current === value}
+            onClick={() => void saveSettings({ linkOpenTarget: value })}
+          >
+            {t(labelKey)}
+          </button>
+        ))}
+      </div>
+    </SettingsRow>
+  );
+}
+
+/**
+ * Which figure the composer context ring leads with (D398). Color thresholds
+ * stay on remaining capacity in both modes, so "used" never repaints the
+ * warning state.
+ */
+function ContextUsageDisplayRow({
+  settings,
+  saveSettings,
+}: {
+  settings: AppSettings;
+  saveSettings: (patch: Partial<AppSettings>) => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const current = resolveContextUsageDisplay(settings.contextUsageDisplay);
+  return (
+    <SettingsRow
+      title={t("settings.contextUsageDisplay")}
+      description={t("settings.contextUsageDisplayDesc")}
+    >
+      <div
+        className="settings-segment"
+        role="radiogroup"
+        aria-label={t("settings.contextUsageDisplay")}
+      >
+        {([
+          ["remaining", "settings.contextUsageDisplayRemaining"],
+          ["used", "settings.contextUsageDisplayUsed"],
+        ] as const).map(([value, labelKey]) => (
+          <button
+            key={value}
+            type="button"
+            role="radio"
+            aria-checked={current === value}
+            className={cx(
+              "settings-segment-item",
+              current === value && "active",
+            )}
+            onClick={() => void saveSettings({ contextUsageDisplay: value })}
+          >
+            {t(labelKey)}
+          </button>
+        ))}
       </div>
     </SettingsRow>
   );
@@ -491,6 +581,15 @@ function UpdatesRow({ currentVersion }: { currentVersion?: string }) {
 }
 
 function ImportSection() {
+  return (
+    <div className="settings-stack">
+      <SessionImportPanel />
+      <ModelConfigImportPanel />
+    </div>
+  );
+}
+
+function SessionImportPanel() {
   const { t, i18n } = useTranslation();
   const refreshSessions = useAppStore((s) => s.refreshSessions);
   const showToast = useAppStore((s) => s.showToast);
@@ -573,7 +672,7 @@ function ImportSection() {
   };
 
   return (
-    <div className="settings-stack">
+    <>
       <SettingsCard title={t("settings.importTitle")}>
         <SettingsRow
           title={t("settings.importScan")}
@@ -718,10 +817,241 @@ function ImportSection() {
           )}
         </SettingsCard>
       )}
-    </div>
+    </>
   );
 }
 
+function hostOf(baseUrl: string | null): string {
+  if (!baseUrl) return "";
+  try {
+    return new URL(baseUrl).host || baseUrl;
+  } catch {
+    return baseUrl.replace(/^https?:\/\//, "").split("/")[0] || baseUrl;
+  }
+}
+
+function ModelConfigImportPanel() {
+  const { t } = useTranslation();
+  const refreshProviders = useAppStore((s) => s.refreshProviders);
+  const showToast = useAppStore((s) => s.showToast);
+  const [candidates, setCandidates] = useState<ModelConfigImportCandidate[] | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [scanning, setScanning] = useState(false);
+  const [importing, setImporting] = useState(false);
+
+  const keyOf = (c: ModelConfigImportCandidate) => `${c.source}:${c.externalId}`;
+
+  const scan = async () => {
+    setScanning(true);
+    try {
+      const res = await api.scanImportModelConfigs();
+      setCandidates(res.providers);
+      setSelected(new Set());
+      setExpandedGroups(new Set());
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : String(e), { variant: "error" });
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const runImport = async () => {
+    if (!candidates) return;
+    const items = candidates.filter((c) => selected.has(keyOf(c)));
+    if (items.length === 0) return;
+    setImporting(true);
+    try {
+      const res = await api.runImportModelConfigs(items);
+      await refreshProviders();
+      showToast(
+        t("settings.importResult", {
+          imported: res.imported,
+          skipped: res.skipped,
+          failed: res.failed,
+        }),
+        { variant: res.failed > 0 ? "error" : "success" },
+      );
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : String(e), { variant: "error" });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const sourceLabels = useMemo(
+    () => ({
+      "claude-code": t("settings.importSourceClaudeCode"),
+      opencode: t("settings.importSourceOpenCode"),
+      codex: t("settings.importSourceCodex"),
+      pi: t("settings.importSourcePi"),
+      "cc-switch": t("settings.importSourceCcSwitch"),
+    }),
+    [t],
+  );
+
+  const groups = useMemo(() => {
+    if (!candidates) return [];
+    const grouped = new Map<ModelConfigImportCandidate["source"], ModelConfigImportCandidate[]>();
+    for (const candidate of candidates) {
+      const items = grouped.get(candidate.source) ?? [];
+      items.push(candidate);
+      grouped.set(candidate.source, items);
+    }
+    return [...grouped.entries()].map(([source, items]) => ({
+      id: source,
+      name: sourceLabels[source],
+      items,
+    }));
+  }, [candidates, sourceLabels]);
+
+  const allKeys = useMemo(() => (candidates ?? []).map(keyOf), [candidates]);
+  const allSelected = allKeys.length > 0 && allKeys.every((k) => selected.has(k));
+
+  const toggleKeys = (keys: string[], on: boolean) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const k of keys) {
+        if (on) next.add(k);
+        else next.delete(k);
+      }
+      return next;
+    });
+  };
+
+  return (
+    <>
+      <SettingsCard title={t("settings.importModelsTitle")}>
+        <SettingsRow
+          title={t("settings.importScan")}
+          description={t("settings.importModelsScanDesc")}
+        >
+          <Button variant="secondary" disabled={scanning} onClick={() => void scan()}>
+            {scanning ? t("settings.importScanning") : t("settings.importScan")}
+          </Button>
+        </SettingsRow>
+      </SettingsCard>
+
+      {candidates !== null && (
+        <SettingsCard>
+          {candidates.length === 0 ? (
+            <div className="settings-empty">{t("settings.importModelsNone")}</div>
+          ) : (
+            <>
+              <div className="import-toolbar">
+                <label className="import-select-all">
+                  <input
+                    type="checkbox"
+                    aria-label={t("settings.importModelsSelectAll")}
+                    checked={allSelected}
+                    onChange={(e) => toggleKeys(allKeys, e.target.checked)}
+                  />
+                  <span>
+                    {t("settings.importModelsFound", { count: candidates.length })}
+                    {selected.size > 0
+                      ? ` · ${t("settings.importSelectedCount", { count: selected.size })}`
+                      : ""}
+                  </span>
+                </label>
+                <div className="import-toolbar-actions">
+                  <Button
+                    variant="primary"
+                    disabled={importing || selected.size === 0}
+                    onClick={() => void runImport()}
+                  >
+                    {importing
+                      ? t("settings.importing")
+                      : t("settings.importSelected", { count: selected.size })}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="import-groups">
+                {groups.map((group, groupIndex) => {
+                  const groupKeys = group.items.map(keyOf);
+                  const groupSelected = groupKeys.filter((k) => selected.has(k)).length;
+                  const isCollapsed = !expandedGroups.has(group.id);
+                  const groupBodyId = `import-model-group-body-${groupIndex}`;
+                  return (
+                    <div key={group.id} className="import-group">
+                      <div className="import-group-header">
+                        <input
+                          type="checkbox"
+                          aria-label={t("settings.importModelsSelectGroup", { name: group.name })}
+                          checked={groupSelected === groupKeys.length}
+                          ref={(el) => {
+                            if (el)
+                              el.indeterminate =
+                                groupSelected > 0 && groupSelected < groupKeys.length;
+                          }}
+                          onChange={(e) => toggleKeys(groupKeys, e.target.checked)}
+                        />
+                        <button
+                          type="button"
+                          className="import-group-toggle"
+                          aria-controls={groupBodyId}
+                          aria-expanded={!isCollapsed}
+                          onClick={() =>
+                            setExpandedGroups((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(group.id)) next.delete(group.id);
+                              else next.add(group.id);
+                              return next;
+                            })
+                          }
+                        >
+                          <span
+                            className={cx("import-group-chevron", isCollapsed && "collapsed")}
+                            aria-hidden
+                          >
+                            <IconChevronLeft size={13} />
+                          </span>
+                          <span className="import-group-name">{group.name}</span>
+                          <span className="import-group-count">
+                            {t("settings.importModelsFound", { count: group.items.length })}
+                          </span>
+                        </button>
+                      </div>
+                      {!isCollapsed && (
+                        <div id={groupBodyId} className="import-group-body">
+                          {group.items.map((c) => {
+                            const k = keyOf(c);
+                            const host = hostOf(c.baseUrl);
+                            return (
+                              <label key={k} className="import-row">
+                                <input
+                                  type="checkbox"
+                                  checked={selected.has(k)}
+                                  onChange={(e) => toggleKeys([k], e.target.checked)}
+                                />
+                                <span className="import-row-main">
+                                  <span className="import-row-title">{c.name}</span>
+                                  <span className="import-row-meta">
+                                    {t("settings.importModelsCount", { count: c.modelIds.length })}
+                                    {host ? ` · ${host}` : ""}
+                                  </span>
+                                </span>
+                                <Badge tone={c.hasSecret ? "success" : "warning"}>
+                                  {c.hasSecret
+                                    ? t("settings.importModelsHasKey")
+                                    : t("settings.importModelsNoKey")}
+                                </Badge>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </SettingsCard>
+      )}
+    </>
+  );
+}
 
 /**
  * Developer mode gate: the console stays unreachable until the toggle is on,
@@ -831,12 +1161,13 @@ function CloseBehaviorSection() {
           aria-label={t("settings.closeBehaviorTitle")}
         >
           {options.map(([value, labelKey, descKey]) => (
-            <button
+            <TooltipButton
               key={value}
               type="button"
               role="radio"
               aria-checked={behavior === value}
-              title={t(descKey)}
+              tooltip={t(descKey)}
+              ariaLabel={t(labelKey)}
               className={cx(
                 "settings-segment-item",
                 behavior === value && "active",
@@ -844,7 +1175,7 @@ function CloseBehaviorSection() {
               onClick={() => void choose(value)}
             >
               {t(labelKey)}
-            </button>
+            </TooltipButton>
           ))}
         </div>
       </SettingsRow>
@@ -870,6 +1201,26 @@ export function SettingsPage() {
   const platform = (window.piDesktop?.platform ?? "darwin") as ShortcutPlatform;
 
   const [query, setQuery] = useState("");
+  const [recoveringSettings, setRecoveringSettings] = useState(!settings);
+  const [settingsRecoveryFailed, setSettingsRecoveryFailed] = useState(false);
+
+  const recoverSettings = useCallback(async () => {
+    setRecoveringSettings(true);
+    setSettingsRecoveryFailed(false);
+    try {
+      const recovered = await api.getSettings();
+      useAppStore.setState({ settings: recovered });
+    } catch {
+      setSettingsRecoveryFailed(true);
+    } finally {
+      setRecoveringSettings(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (settings) return;
+    void recoverSettings();
+  }, [settings, recoverSettings]);
 
   // Arriving from the global search dialog: scroll to and flash the row
   // whose title matches the pending anchor key. Rows are located by their
@@ -975,6 +1326,7 @@ export function SettingsPage() {
 
   const activeTitleKey =
     navItems.find((item) => item.id === tab)?.titleKey ?? "settings.title";
+  const tabNeedsSettings = ["general", "ai", "shortcuts", "agent"].includes(tab);
 
   return (
     <div className="settings-shell settings-shell-full">
@@ -1033,12 +1385,31 @@ export function SettingsPage() {
         <div className="settings-content-inner">
           <h1 className="settings-section-title">{t(activeTitleKey)}</h1>
 
+          {tabNeedsSettings && !settings ? (
+            <div className="settings-recovery" role="status" aria-live="polite">
+              {recoveringSettings ? (
+                <>
+                  <span className="route-pending-indicator" aria-hidden />
+                  <span>{t("common.loading")}</span>
+                </>
+              ) : settingsRecoveryFailed ? (
+                <>
+                  <span>{t("errors.HOST_UNAVAILABLE")}</span>
+                  <Button variant="secondary" onClick={() => void recoverSettings()}>
+                    {t("errors.action.retry")}
+                  </Button>
+                </>
+              ) : null}
+            </div>
+          ) : null}
+
           {tab === "general" && settings && (
             <div className="settings-stack">
               <SettingsCard title={t("settings.appearance")}>
                 <ThemeRow settings={settings} saveSettings={saveSettings} />
                 <LanguageRow settings={settings} saveSettings={saveSettings} />
                 <FontFamilyRow settings={settings} saveSettings={saveSettings} />
+                <FontSizeRow settings={settings} saveSettings={saveSettings} />
               </SettingsCard>
 
               <NetworkProxySection settings={settings} saveSettings={saveSettings} />
@@ -1101,6 +1472,11 @@ export function SettingsPage() {
                   </div>
                 </SettingsRow>
                 <CommandShellRow settings={settings} saveSettings={saveSettings} />
+                <LinkOpenTargetRow settings={settings} saveSettings={saveSettings} />
+                <ContextUsageDisplayRow
+                  settings={settings}
+                  saveSettings={saveSettings}
+                />
                 <SettingsRow
                   title={t("settings.enterToSend")}
                   description={t("settings.enterToSendDesc")}

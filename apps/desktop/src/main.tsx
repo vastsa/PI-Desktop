@@ -50,8 +50,19 @@ try {
     </React.StrictMode>,
   );
 } catch (error) {
-  rootEl.innerHTML = `<div style="padding:24px;font:14px/1.4 -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;background:#181818;color:#fff;height:100%">
-    <h1 style="margin:0 0 8px;font-size:16px">PI-Desktop failed to start UI</h1>
-    <pre style="white-space:pre-wrap;color:#fca5a5">${String(error)}</pre>
-  </div>`;
+  const crashCatalog =
+    catalogs[resolveLocale(i18n.resolvedLanguage ?? i18n.language ?? locale)];
+  // Built with DOM nodes, not markup: the error text is untrusted and must not
+  // be interpreted as HTML.
+  const panel = document.createElement("div");
+  panel.style.cssText =
+    "padding:24px;font:14px/1.4 -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;background:#181818;color:#fff;height:100%";
+  const heading = document.createElement("h1");
+  heading.style.cssText = "margin:0 0 8px;font-size:16px";
+  heading.textContent = crashCatalog.app.uiCrashed;
+  const detail = document.createElement("pre");
+  detail.style.cssText = "white-space:pre-wrap;color:#fca5a5";
+  detail.textContent = String(error);
+  panel.append(heading, detail);
+  rootEl.replaceChildren(panel);
 }

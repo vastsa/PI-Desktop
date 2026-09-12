@@ -10,6 +10,7 @@ import type {
 } from "./types";
 
 export type { ExternalSessionSummary, ExternalSource, ImportedSession } from "./types";
+export { scanModelConfigs } from "./model-config";
 
 const importers: SessionImporter[] = [
   claudeImporter,

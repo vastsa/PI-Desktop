@@ -4,11 +4,12 @@ use serde::Serialize;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
-/// Storage schema v13: SQLite holds
+/// Storage schema v14: SQLite holds
 /// index data only; transcript content lives in per-session JSONL files
 /// (D119, `transcripts.rs`). v11 adds the Plan/Goal approval kind (D198).
 /// v12 added A2A broker tables (ADR 0147); v13 drops them (ADR 0165).
-pub const SCHEMA_VERSION: i64 = 13;
+/// v14 adds plugin session ownership and the soft-delete marker (D367).
+pub const SCHEMA_VERSION: i64 = 15;
 
 /// Absolute approval deadline for a newly submitted Plan or Goal proposal.
 pub const PLAN_APPROVAL_TIMEOUT_MS: i64 = 30 * 60 * 1000;
@@ -181,6 +182,7 @@ CREATE TABLE sessions (
   permission_mode TEXT NOT NULL DEFAULT 'inherit'
                 CHECK (permission_mode IN ('inherit', 'ask', 'accept-edits', 'auto')),
   source      TEXT,
+  deleted_at  INTEGER,
   pinned      INTEGER NOT NULL DEFAULT 0,
   last_seq    INTEGER NOT NULL DEFAULT 0,
   created_at  INTEGER NOT NULL,
@@ -188,6 +190,20 @@ CREATE TABLE sessions (
 );
 CREATE INDEX idx_sessions_updated ON sessions(updated_at DESC);
 CREATE INDEX idx_sessions_project ON sessions(project_id) WHERE project_id IS NOT NULL;
+CREATE INDEX idx_sessions_deleted ON sessions(deleted_at) WHERE deleted_at IS NOT NULL;
+
+CREATE TABLE session_import_origins (
+  plugin_id    TEXT NOT NULL,
+  source_id    TEXT NOT NULL,
+  external_id  TEXT NOT NULL,
+  session_id   TEXT NOT NULL UNIQUE REFERENCES sessions(id) ON DELETE CASCADE,
+  source_label TEXT,
+  origin_json  TEXT,
+  created_at   INTEGER NOT NULL,
+  UNIQUE(plugin_id, source_id, external_id)
+);
+CREATE INDEX idx_session_import_origins_plugin
+  ON session_import_origins(plugin_id, source_id, created_at DESC);
 
 CREATE TABLE turns (
   id            TEXT PRIMARY KEY,
@@ -206,6 +222,23 @@ CREATE INDEX idx_turns_session ON turns(session_id, started_at DESC);
 CREATE INDEX idx_turns_ended_at ON turns(ended_at DESC);
 CREATE UNIQUE INDEX idx_turns_one_running_session
   ON turns(session_id) WHERE status = 'running';
+
+CREATE TABLE turn_queue (
+  id               TEXT PRIMARY KEY,
+  session_id       TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  principal        TEXT NOT NULL,
+  idempotency_key  TEXT,
+  input_hash       TEXT NOT NULL,
+  content          TEXT NOT NULL,
+  attachments_json TEXT,
+  permission_mode  TEXT NOT NULL,
+  position         INTEGER NOT NULL,
+  created_at       INTEGER NOT NULL
+);
+CREATE INDEX idx_turn_queue_session ON turn_queue(session_id, position);
+CREATE UNIQUE INDEX idx_turn_queue_idempotency
+  ON turn_queue(session_id, principal, idempotency_key)
+  WHERE idempotency_key IS NOT NULL;
 
 CREATE TABLE notifications (
   id         TEXT PRIMARY KEY,
@@ -455,23 +488,38 @@ impl Database {
                 tx.commit()?;
             }
             7 => {
-                migrate_v7_to_v8(&conn)?;
-                migrate_v8_to_v13(&conn, path)?;
+                // v7 is the oldest in-place migration; back it up like every
+                // later step so a failed rewrite never leaves a file with no
+                // pre-migration copy.
+                let backup = create_migration_backup(&conn, path, 7)?;
+                migrate_v7_to_v8(&conn).with_context(|| {
+                    format!(
+                        "apply schema v7 to v8 migration; backup {} remains",
+                        backup.display()
+                    )
+                })?;
+                migrate_v8_to_v15(&conn, path)?;
             }
             8 => {
-                migrate_v8_to_v13(&conn, path)?;
+                migrate_v8_to_v15(&conn, path)?;
             }
             9 => {
-                migrate_v9_to_v13(&conn, path)?;
+                migrate_v9_to_v15(&conn, path)?;
             }
             10 => {
-                migrate_v10_to_v13(&conn, path)?;
+                migrate_v10_to_v15(&conn, path)?;
             }
             11 => {
-                migrate_v11_to_v13(&conn, path)?;
+                migrate_v11_to_v15(&conn, path)?;
             }
             12 => {
-                migrate_v12_to_v13(&conn, path)?;
+                migrate_v12_to_v15(&conn, path)?;
+            }
+            13 => {
+                migrate_v13_to_v15(&conn, path)?;
+            }
+            14 => {
+                migrate_v14_to_v15(&conn, path)?;
             }
             legacy @ 1..=6 => {
                 let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
@@ -754,6 +802,26 @@ impl Database {
             .prepare_cached("SELECT path FROM projects WHERE id = ?1")?;
         let mut rows = stmt.query(params![id])?;
         Ok(rows.next()?.map(|r| r.get(0)).transpose()?)
+    }
+
+    pub fn get_project(&self, id: i64) -> Result<Option<ProjectRecord>> {
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT id, path, name, pinned, created_at, last_opened_at
+             FROM projects
+             WHERE id = ?1",
+        )?;
+        stmt.query_row(params![id], |row| {
+            Ok(ProjectRecord {
+                id: row.get(0)?,
+                path: row.get(1)?,
+                name: row.get(2)?,
+                pinned: row.get(3)?,
+                created_at: row.get(4)?,
+                last_opened_at: row.get(5)?,
+            })
+        })
+        .optional()
+        .map_err(Into::into)
     }
 
     pub fn list_projects(&self) -> Result<Vec<ProjectRecord>> {
@@ -1072,6 +1140,71 @@ fn migrate_v12_to_v13_tx(tx: &rusqlite::Transaction<'_>) -> Result<()> {
     Ok(())
 }
 
+/// v14 adds the plugin session ownership sidecar and hides soft-deleted
+/// plugin sessions from the normal session catalog. Existing sessions remain
+/// live and have a null deletion timestamp.
+fn migrate_v13_to_v14_tx(tx: &rusqlite::Transaction<'_>) -> Result<()> {
+    let has_deleted_at: bool = tx.query_row(
+        "SELECT EXISTS(
+            SELECT 1 FROM pragma_table_info('sessions') WHERE name = 'deleted_at'
+        )",
+        [],
+        |row| row.get(0),
+    )?;
+    if !has_deleted_at {
+        tx.execute_batch("ALTER TABLE sessions ADD COLUMN deleted_at INTEGER;")?;
+    }
+    tx.execute_batch(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_sessions_deleted
+          ON sessions(deleted_at) WHERE deleted_at IS NOT NULL;
+        CREATE TABLE IF NOT EXISTS session_import_origins (
+          plugin_id    TEXT NOT NULL,
+          source_id    TEXT NOT NULL,
+          external_id  TEXT NOT NULL,
+          session_id   TEXT NOT NULL UNIQUE REFERENCES sessions(id) ON DELETE CASCADE,
+          source_label TEXT,
+          origin_json  TEXT,
+          created_at   INTEGER NOT NULL,
+          UNIQUE(plugin_id, source_id, external_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_session_import_origins_plugin
+          ON session_import_origins(plugin_id, source_id, created_at DESC);
+        "#,
+    )?;
+    tx.pragma_update(None, "user_version", 14i64)?;
+    Ok(())
+}
+
+/// v15 persists the Host-owned turn queue (D375 / ADR 0213). Queued prompts
+/// used to live in renderer memory; the table lets a restart restore them in
+/// order, held until a controller attaches.
+fn migrate_v14_to_v15_tx(tx: &rusqlite::Transaction<'_>) -> Result<()> {
+    tx.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS turn_queue (
+          id               TEXT PRIMARY KEY,
+          session_id       TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+          principal        TEXT NOT NULL,
+          idempotency_key  TEXT,
+          input_hash       TEXT NOT NULL,
+          content          TEXT NOT NULL,
+          attachments_json TEXT,
+          permission_mode  TEXT NOT NULL,
+          position         INTEGER NOT NULL,
+          created_at       INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_turn_queue_session
+          ON turn_queue(session_id, position);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_turn_queue_idempotency
+          ON turn_queue(session_id, principal, idempotency_key)
+          WHERE idempotency_key IS NOT NULL;
+        "#,
+    )?;
+    tx.pragma_update(None, "user_version", 15i64)?;
+    Ok(())
+}
+
 fn migration_backup_path(path: &Path, version: i64) -> PathBuf {
     path.with_extension(format!("sqlite.v{version}.bak"))
 }
@@ -1153,7 +1286,7 @@ fn create_migration_backup(conn: &Connection, path: &Path, version: i64) -> Resu
     Ok(backup)
 }
 
-fn migrate_v8_to_v13(conn: &Connection, path: &Path) -> Result<()> {
+fn migrate_v8_to_v15(conn: &Connection, path: &Path) -> Result<()> {
     let backup = create_migration_backup(conn, path, 8)?;
     let tx = conn.unchecked_transaction()?;
     migrate_v8_to_v9_tx(&tx)?;
@@ -1161,67 +1294,104 @@ fn migrate_v8_to_v13(conn: &Connection, path: &Path) -> Result<()> {
     migrate_v10_to_v11_tx(&tx)?;
     migrate_v11_to_v12_tx(&tx)?;
     migrate_v12_to_v13_tx(&tx)?;
+    migrate_v13_to_v14_tx(&tx)?;
+    migrate_v14_to_v15_tx(&tx)?;
     tx.commit().with_context(|| {
         format!(
-            "commit schema v8 to v13 migration; backup {} remains",
+            "commit schema v8 to v15 migration; backup {} remains",
             backup.display()
         )
     })?;
     Ok(())
 }
 
-fn migrate_v9_to_v13(conn: &Connection, path: &Path) -> Result<()> {
+fn migrate_v9_to_v15(conn: &Connection, path: &Path) -> Result<()> {
     let backup = create_migration_backup(conn, path, 9)?;
     let tx = conn.unchecked_transaction()?;
     migrate_v9_to_v10_tx(&tx)?;
     migrate_v10_to_v11_tx(&tx)?;
     migrate_v11_to_v12_tx(&tx)?;
     migrate_v12_to_v13_tx(&tx)?;
+    migrate_v13_to_v14_tx(&tx)?;
+    migrate_v14_to_v15_tx(&tx)?;
     tx.commit().with_context(|| {
         format!(
-            "commit schema v9 to v13 migration; backup {} remains",
+            "commit schema v9 to v15 migration; backup {} remains",
             backup.display()
         )
     })?;
     Ok(())
 }
 
-fn migrate_v10_to_v13(conn: &Connection, path: &Path) -> Result<()> {
+fn migrate_v10_to_v15(conn: &Connection, path: &Path) -> Result<()> {
     let backup = create_migration_backup(conn, path, 10)?;
     let tx = conn.unchecked_transaction()?;
     migrate_v10_to_v11_tx(&tx)?;
     migrate_v11_to_v12_tx(&tx)?;
     migrate_v12_to_v13_tx(&tx)?;
+    migrate_v13_to_v14_tx(&tx)?;
+    migrate_v14_to_v15_tx(&tx)?;
     tx.commit().with_context(|| {
         format!(
-            "commit schema v10 to v13 migration; backup {} remains",
+            "commit schema v10 to v15 migration; backup {} remains",
             backup.display()
         )
     })?;
     Ok(())
 }
 
-fn migrate_v11_to_v13(conn: &Connection, path: &Path) -> Result<()> {
+fn migrate_v11_to_v15(conn: &Connection, path: &Path) -> Result<()> {
     let backup = create_migration_backup(conn, path, 11)?;
     let tx = conn.unchecked_transaction()?;
     migrate_v11_to_v12_tx(&tx)?;
     migrate_v12_to_v13_tx(&tx)?;
+    migrate_v13_to_v14_tx(&tx)?;
+    migrate_v14_to_v15_tx(&tx)?;
     tx.commit().with_context(|| {
         format!(
-            "commit schema v11 to v13 migration; backup {} remains",
+            "commit schema v11 to v15 migration; backup {} remains",
             backup.display()
         )
     })?;
     Ok(())
 }
 
-fn migrate_v12_to_v13(conn: &Connection, path: &Path) -> Result<()> {
+fn migrate_v12_to_v15(conn: &Connection, path: &Path) -> Result<()> {
     let backup = create_migration_backup(conn, path, 12)?;
     let tx = conn.unchecked_transaction()?;
     migrate_v12_to_v13_tx(&tx)?;
+    migrate_v13_to_v14_tx(&tx)?;
+    migrate_v14_to_v15_tx(&tx)?;
     tx.commit().with_context(|| {
         format!(
-            "commit schema v12 to v13 migration; backup {} remains",
+            "commit schema v12 to v15 migration; backup {} remains",
+            backup.display()
+        )
+    })?;
+    Ok(())
+}
+
+fn migrate_v13_to_v15(conn: &Connection, path: &Path) -> Result<()> {
+    let backup = create_migration_backup(conn, path, 13)?;
+    let tx = conn.unchecked_transaction()?;
+    migrate_v13_to_v14_tx(&tx)?;
+    migrate_v14_to_v15_tx(&tx)?;
+    tx.commit().with_context(|| {
+        format!(
+            "commit schema v13 to v15 migration; backup {} remains",
+            backup.display()
+        )
+    })?;
+    Ok(())
+}
+
+fn migrate_v14_to_v15(conn: &Connection, path: &Path) -> Result<()> {
+    let backup = create_migration_backup(conn, path, 14)?;
+    let tx = conn.unchecked_transaction()?;
+    migrate_v14_to_v15_tx(&tx)?;
+    tx.commit().with_context(|| {
+        format!(
+            "commit schema v14 to v15 migration; backup {} remains",
             backup.display()
         )
     })?;
@@ -1240,6 +1410,27 @@ mod tests {
         )
         .map(|n| n > 0)
         .unwrap_or(false)
+    }
+
+    #[test]
+    fn v14_database_migrates_to_v15_with_the_turn_queue() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pi.sqlite");
+        {
+            let db = Database::open(&path).unwrap();
+            db.conn()
+                .execute_batch(
+                    "DROP INDEX idx_turn_queue_idempotency;
+                     DROP INDEX idx_turn_queue_session;
+                     DROP TABLE turn_queue;",
+                )
+                .unwrap();
+            db.conn().pragma_update(None, "user_version", 14).unwrap();
+        }
+        let db = Database::open(&path).unwrap();
+        assert_eq!(schema_version(db.conn()), SCHEMA_VERSION);
+        assert!(table_exists(db.conn(), "turn_queue"));
+        assert!(migration_backup_path(&path, 14).exists());
     }
 
     fn schema_version(conn: &Connection) -> i64 {
@@ -1314,6 +1505,7 @@ mod tests {
             "secrets_meta",
             "audit_log",
             "plan_approvals",
+            "session_import_origins",
         ] {
             assert!(table_exists(db.conn(), table), "missing {table}");
         }
@@ -1384,6 +1576,56 @@ mod tests {
                 .unwrap();
             assert_eq!(n, 0, "{table}.{column} must not exist in v7");
         }
+    }
+
+    #[test]
+    fn migrates_v13_plugin_session_schema() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pi.sqlite");
+        {
+            let db = Database::open(&path).unwrap();
+            db.conn()
+                .execute(
+                    "INSERT INTO sessions (id, created_at, updated_at)
+                     VALUES ('existing-core', 1, 1)",
+                    [],
+                )
+                .unwrap();
+            db.conn()
+                .execute_batch(
+                    "DROP TABLE session_import_origins;
+                     DROP INDEX idx_sessions_deleted;
+                     ALTER TABLE sessions DROP COLUMN deleted_at;",
+                )
+                .unwrap();
+            db.conn().pragma_update(None, "user_version", 13).unwrap();
+        }
+
+        let db = Database::open(&path).unwrap();
+        assert_eq!(schema_version(db.conn()), SCHEMA_VERSION);
+        assert!(table_exists(db.conn(), "session_import_origins"));
+        assert_eq!(
+            db.conn()
+                .query_row(
+                    "SELECT COUNT(*) FROM pragma_table_info('sessions')
+                     WHERE name = 'deleted_at'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            db.conn()
+                .query_row(
+                    "SELECT deleted_at FROM sessions WHERE id = 'existing-core'",
+                    [],
+                    |row| row.get::<_, Option<i64>>(0),
+                )
+                .unwrap(),
+            None
+        );
+        assert_readable_migration_backup(&path, 13);
     }
 
     #[test]

@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import type { AgentInstructionFile } from "@pi-desktop/shared";
 import { api } from "../lib/api";
-import { Button, Textarea } from "./ui";
+import { Button, Textarea, TooltipButton } from "./ui";
 import { IconClose } from "./icons";
 
 export function ProjectInstructionsDialog({
@@ -80,15 +80,16 @@ export function ProjectInstructionsDialog({
             </h3>
             <div className="project-instructions-dialog-project">{project.name}</div>
           </div>
-          <button
+          <TooltipButton
             type="button"
             className="project-instructions-dialog-close"
-            aria-label={t("settings.cancel")}
+            tooltip={t("settings.cancel")}
+            ariaLabel={t("settings.cancel")}
             disabled={saving}
             onClick={onClose}
           >
             <IconClose size={16} />
-          </button>
+          </TooltipButton>
         </div>
         <div className="project-instructions-dialog-path">{file?.path ?? ""}</div>
         <Textarea

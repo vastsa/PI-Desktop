@@ -32,9 +32,12 @@ Renderer UI  →  Electron orchestration  →  Rust host core
   transcript          pi Node sidecar          SQLite + processes
 ```
 
-The renderer owns presentation. Electron coordinates desktop capabilities. The
-Rust host owns privileged process, filesystem, RPC, and persistence boundaries.
-The pi sidecar owns the agent loop and provider-facing model work.
+The renderer owns presentation. Electron main coordinates desktop capabilities:
+window lifecycle, IPC routing, process supervision, the update client, and the
+plugin, MCP-bridge, and optional loopback MCP-control services. The Rust host
+owns tool execution and the workspace sandbox, the permission gateway, plugin
+host services, RPC, and persistence. The pi sidecar owns the agent loop and
+provider-facing model work.
 
 ## Working with the docs
 

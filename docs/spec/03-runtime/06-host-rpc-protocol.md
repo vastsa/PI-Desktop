@@ -159,10 +159,12 @@ Rules:
    advertises `"a2a"`. A v10 host or client is rejected before the UI becomes
    interactive, so a mixed pair cannot call a missing domain.
 
-Protocol v11 is paired with host-core storage schema v13. Schema v12 had added
+Protocol v11 is paired with host-core storage schema v14. Schema v12 had added
 the A2A tables (`a2a_tasks`, `a2a_messages`, `a2a_artifacts`,
 `a2a_push_configs`) via `migrate_v11_to_v12`; `migrate_v12_to_v13` drops those
-tables, and a fresh database never creates them. The schema version is an
+tables, and v14 adds the plugin-session ownership sidecar and soft-delete
+column. A fresh database creates neither A2A tables nor unowned plugin-session
+rows. The schema version is an
 internal persistence invariant, not an additional JSON-RPC field; the
 checkpoint architecture remains host-owned.
 
@@ -172,6 +174,7 @@ checkpoint architecture remains host-owned.
 - `app.handshake`
 - `app.health`
 - `app.getVersion`
+- `app.getOnboarding` — inline onboarding checklist state (D031)
 
 `app.health` returns a diagnostic `toolBudget` object:
 
@@ -200,6 +203,8 @@ type ToolBudgetHealth = {
 ### Projects
 - `projects.list` — returns durable project records ordered pinned-first, then
   by last-opened time; includes records materialized by session imports
+- `projects.create({ path })` — upserts a durable project record without
+  changing the active workspace and returns the host-generated project id
 
 ### Secrets
 - `secrets.set`
@@ -213,12 +218,12 @@ A provider row has two independent refs — `secret:provider:<id>:api_key` and
 vendor-account credential needed no new host method. `ProviderPublic` therefore
 reports `hasSecret` (true for **either** credential), `hasOauth`, and the
 non-secret `oauthAccountLabel`; `providers.create` / `providers.update` accept
-`oauthAccountLabel` and optional `userAgent` (stored in `config_json.userAgent`,
-cleared with an empty string), and `providers.delete` clears both refs for
+`oauthAccountLabel` and optional `headers` (stored in `config_json.headers`,
+cleared with `{}`), and `providers.delete` clears both refs for
 exactly one row. Login orchestration and token refresh stay in Electron main
 and never reach this protocol — see [14-secrets-storage](14-secrets-storage.md)
-§10. An OAuth row's User-Agent is edited after the account exists and applies
-to later refresh and inference; the vendor picker does not collect it.
+§10. An OAuth row's headers are edited after the account exists and apply
+to later refresh and inference; the vendor picker does not collect them.
 
 ### Settings
 - `settings.get`
@@ -253,6 +258,8 @@ to later refresh and inference; the vendor picker does not collect it.
   deduplicated session index counter, and a window is served by seeking to its
   first selected line instead of scanning the history before it.
 - `session.delete`
+- `session.getScratchPath` — the session's scratch directory (D114), created
+  on demand
 - `session.rename({ id, title })` trims and validates the title at the host
   boundary. It accepts 1–80 Unicode code points and returns `{ ok: boolean }`;
   blank or overlong titles are `INVALID_PARAMS`. A successful rename changes
@@ -264,6 +271,14 @@ to later refresh and inference; the vendor picker does not collect it.
   `INVALID_PARAMS`; mode is `plan | goal | agent` and changing any session
   configuration is allowed only while idle and without a pending/queued/running
   Plan or Goal record
+- `session.moveProject({ sessionId, projectPath })` moves an idle session to a
+  project and returns `{ session }` carrying the canonical project path. It
+  upserts the project row and updates only `sessions.project_id` and
+  `updated_at`; transcript, revisions, artifacts, notifications, and scratch
+  data stay with the session. Blank ids or paths are `INVALID_PARAMS`, an
+  unknown session is `NOT_FOUND`, and a session with a running turn is
+  `CONFLICT` so a live agent never switches instruction roots mid-turn.
+  Additive RPC; no protocol version bump.
 - `session.appendMessage`
 - `session.saveInflightMessage` — Electron-main-only checkpoint of the
   assistant reply currently streaming, including the finished `message_end`
@@ -283,13 +298,26 @@ to later refresh and inference; the vendor picker does not collect it.
   ids and non-negative `tokensBefore`; it does not insert a message/search row
   or change the visible transcript projection
 - `session.replaceMessages` — atomic transcript rewrite (temp-file rename +
-  one index transaction, D119) used by regenerate/edit flows and unanswered
+  one index transaction, D119) used by message delete and unanswered
   renderer smart-stop undo; it preserves the
   newest checkpoint only while both its boundary and optional first-kept id
   remain valid in the rewritten prefix, and it carries each surviving message's
   owning `turn_id` across the rewrite. It is only safe from a caller that owns
   the whole transcript for the duration of the call: any rewrite from a snapshot
-  taken outside the RPC lock can delete a message appended in between
+  taken outside the RPC lock can delete a message appended in between.
+  Regenerating and retrying use `session.truncateFrom` instead so the kept
+  prefix never crosses the JSON-RPC pipe (ADR 0216)
+- `session.truncateFrom` — host-owned suffix cut for regenerate / retry /
+  edit-resend: `{ sessionId, fromMessageId?, truncateBefore? }`. Identity
+  wins; an unknown `fromMessageId` is `NOT_FOUND`. Under the state lock it
+  aborts a leftover running turn, archives the discarded regenerate tail
+  (refreshing the stamped variant, or minting an inactive one), rewrites the
+  kept prefix, and drops the in-flight checkpoint. Returns
+  `{ ok, keptCount, discardedCount, abortedTurnId, revision }` where `revision`
+  is the pager stamp for the upcoming user prompt, or null when the discarded
+  tail has no user root. No transcript snapshot is in the request or the
+  result. Additive on protocol v11 (ADR 0216)
+
 - `session.saveRevision` — archive a regenerate branch under
   `(sessionId, rootUserId)`. With `revisionIndex`, refresh that existing
   variant's payload in place (the branch grew since it was archived) instead
@@ -313,6 +341,9 @@ to later refresh and inference; the vendor picker does not collect it.
   the prefix in front of the restored branch is taken from there rather than
   from the caller. Surviving messages keep their owning `turn_id`
 - `session.beginTurn`
+- `session.queuePush` / `session.queueList` / `session.queueRemove` — the
+  Host-owned turn queue (D386 / ADR 0213, schema v15); push is idempotent per
+  principal and key, bounded at eight entries per session
 - `session.endTurn` — atomically moves a running turn to its terminal state and
   conditionally returns the newly created notification for `completed`/`error`;
   returns no notification when `createNotification=false`, for `aborted`, or
@@ -325,6 +356,28 @@ to later refresh and inference; the vendor picker does not collect it.
 - `session.import` — atomically imports one converted session; a non-empty
   project path is normalized and upserted into `projects` before the session
   references it; returns `{ imported, skipped }`
+
+Plugin-owned session methods are additive to protocol v11 and are called only by
+Electron main after plugin permission and manifest-source checks:
+
+- `plugin.session.import` — import one host-owned session with an idempotency
+  key `(pluginId, source, externalId)`; the host generates ids and binds to a
+  project only when the caller supplies an existing `projectId` created by
+  `projects.create`; the historical `projectPath` remains metadata
+- `plugin.session.importBatch` — bounded `skip` or all-or-nothing `fail` batch
+- `plugin.session.list` / `plugin.session.get` / `plugin.session.listMessages` —
+  read only the calling plugin's active imported sessions
+- `plugin.session.rename` — rename an owned active imported session
+- `plugin.session.delete` — `trash` hides and retains the transcript; `purge`
+  removes it and permits re-import
+- Successful plugin session mutations cause Electron main to emit one
+  `sessionsChanged` renderer event; the renderer refreshes the session list,
+  and plugins do not emit this UI synchronization event.
+
+The host rejects unknown roles, non-RFC3339 or non-monotonic timestamps, and
+oversized/deep payloads. Tool values are sanitized for host-reserved keys. The
+per-plugin rolling limits are 10 single imports, 5 batch imports, and 20
+deletes per 60 seconds. P2/P3 methods are not present in protocol v11.
 
 ### Stats
 
@@ -417,6 +470,7 @@ one after the final row would be wrong.
 ### Permissions
 - `permissions.evaluate`
 - `permissions.resolve`
+- `permissions.pending` (D374: open requests as Host state)
 - `permissions.listSessionGrants`
 - `permissions.clearSessionGrants`
 
@@ -424,14 +478,58 @@ one after the final row would be wrong.
 - `plugins.list`
 - `plugins.loadDev`
 - `plugins.installFromPath`
+- `plugins.installFromPackage` — install a `.piplug` archive after checksum
+  verification
 - `plugins.enable`
 - `plugins.disable`
 - `plugins.uninstall`
 - `plugins.getPermissions`
+- `plugins.grantPermissions` / `plugins.revokePermissions` — change the
+  granted set; the runtime enforces the intersection of declared and granted
+- `plugins.setAutoUpdate`
+- `plugins.setScope` — activation scope (ADR 0056)
+- `plugins.resolveExecution` — resolve which plugin tools/skills/MCP servers
+  are active for a session's project before a turn starts
+
+### Marketplace
+- `market.refresh` — fetch and cache the catalog from the configured URL
+- `market.search` / `market.getDetail`
+- `market.install` — download, verify (`PLUGIN_INTEGRITY`,
+  `PLUGIN_MARKET_*`), and install one catalog release
+- `market.checkUpdates` / `market.applyUpdates`
+
+### Providers and models
+- `providers.list` / `providers.get` / `providers.create` /
+  `providers.update` / `providers.delete`
+- `providers.getSecret` — main/host only, never reachable from the renderer
+- `providers.listModels` / `providers.cacheModels` — discovered model rows
+  and their host-side cache (ADR 0027 / ADR 0134)
+- `providers.testConnection`
+
+### Agent capabilities (skills, subagents, MCP servers)
+- `skills.list` / `skills.active` / `skills.read` / `skills.create` /
+  `skills.update` / `skills.remove` / `skills.import` /
+  `skills.setEnabled` / `skills.setScope` — user skill documents
+  (`SKILL_INVALID` on validation failure)
+- `agents.list` / `agents.active` / `agents.read` / `agents.create` /
+  `agents.update` / `agents.remove` / `agents.setEnabled` /
+  `agents.setScope` — user subagent documents (`SUBAGENT_INVALID`)
+- `mcp.list` / `mcp.active` / `mcp.upsert` / `mcp.remove` /
+  `mcp.setEnabled` / `mcp.setScope` — user MCP server definitions
+  (`MCP_INVALID`)
+
+`*.active` returns the entries that apply to the given project after
+activation-scope filtering (`CAPABILITY_INVALID` for an unknown scope).
+
+### Search, artifacts, keyboard
+- `search.query` — global search across sessions, projects, and settings
+  destinations (ADR 0034)
+- `artifacts.list` — Plan/Goal checkpoint artifacts for a session
+- `keyboard.setGlobalShortcut` — host-owned native fallback for the plugin
+  launcher chord where Electron cannot register it
 
 ### Audit
 - `audit.append`
-- `audit.query` (optional later)
 
 ### Notification (D117)
 - `notification.list`
@@ -753,7 +851,12 @@ field.
 ### 5.2 Shell catalog
 
 ```ts
-type CommandShellId = "windows-powershell" | "cmd" | "git-bash" | "bash";
+type CommandShellId =
+  | "windows-powershell"
+  | "windows-pwsh"
+  | "cmd"
+  | "git-bash"
+  | "bash";
 
 type CommandShellOption = {
   id: CommandShellId;
@@ -812,35 +915,54 @@ params: {
 
 Timeout behavior (**D005**): after 120s unresolved → deny.
 
+`permissions.pending` returns the open requests as Host state (D374/D375):
+`{ requests: PendingPermission[] }`, oldest first, optionally scoped by
+`sessionId`. Each entry carries the same fields as the `permissions.request`
+notification plus `createdAt`, `expiresAt`, and `remainingMs`. Requests past
+the timeout are omitted. A client that attaches after the notification was
+emitted reads this list and answers through the unchanged
+`permissions.resolve`; the notification path itself does not change.
+
 ## 7. Error codes
+
+JSON-RPC errors carry a numeric `code` plus `data.errorCode`, the stable
+string from [08-error-codes](08-error-codes.md). Several string codes share a
+numeric slot; the string is the contract, the number is transport detail.
 
 | code | errorCode | meaning |
 |---|---|---|
 | 1000 | INTERNAL | unexpected host failure |
 | 1001 | UNAUTHORIZED | missing/invalid handshake or capability |
+| 1001 | HOST_SHUTTING_DOWN | the host is draining after EOF and refused the call |
 | 1002 | INVALID_PARAMS | schema validation failed |
-| 1003 | PATH_OUTSIDE_WORKSPACE | path sandbox violation before an explicit outside-path permission decision |
-| 1004 | TOOL_DENIED | permission denied |
-| 1005 | TOOL_TIMEOUT | tool exceeded timeout |
-| 1006 | WORKSPACE_REQUIRED | no workspace bound |
+| 1002 | MODEL_ALIAS_TOO_LONG | provider row alias exceeds 60 code points |
+| 1003 | NOT_FOUND | entity missing (legacy slot, kept for old callers) |
+| 1006 | RATE_LIMITED | a per-caller budget window was exhausted |
 | 1007 | NOT_FOUND | entity missing |
+| 1007 | SESSION_NOT_FOUND | the named session does not exist; tool requests never fall back to the global workspace |
 | 1008 | CONFLICT | busy/conflict state |
+| 1008 | AGENT_BUSY | the session has a running turn |
 | 1009 | PLUGIN_INVALID | manifest/validation failure |
 | 1010 | PLUGIN_LOAD_FAILED | enable/load failure |
-| 1011 | PROTOCOL_MISMATCH | handshake version mismatch |
+| 1011 | PROTOCOL_MISMATCH | `app.handshake` protocol version mismatch |
+| 1012 | PLUGIN_INTEGRITY | package checksum/signature mismatch |
+| 1013 | PLUGIN_PERMISSION_DENIED | plugin lacks the permission the call needs |
+| 1014 | PLUGIN_NETWORK | marketplace download/catalog fetch failed |
+| 1015 | MCP_INVALID | user MCP server definition failed validation |
+| 1015 | PLAN_* | every Plan/Goal checkpoint failure (`PLAN_APPROVAL_TIMEOUT`, `PLAN_APPROVAL_STALE`, `PLAN_APPROVAL_INTERRUPTED`, `PLAN_SESSION_NOT_FOUND`, `PLAN_WORKSPACE_REQUIRED`, …) shares this slot; the string code distinguishes them |
+| 1016 | SKILL_INVALID | user skill document failed validation |
+| 1017 | SUBAGENT_INVALID | user subagent document failed validation |
+| 1018 | CAPABILITY_INVALID | agent capability root/scope setting failed validation |
 | -32029 | HOST_OVERLOADED | RPC dispatcher capacity exhausted |
-| 1012 | WRITE_DISABLED_IN_PLAN | Write is unavailable in Plan and Goal |
-| 1013 | EDIT_DISABLED_IN_PLAN | Edit is unavailable in Plan and Goal |
-| 1014 | PLUGIN_DISABLED_IN_PLAN | plugin tools are unavailable in Plan and Goal |
-| 1015 | PLAN_APPROVAL_REQUIRED | SubmitPlan/SubmitGoal is waiting for approval |
-| 1016 | PLAN_APPROVAL_TIMEOUT | absolute approval deadline expired |
-| 1017 | PLAN_APPROVAL_STALE | response does not match the live proposal/session/turn/tool-call/version |
-| 1018 | PLAN_APPROVAL_INTERRUPTED | pending approval failed closed during abort/recovery |
-| 1019 | PLAN_REQUIRES_INTERACTIVE_SESSION | unattended Plan or Goal cannot run |
-| 1020 | PLAN_ARTIFACT_WRITE_FAILED | exact bytes could not be written to a new `.pi/<kind>/*.md` artifact |
-| 1021 | PLAN_EXECUTION_INTERRUPTED | approved queued/running Plan or Goal execution was interrupted |
-| 1022 | SHELL_NOT_FOUND | no effective platform shell is available |
-| 1023 | COMMAND_SHELL_CHANGED | pinned shell ID or dialect changed before execution |
+| -32601 | — | unknown method |
+| -32700 | — | unparseable request line |
+| 1002 | LIMIT_EXCEEDED | an NDJSON request line over 64 MiB; Electron rejects the write before it reaches the pipe; if the host still sees it, the remainder of the line is drained, the reply keeps the request id when it can be peeked from the prefix, and the stdin reader keeps running |
+
+
+Tool outcomes (`TOOL_DENIED`, `TOOL_TIMEOUT`, `PATH_OUTSIDE_WORKSPACE`,
+`WORKSPACE_PATH_DENIED`, `WRITE_DISABLED_IN_PLAN`, `SHELL_NOT_FOUND`,
+`COMMAND_SHELL_CHANGED`, …) are not JSON-RPC errors: `tools.execute` returns
+`ok: false` with `errorCode` in the result (§5).
 
 ## 8. Concurrency / ordering
 

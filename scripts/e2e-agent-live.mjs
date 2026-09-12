@@ -12,16 +12,26 @@ import { PROTOCOL_VERSION } from "../packages/shared/dist/protocol.js";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const hostBin = join(root, "target/debug/pi-desktop-host-core");
 const dataDir = mkdtempSync(join(tmpdir(), "pi-agent-live-"));
-const API_KEY = process.env.PI_DESKTOP_TEST_API_KEY;
-const BASE_URL = process.env.PI_DESKTOP_TEST_BASE_URL || "https://api.oj.ink/v1";
-const MODEL = process.env.PI_DESKTOP_TEST_MODEL || "mimo-v2.5";
-
-if (!API_KEY) {
-  console.error("missing API key");
+// No defaults on purpose: this script sends a real prompt with a real key, so
+// the endpoint and model must be chosen explicitly by whoever runs it.
+const REQUIRED_ENV = ["PI_DESKTOP_TEST_API_KEY", "PI_DESKTOP_TEST_BASE_URL", "PI_DESKTOP_TEST_MODEL"];
+const missingEnv = REQUIRED_ENV.filter((name) => !process.env[name]?.trim());
+if (missingEnv.length > 0) {
+  console.error(`missing required environment variables: ${missingEnv.join(", ")}`);
+  console.error(
+    "Set PI_DESKTOP_TEST_API_KEY (provider API key), PI_DESKTOP_TEST_BASE_URL " +
+      "(OpenAI-compatible base URL), and PI_DESKTOP_TEST_MODEL (model id) to run this live test.",
+  );
+  rmSync(dataDir, { recursive: true, force: true });
   process.exit(1);
 }
+const API_KEY = process.env.PI_DESKTOP_TEST_API_KEY;
+const BASE_URL = process.env.PI_DESKTOP_TEST_BASE_URL;
+const MODEL = process.env.PI_DESKTOP_TEST_MODEL;
+
 if (!existsSync(hostBin)) {
-  console.error("missing host bin");
+  console.error(`missing host bin at ${hostBin}; run 'cargo build -p host-core' first`);
+  rmSync(dataDir, { recursive: true, force: true });
   process.exit(1);
 }
 

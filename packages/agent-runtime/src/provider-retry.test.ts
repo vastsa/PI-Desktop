@@ -11,6 +11,7 @@ import {
   delayWithAbort,
   isOpaqueBadRequest,
   isTransientProviderRetryCode,
+  PROVIDER_RATE_LIMIT_MAX_RETRIES,
   PROVIDER_TRANSIENT_MAX_RETRIES,
   providerRateLimitDelayMs,
   providerSetupRetryDelayMs,
@@ -370,8 +371,9 @@ describe("bounded transient provider retry", () => {
     expect(carriesRetryDelayHeaders(undefined)).toBe(false);
   });
 
-  it("waits 1s, 2s, 4s, then 8s across the four transient retries", () => {
-    expect(PROVIDER_TRANSIENT_MAX_RETRIES).toBe(4);
+  it("allows ten transient retries and caps the later waits at 8s", () => {
+    expect(PROVIDER_RATE_LIMIT_MAX_RETRIES).toBe(10);
+    expect(PROVIDER_TRANSIENT_MAX_RETRIES).toBe(10);
     expect(providerSetupRetryDelayMs(1)).toBe(1_000);
     expect(providerSetupRetryDelayMs(2)).toBe(2_000);
     expect(providerSetupRetryDelayMs(3)).toBe(4_000);
@@ -437,11 +439,18 @@ describe("bounded transient provider retry", () => {
     const events: string[] = [];
     for await (const event of stream) events.push(event.type);
 
-    // Four retries after the initial attempt, so five provider attempts.
-    expect(attempts).toBe(5);
-    expect(claims.map((claim) => claim.attempt)).toEqual([1, 2, 3, 4]);
+    // Ten retries after the initial attempt, so eleven provider attempts.
+    expect(attempts).toBe(PROVIDER_TRANSIENT_MAX_RETRIES + 1);
+    expect(claims.map((claim) => claim.attempt)).toEqual(
+      Array.from({ length: PROVIDER_TRANSIENT_MAX_RETRIES }, (_, index) => index + 1),
+    );
     expect(claims.every((claim) => claim.code === "PROVIDER_ERROR")).toBe(true);
-    expect(delays).toEqual([1_000, 2_000, 4_000, 8_000]);
+    expect(delays).toEqual([
+      1_000,
+      2_000,
+      4_000,
+      ...Array.from({ length: PROVIDER_TRANSIENT_MAX_RETRIES - 3 }, () => 8_000),
+    ]);
     // No intermediate error event reaches the consumer.
     expect(events).toEqual(["start", "done"]);
     expect((await stream.result()).stopReason).toBe("stop");
@@ -472,7 +481,7 @@ describe("bounded transient provider retry", () => {
     const events: string[] = [];
     for await (const event of stream) events.push(event.type);
 
-    expect(attempts).toBe(5);
+    expect(attempts).toBe(PROVIDER_TRANSIENT_MAX_RETRIES + 1);
     expect(events).toEqual(["error"]);
     const result = await stream.result();
     expect(result.stopReason).toBe("error");

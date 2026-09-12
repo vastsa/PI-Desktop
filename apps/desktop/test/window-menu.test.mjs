@@ -152,8 +152,8 @@ test("Windows and Linux use menu-free frameless chrome with window controls", ()
   }
   assert.match(appSource, /nativeMenuAction\(id\)/);
   assert.match(controlsSource, /windowControl\("getState"\)/);
-  assert.match(controlsSource, /aria-label=\{t\("window\.minimize"/);
-  assert.match(controlsSource, /aria-label=\{t\("window\.close"/);
+  assert.match(controlsSource, /ariaLabel=\{t\("window\.minimize"/);
+  assert.match(controlsSource, /ariaLabel=\{t\("window\.close"/);
   assert.match(controlsSource, /window-controls-in-pane/);
   assert.match(
     appSource,
@@ -161,7 +161,7 @@ test("Windows and Linux use menu-free frameless chrome with window controls", ()
   );
   assert.match(
     stylesSource,
-    /\.window-controls\.window-controls-in-pane\s*\{[^}]*position:\s*absolute;/s,
+    /\.window-controls\.window-controls-in-pane\s*\{[^}]*position:\s*fixed;/s,
   );
   assert.match(
     stylesSource,
@@ -188,9 +188,25 @@ test("Windows and Linux use menu-free frameless chrome with window controls", ()
   );
   assert.match(
     stylesSource,
-    /:root\[data-platform="win32"\] \.main-titlebar\.work-panel-open,[\s\S]*:root\[data-platform="linux"\] \.main-titlebar\.work-panel-open\s*\{[^}]*right:\s*var\(--ds-window-controls-width\);/,
+    /:root\[data-platform="win32"\] \.main-titlebar\.work-panel-open,[\s\S]*:root\[data-platform="linux"\] \.main-titlebar\.work-panel-open\s*\{[^}]*right:\s*0;/,
   );
-  assert.doesNotMatch(stylesSource, /\.work-panel-header\s*\{[^}]*margin-right:/s);
+  // The base header rule stays platform-neutral; the win32/linux reservation
+  // ends the header's *box*, so its native drag rectangle stops before the
+  // control band instead of covering the window controls.
+  assert.doesNotMatch(
+    stylesSource,
+    /^\.work-panel-header\s*\{[^}]*margin-right:/ms,
+    "the base header rule stays platform-neutral",
+  );
+  assert.match(
+    stylesSource,
+    /:root\[data-platform="win32"\] \.work-panel-header,[\s\S]*:root\[data-platform="linux"\] \.work-panel-header\s*\{[^}]*margin-right:\s*var\(--ds-window-controls-width\);/,
+  );
+  assert.doesNotMatch(
+    stylesSource,
+    /padding-right:\s*calc\(var\(--ds-window-controls-width\)/,
+    "padding does not exclude an Electron draggable region",
+  );
   assert.match(
     stylesSource,
     /:root\[data-platform="(win32|linux)"\] \.thread-content[\s\S]*?padding-top:\s*var\(--ds-toolbar-height\);/,

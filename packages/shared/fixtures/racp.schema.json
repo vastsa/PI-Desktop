@@ -1,0 +1,2250 @@
+{
+  "RequestContext": {
+    "type": "object",
+    "required": [
+      "requestId"
+    ],
+    "properties": {
+      "requestId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "idempotencyKey": {
+        "type": "string",
+        "minLength": 1
+      },
+      "expectedRevision": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "traceparent": {
+        "type": "string"
+      }
+    }
+  },
+  "Session": {
+    "type": "object",
+    "required": [
+      "id",
+      "title",
+      "mode",
+      "status",
+      "planningState",
+      "permissionMode",
+      "queuedTurnIds",
+      "revision",
+      "createdAt",
+      "updatedAt"
+    ],
+    "properties": {
+      "id": {
+        "type": "string",
+        "minLength": 1
+      },
+      "title": {
+        "type": "string"
+      },
+      "projectId": {
+        "type": "string"
+      },
+      "workspaceLabel": {
+        "type": "string"
+      },
+      "mode": {
+        "anyOf": [
+          {
+            "type": "string",
+            "const": "agent"
+          },
+          {
+            "type": "string",
+            "const": "plan"
+          },
+          {
+            "type": "string",
+            "const": "goal"
+          }
+        ]
+      },
+      "status": {
+        "anyOf": [
+          {
+            "type": "string",
+            "const": "idle"
+          },
+          {
+            "type": "string",
+            "const": "running"
+          },
+          {
+            "type": "string",
+            "const": "waiting_permission"
+          },
+          {
+            "type": "string",
+            "const": "aborted"
+          },
+          {
+            "type": "string",
+            "const": "error"
+          }
+        ]
+      },
+      "planningState": {
+        "anyOf": [
+          {
+            "type": "string",
+            "const": "inactive"
+          },
+          {
+            "type": "string",
+            "const": "planning"
+          },
+          {
+            "type": "string",
+            "const": "awaiting_approval"
+          }
+        ]
+      },
+      "permissionMode": {
+        "anyOf": [
+          {
+            "type": "string",
+            "const": "ask"
+          },
+          {
+            "type": "string",
+            "const": "accept-edits"
+          },
+          {
+            "type": "string",
+            "const": "auto"
+          }
+        ]
+      },
+      "activeTurnId": {
+        "type": "string"
+      },
+      "queuedTurnIds": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "revision": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "createdAt": {
+        "type": "string"
+      },
+      "updatedAt": {
+        "type": "string"
+      }
+    }
+  },
+  "Turn": {
+    "type": "object",
+    "required": [
+      "id",
+      "sessionId",
+      "status",
+      "admission",
+      "effectivePermissionMode"
+    ],
+    "properties": {
+      "id": {
+        "type": "string",
+        "minLength": 1
+      },
+      "sessionId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "status": {
+        "anyOf": [
+          {
+            "type": "string",
+            "const": "queued"
+          },
+          {
+            "type": "string",
+            "const": "running"
+          },
+          {
+            "type": "string",
+            "const": "waiting_approval"
+          },
+          {
+            "type": "string",
+            "const": "waiting_input"
+          },
+          {
+            "type": "string",
+            "const": "completed"
+          },
+          {
+            "type": "string",
+            "const": "interrupted"
+          },
+          {
+            "type": "string",
+            "const": "failed"
+          },
+          {
+            "type": "string",
+            "const": "canceled"
+          }
+        ]
+      },
+      "admission": {
+        "anyOf": [
+          {
+            "type": "string",
+            "const": "reject_if_busy"
+          },
+          {
+            "type": "string",
+            "const": "queue"
+          }
+        ]
+      },
+      "queuePosition": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "effectivePermissionMode": {
+        "anyOf": [
+          {
+            "type": "string",
+            "const": "ask"
+          },
+          {
+            "type": "string",
+            "const": "accept-edits"
+          },
+          {
+            "type": "string",
+            "const": "auto"
+          }
+        ]
+      },
+      "idempotencyKey": {
+        "type": "string"
+      },
+      "startedAt": {
+        "type": "string"
+      },
+      "endedAt": {
+        "type": "string"
+      },
+      "error": {
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "retriable",
+          "traceId"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1
+          },
+          "message": {
+            "type": "string"
+          },
+          "retriable": {
+            "type": "boolean"
+          },
+          "traceId": {
+            "type": "string"
+          },
+          "details": {}
+        }
+      }
+    }
+  },
+  "Cursor": {
+    "type": "object",
+    "required": [
+      "epoch",
+      "sequence"
+    ],
+    "properties": {
+      "epoch": {
+        "type": "string",
+        "minLength": 1
+      },
+      "sequence": {
+        "type": "integer",
+        "minimum": 0
+      }
+    }
+  },
+  "EventEnvelope": {
+    "type": "object",
+    "required": [
+      "eventId",
+      "scope",
+      "epoch",
+      "revision",
+      "kind",
+      "occurredAt",
+      "payload"
+    ],
+    "properties": {
+      "eventId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "scope": {
+        "anyOf": [
+          {
+            "type": "string",
+            "const": "session"
+          },
+          {
+            "type": "string",
+            "const": "host"
+          }
+        ]
+      },
+      "sessionId": {
+        "type": "string"
+      },
+      "turnId": {
+        "type": "string"
+      },
+      "epoch": {
+        "type": "string",
+        "minLength": 1
+      },
+      "sequence": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "afterSequence": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "revision": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "kind": {
+        "anyOf": [
+          {
+            "type": "string",
+            "const": "session.created"
+          },
+          {
+            "type": "string",
+            "const": "session.changed"
+          },
+          {
+            "type": "string",
+            "const": "session.archived"
+          },
+          {
+            "type": "string",
+            "const": "host.changed"
+          },
+          {
+            "type": "string",
+            "const": "turn.queued"
+          },
+          {
+            "type": "string",
+            "const": "turn.started"
+          },
+          {
+            "type": "string",
+            "const": "turn.completed"
+          },
+          {
+            "type": "string",
+            "const": "turn.interrupted"
+          },
+          {
+            "type": "string",
+            "const": "turn.failed"
+          },
+          {
+            "type": "string",
+            "const": "turn.canceled"
+          },
+          {
+            "type": "string",
+            "const": "turn.activity"
+          },
+          {
+            "type": "string",
+            "const": "item.started"
+          },
+          {
+            "type": "string",
+            "const": "item.delta"
+          },
+          {
+            "type": "string",
+            "const": "item.completed"
+          },
+          {
+            "type": "string",
+            "const": "tool.progress"
+          },
+          {
+            "type": "string",
+            "const": "terminal.changed"
+          },
+          {
+            "type": "string",
+            "const": "terminal.output"
+          },
+          {
+            "type": "string",
+            "const": "approval.requested"
+          },
+          {
+            "type": "string",
+            "const": "approval.resolved"
+          },
+          {
+            "type": "string",
+            "const": "input.requested"
+          },
+          {
+            "type": "string",
+            "const": "input.resolved"
+          },
+          {
+            "type": "string",
+            "const": "resync.required"
+          }
+        ]
+      },
+      "occurredAt": {
+        "type": "string"
+      },
+      "parentToolCallId": {
+        "type": "string"
+      },
+      "agentName": {
+        "type": "string"
+      },
+      "payload": {}
+    }
+  },
+  "ItemSummary": {
+    "type": "object",
+    "required": [
+      "id",
+      "turnId",
+      "itemType",
+      "status",
+      "createdAt",
+      "content"
+    ],
+    "properties": {
+      "id": {
+        "type": "string",
+        "minLength": 1
+      },
+      "turnId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "itemType": {
+        "anyOf": [
+          {
+            "type": "string",
+            "const": "message"
+          },
+          {
+            "type": "string",
+            "const": "tool"
+          },
+          {
+            "type": "string",
+            "const": "compaction"
+          }
+        ]
+      },
+      "status": {
+        "anyOf": [
+          {
+            "type": "string",
+            "const": "streaming"
+          },
+          {
+            "type": "string",
+            "const": "completed"
+          }
+        ]
+      },
+      "sequence": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "createdAt": {
+        "type": "string"
+      },
+      "parentToolCallId": {
+        "type": "string"
+      },
+      "agentName": {
+        "type": "string"
+      },
+      "content": {}
+    }
+  },
+  "SessionSnapshot": {
+    "type": "object",
+    "required": [
+      "session",
+      "queuedTurns",
+      "items",
+      "activeItems",
+      "pendingApprovals",
+      "pendingInputs",
+      "hasMoreHistory",
+      "cursor",
+      "revision",
+      "generatedAt"
+    ],
+    "properties": {
+      "session": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "mode",
+          "status",
+          "planningState",
+          "permissionMode",
+          "queuedTurnIds",
+          "revision",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "workspaceLabel": {
+            "type": "string"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "agent"
+              },
+              {
+                "type": "string",
+                "const": "plan"
+              },
+              {
+                "type": "string",
+                "const": "goal"
+              }
+            ]
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "idle"
+              },
+              {
+                "type": "string",
+                "const": "running"
+              },
+              {
+                "type": "string",
+                "const": "waiting_permission"
+              },
+              {
+                "type": "string",
+                "const": "aborted"
+              },
+              {
+                "type": "string",
+                "const": "error"
+              }
+            ]
+          },
+          "planningState": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "inactive"
+              },
+              {
+                "type": "string",
+                "const": "planning"
+              },
+              {
+                "type": "string",
+                "const": "awaiting_approval"
+              }
+            ]
+          },
+          "permissionMode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "ask"
+              },
+              {
+                "type": "string",
+                "const": "accept-edits"
+              },
+              {
+                "type": "string",
+                "const": "auto"
+              }
+            ]
+          },
+          "activeTurnId": {
+            "type": "string"
+          },
+          "queuedTurnIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        }
+      },
+      "activeTurn": {
+        "type": "object",
+        "required": [
+          "id",
+          "sessionId",
+          "status",
+          "admission",
+          "effectivePermissionMode"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sessionId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "queued"
+              },
+              {
+                "type": "string",
+                "const": "running"
+              },
+              {
+                "type": "string",
+                "const": "waiting_approval"
+              },
+              {
+                "type": "string",
+                "const": "waiting_input"
+              },
+              {
+                "type": "string",
+                "const": "completed"
+              },
+              {
+                "type": "string",
+                "const": "interrupted"
+              },
+              {
+                "type": "string",
+                "const": "failed"
+              },
+              {
+                "type": "string",
+                "const": "canceled"
+              }
+            ]
+          },
+          "admission": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "reject_if_busy"
+              },
+              {
+                "type": "string",
+                "const": "queue"
+              }
+            ]
+          },
+          "queuePosition": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "effectivePermissionMode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "ask"
+              },
+              {
+                "type": "string",
+                "const": "accept-edits"
+              },
+              {
+                "type": "string",
+                "const": "auto"
+              }
+            ]
+          },
+          "idempotencyKey": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "string"
+          },
+          "endedAt": {
+            "type": "string"
+          },
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message",
+              "retriable",
+              "traceId"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "minLength": 1
+              },
+              "message": {
+                "type": "string"
+              },
+              "retriable": {
+                "type": "boolean"
+              },
+              "traceId": {
+                "type": "string"
+              },
+              "details": {}
+            }
+          }
+        }
+      },
+      "queuedTurns": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": [
+            "id",
+            "sessionId",
+            "status",
+            "admission",
+            "effectivePermissionMode"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sessionId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "queued"
+                },
+                {
+                  "type": "string",
+                  "const": "running"
+                },
+                {
+                  "type": "string",
+                  "const": "waiting_approval"
+                },
+                {
+                  "type": "string",
+                  "const": "waiting_input"
+                },
+                {
+                  "type": "string",
+                  "const": "completed"
+                },
+                {
+                  "type": "string",
+                  "const": "interrupted"
+                },
+                {
+                  "type": "string",
+                  "const": "failed"
+                },
+                {
+                  "type": "string",
+                  "const": "canceled"
+                }
+              ]
+            },
+            "admission": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "reject_if_busy"
+                },
+                {
+                  "type": "string",
+                  "const": "queue"
+                }
+              ]
+            },
+            "queuePosition": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "effectivePermissionMode": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "ask"
+                },
+                {
+                  "type": "string",
+                  "const": "accept-edits"
+                },
+                {
+                  "type": "string",
+                  "const": "auto"
+                }
+              ]
+            },
+            "idempotencyKey": {
+              "type": "string"
+            },
+            "startedAt": {
+              "type": "string"
+            },
+            "endedAt": {
+              "type": "string"
+            },
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message",
+                "retriable",
+                "traceId"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string"
+                },
+                "retriable": {
+                  "type": "boolean"
+                },
+                "traceId": {
+                  "type": "string"
+                },
+                "details": {}
+              }
+            }
+          }
+        }
+      },
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": [
+            "id",
+            "turnId",
+            "itemType",
+            "status",
+            "createdAt",
+            "content"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "turnId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "itemType": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "message"
+                },
+                {
+                  "type": "string",
+                  "const": "tool"
+                },
+                {
+                  "type": "string",
+                  "const": "compaction"
+                }
+              ]
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "streaming"
+                },
+                {
+                  "type": "string",
+                  "const": "completed"
+                }
+              ]
+            },
+            "sequence": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "createdAt": {
+              "type": "string"
+            },
+            "parentToolCallId": {
+              "type": "string"
+            },
+            "agentName": {
+              "type": "string"
+            },
+            "content": {}
+          }
+        }
+      },
+      "activeItems": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": [
+            "id",
+            "turnId",
+            "itemType",
+            "status",
+            "createdAt",
+            "content"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "turnId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "itemType": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "message"
+                },
+                {
+                  "type": "string",
+                  "const": "tool"
+                },
+                {
+                  "type": "string",
+                  "const": "compaction"
+                }
+              ]
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "streaming"
+                },
+                {
+                  "type": "string",
+                  "const": "completed"
+                }
+              ]
+            },
+            "sequence": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "createdAt": {
+              "type": "string"
+            },
+            "parentToolCallId": {
+              "type": "string"
+            },
+            "agentName": {
+              "type": "string"
+            },
+            "content": {}
+          }
+        }
+      },
+      "pendingApprovals": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": [
+            "id",
+            "sessionId",
+            "turnId",
+            "kind",
+            "summary",
+            "expiresAt",
+            "revision",
+            "allowedDecisions"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sessionId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "turnId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "kind": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "tool"
+                },
+                {
+                  "type": "string",
+                  "const": "plan"
+                },
+                {
+                  "type": "string",
+                  "const": "goal"
+                }
+              ]
+            },
+            "summary": {
+              "type": "string"
+            },
+            "expiresAt": {
+              "type": "string"
+            },
+            "revision": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "toolName": {
+              "type": "string"
+            },
+            "risk": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "low"
+                },
+                {
+                  "type": "string",
+                  "const": "medium"
+                },
+                {
+                  "type": "string",
+                  "const": "high"
+                }
+              ]
+            },
+            "agentName": {
+              "type": "string"
+            },
+            "parentToolCallId": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "question": {
+              "type": "string"
+            },
+            "artifact": {
+              "type": "object",
+              "required": [
+                "relativePath",
+                "sha256",
+                "sizeBytes"
+              ],
+              "properties": {
+                "relativePath": {
+                  "type": "string"
+                },
+                "sha256": {
+                  "type": "string"
+                },
+                "sizeBytes": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            },
+            "allowedDecisions": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": "allow-once"
+                  },
+                  {
+                    "type": "string",
+                    "const": "allow-session"
+                  },
+                  {
+                    "type": "string",
+                    "const": "deny"
+                  },
+                  {
+                    "type": "string",
+                    "const": "approve"
+                  },
+                  {
+                    "type": "string",
+                    "const": "reject"
+                  }
+                ]
+              },
+              "minItems": 1
+            },
+            "allowedPermissionModes": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": "ask"
+                  },
+                  {
+                    "type": "string",
+                    "const": "accept-edits"
+                  },
+                  {
+                    "type": "string",
+                    "const": "auto"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "pendingInputs": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": [
+            "id",
+            "sessionId",
+            "turnId",
+            "expiresAt",
+            "questions"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sessionId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "turnId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "expiresAt": {
+              "type": "string"
+            },
+            "agentName": {
+              "type": "string"
+            },
+            "parentToolCallId": {
+              "type": "string"
+            },
+            "questions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "question",
+                  "options",
+                  "multiSelect"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "question": {
+                    "type": "string"
+                  },
+                  "options": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "multiSelect": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              "minItems": 1
+            }
+          }
+        }
+      },
+      "hasMoreHistory": {
+        "type": "boolean"
+      },
+      "cursor": {
+        "type": "object",
+        "required": [
+          "epoch",
+          "sequence"
+        ],
+        "properties": {
+          "epoch": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sequence": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "revision": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "generatedAt": {
+        "type": "string"
+      }
+    }
+  },
+  "ApprovalRequest": {
+    "type": "object",
+    "required": [
+      "id",
+      "sessionId",
+      "turnId",
+      "kind",
+      "summary",
+      "expiresAt",
+      "revision",
+      "allowedDecisions"
+    ],
+    "properties": {
+      "id": {
+        "type": "string",
+        "minLength": 1
+      },
+      "sessionId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "turnId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "kind": {
+        "anyOf": [
+          {
+            "type": "string",
+            "const": "tool"
+          },
+          {
+            "type": "string",
+            "const": "plan"
+          },
+          {
+            "type": "string",
+            "const": "goal"
+          }
+        ]
+      },
+      "summary": {
+        "type": "string"
+      },
+      "expiresAt": {
+        "type": "string"
+      },
+      "revision": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "toolName": {
+        "type": "string"
+      },
+      "risk": {
+        "anyOf": [
+          {
+            "type": "string",
+            "const": "low"
+          },
+          {
+            "type": "string",
+            "const": "medium"
+          },
+          {
+            "type": "string",
+            "const": "high"
+          }
+        ]
+      },
+      "agentName": {
+        "type": "string"
+      },
+      "parentToolCallId": {
+        "type": "string"
+      },
+      "title": {
+        "type": "string"
+      },
+      "question": {
+        "type": "string"
+      },
+      "artifact": {
+        "type": "object",
+        "required": [
+          "relativePath",
+          "sha256",
+          "sizeBytes"
+        ],
+        "properties": {
+          "relativePath": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "allowedDecisions": {
+        "type": "array",
+        "items": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "allow-once"
+            },
+            {
+              "type": "string",
+              "const": "allow-session"
+            },
+            {
+              "type": "string",
+              "const": "deny"
+            },
+            {
+              "type": "string",
+              "const": "approve"
+            },
+            {
+              "type": "string",
+              "const": "reject"
+            }
+          ]
+        },
+        "minItems": 1
+      },
+      "allowedPermissionModes": {
+        "type": "array",
+        "items": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "ask"
+            },
+            {
+              "type": "string",
+              "const": "accept-edits"
+            },
+            {
+              "type": "string",
+              "const": "auto"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "ApprovalResponse": {
+    "type": "object",
+    "required": [
+      "approvalId",
+      "decision",
+      "context"
+    ],
+    "properties": {
+      "approvalId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "decision": {
+        "anyOf": [
+          {
+            "type": "string",
+            "const": "allow-once"
+          },
+          {
+            "type": "string",
+            "const": "allow-session"
+          },
+          {
+            "type": "string",
+            "const": "deny"
+          },
+          {
+            "type": "string",
+            "const": "approve"
+          },
+          {
+            "type": "string",
+            "const": "reject"
+          }
+        ]
+      },
+      "permissionMode": {
+        "anyOf": [
+          {
+            "type": "string",
+            "const": "ask"
+          },
+          {
+            "type": "string",
+            "const": "accept-edits"
+          },
+          {
+            "type": "string",
+            "const": "auto"
+          }
+        ]
+      },
+      "context": {
+        "type": "object",
+        "required": [
+          "requestId"
+        ],
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "traceparent": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "ApprovalResult": {
+    "type": "object",
+    "required": [
+      "approvalId",
+      "status",
+      "alreadyResolved",
+      "revision"
+    ],
+    "properties": {
+      "approvalId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "status": {
+        "anyOf": [
+          {
+            "type": "string",
+            "const": "resolved"
+          },
+          {
+            "type": "string",
+            "const": "expired"
+          },
+          {
+            "type": "string",
+            "const": "canceled"
+          }
+        ]
+      },
+      "decision": {
+        "anyOf": [
+          {
+            "type": "string",
+            "const": "allow-once"
+          },
+          {
+            "type": "string",
+            "const": "allow-session"
+          },
+          {
+            "type": "string",
+            "const": "deny"
+          },
+          {
+            "type": "string",
+            "const": "approve"
+          },
+          {
+            "type": "string",
+            "const": "reject"
+          }
+        ]
+      },
+      "permissionMode": {
+        "anyOf": [
+          {
+            "type": "string",
+            "const": "ask"
+          },
+          {
+            "type": "string",
+            "const": "accept-edits"
+          },
+          {
+            "type": "string",
+            "const": "auto"
+          }
+        ]
+      },
+      "alreadyResolved": {
+        "type": "boolean"
+      },
+      "revision": {
+        "type": "integer",
+        "minimum": 0
+      }
+    }
+  },
+  "InputRequest": {
+    "type": "object",
+    "required": [
+      "id",
+      "sessionId",
+      "turnId",
+      "expiresAt",
+      "questions"
+    ],
+    "properties": {
+      "id": {
+        "type": "string",
+        "minLength": 1
+      },
+      "sessionId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "turnId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "expiresAt": {
+        "type": "string"
+      },
+      "agentName": {
+        "type": "string"
+      },
+      "parentToolCallId": {
+        "type": "string"
+      },
+      "questions": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": [
+            "id",
+            "question",
+            "options",
+            "multiSelect"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "question": {
+              "type": "string"
+            },
+            "options": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "multiSelect": {
+              "type": "boolean"
+            }
+          }
+        },
+        "minItems": 1
+      }
+    }
+  },
+  "InputResponse": {
+    "type": "object",
+    "required": [
+      "inputId",
+      "answers",
+      "context"
+    ],
+    "properties": {
+      "inputId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "answers": {
+        "type": "array",
+        "items": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "context": {
+        "type": "object",
+        "required": [
+          "requestId"
+        ],
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "traceparent": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "Attachment": {
+    "type": "object",
+    "required": [
+      "id",
+      "sessionId",
+      "name",
+      "mimeType",
+      "sizeBytes",
+      "sha256",
+      "status",
+      "expiresAt"
+    ],
+    "properties": {
+      "id": {
+        "type": "string",
+        "minLength": 1
+      },
+      "sessionId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "name": {
+        "type": "string"
+      },
+      "mimeType": {
+        "type": "string"
+      },
+      "sizeBytes": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "sha256": {
+        "type": "string",
+        "minLength": 64,
+        "maxLength": 64
+      },
+      "status": {
+        "anyOf": [
+          {
+            "type": "string",
+            "const": "pending"
+          },
+          {
+            "type": "string",
+            "const": "ready"
+          },
+          {
+            "type": "string",
+            "const": "expired"
+          },
+          {
+            "type": "string",
+            "const": "rejected"
+          }
+        ]
+      },
+      "expiresAt": {
+        "type": "string"
+      }
+    }
+  },
+  "HostSummary": {
+    "type": "object",
+    "required": [
+      "id",
+      "label",
+      "status",
+      "lastSeenAt",
+      "protocolVersion"
+    ],
+    "properties": {
+      "id": {
+        "type": "string",
+        "minLength": 1
+      },
+      "label": {
+        "type": "string"
+      },
+      "status": {
+        "anyOf": [
+          {
+            "type": "string",
+            "const": "online"
+          },
+          {
+            "type": "string",
+            "const": "offline"
+          }
+        ]
+      },
+      "lastSeenAt": {
+        "type": "string"
+      },
+      "protocolVersion": {
+        "type": "string"
+      }
+    }
+  },
+  "ProjectSummary": {
+    "type": "object",
+    "required": [
+      "id",
+      "label",
+      "archived"
+    ],
+    "properties": {
+      "id": {
+        "type": "string",
+        "minLength": 1
+      },
+      "label": {
+        "type": "string"
+      },
+      "archived": {
+        "type": "boolean"
+      }
+    }
+  },
+  "InitializeParams": {
+    "type": "object",
+    "required": [
+      "protocolVersion",
+      "client",
+      "bindings",
+      "capabilities"
+    ],
+    "properties": {
+      "protocolVersion": {
+        "type": "string",
+        "minLength": 1
+      },
+      "client": {
+        "type": "object",
+        "required": [
+          "name",
+          "version"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
+      "bindings": {
+        "type": "array",
+        "items": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "RACP-WS"
+            },
+            {
+              "type": "string",
+              "const": "RACP-HTTP"
+            },
+            {
+              "type": "string",
+              "const": "RACP-GRPC"
+            }
+          ]
+        }
+      },
+      "capabilities": {
+        "type": "object",
+        "properties": {
+          "eventReplay": {
+            "type": "boolean"
+          },
+          "approvals": {
+            "type": "boolean"
+          },
+          "inputRequests": {
+            "type": "boolean"
+          },
+          "attachments": {
+            "type": "boolean"
+          },
+          "turnQueue": {
+            "type": "boolean"
+          },
+          "hostEvents": {
+            "type": "boolean"
+          },
+          "history": {
+            "type": "boolean"
+          },
+          "toolRelay": {
+            "type": "boolean"
+          },
+          "terminal": {
+            "type": "boolean"
+          }
+        }
+      },
+      "maxReceiveBytes": {
+        "type": "integer",
+        "minimum": 1
+      }
+    }
+  },
+  "InitializeResult": {
+    "type": "object",
+    "required": [
+      "protocolVersion",
+      "server",
+      "connectionId",
+      "principal",
+      "capabilities",
+      "limits",
+      "policy"
+    ],
+    "properties": {
+      "protocolVersion": {
+        "type": "string",
+        "minLength": 1
+      },
+      "server": {
+        "type": "object",
+        "required": [
+          "name",
+          "version"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
+      "connectionId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "principal": {
+        "type": "object",
+        "required": [
+          "subject",
+          "roles"
+        ],
+        "properties": {
+          "subject": {
+            "type": "string",
+            "minLength": 1
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "viewer"
+                },
+                {
+                  "type": "string",
+                  "const": "controller"
+                },
+                {
+                  "type": "string",
+                  "const": "approver"
+                },
+                {
+                  "type": "string",
+                  "const": "owner"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "capabilities": {
+        "type": "object",
+        "required": [
+          "eventReplay",
+          "snapshot",
+          "approvals",
+          "inputRequests",
+          "attachments",
+          "serverRequests",
+          "turnQueue",
+          "hostEvents",
+          "history",
+          "remoteHostProfile",
+          "toolRelay",
+          "terminal",
+          "notifications",
+          "bindings"
+        ],
+        "properties": {
+          "eventReplay": {
+            "type": "boolean"
+          },
+          "snapshot": {
+            "type": "boolean"
+          },
+          "approvals": {
+            "type": "boolean"
+          },
+          "inputRequests": {
+            "type": "boolean"
+          },
+          "attachments": {
+            "type": "boolean"
+          },
+          "serverRequests": {
+            "type": "boolean"
+          },
+          "turnQueue": {
+            "type": "boolean"
+          },
+          "hostEvents": {
+            "type": "boolean"
+          },
+          "history": {
+            "type": "boolean"
+          },
+          "remoteHostProfile": {
+            "type": "boolean"
+          },
+          "toolRelay": {
+            "type": "boolean"
+          },
+          "terminal": {
+            "type": "boolean"
+          },
+          "notifications": {
+            "type": "boolean"
+          },
+          "bindings": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "RACP-WS"
+                },
+                {
+                  "type": "string",
+                  "const": "RACP-HTTP"
+                },
+                {
+                  "type": "string",
+                  "const": "RACP-GRPC"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "limits": {
+        "type": "object",
+        "required": [
+          "maxFrameBytes",
+          "maxPromptBytes",
+          "maxAttachmentBytes",
+          "maxSubscriptionsPerConnection",
+          "maxQueuedTurnsPerSession",
+          "replayWindowEvents",
+          "replayWindowMs",
+          "maxConnectedClients",
+          "terminalReplayRingBytes",
+          "maxOpenTerminalsPerSession"
+        ],
+        "properties": {
+          "maxFrameBytes": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "maxPromptBytes": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "maxAttachmentBytes": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "maxSubscriptionsPerConnection": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "maxQueuedTurnsPerSession": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "replayWindowEvents": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "replayWindowMs": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "maxConnectedClients": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "terminalReplayRingBytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "maxOpenTerminalsPerSession": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "policy": {
+        "type": "object",
+        "required": [
+          "remoteMaxPermissionMode",
+          "applyCeilingToPairedDevices",
+          "approvalLifetimeMs"
+        ],
+        "properties": {
+          "remoteMaxPermissionMode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "ask"
+              },
+              {
+                "type": "string",
+                "const": "accept-edits"
+              },
+              {
+                "type": "string",
+                "const": "auto"
+              }
+            ]
+          },
+          "applyCeilingToPairedDevices": {
+            "type": "boolean"
+          },
+          "approvalLifetimeMs": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    }
+  },
+  "RemoteError": {
+    "type": "object",
+    "required": [
+      "code",
+      "message",
+      "retriable",
+      "traceId"
+    ],
+    "properties": {
+      "code": {
+        "type": "string",
+        "minLength": 1
+      },
+      "message": {
+        "type": "string"
+      },
+      "retriable": {
+        "type": "boolean"
+      },
+      "traceId": {
+        "type": "string"
+      },
+      "details": {}
+    }
+  },
+  "Limits": {
+    "type": "object",
+    "required": [
+      "maxFrameBytes",
+      "maxPromptBytes",
+      "maxAttachmentBytes",
+      "maxSubscriptionsPerConnection",
+      "maxQueuedTurnsPerSession",
+      "replayWindowEvents",
+      "replayWindowMs",
+      "maxConnectedClients",
+      "terminalReplayRingBytes",
+      "maxOpenTerminalsPerSession"
+    ],
+    "properties": {
+      "maxFrameBytes": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "maxPromptBytes": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "maxAttachmentBytes": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "maxSubscriptionsPerConnection": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "maxQueuedTurnsPerSession": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "replayWindowEvents": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "replayWindowMs": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "maxConnectedClients": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "terminalReplayRingBytes": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "maxOpenTerminalsPerSession": {
+        "type": "integer",
+        "minimum": 0
+      }
+    }
+  },
+  "Policy": {
+    "type": "object",
+    "required": [
+      "remoteMaxPermissionMode",
+      "applyCeilingToPairedDevices",
+      "approvalLifetimeMs"
+    ],
+    "properties": {
+      "remoteMaxPermissionMode": {
+        "anyOf": [
+          {
+            "type": "string",
+            "const": "ask"
+          },
+          {
+            "type": "string",
+            "const": "accept-edits"
+          },
+          {
+            "type": "string",
+            "const": "auto"
+          }
+        ]
+      },
+      "applyCeilingToPairedDevices": {
+        "type": "boolean"
+      },
+      "approvalLifetimeMs": {
+        "type": "integer",
+        "minimum": 1
+      }
+    }
+  }
+}

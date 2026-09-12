@@ -8,32 +8,32 @@ import {
   type Model,
   type SimpleStreamOptions,
 } from "@earendil-works/pi-ai";
+import { PROVIDER_RETRY_MAX_RETRIES } from "@pi-desktop/shared";
 import {
   classifyAgentError,
   type ClassifiedAgentError,
 } from "./agent-errors.js";
 
 /** Maximum number of retries after the first rate-limited request. */
-export const PROVIDER_RATE_LIMIT_MAX_RETRIES = 5;
+export const PROVIDER_RATE_LIMIT_MAX_RETRIES = PROVIDER_RETRY_MAX_RETRIES;
 export const PROVIDER_RATE_LIMIT_INITIAL_DELAY_MS = 2_000;
 export const PROVIDER_RATE_LIMIT_JITTER_FACTOR = 0.25;
 /** Keep a provider outage bounded even when it sends an unusably long delay. */
 export const PROVIDER_RATE_LIMIT_MAX_DELAY_MS = 30_000;
 /**
- * Non-rate-limit transient failures wait 1s, 2s, 4s, then 8s. The schedule is
- * deliberately plain doubling so an upstream outage is given visibly more room
- * on each attempt while the whole sequence stays under 15 seconds.
+ * Non-rate-limit transient failures wait 1s, 2s, 4s, then 8s. Later retries
+ * stay at the capped 8-second wait so the ten-retry budget remains predictable.
  */
 export const PROVIDER_SETUP_RETRY_INITIAL_DELAY_MS = 1_000;
 export const PROVIDER_SETUP_MAX_RETRY_DELAY_MS = 8_000;
 /**
- * Retries allowed after the first non-rate-limit transient failure, for five
- * provider attempts in total. Upstream gateway faults (502/503/504, dropped
+ * Retries allowed after the first non-rate-limit transient failure. Upstream
+ * gateway faults (502/503/504, dropped
  * sockets) routinely need more than one attempt, so they share one bounded
  * logical-turn budget the way rate limits do instead of getting a single retry
  * per phase.
  */
-export const PROVIDER_TRANSIENT_MAX_RETRIES = 4;
+export const PROVIDER_TRANSIENT_MAX_RETRIES = PROVIDER_RETRY_MAX_RETRIES;
 
 export type ProviderRetryPhase = "request" | "stream";
 

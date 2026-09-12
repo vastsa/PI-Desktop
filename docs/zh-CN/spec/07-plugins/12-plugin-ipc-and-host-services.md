@@ -130,7 +130,16 @@ plugin runtime
 
 - 打开面板时创建独立视图
 - 传入pluginId /主题令牌
-- 关闭时销毁视图和消息订阅
+- 关闭时销毁视图和消息订阅。需要 `webContents` 身份的清理必须在窗口销毁前复制该 id；`closed` 处理程序不得在已销毁的窗口上读取 `webContents`，否则宿主会抛出未捕获的 `TypeError: Object has been destroyed`。
+- preload 通过 `pluginBridge.getDroppedFilePath(file)` 暴露文件路径，但不向页面暴露 Node。面板可以把路径传给 `fs.registerDropped`；宿主会一次性消费发送方最近的拖拽记录，为 `fs.stat` / `fs.readRange` 签发单文件读取授权。
+
+面板桥接文件通道的权限如下：
+
+| 通道 | 所需权限 |
+|---|---|
+| `fs.readText`、`fs.stat`、`fs.readRange`、`fs.readPreview`、`fs.openDefault`、`fs.reveal`、`fs.glob`、`fs.list` | `fs.read` |
+| `fs.registerDropped` | `fs.read` 加真实拖拽手势 |
+| `fs.writeText` | `fs.write` |
 
 ## 8. 故障隔离
 

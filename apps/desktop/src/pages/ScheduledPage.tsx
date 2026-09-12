@@ -7,7 +7,7 @@ import { Badge, Button, Field, Input, Panel, Select, Textarea } from "../compone
 import { IconClock } from "../components/icons";
 
 export function ScheduledPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const showToast = useAppStore((s) => s.showToast);
   const selectSession = useAppStore((s) => s.selectSession);
   const setPage = useAppStore((s) => s.setPage);
@@ -135,7 +135,9 @@ export function ScheduledPage() {
                   <div className="dest-row-meta">
                     {t("scheduled.lastRun")}:{" "}
                     {task.lastRunAt
-                      ? new Date(task.lastRunAt).toLocaleString()
+                      ? new Date(task.lastRunAt).toLocaleString(
+                          i18n.resolvedLanguage ?? i18n.language,
+                        )
                       : t("scheduled.never")}
                   </div>
                 </div>

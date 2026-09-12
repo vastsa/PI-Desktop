@@ -5,9 +5,10 @@ import { loadStyles } from "./helpers/styles.mjs";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-const [store, transcript, outcome, styles] = await Promise.all([
+const [store, transcript, composer, outcome, styles] = await Promise.all([
   read("../src/stores/app-store.ts"),
   read("../src/components/ChatTranscript.tsx"),
+  read("../src/components/Composer.tsx"),
   read("../src/components/TurnOutcomeCard.tsx"),
   loadStyles(),
 ]);
@@ -18,6 +19,7 @@ test("terminal agent events retain a session-scoped result for the transcript", 
   assert.match(store, /turnId:\s*\n\s*envelope\.turnId \?\?/);
   assert.match(store, /error\.code === "TURN_ABORTED"[\s\S]*?withoutRecordKey\(s\.latestTurnResults/);
   assert.match(transcript, /<TurnOutcomeCard[\s\S]*?result=\{latestTurnResult\}/);
+  assert.doesNotMatch(composer, /<TurnOutcomeCard/);
 });
 
 test("outcome card exposes one localized continuation action", () => {
@@ -42,4 +44,13 @@ test("outcome card exposes one localized continuation action", () => {
   assert.doesNotMatch(sendPrompt, /truncateFromMessageId/);
   assert.match(styles, /\.turn-outcome-card\s*\{/);
   assert.match(styles, /\.turn-outcome-card\.failed\s*\{/);
+  assert.doesNotMatch(styles, /\.composer-stack > \.turn-outcome-card\s*\{/);
+});
+
+test("outcome card yields to an inline assistant error", () => {
+  assert.match(
+    outcome,
+    /const hasInlineError = tail\.some\(\(message\) => Boolean\(message\.error\)\);/,
+  );
+  assert.match(outcome, /if \(hasInlineError\) return null;/);
 });

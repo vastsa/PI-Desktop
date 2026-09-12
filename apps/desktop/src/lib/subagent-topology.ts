@@ -217,6 +217,64 @@ export function collectDelegationStatuses(
   return statuses;
 }
 
+/**
+ * A settled subagent's failure as the runtime reported it.
+ *
+ * `Task` returns the moment a delegate starts (ADR 0089), so its own result can
+ * never carry one. `TaskWait`/`TaskList` report `details.delegations[]` and
+ * `TaskStop` reports `details.stopped[]`, and those entries do carry
+ * `error: { code, message }` from `SubagentRunResult.error`.
+ */
+export type DelegationFailure = {
+  code: string;
+  message: string;
+};
+
+function readDelegationFailure(entry: unknown): DelegationFailure | null {
+  const record = asRecord(entry);
+  const error = asRecord(record?.error);
+  if (!error) return null;
+  const code = typeof error.code === "string" ? error.code.trim() : "";
+  const message = typeof error.message === "string" ? error.message.trim() : "";
+  if (!code && !message) return null;
+  return { code, message };
+}
+
+/**
+ * Why each settled delegation failed, keyed by delegation id.
+ *
+ * {@link collectDelegationStatuses} says *that* a subagent ended as `failed`,
+ * `timed_out`, or `aborted`; this says why, from the same lifecycle rows and
+ * with the same last-write-wins rule. A delegate that fails before emitting a
+ * message row has no other carrier for its reason, which is what left a failed
+ * subagent's detail panel showing steps and no explanation.
+ */
+export function collectDelegationFailures(
+  items: readonly AssistantActivityItem[],
+): ReadonlyMap<string, DelegationFailure> {
+  const failures = new Map<string, DelegationFailure>();
+  for (const item of items) {
+    if (item.kind !== "tool") continue;
+    // Read the row before the guard narrows `item` away: every tool item is a
+    // potential delegation node, so excluding them leaves TS with `never`.
+    const { message } = item;
+    if (isDelegationActivityItem(item)) continue;
+    const payload = asRecord(toolResultPayload(message));
+    if (!payload) continue;
+    for (const entries of [payload.delegations, payload.stopped]) {
+      if (!Array.isArray(entries)) continue;
+      for (const entry of entries) {
+        const record = asRecord(entry);
+        const id = record?.delegationId;
+        if (typeof id !== "string" || !id) continue;
+        const failure = readDelegationFailure(entry);
+        if (failure) failures.set(id, failure);
+      }
+    }
+  }
+  return failures;
+}
+
 /** One subagent named on a lifecycle row's roster (ADR 0089). */
 export type DelegationRosterEntry = {
   delegationId: string;

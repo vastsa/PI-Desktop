@@ -15,6 +15,7 @@ import { loadStyles } from "./helpers/styles.mjs";
 const read = (rel) => readFile(new URL(rel, import.meta.url), "utf8");
 
 const setupSource = await read("../src/components/settings/ProviderSetupDialog.tsx");
+const headerEditorSource = await read("../src/components/settings/ProviderHeadersEditor.tsx");
 const vendorDialogSource = await read("../src/components/settings/VendorAccountDialog.tsx");
 // The panes themselves live in the picker both dialogs render (D269).
 const pickerSource = await read("../src/components/settings/ModelSelectionPanes.tsx");
@@ -47,12 +48,18 @@ test("the scrolling body keeps the credential focus ring inside the dialog", () 
   assert.match(vendorBody, /padding: 2px/);
 });
 
-test("credentials are a 2x2 grid of four peer fields", () => {
+test("credentials use explicit rows for predictable field alignment", () => {
   assert.match(setupSource, /className="provider-setup-credentials"/);
   assert.match(setupSource, /provider-setup-fields/);
+  assert.match(setupSource, /provider-setup-service-row/);
+  assert.match(setupSource, /provider-setup-custom-identity-row/);
+  assert.match(setupSource, /provider-setup-custom-auth-row/);
   const fields = block(".provider-setup-fields");
-  assert.match(fields, /display: grid/);
-  assert.match(fields, /grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.ok(fields.includes("display: flex"));
+  assert.ok(fields.includes("flex-direction: column"));
+  const row = block(".provider-setup-field-row");
+  assert.ok(row.includes("display: grid"));
+  assert.ok(row.includes("grid-template-columns: repeat(2, minmax(0, 1fr))"));
   // The old single-column wrapper is gone.
   assert.doesNotMatch(setupSource, /className="provider-setup-form"/);
   assert.doesNotMatch(styles, /\.provider-setup-form\s*\{/);
@@ -60,8 +67,9 @@ test("credentials are a 2x2 grid of four peer fields", () => {
 
 test("custom API format sits beside the key, not in a disclosure", () => {
   assert.doesNotMatch(setupSource, /<details/);
-  assert.doesNotMatch(setupSource, /provider-advanced/);
-  assert.doesNotMatch(setupSource, /advancedOpen/);
+  assert.doesNotMatch(setupSource, /provider-setup-advanced-toggle/);
+  assert.match(setupSource, /provider-advanced-dialog/);
+  assert.match(setupSource, /settings\.advancedSettings/);
   const fieldsBlock = setupSource.slice(
     setupSource.indexOf("provider-setup-fields"),
     setupSource.indexOf("<ModelSelectionPanes"),
@@ -73,24 +81,47 @@ test("custom API format sits beside the key, not in a disclosure", () => {
   assert.match(pickerSource, /provider-chosen-advanced-toggle/);
 });
 
-test("custom base URL input is wide, validated, and safe to paste", () => {
+test("custom Name and Base URL sit on one row without helper copy", () => {
   assert.match(setupSource, /type="url"/);
   assert.match(setupSource, /inputMode="url"/);
   assert.match(setupSource, /autoComplete="url"/);
-  assert.match(setupSource, /settings\.baseUrlHint/);
+  // Placeholder is enough; a hint under the URL would un-align the name field.
+  assert.doesNotMatch(setupSource, /settings\.baseUrlHint/);
   assert.match(setupSource, /onBlur={commitBaseUrl}/);
   assert.match(setupSource, /normalizeBaseUrlInput\(resolvedBaseUrl, resolvedApiStyle\)/);
   assert.match(setupSource, /!baseUrlIssue/);
   assert.match(setupSource, /aria-invalid={Boolean\(baseUrlError\)}/);
   assert.match(setupSource, /provider-base-url-error/);
 
-  const customFields = block(".provider-setup-fields.is-custom");
-  assert.match(customFields, /grid-template-columns:\s*minmax\(160px, 0\.7fr\)/);
+  const customIdentity = block(".provider-setup-custom-identity-row");
+  assert.ok(customIdentity.includes("grid-template-columns: minmax(180px, 0.8fr)"));
+  const customAuth = block(".provider-setup-custom-auth-row");
+  assert.ok(customAuth.includes("grid-template-columns: minmax(0, 1.25fr)"));
   const baseUrl = block(".provider-setup-base-url");
-  assert.match(baseUrl, /grid-column: 1 \/ -1/);
+  assert.doesNotMatch(baseUrl, /grid-column/);
   assert.match(baseUrl, /min-width: 0/);
   assert.match(styles, /\.provider-setup-base-url \.field-input\[aria-invalid="true"\]/);
   assert.match(styles, /\.provider-setup-field-error\s*\{[\s\S]*overflow-wrap: anywhere/);
+
+  const customBlock = setupSource.slice(
+    setupSource.indexOf("{custom ? ("),
+    setupSource.indexOf("<ModelSelectionPanes"),
+  );
+  assert.ok(
+    customBlock.indexOf("settings.name") < customBlock.indexOf("provider-setup-base-url"),
+    "Name must precede Base URL so they occupy the same 2-column row",
+  );
+});
+
+test("a failed model list uses a classified error, not a raw dump plus empty copy", () => {
+  assert.match(pickerSource, /describeModelsFetchError/);
+  assert.match(pickerSource, /ModelsFetchErrorMessage/);
+  assert.match(pickerSource, /variant="placeholder"/);
+  assert.match(pickerSource, /variant="banner"/);
+  assert.match(pickerSource, /emptyFetchError/);
+  assert.match(styles, /\.provider-models-placeholder\.is-error\s*\{/);
+  assert.match(styles, /\.provider-models-error-summary\s*\{/);
+  assert.match(styles, /\.provider-models-note\.is-error\s*\{[\s\S]*overflow-wrap: anywhere/);
 });
 
 test("list rows carry no box of their own inside the inset pane", () => {
@@ -117,6 +148,29 @@ test("pane titles are section labels, not competing headings", () => {
   }
   // The dialog title stays the one prominent heading.
   assert.match(block(".provider-setup-title"), /font-size: var\(--text-base-plus\)/);
+});
+
+test("the discovered list header hosts a select-all checkbox beside the title", () => {
+  assert.match(pickerSource, /provider-models-heading/);
+  assert.match(pickerSource, /provider-models-select-all/);
+  const heading = block(".provider-models-heading");
+  assert.match(heading, /display: flex/);
+  assert.match(heading, /align-items: center/);
+  assert.doesNotMatch(heading, /border:|box-shadow/);
+  const selectAll = block(".provider-models-select-all");
+  assert.match(selectAll, /flex: none/);
+});
+
+test("the discovered list header hosts a compact fetch-list action beside the title", () => {
+  assert.match(pickerSource, /provider-models-reload/);
+  assert.match(pickerSource, /settings\.fetchModelList/);
+  const reload = block(".provider-models-reload");
+  assert.match(reload, /display: inline-flex/);
+  assert.match(reload, /min-height: 24px/);
+  assert.match(reload, /background: var\(--ds-bg-chip\)/);
+  assert.match(reload, /border: 0/);
+  assert.doesNotMatch(reload, /box-shadow/);
+  assert.doesNotMatch(styles, /\.provider-models-state\s*\{/);
 });
 
 test("the dialog's actions live in the header, not in a footer bar", () => {
@@ -213,8 +267,11 @@ test("the panes stack again before the dialog gets too narrow to read", () => {
   const at = styles.indexOf("@media (max-width: 940px)");
   assert.notEqual(at, -1, "missing the two-pane fallback breakpoint");
   const query = styles.slice(at, styles.indexOf("@media", at + 10));
-  assert.match(query, /\.provider-setup-panes\s*\{\s*grid-template-columns: minmax\(0, 1fr\)/);
-  assert.match(query, /\.provider-setup-fields[\s\S]*?\{\s*grid-template-columns: minmax\(0, 1fr\)/);
+  assert.match(query, /\.provider-setup-field-row[\s\S]*?\{\s*grid-template-columns: minmax\(0, 1fr\)/);
+  // The explicit custom rows must also collapse or Name | URL and Key | Format
+  // stay side-by-side on a stacked dialog.
+  assert.match(query, /\.provider-setup-custom-identity-row/);
+  assert.match(query, /\.provider-setup-custom-auth-row/);
   // A stacked dialog must be allowed to size to its content again, and both
   // dialogs host the same panes, so both need that release.
   assert.match(
@@ -223,17 +280,66 @@ test("the panes stack again before the dialog gets too narrow to read", () => {
   );
 });
 
-test("Advanced holds an optional User-Agent on named, custom, and vendor editors", () => {
-  assert.match(setupSource, /settings\.userAgent/);
-  assert.match(setupSource, /settings\.userAgentHint/);
-  assert.match(vendorDialogSource, /settings\.userAgent/);
-  assert.match(vendorDialogSource, /provider-setup-advanced-toggle/);
+test("Advanced opens from the dialog header into a separate modal", () => {
+  assert.match(setupSource, /ProviderHeadersEditor/);
+  assert.match(vendorDialogSource, /ProviderHeadersEditor/);
+  assert.match(setupSource, /provider-setup-head-actions/);
+  assert.match(vendorDialogSource, /vendor-account-head/);
+  assert.match(setupSource, /settings\.advancedSettings/);
+  assert.match(vendorDialogSource, /settings\.advancedSettings/);
+  assert.match(setupSource, /provider-advanced-dialog/);
+  assert.match(vendorDialogSource, /provider-advanced-dialog/);
+  assert.doesNotMatch(setupSource, /provider-advanced-actions/);
+  assert.doesNotMatch(vendorDialogSource, /provider-advanced-actions/);
+  assert.doesNotMatch(setupSource, /provider-setup-advanced-toggle/);
+  assert.doesNotMatch(vendorDialogSource, /provider-setup-advanced-toggle/);
+  assert.match(setupSource, /if \(advancedOpen\)/);
+  assert.match(vendorDialogSource, /if \(advancedOpen\)/);
+  const modal = block(".provider-advanced-dialog");
+  assert.ok(modal.includes("width: min(560px, calc(100vw - 48px))"));
+  assert.ok(modal.includes("max-height: min(560px, calc(100vh - 64px))"));
+  const modalBody = block(".provider-advanced-body");
+  assert.match(modalBody, /overflow-y: auto/);
+});
+
+test("Advanced offers presets plus JSON import and copy without redundant helper rows", () => {
+  assert.match(setupSource, /ProviderHeadersEditor/);
+  assert.match(vendorDialogSource, /ProviderHeadersEditor/);
+  assert.match(headerEditorSource, /HEADER_PRESETS/);
+  assert.match(headerEditorSource, /User-Agent/);
+  assert.match(headerEditorSource, /importJson/);
+  assert.match(headerEditorSource, /JSON\.parse/);
+  assert.match(headerEditorSource, /file\.text\(\)/);
+  assert.match(headerEditorSource, /accept="application\/json,\.json"/);
+  // Copy serializes the same normalized record used when headers are persisted,
+  // rather than exposing blank or duplicate editor rows.
+  assert.match(headerEditorSource, /pairsToRecord/);
+  assert.match(headerEditorSource, /JSON\.stringify\(pairsToRecord\(pairs\), null, 2\)/);
+  assert.match(headerEditorSource, /navigator\.clipboard\.writeText/);
+  assert.match(headerEditorSource, /setCopied\(true\)/);
+  assert.match(headerEditorSource, /settings\.copyHeadersJson/);
+  assert.match(headerEditorSource, /settings\.headersJsonCopied/);
+  assert.match(headerEditorSource, /provider-setup-header-copy/);
+  assert.match(styles, /\.provider-setup-header-copy\.is-copied/);
+  assert.match(block(".provider-setup-headers-actions"), /flex-wrap: wrap/);
+  assert.doesNotMatch(headerEditorSource, /provider-setup-headers-hint/);
+  const advanced = block(".provider-setup-advanced");
+  assert.match(advanced, /flex-direction: column/);
+  assert.match(advanced, /min-height: 0/);
+  assert.doesNotMatch(advanced, /grid-template-columns: repeat\(2/);
+  assert.match(block(".provider-setup-headers"), /flex-direction: column/);
+  const toolbar = block(".provider-setup-headers-toolbar");
+  assert.match(toolbar, /display: flex/);
+  const headersViewport = block(".provider-setup-header-list");
+  assert.match(headersViewport, /max-height: min\(220px, 30vh\)/);
+  assert.match(headersViewport, /overflow-y: auto/);
+  assert.match(headersViewport, /overscroll-behavior: contain/);
   // Named and custom both expose Advanced; API format stays beside the key.
   const fieldsBlock = setupSource.slice(
     setupSource.indexOf("provider-setup-fields"),
     setupSource.indexOf("<ModelSelectionPanes"),
   );
-  assert.match(fieldsBlock, /named \|\| custom/);
+  assert.match(setupSource, /named \|\| custom/);
   assert.match(fieldsBlock, /settings\.apiStyle"/);
 });
 

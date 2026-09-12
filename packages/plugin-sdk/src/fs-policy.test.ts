@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  fsGlobIgnoresCase,
   isDeniedFsPath,
   isFsPathInScope,
   isWholeTreePattern,
@@ -32,6 +33,38 @@ describe("matchFsGlob", () => {
   it("does not let a regex metacharacter in the pattern widen it", () => {
     expect(matchFsGlob("axb", "a.b")).toBe(false);
     expect(matchFsGlob("a.b", "a.b")).toBe(true);
+  });
+
+  it("lets **/ match zero segments so src/**/*.ts admits src/a.ts", () => {
+    expect(matchFsGlob("src/a.ts", "src/**/*.ts")).toBe(true);
+    expect(matchFsGlob("src/a/b.ts", "src/**/*.ts")).toBe(true);
+    expect(matchFsGlob("src/a/b/c.ts", "src/**/*.ts")).toBe(true);
+    expect(matchFsGlob("src/a.js", "src/**/*.ts")).toBe(false);
+    expect(matchFsGlob("lib/a.ts", "src/**/*.ts")).toBe(false);
+    expect(matchFsGlob("a.ts", "**/*.ts")).toBe(true);
+    expect(matchFsGlob("x/y/a.ts", "**/*.ts")).toBe(true);
+  });
+
+  it("never admits a path with a .. segment", () => {
+    expect(matchFsGlob("src/../secret.ts", "src/**")).toBe(false);
+    expect(matchFsGlob("../src/a.ts", "**/*.ts")).toBe(false);
+    expect(matchFsGlob("src/..hidden.ts", "src/**")).toBe(true);
+  });
+
+  it("treats a trailing slash as the directory and everything under it", () => {
+    expect(matchFsGlob("docs/a.md", "docs/")).toBe(true);
+    expect(matchFsGlob("docs/a/b.md", "docs/")).toBe(true);
+    expect(matchFsGlob("docs", "docs/")).toBe(true);
+    expect(matchFsGlob("docs/", "docs/**")).toBe(true);
+    expect(matchFsGlob("docs2/a.md", "docs/")).toBe(false);
+  });
+
+  it("ignores case only where the platform file system does", () => {
+    expect(matchFsGlob("README.MD", "*.md", { ignoreCase: true })).toBe(true);
+    expect(matchFsGlob("README.MD", "*.md", { ignoreCase: false })).toBe(false);
+    expect(matchFsGlob("README.MD", "*.md")).toBe(fsGlobIgnoresCase());
+    const platform = (globalThis as { process?: { platform?: string } }).process?.platform;
+    expect(fsGlobIgnoresCase()).toBe(platform === "win32" || platform === "darwin");
   });
 });
 

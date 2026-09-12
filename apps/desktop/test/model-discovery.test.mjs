@@ -88,15 +88,23 @@ test("OpenCode Go uses its fixed OpenAI-compatible model endpoint", () => {
   assert.equal(request.headers.Authorization, "Bearer go-key");
 });
 
-test("optional user-agent is attached to discovery requests", () => {
+test("optional custom headers are attached to discovery requests", () => {
   const request = modelListRequest({
     baseUrl: "https://api.example.com/v1",
     apiKey: "sk-x",
     apiStyle: "chat_completions",
-    userAgent: "Custom/1.0",
+    headers: { "User-Agent": "Custom/1.0", "X-Gateway": "1" },
   });
   assert.equal(request.headers.Authorization, "Bearer sk-x");
   assert.equal(request.headers["User-Agent"], "Custom/1.0");
+  assert.equal(request.headers["X-Gateway"], "1");
+  const smashed = modelListRequest({
+    baseUrl: "https://api.example.com/v1",
+    apiKey: "sk-x",
+    apiStyle: "chat_completions",
+    headers: { Authorization: "Bearer other" },
+  });
+  assert.equal(smashed.headers.Authorization, "Bearer sk-x");
   const google = modelListRequest({
     baseUrl: "https://generativelanguage.googleapis.com/v1beta",
     apiStyle: "google_generative_ai",

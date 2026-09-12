@@ -79,6 +79,18 @@ describe("classifyAgentError", () => {
     });
   });
 
+  it("lets an abort win over a compaction failure it caused", () => {
+    const abortErr = new Error(
+      "CONTEXT_COMPACTION_FAILED: unable to create a checkpoint before the next model request",
+    );
+    abortErr.name = "AbortError";
+    expect(classifyAgentError(abortErr)).toMatchObject({ code: "TURN_ABORTED" });
+    expect(classifyAgentError("Turn aborted while compacting context")).toMatchObject({
+      code: "TURN_ABORTED",
+      retriable: false,
+    });
+  });
+
   it("classifies a provider termination as a retryable stream failure", () => {
     expect(classifyAgentError("terminated")).toMatchObject({
       code: "STREAM_FAILED",

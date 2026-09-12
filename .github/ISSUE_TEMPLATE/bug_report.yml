@@ -68,7 +68,7 @@ body:
     id: environment
     attributes:
       label: Extra environment / 其他环境信息
-      description: Architecture, protocol/host versions, and install type (DMG, NSIS, AppImage, deb, development). Settings → Info fills this when opened from the app.
+      description: Architecture, protocol/host versions, and install type (DMG, NSIS, AppImage, deb, rpm, development). Settings → Info fills this when opened from the app.
       placeholder: darwin arm64 · protocol 12 · host 0.13.3 · macOS 15.4
   - type: textarea
     id: logs

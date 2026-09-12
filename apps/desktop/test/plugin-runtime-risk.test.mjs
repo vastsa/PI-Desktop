@@ -7,8 +7,9 @@ import { fileURLToPath } from "node:url";
 import { en } from "../../../packages/i18n/src/locales/en/index.ts";
 import { zhCN } from "../../../packages/i18n/src/locales/zh-CN/index.ts";
 import { tr } from "../../../packages/i18n/src/locales/tr/index.ts";
+import { ko } from "../../../packages/i18n/src/locales/ko/index.ts";
 
-const catalogs = { en, "zh-CN": zhCN, tr };
+const catalogs = { en, "zh-CN": zhCN, tr, ko };
 
 const here = dirname(fileURLToPath(import.meta.url));
 const desktopRoot = join(here, "..");
@@ -28,6 +29,7 @@ test("plugin runtime exposes gated high-risk host APIs", () => {
     "fs.reveal",
     "net.fetch",
     "agent.complete",
+    "desktop.control",
     "session.read",
     "models.list",
     "shell.openExternal",
@@ -37,6 +39,15 @@ test("plugin runtime exposes gated high-risk host APIs", () => {
   ]) {
     assert.match(runtimeSrc, new RegExp(token.replaceAll(".", "\\.")));
   }
+});
+
+test("large-file host reads stay behind the fs.read gateway", () => {
+  for (const api of ["fs.stat", "fs.readRange", "fs.registerDropped"]) {
+    assert.match(runtimeSrc, new RegExp(`\\"${api}\\"`));
+  }
+  assert.match(runtimeSrc, /MAX_FS_READ_RANGE_BYTES/);
+  assert.match(runtimeSrc, /dropped-file grants are read-only/);
+  assert.match(runtimeSrc, /new Map\(\)/);
 });
 
 test("native plugin notifications stay behind the existing notify permission", () => {
@@ -88,6 +99,10 @@ test("the plugins page shows the file scope behind a file permission", () => {
     assert.equal(typeof catalog.plugins.permissions["agent.complete"], "string");
     assert.equal(typeof catalog.plugins.permissionHelp["session.read"], "string");
     assert.equal(typeof catalog.plugins.permissions["models.list"], "string");
+    assert.equal(typeof catalog.plugins.permissions["ui.microphone"], "string");
+    assert.equal(typeof catalog.plugins.permissionHelp["ui.microphone"], "string");
+    assert.equal(typeof catalog.plugins.permissions["desktop.control"], "string");
+    assert.equal(typeof catalog.plugins.permissionHelp["desktop.control"], "string");
   }
 });
 
@@ -96,6 +111,10 @@ test("plugin panels use sandboxed isolated host windows", () => {
   assert.match(panelSrc, /sandbox:\s*true/);
   assert.match(panelSrc, /nodeIntegration:\s*false/);
   assert.match(panelSrc, /plugin-panel\.js/);
+  assert.match(panelSrc, /allowMicrophone/);
+  assert.match(runtimeSrc, /this\.assertPermission\(loaded, "desktop\.control"\)/);
+  assert.match(runtimeSrc, /desktop\.listOperations/);
+  assert.match(runtimeSrc, /desktop\.invoke/);
 });
 
 test("plugins page includes marketplace install and auto-update controls", () => {

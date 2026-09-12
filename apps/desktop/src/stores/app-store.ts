@@ -108,6 +108,8 @@ import {
   emptyWorkPanelContext,
   fileWorkPanelTab,
   openWorkPanelTabState,
+  newWorkPanelTab,
+  replaceWorkPanelTabState,
   sanitizeWorkPanelTabsState,
   shouldOpenReviewArtifact,
   switchWorkPanelContextState,
@@ -159,6 +161,9 @@ import {
   type QueuedPrompt,
   type QueuedPrompts,
 } from "../lib/queued-prompts";
+import type { AgentQueueChangedEvent, QueuedTurnSummary } from "@pi-desktop/shared";
+import { settleBootstrapRequests } from "../lib/bootstrap-result";
+import type { SubagentPanelSelection } from "../lib/subagent-panel";
 
 const ErrorCodes = {
   ...SharedErrorCodes,
@@ -207,6 +212,11 @@ function promptAttachmentsFromMessage(
 // match against every locale's defaults (case-insensitive), not just the
 // active locale's.
 const LEGACY_DEFAULT_TITLES = new Set(["new task", "new chat", "新建任务", "新对话"]);
+const SESSION_TITLE_FALLBACK_LENGTH = 48;
+
+function promptFallbackSessionTitle(userPrompt: string, emptyTitle: string): string {
+  return userPrompt.trim().replace(/\s+/g, " ").slice(0, SESSION_TITLE_FALLBACK_LENGTH) || emptyTitle;
+}
 
 function withoutRecordKey<T>(record: Record<string, T>, key: string): Record<string, T> {
   const next = { ...record };
@@ -221,6 +231,91 @@ function viewingSessionIdForPrompt(
   return state.page === "chat" && state.activeSessionId === sessionId
     ? sessionId
     : null;
+}
+
+function notifyInteractivePrompt(
+  sessionId: string,
+  kind: "ask" | "permission" | "plan",
+  payload?: { question?: string; toolName?: string },
+) {
+  const session = useAppStore.getState().sessions.find((s) => s.id === sessionId);
+  const sessionTitle = session?.title || i18n.t("chat.untitledTask");
+  let title = "";
+  let body = "";
+  if (kind === "ask") {
+    title = i18n.t("notifications.askTitle", { sessionTitle });
+    body = payload?.question?.trim() || i18n.t("notifications.askBodyFallback");
+  } else if (kind === "permission") {
+    title = i18n.t("notifications.permissionTitle", { sessionTitle });
+    body = i18n.t("notifications.permissionBody", {
+      toolName: payload?.toolName || "tool",
+    });
+  } else if (kind === "plan") {
+    title = i18n.t("notifications.planApprovalTitle", { sessionTitle });
+    body = i18n.t("notifications.planApprovalBody");
+  }
+  void api
+    .showNativeNotification({
+      id: crypto.randomUUID(),
+      sessionId,
+      kind: "interactive",
+      title,
+      body,
+    })
+    .catch(() => undefined);
+}
+
+const manuallyRenamedSessionIds = new Set<string>();
+const summarizedSessionIds = new Set<string>();
+
+async function triggerAutoTitleSummarization(sessionId: string) {
+  if (!sessionId) return;
+  if (manuallyRenamedSessionIds.has(sessionId)) return;
+  if (summarizedSessionIds.has(sessionId)) return;
+
+  const state = useAppStore.getState();
+  const session = state.sessions.find((s) => s.id === sessionId);
+  if (!session) return;
+
+  const messages =
+    sessionId === state.activeSessionId
+      ? state.messages
+      : sessionTranscriptCache.get(sessionId) ?? [];
+
+  const firstUser = messages.find((m) => m.role === "user");
+  if (!firstUser?.content) return;
+  // The marker covers renames made in this renderer and survives restart.
+  // The title check also protects custom titles created before the marker was
+  // introduced, while retaining the prompt fallback until its summary lands.
+  if (
+    state.sessionMeta[sessionId]?.manualTitle ||
+    (!isDefaultSessionTitle(session.title) &&
+      session.title.trim() !== promptFallbackSessionTitle(firstUser.content, ""))
+  ) {
+    return;
+  }
+
+  const firstAssistant = messages.find(
+    (m) => m.role === "assistant" && typeof m.content === "string" && m.content.trim(),
+  );
+
+  summarizedSessionIds.add(sessionId);
+
+  try {
+    const res = await api.summarizeSessionTitle({
+      sessionId,
+      userPrompt: firstUser.content,
+      assistantReply:
+        typeof firstAssistant?.content === "string" ? firstAssistant.content : undefined,
+    });
+    const nextTitle = res?.title?.trim();
+    if (nextTitle && !manuallyRenamedSessionIds.has(sessionId)) {
+      await api.renameSession(sessionId, nextTitle);
+      await useAppStore.getState().refreshSessions();
+    }
+  } catch {
+    // Non-fatal: keep current truncated prompt title as fallback
+  }
 }
 
 export type ToastVariant = "info" | "success" | "warning" | "error";
@@ -290,7 +385,23 @@ type SessionConfiguration = Pick<
  */
 const pendingSessionConfigurations = new Map<string, SessionConfiguration>();
 const sessionConfigurationFlushes = new Map<string, Promise<void>>();
-const queuedPromptDrains = new Map<string, Promise<void>>();
+
+/**
+ * Later staged choices layer onto earlier ones field by field. The Composer's
+ * model/mode pickers send no `permissionMode`, so replacing the entry wholesale
+ * would silently drop a permission change staged a moment earlier.
+ */
+function mergeSessionConfiguration(
+  current: SessionConfiguration | undefined,
+  next: SessionConfiguration,
+): SessionConfiguration {
+  if (!current) return next;
+  const merged: Record<string, unknown> = { ...current };
+  for (const [key, value] of Object.entries(next)) {
+    if (value !== undefined) merged[key] = value;
+  }
+  return merged as SessionConfiguration;
+}
 const sessionDetailLoads = new Map<
   string,
   ReturnType<typeof api.getSession>
@@ -809,6 +920,8 @@ export type AppState = {
   ) => void;
   removeQueuedPrompt: (promptId: string) => void;
   sendQueuedNow: (promptId: string) => Promise<void>;
+  refreshQueuedPrompts: (sessionId: string) => Promise<void>;
+  applyQueueChanged: (event: AgentQueueChangedEvent) => void;
   compactContext: () => Promise<void>;
   retryAssistantMessage: (messageId: string) => Promise<void>;
   /** Replace a user prompt and regenerate from it; the old branch stays in the revision pager. */
@@ -827,6 +940,9 @@ export type AppState = {
   ) => Promise<ReviewRollbackResult | null>;
   abort: () => Promise<void>;
   openProject: () => Promise<void>;
+  cloneProject: (url: string) => Promise<ProjectWorkspace | null>;
+  /** Re-read the active workspace metadata without changing the visible project. */
+  refreshProject: (path: string) => Promise<ProjectWorkspace | null>;
   activateProject: (
     path: string,
     opts?: NavigationOptions,
@@ -840,6 +956,8 @@ export type AppState = {
   archiveSession: (id: string) => void;
   restoreSession: (id: string) => void;
   renameSession: (id: string, title: string) => Promise<void>;
+  /** Move an idle session into an already-known project, preserving history. */
+  moveSessionProject: (id: string, projectPath: string) => Promise<boolean>;
   deleteSession: (id: string) => Promise<void>;
   setSessionSort: (sort: SessionSort) => void;
   setSessionArchiveVisibility: (show: boolean) => void;
@@ -854,6 +972,7 @@ export type AppState = {
   toggleProjectCollapsed: (path: string) => void;
   closeProject: (path: string) => Promise<void>;
   setProjectSort: (sort: ProjectSort) => void;
+  reorderProjects: (paths: string[]) => void;
   getVisibleSessions: (options?: {
     projectPath?: string | null;
     includeArchived?: boolean;
@@ -900,6 +1019,8 @@ export type AppState = {
   dismissToast: (id: number) => void;
   composerPrefill: ComposerPrefill | null;
   clearComposerPrefill: () => void;
+  /** Renderer-only subagent details selected from the transcript. */
+  subagentPanel: SubagentPanelSelection | null;
   workPanelOpen: boolean;
   workPanelTabs: WorkPanelTab[];
   activeWorkPanelTabId: string | null;
@@ -908,11 +1029,19 @@ export type AppState = {
   workPanelWidth: number;
   /** Chat-initiated "preview this file" request consumed by the files tab. */
   workPanelFileRequest: { path: string; seq: number; mimeType?: string } | null;
+  /** Toggle the selected subagent detail, replacing another selection when needed. */
+  toggleSubagentPanel: (delegationId: string) => void;
+  /** Close the selected subagent detail without changing resource tabs. */
+  closeSubagentPanel: () => void;
   /** Reveal the active session's retained work panel without creating a tab. */
   openWorkPanel: () => void;
   /** Flip the work panel between revealed and collapsed for the active session. */
   toggleWorkPanel: () => void;
   openWorkPanelTab: (tab: WorkPanelTab) => void;
+  /** Create and activate a new blank tool launcher page. */
+  openNewWorkPanelTab: () => void;
+  /** Open a tool from a blank launcher page, reusing an existing tool tab. */
+  replaceWorkPanelTab: (sourceTabId: string, tab: WorkPanelTab) => void;
   openWorkPanelTabForSession: (sessionId: string, tab: WorkPanelTab) => void;
   activateWorkPanelTab: (tabId: string) => void;
   closeWorkPanelTab: (tabId: string) => void;
@@ -939,6 +1068,9 @@ function openPlanArtifact(
 }
 
 const initialSidebarPreferences = loadSidebarPreferences();
+for (const [sessionId, meta] of Object.entries(initialSidebarPreferences.sessionMeta)) {
+  if (meta.manualTitle) manuallyRenamedSessionIds.add(sessionId);
+}
 const initialWorkPanelWidth = loadWorkPanelWidth();
 
 function currentWorkPanelContext(state: AppState): WorkPanelContext {
@@ -1190,6 +1322,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       .filter(([, meta]) => meta.collapsed === true)
       .map(([path]) => [path, true]),
   ),
+  subagentPanel: null,
   workPanelOpen: false,
   workPanelTabs: [],
   activeWorkPanelTabId: null,
@@ -1233,11 +1366,53 @@ export const useAppStore = create<AppState>((set, get) => ({
   errorRetriable: null,
 
   bootstrap: async () => {
+    let recoveredSettings: AppSettings | undefined;
     try {
+      const settingsRequest = api.getSettings().then(async (settingsRaw) => {
+        let settings = settingsRaw
+          ? {
+              ...settingsRaw,
+              defaultMode: normalizeMode(
+                (settingsRaw as { defaultMode?: unknown }).defaultMode,
+              ),
+            }
+          : settingsRaw;
+        // First-run default per D003: Agent. Never force-rewrite an existing
+        // user choice on boot.
+        if (settings && !settings.defaultMode) {
+          const next = { ...settings, defaultMode: "agent" as const };
+          try {
+            await api.setSettings(next);
+            settings = next;
+          } catch {
+            settings = next;
+          }
+        }
+        return settings;
+      });
+      const snapshotRequest = Promise.all([
+        api.getVersion(),
+        api.health(),
+        api.listSessions(),
+        api.listProviders(),
+        api.getProject(),
+        api.getOnboarding(),
+        api.listPlugins(),
+        api.listNotifications({ limit: 200 }),
+        api.pendingPlans(),
+      ]);
+      const bootstrapResult = await settleBootstrapRequests(
+        settingsRequest,
+        snapshotRequest,
+      );
+      recoveredSettings = bootstrapResult.settings;
+      if (!bootstrapResult.ok) {
+        throw bootstrapResult.error;
+      }
+      const settings = bootstrapResult.settings;
       const [
         version,
         health,
-        settingsRaw,
         sessions,
         providers,
         project,
@@ -1245,38 +1420,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         plugins,
         notifications,
         pendingPlansResult,
-      ] =
-        await Promise.all([
-          api.getVersion(),
-          api.health(),
-          api.getSettings(),
-          api.listSessions(),
-          api.listProviders(),
-          api.getProject(),
-          api.getOnboarding(),
-          api.listPlugins(),
-          api.listNotifications({ limit: 200 }),
-          api.pendingPlans(),
-        ]);
-      let settings = settingsRaw
-        ? {
-            ...settingsRaw,
-            defaultMode: normalizeMode(
-              (settingsRaw as { defaultMode?: unknown }).defaultMode,
-            ),
-          }
-        : settingsRaw;
-      // First-run default per D003: Agent. Never force-rewrite an existing
-      // user choice on boot.
-      if (settings && !settings.defaultMode) {
-        const next = { ...settings, defaultMode: "agent" as const };
-        try {
-          await api.setSettings(next);
-          settings = next;
-        } catch {
-          settings = next;
-        }
-      }
+      ] = bootstrapResult.snapshot;
       if (version.protocolVersion !== PROTOCOL_VERSION) {
         set({
           error: `Protocol mismatch: UI ${PROTOCOL_VERSION} vs app ${version.protocolVersion}`,
@@ -1404,6 +1548,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({
         ready: true,
         healthOk: false,
+        ...(recoveredSettings ? { settings: recoveredSettings } : {}),
         error: e instanceof Error ? e.message : String(e),
       });
     }
@@ -1625,7 +1770,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             navigationIntent: intent,
           });
           if (!navigationIntentIsCurrent(intent)) return false;
-          if (!workspace) throw new Error("Unable to activate project workspace");
+          if (!workspace) throw new Error(i18n.t("errors.workspaceActivationFailed"));
         }
       } else if (get().workspace) {
         await get().clearProject({ navigationIntent: intent });
@@ -1768,7 +1913,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           navigationIntent: intent,
         });
         if (!navigationIntentIsCurrent(intent)) return;
-        if (!workspace) throw new Error("Unable to activate project workspace");
+        if (!workspace) throw new Error(i18n.t("errors.workspaceActivationFailed"));
       }
       if (requestedProjectPath === null && get().workspace) {
         await get().clearProject({ navigationIntent: intent });
@@ -1817,7 +1962,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const state = get();
     if (!id || state.runningSessions[id]) return;
     const source = state.sessions.find((session) => session.id === id);
-    if (!source) throw new Error("Session not found");
+    if (!source) throw new Error(i18n.t("errors.sessionNotFound"));
 
     if (source.projectPath) {
       if (
@@ -1830,7 +1975,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           navigationIntent: intent,
         });
         if (!navigationIntentIsCurrent(intent)) return;
-        if (!workspace) throw new Error("Unable to activate project workspace");
+        if (!workspace) throw new Error(i18n.t("errors.workspaceActivationFailed"));
       }
     } else if (state.workspace) {
       await get().clearProject({ navigationIntent: intent });
@@ -1902,7 +2047,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       get().runningSessions[sessionId] ||
       sessionConfigurationFlushes.has(sessionId)
     ) {
-      pendingSessionConfigurations.set(sessionId, config);
+      pendingSessionConfigurations.set(
+        sessionId,
+        mergeSessionConfiguration(pendingSessionConfigurations.get(sessionId), config),
+      );
       set((state) => ({
         sessions: state.sessions.map((session) =>
           session.id === sessionId
@@ -1912,7 +2060,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       }));
       return;
     }
-    const result = await api.configureSession(sessionId, config);
+    // A configuration staged by an earlier turn that never flushed (the host
+    // rejected it) still carries the user's choice; layer the new fields on it.
+    const payload = mergeSessionConfiguration(
+      pendingSessionConfigurations.get(sessionId),
+      config,
+    );
+    pendingSessionConfigurations.delete(sessionId);
+    const result = await api.configureSession(sessionId, payload);
     set((state) => ({
       sessions: state.sessions.map((session) =>
         session.id === sessionId
@@ -1941,8 +2096,10 @@ export const useAppStore = create<AppState>((set, get) => ({
           })),
         }
       : { text: content, fileReferences: [] };
+    // The Host owns the queue (D375 / D386). Show the row at once and let
+    // the durable entry replace it when the Host answers.
     const item: QueuedPrompt = {
-      id: crypto.randomUUID(),
+      id: `pending:${crypto.randomUUID()}`,
       sessionId,
       content,
       draft: queuedDraft,
@@ -1951,6 +2108,29 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((state) => ({
       queuedPrompts: enqueueQueuedPrompt(state.queuedPrompts, item),
     }));
+    const attachments = promptAttachmentsFromDraft(queuedDraft.fileReferences);
+    void api
+      .queuePrompt({
+        sessionId,
+        content,
+        ...(attachments.length ? { attachments } : {}),
+      })
+      .then((entry) => {
+        queuedDrafts.set(entry.id, queuedDraft);
+        set((state) => ({
+          queuedPrompts: removeQueuedPrompt(state.queuedPrompts, sessionId, item.id),
+        }));
+        return get().refreshQueuedPrompts(sessionId);
+      })
+      .catch((error) => {
+        set((state) => ({
+          queuedPrompts: removeQueuedPrompt(state.queuedPrompts, sessionId, item.id),
+        }));
+        get().showToast(
+          error instanceof Error ? error.message : String(error),
+          { variant: "error" },
+        );
+      });
   },
 
   removeQueuedPrompt: (promptId) => {
@@ -1963,6 +2143,15 @@ export const useAppStore = create<AppState>((set, get) => ({
         promptId,
       ),
     }));
+    queuedDrafts.delete(promptId);
+    if (promptId.startsWith("pending:")) return;
+    void api.removeQueuedPrompt(promptId).catch((error) => {
+      get().showToast(
+        error instanceof Error ? error.message : String(error),
+        { variant: "error" },
+      );
+      void get().refreshQueuedPrompts(sessionId);
+    });
   },
 
   sendQueuedNow: async (promptId) => {
@@ -1973,17 +2162,19 @@ export const useAppStore = create<AppState>((set, get) => ({
       sessionId,
       promptId,
     );
-    if (!item) return;
-    if (get().runningSessions[sessionId]) {
-      if (item.sendNowRequested) return;
-      set((state) => ({
-        queuedPrompts: prioritizeQueuedPrompt(
-          state.queuedPrompts,
-          sessionId,
-          promptId,
-        ),
-      }));
-      try {
+    if (!item || item.id.startsWith("pending:") || item.sendNowRequested) return;
+    set((state) => ({
+      queuedPrompts: prioritizeQueuedPrompt(
+        state.queuedPrompts,
+        sessionId,
+        promptId,
+      ),
+    }));
+    try {
+      // The Host moves the entry to the head of its queue; a running turn is
+      // asked to finish at its next boundary so that entry starts next.
+      await api.prioritizeQueuedPrompt(promptId);
+      if (get().runningSessions[sessionId]) {
         const result = await api.stop(sessionId);
         if (!result.requested) {
           set((state) => ({
@@ -1992,41 +2183,33 @@ export const useAppStore = create<AppState>((set, get) => ({
               sessionId,
             ),
           }));
-          if (!get().runningSessions[sessionId]) {
-            void drainQueuedPrompts(sessionId);
-          }
         }
-      } catch (error) {
-        set((state) => ({
-          queuedPrompts: clearQueuedPromptSendNow(
-            state.queuedPrompts,
-            sessionId,
-          ),
-        }));
-        get().showToast(
-          error instanceof Error ? error.message : String(error),
-          { variant: "error" },
-        );
       }
-      return;
-    }
-
-    set((state) => ({
-      queuedPrompts: removeQueuedPrompt(
-        state.queuedPrompts,
-        sessionId,
-        promptId,
-      ),
-    }));
-    const accepted = await get().sendPrompt(item.content, item.draft, sessionId);
-    if (!accepted) {
+    } catch (error) {
       set((state) => ({
-        queuedPrompts: enqueueQueuedPrompt(state.queuedPrompts, {
-          ...item,
-          sendNowRequested: undefined,
-        }),
+        queuedPrompts: clearQueuedPromptSendNow(
+          state.queuedPrompts,
+          sessionId,
+        ),
       }));
+      get().showToast(
+        error instanceof Error ? error.message : String(error),
+        { variant: "error" },
+      );
     }
+  },
+
+  refreshQueuedPrompts: async (sessionId) => {
+    try {
+      const { entries } = await api.listQueuedPrompts(sessionId);
+      applyQueueEntries(sessionId, entries);
+    } catch {
+      // The next queue event resynchronizes the mirror.
+    }
+  },
+
+  applyQueueChanged: (event) => {
+    applyQueueEntries(event.sessionId, event.entries);
   },
 
   sendPrompt: async (content, draft, requestedSessionId) => {
@@ -2042,7 +2225,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (!createdId) return false;
       sessionId = createdId;
     }
-    if (!sessionId) throw new Error("No active session");
+    if (!sessionId) throw new Error(i18n.t("errors.noActiveSession"));
     if (get().pendingPlans[sessionId]?.status === "pending") return false;
     if (get().runningSessions[sessionId]) {
       get().enqueuePrompt(content, draft, sessionId);
@@ -2086,8 +2269,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const current = get().sessions.find((s) => s.id === sessionId);
       if (isDefaultSessionTitle(current?.title)) {
-        const nextTitle =
-          content.trim().replace(/\s+/g, " ").slice(0, 48) || untitledTaskTitle();
+        const nextTitle = promptFallbackSessionTitle(content, untitledTaskTitle());
         // Fire-and-forget: renaming the sidebar title must not delay the prompt
         // reaching the agent runtime — removes visible lag after pressing Enter.
         api.renameSession(sessionId, nextTitle)
@@ -2729,6 +2911,38 @@ export const useAppStore = create<AppState>((set, get) => ({
     return workspace;
   },
 
+  refreshProject: async (path) => {
+    const requestedKey = normalizeProjectPath(path);
+    if (!requestedKey) return null;
+
+    const result = await api.getProject();
+    const workspace = result.workspace
+      ? withProjectDisplayName(result.workspace, get().projectMeta)
+      : null;
+    if (
+      !workspace?.path ||
+      normalizeProjectPath(workspace.path) !== requestedKey
+    ) {
+      return null;
+    }
+
+    let applied = false;
+    set((state) => {
+      // project/get reads the one host-owned active workspace. Do not let a
+      // late response from a hover overwrite state after navigation moved to
+      // another project.
+      if (normalizeProjectPath(state.activeProjectPath) !== requestedKey) {
+        return state;
+      }
+      applied = true;
+      return {
+        workspace,
+        openProjects: upsertWorkspace(state.openProjects, workspace),
+      };
+    });
+    return applied ? workspace : null;
+  },
+
   openProjectPath: async (path) => get().activateProject(path),
   switchProjectPath: async (path) => get().activateProject(path),
 
@@ -2762,6 +2976,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     persistCurrentSidebar(get);
   },
   closeProject: async (path) => get().closeProjectPath(path),
+
+  cloneProject: async (url) => {
+    const intent = beginNavigationIntent();
+    const result = await api.cloneProject(url);
+    if (!navigationIntentIsCurrent(intent)) return null;
+    if (result.canceled || !result.workspace?.path) return null;
+    return get().activateProject(result.workspace.path, { navigationIntent: intent });
+  },
 
   openProject: async () => {
     const intent = beginNavigationIntent();
@@ -2900,19 +3122,51 @@ export const useAppStore = create<AppState>((set, get) => ({
   renameSession: async (id, title) => {
     if (!id) return;
     const nextTitle = title.trim();
-    if (!nextTitle) throw new Error("Session title must not be empty");
+    if (!nextTitle) throw new Error(i18n.t("errors.sessionTitleEmpty"));
+    manuallyRenamedSessionIds.add(id);
     const result = await api.renameSession(id, nextTitle);
-    if (!result.ok) throw new Error("Session not found");
+    if (!result.ok) throw new Error(i18n.t("errors.sessionNotFound"));
     set((state) => ({
+      sessionMeta: {
+        ...state.sessionMeta,
+        [id]: { ...(state.sessionMeta[id] || {}), manualTitle: true },
+      },
       sessions: state.sessions.map((session) =>
         session.id === id ? { ...session, title: nextTitle } : session,
       ),
     }));
+    persistCurrentSidebar(get);
+  },
+
+  moveSessionProject: async (id, projectPath) => {
+    const destinationKey = normalizeProjectPath(projectPath);
+    const state = get();
+    const session = state.sessions.find((item) => item.id === id);
+    if (!id || !session || !destinationKey) return false;
+    // A running turn owns the current project's instructions and working
+    // directory; the host rejects the move as well.
+    if (state.runningSessions[id]) return false;
+    if (normalizeProjectPath(session.projectPath) === destinationKey) return true;
+    if (
+      !state.openProjectPaths.some(
+        (path) => normalizeProjectPath(path) === destinationKey,
+      )
+    ) {
+      return false;
+    }
+    const result = await api.moveSessionProject(id, projectPath);
+    set((current) => ({
+      sessions: current.sessions.map((item) =>
+        item.id === id ? { ...item, ...result.session } : item,
+      ),
+    }));
+    return true;
   },
 
   deleteSession: async (id) => {
     if (!id) return;
     await api.deleteSession(id);
+    manuallyRenamedSessionIds.delete(id);
     pendingSessionConfigurations.delete(id);
     sessionTranscriptCache.delete(id);
     sessionHistoryCache.delete(id);
@@ -3047,7 +3301,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!key) return;
     const normalizedName = normalizeProjectName(name);
     if (!normalizedName) {
-      throw new Error("Project name must be between 1 and 80 characters");
+      throw new Error(i18n.t("errors.projectNameLength"));
     }
     set((state) => ({
       projectMeta: {
@@ -3119,6 +3373,26 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setProjectSort: (sort) => {
     set({ projectSort: sort });
+    persistCurrentSidebar(get);
+  },
+
+  reorderProjects: (paths) => {
+    const orderedKeys: string[] = [];
+    const seen = new Set<string>();
+    for (const path of paths) {
+      const key = normalizeProjectPath(path);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      orderedKeys.push(key);
+    }
+    if (orderedKeys.length < 2) return;
+    set((state) => {
+      const projectMeta = { ...state.projectMeta };
+      orderedKeys.forEach((key, index) => {
+        projectMeta[key] = { ...(projectMeta[key] || {}), order: index };
+      });
+      return { projectMeta, projectSort: "manual" };
+    });
     persistCurrentSidebar(get);
   },
 
@@ -3426,7 +3700,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       void get().refreshSessions();
     }
     if (event.state !== "awaiting_approval") {
-      void drainQueuedPrompts(event.sessionId);
+      void get().refreshQueuedPrompts(event.sessionId);
     }
   },
 
@@ -3494,7 +3768,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         runningSessions: { ...s.runningSessions, [envelope.sessionId]: false },
       }));
       void flushPendingSessionConfiguration(envelope.sessionId);
-      void drainQueuedPrompts(envelope.sessionId);
+      void get().refreshQueuedPrompts(envelope.sessionId);
     } else if (
       event.type === "agent_end" ||
       event.type === "error"
@@ -3513,22 +3787,25 @@ export const useAppStore = create<AppState>((set, get) => ({
         latestTurnResults:
           event.type === "error" && event.error.code === "TURN_ABORTED"
             ? withoutRecordKey(s.latestTurnResults, envelope.sessionId)
-            : {
-                ...s.latestTurnResults,
-                [envelope.sessionId]: {
-                  status: event.type === "error" ? "failed" : "completed",
-                  turnId:
-                    envelope.turnId ?? `${envelope.sessionId}:${envelope.ts}`,
-                  finishedAt: envelope.ts,
-                  ...(event.type === "error"
-                    ? { errorCode: event.error.code }
-                    : {}),
+            : event.type === "agent_end" &&
+                s.latestTurnResults[envelope.sessionId]?.status === "failed"
+              ? s.latestTurnResults
+              : {
+                  ...s.latestTurnResults,
+                  [envelope.sessionId]: {
+                    status: event.type === "error" ? "failed" : "completed",
+                    turnId:
+                      envelope.turnId ?? `${envelope.sessionId}:${envelope.ts}`,
+                    finishedAt: envelope.ts,
+                    ...(event.type === "error"
+                      ? { errorCode: event.error.code }
+                      : {}),
+                  },
                 },
-              },
       }));
       void flushPendingSessionConfiguration(envelope.sessionId);
       if (event.type === "agent_end") {
-        void drainQueuedPrompts(envelope.sessionId);
+        void get().refreshQueuedPrompts(envelope.sessionId);
       }
     }
     if (event.type === "planning_state") {
@@ -3561,9 +3838,10 @@ export const useAppStore = create<AppState>((set, get) => ({
           openPlanArtifact(checkpoint, get().openWorkPanelTabForSession);
         }
         void get().restorePendingPlan(envelope.sessionId);
+        notifyInteractivePrompt(envelope.sessionId, "plan");
       }
       if (event.state !== "awaiting_approval") {
-        void drainQueuedPrompts(envelope.sessionId);
+        void get().refreshQueuedPrompts(envelope.sessionId);
       }
     }
     // Any session's workspace mutation invalidates the review diff; this
@@ -3643,12 +3921,19 @@ export const useAppStore = create<AppState>((set, get) => ({
             receivedAt: envelope.ts,
           }),
         }));
+        notifyInteractivePrompt(envelope.sessionId, "permission", {
+          toolName: event.request.toolName,
+        });
       } else if (event.type === "asktool_request") {
         set((state) => ({
           pendingAsks: enqueueAsk(state.pendingAsks, event.request),
         }));
+        notifyInteractivePrompt(envelope.sessionId, "ask", {
+          question: event.request.questions?.[0]?.question,
+        });
       } else if (event.type === "agent_end") {
         void get().refreshSessions();
+        void triggerAutoTitleSummarization(envelope.sessionId);
       } else if (event.type === "planning_state") {
         void get().refreshSessions();
       }
@@ -3696,6 +3981,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       case "agent_end":
         set({ isRunning: false });
         void get().refreshSessions();
+        void triggerAutoTitleSummarization(envelope.sessionId);
         break;
       case "turn_end":
         break;
@@ -3850,11 +4136,17 @@ export const useAppStore = create<AppState>((set, get) => ({
             receivedAt: envelope.ts,
           }),
         }));
+        notifyInteractivePrompt(envelope.sessionId, "permission", {
+          toolName: event.request.toolName,
+        });
         break;
       case "asktool_request":
         set((state) => ({
           pendingAsks: enqueueAsk(state.pendingAsks, event.request),
         }));
+        notifyInteractivePrompt(envelope.sessionId, "ask", {
+          question: event.request.questions?.[0]?.question,
+        });
         break;
       case "error": {
         // A user-initiated stop is not an error; just settle the run state.
@@ -4005,7 +4297,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (activeRequest) return activeRequest;
     const pending = get().pendingPlans[resolution.sessionId];
     if (!pending || pending.status !== "pending" || pending.id !== resolution.proposalId) {
-      throw new Error("Plan approval is no longer available");
+      throw new Error(i18n.t("errors.planApprovalUnavailable"));
     }
     const request = (async () => {
       try {
@@ -4058,6 +4350,22 @@ export const useAppStore = create<AppState>((set, get) => ({
   dismissToast: (id) =>
     set((state) => ({ toasts: state.toasts.filter((item) => item.id !== id) })),
 
+  toggleSubagentPanel: (delegationId) => {
+    const state = get();
+    const sessionId = state.activeSessionId;
+    const id = delegationId.trim();
+    if (!sessionId || !id) return;
+    if (
+      state.subagentPanel?.sessionId === sessionId &&
+      state.subagentPanel.delegationId === id
+    ) {
+      set({ subagentPanel: null });
+      return;
+    }
+    set({ subagentPanel: { sessionId, delegationId: id } });
+  },
+  closeSubagentPanel: () => set({ subagentPanel: null }),
+
   openWorkPanel: () => {
     const state = get();
     const sessionId = state.activeSessionId;
@@ -4073,11 +4381,17 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   toggleWorkPanel: () => {
-    if (get().workPanelOpen) {
-      get().collapseWorkPanel();
+    const state = get();
+    if (state.subagentPanel) {
+      state.closeSubagentPanel();
+      if (get().workPanelOpen) get().collapseWorkPanel();
       return;
     }
-    get().openWorkPanel();
+    if (state.workPanelOpen) {
+      state.collapseWorkPanel();
+      return;
+    }
+    state.openWorkPanel();
   },
 
   openWorkPanelTabForSession: (sessionId, tab) => {
@@ -4132,6 +4446,50 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!sessionId) return;
     get().openWorkPanelTabForSession(sessionId, tab);
   },
+  openNewWorkPanelTab: () => {
+    const sessionId = get().activeSessionId;
+    if (!sessionId) return;
+    get().openWorkPanelTabForSession(sessionId, newWorkPanelTab());
+  },
+  replaceWorkPanelTab: (sourceTabId, tab) => {
+    set((state) => {
+      const sessionId = state.activeSessionId;
+      if (!sessionId) return {};
+      const next = replaceWorkPanelTabState(
+        {
+          tabs: state.workPanelTabs,
+          activeTabId: state.activeWorkPanelTabId,
+        },
+        sourceTabId,
+        tab,
+      );
+      const activeTab = next.tabs.find((item) => item.id === next.activeTabId);
+      const fileRequest =
+        activeTab?.kind === "file" && activeTab.resource
+          ? {
+              path: activeTab.resource,
+              seq: ++workPanelFileRequestSeq,
+              ...(activeTab.mimeType ? { mimeType: activeTab.mimeType } : {}),
+            }
+          : state.workPanelFileRequest;
+      const nextContext: WorkPanelContext = {
+        open: true,
+        tabs: next.tabs,
+        activeTabId: next.activeTabId,
+        fileRequest,
+      };
+      return {
+        workPanelOpen: true,
+        workPanelTabs: next.tabs,
+        activeWorkPanelTabId: next.activeTabId,
+        workPanelFileRequest: fileRequest,
+        workPanelContexts: {
+          ...state.workPanelContexts,
+          [sessionId]: nextContext,
+        },
+      };
+    });
+  },
   activateWorkPanelTab: (tabId) => {
     set((state) => {
       const sessionId = state.activeSessionId;
@@ -4169,7 +4527,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
   closeWorkPanelTab: (tabId) => {
-    let closePanel = false;
     set((state) => {
       const sessionId = state.activeSessionId;
       if (!sessionId) return {};
@@ -4181,7 +4538,6 @@ export const useAppStore = create<AppState>((set, get) => ({
         tabId,
       );
       const activeTab = next.tabs.find((tab) => tab.id === next.activeTabId);
-      closePanel = next.activeTabId === null;
       const fileRequest =
         activeTab?.kind === "file" && activeTab.resource
           ? {
@@ -4191,7 +4547,9 @@ export const useAppStore = create<AppState>((set, get) => ({
             }
           : state.workPanelFileRequest;
       const nextContext: WorkPanelContext = {
-        open: closePanel ? false : state.workPanelOpen,
+        // Closing the final tab leaves the panel open so the user can choose
+        // another tool from the new-tab launcher instead of losing the dock.
+        open: state.workPanelOpen,
         tabs: next.tabs,
         activeTabId: next.activeTabId,
         fileRequest,
@@ -4199,7 +4557,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       return {
         workPanelTabs: next.tabs,
         activeWorkPanelTabId: next.activeTabId,
-        workPanelOpen: closePanel ? false : state.workPanelOpen,
+        workPanelOpen: state.workPanelOpen,
         workPanelFileRequest: fileRequest,
         workPanelContexts: {
           ...state.workPanelContexts,
@@ -4283,41 +4641,42 @@ useAppStore.subscribe((state, previous) => {
   );
 });
 
-function drainQueuedPrompts(sessionId: string): Promise<void> {
-  const active = queuedPromptDrains.get(sessionId);
-  if (active) return active;
-  const drain = (async () => {
-    while (!useAppStore.getState().runningSessions[sessionId]) {
-      const item = useAppStore.getState().queuedPrompts[sessionId]?.[0];
-      if (!item) break;
-      useAppStore.setState((state) => ({
-        queuedPrompts: removeQueuedPrompt(
-          state.queuedPrompts,
-          sessionId,
-          item.id,
-        ),
-      }));
-      const accepted = await useAppStore
-        .getState()
-        .sendPrompt(item.content, item.draft, sessionId);
-      if (!accepted) {
-        useAppStore.setState((state) => ({
-          queuedPrompts: enqueueQueuedPrompt(state.queuedPrompts, {
-            ...item,
-            sendNowRequested: undefined,
-          }),
-        }));
-        break;
+/** Composer drafts behind Host queue entries, so removing one restores it. */
+const queuedDrafts = new Map<string, ComposerDraftSnapshot>();
+
+function toQueuedPrompt(
+  entry: QueuedTurnSummary,
+  previous?: QueuedPrompt,
+): QueuedPrompt {
+  return {
+    id: entry.id,
+    sessionId: entry.sessionId,
+    content: entry.content,
+    draft: queuedDrafts.get(entry.id) ?? { text: entry.content, fileReferences: [] },
+    createdAt: Date.parse(entry.createdAt) || Date.now(),
+    ...(previous?.sendNowRequested ? { sendNowRequested: true } : {}),
+  };
+}
+
+/** The Host owns the queue (D375 / D386); the renderer mirrors its entries. */
+function applyQueueEntries(sessionId: string, entries: QueuedTurnSummary[]): void {
+  useAppStore.setState((state) => {
+    const current = state.queuedPrompts[sessionId] ?? [];
+    const pending = current.filter((item) => item.id.startsWith("pending:"));
+    const mirrored = entries.map((entry) =>
+      toQueuedPrompt(entry, current.find((item) => item.id === entry.id)),
+    );
+    for (const item of current) {
+      if (!item.id.startsWith("pending:") && !entries.some((entry) => entry.id === item.id)) {
+        queuedDrafts.delete(item.id);
       }
     }
-  })();
-  queuedPromptDrains.set(sessionId, drain);
-  void drain.finally(() => {
-    if (queuedPromptDrains.get(sessionId) === drain) {
-      queuedPromptDrains.delete(sessionId);
-    }
+    const next = { ...state.queuedPrompts };
+    const merged = [...mirrored, ...pending];
+    if (merged.length === 0) delete next[sessionId];
+    else next[sessionId] = merged;
+    return { queuedPrompts: next };
   });
-  return drain;
 }
 
 function flushPendingSessionConfiguration(sessionId: string): Promise<void> {
@@ -4328,12 +4687,18 @@ function flushPendingSessionConfiguration(sessionId: string): Promise<void> {
   }
 
   const flush = (async () => {
+    let failed = false;
     while (!useAppStore.getState().runningSessions[sessionId]) {
       const config = pendingSessionConfigurations.get(sessionId);
       if (!config) break;
-      pendingSessionConfigurations.delete(sessionId);
       try {
         const result = await api.configureSession(sessionId, config);
+        // The entry stays staged until the host accepts it. A choice staged
+        // while the call was in flight has already merged into a newer entry,
+        // which the next iteration sends.
+        if (pendingSessionConfigurations.get(sessionId) === config) {
+          pendingSessionConfigurations.delete(sessionId);
+        }
         useAppStore.setState((state) => ({
           sessions: state.sessions.map((session) =>
             session.id === sessionId
@@ -4356,22 +4721,31 @@ function flushPendingSessionConfiguration(sessionId: string): Promise<void> {
           { variant: "error" },
         );
         void useAppStore.getState().refreshSessions();
+        // A newer entry replaced the rejected one mid-flight: send that one.
+        // Otherwise the staged choice is kept for the next flush trigger
+        // instead of being retried blind here.
+        if (pendingSessionConfigurations.get(sessionId) !== config) continue;
+        failed = true;
+        break;
       }
     }
+    return failed;
   })();
-  sessionConfigurationFlushes.set(sessionId, flush);
-  void flush.finally(() => {
-    if (sessionConfigurationFlushes.get(sessionId) === flush) {
+  const settled = flush.then(() => undefined);
+  sessionConfigurationFlushes.set(sessionId, settled);
+  void flush.then((failed) => {
+    if (sessionConfigurationFlushes.get(sessionId) === settled) {
       sessionConfigurationFlushes.delete(sessionId);
     }
     if (
+      !failed &&
       pendingSessionConfigurations.has(sessionId) &&
       !useAppStore.getState().runningSessions[sessionId]
     ) {
       void flushPendingSessionConfiguration(sessionId);
     }
   });
-  return flush;
+  return settled;
 }
 
 type PersistSessionOptions = {

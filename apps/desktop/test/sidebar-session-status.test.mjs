@@ -82,8 +82,10 @@ test("renders semantic, shape-distinct sidebar status indicators", () => {
     "utf8",
   );
   const styles = loadStylesSync();
+  // The status fixture lives in the capture rig, which App only loads lazily
+  // behind __PI_CAPTURE__.
   const app = fs.readFileSync(
-    new URL("../src/App.tsx", import.meta.url),
+    new URL("../src/capture/capture-rig.ts", import.meta.url),
     "utf8",
   );
   const main = fs.readFileSync(

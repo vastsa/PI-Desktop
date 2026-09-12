@@ -6,12 +6,16 @@
  *   node scripts/release.mjs <version>          # bump files only
  *   node scripts/release.mjs <version> --tag    # bump + commit (only bumped files) + tag v<version>
  *
+ * --tag still creates the tag when the bump was already committed (nothing to
+ * change), and refuses when v<version> exists locally or on origin.
+ *
  * BEFORE running this for a stable release, update every version-bearing
  * document (D164 + D260, docs/spec/06-delivery/06-release-runbook.md section 4.1):
  *   - apps/desktop/resources/models.dev/api.json is refreshed from models.dev
  *     and committed with the release tag
- *   - packages/shared/src/changelog.ts (EN + zh-CN entries for <version>,
- *     matching highlight counts) and its newest-first list in changelog.test.ts
+ *   - packages/shared/src/changelog*.ts (one entry for <version> in every
+ *     shipped locale, matching highlight counts) and its newest-first list in
+ *     changelog.test.ts
  *   - the release line stated in README.md and README.zh-CN.md
  * GitHub auto-generated release bodies are web-only and are not a substitute.
  *
@@ -33,6 +37,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const version = process.argv[2];
 const doTag = process.argv.includes("--tag");
 const skipDocsCheck = process.argv.includes("--skip-docs-check");
+const isPrerelease = version?.includes("-") ?? false;
 
 if (!version || !/^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$/.test(version)) {
   console.error(
@@ -89,12 +94,21 @@ async function refreshBundledModelsDevCatalog() {
 
 // Refresh the checked-in model catalog before changing version surfaces. The
 // release commit must contain the exact public snapshot used by the artifacts;
-// unlike user settings, this path is never written at runtime.
+// unlike user settings, this path is never written at runtime. A deliberate
+// --skip-docs-check bump may run offline: the failure is reported, not fatal.
 try {
   await refreshBundledModelsDevCatalog();
 } catch (error) {
-  console.error(`Could not refresh ${modelsDevCatalogRelPath}: ${error.message}`);
-  process.exit(1);
+  if (skipDocsCheck) {
+    console.warn(
+      `Warning: could not refresh ${modelsDevCatalogRelPath} (${error.message}); ` +
+        "continuing because --skip-docs-check was given. Refresh it before a stable release.",
+    );
+  } else {
+    console.error(`Could not refresh ${modelsDevCatalogRelPath}: ${error.message}`);
+    console.error("Pass --skip-docs-check for a deliberate offline, non-release bump.");
+    process.exit(1);
+  }
 }
 
 function bumpPackageJson(relPath) {
@@ -137,9 +151,9 @@ if (changed.length === 0) {
   console.log(`Bumped to ${version}:\n  ${changed.join("\n  ")}`);
 }
 
-// Version surfaces, the dual-locale changelog, and the README release line must
+// Version surfaces, the shipped-locale changelog, and the README release line must
 // agree before a tag exists (D260). Bumping files is reversible; a tag is not.
-if (!skipDocsCheck) {
+if (!skipDocsCheck && !isPrerelease) {
   try {
     execFileSync(process.execPath, [path.join(root, "scripts/check-release-docs.mjs"), version], {
       cwd: root,
@@ -149,23 +163,71 @@ if (!skipDocsCheck) {
     console.error("\nRelease documentation check failed; not committing or tagging.");
     process.exit(1);
   }
+} else if (isPrerelease && !skipDocsCheck) {
+  console.log("Skipping stable release-document preflight for prerelease version.");
 }
-
-if (changed.length === 0) process.exit(0);
 
 const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
 const tag = `v${version}`;
 const branch = git("rev-parse", "--abbrev-ref", "HEAD");
 
+/**
+ * Where `tag` already exists: "locally", "on origin", or null. A local-only
+ * check misses a tag that was pushed from another clone, so origin is queried
+ * too when it is configured; a network failure only downgrades to a warning.
+ */
+function findExistingTag() {
+  if (git("tag", "--list", tag)) return "locally";
+  let hasOrigin = false;
+  try {
+    git("remote", "get-url", "origin");
+    hasOrigin = true;
+  } catch {
+    // No remote named origin: nothing further to check.
+  }
+  if (!hasOrigin) return null;
+  try {
+    const remoteTags = execFileSync("git", ["ls-remote", "--tags", "origin", `refs/tags/${tag}`], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 20_000,
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trim();
+    if (remoteTags) return "on origin";
+  } catch (error) {
+    const reason = (error.stderr || error.message || "").toString().trim().split("\n")[0];
+    console.warn(
+      `Warning: could not query origin for ${tag} (${reason || "unknown error"}); ` +
+        "only local tags were checked.",
+    );
+  }
+  return null;
+}
+
 if (doTag) {
-  if (git("tag", "--list", tag)) {
-    console.error(`Tag ${tag} already exists.`);
+  const existing = findExistingTag();
+  if (existing) {
+    console.error(`Tag ${tag} already exists ${existing}.`);
     process.exit(1);
   }
-  // Pathspec commit: only the bumped files, so unrelated staged work stays untouched.
-  git("commit", "-m", `chore(release): ${tag}`, "--", ...changed);
+  if (changed.length > 0) {
+    // Pathspec commit: only the bumped files, so unrelated staged work stays untouched.
+    git("commit", "-m", `chore(release): ${tag}`, "--", ...changed);
+  } else {
+    // The bump was applied earlier; still tag, but only if HEAD carries it,
+    // since release.yml compares the tag with apps/desktop/package.json at HEAD.
+    const headVersion = JSON.parse(git("show", "HEAD:apps/desktop/package.json")).version;
+    if (headVersion !== version) {
+      console.error(
+        `HEAD has apps/desktop/package.json at ${headVersion}, not ${version}; ` +
+          "commit the bump before tagging.",
+      );
+      process.exit(1);
+    }
+    console.log(`Nothing to commit; tagging current HEAD as ${tag}.`);
+  }
   git("tag", tag);
-  console.log(`\nCommitted and tagged ${tag}. Publish with:\n  git push origin ${branch} ${tag}`);
-} else {
+  console.log(`\nTagged ${tag}. Publish with:\n  git push origin ${branch} ${tag}`);
+} else if (changed.length > 0) {
   console.log(`\nNext steps:\n  git commit -m "chore(release): ${tag}" -- ${changed.join(" ")}\n  git tag ${tag}\n  git push origin ${branch} ${tag}`);
 }

@@ -1,6 +1,6 @@
 # ADR 0103: Compact context usage summary
 
-- Status: Accepted
+- Status: Accepted (amended by D347 / ADR 0184 and D355 / ADR 0193)
 - Date: 2026-08-18
 - Deciders: PI-Desktop renderer and UX maintainers
 - Amends: D103, D184, ADR 0047
@@ -19,7 +19,9 @@ That made a quick capacity check compete with the conversation.
 2. Keep the panel's core summary: remaining tokens and percentage,
    used/window counts, turn total, completed-turn generation speed, exact
    provider usage values, aggregate tool types/calls/tokens, and the newest
-   compaction summary when present.
+   compaction summary when present. D355 scopes occupancy, turn total, and
+   provider values to the last model request; speed and tools stay the
+   visual turn.
 3. Render the turn and speed values as unboxed inline stats. Render provider and
    tool usage as two compact summary rows without section cards or source
    badges. The `~` marker on the aggregate tool total remains the estimate

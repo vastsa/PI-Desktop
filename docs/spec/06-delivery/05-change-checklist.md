@@ -26,6 +26,36 @@ See [R5 — Verify linked GitHub issues](03-ai-development-workflow.md#r5--verif
 
 ---
 
+## 0.1 GitHub Pull Request Intake
+
+When the prompt includes a GitHub pull request URL or an unambiguous pull
+request number for this repository, complete this gate before rewriting the
+change or starting follow-up:
+
+- [ ] Pull request title, body, files, commits, comments, checks, draft
+  state, base/head, and linked issues were fetched.
+- [ ] The **principle** was independently judged (real in-scope problem;
+  approach compatible with baseline, security, and architecture).
+- [ ] Completeness gaps (specs, tests, i18n, e2e docs, style, naming) were
+  not treated as merge blockers.
+- [ ] If the principle is sound: the pull request was merged first,
+  preserving the contributor's commits; landing blockers received only
+  smallest-on-top commits.
+- [ ] Follow-up started only after the pull request was in `main`, using a
+  new R4 request branch and worktree.
+- [ ] If the principle is not sound or a harm blocker exists: the pull
+  request was not merged, and a comment recorded the evidence. The idea was
+  not silently reimplemented.
+- [ ] A draft pull request was not merged unless the user explicitly asked.
+- [ ] The comment uses the pull request's language.
+- [ ] No unrelated pull request was commented on or merged.
+- [ ] The contributor's branch was not force-pushed. Unrelated remote
+  publishing was not inferred from the pull request link.
+
+See [R6 — Merge a linked pull request whose principle is sound, then follow up](03-ai-development-workflow.md#r6--merge-a-linked-pull-request-whose-principle-is-sound-then-follow-up).
+
+---
+
 ## 1. Request Start Checklist
 
 Before editing any file for a new request:
@@ -143,7 +173,8 @@ Required for every stable app version bump / tag (D164). Skip only for
 documentation-only work or non-release chores.
 
 - [ ] `packages/shared/src/changelog.ts` has a newest-first entry for the
-      release version under **both** `en` and `zh-CN` (no leading `v`).
+      release version under `en` and every shipped product locale (no leading
+      `v`).
 - [ ] Highlight counts match across locales; English is the source of truth.
 - [ ] Bullets are short user-facing product notes (not raw PR/commit lists).
 - [ ] Pre-release-only versions are omitted from the product catalog unless
@@ -154,7 +185,7 @@ documentation-only work or non-release chores.
       `<major>.<minor>.x` release line and contain no toolchain, command,
       Highlights, or roadmap claim the release invalidates.
 - [ ] `node scripts/check-release-docs.mjs` passes (version surfaces,
-      dual-locale catalog, README release line).
+      shipped-locale catalog, README release line).
 - [ ] Documentation commit is on the release branch **before**
       `node scripts/release.mjs <version> --tag` / `git tag v<version>`.
 - [ ] GitHub auto-generated release body is treated as web-only, not the
@@ -179,5 +210,6 @@ Before marking work complete, verify **all** of the following:
 | 9 | PR/MR merged into `main`; request worktree and branch removed | [R4 — Request branch + worktree + merge gate](03-ai-development-workflow.md#r4--request-branch--worktree--merge-gate) |
 | 10 | No merged worktree left on disk; `git worktree list` has no stale entry for this request | [§6.1 Merge Cleanup Checklist](#61-merge-cleanup-checklist) |
 | 11 | If a GitHub issue was linked: verified before work; commented in the issue language; closed when conclusive | [R5 — Verify linked GitHub issues](03-ai-development-workflow.md#r5--verify-linked-github-issues-before-work-then-reply-and-close) |
+| 12 | If a GitHub pull request was linked: principle reviewed; merged first when sound; follow-up after merge; contributor work not discarded | [R6 — Merge a linked pull request whose principle is sound, then follow up](03-ai-development-workflow.md#r6--merge-a-linked-pull-request-whose-principle-is-sound-then-follow-up) |
 
 If any gate fails, the change is **not Done**.

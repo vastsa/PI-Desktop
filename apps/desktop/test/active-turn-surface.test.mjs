@@ -22,15 +22,25 @@ test("active turns show immediate and phase-specific feedback without a progress
   assert.match(transcript, /className="working-indicator-label"/);
   assert.match(transcript, /function RunActivityIndicator\(/);
   assert.match(transcript, /data-testid="run-activity-indicator"/);
+  assert.doesNotMatch(transcript, /tool-activity-current|currentStatus|activityItemStatus/);
   assert.match(transcript, /waiting-model/);
   assert.match(transcript, /waitingForSubagents/);
+  assert.match(transcript, /waitingForSubagentNamed/);
+  assert.match(transcript, /startingTurn/);
+  assert.match(transcript, /preparingNextRequest/);
+  assert.match(transcript, /compactingContext/);
+  assert.match(transcript, /recoveringTurn/);
   assert.match(transcript, /retryingModel/);
+  assert.match(transcript, /function runActivityLabel\(/);
+  assert.match(transcript, /activity\.error/);
+  assert.match(transcript, /run-activity-error-popover message-error/);
+  assert.match(transcript, /role="tooltip"/);
+  assert.match(transcript, /aria-describedby=\{retryErrorDetailsId\}/);
   assert.match(transcript, /state\.agentStatuses\[sessionId\]\?\.activity/);
-  assert.match(transcript, /const specializedActivity =/);
+  assert.match(transcript, /const specializedActivity = agentActivity/);
   assert.match(transcript, /!hasSpecializedActivity/);
   assert.match(transcript, /const showWorking =/);
-  assert.match(transcript, /\{showWorking \? \(/);
-  assert.match(transcript, /<WorkingIndicator[\s\S]*startedAt=/);
+  assert.match(transcript, /\{showWorking \? <WorkingIndicator \/> : null\}/);
   assert.match(transcript, /function PlanningIndicator\(/);
   assert.match(transcript, /data-testid="planning-indicator"/);
   assert.match(transcript, /const showPlanning =/);
@@ -56,9 +66,17 @@ test("active turns show immediate and phase-specific feedback without a progress
   assert.match(transcript, /<PermissionCard/);
   assert.doesNotMatch(store, /AgentProgress|agentProgress|updateAgentProgress/);
   assert.match(messagesStyles, /\.working-indicator\s*\{/);
+  assert.doesNotMatch(messagesStyles, /\.tool-activity-current/);
   assert.match(messagesStyles, /\.working-indicator-mark\s*\{/);
   assert.match(messagesStyles, /\.run-activity-indicator\[data-phase="waiting-model"\]/);
+  assert.match(messagesStyles, /\.run-activity-indicator\[data-phase="compacting"\]/);
+  assert.match(messagesStyles, /\.run-activity-indicator\[data-phase="recovering"\]/);
   assert.match(messagesStyles, /\.run-activity-indicator\[data-phase="retrying"\]/);
+  assert.match(messagesStyles, /\.run-activity-error-popover\.message-error/);
+  assert.match(
+    messagesStyles,
+    /\.run-activity-retry-reason:hover[\s\S]*\.run-activity-error-popover/,
+  );
   assert.match(messagesStyles, /\.run-activity-indicator\[data-phase="waiting-subagents"\]/);
   assert.match(messagesStyles, /\.working-indicator-mark > span\s*\{[\s\S]*?animation:\s*working-indicator-dot\s+1s/);
   assert.doesNotMatch(proseStyles, /\.working-indicator\s*\{|\.shimmer-text\s*\{/);
@@ -77,7 +95,12 @@ test("active turns show immediate and phase-specific feedback without a progress
   );
   for (const catalog of [en, zh]) {
     assert.match(catalog, /waitingForModel:/);
+    assert.match(catalog, /startingTurn:/);
+    assert.match(catalog, /preparingNextRequest:/);
+    assert.match(catalog, /compactingContext:/);
+    assert.match(catalog, /recoveringTurn:/);
     assert.match(catalog, /retryingModel:/);
+    assert.match(catalog, /waitingForSubagentNamed:/);
     assert.match(catalog, /waitingForSubagents_one:/);
     assert.match(catalog, /waitingForSubagents_other:/);
   }

@@ -10,24 +10,41 @@ import {
 const STABLE_FROM = "0.1.1";
 
 describe("changelog catalog", () => {
-  it("keeps English and zh-CN version sets and highlight counts aligned", () => {
+  it("keeps shipped locale version sets and highlight counts aligned", () => {
     const en = CHANGELOG.en;
     const zh = CHANGELOG["zh-CN"];
-    expect(zh.map((e) => e.version)).toEqual(en.map((e) => e.version));
-    for (let i = 0; i < en.length; i += 1) {
-      expect(zh[i]?.highlights.length).toBe(en[i]?.highlights.length);
-      expect(en[i]?.highlights.length).toBeGreaterThan(0);
+    for (const catalog of [
+      zh,
+      CHANGELOG["zh-TW"],
+      CHANGELOG.tr,
+      CHANGELOG.de,
+      CHANGELOG.es,
+      CHANGELOG.fr,
+      CHANGELOG.ko,
+    ]) {
+      expect(catalog.map((e) => e.version)).toEqual(en.map((e) => e.version));
+      for (let i = 0; i < en.length; i += 1) {
+        expect(catalog[i]?.highlights.length).toBe(en[i]?.highlights.length);
+        expect(en[i]?.highlights.length).toBeGreaterThan(0);
+      }
     }
   });
 
   it("lists stable releases from 0.1.1 newest-first without pre-releases", () => {
     const versions = CHANGELOG.en.map((e) => e.version);
-    expect(versions[0]).toBe("0.13.11");
+    expect(versions[0]).toBe("0.14.6");
     expect(versions.at(-1)).toBe(STABLE_FROM);
     // 0.11.1 is intentionally absent: that tag was pushed before the release
     // branch was complete, and 0.11.2 is the tag that actually ships its
     // highlights. The in-app changelog lists shipped releases, not tags.
     expect(versions).toEqual([
+      "0.14.6",
+      "0.14.5",
+      "0.14.4",
+      "0.14.3",
+      "0.14.2",
+      "0.14.1",
+      "0.14.0",
       "0.13.11",
       "0.13.10",
       "0.13.9",
@@ -100,7 +117,15 @@ describe("changelog catalog", () => {
   it("normalizes versions and resolves locales", () => {
     expect(normalizeChangelogVersion(" v0.2.7 ")).toBe("0.2.7");
     expect(resolveChangelogLocale("zh-CN")).toBe("zh-CN");
-    expect(resolveChangelogLocale("zh-TW")).toBe("zh-CN");
+    expect(resolveChangelogLocale("zh-TW")).toBe("zh-TW");
+    expect(resolveChangelogLocale("zh-Hant")).toBe("zh-TW");
+  expect(resolveChangelogLocale("zh_HK")).toBe("zh-TW");
+  expect(resolveChangelogLocale("tr-TR")).toBe("tr");
+  expect(resolveChangelogLocale("de-DE")).toBe("de");
+  expect(resolveChangelogLocale("es-MX")).toBe("es");
+  expect(resolveChangelogLocale("fr-CA")).toBe("fr");
+  expect(resolveChangelogLocale("ko-KR")).toBe("ko");
+  expect(resolveChangelogLocale("ko_KR")).toBe("ko");
     expect(resolveChangelogLocale("en-US")).toBe("en");
     expect(resolveChangelogLocale()).toBe("en");
   });

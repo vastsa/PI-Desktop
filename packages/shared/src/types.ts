@@ -185,6 +185,9 @@ export const THINKING_LEVELS = [
   "max",
 ] as const;
 export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
+/** Per-subagent selector values; omit leaves the provider's default untouched. */
+export const SUBAGENT_THINKING_LEVELS = [...THINKING_LEVELS, "omit"] as const;
+export type SubagentThinkingLevel = (typeof SUBAGENT_THINKING_LEVELS)[number];
 
 export type ModelProviderMetadata = string | Record<string, unknown>;
 export type ModelExperimentalMetadata = boolean | Record<string, unknown>;
@@ -244,6 +247,9 @@ export function modelIdsMatch(candidate: string, requested: string): boolean {
 /** Provider-local model settings persisted with the provider configuration. */
 export type ModelBinding = {
   id: string;
+  /** Optional display alias. When set it names the model everywhere the UI
+   * shows a model label; the id remains the wire identity. */
+  alias?: string;
   contextWindow: number;
   maxTokens: number;
   /** Explicit endpoint levels; an empty or off-only set disables thinking. */
@@ -525,20 +531,46 @@ export type AgentStatus = {
   activity?: AgentActivity;
 };
 
+/** Bounded provider diagnostics shown while the runtime waits before retrying. */
+export type AgentActivityError = {
+  code: string;
+  message: string;
+  providerStatus?: number;
+};
+
+/** Coarse child-agent action shown while the parent waits on delegates. */
+export type AgentActivityAgentPhase = "waiting-model" | "thinking" | "tool";
+
+export type AgentActivityAgent = {
+  name: string;
+  lastPhase?: AgentActivityAgentPhase;
+  lastToolName?: string;
+};
+
 /** The runtime phase that explains a quiet interval in an active turn. */
 export type AgentActivity =
   | { phase: "starting"; since: number }
   | { phase: "waiting-model"; since: number }
+  | { phase: "preparing"; since: number }
+  | {
+      phase: "compacting";
+      since: number;
+      reason: ContextCompactionReason;
+    }
+  | { phase: "recovering"; since: number }
   | {
       phase: "retrying";
       since: number;
       attempt: number;
       retryDelayMs?: number;
+      error?: AgentActivityError;
     }
   | {
       phase: "waiting-subagents";
       since: number;
       subagentCount: number;
+      /** Running targets, in wait order, with the latest coarse child action. */
+      agents?: AgentActivityAgent[];
     };
 
 export type AgentPromptRequest = {
@@ -605,6 +637,19 @@ export type PromptEnhancementResponse = {
   enhancedDraft: string;
 };
 
+export type SessionSummarizeTitleRequest = {
+  sessionId: string;
+  userPrompt: string;
+  assistantReply?: string;
+  providerId?: string;
+  modelId?: string;
+  thinkingLevel?: ThinkingLevel;
+};
+
+export type SessionSummarizeTitleResponse = {
+  title: string;
+};
+
 export type AgentExecuteApprovedPlanRequest = {
   sessionId: string;
   turnId: string;
@@ -629,6 +674,28 @@ export type AgentStopRequest = {
 
 export type AgentStopResponse = {
   requested: boolean;
+};
+
+/** One entry of the Host-owned turn queue as the renderer mirrors it (D386). */
+export type QueuedTurnSummary = {
+  id: string;
+  sessionId: string;
+  content: string;
+  attachments?: AgentPromptAttachment[];
+  position: number;
+  createdAt: string;
+};
+
+export type AgentQueuePushRequest = {
+  sessionId: string;
+  content: string;
+  attachments?: AgentPromptAttachment[];
+  idempotencyKey?: string;
+};
+
+export type AgentQueueChangedEvent = {
+  sessionId: string;
+  entries: QueuedTurnSummary[];
 };
 
 export type AgentCompactRequest = {
@@ -820,10 +887,11 @@ export type ProviderPublic = {
   /** Non-secret label for the signed-in account; never carries a token. */
   oauthAccountLabel?: string;
   /**
-   * Optional outbound User-Agent. Empty/absent keeps the adapter default
-   * (pi-ai / `claude-cli` / OpenCode).
+   * Optional outbound HTTP headers. Empty/absent keeps adapter defaults
+   * (pi-ai / `claude-cli` / OpenCode). Not a secret; Authorization and
+   * other reserved keys are rejected.
    */
-  userAgent?: string;
+  headers?: Record<string, string>;
   /** Per-model settings selected in the provider dialog. */
   models: ModelBinding[];
   /** @deprecated Use `models[0]?.id`; retained for older runtime consumers. */
@@ -862,10 +930,10 @@ export type ProviderCreateInput = {
    */
   oauthAccountLabel?: string;
   /**
-   * Optional outbound User-Agent. On update, an empty string clears the stored
-   * override; omit the field to leave it unchanged.
+   * Optional outbound HTTP headers. On update, `{}` clears the stored map;
+   * omit the field to leave it unchanged.
    */
-  userAgent?: string;
+  headers?: Record<string, string>;
   /** Explicit override for custom model catalogs. */
   supportsReasoning?: boolean;
   /**
@@ -924,6 +992,7 @@ export type OAuthPromptOption = {
 export type OAuthPromptRequest = {
   promptId: string;
   type: "text" | "secret" | "select" | "manual_code";
+  /** Plain text prompts may accept an empty value as a vendor-defined default. */
   message: string;
   placeholder?: string;
   options?: OAuthPromptOption[];
@@ -1093,13 +1162,23 @@ export type AppSettings = {
   defaultPermissionMode?: GlobalPermissionMode;
   theme: ThemePreference;
   /** UI language; `auto` (and absent) follows the OS locale. */
-  language?: "auto" | "en" | "zh-CN" | "tr";
+  language?: "auto" | "en" | "zh-CN" | "zh-TW" | "tr" | "de" | "es" | "fr" | "ko";
   /**
    * Global UI font stack (CSS `font-family` value). Absent means the built-in
    * token stack; bundled open-source families and installed system families
    * are offered by the settings picker.
    */
   fontFamily?: string;
+  /**
+   * Global UI type scale (D343). `1` is the product `--text-*` ramp.
+   * Absent means 1. Range 0.8–1.5 in 0.025 steps. Window zoom is independent.
+   */
+  fontScale?: number;
+  /**
+   * @deprecated Unreleased D343 px field. Reads migrate into `fontScale`
+   * as `px / 14`; new writes persist `fontScale` instead.
+   */
+  fontSize?: number;
   enterToSend: boolean;
   /** Text length above which a plain-text paste becomes a session file reference. */
   largePasteThreshold?: number;
@@ -1127,8 +1206,25 @@ export type AppSettings = {
    * is set. See `network-proxy.ts`.
    */
   networkProxy?: NetworkProxySettings;
+  /**
+   * Preferred destination when clicking HTTP/HTTPS links in chat messages.
+   * `workpanel`: Preview in the Work Panel browser tab (default).
+   * `external`: Open directly in the system's default web browser.
+   */
+  linkOpenTarget?: LinkOpenTarget;
+  /**
+   * Which context figure the composer ring and its summary lead with (D398).
+   * `remaining` (default, absent) counts down from 100%; `used` counts up.
+   * Color thresholds always follow remaining capacity, so the warning state
+   * does not change meaning with this preference.
+   */
+  contextUsageDisplay?: ContextUsageDisplay;
   onboardingDismissed: boolean;
 };
+
+export type LinkOpenTarget = "workpanel" | "external";
+
+export type ContextUsageDisplay = "remaining" | "used";
 
 export type PluginMarketSource = "official" | "mirror" | "custom";
 
@@ -1258,7 +1354,9 @@ export type PluginCapability =
   | "themes"
   | "mcp"
   | "services"
-  | "bus";
+  | "bus"
+  /** `contributes.agentExtensions`: ExtensionAPI modules in the agent process. */
+  | "agentExtension";
 
 export type PluginSettingType =
   | "string"
@@ -1347,6 +1445,18 @@ export type PluginSummary = {
   /** Declared file scope, so the page can show it next to the permissions. */
   fs?: PluginFsPolicy;
   settings?: PluginSettingDefinition[];
+  /** Live state of the plugin's `contributes.agentExtensions` modules, from
+   * the most recent session that loaded them (spec 07-plugins/16 §11). */
+  agentExtension?: PluginAgentExtensionStatus;
+};
+
+/** What the agent process reported for one plugin's ExtensionAPI modules. */
+export type PluginAgentExtensionStatus = {
+  /** `enabled` until a session loads the modules in this app run. */
+  state: "enabled" | "loaded" | "error";
+  toolNames: string[];
+  commandNames: string[];
+  diagnostics: import("./trusted-extensions.js").TrustedExtensionDiagnostic[];
 };
 
 /** The filesystem level that owns an agent capability. */
@@ -1488,8 +1598,10 @@ export type UserSubagentRecord = {
   tools: string[];
   /** `<provider>/<model>` pin, resolved against providers at launch. */
   model?: string;
-  thinkingLevel?: ThinkingLevel;
+  thinkingLevel?: SubagentThinkingLevel;
   maxTurns?: number;
+  /** Output-token cap for one delegate response; omitted follows the model. */
+  maxTokens?: number;
   /** Absolute path of the document, for revealing it. */
   path: string;
   sizeBytes: number;
@@ -1505,9 +1617,11 @@ export type UserSubagentInput = {
   tools?: string[];
   /** Empty string clears the pin; absent leaves it unchanged. */
   model?: string;
-  thinkingLevel?: ThinkingLevel | "";
+  thinkingLevel?: SubagentThinkingLevel | "";
   /** `0` clears the override; absent leaves it unchanged. */
   maxTurns?: number;
+  /** `0` clears the cap; absent leaves it unchanged. */
+  maxTokens?: number;
   enabled?: boolean;
   scope?: ActivationScope;
 };
@@ -1574,15 +1688,17 @@ export type CommandItem = {
   title: string;
   category?: string;
   keywords?: string[];
-  source: "builtin" | "plugin";
+  source: "builtin" | "plugin" | "extension";
   pluginId?: string;
+  /** Trusted extension that registered the command (`source: "extension"`). */
+  extensionId?: string;
 };
 
-/** One entry of the composer "/" menu, merged from three sources (D123). */
+/** One entry of the composer "/" menu, merged from command and skill sources (D123). */
 export type ComposerCommand = {
   /** Slash name typed after "/"; unique across the merged list. */
   name: string;
-  kind: "template" | "builtin" | "plugin";
+  kind: "template" | "builtin" | "plugin" | "extension" | "skill";
   /** Display title (templates use their name). */
   title: string;
   description?: string;
@@ -1592,12 +1708,16 @@ export type ComposerCommand = {
   source?: "project" | "user";
   /** Palette command id for builtin/plugin execution. */
   id?: string;
+  /** Skill id passed to the model's Skill tool. */
+  skillId?: string;
 };
 
 /** One clipboard file transferred from the renderer to the composer bridge. */
 export type ComposerPasteFile = {
   name?: string;
   mimeType?: string;
+  /** Set for generated large-text pastes so history can retain the text. */
+  recordHistory?: boolean;
   data: ArrayBuffer;
 };
 
@@ -1636,7 +1756,12 @@ export type HostStatusEvent = {
   restarting?: boolean;
   restarted?: boolean;
   fatal?: boolean;
+  /** Free text, or a status token such as `GLIBC_UNSUPPORTED` / `DB_SCHEMA_TOO_NEW`. */
   message?: string;
+  /** Schema numbers behind `DB_SCHEMA_TOO_NEW`. */
+  schema?: { found: number; supported: number };
+  /** Set on the boot status when the build is not native to this CPU. */
+  archMismatch?: { platform: string; processArch: string; machineArch: string };
 };
 
 /**
@@ -1664,7 +1789,7 @@ export type UpdateState = {
   currentVersion: string;
   availableVersion?: string;
   /**
-   * Localized product highlights for `availableVersion` from the dual-locale
+   * Localized product highlights for `availableVersion` from the shipped-locale
    * in-app changelog. Plain text (bullet lines); absent when the version has
    * no catalog entry. Main selects the locale — the renderer never supplies
    * a feed or remote notes URL (ADR 0022 / D164).

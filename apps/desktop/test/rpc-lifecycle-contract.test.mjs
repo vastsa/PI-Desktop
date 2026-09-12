@@ -53,6 +53,17 @@ test("host transport closes pending calls and listeners on process death", () =>
   assert.match(hostSource, /private notifyExit\(/);
 });
 
+test("host transport rejects oversized request lines before writing", () => {
+  assert.match(hostSource, /MAX_HOST_STDIN_LINE_BYTES/);
+  assert.match(hostSource, /errorCode: ErrorCodes.LIMIT_EXCEEDED/);
+  assert.match(hostSource, /request line exceeds 64 MiB/);
+  assert.ok(
+    hostSource.indexOf("Buffer.byteLength(payload") <
+      hostSource.indexOf("this.child.stdin.write(payload"),
+    "oversize must be rejected before stdin.write",
+  );
+});
+
 test("host transport retries transient RPC overload with a bounded backoff", () => {
   assert.match(hostSource, /HOST_OVERLOAD_RETRY_DELAYS_MS = \[50, 100, 200, 400\]/);
   assert.match(hostSource, /typeof msg\.error\.data\.errorCode === "string"/);
@@ -157,7 +168,7 @@ test("app quit waits for one idempotent teardown before allowing the follow-up q
   assert.match(shutdownSource, /await hostShutdown/);
   assert.match(
     shutdownSource,
-    /await Promise\.allSettled\(\[pluginPanelShutdown, pluginShutdown, sidecarShutdown\]\)/,
+    /await Promise\.allSettled\(\[\s*pluginPanelShutdown,\s*pluginShutdown,\s*sidecarShutdown,\s*mcpShutdown,\s*\]\)/,
   );
   const releaseQuit = shutdownSource.match(
     /const releaseQuit = \(\) => \{[\s\S]*?shutdownComplete = true;[\s\S]*?app\.quit\(\);[\s\S]*?\};/,
@@ -180,6 +191,8 @@ test("settings writes validate without applying read defaults", () => {
   assert.match(apiSource, /hasOwnProperty\.call\(value, "defaultCommandShell"\)/);
   assert.match(apiSource, /normalizeLargePasteThreshold/);
   assert.match(apiSource, /hasOwnProperty\.call\(value, "largePasteThreshold"\)/);
+  assert.match(apiSource, /resolveFontScale/);
+  assert.match(apiSource, /hasOwnProperty\.call\(value, "fontScale"\)/);
   assert.doesNotMatch(mainSource, /planApprovalPermissionMode/);
   assert.doesNotMatch(apiSource, /planApprovalPermissionMode/);
 });

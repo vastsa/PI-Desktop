@@ -1,0 +1,55 @@
+name: Docs check
+
+# ci.yml ignores docs/** and **/*.md, so documentation drift (an English spec
+# page without its zh mirror, or the reverse) was never caught. This workflow
+# runs only the locale pair check; `check:release-docs` stays out of CI on
+# purpose because it intentionally fails on rc versions.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'README*.md'
+      - 'packages/shared/src/changelog*.ts'
+      - 'scripts/check-*.mjs'
+      - 'docs/scripts/**'
+      - '.github/workflows/docs-check.yml'
+  pull_request:
+    paths:
+      - 'docs/**'
+      - 'README*.md'
+      - 'packages/shared/src/changelog*.ts'
+      - 'scripts/check-*.mjs'
+      - 'docs/scripts/**'
+      - '.github/workflows/docs-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docs:
+    name: Docs locale pair check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Same Node as ci.yml (matches the runtime Electron 43 bundles).
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check docs locale pairs
+        run: pnpm docs:check

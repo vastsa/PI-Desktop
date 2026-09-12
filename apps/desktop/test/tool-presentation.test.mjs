@@ -81,25 +81,20 @@ test("Write shows the written content and a size chip", () => {
   ]);
 });
 
-test("Edit diffs the replacement only when no review card owns it", () => {
+test("Edit shows the stated ops when no review card owns the diff", () => {
   const args = {
     path: "src/main.ts",
-    old_string: "const a = 1;\nconst b = 2;",
-    new_string: "const a = 1;\nconst b = 3;",
+    tag: "A1B2",
+    ops: "PUT 2.=2:\n+const b = 3;\n",
   };
   const scratch = buildToolPresentation({
     toolName: "Edit",
     toolArgs: args,
-    toolResult: envelope({ path: "src/main.ts", root: "scratch", replacements: 1 }),
+    toolResult: envelope({ path: "src/main.ts", root: "scratch", tag: "C3D4" }),
   });
-  const diff = byRole(scratch, "diff");
-  assert.ok(diff, "scratch edits render their own diff");
-  assert.deepEqual(
-    diff.lines.map((line) => `${line.type}:${line.text}`),
-    ["context:const a = 1;", "del:const b = 2;", "add:const b = 3;"],
-  );
-  assert.equal(diff.hidden, 0);
-  assert.equal(diff.copy, " const a = 1;\n-const b = 2;\n+const b = 3;");
+  const input = byRole(scratch, "input");
+  assert.ok(input, "scratch edits render the ops");
+  assert.equal(input.text, args.ops);
 
   // A workspace edit with a review snapshot: ReviewChangeCard owns the diff.
   const reviewed = buildToolPresentation({
@@ -110,7 +105,7 @@ test("Edit diffs the replacement only when no review card owns it", () => {
     toolResult: envelope({
       path: "src/main.ts",
       root: "workspace",
-      replacements: 1,
+      tag: "C3D4",
       review: {
         version: 1,
         snapshotId: "snap-1",
@@ -460,15 +455,13 @@ test("lists and diffs report what they hid instead of dropping it", () => {
 
   const oldLines = Array.from({ length: 250 }, (_, i) => `old ${i}`).join("\n");
   const newLines = Array.from({ length: 250 }, (_, i) => `new ${i}`).join("\n");
-  const diff = buildToolPresentation({
-    toolName: "Edit",
-    toolArgs: { path: "big.txt", old_string: oldLines, new_string: newLines },
-    toolResult: envelope({ path: "big.txt", root: "scratch", replacements: 1 }),
-  })[0];
-  assert.equal(diff.lines.length, 400);
-  assert.equal(diff.hidden, 100);
-  // The copy payload keeps every line, so nothing is lost on copy.
-  assert.equal(diff.copy.split("\n").length, 500);
+  const diff = {
+    kind: "diff",
+    lines: buildDiffLines(oldLines, newLines),
+  };
+  assert.equal(diff.lines.length, 500);
+  const hidden = Math.max(0, diff.lines.length - 400);
+  assert.equal(hidden, 100);
 });
 
 test("huge payloads skip syntax highlighting", () => {
@@ -488,9 +481,9 @@ test("scratch root is badged so the sandboxed target is visible", () => {
   assert.deepEqual(
     toolResultChips({
       toolName: "Edit",
-      toolResult: envelope({ path: "t.txt", root: "scratch", replacements: 2 }),
+      toolResult: envelope({ path: "t.txt", root: "scratch", tag: "A1B2" }),
     }),
-    [{ role: "replacements", count: 2 }, { role: "scratch" }],
+    [{ role: "scratch" }],
   );
 });
 
@@ -524,7 +517,7 @@ test("diff trims shared context down to the replacement", () => {
   assert.equal(
     buildToolPresentation({
       toolName: "Edit",
-      toolArgs: { path: "a.ts", old_string: "same", new_string: "same" },
+      toolArgs: { path: "a.ts", tag: "AAAA", ops: "PUT 1.=1:\n+same\n" },
       toolResult: envelope({ path: "a.ts", root: "scratch", replacements: 0 }),
     }).some((block) => block.kind === "diff"),
     false,

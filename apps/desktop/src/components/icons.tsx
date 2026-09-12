@@ -1,4 +1,4 @@
-import type { SVGProps } from "react";
+import type { CSSProperties, SVGProps } from "react";
 import {
   Activity,
   AppWindow,
@@ -35,6 +35,7 @@ import {
   Folder,
   FolderOpen,
   FolderPlus,
+  GripVertical,
   Globe2,
   GitFork,
   GitPullRequestArrow,
@@ -46,6 +47,7 @@ import {
   ListChecks,
   LogOut,
   Mic,
+  Minus,
   MessageSquare,
   MessageSquarePlus,
   Monitor,
@@ -55,6 +57,7 @@ import {
   Palette,
   PanelLeft,
   PanelRight,
+  PanelRightOpen,
   PawPrint,
   PencilLine,
   Pin,
@@ -93,10 +96,42 @@ import {
 
 export type IconProps = LucideProps;
 
+/**
+ * Lucide sizes are fixed px attributes. Multiply them by `--font-scale` so
+ * chrome glyphs stay in proportion with the Appearance type scale (D343).
+ */
+function scaledIconBox(size: IconProps["size"] = 16): string {
+  if (typeof size === "number" && Number.isFinite(size)) {
+    return `calc(${size}px * var(--font-scale))`;
+  }
+  if (typeof size === "string" && size.trim()) {
+    const value = size.trim();
+    return /[a-z%]+$/i.test(value)
+      ? `calc(${value} * var(--font-scale))`
+      : `calc(${value}px * var(--font-scale))`;
+  }
+  return "calc(16px * var(--font-scale))";
+}
+
+function withScaledIconStyle(
+  size: IconProps["size"],
+  style?: CSSProperties,
+): CSSProperties {
+  const box = scaledIconBox(size);
+  return { width: box, height: box, ...style };
+}
+
 /* Defaults (16px, 1.75 stroke) match the app's previous hand-drawn icon set. */
 function icon(Lucide: LucideIcon) {
-  return function Icon(props: IconProps) {
-    return <Lucide size={16} strokeWidth={1.75} {...props} />;
+  return function Icon({ size = 16, style, ...props }: IconProps) {
+    return (
+      <Lucide
+        size={size}
+        strokeWidth={1.75}
+        {...props}
+        style={withScaledIconStyle(size, style)}
+      />
+    );
   };
 }
 
@@ -111,12 +146,14 @@ export const IconArchiveRestore = icon(ArchiveRestore);
 export const IconActivity = icon(Activity);
 export const IconArrowUpDown = icon(ArrowUpDown);
 export const IconSearch = icon(Search);
+export const IconRefresh = icon(RefreshCcw);
 export const IconChat = icon(MessageSquare);
 /** Session creation affordance. Keep it distinct from generic add actions. */
 export const IconNewSession = icon(MessageSquarePlus);
 export const IconFolder = icon(Folder);
 export const IconFolderOpen = icon(FolderOpen);
 export const IconNewProject = icon(FolderPlus);
+export const IconGripVertical = icon(GripVertical);
 export const IconFileText = icon(FileText);
 export const IconGlobe = icon(Globe2);
 export const IconBranch = icon(GitFork);
@@ -129,6 +166,7 @@ export const IconAt = icon(AtSign);
 export const IconSettings = icon(Settings);
 export const IconHelp = icon(CircleHelp);
 export const IconPanel = icon(PanelRight);
+export const IconPanelOpen = icon(PanelRightOpen);
 export const IconDiff = icon(FileDiff);
 export const IconSidebar = icon(PanelLeft);
 export const IconArrowUp = icon(ArrowUp);
@@ -142,6 +180,9 @@ export const IconCheckCheck = icon(CheckCheck);
 export const IconShield = icon(Shield);
 export const IconChevronDown = icon(ChevronDown);
 export const IconClose = icon(X);
+/* Frameless window chrome (WindowControls): minimize / maximize / restore. */
+export const IconMinus = icon(Minus);
+export const IconSquare = icon(Square);
 export const IconSliders = icon(SlidersHorizontal);
 export const IconConfig = icon(RefreshCcw);
 export const IconChevronLeft = icon(ChevronLeft);
@@ -194,18 +235,33 @@ export const IconCircleCheck = icon(CircleCheck);
 export const IconCircleAlert = icon(CircleAlert);
 export const IconTriangleAlert = icon(TriangleAlert);
 
-export function IconStop(props: IconProps) {
-  return <Square size={16} strokeWidth={0} fill="currentColor" {...props} />;
+export function IconStop({ size = 16, style, ...props }: IconProps) {
+  return (
+    <Square
+      size={size}
+      strokeWidth={0}
+      fill="currentColor"
+      {...props}
+      style={withScaledIconStyle(size, style)}
+    />
+  );
 }
 
 /* Heavy round-capped stroke renders Lucide's Dot at the old filled-dot size. */
-export function IconDot(props: IconProps) {
-  return <Dot size={16} strokeWidth={6.5} {...props} />;
+export function IconDot({ size = 16, style, ...props }: IconProps) {
+  return (
+    <Dot
+      size={size}
+      strokeWidth={6.5}
+      {...props}
+      style={withScaledIconStyle(size, style)}
+    />
+  );
 }
 
 /** VS Code brand mark (settings open-target pill) — logos stay custom, no Lucide equivalent. */
 export function IconVSCode(props: SVGProps<SVGSVGElement> & { size?: number }) {
-  const { size = 14, ...rest } = props;
+  const { size = 14, style, ...rest } = props;
   return (
     <svg
       width={size}
@@ -215,6 +271,7 @@ export function IconVSCode(props: SVGProps<SVGSVGElement> & { size?: number }) {
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden
       {...rest}
+      style={withScaledIconStyle(size, style)}
     >
       <path
         d="M17.5 2.6 21 4.2v15.6l-3.5 1.6-9.2-7.2L3 17V7l5.3-2.8 9.2 7.2V2.6Z"

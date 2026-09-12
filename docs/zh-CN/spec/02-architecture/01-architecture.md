@@ -86,6 +86,29 @@ Electron Main 独家拥有更新客户端和修复的 GitHub 版本
 - 插件面板
 - 授予许可
 
+### 3. 6 本地 MCP 控制面
+
+设置 `PI_DESKTOP_MCP_CONTROL=1` 时，Electron Main 会在 `127.0.0.1` 启动可选的
+Streamable HTTP MCP 服务。服务提供项目/会话/Agent/工作区常用命名工具，以及经过
+审查的通用桌面操作目录。每次调用都委托给渲染器使用的同一主进程 IPC 处理器，不会
+创建第二套权限或持久化实现。
+
+服务在 Electron 用户数据目录创建 bearer token 和连接清单，只绑定回环地址，不暴露
+密钥通道、provider/OAuth/MCP 密钥写入路径，或渲染器专属原生选择器。危险通用操作和
+`session/configure` 要求 `confirm: true`，这是 Agent 确认而非用户弹窗。成功的
+**变更性** 项目/会话调用复用现有会话变更事件，使外部 Agent 和可见桌面收敛到同一状态。
+这是本地自动化接口，不是延后的远程 Gateway / WebUI 架构。
+
+### 3.7 远程 Agent Control 目标（MVP 后）
+
+远程控制在 [05-remote-agent-control](/zh-CN/spec/02-architecture/05-remote-agent-control)
+中单独定义。目标是在现有 sidecar 之上增加无头 Agent Host 模块，并暴露与传输无关的
+RACP 契约：WebSocket JSON-RPC 是 v1 规范绑定，HTTP/JSON + SSE 是其浏览器 profile，
+gRPC 保留（D374）。它不暴露 Electron IPC、`host.proxy` 或 host-core RPC，也不改变当前
+MVP 对远程 Gateway 的排除。首个实现把该模块放在 Electron Main 内，桌面 IPC、本地 MCP
+和 RACP 都调用它。首个远程部署（D375）把同一模块打包为另一台机器上的无头 `pi-host`，
+桌面经 SSH 隧道连接；Gateway 路由与浏览器访问保留规格但不排期。
+
 ## 4. 请求路径（对话+工具）
 
 ```text
@@ -141,7 +164,7 @@ reload 仅通过 `plans.pending` 重新水化仍待处理的行，而不是
 
 MVP 目标进程：
 
-1.Electron主要
+1.Electron主要（包括可选的回环 MCP 控制服务）
 2.Electron渲染器
 3. Rust 主机内核 sidecar
 4. Node pi 代理 sidecar
@@ -150,7 +173,8 @@ MVP 目标进程：
 
 ## 7. 扩展点
 
-- 工具提供程序（内置/插件/MCP 稍后）
+- 工具提供程序（内置/插件/用户 MCP）
+- 面向已审查桌面操作的本地 MCP 控制客户端
 - 会话后端
 - 模型目录来源
 - 权限策略包

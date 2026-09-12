@@ -15,6 +15,10 @@ const providersSource = await readFile(
   new URL("../src/components/settings/ModelConfigPage.tsx", import.meta.url),
   "utf8",
 );
+const scheduledSource = await readFile(
+  new URL("../src/pages/ScheduledPage.tsx", import.meta.url),
+  "utf8",
+);
 const pluginsPageSource = await readFile(
   new URL("../src/pages/PluginsPage.tsx", import.meta.url),
   "utf8",
@@ -62,6 +66,14 @@ const trLocaleSource = await readFile(
   new URL("../../../packages/i18n/src/locales/tr/index.ts", import.meta.url),
   "utf8",
 );
+const zhTWLocaleSource = await readFile(
+  new URL("../../../packages/i18n/src/locales/zh-TW/index.ts", import.meta.url),
+  "utf8",
+);
+const koLocaleSource = await readFile(
+  new URL("../../../packages/i18n/src/locales/ko/index.ts", import.meta.url),
+  "utf8",
+);
 const mainSource = await readFile(
   new URL("../src/main.tsx", import.meta.url),
   "utf8",
@@ -92,6 +104,7 @@ test("Basics and AI tabs expose their respective app and AI controls", () => {
   assert.match(generalSource, /<ThemeRow /);
   assert.match(generalSource, /<LanguageRow /);
   assert.match(generalSource, /<FontFamilyRow /);
+  assert.match(generalSource, /<FontSizeRow /);
   assert.match(generalSource, /<NetworkProxySection /);
   assert.doesNotMatch(generalSource, /\(\["auto", "zh-CN", "en"\] as const\)/);
   assert.doesNotMatch(generalSource, /defaultMode: value/);
@@ -102,6 +115,23 @@ test("Basics and AI tabs expose their respective app and AI controls", () => {
   assert.match(aiSource, /CommandShellRow/);
   assert.match(aiSource, /enterToSend: !settings\.enterToSend/);
   assert.match(aiSource, /LargePasteThresholdRow/);
+  assert.match(aiSource, /ContextUsageDisplayRow/);
+  assert.match(
+    settingsPageSource,
+    /saveSettings\(\{ contextUsageDisplay: value \}\)/,
+  );
+  for (const key of [
+    "settings.contextUsageDisplay",
+    "settings.contextUsageDisplayRemaining",
+    "settings.contextUsageDisplayUsed",
+  ]) {
+    assert.match(settingsSearchSource, new RegExp(key.replaceAll(".", "\\.")));
+    assert.match(enLocaleSource, new RegExp(`${key.split(".").at(-1)}:`));
+    assert.match(zhLocaleSource, new RegExp(`${key.split(".").at(-1)}:`));
+    assert.match(trLocaleSource, new RegExp(`${key.split(".").at(-1)}:`));
+  }
+  assert.match(sharedTypesSource, /contextUsageDisplay\?: ContextUsageDisplay/);
+  assert.match(sharedTypesSource, /ContextUsageDisplay = "remaining" \| "used"/);
   assert.match(settingsPageSource, /largePasteThreshold/);
   assert.match(settingsPageSource, /saveSettings\(\{ largePasteThreshold: next \}\)/);
   assert.doesNotMatch(settingsPageSource, /commandShellConfigured/);
@@ -113,8 +143,12 @@ test("Basics and AI tabs expose their respective app and AI controls", () => {
 });
 
 test("language persists as part of shared app settings", () => {
-  assert.match(sharedTypesSource, /language\?: "auto" \| "en" \| "zh-CN" \| "tr"/);
+  assert.match(
+    sharedTypesSource,
+    /language\?: "auto" \| "en" \| "zh-CN" \| "zh-TW" \| "tr" \| "de" \| "es" \| "fr" \| "ko"/,
+  );
   assert.match(sharedTypesSource, /largePasteThreshold\?: number/);
+  assert.match(sharedTypesSource, /fontScale\?: number/);
   assert.match(sharedTypesSource, /networkProxy\?: NetworkProxySettings/);
 });
 
@@ -125,7 +159,13 @@ test("General Network card persists a custom HTTP or SOCKS5 proxy", () => {
   assert.match(electronMainSource, /applyNetworkProxyFromAppSettings/);
   assert.match(electronMainSource, /IPC\.invoke\.networkProxyTest/);
   assert.match(protocolSource, /networkProxyTest: "pi-desktop\/network\/testProxy"/);
-  for (const source of [enLocaleSource, zhLocaleSource, trLocaleSource]) {
+  for (const source of [
+    enLocaleSource,
+    zhLocaleSource,
+    zhTWLocaleSource,
+    trLocaleSource,
+    koLocaleSource,
+  ]) {
     assert.match(source, /proxyCustom:/);
     assert.match(source, /proxyUrlPlaceholder:/);
   }
@@ -147,11 +187,23 @@ test("basics gates developer tools behind a persisted developer mode", () => {
   }
 });
 
-test("stored language drives i18n at startup and on settings change", () => {
+test("stored language drives i18n and native labels at startup and on settings change", () => {
   assert.match(languageSource, /export function initLanguageSync/);
   assert.match(languageSource, /changeLanguage/);
   assert.match(languageSource, /resolveLocale/);
   assert.match(mainSource, /initLanguageSync\(\)/);
+  assert.match(electronMainSource, /catalogs\[resolveLocale\(updaterLocale\)\]/);
+});
+
+test("date copy follows the active application locale", () => {
+  assert.match(
+    scheduledSource,
+    /toLocaleString\(\s*i18n\.resolvedLanguage \?\? i18n\.language/s,
+  );
+  assert.match(
+    providersSource,
+    /toLocaleString\(\s*i18n\.resolvedLanguage \?\? i18n\.language/s,
+  );
 });
 
 test("sandboxed preload receives the OS locale without importing main-only APIs", () => {
@@ -277,6 +329,7 @@ test("settings nav keeps a flat searchable index with titled visual groups", () 
     assert.match(settingsSearchSource, new RegExp(key.replace(".", "\\.")));
     assert.match(enLocaleSource, new RegExp(`${key.split(".")[1]}:`));
     assert.match(zhLocaleSource, new RegExp(`${key.split(".")[1]}:`));
+    assert.match(zhTWLocaleSource, new RegExp(`${key.split(".")[1]}:`));
     assert.match(trLocaleSource, new RegExp(`${key.split(".")[1]}:`));
   }
   assert.doesNotMatch(settingsSearchSource, /id: "extensions"/);
@@ -332,6 +385,7 @@ test("settings rail uses short parallel labels and descriptive page titles", () 
     assert.match(settingsSearchSource, new RegExp(key.replaceAll(".", "\\.")));
     assert.match(enLocaleSource, new RegExp(`${key.split(".").at(-1)}:`));
     assert.match(zhLocaleSource, new RegExp(`${key.split(".").at(-1)}:`));
+    assert.match(zhTWLocaleSource, new RegExp(`${key.split(".").at(-1)}:`));
     assert.match(trLocaleSource, new RegExp(`${key.split(".").at(-1)}:`));
   }
   assert.match(settingsSearchSource, /titleKey: "settings\.configuration"/);

@@ -1,10 +1,11 @@
 # ADR 0046: Categorized process log files
 
-- Status: Accepted
+- Status: Accepted; timing-specific clauses superseded by ADR 0212
 - Date: 2026-08-02
 - Related: [D082](../spec/08-meta/decisions-log.md) ·
   [D182](../spec/08-meta/decisions-log.md) ·
   [D183](../spec/08-meta/decisions-log.md) ·
+  [ADR 0212](0212-remove-diagnostic-timing-log-streams.md) ·
   [Logging and observability](../spec/03-runtime/09-logging-and-observability.md)
 
 ## Context

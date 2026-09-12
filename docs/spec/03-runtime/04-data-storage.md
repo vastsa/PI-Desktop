@@ -1,4 +1,4 @@
-# 04. Data Storage (Schema v11)
+# 04. Data Storage (Schema v15)
 
 ## 0. Ownership decision
 
@@ -16,7 +16,7 @@ store with it (D119). Plan/Goal artifacts and queue records are also host-owned
 ## 1. Goals
 
 Local-first, recoverable after restart, sensitive data isolated — plus, for
-schema v7, v8, and v11:
+schema v7, v8, v11, and v14:
 
 1. **Lossless transcripts** — store the runtime message shape (content blocks),
    not the UI projection; UI shapes are derived at the RPC boundary.
@@ -41,9 +41,9 @@ schema v7, v8, and v11:
 ~/.pi-desktop/
  ├── pi.sqlite            # index database (WAL: + -wal/-shm) — host-core only
  ├── pi.sqlite.v6.bak     # archived pre-v7 database (D119 breaking reset)
- ├── pi.sqlite.v8.bak     # exact readable backup before v8→v11 destructive work
- ├── pi.sqlite.v9.bak     # exact readable backup before v9→v11 destructive work
- ├── pi.sqlite.v10.bak    # exact readable backup before v10→v11 destructive work
+ ├── pi.sqlite.v8.bak     # exact readable backup before v8→v15 destructive work
+ ├── pi.sqlite.v9.bak     # exact readable backup before v9→v15 destructive work
+ ├── pi.sqlite.v10.bak    # exact readable backup before v10→v15 destructive work
  ├── sessions/            # transcript file store (D119) — host-core only
  │    ├── <sessionId>.jsonl           # live transcript (header + messages)
  │    ├── <sessionId>.revisions.jsonl # regenerate branches, append-only
@@ -174,7 +174,7 @@ PRAGMA trusted_schema = ON;       -- required by the FTS triggers (§4.8); the D
 PRAGMA auto_vacuum = INCREMENTAL; -- set at creation, before any table
 ```
 
-- Schema version lives in `PRAGMA user_version` (v11 = `11`). The v1 `meta`
+- Schema version lives in `PRAGMA user_version` (v15 = `15`). The v1 `meta`
   table is gone.
 - host-core is the **single writer**; statements use `prepare_cached`; every
   multi-row write runs in one transaction.
@@ -223,13 +223,13 @@ type SidebarPreferences = {
   sessionMeta: Record<string, {
     pinned?: boolean;
     archived?: boolean;
-    order?: number; // compatibility/future manual order
+    order?: number; // renderer-local manual order
   }>;
   projectMeta: Record<string, {
     pinned?: boolean;
     archived?: boolean;
     collapsed?: boolean;
-    order?: number; // compatibility/future manual order
+    order?: number; // renderer-local manual order
   }>;
   projectSort: "recent" | "created" | "oldest" | "name" | "manual";
   sessionView: {
@@ -242,9 +242,12 @@ type SidebarPreferences = {
 
 - Project keys and retained paths use normalized full paths; session keys use
   durable session ids. Duplicate/slash-variant paths are discarded on load.
-- `manual`/`order` are compatibility fields. This baseline exposes no
-  drag/manual-reorder interaction; values without a usable order fall back to
-  a stable recent ordering.
+- `projectSort: "manual"` and `projectMeta[*].order` store renderer-local
+  project presentation order. Dragging a project title or using ArrowUp
+  and ArrowDown on that title writes contiguous order values for the visible normalized paths.
+  Missing or invalid values fall back to stable path order; pinned and archived
+  priority remains applied before manual order. Session `manual`/`order` remain
+  compatibility fields and are not exposed by the sidebar.
 - Missing, malformed, or unwritable preferences fall back to empty metadata,
   `recent`, archived hidden, and the host-selected project. Preference failure
   never blocks a host operation.
@@ -349,6 +352,7 @@ CREATE TABLE sessions (
   permission_mode TEXT NOT NULL DEFAULT 'inherit' -- D115: inherit follows settings
                 CHECK (permission_mode IN ('inherit', 'ask', 'accept-edits', 'auto')),
   source      TEXT,                            -- import origin: claude-code | codex | opencode | pi
+  deleted_at  INTEGER,                         -- plugin trash marker; null means active
   pinned      INTEGER NOT NULL DEFAULT 0,
   last_seq    INTEGER NOT NULL DEFAULT 0,      -- current message count / ordinal allocator
   created_at  INTEGER NOT NULL,
@@ -356,6 +360,26 @@ CREATE TABLE sessions (
 );
 CREATE INDEX idx_sessions_updated ON sessions(updated_at DESC);
 CREATE INDEX idx_sessions_project ON sessions(project_id) WHERE project_id IS NOT NULL;
+CREATE INDEX idx_sessions_deleted ON sessions(deleted_at) WHERE deleted_at IS NOT NULL;
+```
+
+Plugin imports add a host-owned origin sidecar. It is deliberately separate
+from the core session identity and scopes every plugin read/write to the
+`plugin_id` that created the row:
+
+```sql
+CREATE TABLE session_import_origins (
+  plugin_id    TEXT NOT NULL,
+  source_id    TEXT NOT NULL,
+  external_id  TEXT NOT NULL,
+  session_id   TEXT NOT NULL UNIQUE REFERENCES sessions(id) ON DELETE CASCADE,
+  source_label TEXT,
+  origin_json  TEXT,
+  created_at   INTEGER NOT NULL,
+  UNIQUE(plugin_id, source_id, external_id)
+);
+CREATE INDEX idx_session_import_origins_plugin
+  ON session_import_origins(plugin_id, source_id, created_at DESC);
 ```
 
 - `provider_id`/`model_id` are **loose references** (no FK), like on `turns`:
@@ -386,6 +410,15 @@ CREATE INDEX idx_sessions_project ON sessions(project_id) WHERE project_id IS NO
   state.
 - `source` + deterministic imported ids keep re-imports idempotent and let the
   UI badge imported sessions.
+- `deleted_at` is a host timestamp used by the plugin `trash` operation. A
+  trashed plugin session is hidden from normal session lists and plugin reads,
+  but its transcript and origin remain until the owning plugin purges it. Core
+  session deletion cascades the sidecar; purging also removes transcript files.
+- `session_import_origins` stores the plugin/source/external idempotency key and
+  the original `projectPath`, `modelId`, and `providerId` as history JSON. Those
+  values never become active session bindings for plugin imports. A plugin may
+  explicitly supply a host-created `projectId`; only that id becomes the active
+  `project_id`, while the historical fields remain unchanged.
 - `project_id` is also the tool-root authority for that session. Switching the
   visible workspace cannot redirect an in-flight or later tool call belonging
   to a different session.
@@ -519,6 +552,41 @@ completed, and interrupted cards are not rehydrated.
 Serves: mid-session model switches ("next turn only", spec 13 §4), the
 per-message cost chip's session rollup (benchmark §3.2), failed/aborted badges
 (§3.8), and retry lineage.
+
+### 4.6b turn_queue — Host-owned turn queue (schema v15)
+
+```sql
+CREATE TABLE turn_queue (
+  id               TEXT PRIMARY KEY,
+  session_id       TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  principal        TEXT NOT NULL,
+  idempotency_key  TEXT,
+  input_hash       TEXT NOT NULL,
+  content          TEXT NOT NULL,
+  attachments_json TEXT,
+  permission_mode  TEXT NOT NULL,
+  position         INTEGER NOT NULL,
+  created_at       INTEGER NOT NULL
+);
+CREATE INDEX idx_turn_queue_session ON turn_queue(session_id, position);
+CREATE UNIQUE INDEX idx_turn_queue_idempotency
+  ON turn_queue(session_id, principal, idempotency_key)
+  WHERE idempotency_key IS NOT NULL;
+```
+
+- One row per prompt admitted behind an active turn (D375 / ADR 0213). The
+  headless Agent Host module is the only writer through `session.queuePush`,
+  `session.queueList`, and `session.queueRemove`; the store never starts a
+  turn.
+- `position` is per session and only grows, so a removed entry never
+  reorders the rest. `principal` plus `idempotency_key` make a retried push
+  return the same row; a reused key with a different `input_hash` fails with
+  `IDEMPOTENCY_CONFLICT`. A session holds at most eight entries.
+- `attachments_json` keeps the prompt's attachment references; bytes stay in
+  the session scratch or project root like any other prompt attachment.
+- After a restart the module lists every entry, holds each session's queue
+  until a controller attaches, and drains one entry after the active turn's
+  terminal event. Deleting the session cascades to its entries.
 
 ### 4.7 messages — transcript index
 
@@ -696,14 +764,16 @@ CREATE INDEX idx_message_revisions_root
   error-ended turn never reaches `agent_end`. So every operation that discards
   the live branch first writes it back over the revision it belongs to (D307):
   `session.activateRevision` re-archives the live branch of the family from
-  the durable transcript before the switch, the regenerate path passes
-  `revisionIndex` to `session.saveRevision` to refresh the stamped variant, and
-  `session.saveActiveRevision` refreshes an already-archived index instead of
-  skipping it. The refresh is one more line in the append-only file (last
-  record for `(rootUserId, revisionIndex)` wins) plus a `message_count` update.
-  The variant named by the live root's `activeRevision` stamp is the one
-  refreshed; a stamped variant with no index row yet (its turn failed before
-  archive) is stored as its own new variant, never over a previous one.
+  the durable transcript before the switch, `session.truncateFrom` archives the
+  discarded tail on regenerate/retry (refreshing the stamped variant, or
+  minting an inactive one), and `session.saveActiveRevision` refreshes an
+  already-archived index instead of skipping it. The refresh is one more line
+  in the append-only file (last record for `(rootUserId, revisionIndex)` wins)
+  plus a `message_count` update. The variant named by the live root's
+  `activeRevision` stamp is the one refreshed; a stamped variant with no index
+  row yet (its turn failed before archive) is stored as its own new variant,
+  never over a previous one.
+
 
 ### 4.10 artifacts — files a session produced
 
@@ -788,13 +858,19 @@ CREATE TABLE secrets_meta (
   owner_kind TEXT NOT NULL DEFAULT 'provider',
   owner_id   TEXT,
   kind       TEXT NOT NULL DEFAULT 'api_key',
-  backend    TEXT NOT NULL,                -- safe_storage | file_fallback
+  backend    TEXT NOT NULL,                -- file_fallback (safe_storage reserved)
   updated_at INTEGER NOT NULL
 ) WITHOUT ROWID;
 ```
 
-Secret *values* never enter the DB (D028/D031): OS safeStorage primary,
-AES-GCM file fallback under `secrets/`.
+Secret *values* never enter the DB (D028/D031). The shipped backend is the
+host-core file store: AES-256-GCM ciphertexts under `secrets/`, keyed by a
+machine key that host-core generates once and keeps beside them as
+`secrets/.machine-key` (owner-only file mode). host-core records
+`file_fallback` for every write; the `safe_storage` value is reserved for an
+OS keychain backend that neither host-core nor Electron main implements today,
+so a same-user process that can read the data directory can also decrypt the
+secrets.
 
 ### 4.13 audit_log
 
@@ -885,7 +961,9 @@ is the source of truth, the index is derived and self-healing.
 | turn terminal via `session.endTurn` | `completed`/`error`: remove the in-flight checkpoint only when its id is already indexed; otherwise leave it for the outbox or boot (D327). `recoverInflight`: append the leftover as `complete` when the turn is `completed`, otherwise as `aborted`, when its final row never landed | update `turns`; for completed/error insert one notification and prune to 200 in the same tx; aborted inserts none; a promoted checkpoint gets an index row under the turn |
 | plan/goal submission | host writes the exact Markdown bytes to a new unique `<workspaceRoot>/.pi/<kind>/*.md` file | insert one `plan_approvals(pending)` row with the kind, structured title/question, artifact path/hash/size, and expiry before emitting the approval request |
 | plan/goal approval | verify the immutable artifact path/hash/size | atomically resolve `plan_approvals`, update `sessions.mode` and explicit `permission_mode`, and set `execution_state = 'queued'`; reject/expiry stay in the contract mode |
-| transcript truncate / edit / unanswered smart Stop (`session.replaceMessages`) | atomic transcript rewrite (temp + rename); preserve only a checkpoint whose boundary remains | single tx: delete index rows, bulk reinsert carrying each surviving message's owning `turn_id`, reset `last_seq`; smart Stop keeps its structured composer snapshot only in renderer memory |
+| transcript truncate / retry / edit (`session.truncateFrom`) | host-owned suffix cut: abort leftover running turn, archive discarded regenerate tail, atomic prefix rewrite (temp + rename); preserve only a checkpoint whose boundary remains | single tx via `replace_messages`: delete index rows, bulk reinsert carrying each surviving message's owning `turn_id`, reset `last_seq`; drop inflight checkpoint |
+| message delete / unanswered smart Stop (`session.replaceMessages`) | atomic transcript rewrite (temp + rename); preserve only a checkpoint whose boundary remains | single tx: delete index rows, bulk reinsert carrying each surviving message's owning `turn_id`, reset `last_seq`; smart Stop keeps its structured composer snapshot only in renderer memory |
+
 | session fork (`session.fork`) | write a new transcript with remapped message/tool-call ids; copy/remap the checkpoint only when its boundary is included | single tx: clone session configuration, insert child index rows, set `last_seq`; remove child file on failure |
 | regenerate branch save | append revision line (with `revisionIndex`: a refresh line for that existing variant) | index row with `message_count` (+ `is_active` flip); a refresh only updates `message_count` |
 | turn-completion branch archive (`session.saveActiveRevision`) | append revision line (a refresh line when the active variant is already archived), then rewrite only the root user's transcript line for the pager stamp | index row with `message_count` (+ `is_active` flip); index rows for other messages untouched |
@@ -986,7 +1064,7 @@ truncating at a guessed position.
 - JSON columns are read blind on hot paths (shipped to the renderer as-is);
   anything filtered or summed is a promoted column by rule.
 
-## 7. Versioning, v7 reset, and v8-to-v11 Plan/Goal migration
+## 7. Versioning, v7 reset, and v8-to-v15 migration
 
 - `PRAGMA user_version` stays the schema authority; future structural changes
   add ordered Rust migration fns again, each in one transaction, with a
@@ -997,12 +1075,12 @@ truncating at a guessed position.
   Sessions, providers, and settings from the old file are not carried over;
   the archive remains for manual recovery. All pre-v7 migration code
   (v1 `settings.sqlite` import, v2→v6 chain) is deleted.
-- Fresh installs run the full v11 DDL directly.
+- Fresh installs run the full v15 DDL directly.
 - **Schema v7 first reaches v8, then uses the guarded path.** The v7→v8
-  migration is followed by the same guarded v8→v11 migration; schema-v9 and
+  migration is followed by the same guarded v8→v15 migration; schema-v9 and
   schema-v10 databases take the same guarded path and receive an exact readable
   `pi.sqlite.v9.bak` / `pi.sqlite.v10.bak` before destructive work.
-- **v8-to-v11 is an in-place transactional migration.** Before migration,
+- **The historical v8-to-v11 core migration is in-place and transactional.** Before migration,
   host-core checkpoints the WAL, then creates the exact readable
   `pi.sqlite.v8.bak`; both happen before destructive work. Within one atomic
   transaction it:
@@ -1024,7 +1102,8 @@ truncating at a guessed position.
      first so a v8 database that already created the table from the current DDL
      is not altered twice; existing rows are Plan contracts by definition, which
      is exactly the column default; and
-  9. sets `PRAGMA user_version = 11` only after every change succeeds.
+  9. sets `PRAGMA user_version = 11` only after every change succeeds; the
+     subsequent v14 migration adds the plugin-session ownership sidecar.
   A malformed app-settings value, malformed scheduled-task `config_json`,
   invalid session or top-level scheduled mode, unknown or wrong-platform
   `defaultCommandShell`, parse, constraint, or write failure fails closed,
@@ -1033,6 +1112,15 @@ truncating at a guessed position.
   remains available for recovery.
   Legacy `planApprovalPermissionMode` is removed from the app settings JSON
   during migration; all unrelated settings remain intact.
+
+- **Schema v15 is additive.** It adds the `turn_queue` table and its two
+  indexes (D386 / ADR 0213) so the Host-owned turn queue survives a restart;
+  no existing row changes, and a `pi.sqlite.v14.bak` copy precedes the step.
+- **Schema v14 is additive.** It adds nullable `sessions.deleted_at`, the
+  partial deletion index, and `session_import_origins`. Existing sessions stay
+  active and have no origin rows. The migration runs in the same guarded
+  transaction and leaves the pre-v14 backup until the new schema passes its
+  integrity checks.
 
 The `largePasteThreshold` app setting is additive JSON rather than a database
 schema field. Host settings reads normalize a missing, malformed, or
@@ -1086,7 +1174,9 @@ columns for anything the host filters, joins, sums, or indexes.
 ## 10. Secrets rules (unchanged)
 
 1. The renderer never persists secrets
-2. OS safeStorage primary; explicit encrypted-file fallback with risk warning
+2. OS safeStorage remains the target primary backend; the shipped store is the
+   encrypted-file backend (`file_fallback`) with its machine key beside the
+   ciphertexts, and Settings must state that risk
 3. Secret values never in SQLite; only `secrets_meta` bookkeeping
 4. Exported sessions exclude secrets by default
 
@@ -1147,3 +1237,7 @@ columns for anything the host filters, joins, sums, or indexes.
 19. A scheduled or unattended Plan **or Goal** run fails before provider/artifact/
     queue work with `PLAN_REQUIRES_INTERACTIVE_SESSION`; no background path
     auto-approves either kind
+20. Schema v14 plugin imports have host-generated session ids, one origin row per
+    session, `(pluginId, source, externalId)` idempotency, no project or model
+    binding unless an explicit host-created `projectId` is supplied,
+    ownership-scoped reads/mutations, and recoverable trash before purge.

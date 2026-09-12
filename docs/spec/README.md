@@ -1,7 +1,7 @@
 # PI-Desktop Spec
 
-> Frozen baseline: `0.4.16` · current app line: `0.13.3`
-> Updated: `2026-09-05`
+> Frozen baseline: `0.4.16` · current app line: `0.14.x`
+> Updated: `2026-09-10`
 > Language: **English-first**
 > Stack: Electron + **Rust host core** + pi Agent Harness + user-installable plugins
 
@@ -9,7 +9,7 @@ The baseline is a frozen decision artifact, not a complete list of every
 feature in the current app. The current implementation adds Goal contracts,
 standalone MCP/Skills/Subagents, plugin marketplace and launcher flows, session
 import, scheduled tasks, and next-turn composer configuration. The host wire
-protocol is v10; storage schema is v12 (see `00-baseline.md`).
+protocol is v11; storage schema is v15 (see `00-baseline.md`).
 
 ## Quick entry
 
@@ -21,7 +21,10 @@ protocol is v10; storage schema is v12 (see `00-baseline.md`).
 | [01-product/00-overview.md](01-product/00-overview.md) | Overview |
 | [01-product/01-product-scope.md](01-product/01-product-scope.md) | Current product scope and operating modes |
 | [02-architecture/01-architecture.md](02-architecture/01-architecture.md) | Architecture |
+| [02-architecture/05-remote-agent-control.md](02-architecture/05-remote-agent-control.md) | Remote Agent Host and Gateway target |
 | [03-runtime/05-host-core-rust.md](03-runtime/05-host-core-rust.md) | Rust host core |
+| [03-runtime/19-remote-agent-control-protocol.md](03-runtime/19-remote-agent-control-protocol.md) | Remote control protocol |
+| [05-security/02-remote-control-security.md](05-security/02-remote-control-security.md) | Remote control security |
 | [04-ux/02-i18n-english-first.md](04-ux/02-i18n-english-first.md) | i18n policy |
 | [04-ux/07-ui-design-system.md](04-ux/07-ui-design-system.md) | Design system (tokens, motion, density) |
 | [04-ux/01-ui-ia.md](04-ux/01-ui-ia.md) | Shipped shell and destination map |
@@ -57,11 +60,13 @@ docs/spec/
 ### Implementation
 1. `00-baseline.md`
 2. `02-architecture/01-architecture.md`
-3. `03-runtime/05-host-core-rust.md`
-4. `03-runtime/02-agent-runtime.md`
-5. `03-runtime/01-ipc-protocol.md`
-6. `03-runtime/11-provider-model-system.md`
-7. `07-plugins/01-plugin-system.md`
+3. `02-architecture/05-remote-agent-control.md` when implementing remote control
+4. `03-runtime/05-host-core-rust.md`
+5. `03-runtime/02-agent-runtime.md`
+6. `03-runtime/01-ipc-protocol.md`
+7. `03-runtime/19-remote-agent-control-protocol.md` when implementing remote control
+8. `03-runtime/11-provider-model-system.md`
+9. `07-plugins/01-plugin-system.md`
 
 ### Plugin authors
 1. [`../plugin-development.md`](../plugin-development.md)
@@ -86,7 +91,7 @@ docs/spec/
    `.pi/plan/*.md` artifact; title/question stay structured in
    `plan_approvals`, approval opens the artifact, is approve/reject only, and
    expires after 30 absolute minutes with `PLAN_APPROVAL_TIMEOUT`
-9. Protocol v11 and storage schema v13 are authoritative for Plan/Goal
+9. Protocol v11 and storage schema v15 are authoritative for Plan/Goal
    checkpoints, `plan_approvals` execution fields, startup interruption, and
    shell identity. v11 withdraws the A2A method domain added in v10.
 10. Permission timeout 120s deny; Bash timeout 60s by default

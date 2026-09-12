@@ -5,6 +5,7 @@ import {
   IconNewSession,
   IconSearch,
 } from "./icons";
+import { TooltipButton } from "./ui";
 
 function projectName(path?: string | null, name?: string | null) {
   if (name) return name;
@@ -69,16 +70,16 @@ export function ConversationTopbar({
           sidebar is open the slot is zero-width and hidden from AT.
         */}
         <div className="ct-lead" aria-hidden={!sidebarCollapsed}>
-          <button
+          <TooltipButton
             type="button"
             className="ct-icon-btn"
-            title={t("nav.toggleSidebar")}
-            aria-label={t("nav.toggleSidebar")}
+            tooltip={t("nav.toggleSidebar")}
+            ariaLabel={t("nav.toggleSidebar")}
             tabIndex={sidebarCollapsed ? undefined : -1}
             onClick={onToggleSidebar}
           >
             <IconSidebar size={15} />
-          </button>
+          </TooltipButton>
         </div>
         <div
           className="ct-title-wrap"
@@ -90,24 +91,24 @@ export function ConversationTopbar({
 
       <div className="ct-right">
         <div className="ct-actions">
-          <button
+          <TooltipButton
             type="button"
             className="ct-icon-btn"
-            title={t("nav.newTask")}
-            aria-label={t("nav.newTask")}
+            tooltip={t("nav.newTask")}
+            ariaLabel={t("nav.newTask")}
             onClick={onNewTask}
           >
             <IconNewSession size={15} />
-          </button>
-          <button
+          </TooltipButton>
+          <TooltipButton
             type="button"
             className="ct-icon-btn"
-            title={t("nav.search")}
-            aria-label={t("nav.search")}
+            tooltip={t("nav.search")}
+            ariaLabel={t("nav.search")}
             onClick={onOpenSearch}
           >
             <IconSearch size={15} />
-          </button>
+          </TooltipButton>
         </div>
       </div>
     </div>

@@ -459,6 +459,16 @@ test("the real pi-ai catalog offers every vendor account we ship", async () => {
   assert.ok(vendors.every((vendor) => vendor.name && vendor.accounts.length === 0));
 });
 
+test("the ChatGPT OAuth catalog includes GPT-6 Astra", async () => {
+  const { OPENAI_CODEX_MODELS } = await import(
+    "@earendil-works/pi-ai/providers/openai-codex.models"
+  );
+  const model = OPENAI_CODEX_MODELS["gpt-6-astra"];
+  assert.ok(model, "openai-codex catalog must include gpt-6-astra");
+  assert.equal(model.id, "gpt-6-astra");
+  assert.equal(model.api, "openai-codex-responses");
+});
+
 test("credential writes for one account run one at a time", async () => {
   const { host, events, oauth, store } = harness();
   const { loginId } = await oauth.start("anthropic");

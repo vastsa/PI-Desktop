@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   KEYBOARD_SHORTCUTS,
+  KEYBOARD_SHORTCUT_IDS,
   isAllowedKeybinding,
   isReservedKeybinding,
   keybindingDisplayParts,
@@ -13,6 +14,23 @@ import {
 } from "./keyboard-shortcuts.js";
 
 describe("keyboard shortcut mapping", () => {
+  it("declares summonWindow in the window group with Mod+Shift+W default", () => {
+    expect(KEYBOARD_SHORTCUT_IDS).toContain("summonWindow");
+    const summon = KEYBOARD_SHORTCUTS.find(
+      (shortcut) => shortcut.id === "summonWindow",
+    );
+    expect(summon).toBeDefined();
+    expect(summon!.group).toBe("window");
+    expect(summon!.defaultBinding).toBe("Mod+Shift+W");
+    expect(resolveKeybinding(summon!, undefined, "darwin")).toBe("Mod+Shift+W");
+    expect(resolveKeybinding(summon!, undefined, "win32")).toBe("Mod+Shift+W");
+    // The default summonWindow binding must not collide with closeWindow.
+    const close = KEYBOARD_SHORTCUTS.find((s) => s.id === "closeWindow")!;
+    expect(
+      keybindingsConflict(summon!.defaultBinding, close.defaultBinding),
+    ).toBe(false);
+  });
+
   it("normalizes modifiers and rejects malformed values", () => {
     expect(normalizeKeybinding("Shift+Mod+p")).toBe("Mod+Shift+P");
     expect(normalizeKeybinding("Mod+Comma")).toBe("Mod+Comma");

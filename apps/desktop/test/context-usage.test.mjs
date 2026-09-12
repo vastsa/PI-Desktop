@@ -5,8 +5,11 @@ import {
   calculateCacheRate,
   calculateTokenRate,
   calculateContextUsage,
+  contextOccupancyTokens,
+  contextUsageView,
   estimateResponseOutputTokens,
   estimateToolTokenUsage,
+  resolveContextUsageDisplay,
   resolveContextWindow,
   toolTokenUsage,
   usageTokenTotal,
@@ -28,6 +31,31 @@ test("context usage exposes the remaining ring percentage", () => {
   assert.equal(context.usedPercent, 78);
   assert.equal(context.remainingPercent, 22);
   assert.equal(context.remainingRatio, 28 / 128);
+});
+
+test("context usage display preference picks the ring's leading figure", () => {
+  const context = calculateContextUsage(
+    { inputTokens: 80, outputTokens: 20, totalTokens: 100 },
+    128,
+  );
+
+  const remaining = contextUsageView(context, "remaining");
+  assert.equal(remaining.percent, 22);
+  assert.equal(remaining.tokens, 28);
+  assert.equal(remaining.ratio, 28 / 128);
+
+  const used = contextUsageView(context, "used");
+  assert.equal(used.percent, 78);
+  assert.equal(used.tokens, 100);
+  assert.equal(used.ratio, 100 / 128);
+});
+
+test("an absent or unrecognised display value keeps the remaining default", () => {
+  assert.equal(resolveContextUsageDisplay(undefined), "remaining");
+  assert.equal(resolveContextUsageDisplay("used"), "used");
+  assert.equal(resolveContextUsageDisplay("remaining"), "remaining");
+  assert.equal(resolveContextUsageDisplay("bogus"), "remaining");
+  assert.equal(resolveContextUsageDisplay(null), "remaining");
 });
 
 test("context window prefers the selected model catalog over provider fallback", () => {
@@ -107,6 +135,20 @@ test("context usage falls back to input and output when total is absent", () => 
     usageTokenTotal({ inputTokens: 12, outputTokens: 8, totalTokens: 0 }),
     20,
   );
+});
+
+test("occupancy sums last-request input, output, reasoning, and cache", () => {
+  const usage = {
+    inputTokens: 10,
+    outputTokens: 5,
+    cacheReadTokens: 80,
+    cacheWriteTokens: 2,
+    reasoningTokens: 3,
+    totalTokens: 15,
+  };
+  assert.equal(contextOccupancyTokens(usage), 100);
+  assert.equal(calculateContextUsage(usage, 200).usedTokens, 100);
+  assert.equal(usageTokenTotal(usage), 15);
 });
 
 test("generation throughput uses provider output and stream duration", () => {

@@ -90,23 +90,85 @@ export function isDeniedFsPath(relPath: string): boolean {
 }
 
 /**
+ * Whether glob matching ignores case on this platform. The default file
+ * systems on Windows and macOS are case-insensitive, so `*.MD` and `*.md`
+ * name the same files there; on Linux they do not. The renderer bundle has no
+ * `process`, and only renders scopes, so it falls back to case-sensitive.
+ */
+export function fsGlobIgnoresCase(): boolean {
+  // No node types here: this module is bundled into the renderer as well.
+  const platform =
+    (globalThis as { process?: { platform?: unknown } }).process?.platform ?? "";
+  return platform === "win32" || platform === "darwin";
+}
+
+export type MatchFsGlobOptions = {
+  /** Override the platform default; tests use it to pin either behavior. */
+  ignoreCase?: boolean;
+};
+
+/**
+ * Translate one glob into a regular expression source.
+ *
+ * - `**\/` matches zero or more whole segments (`src/**\/*.ts` admits
+ *   `src/a.ts` as well as `src/a/b.ts`).
+ * - a trailing `/**` admits the directory itself and everything under it.
+ * - any other `**` crosses separators; `*` and `?` stay inside one segment.
+ */
+function fsGlobToRegExpSource(pattern: string): string {
+  let source = "";
+  let i = 0;
+  while (i < pattern.length) {
+    const ch = pattern[i];
+    if (ch === "*" && pattern[i + 1] === "*") {
+      const atSegmentStart = i === 0 || pattern[i - 1] === "/";
+      const rest = pattern.slice(i + 2);
+      if (atSegmentStart && rest.startsWith("/")) {
+        source += "(?:.*/)?";
+        i += 3;
+        continue;
+      }
+      if (atSegmentStart && rest === "" && i > 0) {
+        // `dir/**`: drop the separator already emitted and admit `dir` too.
+        source = source.slice(0, -1);
+        source += "(?:/.*)?";
+        i += 2;
+        continue;
+      }
+      source += ".*";
+      i += 2;
+      continue;
+    }
+    if (ch === "*") {
+      source += "[^/]*";
+    } else if (ch === "?") {
+      source += "[^/]";
+    } else {
+      source += ch.replace(/[.+^${}()|[\]\\]/, "\\$&");
+    }
+    i += 1;
+  }
+  return source;
+}
+
+/**
  * Match a root-relative path against one glob. `**` crosses separators, `*`
  * does not. Shared with `pi.fs.glob` so a scope and a lookup agree on what a
- * pattern means.
+ * pattern means. A path with a `..` segment never matches: it is not
+ * root-relative, whatever the pattern says.
  */
-export function matchFsGlob(relPath: string, pattern: string): boolean {
-  const normalizedPattern = normalizeFsPath(pattern);
-  const normalizedPath = normalizeFsPath(relPath);
+export function matchFsGlob(
+  relPath: string,
+  pattern: string,
+  options: MatchFsGlobOptions = {},
+): boolean {
+  const normalizedPattern = normalizeFsPath(pattern).replace(/\/+$/, "/**");
+  const normalizedPath = normalizeFsPath(relPath).replace(/\/+$/, "");
+  if (normalizedPath.split("/").includes("..")) return false;
   if (isWholeTreePattern(normalizedPattern)) return true;
-  // `**` is parked on a sentinel so the single-`*` pass cannot see its stars,
-  // and so a literal space in a pattern is left alone.
-  const source = normalizedPattern
-    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-    .replace(/\*\*/g, "\u0000")
-    .replace(/\*/g, "[^/]*")
-    .replace(/\u0000/g, ".*")
-    .replace(/\?/g, "[^/]");
-  return new RegExp(`^${source}$`, "i").test(normalizedPath);
+  const source = fsGlobToRegExpSource(normalizedPattern);
+  const ignoreCase = options.ignoreCase ?? fsGlobIgnoresCase();
+  return new RegExp(`^${source}$`, ignoreCase ? "i" : "").test(normalizedPath);
 }
 
 /** Whether any of `scope`'s globs admits `relPath`. */

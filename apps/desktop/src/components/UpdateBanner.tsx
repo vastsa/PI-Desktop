@@ -3,14 +3,14 @@ import { useTranslation } from "react-i18next";
 import type { UpdateState } from "@pi-desktop/shared";
 import { api } from "../lib/api";
 import { useUpdateState } from "../hooks/use-update-state";
-import { Button } from "./ui";
+import { Button, TooltipButton } from "./ui";
 import { IconClose, IconCloudDown, IconExternal } from "./icons";
 
 /**
  * Ambient update notice in the main pane's top safe area. Appears when an
  * update is ready to install (in-app mode) or newly detected (manual mode);
  * silent otherwise. The Settings → Info tab owns explicit checks and status.
- * When Main attaches dual-locale release notes, they appear under the status
+ * When Main attaches localized release notes, they appear under the status
  * message as a compact "What's new" list (D164).
  */
 export function UpdateBanner() {
@@ -93,14 +93,15 @@ export function UpdateBanner() {
         </div>
       </div>
 
-      <button
+      <TooltipButton
         type="button"
-        aria-label={t("updates.dismiss")}
+        tooltip={t("updates.dismiss")}
+        ariaLabel={t("updates.dismiss")}
         className="update-notice-dismiss"
         onClick={() => setDismissedState(stateKey)}
       >
         <IconClose className="size-3.5" />
-      </button>
+      </TooltipButton>
     </div>
   );
 }

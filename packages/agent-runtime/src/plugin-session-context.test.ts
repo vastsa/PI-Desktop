@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { UiMessage } from "@pi-desktop/shared";
 import {
-  PLUGIN_ADVISOR_DEFAULT_TAIL,
+  PLUGIN_COMPLETE_DEFAULT_TAIL,
   pluginLlmContextFromTranscript,
   serializePluginLlmContext,
 } from "./plugin-session-context.js";
@@ -67,12 +67,12 @@ describe("pluginLlmContextFromTranscript", () => {
         msg({
           id: "t1",
           role: "tool",
-          toolName: "plugin_pi_advisor_advisor",
+          toolName: "plugin_pi_example_review",
           toolStatus: "running",
           toolResult: "",
         }),
       ],
-      { stripToolName: "plugin_pi_advisor_advisor" },
+      { stripToolName: "plugin_pi_example_review" },
     );
     expect(messages).toEqual([{ role: "user", content: "review this" }]);
   });
@@ -100,6 +100,6 @@ describe("serializePluginLlmContext", () => {
     ]);
     expect(text).toContain("### User\nDo the thing");
     expect(text).toContain("### Tool Read\nsrc/a.ts");
-    expect(PLUGIN_ADVISOR_DEFAULT_TAIL).toMatch(/advise/);
+    expect(PLUGIN_COMPLETE_DEFAULT_TAIL).toMatch(/respond/);
   });
 });

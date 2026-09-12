@@ -1,4 +1,4 @@
-use std::io::{self, BufRead, BufReader as StdBufReader, Write};
+use std::io::{self, BufRead, BufReader as StdBufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::thread;
@@ -15,11 +15,13 @@ use crate::audit;
 use crate::notifications;
 use crate::permissions::{PermissionDecision, PermissionManager};
 use crate::plans;
+use crate::plugin_sessions;
 use crate::providers::{self, DiscoveredModelInput, ProviderCreateInput, ProviderUpdateInput};
 use crate::review;
 use crate::scheduled;
 use crate::scratch;
 use crate::sessions::{self, UiMessage};
+use crate::turn_queue;
 use crate::state::{AppState, HOST_VERSION, PROTOCOL_VERSION};
 use crate::tools::{self, ToolsExecuteParams};
 use crate::transcripts::CompactionRecord;
@@ -67,8 +69,82 @@ struct CacheModelsParams {
 #[derive(Debug)]
 enum StdinEvent {
     Line(String),
+    Oversize { id: Value },
     Error(String),
 }
+
+/// Best-effort JSON-RPC id from a possibly truncated NDJSON prefix.
+///
+/// Electron matches host replies by id. A `LIMIT_EXCEEDED` reply with a null
+/// id is treated as a notification and the caller waits out the 130 s deadline.
+fn peek_jsonrpc_id(prefix: &str) -> Value {
+    let window = prefix.get(..prefix.len().min(2048)).unwrap_or(prefix);
+    if let Ok(value) = serde_json::from_str::<Value>(window) {
+        return value.get("id").cloned().unwrap_or(Value::Null);
+    }
+    let bytes = window.as_bytes();
+    let mut i = 0;
+    while i + 4 < bytes.len() {
+        if &bytes[i..i + 4] != b"\"id\"" {
+            i += 1;
+            continue;
+        }
+        let mut j = i + 4;
+        while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+            j += 1;
+        }
+        if j >= bytes.len() || bytes[j] != b':' {
+            i += 1;
+            continue;
+        }
+        j += 1;
+        while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+            j += 1;
+        }
+        if j >= bytes.len() {
+            return Value::Null;
+        }
+        if bytes[j] == b'"' {
+            j += 1;
+            let start = j;
+            while j < bytes.len() {
+                if bytes[j] == b'\\' {
+                    j = (j + 2).min(bytes.len());
+                    continue;
+                }
+                if bytes[j] == b'"' {
+                    return std::str::from_utf8(&bytes[start..j])
+                        .map(|text| Value::String(text.to_string()))
+                        .unwrap_or(Value::Null);
+                }
+                j += 1;
+            }
+            return Value::Null;
+        }
+        if bytes.get(j..j + 4) == Some(&b"null"[..]) {
+            return Value::Null;
+        }
+        let start = j;
+        if bytes[j] == b'-' {
+            j += 1;
+        }
+        while j < bytes.len() && bytes[j].is_ascii_digit() {
+            j += 1;
+        }
+        if j > start {
+            if let Ok(text) = std::str::from_utf8(&bytes[start..j]) {
+                if let Ok(n) = text.parse::<i64>() {
+                    return json!(n);
+                }
+            }
+        }
+        return Value::Null;
+    }
+    Value::Null
+}
+
+const STDOUT_WRITER_SHUTDOWN: Duration = Duration::from_secs(5);
+
 
 /// Tokio's stdio adapter delegates every read/write to the blocking pool. If
 /// the OS temporarily refuses another worker thread, Tokio panics instead of
@@ -81,6 +157,11 @@ fn is_transient_io_error(error: &io::Error) -> bool {
     ) || matches!(error.raw_os_error(), Some(11) | Some(35))
 }
 
+/// Largest single NDJSON request line the host accepts. A Write payload of a
+/// few megabytes fits comfortably; anything past this is a framing fault, not
+/// a request, and must not be buffered into memory line by line.
+const MAX_STDIN_LINE_BYTES: u64 = 64 * 1024 * 1024;
+
 fn spawn_stdin_reader(tx: mpsc::UnboundedSender<StdinEvent>) -> io::Result<thread::JoinHandle<()>> {
     thread::Builder::new()
         .name("pi-host-stdin".into())
@@ -90,8 +171,44 @@ fn spawn_stdin_reader(tx: mpsc::UnboundedSender<StdinEvent>) -> io::Result<threa
             let mut line = String::new();
 
             loop {
-                match reader.read_line(&mut line) {
+                let read = (&mut reader)
+                    .take(MAX_STDIN_LINE_BYTES + 1)
+                    .read_line(&mut line);
+                match read {
                     Ok(0) => break,
+                    Ok(_) if line.len() as u64 > MAX_STDIN_LINE_BYTES => {
+                        // Drain the rest of this NDJSON record so a too-large
+                        // replaceMessages cannot kill the control pipe. The
+                        // serve loop answers LIMIT_EXCEEDED and keeps running.
+                        if !line.ends_with('\n') {
+                            let mut discard = [0u8; 8192];
+                            loop {
+                                match reader.read(&mut discard) {
+                                    Ok(0) => break,
+                                    Ok(n) if discard[..n].contains(&b'\n') => break,
+                                    Ok(_) => {}
+                                    Err(error)
+                                        if error.kind() == io::ErrorKind::Interrupted =>
+                                    {
+                                        continue;
+                                    }
+                                    Err(error) if is_transient_io_error(&error) => {
+                                        thread::sleep(Duration::from_millis(10));
+                                    }
+                                    Err(error) => {
+                                        let _ = tx.send(StdinEvent::Error(error.to_string()));
+                                        return;
+                                    }
+                                }
+                            }
+                        }
+                        let id = peek_jsonrpc_id(&line);
+                        line.clear();
+                        if tx.send(StdinEvent::Oversize { id }).is_err() {
+                            break;
+                        }
+                    }
+
                     Ok(_) => {
                         if tx
                             .send(StdinEvent::Line(std::mem::take(&mut line)))
@@ -206,11 +323,28 @@ pub async fn serve(state: Arc<Mutex<AppState>>) -> Result<()> {
                 };
                 let line = match event {
                     StdinEvent::Line(line) => line,
+                    StdinEvent::Oversize { id } => {
+                        let response = JsonRpcResponse {
+                            jsonrpc: "2.0",
+                            id,
+                            result: None,
+                            error: Some(rpc_err(
+                                1002,
+                                "request line exceeds 64 MiB",
+                                "LIMIT_EXCEEDED",
+                            )),
+                        };
+                        if let Ok(raw) = serde_json::to_string(&response) {
+                            let _ = tx.send(format!("{raw}\n"));
+                        }
+                        continue 'serve;
+                    }
                     StdinEvent::Error(error) => {
                         input_error = Some(format!("host stdin read failed: {error}"));
                         break 'serve;
                     }
                 };
+
                 let trimmed = line.trim();
                 if trimmed.is_empty() {
                     continue 'serve;
@@ -312,10 +446,16 @@ pub async fn serve(state: Arc<Mutex<AppState>>) -> Result<()> {
     }
     drop(tx);
     if !writer_done {
-        input_error = match writer_done_rx.await {
-            Ok(Some(error)) => Some(format!("host stdout write failed: {error}")),
-            Ok(None) => input_error,
-            Err(_) => Some("host stdout writer status unavailable".to_string()),
+        input_error = match tokio::time::timeout(STDOUT_WRITER_SHUTDOWN, writer_done_rx).await {
+            Ok(Ok(Some(error))) => Some(format!("host stdout write failed: {error}")),
+            Ok(Ok(None)) => input_error,
+            Ok(Err(_)) => Some("host stdout writer status unavailable".to_string()),
+            Err(_) => {
+                tracing::warn!("host stdout writer did not stop after stdin closed");
+                input_error.or_else(|| {
+                    Some("host stdout writer did not stop after stdin closed".to_string())
+                })
+            }
         };
     }
     input_error
@@ -329,6 +469,30 @@ fn rpc_err(code: i64, message: impl Into<String>, error_code: &str) -> JsonRpcEr
         message: message.into(),
         data: Some(json!({ "errorCode": error_code })),
     }
+}
+
+fn provider_rpc_err(error: impl ToString) -> JsonRpcError {
+    let message = error.to_string();
+    if message.starts_with("MODEL_ALIAS_TOO_LONG:") {
+        return rpc_err(1002, message, "MODEL_ALIAS_TOO_LONG");
+    }
+    rpc_err(1000, message, "INTERNAL")
+}
+
+fn plugin_session_rpc_err(error: impl ToString) -> JsonRpcError {
+    let message = error.to_string();
+    let code = message
+        .split_once(':')
+        .map(|(code, _)| code.to_string())
+        .unwrap_or_else(|| "INTERNAL".to_string());
+    let rpc_code = match code.as_str() {
+        "INVALID_PARAMS" | "LIMIT_EXCEEDED" => 1002,
+        "NOT_FOUND" => 1007,
+        "CONFLICT" => 1008,
+        "RATE_LIMITED" => 1006,
+        _ => 1000,
+    };
+    rpc_err(rpc_code, message, &code)
 }
 
 /// Parse the optional session thinking selector at the RPC boundary.  A
@@ -592,9 +756,9 @@ fn resolve_persisted_project_workspace(
 ) -> Result<Option<String>, JsonRpcError> {
     match sessions::get_session(&state.db, session_id) {
         Ok(Some(detail)) => Ok(detail.summary.project_path),
-        // Compatibility fallback for old callers that did not persist a
-        // session before dispatching a tool request.
-        Ok(None) => Ok(state.workspace.path.clone()),
+        // A tool request must name a persisted session: an unknown id never
+        // inherits the mutable global workspace.
+        Ok(None) => Err(rpc_err(1007, "session not found", "SESSION_NOT_FOUND")),
         Err(error) => Err(rpc_err(1000, error.to_string(), "INTERNAL")),
     }
 }
@@ -614,9 +778,9 @@ fn resolve_tool_workspace(
                 .map_err(|error| rpc_err(1000, error.to_string(), "INTERNAL"))?;
             Ok(Some(scratch.to_string_lossy().into_owned()))
         }
-        // Compatibility fallback for old callers that did not persist a
-        // session before dispatching a tool request.
-        Ok(None) => Ok(state.workspace.path.clone()),
+        // A tool request must name a persisted session: an unknown id never
+        // inherits the mutable global workspace.
+        Ok(None) => Err(rpc_err(1007, "session not found", "SESSION_NOT_FOUND")),
         Err(error) => Err(rpc_err(1000, error.to_string(), "INTERNAL")),
     }
 }
@@ -730,6 +894,7 @@ async fn execute_plugin_tool(
     tx: &mpsc::UnboundedSender<String>,
     p: &ToolsExecuteParams,
     timeout_ms: u64,
+    session_mode: &str,
 ) -> tools::ToolsExecuteResult {
     let started = std::time::Instant::now();
     let execution_id = uuid::Uuid::new_v4().to_string();
@@ -747,6 +912,11 @@ async fn execute_plugin_tool(
             "toolCallId": p.tool_call_id,
             "toolName": p.tool_name,
             "args": p.args,
+            // Durable session mode, not the sidecar-supplied field: ADR 0052
+            // forbids a conflicting sidecar mode from authorizing a tool
+            // (ADR 0211).
+            "mode": session_mode,
+            "planSafeActions": p.plan_safe_actions,
         }),
     )
     .await;
@@ -1014,12 +1184,30 @@ async fn handle_request(
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             Ok(json!({ "projects": projects }))
         }
+        "projects.create" => {
+            let path = params
+                .get("path")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| rpc_err(1002, "path required", "INVALID_PARAMS"))?;
+            let st = state.lock().await;
+            let id = st
+                .db
+                .ensure_project(path, false)
+                .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
+            let project = st
+                .db
+                .get_project(id)
+                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
+                .ok_or_else(|| rpc_err(1000, "project disappeared after creation", "INTERNAL"))?;
+            Ok(json!({ "project": project }))
+        }
         "workspace.set" => {
             let path = params
                 .get("path")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| rpc_err(1002, "path required", "INVALID_PARAMS"))?;
             let mut st = state.lock().await;
+            st.hashline.drop_all();
             let ws = st.workspace.set(PathBuf::from(path));
             let pid = st
                 .db
@@ -1032,6 +1220,7 @@ async fn handle_request(
         }
         "workspace.clear" => {
             let mut st = state.lock().await;
+            st.hashline.drop_all();
             st.workspace.clear();
             st.db
                 .kv_delete("app", "currentProjectId")
@@ -1057,6 +1246,13 @@ async fn handle_request(
             )
             .map_err(|error| rpc_err(1000, error.to_string(), "INTERNAL"))?;
             if matches!(outcome.status, "rolledBack" | "alreadyRolledBack") {
+                if let Some(root) = workspace_root.as_deref() {
+                    let resolved = std::path::Path::new(root).join(&outcome.path);
+                    st.hashline.invalidate_path(
+                        session_id,
+                        &crate::tools::hashline::canonical_key(&resolved),
+                    );
+                }
                 sessions::update_tool_review_state(
                     &st.db,
                     session_id,
@@ -1186,16 +1382,16 @@ async fn handle_request(
             let input: ProviderCreateInput = serde_json::from_value(params)
                 .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
             let st = state.lock().await;
-            let provider = providers::create_provider(&st.db, &st.secrets, input)
-                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            let provider =
+                providers::create_provider(&st.db, &st.secrets, input).map_err(provider_rpc_err)?;
             Ok(json!({ "provider": provider }))
         }
         "providers.update" => {
             let input: ProviderUpdateInput = serde_json::from_value(params)
                 .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
             let st = state.lock().await;
-            let provider = providers::update_provider(&st.db, &st.secrets, input)
-                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            let provider =
+                providers::update_provider(&st.db, &st.secrets, input).map_err(provider_rpc_err)?;
             Ok(json!({ "provider": provider }))
         }
         "providers.delete" => {
@@ -1319,6 +1515,33 @@ async fn handle_request(
                 };
             Ok(json!({ "session": session }))
         }
+        "session.moveProject" => {
+            let session_id = params
+                .get("sessionId")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| rpc_err(1002, "sessionId required", "INVALID_PARAMS"))?;
+            let project_path = params
+                .get("projectPath")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| rpc_err(1002, "projectPath required", "INVALID_PARAMS"))?;
+            let st = state.lock().await;
+            let session = match sessions::move_session_project(&st.db, session_id, project_path)
+                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
+            {
+                sessions::MoveSessionProjectResult::Moved(session) => session,
+                sessions::MoveSessionProjectResult::NotFound => {
+                    return Err(rpc_err(1007, "session not found", "NOT_FOUND"))
+                }
+                sessions::MoveSessionProjectResult::Busy => {
+                    return Err(rpc_err(1008, "session is running", "CONFLICT"))
+                }
+            };
+            Ok(json!({ "session": session }))
+        }
         "session.get" => {
             let id = params
                 .get("id")
@@ -1405,6 +1628,7 @@ async fn handle_request(
             if ok {
                 scratch::remove_session_dir(&st.data_dir, id);
                 review::remove_session(&st.data_dir, id);
+                st.hashline.drop_session(id);
             }
             Ok(json!({ "ok": ok }))
         }
@@ -1462,13 +1686,9 @@ async fn handle_request(
                 .and_then(|v| v.as_str())
                 .map(str::to_string);
             let st = state.lock().await;
-            let saved = sessions::save_inflight_message(
-                &st.db,
-                session_id,
-                turn_id.as_deref(),
-                &message,
-            )
-            .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            let saved =
+                sessions::save_inflight_message(&st.db, session_id, turn_id.as_deref(), &message)
+                    .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             Ok(json!({ "ok": true, "saved": saved }))
         }
         "session.recoverInflightMessages" => {
@@ -1511,6 +1731,38 @@ async fn handle_request(
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             Ok(json!({ "ok": true }))
         }
+        "session.truncateFrom" => {
+            let session_id = params
+                .get("sessionId")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| rpc_err(1002, "sessionId required", "INVALID_PARAMS"))?;
+            let from_message_id = params
+                .get("fromMessageId")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|id| !id.is_empty());
+            let truncate_before = params.get("truncateBefore").and_then(|v| v.as_i64());
+            let st = state.lock().await;
+            let truncated = sessions::truncate_from(
+                &st.db,
+                session_id,
+                from_message_id,
+                truncate_before,
+            )
+            .map_err(|e| {
+                let message = e.to_string();
+                if message.starts_with("NOT_FOUND") {
+                    rpc_err(1007, message, "NOT_FOUND")
+                } else if message.starts_with("INVALID_PARAMS") {
+                    rpc_err(1002, message, "INVALID_PARAMS")
+                } else {
+                    rpc_err(1000, message, "INTERNAL")
+                }
+            })?;
+            serde_json::to_value(truncated)
+                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))
+        }
+
         "session.saveRevision" => {
             let session_id = params
                 .get("sessionId")
@@ -1636,6 +1888,80 @@ async fn handle_request(
             Ok(json!({ "ok": true, "imported": imported, "skipped": !imported }))
         }
 
+        // Plugin sessions are a separate host-owned domain. Electron main is
+        // the only caller that can supply pluginId; the plugin process never
+        // receives a generic host RPC handle or SQLite access.
+        "plugin.session.import" => {
+            let plugin_id = params
+                .get("pluginId")
+                .and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "pluginId required", "INVALID_PARAMS"))?;
+            let mut st = state.lock().await;
+            if !st.allow_plugin_import(plugin_id, false) {
+                return Err(rpc_err(1006, "plugin import rate exceeded", "RATE_LIMITED"));
+            }
+            let result = plugin_sessions::import(&st.db, plugin_id, &params)
+                .map_err(plugin_session_rpc_err)?;
+            Ok(result)
+        }
+        "plugin.session.importBatch" => {
+            let plugin_id = params
+                .get("pluginId")
+                .and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "pluginId required", "INVALID_PARAMS"))?;
+            let mut st = state.lock().await;
+            if !st.allow_plugin_import(plugin_id, true) {
+                return Err(rpc_err(1006, "plugin batch import rate exceeded", "RATE_LIMITED"));
+            }
+            let result = plugin_sessions::import_batch(&st.db, plugin_id, &params)
+                .map_err(plugin_session_rpc_err)?;
+            Ok(result)
+        }
+        "plugin.session.list" => {
+            let plugin_id = params
+                .get("pluginId")
+                .and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "pluginId required", "INVALID_PARAMS"))?;
+            let st = state.lock().await;
+            plugin_sessions::list(&st.db, plugin_id, &params).map_err(plugin_session_rpc_err)
+        }
+        "plugin.session.get" => {
+            let plugin_id = params
+                .get("pluginId")
+                .and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "pluginId required", "INVALID_PARAMS"))?;
+            let st = state.lock().await;
+            plugin_sessions::get(&st.db, plugin_id, &params).map_err(plugin_session_rpc_err)
+        }
+        "plugin.session.listMessages" => {
+            let plugin_id = params
+                .get("pluginId")
+                .and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "pluginId required", "INVALID_PARAMS"))?;
+            let st = state.lock().await;
+            plugin_sessions::list_messages(&st.db, plugin_id, &params)
+                .map_err(plugin_session_rpc_err)
+        }
+        "plugin.session.rename" => {
+            let plugin_id = params
+                .get("pluginId")
+                .and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "pluginId required", "INVALID_PARAMS"))?;
+            let st = state.lock().await;
+            plugin_sessions::rename(&st.db, plugin_id, &params).map_err(plugin_session_rpc_err)
+        }
+        "plugin.session.delete" => {
+            let plugin_id = params
+                .get("pluginId")
+                .and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "pluginId required", "INVALID_PARAMS"))?;
+            let mut st = state.lock().await;
+            if !st.allow_plugin_delete(plugin_id) {
+                return Err(rpc_err(1006, "plugin delete rate exceeded", "RATE_LIMITED"));
+            }
+            plugin_sessions::delete(&st.db, plugin_id, &params).map_err(plugin_session_rpc_err)
+        }
+
         "session.beginTurn" => {
             let session_id = params
                 .get("sessionId")
@@ -1692,6 +2018,56 @@ async fn handle_request(
                 response["recovered"] = json!(recovered);
             }
             Ok(response)
+        }
+
+        // The Host-owned turn queue (D375 / ADR 0213). Entries are durable so
+        // a restart restores them in order; the Agent Host decides when one
+        // starts, never the store.
+        "session.queuePush" => {
+            let input: turn_queue::QueuedTurnInput = serde_json::from_value(params.clone())
+                .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
+            let st = state.lock().await;
+            let entry = turn_queue::push(&st.db, input).map_err(|e| {
+                let message = e.to_string();
+                if message == "QUEUE_FULL" {
+                    rpc_err(1008, message, "AGENT_BUSY")
+                } else if message == "IDEMPOTENCY_CONFLICT" {
+                    rpc_err(1008, message, "IDEMPOTENCY_CONFLICT")
+                } else if message.starts_with("session not found") {
+                    rpc_err(1007, message, "SESSION_NOT_FOUND")
+                } else {
+                    rpc_err(1000, message, "INTERNAL")
+                }
+            })?;
+            Ok(json!({ "entry": entry }))
+        }
+        "session.queueList" => {
+            let session_id = params.get("sessionId").and_then(|v| v.as_str());
+            let st = state.lock().await;
+            let entries = turn_queue::list(&st.db, session_id)
+                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            Ok(json!({ "entries": entries }))
+        }
+        "session.queueRemove" => {
+            let id = params
+                .get("id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| rpc_err(1002, "id required", "INVALID_PARAMS"))?;
+            let st = state.lock().await;
+            let removed = turn_queue::remove(&st.db, id)
+                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            Ok(json!({ "removed": removed }))
+        }
+        "session.queuePrioritize" => {
+            let id = params
+                .get("id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| rpc_err(1002, "id required", "INVALID_PARAMS"))?;
+            let st = state.lock().await;
+            let entry = turn_queue::prioritize(&st.db, id)
+                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
+                .ok_or_else(|| rpc_err(1007, "queue entry not found", "NOT_FOUND"))?;
+            Ok(json!({ "entry": entry }))
         }
 
         "notification.list" => {
@@ -2211,12 +2587,6 @@ async fn handle_request(
 
         "tools.list" => Ok(json!({ "tools": tools::builtin_tool_defs() })),
         "tools.execute" => {
-            // Segmented timing (D137): a slow tool call is almost never slow
-            // *inside* the tool — the wait is either the approval prompt or the
-            // model round trip that follows. Splitting the host's own share
-            // into approval / execution / bookkeeping is what makes the three
-            // distinguishable in host/timing.log instead of one opaque
-            // duration.
             let call_started = std::time::Instant::now();
             let p: ToolsExecuteParams = serde_json::from_value(params.clone())
                 .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
@@ -2374,6 +2744,7 @@ async fn handle_request(
                             &st.session_grants,
                             p.declared_risk.as_deref(),
                             external_path_permission,
+                            p.plan_safe_actions.as_deref(),
                         );
                     // Write/Edit targeting the session scratch dir never touch
                     // the user's project — skip the prompt (D114). The lexical
@@ -2542,19 +2913,6 @@ async fn handle_request(
                         Some(&p.session_id),
                         denied_audit,
                     );
-                    tracing::info!(
-                        tool = %p.tool_name,
-                        tool_call_id = %p.tool_call_id,
-                        session_id = %p.session_id,
-                        prompted,
-                        permission_wait_ms,
-                        execute_ms = 0,
-                        overhead_ms = 0,
-                        total_ms = call_started.elapsed().as_millis() as u64,
-                        command_shell_id = permission_shell_id.as_deref(),
-                        outcome = if cancelled { "aborted" } else { "denied" },
-                        "tool timing"
-                    );
                     let error_code = if cancelled {
                         "TOOL_ABORTED"
                     } else if sessions::is_contract_mode(&durable_mode)
@@ -2631,7 +2989,14 @@ async fn handle_request(
                 };
 
                 let ws_path = workspace_path.map(PathBuf::from);
-                let data_dir = { state.lock().await.data_dir.clone() };
+                let (data_dir, hashline_store) = {
+                    let st = state.lock().await;
+                    (st.data_dir.clone(), st.hashline.clone())
+                };
+                let hashline_ctx = tools::HashlineContext {
+                    session_id: p.session_id.as_str(),
+                    store: &hashline_store,
+                };
                 let pending_review = review::prepare_change(
                     &data_dir,
                     &p.session_id,
@@ -2707,7 +3072,7 @@ async fn handle_request(
                 let mut result = if tools::is_desktop_dispatched(&p.tool_name) {
                     // Plugin dispatch keeps its existing bounded default timeout;
                     // command-shell timeout semantics apply only to Bash.
-                    execute_plugin_tool(&state, &tx, &p, p.timeout_ms.unwrap_or(60_000)).await
+                    execute_plugin_tool(&state, &tx, &p, p.timeout_ms.unwrap_or(60_000), &durable_mode).await
                 } else {
                     tools::execute_tool_with_path_access(
                         ws_path.as_deref(),
@@ -2717,6 +3082,7 @@ async fn handle_request(
                         execution_timeout_ms,
                         bash_options,
                         external_path_permission,
+                        Some(&hashline_ctx),
                     )
                     .await
                 };
@@ -2801,19 +3167,6 @@ async fn handle_request(
                     execute_audit["commandShellId"] = json!(shell_id);
                 }
                 let _ = audit::append(&st.db, "tool_execute", Some(&p.session_id), execute_audit);
-                tracing::info!(
-                    tool = %p.tool_name,
-                    tool_call_id = %p.tool_call_id,
-                    session_id = %p.session_id,
-                    prompted,
-                    permission_wait_ms,
-                    execute_ms = result.duration_ms,
-                    overhead_ms,
-                    total_ms,
-                    command_shell_id = result.command_shell_id.as_deref(),
-                    outcome = if result.ok { "ok" } else { "error" },
-                    "tool timing"
-                );
 
                 serde_json::to_value(result).map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))
             }
@@ -2853,6 +3206,16 @@ async fn handle_request(
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
             let declared_risk = params.get("declaredRisk").and_then(|v| v.as_str());
+            let plan_safe_actions: Option<Vec<String>> = params
+                .get("planSafeActions")
+                .and_then(|v| v.as_array())
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(|item| item.as_str().map(str::to_string))
+                        .collect()
+                })
+                .filter(|items: &Vec<String>| !items.is_empty());
             let st = state.lock().await;
             let Some(mode) = sessions::session_mode(&st.db, session_id)
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
@@ -2898,6 +3261,7 @@ async fn handle_request(
                     &st.session_grants,
                     declared_risk,
                     external_path_permission,
+                    plan_safe_actions.as_deref(),
                 );
             Ok(json!({
                 "decision": decision,
@@ -2945,6 +3309,14 @@ async fn handle_request(
             let mut st = state.lock().await;
             st.session_grants.remove(session_id);
             Ok(json!({ "ok": true }))
+        }
+        "permissions.pending" => {
+            // Pending requests are Host state (D374/D375): a client that
+            // attaches after `permissions.request` was emitted reads the open
+            // set here and answers through the unchanged `permissions.resolve`.
+            let session_id = params.get("sessionId").and_then(|v| v.as_str());
+            let st = state.lock().await;
+            Ok(json!({ "requests": st.permissions.pending_requests(session_id) }))
         }
 
         "plugins.list" => {
@@ -3516,8 +3888,8 @@ mod tests {
     use tokio::sync::{mpsc, Mutex};
 
     use super::{
-        capability_err, handle_request, parse_capability_query, resolve_plan_workspace,
-        resolve_tool_workspace, scope_err, skill_err,
+        capability_err, handle_request, parse_capability_query, peek_jsonrpc_id, provider_rpc_err,
+        resolve_plan_workspace, resolve_tool_workspace, scope_err, skill_err,
     };
     use crate::plans::{PlanResolveParams, PlanSubmitParams};
     use crate::scheduled;
@@ -3535,10 +3907,216 @@ mod tests {
 
         let unknown_level = parse_capability_query(&json!({ "level": "workspace" }))
             .expect_err("unknown capability levels are invalid");
-        assert_eq!(unknown_level.data.unwrap()["errorCode"], "CAPABILITY_INVALID");
-        assert_eq!(scope_err("CAPABILITY_INVALID: missing project").data.unwrap()["errorCode"], "CAPABILITY_INVALID");
-        assert_eq!(skill_err("CAPABILITY_INVALID: missing project").data.unwrap()["errorCode"], "CAPABILITY_INVALID");
-        assert_eq!(capability_err("missing project").data.unwrap()["errorCode"], "CAPABILITY_INVALID");
+        assert_eq!(
+            unknown_level.data.unwrap()["errorCode"],
+            "CAPABILITY_INVALID"
+        );
+        assert_eq!(
+            scope_err("CAPABILITY_INVALID: missing project")
+                .data
+                .unwrap()["errorCode"],
+            "CAPABILITY_INVALID"
+        );
+        assert_eq!(
+            skill_err("CAPABILITY_INVALID: missing project")
+                .data
+                .unwrap()["errorCode"],
+            "CAPABILITY_INVALID"
+        );
+        assert_eq!(
+            capability_err("missing project").data.unwrap()["errorCode"],
+            "CAPABILITY_INVALID"
+        );
+    }
+
+    #[test]
+    fn peek_jsonrpc_id_reads_a_string_id_from_a_truncated_prefix() {
+        let prefix =
+            r#"{"jsonrpc":"2.0","id":"abc-123","method":"session.replaceMessages","params":{"#;
+        assert_eq!(peek_jsonrpc_id(prefix), json!("abc-123"));
+    }
+
+    #[test]
+    fn peek_jsonrpc_id_reads_a_numeric_id() {
+        assert_eq!(
+            peek_jsonrpc_id(r#"{"jsonrpc":"2.0","id":7,"method":"x"}"#),
+            json!(7)
+        );
+    }
+
+    #[test]
+    fn peek_jsonrpc_id_is_null_when_the_prefix_has_no_id() {
+        assert_eq!(peek_jsonrpc_id("not json"), Value::Null);
+        assert_eq!(peek_jsonrpc_id(""), Value::Null);
+    }
+
+    #[test]
+    fn provider_alias_validation_keeps_a_stable_error_code() {
+        let error = provider_rpc_err("MODEL_ALIAS_TOO_LONG: alias is too long");
+        assert_eq!(error.code, 1002);
+        assert_eq!(
+            error.data.as_ref().and_then(|data| data.get("errorCode")),
+            Some(&json!("MODEL_ALIAS_TOO_LONG"))
+        );
+    }
+
+    #[tokio::test]
+    async fn project_create_returns_an_id_without_switching_workspace() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let path = data_dir.path().to_string_lossy().to_string();
+
+        let result = handle_request(
+            state.clone(),
+            "projects.create",
+            json!({ "path": path }),
+            tx,
+        )
+        .await
+        .unwrap();
+        let project_id = result["project"]["id"].as_i64().unwrap();
+        let canonical_path = data_dir.path().canonicalize().unwrap();
+        assert_eq!(
+            result["project"]["path"],
+            canonical_path.to_string_lossy().as_ref()
+        );
+        assert!(project_id > 0);
+
+        let workspace = handle_request(
+            state,
+            "workspace.get",
+            json!({}),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        assert_eq!(workspace["workspace"], Value::Null);
+    }
+
+    #[tokio::test]
+    async fn plugin_session_rpc_routes_the_full_p0_p1_surface() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let item = |external_id: &str| {
+            json!({
+                "externalId": external_id,
+                "title": "Imported",
+                "createdAt": "2026-01-01T00:00:00Z",
+                "updatedAt": "2026-01-01T00:00:01Z",
+                "messages": [{
+                    "role": "user",
+                    "content": "hello",
+                    "createdAt": "2026-01-01T00:00:00Z"
+                }]
+            })
+        };
+
+        let imported = handle_request(
+            state.clone(),
+            "plugin.session.import",
+            json!({
+                "pluginId": "plugin.one",
+                "source": "legacy",
+                "sourceLabel": "Legacy",
+                "externalId": "one",
+                "title": "Imported",
+                "createdAt": "2026-01-01T00:00:00Z",
+                "updatedAt": "2026-01-01T00:00:01Z",
+                "messages": [{
+                    "role": "user",
+                    "content": "hello",
+                    "createdAt": "2026-01-01T00:00:00Z"
+                }]
+            }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let session_id = imported["sessionId"].as_str().unwrap().to_string();
+
+        let batch = handle_request(
+            state.clone(),
+            "plugin.session.importBatch",
+            json!({
+                "pluginId": "plugin.one",
+                "source": "legacy",
+                "sessions": [item("two"), item("three")]
+            }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(batch["imported"], 2);
+
+        let listed = handle_request(
+            state.clone(),
+            "plugin.session.list",
+            json!({ "pluginId": "plugin.one", "source": "legacy" }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(listed["items"].as_array().unwrap().len(), 3);
+
+        let detail = handle_request(
+            state.clone(),
+            "plugin.session.get",
+            json!({ "pluginId": "plugin.one", "sessionId": session_id }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(detail["originKind"], "imported");
+
+        let messages = handle_request(
+            state.clone(),
+            "plugin.session.listMessages",
+            json!({ "pluginId": "plugin.one", "sessionId": session_id }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(messages["items"][0]["origin"], "external");
+
+        handle_request(
+            state.clone(),
+            "plugin.session.rename",
+            json!({ "pluginId": "plugin.one", "sessionId": session_id, "title": "Renamed" }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        handle_request(
+            state.clone(),
+            "plugin.session.delete",
+            json!({ "pluginId": "plugin.one", "sessionId": session_id, "mode": "trash" }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let denied = handle_request(
+            state.clone(),
+            "plugin.session.get",
+            json!({ "pluginId": "plugin.two", "sessionId": session_id }),
+            tx.clone(),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(denied.code, 1007);
+        handle_request(
+            state,
+            "plugin.session.delete",
+            json!({ "pluginId": "plugin.one", "sessionId": session_id, "mode": "purge" }),
+            tx,
+        )
+        .await
+        .unwrap();
     }
 
     fn available_test_shell_id() -> Option<String> {
@@ -3731,8 +4309,11 @@ mod tests {
             "PLAN_WORKSPACE_REQUIRED"
         );
         assert_eq!(
-            resolve_tool_workspace(&state, "legacy-missing-session").unwrap(),
-            state.workspace.path
+            resolve_tool_workspace(&state, "legacy-missing-session")
+                .expect_err("unknown sessions must not inherit the global workspace")
+                .data
+                .unwrap()["errorCode"],
+            "SESSION_NOT_FOUND"
         );
     }
 
@@ -3767,6 +4348,7 @@ mod tests {
             None,
             None,
             false,
+            None,
         )
         .await;
         assert!(written.ok);
@@ -3784,10 +4366,13 @@ mod tests {
             None,
             None,
             false,
+            None,
         )
         .await;
         assert!(read.ok);
-        assert_eq!(read.content["content"], "temporary");
+        let content = read.content["content"].as_str().unwrap();
+        assert!(content.contains("temporary"), "{content}");
+        assert_eq!(read.content["tag"].as_str().unwrap().len(), 4);
         assert!(!active_project.join("notes.txt").exists());
     }
 
@@ -4468,6 +5053,119 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn permissions_pending_lists_the_open_request_until_resolved() {
+        let Some(shell_id) = available_test_shell_id() else {
+            return;
+        };
+        let data_dir = tempfile::tempdir().unwrap();
+        let project = data_dir.path().join("project");
+        fs::create_dir_all(&project).unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let session = sessions::create_session(
+            &app_state.db,
+            Some("Pending permission read".into()),
+            Some("agent".into()),
+            None,
+            None,
+            Some(project.to_string_lossy().into_owned()),
+        )
+        .unwrap();
+        sessions::configure_session_with_thinking(
+            &app_state.db,
+            &session.id,
+            "agent",
+            None,
+            None,
+            None,
+            Some("ask"),
+        )
+        .unwrap();
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let session_id = session.id.clone();
+        let pending_state = state.clone();
+        let pending_task = tokio::spawn(async move {
+            handle_request(
+                pending_state,
+                "tools.execute",
+                json!({
+                    "sessionId": session_id,
+                    "toolCallId": "pending-read",
+                    "toolName": "Bash",
+                    "args": { "command": sleeping_bash_command() },
+                    "expectedCommandShellId": shell_id,
+                    "expectedCommandShellDialect": crate::tools::shell::dialect_for_id(&shell_id),
+                    "mode": "agent"
+                }),
+                tx,
+            )
+            .await
+        });
+        let permission = tokio::time::timeout(std::time::Duration::from_secs(2), rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        let permission: Value = serde_json::from_str(&permission).unwrap();
+        assert_eq!(permission["method"], "permissions.request");
+        let request_id = permission["params"]["requestId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let listed = handle_request(
+            state.clone(),
+            "permissions.pending",
+            json!({ "sessionId": session.id }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        let requests = listed["requests"].as_array().unwrap();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0]["requestId"], request_id);
+        assert_eq!(requests[0]["sessionId"], session.id);
+        assert_eq!(requests[0]["toolName"], "Bash");
+        assert_eq!(requests[0]["timeoutMs"], 120000);
+        assert!(
+            requests[0]["expiresAt"].as_str().unwrap() > requests[0]["createdAt"].as_str().unwrap()
+        );
+        assert!(requests[0]["remainingMs"].as_u64().unwrap() <= 120000);
+
+        let other = handle_request(
+            state.clone(),
+            "permissions.pending",
+            json!({ "sessionId": "another-session" }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        assert!(other["requests"].as_array().unwrap().is_empty());
+
+        handle_request(
+            state.clone(),
+            "permissions.resolve",
+            json!({ "requestId": request_id, "decision": "deny" }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        let result = pending_task.await.unwrap().unwrap();
+        assert_eq!(result["errorCode"], "TOOL_DENIED");
+
+        let after = handle_request(
+            state.clone(),
+            "permissions.pending",
+            json!({}),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        assert!(after["requests"].as_array().unwrap().is_empty());
+        assert_bash_registry_empty(&state).await;
+    }
+
+    #[tokio::test]
     async fn tools_abort_during_permission_removes_the_pending_request() {
         let Some(shell_id) = available_test_shell_id() else {
             return;
@@ -5135,6 +5833,77 @@ mod tests {
         sessions::end_turn(&st.db, &first, "aborted", None, None, false).unwrap();
     }
 
+    #[tokio::test]
+    async fn truncate_from_rpc_cuts_without_shipping_the_kept_prefix() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let session = sessions::create_session(
+            &app_state.db,
+            Some("Large".into()),
+            Some("agent".into()),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        let turn = sessions::begin_turn(&app_state.db, &session.id, None, None).unwrap();
+        let prefix: sessions::UiMessage = serde_json::from_value(json!({
+            "id": "u0",
+            "role": "user",
+            "content": "earlier",
+            "createdAt": "2025-05-01T00:00:00Z"
+        }))
+        .unwrap();
+        let root: sessions::UiMessage = serde_json::from_value(json!({
+            "id": "u1",
+            "role": "user",
+            "content": "retry me",
+            "createdAt": "2025-05-01T00:00:01Z"
+        }))
+        .unwrap();
+        sessions::append_message(&app_state.db, &session.id, &prefix, Some(&turn)).unwrap();
+        sessions::append_message(&app_state.db, &session.id, &root, Some(&turn)).unwrap();
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        let result = handle_request(
+            state.clone(),
+            "session.truncateFrom",
+            json!({ "sessionId": session.id, "fromMessageId": "u1" }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result["ok"], json!(true));
+        assert_eq!(result["keptCount"], json!(1));
+        assert_eq!(result["discardedCount"], json!(1));
+        assert_eq!(result["abortedTurnId"], json!(turn));
+
+        let detail = handle_request(
+            state.clone(),
+            "session.get",
+            json!({ "id": session.id, "messageLimit": 10 }),
+            tx,
+        )
+        .await
+        .unwrap();
+        let messages = detail["session"]["messages"].as_array().unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0]["id"], json!("u0"));
+
+        let missing = handle_request(
+            state,
+            "session.truncateFrom",
+            json!({ "sessionId": session.id, "fromMessageId": "gone" }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(missing.data.unwrap()["errorCode"], "NOT_FOUND");
+    }
+
+
     /// D137: the audit row for a tool call must carry the three segments
     /// separately, so "the tool was slow" can be told apart from "the user
     /// took 20s to approve it".
@@ -5318,7 +6087,12 @@ mod tests {
         let allowed = allowed_pending.await.unwrap().unwrap();
         assert_eq!(allowed["ok"], true);
         assert_eq!(allowed["content"]["root"], "external");
-        assert_eq!(allowed["content"]["content"], "outside content");
+        let allowed_content = allowed["content"]["content"].as_str().unwrap();
+        assert!(
+            allowed_content.contains("outside content"),
+            "{allowed_content}"
+        );
+        assert_eq!(allowed["content"]["tag"].as_str().unwrap().len(), 4);
 
         sessions::configure_session_with_thinking(
             &state.lock().await.db,
@@ -5605,7 +6379,7 @@ mod tests {
             ),
             (
                 "Edit",
-                json!({ "path": "ignored.txt", "old_string": "a", "new_string": "b" }),
+                json!({ "path": "ignored.txt", "tag": "ABCD", "ops": "PUT 1.=1:\n+b\n" }),
                 "EDIT_DISABLED_IN_PLAN",
             ),
             ("plugin_demo_run", json!({}), "PLUGIN_DISABLED_IN_PLAN"),
@@ -5736,7 +6510,7 @@ mod tests {
             ),
             (
                 "Edit",
-                json!({ "path": "ignored.txt", "old_string": "a", "new_string": "b" }),
+                json!({ "path": "ignored.txt", "tag": "ABCD", "ops": "PUT 1.=1:\n+b\n" }),
                 "EDIT_DISABLED_IN_PLAN",
             ),
             ("plugin_demo_run", json!({}), "PLUGIN_DISABLED_IN_PLAN"),
@@ -5852,8 +6626,8 @@ mod tests {
         let data_dir = tempfile::tempdir().unwrap();
         let mut app_state = AppState::open(data_dir.path()).unwrap();
         app_state.handshook = true;
-        let session = sessions::create_session(&app_state.db, None, None, None, None, None)
-            .unwrap();
+        let session =
+            sessions::create_session(&app_state.db, None, None, None, None, None).unwrap();
         let turn = sessions::begin_turn(&app_state.db, &session.id, None, None).unwrap();
         let state = Arc::new(Mutex::new(app_state));
         let (tx, _rx) = mpsc::unbounded_channel();

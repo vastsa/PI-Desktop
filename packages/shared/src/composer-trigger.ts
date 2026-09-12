@@ -45,6 +45,22 @@ const WHITESPACE = new Set([" ", "\t", "\n", "\r"]);
 /** Characters that end the token scan-back, per pi's autocomplete. */
 const DELIMITERS = new Set([" ", "\t", "\n", "\r", '"', "'", "="]);
 
+/** U+3001 IDEOGRAPHIC COMMA — the mark a Chinese IME gives for "/" (D405). */
+export const IDEOGRAPHIC_COMMA = "、";
+
+/**
+ * A Chinese IME types "、" where an ASCII "/" is meant, and switching input
+ * methods to reach the slash menu breaks the flow of writing (issue #65). The
+ * first character of an otherwise empty draft is rewritten to "/" so the
+ * ordinary command menu opens; a mark anywhere later in the draft is text and
+ * is left untouched.
+ */
+export function rewriteIdeographicCommaTrigger(value: string): string {
+  return value.startsWith(IDEOGRAPHIC_COMMA)
+    ? `/${value.slice(1)}`
+    : value;
+}
+
 function isBoundary(value: string, index: number): boolean {
   if (index <= 0) return true;
   return DELIMITERS.has(value[index - 1]);
@@ -182,6 +198,80 @@ export function serializeInlineComposerFileReferences(
     }
   }
   return content.trim();
+}
+
+/** Remove renderer-only inline reference tokens before text-only enhancement. */
+export function stripInlineComposerFileReferenceTokens(
+  draft: string,
+  references: ReadonlyArray<{ token?: string }>,
+): string {
+  const tokens = references
+    .map((reference) => reference.token?.trim())
+    .filter((token): token is string => Boolean(token))
+    .sort((a, b) => b.length - a.length);
+  let content = draft;
+  for (const token of tokens) content = content.replaceAll(token, "");
+  return content;
+}
+
+/**
+ * Restore inline reference chips around an enhanced text-only draft. The
+ * model must never be trusted to preserve private renderer sentinels; tokens
+ * keep their order and approximate relative text position instead.
+ */
+export function restoreInlineComposerFileReferenceTokens(
+  sourceDraft: string,
+  enhancedDraft: string,
+  references: ReadonlyArray<{ token?: string }>,
+): string {
+  const tokens = references
+    .map((reference) => reference.token?.trim())
+    .filter((token): token is string => Boolean(token))
+    .sort((a, b) => b.length - a.length);
+  if (!tokens.length) return enhancedDraft;
+
+  const occurrences: Array<{ sourceIndex: number; token: string; textOffset: number }> = [];
+  for (const token of tokens) {
+    let sourceIndex = sourceDraft.indexOf(token);
+    while (sourceIndex !== -1) {
+      occurrences.push({
+        sourceIndex,
+        token,
+        textOffset: Array.from(
+          stripInlineComposerFileReferenceTokens(sourceDraft.slice(0, sourceIndex), references),
+        ).length,
+      });
+      sourceIndex = sourceDraft.indexOf(token, sourceIndex + token.length);
+    }
+  }
+  if (!occurrences.length) return enhancedDraft;
+  occurrences.sort((a, b) => a.sourceIndex - b.sourceIndex);
+
+  const cleanEnhanced = stripInlineComposerFileReferenceTokens(enhancedDraft, references);
+  const enhancedChars = Array.from(cleanEnhanced);
+  const sourceTextLength = Array.from(
+    stripInlineComposerFileReferenceTokens(sourceDraft, references),
+  ).length;
+  const insertions = new Map<number, string[]>();
+  let previousTarget = 0;
+  for (const occurrence of occurrences) {
+    const target = sourceTextLength
+      ? Math.round((occurrence.textOffset / sourceTextLength) * enhancedChars.length)
+      : 0;
+    const insertionIndex = Math.max(previousTarget, Math.min(enhancedChars.length, target));
+    const group = insertions.get(insertionIndex) ?? [];
+    group.push(occurrence.token);
+    insertions.set(insertionIndex, group);
+    previousTarget = insertionIndex;
+  }
+
+  const result: string[] = [];
+  for (let index = 0; index <= enhancedChars.length; index += 1) {
+    const group = insertions.get(index);
+    if (group) result.push(...group);
+    if (index < enhancedChars.length) result.push(enhancedChars[index]!);
+  }
+  return result.join("");
 }
 
 /** Replace the trigger token with `insert`, returning the new draft+cursor. */

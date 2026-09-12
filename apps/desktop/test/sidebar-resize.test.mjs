@@ -51,3 +51,26 @@ test("sidebar hover does not paint a full-height resize rail", () => {
     /\.sidebar-resize-handle:focus-visible\s*\{[^}]*outline:\s*none/s,
   );
 });
+
+test("the chat reserves one row for unsqueezed composer controls", () => {
+  assert.match(
+    globalStyles,
+    /\.main-pane\s*\{[\s\S]*?min-width:\s*515px;/,
+  );
+  assert.match(
+    globalStyles,
+    /\.composer-toolbar\s*\{[\s\S]*?flex-wrap:\s*nowrap;/,
+  );
+  assert.match(
+    globalStyles,
+    /\.composer-left,\s*\.composer-right\s*\{[\s\S]*?flex:\s*0 0 auto;/,
+  );
+  assert.match(
+    globalStyles,
+    /\.mode-chip\s*\{[\s\S]*?white-space:\s*nowrap;/,
+  );
+  assert.match(
+    globalStyles,
+    /\.mode-chip > span\s*\{[\s\S]*?text-overflow:\s*ellipsis;[\s\S]*?white-space:\s*nowrap;/,
+  );
+});

@@ -12,7 +12,7 @@
 当前应用程序中的功能。当前的实现添加了 Goal 合约，
 独立 MCP/Skills/Subagents、插件市场和启动器流程、会话
 导入、计划任务和下一轮输入框配置。主机线材
-协议为 v10；存储架构为 v12（见 `00-baseline.md`）。
+协议为 v11；存储架构为 v15（见 `00-baseline.md`）。
 
 ## 快速进入
 
@@ -24,7 +24,10 @@
 | [01-product/00-overview.md](/zh-CN/spec/01-product/00-overview) | 概述 |
 | [01-product/01-product-scope.md](/zh-CN/spec/01-product/01-product-scope) | 目前的产品范围和运营模式 |
 | [02-architecture/01-architecture.md](/zh-CN/spec/02-architecture/01-architecture) | 建筑 |
+| [02-architecture/05-remote-agent-control.md](/zh-CN/spec/02-architecture/05-remote-agent-control) | 远程 Agent Host 和 Gateway 目标架构 |
 | [03-runtime/05-host-core-rust.md](/zh-CN/spec/03-runtime/05-host-core-rust) | Rust 主机核心 |
+| [03-runtime/19-remote-agent-control-protocol.md](/zh-CN/spec/03-runtime/19-remote-agent-control-protocol) | 远程控制协议 |
+| [05-security/02-remote-control-security.md](/zh-CN/spec/05-security/02-remote-control-security) | 远程控制安全 |
 | [04-ux/02-i18n-english-first.md](/zh-CN/spec/04-ux/02-i18n-english-first) | 国际化政策 |
 | [04-ux/07-ui-design-system.md](/zh-CN/spec/04-ux/07-ui-design-system) | 设计系统（令牌、运动、密度） |
 | [04-ux/01-ui-ia.md](/zh-CN/spec/04-ux/01-ui-ia) | 已发货的外壳和目的地地图 |
@@ -89,9 +92,9 @@ docs/spec/
    `.pi/plan/*.md`神器； title/question 保持结构化
    `plan_approvals`，批准打开工件，仅限 approve/reject，并且
    `PLAN_APPROVAL_TIMEOUT` 在 30 绝对分钟后过期
-9.协议v10和存储模式v12对Plan/Goal具有权威性
-检查点、`plan_approvals` 执行字段、启动中断和
-   外壳身份
+9. 协议 v11 和存储架构 v15 对 Plan/Goal 检查点、
+   `plan_approvals` 执行字段、启动中断和外壳身份具有权威性。
+   v11 撤回 v10 添加的 A2A 方法域。
 10、权限超时120s拒绝； Bash 超时默认 60 秒
 11.本地用户可安装的插件（稍后上市）
 12. 标签版本 = macOS arm64、Intel x64、Windows x64 和 Linux x64 (D126/D285)

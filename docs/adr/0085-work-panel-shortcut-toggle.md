@@ -4,6 +4,9 @@
 - Date: 2026-08-14
 - Deciders: PI-Desktop core
 - Amends: ADR 0068, D207
+- Amended by: [ADR 0195](0195-viewport-fixed-work-panel-toggle.md) (the
+  viewport-fixed toggle is the pointer equivalent; the header chevron is no
+  longer a collapse control)
 - Related: [01-ui-ia](../spec/04-ux/01-ui-ia.md) ·
   [08-component-spec §5](../spec/04-ux/08-component-spec.md) ·
   [09-interaction-patterns §1](../spec/04-ux/09-interaction-patterns.md) ·

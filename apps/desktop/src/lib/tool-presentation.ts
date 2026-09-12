@@ -271,9 +271,9 @@ function formatBytes(bytes: number): string {
 }
 
 /**
- * Minimal line diff for an Edit's `old_string` → `new_string`. Both sides are
- * localized snippets, so trimming the shared head/tail to a little context is
- * enough to make the actual replacement obvious.
+ * Minimal line diff used by review hunks and tests. Both sides are localized
+ * snippets, so trimming the shared head/tail to a little context is enough to
+ * make the actual replacement obvious.
  */
 export function buildDiffLines(
   oldText: string,
@@ -552,15 +552,19 @@ function resultBlocks(
       break;
     }
     case "edit": {
-      const oldText = stringAt(args, "old_string", "oldString");
-      const newText = stringAt(args, "new_string", "newString");
+      const ops = stringAt(args, "ops");
       // Workspace edits already own a ReviewChangeCard with the real diff;
-      // only scratch edits and imported sessions need one here.
+      // only scratch edits and imported sessions need the model's stated ops.
       const reviewed =
         reviewChangeFromMessage(message as unknown as UiMessage) !== null;
-      if (oldText !== null && newText !== null && !reviewed) {
-        const block = diffBlock(oldText, newText);
-        if (block) blocks.push(block);
+      if (ops !== null && !reviewed) {
+        blocks.push(codeBlock("input", ops));
+      }
+      const warnings = stringArray(details?.warnings);
+      if (warnings) {
+        for (const warning of warnings) {
+          blocks.push({ kind: "note", role: "notice", text: warning });
+        }
       }
       break;
     }
@@ -633,7 +637,11 @@ function resultBlocks(
       const counters = details
         ? Object.fromEntries(
             Object.entries(details).filter(
-              ([key]) => key !== "agent" && key !== "error",
+              ([key]) =>
+                key !== "agent" &&
+                key !== "error" &&
+                key !== "modelId" &&
+                key !== "thinkingLevel",
             ),
           )
         : {};

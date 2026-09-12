@@ -5,11 +5,13 @@
  * component uses but no locale defines passes there and then renders as the
  * raw key string in the UI. That is exactly how `settings.serviceModels` and
  * friends shipped untranslated, so this test closes the loop from the call
- * sites back to the catalogs.
+ * sites back to the catalogs. Canonical thinking-level values are rendered
+ * directly and intentionally do not participate in this catalog contract.
  */
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { test } from "vitest";
 import { catalogs, flattenCatalog } from "../src/index.ts";
 
@@ -29,18 +31,17 @@ async function sources(dir) {
 
 /**
  * i18next resolves a bare key against its plural forms when a count is passed,
- * so `key_one` / `key_other` satisfy a lookup for `key`.
+ * so `key_one` / `key_other` satisfy a lookup for `key`Base.
  */
 function has(catalog, key) {
   return key in catalog || `${key}_one` in catalog || `${key}_other` in catalog;
 }
 
-const files = await sources(new URL(".", SRC).pathname);
+const files = await sources(fileURLToPath(SRC));
 const used = new Map();
 for (const file of files) {
   const text = await readFile(file, "utf8");
-  // Only dotted literals: dynamic keys such as t(`thinkingLevel.${level}`)
-  // cannot be resolved statically and are covered by catalogs.test.mjs.
+  // Only dotted literals can be resolved statically.
   for (const match of text.matchAll(/\bt\(\s*"([a-zA-Z0-9_]+\.[a-zA-Z0-9_.]+)"/g)) {
     if (!used.has(match[1])) used.set(match[1], file);
   }

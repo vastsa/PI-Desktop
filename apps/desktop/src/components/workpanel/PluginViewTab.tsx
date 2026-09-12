@@ -11,8 +11,10 @@ import { WorkTabEmpty } from "./WorkTabEmpty";
  * The surface itself is a main-process `WebContentsView`, the same isolated
  * page a `ui.panel` window hosts; this component renders nothing into it. It
  * measures the placeholder rect and drives visibility. The view composites
- * above renderer content, so it must be hidden whenever this tab is not the
- * active surface or a blocking overlay is open.
+ * above renderer content, so a panel-wide blocking overlay still hides it.
+ * The work-panel menu temporarily blocks the active view while open, which
+ * keeps the menu inside the dock without changing plugin bounds or pushing the
+ * plugin body down.
  */
 export function PluginViewTab({
   pluginId,
@@ -64,6 +66,15 @@ export function PluginViewTab({
   useEffect(() => {
     const surface = surfaceRef.current;
     if (!surface || failed) return;
+    void api.pluginViewSetVisible(pluginId, viewId, !blocked, sessionId);
+    return () => {
+      void api.pluginViewSetVisible(pluginId, viewId, false);
+    };
+  }, [pluginId, viewId, blocked, failed, sessionId]);
+
+  useEffect(() => {
+    const surface = surfaceRef.current;
+    if (!surface || failed) return;
     let frame = 0;
     const report = () => {
       cancelAnimationFrame(frame);
@@ -81,14 +92,12 @@ export function PluginViewTab({
     observer.observe(surface);
     window.addEventListener("resize", report);
     report();
-    void api.pluginViewSetVisible(pluginId, viewId, !blocked, sessionId);
     return () => {
       observer.disconnect();
       window.removeEventListener("resize", report);
       cancelAnimationFrame(frame);
-      void api.pluginViewSetVisible(pluginId, viewId, false);
     };
-  }, [pluginId, viewId, blocked, failed, sessionId]);
+  }, [pluginId, viewId, failed]);
 
   if (failed) {
     return (

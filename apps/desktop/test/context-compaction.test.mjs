@@ -18,6 +18,7 @@ const [
   hostSessions,
   hostTranscripts,
   transcript,
+  inspector,
   turns,
   styles,
   enLocale,
@@ -34,6 +35,7 @@ const [
   read("../../../crates/host-core/src/sessions.rs"),
   read("../../../crates/host-core/src/transcripts.rs"),
   read("../src/components/ChatTranscript.tsx"),
+  read("../src/components/ContextUsageInspector.tsx"),
   read("../src/lib/assistant-turns.ts"),
   loadStyles(),
   read("../../../packages/i18n/src/locales/en/index.ts"),
@@ -251,10 +253,10 @@ test("the transcript shows one row per compaction, the inspector the newest", ()
   assert.match(styles, /\.transcript-compaction-row \{/);
   // The inspector keeps its own line, now fed by the newest row.
   assert.match(
-    transcript,
+    inspector,
     /state\.sessionCompactions\[state\.activeSessionId\]\?\.at\(-1\)/,
   );
-  assert.match(transcript, /chat\.usageCompaction/);
+  assert.match(inspector, /chat\.usageCompaction/);
   assert.match(enLocale, /usageCompaction:/);
   assert.match(enLocale, /compactionRow:/);
 });

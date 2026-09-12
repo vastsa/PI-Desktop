@@ -64,6 +64,15 @@ test("composer exposes the runtime thinking level order and provider filtering",
   assert.match(composerSource, /thinkingMenuLevels/);
 });
 
+test("thinking levels use their canonical English values without i18n", () => {
+  assert.match(composerSource, /const thinkingLabel = thinkingLevel;/);
+  assert.match(composerSource, /<span className="flex-1">\s*\{level\}/);
+  assert.doesNotMatch(composerSource, /THINKING_LEVEL_(LABELS|I18N_KEYS)/);
+  assert.doesNotMatch(composerSource, /chat\.effort(?:Off|Minimal|Low|Mid|High|Xhigh|Max)/);
+  assert.doesNotMatch(transcriptSource, /thinkingLevel\./);
+  assert.doesNotMatch(settingsSource, /thinkingLevel\./);
+});
+
 test("Composer owns the mode and model controls", () => {
   const leftToolbar = composerSource.slice(
     composerSource.indexOf('<div className="composer-left">'),
@@ -200,21 +209,58 @@ test("transcript keeps assistant thinking in a separate disclosure", () => {
 test("expanded assistant activity rails collapse their disclosures", () => {
   assert.match(
     transcriptSource,
-    /function DisclosureCollapseRail\([\s\S]*?className="disclosure-collapse-rail"[\s\S]*?aria-label=\{label\}[\s\S]*?onClick=\{onCollapse\}/,
+    /function DisclosureCollapseRail\([\s\S]*?className="disclosure-collapse-rail"[\s\S]*?ariaLabel=\{label\}[\s\S]*?tooltip=\{label\}[\s\S]*?onClick=\{onCollapse\}/,
   );
   assert.match(
     transcriptSource,
-    /className="tool-row-body"[\s\S]*?<DisclosureCollapseRail[\s\S]*?onCollapse=\{\(\) => setOpen\(false\)\}/,
+    /className="tool-row-body"[\s\S]*?<DisclosureCollapseRail[\s\S]*?onCollapse=\{collapseDisclosure\}/,
   );
   assert.match(
     transcriptSource,
-    /className="tool-activity-body"[\s\S]*?<DisclosureCollapseRail[\s\S]*?onCollapse=\{\(\) => setOpen\(false\)\}/,
+    /className="tool-activity-body"[\s\S]*?<DisclosureCollapseRail[\s\S]*?onCollapse=\{collapseDisclosure\}/,
   );
   assert.match(
     stylesSource,
     /\.disclosure-collapse-rail\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?width:\s*16px;[\s\S]*?cursor:\s*pointer;/,
   );
   assert.match(stylesSource, /\.disclosure-collapse-rail:focus-visible\s*\{/);
+});
+
+test("live thinking follows the latest step without auto-expanding tool details", () => {
+  assert.match(transcriptSource, /function useAutomaticDisclosure\(automaticOpen: boolean\)/);
+  assert.match(transcriptSource, /const userInteractedRef = useRef\(false\)/);
+  assert.match(transcriptSource, /useLayoutEffect\(\(\) => \{/);
+  assert.match(transcriptSource, /if \(userInteractedRef\.current\) return/);
+  assert.match(transcriptSource, /const \{ open, toggle: toggleDisclosure, collapse: collapseDisclosure \}/);
+  assert.match(transcriptSource, /useAutomaticDisclosure\(live\)/);
+  assert.match(
+    transcriptSource,
+    /<ThinkingRow[\s\S]*?autoOpen=\{live && itemIndex === items\.length - 1\}/,
+  );
+  assert.doesNotMatch(
+    transcriptSource,
+    /<ToolRow[\s\S]{0,220}autoOpen=\{live && itemIndex === items\.length - 1\}/,
+  );
+  assert.match(transcriptSource, /const disclosure = useAutomaticDisclosure\(false\)/);
+  assert.match(transcriptSource, /onClick=\{toggleDisclosure\}/);
+  assert.match(transcriptSource, /onCollapse=\{collapseDisclosure\}/);
+  assert.match(transcriptSource, /onUserInteraction=\{claimDisclosure\}/);
+  assert.match(transcriptSource, /const tail = live && !open \? currentDetail : ""/);
+});
+
+test("activity headers omit the redundant status capsule", () => {
+  assert.doesNotMatch(
+    transcriptSource,
+    /activityItemStatus|currentStatus|tool-activity-current/,
+  );
+  assert.match(transcriptSource, /aria-live="polite"/);
+  assert.match(transcriptSource, /waitingForModel/);
+  assert.match(transcriptSource, /retryingModel/);
+  assert.match(transcriptSource, /waitingForSubagents/);
+  assert.doesNotMatch(stylesSource, /\.tool-activity-current/);
+  assert.match(stylesSource, /\.run-activity-indicator\[data-phase="waiting-model"\]/);
+  assert.match(stylesSource, /\.run-activity-indicator\[data-phase="retrying"\]/);
+  assert.match(stylesSource, /\.run-activity-indicator\[data-phase="waiting-subagents"\]/);
 });
 
 test("thinking-only assistant streams open the transcript surface", () => {

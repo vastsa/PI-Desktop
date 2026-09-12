@@ -83,6 +83,18 @@ export function modelConfigWithBinding(
   const enabledThinkingLevels = THINKING_LEVELS.filter((level) =>
     binding.thinkingLevels.includes(level),
   );
+  const thinkingLevelMap = { ...(model.thinkingLevelMap ?? {}) };
+  // pi-ai treats xhigh/max as unsupported when their adapter-facing mapping
+  // is absent or null. The explicit binding is authoritative, so an enabled
+  // extended level without a catalog translation must pass through as-is.
+  for (const level of ["xhigh", "max"] as const) {
+    if (
+      enabledThinkingLevels.includes(level) &&
+      thinkingLevelMap[level] == null
+    ) {
+      thinkingLevelMap[level] = level;
+    }
+  }
   const contextWindow =
     effectiveContextWindow(model.contextWindow, binding.contextWindow) ??
     model.contextWindow;
@@ -96,6 +108,7 @@ export function modelConfigWithBinding(
     maxTokens: binding.maxTokens,
     reasoning: enabledThinkingLevels.some((level) => level !== "off"),
     supportedThinkingLevels: enabledThinkingLevels,
+    ...(Object.keys(thinkingLevelMap).length > 0 ? { thinkingLevelMap } : {}),
     ...modalityOverride(model, binding),
   };
 }

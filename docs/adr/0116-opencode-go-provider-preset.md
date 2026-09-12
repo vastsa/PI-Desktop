@@ -28,7 +28,7 @@ API key as the only editable connection field, and continues to use the normal
 discovered-model selector. Save-time normalization also enforces the fixed
 values so stale or manually constructed form state cannot override them.
 
-The runtime maps `opencode_go` to pi-ai's OpenAI Chat Completions adapter. Model
+The runtime maps `opencode_go` to pi-ai's OpenAI Chat Completions adapter unless a model-level catalog entry pins another wire API (see #105). Model
 discovery calls `/models` with a Bearer key. Secrets remain owned by the
 existing Rust host secret store; no OpenCode-specific secret or database table
 is introduced.

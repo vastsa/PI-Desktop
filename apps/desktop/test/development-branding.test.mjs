@@ -53,6 +53,11 @@ test("Windows packages pin PI-Desktop executable and shortcut names", () => {
   assert.equal(packageJson.build.nsis.shortcutName, "PI-Desktop");
 });
 
+test("Linux packages align the desktop entry with the Wayland app identity", () => {
+  assert.equal(packageJson.desktopName, "pi-desktop.desktop");
+  assert.equal(packageJson.build.linux.syncDesktopName, true);
+});
+
 test("macOS development uses the canonical PI-Desktop Dock icon", () => {
   assert.match(
     mainSource,

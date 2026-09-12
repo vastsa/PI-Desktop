@@ -31,33 +31,34 @@ test("home sidebar exposes only the supported destination entries", () => {
 
 test("sidebar brand returns to the chat home", () => {
   const brandButton = sidebarSource.match(
-    /<button\s+type="button"\s+className="brand no-drag"[\s\S]*?<\/button>/,
+    /<TooltipButton\s+type="button"\s+className="brand no-drag"[\s\S]*?<\/TooltipButton>/,
   )?.[0] ?? "";
 
   assert.match(brandButton, /data-nav="home"/);
-  assert.match(brandButton, /aria-label=\{t\("nav\.home"\)\}/);
+  assert.match(brandButton, /ariaLabel=\{t\("nav\.home"\)\}/);
   assert.match(brandButton, /onClick=\{\(\) => setPage\("chat"\)\}/);
   assert.match(brandButton, /<BrandLogo size=\{20\}/);
   assert.match(brandButton, /t\("app\.shellName"\)/);
 });
 
-test("sidebar header retains non-mac branding and keeps collapse beside search", () => {
+test("sidebar header retains non-mac branding and collapse without a search control", () => {
   const header = sidebarSource.match(
     /<div className="sidebar-header">[\s\S]*?<\/div>\s*<\/div>/,
   )?.[0] ?? "";
 
   assert.match(header, /className="brand no-drag"/);
   assert.match(header, /className="sidebar-header-actions no-drag"/);
-  assert.ok(header.indexOf("<IconSearch") < header.indexOf("<IconSidebar"));
+  assert.doesNotMatch(header, /IconSearch/);
+  assert.match(header, /<IconSidebar/);
   assert.match(header, /data-nav="toggle-sidebar"/);
   assert.doesNotMatch(appSource, /IconChevronLeft|IconChevronRight/);
 });
 
-test("work panel collapse control lives in the switcher menu", () => {
-  assert.match(panelSource, /onCollapse/);
-  assert.match(panelSource, /work-panel-toolbar-collapse/);
-  assert.match(panelSource, /IconChevronRight/);
+test("work panel collapse control is the viewport-fixed shell toggle", () => {
+  assert.match(appSource, /className="app-work-panel-toggle no-drag"/);
   assert.match(appSource, /collapseWorkPanel\(\)/);
+  assert.doesNotMatch(panelSource, /onCollapse/);
+  assert.doesNotMatch(panelSource, /work-panel-toolbar-collapse/);
   assert.doesNotMatch(panelSource, /work-panel-collapse/);
   assert.doesNotMatch(panelSource, /collapsePanel/);
   assert.match(
@@ -66,9 +67,13 @@ test("work panel collapse control lives in the switcher menu", () => {
   );
   assert.match(
     globalStyles,
-    /:root\[data-platform="win32"\] \.main-titlebar\.work-panel-open,[\s\S]*:root\[data-platform="linux"\] \.main-titlebar\.work-panel-open\s*\{[^}]*right:\s*var\(--ds-window-controls-width\);/,
+    /:root\[data-platform="win32"\] \.main-titlebar\.work-panel-open,[\s\S]*:root\[data-platform="linux"\] \.main-titlebar\.work-panel-open\s*\{[^}]*right:\s*0;/,
   );
-  assert.doesNotMatch(globalStyles, /\.work-panel-header\s*\{[^}]*margin-right:/s);
+  // The reservation is platform-scoped; the base header rule stays neutral.
+  assert.doesNotMatch(
+    globalStyles,
+    /^\.work-panel-header\s*\{[^}]*margin-right:/ms,
+  );
 });
 
 test("macOS hides sidebar branding and keeps header actions beside traffic lights", () => {
@@ -188,17 +193,14 @@ test("sidebar floating menus open to the anchor's right", () => {
 });
 
 test("portaled sort menu does not stretch to the viewport edge", () => {
-  const defaultPopoverRuleIndex = globalStyles.indexOf(
-    ".sidebar-popover {\n  top: calc(100% + 4px);\n  right: 0;\n}",
-  );
-  const floatingPopoverRuleIndex = globalStyles.indexOf(
-    ".sidebar-popover.sidebar-floating-menu",
-  );
+  const basePopoverRule = globalStyles.match(
+    /\.sidebar-row-menu,\n\.sidebar-popover\s*\{[^}]*\}/s,
+  )?.[0] ?? "";
   const floatingPopoverRule =
     globalStyles.match(/\.sidebar-popover\.sidebar-floating-menu\s*\{[^}]*\}/s)?.[0] ?? "";
 
-  assert.ok(defaultPopoverRuleIndex >= 0);
-  assert.ok(floatingPopoverRuleIndex > defaultPopoverRuleIndex);
+  assert.match(basePopoverRule, /position:\s*fixed;/);
+  assert.doesNotMatch(basePopoverRule, /position:\s*absolute;/);
   assert.match(floatingPopoverRule, /top:\s*auto;/);
   assert.match(floatingPopoverRule, /right:\s*auto;/);
   assert.match(globalStyles, /\.sidebar-floating-menu\s*\{[^}]*width:\s*max-content;/s);
@@ -243,15 +245,12 @@ test("project rows expose folder actions and full-path hover", () => {
   assert.doesNotMatch(sidebarSource, /api\.openSessionFolder\(/);
   assert.match(
     sidebarSource,
-    /className="sidebar-session-group-title project-toggle"[\s\S]*?aria-describedby=\{`\$\{projectId\}-path-description`\}[\s\S]*?onMouseEnter=\{\(event\) => showProjectPath\(entry, event\.currentTarget\)\}[\s\S]*?onFocus=\{\(event\) => showProjectPath\(entry, event\.currentTarget\)\}/,
+    /className="sidebar-session-group-title project-toggle"[\s\S]*?tooltip=\{entry\.path\}[\s\S]*?tooltipDelayMs=\{500\}[\s\S]*?aria-describedby=\{`\$\{projectId\}-path-description`\}/,
   );
-  assert.match(sidebarSource, /className="sidebar-project-path-tooltip"/);
-  assert.match(sidebarSource, /role="tooltip"/);
+  assert.match(sidebarSource, /<TooltipButton/);
+  assert.match(globalStyles, /\.ui-tooltip-path\s*\{[^}]*width:\s*max-content/);
+  assert.match(globalStyles, /\.ui-tooltip-path\s*\{[^}]*max-width:\s*min\(420px,\s*calc\(100vw - 16px\)\)/);
   assert.match(sidebarSource, /className="sr-only">\s*\{entry\.path\}/);
-  assert.match(
-    globalStyles,
-    /\.sidebar-project-path-tooltip\s*\{[^}]*position:\s*fixed;[^}]*max-width:[^;]*;[^}]*overflow-wrap:\s*anywhere;/s,
-  );
 });
 
 test("session rows use the hover card instead of a native title tooltip", () => {

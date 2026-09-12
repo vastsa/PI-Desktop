@@ -3,7 +3,7 @@
 import { createServer } from "node:net";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -146,9 +146,17 @@ function resolveHostBinary() {
 }
 
 function resolveElectronBinary() {
-  const binary = process.platform === "win32"
-    ? join(appDir, "node_modules", "electron", "dist", "electron.exe")
-    : join(appDir, "node_modules", ".bin", "electron");
+  // Spawn the real executable, not the `.bin/electron` shim: the shim is a
+  // Node wrapper whose PID is not Electron main, so the probe identity check
+  // (electronMainPid === child.pid) would never hold. `path.txt` is written by
+  // electron's postinstall and names the platform executable.
+  const electronDir = join(appDir, "node_modules", "electron");
+  const pathFile = join(electronDir, "path.txt");
+  const binary = existsSync(pathFile)
+    ? join(electronDir, "dist", readFileSync(pathFile, "utf8").trim())
+    : process.platform === "win32"
+      ? join(electronDir, "dist", "electron.exe")
+      : join(electronDir, "dist", "electron");
   assert(existsSync(binary), `Electron binary missing: ${binary}`);
   return binary;
 }
@@ -1477,9 +1485,25 @@ async function runAcceptance(state) {
 
   const settings = await getSettings(state);
   assert(settings.defaultMode === "agent", `new-session default is not Agent: ${jsonText(settings)}`);
+  // The shell no longer creates a session at boot (temporary chats start on
+  // the first message), so create the independent Agent session the way the
+  // renderer's new-task path does: with the settings default mode.
   const sessions = await getSessions(state);
-  const defaultAgent = sessions.find((session) => session.id !== state.sessionId && session.mode === "agent");
-  assert(defaultAgent, `no newly created Agent session was present: ${jsonText(sessions)}`);
+  let defaultAgent = sessions.find((session) => session.id !== state.sessionId && session.mode === "agent");
+  if (!defaultAgent) {
+    const created = await getPreloadResult(state, "sessionCreate", [
+      {
+        title: "Independent Agent session",
+        mode: settings.defaultMode,
+        projectPath: state.workspace,
+      },
+    ]);
+    defaultAgent = created?.session;
+  }
+  assert(
+    defaultAgent?.id && defaultAgent.mode === "agent",
+    `no independent Agent session was available: ${jsonText(defaultAgent ?? sessions)}`,
+  );
   state.otherSessionId = defaultAgent.id;
   const seededSession = await getSession(state, state.sessionId);
   assert(seededSession?.mode === "plan", `seeded session is not Plan: ${jsonText(seededSession)}`);

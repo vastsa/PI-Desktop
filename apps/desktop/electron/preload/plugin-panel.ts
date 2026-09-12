@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 import {
   PLUGIN_PANEL_TITLEBAR_HEIGHT,
   PLUGIN_PANEL_CHROME_META_NAME,
@@ -25,9 +25,30 @@ const bridge = {
     ipcRenderer.on(`pi-plugin-panel-event:${event}`, wrapped);
     return () => ipcRenderer.removeListener(`pi-plugin-panel-event:${event}`, wrapped);
   },
+  /** Resolve a real dropped File without exposing Node or Electron to the page. */
+  getDroppedFilePath: (file: File): string | null => {
+    try {
+      return webUtils.getPathForFile(file) || null;
+    } catch {
+      return null;
+    }
+  },
 };
 
 contextBridge.exposeInMainWorld("pluginBridge", bridge);
+
+// Record the gesture before page code handles it. The host consumes one of
+// these short-lived paths when the panel asks for fs.registerDropped.
+window.addEventListener(
+  "drop",
+  (event) => {
+    const paths = [...(event.dataTransfer?.files ?? [])]
+      .map((file) => bridge.getDroppedFilePath(file))
+      .filter((path): path is string => Boolean(path));
+    if (paths.length) ipcRenderer.send("pi-plugin-panel-drop", paths);
+  },
+  true,
+);
 
 type ChromeLabels = {
   toolbar: string;
@@ -93,6 +114,67 @@ function publishTitlebarHeight(): void {
 
 function pluginOwnsTitlebarSpacing(): boolean {
   return pluginChromeMode() !== "legacy";
+}
+
+/**
+ * Keep plugin-owned panel documents aligned with the app renderer's compact
+ * scrollbar contract. A docked view is a separate WebContentsView, so it
+ * cannot inherit `styles/base.css`; without this host-owned rule Windows falls
+ * back to its wide classic scrollbar. The external page inside Browser is a
+ * different WebContentsView and intentionally keeps the page's own styling.
+ */
+function installPluginScrollbarStyle(): void {
+  if (!document.documentElement || document.getElementById("pi-plugin-scrollbars")) {
+    return;
+  }
+
+  const style = document.createElement("style");
+  style.id = "pi-plugin-scrollbars";
+  style.textContent = `
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 999px;
+      background-clip: content-box;
+    }
+    :hover::-webkit-scrollbar-thumb,
+    :focus-within::-webkit-scrollbar-thumb,
+    [data-scrolling]::-webkit-scrollbar-thumb {
+      background: color-mix(in oklab, currentColor 16%, transparent);
+      background-clip: content-box;
+    }
+    ::-webkit-scrollbar-thumb:hover,
+    ::-webkit-scrollbar-thumb:active {
+      background: color-mix(in oklab, currentColor 28%, transparent);
+      background-clip: content-box;
+    }
+  `;
+  document.documentElement.append(style);
+
+  const timers = new Map<HTMLElement, number>();
+  const onScroll = (event: Event) => {
+    const element =
+      event.target instanceof HTMLElement ? event.target : document.documentElement;
+    if (!element) return;
+    element.setAttribute("data-scrolling", "");
+    const pending = timers.get(element);
+    if (pending !== undefined) window.clearTimeout(pending);
+    timers.set(
+      element,
+      window.setTimeout(() => {
+        timers.delete(element);
+        element.removeAttribute("data-scrolling");
+      }, 300),
+    );
+  };
+  document.addEventListener("scroll", onScroll, { capture: true, passive: true });
 }
 
 type PluginPanelChromeMode = "legacy" | "safe-area" | "paint-through";
@@ -280,8 +362,78 @@ function installPaintThroughDragMap(dragRegion: HTMLElement): void {
   sync();
 }
 
-function chromeLabels(): ChromeLabels {
-  if (panelLocale().toLowerCase().startsWith("zh")) {
+function chromeLabels(input = panelLocale()): ChromeLabels {
+  const locale = input.replaceAll("_", "-").toLowerCase();
+  const traditionalChinese =
+    locale === "zh-tw" ||
+    locale.startsWith("zh-tw-") ||
+    locale === "zh-hant" ||
+    locale.startsWith("zh-hant-") ||
+    locale === "zh-hk" ||
+    locale.startsWith("zh-hk-") ||
+    locale === "zh-mo" ||
+    locale.startsWith("zh-mo-");
+  if (traditionalChinese) {
+    return {
+      toolbar: "外掛面板視窗控制項",
+      minimize: "最小化",
+      maximize: "最大化",
+      restore: "還原",
+      close: "關閉",
+      safeArea: "開發提示 · 頂部 46px 為拖曳區",
+    };
+  }
+  if (locale.startsWith("ko")) {
+    return {
+      toolbar: "플러그인 패널 창 컨트롤",
+      minimize: "최소화",
+      maximize: "최대화",
+      restore: "복원",
+      close: "닫기",
+      safeArea: "개발 안내 · 상단 46px는 드래그 전용",
+    };
+  }
+  if (locale.startsWith("tr")) {
+    return {
+      toolbar: "Eklenti paneli pencere denetimleri",
+      minimize: "Küçült",
+      maximize: "Büyüt",
+      restore: "Geri yükle",
+      close: "Kapat",
+      safeArea: "Geliştirici ipucu · üst 46 piksel yalnızca sürükleme alanıdır",
+    };
+  }
+  if (locale.startsWith("de")) {
+    return {
+      toolbar: "Plugin-Panel-Fenstersteuerung",
+      minimize: "Minimieren",
+      maximize: "Maximieren",
+      restore: "Wiederherstellen",
+      close: "Schließen",
+      safeArea: "Entwicklerhinweis · die oberen 46 px dienen nur zum Ziehen",
+    };
+  }
+  if (locale.startsWith("es")) {
+    return {
+      toolbar: "Controles de ventana del panel del complemento",
+      minimize: "Minimizar",
+      maximize: "Maximizar",
+      restore: "Restaurar",
+      close: "Cerrar",
+      safeArea: "Aviso de desarrollo · los 46 px superiores son solo para arrastrar",
+    };
+  }
+  if (locale.startsWith("fr")) {
+    return {
+      toolbar: "Contrôles de fenêtre du panneau du plugin",
+      minimize: "Réduire",
+      maximize: "Agrandir",
+      restore: "Restaurer",
+      close: "Fermer",
+      safeArea: "Indication de développement · les 46 px supérieurs servent uniquement au déplacement",
+    };
+  }
+  if (locale.startsWith("zh")) {
     return {
       toolbar: "插件面板窗口控制",
       minimize: "最小化",
@@ -323,6 +475,8 @@ function installPanelChrome(): void {
   const body = document.body;
   if (!body || document.querySelector("pi-plugin-panel-chrome")) return;
 
+  installPluginScrollbarStyle();
+
   // Publish this before the page's DOMContentLoaded handlers run so modern
   // plugin CSS can resolve its variable without an extra reflow or a second
   // 46px offset.
@@ -355,7 +509,7 @@ function installPanelChrome(): void {
     );
   }
 
-  const labels = chromeLabels();
+  let labels = chromeLabels();
   const theme = panelTheme();
   const chromeMode = pluginChromeMode();
   const host = document.createElement("pi-plugin-panel-chrome");
@@ -622,9 +776,29 @@ function installPanelChrome(): void {
   // The plugin receives appearance changes through the same event channel.
   // Re-sample after the page has applied its new data attribute so the capsule
   // remains legible when a plugin switches between light and dark palettes.
-  ipcRenderer.on("pi-plugin-panel-event:appearance:changed", () => {
-    window.setTimeout(syncPageColors, 0);
-  });
+  ipcRenderer.on(
+    "pi-plugin-panel-event:appearance:changed",
+    (_event, appearance: { locale?: string }) => {
+      if (typeof appearance?.locale === "string") {
+        labels = chromeLabels(appearance.locale);
+        host.setAttribute("aria-label", labels.toolbar);
+        controls.setAttribute("aria-label", labels.toolbar);
+        minimize.title = labels.minimize;
+        minimize.setAttribute("aria-label", labels.minimize);
+        close.title = labels.close;
+        close.setAttribute("aria-label", labels.close);
+        const maximized = maximize.firstElementChild?.classList.contains(
+          "glyph-restore",
+        );
+        setMaximized(Boolean(maximized));
+        if (safeAreaHint) {
+          safeAreaHint.textContent = labels.safeArea;
+          safeAreaHint.setAttribute("aria-label", labels.safeArea);
+        }
+      }
+      window.setTimeout(syncPageColors, 0);
+    },
+  );
   void invokeControl("getState");
 
   controls.append(minimize, maximize, close);

@@ -5,11 +5,12 @@ import {
   useRef,
   useState,
   type AnimationEventHandler as ReactAnimationEventHandler,
+  type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { cx } from "./ui";
+import { TooltipButton, cx } from "./ui";
 
 // --- Time-based session grouping ---
 type TimeGroup = "today" | "yesterday" | "thisWeek" | "older14d" | "archived";
@@ -39,6 +40,16 @@ import { api } from "../lib/api";
 import { isDefaultSessionTitle, useAppStore } from "../stores/app-store";
 import { normalizeProjectPath } from "../lib/sidebar-session-groups";
 import {
+  composerDropItems,
+  hasComposerFileDrag,
+} from "../lib/composer-drop";
+import {
+  projectGroupKeyFromPoint,
+  projectReorderInsertAfter,
+  projectReorderShouldArm,
+  sameProjectReorderBucket,
+} from "../lib/sidebar-project-reorder";
+import {
   sidebarSessionStatus,
   type SidebarSessionStatus,
 } from "../lib/sidebar-session-status";
@@ -50,6 +61,7 @@ import type {
 } from "@pi-desktop/shared";
 import type {
   ProjectMeta,
+  ProjectSort,
   SessionMeta,
   SessionSort,
 } from "../lib/sidebar-preferences";
@@ -79,7 +91,6 @@ import {
   IconNewProject,
   IconPin,
   IconPencil,
-  IconSearch,
   IconSidebar,
   IconSettings,
   IconStar,
@@ -98,13 +109,6 @@ type ProjectEntry = {
   branch?: string;
 };
 
-type ProjectPathTooltip = {
-  id: string;
-  path: string;
-  top: number;
-  left: number;
-};
-
 type SessionHoverCard = {
   id: string;
   top: number;
@@ -120,6 +124,8 @@ type SessionHoverCard = {
 
 const VIEWPORT_PADDING = 8;
 const SIDEBAR_RESIZE_STEP = 16;
+/** Private MIME so a sidebar session drag is never mistaken for an OS file drop. */
+const SESSION_DRAG_MIME = "application/x-pi-desktop-session";
 
 type SidebarResizeState = {
   pointerId: number;
@@ -128,6 +134,23 @@ type SidebarResizeState = {
   currentWidth: number;
   frame: number;
   handle: HTMLDivElement;
+};
+
+type ProjectReorderPointerState = {
+  pointerId: number;
+  projectKey: string;
+  startX: number;
+  startY: number;
+  lastX: number;
+  lastY: number;
+  armed: boolean;
+  dropKey: string | null;
+  dropTop: number;
+  dropHeight: number;
+  insertAfter: boolean;
+  onMove: (event: PointerEvent) => void;
+  onUp: (event: PointerEvent) => void;
+  onCancel: (event: PointerEvent) => void;
 };
 
 function clearSidebarResizeStyles(): void {
@@ -213,7 +236,6 @@ function compareOptionalDate(
 }
 
 export function Sidebar({
-  onOpenSearch,
   onToggleSidebar,
   sidebarToggleShortcut,
   sidebarWidth,
@@ -222,7 +244,6 @@ export function Sidebar({
   className,
   onAnimationEnd,
 }: {
-  onOpenSearch: () => void;
   onToggleSidebar: () => void;
   sidebarToggleShortcut: string;
   sidebarWidth: number;
@@ -255,6 +276,7 @@ export function Sidebar({
   const newSession = useAppStore((s) => s.newSession);
   const forkSessionAction = useAppStore((s) => s.forkSession);
   const openProject = useAppStore((s) => s.openProject);
+  const refreshProject = useAppStore((s) => s.refreshProject);
   const clearProject = useAppStore((s) => s.clearProject);
   const activateProject = useAppStore((s) => s.activateProject);
   const closeProjectAction = useAppStore((s) => s.closeProject);
@@ -265,12 +287,14 @@ export function Sidebar({
   const renameSession = useAppStore((s) => s.renameSession);
   const deleteSessionAction = useAppStore((s) => s.deleteSession);
   const setSessionSort = useAppStore((s) => s.setSessionSort);
+  const moveSessionProject = useAppStore((s) => s.moveSessionProject);
   const setSessionArchiveVisibility = useAppStore((s) => s.setSessionArchiveVisibility);
   const toggleProjectPinned = useAppStore((s) => s.toggleProjectPinned);
   const archiveProjectAction = useAppStore((s) => s.archiveProject);
   const restoreProject = useAppStore((s) => s.restoreProject);
   const setProjectCollapsed = useAppStore((s) => s.setProjectCollapsed);
   const setProjectSort = useAppStore((s) => s.setProjectSort);
+  const reorderProjects = useAppStore((s) => s.reorderProjects);
   const showToast = useAppStore((s) => s.showToast);
   const version = useAppStore((s) => s.version);
   const setSettingsTab = useAppStore((s) => s.setSettingsTab);
@@ -287,16 +311,28 @@ export function Sidebar({
     top: number;
     left: number;
   } | null>(null);
-  const [projectPathTooltip, setProjectPathTooltip] = useState<ProjectPathTooltip | null>(null);
   const [sessionHoverCard, setSessionHoverCard] = useState<SessionHoverCard | null>(null);
   const [expandedProjectSessions, setExpandedProjectSessions] = useState<Record<string, boolean>>({});
+  const [draggingSessionId, setDraggingSessionId] = useState<string | null>(null);
+  const [dropProjectKey, setDropProjectKey] = useState<string | null>(null);
+  const [projectsDropActive, setProjectsDropActive] = useState(false);
   const [sidebarResizing, setSidebarResizing] = useState(false);
+  const [draggingProjectKey, setDraggingProjectKey] = useState<string | null>(null);
+  const [dropIndicator, setDropIndicator] = useState<{ key: string; insertAfter: boolean } | null>(null);
   const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const menuFirstItemRef = useRef<HTMLButtonElement | null>(null);
   const sessionPrefetchTimerRef = useRef<number | undefined>(undefined);
-  const projectPathTimerRef = useRef<number | undefined>(undefined);
   const sessionHoverTimerRef = useRef<number | undefined>(undefined);
+  const sessionHoverTargetRef = useRef<HTMLElement | null>(null);
   const sidebarResizeRef = useRef<SidebarResizeState | null>(null);
+  const projectReorderRef = useRef<ProjectReorderPointerState | null>(null);
+  const suppressProjectTitleClickRef = useRef(false);
+  const projectEntriesRef = useRef<ProjectEntry[]>([]);
+  const reorderProjectEntriesRef = useRef<(
+    sourceKey: string,
+    targetKey: string,
+    insertAfter: boolean,
+  ) => void>(() => {});
 
   const finishSidebarResize = useCallback((cancelled: boolean) => {
     const state = sidebarResizeRef.current;
@@ -400,8 +436,7 @@ export function Sidebar({
   const sessionSort = sessionView.sort;
   const displaySessionSort: Exclude<SessionSort, "manual"> =
     sessionSort === "manual" ? "recent" : sessionSort;
-  const displayProjectSort: Exclude<SessionSort, "manual"> =
-    projectSort === "manual" ? "recent" : projectSort;
+  const displayProjectSort: ProjectSort = projectSort;
   const activeProjectPath = normalizeProjectPath(activeProjectPathState ?? workspace?.path);
   const selectedSessionId = selectingSessionId ?? activeSessionId;
   const openProjectPaths = useMemo(
@@ -451,6 +486,7 @@ export function Sidebar({
       setSortOpen(false);
       setProjectMenu(null);
       setSectionMenu(null);
+      sessionHoverTargetRef.current = null;
       window.clearTimeout(sessionHoverTimerRef.current);
       setSessionHoverCard(null);
       setSessionMenu(sessionId);
@@ -461,8 +497,6 @@ export function Sidebar({
   const openProjectRowMenu = useCallback(
     (projectKey: string, trigger: HTMLButtonElement | null) => {
       menuTriggerRef.current = trigger;
-      window.clearTimeout(projectPathTimerRef.current);
-      setProjectPathTooltip(null);
       setSortOpen(false);
       setSessionMenu(null);
       setSectionMenu(null);
@@ -475,27 +509,6 @@ export function Sidebar({
   // the pointer to settle on the row, but short enough that a deliberate
   // hover does not feel sluggish.
   const PROJECT_PATH_HOVER_DELAY_MS = 500;
-
-  const showProjectPath = useCallback(
-    (entry: ProjectEntry, target: HTMLButtonElement) => {
-      // Clear any pending timer so back-to-back hovers don't flash the card.
-      window.clearTimeout(projectPathTimerRef.current);
-      projectPathTimerRef.current = window.setTimeout(() => {
-        const rect = target.getBoundingClientRect();
-        const tooltipWidth = Math.min(420, window.innerWidth - 16);
-        setProjectPathTooltip({
-          id: `${projectDomId(entry.key)}-path-tooltip`,
-          path: entry.path,
-          top:
-            rect.bottom + 48 <= window.innerHeight
-              ? rect.bottom + 6
-              : Math.max(8, rect.top - 42),
-          left: Math.max(8, Math.min(rect.left, window.innerWidth - tooltipWidth - 8)),
-        });
-      }, PROJECT_PATH_HOVER_DELAY_MS);
-    },
-    [],
-  );
 
   const openSectionMenu = useCallback(
     (section: "sessions" | "projects", x: number, y: number) => {
@@ -539,16 +552,6 @@ export function Sidebar({
     if (!sessionMenu && !projectMenu && !sectionMenu && !sortOpen) return;
     requestAnimationFrame(() => menuFirstItemRef.current?.focus());
   }, [sessionMenu, projectMenu, sectionMenu, sortOpen]);
-
-  useEffect(() => {
-    if (!projectPathTooltip) return;
-    const hideTooltip = () => {
-      window.clearTimeout(projectPathTimerRef.current);
-      setProjectPathTooltip(null);
-    };
-    window.addEventListener("resize", hideTooltip);
-    return () => window.removeEventListener("resize", hideTooltip);
-  }, [projectPathTooltip]);
 
   useEffect(() => {
     if (!sessionHoverCard) return;
@@ -723,7 +726,12 @@ export function Sidebar({
       if (archiveOrder !== 0) return archiveOrder;
       const pinOrder = Number(!!b.meta.pinned) - Number(!!a.meta.pinned);
       if (pinOrder !== 0) return pinOrder;
-      if (displayProjectSort === "name") {
+      if (displayProjectSort === "manual") {
+        const byOrder =
+          (a.meta.order ?? Number.MAX_SAFE_INTEGER) -
+          (b.meta.order ?? Number.MAX_SAFE_INTEGER);
+        if (byOrder !== 0) return byOrder;
+      } else if (displayProjectSort === "name") {
         const byName = a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
         if (byName !== 0) return byName;
       } else if (
@@ -766,9 +774,175 @@ export function Sidebar({
   // workspace name (and any other project metadata) for the hover card.
   const projectEntriesByPath = useMemo(() => {
     const map = new Map<string, ProjectEntry>();
-    for (const entry of projectEntries) map.set(entry.path, entry);
+    for (const entry of projectEntries) map.set(entry.key, entry);
     return map;
   }, [projectEntries]);
+
+  projectEntriesRef.current = projectEntries;
+
+  const finishProjectReorderPress = useCallback((opts?: { keepClickSuppressed?: boolean }) => {
+    const state = projectReorderRef.current;
+    if (state) {
+      window.removeEventListener("pointermove", state.onMove, true);
+      window.removeEventListener("pointerup", state.onUp, true);
+      window.removeEventListener("pointercancel", state.onCancel, true);
+      projectReorderRef.current = null;
+    }
+    if (!opts?.keepClickSuppressed) suppressProjectTitleClickRef.current = false;
+    setDraggingProjectKey(null);
+    setDropIndicator(null);
+    document.documentElement.removeAttribute("data-project-reordering");
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (!projectReorderRef.current) return;
+      event.preventDefault();
+      finishProjectReorderPress();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      finishProjectReorderPress();
+    };
+  }, [finishProjectReorderPress]);
+
+  const reorderProjectEntries = useCallback(
+    (sourceKey: string, targetKey: string, insertAfter: boolean) => {
+      if (!sourceKey || !targetKey || sourceKey === targetKey) return;
+      const keys = projectEntries.map((entry) => entry.key);
+      const sourceIndex = keys.indexOf(sourceKey);
+      const targetIndex = keys.indexOf(targetKey);
+      if (sourceIndex < 0 || targetIndex < 0) return;
+      const source = projectEntries[sourceIndex];
+      const target = projectEntries[targetIndex];
+      if (!sameProjectReorderBucket(source.meta, target.meta)) {
+        return;
+      }
+      keys.splice(sourceIndex, 1);
+      const nextTargetIndex = keys.indexOf(targetKey) + (insertAfter ? 1 : 0);
+      keys.splice(nextTargetIndex, 0, sourceKey);
+      reorderProjects(keys);
+    },
+    [projectEntries, reorderProjects],
+  );
+  reorderProjectEntriesRef.current = reorderProjectEntries;
+
+  const beginProjectReorderPress = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>, projectKey: string) => {
+      if (event.button !== 0 || event.pointerType === "touch" || projectReorderRef.current) {
+        return;
+      }
+
+      const onMove = (moveEvent: PointerEvent) => {
+        const current = projectReorderRef.current;
+        if (!current || current.pointerId !== moveEvent.pointerId) return;
+        current.lastX = moveEvent.clientX;
+        current.lastY = moveEvent.clientY;
+        if (!current.armed) {
+          if (
+            !projectReorderShouldArm(
+              moveEvent.clientX - current.startX,
+              moveEvent.clientY - current.startY,
+            )
+          ) {
+            return;
+          }
+          current.armed = true;
+          suppressProjectTitleClickRef.current = true;
+          document.documentElement.setAttribute("data-project-reordering", "true");
+          setDraggingProjectKey(current.projectKey);
+        }
+        moveEvent.preventDefault();
+        const target = projectGroupKeyFromPoint(moveEvent.clientX, moveEvent.clientY);
+        const source = projectEntriesRef.current.find((entry) => entry.key === current.projectKey);
+        const destination = target
+          ? projectEntriesRef.current.find((entry) => entry.key === target.key)
+          : undefined;
+        if (
+          target &&
+          source &&
+          destination &&
+          target.key !== current.projectKey &&
+          sameProjectReorderBucket(source.meta, destination.meta)
+        ) {
+          const insertAfter = projectReorderInsertAfter(
+            moveEvent.clientY,
+            target.top,
+            target.height,
+          );
+          current.dropKey = target.key;
+          current.dropTop = target.top;
+          current.dropHeight = target.height;
+          current.insertAfter = insertAfter;
+          setDropIndicator({ key: target.key, insertAfter });
+        } else {
+          current.dropKey = null;
+          setDropIndicator(null);
+        }
+      };
+
+      const onUp = (upEvent: PointerEvent) => {
+        const current = projectReorderRef.current;
+        if (!current || current.pointerId !== upEvent.pointerId) return;
+        if (current.armed) {
+          upEvent.preventDefault();
+          if (current.dropKey) {
+            reorderProjectEntriesRef.current(
+              current.projectKey,
+              current.dropKey,
+              current.insertAfter,
+            );
+          }
+          finishProjectReorderPress({ keepClickSuppressed: true });
+          return;
+        }
+        finishProjectReorderPress();
+      };
+
+      const onCancel = (cancelEvent: PointerEvent) => {
+        const current = projectReorderRef.current;
+        if (!current || current.pointerId !== cancelEvent.pointerId) return;
+        finishProjectReorderPress();
+      };
+
+      const state: ProjectReorderPointerState = {
+        pointerId: event.pointerId,
+        projectKey,
+        startX: event.clientX,
+        startY: event.clientY,
+        lastX: event.clientX,
+        lastY: event.clientY,
+        armed: false,
+        dropKey: null,
+        dropTop: 0,
+        dropHeight: 0,
+        insertAfter: false,
+        onMove,
+        onUp,
+        onCancel,
+      };
+      projectReorderRef.current = state;
+      window.addEventListener("pointermove", onMove, true);
+      window.addEventListener("pointerup", onUp, true);
+      window.addEventListener("pointercancel", onCancel, true);
+    },
+    [finishProjectReorderPress],
+  );
+
+  const moveProjectWithKeyboard = useCallback(
+    (event: ReactKeyboardEvent<HTMLButtonElement>, projectKey: string) => {
+      if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+      const index = projectEntries.findIndex((entry) => entry.key === projectKey);
+      const target = projectEntries[index + (event.key === "ArrowUp" ? -1 : 1)];
+      if (!target) return;
+      event.preventDefault();
+      event.stopPropagation();
+      reorderProjectEntries(projectKey, target.key, event.key === "ArrowDown");
+    },
+    [projectEntries, reorderProjectEntries],
+  );
 
   // Locale-aware absolute timestamp matching the WorkBuddy card shape:
   // "2026-09-04 14:11:53" in zh-CN, "Sep 4, 2026, 2:11 PM" in en-US.
@@ -799,6 +973,7 @@ export function Sidebar({
   );
 
   const hideSessionHoverCard = useCallback(() => {
+    sessionHoverTargetRef.current = null;
     window.clearTimeout(sessionHoverTimerRef.current);
     setSessionHoverCard(null);
   }, []);
@@ -810,21 +985,34 @@ export function Sidebar({
       temporary: boolean,
     ) => {
       // Clear any pending timer so back-to-back hovers don't flash the card.
+      sessionHoverTargetRef.current = target;
       window.clearTimeout(sessionHoverTimerRef.current);
-      sessionHoverTimerRef.current = window.setTimeout(() => {
+      sessionHoverTimerRef.current = window.setTimeout(async () => {
         // Skip if the row was torn down while we were waiting (project
         // closed, list filtered, etc.) — nothing meaningful to point at.
-        if (!target.isConnected) return;
+        if (!target.isConnected || sessionHoverTargetRef.current !== target) return;
+        const projectPath = session.projectPath ?? "";
+        let refreshedWorkspace: ProjectWorkspace | null = null;
+        if (!temporary) {
+          try {
+            refreshedWorkspace = await refreshProject(projectPath);
+          } catch {
+            // Hover metadata is best effort; keep the last cached branch when
+            // the host is unavailable or the project is no longer active.
+          }
+        }
+        if (!target.isConnected || sessionHoverTargetRef.current !== target) return;
         const rect = target.getBoundingClientRect();
         const cardWidth = Math.min(320, window.innerWidth - 16);
         const cardHeight = 168; // estimated; used for flip-below detection
         const wantBelow = rect.bottom + cardHeight <= window.innerHeight;
+        const normalizedProjectPath = normalizeProjectPath(projectPath);
         const spaceEntry = temporary
           ? null
-          : projectEntriesByPath.get(session.projectPath ?? "");
+          : projectEntriesByPath.get(normalizedProjectPath ?? "");
         const spaceName = temporary
           ? t("nav.hoverCardTemporarySpace")
-          : (spaceEntry?.name ?? projectName(session.projectPath ?? ""));
+          : (refreshedWorkspace?.name ?? spaceEntry?.name ?? projectName(projectPath));
         setSessionHoverCard({
           id: `session-hover-${session.id}`,
           top: wantBelow ? rect.bottom + 6 : Math.max(8, rect.top - cardHeight - 6),
@@ -836,13 +1024,13 @@ export function Sidebar({
           mode: session.mode,
           permissionMode: session.permissionMode,
           space: spaceName,
-          branch: spaceEntry?.branch,
+          branch: refreshedWorkspace ? refreshedWorkspace.branch : spaceEntry?.branch,
           updatedAt: formatHoverCardTimestamp(session.updatedAt),
           temporary,
         });
       }, PROJECT_PATH_HOVER_DELAY_MS);
     },
-    [projectEntriesByPath, t, taskTitle, formatHoverCardTimestamp],
+    [projectEntriesByPath, refreshProject, t, taskTitle, formatHoverCardTimestamp],
   );
 
   const temporarySessions = useMemo(
@@ -1071,15 +1259,23 @@ export function Sidebar({
     }
   };
 
-  const copySessionPath = async (session: SessionSummary) => {
+  const copyConversationId = async (session: SessionSummary) => {
     try {
-      const result = await api.getSessionScratchPath(session.id);
-      await navigator.clipboard.writeText(result.path);
+      await navigator.clipboard.writeText(session.id);
       showToast(t("chat.copied"));
     } catch (error) {
       reportError(error);
     }
     closeMenus();
+  };
+
+  const openSessionPath = async (session: SessionSummary) => {
+    closeMenus(false);
+    try {
+      await api.openSessionScratchPath(session.id);
+    } catch (error) {
+      reportError(error);
+    }
   };
 
   const toggleProjectPin = (entry: ProjectEntry) => {
@@ -1147,6 +1343,169 @@ export function Sidebar({
     }
   };
 
+  const moveSessionToProject = useCallback(
+    async (sessionId: string, projectPath: string, projectName: string) => {
+      // A running turn owns the current project's instructions, tools, and
+      // working directory; the host rejects the move as well.
+      if (runningSessions[sessionId]) {
+        showToast(
+          t("nav.moveRunningSessionBlocked", {
+            defaultValue: "Stop the running session before moving it.",
+          }),
+          { variant: "warning" },
+        );
+        return;
+      }
+      try {
+        const moved = await moveSessionProject(sessionId, projectPath);
+        if (!moved) {
+          showToast(
+            t("nav.moveSessionUnavailable", {
+              defaultValue: "This session cannot move to that project.",
+            }),
+            { variant: "warning" },
+          );
+          return;
+        }
+        showToast(
+          t("nav.sessionMoved", {
+            name: projectName,
+            defaultValue: "Moved to " + projectName,
+          }),
+          { variant: "success" },
+        );
+      } catch (error) {
+        reportError(error);
+      }
+    },
+    [moveSessionProject, reportError, runningSessions, showToast, t],
+  );
+
+  const beginSessionDrag = useCallback(
+    (event: ReactDragEvent<HTMLDivElement>, sessionId: string) => {
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData(SESSION_DRAG_MIME, sessionId);
+      event.dataTransfer.setData("text/plain", sessionId);
+      setDraggingSessionId(sessionId);
+    },
+    [],
+  );
+
+  const endSessionDrag = useCallback(() => {
+    setDraggingSessionId(null);
+    setDropProjectKey(null);
+  }, []);
+
+  // A dragged row can unmount before its own `dragend` fires (sort refresh,
+  // archive, delete), which would otherwise leave the drag session and the
+  // group highlight active for the next, unrelated drag.
+  useEffect(() => {
+    if (!draggingSessionId) return;
+    const clearDragState = () => {
+      setDraggingSessionId(null);
+      setDropProjectKey(null);
+    };
+    window.addEventListener("dragend", clearDragState);
+    window.addEventListener("drop", clearDragState, true);
+    return () => {
+      window.removeEventListener("dragend", clearDragState);
+      window.removeEventListener("drop", clearDragState, true);
+    };
+  }, [draggingSessionId]);
+
+  const sessionIdFromDrag = (dataTransfer: DataTransfer): string | null => {
+    try {
+      return dataTransfer.getData(SESSION_DRAG_MIME) || null;
+    } catch {
+      return null;
+    }
+  };
+
+  const sessionIdForDragOver = (
+    dataTransfer: DataTransfer,
+    localSessionId: string | null,
+  ): string | null => {
+    if (!Array.from(dataTransfer.types).includes(SESSION_DRAG_MIME)) return null;
+    return sessionIdFromDrag(dataTransfer) ?? localSessionId;
+  };
+
+  // A project group accepts a session row from another group. The current
+  // group is not a drop target so a drag within one project is a no-op.
+  const onProjectDropTargetOver = (
+    event: ReactDragEvent<HTMLElement>,
+    entry: ProjectEntry,
+  ) => {
+    const sessionId = sessionIdForDragOver(event.dataTransfer, draggingSessionId);
+    if (!sessionId) return;
+    const dragged = sessions.find((item) => item.id === sessionId);
+    if (!dragged || normalizeProjectPath(dragged.projectPath) === entry.key) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setDropProjectKey(entry.key);
+  };
+
+  const onProjectDropTargetLeave = (entry: ProjectEntry) => {
+    setDropProjectKey((current) => (current === entry.key ? null : current));
+  };
+
+  const onProjectDropTargetDrop = (
+    event: ReactDragEvent<HTMLElement>,
+    entry: ProjectEntry,
+  ) => {
+    // The transfer payload is authoritative: a stale dragging id must never
+    // move a session the user did not drag.
+    const sessionId = sessionIdFromDrag(event.dataTransfer);
+    setDraggingSessionId(null);
+    setDropProjectKey(null);
+    const dragged = sessionId
+      ? sessions.find((item) => item.id === sessionId)
+      : undefined;
+    // Without a session payload this is a native folder drop for the projects
+    // list, which the container handles.
+    if (!dragged) return;
+    event.preventDefault();
+    event.stopPropagation();
+    void moveSessionToProject(dragged.id, entry.path, entry.name);
+  };
+
+  // Native folder drops on the projects list add or switch to that project.
+  const onProjectsAreaDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (!hasComposerFileDrag(event.dataTransfer)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    setProjectsDropActive(true);
+  };
+
+  const onProjectsAreaDragLeave = (event: ReactDragEvent<HTMLDivElement>) => {
+    const related = event.relatedTarget;
+    if (related instanceof Node && event.currentTarget.contains(related)) return;
+    setProjectsDropActive(false);
+  };
+
+  const onProjectsAreaDrop = async (event: ReactDragEvent<HTMLDivElement>) => {
+    if (!hasComposerFileDrag(event.dataTransfer)) return;
+    event.preventDefault();
+    setProjectsDropActive(false);
+    const directories = composerDropItems(event.dataTransfer, api.getDroppedFilePath)
+      .filter((item) => item.isDirectory && item.path);
+    if (!directories.length) {
+      showToast(
+        t("nav.dropFolderToAddProject", {
+          defaultValue: "Drop a folder to add it as a project.",
+        }),
+        { variant: "warning" },
+      );
+      return;
+    }
+    for (const directory of directories) {
+      try {
+        await activateProject(directory.path!);
+      } catch (error) {
+        reportError(error);
+      }
+    }
+  };
+
   const renderSessionRows = (
     items: SessionSummary[],
     options?: { temporary?: boolean; projectPath?: string },
@@ -1165,8 +1524,17 @@ export function Sidebar({
     return (
       <div
         key={session.id}
-        className={`thread-item ${active ? "active" : ""} ${archived ? "archived" : ""}`}
+        className={`thread-item ${active ? "active" : ""} ${archived ? "archived" : ""} ${draggingSessionId === session.id ? "is-dragging" : ""}`}
         data-sidebar-session-row={session.id}
+        draggable={!running}
+        onDragStart={(event) => {
+          if (running) {
+            event.preventDefault();
+            return;
+          }
+          beginSessionDrag(event, session.id);
+        }}
+        onDragEnd={endSessionDrag}
         onContextMenu={(event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -1209,11 +1577,12 @@ export function Sidebar({
           <span className="thread-item-title">{taskTitle(session.title)}</span>
         </button>
         <div className="sidebar-row-actions">
-          <button
+          <TooltipButton
             type="button"
             className="thread-item-more"
             data-action="session-menu"
-            aria-label={t("nav.sessionActions", { defaultValue: "Session actions" })}
+            tooltip={t("nav.sessionActions", { defaultValue: "Session actions" })}
+            ariaLabel={t("nav.sessionActions", { defaultValue: "Session actions" })}
             aria-haspopup="menu"
             aria-expanded={sessionMenu === session.id}
             onClick={(event) => {
@@ -1227,7 +1596,7 @@ export function Sidebar({
             }}
           >
             <IconMore size={14} />
-          </button>
+          </TooltipButton>
         </div>
       </div>
     );
@@ -1294,13 +1663,31 @@ export function Sidebar({
     return (
       <section
         key={entry.key}
-        className={`sidebar-session-group project-group ${entry.active ? "active" : ""} ${entry.meta.archived ? "archived" : ""}`}
+        className={`sidebar-session-group project-group ${entry.active ? "active" : ""} ${entry.meta.archived ? "archived" : ""} ${dropProjectKey === entry.key ? "is-drop-target" : ""} ${draggingProjectKey === entry.key ? "is-dragging" : ""} ${dropIndicator?.key === entry.key ? (dropIndicator.insertAfter ? "is-drop-after" : "is-drop-before") : ""}`}
         aria-labelledby={projectId}
         data-sidebar-project-group={entry.key}
+        onDragOver={(event) => {
+          onProjectDropTargetOver(event, entry);
+        }}
+        onDragLeave={(event) => {
+          const relatedTarget = event.relatedTarget;
+          if (relatedTarget instanceof Node && event.currentTarget.contains(relatedTarget)) {
+            return;
+          }
+          onProjectDropTargetLeave(entry);
+        }}
+        onDrop={(event) => {
+          onProjectDropTargetDrop(event, entry);
+        }}
       >
         <div
           className="sidebar-session-group-header"
           onContextMenu={(event) => {
+            if (projectReorderRef.current) {
+              event.preventDefault();
+              event.stopPropagation();
+              return;
+            }
             event.preventDefault();
             event.stopPropagation();
             placeMenuAtPoint(event.clientX, event.clientY);
@@ -1312,29 +1699,33 @@ export function Sidebar({
             );
           }}
         >
-          <button
+          <TooltipButton
             type="button"
             id={projectId}
             className="sidebar-session-group-title project-toggle"
-            aria-label={entry.name}
+            tooltip={entry.path}
+            tooltipDelayMs={500}
+            tooltipClassName="ui-tooltip-path"
+            ariaLabel={entry.name}
             aria-describedby={`${projectId}-path-description`}
             aria-expanded={!collapsedProject}
             aria-controls={`${projectId}-sessions`}
+            aria-keyshortcuts="ArrowUp ArrowDown"
+            aria-grabbed={draggingProjectKey === entry.key}
             data-action="toggle-project-collapse"
-            onMouseEnter={(event) => showProjectPath(entry, event.currentTarget)}
-            onMouseLeave={() => {
-              window.clearTimeout(projectPathTimerRef.current);
-              setProjectPathTooltip(null);
+            onDragStart={(event) => event.preventDefault()}
+            onPointerDown={(event) => beginProjectReorderPress(event, entry.key)}
+            onKeyDown={(event) => moveProjectWithKeyboard(event, entry.key)}
+            onClick={() => {
+              if (suppressProjectTitleClickRef.current) {
+                suppressProjectTitleClickRef.current = false;
+                return;
+              }
+              void (async () => {
+                if (!entry.active && !(await selectProject(entry.path))) return;
+                setCollapsed(entry.path, !collapsedProject);
+              })();
             }}
-            onFocus={(event) => showProjectPath(entry, event.currentTarget)}
-            onBlur={() => {
-              window.clearTimeout(projectPathTimerRef.current);
-              setProjectPathTooltip(null);
-            }}
-            onClick={() => void (async () => {
-              if (!entry.active && !(await selectProject(entry.path))) return;
-              setCollapsed(entry.path, !collapsedProject);
-            })()}
           >
             <IconChevronDown
               size={13}
@@ -1352,15 +1743,18 @@ export function Sidebar({
             )}
             <span>{entry.name}</span>
             {entry.active ? <span className="sidebar-project-active-dot" aria-label={t("project.active", { defaultValue: "Active" })} /> : null}
-          </button>
+          </TooltipButton>
           <span id={`${projectId}-path-description`} className="sr-only">
             {entry.path}
+            {". "}
+            {t("project.reorder", { name: entry.name, defaultValue: "Reorder {{name}}" })}
           </span>
           <div className="sidebar-menu-wrap">
-            <button
+            <TooltipButton
               type="button"
               className="thread-item-more project-more"
-              aria-label={t("project.openActions", { name: entry.name })}
+              tooltip={t("project.openActions", { name: entry.name })}
+              ariaLabel={t("project.openActions", { name: entry.name })}
               aria-haspopup="menu"
               aria-expanded={isMenuOpen}
               onClick={(event) => {
@@ -1374,17 +1768,17 @@ export function Sidebar({
               }}
             >
               <IconMore size={14} />
-            </button>
+            </TooltipButton>
           </div>
-          <button
+          <TooltipButton
             type="button"
             className="sidebar-session-group-add"
-            title={entry.active ? t("project.newTask") : t("project.openAndNewTask", { defaultValue: "Open project and create task" })}
-            aria-label={entry.active ? t("project.newTask") : t("project.openAndNewTask", { defaultValue: "Open project and create task" })}
+            tooltip={entry.active ? t("project.newTask") : t("project.openAndNewTask", { defaultValue: "Open project and create task" })}
+            ariaLabel={entry.active ? t("project.newTask") : t("project.openAndNewTask", { defaultValue: "Open project and create task" })}
             onClick={() => void createProjectSession(entry.path)}
           >
             <IconNewSession size={13} />
-          </button>
+          </TooltipButton>
         </div>
         <div
           id={`${projectId}-sessions`}
@@ -1479,6 +1873,11 @@ export function Sidebar({
     const entry = projectMenu
       ? projectEntries.find((item) => item.key === projectMenu)
       : undefined;
+    const otherProjects = session
+      ? projectEntries.filter(
+          (item) => item.key !== normalizeProjectPath(session.projectPath),
+        )
+      : [];
     if (!session && !entry) return null;
     return createPortal(
       <div
@@ -1542,15 +1941,51 @@ export function Sidebar({
               {t("nav.createBranch")}
             </button>
             {settings?.developerMode === true ? (
-              <button
-                type="button"
-                role="menuitem"
-                data-action="copy-session-path"
-                onClick={() => void copySessionPath(session)}
-              >
-                <IconCopy size={14} />
-                {t("nav.copySessionPath")}
-              </button>
+              <>
+                <button
+                  type="button"
+                  role="menuitem"
+                  data-action="copy-conversation-id"
+                  onClick={() => void copyConversationId(session)}
+                >
+                  <IconCopy size={14} />
+                  {t("nav.copyConversationId")}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  data-action="open-session-path"
+                  onClick={() => void openSessionPath(session)}
+                >
+                  <IconFolder size={14} />
+                  {t("nav.openSessionPath")}
+                </button>
+              </>
+            ) : null}
+            {otherProjects.length ? (
+              <>
+                <div className="sidebar-popover-divider" />
+                <div className="sidebar-popover-title">
+                  {t("nav.moveToProject", { defaultValue: "Move to project" })}
+                </div>
+                {otherProjects.map((project) => (
+                  <button
+                    key={project.key}
+                    type="button"
+                    role="menuitem"
+                    data-action="move-session-to-project"
+                    data-project-key={project.key}
+                    disabled={Boolean(runningSessions[session.id])}
+                    onClick={() => {
+                      closeMenus(false);
+                      void moveSessionToProject(session.id, project.path, project.name);
+                    }}
+                  >
+                    <IconFolder size={14} />
+                    {project.name}
+                  </button>
+                ))}
+              </>
             ) : null}
             <button
               type="button"
@@ -1646,21 +2081,6 @@ export function Sidebar({
     );
   };
 
-  const renderProjectPathTooltip = () => {
-    if (!projectPathTooltip || typeof document === "undefined") return null;
-    return createPortal(
-      <div
-        id={projectPathTooltip.id}
-        className="sidebar-project-path-tooltip"
-        role="tooltip"
-        style={{ top: projectPathTooltip.top, left: projectPathTooltip.left }}
-      >
-        {projectPathTooltip.path}
-      </div>,
-      document.body,
-    );
-  };
-
   // Map a session mode to the secondary tag label. We only show one tag in
   // addition to the always-on "Local task" badge so the row stays compact.
   const modeTagLabel = (mode: Mode, permission: PermissionMode): string => {
@@ -1742,42 +2162,33 @@ export function Sidebar({
       onAnimationEnd={onAnimationEnd}
     >
       <div className="sidebar-header">
-        <button
+        <TooltipButton
           type="button"
           className="brand no-drag"
           data-nav="home"
-          title={t("nav.home")}
-          aria-label={t("nav.home")}
+          tooltip={t("nav.home")}
+          ariaLabel={t("nav.home")}
           onClick={() => setPage("chat")}
         >
           <BrandLogo size={20} />
           <span>{t("app.shellName")}</span>
-        </button>
+        </TooltipButton>
         <div className="sidebar-header-actions no-drag">
-          <button
+          <TooltipButton
             type="button"
             className="icon-btn"
-            title={t("nav.search")}
-            aria-label={t("nav.search")}
-            onClick={onOpenSearch}
-          >
-            <IconSearch size={15} />
-          </button>
-          <button
-            type="button"
-            className="icon-btn"
-            title={
+            tooltip={
               sidebarToggleShortcut
                 ? `${t("nav.collapseSidebar")} (${sidebarToggleShortcut})`
                 : t("nav.collapseSidebar")
             }
-            aria-label={t("nav.collapseSidebar")}
+            ariaLabel={t("nav.collapseSidebar")}
             aria-expanded={true}
             data-nav="toggle-sidebar"
             onClick={onToggleSidebar}
           >
             <IconSidebar size={15} />
-          </button>
+          </TooltipButton>
         </div>
       </div>
 
@@ -1806,11 +2217,12 @@ export function Sidebar({
             </span>
             <div className="sidebar-toolbar-actions">
               <div className="sidebar-menu-wrap">
-                <button
+                <TooltipButton
                   type="button"
                   className={`sidebar-toolbar-button ${sortOpen ? "active" : ""}`}
                   data-action="session-sort"
-                  aria-label={t("nav.sortSessions", { defaultValue: "Sort sessions" })}
+                  ariaLabel={t("nav.sortSessions", { defaultValue: "Sort sessions" })}
+                  tooltip={t("nav.sortSessions", { defaultValue: "Sort sessions" })}
                   aria-haspopup="menu"
                   aria-expanded={sortOpen}
                   onClick={(event) => {
@@ -1827,25 +2239,23 @@ export function Sidebar({
                   }}
                 >
                   <IconArrowUpDown size={14} />
-                </button>
+                </TooltipButton>
               </div>
-              <button
+              <TooltipButton
                 type="button"
                 className="sidebar-toolbar-button"
                 data-action="new-standalone-session"
-                title={t("nav.newTemporarySession")}
-                aria-label={t("nav.newTemporarySession")}
+                tooltip={t("nav.newTemporarySession")}
+                ariaLabel={t("nav.newTemporarySession")}
                 onClick={() => void createSession({ projectPath: null })}
               >
                 <IconNewSession size={14} />
-              </button>
+              </TooltipButton>
             </div>
           </div>
           <div
             className="sidebar-session-group-body standalone"
             onScroll={() => {
-              window.clearTimeout(projectPathTimerRef.current);
-              setProjectPathTooltip(null);
               if (sessionMenu || projectMenu || sectionMenu || sortOpen) closeMenus(false);
             }}
             onContextMenu={(event) => {
@@ -1874,23 +2284,21 @@ export function Sidebar({
           }}
         >
           <span className="sidebar-list-label">{t("nav.projects")}</span>
-          <button
+          <TooltipButton
             type="button"
             className="sidebar-toolbar-button"
             data-action="new-project"
-            title={t("nav.newProject")}
-            aria-label={t("nav.newProject")}
+            tooltip={t("nav.newProject")}
+            ariaLabel={t("nav.newProject")}
             onClick={() => void openProjectPicker()}
           >
             <IconNewProject size={14} />
-          </button>
+          </TooltipButton>
         </div>
 
         <div
-          className="sidebar-session-groups min-h-0 flex-1 overflow-auto px-0.5"
+          className={`sidebar-session-groups min-h-0 flex-1 overflow-auto px-0.5 ${projectsDropActive ? "is-drop-target" : ""}`}
           onScroll={() => {
-            window.clearTimeout(projectPathTimerRef.current);
-            setProjectPathTooltip(null);
             if (sessionMenu || projectMenu || sectionMenu || sortOpen) closeMenus(false);
           }}
           onContextMenu={(event) => {
@@ -1905,6 +2313,12 @@ export function Sidebar({
             event.stopPropagation();
             openSectionMenu("projects", event.clientX, event.clientY);
           }}
+          onDragEnter={(event) => {
+            if (hasComposerFileDrag(event.dataTransfer)) event.preventDefault();
+          }}
+          onDragOver={onProjectsAreaDragOver}
+          onDragLeave={onProjectsAreaDragLeave}
+          onDrop={onProjectsAreaDrop}
         >
           {projectEntries.length > 0 ? projectEntries.map(renderProjectGroup) : (
             <section className="sidebar-session-group" aria-labelledby="sidebar-project-group-label">
@@ -1920,35 +2334,35 @@ export function Sidebar({
 
         <div className="sidebar-footer no-drag">
           <div className="footer-actions">
-            <button
+            <TooltipButton
               type="button"
               className={`footer-action ${page === "settings" ? "active" : ""}`}
               data-nav="settings"
-              title={t("nav.settings")}
-              aria-label={t("nav.settings")}
+              tooltip={t("nav.settings")}
+              ariaLabel={t("nav.settings")}
               onClick={() => setPage("settings")}
             >
               <IconSettings size={14} aria-hidden />
-            </button>
-            <button
+            </TooltipButton>
+            <TooltipButton
               type="button"
               className={`footer-action ${page === "plugins" ? "active" : ""}`}
               data-nav="plugins"
-              title={t("nav.plugins")}
-              aria-label={t("nav.plugins")}
+              tooltip={t("nav.plugins")}
+              ariaLabel={t("nav.plugins")}
               onClick={() => setPage("plugins")}
             >
               <IconPlug size={14} aria-hidden />
-            </button>
+            </TooltipButton>
             <NotificationCenter onBeforeOpen={() => closeMenus(false)} />
           </div>
 
-          <button
+          <TooltipButton
             type="button"
             className={`footer-build ${updateReady ? "has-update" : ""}`}
             data-nav="build"
-            title={buildTitle}
-            aria-label={buildTitle}
+            tooltip={buildTitle}
+            ariaLabel={buildTitle}
             onClick={() => {
               if (updateReady) {
                 setSettingsAnchor("updates.title");
@@ -1964,11 +2378,10 @@ export function Sidebar({
           >
             <span className="footer-build-version">{buildLabel}</span>
             {updateReady ? <span className="footer-build-dot" aria-hidden /> : null}
-          </button>
+          </TooltipButton>
         </div>
       </div>
       {renderFloatingMenu()}
-      {renderProjectPathTooltip()}
       {renderSessionHoverCard()}
       {renameFor ? (
         <SessionRenameDialog

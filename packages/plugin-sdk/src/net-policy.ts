@@ -14,6 +14,44 @@ export type PluginNetDomain = string;
 
 const HOSTNAME = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
 
+/** Hostnames cloud providers answer with instance credentials. */
+const CLOUD_METADATA_HOSTS = new Set([
+  "169.254.169.254",
+  "metadata.google.internal",
+  "metadata",
+  "instance-data",
+  "100.100.100.200",
+  "fd00:ec2::254",
+]);
+
+/**
+ * Whether an allowlist entry admits a loopback, link-local, or cloud metadata
+ * host. Such an entry gives the plugin a path to local services and instance
+ * credentials that the egress allowlist exists to keep it from, so tooling
+ * warns about it; the entry itself stays valid because a plugin that talks to
+ * a local daemon is a legitimate, if unusual, design.
+ */
+export function isLocalNetDomain(entry: string): boolean {
+  const value = entry.trim().toLowerCase().replace(/\.$/, "");
+  const bare = value.startsWith("*.") ? value.slice(2) : value;
+  if (!bare) return false;
+  if (bare === "localhost" || bare.endsWith(".localhost")) return true;
+  if (bare === "0.0.0.0" || bare === "::1" || bare === "::") return true;
+  if (CLOUD_METADATA_HOSTS.has(bare)) return true;
+  const ipv4 = bare.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (ipv4) {
+    const first = Number(ipv4[1]);
+    const second = Number(ipv4[2]);
+    if (first === 127) return true;
+    if (first === 169 && second === 254) return true;
+    return false;
+  }
+  // IPv6 link-local (fe80::/10) and IPv4-mapped loopback.
+  if (/^fe[89ab][0-9a-f]:/.test(bare)) return true;
+  if (bare === "::ffff:127.0.0.1") return true;
+  return false;
+}
+
 /**
  * Validate `manifest.net.domains`. Patterns are hostnames only: no scheme, no
  * port, no path, and no bare `*`. A plugin that genuinely needs arbitrary hosts

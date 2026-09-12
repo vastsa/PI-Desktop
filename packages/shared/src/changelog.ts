@@ -1,8 +1,14 @@
+import { deEntries } from "./changelog-de.js";
+import { esEntries } from "./changelog-es.js";
+import { frEntries } from "./changelog-fr.js";
+import { koEntries } from "./changelog-ko.js";
+import { trEntries } from "./changelog-tr.js";
+
 /**
- * Dual-locale product changelog for PI-Desktop app releases.
+ * Shipped-locale product changelog for PI-Desktop app releases.
  *
- * English is the source of truth (ADR 0009). The zh-CN catalog mirrors the
- * same versions and bullet counts so in-app "what's new" can follow the
+ * English is the source of truth (ADR 0009). The translated catalogs mirror
+ * the same versions and bullet counts so in-app "what's new" can follow the
  * active UI locale without a network fetch or renderer-supplied feed URL.
  *
  * Update this file before cutting a release tag. GitHub release bodies may
@@ -10,7 +16,7 @@
  * Stable product versions only — omit pre-releases.
  */
 
-export type ChangelogLocale = "en" | "zh-CN";
+export type ChangelogLocale = "en" | "zh-CN" | "zh-TW" | "tr" | "de" | "es" | "fr" | "ko";
 
 export type ChangelogEntry = {
   /** Semver without a leading `v`, matching apps/desktop package version. */
@@ -23,10 +29,80 @@ export type ChangelogEntry = {
 
 const enEntries: ChangelogEntry[] = [
   {
+    version: "0.14.6",
+    date: "2026-09-10",
+    highlights: [
+      "Warn when this build is older than your local data, or is the Intel build running on Apple Silicon, instead of failing silently.",
+      "Add a local MCP desktop control plane, and let reviewed plugins drive the desktop only after native consent.",
+      "Add subagent preset templates, a provider-bounded model picker, and the effective thinking level on delegation cards.",
+      "Alias configured models, copy model IDs, and honor a model's own wire API over the provider-wide style.",
+      "Replace textual Edit matching with line-anchored operations, with error-specific recovery guidance.",
+      "Retry providers up to ten times with a visible countdown, and recover autonomous progress-only turns.",
+      "Redesign the macOS installer, add a Windows portable exe and Linux RPM package, and restore GNOME tray and dock icons.",
+      "Copy conversation IDs and open session folders from the sidebar, with localized tooltips on icon-only actions.",
+      "Show live process status and quiet intervals on the activity row, and add a viewport-fixed work panel toggle.",
+      "Enforce workspace ignore rules, resolve dangling symlinks, and re-check plugin network egress on every redirect.",
+      "Honor proxy bypass rules, keep pasted private-use glyphs, and load file previews without blocking the composer.",
+    ],
+  },
+  {
+    version: "0.14.5",
+    date: "2026-09-09",
+    highlights: [
+      "Label every macOS DMG and ZIP with its native arm64 or x64 architecture.",
+    ],
+  },
+  {
+    version: "0.14.4",
+    date: "2026-09-09",
+    highlights: [
+      "Add bounded large-file range reads and gesture-bound dropped-file grants for plugins.",
+      "Make macOS signing and notarization explicit opt-in, with opening guidance for trusted unsigned builds.",
+    ],
+  },
+  {
+    version: "0.14.3",
+    date: "2026-09-09",
+    highlights: [
+      "Label Intel macOS release downloads explicitly so the installer architecture is clear.",
+    ],
+  },
+  {
+    version: "0.14.2",
+    date: "2026-09-08",
+    highlights: [
+      "Add a context usage inspector that follows the selected model and shows compaction guidance.",
+      "Improve provider and model setup with searchable selection, bulk actions, and clearer fetch errors.",
+      "Summarize session titles automatically and let you rename projects with names that persist across restarts.",
+      "Refine the subagent side sheet with live status, compact task bubbles, model identity, and latest-output navigation.",
+      "Deliver native notifications for interactive asks and approvals while keeping routine completions out of the inbox.",
+      "Add Korean shell localization and improve localized settings, clipboard history, and safe link handling.",
+    ],
+  },
+  {
+    version: "0.14.1",
+    date: "2026-09-08",
+    highlights: [
+      "Make subagent delegation inherit the parent model when no delegation model is configured.",
+      "Prevent echoed parent model IDs from being rejected as unavailable delegation models.",
+    ],
+  },
+  {
+    version: "0.14.0",
+    date: "2026-09-08",
+    highlights: [
+      "Configure outbound HTTP proxies per provider, with validation and clear handling for unsupported SOCKS4 credentials.",
+      "Import provider profiles and model configurations from CC Switch and local agent stores.",
+      "Add custom provider headers, User-Agent settings, and a MiniMax preset with clearer model-fetch errors.",
+      "Attach files from the unified picker with session-scratch copies and inline image support.",
+      "Add Traditional Chinese, German, Spanish, and French shell locales, plus searchable appearance and provider settings.",
+      "Adjust reading font sizes, typography, and icons consistently, and show the selected subagent model in delegation cards.",
+    ],
+  },
+  {
     version: "0.13.11",
     date: "2026-09-07",
     highlights: [
-      "Enable the bundled Advisor plugin to have a second model review the current conversation.",
       "Let plugins list models, read in-flight session context, and request host-owned completions without receiving credentials.",
     ],
   },
@@ -667,10 +743,79 @@ const enEntries: ChangelogEntry[] = [
 
 const zhCNEntries: ChangelogEntry[] = [
   {
+    version: "0.14.6",
+    date: "2026-09-10",
+    highlights: [
+      "当安装的版本比本地数据更旧，或在 Apple Silicon 上运行 Intel 版本时给出明确提示，而不是静默失败。",
+      "新增本地 MCP 桌面控制平面，经审核的插件只有在原生确认后才能控制桌面。",
+      "新增子智能体预设模板、按服务商限定的模型选择器，并在委派卡片上显示实际思考级别。",
+      "可为已配置模型设置别名并复制模型 ID，模型自身的接口协议优先于服务商级设置。",
+      "Edit 工具改为按行锚定的操作，取代文本匹配，并提供针对具体错误的恢复指引。",
+      "服务商请求最多重试十次并显示倒计时，自主模式下仅有进展的回合也能继续恢复。",
+      "重新设计 macOS 安装器，新增 Windows 便携版和 Linux RPM 包，恢复 GNOME 托盘与 Dock 图标。",
+      "可从侧边栏复制会话 ID 或打开会话文件夹，仅图标的操作均有本地化提示。",
+      "活动行显示实时进程状态与安静间隔，新增固定在视口的工作面板切换按钮。",
+      "强制执行工作区忽略规则，解析悬空符号链接，并在每次重定向时重新检查插件网络出口。",
+      "遵循代理绕过规则，保留粘贴的私用区字形，文件预览不再阻塞输入区。",
+    ],
+  },
+  {
+    version: "0.14.5",
+    date: "2026-09-09",
+    highlights: [
+      "为每个 macOS DMG 和 ZIP 标注原生 arm64 或 x64 架构。",
+    ],
+  },
+  {
+    version: "0.14.4",
+    date: "2026-09-09",
+    highlights: [
+      "为插件新增有上限的大文件范围读取和绑定真实拖拽手势的文件授权。",
+      "将 macOS 签名和公证改为明确的可选流程，并为可信未签名构建提供打开指引。",
+    ],
+  },
+  {
+    version: "0.14.3",
+    date: "2026-09-09",
+    highlights: [
+      "为 Intel macOS 发布下载添加明确后缀，方便区分安装包架构。",
+    ],
+  },
+  {
+    version: "0.14.2",
+    date: "2026-09-08",
+    highlights: [
+      "新增上下文用量检查器，跟随当前模型显示上下文窗口和压缩提示。",
+      "改进服务商和模型配置，支持可搜索选择、批量操作，并提供更清晰的获取错误提示。",
+      "支持自动总结会话标题，并可重命名项目；项目名称会在重启后保留。",
+      "优化子智能体侧边面板，显示实时状态、紧凑任务气泡和模型信息，并支持跳转到最新输出。",
+      "为交互式提问和审批提供原生通知，同时不再将普通完成消息放入通知收件箱。",
+      "新增韩语界面，并改进本地化设置、剪贴板历史和安全链接处理。",    ],
+  },
+  {
+    version: "0.14.1",
+    date: "2026-09-08",
+    highlights: [
+      "未配置委派模型时，让子智能体继承主 Agent 当前使用的模型。",
+      "避免主 Agent 回显当前模型 ID 时被误判为不可用的委派模型。",
+    ],
+  },
+  {
+    version: "0.14.0",
+    date: "2026-09-08",
+    highlights: [
+      "支持按服务商配置出站 HTTP 代理，校验代理设置，并明确处理不支持的 SOCKS4 凭据。",
+      "可从 CC Switch 和本地智能体存储导入服务商配置与模型配置。",
+      "支持自定义服务商请求头和 User-Agent，新增 MiniMax 预设，并改进模型获取错误提示。",
+      "通过统一文件选择器添加附件，复制到会话临时目录，并支持行内图片。",
+      "新增繁体中文、德语、西班牙语和法语界面，并支持搜索外观与服务商设置。",
+      "统一调整阅读字号、文字和图标大小，并在委派卡片中显示所选子智能体模型。",
+    ],
+  },
+  {
     version: "0.13.11",
     date: "2026-09-07",
     highlights: [
-      "启用内置 Advisor 插件后，可用第二个模型审阅当前对话。",
       "插件可列出模型、读取当前会话，并请求宿主代发补全，不会拿到凭据。",
     ],
   },
@@ -1309,10 +1454,730 @@ const zhCNEntries: ChangelogEntry[] = [
   },
 ];
 
+const zhTWEntries: ChangelogEntry[] = [
+  {
+    version: "0.14.6",
+    date: "2026-09-10",
+    highlights: [
+      "當安裝的版本比本機資料更舊，或在 Apple Silicon 上執行 Intel 版本時給出明確提示，而不是靜默失敗。",
+      "新增本機 MCP 桌面控制平面，經審核的外掛只有在原生確認後才能控制桌面。",
+      "新增子智慧體預設範本、按服務商限定的模型選擇器，並在委派卡片上顯示實際思考級別。",
+      "可為已設定模型設定別名並複製模型 ID，模型自身的介面協定優先於服務商層級設定。",
+      "Edit 工具改為按行錨定的操作，取代文字比對，並提供針對具體錯誤的恢復指引。",
+      "服務商請求最多重試十次並顯示倒數，自主模式下僅有進展的回合也能繼續恢復。",
+      "重新設計 macOS 安裝器，新增 Windows 可攜版和 Linux RPM 套件，恢復 GNOME 系統匣與 Dock 圖示。",
+      "可從側邊欄複製會話 ID 或開啟會話資料夾，僅圖示的操作均有本地化提示。",
+      "活動列顯示即時程序狀態與安靜間隔，新增固定在視口的工作面板切換按鈕。",
+      "強制執行工作區忽略規則，解析懸空符號連結，並在每次重新導向時重新檢查外掛網路出口。",
+      "遵循代理略過規則，保留貼上的私用區字形，檔案預覽不再阻塞輸入區。",
+    ],
+  },
+  {
+    version: "0.14.5",
+    date: "2026-09-09",
+    highlights: [
+      "為每個 macOS DMG 和 ZIP 標註原生 arm64 或 x64 架構。",
+    ],
+  },
+  {
+    version: "0.14.4",
+    date: "2026-09-09",
+    highlights: [
+      "為外掛新增有上限的大型檔案範圍讀取，以及繫結真實拖放手勢的檔案授權。",
+      "將 macOS 簽署與公證改為明確的選用流程，並為可信的未簽署版本提供開啟指引。",
+    ],
+  },
+  {
+    version: "0.14.3",
+    date: "2026-09-09",
+    highlights: [
+      "為 Intel macOS 發布下載加入明確後綴，方便區分安裝包架構。",
+    ],
+  },
+  {
+    version: "0.14.2",
+    date: "2026-09-08",
+    highlights: [
+      "新增上下文用量檢查器，跟隨目前模型顯示上下文視窗和壓縮提示。",
+      "改進服務商和模型設定，支援可搜尋選擇、批次操作，並提供更清晰的擷取錯誤提示。",
+      "支援自動總結會話標題，並可重新命名專案；專案名稱會在重新啟動後保留。",
+      "最佳化子智慧體側邊面板，顯示即時狀態、精簡任務氣泡和模型資訊，並支援跳轉到最新輸出。",
+      "為互動式提問和核准提供原生通知，同時不再將一般完成訊息放入通知收件匣。",
+      "新增韓語介面，並改進本地化設定、剪貼簿歷史和安全連結處理。",
+    ],
+  },
+  {
+    version: "0.14.1",
+    date: "2026-09-08",
+    highlights: [
+      "未設定委派模型時，讓子智慧體繼承主 Agent 目前使用的模型。",
+      "避免主 Agent 回傳目前模型 ID 時，被誤判為不可用的委派模型。",
+    ],
+  },
+  {
+    version: "0.14.0",
+    date: "2026-09-08",
+    highlights: [
+      "支援按服務商設定對外 HTTP 代理，驗證代理設定，並明確處理不支援的 SOCKS4 憑據。",
+      "可從 CC Switch 和本機智慧體儲存匯入服務商設定與模型設定。",
+      "支援自訂服務商請求標頭和 User-Agent，新增 MiniMax 預設，並改進模型擷取錯誤提示。",
+      "透過統一檔案選擇器新增附件，複製到會話暫存目錄，並支援行內圖片。",
+      "新增繁體中文、德語、西班牙語和法語介面，並支援搜尋外觀與服務商設定。",
+      "統一調整閱讀字號、文字和圖示大小，並在委派卡片中顯示所選子智慧體模型。",
+    ],
+  },
+  {
+    version: "0.13.11",
+    date: "2026-09-07",
+    highlights: [
+      "外掛可列出模型、讀取當前會話，並請求宿主代發補全，不會拿到憑據。",
+    ],
+  },
+  {
+    version: "0.13.10",
+    date: "2026-09-07",
+    highlights: [
+      "退出前彈出確認對話方塊（快捷鍵、托盤或選單退出），防止意外丟失資料。",
+    ],
+  },
+  {
+    version: "0.13.9",
+    date: "2026-09-06",
+    highlights: [
+      "版本號更新，用於釋出基礎設施。",
+    ],
+  },
+  {
+    version: "0.13.8",
+    date: "2026-09-06",
+    highlights: [
+      "可搜尋並預覽專案檔案（含圖片），在獨立檢視頁用預設應用開啟。",
+      "工作面板瀏覽器改為隨應用打包的外掛，隔離方式與其他外掛檢視相同。",
+      "用 Enter 接受的 @ 檔案晶片會保留，規劃進行中模式晶片會脈衝提示。",
+      "聊天、外掛和預覽只打開 http(s) 與 mailto 連結。",
+    ],
+  },
+  {
+    version: "0.13.7",
+    date: "2026-09-06",
+    highlights: [
+      "重啟後保留已完成的 AI 回覆，不再只顯示使用者訊息。",
+      "後臺子智慧體一直執行到你或父智慧體停止它們。",
+      "智慧體可將 Bash 超時設為最長六小時，長時間任務不會在 60 秒被殺掉。",
+    ],
+  },
+  {
+    version: "0.13.6",
+    date: "2026-09-06",
+    highlights: [
+      "貼上檔案後的使用者訊息按內容寬度顯示，不再被撐滿整列。",
+    ],
+  },
+  {
+    version: "0.13.5",
+    date: "2026-09-06",
+    highlights: [
+      "移除 A2A 代理和對等對話工具。",
+      "修復 A2A 移除後智慧體執行時測試失敗的問題。",
+    ],
+  },
+  {
+    version: "0.13.4",
+    date: "2026-09-05",
+    highlights: [
+      "設定 → 常規新增土耳其語，語言改為可搜尋選擇器。",
+      "主題改為與語言相同的可搜尋選擇器，外掛主題也在同一列表中。",
+      "新增服務商時服務列表改為平鋪可搜尋，並加入小米、智譜和 Z.AI。",
+      "設定 → 資訊可提交問題反饋，並自動帶上當前版本和作業系統。",
+      "流式轉錄合併時保持對話回合的時間順序。",
+    ],
+  },
+  {
+    version: "0.13.3",
+    date: "2026-09-05",
+    highlights: [
+      "新建任務會立刻顯示空會話，不再在宿主讀寫期間繼續展示上一條轉錄。",
+      "讀檔案填滿視窗時視為完整而非截斷，截斷標記只用於真正被裁切的結果。",
+      "切換重新生成的版本時保留之後的對話回合，不再用過期歸檔覆蓋後續內容。",
+    ],
+  },
+  {
+    version: "0.13.2",
+    date: "2026-09-05",
+    highlights: [
+      "輸入框重新掛載或視窗隱藏後再開啟時，未傳送的草稿和附件晶片仍會保留。",
+      "新會話使用模型繫結的預設思考級別，而不再總是選最強檔。",
+      "展開的子智慧體執行會跟隨最新輸出，上翻後可點回到最新。",
+      "在回合進行中固定思考級別時，思考選單仍保持可用。",
+      "窄視窗下新增服務商的輸入框能完整顯示並保持焦點可見。",
+      "macOS 啟動閃屏與側邊欄使用同一套毛玻璃，避免先閃出不透明面板。",
+    ],
+  },
+  {
+    version: "0.13.1",
+    date: "2026-09-05",
+    highlights: [
+      "在輸入行插入原子附件晶片，並將預設輸入高度設為三行。",
+      "對流式回覆做檢查點，退出、sidecar 斷開或點停止時仍保留已生成內容，且不會重寫轉錄。",
+      "成功完成的任務不再進入通知收件箱。",
+      "去掉介面中的內聯邊框與分隔線，捲軸僅在懸停或滾動時顯示。",
+      "首頁空狀態使用淺色與深色主題的 GIF 吉祥物。",
+    ],
+  },
+  {
+    version: "0.13.0",
+    date: "2026-09-04",
+    highlights: [
+      "側邊欄會話行新增懸浮卡片，顯示所屬空間、分支和更新時間。",
+      "macOS 側邊欄切換到視窗下方材質，增強毛玻璃深度。",
+      "移除 macOS 側邊欄的底部分隔線，呈現無邊框玻璃效果。",
+      "首頁空狀態按淺色/深色主題播放八幀揮手吉祥物動畫。",
+      "修復側邊欄首次渲染時因變數前向引用導致的崩潰。",
+    ],
+  },
+  {
+    version: "0.12.4",
+    date: "2026-09-04",
+    highlights: [
+      "將右側工作面板保留在應用視窗內部，讓 MainChat 像左側邊欄一樣重新分配空間。",
+      "支援通過內部拖拽條或鍵盤調整工作面板寬度，同時保持視窗邊界不變。",
+      "會話切換時去重分頁轉錄讀取，讓導航更流暢。",
+      "為 macOS 增加原生側邊欄表面效果，不改變側邊欄佈局邏輯。",
+    ],
+  },
+  {
+    version: "0.12.3",
+    date: "2026-09-03",
+    highlights: [
+      "根據當前選定模型釋出的上下文視窗顯示準確的上下文用量。",
+      "在服務商設定、編輯器和執行時之間保持模型級上下文限制一致。",
+      "切換模型和進行中的回合時，保持編輯器上下文提示穩定。",
+    ],
+  },
+  {
+    version: "0.12.2",
+    date: "2026-09-03",
+    highlights: [
+      "修復使用者訊息行在宿主往返完成前出現的問題。",
+      "傳送前清空草稿提示以防止內容殘留。",
+      "長對話記錄在骨架遮罩下結算以獲得更流暢的渲染效果。",
+    ],
+  },
+  {
+    version: "0.12.1",
+    date: "2026-09-03",
+    highlights: [
+      "儲存服務商設定並重啟應用後，仍可使用已啟用的子智慧體委派模型。",
+      "重新開啟會話時繼續顯示正在生成的回覆。",
+    ],
+  },
+  {
+    version: "0.12.0",
+    date: "2026-09-02",
+    highlights: [
+      "讓併發子智慧體通過 Agent2Agent（A2A）協議協作：以 Agent Card 發現正在執行的同伴，交換可持久化的任務與型別化訊息，並流式接收任務更新——取代原先的程序內同伴訊息。",
+    ],
+  },
+  {
+    version: "0.11.4",
+    date: "2026-09-01",
+    highlights: [
+      "新增原生 macOS Intel DMG 與 ZIP 安裝包，並與 Apple Silicon 版本同時釋出。",
+      "統一兩種原生架構的 macOS 更新源，應用內更新發現保持一致。",
+    ],
+  },
+  {
+    version: "0.11.3",
+    date: "2026-08-31",
+    highlights: [
+      "為每個子智慧體從委派目錄中分配獨立模型，或讓它繼承父會話的選擇。",
+      "讓併發子智慧體通過主題篩選的執行緒化同伴訊息互相通訊。",
+      "執行結構化圓桌討論，多個子智慧體圍繞一個話題跨輪次辯論並總結結果。",
+      "統一模型配置控制元件——委派核取方塊、自定義模型區塊和字型大小——跨面板保持一致。",
+      "用更清晰的圖示提示替代委派提示文字。",
+    ],
+  },
+  {
+    version: "0.11.2",
+    date: "2026-08-31",
+    highlights: [
+      "在最近的會話之間切換不再閃屏：每個會話保留自己的面板，回來時與離開時完全一致，滾動位置也保留。",
+      "回到之前上翻過的會話會停在原來的位置，而首次開啟的會話仍然定位到最新一輪。",
+      "新會話載入期間可以繼續閱讀當前會話，不再看到轉錄變暗。",
+      "即使沒有改動文本，也能重試已編輯的提示。",
+      "自動上下文壓縮後繼續處理當前任務，而不是讓智慧體撿起更早的請求。",
+    ],
+  },
+  {
+    version: "0.11.0",
+    date: "2026-08-30",
+    highlights: [
+      "通過單一的自動發現表單配置服務商：優先向 AI 服務索取其自有模型列表，失敗時回退到內建目錄。",
+      "在可搜尋的模型列表中選擇模型，直接檢視來自 models.dev 目錄的能力標籤與上下文長度。",
+      "為每個模型繫結單獨覆蓋附件能力與預設思考級別，並且只顯示該模型實際公開的思考級別。",
+      "單個子智慧體委派以獨立卡片呈現並展示生命週期行，展開的委派執行內部滾動而不再拉長轉錄。",
+      "歷史仍在載入時也能訪問會話大綱，會話列表載入過程中顯示骨架屏而不是空列表。",
+      "向輸入框貼上大段文本時自動轉存為會話檔案，同時保持輸入不觸發重排。",
+      "跨顯示器拖拽視窗後保留放下的位置，macOS 目標頁面繼續保留標題欄區域。",
+      "檔案與搜尋工具呼叫被拒、以及命令超時按毫秒給出時，不再白費一個回合。",
+    ],
+  },
+  {
+    version: "0.10.9",
+    date: "2026-08-28",
+    highlights: [
+      "在設定中通過統一的能力工作臺管理技能、子智慧體與 MCP 服務，支援層級篩選、搜尋與二次確認刪除。",
+      "讓能力工作臺與設定頂欄在淺色和深色主題下都清晰一致，工具欄與空狀態控制元件尺寸正確。",
+      "長會話在滾動、切換會話與懸停縮圖時保持流暢，轉錄內容不再跳動。",
+      "完整載入舊版本寫入的轉錄行，歷史會話不再顯示為空。",
+      "重新生成或編輯重發時按所選訊息截斷轉錄，並確保分叉會話始終出現在側邊欄中。",
+      "以任意響應判斷子智慧體是否存活，為每個內建子智慧體設定回合上限，等待超時報告為仍在執行而非失敗。",
+      "服務商請求出現臨時失敗時，按 1/2/4/8 秒等待重試最多四次並共用同一回合預算，流式過程中報告真實的重試次數。",
+    ],
+  },
+  {
+    version: "0.10.8",
+    date: "2026-08-26",
+    highlights: [
+      "讓無邊框視窗中的 Windows 原生控制元件與面板操作保持隔離。",
+      "為臨時會話提供相互隔離的臨時工作區，避免檔案與專案工作混在一起。",
+      "在命令啟動器中恢復提示增強功能，並使用更清晰的機器人模型圖示。",
+      "側邊欄捲軸僅在懸停時顯示，同時在靜止時保持低調。",
+    ],
+  },
+  {
+    version: "0.10.7",
+    date: "2026-08-25",
+    highlights: [
+      "讓輸入框的傳送和停止控制元件保持在同一穩定位置，確保草稿與執行中的回合始終對齊。",
+      "通過命令啟動器繼續使用提示增強功能，不再顯示獨立的工具欄圖示。",
+      "讓側邊欄捲軸在靜止時更低調，同時在導航時保持易於發現。",
+    ],
+  },
+  {
+    version: "0.10.6",
+    date: "2026-08-25",
+    highlights: [
+      "根據輸入框中精確選中的模型顯示 Thinking 能力，即使新會話尚未建立也能立即生效。",
+      "新會話會以所選推理模型釋出的最高強度開始。",
+    ],
+  },
+  {
+    version: "0.10.5",
+    date: "2026-08-25",
+    highlights: [
+      "讓無邊框視窗中的 Windows 控制元件與面板操作保持隔離。",
+      "可靠開啟 Windows 專案資料夾和檔案，包括帶擴充套件長度字首的路徑。",
+      "編輯 CRLF 檔案時保持原有換行風格不變。",
+    ],
+  },
+  {
+    version: "0.10.4",
+    date: "2026-08-25",
+    highlights: [
+      "對話模型選擇器只顯示已配置的供應商模型，發現不可用時仍保留已儲存的模型。",
+      "為無邊框視窗控制區繪製不透明背景，避免頁面內容穿透原生控制元件區域。",
+      "開啟工作面板時保持聊天寬度穩定，收起後恢復僅聊天視窗邊界。",
+    ],
+  },
+  {
+    version: "0.10.3",
+    date: "2026-08-25",
+    highlights: [
+      "最佳化一次性提示增強功能，保留當前草稿和檔案引用。",
+      "讓輸入框的傳送和停止操作始終與當前草稿及執行中的會話保持一致。",
+      "跨 TaskWait 輪次和渲染器重新載入繼續保留後臺代理的關聯資訊。",
+      "分支會話建立後立即保留其歷史記錄和對話內容。",
+    ],
+  },
+  {
+    version: "0.10.2",
+    date: "2026-08-24",
+    highlights: [
+      "收起側邊欄時，讓聊天內容和輸入框保持舒適的居中寬度。",
+      "準備大尺寸圖片附件時無需將整個檔案載入記憶體，重新載入歷史記錄時同樣適用。",
+    ],
+  },
+  {
+    version: "0.10.1",
+    date: "2026-08-24",
+    highlights: [
+      "任務執行期間傳送的訊息會按順序排隊，不會丟失當前草稿。",
+      "為後臺子代理增加空閒和總時長超時限制，並明確顯示代理超時狀態。",
+      "長會話歷史改用分頁載入，向上滾動時按需獲取更早的訊息。",
+    ],
+  },
+  {
+    version: "0.10.0",
+    date: "2026-08-21",
+    highlights: [
+      "支援為每個供應商配置多個模型，並在輸入框中直接切換。",
+      "在重新設計的設定工作室中管理代理能力，作用域分組和選單更清晰。",
+      "向外掛開放主機剪貼簿歷史能力。",
+      "讓空會話持久保留，重啟後可以繼續顯示和複用。",
+      "最佳化模型選擇選單：供應商層級更清晰，滾動時保持穩定。",
+      "Read 工具始終返回檔案總行數，可靠地分頁讀取大檔案。",
+      "更可靠地在流式恢復與重試中識別限流錯誤。",
+      "從 Files 面板開啟檔案時，在檔案管理器中顯示選中的檔案。",
+    ],
+  },
+  {
+    version: "0.9.1",
+    date: "2026-08-20",
+    highlights: [
+      "讓置頂專案在側邊欄中使用不同圖示，更容易識別。",
+      "修復子代理完成後活動狀態仍卡在“執行中”的問題。",
+      "讓外掛頁面和麵板的介面風格更貼合應用其餘部分。",
+      "降低輸入框打字和傳送訊息時的延遲。",
+      "讓長對話滾動更流暢，並避免切換會話時閃爍。",
+      "恢復空白首頁的說明文字和底部對齊的輸入框佈局。",
+    ],
+  },
+  {
+    version: "0.9.0",
+    date: "2026-08-20",
+    highlights: [
+      "在內建 Files 面板中瀏覽專案檔案，並使用作業系統預設應用開啟檔案。",
+      "為工作面板新增隔離的外掛檢視，並展示外掛市場的來源資訊和撤回版本狀態。",
+      "移除內建互動式終端；Bash 輸出仍保留在對話中，互動式 Shell 使用外部終端。",
+      "原地重試供應商限流，不產生重複的助手訊息；重試額度耗盡後提供“繼續”操作。",
+      "使用緊湊的上下文摘要，一眼檢視模型、工具、快取和壓縮使用情況。",
+      "通過輸入框中的本地化斜槓命令提示，瞭解五個核心會話命令。",
+      "統一首頁與會話輸入框的佈局，讓歡迎語和命令提示平滑輪換。",
+    ],
+  },
+  {
+    version: "0.8.1",
+    date: "2026-08-19",
+    highlights: [
+      "支援登入多個供應商賬號，併為每個供應商選擇實際使用的賬號。",
+      "根據模型能力決定是否支援圖片附件。",
+      "在輸入框中直接選擇支援該功能的模型的推理強度。",
+      "每個資料目錄只執行一個 PI-Desktop 例項，避免會話衝突。",
+      "重新整理設定分組，簡化供應商賬號管理。",
+      "讓內建子代理遵循父級對話的許可權模式。",
+    ],
+  },
+  {
+    version: "0.8.0",
+    date: "2026-08-17",
+    highlights: [
+      "將子代理放到後臺委派，並在不阻塞對話的情況下等待結果。",
+      "將並行子代理上限提升到 10，並按每個代理的許可權範圍執行委派任務。",
+      "內建探索與修復子代理，覆蓋常見的後臺任務。",
+      "首次關閉視窗時詢問是最小化到托盤還是退出，並記住該選擇。",
+      "讓外掛面板跟隨應用的語言和顏色模式。",
+      "在同一輪對話中重試中途遇到的限流錯誤，而不是直接中斷回覆。",
+      "在 sidecar 中斷後恢復已批准的 Plan 執行。",
+      "避免 sidecar 崩潰通知破壞已經關閉的視窗。",
+    ],
+  },
+  {
+    version: "0.7.0",
+    date: "2026-08-15",
+    highlights: [
+      "將外掛檔案訪問限制在其宣告的作用域內，刪除的檔案會移入廢紙簍以便恢復。",
+      "在外掛許可權展示處顯示其宣告的檔案作用域。",
+      "將外掛網路請求限制在其宣告的域名白名單內。",
+      "將未知的外掛面板通道轉發給外掛，讓更深度的整合保持可用。",
+      "修復側邊欄摺疊時的閃爍問題。",
+      "讓代理的編輯操作錨定在明確的行範圍內，被中斷時能優雅恢復，不再靜默結束回合。",
+      "統一卡片排版字型層級，介面更加一致。",
+      "將桌面殼與代理執行時升級到最新的 Electron 和 pi 版本。",
+    ],
+  },
+  {
+    version: "0.6.0",
+    date: "2026-08-14",
+    highlights: [
+      "點選即可開啟上下文使用情況檢查器，檢視 token 和快取統計。",
+      "新增快捷鍵切換工作面板可見性。",
+      "新任務草稿在傳送第一條訊息前不會保留在歷史記錄中。",
+      "新增自定義全域性字型選擇器，內建 OFL 字型，支援個性化排版。",
+      "在啟動器中記住最近使用的外掛，加快訪問速度。",
+      "為開發者模式新增複製會話路徑的上下文選單。",
+      "修復字型選擇器裁剪和系統預設重置問題。",
+      "關閉視窗後保持 macOS PI-Desktop 在 Dock 和 Cmd+Tab 中可見。",
+      "傳送訊息後收起輸入框時保持聊天記錄停留在最新位置。",
+      "為工作面板新增真實的空狀態介面和更清晰的引導。",
+    ],
+  },
+  {
+    version: "0.5.11",
+    date: "2026-08-13",
+    highlights: [
+      "為外掛市場新增離線可用性和後設資料重新整理功能。",
+      "為 composer 新增按對話快取草稿功能，加快會話恢復速度。",
+      "本地化外掛面板標題並適配面板視窗框架。",
+      "修復深色表面上的吉祥物鍵顏色。",
+      "減少 macOS 啟動器快捷鍵延遲，互動更靈敏。",
+    ],
+  },
+  {
+    version: "0.5.10",
+    date: "2026-08-13",
+    highlights: [
+      "最佳化外掛面板視窗控制欄和安全區，避免外掛內容被原生控制元件遮擋。",
+      "最佳化外掛頁的資訊層級並精簡概覽文案，讓擴充套件工作流更加清晰。",
+      "使用正確的 macOS 托盤模板圖示，讓選單欄顯示更加清晰。",
+    ],
+  },
+  {
+    version: "0.5.9",
+    date: "2026-08-13",
+    highlights: [
+      "讓 Goal 模式統一使用自動許可權處理，工作流更加穩定一致。",
+      "預熱全域性外掛啟動器以縮短開啟時間，即使當前焦點在其他應用也能快速喚起。",
+      "為外掛面板提供原生視窗控制欄，穩定支援最小化、最大化和關閉操作。",
+      "重構雙語文件站，補齊英文與簡體中文的指南和技術規範。",
+    ],
+  },
+  {
+    version: "0.5.8",
+    date: "2026-08-12",
+    highlights: [
+      "修復 Windows 下的 Alt+Space 全域性外掛啟動器，即使當前焦點在其他應用也能喚起。",
+      "最小化後可通過系統托盤訪問 PI-Desktop，並支援 macOS、Windows 和 Linux。",
+      "最佳化淺色和深色主題下原生選擇選單的可讀性。",
+    ],
+  },
+  {
+    version: "0.5.7",
+    date: "2026-08-12",
+    highlights: [
+      "新增 asktool 提問能力，支援單選、多選、自定義回答、跳過和拒絕回答。",
+      "通過已回答、未回答和已跳過指示器展示多問題進度。",
+      "將互動式提問放置在與 Plan 和 Goal 審批相同的 Composer 審批區域。",
+      "簡化審批確認卡片，並記住下次請求使用的審批模式。",
+    ],
+  },
+  {
+    version: "0.5.6",
+    date: "2026-08-11",
+    highlights: [
+      "通過全域性鍵盤啟動器開啟已安裝外掛，無需離開當前工作區。",
+      "可收起展開的思考、工具和子代理詳情，讓長對話更易閱讀。",
+      "任務執行期間仍可調整下一輪配置，並在停止後檢視吞吐統計。",
+      "最佳化全域性圓角層級，讓介面分組更清晰。",
+    ],
+  },
+  {
+    version: "0.5.5",
+    date: "2026-08-11",
+    highlights: [
+      "在對話中直接展示並行子代理及其任務關係。",
+      "讓貼上的檔案引用保持緊湊，並在停止任務後恢復檔案標籤。",
+      "建立會話時保持模式控制元件可用，傳送訊息後讓對話繼續停留在最新位置。",
+      "原生工具收到錯誤檔案路徑時可更穩妥地恢復。",
+      "最佳化側邊欄底部操作和使用者訊息中換行連結的排版。",
+    ],
+  },
+  {
+    version: "0.5.4",
+    date: "2026-08-08",
+    highlights: [
+      "最佳化空首頁寵物的待機節奏，讓動作切換更自然，並在滑鼠懸停時連續播放。",
+    ],
+  },
+  {
+    version: "0.5.0",
+    date: "2026-08-07",
+    highlights: [
+      "通過 Task 工具執行有界子代理，支援使用者自定義代理、固定模型、歸屬標記與會話持久化。",
+      "可在擴充套件頁面管理子代理，支援登錄檔過載，並提供更清晰的只讀狀態。",
+      "在空閒期間準備並安裝上下文檢查點，同時保留完整對話歷史，並顯示壓縮行和提醒。",
+      "新增作為第二種契約模式的 Goal 模式，並在模式命令後保留貼上的檔案引用。",
+      "宿主重新連線後自動恢復子代理及其他宿主面板，並降低例行拆除時的診斷噪聲。",
+      "最佳化工作面板與擴充套件頁面的元資訊、控制元件和深色主題對比度。",
+    ],
+  },
+  {
+    version: "0.4.3",
+    date: "2026-08-05",
+    highlights: [
+      "完善 Agent-only 規劃流程，支援持久化 Markdown 規劃、審批與排隊執行。",
+      "新增專案級 MCP 伺服器和 Skill，並用一個擴充套件作用域控制元件統一管理。",
+      "強化跨工作區的外部路徑許可權與原生搜尋範圍控制。",
+      "規劃審批完成後自動收起審批介面，命令切換可直接更新當前會話模式。",
+      "長對話會自動壓縮上下文：完整記錄始終保留，壓縮位置在對話中標記出來，並會提醒你以便決定是否另開會話。",
+    ],
+  },
+  {
+    version: "0.4.2",
+    date: "2026-08-03",
+    highlights: [
+      "在聊天記錄頭部顯示上下文快取命中率，提升透明度。",
+    ],
+  },
+  {
+    version: "0.4.1",
+    date: "2026-08-02",
+    highlights: [
+      "將 GitHub Releases 與自動更新連結統一到正式的 PI-Desktop 倉庫。",
+      "更新專案、外掛和釋出文件中的倉庫名稱，統一使用 PI-Desktop。",
+    ],
+  },
+  {
+    version: "0.4.0",
+    date: "2026-08-01",
+    highlights: [
+      "外掛現可貢獻技能、主題、MCP 伺服器、常駐服務以及外掛間訊息匯流排。",
+      "外掛 SDK 宣告所有新增能力型別，作者可通過清單啟用。",
+      "宿主核心校驗能力貢獻並自動派生每外掛許可權。",
+      "智慧體系統提示詞現包含外掛宣告的技能，支援工具感知對話。",
+      "外掛頁面重新設計，新增模板選擇器、儲存時熱過載與開發工具。",
+      "從模板建立外掛後會自動將腳手架資料夾作為專案開啟。",
+      "統一工作面板頭部選單，控制元件與上下文操作更清晰。",
+      "樣式拆分為按表面分檔案，清理重複與無用 CSS。",
+    ],
+  },
+  {
+    version: "0.3.0",
+    date: "2026-07-31",
+    highlights: [
+      "設定頁專案歸檔改用分組佈局（置頂 / 全部 / 已歸檔），每組顯示計數，並支援即時搜尋與排序。",
+      "工作面板停靠寬度收窄，佈局更協調。",
+      "修復淺色主題下開關控制元件樣式異常。",
+    ],
+  },
+  {
+    version: "0.2.11",
+    date: "2026-07-31",
+    highlights: [
+      "全域性搜尋現可同時查詢聊天、頁面、設定，以及內建和外掛命令。",
+      "外觀設定改用主題與語言預覽卡片，自動語言會正確跟隨作業系統。",
+      "設定頁新增獨立的“全域性 AI”和“快捷鍵”分割槽，導航更清晰。",
+      "智慧體可自動載入分層的 AGENTS.md/CLAUDE.md 專案指令，並支援編輯全域性與專案 AGENTS.md。",
+      "專案歸檔支援按會話標題搜尋，並按最新活動展示會話數量、更新時間和更多歷史。",
+      "修復沙箱化預載入迴歸導致的桌面應用啟動故障。",
+      "將審計後的 macOS 應用解壓體積縮減約 55%，同時保留離線語法高亮與原生終端能力。",
+    ],
+  },
+  {
+    version: "0.2.10",
+    date: "2026-07-30",
+    highlights: [
+      "新增 Codex/WorkBuddy 風格對話頂欄，改進控制按鈕。",
+      "重新整理聊天記錄和 Markdown 樣式，提升可讀性。",
+      "統一工作面板頭部，新增上下文選單並動畫化側邊欄摺疊。",
+      "合併工具啟動器為單個建立下拉選單，介面更簡潔。",
+      "工作面板在固定視窗內停靠，不再擴充套件視窗。",
+      "最佳化頂欄控制：去重切換按鈕、保護控制元件、macOS 對齊。",
+    ],
+  },
+  {
+    version: "0.2.8",
+    date: "2026-07-29",
+    highlights: [
+      "更新提示與設定頁現可開啟完整的本地化釋出說明。",
+      "工作面板展開與收起動畫更加順滑。",
+      "長對話可更可靠地壓縮超大工具結果批次。",
+    ],
+  },
+  {
+    version: "0.2.7",
+    date: "2026-07-28",
+    highlights: [
+      "助手 Markdown 回覆可內聯渲染圖片、音訊與影片。",
+      "遠端圖片可正常顯示（內容安全策略已更新）。",
+      "媒體標記經消毒過濾，僅允許安全標籤。",
+    ],
+  },
+  {
+    version: "0.2.6",
+    date: "2026-07-28",
+    highlights: [
+      "在回合邊界做上下文檢查點壓縮，長對話不再隱藏曆史。",
+      "會話切換更順暢：快取最近對話，並保持穩定過渡幀。",
+      "停靠工具保持固定寬度，聊天區域在工作面板旁仍可讀。",
+      "專案選單可在系統檔案管理器中開啟專案資料夾。",
+      "輸入框提示行不再顯示品牌圖示。",
+    ],
+  },
+  {
+    version: "0.2.5",
+    date: "2026-07-28",
+    highlights: [
+      "工作面板導航重做，工具軌更清晰。",
+      "視窗縮放感知面板佈局，尺寸變化更可預期。",
+      "流式渲染隔離，互動更跟手。",
+      "具備推理能力的新會話預設使用最高思考級別。",
+      "傳送後對話列表保持貼在最新訊息。",
+    ],
+  },
+  {
+    version: "0.2.4",
+    date: "2026-07-28",
+    highlights: [
+      "輸入框晶片的下行字母完整可見。",
+      "更新 pi-ai，支援包括 Claude Opus 5 在內的新模型。",
+    ],
+  },
+  {
+    version: "0.2.3",
+    date: "2026-07-28",
+    highlights: [
+      "介面文案改為更直白的使用者語言（含多語言）。",
+      "選中態、中文標籤與懸停動效打磨。",
+      "工作面板與設定頁淺色表面細化。",
+      "預釋出安裝現可發現更新的正式版 GitHub Release。",
+    ],
+  },
+  {
+    version: "0.2.2",
+    date: "2026-07-27",
+    highlights: [
+      "外掛市場支援官方遠端目錄與詳情頁。",
+      "外掛面板隔離，高風險 API 受許可權門控。",
+      "分割槽工具欄支援右鍵新建專案或會話。",
+      "啟動閃屏、更順滑動效與 i18n 打磨。",
+      "工作面板頂欄支援右鍵開啟工具。",
+    ],
+  },
+  {
+    version: "0.2.1",
+    date: "2026-07-27",
+    highlights: [
+      "工作面板工具按會話保留。",
+      "“審查更改”入口僅屬於產生編輯的那次會話。",
+    ],
+  },
+  {
+    version: "0.2.0",
+    date: "2026-07-27",
+    highlights: [
+      "側邊欄區分專案與會話，任務狀態更清晰。",
+      "可分支或編輯助手回覆；訊息工具欄改為圖示按鈕。",
+      "檔案編輯成功後提供工作區審查入口。",
+      "鍵盤快捷鍵對映，以及用於 DevTools 的開發者模式。",
+      "以 pi 模型目錄作為提供商模型的權威來源。",
+      "思考級別控制元件放在輸入區模式旁。",
+    ],
+  },
+  {
+    version: "0.1.1",
+    date: "2026-07-26",
+    highlights: [
+      "首次公開發布：本地優先的 AI 程式設計助手桌面客戶端。",
+      "Chat / Agent 模式，支援流式回覆、思考級別與模型管理。",
+      "工作區工具含許可權確認、終端、瀏覽器與 Git 審查。",
+      "Rust 宿主負責儲存、金鑰、會話與通知。",
+      "外掛基礎能力，介面支援 English / 簡體中文。",
+      "可檢查 GitHub Releases 更新（支援的平臺可應用內更新）。",
+    ],
+  },
+];
+
 /** Locale → newest-first product notes. */
 export const CHANGELOG: Record<ChangelogLocale, readonly ChangelogEntry[]> = {
   en: enEntries,
   "zh-CN": zhCNEntries,
+  "zh-TW": zhTWEntries,
+  tr: trEntries,
+  de: deEntries,
+  es: esEntries,
+  fr: frEntries,
+  ko: koEntries,
 };
 
 /** Normalize `v0.2.7` / whitespace to the catalog key form. */
@@ -1327,8 +2192,25 @@ export function normalizeChangelogVersion(
 export function resolveChangelogLocale(
   input?: string | null,
 ): ChangelogLocale {
-  const value = (input || "").toLowerCase();
+  const value = (input || "").replaceAll("_", "-").toLowerCase();
+  if (
+    value === "zh-tw" ||
+    value.startsWith("zh-tw-") ||
+    value === "zh-hant" ||
+    value.startsWith("zh-hant-") ||
+    value === "zh-hk" ||
+    value.startsWith("zh-hk-") ||
+    value === "zh-mo" ||
+    value.startsWith("zh-mo-")
+  ) {
+    return "zh-TW";
+  }
   if (value.startsWith("zh")) return "zh-CN";
+  if (value === "tr" || value.startsWith("tr-")) return "tr";
+  if (value === "de" || value.startsWith("de-")) return "de";
+  if (value === "es" || value.startsWith("es-")) return "es";
+  if (value === "fr" || value.startsWith("fr-")) return "fr";
+  if (value === "ko" || value.startsWith("ko-")) return "ko";
   return "en";
 }
 

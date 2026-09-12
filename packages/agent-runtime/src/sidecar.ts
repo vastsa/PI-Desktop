@@ -20,6 +20,7 @@ import {
   type RuntimeProviderConfig,
 } from "./runtime.js";
 import type { PluginSkillDef } from "./plugin-skills-prompt.js";
+import type { TrustedExtensionSpec } from "@pi-desktop/shared";
 import type { ProjectInstructions } from "./project-instructions.js";
 import {
   normalizeSupportedThinkingLevels,
@@ -97,6 +98,8 @@ type RuntimeParams = {
   commandShell: CommandShellOption;
   pluginTools?: PluginToolDef[];
   pluginSkills?: PluginSkillDef[];
+  /** Trusted extensions enabled for this session (D387). */
+  trustedExtensions?: TrustedExtensionSpec[];
   /** Delegates this session may spawn through `Task` (ADR 0062). */
   subagents?: SubagentDefinition[];
   /** Provider bindings for pinned models, keyed by `subagentModelKey`. */
@@ -287,6 +290,7 @@ async function runtimeFor(
   const thinkingLevel = normalizeThinkingLevel(params.thinkingLevel);
   const pluginTools = params.pluginTools ?? [];
   const pluginSkills = params.pluginSkills ?? [];
+  const trustedExtensions = params.trustedExtensions ?? [];
   const subagents = params.subagents ?? [];
   const subagentProviders = Object.fromEntries(
     Object.entries(params.subagentProviders ?? {}).map(([key, pinned]) => [
@@ -319,6 +323,7 @@ async function runtimeFor(
     thinkingLevel,
     pluginTools,
     pluginSkills,
+    trustedExtensions,
     subagents,
     subagentProviders,
     projectInstructions: params.projectInstructions,
@@ -362,7 +367,7 @@ async function runtimeFor(
     }
   }
   const runtime = new DesktopAgentRuntime({
-    host: hostProxy as any,
+    host: hostProxy,
     sessionId,
     mode,
     turnId: params.turnId,
@@ -374,6 +379,7 @@ async function runtimeFor(
     compactionSettings: params.compactionSettings,
     pluginTools,
     pluginSkills,
+    trustedExtensions,
     subagents,
     subagentProviders,
     projectPath: params.projectPath,
@@ -385,6 +391,8 @@ async function runtimeFor(
     onEvent: (envelope: AgentEventEnvelope) => notify("agent.event", envelope),
   });
   runtimes.set(sessionId, runtime);
+  // Load failures are diagnostics, never a failed prompt (spec 16 §4.4).
+  await runtime.loadTrustedExtensions().catch(() => undefined);
   return runtime;
 }
 
@@ -524,6 +532,20 @@ async function handle(method: string, params: any): Promise<unknown> {
       }
       return runtime.resolveAskTool(params as AskToolResolution);
     }
+    case "extensions.command.run": {
+      const sessionId = String(params.sessionId ?? "");
+      const runtime = runtimes.get(sessionId);
+      if (!runtime) {
+        throw Object.assign(new Error("runtime not found for session"), {
+          rpcCode: -32000,
+          errorCode: "RUNTIME_NOT_FOUND",
+        });
+      }
+      return runtime.runTrustedExtensionCommand(
+        String(params.name ?? ""),
+        String(params.args ?? ""),
+      );
+    }
     case "agent.getStatus": {
       const sessionId = String(params.sessionId);
       const runtime = runtimes.get(sessionId);
@@ -574,6 +596,18 @@ rl.on("line", async (line) => {
       data: { errorCode: err.errorCode ?? "INTERNAL" },
     });
   }
+});
+
+// A rejected promise nobody awaits (a stray async event handler, a background
+// host call) must not take every session's runtime down with it: Node's
+// default for `unhandledRejection` is to exit the process. Log and carry on;
+// the affected session surfaces its own error through the normal event path.
+process.on("unhandledRejection", (reason) => {
+  const detail =
+    reason instanceof Error
+      ? `${reason.name}: ${reason.message}${reason.stack ? `\n${reason.stack}` : ""}`
+      : String(reason);
+  process.stderr.write(`[agent-sidecar] unhandled promise rejection: ${detail}\n`);
 });
 
 const bootProxy = process.env.PI_DESKTOP_PROXY_JSON;

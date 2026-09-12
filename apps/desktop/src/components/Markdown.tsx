@@ -31,9 +31,14 @@ import {
   IconCircleAlert,
   IconCode,
   IconCopy,
+  IconExternal,
+  IconGlobe,
   IconImage,
   IconWorkflow,
 } from "./icons";
+import { TooltipButton } from "./ui";
+import { createPortal } from "react-dom";
+import { api } from "../lib/api";
 import { useAppStore } from "../stores/app-store";
 import { useReferencedImageDataUrl } from "../lib/use-referenced-image-data-url";
 import {
@@ -194,14 +199,14 @@ function CodeBlock({ code, lang }: { code: string; lang: string }) {
     <div className="code-block">
       <div className="code-block-head">
         <span className="code-block-lang">{lang || "text"}</span>
-        <button
+        <TooltipButton
           className={`code-copy-btn ${copied ? "copied" : ""}`}
-          aria-label={t("chat.copy")}
-          title={copied ? t("chat.copied") : t("chat.copy")}
+          tooltip={copied ? t("chat.copied") : t("chat.copy")}
+          ariaLabel={t("chat.copy")}
           onClick={() => copy(code)}
         >
           {copied ? <IconCheck size={13} /> : <IconCopy size={13} />}
-        </button>
+        </TooltipButton>
       </div>
       <pre>
         <code>
@@ -308,13 +313,13 @@ function MermaidBlock({ code }: { code: string }) {
         </span>
         <div className="mermaid-block-actions">
           {svg && !error ? (
-            <button
+            <TooltipButton
               type="button"
               className={`mermaid-action-btn${showSource ? " active" : ""}`}
-              aria-label={
+              tooltip={
                 showSource ? t("chat.showDiagram") : t("chat.showDiagramSource")
               }
-              title={
+              ariaLabel={
                 showSource ? t("chat.showDiagram") : t("chat.showDiagramSource")
               }
               aria-pressed={showSource}
@@ -325,17 +330,17 @@ function MermaidBlock({ code }: { code: string }) {
               ) : (
                 <IconCode size={13} />
               )}
-            </button>
+            </TooltipButton>
           ) : null}
-          <button
+          <TooltipButton
             type="button"
             className={`mermaid-action-btn${copied ? " copied" : ""}`}
-            aria-label={t("chat.copyDiagramSource")}
-            title={copied ? t("chat.copied") : t("chat.copyDiagramSource")}
+            tooltip={copied ? t("chat.copied") : t("chat.copyDiagramSource")}
+            ariaLabel={t("chat.copyDiagramSource")}
             onClick={() => copy(code)}
           >
             {copied ? <IconCheck size={13} /> : <IconCopy size={13} />}
-          </button>
+          </TooltipButton>
         </div>
       </div>
       <div className="mermaid-block-body">
@@ -476,19 +481,104 @@ function Anchor({
   href,
   ...rest
 }: ComponentProps<"a"> & { node?: unknown }) {
+  const { t } = useTranslation();
   const root = useAppStore((s) => s.workspace?.path);
   const baseDir = useContext(MarkdownBaseDirContext);
   const openFile = useAppStore((s) => s.openFileInWorkPanel);
   const openUrl = useAppStore((s) => s.openUrlInWorkPanel);
-  // Plain click previews in the work panel (browser tab for http(s), files
-  // viewer for workspace paths). Modified clicks fall through to _blank,
-  // which main routes to shell.openExternal; in-window navigation is blocked.
+  const showToast = useAppStore((s) => s.showToast);
+  const linkOpenTarget = useAppStore((s) => s.settings?.linkOpenTarget ?? "workpanel");
+
+  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const anchorRef = useRef<HTMLAnchorElement | null>(null);
+
+  useEffect(() => {
+    if (!menuPosition) return;
+    const close = () => setMenuPosition(null);
+    const onPointerDown = (event: PointerEvent) => {
+      if (menuRef.current?.contains(event.target as Node)) return;
+      close();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      close();
+      requestAnimationFrame(() => anchorRef.current?.focus());
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("keydown", onKeyDown);
+    const focusFrame = requestAnimationFrame(() => {
+      menuRef.current
+        ?.querySelector<HTMLButtonElement>('[role="menuitem"]')
+        ?.focus();
+    });
+    return () => {
+      cancelAnimationFrame(focusFrame);
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [menuPosition]);
+
+  const onContextMenu = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (!href || !/^https?:\/\//i.test(href)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const x = Math.min(e.clientX, window.innerWidth - 200);
+    const y = Math.min(e.clientY + 4, window.innerHeight - 150);
+    setMenuPosition({ top: y, left: x });
+  };
+
+  const onMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+    const items = Array.from(
+      event.currentTarget.querySelectorAll<HTMLButtonElement>(
+        '[role="menuitem"]:not(:disabled)',
+      ),
+    );
+    if (!items.length) return;
+    event.preventDefault();
+    const current = items.indexOf(document.activeElement as HTMLButtonElement);
+    const next =
+      event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? items.length - 1
+          : (current + (event.key === "ArrowDown" ? 1 : -1) + items.length) %
+            items.length;
+    items[next]?.focus();
+  };
+
+  const copyLink = async () => {
+    setMenuPosition(null);
+    if (!href) return;
+    try {
+      await navigator.clipboard.writeText(href);
+      showToast(t("settings.linkCopied", { defaultValue: "Link copied to clipboard" }), {
+        variant: "success",
+      });
+    } catch {
+      showToast(
+        t("settings.linkCopyFailed", { defaultValue: "Couldn't copy link address" }),
+        { variant: "error" },
+      );
+    }
+  };
+
+  // Plain click previews in the work panel (or external browser based on setting).
+  // Modified clicks fall through to _blank, which main routes to shell.openExternal.
   const onClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     if (!href) return;
     if (/^https?:\/\//i.test(href)) {
       e.preventDefault();
-      openUrl(href);
+      if (linkOpenTarget === "external") {
+        void api.browserOpenExternal(href);
+      } else {
+        openUrl(href);
+      }
       return;
     }
     const rel = toWorkspaceRel(safeDecodeUri(href), root, baseDir);
@@ -498,9 +588,65 @@ function Anchor({
     }
   };
   return (
-    <a {...rest} href={href} onClick={onClick} target="_blank" rel="noopener noreferrer">
-      {children}
-    </a>
+    <>
+      <a
+        ref={anchorRef}
+        {...rest}
+        href={href}
+        onClick={onClick}
+        onContextMenu={onContextMenu}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        {children}
+      </a>
+      {menuPosition &&
+        createPortal(
+          <div
+            ref={menuRef}
+            className="sidebar-row-menu sidebar-floating-menu"
+            role="menu"
+            onKeyDown={onMenuKeyDown}
+            style={{
+              top: menuPosition.top,
+              left: menuPosition.left,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setMenuPosition(null);
+                if (href) void api.browserOpenExternal(href);
+              }}
+            >
+              <IconExternal size={14} />
+              {t("settings.linkContextMenuOpenExternal", { defaultValue: "Open in default browser" })}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setMenuPosition(null);
+                if (href) openUrl(href);
+              }}
+            >
+              <IconGlobe size={14} />
+              {t("settings.linkContextMenuOpenWorkpanel", { defaultValue: "Open in work panel" })}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => void copyLink()}
+            >
+              <IconCopy size={14} />
+              {t("settings.linkContextMenuCopy", { defaultValue: "Copy link address" })}
+            </button>
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
 

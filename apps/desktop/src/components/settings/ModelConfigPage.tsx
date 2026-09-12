@@ -16,7 +16,7 @@ import {
 } from "@pi-desktop/shared";
 import { useAppStore } from "../../stores/app-store";
 import { api } from "../../lib/api";
-import { Badge, Button, Input, cx } from "../ui";
+import { Badge, Button, Input, TooltipButton, cx } from "../ui";
 import {
   IconCheck,
   IconChevronDown,
@@ -60,7 +60,7 @@ function hostFromBaseUrl(baseUrl?: string | null): string {
 }
 
 export function ModelConfigPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const providers = useAppStore((s) => s.providers);
   const settings = useAppStore((s) => s.settings);
   const refreshProviders = useAppStore((s) => s.refreshProviders);
@@ -461,29 +461,29 @@ export function ModelConfigPage() {
                           {t("settings.makeDefault")}
                         </Button>
                       ) : null}
-                      <button
+                      <TooltipButton
                         type="button"
                         className="icon-btn model-provider-icon-btn"
-                        title={t("settings.editProvider")}
-                        aria-label={t("settings.editProvider")}
+                        tooltip={t("settings.editProvider")}
+                        ariaLabel={t("settings.editProvider")}
                         disabled={rowBusy}
                         onClick={() => setSetupFor(provider.id)}
                       >
                         <IconPencil size={14} />
-                      </button>
-                      <button
+                      </TooltipButton>
+                      <TooltipButton
                         type="button"
                         className={cx(
                           "icon-btn model-provider-icon-btn",
                           testingId === provider.id && "is-testing",
                         )}
-                        title={t("settings.testConnection")}
-                        aria-label={t("settings.testConnection")}
+                        tooltip={t("settings.testConnection")}
+                        ariaLabel={t("settings.testConnection")}
                         disabled={rowBusy}
                         onClick={() => void testProvider(provider)}
                       >
                         <IconPlug size={14} />
-                      </button>
+                      </TooltipButton>
                       {confirming ? (
                         <button
                           type="button"
@@ -495,29 +495,29 @@ export function ModelConfigPage() {
                           {t("settings.deleteConfirm")}
                         </button>
                       ) : (
-                        <button
+                        <TooltipButton
                           type="button"
                           className="icon-btn model-provider-icon-btn is-danger"
-                          title={t("settings.delete")}
-                          aria-label={t("settings.delete")}
+                          tooltip={t("settings.delete")}
+                          ariaLabel={t("settings.delete")}
                           disabled={rowBusy}
                           onClick={() => setConfirmDeleteId(provider.id)}
                         >
                           <IconTrash size={14} />
-                        </button>
+                        </TooltipButton>
                       )}
-                      <button
+                      <TooltipButton
                         type="button"
                         className={cx("settings-toggle", provider.enabled && "on")}
                         role="switch"
                         aria-checked={provider.enabled}
-                        aria-label={t("settings.enabledToggle")}
-                        title={t("settings.enabledToggle")}
+                        tooltip={t("settings.enabledToggle")}
+                        ariaLabel={t("settings.enabledToggle")}
                         disabled={rowBusy}
                         onClick={() => void toggleEnabled(provider)}
                       >
                         <span className="settings-toggle-thumb" />
-                      </button>
+                      </TooltipButton>
                     </div>
                   </li>
                 );
@@ -536,7 +536,9 @@ export function ModelConfigPage() {
                 source: catalogSourceLabel,
                 models: catalogStatus.modelCount,
                 fetchedAt: catalogStatus.fetchedAt
-                  ? new Date(catalogStatus.fetchedAt).toLocaleString()
+                  ? new Date(catalogStatus.fetchedAt).toLocaleString(
+                      i18n.resolvedLanguage ?? i18n.language,
+                    )
                   : t("settings.catalogNeverFetched"),
               })
             : t("settings.catalogStatusUnknown")}

@@ -1,0 +1,78 @@
+# Trigger the CNB (cnb.cool) mirror pipeline after a GitHub Release
+# is published or edited. GitHub Release remains the canonical artifact
+# source; CNB copies the same tag so Chinese users can pull from
+# https://cnb.cool/aixk/Pi-Desktop.
+#
+# Prerequisite (already configured on vastsa/PI-Desktop):
+# repository secret CNB_MIRROR_TOKEN, with permission to start builds
+# on aixk/Pi-Desktop. The CNB pipeline listens for event
+# `api_trigger_mirror` and reads `MIRROR_TAGS`.
+
+name: Mirror to CNB
+
+on:
+  release:
+    types: [published, edited]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: GitHub release tag to mirror (for example v0.14.6)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mirror-to-cnb-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  trigger:
+    name: Trigger CNB mirror pipeline
+    if: github.repository == 'vastsa/PI-Desktop'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CNB_BUILD_URL: https://api.cnb.cool/aixk/Pi-Desktop/-/build/start
+    steps:
+      - name: Resolve release tag
+        id: tag
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          tag="${RELEASE_TAG:-${INPUT_TAG:-}}"
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-].+)?$ ]]; then
+            echo "::error::Need a GitHub release tag like v0.14.6 (got ${tag:-empty})"
+            exit 1
+          fi
+          echo "value=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Trigger CNB mirror pipeline
+        env:
+          CNB_MIRROR_TOKEN: ${{ secrets.CNB_MIRROR_TOKEN }}
+          MIRROR_TAG: ${{ steps.tag.outputs.value }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${CNB_MIRROR_TOKEN:-}" ]]; then
+            echo "::error::Missing repository secret CNB_MIRROR_TOKEN"
+            exit 1
+          fi
+          payload="$(jq -n --arg tag "$MIRROR_TAG" '{
+            branch: "main",
+            event: "api_trigger_mirror",
+            sync: "false",
+            title: ("mirror " + $tag),
+            env: { MIRROR_TAGS: $tag }
+          }')"
+          echo "Starting CNB mirror for $MIRROR_TAG"
+          curl --fail-with-body --show-error --silent \
+            --retry 3 --retry-delay 2 --connect-timeout 10 --max-time 60 \
+            -X POST "$CNB_BUILD_URL" \
+            -H 'accept: application/json' \
+            -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer ${CNB_MIRROR_TOKEN}" \
+            --data "$payload"
+          echo

@@ -88,6 +88,21 @@ function normalizeClipboardHistory(value) {
   );
 }
 
+function normalizeBytes(value) {
+  if (value instanceof Uint8Array) return value;
+  if (Array.isArray(value)) return Uint8Array.from(value);
+  if (!value || typeof value !== "object") return new Uint8Array();
+  if (value.type === "Buffer" && Array.isArray(value.data)) {
+    return Uint8Array.from(value.data);
+  }
+  return Uint8Array.from(
+    Object.entries(value)
+      .filter(([key]) => /^\d+$/.test(key))
+      .sort(([left], [right]) => Number(left) - Number(right))
+      .map(([, byte]) => Number(byte)),
+  );
+}
+
 // Contribution points registered by this plugin. The callable half stays here;
 // the broker only ever holds the descriptor plus a proxy back into this process.
 const commands = new Map();
@@ -150,11 +165,24 @@ function buildApi() {
       requestNotificationPermission: () => call("ui.requestNotificationPermission"),
       showNativeNotification: (input) => call("ui.showNativeNotification", [input]),
     },
+    project: {
+      create: (input) => call("project.create", [input ?? {}]),
+    },
     workspace: {
       get: () => call("workspace.get"),
     },
+    desktop: {
+      listOperations: () => call("desktop.listOperations"),
+      invoke: (input) => call("desktop.invoke", [input ?? {}]),
+    },
     fs: {
       readText: (path) => call("fs.readText", [path]),
+      stat: (path, grantId) => call("fs.stat", [path, grantId]),
+      readRange: (path, byteOffset, length, grantId) =>
+        call("fs.readRange", [path, byteOffset, length, grantId]).then((result) => ({
+          ...result,
+          bytes: normalizeBytes(result?.bytes),
+        })),
       readPreview: (path) => call("fs.readPreview", [path]),
       openDefault: (path) => call("fs.openDefault", [path]),
       reveal: (path) => call("fs.reveal", [path]),
@@ -198,6 +226,13 @@ function buildApi() {
     },
     session: {
       getLlmContext: () => call("session.getLlmContext"),
+      list: (input) => call("session.list", [input ?? {}]),
+      get: (input) => call("session.get", [input ?? {}]),
+      listMessages: (input) => call("session.listMessages", [input ?? {}]),
+      import: (input) => call("session.import", [input ?? {}]),
+      importBatch: (input) => call("session.importBatch", [input ?? {}]),
+      rename: (input) => call("session.rename", [input ?? {}]),
+      delete: (input) => call("session.delete", [input ?? {}]),
     },
     /**
      * Resident background workers (spec 07 §3). Registration is local: the

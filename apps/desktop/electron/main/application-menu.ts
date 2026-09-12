@@ -117,6 +117,14 @@ export function buildApplicationMenuTemplate({
                 dispatch,
                 accelerator("openSettings"),
               ),
+              // Symmetrical counterpart to closeWindow: bring a hidden
+              // or minimized-to-tray main window back into focus
+              // (D384). The label is locale-resolved at render time.
+              {
+                label: labels.menu.summonWindow,
+                accelerator: accelerator("summonWindow"),
+                click: () => dispatchNative("restoreMainWindow"),
+              },
             ] satisfies MenuItemConstructorOptions[])
           : []),
         { type: "separator" },

@@ -1,0 +1,5 @@
+# The packaged host-core child must start on a clean Windows installation.
+# Statically link the MSVC CRT so the NSIS package does not require a separate
+# Visual C++ Redistributable installation before the local service can boot.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

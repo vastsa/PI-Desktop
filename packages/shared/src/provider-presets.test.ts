@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   NAMED_ENDPOINT_PRESETS,
+  deepseekRequestCompat,
+  isDeepSeekReasoningReplay,
   isZhipuEndpoint,
   matchNamedPreset,
   matchZhipuPreset,
@@ -75,6 +77,57 @@ describe("Zhipu endpoint presets", () => {
     expect(normalizeEndpointUrl("https://API.z.ai/api/paas/v4/")).toBe(
       "https://api.z.ai/api/paas/v4",
     );
+  });
+});
+
+describe("DeepSeek reasoning replay", () => {
+  it("matches official DeepSeek by vendor key or URL", () => {
+    expect(isDeepSeekReasoningReplay({ vendorKey: "deepseek" })).toBe(true);
+    expect(
+      deepseekRequestCompat({ baseUrl: "https://api.deepseek.com" }),
+    ).toEqual({ requiresReasoningContentOnAssistantMessages: true });
+  });
+
+  it("matches aggregator and custom DeepSeek-family models without a deepseek.com URL", () => {
+    expect(
+      deepseekRequestCompat({
+        vendorKey: "siliconflow-cn",
+        baseUrl: "https://api.siliconflow.cn/v1",
+        modelId: "deepseek-ai/DeepSeek-V3.2",
+      }),
+    ).toEqual({ requiresReasoningContentOnAssistantMessages: true });
+    expect(
+      isDeepSeekReasoningReplay({
+        vendorKey: "custom",
+        baseUrl: "https://llm.corp.example/v1",
+        modelId: "deepseek-reasoner",
+      }),
+    ).toBe(true);
+    expect(
+      isDeepSeekReasoningReplay({
+        vendorKey: "volcengine",
+        baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+        modelId: "ep-20250101-xyz",
+        family: "deepseek-thinking",
+      }),
+    ).toBe(true);
+  });
+
+  it("does not match unrelated models or change thinkingFormat", () => {
+    expect(
+      deepseekRequestCompat({
+        vendorKey: "custom",
+        baseUrl: "https://api.example.com/v1",
+        modelId: "gpt-4.1",
+      }),
+    ).toBeUndefined();
+    expect(
+      deepseekRequestCompat({
+        vendorKey: "zhipuai",
+        baseUrl: "https://open.bigmodel.cn/api/paas/v4",
+        modelId: "glm-5.3",
+      }),
+    ).toBeUndefined();
   });
 });
 

@@ -209,6 +209,7 @@
   /* Keep labels fully inked; tight line-height under overflow clips descenders. */
   line-height: var(--leading-compact);
   overflow: visible;
+  white-space: nowrap;
 }
 
 /* Keep the Agent/Plan/Goal control stable while its localized label changes. */
@@ -224,6 +225,13 @@
   min-width: 0;
   overflow: hidden;
   text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mode-chip > span {
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

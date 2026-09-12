@@ -5,8 +5,9 @@ import { loadStyles } from "./helpers/styles.mjs";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-const [app, splash, css, english, chinese] = await Promise.all([
+const [app, main, splash, css, english, chinese] = await Promise.all([
   read("../src/App.tsx"),
+  read("../src/main.tsx"),
   read("../src/components/StartupSplash.tsx"),
   loadStyles(),
   read("../../../packages/i18n/src/locales/en/index.ts"),
@@ -52,6 +53,8 @@ test("crash and empty-home title copy is catalog-backed in English and Chinese",
   assert.match(english, /uiCrashed:\s*"Something went wrong with the interface"/);
   assert.match(chinese, /uiCrashed:\s*"界面出现了问题"/);
   assert.match(app, /i18n\.t\("app\.uiCrashed"\)/);
+  assert.match(main, /crashCatalog\.app\.uiCrashed/);
+  assert.doesNotMatch(main, /PI-Desktop failed to start UI/);
   assert.match(chinese, /emptyTitle:\s*"今天想做点什么？"/);
   assert.match(english, /emptyTitleTemporary:\s*"What would you like to explore temporarily\?"/);
   assert.match(chinese, /emptyTitleTemporary:\s*"临时聊点什么？"/);

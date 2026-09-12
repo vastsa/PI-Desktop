@@ -7,7 +7,6 @@ export const CLIPBOARD_HISTORY_MAX_TEXT_BYTES = 100 * 1024;
 export const CLIPBOARD_HISTORY_MAX_IMAGE_BYTES = 50 * 1024 * 1024;
 export const CLIPBOARD_HISTORY_MAX_ENTRIES = 500;
 export const CLIPBOARD_HISTORY_MAX_BYTES = 256 * 1024 * 1024;
-export const CLIPBOARD_HISTORY_POLL_INTERVAL_MS = 500;
 
 export type ClipboardCapture =
   | { type: "text"; text: string }
@@ -19,12 +18,8 @@ export type ClipboardCapture =
       height: number;
     };
 
-export type ClipboardHistoryReader = () => Promise<ClipboardCapture | null>;
-
-export type ClipboardHistoryOptions = {
-  read: ClipboardHistoryReader;
+type ClipboardHistoryOptions = {
   now?: () => number;
-  pollIntervalMs?: number;
 };
 
 type StoredEntry = ClipboardHistoryEntry & { signature: string };
@@ -68,67 +63,30 @@ function cloneEntry(entry: StoredEntry): ClipboardHistoryEntry {
 }
 
 /**
- * Owns the host's in-memory clipboard history. Electron does not expose a
- * cross-platform clipboard-changed event, so the host samples the clipboard
- * while it is running. The first sample establishes a baseline and is not
- * treated as a copy that happened before the app started.
+ * Owns the host's in-memory clipboard history. Entries are added only by
+ * explicit host writes or user paste events. In particular, this class never
+ * reads the system clipboard or starts a background timer.
  */
 export class ClipboardHistory {
-  private readonly read: ClipboardHistoryReader;
   private readonly now: () => number;
-  private readonly pollIntervalMs: number;
   private entries: StoredEntry[] = [];
   private totalBytes = 0;
   private lastSignature: string | null = null;
   private lastRecordedSignature: string | null = null;
-  private timer: ReturnType<typeof setInterval> | null = null;
-  private polling = false;
 
-  constructor(options: ClipboardHistoryOptions) {
-    this.read = options.read;
+  constructor(options: ClipboardHistoryOptions = {}) {
     this.now = options.now ?? Date.now;
-    this.pollIntervalMs = options.pollIntervalMs ?? CLIPBOARD_HISTORY_POLL_INTERVAL_MS;
-  }
-
-  async start(): Promise<void> {
-    if (this.timer) return;
-    const initial = await this.read();
-    this.lastSignature = initial ? signatureFor(initial) : null;
-    this.timer = setInterval(() => {
-      void this.poll();
-    }, this.pollIntervalMs);
-  }
-
-  stop(): void {
-    if (this.timer) clearInterval(this.timer);
-    this.timer = null;
-  }
-
-  /** Sample once; exposed for deterministic host tests. */
-  async poll(): Promise<void> {
-    if (this.polling) return;
-    this.polling = true;
-    try {
-      const capture = await this.read();
-      if (capture) this.recordCapture(capture);
-      else {
-        this.lastSignature = null;
-        this.lastRecordedSignature = null;
-      }
-    } finally {
-      this.polling = false;
-    }
   }
 
   recordText(text: string, capturedAt = new Date(this.now()).toISOString()): void {
-    this.recordCapture({ type: "text", text }, capturedAt, true);
+    this.recordCapture({ type: "text", text }, capturedAt);
   }
 
   recordImage(
     image: Omit<Extract<ClipboardCapture, { type: "image" }>, "type">,
     capturedAt = new Date(this.now()).toISOString(),
   ): void {
-    this.recordCapture({ type: "image", ...image }, capturedAt, true);
+    this.recordCapture({ type: "image", ...image }, capturedAt);
   }
 
   getHistory(): ClipboardHistoryEntry[] {
@@ -139,24 +97,12 @@ export class ClipboardHistory {
   private recordCapture(
     capture: ClipboardCapture,
     capturedAt = new Date(this.now()).toISOString(),
-    force = false,
   ): void {
     const signature = signatureFor(capture);
     const repeated = signature === this.lastSignature;
     this.lastSignature = signature;
 
-    if (repeated && !force) {
-      if (this.lastRecordedSignature === signature && this.entries[0]) {
-        this.entries[0] = { ...this.entries[0], capturedAt };
-      }
-      return;
-    }
-
-    if (
-      force &&
-      this.lastRecordedSignature === signature &&
-      this.entries[0]?.signature === signature
-    ) {
+    if (repeated && this.lastRecordedSignature === signature && this.entries[0]) {
       this.entries[0] = { ...this.entries[0], capturedAt };
       return;
     }
@@ -202,5 +148,8 @@ export class ClipboardHistory {
       this.totalBytes -= contentBytes(removed);
     }
     this.totalBytes = Math.max(0, this.totalBytes);
+    if (this.lastRecordedSignature && this.entries[0]?.signature !== this.lastRecordedSignature) {
+      this.lastRecordedSignature = null;
+    }
   }
 }

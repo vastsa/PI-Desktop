@@ -8,7 +8,9 @@ import {
   statSync,
   rmSync,
 } from "node:fs";
-import { basename, join, dirname, relative, resolve, sep } from "node:path";
+import { open as openFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { homedir } from "node:os";
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
@@ -67,6 +69,7 @@ import { McpServerClient, type McpServerClientOptions } from "./plugin-mcp";
 import { DevPluginWatcher, type DevPluginWatcherDeps } from "./plugin-watcher";
 import { parseAllowedExternalUrl } from "./safe-open-external";
 import type { PluginAppearance } from "../shared/plugin-panel-chrome";
+import type { McpControlController, McpControlInvokeInput } from "./mcp-control";
 
 export type RegisteredCommand = {
   id: string;
@@ -84,9 +87,19 @@ export type RegisteredPluginTool = {
   description: string;
   risk?: string;
   schema?: unknown;
+  /**
+   * Action names that may run in Plan or Goal mode. Omitted or empty
+   * means the tool is hidden from the model in those modes (ADR 0211).
+   */
+  planSafeActions?: readonly string[];
   execute: (
     args: unknown,
-    ctx?: { sessionId?: string; modelKey?: string; thinkingLevel?: string },
+    ctx?: {
+      sessionId?: string;
+      mode?: "agent" | "plan" | "goal";
+      modelKey?: string;
+      thinkingLevel?: string;
+    },
   ) => Promise<unknown>;
 };
 
@@ -94,6 +107,21 @@ export type RegisteredPluginTool = {
  * A skill document a plugin taught the agent (spec 07 §3). Only the metadata
  * travels into the system prompt; the body is loaded on demand by the model.
  */
+/**
+ * One ExtensionAPI module a plugin contributes (spec 07-plugins/16). The
+ * module runs inside the agent sidecar; this record only says where it is
+ * and which plugin owns it.
+ */
+export type RegisteredAgentExtension = {
+  /** Realpath of the module; stable identity for the sidecar and diagnostics. */
+  id: string;
+  pluginId: string;
+  pluginName: string;
+  /** Absolute module path inside the plugin directory. */
+  entry: string;
+  root: string;
+};
+
 export type RegisteredPluginSkill = {
   /** `<pluginId>/<skillId>` — what the model passes to the Skill tool. */
   id: string;
@@ -131,8 +159,15 @@ export type PluginPanelRequest = {
   theme?: "light" | "dark";
   /** The plugin's egress allowlist; the panel session is confined to it. */
   netDomains?: readonly string[];
+  /** Allows the isolated panel to request microphone audio, never camera access. */
+  allowMicrophone?: boolean;
   /** Development panels show the host drag-band reminder in their chrome. */
   development?: boolean;
+};
+
+export type PluginPanelBridgeContext = {
+  /** Absolute path recorded by the panel preload for a real drop gesture. */
+  droppedPath?: string;
 };
 
 /** Transport to one plugin host process (ADR 0008). */
@@ -169,8 +204,22 @@ export type PluginFsConsentRequest = {
  */
 export type PluginFsConsentAnswer = "once" | "session" | "deny";
 
+/** One dangerous desktop operation a plugin asked the host to run. */
+export type PluginDesktopConsentRequest = {
+  pluginId: string;
+  pluginName: string;
+  /** Operation id from the shared controller catalog, e.g. `session/delete`. */
+  operation: string;
+  /** Catalog description of the operation, for the dialog. */
+  description: string;
+  /** Positional arguments as the plugin supplied them (secret-stripped later). */
+  args: unknown[];
+};
+
 export type PluginHostServices = {
   getWorkspacePath: () => string | null;
+  /** The set of `contributes.agentExtensions` modules changed (load/unload). */
+  agentExtensionsChanged?: () => void;
   getLocale?: () => string;
   getAppVersion?: () => string;
   /**
@@ -204,6 +253,16 @@ export type PluginHostServices = {
     body?: string;
     timeoutMs?: number;
   }) => Promise<{ status: number; headers: Record<string, string>; bodyText: string }>;
+  /** The reviewed desktop operation controller shared with MCP. */
+  desktopControl?: McpControlController;
+  /**
+   * Blocking, native consent for a plugin-originated dangerous desktop
+   * operation (session delete, permission-mode change, tool approval). The
+   * controller's `confirm` flag is only the caller's acknowledgement; the
+   * user decides here. Without this service every dangerous operation from a
+   * plugin is refused, which is the safe default for a headless host.
+   */
+  confirmDesktopControl?: (request: PluginDesktopConsentRequest) => Promise<boolean>;
   audit?: (entry: Record<string, unknown>) => void;
   /**
    * Blocking, native consent for a file access the manifest did not declare.
@@ -280,6 +339,18 @@ export type PluginHostServices = {
     stripToolName?: string;
     signal?: AbortSignal;
   }) => Promise<PluginCompleteResult>;
+  session?: {
+    list: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+    get: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+    listMessages: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+    import: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+    importBatch: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+    rename: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+    delete: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+  };
+  project?: {
+    create: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+  };
 };
 
 /** Host APIs a plugin process may reach. Anything else does not exist (spec 04 §2). */
@@ -297,8 +368,12 @@ const HOST_API_ALLOWLIST = new Set([
   "ui.getNotificationPermission",
   "ui.requestNotificationPermission",
   "ui.showNativeNotification",
+  "desktop.listOperations",
+  "desktop.invoke",
   "workspace.get",
   "fs.readText",
+  "fs.stat",
+  "fs.readRange",
   "fs.readPreview",
   "fs.openDefault",
   "fs.reveal",
@@ -330,6 +405,13 @@ const HOST_API_ALLOWLIST = new Set([
   "browser.cdp",
   "models.list",
   "session.getLlmContext",
+  "session.list",
+  "session.get",
+  "session.listMessages",
+  "session.import",
+  "session.importBatch",
+  "session.rename",
+  "session.delete",
   "agent.complete",
 ]);
 
@@ -410,6 +492,8 @@ export const MAX_COMPLETE_MESSAGE_CHARS = 200_000;
 const MAX_GLOB_MATCHES = 500;
 /** Entries returned for one directory. A tree is walked lazily, not dumped. */
 const MAX_LIST_ENTRIES = 1000;
+/** Maximum bytes one plugin range call may cross the broker with. */
+const MAX_FS_READ_RANGE_BYTES = 8 * 1024 * 1024;
 /** Directories `pi.fs.glob` never walks into; they are noise and are denied anyway. */
 const GLOB_SKIP_DIRS = new Set([".git", "node_modules", ".venv", "__pycache__"]);
 /** Entries in one plugin's write ledger; oldest are dropped past this. */
@@ -436,6 +520,8 @@ type LoadedPlugin = {
   userRoot?: string;
   /** Timestamps of recent deletes, backing the rate brake. */
   deletes: number[];
+  /** Memory-only grants created by a real panel drop gesture. */
+  dropGrants: Map<string, { fullPath: string; requestPath: string }>;
   child?: PluginProcessHandle;
   pending: Map<string, PendingCall>;
   nextCallId: number;
@@ -457,6 +543,178 @@ function apiError(code: string, message: string): PluginApiError {
   const err = new Error(message) as PluginApiError;
   err.code = code;
   return err;
+}
+
+function pluginActionEnum(schema: unknown): readonly string[] | null {
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return null;
+  const properties = (schema as { properties?: unknown }).properties;
+  if (!properties || typeof properties !== "object" || Array.isArray(properties)) return null;
+  const action = (properties as Record<string, unknown>).action;
+  if (!action || typeof action !== "object" || Array.isArray(action)) return null;
+  const enumValue = (action as { enum?: unknown }).enum;
+  if (!Array.isArray(enumValue)) return null;
+  const values: string[] = [];
+  for (const entry of enumValue) {
+    if (typeof entry !== "string") return null;
+    values.push(entry);
+  }
+  return values;
+}
+
+/**
+ * Normalize and validate a plugin tools `planSafeActions` declaration
+ * (ADR 0211). Every entry must be a string and, when the schema carries an
+ * `action` enum, must be one of that enum. The validation here is the
+ * final defense in depth: the runtime normally hides unsafe tools from the
+ * model in Plan mode, but a stray call must still be rejected.
+ */
+function normalizePlanSafeActions(
+  raw: unknown,
+  schema: unknown,
+  toolName: string,
+): readonly string[] {
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw)) {
+    throw apiError(
+      "INVALID_ARGUMENT",
+      `plugin tool ${toolName} planSafeActions must be a string array`,
+    );
+  }
+  const cleaned: string[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== "string" || !entry) {
+      throw apiError(
+        "INVALID_ARGUMENT",
+        `plugin tool ${toolName} planSafeActions entries must be non-empty strings`,
+      );
+    }
+    if (cleaned.includes(entry)) continue;
+    cleaned.push(entry);
+  }
+  const actionEnum = pluginActionEnum(schema);
+  if (actionEnum) {
+    const actionSet = new Set(actionEnum);
+    for (const action of cleaned) {
+      if (!actionSet.has(action)) {
+        throw apiError(
+          "INVALID_ARGUMENT",
+          `plugin tool ${toolName} planSafeActions entry ${action} is not in the schema action enum`,
+        );
+      }
+    }
+  }
+  return cleaned;
+}
+
+const PLUGIN_SESSION_MAX_PAYLOAD_BYTES = 32 * 1024 * 1024;
+const PLUGIN_SESSION_MAX_CONTENT_BYTES = 512 * 1024;
+const PLUGIN_SESSION_MAX_TOOL_VALUE_BYTES = 256 * 1024;
+const PLUGIN_SESSION_MAX_JSON_DEPTH = 8;
+const PLUGIN_SESSION_RFC3339 =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+
+function pluginSessionJsonDepth(value: unknown): number {
+  if (Array.isArray(value)) {
+    return 1 + Math.max(0, ...value.map(pluginSessionJsonDepth));
+  }
+  if (value && typeof value === "object") {
+    return 1 + Math.max(0, ...Object.values(value).map(pluginSessionJsonDepth));
+  }
+  return 1;
+}
+
+function pluginSessionJsonBytes(value: unknown): number {
+  try {
+    const serialized = JSON.stringify(value);
+    return serialized === undefined ? Number.POSITIVE_INFINITY : new TextEncoder().encode(serialized).byteLength;
+  } catch {
+    return Number.POSITIVE_INFINITY;
+  }
+}
+
+function validatePluginSessionPayload(input: unknown, kind: "import" | "batch" | "other"): void {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    throw apiError("INVALID_PARAMS", "session input must be an object");
+  }
+  if (pluginSessionJsonBytes(input) > PLUGIN_SESSION_MAX_PAYLOAD_BYTES) {
+    throw apiError("LIMIT_EXCEEDED", "session payload exceeds 32 MiB");
+  }
+  if (pluginSessionJsonDepth(input) > PLUGIN_SESSION_MAX_JSON_DEPTH) {
+    throw apiError("LIMIT_EXCEEDED", "session JSON depth exceeds 8");
+  }
+  if (kind === "other") return;
+  const value = input as Record<string, unknown>;
+  const entries = kind === "batch" ? value.sessions : [value];
+  if (!Array.isArray(entries)) throw apiError("INVALID_PARAMS", "sessions must be an array");
+  if (kind === "batch" && entries.length > 100) {
+    throw apiError("LIMIT_EXCEEDED", "session batch exceeds 100 items");
+  }
+  if (kind === "import" && entries.length > 1) {
+    throw apiError("INVALID_PARAMS", "session import accepts one item");
+  }
+  for (const entry of entries) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      throw apiError("INVALID_PARAMS", "session item must be an object");
+    }
+    const item = entry as Record<string, unknown>;
+    const title = typeof item.title === "string" ? item.title : "";
+    const externalId = typeof item.externalId === "string" ? item.externalId : "";
+    if (!title || [...title].length > 200) throw apiError("LIMIT_EXCEEDED", "title is invalid");
+    if (!externalId || [...externalId].length > 256) {
+      throw apiError("LIMIT_EXCEEDED", "externalId is invalid");
+    }
+    const createdAt = typeof item.createdAt === "string" ? item.createdAt : "";
+    const updatedAt = typeof item.updatedAt === "string" ? item.updatedAt : "";
+    const createdMs = Date.parse(createdAt);
+    const updatedMs = Date.parse(updatedAt);
+    if (!PLUGIN_SESSION_RFC3339.test(createdAt) || Number.isNaN(createdMs)) {
+      throw apiError("INVALID_PARAMS", "createdAt must be RFC3339");
+    }
+    if (!PLUGIN_SESSION_RFC3339.test(updatedAt) || Number.isNaN(updatedMs)) {
+      throw apiError("INVALID_PARAMS", "updatedAt must be RFC3339");
+    }
+    if (createdMs > updatedMs) throw apiError("INVALID_PARAMS", "createdAt is after updatedAt");
+    if (!Array.isArray(item.messages) || item.messages.length > 2000) {
+      throw apiError("LIMIT_EXCEEDED", "messages must contain at most 2000 items");
+    }
+    let previous = Number.NEGATIVE_INFINITY;
+    for (const message of item.messages) {
+      if (!message || typeof message !== "object" || Array.isArray(message)) {
+        throw apiError("INVALID_PARAMS", "message must be an object");
+      }
+      const row = message as Record<string, unknown>;
+      if (!["user", "assistant", "tool"].includes(String(row.role))) {
+        throw apiError("INVALID_PARAMS", "message role is invalid");
+      }
+      if (typeof row.content !== "string" || new TextEncoder().encode(row.content).byteLength > PLUGIN_SESSION_MAX_CONTENT_BYTES) {
+        throw apiError("LIMIT_EXCEEDED", "message content exceeds 512 KiB");
+      }
+      const messageAt = typeof row.createdAt === "string" ? row.createdAt : "";
+      const messageMs = Date.parse(messageAt);
+      if (!PLUGIN_SESSION_RFC3339.test(messageAt) || Number.isNaN(messageMs) || messageMs < previous) {
+        throw apiError("INVALID_PARAMS", "message timestamps must be monotonic RFC3339 values");
+      }
+      previous = messageMs;
+      if (row.role === "tool") {
+        if (!row.toolName || !row.toolCallId || !["success", "error"].includes(String(row.toolStatus))) {
+          throw apiError("INVALID_PARAMS", "tool message fields are invalid");
+        }
+        for (const field of ["toolArgs", "toolResult"]) {
+          if (row[field] !== undefined && pluginSessionJsonBytes(row[field]) > PLUGIN_SESSION_MAX_TOOL_VALUE_BYTES) {
+            throw apiError("LIMIT_EXCEEDED", `${field} exceeds 256 KiB`);
+          }
+        }
+      }
+    }
+  }
+}
+
+function normalizePluginSessionInput(
+  input: unknown,
+  kind: "import" | "batch" | "other",
+): Record<string, unknown> {
+  validatePluginSessionPayload(input, kind);
+  return { ...(input as Record<string, unknown>) };
 }
 
 /** Key for the per-service supervision map. */
@@ -550,7 +808,7 @@ function realpathOrSelf(path: string): string {
  * directory. Manifest validation already rejects `..`, so this is defense in
  * depth against symlinked or oddly-cased contributions.
  */
-function resolveInsidePlugin(pluginPath: string, relative: string): string | null {
+export function resolveInsidePlugin(pluginPath: string, relative: string): string | null {
   const root = resolve(pluginPath);
   const target = resolve(root, relative);
   const prefix = root.endsWith(sep) ? root : root + sep;
@@ -599,6 +857,7 @@ export class PluginRuntime {
   private commands = new Map<string, RegisteredCommand>();
   private tools = new Map<string, RegisteredPluginTool>();
   private skills = new Map<string, RegisteredPluginSkill>();
+  private agentExtensions = new Map<string, RegisteredAgentExtension>();
   private themes = new Map<string, RegisteredPluginTheme>();
   private mcpClients = new Map<string, McpServerClient[]>();
   private serviceStates = new Map<string, PluginServiceStatus>();
@@ -697,6 +956,11 @@ export class PluginRuntime {
 
   getTools(): RegisteredPluginTool[] {
     return [...this.tools.values()];
+  }
+
+  /** ExtensionAPI modules from loaded plugins holding `agent.extension`. */
+  getAgentExtensions(): RegisteredAgentExtension[] {
+    return [...this.agentExtensions.values()].sort((a, b) => a.id.localeCompare(b.id));
   }
 
   /** Catalog of active plugin skills, ordered by id for a stable prompt. */
@@ -898,7 +1162,10 @@ export class PluginRuntime {
     const manifest = validated.manifest;
     await this.unload(manifest.id);
 
-    const mainPath = join(pluginPath, manifest.main);
+    const mainPath = resolveInsidePlugin(pluginPath, manifest.main);
+    if (!mainPath) {
+      throw new Error("PLUGIN_INVALID: main entry must stay inside the plugin directory");
+    }
     if (!existsSync(mainPath)) {
       throw new Error("PLUGIN_LOAD_FAILED: main entry missing");
     }
@@ -933,6 +1200,7 @@ export class PluginRuntime {
       fsPolicy: access.policy,
       legacyFs: access.legacy,
       deletes: [],
+      dropGrants: new Map(),
       child,
       pending: new Map(),
       nextCallId: 1,
@@ -978,6 +1246,7 @@ export class PluginRuntime {
     }
 
     this.registerSkills(loaded);
+    this.registerAgentExtensions(loaded);
     this.registerThemes(loaded);
     await this.registerMcpServers(loaded);
     await this.startServices(loaded);
@@ -1172,6 +1441,7 @@ export class PluginRuntime {
     pluginId: string,
     channel: string,
     payload?: Record<string, unknown>,
+    context?: PluginPanelBridgeContext,
   ): Promise<unknown> {
     const loaded = this.loaded.get(pluginId);
     if (!loaded) throw apiError("NOT_FOUND", `plugin not loaded: ${pluginId}`);
@@ -1211,6 +1481,24 @@ export class PluginRuntime {
         return { ok: true };
       case "fs.readText":
         return api.fs.readText(String(payload?.path ?? ""));
+      case "fs.stat":
+        return api.fs.stat(
+          String(payload?.path ?? ""),
+          typeof payload?.grantId === "string" ? payload.grantId : undefined,
+        );
+      case "fs.readRange":
+        return api.fs.readRange(
+          String(payload?.path ?? ""),
+          Number(payload?.byteOffset),
+          Number(payload?.length),
+          typeof payload?.grantId === "string" ? payload.grantId : undefined,
+        );
+      case "fs.registerDropped":
+        return this.registerDroppedFile(
+          loaded,
+          String(payload?.path ?? ""),
+          context?.droppedPath,
+        );
       case "fs.readPreview":
         return api.fs.readPreview(String(payload?.path ?? ""));
       case "fs.openDefault":
@@ -1419,10 +1707,16 @@ export class PluginRuntime {
           description?: string;
           risk?: string;
           schema?: unknown;
+          planSafeActions?: unknown;
         };
         const name = String(descriptor.name ?? "");
         if (!name) throw apiError("INVALID_ARGUMENT", "tool.name is required");
         const fullName = pluginToolName(pluginId, name);
+        const planSafeActions = normalizePlanSafeActions(
+          descriptor.planSafeActions,
+          descriptor.schema,
+          name,
+        );
         this.tools.set(fullName, {
           fullName,
           pluginId,
@@ -1430,7 +1724,30 @@ export class PluginRuntime {
           description: String(descriptor.description ?? ""),
           risk: descriptor.risk,
           schema: descriptor.schema,
+          planSafeActions,
           execute: async (toolArgs, ctx) => {
+            // Plan/Goal mode only allows declared plan-safe actions. The
+            // runtime normally hides unsafe tools from the model, but the
+            // host must still reject a stray call (ADR 0211).
+            if (ctx?.mode === "plan" || ctx?.mode === "goal") {
+              const allowed = planSafeActions;
+              if (allowed.length === 0) {
+                throw apiError(
+                  "PERMISSION_DENIED",
+                  `plugin tool ${name} is not available in ${ctx.mode} mode`,
+                );
+              }
+              const action =
+                toolArgs && typeof toolArgs === "object" && !Array.isArray(toolArgs)
+                  ? (toolArgs as { action?: unknown }).action
+                  : undefined;
+              if (typeof action !== "string" || !allowed.includes(action)) {
+                throw apiError(
+                  "PERMISSION_DENIED",
+                  `plugin tool ${name} action ${JSON.stringify(action)} is not allowed in ${ctx.mode} mode`,
+                );
+              }
+            }
             const target = this.loaded.get(pluginId);
             if (!target?.child) throw apiError("NOT_FOUND", `plugin not loaded: ${pluginId}`);
             const sessionId = String(ctx?.sessionId ?? "");
@@ -1481,6 +1798,91 @@ export class PluginRuntime {
       }
       case "session.getLlmContext": {
         return this.readSessionContext(loaded);
+      }
+      case "session.import": {
+        this.assertPermission(loaded, "session.import");
+        const input = normalizePluginSessionInput(args[0] ?? {}, "import");
+        if (input.projectId !== undefined && input.projectId !== null) {
+          this.assertPermission(loaded, "project.create");
+        }
+        const source = this.sessionSource(loaded, input.source);
+        input.sourceLabel = source.label;
+        if (!this.services.session?.import) {
+          throw apiError("UNSUPPORTED", "host api not available: session.import");
+        }
+        return this.services.session.import(loaded.manifest.id, input);
+      }
+      case "session.importBatch": {
+        this.assertPermission(loaded, "session.import");
+        const input = normalizePluginSessionInput(args[0] ?? {}, "batch");
+        const items = Array.isArray(input.sessions) ? input.sessions : [];
+        if (items.some((item) => item && typeof item === "object" &&
+          (item as Record<string, unknown>).projectId !== undefined &&
+          (item as Record<string, unknown>).projectId !== null)) {
+          this.assertPermission(loaded, "project.create");
+        }
+        const source = this.sessionSource(loaded, input.source);
+        input.sourceLabel = source.label;
+        if (!this.services.session?.importBatch) {
+          throw apiError("UNSUPPORTED", "host api not available: session.importBatch");
+        }
+        return this.services.session.importBatch(loaded.manifest.id, input);
+      }
+      case "project.create": {
+        this.assertPermission(loaded, "project.create");
+        const input = args[0];
+        if (!input || typeof input !== "object" || Array.isArray(input)) {
+          throw apiError("INVALID_PARAMS", "project input must be an object");
+        }
+        const path = (input as Record<string, unknown>).path;
+        if (typeof path !== "string" || !path.trim() || [...path].length > 4096) {
+          throw apiError("INVALID_PARAMS", "project path must be a non-empty string");
+        }
+        if (!this.services.project?.create) {
+          throw apiError("UNSUPPORTED", "host api not available: project.create");
+        }
+        return this.services.project.create(loaded.manifest.id, { path: path.trim() });
+      }
+      case "session.list": {
+        this.assertPermission(loaded, "session.read.own");
+        const input = normalizePluginSessionInput(args[0] ?? {}, "other");
+        if (input.source !== undefined) this.sessionSource(loaded, input.source);
+        if (!this.services.session?.list) {
+          throw apiError("UNSUPPORTED", "host api not available: session.list");
+        }
+        return this.services.session.list(loaded.manifest.id, input);
+      }
+      case "session.get": {
+        this.assertPermission(loaded, "session.read.own");
+        const input = normalizePluginSessionInput(args[0] ?? {}, "other");
+        if (!this.services.session?.get) {
+          throw apiError("UNSUPPORTED", "host api not available: session.get");
+        }
+        return this.services.session.get(loaded.manifest.id, input);
+      }
+      case "session.listMessages": {
+        this.assertPermission(loaded, "session.read.own");
+        const input = normalizePluginSessionInput(args[0] ?? {}, "other");
+        if (!this.services.session?.listMessages) {
+          throw apiError("UNSUPPORTED", "host api not available: session.listMessages");
+        }
+        return this.services.session.listMessages(loaded.manifest.id, input);
+      }
+      case "session.rename": {
+        this.assertPermission(loaded, "session.update.own");
+        const input = normalizePluginSessionInput(args[0] ?? {}, "other");
+        if (!this.services.session?.rename) {
+          throw apiError("UNSUPPORTED", "host api not available: session.rename");
+        }
+        return this.services.session.rename(loaded.manifest.id, input);
+      }
+      case "session.delete": {
+        this.assertPermission(loaded, "session.delete.own");
+        const input = normalizePluginSessionInput(args[0] ?? {}, "other");
+        if (!this.services.session?.delete) {
+          throw apiError("UNSUPPORTED", "host api not available: session.delete");
+        }
+        return this.services.session.delete(loaded.manifest.id, input);
       }
       case "agent.complete": {
         return this.runAgentComplete(loaded, (args[0] ?? {}) as PluginCompleteInput);
@@ -1626,6 +2028,14 @@ export class PluginRuntime {
     for (const [id, skill] of this.skills) {
       if (skill.pluginId === pluginId) this.skills.delete(id);
     }
+    let droppedExtension = false;
+    for (const [id, extension] of this.agentExtensions) {
+      if (extension.pluginId === pluginId) {
+        this.agentExtensions.delete(id);
+        droppedExtension = true;
+      }
+    }
+    if (droppedExtension) this.services.agentExtensionsChanged?.();
     for (const [id, theme] of this.themes) {
       if (theme.pluginId === pluginId) this.themes.delete(id);
     }
@@ -1655,6 +2065,58 @@ export class PluginRuntime {
    * Skills predate the permission gate, so a plugin that declares them without
    * `agent.prompt.inject` still loads — it just teaches the agent nothing.
    */
+  /**
+   * Index `contributes.agentExtensions`. The modules are loaded by the agent
+   * sidecar at the next turn, so this only validates paths and records
+   * ownership. Without `agent.extension` the plugin loads but contributes no
+   * module, mirroring how skills behave without `agent.prompt.inject`.
+   */
+  private registerAgentExtensions(loaded: LoadedPlugin): void {
+    const declared = loaded.manifest.contributes?.agentExtensions ?? [];
+    if (!declared.length) return;
+    const pluginId = loaded.manifest.id;
+    if (!loaded.permissions.has("agent.extension")) {
+      this.services.audit?.({
+        pluginId,
+        api: "plugin.agentExtensions.skipped",
+        ok: false,
+        errorCode: "PERMISSION_DENIED",
+        count: declared.length,
+        ts: Date.now(),
+      });
+      return;
+    }
+    let changed = false;
+    for (const relative of declared) {
+      const entry = resolveInsidePlugin(loaded.path, String(relative ?? "").trim());
+      if (!entry || !existsSync(entry)) {
+        this.services.audit?.({
+          pluginId,
+          api: "plugin.agentExtensions.skipped",
+          ok: false,
+          errorCode: "NOT_FOUND",
+          ts: Date.now(),
+        });
+        continue;
+      }
+      let id = entry;
+      try {
+        id = realpathSync(entry);
+      } catch {
+        // Fall back to the resolved path; the sidecar reports a load error.
+      }
+      this.agentExtensions.set(id, {
+        id,
+        pluginId,
+        pluginName: loaded.manifest.name,
+        entry,
+        root: loaded.path,
+      });
+      changed = true;
+    }
+    if (changed) this.services.agentExtensionsChanged?.();
+  }
+
   private registerSkills(loaded: LoadedPlugin): void {
     const declared = loaded.manifest.contributes?.skills ?? [];
     if (!declared.length) return;
@@ -2390,7 +2852,7 @@ export class PluginRuntime {
         errorCode: "RATE_LIMITED",
         ts: Date.now(),
       });
-      throw apiError("RATE_LIMITED", "advisor complete rate exceeded");
+      throw apiError("RATE_LIMITED", "plugin completion rate exceeded");
     }
     const includeSessionContext = input.includeSessionContext === true;
     if (includeSessionContext) {
@@ -2428,7 +2890,7 @@ export class PluginRuntime {
           errorCode: "TIMEOUT",
           ts: Date.now(),
         });
-        throw apiError("TIMEOUT", "advisor complete timed out");
+        throw apiError("TIMEOUT", "plugin completion timed out");
       }
       throw error;
     } finally {
@@ -2535,6 +2997,62 @@ export class PluginRuntime {
     }
   }
 
+  private sessionSource(
+    loaded: LoadedPlugin,
+    rawSource: unknown,
+  ): { id: string; label?: string } {
+    const source = typeof rawSource === "string" ? rawSource.trim() : "";
+    const entry = (loaded.manifest.contributes?.sessionSources ?? []).find(
+      (candidate) => candidate.id === source,
+    );
+    if (!entry) {
+      throw apiError("PERMISSION_DENIED", "session source is not declared by the manifest");
+    }
+    return {
+      id: entry.id,
+      label: resolvePluginLocalizedString(entry.label, this.services.getLocale?.(), entry.id),
+    };
+  }
+
+  /**
+   * Turn a real panel drop into a one-file, read-only grant. The panel host
+   * proves the gesture; this method still re-resolves and rechecks the path so
+   * a symlink or a protected file cannot turn that gesture into broader reach.
+   */
+  private registerDroppedFile(
+    loaded: LoadedPlugin,
+    requestPath: string,
+    droppedPath?: string,
+  ): { grantId: string } {
+    this.assertPermission(loaded, "fs.read");
+    if (!droppedPath || !isAbsolute(requestPath) || resolve(requestPath) !== resolve(droppedPath)) {
+      this.auditFs(loaded, "read", requestPath, "PERMISSION_DENIED");
+      throw apiError("PERMISSION_DENIED", "file was not dropped into this plugin panel");
+    }
+    let full: string;
+    try {
+      full = realpathSync(requestPath);
+      if (!statSync(full).isFile()) throw new Error("not a file");
+    } catch {
+      this.auditFs(loaded, "read", requestPath, "NOT_FOUND");
+      throw apiError("NOT_FOUND", `cannot register dropped file: ${requestPath}`);
+    }
+    if (this.isProtectedPath(full) || isDeniedFsPath(normalizeFsPath(full))) {
+      this.auditFs(loaded, "read", requestPath, "PERMISSION_DENIED");
+      throw apiError("PERMISSION_DENIED", "dropped path is reserved by the app");
+    }
+    const grantId = randomUUID();
+    loaded.dropGrants.set(grantId, { fullPath: full, requestPath: resolve(requestPath) });
+    this.services.audit?.({
+      pluginId: loaded.manifest.id,
+      api: "fs.registerDropped",
+      ok: true,
+      ts: Date.now(),
+      path: `<dropped>/${basename(full)}`,
+    });
+    return { grantId };
+  }
+
   /**
    * Resolve one file request and decide whether it may proceed.
    *
@@ -2548,9 +3066,46 @@ export class PluginRuntime {
     loaded: LoadedPlugin,
     mode: PluginFsMode,
     requestPath: string,
-    options: { create?: boolean } = {},
+    options: { create?: boolean; dropGrantId?: string } = {},
   ): Promise<{ full: string; rel: string; root: string }> {
     this.assertPermission(loaded, `fs.${mode}`);
+    if (typeof options.dropGrantId === "string") {
+      if (mode !== "read") {
+        throw apiError("PERMISSION_DENIED", "dropped-file grants are read-only");
+      }
+      const grant = loaded.dropGrants.get(options.dropGrantId);
+      if (!grant) {
+        this.auditFs(loaded, mode, requestPath, "PERMISSION_DENIED");
+        throw apiError("PERMISSION_DENIED", "dropped-file grant is missing or expired");
+      }
+      if (!isAbsolute(requestPath) || resolve(requestPath) !== grant.requestPath) {
+        this.auditFs(loaded, mode, requestPath, "PERMISSION_DENIED");
+        throw apiError("PERMISSION_DENIED", "path does not match the dropped-file grant");
+      }
+      let full = grant.fullPath;
+      try {
+        full = realpathSync(full);
+      } catch {
+        this.auditFs(loaded, mode, requestPath, "NOT_FOUND");
+        throw apiError("NOT_FOUND", `path not found: ${requestPath}`);
+      }
+      let requestedFull: string;
+      try {
+        requestedFull = realpathSync(requestPath);
+      } catch {
+        this.auditFs(loaded, mode, requestPath, "NOT_FOUND");
+        throw apiError("NOT_FOUND", `path not found: ${requestPath}`);
+      }
+      if (full !== grant.fullPath || requestedFull !== grant.fullPath || !statSync(full).isFile()) {
+        this.auditFs(loaded, mode, requestPath, "PERMISSION_DENIED");
+        throw apiError("PERMISSION_DENIED", "dropped file was replaced");
+      }
+      if (this.isProtectedPath(full) || isDeniedFsPath(normalizeFsPath(full))) {
+        this.auditFs(loaded, mode, requestPath, "PERMISSION_DENIED");
+        throw apiError("PERMISSION_DENIED", "dropped path is reserved by the app");
+      }
+      return { full, rel: `<dropped>/${basename(full)}`, root: dirname(full) };
+    }
     const rule: PluginFsRule = loaded.fsPolicy[mode] ?? { root: "workspace", scope: [] };
     const root =
       rule.root === "userSelected" ? loaded.userRoot : this.services.getWorkspacePath();
@@ -2819,7 +3374,10 @@ export class PluginRuntime {
           this.assertPermission(loaded, "ui.panel");
           const panel = loaded.manifest.ui?.panel;
           if (!panel) throw apiError("NOT_FOUND", "plugin does not declare ui.panel");
-          const htmlPath = join(pluginPath, panel);
+          const htmlPath = resolveInsidePlugin(pluginPath, panel);
+          if (!htmlPath) {
+            throw apiError("INVALID_PARAMS", `panel html must stay inside the plugin: ${panel}`);
+          }
           if (!existsSync(htmlPath)) {
             throw apiError("NOT_FOUND", `panel html missing: ${panel}`);
           }
@@ -2836,6 +3394,7 @@ export class PluginRuntime {
             height: loaded.manifest.ui?.height ?? 360,
             htmlPath,
             netDomains: this.netDomains(loaded),
+            allowMicrophone: loaded.permissions.has("ui.microphone"),
             ...(loaded.development ? { development: true } : {}),
           });
           this.services.audit?.({
@@ -2875,6 +3434,112 @@ export class PluginRuntime {
           return { path, name: path.split(/[\\/]/).filter(Boolean).at(-1) || path };
         },
       },
+      desktop: {
+        listOperations: async () => {
+          this.assertPermission(loaded, "desktop.control");
+          const controller = this.services.desktopControl;
+          if (!controller) {
+            throw apiError("UNSUPPORTED", "host api not available: desktop.listOperations");
+          }
+          const operations = controller.operations;
+          this.services.audit?.({
+            pluginId,
+            api: "desktop.listOperations",
+            ok: true,
+            count: operations.length,
+            ts: Date.now(),
+          });
+          return operations.map(({ id, description, risk }) => ({ id, description, risk }));
+        },
+        invoke: async (rawInput: unknown) => {
+          this.assertPermission(loaded, "desktop.control");
+          if (!rawInput || typeof rawInput !== "object" || Array.isArray(rawInput)) {
+            throw apiError("INVALID_PARAMS", "desktop.invoke input must be an object");
+          }
+          const input = rawInput as Record<string, unknown>;
+          const operation = typeof input.operation === "string" ? input.operation : "";
+          const args = input.args === undefined ? [] : input.args;
+          if (!Array.isArray(args)) {
+            throw apiError("INVALID_PARAMS", "desktop.invoke args must be an array");
+          }
+          if (!this.services.desktopControl) {
+            throw apiError("UNSUPPORTED", "host api not available: desktop.invoke");
+          }
+          const operationInfo = this.services.desktopControl.operations.find(
+            (candidate) => candidate.id === operation,
+          );
+          // The controller's `confirm` flag is an acknowledgement by the
+          // caller, not a decision by the user. A plugin can set it at will,
+          // so a dangerous operation additionally needs the host's native
+          // consent; a host without that service refuses outright.
+          if (operationInfo?.risk === "dangerous") {
+            if (input.confirm !== true) {
+              throw apiError(
+                "CONFIRMATION_REQUIRED",
+                `confirm=true is required for ${operation}`,
+              );
+            }
+            const consent = this.services.confirmDesktopControl;
+            const granted = consent
+              ? await consent({
+                  pluginId,
+                  pluginName: resolvePluginLocalizedString(
+                    loaded.manifest.name,
+                    this.services.getLocale?.(),
+                    pluginId,
+                  ),
+                  operation,
+                  description: operationInfo.description,
+                  args,
+                })
+              : false;
+            if (!granted) {
+              this.services.audit?.({
+                pluginId,
+                api: "desktop.invoke",
+                operation,
+                risk: operationInfo.risk,
+                ok: false,
+                errorCode: "PERMISSION_DENIED",
+                ts: Date.now(),
+              });
+              throw apiError(
+                "PERMISSION_DENIED",
+                consent
+                  ? `user declined ${operation}`
+                  : `${operation} needs a user confirmation this host cannot show`,
+              );
+            }
+          }
+          try {
+            const result = await this.services.desktopControl.invoke({
+              operation,
+              args,
+              confirm: input.confirm === true,
+            } satisfies McpControlInvokeInput);
+            this.services.audit?.({
+              pluginId,
+              api: "desktop.invoke",
+              operation,
+              risk: operationInfo?.risk,
+              ok: true,
+              ts: Date.now(),
+            });
+            return result;
+          } catch (error) {
+            this.services.audit?.({
+              pluginId,
+              api: "desktop.invoke",
+              operation,
+              risk: operationInfo?.risk,
+              ok: false,
+              errorCode: (error as { code?: unknown })?.code,
+              ts: Date.now(),
+            });
+            throw error;
+          }
+        },
+      },
       fs: {
         readText: async (pathFromRoot: string) => {
           const { full, rel } = await this.resolveFsRequest(
@@ -2891,6 +3556,77 @@ export class PluginRuntime {
             path: rel,
           });
           return content;
+        },
+        stat: async (pathFromRoot: string, grantId?: string) => {
+          const { full, rel } = await this.resolveFsRequest(loaded, "read", pathFromRoot, {
+            dropGrantId: grantId,
+          });
+          let info: ReturnType<typeof statSync>;
+          try {
+            info = statSync(full);
+          } catch (error) {
+            this.auditFs(loaded, "read", rel, "NOT_FOUND");
+            throw apiError("NOT_FOUND", error instanceof Error ? error.message : String(error));
+          }
+          if (!info.isFile()) {
+            this.auditFs(loaded, "read", rel, "INVALID_ARGUMENT");
+            throw apiError("INVALID_ARGUMENT", "only files can be stated");
+          }
+          this.services.audit?.({
+            pluginId,
+            api: "fs.stat",
+            ok: true,
+            ts: Date.now(),
+            path: rel,
+          });
+          return { size: info.size, mtimeMs: info.mtimeMs };
+        },
+        readRange: async (
+          pathFromRoot: string,
+          byteOffset: number,
+          length: number,
+          grantId?: string,
+        ) => {
+          const { full, rel } = await this.resolveFsRequest(loaded, "read", pathFromRoot, {
+            dropGrantId: grantId,
+          });
+          if (
+            !Number.isSafeInteger(byteOffset) ||
+            byteOffset < 0 ||
+            !Number.isSafeInteger(length) ||
+            length < 0 ||
+            length > MAX_FS_READ_RANGE_BYTES
+          ) {
+            this.auditFs(loaded, "read", rel, "INVALID_ARGUMENT");
+            throw apiError(
+              "INVALID_ARGUMENT",
+              `byte range must be a non-negative offset and a length up to ${MAX_FS_READ_RANGE_BYTES} bytes`,
+            );
+          }
+          const info = statSync(full);
+          if (!info.isFile()) {
+            this.auditFs(loaded, "read", rel, "INVALID_ARGUMENT");
+            throw apiError("INVALID_ARGUMENT", "only files can be read by range");
+          }
+          const handle = await openFile(full, "r");
+          try {
+            const buffer = Buffer.alloc(length);
+            const { bytesRead } = await handle.read(buffer, 0, length, byteOffset);
+            this.services.audit?.({
+              pluginId,
+              api: "fs.readRange",
+              ok: true,
+              ts: Date.now(),
+              path: rel,
+              data: { byteOffset, length: bytesRead, totalSize: info.size },
+            });
+            return {
+              bytes: Uint8Array.from(buffer.subarray(0, bytesRead)),
+              totalSize: info.size,
+            };
+          } finally {
+            await handle.close().catch(() => {});
+          }
         },
         readPreview: async (pathFromRoot: string) => {
           const { full, rel } = await this.resolveFsRequest(
@@ -2909,7 +3645,7 @@ export class PluginRuntime {
             });
             throw apiError("INVALID_ARGUMENT", "only files can be previewed");
           }
-          const preview = previewFile(full, rel);
+          const preview = await previewFile(full, rel);
           this.services.audit?.({
             pluginId,
             api: "fs.readPreview",
@@ -3041,6 +3777,7 @@ export class PluginRuntime {
             path: string;
             isDirectory: boolean;
             size?: number;
+            mtimeMs?: number;
           }> = [];
           for (const name of names.sort()) {
             if (entries.length >= MAX_LIST_ENTRIES) break;
@@ -3069,6 +3806,7 @@ export class PluginRuntime {
               path: childRel,
               isDirectory: false,
               size: st.size,
+              mtimeMs: st.mtimeMs,
             });
           }
           this.services.audit?.({

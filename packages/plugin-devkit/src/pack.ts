@@ -1,7 +1,8 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { PLUGIN_ID_PATTERN } from "@pi-desktop/plugin-sdk";
 import { check, type CheckResult } from "./check.js";
-import { walkPluginDir } from "./walk.js";
+import { selectPackageFiles, walkPluginDir } from "./walk.js";
 
 export type PackResult = {
   /** Absolute path of the written `.piplug`. */
@@ -11,6 +12,8 @@ export type PackResult = {
   /** Hex sha256 of the package, the value install-time integrity checks compare. */
   shasum: string;
   fileCount: number;
+  /** Credential files found in the directory and left out of the package. */
+  skipped: string[];
   check: CheckResult;
 };
 
@@ -124,12 +127,21 @@ export async function pack(dirInput: string, options: PackOptions = {}): Promise
     throw new Error(`plugin check failed: ${detail}`);
   }
   const manifest = checked.manifest;
+  // `check` already rejects a malformed id; this guard keeps the output file
+  // name derived from a validated value even if the caller bypassed it.
+  if (!PLUGIN_ID_PATTERN.test(manifest.id)) {
+    throw new Error(
+      `plugin id "${manifest.id}" must match ${PLUGIN_ID_PATTERN.source} before it can name a package`,
+    );
+  }
+  if (!/^[A-Za-z0-9][A-Za-z0-9._+-]*$/.test(manifest.version)) {
+    throw new Error(`plugin version "${manifest.version}" cannot name a package file`);
+  }
 
   const walk = await walkPluginDir(dir);
-  // `dist/` holds our own output; packaging previous packages would nest them.
+  const selection = selectPackageFiles(walk.files);
   const entries: ZipEntry[] = [];
-  for (const file of walk.files) {
-    if (file.path === "dist" || file.path.startsWith("dist/")) continue;
+  for (const file of selection.files) {
     entries.push({ name: file.path, data: await readFile(file.absolutePath) });
   }
 
@@ -149,6 +161,7 @@ export async function pack(dirInput: string, options: PackOptions = {}): Promise
     byteLength: bytes.length,
     shasum,
     fileCount: entries.length,
+    skipped: selection.skippedSecrets.map((file) => file.path),
     check: checked,
   };
 }

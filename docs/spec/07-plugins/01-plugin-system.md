@@ -60,10 +60,11 @@ In one sentence:
 5. **Theme plugins**: ship a CSS file that overrides the design tokens
 
 ### Beyond the MVP scope (implemented)
-6. **MCP server plugins**: declare stdio or remote HTTP MCP servers whose tools
+6. **Work panel view plugins**: dock isolated HTML views in the app's work panel
+7. **MCP server plugins**: declare stdio or remote HTTP MCP servers whose tools
    join the agent's tool set
-7. **Background service plugins**: keep a supervised resident worker alive
-8. **Inter-plugin message bus**: publish/subscribe over declared topics
+8. **Background service plugins**: keep a supervised resident worker alive
+9. **Inter-plugin message bus**: publish/subscribe over declared topics
 
 ### Later
 - Billing / signed plugins
@@ -219,6 +220,10 @@ are reachable there) and CPU/memory limits.
 ### 6.3 Plugin Panel UI
 - Load the plugin page in a dedicated sandboxed `BrowserWindow` and isolated
   per-plugin session partition
+- Closing a panel (capsule close, disable, uninstall, or crash teardown) must
+  not read a destroyed `BrowserWindow` or its `webContents`. The host copies
+  any contents identity needed for drop-record cleanup while the window is
+  still alive so the `closed` handler cannot raise `Object has been destroyed`.
 - Use a frameless window on macOS, Windows, and Linux. The preload reserves
   exactly a transparent 46px drag band and renders only a minimal fixed
   top-right capsule with three controls: minimize, maximize/restore, and close.
@@ -251,6 +256,9 @@ are reachable there) and CPU/memory limits.
   on the root `html`/`body` viewport as well. Windows' classic scrollbar
   rendering makes a duplicated root reservation visible as an empty right-side
   rail outside the plugin surface.
+- The host preload applies the global 6px, trackless, reveal-while-interacting
+  scrollbar contract to docked and detached plugin panel documents. External
+  pages loaded inside the Browser guest remain page-owned and are not restyled.
 - The plugin owns its title, toolbar, and every other visible panel surface.
 - Render the host capsule in a closed preload-owned Shadow DOM so plugin CSS
   cannot restyle its controls
@@ -283,10 +291,15 @@ Namespace: `pi.plugin.*`
 - `pi.fs.glob(pattern)`
 
 ### Agent (requires permission)
+- `pi.project.create({ path })` // `project.create`; returns a durable project id without activating it
 - `pi.agent.registerTool(tool)`
 - `pi.agent.unregisterTool(name)`
 - `pi.models.list()` // `models.list`
 - `pi.session.getLlmContext()` // `session.read`; in-flight tool session only
+- `pi.session.import()` / `importBatch()` // `session.import`; declared sources only
+- `pi.session.list()` / `get()` / `listMessages()` // `session.read.own`
+- `pi.session.rename()` // `session.update.own`
+- `pi.session.delete()` // `session.delete.own`
 - `pi.agent.complete(input)` // `agent.complete`; host-owned one-shot
 
 Skills are contributed declaratively (`contributes.skills` + `agent.prompt.inject`),
@@ -492,6 +505,17 @@ Rules the control encodes:
   environment/header rows, validation, duplicate checks, and Test connection.
 - Enablement is app-local and project records shadow global records before the
   active runtime filters disabled rows.
+- A previously advertised user MCP tool remains routable after transport loss
+  or a saved connection edit. The next call re-handshakes the current saved
+  server and validates the tool against its fresh list before dispatch; no
+  additional `ToolSearch` is required. Unknown names cannot trigger discovery.
+- Enablement and project scope are checked before and after recovery. Removing
+  a server or disposing the runtime discards its remembered names; an obsolete
+  in-flight handshake cannot restore them. Concurrent calls share a handshake.
+- A failed recovery reports `UNAVAILABLE` and retains the existing failed-server
+  policy (edit or Test connection to retry), rather than repeatedly connecting
+  on each call. Removed tools return `TOOL_NOT_FOUND`. Recovery never replays a
+  failed `tools/call`, which may already have performed a mutation.
 
 ### 12.3 Skills management in Settings > Agent
 
@@ -534,7 +558,7 @@ Plugins → Load Development Plugin → choose directory
 | Ecosystem object | Relationship |
 |---|---|
 | pi Skills | Can be distributed / managed by skill plugins |
-| pi Extensions | Not directly equivalent; needs an adapter layer |
+| pi Extensions | A plugin contributes them as `contributes.agentExtensions` with the `agent.extension` grant; a pi CLI extension imports as a development plugin (D387 / D388, ADR 0214 / 0215, [16-trusted-extensions.md](16-trusted-extensions.md)) |
 | MCP | A plugin declares MCP servers in `contributes.mcpServers`; their tools join the agent's tool set |
 | Agent Tools | One of the most important plugin extension surfaces |
 

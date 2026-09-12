@@ -168,12 +168,30 @@ test("editing what a server runs drops the live connection", async (t) => {
   assert.match(JSON.stringify(await rt.callTool("mcp_stub_lookup", {}, "/repo")), /first:lookup/);
 
   rt.setRecords([stubRecord(dir, { env: { STUB_TAG: "second" } })]);
-  // The old client is gone, so the tool cache is empty until the next assembly.
-  assert.equal(rt.hasTool("mcp_stub_lookup"), false);
+  // Routing survives the edit, but dispatch must handshake the new config.
+  assert.equal(rt.hasTool("mcp_stub_lookup"), true);
   assert.equal(rt.statusFor("stub").state, "idle");
 
-  await rt.toolsForProject("/repo");
   assert.match(JSON.stringify(await rt.callTool("mcp_stub_lookup", {}, "/repo")), /second:lookup/);
+});
+
+test("a terminated stdio process recovers on the next tool call", async (t) => {
+  const dir = stubDir();
+  const pidFile = join(dir, "pid");
+  let client;
+  const rt = runtime(t, {
+    createClient: (config) => { client = new McpServerClient(config); return client; },
+  });
+  rt.setRecords([stubRecord(dir, { env: { STUB_PID_FILE: pidFile } })]);
+  await rt.toolsForProject("/repo");
+  process.kill(Number(readFileSync(pidFile, "utf8")), "SIGTERM");
+  for (let attempt = 0; client.isConnected() && attempt < 100; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.equal(client.isConnected(), false);
+  assert.deepEqual(client.getTools(), []);
+  assert.match(JSON.stringify(await rt.callTool("mcp_stub_lookup", {}, "/repo")), /lookup/);
+  assert.equal(rt.statusFor("stub").state, "ready");
 });
 
 test("changing only scope or label keeps the connection", async (t) => {
@@ -187,6 +205,134 @@ test("changing only scope or label keeps the connection", async (t) => {
   ]);
   assert.equal(rt.statusFor("stub").state, "ready");
   assert.equal(rt.hasTool("mcp_stub_lookup"), true);
+});
+
+/** A transport disconnect clears the client's tools, just like onClose. */
+function reconnectingRuntime(t) {
+  let connected = false;
+  let tools = [];
+  const state = { handshakes: 0, calls: [], advertised: [{ name: "lookup" }], fail: false, gate: null };
+  const client = {
+    isConnected: () => connected,
+    getTools: () => tools,
+    close: () => { connected = false; tools = []; },
+    connect: async () => {
+      state.handshakes += 1;
+      await state.gate;
+      if (state.fail) throw new Error("offline");
+      connected = true;
+      tools = state.advertised;
+      return tools;
+    },
+    callTool: async (name) => { state.calls.push(name); return name; },
+  };
+  const rt = new UserMcpRuntime({ createClient: () => client });
+  t.after(() => rt.disposeAll());
+  rt.setRecords([stubRecord("/unused")]);
+  return { rt, client, state };
+}
+
+test("an advertised tool reconnects after transport loss without another search", async (t) => {
+  const { rt, client, state } = reconnectingRuntime(t);
+  await rt.toolsForProject("/repo");
+  client.close();
+  assert.equal(await rt.callTool("mcp_stub_lookup", {}, "/repo"), "lookup");
+  assert.equal(state.handshakes, 2);
+  assert.deepEqual(state.calls, ["lookup"]);
+});
+
+test("reconnection revalidates the advertised tool list before dispatch", async (t) => {
+  const { rt, client, state } = reconnectingRuntime(t);
+  await rt.toolsForProject("/repo");
+  client.close();
+  state.advertised = [{ name: "replacement" }];
+  await assert.rejects(rt.callTool("mcp_stub_lookup", {}, "/repo"), { errorCode: "TOOL_NOT_FOUND" });
+  assert.equal(state.handshakes, 2);
+  assert.deepEqual(state.calls, []);
+});
+
+test("a failed reconnect reports unavailability without repeated handshakes", async (t) => {
+  const { rt, client, state } = reconnectingRuntime(t);
+  await rt.toolsForProject("/repo");
+  client.close();
+  state.fail = true;
+  for (let i = 0; i < 2; i += 1) {
+    await assert.rejects(rt.callTool("mcp_stub_lookup", {}, "/repo"), { errorCode: "UNAVAILABLE" });
+  }
+  assert.equal(state.handshakes, 2);
+  assert.deepEqual(state.calls, []);
+});
+
+test("scope and enablement are checked before reconnecting a remembered tool", async (t) => {
+  for (const change of [{ enabled: false }, { scope: { mode: "projects", projects: ["/other"] } }]) {
+    const { rt, client, state } = reconnectingRuntime(t);
+    await rt.toolsForProject("/repo");
+    client.close();
+    rt.setRecords([stubRecord("/unused", change)]);
+    await assert.rejects(rt.callTool("mcp_stub_lookup", {}, "/repo"), (error) => {
+      assert.equal(error.errorCode, "TOOL_NOT_FOUND");
+      assert.match(error.message, /not active for this session/);
+      return true;
+    });
+    assert.equal(state.handshakes, 1);
+    assert.deepEqual(state.calls, []);
+  }
+});
+
+test("concurrent calls share one recovery handshake", async (t) => {
+  const { rt, client, state } = reconnectingRuntime(t);
+  await rt.toolsForProject("/repo");
+  client.close();
+  let release;
+  state.gate = new Promise((resolve) => { release = resolve; });
+  const first = rt.callTool("mcp_stub_lookup", {}, "/repo");
+  const second = rt.callTool("mcp_stub_lookup", {}, "/repo");
+  assert.equal(state.handshakes, 2);
+  release();
+  assert.deepEqual(await Promise.all([first, second]), ["lookup", "lookup"]);
+});
+
+test("scope changes during recovery prevent dispatch", async (t) => {
+  const { rt, client, state } = reconnectingRuntime(t);
+  await rt.toolsForProject("/repo");
+  client.close();
+  let release;
+  state.gate = new Promise((resolve) => { release = resolve; });
+  const pending = rt.callTool("mcp_stub_lookup", {}, "/repo");
+  rt.setRecords([stubRecord("/unused", { scope: { mode: "projects", projects: ["/other"] } })]);
+  release();
+  await assert.rejects(pending, { errorCode: "TOOL_NOT_FOUND" });
+  assert.deepEqual(state.calls, []);
+});
+
+test("removing a server during recovery cannot restore its tools", async (t) => {
+  const { rt, client, state } = reconnectingRuntime(t);
+  await rt.toolsForProject("/repo");
+  client.close();
+  let release;
+  state.gate = new Promise((resolve) => { release = resolve; });
+  const pending = rt.callTool("mcp_stub_lookup", {}, "/repo");
+  rt.setRecords([]);
+  release();
+  await assert.rejects(pending, { errorCode: "TOOL_NOT_FOUND" });
+  assert.equal(rt.hasTool("mcp_stub_lookup"), false);
+  assert.equal(client.isConnected(), false);
+  assert.deepEqual(state.calls, []);
+});
+
+test("unknown names never cause a handshake and failed calls are not replayed", async (t) => {
+  const { rt, client, state } = reconnectingRuntime(t);
+  await assert.rejects(rt.callTool("mcp_stub_lookup", {}, "/repo"), { errorCode: "TOOL_NOT_FOUND" });
+  assert.equal(state.handshakes, 0);
+  await rt.toolsForProject("/repo");
+  client.callTool = async (name) => {
+    state.calls.push(name);
+    client.close();
+    throw Object.assign(new Error("response lost"), { errorCode: "UNAVAILABLE" });
+  };
+  await assert.rejects(rt.callTool("mcp_stub_lookup", {}, "/repo"), { errorCode: "UNAVAILABLE" });
+  assert.deepEqual(state.calls, ["lookup"]);
+  assert.equal(state.handshakes, 1);
 });
 
 test("a broken server fails as status and is not retried every session", async (t) => {

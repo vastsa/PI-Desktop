@@ -119,6 +119,6 @@ test("watchers are released on teardown and reloads reach the renderer", () => {
   assert.match(disposeAll, /this\.disposeWatchers\(\)/);
   const reported = slice(mainSrc, "onPluginReloaded:", "\n  },");
   assert.match(reported, /IPC\.event\.toast/);
-  assert.match(reported, /IPC\.event\.pluginChanged, \{ reason: "reload", pluginId \}/);
+  assert.match(reported, /IPC\.event\.pluginChanged,\s*\{ reason: "reload", pluginId \}/);
   assert.match(reported, /Reload failed/);
 });

@@ -34,6 +34,15 @@ test("chat prose keeps a refined hierarchy and quieter chrome", () => {
   assert.match(stylesSource, /\.prose-chat th\s*\{[^}]*background:\s*var\(--ds-tile-deep\)/);
   assert.match(stylesSource, /\.prose-chat tbody tr:nth-child\(even\) td\s*\{[^}]*background:\s*var\(--ds-tile\)/);
   assert.match(stylesSource, /\.prose-chat tbody tr:hover td\s*\{[^}]*background:\s*var\(--ds-tile-hover\)/);
+  // Wide GFM tables stay in the transcript: full-width wrap, wrapping cells,
+  // no nowrap headers (PR #195).
+  assert.match(stylesSource, /\.prose-chat \.table-wrap\s*\{[^}]*width:\s*100%/);
+  assert.match(stylesSource, /\.prose-chat \.table-wrap table\s*\{[^}]*width:\s*100%/);
+  assert.match(
+    stylesSource,
+    /\.prose-chat th,\s*\.prose-chat td\s*\{[^}]*overflow-wrap:\s*anywhere/,
+  );
+  assert.doesNotMatch(stylesSource, /\.prose-chat th\s*\{[^}]*white-space:\s*nowrap/);
   assert.match(stylesSource, /\.code-block\s*\{[^}]*border-radius:\s*var\(--radius-md-plus\)/);
   assert.doesNotMatch(stylesSource, /\.code-block\s*\{[^}]*border:/);
   assert.doesNotMatch(stylesSource, /\.code-block-head\s*\{[^}]*border-bottom/);

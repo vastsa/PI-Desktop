@@ -312,3 +312,39 @@ export function zhipuRequestCompat(input: {
     ? { thinkingFormat: "zai", zaiToolStream: true }
     : undefined;
 }
+
+function mentionsDeepSeek(value: string | undefined): boolean {
+  return (value ?? "").toLowerCase().includes("deepseek");
+}
+
+/**
+ * DeepSeek thinking mode requires every replayed assistant message to carry
+ * `reasoning_content` (empty string when that turn produced no thinking).
+ * pi-ai auto-detects only `provider === "deepseek"` or a `deepseek.com` URL;
+ * PI-Desktop stores a UUID as `model.provider`, so aggregators and custom
+ * gateways never match. Detect the family from vendorKey, URL, model id, or
+ * catalog family without changing `thinkingFormat`.
+ */
+export function isDeepSeekReasoningReplay(input: {
+  vendorKey?: string;
+  baseUrl?: string;
+  modelId?: string;
+  family?: string;
+}): boolean {
+  const key = normalizedVendorKey(input.vendorKey);
+  if (key.includes("deepseek")) return true;
+  if ((input.baseUrl ?? "").toLowerCase().includes("deepseek.com")) return true;
+  return mentionsDeepSeek(input.modelId) || mentionsDeepSeek(input.family);
+}
+
+/** pi-ai Completions flag that fills missing `reasoning_content` with "". */
+export function deepseekRequestCompat(input: {
+  vendorKey?: string;
+  baseUrl?: string;
+  modelId?: string;
+  family?: string;
+}): { requiresReasoningContentOnAssistantMessages: true } | undefined {
+  return isDeepSeekReasoningReplay(input)
+    ? { requiresReasoningContentOnAssistantMessages: true }
+    : undefined;
+}

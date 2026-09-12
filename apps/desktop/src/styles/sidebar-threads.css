@@ -62,44 +62,12 @@
   padding-top: 2px;
 }
 
-/* Keep sidebar scrolling available without turning the navigation tree into a
-   second visual rail. The base.css scrollbar is already transparent at rest
-   and revealed on hover or while scrolling; the sidebar lists narrow it to
-   6px, also reveal it while a row has keyboard focus, and use a 20% ink thumb
-   in every revealed state so the thumb never darkens further under the
-   pointer. No `scrollbar-color` here: it would disable the pseudo-elements. */
-.sidebar-session-groups,
-.sidebar-session-group-body.standalone {
-  --sidebar-scrollbar-thumb-hover: color-mix(in oklab, var(--ds-text-primary) 20%, transparent);
-}
-
-.sidebar-session-groups::-webkit-scrollbar,
-.sidebar-session-group-body.standalone::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-.sidebar-session-groups::-webkit-scrollbar-thumb,
-.sidebar-session-group-body.standalone::-webkit-scrollbar-thumb {
-  border-width: 1px;
-}
-
-.sidebar-session-groups:hover::-webkit-scrollbar-thumb,
-.sidebar-session-groups:focus-within::-webkit-scrollbar-thumb,
-.sidebar-session-groups[data-scrolling]::-webkit-scrollbar-thumb,
-.sidebar-session-group-body.standalone:hover::-webkit-scrollbar-thumb,
-.sidebar-session-group-body.standalone:focus-within::-webkit-scrollbar-thumb,
-.sidebar-session-group-body.standalone[data-scrolling]::-webkit-scrollbar-thumb,
-.sidebar-session-groups::-webkit-scrollbar-thumb:hover,
-.sidebar-session-groups::-webkit-scrollbar-thumb:active,
-.sidebar-session-group-body.standalone::-webkit-scrollbar-thumb:hover,
-.sidebar-session-group-body.standalone::-webkit-scrollbar-thumb:active {
-  background: var(--sidebar-scrollbar-thumb-hover);
-  background-clip: content-box;
-}
-
 .sidebar-session-group {
   min-width: 0;
+}
+
+.sidebar-session-group.project-group {
+  position: relative;
 }
 
 .sidebar-session-group-header {
@@ -110,6 +78,44 @@
   padding: 0 2px;
 }
 
+.project-group.is-dragging {
+  opacity: 0.5;
+}
+
+.sidebar-session-group-title.project-toggle {
+  cursor: grab;
+}
+
+.project-group.is-dragging .sidebar-session-group-title {
+  cursor: grabbing;
+}
+
+.project-group.is-drop-before::before,
+.project-group.is-drop-after::after {
+  position: absolute;
+  right: 8px;
+  left: 8px;
+  z-index: 1;
+  height: 2px;
+  border-radius: var(--radius-round);
+  background: var(--ds-accent);
+  content: "";
+  pointer-events: none;
+}
+
+.project-group.is-drop-before::before {
+  top: -1px;
+}
+
+.project-group.is-drop-after::after {
+  bottom: -1px;
+}
+
+.project-group.is-drop-target > .sidebar-session-group-header {
+  outline: 1px solid var(--ds-accent);
+  outline-offset: -1px;
+  background: color-mix(in oklab, var(--ds-accent) 12%, transparent);
+}
 .sidebar-session-group-title {
   display: flex;
   min-width: 0;
@@ -123,6 +129,8 @@
   font-weight: var(--font-weight-medium);
   line-height: var(--leading-compact);
   text-align: left;
+  user-select: none;
+  touch-action: pan-y;
 }
 
 .sidebar-session-group-title:not(.static):hover {

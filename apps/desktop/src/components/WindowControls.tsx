@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { Copy, Minus, Square, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
+import { IconClose, IconCopy, IconMinus, IconSquare } from "./icons";
+import { TooltipButton } from "./ui";
 
 /**
  * Renderer-drawn window controls for Windows/Linux (D-frameless chrome).
@@ -44,24 +45,24 @@ export function WindowControls({
         contained ? " window-controls-in-pane" : ""
       }`}
     >
-      <button
+      <TooltipButton
         type="button"
         className="window-control-btn"
-        title={t("window.minimize", "Minimize")}
-        aria-label={t("window.minimize", "Minimize")}
+        tooltip={t("window.minimize", "Minimize")}
+        ariaLabel={t("window.minimize", "Minimize")}
         onClick={() => void api.windowControl("minimize")}
       >
-        <Minus size={12} strokeWidth={1.5} aria-hidden />
-      </button>
-      <button
+        <IconMinus size={12} strokeWidth={1.5} aria-hidden />
+      </TooltipButton>
+      <TooltipButton
         type="button"
         className="window-control-btn"
-        title={
+        tooltip={
           maximized
             ? t("window.restore", "Restore")
             : t("window.maximize", "Maximize")
         }
-        aria-label={
+        ariaLabel={
           maximized
             ? t("window.restore", "Restore")
             : t("window.maximize", "Maximize")
@@ -73,20 +74,20 @@ export function WindowControls({
         }
       >
         {maximized ? (
-          <Copy size={11} strokeWidth={1.4} aria-hidden />
+          <IconCopy size={11} strokeWidth={1.4} aria-hidden />
         ) : (
-          <Square size={10} strokeWidth={1.4} aria-hidden />
+          <IconSquare size={10} strokeWidth={1.4} aria-hidden />
         )}
-      </button>
-      <button
+      </TooltipButton>
+      <TooltipButton
         type="button"
         className="window-control-btn window-control-close"
-        title={t("window.close", "Close")}
-        aria-label={t("window.close", "Close")}
+        tooltip={t("window.close", "Close")}
+        ariaLabel={t("window.close", "Close")}
         onClick={() => void api.windowControl("close")}
       >
-        <X size={12} strokeWidth={1.5} aria-hidden />
-      </button>
+        <IconClose size={12} strokeWidth={1.5} aria-hidden />
+      </TooltipButton>
     </div>
   );
 }

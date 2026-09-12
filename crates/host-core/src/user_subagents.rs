@@ -15,6 +15,9 @@ pub const MAX_SUBAGENT_BYTES: usize = 32 * 1024;
 const MAX_NAME_CHARS: usize = 40;
 const MAX_DESCRIPTION_CHARS: usize = 400;
 const MAX_TURNS_CEILING: u32 = 80;
+/// Mirrors `MAX_SUBAGENT_MAX_TOKENS` in `packages/shared`. No published model
+/// accepts an output limit above 128k, so a larger declared value is a typo.
+const MAX_TOKENS_CEILING: u32 = 200_000;
 const DEFAULT_TOOLS: [&str; 3] = ["Read", "Glob", "Grep"];
 const ASSIGNABLE_TOOLS: [&str; 7] = [
     "Read",
@@ -25,7 +28,9 @@ const ASSIGNABLE_TOOLS: [&str; 7] = [
     "Edit",
     "Write",
 ];
-const THINKING_LEVELS: [&str; 7] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+const THINKING_LEVELS: [&str; 8] = [
+    "off", "minimal", "low", "medium", "high", "xhigh", "max", "omit",
+];
 const SUBAGENT_KIND: &str = "subagents";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -47,6 +52,8 @@ pub struct UserSubagentRecord {
     pub thinking_level: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_turns: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u32>,
     pub path: String,
     #[serde(default)]
     pub size_bytes: u64,
@@ -65,6 +72,7 @@ pub struct UserSubagentInput {
     pub model: Option<String>,
     pub thinking_level: Option<String>,
     pub max_turns: Option<u32>,
+    pub max_tokens: Option<u32>,
     pub enabled: Option<bool>,
     /// Kept for protocol compatibility; subagents are global-only now.
     #[allow(dead_code)]
@@ -119,6 +127,26 @@ fn normalize_thinking(value: Option<&str>) -> Option<String> {
         .map(|level| (*level).to_string())
 }
 
+/// A definition pin, normalized, or an error when it is not a pin.
+///
+/// The stored shape is `provider/model`. Only the slash is structural: the
+/// provider half is matched by a normalized alias in the runtime
+/// (`findProvider`), and a custom endpoint's display name may contain spaces,
+/// so those are valid here too. Rejecting a value the editor offers would leave
+/// the user with a definition that saves but can never resolve.
+fn normalize_model(value: Option<&str>) -> Result<Option<String>> {
+    let Some(trimmed) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+    let Some((provider, model)) = trimmed.split_once('/') else {
+        bail!("SUBAGENT_INVALID: `model` must be written as provider/model");
+    };
+    if provider.is_empty() || model.is_empty() {
+        bail!("SUBAGENT_INVALID: `model` must be written as provider/model");
+    }
+    Ok(Some(trimmed.to_string()))
+}
+
 fn parse_record(path: &Path, state: &CapabilityState) -> Option<UserSubagentRecord> {
     let raw = fs::read_to_string(path).ok()?;
     if raw.len() > MAX_SUBAGENT_BYTES {
@@ -152,6 +180,11 @@ fn parse_record(path: &Path, state: &CapabilityState) -> Option<UserSubagentReco
         .and_then(|value| value.parse::<u32>().ok())
         .filter(|value| *value > 0)
         .map(|value| value.min(MAX_TURNS_CEILING));
+    let max_tokens = front
+        .get("maxtokens")
+        .and_then(|value| value.parse::<u32>().ok())
+        .filter(|value| *value > 0)
+        .map(|value| value.min(MAX_TOKENS_CEILING));
     Some(UserSubagentRecord {
         id: name.clone(),
         name,
@@ -166,6 +199,7 @@ fn parse_record(path: &Path, state: &CapabilityState) -> Option<UserSubagentReco
             .filter(|value| !value.is_empty()),
         thinking_level: normalize_thinking(front.get("thinkinglevel").map(String::as_str)),
         max_turns,
+        max_tokens,
         path: path.to_string_lossy().to_string(),
         size_bytes: raw.len() as u64,
         created_at: updated_at.clone(),
@@ -189,6 +223,9 @@ fn render_document(record: &UserSubagentRecord, body: &str) -> String {
     }
     if let Some(max_turns) = record.max_turns {
         output.push_str(&format!("maxTurns: {max_turns}\n"));
+    }
+    if let Some(max_tokens) = record.max_tokens {
+        output.push_str(&format!("maxTokens: {max_tokens}\n"));
     }
     output.push_str("---\n\n");
     output.push_str(body.trim());
@@ -283,12 +320,16 @@ impl UserSubagentRegistry {
             enabled: input.enabled.unwrap_or(true),
             scope: ActivationScope::default(),
             tools,
-            model: input.model.filter(|value| !value.trim().is_empty()),
+            model: normalize_model(input.model.as_deref())?,
             thinking_level: normalize_thinking(input.thinking_level.as_deref()),
             max_turns: input
                 .max_turns
                 .filter(|value| *value > 0)
                 .map(|value| value.min(MAX_TURNS_CEILING)),
+            max_tokens: input
+                .max_tokens
+                .filter(|value| *value > 0)
+                .map(|value| value.min(MAX_TOKENS_CEILING)),
             path: String::new(),
             size_bytes: 0,
             created_at: Utc::now().to_rfc3339(),
@@ -356,7 +397,7 @@ impl UserSubagentRegistry {
         next.tools = tools;
         next.model = match input.model {
             Some(value) if value.trim().is_empty() => None,
-            Some(value) => Some(value),
+            Some(value) => normalize_model(Some(value.as_str()))?,
             None => current.model,
         };
         next.thinking_level = match input.thinking_level {
@@ -368,6 +409,11 @@ impl UserSubagentRegistry {
             Some(0) => None,
             Some(value) => Some(value.min(MAX_TURNS_CEILING)),
             None => current.max_turns,
+        };
+        next.max_tokens = match input.max_tokens {
+            Some(0) => None,
+            Some(value) => Some(value.min(MAX_TOKENS_CEILING)),
+            None => current.max_tokens,
         };
         next.enabled = input.enabled.unwrap_or(current.enabled);
         next.path = current.path.clone();
@@ -465,6 +511,12 @@ mod tests {
     }
 
     #[test]
+    fn omit_is_a_valid_thinking_override() {
+        assert_eq!(normalize_thinking(Some("omit")), Some("omit".into()));
+        assert_eq!(normalize_thinking(Some(" OMIT ")), Some("omit".into()));
+    }
+
+    #[test]
     fn document_contains_no_activation_state() {
         let record = UserSubagentRecord {
             id: "review".into(),
@@ -477,11 +529,72 @@ mod tests {
             model: None,
             thinking_level: None,
             max_turns: None,
+            max_tokens: None,
             path: "/tmp/review.md".into(),
             size_bytes: 0,
             created_at: String::new(),
             updated_at: String::new(),
         };
         assert!(!render_document(&record, "Review it").contains("enabled"));
+    }
+
+    #[test]
+    fn an_output_cap_is_written_and_an_absent_one_is_omitted() {
+        let mut record = UserSubagentRecord {
+            id: "review".into(),
+            name: "review".into(),
+            level: Some("global".into()),
+            description: "Review code".into(),
+            enabled: true,
+            scope: ActivationScope::default(),
+            tools: vec!["Read".into()],
+            model: None,
+            thinking_level: None,
+            max_turns: Some(20),
+            max_tokens: Some(16_000),
+            path: "/tmp/review.md".into(),
+            size_bytes: 0,
+            created_at: String::new(),
+            updated_at: String::new(),
+        };
+        let document = render_document(&record, "Review it");
+        assert!(document.contains("maxTurns: 20\n"));
+        assert!(document.contains("maxTokens: 16000\n"));
+
+        // Absent means "follow the model", so the key must not appear at all —
+        // a written `maxTokens: 0` would read back as an explicit empty cap.
+        record.max_tokens = None;
+        assert!(!render_document(&record, "Review it").contains("maxTokens"));
+    }
+
+    #[test]
+    fn a_model_pin_requires_a_slash_and_keeps_the_users_spelling() {
+        // The shape is `provider/model`; the provider half may be a vendor key
+        // or a display name, and a custom endpoint's name contains spaces.
+        assert_eq!(
+            normalize_model(Some("anthropic/claude-haiku-4-5")).unwrap(),
+            Some("anthropic/claude-haiku-4-5".into())
+        );
+        assert_eq!(
+            normalize_model(Some("  My Gateway/local-model  ")).unwrap(),
+            Some("My Gateway/local-model".into())
+        );
+        // An openrouter-style model id keeps its own slashes.
+        assert_eq!(
+            normalize_model(Some("openrouter/deepseek/deepseek-chat")).unwrap(),
+            Some("openrouter/deepseek/deepseek-chat".into())
+        );
+    }
+
+    #[test]
+    fn a_cleared_model_is_none_and_a_malformed_one_is_rejected() {
+        assert_eq!(normalize_model(None).unwrap(), None);
+        assert_eq!(normalize_model(Some("   ")).unwrap(), None);
+
+        // A bare id has no provider to look up, so the runtime could never
+        // resolve it; the editor rejects the same shape before saving.
+        assert!(normalize_model(Some("claude-haiku-4-5")).is_err());
+        assert!(normalize_model(Some("/claude-haiku-4-5")).is_err());
+        assert!(normalize_model(Some("anthropic/")).is_err());
     }
 }

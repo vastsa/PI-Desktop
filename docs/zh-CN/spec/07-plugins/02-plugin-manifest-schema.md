@@ -71,12 +71,14 @@ type PluginContributes = {
  commands?: PluginCommandContrib[];
  agentTools?: PluginAgentToolContrib[];
  skills?: Array<string | PluginSkillContrib>; // relative paths, or metadata overrides
+ agentExtensions?: string[]; // 在 agent sidecar 内运行的 ExtensionAPI 模块；需要 `agent.extension`（规格 16）
  settings?: PluginSettingContrib[];
  themes?: PluginThemeContrib[];
  mcpServers?: PluginMcpServerContrib[];
  services?: PluginServiceContrib[];
- bus?: PluginBusContrib;
- views?: PluginViewContrib[];
+  bus?: PluginBusContrib;
+  views?: PluginViewContrib[];
+  sessionSources?: PluginSessionSourceContrib[];
 };
 
 type PluginCommandContrib = {
@@ -114,7 +116,12 @@ type PluginViewContrib = {
  title: string | { en: string; "zh-CN": string };
  icon?: string; // 宿主图标集中的 token；未知 token 渲染为字母瓷砖
  entry: string; // 视图 HTML 入口的相对路径
- order?: number; // 插件视图分组内的升序排序键，默认 0
+  order?: number; // 插件视图分组内的升序排序键，默认 0
+};
+
+type PluginSessionSourceContrib = {
+ id: string; // ^[a-zA-Z][a-zA-Z0-9._-]{0,63}$，插件内唯一
+ label?: string | { en: string; "zh-CN": string };
 };
 
 type PluginThemeContrib = {
@@ -178,7 +185,14 @@ type PluginPermission =
  | "background.service"
  | "bus.publish"
  | "bus.subscribe"
- | "browser.cdp";
+ | "browser.cdp"
+ | "desktop.control"
+ | "ui.microphone"
+ | "project.create"
+ | "session.import"
+ | "session.read.own"
+ | "session.update.own"
+ | "session.delete.own";
 ```
 
 未知权限=验证失败。
@@ -274,7 +288,8 @@ MVP 只能实现：
 6. `main` / `ui.panel` / 技能 / `views[].entry` 路径必须存在
 7.工具`name`仅允许`[a-zA-Z][a-zA-Z0-9_]*`
 8. 贡献 ID（`themes`、`mcpServers`、`services`、`views`）必须匹配
-   `[a-zA-Z][a-zA-Z0-9_-]{0,63}` 并在自己的列表中保持唯一
+   `[a-zA-Z][a-zA-Z0-9_-]{0,63}` 并在自己的列表中保持唯一；
+   `sessionSources` 允许额外使用 `.`
 9. `themes[].path` 必须存在且以 `.css` 结尾； `themes[].base` 可能只是
    `light` 或 `dark`
 10. `mcpServers[]` 必须准确设置一个传输字段：`stdio` 要求
@@ -303,6 +318,8 @@ MVP 只能实现：
 16. `views[].title` 必填；使用本地化对象时必须同时提供 `en` 与 `zh-CN`。
     `views[].icon` **不**按 token 列表校验：未知 token 会降级为字母瓷砖，
     为一个纯外观细节拒绝插件并不合理。打包检查会改为给出警告
+17. `sessionSources` id 必须匹配 `[a-zA-Z][a-zA-Z0-9._-]{0,63}` 且不能重复；
+    本地化 label 必须同时提供 `en` 和 `zh-CN`
 
 ## 8. 示例：最小插件
 

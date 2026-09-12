@@ -9,4 +9,5 @@
 | [03-ai-development-workflow.md](03-ai-development-workflow.md) | AI/human development workflow rules |
 | [04-e2e-test-plan.md](04-e2e-test-plan.md) | E2E test documentation & MVP scenario catalog |
 | [05-change-checklist.md](05-change-checklist.md) | Practical checklist before finishing work |
-| [06-release-runbook.md](06-release-runbook.md) | Desktop release lanes, packaging, and mandatory dual-locale changelog gate (D164) |
+| [06-release-runbook.md](06-release-runbook.md) | Desktop release lanes, packaging, and mandatory shipped-locale changelog gate (D164/D345) |
+| [07-remote-control-rollout.md](07-remote-control-rollout.md) | Remote Agent Control rollout and acceptance |

@@ -77,7 +77,7 @@ test("pluginCompleteContext serializes session context and appends the default t
   assert.match(String(context.systemPrompt ?? ""), /^$/);
   assert.equal(context.messages.length, 2);
   assert.match(context.messages[0].content, /Ship it/);
-  assert.match(context.messages[1].content, /advise/);
+  assert.match(context.messages[1].content, /respond/);
 });
 
 test("session context and complete stay bound to an in-flight tool call", async (t) => {

@@ -34,6 +34,20 @@ entitled to it.
   and then replaces it with the live answer.
 - Filtering that list is client-side: it is a short live list, not a catalog, so
   no host search is involved.
+- The list header has a checkbox that selects or clears every currently visible
+  row in one step, so a long service list does not have to be ticked one by one.
+  While a search filter is active, "all" means the matching rows only; models
+  already chosen outside the filter stay chosen. Newly added rows adopt
+  `bindingFromModelInfo` (or the custom-model defaults); existing bindings keep
+  their advanced overrides. The checkbox is checked when every visible row is
+  chosen, unchecked when none are, and indeterminate when the visible set is
+  mixed.
+- The same header has a Fetch list action that probes the service immediately,
+  skipping the 600 ms edit debounce and the cache-first paint. Existing rows
+  stay visible while it loads. Automatic discovery on credential edits is
+  unchanged. The control is disabled when no discoverable endpoint is ready,
+  while a probe is in flight, or while the form is saving. Idle-with-a-valid-URL
+  (the edit debounce) stays enabled so Fetch list can skip that window.
 - Context window, output limit and initial thinking levels come from
   `bindingFromModelInfo` over the enriched record; per-model overrides live
   behind a per-row **Advanced** disclosure. `publishedThinkingLevels` describes
@@ -42,6 +56,10 @@ entitled to it.
   and the runtime uses the binding's explicit set. A model that publishes no
   level list and no level map but does claim reasoning still seeds
   `low`/`medium`/`high`.
+- When an explicit binding enables `xhigh` or `max` without a catalog wire
+  mapping, the runtime sends that canonical value through to the adapter rather
+  than letting the adapter clamp it to `high`. Existing non-null catalog
+  mappings remain authoritative for providers that translate the level.
 - The wire API is derived from the provider's published `npm` adapter
   (`apiStyleForAdapter`) and is only editable inside **Advanced**.
 - A custom model ID is always accepted, so a gateway without a `/models` route
@@ -65,6 +83,37 @@ entitled to it.
 
 An OAuth vendor account skips step 2 — it has no key to probe with, and pi-ai
 already knows which models the subscription allows.
+
+The picker never dumps the raw host error into the model list. A failed probe
+with no rows shows a classified one-line summary (auth, missing list, rate
+limit, timeout, network, invalid response, or HTTP status) plus a short hint
+to add an ID manually. A failed probe that still has cached rows keeps those
+rows and shows the same summary as a compact banner.
+
+### Subagent editor
+
+The Subagents create/edit sheet reuses the configured, runnable models the
+Composer already offers (enabled providers with a credential or `authKind:
+none`). The control is a searchable, provider-grouped menu anchored to its
+trigger rather than a native `<select>`: a definition may pin any configured
+model, so the list can run to dozens of rows, and only an anchored surface
+scrolls inside itself and accepts a filter. Inherit-session is the empty value,
+options are `vendorKey-or-name/modelId` grouped by provider display name, and a
+pin that is no longer configured stays as an extra row so an edit cannot
+silently drop it. Every option comes from the configured provider catalog, so a
+saved pin is always resolvable; the sheet deliberately offers no free-text
+model id, and when no provider has a runnable model it shows an empty state with
+an action that opens Models instead of a hand-typed field. Only the slash in a
+pin is structural: the provider half is matched by a normalized alias, and a
+custom endpoint's display name may contain spaces, so the picker and the draft
+check share one splitter and can never disagree about what is saveable. The
+thinking selector offers inherit-session (empty), do-not-send, and the
+seven canonical levels; inherit keeps the session level, while do-not-send
+leaves the provider adapter's own default untouched. When a generic or duplicate
+vendor key would be ambiguous, the option uses a unique provider display name;
+if the names also collide, it uses the stored provider id so no configured
+provider disappears from the picker.
+
 ### Advanced
 - “Use custom model ID”
 - “Refresh catalog”
@@ -225,6 +274,22 @@ the configured IDs remain visible by themselves.
 The Settings provider dialog continues to use discovery to add and configure
 models; saving a model binding is what makes it eligible for the Composer.
 
+When the combined Composer menu opens, the renderer starts provider-model
+hydration before the Model submenu is entered. The first visible rows therefore
+come from the cached catalog or configured bindings; live discovery remains a
+background update. A configured non-empty alias is resolved from the binding
+for every equivalent model ID and remains the sole visible model name while
+the catalog is refreshed.
+
+Vision badges in the Composer use the effective image-input capability for the
+exact provider/model binding. An explicit `supportsImages: true` or `false`
+wins over the published record; an absent or `null` value follows it. This lets
+a configured custom or proxied model show the capability the endpoint was
+explicitly configured to use without shaping the published `ModelInfo`.
+An OAuth provider heading uses its non-secret account label when present, so
+duplicate accounts from one vendor remain distinguishable; model rows still
+use the configured model alias or published model name.
+
 ## 10. Default model policy
 
 App-level default:
@@ -275,18 +340,23 @@ Warnings are non-blocking unless execution is impossible.
    non-`off` level resolves to `off`.
 7. Changing to a provider/model with no enabled reasoning level persists `off`;
    no unconfigured level leaks into the next request.
+8. For explicitly enabled `xhigh`/`max`, an absent or null catalog mapping is
+   materialized as an identity adapter mapping; a non-null catalog mapping is
+   preserved.
 
 ### 11.2 Vision capability resolution
 
-1. Resolve models.dev `modalities.input` for the matching exact model.
-2. Mark the model `vision` only when the models.dev record includes `image`
-   input.
-3. A provider endpoint, cached, or user-defined capability flag may remain
-   useful as selection metadata, but it cannot promote an unknown model to
-   image transport. Unknown/custom models therefore show the path-fallback
-   status in Composer.
+1. Resolve the published image-input baseline from the matching model record.
+2. Apply the exact configured binding's `supportsImages` value to that
+   baseline. An absent or `null` value follows the published capability;
+   `true` enables image input for a configured endpoint even when its published
+   record is text-only, and `false` disables a published image capability.
+3. The Composer model-row vision badge and the main attachment transport gate
+   use this same effective result. An unknown or custom model without an
+   explicit binding override remains on the conservative path-fallback route;
+   discovery or cache metadata alone cannot promote it to image transport.
 4. The main process prepares pasted images as content-addressed refs. A
-   vision-capable model receives images within the 20 MiB app-side inline
+   vision-capable model receives images within the 10 MB app-side inline
    bound as transient image blocks; other cases receive a safe `@path`.
 
 ### 11.3 Settings model-add metadata
@@ -326,8 +396,8 @@ the provider form matches the typed text against model id and display name with
 a plain case-insensitive substring test.
 
 The Composer picker likewise searches the **configured** models only, matching
-model id, display name, published family and provider name
-(`composerModelMatchesQuery`).
+model id, display name, published family and the account-aware provider display
+name (`composerModelMatchesQuery`).
 
 Model ids are compared case-insensitively wherever a chosen model is matched
 against a returned one, so a hand-typed `GPT-5` and a published `gpt-5` are the

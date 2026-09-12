@@ -5,7 +5,7 @@
 
 import type { Context } from "@earendil-works/pi-ai";
 import {
-  PLUGIN_ADVISOR_DEFAULT_TAIL,
+  PLUGIN_COMPLETE_DEFAULT_TAIL,
   pluginLlmContextFromTranscript,
   serializePluginLlmContext,
 } from "@pi-desktop/agent-runtime";
@@ -134,13 +134,13 @@ export function pluginCompleteContext(input: PluginCompleteInput & {
   if (parts.length === 0) {
     parts.push({
       role: "user",
-      content: PLUGIN_ADVISOR_DEFAULT_TAIL,
+      content: PLUGIN_COMPLETE_DEFAULT_TAIL,
       timestamp: Date.now(),
     });
   } else if (input.includeSessionContext && (input.messages?.length ?? 0) === 0) {
     parts.push({
       role: "user",
-      content: PLUGIN_ADVISOR_DEFAULT_TAIL,
+      content: PLUGIN_COMPLETE_DEFAULT_TAIL,
       timestamp: Date.now(),
     });
   }

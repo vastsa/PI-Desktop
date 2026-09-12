@@ -36,8 +36,8 @@ import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import {
   capabilitiesFromModelConfig,
   genericModelConfig,
-  installProviderUserAgentFetch,
-  runWithProviderUserAgent,
+  installProviderHeadersFetch,
+  runWithProviderHeaders,
   type ModelConfig,
   type VendorModelBinding,
 } from "@pi-desktop/agent-runtime";
@@ -102,7 +102,7 @@ export type OAuthProviderRow = {
   authKind?: string;
   hasOauth?: boolean;
   oauthAccountLabel?: string;
-  userAgent?: string;
+  headers?: Record<string, string>;
   baseUrl?: string;
   defaultModelId?: string;
 };
@@ -204,7 +204,7 @@ export class VendorOAuth {
 
   constructor(deps: VendorOAuthDeps) {
     this.deps = deps;
-    installProviderUserAgentFetch();
+    installProviderHeadersFetch();
   }
 
   /** Every vendor pi-ai can sign in to, with every local account row. */
@@ -332,7 +332,7 @@ export class VendorOAuth {
    * short-lived access token, headers and per-credential baseUrl.
    */
   async resolveAuth(providerId: string): Promise<ModelAuth> {
-    return this.withRowUserAgent(providerId, async () => {
+    return this.withRowHeaders(providerId, async () => {
       const account = await this.accountForProvider(providerId);
       if (!account) throw new Error(`vendor account not signed in: ${providerId}`);
       const resolved = await account.models.getAuth(account.vendorId);
@@ -347,7 +347,7 @@ export class VendorOAuth {
    * Copilot narrows the list to the user's subscription.
    */
   async listModels(providerId: string): Promise<OAuthModelOption[]> {
-    return this.withRowUserAgent(providerId, async () => {
+    return this.withRowHeaders(providerId, async () => {
       const account = await this.accountForProvider(providerId);
       if (!account) throw new Error(`unknown vendor account provider: ${providerId}`);
       // Dynamic catalogs (radius, Copilot) are empty until refreshed; static and
@@ -379,7 +379,7 @@ export class VendorOAuth {
     providerId: string,
     modelId: string,
   ): Promise<VendorModelBinding | undefined> {
-    return this.withRowUserAgent(providerId, () =>
+    return this.withRowHeaders(providerId, () =>
       this.bindingForUnscoped(providerId, modelId),
     );
   }
@@ -413,7 +413,7 @@ export class VendorOAuth {
 
   private async run(session: LoginSession, provider: Provider): Promise<void> {
     try {
-      await this.withRowUserAgent(session.providerId, () =>
+      await this.withRowHeaders(session.providerId, () =>
         session.account.models.login(
           session.vendorId,
           "oauth",
@@ -659,12 +659,12 @@ export class VendorOAuth {
     return account;
   }
 
-  private async withRowUserAgent<T>(
+  private async withRowHeaders<T>(
     providerId: string,
     fn: () => Promise<T>,
   ): Promise<T> {
     const row = (await this.rows()).find((candidate) => candidate.id === providerId);
-    return await runWithProviderUserAgent(row?.userAgent, fn);
+    return await runWithProviderHeaders(row?.headers, fn);
   }
 
   private async accountForProvider(

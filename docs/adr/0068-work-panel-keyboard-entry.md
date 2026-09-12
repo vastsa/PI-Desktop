@@ -5,7 +5,9 @@
 - Deciders: PI-Desktop core
 - Amends: D128, D142
 - Amended by: [ADR 0085](0085-work-panel-shortcut-toggle.md) (the shortcut is a
-  toggle; the rejected toggle alternative below no longer holds)
+  toggle; the rejected toggle alternative below no longer holds);
+  [ADR 0195](0195-viewport-fixed-work-panel-toggle.md) (pointer equivalent of
+  the shortcut)
 - Amended in part by: [ADR 0108](0108-remove-built-in-interactive-terminal.md)
 - Related: [01-ui-ia](../spec/04-ux/01-ui-ia.md) ·
   [08-component-spec §5](../spec/04-ux/08-component-spec.md) ·

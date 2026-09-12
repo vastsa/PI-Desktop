@@ -6,6 +6,18 @@ const transcriptSource = await readFile(
   new URL("../src/components/ChatTranscript.tsx", import.meta.url),
   "utf8",
 );
+const detailSource = transcriptSource.slice(
+  transcriptSource.indexOf("function delegateTaskDescription"),
+  transcriptSource.indexOf("/**\n * A truthful one-level graph", transcriptSource.indexOf("function delegateTaskDescription")),
+);
+const runtimeSource = await readFile(
+  new URL("../../../packages/agent-runtime/src/runtime.ts", import.meta.url),
+  "utf8",
+);
+const toolPresentationSource = await readFile(
+  new URL("../src/lib/tool-presentation.ts", import.meta.url),
+  "utf8",
+);
 const followScrollSource = await readFile(
   new URL("../src/hooks/use-follow-scroll.ts", import.meta.url),
   "utf8",
@@ -116,18 +128,21 @@ test("a terminal tool event repairs a row lost during renderer reload", () => {
   assert.match(storeSource, /toolName: message\.toolName \?\? completed\.toolName/);
 });
 
-test("delegate rows render under their Task row, one level in", () => {
+test("the shared side-panel detail keeps the live conversation process", () => {
   assert.match(transcriptSource, /delegate\?: SubagentRun/);
-  assert.match(
-    transcriptSource,
-    /\{open && delegate \? \([\s\S]*?<SubagentRunRows[\s\S]*?run=\{delegate\}[\s\S]*?agentName=\{agentName\}/,
-  );
-  assert.match(transcriptSource, /function SubagentRunRows\(/);
-  assert.match(transcriptSource, /<div className="subagent-run">/);
-  // The nested rows are the same components, so a delegate's tool calls and
-  // reasoning read exactly like the parent's.
-  assert.match(transcriptSource, /<ToolRow message=\{item\.message\} \/>/);
-  assert.match(transcriptSource, /className="subagent-answer"/);
+  assert.match(detailSource, /function delegateTaskDescription\(message: UiMessage\)/);
+  assert.match(detailSource, /className="subagent-detail-hero"/);
+  assert.match(detailSource, /className="subagent-detail-task-card"/);
+  assert.match(detailSource, /taskOverflow/);
+  assert.match(detailSource, /setTaskOverflow\(\(current\) => \(taskExpanded \? current : overflowing\)\)/);
+  assert.match(detailSource, /aria-expanded=\{taskExpanded\}/);
+  assert.match(detailSource, /aria-controls=\{taskBodyId\}/);
+  assert.match(detailSource, /<SubagentRunRows/);
+  assert.match(detailSource, /scrollable=\{false\}/);
+  assert.match(transcriptSource, /className=\{`subagent-run-rows\$\{scrollable \? "" : " is-panel-flow"\}`\}/);
+  assert.match(transcriptSource, /onScroll=\{scrollable \? handleScroll : undefined\}/);
+  assert.match(transcriptSource, /\{scrollable && showJump \?/);
+  assert.doesNotMatch(detailSource, /<ToolDetailBlocks blocks=\{blocks\}/);
 });
 
 test("a Task row is expandable and names the delegate it used", () => {
@@ -139,6 +154,56 @@ test("a Task row is expandable and names the delegate it used", () => {
   assert.match(transcriptSource, /TOOL_RUNNING_KEYS.*delegate: "chat\.toolDelegating"/s);
   assert.match(transcriptSource, /className="tool-row-agent"/);
   assert.match(transcriptSource, /case "delegate":\n\s+return <IconBot/);
+});
+
+test("a Task node shows the effective model after the subagent name", () => {
+  assert.match(
+    runtimeSource,
+    /startedAt,\s*\n\s*modelId: provider\.modelId,/,
+  );
+  assert.match(
+    transcriptSource,
+    /const modelId = variant === "topology" \? delegateModelId\(message\) : "";/,
+  );
+  assert.match(
+    transcriptSource,
+    /className="subagent-topology-node-model"[\s\S]*?title=\{modelLabel\}/,
+  );
+  assert.match(
+    toolPresentationSource,
+    /key !== "agent" &&[\s\S]*?key !== "error" &&[\s\S]*?key !== "modelId" &&[\s\S]*?key !== "thinkingLevel"/,
+  );
+  assert.match(
+    messagesCss,
+    /\.subagent-topology-node-model \{[^}]*font-family: var\(--font-mono\)/,
+  );
+});
+
+test("a Task node and detail header show the effective thinking level", () => {
+  assert.match(
+    runtimeSource,
+    /modelId: provider\.modelId,\s*\n\s*thinkingLevel,/,
+  );
+  assert.match(
+    runtimeSource,
+    /modelId: record\.modelId,\s*\n\s*thinkingLevel: record\.thinkingLevel,/,
+  );
+  assert.match(transcriptSource, /function delegateThinkingLevel\(message: UiMessage\)/);
+  assert.match(transcriptSource, /value === "off"/);
+  assert.match(transcriptSource, /const thinkingLabel = thinkingLevel \?\? "";/);
+  assert.doesNotMatch(transcriptSource, /thinkingLevel\./);
+  assert.match(
+    transcriptSource,
+    /const modelLabel = \[modelId, thinkingLabel\]\.filter\(Boolean\)\.join\(" "\);/,
+  );
+  assert.match(
+    transcriptSource,
+    /className="subagent-topology-node-model"[\s\S]*?title=\{modelLabel\}[\s\S]*?aria-label=\{modelLabel\}/,
+  );
+  assert.match(
+    transcriptSource,
+    /className="subagent-detail-model"[\s\S]*?title=\{modelLabel\}[\s\S]*?aria-label=\{modelLabel\}/,
+  );
 });
 
 test("the report is printed once: in the body, or as the nested answer", () => {
@@ -185,15 +250,37 @@ test("every Task row renders as one accessible delegation topology", () => {
   );
   assert.match(
     transcriptSource,
-    /<SubagentTopology\s+key="subagent-topology"\s+items=\{delegateItems\}\s+delegationStatuses=\{delegationStatuses\}\s+delegationTimings=\{delegationTimings\}\s*\/>/,
+    /<SubagentTopology\s+key="subagent-topology"\s+items=\{delegateItems\}\s+delegationStatuses=\{delegationStatuses\}\s+delegationTimings=\{delegationTimings\}\s+onUserInteraction=\{claimDisclosure\}\s*\/>/,
   );
   assert.match(transcriptSource, /className="subagent-topology" aria-labelledby=/);
   assert.match(transcriptSource, /className="subagent-topology-agents"/);
   assert.match(transcriptSource, /role="list"/);
   assert.match(transcriptSource, /variant="topology"/);
   assert.match(transcriptSource, /className="subagent-topology-node-header"/);
-  assert.match(transcriptSource, /aria-expanded=\{open\}/);
-  assert.match(transcriptSource, /aria-controls=\{hasDetails \? detailsId : undefined\}/);
+  assert.match(transcriptSource, /aria-expanded=\{panelOpen\}/);
+  assert.match(transcriptSource, /aria-controls=\{hasDetails \? "subagent-panel" : undefined\}/);
+  const topologyNode = transcriptSource.slice(
+    transcriptSource.indexOf('className="subagent-topology-node-header"'),
+    transcriptSource.indexOf(
+      "</button>",
+      transcriptSource.indexOf('className="subagent-topology-node-header"'),
+    ),
+  );
+  assert.doesNotMatch(topologyNode, /tool-row-caret/);
+  assert.match(
+    topologyNode,
+    /onClick=\{\(\) => \{\s*if \(!hasDetails\) return;\s*onUserInteraction\?\.\(\);\s*toggleSubagentPanel\(panelSelectionId\);\s*\}\}/,
+  );
+  assert.match(
+    transcriptSource,
+    /const toggleSubagentPanel = useAppStore\(\(s\) => s\.toggleSubagentPanel\)/,
+  );
+  assert.match(storeSource, /toggleSubagentPanel:\s*\(delegationId\) => \{/);
+  assert.match(
+    storeSource,
+    /state\.subagentPanel\?\.sessionId === sessionId[\s\S]*?state\.subagentPanel\.delegationId === id[\s\S]*?set\(\{ subagentPanel: null \}\)/,
+  );
+  assert.match(transcriptSource, /const inlineOpen = variant !== "topology" && open;/);
 });
 
 test("the aggregate label counts, so a lone delegation is not called plural", () => {
@@ -253,16 +340,16 @@ test("a delegate's rows scroll in place instead of growing the page (D271)", () 
   // The rows live in their own scroll container, not on `.subagent-run`: the
   // collapse rail is absolutely positioned outside that element's padding box,
   // so an overflow there would clip the rail away.
-  assert.match(transcriptSource, /className="subagent-run-rows"/);
+  assert.match(transcriptSource, /subagent-run-rows/);
   // The scroll area is named by the run heading beside it rather than by a
   // duplicated label string.
   assert.match(
     transcriptSource,
-    /className="subagent-run-rows"[\s\S]*?role="group"[\s\S]*?tabIndex=\{0\}[\s\S]*?aria-labelledby=\{headingId\}/,
+    /className=\{`subagent-run-rows\$\{scrollable \? "" : " is-panel-flow"\}`\}[\s\S]*?role="group"[\s\S]*?tabIndex=\{scrollable \? 0 : undefined\}[\s\S]*?aria-labelledby=\{headingId\}/,
   );
   assert.match(
     transcriptSource,
-    /className="subagent-run-heading" id=\{headingId\}/,
+    /className=\{dock \? "subagent-run-heading is-dock" : "subagent-run-heading"\}[\s\S]*?id=\{headingId\}/,
   );
   assert.match(
     messagesCss,
@@ -291,10 +378,13 @@ test("an expanded delegate run follows the latest output while pinned (D302)", (
   // veil, and pane-visibility machinery stay out of the run scroller.
   assert.match(transcriptSource, /function SubagentRunFollow\(/);
   assert.match(transcriptSource, /const \{[^}]*scrollRef,[^}]*\} = useFollowScroll\(\)/);
-  assert.match(transcriptSource, /<SubagentRunFollow headingId=\{headingId\} items=\{run\.items\} \/>/);
   assert.match(
     transcriptSource,
-    /className="subagent-run-rows"[\s\S]*?onScroll=\{handleScroll\}/,
+    /<SubagentRunFollow[\s\S]*?headingId=\{headingId\}[\s\S]*?items=\{run\.items\}/,
+  );
+  assert.match(
+    transcriptSource,
+    /className=\{`subagent-run-rows\$\{scrollable \? "" : " is-panel-flow"\}`\}[\s\S]*?onScroll=\{scrollable \? handleScroll : undefined\}/,
   );
   assert.match(transcriptSource, /className="subagent-run-follow"/);
   assert.match(

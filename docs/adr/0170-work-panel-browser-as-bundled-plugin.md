@@ -54,7 +54,7 @@ superseded: the panel's launchable surfaces are plugin views.
   chips fall back to `openExternal`. `BrowserPreview` fails closed.
 - Third-party plugins with `browser.cdp` share the same guest; last chrome
   `setBounds` wins.
-- Plan still sees `BrowserPreview`, not `plugin_pi_browser_Browser`.
+- Plan still sees `BrowserPreview`. The Browser plugin tool is also visible in Plan/Goal for the four `planSafeActions` (`navigate`, `snapshot`, `screenshot`, `console`); click/fill/evaluate/cdp stay Agent-only (ADR 0211).
 
 ## Alternatives considered
 

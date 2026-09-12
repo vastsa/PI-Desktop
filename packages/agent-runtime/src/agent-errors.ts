@@ -123,14 +123,17 @@ export function classifyAgentError(err: unknown): ClassifiedAgentError {
     ...(Object.keys(details).length > 0 ? { details } : {}),
   });
 
-  if (/CONTEXT_COMPACTION_FAILED/i.test(rawMessage)) {
-    return result("CONTEXT_COMPACTION_FAILED", false);
-  }
+  // An abort wins over every other classification: a user Stop that lands
+  // while a checkpoint is being summarized fails the compaction with an abort
+  // cause, and that turn must read as stopped, not as a compaction failure.
   if (
     (err instanceof Error && err.name === "AbortError") ||
     /\babort/i.test(rawMessage)
   ) {
     return result("TURN_ABORTED", false);
+  }
+  if (/CONTEXT_COMPACTION_FAILED/i.test(rawMessage)) {
+    return result("CONTEXT_COMPACTION_FAILED", false);
   }
   // Network failures never carry an HTTP status; probe before status logic so
   // "fetch failed" causes don't fall through to the generic bucket.

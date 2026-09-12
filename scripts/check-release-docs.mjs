@@ -11,14 +11,22 @@
  *   1. Workspace version surfaces agree: every workspace package.json,
  *      [workspace.package] in Cargo.toml, the host-core Cargo.lock entry, and
  *      APP_VERSION in packages/shared/src/protocol.ts.
- *   2. packages/shared/src/changelog.ts has an entry for the version under both
- *      `en` and `zh-CN`, newest-first, with matching highlight counts.
+ *   2. packages/shared/src/changelog*.ts has an entry for the version under
+ *      every shipped locale, newest-first, with matching highlight counts.
  *   3. packages/shared/src/changelog.test.ts pins the version as newest.
  *   4. README.md and README.zh-CN.md declare the current release line
  *      (`<major>.<minor>.x`) in their status section.
  */
-import { readdirSync, readFileSync, existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import {
+  readdirSync,
+  readFileSync,
+  existsSync,
+  mkdtempSync,
+  writeFileSync,
+  rmSync,
+} from "node:fs";
+import { createRequire } from "node:module";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -75,21 +83,60 @@ try {
   fail(modelsDevCatalogPath, `could not parse bundled catalog: ${error.message}`);
 }
 
-// 3. Dual-locale in-app changelog. Import the real catalog rather than parsing
-// it: Node strips the TypeScript types, so wrapped or concatenated highlight
-// strings are counted as the app sees them.
+// 3. Shipped-locale in-app changelog. Compile the source catalog in a temporary
+// directory so this preflight does not depend on a prior workspace build or on
+// Node's experimental TypeScript module resolution.
+async function loadChangelogCatalog() {
+  const require = createRequire(path.join(root, "packages/shared/package.json"));
+  const typescript = require("typescript");
+  const tempDir = mkdtempSync(path.join(root, ".release-changelog-"));
+  writeFileSync(path.join(tempDir, "package.json"), '{"type":"module"}\n', "utf8");
+  const sources = [
+    "packages/shared/src/changelog.ts",
+    "packages/shared/src/changelog-de.ts",
+    "packages/shared/src/changelog-es.ts",
+    "packages/shared/src/changelog-fr.ts",
+    "packages/shared/src/changelog-ko.ts",
+    "packages/shared/src/changelog-tr.ts",
+  ];
+  try {
+    for (const relPath of sources) {
+      const output = typescript.transpileModule(read(relPath), {
+        compilerOptions: {
+          module: typescript.ModuleKind.ESNext,
+          target: typescript.ScriptTarget.ES2022,
+        },
+        fileName: relPath,
+      }).outputText;
+      writeFileSync(
+        path.join(tempDir, path.basename(relPath, ".ts") + ".js"),
+        output,
+        "utf8",
+      );
+    }
+    return await import(pathToFileURL(path.join(tempDir, "changelog.js")).href);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
 let catalogs = null;
 try {
-  ({ CHANGELOG: catalogs } = await import(
-    new URL("../packages/shared/src/changelog.ts", import.meta.url)
-  ));
+  ({ CHANGELOG: catalogs } = await loadChangelogCatalog());
 } catch (error) {
   fail("packages/shared/src/changelog.ts", `could not be imported: ${error.message}`);
 }
 
 if (catalogs) {
-  for (const locale of ["en", "zh-CN"]) {
-    const entries = catalogs[locale];
+  const enEntries = catalogs.en;
+  const expectedVersions = enEntries?.map((entry) => entry.version) ?? [];
+  const requiredLocales = ["en", "zh-CN", "zh-TW", "tr", "de", "es", "fr", "ko"];
+  for (const locale of requiredLocales) {
+    if (!catalogs[locale]) {
+      fail("packages/shared/src/changelog.ts", `missing shipped locale catalog: ${locale}`);
+    }
+  }
+  for (const [locale, entries] of Object.entries(catalogs)) {
     if (!entries?.length) {
       fail("packages/shared/src/changelog.ts", `the ${locale} catalog is empty`);
       continue;
@@ -104,15 +151,23 @@ if (catalogs) {
         `${locale} lists ${entries[0].version} first; ${version} must be newest-first`,
       );
     }
-  }
-
-  const en = catalogs.en?.find((entry) => entry.version === version);
-  const zh = catalogs["zh-CN"]?.find((entry) => entry.version === version);
-  if (en && zh && en.highlights.length !== zh.highlights.length) {
-    fail(
-      "packages/shared/src/changelog.ts",
-      `${version} has ${en.highlights.length} en highlights and ${zh.highlights.length} zh-CN highlights`,
-    );
+    if (entries.map((entry) => entry.version).join("\u0000") !== expectedVersions.join("\u0000")) {
+      fail(
+        "packages/shared/src/changelog.ts",
+        `${locale} does not match the English release version set`,
+      );
+    }
+    if (enEntries) {
+      for (let index = 0; index < enEntries.length; index += 1) {
+        if (entries[index]?.highlights.length !== enEntries[index]?.highlights.length) {
+          fail(
+            "packages/shared/src/changelog.ts",
+            `${locale} highlight count differs from English at ${entries[index]?.version ?? "unknown"}`,
+          );
+          break;
+        }
+      }
+    }
   }
 }
 

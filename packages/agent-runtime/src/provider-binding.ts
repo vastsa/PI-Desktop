@@ -11,20 +11,28 @@ import {
   createModels,
   createProvider,
   type Api,
+  type Context,
   type Model,
   type ModelAuth,
   type Models,
   type ProviderStreams,
 } from "@earendil-works/pi-ai";
+import {
+  buildCopilotDynamicHeaders,
+  hasCopilotVisionInput,
+} from "@earendil-works/pi-ai/api/github-copilot-headers";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
 import { openAICodexResponsesApi } from "@earendil-works/pi-ai/api/openai-codex-responses.lazy";
 import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messages.lazy";
 import { googleGenerativeAIApi } from "@earendil-works/pi-ai/api/google-generative-ai.lazy";
 import { piMessagesApi } from "@earendil-works/pi-ai/api/pi-messages.lazy";
+import { GITHUB_COPILOT_MODELS } from "@earendil-works/pi-ai/providers/github-copilot.models";
 import {
   OPENCODE_GO_API_STYLE,
   OPENCODE_GO_BASE_URL,
+  resolveApiStyle,
+  deepseekRequestCompat,
   zhipuRequestCompat,
   type ThinkingLevel,
 } from "@pi-desktop/shared";
@@ -46,10 +54,10 @@ export type RuntimeProviderConfig = {
   /** Complete model metadata resolved from models.dev by Electron main. */
   modelConfig?: ModelConfig;
   /**
-   * Optional outbound User-Agent. Empty/absent keeps the adapter default.
-   * Injected last via a fetch wrapper so Codex/Anthropic cannot overwrite it.
+   * Optional outbound HTTP headers. Empty/absent keeps adapter defaults.
+   * Injected last via a fetch wrapper so Codex/Anthropic cannot overwrite them.
    */
-  userAgent?: string;
+  headers?: Record<string, string>;
   /**
    * Vendor-account auth, resolved once per request by Electron main.
    *
@@ -141,10 +149,53 @@ export function providerRequestKey(provider: RuntimeProviderConfig): string {
   );
 }
 
+/**
+ * Resolve the wire API for one provider row. A catalog entry may pin a wire
+ * API that differs from the provider-wide style (e.g. responses-only models
+ * under an opencode_go provider, which defaults to Chat Completions). Honor
+ * the model-level api when present so such models are not sent through the
+ * wrong adapter (the gateway answers 500, see #105).
+ */
+export function apiBindingForProviderModel(provider: RuntimeProviderConfig): ApiBinding {
+  return apiBindingForStyle(resolveApiStyle(provider.modelConfig?.api) ?? provider.apiStyle);
+}
+
+/**
+ * The desktop stores OAuth accounts under local row UUIDs, while pi-ai's
+ * native Copilot model records carry the required client identity headers.
+ * Preserve those transport defaults without changing the row identity used by
+ * auth binding and transcript ownership.
+ */
+function nativeCopilotHeaders(modelId: string): Record<string, string> | undefined {
+  const model = modelId
+    ? (GITHUB_COPILOT_MODELS as Record<string, Model<Api> | undefined>)[modelId]
+    : undefined;
+  if (model?.headers) return model.headers;
+
+  // A model returned by models.dev or a user's Copilot entitlement may not be
+  // present in pi-ai's pinned built-in catalog. Its transport still requires
+  // the same client identity headers as every other Copilot model.
+  return Object.values(GITHUB_COPILOT_MODELS).find((entry) => entry.headers)?.headers;
+}
+
+/** Add Copilot's request-context headers while retaining the local row id. */
+export function copilotRequestHeaders(
+  provider: Pick<RuntimeProviderConfig, "vendorKey">,
+  context: Pick<Context, "messages">,
+): Record<string, string> | undefined {
+  if (provider.vendorKey?.trim().toLowerCase() !== "github-copilot") {
+    return undefined;
+  }
+  return buildCopilotDynamicHeaders({
+    messages: context.messages,
+    hasImages: hasCopilotVisionInput(context.messages),
+  });
+}
+
 export function buildProviderModel(
   provider: RuntimeProviderConfig,
 ): Model<Api> {
-  const binding = apiBindingForStyle(provider.apiStyle);
+  const binding = apiBindingForProviderModel(provider);
   const catalog = provider.modelConfig;
   const catalogModel = catalog
     ? (({ source: _source, ...model }) => model)(catalog)
@@ -157,17 +208,32 @@ export function buildProviderModel(
     vendorKey: provider.vendorKey,
     baseUrl,
   });
+  const deepseekCompat = deepseekRequestCompat({
+    vendorKey: provider.vendorKey,
+    baseUrl,
+    modelId: provider.modelId,
+    family: catalogModel.family,
+  });
+  const copilotDefaults =
+    provider.vendorKey?.trim().toLowerCase() === "github-copilot"
+      ? nativeCopilotHeaders(provider.modelId)
+      : undefined;
+  const modelHeaders = {
+    ...(copilotDefaults ?? {}),
+    ...(catalogModel.headers ?? {}),
+  };
   // OpenAI-compatible gateways are not guaranteed to implement the newer
   // `developer` role, even when the selected model supports reasoning. Keep
   // the broadest Chat Completions wire shape as the default; a catalog/model
   // override may opt into `developer` when the endpoint explicitly supports it.
-  // Zhipu / Z.AI need thinkingFormat + tool-stream even though the row id is a
-  // UUID, so URL/vendorKey detection cannot rely on pi-ai's provider name.
+  // Zhipu / Z.AI and DeepSeek-family Completions flags cannot use pi-ai's
+  // provider-name detection: the row id stored as `model.provider` is a UUID.
   const compat =
     binding.api === "openai-completions"
       ? {
           ...(catalogModel.compat ?? {}),
           ...(zhipuCompat ?? {}),
+          ...(deepseekCompat ?? {}),
           supportsDeveloperRole: catalogModel.compat?.supportsDeveloperRole === true,
         }
       : catalogModel.compat;
@@ -178,6 +244,7 @@ export function buildProviderModel(
     provider: provider.id,
     baseUrl,
     ...(compat ? { compat } : {}),
+    ...(Object.keys(modelHeaders).length > 0 ? { headers: modelHeaders } : {}),
   } as Model<Api>;
 }
 
@@ -212,7 +279,7 @@ export function createProviderModels(
         },
       },
       models: [model],
-      api: apiBindingForStyle(provider.apiStyle).adapter(),
+      api: apiBindingForProviderModel(provider).adapter(),
     }),
   );
   return models;

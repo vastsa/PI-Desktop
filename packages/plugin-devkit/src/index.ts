@@ -25,7 +25,13 @@ export {
   IGNORED_DIR_NAMES,
   MAX_PACKAGE_BYTES,
   MAX_PACKAGE_FILES,
+  SECRET_FILE_PATTERNS,
+  compareByCodeUnit,
+  isPackageOutputPath,
+  isSecretFilePath,
+  selectPackageFiles,
   walkPluginDir,
+  type PackageSelection,
   type WalkResult,
   type WalkedFile,
 } from "./walk.js";

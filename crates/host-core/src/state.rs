@@ -18,6 +18,10 @@ pub const PROTOCOL_VERSION: u32 = 11;
 pub const HOST_VERSION: &str = env!("CARGO_PKG_VERSION");
 const BASH_ABORT_TOMBSTONE_TTL: Duration = Duration::from_secs(60);
 const MAX_BASH_ABORT_TOMBSTONES: usize = 1024;
+const PLUGIN_IMPORT_RATE_WINDOW: Duration = Duration::from_secs(60);
+const PLUGIN_IMPORT_RATE_LIMIT: usize = 10;
+const PLUGIN_BATCH_IMPORT_RATE_LIMIT: usize = 5;
+const PLUGIN_DELETE_RATE_LIMIT: usize = 20;
 
 pub struct AppState {
     pub data_dir: std::path::PathBuf,
@@ -42,6 +46,11 @@ pub struct AppState {
     /// executionId -> responder for plugin tool dispatches awaiting the
     /// desktop runner (Electron main executes the plugin JS and resolves).
     pub plugin_execs: HashMap<String, tokio::sync::oneshot::Sender<serde_json::Value>>,
+    /// Rolling plugin session API brakes. These are intentionally process-local;
+    /// a restart is already a natural rate-window boundary.
+    pub plugin_import_rates: HashMap<String, Vec<Instant>>,
+    pub plugin_batch_import_rates: HashMap<String, Vec<Instant>>,
+    pub plugin_delete_rates: HashMap<String, Vec<Instant>>,
     pub tool_budget: ToolBudget,
     /// (session_id, tool_call_id) -> cancellation signal for an active Bash
     /// process. The signal is removed by the execution owner in all outcomes.
@@ -55,6 +64,9 @@ pub struct AppState {
     /// separate tasks. A short-lived tombstone makes the later request start
     /// already cancelled instead of executing after Stop was acknowledged.
     pending_bash_aborts: HashMap<(String, String), Instant>,
+    /// Session-scoped Read/Edit snapshot store (ADR 0087). Interior mutex so
+    /// tool execution does not hold the AppState lock.
+    pub hashline: crate::tools::HashlineStore,
 }
 
 impl AppState {
@@ -66,7 +78,10 @@ impl AppState {
         // aborted, so the promoted rows land under an aborted turn.
         match crate::sessions::recover_orphaned_sessions(&db) {
             Ok(restored) if restored > 0 => {
-                tracing::info!(count = restored, "restored orphaned session rows from transcripts");
+                tracing::info!(
+                    count = restored,
+                    "restored orphaned session rows from transcripts"
+                );
             }
             Ok(_) => {}
             Err(error) => tracing::warn!(%error, "orphaned session sweep failed"),
@@ -107,11 +122,54 @@ impl AppState {
             shutting_down: false,
             session_grants: HashMap::new(),
             plugin_execs: HashMap::new(),
+            plugin_import_rates: HashMap::new(),
+            plugin_batch_import_rates: HashMap::new(),
+            plugin_delete_rates: HashMap::new(),
             tool_budget: ToolBudget::new(),
             active_bash_cancellations: HashMap::new(),
             pending_permissions: HashMap::new(),
             pending_bash_aborts: HashMap::new(),
+            hashline: crate::tools::HashlineStore::new(),
         })
+    }
+
+    fn rate_allowed(
+        rates: &mut HashMap<String, Vec<Instant>>,
+        plugin_id: &str,
+        limit: usize,
+    ) -> bool {
+        let now = Instant::now();
+        let entries = rates.entry(plugin_id.to_string()).or_default();
+        entries.retain(|at| now.duration_since(*at) < PLUGIN_IMPORT_RATE_WINDOW);
+        if entries.len() >= limit {
+            return false;
+        }
+        entries.push(now);
+        true
+    }
+
+    pub fn allow_plugin_import(&mut self, plugin_id: &str, batch: bool) -> bool {
+        if batch {
+            Self::rate_allowed(
+                &mut self.plugin_batch_import_rates,
+                plugin_id,
+                PLUGIN_BATCH_IMPORT_RATE_LIMIT,
+            )
+        } else {
+            Self::rate_allowed(
+                &mut self.plugin_import_rates,
+                plugin_id,
+                PLUGIN_IMPORT_RATE_LIMIT,
+            )
+        }
+    }
+
+    pub fn allow_plugin_delete(&mut self, plugin_id: &str) -> bool {
+        Self::rate_allowed(
+            &mut self.plugin_delete_rates,
+            plugin_id,
+            PLUGIN_DELETE_RATE_LIMIT,
+        )
     }
 
     pub fn register_pending_permission(
@@ -275,5 +333,20 @@ mod tests {
             ),
             Err("NOT_FOUND".into())
         );
+    }
+
+    #[test]
+    fn plugin_session_rate_limits_are_per_plugin_and_per_operation() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut state = AppState::open(data_dir.path()).unwrap();
+
+        assert!((0..10).all(|_| state.allow_plugin_import("plugin.one", false)));
+        assert!(!state.allow_plugin_import("plugin.one", false));
+        assert!(state.allow_plugin_import("plugin.two", false));
+
+        assert!((0..5).all(|_| state.allow_plugin_import("plugin.one", true)));
+        assert!(!state.allow_plugin_import("plugin.one", true));
+        assert!((0..20).all(|_| state.allow_plugin_delete("plugin.one")));
+        assert!(!state.allow_plugin_delete("plugin.one"));
     }
 }

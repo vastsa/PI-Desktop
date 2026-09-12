@@ -1,5 +1,6 @@
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
+import { PLUGIN_ID_PATTERN } from "@pi-desktop/plugin-sdk";
 
 /** Template ids match the catalogue in docs/spec/07-plugins/10-plugin-devex.md §3. */
 export const TEMPLATE_NAMES = [
@@ -34,8 +35,13 @@ export type ScaffoldResult = {
   files: string[];
 };
 
-/** Plugin ids travel into file paths through host-core's `sanitize_id`. */
-const ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
+/**
+ * Plugin ids travel into file paths through host-core's `sanitize_id` and
+ * into the package file name; the manifest schema's dotted lowercase shape
+ * is what `check` and `pack` enforce, so a scaffold must not produce anything
+ * looser.
+ */
+const ID_PATTERN = PLUGIN_ID_PATTERN;
 
 export function isTemplateName(value: unknown): value is TemplateName {
   return typeof value === "string" && (TEMPLATE_NAMES as readonly string[]).includes(value);
@@ -89,7 +95,7 @@ export async function scaffold(input: ScaffoldInput): Promise<ScaffoldResult> {
   const slug = slugify(dir.split(sep).filter(Boolean).pop() ?? "plugin");
   const id = (input.id ?? `local.${slug}`).trim();
   if (!ID_PATTERN.test(id)) {
-    throw new Error(`plugin id "${id}" must match [a-zA-Z0-9][a-zA-Z0-9._-]*`);
+    throw new Error(`plugin id "${id}" must match ${ID_PATTERN.source}`);
   }
   const name = (input.name ?? titleCase(slug)).trim() || titleCase(slug);
   const version = (input.version ?? "0.1.0").trim();

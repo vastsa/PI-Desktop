@@ -46,9 +46,11 @@
 }
 
 .composer-permission-menu {
-  position: absolute;
+  position: fixed;
+  top: 0;
   left: 0;
-  bottom: calc(100% + 8px);
+  right: auto;
+  bottom: auto;
   z-index: 40;
   width: min(120px, calc(100vw - 24px));
   max-height: min(520px, calc(100vh - 92px));
@@ -59,26 +61,17 @@
   box-shadow: var(--ds-shadow-dialog);
   border: 1px solid var(--ds-border-subtle);
   color: var(--ds-text-primary);
-}
-
-.composer-plus-menu {
-  position: absolute;
-  left: 0;
-  bottom: calc(100% + 8px);
-  z-index: 40;
-  width: min(248px, calc(100vw - 24px));
-  padding: 6px;
-  border-radius: var(--radius-lg);
-  background: var(--ds-bg-elevated-opaque);
-  box-shadow: var(--ds-shadow-dialog);
-  border: 1px solid var(--ds-border-subtle);
-  color: var(--ds-text-primary);
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
 }
 
 .composer-model-menu {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + 8px);
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: auto;
+  bottom: auto;
   z-index: 40;
   width: min(240px, calc(100vw - 24px));
   max-height: min(520px, calc(100vh - 92px));
@@ -89,11 +82,24 @@
   box-shadow: var(--ds-shadow-dialog);
   border: 1px solid var(--ds-border-subtle);
   color: var(--ds-text-primary);
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.composer-permission-menu.is-open,
+.composer-model-menu.is-open {
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
 }
 
 .composer-model-thinking-menu {
   z-index: 60;
   width: min(300px, calc(100vw - 24px));
+}
+
+.composer-model-thinking-menu.is-open {
   animation: composer-menu-in var(--motion-duration-fast) var(--motion-ease-out);
   transform-origin: bottom right;
 }
@@ -394,9 +400,11 @@
 /* Plan approval mode menu. The split trigger lives in composer.css; this
    partial owns the floating menu surface and its keyboard-highlight states. */
 .plan-approval-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: auto;
+  bottom: auto;
   z-index: 25;
   width: max-content;
   min-width: 150px;
@@ -406,6 +414,15 @@
   border-radius: var(--radius-sm);
   background: var(--ds-bg-elevated-opaque);
   box-shadow: var(--ds-shadow-dialog);
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.plan-approval-menu.is-open {
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
 }
 
 .plan-approval-menu-item {

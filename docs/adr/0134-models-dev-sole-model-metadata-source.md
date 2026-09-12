@@ -1,3 +1,4 @@
+# ADR 0134: Use models.dev as the sole model metadata source with a local snapshot
 
 - Status: Accepted
 - Date: 2026-08-29

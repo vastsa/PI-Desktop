@@ -45,8 +45,9 @@ the panel is inside the existing client area.
 - Opening and collapsing no longer move the window edge or change the user's
   application bounds; the panel visibly occupies internal space like the left
   sidebar.
-- MainChat may become narrower than its 360px readability target on small
-  windows. This is the intentional fixed-window trade-off.
+- MainChat's minimum-width trade-off is amended by ADR 0226: the renderer
+  preserves a 515px chat reservation for the composer, even when the fixed
+  client area cannot show every side dock at its preferred width.
 - Native reservation and chat-width IPC shapes remain as compatibility seams,
   but the current renderer does not use them for panel presentation or resize.
 - Native window bounds persistence no longer needs to remove temporary panel

@@ -230,6 +230,16 @@
   line-height: var(--leading-heading);
 }
 
+.settings-recovery {
+  display: flex;
+  min-height: 160px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--ds-text-muted);
+  font-size: var(--text-sm-plus);
+}
+
 .settings-card-block {
   margin-bottom: 28px;
 }
@@ -394,6 +404,49 @@
 
 .settings-number-control .field-input {
   width: 140px;
+}
+
+.settings-font-size {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 180px;
+}
+
+.settings-row:has(.settings-font-size) .settings-row-control {
+  max-width: none;
+}
+
+.settings-font-size .settings-segment {
+  width: 100%;
+  flex-wrap: nowrap;
+}
+
+.settings-font-size .settings-segment-item {
+  flex: 1 0 auto;
+  padding-inline: 8px;
+  white-space: nowrap;
+}
+
+.settings-font-size-slider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-font-size-slider input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--ds-accent);
+}
+
+.settings-font-size-percent {
+  color: var(--ds-text-muted);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  min-width: 3em;
+  text-align: right;
 }
 
 .shortcut-map {
@@ -1580,9 +1633,11 @@
 }
 
 .agent-capability-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: auto;
+  bottom: auto;
   z-index: 30;
   display: flex;
   min-width: 168px;
@@ -1594,6 +1649,15 @@
   box-shadow:
     0 0 0 0.5px var(--ds-border-default),
     0 12px 32px rgb(0 0 0 / 20%);
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.agent-capability-menu.is-open {
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
 }
 
 /*
@@ -1954,4 +2018,142 @@
 
 .settings-proxy-control .field-input {
   width: 100%;
+}
+
+/* Agent extension state inside a plugin row (spec 16 §11). */
+.plugins-agent-extension {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.plugins-agent-extension-names {
+  font-size: var(--text-3xs);
+  color: var(--ds-text-muted);
+  word-break: break-all;
+}
+
+/* Trusted extensions (spec 16 §11): the trust notice and per-row diagnostics. */
+.agent-extension-trust-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 10px;
+  border-radius: var(--radius-md);
+  background: var(--ds-tile);
+  padding: 10px 12px;
+  color: var(--ds-text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-compact);
+}
+
+.agent-extension-trust-notice svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.agent-extension-diagnostics-toggle {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--ds-text-muted);
+  font-size: var(--text-3xs);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.agent-extension-diagnostics {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.agent-extension-diagnostic {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  border-radius: var(--radius-sm);
+  background: var(--ds-tile);
+  padding: 4px 8px;
+  font-size: var(--text-3xs);
+  color: var(--ds-text-muted);
+}
+
+.agent-extension-diagnostic.is-error .agent-extension-diagnostic-kind {
+  color: var(--ds-error);
+}
+
+.agent-extension-diagnostic-kind {
+  font-weight: var(--font-weight-medium);
+}
+
+.agent-extension-diagnostic-member {
+  font-family: var(--font-mono);
+}
+
+.agent-extension-diagnostic-message {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.extension-prompt-message {
+  margin: 0 0 12px;
+  color: var(--ds-text);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.extension-prompt-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.extension-prompt-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: var(--radius-md);
+  background: var(--ds-tile);
+  padding: 8px 10px;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.extension-prompt-source-path {
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-3xs);
+}
+
+/* Status texts set by trusted extensions for the active session (spec 16 §9). */
+.extension-status-line {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  pointer-events: none;
+}
+
+.extension-status-item {
+  border-radius: var(--radius-full);
+  background: var(--ds-bg-elevated-opaque);
+  box-shadow: var(--shadow-sm);
+  padding: 4px 10px;
+  color: var(--ds-text-muted);
+  font-size: var(--text-3xs);
+  line-height: var(--leading-normal);
 }

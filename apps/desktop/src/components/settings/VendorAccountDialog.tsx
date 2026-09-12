@@ -15,7 +15,9 @@ import {
   type ProviderPublic,
 } from "@pi-desktop/shared";
 import { useTranslation } from "react-i18next";
+import { pairsToRecord, recordToPairs } from "../extensions/KeyValueRows";
 import { Button, Field, Input } from "../ui";
+import { ProviderHeadersEditor } from "./ProviderHeadersEditor";
 import { useProviderModels } from "./useProviderModels";
 import { ModelSelectionPanes, useModelSelection } from "./ModelSelectionPanes";
 
@@ -24,7 +26,7 @@ export type VendorAccountForm = {
   /** The account's default model; always `models[0]`. */
   modelId: string;
   models: ModelBinding[];
-  userAgent: string;
+  headers: Record<string, string>;
 };
 
 export function VendorAccountDialog({
@@ -42,8 +44,8 @@ export function VendorAccountDialog({
 }) {
   const { t } = useTranslation();
   const [name, setName] = useState(initialName);
-  const [advanced, setAdvanced] = useState(() => Boolean(provider.userAgent));
-  const [userAgent, setUserAgent] = useState(provider.userAgent ?? "");
+  const [headerPairs, setHeaderPairs] = useState(() => recordToPairs(provider.headers));
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [models, setModels] = useState<ModelBinding[]>(
     provider.models.length > 0
       ? provider.models
@@ -53,13 +55,14 @@ export function VendorAccountDialog({
   );
 
   // A vendor account has no typed key: the host resolves the stored login.
+  const headers = pairsToRecord(headerPairs);
   const discovery = useProviderModels(
     true,
     {
       baseUrl: provider.baseUrl ?? "",
       apiKey: "",
       apiStyle: provider.apiStyle ?? "",
-      userAgent,
+      headers,
     },
     provider,
   );
@@ -67,11 +70,16 @@ export function VendorAccountDialog({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !saving) onClose();
+      if (event.key !== "Escape" || saving) return;
+      if (advancedOpen) {
+        setAdvancedOpen(false);
+        return;
+      }
+      onClose();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose, saving]);
+  }, [advancedOpen, onClose, saving]);
 
   const canSave = !saving && !!name.trim() && models.length > 0;
 
@@ -86,7 +94,7 @@ export function VendorAccountDialog({
       name: name.trim(),
       modelId: persisted[0].id,
       models: persisted,
-      userAgent,
+      headers,
     });
   };
 
@@ -110,6 +118,9 @@ export function VendorAccountDialog({
           <h3 id="vendor-account-title" className="vendor-account-title">
             {t("settings.editVendorAccount")}
           </h3>
+          <Button variant="ghost" size="sm" onClick={() => setAdvancedOpen(true)}>
+            {t("settings.advancedSettings")}
+          </Button>
         </div>
 
         <div className="vendor-account-body">
@@ -121,35 +132,12 @@ export function VendorAccountDialog({
             />
           </Field>
 
-          <button
-            type="button"
-            className="provider-setup-advanced-toggle"
-            aria-expanded={advanced}
-            onClick={() => setAdvanced((open) => !open)}
-          >
-            {t("settings.advanced")}
-          </button>
-          {advanced ? (
-            <div className="provider-setup-advanced">
-              <Field
-                label={t("settings.userAgent")}
-                hint={t("settings.userAgentHint")}
-              >
-                <Input
-                  value={userAgent}
-                  className="font-mono text-sm-plus"
-                  autoComplete="off"
-                  onChange={(event) => setUserAgent(event.target.value)}
-                />
-              </Field>
-            </div>
-          ) : null}
-
           <ModelSelectionPanes
             discovery={discovery}
             selection={selection}
             listTitle={t("settings.accountModels")}
             busy={saving}
+            onReload={discovery.reload}
           />
         </div>
 
@@ -162,6 +150,39 @@ export function VendorAccountDialog({
           </Button>
         </div>
       </div>
+
+      {advancedOpen ? (
+        <div
+          className="overlay provider-advanced-overlay"
+          role="presentation"
+          onClick={(event) => {
+            event.stopPropagation();
+            if (event.target === event.currentTarget) setAdvancedOpen(false);
+          }}
+        >
+          <div
+            className="dialog provider-advanced-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="vendor-advanced-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="provider-advanced-head">
+              <h4 id="vendor-advanced-title" className="provider-advanced-title">
+                {t("settings.advancedSettings")}
+              </h4>
+              <Button variant="ghost" size="sm" onClick={() => setAdvancedOpen(false)}>
+                {t("settings.close")}
+              </Button>
+            </div>
+            <div className="provider-advanced-body">
+              <div className="provider-setup-advanced">
+                <ProviderHeadersEditor pairs={headerPairs} onChange={setHeaderPairs} />
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

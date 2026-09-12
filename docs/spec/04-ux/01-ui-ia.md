@@ -47,9 +47,9 @@ destination, chat as the home surface, tools and permissions inline.
   rows have no leading brand icon and session-creation controls use a dedicated
   message-plus icon. On
   Windows/Linux, the expanded sidebar begins with a keyboard-accessible Home
-  brand and Search plus Collapse sidebar controls at the right; activating the
+  brand and Collapse sidebar at the right; activating the
   brand returns the main pane to chat. The macOS expanded sidebar omits the
-  logo/title brand and places only Search and Collapse sidebar at the right of
+  logo/title brand and places only Collapse sidebar at the right of
   the traffic-light row. `Codex` remains only an external import source or a
   design-reference term.
 - **Main pane**: exactly one destination at a time; destinations replace the
@@ -61,36 +61,43 @@ destination, chat as the home surface, tools and permissions inline.
   the wider shell does not create an over-wide, low-density reading surface.
 - **Titlebar**: platform-native desktop chrome (D118). macOS uses
   `hiddenInset` traffic lights and the system application menu. The expanded
-  sidebar keeps Search and Collapse sidebar in the same 46px row, aligned to
+  sidebar keeps Collapse sidebar in the same 46px row, aligned to
   the right outside the traffic-light safety area; no logo/title is rendered
-  there, including in fullscreen. When the work panel is open, the native
-  window controls stay at the conversation pane's right edge while the panel
-  header uses its full width for the active resource.
+  there, including in fullscreen. When the work panel is open, native window
+  controls stay viewport-fixed at the window's right edge and the panel header
+  reserves that band plus the work-panel toggle. The panel header is a
+  horizontally scrollable tab strip followed by a fixed `+` add trigger; tab
+  close actions stay in the tabs, so the Windows native close control is not
+  visually duplicated by a second header `×`.
   Windows/Linux use a menu-free frameless 46px row with sidebar actions on the
   left and accessible minimize / maximize-or-restore / close controls at the
-  right edge of the conversation pane (D129). When the work panel is open, the
-  controls stay with the conversation pane and the panel header uses its full
-  width for resource actions. Destination history is shortcut-only (`Cmd/Ctrl+[` and
+  right edge of the conversation pane when the panel is closed (D129). When
+  the work panel is open, those controls stay viewport-fixed over the panel
+  header rather than travelling with MainPane. Destination history is shortcut-only (`Cmd/Ctrl+[` and
   `Cmd/Ctrl+]`); no back/forward buttons are rendered. The main titlebar has no
   notification action; the durable local inbox opens from the sidebar footer
   bell instead (D130/D117).
-- **Work panel**: docked right column (not an overlay) opened by an artifact
-  or `Cmd/Ctrl + J`. File, URL, browser-preview, and successful workspace-edit
-  artifacts create their resources atomically. A combined panel entry keeps
-  Browser and in-scope plugin views available while
-  the panel is visible; opened-but-inactive views show a quiet dot and the active
-  resource has a restrained edge marker. The 46px content header names the
-  current resource, closes it directly, and opens a compact switcher for all
-  current session resources. File paths stay distinct in that switcher while
-  plugin views deduplicate by view reference. `Cmd/Ctrl + J` toggles the
-  active session's retained panel context — revealing it without creating a
-  resource tab and collapsing it without discarding one; the create trigger
-  remains unavailable while the panel is closed. A
+- **Work panel**: docked right column (not an overlay) opened by an artifact,
+  the viewport-fixed toggle, or `Cmd/Ctrl + J`. File, URL, browser-preview, and
+  successful workspace-edit artifacts create their resources atomically. The
+  46px content header exposes a tablist and a fixed `+` trigger. Its tokenized
+  60px right-side safe lane plus separated action rail keep the trigger distinct
+  from the viewport-fixed work-panel toggle. Clicking `+` creates and activates
+  a unique New launcher tab; its body presents the same data-driven Review and
+  plugin-view rows as buttons, so the user chooses a destination in the page
+  instead of opening a dropdown. Selecting a row replaces that launcher tab with
+  the destination or activates an existing singleton. File paths stay distinct
+  while plugin views deduplicate by view reference. The viewport-fixed toggle
+  and `Cmd/Ctrl + J` both toggle the active session's retained panel context —
+  revealing it without creating a resource tab and collapsing it without
+  discarding one; the create trigger remains unavailable while the panel is
+  closed. Closing the final tab keeps the panel open and shows the New launcher.
+  A
   successful active-session workspace Write/Edit artifact opens Review;
   scratch, failed, and background-session writes never steal focus. The outer
   inner divider resizes the panel from 244px to 720px; moving it left takes
   more space from MainChat and moving it right gives space back. The sole
-  panel-level control collapses the panel; each session retains its own runtime
+  panel-level control is the viewport-fixed toggle; each session retains its own runtime
   open state, tab set, active tab, and Browser resource in renderer memory.
   Selecting another session swaps the visible panel context without deleting
   either session's state; selecting a workspace without an active conversation
@@ -100,12 +107,14 @@ destination, chat as the home surface, tools and permissions inline.
   retained session contexts, and only the preferred panel width persists across
   launches.
   The work panel remains a fixed-width in-flow column beside MainChat inside
-  the existing client area (ADR 0151). Opening and collapsing change only the
-  shell's internal flex allocation and never expand or shrink native window
-  bounds. The renderer-measured panel rectangle continues to position the
-  native Browser view. Native window edges resize the app window only; they do
-  not change the panel target. The outer window remains natively resizable from
-  all OS edges and corners, with a minimum supported size of 1040×700. Replaces
+  the existing client area (ADR 0151). MainChat reserves a 515px minimum for
+  the composer, and neither side dock may consume or paint over that width.
+  Opening and collapsing change only the shell's internal flex allocation and
+  never expand or shrink native window bounds. The renderer-measured panel
+  rectangle continues to position the native Browser view. Native window edges
+  resize the app window only; they do not change the panel target. The outer
+  window remains natively resizable from all OS edges and corners, with a
+  minimum supported size of 1040×700. Replaces
   the former context-panel overlay; workspace/model/status info lives in the
   composer chips and Settings instead.
 - **Composer**: workspace-agnostic floating pill anchored to the conversation
@@ -125,11 +134,13 @@ destination, chat as the home surface, tools and permissions inline.
 ## 3. Destinations
 
 ### 3.1 Chat home (default)
-- Empty state: a restrained hero title ("What can I help you build?" — project name
-  becomes a dotted-underline button when a workspace is open), an optional
-  first-run checklist, and a bottom-reserved composer. Task entry starts
-  directly in the composer; no redundant supporting paragraph, developer
-  starter cards, or contextual quick-action row is rendered (D204/D206).
+- Empty state: a restrained hero title ("What can I help you build?" — a
+  project-bound session turns the project name into a dotted-underline
+  switcher that lists the sidebar's open projects, can search them, can
+  clone a git repository, and can open another local folder), an optional first-run
+  checklist, and a bottom-reserved composer. Task entry starts directly in the composer; no
+  redundant supporting paragraph, developer starter cards, or contextual
+  quick-action row is rendered (D204/D206).
 - With transcript: message stream + tool disclosure rows (D071), a contextual
   message-scoped review card immediately after each successful workspace
   Write/Edit row, docked composer, and a session-scoped permission card inline.
@@ -158,7 +169,8 @@ destination, chat as the home surface, tools and permissions inline.
   overflow menu. The directory title is one full-row disclosure target;
   collapse/expand affects only child visibility, and adjacent groups form one
   dense tree rather than detached cards. Hovering or focusing the project title
-  reveals the full project path.
+  reveals the full project path. Pressing the title and moving 8px reorders
+  the group.
 - **Project actions**: open folder reveals the project directory; rename edits
   the renderer-local display name while the normalized path remains the
   project identity; pin/unpin changes presentation priority; archive/restore
@@ -171,8 +183,9 @@ destination, chat as the home surface, tools and permissions inline.
   never removes the transcript. Open folder is a project action, not a
   conversation action.
 - **Sort**: user-facing modes are Recently updated, Created date, Oldest
-  first, and Name. Pinned rows precede unpinned rows. A legacy persisted
-  `manual` value remains readable but does not imply a drag-reorder gesture.
+  first, and Name. Pinned rows precede unpinned rows. Project groups switch
+  to `manual` by dragging a title or using ArrowUp/ArrowDown on that
+  title. Session `manual` remains a compatibility value.
 - **Conversation list**: each group shows the ten most-recent sessions in the
   active sort order by default; the remainder folds behind a **Load N more…**
   row that expands the full time-grouped list on click. Pinned rows precede
@@ -209,8 +222,10 @@ by state — Needs attention / Updates available / Active / Turned off — as so
 tiles stacked under a group label (D296). Marketplace remains the browse/install
 card grid. The page draws no dividers: header, toolbar, rows, source settings,
 cards and the detail sheet's sections are set apart by tone and spacing, and
-hairlines are reserved for floating layers (menus, sheet, dialogs).
-MCP, Skills, and Subagents are not tabs or sections of Extensions.
+hairlines are reserved for floating layers (menus, sheet, dialogs). The
+marketplace source settings show the source selector without a redundant
+provider explanation or active-source status line. MCP, Skills, and Subagents
+are not tabs or sections of Extensions.
 
 ### 3.6 Settings (full-page takeover)
 ### 3.6 Settings (full-page takeover)
@@ -222,10 +237,12 @@ changes the page destination rather than a tab inside a shared capability panel.
 Appearance lives inside General; global AI behavior (permissions and context
 management) lives inside 全局 AI; keyboard shortcuts and global/project
 instructions have their own destinations; provider management lives inside
-Model configuration. Import scans supported local agent stores and presents
-candidates in collapsible groups. Project path is an alternate grouping
+Model configuration. Import scans supported local agent stores for sessions
+and, independently, for model configuration, and presents candidates in
+collapsible groups. Project path is an alternate grouping for sessions
 alongside the default source grouping, and every scan or grouping change starts
-with all groups collapsed. Project archive owns the durable D086 Projects index
+with all groups collapsed. Model-configuration import copies stored API keys
+and skips subscription logins. Project archive owns the durable D086 Projects index
 (search, add, expand, pin, archive/restore, close, and reopen) and always includes
 archived records. Opening or switching a project retains a sidebar tab, selects
 that project as the active workspace, and returns to chat. Other retained tabs
@@ -248,7 +265,9 @@ shared capability contract:
   `McpEditorSheet` as a modal overlay with stdio/HTTP branches, validation,
   duplicate checks, locked edit ids, scope text, and Test connection feedback.
 - Subagents use one full-width global surface under `~/.agents/subagents`; they
-  have no project picker, project surface, or project-level toggle.
+  have no project picker, project surface, or project-level toggle. Creating or
+  editing a subagent picks the pinned model from configured provider models, or
+  inherits the session model; it does not require typing a `provider/model` id.
 - All three lists flow at natural page height, render a quiet centered empty
   state inside the panel, dim disabled rows, and store enablement in app-local
   state rather than capability files. Loading and project changes render
@@ -264,6 +283,7 @@ shared capability contract:
 | Profile menu | sidebar footer | Settings / Logs / Theme cycle (D041) |
 | Notification inbox | sidebar footer bell | All/Unread views, task failure rows only (successful completions are hidden, D295), mark-all-read and clear actions (D130/D117) |
 | Toasts | events (plugin toast, backend restored, copy) | top-center; 4s default, 8s for errors |
+| Project switcher | empty-home underlined project name | sidebar open projects + search + clone git project + open project |
 
 ## 5. Navigation model
 
@@ -278,9 +298,11 @@ shared capability contract:
   `chat`. Selecting a temporary thread clears the visible active workspace
   before loading it.
 - Empty home has three explicit session states: a project-bound session shows
-  the existing project-underlined welcome; a temporary session shows dedicated
-  temporary-chat copy with no project underline or folder-open action; and no
-  active session keeps the generic welcome title.
+  the project-underlined welcome; clicking the name opens a searchable
+  switcher of the sidebar's open projects instead of the folder picker. A
+  temporary session shows dedicated temporary-chat copy with no project
+  underline or switcher; and no active session keeps the generic welcome
+  title.
 - New task resolves the current project or temporary group by its most recent
   session: if that session has `messageCount = 0`, it is selected and reused;
   otherwise a durable empty session is created immediately and appears in the
@@ -299,7 +321,7 @@ shared capability contract:
 | Cmd/Ctrl+O | open project |
 | Cmd/Ctrl+, | settings |
 | Cmd/Ctrl+. | abort current run |
-| Enter / Shift+Enter | send / newline (configurable Enter-to-send) |
+| Enter / Shift+Enter / Cmd/Ctrl+Enter | send / newline (Enter-to-send; when off, Cmd/Ctrl+Enter sends) |
 | Esc | dismiss overlay/menu |
 
 ## 7. State-dependent chrome
@@ -324,10 +346,12 @@ shared capability contract:
   completions stay in the durable record for the sidebar outcome badge and
   native notification but never appear in the inbox (D295). Selecting a row
   marks it read and activates its bound project/session.
-  Electron additionally presents a native system notification only when the
+  Electron additionally presents a native task notification only when the
   app window is unfocused, and clicking it focuses the window before activating
-  the same session (D117). Receiving either the durable or native notification
-  event never navigates by itself; only explicit activation does.
+  the same session (D117). Interactive ask/permission/plan prompts use their
+  separate native path and may alert for a focused background session. Receiving
+  either durable or native notification events never navigates by itself; only
+  explicit activation does.
 - Backend degraded → status capsule (restarting) or fatal banner with Open
   logs (D080); composer submits are rejected with readable errors while down.
   - Plan/Goal checkpoint → the originating session shows only the structured title
@@ -349,6 +373,6 @@ shared capability contract:
 
 ## 8. i18n
 
-English is the source locale. Shipped translations (currently zh-CN and
-Turkish) cover shell chrome; labels are asserted by US-UI e2e scenarios.
+English is the source locale. Shipped translations (zh-CN, zh-TW, Turkish, German, Spanish, French, and
+Korean) cover shell chrome; labels are asserted by US-UI e2e scenarios.
 Copy rules live in [02-i18n-english-first](02-i18n-english-first.md).

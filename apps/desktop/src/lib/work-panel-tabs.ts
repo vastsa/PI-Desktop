@@ -1,4 +1,5 @@
 export type WorkPanelTabKind =
+  | "new"
   | "review"
   | "file"
   | "plugin";
@@ -28,6 +29,8 @@ export type ReviewArtifactEvent = {
   isError?: boolean;
   result: unknown;
 };
+
+let newWorkPanelTabSequence = 0;
 
 export function emptyWorkPanelContext(): WorkPanelContext {
   return { open: false, tabs: [], activeTabId: null, fileRequest: null };
@@ -64,9 +67,22 @@ export function switchWorkPanelContextState(
 }
 
 export function toolWorkPanelTab(
-  kind: Exclude<WorkPanelTabKind, "file" | "plugin">,
+  kind: Exclude<WorkPanelTabKind, "new" | "file" | "plugin">,
 ): WorkPanelTab {
   return { id: kind, kind };
+}
+
+/**
+ * A temporary launcher page created by the panel's `+` action. Its id is
+ * intentionally unique so each click creates a real, independently closable
+ * tab instead of toggling a shared menu or reusing one blank state.
+ */
+export function newWorkPanelTab(): WorkPanelTab {
+  newWorkPanelTabSequence += 1;
+  return {
+    id: `new:${Date.now().toString(36)}-${newWorkPanelTabSequence.toString(36)}`,
+    kind: "new",
+  };
 }
 
 /**
@@ -116,7 +132,7 @@ export function parsePluginViewRef(
 export function isKnownWorkPanelTab(tab: WorkPanelTab): boolean {
   return (
     Boolean(tab) &&
-    (tab.kind === "review" || tab.kind === "file" || tab.kind === "plugin")
+    (tab.kind === "new" || tab.kind === "review" || tab.kind === "file" || tab.kind === "plugin")
   );
 }
 
@@ -210,6 +226,31 @@ export function openWorkPanelTabState(
   }
   const tabs = [...state.tabs];
   tabs[index] = tab;
+  return { tabs, activeTabId: tab.id };
+}
+
+/** Replace a launcher tab with its selected destination, reusing an open tab. */
+export function replaceWorkPanelTabState(
+  state: WorkPanelTabsState,
+  sourceTabId: string,
+  tab: WorkPanelTab,
+): WorkPanelTabsState {
+  const sourceIndex = state.tabs.findIndex((item) => item.id === sourceTabId);
+  if (sourceIndex < 0) return openWorkPanelTabState(state, tab);
+  if (sourceTabId === tab.id) return { ...state, activeTabId: tab.id };
+
+  const existingIndex = state.tabs.findIndex(
+    (item) => item.id === tab.id && item.id !== sourceTabId,
+  );
+  if (existingIndex >= 0) {
+    return {
+      tabs: state.tabs.filter((_, index) => index !== sourceIndex),
+      activeTabId: tab.id,
+    };
+  }
+
+  const tabs = [...state.tabs];
+  tabs[sourceIndex] = tab;
   return { tabs, activeTabId: tab.id };
 }
 

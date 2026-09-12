@@ -11,7 +11,7 @@
 
 ## 1. 核心不可变规则
 
-这五项规则管理着 PI-Desktop 代码库和文档的每次更改。如果没有明确的人工干预，代理就无法放松它们。
+下列规则管理着 PI-Desktop 代码库和文档的每次更改。R1–R4 复述 `AGENTS.md` 中五条编号的不可变规则（R4 同时涵盖合并回 main 与清理工作树两条）；R5 与 R6 复述其 GitHub issue 与 pull request 处理章节。如果没有明确的人工干预，代理就无法放松它们。
 
 ### R1 — 规格优先/规格同步
 
@@ -89,6 +89,27 @@
 - issue 链接仅授权评论并关闭**该** issue。它不授权 git push。远程发布仍按 R4 和 `AGENTS.md` 选择加入。
 - 不得评论或关闭无关 issue。除非用户明确要求，否则不得重新打开已关闭的 issue。
 
+### R6 — 原则没问题的链接 PR 先合入，再完善
+
+> **链接的 GitHub pull request 只要方向正确，就必须先合入。完整性、风格、规格同步和打磨在合入之后进行，以免贡献者的工作被丢掉。**
+
+当用户提示包含 GitHub pull request URL，或本仓库中无歧义的 pull request 编号时，适用本规则。
+
+- 在创建替代实现或要求重写之前，先获取 pull request（标题、正文、文件、提交、评论、检查、草稿状态、base/head 以及关联 issue）。
+- 独立判断**原则**是否成立。该变更必须针对真实且在范围内的问题，并且方案与基线、安全边界和架构兼容（或是有规格依据的正当修订）。判断的是方向，而不是该 pull request 是否已经满足 R1–R5 的完整性。
+- 当原则成立时，不得把该 pull request 重写为替代实现、因细枝末节关闭它，或要求贡献者从头再来。
+- 若原则成立：
+  1. 先合入**该** pull request，并保留贡献者的提交。使用仓库允许的、能让贡献者作为合入工作作者的合并策略。
+  2. 缺失的规格、测试、i18n、e2e 文档、风格、命名和提交说明琐事是后续工作，不是合入阻塞项。
+  3. 会破坏 `main` 的落地阻塞（无法编译、使改动区域的现有测试失败、或存在合并冲突）可以在作者工作**之上**追加最小提交以便合入。不得 squash 掉作者。不得改写设计。
+  4. 该 pull request 进入 `main` 之后，按 R4 从更新后的 `main` 做任何后续完善。
+  5. 用该 pull request 的原文语言评论：肯定贡献、说明已合入的内容，并列后续工作（如有）。
+- 若原则不成立，或存在危害阻塞（密钥、沙箱或权限绕过、恶意或明显破坏性改动、超出范围地推翻冻结决策、无关的顺便改动）：不得合入。用该 pull request 的原文语言评论证据。不得在假装该 pull request 从未存在的情况下悄悄重做同一想法。
+- 不得合入作者尚未标为 ready 的草稿 pull request，除非用户明确要求合入该草稿。评论原则审查结果并等到它 ready。
+- pull request 链接在本规则适用时，授权审查、评论并合入**该** pull request。它不授权对贡献者分支 force-push，也不授权发布无关分支。后续工作仍遵循 R4 的远程发布选择加入规则。
+- 不得评论或合入无关 pull request。已合入的 pull request 不再重新打开；剩余缺口转为普通后续工作。
+- 当同时链接了 issue 和 pull request 时，R6 适用于该 pull request；R5 在合入结果之后仍适用于该 issue。
+
 ### GitHub issue 模板
 
 `.github/ISSUE_TEMPLATE` 是唯一公开入口（`blank_issues_enabled: false`）。
@@ -103,10 +124,11 @@
 
 ## 2. 开发循环
 
-每一个变化都遵循这个顺序。如果实施过程中出现新的需求，则可以重复步骤。如果提示包含 GitHub issue，必须在步骤 1 之前完成 R5 核实。
+每一个变化都遵循这个顺序。如果实施过程中出现新的需求，则可以重复步骤。如果提示包含 GitHub issue，必须在步骤 1 之前完成 R5 核实。如果提示包含 GitHub pull request，必须在开始替代实现或后续完善之前完成 R6 原则审查（原则成立时先合入）。
 
 ```
 0. If a GitHub issue is linked: verify the claim (R5) before any implementation
+0b. If a GitHub pull request is linked: review the principle (R6); merge first when sound; start follow-up only after it is in `main`
 1. Sync main + create a request branch and worktree
 2. Read baseline + relevant specs
 3. Plan change + list impacted specs and necessary validation
@@ -127,6 +149,7 @@
 | 步骤 | 行动 | 输出 |
 |---|---|---|
 | **0. Issue 核实** | 当链接了 GitHub issue 时，先获取并独立核实所报告的问题是否存在。若不存在则停止实现（评论，并仅在结论明确时关闭）。 | 已核实的 issue，或评论以及关闭/保持打开的决定。 |
+| **0b. PR 审查** | 当链接了 GitHub pull request 时，先获取并独立判断原则是否成立。成立则先合入；仅在它进入 `main` 之后开始后续完善。不成立则停止（评论，不重写）。 | 已合入的贡献者 PR 加后续计划，或评论且不合入。 |
 | **1.分支+工作树** | 保留现有工作，从 `origin/main` 进行更新，并在专用工作树中创建专用请求分支。在安全的情况下重复使用主要结账环境。 | 当前 `main` 上的独立任务文件具有一致的开发环境。 |
 | **2.阅读** | 阅读 `00-baseline.md` 以及与变更区域相关的任何规范。 | 约束的心理模型。 |
 | **3. Plan** | 描述预期的改变。列出需要更新的每个规范、ADR 和 e2e 场景，并评估是否需要本地验证。 | 变更计划+影响和验证列表。 |
@@ -160,6 +183,18 @@
 - 托管平台在运行后自动启动所需的 E2E 作业
   推或 PR 仍然是合并门。观察并报告他们的结果，但不要
   除非用户明确请求，否则手动调度或重新运行它们。
+
+### 市场/更新诊断门
+
+插件更新事故在改代码之前必须走证据优先的提示流程：
+
+1. 记录确切的插件 ID、已安装版本、显示版本、预期发布版本、目录 URL 和观察时间。
+2. 抓取线上目录并检查确切条目，然后分别独立检查本地目录缓存和已安装注册表。
+3. 划分失败边界：发布者/目录数据、抓取/缓存回退、宿主版本比较、IPC 传播，还是渲染器呈现。
+4. 运行 `pnpm check:marketplace -- --url <catalog-url> --plugin <id>`。缺少 `shasum`、`url`、正数 `sizeBytes` 或 `permissions` 属于发布数据失败，不是渲染器过期的证据。不完整的发布仍然不可安装。
+5. 在修改宿主或渲染器代码之前，先用包含未排序版本和不完整元数据的 fixture 复现。
+
+代理必须说明哪个边界失败，以及哪些证据排除了其他边界。客户端回退可以保住安全的发现能力，但不得用来掩盖无效的市场发布。
 
 ---
 
@@ -329,17 +364,18 @@ git worktree prune
 9. 分支被推送，其 PR/MR 被审核并合并到 `main`。
 10.请求工作树被移除，合并的请求分支被删除。
 11. 若链接了 GitHub issue：在实现前已核实该主张；issue 收到以其原文语言撰写的评论；结论明确时已关闭该 issue。
+12. 若链接了 GitHub pull request：已审查原则；原则成立时已先合入；后续完善在合入之后落地；贡献者的工作未被丢掉。
 
 ### 发布/版本标签门
 
 当更改是**稳定应用程序版本发布**（版本提升 + 标签）时，完成的定义还要求在
 打标签**之前**，所有带版本号的位置都描述新版本：`packages/shared/src/changelog.ts`
-中的双语应用内变更日志条目（EN + zh-CN，亮点条数一致）及其
+中的已发货语言应用内变更日志条目（英语和每个已发货产品语言，亮点条数一致）及其
 `changelog.test.ts` 清单、每个工作区 `package.json`（含 `docs/package.json`）、
 Cargo 工作区版本与 `host-core` 锁文件条目、`APP_VERSION`，以及 `README.md` +
 `README.zh-CN.md` 中声明的版本线。`node scripts/check-release-docs.mjs` 必须
 通过；`scripts/release.mjs` 会执行它，未通过则拒绝打标签。参见
-[06-release-runbook.md §4.1](/zh-CN/spec/06-delivery/06-release-runbook#4-1-强制发布版本面门禁-d164-d260)、
+[06-release-runbook.md §4.1](/zh-CN/spec/06-delivery/06-release-runbook#_4-1-强制发布版本面门禁-d164-d260)、
 D164 与 D260。 GitHub 发行说明并不能替代。
 
 ---
@@ -364,7 +400,11 @@ D164 与 D260。 GitHub 发行说明并不能替代。
 | 在一次提交中混合多个逻辑更改而没有明确的消息 | 历史粒度的损失 |
 | 未核实问题是否存在就开始实现链接的 GitHub issue | 违反 R5；把工作浪费在无效或已修复的主张上 |
 | 关闭链接的 GitHub issue 时没有以其原文语言撰写的评论 | 违反 R5；没有公开记录处理结果 |
-| 在不更新 `packages/shared/src/changelog.ts` 的情况下标记稳定的应用程序版本（EN + zh-CN） | 违反 D164/发布操作手册；该版本的应用内新增功能为空 |
+| 关闭、重写或要求重启原则成立的链接 pull request | 违反 R6；丢掉贡献者的工作 |
+| 仅因缺失规格、测试、风格或智能体工作流完整性而阻止合入原则成立的链接 pull request | 违反 R6；完整性是合入后的后续工作 |
+| 合入原则不成立或引入危害阻塞的链接 pull request | 违反 R6；先合入不适用于不安全或方向错误的改动 |
+| 为落地链接 pull request 而对贡献者分支 force-push | 违反 R6；落地修复加在作者提交之上 |
+| 在不为每个已发货语言更新 `packages/shared/src/changelog.ts` 的情况下标记稳定的应用程序版本 | 违反 D164/D345/发布操作手册；该语言版本的应用内新增功能为空 |
 | 在 `README.md` / `README.zh-CN.md` 仍声明旧版本线时标记稳定版本，或用 `--skip-docs-check` 绕过 `scripts/check-release-docs.mjs` | 违反 D260/发布操作手册；已发布文档宣传的版本与实际发布不符 |
 
 ---
@@ -373,7 +413,7 @@ D164 与 D260。 GitHub 发行说明并不能替代。
 
 在以下情况下，此工作流程规范本身被接受：
 
-- [ ] R1/R2/R3/R4/R5 已明确说明并与相关规范交叉链接。
+- [ ] R1/R2/R3/R4/R5/R6 已明确说明并与相关规范交叉链接。
 - [ ] 开发循环由 `AGENTS.md` 记录和引用。
 - [ ] 规范更新矩阵涵盖基线中的所有变更类型。
 - [ ] Git 提交规则与现有存储库提交样式匹配（`docs:`、`chore:`）。
@@ -392,4 +432,5 @@ D164 与 D260。 GitHub 发行说明并不能替代。
 - [ ] 禁止行为列表涵盖已知的风险领域。
 - [ ] `AGENTS.md` 指向此文档、`04-e2e-test-plan.md` 和 `05-change-checklist.md`。
 - [ ] 链接的 GitHub issue 必须在实现前核实，然后以其原文语言评论，并在结论明确时关闭。
+- [ ] 原则成立的链接 GitHub pull request 必须先合入，再完善；不得丢掉贡献者的工作。
 - [ ] 更新所有索引（NAV、交付自述文件、规格自述文件、文档自述文件、董事会）。

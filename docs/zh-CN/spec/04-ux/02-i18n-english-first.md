@@ -27,13 +27,21 @@ UI 必须使用 **i18next + React-i18next** (D012)。
 7. Electron 应用程序菜单自定义标签和渲染器窗口控件
    消耗目录键；本机角色标签可以使用 Electron/OS 本地化
 
+规范的思考等级值是可见字符串规则的一个有意例外：Composer、模型配置和
+委派界面直接显示协议值 `off`、`minimal`、`low`、`medium`、`high`、`xhigh`
+和 `max`。这些稳定的技术值不得加入语言目录或进行翻译。
+
 ## 3. 目录结构
 
 ```text
 packages/i18n/src/locales/
 ├── en/index.ts
 ├── zh-CN/index.ts
-└── tr/index.ts
+├── zh-TW/index.ts
+├── tr/index.ts
+├── de/index.ts
+├── es/index.ts
+└── fr/index.ts
 ```
 
 英文目录是翻译目录的源类型。`packages/i18n` 中的注册表列出每个已发布语言（id、本地名称、英文名称）。自动化测试会校验每个已发布语言的目录键和插值变量。新增语言只需加一份目录和一行注册表；语言选择器读取该注册表。

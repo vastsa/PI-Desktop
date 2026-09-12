@@ -21,6 +21,16 @@ export type ProviderModelsState = {
   source?: ProviderModelsSource;
 };
 
+export type ProviderModelsDiscovery = ProviderModelsState & {
+  /** Probe the live endpoint now. Skips debounce and the cache-first paint. */
+  reload: () => void;
+  /**
+   * True when a live probe can start now. Idle-with-a-valid-URL (the edit
+   * debounce) is included so Fetch list can skip that window.
+   */
+  canReload: boolean;
+};
+
 /** Keystroke settling window before the service is contacted. */
 const FETCH_DEBOUNCE_MS = 600;
 
@@ -46,21 +56,102 @@ function canDiscover(baseUrl: string): boolean {
  * window elapses, so typing a key or picking a service does not re-render the
  * panes on every change. A saved provider paints its cached list first and
  * then refreshes live; the stored secret is reused when no key is typed (the
- * main process reads the keychain for `providerId`).
+ * main process reads the keychain for `providerId`). A header action can probe
+ * immediately without waiting for that window or painting cache first.
  */
 export function useProviderModels(
   active: boolean,
-  form: { baseUrl: string; apiKey: string; apiStyle: string; userAgent?: string },
+  form: { baseUrl: string; apiKey: string; apiStyle: string; headers?: Record<string, string> },
   editingProvider?: ProviderPublic | null,
-): ProviderModelsState {
+): ProviderModelsDiscovery {
   const [state, setState] = useState<ProviderModelsState>(IDLE);
   // Only the newest request may commit: a slow reply from an older keystroke
   // must never overwrite a newer result.
   const requestSeq = useRef(0);
   const endpointRef = useRef<string | null>(null);
 
-  const { baseUrl, apiKey, apiStyle, userAgent } = form;
+  const { baseUrl, apiKey, apiStyle, headers } = form;
+  const headersKey = JSON.stringify(headers ?? {});
   const providerId = editingProvider?.id;
+  const paramsRef = useRef({ active, baseUrl, apiKey, apiStyle, headers, providerId });
+  paramsRef.current = { active, baseUrl, apiKey, apiStyle, headers, providerId };
+  const modelsRef = useRef(state.models);
+  modelsRef.current = state.models;
+
+  const run = async (requestId: number, options?: { skipCache?: boolean }) => {
+    const {
+      active: isActive,
+      baseUrl: url,
+      apiKey: key,
+      apiStyle: style,
+      headers: hdrs,
+      providerId: id,
+    } = paramsRef.current;
+    if (requestSeq.current !== requestId) return;
+    if (!isActive || !canDiscover(url)) {
+      setState(IDLE);
+      return;
+    }
+    setState((prev) => ({ status: "loading", models: prev.models }));
+
+    let cachedModels: ModelInfo[] = options?.skipCache ? modelsRef.current : [];
+    if (id && !options?.skipCache) {
+      try {
+        const cached = await api.listProviderModels({
+          providerId: id,
+          source: "cache",
+        });
+        if (requestSeq.current !== requestId) return;
+        cachedModels = cached.models;
+        if (cachedModels.length > 0) {
+          // Paint the known list instantly; the live answer replaces it.
+          setState({
+            status: "loading",
+            models: cachedModels,
+            source: cached.source,
+          });
+        }
+      } catch {
+        // Live discovery remains available when the local cache read fails.
+      }
+    }
+
+    try {
+      // No `source` field: that is what selects the live branch in the host
+      // handler, which asks the service first and models.dev only after.
+      const result = await api.listProviderModels({
+        ...(id ? { providerId: id } : {}),
+        baseUrl: url.trim(),
+        ...(key ? { apiKey: key } : {}),
+        apiStyle: style,
+        ...(Object.keys(hdrs ?? {}).length > 0 ? { headers: hdrs } : {}),
+      });
+      if (requestSeq.current !== requestId) return;
+      if (result.models.length > 0) {
+        setState({
+          status: "ready",
+          models: result.models,
+          source: result.source,
+          ...(result.error ? { error: result.error } : {}),
+        });
+      } else {
+        // An empty live result keeps the cached rows usable and reports why.
+        setState({
+          status: "error",
+          models: cachedModels,
+          source: result.source,
+          ...(result.error ? { error: result.error } : {}),
+        });
+      }
+    } catch (cause) {
+      if (requestSeq.current !== requestId) return;
+      setState({
+        status: "error",
+        models: cachedModels,
+        error: cause instanceof Error ? cause.message : String(cause),
+      });
+    }
+  };
 
   useEffect(() => {
     const endpoint = `${baseUrl.trim()}|${apiStyle}`;
@@ -77,75 +168,21 @@ export function useProviderModels(
     const requestId = ++requestSeq.current;
     if (endpointChanged) setState(IDLE);
 
-    const run = async () => {
-      if (requestSeq.current !== requestId) return;
-      setState((prev) => ({ status: "loading", models: prev.models }));
-
-      let cachedModels: ModelInfo[] = [];
-      if (providerId) {
-        try {
-          const cached = await api.listProviderModels({
-            providerId,
-            source: "cache",
-          });
-          if (requestSeq.current !== requestId) return;
-          cachedModels = cached.models;
-          if (cachedModels.length > 0) {
-            // Paint the known list instantly; the live answer replaces it.
-            setState({
-              status: "loading",
-              models: cachedModels,
-              source: cached.source,
-            });
-          }
-        } catch {
-          // Live discovery remains available when the local cache read fails.
-        }
-      }
-
-      try {
-        // No `source` field: that is what selects the live branch in the host
-        // handler, which asks the service first and models.dev only after.
-        const result = await api.listProviderModels({
-          ...(providerId ? { providerId } : {}),
-          baseUrl: baseUrl.trim(),
-          ...(apiKey ? { apiKey } : {}),
-          apiStyle,
-          ...(userAgent?.trim() ? { userAgent } : {}),
-        });
-        if (requestSeq.current !== requestId) return;
-        if (result.models.length > 0) {
-          setState({
-            status: "ready",
-            models: result.models,
-            source: result.source,
-            ...(result.error ? { error: result.error } : {}),
-          });
-        } else {
-          // An empty live result keeps the cached rows usable and reports why.
-          setState({
-            status: "error",
-            models: cachedModels,
-            source: result.source,
-            ...(result.error ? { error: result.error } : {}),
-          });
-        }
-      } catch (cause) {
-        if (requestSeq.current !== requestId) return;
-        setState({
-          status: "error",
-          models: cachedModels,
-          error: cause instanceof Error ? cause.message : String(cause),
-        });
-      }
-    };
-
     // An existing provider opens with a known-good config — fetch right away
     // unless the endpoint itself just changed.
     const immediate = !!providerId && !apiKey && !endpointChanged;
-    const timer = setTimeout(() => void run(), immediate ? 0 : FETCH_DEBOUNCE_MS);
+    const timer = setTimeout(() => void run(requestId), immediate ? 0 : FETCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [active, baseUrl, apiKey, apiStyle, userAgent, providerId]);
+  }, [active, baseUrl, apiKey, apiStyle, headersKey, providerId]);
 
-  return state;
+  const reload = () => {
+    if (!paramsRef.current.active || !canDiscover(paramsRef.current.baseUrl)) return;
+    const requestId = ++requestSeq.current;
+    void run(requestId, { skipCache: true });
+  };
+
+  const canReload =
+    active && canDiscover(baseUrl) && state.status !== "loading";
+
+  return { ...state, reload, canReload };
 }

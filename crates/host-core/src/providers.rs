@@ -1,6 +1,7 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use uuid::Uuid;
 
 use crate::db::{ms_to_ts, now_ms, Database};
@@ -29,10 +30,10 @@ pub struct ProviderPublic {
     /// name). Never carries a token.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub oauth_account_label: Option<String>,
-    /// Optional outbound `User-Agent` override. Empty/absent keeps the adapter
-    /// default (pi-ai / `claude-cli` / OpenCode).
+    /// Optional outbound HTTP headers. Empty/absent keeps adapter defaults
+    /// (pi-ai / `claude-cli` / OpenCode). Not a secret.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub user_agent: Option<String>,
+    pub headers: Option<BTreeMap<String, String>>,
     pub models: Vec<ModelBinding>,
     /// Legacy default retained so older renderer/runtime clients can continue
     /// reading a provider while they migrate to `models`.
@@ -76,7 +77,7 @@ pub struct ProviderCreateInput {
     pub api_style: Option<String>,
     pub oauth_account_label: Option<String>,
     #[serde(default)]
-    pub user_agent: Option<String>,
+    pub headers: Option<BTreeMap<String, String>>,
     pub supports_reasoning: Option<bool>,
     pub supported_thinking_levels: Option<Vec<String>>,
     /// Zero (or negative temperature) clears a stored override.
@@ -106,7 +107,7 @@ pub struct ProviderUpdateInput {
     pub api_style: Option<String>,
     pub oauth_account_label: Option<String>,
     #[serde(default)]
-    pub user_agent: Option<String>,
+    pub headers: Option<BTreeMap<String, String>>,
     pub supports_reasoning: Option<bool>,
     pub supported_thinking_levels: Option<Vec<String>>,
     /// Zero (or negative temperature) clears a stored override.
@@ -123,6 +124,10 @@ pub struct ProviderUpdateInput {
 #[serde(rename_all = "camelCase")]
 pub struct ModelBinding {
     pub id: String,
+    /// Optional display alias. A blank or absent alias falls back to the catalog's
+    /// published name; `id` remains the wire identity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alias: Option<String>,
     pub context_window: u32,
     pub max_tokens: u32,
     #[serde(default)]
@@ -188,48 +193,136 @@ fn config_oauth_account_label(raw: &str) -> Option<String> {
         .filter(|label| !label.is_empty())
 }
 
-const MAX_USER_AGENT_BYTES: usize = 256;
+const MAX_HEADERS: usize = 32;
+const MAX_HEADER_KEY_BYTES: usize = 256;
+const MAX_HEADER_VALUE_BYTES: usize = 4096;
+const MAX_MODEL_ALIAS_CHARS: usize = 60;
+const FORBIDDEN_HEADER_KEYS: &[&str] = &[
+    "authorization",
+    "proxy-authorization",
+    "host",
+    "content-type",
+    "content-length",
+    "cookie",
+    "set-cookie",
+    "connection",
+    "transfer-encoding",
+    "te",
+    "trailer",
+    "upgrade",
+    "keep-alive",
+    "x-api-key",
+    "api-key",
+    "chatgpt-account-id",
+    "x-opencode-session",
+];
 
-fn normalize_user_agent_input(value: &str) -> Result<Option<String>> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
+fn valid_header_key(key: &str) -> bool {
+    let mut chars = key.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    first.is_ascii_alphanumeric() && key.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+}
+
+fn normalize_one_header(key: &str, value: &str) -> Result<Option<(String, String)>> {
+    let key = key.trim();
+    let value = value.trim();
+    if key.is_empty() {
+        if value.is_empty() {
+            return Ok(None);
+        }
+        bail!("HEADERS_INVALID: header name is required");
+    }
+    if key.len() > MAX_HEADER_KEY_BYTES {
+        bail!("HEADERS_INVALID: header name is too long");
+    }
+    if value.len() > MAX_HEADER_VALUE_BYTES {
+        bail!("HEADERS_INVALID: header value is too long");
+    }
+    if key.contains('\r') || key.contains('\n') || value.contains('\r') || value.contains('\n') {
+        bail!("HEADERS_INVALID: must not contain CR or LF");
+    }
+    if !valid_header_key(key) {
+        bail!("HEADERS_INVALID: header name \"{key}\" is not allowed");
+    }
+    if FORBIDDEN_HEADER_KEYS.contains(&key.to_ascii_lowercase().as_str()) {
+        bail!("HEADERS_INVALID: header \"{key}\" is reserved");
+    }
+    if value.is_empty() {
         return Ok(None);
     }
-    if trimmed.len() > MAX_USER_AGENT_BYTES {
-        return Err(anyhow::anyhow!(
-            "USER_AGENT_INVALID: at most {MAX_USER_AGENT_BYTES} characters"
-        ));
-    }
-    if trimmed.contains('\r') || trimmed.contains('\n') {
-        return Err(anyhow::anyhow!(
-            "USER_AGENT_INVALID: must not contain CR or LF"
-        ));
-    }
-    Ok(Some(trimmed.to_string()))
+    Ok(Some((key.to_string(), value.to_string())))
 }
 
-fn config_user_agent(raw: &str) -> Option<String> {
-    let value = config_value(raw)?
-        .get("userAgent")?
-        .as_str()?
-        .trim()
-        .to_string();
-    normalize_user_agent_input(&value).ok().flatten()
+fn normalize_headers_input(raw: &BTreeMap<String, String>) -> Result<BTreeMap<String, String>> {
+    let mut by_lower: BTreeMap<String, (String, String)> = BTreeMap::new();
+    for (key, value) in raw {
+        if let Some((normalized_key, normalized_value)) = normalize_one_header(key, value)? {
+            let lower = normalized_key.to_ascii_lowercase();
+            if by_lower.contains_key(&lower) {
+                bail!("HEADERS_INVALID: duplicate header \"{normalized_key}\"");
+            }
+            by_lower.insert(lower, (normalized_key, normalized_value));
+        }
+    }
+    if by_lower.len() > MAX_HEADERS {
+        bail!("HEADERS_INVALID: at most {MAX_HEADERS} headers");
+    }
+    Ok(by_lower.into_values().collect())
 }
 
-/// Set or clear the optional User-Agent override. An empty string clears it.
-fn config_with_user_agent(raw: &str, value: &str) -> Result<String> {
+fn config_headers(raw: &str) -> Option<BTreeMap<String, String>> {
+    let config = config_value(raw)?;
+    let mut collected = BTreeMap::new();
+    if let Some(object) = config.get("headers").and_then(|value| value.as_object()) {
+        for (key, value) in object {
+            if let Some(text) = value.as_str() {
+                collected.insert(key.clone(), text.to_string());
+            }
+        }
+    }
+    if let Some(user_agent) = config.get("userAgent").and_then(|value| value.as_str()) {
+        let has_user_agent = collected
+            .keys()
+            .any(|key| key.eq_ignore_ascii_case("user-agent"));
+        if !has_user_agent {
+            collected.insert("User-Agent".into(), user_agent.to_string());
+        }
+    }
+    let mut by_lower: BTreeMap<String, (String, String)> = BTreeMap::new();
+    for (key, value) in collected {
+        if let Ok(Some((normalized_key, normalized_value))) = normalize_one_header(&key, &value) {
+            by_lower.insert(
+                normalized_key.to_ascii_lowercase(),
+                (normalized_key, normalized_value),
+            );
+        }
+    }
+    let out: BTreeMap<_, _> = by_lower
+        .into_iter()
+        .take(MAX_HEADERS)
+        .map(|(_, pair)| pair)
+        .collect();
+    if out.is_empty() {
+        None
+    } else {
+        Some(out)
+    }
+}
+
+/// Set or clear optional headers. An empty map clears them and drops leftover `userAgent`.
+fn config_with_headers(raw: &str, headers: &BTreeMap<String, String>) -> Result<String> {
     let mut config = ensure_config_object(raw)?;
     let object = config
         .as_object_mut()
         .ok_or_else(|| anyhow::anyhow!("provider config_json must be a JSON object"))?;
-    match normalize_user_agent_input(value)? {
-        Some(user_agent) => {
-            object.insert("userAgent".into(), serde_json::json!(user_agent));
-        }
-        None => {
-            object.remove("userAgent");
-        }
+    object.remove("userAgent");
+    let normalized = normalize_headers_input(headers)?;
+    if normalized.is_empty() {
+        object.remove("headers");
+    } else {
+        object.insert("headers".into(), serde_json::to_value(normalized)?);
     }
     Ok(config.to_string())
 }
@@ -265,6 +358,12 @@ fn normalize_model_bindings(bindings: &[ModelBinding]) -> Vec<ModelBinding> {
                 .or_else(|| thinking_levels.first().cloned());
             Some(ModelBinding {
                 id: id.to_string(),
+                alias: binding
+                    .alias
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string),
                 context_window: if binding.context_window == 0 {
                     DEFAULT_CONTEXT_WINDOW
                 } else {
@@ -285,12 +384,28 @@ fn normalize_model_bindings(bindings: &[ModelBinding]) -> Vec<ModelBinding> {
         .collect()
 }
 
+fn validate_model_aliases(bindings: &[ModelBinding]) -> Result<()> {
+    for binding in bindings {
+        if let Some(alias) = binding.alias.as_deref() {
+            if alias.trim().chars().count() > MAX_MODEL_ALIAS_CHARS {
+                bail!(
+                    "MODEL_ALIAS_TOO_LONG: alias for model \"{}\" exceeds {} characters",
+                    binding.id.trim(),
+                    MAX_MODEL_ALIAS_CHARS
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
 fn legacy_model_binding(model_id: Option<String>) -> Vec<ModelBinding> {
     model_id
         .filter(|id| !id.trim().is_empty())
         .map(|id| {
             vec![ModelBinding {
                 id: id.trim().to_string(),
+                alias: None,
                 context_window: DEFAULT_CONTEXT_WINDOW,
                 max_tokens: DEFAULT_MAX_TOKENS,
                 thinking_levels: Vec::new(),
@@ -577,10 +692,10 @@ fn provider_from_row(
             .get::<_, String>(11)
             .ok()
             .and_then(|raw| config_oauth_account_label(&raw)),
-        user_agent: row
+        headers: row
             .get::<_, String>(11)
             .ok()
-            .and_then(|raw| config_user_agent(&raw)),
+            .and_then(|raw| config_headers(&raw)),
         default_model_id: models
             .first()
             .map(|binding| binding.id.clone())
@@ -740,6 +855,11 @@ pub fn create_provider(
 ) -> Result<ProviderPublic> {
     let id = Uuid::new_v4().to_string();
     let now = now_ms();
+    // Validate before any side effect: a rejected alias must not leave a
+    // stored secret behind.
+    if let Some(models) = input.models.as_deref() {
+        validate_model_aliases(models)?;
+    }
     let secret_ref = secret_ref_for_provider(&id);
     let mut backend = None;
     if let Some(secret) = input.secret_value.as_ref().filter(|s| !s.is_empty()) {
@@ -770,8 +890,8 @@ pub fn create_provider(
         Some(label) => config_with_oauth_account_label(&config_json, label)?,
         None => config_json,
     };
-    let config_json = match input.user_agent.as_deref() {
-        Some(value) => config_with_user_agent(&config_json, value)?,
+    let config_json = match input.headers.as_ref() {
+        Some(headers) => config_with_headers(&config_json, headers)?,
         None => config_json,
     };
 
@@ -818,6 +938,11 @@ pub fn update_provider(
     if existing.is_none() {
         return Ok(None);
     }
+    // Validate before any side effect: a rejected alias must not replace the
+    // stored secret.
+    if let Some(models) = input.models.as_deref() {
+        validate_model_aliases(models)?;
+    }
     // Derive from the API key ref directly: `has_secret` now also covers an
     // OAuth credential, so reusing it here would stamp an api_key ref onto a
     // provider that only ever signed in with a vendor account.
@@ -860,11 +985,11 @@ pub fn update_provider(
         )?),
         None => config_json,
     };
-    // An empty string clears a stored User-Agent so the adapter default returns.
-    let config_json = match input.user_agent.as_deref() {
-        Some(value) => Some(config_with_user_agent(
+    // An empty map clears stored headers so adapter defaults return.
+    let config_json = match input.headers.as_ref() {
+        Some(headers) => Some(config_with_headers(
             config_json.as_deref().unwrap_or(&raw_config),
-            value,
+            headers,
         )?),
         None => config_json,
     };
@@ -964,6 +1089,7 @@ pub fn get_secret_for_provider(
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::collections::BTreeMap;
 
     fn test_context() -> (tempfile::TempDir, Database, SecretStore) {
         let dir = tempfile::tempdir().unwrap();
@@ -990,7 +1116,7 @@ mod tests {
                 secret_value: None,
                 api_style: None,
                 oauth_account_label: None,
-                user_agent: None,
+                headers: None,
                 context_window: None,
                 max_output_tokens: None,
                 temperature: None,
@@ -1038,7 +1164,7 @@ mod tests {
                 secret_value: None,
                 api_style: None,
                 oauth_account_label: None,
-                user_agent: None,
+                headers: None,
                 context_window: None,
                 max_output_tokens: None,
                 temperature: None,
@@ -1090,7 +1216,7 @@ mod tests {
                 secret_value: None,
                 api_style: None,
                 oauth_account_label: None,
-                user_agent: None,
+                headers: None,
                 context_window: None,
                 max_output_tokens: None,
                 temperature: None,
@@ -1124,6 +1250,7 @@ mod tests {
                 models: Some(vec![
                     ModelBinding {
                         id: "reasoning-model".into(),
+                        alias: Some("pro".into()),
                         context_window: 256_000,
                         max_tokens: 16_000,
                         thinking_levels: vec!["high".into(), "medium".into()],
@@ -1134,6 +1261,7 @@ mod tests {
                     },
                     ModelBinding {
                         id: "plain-model".into(),
+                        alias: None,
                         context_window: 128_000,
                         max_tokens: 8_192,
                         thinking_levels: vec![],
@@ -1147,7 +1275,7 @@ mod tests {
                 secret_value: None,
                 api_style: Some("chat_completions".into()),
                 oauth_account_label: None,
-                user_agent: None,
+                headers: None,
                 context_window: None,
                 max_output_tokens: None,
                 temperature: None,
@@ -1179,6 +1307,9 @@ mod tests {
             .unwrap();
         let config: serde_json::Value = serde_json::from_str(&raw).unwrap();
         assert_eq!(config["models"][0]["maxTokens"], 16_000);
+        assert_eq!(config["models"][0]["alias"], "pro");
+        assert!(config["models"][1].get("alias").is_none());
+        assert_eq!(provider.models[0].alias.as_deref(), Some("pro"));
         // Attachment overrides are explicit configuration: an answered switch is
         // persisted, while "follow the catalog" stays absent instead of being
         // frozen into a false that a later catalog fix could not correct.
@@ -1206,7 +1337,7 @@ mod tests {
                 secret_value: None,
                 api_style: None,
                 oauth_account_label: None,
-                user_agent: None,
+                headers: None,
                 context_window: None,
                 max_output_tokens: None,
                 temperature: None,
@@ -1227,6 +1358,336 @@ mod tests {
         );
     }
 
+    fn binding_with_alias(id: &str, alias: Option<&str>) -> ModelBinding {
+        ModelBinding {
+            id: id.into(),
+            alias: alias.map(str::to_string),
+            context_window: DEFAULT_CONTEXT_WINDOW,
+            max_tokens: DEFAULT_MAX_TOKENS,
+            thinking_levels: Vec::new(),
+            default_thinking_level: None,
+            supports_images: None,
+            supports_documents: None,
+            available_for_subagents: None,
+        }
+    }
+
+    #[test]
+    fn normalize_model_bindings_trims_aliases_and_drops_blank_ones() {
+        let normalized = normalize_model_bindings(&[
+            binding_with_alias("pro-model", Some("  pro  ")),
+            binding_with_alias("empty-alias", Some("")),
+            binding_with_alias("blank-alias", Some("   ")),
+            binding_with_alias("no-alias", None),
+        ]);
+        assert_eq!(normalized[0].alias.as_deref(), Some("pro"));
+        assert_eq!(normalized[1].alias, None);
+        assert_eq!(normalized[2].alias, None);
+        assert_eq!(normalized[3].alias, None);
+    }
+
+    #[test]
+    fn alias_survives_the_provider_config_round_trip() {
+        let bindings = vec![
+            binding_with_alias("pro-model", Some("  pro  ")),
+            binding_with_alias("plain-model", None),
+        ];
+        let config = build_provider_config_json(
+            None,
+            None,
+            Some(&bindings),
+            &LimitOverrides {
+                context_window: None,
+                max_output_tokens: None,
+                temperature: None,
+            },
+        )
+        .unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&config).unwrap();
+        assert_eq!(parsed["models"][0]["alias"], "pro");
+        assert!(parsed["models"][1].get("alias").is_none());
+        let restored: Vec<ModelBinding> = serde_json::from_value(parsed["models"].clone()).unwrap();
+        assert_eq!(restored[0].alias.as_deref(), Some("pro"));
+        assert_eq!(restored[1].alias, None);
+    }
+
+    #[test]
+    fn alias_survives_provider_create_and_update() {
+        let (_dir, db, secrets) = test_context();
+        let provider = create_provider(
+            &db,
+            &secrets,
+            ProviderCreateInput {
+                name: "Aliased".into(),
+                vendor_key: None,
+                provider_type: None,
+                protocol: None,
+                base_url: None,
+                auth_kind: Some("none".into()),
+                models: Some(vec![binding_with_alias("pro-model", Some("  pro  "))]),
+                default_model_id: None,
+                secret_value: None,
+                api_style: None,
+                oauth_account_label: None,
+                headers: None,
+                context_window: None,
+                max_output_tokens: None,
+                temperature: None,
+                supports_reasoning: None,
+                supported_thinking_levels: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(provider.models[0].alias.as_deref(), Some("pro"));
+
+        let updated = update_provider(
+            &db,
+            &secrets,
+            ProviderUpdateInput {
+                id: provider.id.clone(),
+                name: None,
+                vendor_key: None,
+                provider_type: None,
+                protocol: None,
+                base_url: None,
+                auth_kind: None,
+                models: Some(vec![binding_with_alias("pro-model", Some("fast"))]),
+                default_model_id: None,
+                secret_value: None,
+                api_style: None,
+                oauth_account_label: None,
+                headers: None,
+                context_window: None,
+                max_output_tokens: None,
+                temperature: None,
+                supports_reasoning: None,
+                supported_thinking_levels: None,
+                enabled: None,
+            },
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(updated.models[0].alias.as_deref(), Some("fast"));
+
+        let reloaded = get_provider(&db, &secrets, &provider.id).unwrap().unwrap();
+        assert_eq!(reloaded.models[0].alias.as_deref(), Some("fast"));
+    }
+
+    #[test]
+    fn alias_length_is_limited_to_sixty_characters() {
+        let at_limit = binding_with_alias("model", Some(&"a".repeat(MAX_MODEL_ALIAS_CHARS)));
+        assert!(validate_model_aliases(&[at_limit]).is_ok());
+
+        let over_limit = binding_with_alias("model", Some(&"a".repeat(MAX_MODEL_ALIAS_CHARS + 1)));
+        let error = validate_model_aliases(&[over_limit])
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("MODEL_ALIAS_TOO_LONG"), "{error}");
+
+        // Multi-byte aliases are counted in characters, not bytes.
+        let multi_byte = binding_with_alias("model", Some(&"あ".repeat(MAX_MODEL_ALIAS_CHARS)));
+        assert!(validate_model_aliases(&[multi_byte]).is_ok());
+        let multi_byte_over =
+            binding_with_alias("model", Some(&"あ".repeat(MAX_MODEL_ALIAS_CHARS + 1)));
+        let error = validate_model_aliases(&[multi_byte_over])
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("MODEL_ALIAS_TOO_LONG"), "{error}");
+    }
+
+    #[test]
+    fn over_long_alias_leaves_stored_secrets_untouched() {
+        let (dir, db, secrets) = test_context();
+        let over_limit = binding_with_alias("model", Some(&"a".repeat(MAX_MODEL_ALIAS_CHARS + 1)));
+        let stored_bins = || {
+            std::fs::read_dir(dir.path().join("secrets"))
+                .unwrap()
+                .filter_map(|entry| entry.ok())
+                .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "bin"))
+                .count()
+        };
+
+        // A rejected create must not leave a secret behind.
+        let before = stored_bins();
+        let error = create_provider(
+            &db,
+            &secrets,
+            ProviderCreateInput {
+                name: "Too long".into(),
+                vendor_key: None,
+                provider_type: None,
+                protocol: None,
+                base_url: None,
+                auth_kind: Some("api_key_and_base_url".into()),
+                models: Some(vec![over_limit.clone()]),
+                default_model_id: None,
+                secret_value: Some("new-secret".into()),
+                api_style: None,
+                oauth_account_label: None,
+                headers: None,
+                context_window: None,
+                max_output_tokens: None,
+                temperature: None,
+                supports_reasoning: None,
+                supported_thinking_levels: None,
+            },
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("MODEL_ALIAS_TOO_LONG"), "{error}");
+        assert_eq!(stored_bins(), before, "rejected create stored a secret");
+
+        // A rejected update must not replace the stored secret.
+        let provider = create_provider(
+            &db,
+            &secrets,
+            ProviderCreateInput {
+                name: "Aliased".into(),
+                vendor_key: None,
+                provider_type: None,
+                protocol: None,
+                base_url: None,
+                auth_kind: Some("api_key_and_base_url".into()),
+                models: None,
+                default_model_id: Some("model".into()),
+                secret_value: Some("old-secret".into()),
+                api_style: None,
+                oauth_account_label: None,
+                headers: None,
+                context_window: None,
+                max_output_tokens: None,
+                temperature: None,
+                supports_reasoning: None,
+                supported_thinking_levels: None,
+            },
+        )
+        .unwrap();
+        let api_key_ref = secret_ref_for_provider(&provider.id);
+        assert_eq!(
+            secrets.get(&api_key_ref).unwrap().as_deref(),
+            Some("old-secret")
+        );
+
+        let error = update_provider(
+            &db,
+            &secrets,
+            ProviderUpdateInput {
+                id: provider.id.clone(),
+                name: None,
+                vendor_key: None,
+                provider_type: None,
+                protocol: None,
+                base_url: None,
+                auth_kind: None,
+                models: Some(vec![over_limit]),
+                default_model_id: None,
+                secret_value: Some("new-secret".into()),
+                api_style: None,
+                oauth_account_label: None,
+                headers: None,
+                supports_reasoning: None,
+                supported_thinking_levels: None,
+                context_window: None,
+                max_output_tokens: None,
+                temperature: None,
+                enabled: None,
+            },
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("MODEL_ALIAS_TOO_LONG"), "{error}");
+        assert_eq!(
+            secrets.get(&api_key_ref).unwrap().as_deref(),
+            Some("old-secret"),
+            "rejected update replaced the stored secret"
+        );
+    }
+
+    #[test]
+    fn over_long_alias_is_rejected_by_the_write_paths() {
+        let (_dir, db, secrets) = test_context();
+        let over_limit = binding_with_alias("model", Some(&"a".repeat(MAX_MODEL_ALIAS_CHARS + 1)));
+        let error = create_provider(
+            &db,
+            &secrets,
+            ProviderCreateInput {
+                name: "Too long".into(),
+                vendor_key: None,
+                provider_type: None,
+                protocol: None,
+                base_url: None,
+                auth_kind: Some("none".into()),
+                models: Some(vec![over_limit.clone()]),
+                default_model_id: None,
+                secret_value: None,
+                api_style: None,
+                oauth_account_label: None,
+                headers: None,
+                context_window: None,
+                max_output_tokens: None,
+                temperature: None,
+                supports_reasoning: None,
+                supported_thinking_levels: None,
+            },
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("MODEL_ALIAS_TOO_LONG"), "{error}");
+
+        let provider = create_provider(
+            &db,
+            &secrets,
+            ProviderCreateInput {
+                name: "Aliased".into(),
+                vendor_key: None,
+                provider_type: None,
+                protocol: None,
+                base_url: None,
+                auth_kind: Some("none".into()),
+                models: None,
+                default_model_id: Some("model".into()),
+                secret_value: None,
+                api_style: None,
+                oauth_account_label: None,
+                headers: None,
+                context_window: None,
+                max_output_tokens: None,
+                temperature: None,
+                supports_reasoning: None,
+                supported_thinking_levels: None,
+            },
+        )
+        .unwrap();
+        let error = update_provider(
+            &db,
+            &secrets,
+            ProviderUpdateInput {
+                id: provider.id,
+                name: None,
+                vendor_key: None,
+                provider_type: None,
+                protocol: None,
+                base_url: None,
+                auth_kind: None,
+                models: Some(vec![over_limit]),
+                default_model_id: None,
+                secret_value: None,
+                api_style: None,
+                oauth_account_label: None,
+                headers: None,
+                context_window: None,
+                max_output_tokens: None,
+                temperature: None,
+                supports_reasoning: None,
+                supported_thinking_levels: None,
+                enabled: None,
+            },
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("MODEL_ALIAS_TOO_LONG"), "{error}");
+    }
+
     #[test]
     fn limit_overrides_roundtrip_and_clear_with_zero() {
         let (_dir, db, secrets) = test_context();
@@ -1245,7 +1706,7 @@ mod tests {
                 secret_value: None,
                 api_style: None,
                 oauth_account_label: None,
-                user_agent: None,
+                headers: None,
                 context_window: Some(200_000),
                 max_output_tokens: Some(32_000),
                 temperature: Some(0.7),
@@ -1275,7 +1736,7 @@ mod tests {
                 secret_value: None,
                 api_style: None,
                 oauth_account_label: None,
-                user_agent: None,
+                headers: None,
                 context_window: Some(131_072),
                 max_output_tokens: None,
                 temperature: Some(0.0),
@@ -1309,7 +1770,7 @@ mod tests {
                 secret_value: None,
                 api_style: None,
                 oauth_account_label: None,
-                user_agent: None,
+                headers: None,
                 context_window: None,
                 max_output_tokens: None,
                 temperature: None,
@@ -1343,7 +1804,7 @@ mod tests {
                 secret_value: None,
                 api_style: None,
                 oauth_account_label: None,
-                user_agent: None,
+                headers: None,
                 context_window: None,
                 max_output_tokens: None,
                 temperature: None,
@@ -1379,7 +1840,7 @@ mod tests {
                 secret_value: None,
                 api_style: None,
                 oauth_account_label: None,
-                user_agent: None,
+                headers: None,
                 context_window: None,
                 max_output_tokens: None,
                 temperature: None,
@@ -1424,7 +1885,7 @@ mod tests {
                 secret_value: None,
                 api_style: Some("chat_completions".into()),
                 oauth_account_label: None,
-                user_agent: None,
+                headers: None,
                 context_window: None,
                 max_output_tokens: None,
                 temperature: None,
@@ -1521,7 +1982,7 @@ mod tests {
                 secret_value: None,
                 api_style: Some("anthropic_messages".into()),
                 oauth_account_label: Some("dev@example.com".into()),
-                user_agent: None,
+                headers: None,
                 context_window: None,
                 max_output_tokens: None,
                 temperature: None,
@@ -1564,7 +2025,7 @@ mod tests {
                 secret_value: None,
                 api_style: None,
                 oauth_account_label: Some(String::new()),
-                user_agent: None,
+                headers: None,
                 context_window: None,
                 max_output_tokens: None,
                 temperature: None,
@@ -1621,7 +2082,7 @@ mod tests {
                 secret_value: Some("sk-ant-api".into()),
                 api_style: None,
                 oauth_account_label: None,
-                user_agent: None,
+                headers: None,
                 context_window: None,
                 max_output_tokens: None,
                 temperature: None,
@@ -1645,14 +2106,45 @@ mod tests {
         );
     }
 
+    fn header_map(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+        pairs
+            .iter()
+            .map(|(key, value)| ((*key).to_string(), (*value).to_string()))
+            .collect()
+    }
+
+    fn blank_update(id: String) -> ProviderUpdateInput {
+        ProviderUpdateInput {
+            id,
+            name: None,
+            vendor_key: None,
+            provider_type: None,
+            protocol: None,
+            base_url: None,
+            auth_kind: None,
+            models: None,
+            default_model_id: None,
+            secret_value: None,
+            api_style: None,
+            oauth_account_label: None,
+            headers: None,
+            context_window: None,
+            max_output_tokens: None,
+            temperature: None,
+            supports_reasoning: None,
+            supported_thinking_levels: None,
+            enabled: None,
+        }
+    }
+
     #[test]
-    fn user_agent_roundtrips_clears_and_rejects_header_injection() {
+    fn headers_roundtrip_migrate_user_agent_clear_and_reject() {
         let (_dir, db, secrets) = test_context();
         let provider = create_provider(
             &db,
             &secrets,
             ProviderCreateInput {
-                name: "UA".into(),
+                name: "Headers".into(),
                 vendor_key: None,
                 provider_type: None,
                 protocol: None,
@@ -1663,7 +2155,10 @@ mod tests {
                 secret_value: None,
                 api_style: None,
                 oauth_account_label: None,
-                user_agent: Some("  CustomAgent/1.0  ".into()),
+                headers: Some(header_map(&[
+                    ("  User-Agent  ", "  CustomAgent/1.0  "),
+                    ("X-Gateway", "alpha"),
+                ])),
                 context_window: None,
                 max_output_tokens: None,
                 temperature: None,
@@ -1672,7 +2167,13 @@ mod tests {
             },
         )
         .unwrap();
-        assert_eq!(provider.user_agent.as_deref(), Some("CustomAgent/1.0"));
+        assert_eq!(
+            provider.headers,
+            Some(header_map(&[
+                ("User-Agent", "CustomAgent/1.0"),
+                ("X-Gateway", "alpha")
+            ]))
+        );
 
         let raw: String = db
             .conn()
@@ -1683,66 +2184,72 @@ mod tests {
             )
             .unwrap();
         let config: serde_json::Value = serde_json::from_str(&raw).unwrap();
-        assert_eq!(config["userAgent"], "CustomAgent/1.0");
+        assert_eq!(config["headers"]["User-Agent"], "CustomAgent/1.0");
+        assert_eq!(config["headers"]["X-Gateway"], "alpha");
+        assert!(config.get("userAgent").is_none());
+
+        db.conn()
+            .execute(
+                "UPDATE providers SET config_json = ?1 WHERE id = ?2",
+                params![
+                    json!({ "userAgent": "  Legacy/2  ", "headers": { "X-Keep": "1" } })
+                        .to_string(),
+                    provider.id
+                ],
+            )
+            .unwrap();
+        let migrated = get_provider(&db, &secrets, &provider.id).unwrap().unwrap();
+        assert_eq!(
+            migrated.headers,
+            Some(header_map(&[("User-Agent", "Legacy/2"), ("X-Keep", "1")]))
+        );
 
         let cleared = update_provider(
             &db,
             &secrets,
             ProviderUpdateInput {
-                id: provider.id.clone(),
-                name: None,
-                vendor_key: None,
-                provider_type: None,
-                protocol: None,
-                base_url: None,
-                auth_kind: None,
-                models: None,
-                default_model_id: None,
-                secret_value: None,
-                api_style: None,
-                oauth_account_label: None,
-                user_agent: Some(String::new()),
-                context_window: None,
-                max_output_tokens: None,
-                temperature: None,
-                supports_reasoning: None,
-                supported_thinking_levels: None,
-                enabled: None,
+                headers: Some(BTreeMap::new()),
+                ..blank_update(provider.id.clone())
             },
         )
         .unwrap()
         .unwrap();
-        assert_eq!(cleared.user_agent, None);
+        assert_eq!(cleared.headers, None);
+        let cleared_raw: String = db
+            .conn()
+            .query_row(
+                "SELECT config_json FROM providers WHERE id = ?1",
+                params![provider.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let cleared_config: serde_json::Value = serde_json::from_str(&cleared_raw).unwrap();
+        assert!(cleared_config.get("headers").is_none());
+        assert!(cleared_config.get("userAgent").is_none());
 
         let injected = update_provider(
             &db,
             &secrets,
             ProviderUpdateInput {
-                id: provider.id.clone(),
-                name: None,
-                vendor_key: None,
-                provider_type: None,
-                protocol: None,
-                base_url: None,
-                auth_kind: None,
-                models: None,
-                default_model_id: None,
-                secret_value: None,
-                api_style: None,
-                oauth_account_label: None,
-                user_agent: Some("bad\r\nX-Injected: 1".into()),
-                context_window: None,
-                max_output_tokens: None,
-                temperature: None,
-                supports_reasoning: None,
-                supported_thinking_levels: None,
-                enabled: None,
+                headers: Some(header_map(&[("X-Custom", "bad\r\nX-Injected: 1")])),
+                ..blank_update(provider.id.clone())
             },
         );
         assert!(injected.is_err());
         assert!(injected
             .unwrap_err()
             .to_string()
-            .contains("USER_AGENT_INVALID"));
+            .contains("HEADERS_INVALID"));
+
+        let reserved = update_provider(
+            &db,
+            &secrets,
+            ProviderUpdateInput {
+                headers: Some(header_map(&[("Authorization", "Bearer secret")])),
+                ..blank_update(provider.id)
+            },
+        );
+        assert!(reserved.is_err());
+        assert!(reserved.unwrap_err().to_string().contains("reserved"));
     }
 }

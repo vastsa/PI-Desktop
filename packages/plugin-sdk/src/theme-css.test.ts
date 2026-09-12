@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sanitizeThemeCss, THEME_CSS_MAX_BYTES } from "./theme-css.js";
+import { decodeCssEscapes, sanitizeThemeCss, THEME_CSS_MAX_BYTES } from "./theme-css.js";
 
 function error(css: string): string {
   const result = sanitizeThemeCss(css);
@@ -30,6 +30,28 @@ describe("sanitizeThemeCss", () => {
 
   it("rejects stylesheet chaining", () => {
     expect(error('@import url("data:text/css,");')).toMatch(/@import/);
+  });
+
+  it("rejects @import spelled with CSS escapes", () => {
+    expect(error('@\\69mport url("data:text/css,");')).toMatch(/@import/);
+    expect(error('@\\000069 mport "x.css";')).toMatch(/@import/);
+    expect(error('@\\im\\port "x.css";')).toMatch(/@import/);
+  });
+
+  it("rejects url() spelled with CSS escapes", () => {
+    expect(error(".a { background: \\75rl(https://x/y.png); }")).toMatch(/data: urls/);
+    expect(error(".a { background: u\\72 l(https://x/y.png); }")).toMatch(/data: urls/);
+    expect(error(".a { background: \\75rl(data:; }")).toMatch(/malformed/);
+  });
+
+  it("still accepts escapes that do not spell a banned token", () => {
+    const result = sanitizeThemeCss('.a::before { content: "\\201C"; --x: \\31 0px; }');
+    expect(result.ok).toBe(true);
+  });
+
+  it("decodes hex and single-character escapes", () => {
+    expect(decodeCssEscapes("\\69mport \\75rl \\@ \\000041")).toBe("import url @ A");
+    expect(decodeCssEscapes("\\0 x")).toBe("\ufffdx");
   });
 
   it("rejects markup and script expressions", () => {

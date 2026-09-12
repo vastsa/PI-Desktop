@@ -5,7 +5,7 @@
 
 - 基线版本：`0.4.16`
 - 日期：`2026-08-14`
-- 状态：`Frozen for implementation details (Plan checkpoint artifact + approval/execution startup fence + protocol v11 + schema v13 + selectable shell catalog + icon-free composer prompt row + turn-boundary context checkpoint compaction + session-scoped work panel + pi-owned model metadata + provider/runtime safety + M5 hardening + settings IA + project archive + sidebar organization + app update delivery + three-platform release + Extensions page density and theme-readable actions + custom global UI font)`
+- 状态：`Frozen for implementation details (Plan checkpoint artifact + approval/execution startup fence + protocol v11 + schema v15 + host-owned plugin session import/read/update/delete P0/P1 + selectable shell catalog + icon-free composer prompt row + turn-boundary context checkpoint compaction + session-scoped work panel + pi-owned model metadata + provider/runtime safety + M5 hardening + settings IA + project archive + sidebar organization + app update delivery + three-platform release + Extensions page density and theme-readable actions + custom global UI font)`
 - 语言政策：**英语优先**
 - 后端策略：**Rust 主机核心 + pi 代理 sidecar**
 
@@ -76,6 +76,19 @@
 > 主进程通过新增的白名单通道 `pi-desktop/app/systemFonts` 枚举。
 > 主机协议或存储架构没有更改。
 
+> 当前基线后的修订通过 ADR 0200 / D367 增加了 P0/P1 宿主拥有的插件会话
+> API，通过 ADR 0201 / D368 增加显式项目 id 与宿主拥有的会话刷新，并通过
+> ADR 0203 / D370（D372 收紧目录与绑定）增加默认关闭的本地 MCP 控制面。协议
+> 仍为 v11；schema v15 在 v14（插件来源 sidecar 和软删除标记）之上增加 Host 拥有的回合队列
+> （D386 / ADR 0213）。会话变更、任意重新
+> 绑定、provider/model 绑定、批量删除和标签操作仍延期；导入会话只有在显式提供
+> `projectId` 时才允许进行这项有限的项目绑定。本地控制面只绑定回环，不会重新打开
+> 被延后的远程 Gateway / WebUI 范围。
+> ADR 0205 / D373 定义未来 MVP 后 Agent Host、Gateway 和多绑定控制面的目标；
+> D374 将其修订为单一规范 WebSocket 绑定、无头 Agent Host 模块和完整本地审批词汇；
+> D375 将 SSH 隧道远端 Host 排在首位，Gateway 与浏览器访问不排期。
+> 当前基线仍排除远程 Gateway / WebUI 控制。
+
 ## 冻结的决定
 
 1.产品名称：**PI-Desktop**
@@ -99,7 +112,8 @@
 17、权限超时：**120s→拒绝**
 18. 会话授予范围：**按工具名称**
 19. `~/.pi` 自动导入：**不在 MVP 中**
-20.不在MVP中：**网关/远程WebUI控制**
+20.不在MVP中：**网关/远程WebUI控制**；D370 记录的本地回环 MCP 控制是
+    后基线、默认关闭的例外
 21.扩展模型：**用户可安装的插件系统**
 22.插件第一阶段：**命令/面板/代理工具/技能**
 23.插件运行时目标：**单独进程**； M4 可以使用主机管理的沙盒运行时
@@ -108,7 +122,7 @@
 26.插件信任第一步：**sha256校验和；稍后签名**
 27. 第一个发布平台：**macOS 仅arm64** — 在 preload/D126 中提升；
     标签构建现在发布本机 macOS arm64 和 Intel x64、Windows x64 及
-    Linux x64 工件
+    Linux x64 AppImage、deb 和 rpm 工件
 28. TS模式库：**typebox**
 29. i18n 库：**i18next**
 30. Bash：**非交互式、流式传输并从可选择的 shell 解析

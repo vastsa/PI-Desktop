@@ -72,12 +72,14 @@ type PluginContributes = {
  commands?: PluginCommandContrib[];
  agentTools?: PluginAgentToolContrib[];
  skills?: Array<string | PluginSkillContrib>; // relative paths, or metadata overrides
+ agentExtensions?: string[]; // ExtensionAPI modules run in the agent sidecar; needs `agent.extension` (spec 16)
  settings?: PluginSettingContrib[];
  themes?: PluginThemeContrib[];
  mcpServers?: PluginMcpServerContrib[];
- services?: PluginServiceContrib[];
- bus?: PluginBusContrib;
- views?: PluginViewContrib[];
+  services?: PluginServiceContrib[];
+  bus?: PluginBusContrib;
+  views?: PluginViewContrib[];
+  sessionSources?: PluginSessionSourceContrib[];
 };
 
 type PluginCommandContrib = {
@@ -117,7 +119,12 @@ type PluginViewContrib = {
  title: string | { en: string; "zh-CN": string };
  icon?: string; // token from the host icon set; unknown tokens draw a letter tile
  entry: string; // relative path to the view's HTML entry
- order?: number; // ascending sort key in the plugin-views menu group, default 0
+  order?: number; // ascending sort key in the plugin-views menu group, default 0
+};
+
+type PluginSessionSourceContrib = {
+  id: string; // ^[a-zA-Z][a-zA-Z0-9._-]{0,63}$, unique within the plugin
+  label?: string | { en: string; "zh-CN": string };
 };
 
 type PluginThemeContrib = {
@@ -181,7 +188,14 @@ type PluginPermission =
  | "background.service"
  | "bus.publish"
  | "bus.subscribe"
- | "browser.cdp";
+ | "browser.cdp"
+ | "desktop.control"
+ | "ui.microphone"
+ | "project.create"
+ | "session.import"
+ | "session.read.own"
+ | "session.update.own"
+ | "session.delete.own";
 ```
 
 Unknown permission = validation failure.
@@ -280,7 +294,8 @@ MVP may implement only:
 6. `main` / `ui.panel` / skills / `views[].entry` paths must exist
 7. tool `name` allows only `[a-zA-Z][a-zA-Z0-9_]*`
 8. Contribution ids (`themes`, `mcpServers`, `services`, `views`) must match
-   `[a-zA-Z][a-zA-Z0-9_-]{0,63}` and be unique within their own list
+   `[a-zA-Z][a-zA-Z0-9_-]{0,63}` and be unique within their own list;
+   `sessionSources` uses the same rule with `.` additionally allowed
 9. `themes[].path` must exist and end in `.css`; `themes[].base` may only be
    `light` or `dark`
 10. `mcpServers[]` must set exactly one transport's fields: `stdio` requires
@@ -308,6 +323,8 @@ MVP may implement only:
     on `delete` only, and `root` only on `workspace` / `userSelected`
 15. `net.domains` entries must be bare hostnames, optionally prefixed `*.`; a
     bare `*` is refused
+17. `sessionSources` ids may also contain `.`; labels are optional, localized
+    labels must provide both `en` and `zh-CN`, and duplicate ids are rejected
 16. `views[].title` is required and, when localized, must carry both `en` and
     `zh-CN`. `views[].icon` is **not** validated against the token list: an
     unknown token degrades to a letter tile, so refusing one would break a

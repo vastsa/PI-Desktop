@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# Release build for native macOS: signed + notarized DMG/ZIP.
+# Release build for native macOS: Developer ID-signed and notarized DMG/ZIP.
 #
-# Local default (`pnpm --filter @pi-desktop/desktop dist`) stays unsigned
-# (identity: null in package.json). This script injects a real signing
-# identity and enables notarization, both from environment variables:
+# Local builds without a certificate remain unsigned. This script injects a
+# real signing identity and requires notarization credentials:
 #
 #   MAC_SIGNING_IDENTITY   e.g. "Developer ID Application: Your Name (TEAMID)"
 #   APPLE_ID               Apple ID email for notarization
@@ -51,13 +50,9 @@ if [[ -z "${MAC_SIGNING_IDENTITY:-}" ]]; then
   exit 1
 fi
 
-NOTARIZE_ARGS=()
-if [[ -n "${APPLE_ID:-}" && -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" && -n "${APPLE_TEAM_ID:-}" ]]; then
-  echo "==> Notarization credentials found; notarization enabled."
-  NOTARIZE_ARGS=(-c.mac.notarize=true)
-else
-  echo "==> Notarization credentials missing (APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID)." >&2
-  echo "    Building signed but NOT notarized DMG." >&2
+if [[ -z "${APPLE_ID:-}" || -z "${APPLE_APP_SPECIFIC_PASSWORD:-}" || -z "${APPLE_TEAM_ID:-}" ]]; then
+  echo "error: notarization credentials are required (APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID)." >&2
+  exit 1
 fi
 
 echo "==> Building host-core (release)"
@@ -70,6 +65,10 @@ echo "==> Building + packaging desktop (signed, $MAC_ARCH)"
 pnpm --filter @pi-desktop/desktop exec electron-vite build
 pnpm --filter @pi-desktop/desktop exec electron-builder --mac "--${MAC_ARCH}" \
   -c.mac.identity="${MAC_SIGNING_IDENTITY}" \
-  "${NOTARIZE_ARGS[@]}"
+  -c.mac.forceCodeSigning=true \
+  -c.mac.notarize=true
+
+scripts/staple-macos-release-dmg.sh apps/desktop/release
+scripts/verify-macos-release.sh apps/desktop/release
 
 echo "==> Done. Artifacts in apps/desktop/release/"

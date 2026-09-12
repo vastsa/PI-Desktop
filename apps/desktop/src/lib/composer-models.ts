@@ -1,11 +1,37 @@
 import {
+  bindingSupportsImages,
   modelIdsMatch,
   modelMatchesFilter,
+  type ModelBinding,
   type ModelInfo,
   type ProviderPublic,
 } from "@pi-desktop/shared";
 
 type ConfiguredProvider = Pick<ProviderPublic, "id" | "models" | "defaultModelId">;
+
+/**
+ * Resolve the provider heading shown in the Composer model menu.
+ *
+ * OAuth rows keep the vendor name as `provider.name` for runtime identity, but
+ * the account-specific display label lives in `oauthAccountLabel`. Prefer that
+ * label so duplicate accounts from one vendor remain distinguishable.
+ */
+export function composerProviderDisplayName(
+  provider: Pick<ProviderPublic, "name" | "oauthAccountLabel">,
+): string {
+  return provider.oauthAccountLabel?.trim() || provider.name.trim();
+}
+
+/** Keep both the account label and vendor name searchable in the Composer. */
+export function composerProviderSearchText(
+  provider: Pick<ProviderPublic, "name" | "oauthAccountLabel">,
+): string {
+  const displayName = composerProviderDisplayName(provider);
+  const providerName = provider.name.trim();
+  return displayName === providerName
+    ? displayName
+    : `${displayName} ${providerName}`;
+}
 
 function configuredModelIds(provider: ConfiguredProvider): string[] {
   const ids = (provider.models ?? [])
@@ -30,7 +56,7 @@ export function composerModelsForProvider(
     const metadata = (discovered ?? []).find((model) =>
       modelIdsMatch(model.modelId, modelId),
     );
-    return metadata
+    const row: ModelInfo = metadata
       ? { ...metadata, modelId, providerId: provider.id }
       : {
           modelId,
@@ -39,20 +65,61 @@ export function composerModelsForProvider(
           capabilities: ["text"],
           source: "user" as const,
         };
+    const displayName = composerModelDisplayName(provider, modelId, row.displayName);
+    return displayName === row.displayName ? row : { ...row, displayName };
   });
+}
+
+/**
+ * Resolve the one visible model name used by the Composer.
+ *
+ * Bindings and discovery can use equivalent namespaced or regional IDs. Use
+ * the same tolerant identity match for aliases so a refresh cannot briefly
+ * fall back to the wire ID before the configured label is reapplied.
+ */
+export function composerModelDisplayName(
+  provider: ConfiguredProvider,
+  modelId: string,
+  fallback?: string,
+): string {
+  const alias = composerModelBinding(provider, modelId)?.alias?.trim();
+  return alias || fallback?.trim() || modelId;
+}
+
+/**
+ * The provider's configured binding for a model, matched the same tolerant way
+ * as the display name so a namespaced or regional ID still finds its settings.
+ */
+export function composerModelBinding(
+  provider: ConfiguredProvider,
+  modelId: string,
+): ModelBinding | undefined {
+  const normalizedModelId = modelId.trim().toLowerCase();
+  const bindings = provider.models ?? [];
+  return (
+    bindings.find((candidate) => candidate.id.trim().toLowerCase() === normalizedModelId) ??
+    bindings.find((candidate) => modelIdsMatch(candidate.id, modelId))
+  );
 }
 
 /** Short capability markers shown on a composer model row. */
 export type ComposerModelBadge = "reasoning" | "vision";
 
 /**
- * Published capability markers for one configured model. The composer shows
- * these so a model can be chosen on capability rather than on name alone.
+ * Capability markers for one configured model. The composer shows these so a
+ * model can be chosen on capability rather than on name alone. Vision follows
+ * the effective image input: the binding's Advanced "Image input" override
+ * when set, the published capability otherwise, the same answer the transport
+ * gate and the settings switch give (#214).
  */
-export function composerModelBadges(model: ModelInfo): ComposerModelBadge[] {
+export function composerModelBadges(
+  model: ModelInfo,
+  provider?: ConfiguredProvider | null,
+): ComposerModelBadge[] {
   const badges: ComposerModelBadge[] = [];
   if (modelMatchesFilter(model, "reasoning")) badges.push("reasoning");
-  if (modelMatchesFilter(model, "vision")) badges.push("vision");
+  const binding = provider ? composerModelBinding(provider, model.modelId) : undefined;
+  if (bindingSupportsImages(binding, model)) badges.push("vision");
   return badges;
 }
 

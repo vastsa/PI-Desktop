@@ -25,8 +25,18 @@ Required (all **implemented**):
   (`parseAllowedExternalUrl`, D330 / ADR 0168). `file:`, `javascript:`,
   `data:`, and custom URI schemes never reach `shell.openExternal`.
   `will-navigate` blocks all non-dev-server navigations
+- Every web contents Electron creates starts with a deny-all window-open
+  handler and a blocked `<webview>` attach (`app.on("web-contents-created")`);
+  the owning surface replaces the handler with its own policy, so a window
+  that forgets to wire one denies popups instead of inheriting Chromium's
+  defaults
 - Preload exposes a whitelist-checked `invoke`/`on` bridge only
   (`IPC_WHITELIST` enforced on both preload and main sides)
+- Transcript Markdown is sanitized (`rehype-sanitize`), but remote `http(s)`
+  images, audio, and video that a model writes into a reply are fetched on
+  render, without a click. This is a deliberate readability trade-off: a
+  reply can therefore reveal the user's IP to the host it names. Links never
+  navigate in-app and always route through the external-open path.
 
 ### Content Security Policy
 
@@ -91,7 +101,7 @@ replace an artifact.
 - Bash requires confirmation by default (risk-tiered permission cards); in
   either Agent or Plan, explicit Auto may run it without confirmation
 - The Bash protocol name remains stable, but host-core selects a catalog shell
-  (`windows-powershell`, `cmd`, `git-bash`, or `bash`) from persisted
+  (`windows-powershell`, `windows-pwsh`, `cmd`, `git-bash`, or `bash`) from persisted
   `defaultCommandShell` where supported by the platform. Settings writes reject
   unavailable/wrong-platform IDs. If a persisted choice later becomes
   unavailable, catalog resolution intentionally falls back to the first
@@ -134,20 +144,76 @@ replace an artifact.
 - Packaged macOS is manual-only: it detects a release and opens the fixed
   releases page, but never downloads or installs it in-app. Enabling a signed
   macOS in-app channel requires a later explicit decision and qualification.
-- D126 tag releases publish Windows NSIS and Linux AppImage installers plus
-  their update manifests, activating those in-app lanes. Platform signing,
-  rollback, and staged-rollout qualification remain release follow-ups.
+- D126 tag releases publish Windows NSIS and Linux AppImage installers with
+  their update manifests, plus Linux deb/rpm packages and a Windows portable
+  exe. The NSIS and AppImage artifacts activate the existing in-app lanes.
+  The portable exe uses notify-and-link delivery and does not write
+  `latest.yml`. macOS tag artifacts
+  are Developer ID-signed, notarized, and stapled before upload; rollback and
+  staged-rollout qualification remain release follow-ups.
 - The client carries no GitHub token. A private or otherwise unreachable feed
   fails closed; automatic failures stay ambient and explicit checks expose the
   error.
-- Dual-locale product "what's new" text (D164) is selected in Main from the
+- Unsigned macOS distributions keep a narrow first-launch fallback for trusted
+  sources. The DMG exposes only a text note named `If app won't open, read this.txt`; it gives
+  the manual `com.apple.quarantine` command and says signed/notarized builds do
+  not need it. The ZIP package also includes the executable helper, which
+  searches only `/Applications/PI-Desktop.app` and `~/Applications/PI-Desktop.app`,
+  verifies `CFBundleIdentifier` is `com.pi-desktop.app`, removes only
+  `com.apple.quarantine` recursively when present, and opens the app. It accepts
+  no arbitrary path, uses no privilege escalation, and is not a substitute for
+  Developer ID signing or notarization.
+- Localized product "what's new" text (D164/D345) is selected in Main from the
   shipped changelog catalog and attached to `UpdateState.releaseNotes`. The
   renderer cannot supply a notes URL, feed, or remote body; missing catalog
   entries simply omit the section.
 - The Developer ID + notarization lane remains documented in the
   [release runbook](../06-delivery/06-release-runbook.md).
 
-## 8. Host process attack surface
+## 8. Local MCP control plane
+
+The local MCP control server is an explicit automation boundary, not a general
+remote-control listener:
+
+- It is disabled by default and only starts with
+  `PI_DESKTOP_MCP_CONTROL=1`.
+- It binds `127.0.0.1` only and refuses to start if the listen address is not
+  loopback. There is no configuration path for a LAN or public interface, and
+  the feature does not revive the deferred remote Gateway / WebUI scope.
+- It validates any supplied `Origin` against local loopback hostnames to block
+  DNS-rebinding access from remote web content. Non-browser clients may omit
+  `Origin`.
+- A random 256-bit bearer token is persisted in the Electron user-data
+  directory. The token and connection manifest are mode `0600` where
+  supported, and the manifest is marked inactive during shutdown.
+- Secret get/set/delete channels, provider/OAuth/MCP secret-write paths,
+  settings writes, and renderer-only native picker/dialog channels (including
+  `plugin/loadDev`) are excluded. Secret-shaped argument fields are stripped
+  before dispatch. The reviewed catalog is explicit; newly added IPC handlers
+  are not exposed automatically.
+- Calls delegate to the existing main-process IPC handlers, so host
+  availability, workspace boundaries, permission checks, input validation, and
+  redacted logging remain authoritative. Dangerous generic operations,
+  session-configure (permission mode), and destructive named tools require an
+  explicit `confirm: true`. That flag is an agent acknowledgement, not a user
+  prompt.
+- Request and serialized-result sizes, including `structuredContent`, are
+  bounded. Startup failure is fail-soft for the desktop.
+
+An Agent using this endpoint has the same local-user authority as the running
+desktop for the operations it invokes. Users must protect the user-data
+directory and token; the endpoint is not intended for untrusted local users or
+remote clients. `confirm: true` does not ask the visible desktop for approval.
+
+The post-MVP remote control target is a separate security boundary. It is
+specified in
+[`02-remote-control-security.md`](02-remote-control-security.md) and
+[`02-architecture/05-remote-agent-control.md`](../02-architecture/05-remote-agent-control.md).
+Those specifications require an authenticated Gateway/Agent Host link,
+session-scoped authorization, event replay controls, and no network access to
+host-core. They do not change the loopback-only rule above.
+
+## 9. Host process attack surface
 
 - host-core speaks NDJSON JSON-RPC on stdio to the Electron main process
   only; it binds no network ports
@@ -160,7 +226,7 @@ replace an artifact.
   containment relies on the permission layer, catalog identity, process-group/
   job-tree shutdown, and workspace sandbox rather than OS sandboxing
 
-## 9. Threat model (summary)
+## 10. Threat model (summary)
 
 | Threat | Mitigation |
 |---|---|
@@ -169,7 +235,7 @@ replace an artifact.
 | Dependency poisoning | lockfiles, few deps, native-module review |
 | Malicious local plugin | declared permissions, no secret access, process isolation tracked post-MVP (ADR 0008) |
 
-## 10. Security acceptance gates
+## 11. Security acceptance gates
 
 1. Renderer cannot `require('fs')` (sandbox + no nodeIntegration) — verified
 2. Plan Write/Edit/plugin calls cannot run under any permission mode; Bash is
@@ -185,3 +251,6 @@ replace an artifact.
    pending/queued/running work; an approved interruption leaves the session Agent
 9. Invalid settings and stale shell ID/dialect fail closed; Bash output streams
    separately and timeout/abort kills the complete process tree
+10. Local MCP control is loopback-only, bearer-authenticated, opt-in, bounded,
+    excludes secret writes and native pickers, and requires confirmation for
+    session permission-mode changes

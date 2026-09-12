@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { UserSubagentRecord } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../stores/app-store";
+import { useHostCollection } from "../../hooks/use-host-collection";
 import {
   AgentCapabilityPage,
   CapabilityButton,
@@ -24,6 +25,7 @@ import {
   type SubagentDraft,
 } from "./SubagentEditorSheet";
 import { IconBot, IconFolderOpen, IconPencil, IconPlus, IconTrash } from "../icons";
+import { TooltipButton } from "../ui";
 
 const GLOBAL_SUBAGENTS_PATH = "~/.agents/subagents";
 
@@ -32,48 +34,31 @@ type SubagentEditorState = {
   editing: UserSubagentRecord | null;
 };
 
+const EMPTY_SUBAGENTS: UserSubagentRecord[] = [];
+
+const fetchSubagents = async (): Promise<UserSubagentRecord[]> => {
+  const result = await api.listUserSubagents({ level: "global" });
+  return result.subagents ?? [];
+};
+
 export function AgentSubagentsPage() {
   const { t } = useTranslation();
   const showToast = useAppStore((state) => state.showToast);
-  const [subagents, setSubagents] = useState<UserSubagentRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const {
+    data: subagents,
+    setData: setSubagents,
+    loading,
+    refreshing,
+    reload: load,
+  } = useHostCollection(fetchSubagents, EMPTY_SUBAGENTS, (error) =>
+    showToast(error instanceof Error ? error.message : String(error), { variant: "error" }),
+  );
   const [search, setSearch] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [editor, setEditor] = useState<SubagentEditorState | null>(null);
   const [saving, setSaving] = useState(false);
   const { armed, setArmed } = useArmedDelete();
-  // First paint gets skeletons; everything after keeps the rows on screen.
-  const hydrated = useRef(false);
-
-  const load = useCallback(async () => {
-    if (hydrated.current) setRefreshing(true);
-    else setLoading(true);
-    try {
-      const result = await api.listUserSubagents({ level: "global" });
-      setSubagents(result.subagents ?? []);
-      hydrated.current = true;
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
-      setSubagents([]);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [showToast]);
-
-  useEffect(() => {
-    void load();
-    const offPluginChanged = api.onPluginChanged(() => void load());
-    const offHostStatus = api.onHostStatus((status) => {
-      if (status.ok) void load();
-    });
-    return () => {
-      offPluginChanged();
-      offHostStatus();
-    };
-  }, [load]);
 
   /**
    * The switch flips locally first and only reverts if the host refuses, so one
@@ -133,6 +118,8 @@ export function AgentSubagentsPage() {
       model: draft.model.trim(),
       thinkingLevel: draft.thinkingLevel,
       maxTurns: draft.maxTurns,
+      // `0` clears the output cap, so the delegate follows the model again.
+      maxTokens: draft.maxTokens,
       enabled: draft.enabled,
       scope: draft.scope,
     };
@@ -240,16 +227,16 @@ export function AgentSubagentsPage() {
         }
         actions={
           <>
-            <button
+            <TooltipButton
               type="button"
               className="settings-icon-button"
-              aria-label={t("extensions.subagents.rowActions", { name })}
-              title={t("extensions.subagents.edit")}
+              ariaLabel={t("extensions.subagents.rowActions", { name })}
+              tooltip={t("extensions.subagents.edit")}
               disabled={busy}
               onClick={() => void openEdit(subagent)}
             >
               <IconPencil size={15} />
-            </button>
+            </TooltipButton>
             <CapabilityRowMenu
               label={t("extensions.subagents.rowActions", { name })}
               items={items}

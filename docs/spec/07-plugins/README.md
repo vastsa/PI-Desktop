@@ -23,3 +23,4 @@ this directory define the normative contracts and implementation boundaries.
 | [13-plugin-permissions-matrix.md](13-plugin-permissions-matrix.md) | Permissions matrix |
 | [14-plugin-roadmap.md](14-plugin-roadmap.md) | Plugin roadmap |
 | [15-plugin-center.md](15-plugin-center.md) | Plugin center (publishing side) |
+| [16-trusted-extensions.md](16-trusted-extensions.md) | Trusted extensions (in-sidecar extension surface) |

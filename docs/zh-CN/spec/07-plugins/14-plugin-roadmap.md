@@ -62,6 +62,16 @@ Local plugins usable → developer-friendly → marketplace distribution → sig
 - 企业私人资源（仍在计划中）
 - 市场评论/质量评分（可选，仍在计划中）
 
+### R7 — Agent 扩展（v1.1 ✅，D387 / D388）
+- v1：Agent sidecar 中的 ExtensionAPI 适配层；工具、命令、生命周期与 provider hooks、
+  基础 UI 提示
+- v1.1：模块成为插件贡献点（`contributes.agentExtensions`，权限 `agent.extension`）；
+  “导入 pi 扩展”把 pi CLI 扩展变成开发插件；没有独立注册表或设置标签
+- v2：自定义会话条目、`sessionManager` 只读 shim、编辑器读写、快捷键、markdown 转换器；
+  签名到位后开放市场分发
+- v3：pi CLI `settings.json` 提示、统一 skill/提示发现、远程控制提示路由
+- 规格：[16-trusted-extensions.md](/zh-CN/spec/07-plugins/16-trusted-extensions)；ADR 0214、ADR 0215
+
 ## 3. 映射到产品里程碑
 
 | 产品里程碑 | 插件目标 |

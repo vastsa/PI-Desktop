@@ -13,6 +13,7 @@ import { api } from "../../lib/api";
 import { Markdown } from "../Markdown";
 import { fileDirOf } from "../../lib/chat-links";
 import { cx } from "../ui";
+import { TooltipButton } from "../ui";
 import {
   ensureLang,
   getHighlightVersion,
@@ -318,29 +319,31 @@ export function FilesTab() {
     return (
       <div className="file-viewer">
         <div className="file-viewer-header">
-          <button
+          <TooltipButton
             type="button"
             className="icon-btn"
+            tooltip={t("panel.files.back")}
+            ariaLabel={t("panel.files.back")}
             onClick={() => {
               setSelected(null);
               setFile(null);
             }}
-            title={t("panel.files.back")}
           >
             <IconChevronLeft size={14} />
-          </button>
+          </TooltipButton>
           <span className="file-viewer-path" title={selected}>
             {selected}
           </span>
           {file && <span className="file-viewer-size">{formatSize(file.size)}</span>}
-          <button
+          <TooltipButton
             type="button"
             className="icon-btn"
+            tooltip={t("panel.files.reveal")}
+            ariaLabel={t("panel.files.reveal")}
             onClick={() => void api.fsReveal(selected)}
-            title={t("panel.files.reveal")}
           >
             <IconExternal size={14} />
-          </button>
+          </TooltipButton>
         </div>
         <div className="file-viewer-body">
           {fileError ? (

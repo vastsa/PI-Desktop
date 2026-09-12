@@ -35,6 +35,8 @@ an optional `userAgent` in `config_json.userAgent`.
   warm runtime.
 - The unused `headers` map stays unimplemented. If added later, `userAgent`
   remains the UI alias and wins over `headers["User-Agent"]`.
+  **Superseded by ADR 0178:** `config_json.headers` is the supported override;
+  leftover `userAgent` migrates into `headers["User-Agent"]`.
 
 Overriding Anthropic OAuth's `claude-cli/…` User-Agent can make Claude
 Pro/Max reject the request. That is the user's choice.

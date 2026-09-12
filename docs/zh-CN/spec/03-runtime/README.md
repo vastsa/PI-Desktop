@@ -22,3 +22,5 @@
 | [15-workspace-ignore-rules.md](/zh-CN/spec/03-runtime/15-workspace-ignore-rules) | 工作区忽略和拒绝名单 |
 | [16-tool-result-limits.md](/zh-CN/spec/03-runtime/16-tool-result-limits) | 工具结果大小限制 |
 | [17-asktool-questions.md](/zh-CN/spec/03-runtime/17-asktool-questions) | 交互式多问题工具 |
+| [18-line-anchored-edit-contract.md](/zh-CN/spec/03-runtime/18-line-anchored-edit-contract) | 按行锚定的 Edit 合约 |
+| [19-remote-agent-control-protocol.md](/zh-CN/spec/03-runtime/19-remote-agent-control-protocol) | 远程 Agent 控制协议 |

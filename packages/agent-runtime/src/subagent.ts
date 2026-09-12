@@ -31,14 +31,12 @@ import {
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import {
   addUsage,
-  DEFAULT_SUBAGENT_IDLE_TIMEOUT_SECONDS,
-  DEFAULT_SUBAGENT_MAX_DURATION_SECONDS,
   subagentCanMutate,
   type AgentEventEnvelope,
   type MessageUsage,
   type SubagentDefinition,
   type SubagentRunStatus as SharedSubagentRunStatus,
-  type ThinkingLevel,
+  type SubagentThinkingLevel,
   type UiMessage,
 } from "@pi-desktop/shared";
 import { classifyAgentError } from "./agent-errors.js";
@@ -49,6 +47,7 @@ import {
 } from "./agent-messages.js";
 import {
   buildProviderModel,
+  copilotRequestHeaders,
   createProviderModels,
   providerRequestKey,
   type RuntimeProviderConfig,
@@ -57,7 +56,7 @@ import {
   openCodeEndpointFromProvider,
   withOpenCodeSessionHeaders,
 } from "./opencode-session-headers.js";
-import { withProviderUserAgent } from "./provider-user-agent.js";
+import { mergeProviderHeaders, withProviderHeaders } from "./provider-headers.js";
 import {
   captureProviderResponse,
   classifyProviderError,
@@ -88,6 +87,10 @@ export type SubagentRunStatus = SharedSubagentRunStatus;
 
 export type SubagentRunResult = {
   agentName: string;
+  /** Provider/model used by this run after delegation resolution. */
+  modelId: string;
+  /** Thinking selection passed to the delegate after inheritance/clamping. */
+  thinkingLevel: SubagentThinkingLevel;
   status: SubagentRunStatus;
   /** Text handed back to the parent model. */
   report: string;
@@ -115,7 +118,7 @@ export type SubagentRunOptions = {
   /** Provider resolved by Electron main (the definition's pin, or the
    * session's provider when the definition pins nothing). */
   provider: RuntimeProviderConfig;
-  thinkingLevel: ThinkingLevel;
+  thinkingLevel: SubagentThinkingLevel;
   /** Fully composed child system prompt (see `composeSubagentSystemPrompt`). */
   systemPrompt: string;
   /** Host-backed tools, built by the session runtime so a delegate's calls
@@ -185,7 +188,6 @@ export class SubagentRun {
   private toolCalls = 0;
   private usage?: MessageUsage;
   private cappedTurns = false;
-  private timedOut?: { code: string; message: string };
   private streamError?: { code: string; message: string };
   private pendingProviderRetry?: ReturnType<typeof classifyAgentError>;
   private providerRetryInProgress = false;
@@ -194,21 +196,39 @@ export class SubagentRun {
   private providerRetryHeaders?: Record<string, string>;
   private providerResponseStatus?: number;
   private readonly runAbortController = new AbortController();
-  private idleTimer?: ReturnType<typeof setTimeout>;
-  private durationTimer?: ReturnType<typeof setTimeout>;
-  private activeToolExecutions = new Set<string>();
-  private watchdogsStarted = false;
 
   constructor(opts: SubagentRunOptions) {
     this.opts = opts;
-    const model = buildProviderModel(opts.provider);
+    // A definition may cap the delegate's own output (issue #171). The
+    // catalog's published limit keeps applying otherwise, so this is an
+    // override on the built model, never a substituted default. The adapters
+    // derive max_tokens / max_completion_tokens / max_output_tokens from this
+    // field, which is why the sibling `thinkingLevelMap` override below can
+    // share the same object.
+    const builtModel = buildProviderModel(opts.provider);
+    const model =
+      opts.definition.maxTokens !== undefined
+        ? { ...builtModel, maxTokens: opts.definition.maxTokens }
+        : builtModel;
     const models = createProviderModels(opts.provider, model);
+    const omitThinking = opts.thinkingLevel === "omit";
+    const agentThinkingLevel =
+      opts.thinkingLevel === "omit" ? "off" : opts.thinkingLevel;
+    // The Responses adapter's low-level stream still uses a model-level
+    // `off` mapping as its fallback. Null it only for the omit path so the
+    // provider receives no synthesized reasoning setting at all.
+    const omitThinkingModel = omitThinking
+      ? {
+          ...model,
+          thinkingLevelMap: { ...model.thinkingLevelMap, off: null },
+        }
+      : model;
     const requestKey = providerRequestKey(opts.provider);
     this.agent = new Agent({
       streamFn: (m, context, options) => {
         this.providerRetryHeaders = undefined;
         this.providerResponseStatus = undefined;
-        const requestOptions = withProviderUserAgent(
+        const requestOptions = withProviderHeaders(
           withOpenCodeSessionHeaders(
             {
               ...options,
@@ -228,13 +248,19 @@ export class SubagentRun {
               sessionId: opts.sessionId,
             },
           ),
-          opts.provider.userAgent,
+          mergeProviderHeaders(
+            copilotRequestHeaders(opts.provider, context),
+            opts.provider.headers,
+          ),
         );
         return createProviderRetryStream(
           m,
           context,
           requestOptions,
-          (retryOptions) => models.streamSimple(m, context, retryOptions),
+          (retryOptions) =>
+            omitThinking
+              ? models.stream(omitThinkingModel, context, retryOptions)
+              : models.streamSimple(m, context, retryOptions),
           {
             claim: (error, phase) => this.claimProviderRetry(error, phase),
             headers: () => this.providerRetryHeaders,
@@ -249,7 +275,7 @@ export class SubagentRun {
         systemPrompt: opts.systemPrompt,
         model,
         tools: opts.tools,
-        thinkingLevel: opts.thinkingLevel,
+        thinkingLevel: agentThinkingLevel,
         messages: [],
       },
       // A delegate is a worker, not a fan-out point: its own tool calls run
@@ -269,27 +295,22 @@ export class SubagentRun {
       this.agent.abort();
     };
     signal?.addEventListener("abort", onAbort, { once: true });
-    this.startWatchdogs();
     let caughtError: ReturnType<typeof classifyAgentError> | undefined;
     try {
       await this.agent.prompt(this.opts.task);
       await this.agent.waitForIdle();
-      while (this.pendingProviderRetry && !signal?.aborted && !this.timedOut) {
+      while (this.pendingProviderRetry && !signal?.aborted) {
         await this.retryPendingProviderFailure();
       }
     } catch (error) {
       caughtError = classifyAgentError(error);
     } finally {
       signal?.removeEventListener("abort", onAbort);
-      this.stopWatchdogs();
       this.finalizeCurrentAssistant();
     }
 
     if (signal?.aborted) {
       return this.result("aborted", "The delegated task was aborted.");
-    }
-    if (this.timedOut) {
-      return this.result("timed_out", this.latestReportText(), this.timedOut);
     }
     if (caughtError) {
       if (caughtError.code === "TURN_ABORTED") {
@@ -385,17 +406,14 @@ export class SubagentRun {
             ].join("\n\n")
           : status === "aborted"
             ? `The ${name} subagent was aborted after ${this.turns} turn(s).`
-            : status === "timed_out"
-              ? [
-                  `The ${name} subagent timed out after ${this.turns} turn(s).`,
-                  ...(body ? ["Its last output was:", body] : []),
-                ].join("\n\n")
             : [
                 `The ${name} subagent failed after ${this.turns} turn(s): ${error?.message ?? "unknown error"}.`,
                 ...(body ? ["Its last output was:", body] : []),
               ].join("\n\n");
     return {
       agentName: name,
+      modelId: this.opts.provider.modelId,
+      thinkingLevel: this.opts.thinkingLevel,
       status,
       report: boundedReport(text),
       turns: this.turns,
@@ -436,80 +454,15 @@ export class SubagentRun {
 
   /**
    * Idle and duration watchdogs are withdrawn (D328). Stopping a delegate is
-   * the parent agent's `TaskStop` or the user's Stop, not a timer.
+   * the parent agent's `TaskStop` or the user's Stop, not a timer, so the
+   * only abort sources are the parent's signal and this run's own controller.
    */
-  private startWatchdogs(): void {}
-
-  private stopWatchdogs(): void {
-    if (!this.watchdogsStarted) return;
-    this.watchdogsStarted = false;
-    if (this.idleTimer !== undefined) clearTimeout(this.idleTimer);
-    if (this.durationTimer !== undefined) clearTimeout(this.durationTimer);
-    this.idleTimer = undefined;
-    this.durationTimer = undefined;
-  }
-
-  private idleTimeoutSeconds(): number {
-    return this.opts.definition.idleTimeoutSeconds ??
-      DEFAULT_SUBAGENT_IDLE_TIMEOUT_SECONDS;
-  }
-
-  private maxDurationSeconds(): number {
-    return this.opts.definition.maxDurationSeconds ??
-      DEFAULT_SUBAGENT_MAX_DURATION_SECONDS;
-  }
-
-  private armIdleTimer(): void {
-    if (!this.watchdogsStarted || this.activeToolExecutions.size > 0) return;
-    if (this.idleTimer !== undefined) clearTimeout(this.idleTimer);
-    this.idleTimer = setTimeout(
-      () =>
-        this.timeout(
-          "SUBAGENT_IDLE_TIMEOUT",
-          `The subagent produced no activity for ${this.idleTimeoutSeconds()} seconds.`,
-        ),
-      this.idleTimeoutSeconds() * 1000,
-    );
-  }
-
-  private timeout(code: string, message: string): void {
-    if (this.timedOut) return;
-    this.timedOut = { code, message };
-    this.runAbortController.abort();
-    this.agent.abort();
-  }
-
   private runSignal(): AbortSignal {
     return AbortSignal.any(
       this.opts.signal
         ? [this.opts.signal, this.runAbortController.signal]
         : [this.runAbortController.signal],
     );
-  }
-
-  private noteActivity(event: AgentEvent): void {
-    if (!this.watchdogsStarted) return;
-    if (event.type === "tool_execution_start") {
-      this.activeToolExecutions.add(event.toolCallId);
-      if (this.idleTimer !== undefined) clearTimeout(this.idleTimer);
-      this.idleTimer = undefined;
-      return;
-    }
-    if (event.type === "tool_execution_end") {
-      this.activeToolExecutions.delete(event.toolCallId);
-      this.armIdleTimer();
-      return;
-    }
-    // Every other event is a sign of life, down to a single streamed token
-    // arriving as `message_update`. The idle watchdog measures silence, not
-    // slowness: a delegate that keeps streaming never trips it, however long
-    // its turn takes. The timer stays paused while a tool runs, so this only
-    // re-arms once the last execution ended.
-    if (this.activeToolExecutions.size === 0) this.armIdleTimer();
-  }
-
-  private latestReportText(): string {
-    return this.lastReportText || this.currentAssistant?.content || "";
   }
 
   private newAssistantRow(): UiMessage {
@@ -534,7 +487,6 @@ export class SubagentRun {
    * and a delegate finishing must never end the parent's turn.
    */
   private handleEvent(event: AgentEvent): void {
-    this.noteActivity(event);
     switch (event.type) {
       case "turn_start":
         this.turns += 1;

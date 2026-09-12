@@ -72,6 +72,27 @@ test("plugin panel window controls stay private, bounded, and accessible", () =>
   );
 });
 
+test("plugin panels expose host-owned dropped-file authorization", () => {
+  assert.match(preloadSource, /webUtils\.getPathForFile\(file\)/);
+  assert.match(preloadSource, /pi-plugin-panel-drop/);
+  assert.match(preloadSource, /event\.dataTransfer\?\.files/);
+  assert.match(hostSource, /fs\.registerDropped/);
+  assert.match(hostSource, /consumeDroppedPath\(event\.sender\.id, payload\?\.path\)/);
+  assert.match(hostSource, /DROPPED_PATH_TTL_MS/);
+});
+
+test("plugin panel close does not read destroyed webContents", () => {
+  assert.match(
+    hostSource,
+    /const webContentsId = win\.webContents\.id;\s*win\.on\("closed", \(\) => \{\s*this\.pendingDrops\.delete\(webContentsId\);/,
+  );
+  const closedHandler = hostSource.slice(
+    hostSource.indexOf('win.on("closed"'),
+    hostSource.indexOf("this.windows.set(request.pluginId, win);"),
+  );
+  assert.doesNotMatch(closedHandler, /win\.webContents/);
+});
+
 test("plugin content is offset below the strict 46px host drag band", () => {
   assert.match(preloadSource, /getComputedStyle\(body\)\.paddingTop/);
   assert.match(preloadSource, /padding-top/);
@@ -83,12 +104,39 @@ test("plugin content is offset below the strict 46px host drag band", () => {
   assert.match(preloadSource, /isDevelopmentPanel/);
   assert.match(preloadSource, /safe-area-hint/);
   assert.match(preloadSource, /顶部 46px 为拖拽区/);
+  assert.match(preloadSource, /外掛面板視窗控制項/);
+  assert.match(preloadSource, /頂部 46px 為拖曳區/);
+  assert.match(preloadSource, /플러그인 패널 창 컨트롤/);
+  assert.match(preloadSource, /상단 46px는 드래그 전용/);
+  assert.match(preloadSource, /locale\.startsWith\("ko"\)/);
+  assert.match(preloadSource, /locale\.startsWith\("tr"\)/);
+  assert.match(preloadSource, /locale\.startsWith\("de"\)/);
+  assert.match(preloadSource, /locale\.startsWith\("es"\)/);
+  assert.match(preloadSource, /locale\.startsWith\("fr"\)/);
+  assert.match(preloadSource, /locale === "zh-tw"/);
+  assert.match(preloadSource, /locale === "zh-hant"/);
   assert.match(preloadSource, /--pi-plugin-panel-theme=/);
   assert.match(preloadSource, /PLUGIN_PANEL_LOCALE_ARGUMENT_PREFIX/);
-  assert.match(preloadSource, /panelLocale\(\)\.toLowerCase\(\)/);
+  assert.match(preloadSource, /function chromeLabels\(input = panelLocale\(\)\)/);
+  assert.match(preloadSource, /input\.replaceAll\("_", "-"\)\.toLowerCase\(\)/);
+  assert.match(preloadSource, /appearance\?\.locale/);
+  assert.match(preloadSource, /labels = chromeLabels\(appearance\.locale\)/);
   assert.match(preloadSource, /host\.dataset\.theme = theme/);
   assert.match(preloadSource, /className = "drag-region"/);
   assert.match(preloadSource, /prefers-reduced-motion: reduce/);
+});
+
+test("plugin panel documents use the compact global scrollbar contract", () => {
+  assert.match(preloadSource, /function installPluginScrollbarStyle\(\)/);
+  assert.match(
+    preloadSource,
+    /::-webkit-scrollbar\s*\{[\s\S]*?width: 6px;[\s\S]*?height: 6px;/,
+  );
+  assert.match(preloadSource, /::-webkit-scrollbar-track[\s\S]*?background: transparent/);
+  assert.match(preloadSource, /:focus-within::\-webkit-scrollbar-thumb/);
+  assert.match(preloadSource, /\[data-scrolling\]::\-webkit-scrollbar-thumb/);
+  assert.match(preloadSource, /document\.addEventListener\("scroll", onScroll/);
+  assert.match(preloadSource, /installPluginScrollbarStyle\(\);/);
 });
 
 test("paint-through panels let page content draw and receive pointer events", () => {

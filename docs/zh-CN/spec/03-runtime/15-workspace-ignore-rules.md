@@ -13,10 +13,14 @@
 
 1. **安全拒绝列表**（始终开启，不在 MVP 中由用户禁用）
 2. **应用程序默认设置**（已发货）
-3. **工作区规则**（`.pi-desktopignore` 或设置）
-4. **用户全局忽略** (`~/.pi-desktop/ignore`)
+3. **工作区规则**（工作区根目录下的 `.pi-desktopignore`）
+4. **用户全局忽略**（`<data_dir>/ignore`，默认即 `~/.pi-desktop/ignore`）
 5. 显式工具路径仍受安全拒绝名单和
    外部路径权限门
+
+`Glob`/`Grep` 的显式 `path` 参数会让遍历跳出第 2–4 层（与它已经绕过上层
+`.gitignore` 规则的方式相同），因此显式点名 `node_modules/pkg` 或 `dist` 的
+调用者仍然可以搜索它们。第 1 层对每一次遍历和每一个显式路径都生效。
 
 ## 3. 安全拒绝名单（始终）
 
@@ -25,17 +29,24 @@ Goal/scanning/reading/writing/MVP/`.pi-desktopignore`/`~/.pi-desktop/ignore` 路
 权限模式：`auto` 允许，而 `ask` 和 `accept-edits` 询问
 用户。隐式递归遍历永远不会获得工作空间外部的访问权限。
 
-还拒绝在工作空间内进行以下操作：
-- `.git/objects/**`（可选优化；元数据稍后可读）
+在工作区内（以及 scratch 目录或已批准的外部根目录内）还拒绝以下内容：
+- `.git/objects/**`
 - 私钥模式：`*.pem`、`*.key`、`id_rsa`、`id_ed25519`
-- `.env`、`.env.*`（在后续版本中可能会允许读取，并提示权限；MVP 默认拒绝 Grep 内容导出）
+- `.env`、`.env.*` —— 但文档变体 `.env.example`、`.env.sample` 和
+  `.env.template` 除外，它们不含密钥，而且通常正是编码任务需要的
 - 凭证文件：`*.p12`、`*.pfx`、`credentials.json` (Google)、带有令牌的 `.npmrc`（尽力而为）
 
-> 稍后可以在明确许可的情况下放宽确切的环境文件策略；在 MVP 中无法关闭内容搜索。
+文件名匹配不区分大小写。`Glob` 和 `Grep` 会静默地把命中的文件从结果中丢掉；
+显式的 `Read`、`Write` 或 `Edit`（包括 `Edit` 的移动目标）以
+`WORKSPACE_PATH_DENIED` 失败，外部路径授权也不会解除这一拒绝。`Bash` 不做
+过滤（§6）。
+
+> 后续版本中 Read 可能在明确的权限提示下被允许；MVP 一律失败关闭。
 
 ## 4. 默认忽略（应用程序）
 
 ```gitignore
+.git/
 node_modules/
 dist/
 build/
@@ -68,27 +79,26 @@ coverage/
 
 | 工具 | 忽略应用程序 |
 |---|---|
-| 全局 | 过滤结果 |
-| 格雷普 | 过滤后的文件集 |
-| 阅读 | 当显式路径在外部时，权限门控；拒绝后 `TOOL_DENIED` |
-| Write/Edit | 当显式路径在外部时，权限门控；拒绝后的 `TOOL_DENIED` |
-| 重击 | 路径沙箱仍然由主机强制执行；忽略文件不会扩展 bash 权限 |
+| Glob | 无范围遍历：第 1–4 层过滤结果；显式 `path`：仅第 1 层 |
+| Grep | 无范围遍历：第 1–4 层过滤文件集（进程内遍历器与系统 `rg` 快速路径一致）；显式 `path`：仅第 1 层 |
+| Read | 命中拒绝名单的文件返回 `WORKSPACE_PATH_DENIED`；否则当显式路径在外部时权限门控；拒绝后 `TOOL_DENIED` |
+| Write/Edit | 命中拒绝名单的文件或移动目标返回 `WORKSPACE_PATH_DENIED`；否则当显式路径在外部时权限门控；拒绝后 `TOOL_DENIED` |
+| Bash | 路径沙箱仍然由主机强制执行；忽略文件不会扩展 bash 权限 |
 
 ## 7. 诊断
 
 工具应返回稳定的错误：
-- `PATH_OUTSIDE_WORKSPACE` — 路径在执行之前转义工作区根目录
-  外部路径权限决策，或未经许可的兼容性调用
-  到达解析器
+- `PATH_OUTSIDE_WORKSPACE` — 在做出外部路径权限决策之前，路径逃逸了
+  工作区根目录
 - `TOOL_DENIED` — 外部路径权限被拒绝、超时或取消
-- `WORKSPACE_PATH_DENIED` — ignore/denylist 块的保留详细代码
-  （今天映射到 `PATH_OUTSIDE_WORKSPACE`；请参阅 [08-错误代码 §3.6](/zh-CN/spec/03-runtime/08-error-codes)）
+- `WORKSPACE_PATH_DENIED` — 显式路径命中了安全拒绝名单（请参阅
+  [08-错误代码 §3.3](/zh-CN/spec/03-runtime/08-error-codes)）
 
 UI 可以选择稍后显示 Glob/Grep 的“被忽略规则隐藏”计数。
 
 ## 8. 验收标准
 
 - [x] 外部路径在非自动模式下需要许可，并且在自动模式下允许
-- [ ] 默认忽略 Glob/Grep 中的隐藏 node_modules
-- [ ] 工作区忽略文件
-- [ ] 无法从 MVP 中的 UI 禁用安全拒绝列表
+- [x] 默认忽略规则在 Glob/Grep 中隐藏 node_modules
+- [x] 工作区忽略文件得到遵守
+- [x] 无法从 MVP 中的 UI 禁用安全拒绝列表

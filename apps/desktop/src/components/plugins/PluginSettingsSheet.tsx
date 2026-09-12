@@ -15,7 +15,7 @@ import {
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../stores/app-store";
-import { Button, cx, Input, Select, Textarea } from "../ui";
+import { Button, TooltipButton, cx, Input, Select, Textarea } from "../ui";
 import { IconKeyboard, IconSettings, IconX } from "../icons";
 
 type Props = {
@@ -160,15 +160,15 @@ export function PluginSettingsSheet({ plugin, platform, onClose, onSaved }: Prop
             <h2 className="plugins-modal-title">{t("plugins.settingsTitle", { name: plugin.name })}</h2>
             <p className="plugins-modal-subtitle">{t("plugins.settingsHint")}</p>
           </div>
-          <button
+          <TooltipButton
             type="button"
             className="plugins-icon-btn"
-            aria-label={t("plugins.closeSettings")}
-            title={t("plugins.closeSettings")}
+            tooltip={t("plugins.closeSettings")}
+            ariaLabel={t("plugins.closeSettings")}
             onClick={onClose}
           >
             <IconX size={15} />
-          </button>
+          </TooltipButton>
         </header>
 
         <div className="plugins-settings-body">

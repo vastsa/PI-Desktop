@@ -30,6 +30,9 @@ export function TurnOutcomeCard({
   if (!result || result.status === "completed") return null;
 
   const tail = latestTurnMessages(messages);
+  const hasInlineError = tail.some((message) => Boolean(message.error));
+  if (hasInlineError) return null;
+
   const toolCount = tail.filter((message) => message.role === "tool").length;
   const hasVisibleTurn = tail.some(
     (message) =>

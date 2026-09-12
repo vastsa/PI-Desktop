@@ -191,6 +191,26 @@ test("the panel session is handed the plugin's allowlist", async (t) => {
 
   assert.equal(panels.length, 1);
   assert.deepEqual(panels[0].netDomains, ["api.github.com"]);
+  assert.equal(panels[0].allowMicrophone, false);
+});
+
+test("ui.microphone grants audio-only media permission to a panel", async (t) => {
+  const { runtime, panels } = createRuntime(t);
+  const dir = writePlugin({
+    id: "egress.mic",
+    permissions: ["ui.panel", "ui.microphone"],
+    ui: { panel: "panel.html" },
+    main: `
+      module.exports = {
+        async onLoad() { await pi.ui.openPanel(); },
+      };
+    `,
+  });
+  await runtime.loadFromPath(dir);
+  assert.equal(panels[0].allowMicrophone, true);
+  assert.match(panelHostSrc, /mediaTypes/);
+  assert.match(panelHostSrc, /type === "audio"/);
+  assert.match(panelHostSrc, /details\.mediaType === "audio"/);
 });
 
 test("the panel session filters requests and refuses device permissions", () => {

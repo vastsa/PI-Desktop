@@ -12,7 +12,7 @@ import {
   type McpTransport,
   type ProjectRecord,
 } from "@pi-desktop/shared";
-import { Button, Field, Input, cx } from "../ui";
+import { Button, Field, Input, TooltipButton, cx } from "../ui";
 import { IconPlay, IconServer, IconTerminal, IconX } from "../icons";
 import { ScopeControl } from "./ScopeControl";
 import { KeyValueRows, pairsToRecord, recordToPairs, type KeyValuePair } from "./KeyValueRows";
@@ -315,14 +315,15 @@ export function McpEditorSheet({
                 : t("extensions.mcp.sheetSubtitle")}
             </p>
           </div>
-          <button
+          <TooltipButton
             type="button"
             className="ext-sheet-close"
-            aria-label={t("common.close")}
+            ariaLabel={t("common.close")}
+            tooltip={t("common.close")}
             onClick={onClose}
           >
             <IconX size={14} />
-          </button>
+          </TooltipButton>
         </div>
 
         <div className="ext-sheet-body">

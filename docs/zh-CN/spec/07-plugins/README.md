@@ -26,3 +26,4 @@
 | [13-plugin-permissions-matrix.md](/zh-CN/spec/07-plugins/13-plugin-permissions-matrix) | 权限矩阵 |
 | [14-plugin-roadmap.md](/zh-CN/spec/07-plugins/14-plugin-roadmap) | 插件路线图 |
 | [15-plugin-center.md](/zh-CN/spec/07-plugins/15-plugin-center) | 插件中心（发布侧） |
+| [16-trusted-extensions.md](/zh-CN/spec/07-plugins/16-trusted-extensions) | 受信任扩展（sidecar 内扩展面） |

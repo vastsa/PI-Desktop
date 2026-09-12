@@ -113,27 +113,64 @@ fn path_is_within(root: &Path, candidate: &Path) -> bool {
             })
 }
 
+/// Upper bound on dangling-symlink hops the resolver follows before giving up.
+const MAX_DANGLING_LINK_HOPS: usize = 32;
+
 /// Resolve a normalized path by canonicalizing its deepest existing ancestor.
 /// The same resolver is used for contained and explicitly approved paths so
 /// symlink behavior does not change when a permission card is accepted.
+///
+/// Existence is probed with `symlink_metadata`, not `exists()`: a dangling
+/// symlink reports "missing" through `exists()` and would otherwise be treated
+/// as a not-yet-created leaf whose parent canonicalizes fine, while a later
+/// write follows the link and creates its target wherever it points. Instead
+/// the link target is read and resolution restarts from it so the caller's
+/// containment check sees the real destination.
 fn resolve_with_existing_ancestor(normalized: PathBuf) -> Result<PathBuf, String> {
-    let mut existing = normalized;
-    let mut tail: Vec<std::ffi::OsString> = Vec::new();
-    while !existing.exists() {
-        match (existing.parent(), existing.file_name()) {
-            (Some(parent), Some(name)) => {
-                tail.push(name.to_os_string());
-                existing = parent.to_path_buf();
+    let mut current = normalized;
+    for _ in 0..MAX_DANGLING_LINK_HOPS {
+        let mut existing = current;
+        let mut tail: Vec<std::ffi::OsString> = Vec::new();
+        while existing.symlink_metadata().is_err() {
+            match (existing.parent(), existing.file_name()) {
+                (Some(parent), Some(name)) => {
+                    tail.push(name.to_os_string());
+                    existing = parent.to_path_buf();
+                }
+                _ => break,
             }
-            _ => break,
         }
+        let is_dangling_link = existing
+            .symlink_metadata()
+            .map(|meta| meta.file_type().is_symlink())
+            .unwrap_or(false)
+            && !existing.exists();
+        if is_dangling_link {
+            let target = std::fs::read_link(&existing)
+                .map_err(|e| format!("path canonicalize failed: {e}"))?;
+            let base = existing
+                .parent()
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|| PathBuf::from("/"));
+            let mut next = if target.is_absolute() {
+                target
+            } else {
+                base.join(target)
+            };
+            for part in tail.iter().rev() {
+                next.push(part);
+            }
+            current = normalize_lexical(&next);
+            continue;
+        }
+        let mut resolved = simple_canonicalize(&existing)
+            .map_err(|e| format!("path canonicalize failed: {e}"))?;
+        for part in tail.iter().rev() {
+            resolved.push(part);
+        }
+        return Ok(resolved);
     }
-    let mut resolved = simple_canonicalize(&existing)
-        .map_err(|e| format!("path canonicalize failed: {e}"))?;
-    for part in tail.iter().rev() {
-        resolved.push(part);
-    }
-    Ok(resolved)
+    Err("path canonicalize failed: too many symlink hops".into())
 }
 
 /// Resolve a user-provided path against workspace root and ensure it stays inside.
@@ -299,6 +336,53 @@ mod tests {
         std::os::unix::fs::symlink(outside.path(), root.join("link")).unwrap();
         let err = resolve_in_workspace(root, "link/new.txt").unwrap_err();
         assert_eq!(err, "PATH_OUTSIDE_WORKSPACE");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn blocks_dangling_symlink_escape() {
+        let dir = tempdir().unwrap();
+        let outside = tempdir().unwrap();
+        let root = dir.path();
+        // The target does not exist yet: `exists()` says false for the link,
+        // but a write through it would create the file outside the workspace.
+        let target = outside.path().join("planted.txt");
+        std::os::unix::fs::symlink(&target, root.join("dangling")).unwrap();
+        let err = resolve_in_workspace(root, "dangling").unwrap_err();
+        assert_eq!(err, "PATH_OUTSIDE_WORKSPACE");
+        assert!(!target.exists());
+
+        // A dangling link to a directory that would be created outside.
+        std::os::unix::fs::symlink(outside.path().join("dir"), root.join("dangling-dir")).unwrap();
+        let err = resolve_in_workspace(root, "dangling-dir/new.txt").unwrap_err();
+        assert_eq!(err, "PATH_OUTSIDE_WORKSPACE");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn dangling_symlink_inside_workspace_resolves_to_its_target() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        std::os::unix::fs::symlink(root.join("not-yet.txt"), root.join("dangling")).unwrap();
+        let resolved = resolve_in_workspace(root, "dangling").unwrap();
+        assert_eq!(resolved, root.canonicalize().unwrap().join("not-yet.txt"));
+
+        // Relative link targets resolve against the link's own directory.
+        std::fs::create_dir_all(root.join("sub")).unwrap();
+        std::os::unix::fs::symlink("../elsewhere.txt", root.join("sub/rel")).unwrap();
+        let resolved = resolve_in_workspace(root, "sub/rel").unwrap();
+        assert_eq!(resolved, root.canonicalize().unwrap().join("elsewhere.txt"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn dangling_symlink_loop_is_rejected() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        std::os::unix::fs::symlink(root.join("b"), root.join("a")).unwrap();
+        std::os::unix::fs::symlink(root.join("a"), root.join("b")).unwrap();
+        let err = resolve_in_workspace(root, "a").unwrap_err();
+        assert!(err.contains("too many symlink hops"), "{err}");
     }
 
     #[test]

@@ -8,7 +8,10 @@ import {
 } from "./subagent.js";
 import type { RuntimeProviderConfig } from "./provider-binding.js";
 import { classifyAgentError } from "./agent-errors.js";
-import { PROVIDER_TRANSIENT_MAX_RETRIES } from "./provider-retry.js";
+import {
+  PROVIDER_RATE_LIMIT_MAX_RETRIES,
+  PROVIDER_TRANSIENT_MAX_RETRIES,
+} from "./provider-retry.js";
 
 const provider: RuntimeProviderConfig = {
   id: "local",
@@ -105,6 +108,59 @@ describe("composeSubagentSystemPrompt", () => {
 });
 
 describe("SubagentRun event forwarding", () => {
+  it("keeps the no-pass selection out of the agent's canonical state", () => {
+    const { run } = createRun({ thinkingLevel: "omit" });
+
+    expect(run.agent.state.thinkingLevel).toBe("off");
+    expect(run.agent.streamFunction.toString()).toContain(
+      "models.stream(omitThinkingModel, context, retryOptions)",
+    );
+  });
+
+  it("does not synthesize a Responses reasoning setting when omitted", async () => {
+    const responseProvider: RuntimeProviderConfig = {
+      ...provider,
+      id: "responses",
+      name: "Responses",
+      apiStyle: "responses",
+      baseUrl: "https://example.invalid/v1",
+      apiKey: "test-key",
+      supportsReasoning: true,
+      supportedThinkingLevels: ["off", "high"],
+      modelConfig: {
+        source: "generic",
+        name: "Responses model",
+        baseUrl: "https://example.invalid/v1",
+        reasoning: true,
+        thinkingLevelMap: { off: "none", high: "high" },
+        input: ["text"],
+        contextWindow: 128_000,
+        maxTokens: 8_192,
+      },
+    };
+    const { run } = createRun({
+      provider: responseProvider,
+      thinkingLevel: "omit",
+    });
+    const requests: Record<string, unknown>[] = [];
+    const fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push(
+        JSON.parse(typeof init?.body === "string" ? init.body : "{}"),
+      );
+      return new Response("bad request", { status: 400 });
+    });
+
+    const stream = run.agent.streamFunction(
+      run.agent.state.model,
+      { systemPrompt: "system", messages: [], tools: [] },
+      { fetch },
+    );
+    await stream.result();
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].reasoning).toBeUndefined();
+  });
+
   it("tags every forwarded row with the Task call and the agent name", () => {
     const { run, events } = createRun();
 
@@ -193,6 +249,18 @@ describe("SubagentRun reporting", () => {
     expect(result.report).toContain("[subagent report truncated]");
   });
 
+  it("records the effective model and thinking selection", () => {
+    const { run } = createRun({
+      provider: { ...provider, modelId: "child-model" },
+      thinkingLevel: "max",
+    });
+
+    expect(run.result("completed", "Done.")).toMatchObject({
+      modelId: "child-model",
+      thinkingLevel: "max",
+    });
+  });
+
   it("explains a truncated, aborted, or failed run in the parent's text", () => {
     const { run } = createRun();
     run.turns = 3;
@@ -239,7 +307,7 @@ describe("SubagentRun reporting", () => {
 });
 
 describe("SubagentRun provider rate-limit recovery", () => {
-  it("retries five 429s silently and reuses one assistant row", async () => {
+  it("retries ten 429s silently and reuses one assistant row", async () => {
     const { run, events } = createRun();
     const failure = {
       ...assistantMessage({
@@ -275,7 +343,7 @@ describe("SubagentRun provider rate-limit recovery", () => {
       await vi.runAllTimersAsync();
       const result = await resultPromise;
 
-      expect(continueRun).toHaveBeenCalledTimes(5);
+      expect(continueRun).toHaveBeenCalledTimes(PROVIDER_RATE_LIMIT_MAX_RETRIES);
       expect(result.status).toBe("failed");
       expect(result.error?.code).toBe("PROVIDER_RATE_LIMITED");
       expect(events.filter((event) => event.event.type === "message_start")).toHaveLength(1);
@@ -383,20 +451,20 @@ describe("SubagentRun watchdogs", () => {
     );
 
     // The stream phase used to be refused outright for a delegate.
-    expect(claim(gateway502, "stream")).toBe(1);
-    expect(claim(gateway502, "request")).toBe(2);
-    expect(claim(gateway502, "stream")).toBe(3);
-    expect(claim(gateway502, "request")).toBe(4);
-    expect(PROVIDER_TRANSIENT_MAX_RETRIES).toBe(4);
+    for (let attempt = 1; attempt <= PROVIDER_TRANSIENT_MAX_RETRIES; attempt += 1) {
+      expect(claim(gateway502, attempt % 2 === 1 ? "stream" : "request")).toBe(
+        attempt,
+      );
+    }
     expect(claim(gateway502, "stream")).toBeUndefined();
 
     const { run: fresh } = createRun();
     const freshClaim = (error: unknown, phase: string) =>
       (fresh as any).claimProviderRetry(error, phase);
-    // Rate limits keep their own separate five-retry budget.
+    // Rate limits keep their own separate ten-retry budget.
     const rateLimited = classifyAgentError("429: too many requests");
     expect(freshClaim(gateway502, "request")).toBe(1);
-    for (let attempt = 1; attempt <= 5; attempt += 1) {
+    for (let attempt = 1; attempt <= PROVIDER_RATE_LIMIT_MAX_RETRIES; attempt += 1) {
       expect(freshClaim(rateLimited, "stream")).toBe(attempt);
     }
     expect(freshClaim(rateLimited, "stream")).toBeUndefined();

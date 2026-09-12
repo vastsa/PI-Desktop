@@ -429,3 +429,23 @@ test("the plugins page keeps capability and service chips in row details", () =>
     assert.match(enSrc, new RegExp(`${key}:`));
   }
 });
+
+test("capability badges include every declared plugin capability", () => {
+  const block = pluginsPageSrc.match(
+    /const CAPABILITY_ORDER: PluginCapability\[\] = \[([\s\S]*?)\];/,
+  )?.[1];
+  assert.ok(block, "capability badge order is missing");
+  const order = [...block.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+  assert.deepEqual(order, [
+    "panel",
+    "views",
+    "commands",
+    "tools",
+    "agentExtension",
+    "skills",
+    "themes",
+    "mcp",
+    "services",
+    "bus",
+  ]);
+});

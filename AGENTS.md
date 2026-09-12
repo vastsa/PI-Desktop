@@ -40,6 +40,52 @@ See:
 
 * [AI development workflow — R5](docs/spec/06-delivery/03-ai-development-workflow.md#r5--verify-linked-github-issues-before-work-then-reply-and-close)
 
+## GitHub Pull Request Handling
+
+When the user provides a GitHub pull request URL (or an unambiguous pull
+request number for this repository), treat it as an intake gate. Review the
+principle first. Do not rewrite the pull request as a replacement for the
+contributor's work. Do not create a replacement request branch or worktree
+until that decision is made. If merging, start follow-up only after the pull
+request is in `main`.
+
+1. Fetch the pull request (title, body, files, commits, comments, checks,
+   draft state, base/head, and linked issues).
+2. Decide whether the **principle** is sound in the current codebase:
+   - The change addresses a real, in-scope problem.
+   - The approach is compatible with the baseline, security boundaries, and
+     architecture (or is a justified spec-backed amendment).
+   - Judge the direction, not whether the pull request already satisfies
+     spec-sync, tests, style, or other completeness rules.
+3. If the principle is sound: merge **that** pull request first, preserving
+   the contributor's commits. If the head branch lives in a fork (third-party
+   contributor), run the relevant local E2E suites against the head first;
+   a failing E2E run is a landing blocker, not a follow-up. Completeness gaps
+   (specs, tests, i18n, e2e docs, style, naming, commit-message nits) are
+   follow-up work after merge, not merge blockers. Landing blockers that
+   would break `main` may receive the smallest commits on top of the author's
+   work so the pull request can land. Then follow the isolated development workflow for any follow-up.
+4. If the principle is not sound, or a harm blocker exists (secrets, sandbox
+   or privilege bypass, malicious or clearly destructive changes, out-of-scope
+   reversal of a frozen decision): do not merge. Comment with the evidence.
+   Do not silently reimplement the same idea as if the pull request never
+   existed.
+5. Do not merge a draft pull request the author has not marked ready, unless
+   the user explicitly asks to merge the draft.
+6. Write the pull request comment in the pull request's language (the language
+   of the original title and body). Repository docs, code, and commits stay
+   English.
+7. A pull request link authorizes reviewing, commenting on, and merging
+   **that** pull request. It does not authorize a force-push of the
+   contributor's branch or publishing unrelated branches. Follow-up remote
+   publishing remains opt-in.
+
+Do not comment on or merge unrelated pull requests.
+
+See:
+
+* [AI development workflow — R6](docs/spec/06-delivery/03-ai-development-workflow.md#r6--merge-a-linked-pull-request-whose-principle-is-sound-then-follow-up)
+
 ## AI-Generated Page Content
 
 AI-generated pages must not contain redundant explanatory text. Keep visible
@@ -56,6 +102,10 @@ copy limited to the information and actions users need to complete the task:
 ## Mandatory Isolated Development
 
 Every request must use its own dedicated branch and worktree.
+
+A linked GitHub pull request is reviewed and, when the principle is sound,
+merged before any replacement implementation worktree is created (R6).
+Landing-blocker commits, if needed, go on top of the author's branch.
 
 Before modifying any file, the agent must:
 
@@ -117,7 +167,13 @@ Every user-visible or protocol-visible behavior change must add or update a scen
 
 * [E2E test plan](docs/spec/06-delivery/04-e2e-test-plan.md)
 
-Do not run local E2E commands or manually trigger remote E2E jobs unless explicitly requested by the user.
+Do not run local E2E commands or manually trigger remote E2E jobs unless
+explicitly requested by the user, **except** when the change comes from a
+forked third-party repository (a pull request whose head branch lives in a
+fork). Fork pull requests do not receive the repository's secrets, so the
+remote E2E jobs cannot be trusted to cover them. For those, run the relevant
+local E2E suites (`npm run test:e2e*`) against the pull request head before
+merging and record the result in the pull request comment.
 
 ### 4. Merge Back into Local `main`
 
@@ -205,9 +261,10 @@ flow before changing application code:
    host version comparison, IPC state propagation, or renderer presentation.
 4. Run the catalog preflight before proposing an application fix:
    `node scripts/check-marketplace-catalog.mjs --url <catalog-url> --plugin <id>`.
-   Missing checksum, package URL, package size, or permissions is a release
-   data failure. Report it as such and do not make incomplete releases
-   installable merely to hide the bad catalog.
+   Missing checksum, package URL, package size, or permissions, or a catalog
+   `author` that is not a string (for example `{ name, url }` copied from a
+   plugin manifest), is a release data failure. Report it as such and do not
+   make incomplete releases installable merely to hide the bad catalog.
 5. Reproduce the exact case with a deterministic fixture, including unsorted
    versions and an incomplete version record, then add the narrowest regression
    test for the diagnosed layer.
@@ -243,7 +300,7 @@ Requirements:
 Before creating a stable application version tag, update every place that states a version, not only the changelog:
 
 ```text
-packages/shared/src/changelog.ts        # newest-first EN + zh-CN entries
+packages/shared/src/changelog*.ts       # newest-first entries for all shipped locales
 packages/shared/src/changelog.test.ts   # newest-first version list
 package.json, apps/*, packages/*, docs/ # workspace package versions
 Cargo.toml, Cargo.lock                  # workspace + host-core versions
@@ -284,6 +341,9 @@ See:
 * [ ] If the request included a GitHub issue: the claim was verified before
       implementation; the issue was commented on in its language and closed
       when the outcome was conclusive
+* [ ] If the request included a GitHub pull request: the principle was
+      reviewed; the pull request was merged first when sound; follow-up
+      landed after merge; the contributor's work was not discarded
 
 ## Final Report
 
@@ -298,3 +358,5 @@ Report:
 * Worktree and branch cleanup result
 * Push target and result, or confirmation that nothing was pushed
 * Linked GitHub issue, verification result, comment, and close result (or N/A)
+* Linked GitHub pull request, principle review, merge result, follow-up, and
+  comment (or N/A)

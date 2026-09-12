@@ -48,7 +48,10 @@ export default defineConfig({
       rollupOptions: {
         // Bundle JS workspace packages into Main. Only runtime modules that
         // must resolve from the packaged node_modules stay external.
-        external: ["electron-updater"],
+        // jiti is loaded lazily by the sidecar's trusted-extension loader
+        // (D387); Electron main never calls it, and its transpiled dist
+        // breaks the main bundle's esbuild transform.
+        external: ["electron-updater", "jiti", "jiti/static"],
         input: {
           index: resolve(__dirname, "electron/main/index.ts"),
           // Forked per plugin by PluginRuntime (ADR 0008); must stay a

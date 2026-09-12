@@ -110,3 +110,20 @@ test("close behavior is not settable on macOS", () => {
   assert.match(body, /ErrorCodes\.INVALID_ARGUMENT/);
   assert.match(body, /behavior !== "tray" && behavior !== "quit"/);
 });
+
+test("explicit quit asks for confirmation except automated probes", () => {
+  assert.match(mainSource, /async function confirmQuitDialog/);
+  assert.match(mainSource, /labels\.tray\.confirmQuitTitle/);
+  const quitHandler = mainSource.slice(
+    mainSource.indexOf('app.on("before-quit"'),
+  );
+  const body = quitHandler.slice(0, quitHandler.indexOf("shutdownPromise ="));
+  assert.match(body, /PI_DESKTOP_BOOT_PROBE/);
+  assert.match(body, /!quitConfirmed && !isAutomatedMode/);
+  assert.match(body, /confirmQuitDialog\(\)/);
+  // Window-close Quit already chose to exit in the close-behavior dialog.
+  assert.match(
+    mainSource,
+    /already chose to quit in the close-behavior dialog[\s\S]*?quitConfirmed = true/,
+  );
+});

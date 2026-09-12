@@ -90,10 +90,12 @@ test("expanded live tool output stays local to the changed row", () => {
   assert.match(transcript, /const ToolRow = memo\(function ToolRow/);
   assert.match(transcript, /function toolRowPropsEqual\(/);
   assert.match(transcript, /if \(previous\.variant !== "topology"\) return true;/);
-  assert.match(transcript, /const \[open, setOpen\] = useState\(failed\);/);
+  // Tool rows remain collapsed during a live burst; only their action/status
+  // header updates. The latest thinking row owns the automatic detail view.
+  assert.match(transcript, /const disclosure = useAutomaticDisclosure\(false\)/);
   assert.match(
     transcript,
-    /const blocks =\s*open && hasDetails\s*\?\s*buildToolPresentation\(/,
+    /const blocks =\s*variant !== "topology" && open && hasDetails\s*\?\s*buildToolPresentation\(/,
   );
 });
 
@@ -109,12 +111,10 @@ test("tool errors stay local to their rows instead of failing the activity group
   assert.doesNotMatch(transcript, /const hasFailure = items\.some/);
   assert.doesNotMatch(transcript, /processingFailedAfter/);
   assert.doesNotMatch(transcript, /tool-activity-group[\s\S]*?failed/);
-  // A failure opens its own row and nothing else. The row reads the failure
-  // from the command's exit code as well as the call's status (D227), so the
-  // auto-open hangs off that derived flag.
-  assert.match(transcript, /const failed = status === "error" \|\| run === "failed"/);
-  assert.match(transcript, /const \[open, setOpen\] = useState\(failed\)/);
-  assert.match(transcript, /if \(failed\) setOpen\(true\)/);
+  // Failures remain visible in the row header, but their payload stays
+  // collapsed until the user opens it.
+  assert.match(transcript, /const disclosure = useAutomaticDisclosure\(false\)/);
+  assert.match(transcript, /if \(userInteractedRef\.current\) return/);
   assert.match(transcript, /status === "error"\s*\? t\("chat\.toolFailed"\)/);
 });
 

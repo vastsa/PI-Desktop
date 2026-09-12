@@ -73,7 +73,7 @@ test("plugins page styles tier permission risk with semantic tokens", () => {
 
 // D296: installed rows are separate soft tiles stacked with a gap, not one
 // hairline-separated panel. Nothing clips, so the row overflow menu can overhang
-// the tile below, and rows near the viewport bottom still open upwards.
+// the tile below. AnchoredMenu owns viewport clamping for rows near the bottom.
 test("plugins installed rows are stacked tiles that let row menus overhang", () => {
   const section = pluginsSection(stylesSource);
 
@@ -82,7 +82,8 @@ test("plugins installed rows are stacked tiles that let row menus overhang", () 
   assert.match(section, /\.plugins-row\s*\{[^}]*border-radius:\s*var\(--radius-md-plus\)[^}]*background:\s*var\(--plugins-tile\)/);
   assert.doesNotMatch(section, /\.plugins-row \+ \.plugins-row/);
   assert.doesNotMatch(section, /\.plugins-row:(first|last)-child/);
-  assert.match(section, /\.plugins-menu\.is-up\s*\{[\s\S]*?bottom:\s*calc\(100% \+ 5px\)/);
+  assert.match(section, /\.plugins-menu\s*\{[\s\S]*?position:\s*fixed;/);
+  assert.doesNotMatch(section, /\.plugins-menu\.is-up/);
 });
 
 // D296: the whole page is divider-free. In-flow rules — border-top/bottom,
@@ -93,9 +94,8 @@ test("extensions page draws no in-flow dividers", async () => {
 
   assert.doesNotMatch(pluginsCss, /border-(top|bottom):\s*1px/);
   assert.doesNotMatch(pluginsCss, /inset 0 0 0 0\.5px/);
-  const strokes = pluginsCss.match(/^\s*border:\s*1px solid/gm) ?? [];
-  assert.equal(strokes.length, 1, "only the tooltip keeps a 1px stroke");
-  assert.match(pluginsCss, /\.plugins-icon-btn\[data-tip\]::after\s*\{[^}]*border:\s*1px solid/);
+  assert.doesNotMatch(pluginsCss, /\[data-tip\]|content:\s*attr\(data-tip\)/);
+  assert.match(stylesSource, /\.ui-tooltip\s*\{[\s\S]*?border:\s*1px solid/);
   assert.match(pluginsCss, /\.plugins-menu-sep\s*\{[^}]*height:\s*6px/);
   assert.doesNotMatch(pluginsCss, /\.plugins-menu-sep\s*\{[^}]*background/);
   assert.match(pluginsCss, /\.plugins-sheet-cta\s*\{[^}]*border-radius/);
@@ -123,8 +123,7 @@ test("installed row controls share one aligned rail and explain icon actions", (
   assert.match(section, /\.plugins-row-actions\s*\{[\s\S]*?opacity:\s*1/);
   assert.doesNotMatch(section, /\.plugins-row:hover \.plugins-row-actions/);
   assert.match(section, /\.plugins-icon-btn\s*\{[\s\S]*?position:\s*relative/);
-  assert.match(section, /\.plugins-icon-btn\[data-tip\]::after\s*\{[\s\S]*?content: attr\(data-tip\)/);
-  assert.match(section, /\.plugins-icon-btn\[data-tip\]:focus-visible::after/);
+  assert.match(section, /\.plugins-icon-btn\s*\{/);
 });
 
 // The 46px titlebar band floats over the destination pages on every platform: it

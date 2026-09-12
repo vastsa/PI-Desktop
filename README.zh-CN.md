@@ -19,6 +19,9 @@
 [![License](https://img.shields.io/github/license/vastsa/PI-Desktop)](LICENSE)
 ![Platforms](https://img.shields.io/badge/platform-macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-4c8dd8)
 
+<a href="https://trendshift.io/repositories/178787?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-178787" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/178787" alt="vastsa/PI-Desktop | Trendshift" width="250" height="55"/></a>
+<a href="https://www.producthunt.com/products/pi-desktop?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-pi-desktop" target="_blank" rel="noopener noreferrer"><img alt="PI-Desktop - Your local-first desktop workspace for AI coding agents | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1245457&amp;theme=dark&amp;t=1788955688339"/></a>
+
 **[下载 PI-Desktop](https://github.com/vastsa/PI-Desktop/releases/latest)** ·
 [文档](https://pi-docs.aiuo.net/) ·
 [界面截图](docs/zh-CN/guide/screenshots.md) ·
@@ -233,9 +236,23 @@ Skills 可以全局安装，也可以按项目启用。
 
 通过 Model Context Protocol 服务器接入外部工具和服务，不必把它们写进桌面应用。
 
+PI-Desktop 也可以被外部 MCP Agent 控制。使用
+`PI_DESKTOP_MCP_CONTROL=1` 启动应用，然后从 Electron 用户数据目录中的
+`mcp-control.json` 读取本地端点和 bearer token。端点支持项目、会话、Agent
+工作流，以及经过审查的桌面操作目录。该功能默认关闭，只绑定本机回环地址，并且
+对已暴露的操作授予与桌面相同的本机用户权限——`confirm: true` 不是用户确认框。
+
 ### 子智能体
 
 创建带有独立指令、工具和模型选择的专用智能体，再从另一个智能体把工作委派给它们。
+
+### pi 扩展
+
+为 [pi](https://github.com/badlogic/pi-mono) CLI 写的扩展可以原样在 PI-Desktop 的
+agent 内运行：插件在 `contributes.agentExtensions` 中列出它们，插件页的“导入 pi 扩展”
+会替你把已有的扩展文件或目录包成插件。它们可以注册工具、斜杠命令，以及每个回合、每次
+工具调用和每次 provider 请求上的 hook，并以与 agent 自身工具相同的权限运行，这一点由
+`agent.extension` 权限请你确认。
 
 ### 插件
 
@@ -288,24 +305,42 @@ PI-Desktop 是 **本地优先**，不是“永远不碰网络”。
 | -------- | ------------- | -------------------- |
 | macOS | Apple Silicon | `.dmg` / `.zip` |
 | macOS | Intel | `.dmg` / `.zip` |
-| Windows | x64 | NSIS 安装程序 |
-| Linux | x64 | `.AppImage` / `.deb` |
+| Windows | x64 | NSIS 安装程序 / 免安装便携版 |
+| Linux | x64 | `.AppImage` / `.deb` / `.rpm` / `.asar` |
 
-打包版本会检查 GitHub Releases 上的更新，并在应用内提示新版本。
+打包版本会检查 GitHub Releases 上的更新，并在应用内提示新版本。Windows NSIS 和 Linux AppImage 可以在应用内下载并安装；macOS、Linux deb/rpm 和 Windows 免安装便携版会打开发布页。Linux `.asar` 文件用于配合系统 Electron 重新打包；补齐目标发行版所需的原生 host 和资源后，可运行 `electron PI-Desktop-<version>-linux-x64.asar` 启动。
+
+### Linux
+
+Linux x64 安装包需要 **glibc 2.35** 或更高版本，对应：
+
+* Ubuntu 22.04 及以上
+* Debian 12 及以上
+* Fedora 36 及以上
+
+Ubuntu 20.04、Debian 11、Fedora 35 及更旧的发行版无法加载自带的 host。可用 `ldd --version` 查看本机 glibc。
 
 ### macOS
 
-macOS 构建目前尚未代码签名或公证。
+带标签发布工作流程默认发布未签名的 macOS 工件。对于可信的未签名安装，将
+`PI-Desktop.app` 移动到 Applications 后直接打开。如果 macOS 提示应用已损坏或应用
+打不开：
 
-如果 macOS 拦截了应用，请右键点击 **PI-Desktop.app** 并选择 **打开**。
+1. 确认应用来自可信的 PI-Desktop 发布版本。
+2. 将 `PI-Desktop.app` 移动到 `/Applications`。
+3. 打开“终端”，执行：
 
-必要时也可以清除隔离属性：
+   ```sh
+   xattr -r -d com.apple.quarantine /Applications/PI-Desktop.app
+   ```
 
-```bash
-xattr -cr /Applications/PI-Desktop.app
-```
+4. 再次打开 PI-Desktop。
 
-签名与公证已在路线图中。
+DMG 中的 `If app won't open, read this.txt` 也包含这份说明。macOS ZIP 安装包还附带
+`PI-Desktop-macOS-open.command`，将应用移到 Applications 后可用于同一可信来源的兜底
+处理。该命令只会移除 Apple 的 quarantine 属性；不要对不可信的应用使用。手动运行并
+设置 `sign_macos: true` 时，工作流会在发布前使用 Developer ID 凭据完成 macOS 工件的
+签名、公证和装订；已签名版本无需使用此兜底方式。
 
 ---
 
@@ -355,11 +390,11 @@ flowchart TB
 
 PI-Desktop 处于积极开发中的早期预览阶段。
 
-当前 **0.13.x** 版本线包含：桌面外壳、流式智能体运行时、智能体 / 规划 / 目标工作流、带权限的工作区工具、项目与会话、会话导入、MCP / Skills / 子智能体、后台委派、多服务商模型配置、插件与市场、上下文检查点、通知、更新日志，以及跨平台打包。
+当前 **0.14.x** 版本线包含：桌面外壳、流式智能体运行时、智能体 / 规划 / 目标工作流、带权限的工作区工具、项目与会话、会话导入、本地 MCP 控制、MCP / Skills / 子智能体、后台委派、多服务商模型配置、插件与市场、上下文检查点、通知、更新日志，以及跨平台打包。
 
 当前优先事项包括：
 
-* macOS 代码签名与公证
+* macOS 带标签发布的资格验证
 * 安装升级与回滚资格验证
 * 持续加固运行时和会话恢复
 * 更强的插件沙箱与发布者校验

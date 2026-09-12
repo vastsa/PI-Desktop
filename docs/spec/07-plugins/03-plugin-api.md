@@ -18,6 +18,12 @@ declare const pi: PiPluginHostApi;
 
 ## 3. API overview (MVP)
 
+> Status legend: every section below is **shipped** and enforced by
+> `PluginRuntime` unless its heading or text says **Planned**. A planned
+> surface is documented ahead of implementation so plugin authors can see the
+> direction; it throws `UNSUPPORTED` until it lands (see §9 for the
+> per-surface list).
+
 ### app
 ```ts
 pi.app.getVersion(): Promise<string>
@@ -97,11 +103,38 @@ not expose a cross-platform read-only notification permission API, so
 not report a result. Native delivery is best-effort: an OS policy may suppress
 the banner without changing the durable task notification inbox.
 
+### project (requires `project.create`)
+
+```ts
+pi.project.create(input: { path: string }): Promise<{
+  projectId: number
+  path: string
+  name: string
+}>
+```
+
+This creates or reuses a durable host project record without changing the
+active workspace. The returned `projectId` may be passed explicitly to
+`pi.session.import()` or an item in `pi.session.importBatch()`. The plugin must
+hold `project.create` when it supplies a project id. Omitting `projectId` keeps
+the imported session unbound; `projectPath` remains historical source metadata
+and never creates a project by itself.
+
 ### workspace / fs
 ```ts
 pi.workspace.get(): Promise<{ path: string; name: string } | null>
 
 pi.fs.readText(pathFromRoot: string): Promise<string>
+pi.fs.stat(pathFromRoot: string, grantId?: string): Promise<{
+  size: number;
+  mtimeMs: number;
+}>
+pi.fs.readRange(
+  pathFromRoot: string,
+  byteOffset: number,
+  length: number,
+  grantId?: string,
+): Promise<{ bytes: Uint8Array; totalSize: number }>
 pi.fs.readPreview(pathFromRoot: string): Promise<{
   kind: "text" | "image" | "binary" | "tooLarge"
   content?: string     // UTF-8 when kind is "text"
@@ -117,6 +150,7 @@ pi.fs.list(pathFromRoot: string): Promise<Array<{
   path: string;        // root-relative, usable directly with readText / list
   isDirectory: boolean;
   size?: number;       // files only
+  mtimeMs?: number;    // files only; Unix epoch milliseconds
 }>>
 pi.fs.remove(pathFromRoot: string): Promise<void>
 pi.fs.requestDirectory(): Promise<{ path: string; name: string } | null>
@@ -136,6 +170,14 @@ host audits the operation and never accepts an absolute path from the plugin.
 manager and selects it when the platform supports that behavior. It uses the
 same `fs.read` checks, rejects directories, and audits both success and failure.
 The plugin receives and supplies only the root-relative path.
+
+`fs.stat` returns the size and modification time of one existing readable file
+without loading its contents. `fs.readRange` returns at most 8 MiB of bytes and
+the total file size. Both use the same root, symlink, protected-path, deny-list,
+scope, consent, and audit gates as `fs.readText`; offsets and lengths are
+non-negative safe integers. An offset at or beyond EOF returns an empty byte
+array. A `grantId` is only valid for a host-issued dropped-file grant and then
+requires the matching absolute path.
 
 Paths are relative to the mode's root — the workspace, or the directory the user
 picked through `requestDirectory()` when the mode declares
@@ -229,6 +271,91 @@ session (D333 / D336). Calling this outside a tool execution fails with
 plugin's own tool is stripped from the tail. A compaction summary replaces
 pre-checkpoint history. Combined content is capped at 200k characters.
 
+### plugin-owned sessions (P0/P1; requires the matching permission)
+
+Plugins may import and manage only sessions whose origin belongs to that same
+plugin. The source must be declared in `manifest.contributes.sessionSources`;
+the host supplies the localized source label and generates the durable session
+and message ids. Imported sessions never bind a workspace, provider, or model;
+they bind a project only when the caller supplies an existing `projectId`. The
+original import values remain available in `get().history`.
+
+```ts
+type PluginSessionSourceContrib = {
+  id: string
+  label?: string | { en: string; "zh-CN": string }
+}
+
+pi.session.import(input: {
+  source: string
+  externalId: string
+  title: string
+  projectId?: number | null // explicit id from pi.project.create; omitted is unbound
+  projectPath?: string | null
+  modelId?: string | null
+  providerId?: string | null
+  createdAt: string // strict RFC3339
+  updatedAt: string // >= createdAt
+  messages: Array<{
+    role: "user" | "assistant" | "tool"
+    content: string
+    createdAt: string // monotonic within the session
+    modelId?: string
+    providerId?: string
+    toolName?: string
+    toolCallId?: string
+    toolStatus?: "success" | "error"
+    toolArgs?: unknown
+    toolResult?: unknown
+  }>
+}): Promise<{ sessionId: string; imported: boolean; skipped: boolean }>
+
+pi.session.importBatch(input: {
+  source: string
+  sessions: Array<Omit<PluginSessionImportInput, "source">>
+  mode?: "skip" | "fail"
+}): Promise<PluginSessionBatchImportResult>
+
+pi.session.list(input?: {
+  limit?: number; cursor?: string; source?: string; updatedAfter?: string
+}): Promise<PluginSessionListResult>
+pi.session.get(input: { sessionId: string }): Promise<PluginSessionGetResult>
+pi.session.listMessages(input: {
+  sessionId: string; limit?: number; cursor?: string
+  order?: "asc" | "desc"; contentLimit?: number
+}): Promise<PluginSessionMessageListResult>
+pi.session.rename(input: { sessionId: string; title: string }): Promise<{ updated: boolean }>
+pi.session.delete(input: {
+  sessionId: string; mode?: "trash" | "purge"
+}): Promise<{ deleted: boolean }>
+```
+
+Import is idempotent on `(pluginId, source, externalId)`. `skip` batches
+continue per item; `fail` batches validate and commit atomically. `trash` hides
+the session while retaining its transcript and origin; `purge` removes both and
+allows a later re-import. Reads, rename, and delete are ownership-scoped, and
+undeclared sources fail with `PERMISSION_DENIED`.
+
+When a session has an explicit project binding, `projectId` and
+`bound.workspace` report that binding, and `get().projectPath` resolves the
+bound project's current path. The original import `projectPath` remains in
+`get().history`.
+
+After a successful import, rename, or delete, Electron main emits one
+host-owned `sessionsChanged` event for the affected mutation. The renderer
+refreshes its authoritative session list and the Projects page refreshes its
+durable project index from that list. Plugins do not emit or coordinate this
+event themselves. A project created through this API is not automatically
+opened as a sidebar tab, preserving the existing closed-project behavior.
+
+The host enforces a 2,000-message/session, 100-session/batch, 512 KiB/message,
+256 KiB/tool-value, 32 MiB/payload, and JSON-depth-8 limit. Import is limited
+to 10 calls/minute plus 5 batch calls/minute per plugin; delete is limited to
+20 calls/minute. Tool `__pi*` and `piDesktop.*` object keys are removed before
+storage. P2/P3 operations (session create, message mutation, arbitrary re-binding,
+provider/model binding, batch delete, and tags) are intentionally not part of
+this contract.
+
 ### agent.complete (requires `agent.complete`)
 ```ts
 pi.agent.complete(input: {
@@ -249,7 +376,7 @@ The host resolves credentials and runs a one-shot completion with `tools: []`
 through the same path as Composer prompt enhancement. The plugin never receives
 a secret. `includeSessionContext: true` also requires `session.read` and an
 in-flight tool session; the host serializes that context and, if `messages` is
-empty, appends `Please advise on the executor's situation above.` System prompt
+empty, appends `Please respond to the request.` System prompt
 ≤ 32 KiB; combined messages ≤ 200k characters; eight calls per plugin per
 rolling 60s (`RATE_LIMITED`); 90s budget (`TIMEOUT`). Empty model output is
 `INVALID_ARGUMENT`.
@@ -300,16 +427,15 @@ storage, target, and network-interception methods fail with
 `PERMISSION_DENIED`. Session identity for agent calls comes from the in-flight
 `plugins.execute` `sessionId`, not from plugin arguments (D333 / ADR 0170).
 
-`getHistory` returns newest-first entries captured by the host while the app is
-running, with text and images interleaved in capture order. The first clipboard
-sample after startup establishes a baseline and is not added; content written
-through `writeText` is captured immediately. Consecutive identical content is
-collapsed and refreshes its timestamp. History is in-memory only and is
-bounded to 30 days, 500 entries, and 256 MiB total payload; individual entries
-are limited to 100 KiB of UTF-8 text or 50 MiB of image bytes. Images are
-returned as PNG bytes with their pixel dimensions, regardless of the source OS
-clipboard representation. The host samples for changes because Electron has
-no cross-platform clipboard-changed event.
+`getHistory` returns newest-first entries explicitly recorded by the host, with
+text and images interleaved in capture order. Content written through
+`writeText` and content supplied by the Composer's user-initiated `paste` event
+are recorded; the host does not poll or reread the OS clipboard in the
+background. Consecutive identical content is collapsed and refreshes its
+timestamp. History is in-memory only and is bounded to 30 days, 500 entries,
+and 256 MiB total payload; individual entries are limited to 100 KiB of UTF-8
+text or 50 MiB of image bytes. Images are returned as PNG bytes with their
+pixel dimensions. A copy that is never pasted is intentionally not captured.
 
 ### services (requires `background.service`)
 ```ts
@@ -361,6 +487,56 @@ pi.net.fetch(input: {
 }): Promise<{ status: number; headers: Record<string, string>; bodyText: string }>
 ```
 
+### desktop control (requires `desktop.control`)
+
+```ts
+pi.desktop.listOperations(): Promise<Array<{
+  id: string
+  description: string
+  risk: "read" | "write" | "dangerous"
+}>>
+
+pi.desktop.invoke(input: {
+  operation: string
+  args?: unknown[]
+  confirm?: boolean
+}): Promise<unknown>
+```
+
+This is the first-party plugin gateway to the same reviewed operation catalog
+used by the opt-in local MCP control plane (ADR 0203 / D370). The returned
+catalog omits Electron channel names and the plugin never receives the MCP
+bearer token. Invocation reuses the controller, IPC handler, lifecycle checks,
+completion event, and audit boundary; a plugin cannot reach arbitrary Electron
+IPC.
+
+A `dangerous` operation (session delete, permission-mode change, tool
+approval) needs two answers. `confirm: true` is the plugin's acknowledgement
+and is required first (`CONFIRMATION_REQUIRED` otherwise). The host then asks
+the user in a native dialog that names the catalog operation id, its catalog
+description, and an argument preview; the dialog never shows plugin- or
+model-authored text, so a prompt-injected transcript cannot relabel
+`session/delete` as something benign. A dismissed dialog, a declined dialog,
+or a host without a dialog service all fail with `PERMISSION_DENIED` before
+the controller is reached. Calls are logged with the plugin id, operation,
+risk, and result status; argument values are not copied into the audit entry.
+
+### microphone panels (requires `ui.microphone`)
+
+An isolated panel may request microphone audio through the browser media API
+only when the manifest declares and the user grants `ui.microphone`:
+
+```ts
+navigator.mediaDevices.getUserMedia({ audio: true })
+```
+
+The host permission handler allows the `media` permission for that panel and
+continues to deny camera and every other device permission. The plugin does
+not receive a native microphone handle or a host secret; browser speech
+recognition and speech synthesis remain page-owned. A panel should provide a
+text fallback and announce permission or recognition failures through its
+accessible status.
+
 ## 4. Error model
 
 ```ts
@@ -373,6 +549,7 @@ type PluginApiError = {
  | "UNSUPPORTED"
  | "LIMIT_EXCEEDED" // a per-plugin cap is full (e.g. bus subscriptions)
  | "RATE_LIMITED" // a rolling window is exhausted (e.g. bus publishes)
+ | "CONFIRMATION_REQUIRED" // a dangerous desktop operation without confirm: true
  | "INTERNAL"
  message: string
 }
@@ -387,7 +564,11 @@ pi.events.on(event, handler)
 pi.events.off(event, handler)
 ```
 
-The host pushes events to the plugin process as one-way frames. Delivered today:
+The host pushes events to the plugin process as one-way frames. `pi.events`
+is not a separate channel: it is an alias over the same per-plugin bus stream
+that `pi.bus.subscribe` consumes (`plugin-host-process.mjs`), so an `on`
+handler sees every frame the host delivers to this plugin and nothing else.
+Delivered today:
 
 - `bus.message` — a bus delivery, with the `PluginBusMessage` as the single
   argument. `pi.bus.subscribe` is the normal way to receive these; `events.on`
@@ -437,7 +618,7 @@ The host-owned preload forwards only fixed channels to the plugin runtime:
 | `ui.getNotificationPermission`, `ui.requestNotificationPermission`, `ui.showNativeNotification` | `notify` |
 | `plugin.getSettings`, `workspace.get`, `app.getAppearance` | None |
 | `models.list` | `models.list` |
-| `fs.readText`, `fs.readPreview`, `fs.openDefault`, `fs.reveal`, `fs.glob`, `fs.list` | `fs.read` |
+| `fs.readText`, `fs.stat`, `fs.readRange`, `fs.readPreview`, `fs.openDefault`, `fs.reveal`, `fs.glob`, `fs.list` | `fs.read` |
 | `fs.writeText` | `fs.write` |
 | `clipboard.readText`, `clipboard.getHistory` | `clipboard.read` |
 | `clipboard.writeText` | `clipboard.write` |
@@ -467,7 +648,7 @@ Delivered today:
 Any of the following calls must be logged for audit:
 
 - fs.writeText
-- fs.remove, fs.requestDirectory, and every refused fs call (with its path and
+- fs.stat, fs.readRange, fs.remove, fs.requestDirectory, and every refused fs call (with its path and
   `errorCode`), plus each consent answer and why it was asked (`scope` / `rate`)
 - fs.openDefault (with its root-relative path and whether the OS open succeeded)
 - fs.reveal (with its root-relative path and whether the file manager reveal succeeded)
@@ -504,7 +685,7 @@ Log fields:
 The desktop plugin runtime now implements the MVP host API surface used by local and marketplace plugins:
 
 - `app.*`, `plugin.*`, `commands.*`, `ui.*`, `workspace.*`
-- `fs.readText` / `fs.readPreview` / `fs.openDefault` / `fs.reveal` /
+- `fs.readText` / `fs.stat` / `fs.readRange` / `fs.readPreview` / `fs.openDefault` / `fs.reveal` /
   `fs.writeText` / `fs.glob` / `fs.list` / `fs.remove` / `fs.requestDirectory`,
   bounded by `manifest.fs` (ADR 0088)
 - `agent.registerTool` / `unregisterTool` / `agent.complete`

@@ -23,13 +23,25 @@ function styleBlock(selector) {
   return stylesSource.match(new RegExp(`${selector}\\s*\\{[^}]*\\}`))?.[0] ?? "";
 }
 
-test("macOS main window enables native under-window vibrancy only in its platform branch", () => {
+function functionSource(name) {
+  const start = mainSource.indexOf(`function ${name}(`);
+  assert.ok(start >= 0, `expected function ${name}`);
+  const next = mainSource.indexOf("\nfunction ", start + 1);
+  return mainSource.slice(start, next === -1 ? undefined : next);
+}
+
+test("macOS main window enables native sidebar vibrancy only in its platform branch", () => {
   assert.match(macOptions, /titleBarStyle:\s*"hiddenInset"/);
   assert.match(macOptions, /trafficLightPosition:\s*\{ x: 16, y: 16 \}/);
-  assert.match(macOptions, /vibrancy:\s*"under-window"/);
+  assert.match(macOptions, /vibrancy:\s*"sidebar"/);
   assert.match(macOptions, /visualEffectState:\s*"followWindow"/);
   assert.match(macOptions, /transparent:\s*true/);
   assert.match(macOptions, /backgroundColor:\s*"#00000000"/);
+  assert.doesNotMatch(
+    mainWindowBlock,
+    /vibrancy:\s*"under-window"/,
+    "non-mac branch must not set under-window vibrancy",
+  );
 
   // The shared opaque fallback remains in place for Windows/Linux.
   assert.match(
@@ -37,6 +49,45 @@ test("macOS main window enables native under-window vibrancy only in its platfor
     /backgroundColor:\s*nativeTheme\.shouldUseDarkColors \? "#181818" : "#ffffff"/,
   );
   assert.match(mainWindowBlock, /frame: false/);
+  assert.doesNotMatch(
+    mainWindowBlock.replace(macOptions, ""),
+    /vibrancy:\s*"sidebar"/,
+    "sidebar vibrancy stays in the darwin branch",
+  );
+});
+
+test("native theme source maps preferences and only resets vibrancy on change", () => {
+  const applyNative = functionSource("applyNativeThemeSource");
+  const applyMenu = functionSource("applyApplicationMenuSettings");
+  const send = functionSource("sendToRenderer");
+
+  assert.match(applyNative, /let next: "system" \| "light" \| "dark" = "system"/);
+  assert.match(
+    applyNative,
+    /if \(preference === "light" \|\| preference === "dark"\) \{\s*next = preference;/,
+  );
+  assert.match(applyNative, /preference\.startsWith\("plugin:"\)/);
+  assert.match(
+    applyNative,
+    /pluginTheme\?\.base === "light" \|\| pluginTheme\?\.base === "dark"/,
+  );
+  assert.match(applyNative, /next = pluginTheme\.base/);
+  assert.doesNotMatch(
+    applyNative,
+    /next = pluginTheme\?\.base \?\?/,
+    "a missing plugin theme must keep the system default, not a guessed base",
+  );
+  assert.match(applyNative, /if \(nativeTheme\.themeSource === next\) return;/);
+  assert.match(
+    applyNative,
+    /nativeTheme\.themeSource = next;\s*if \(process\.platform === "darwin" && mainWindow && !mainWindow\.isDestroyed\(\)\) \{\s*mainWindow\.setVibrancy\("sidebar"\);/,
+  );
+
+  assert.match(applyMenu, /applyNativeThemeSource\(settings\)/);
+  assert.match(
+    send,
+    /if \(channel === IPC\.event\.pluginChanged\) \{\s*applyNativeThemeSource\(\{ theme: appThemePreference \}\);/,
+  );
 });
 
 test("the macOS startup splash shares the sidebar glass tint and sheen", () => {

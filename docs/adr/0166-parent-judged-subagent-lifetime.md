@@ -30,7 +30,8 @@ loop; models are not reliable event loops.
    backstop. Concurrency stays capped at 10.
 2. **Do not abort on parent idle.** `agent_end` / `turn_end` while
    delegates are running are swallowed. The durable turn stays open.
-   User Stop, `TaskStop`, and runtime dispose remain the only aborts.
+   User Stop, `TaskStop`, runtime dispose, and a parent fatal error (D352 /
+   ADR 0189) abort a delegate.
 3. **Deliver reports when they finish.** After the parent loop idles with
    running delegates, the runtime waits for them and prompts the parent
    with the joined reports (not shown as a user bubble). The parent then

@@ -100,5 +100,6 @@ test("the default picker keeps keyboard focus contained", async () => {
   // instead of committing whichever service happens to be listed first.
   assert.match(menuSource, /aria-selected="true"\]:not\(\[disabled\]\)/);
   // Closing hands focus back to the trigger rather than dropping it on <body>.
-  assert.match(menuSource, /triggerRef\.current\?\.focus\(\)/);
+  assert.match(menuSource, /anchorRef\?\.current \?\? triggerRef\.current/);
+  assert.match(menuSource, /\?\.focus\(\)/);
 });

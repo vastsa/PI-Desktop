@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { HighlightedCode, useCopy } from "./Markdown";
 import { IconCheck, IconCircleAlert, IconCopy, IconInfo } from "./icons";
-import { cx } from "./ui";
+import { TooltipButton, cx } from "./ui";
 import { toWorkspaceRel } from "../lib/chat-links";
 import { useOpenPreviewTarget } from "../hooks/use-preview-target";
 import { useAppStore } from "../stores/app-store";
@@ -57,14 +57,14 @@ function BlockHead({ label, copy }: { label: string; copy: string }) {
   return (
     <div className="tool-row-section-head">
       <span>{label}</span>
-      <button
+      <TooltipButton
         className={cx("tool-row-copy", copied && "copied")}
-        aria-label={`${t("chat.copy")} ${label}`}
-        title={copied ? t("chat.copied") : t("chat.copy")}
+        tooltip={copied ? t("chat.copied") : t("chat.copy")}
+        ariaLabel={`${t("chat.copy")} ${label}`}
         onClick={() => run(copy)}
       >
         {copied ? <IconCheck size={12} /> : <IconCopy size={12} />}
-      </button>
+      </TooltipButton>
     </div>
   );
 }
@@ -96,15 +96,15 @@ function FileList({ paths }: { paths: string[] }) {
           );
         }
         return (
-          <button
+          <TooltipButton
             type="button"
             className="tool-file-item is-linked"
             key={`${path}-${index}`}
-            title={t("chat.previewFile")}
+            tooltip={t("chat.previewFile")}
             onClick={() => openTarget({ kind: "file", path: rel })}
           >
             {path}
-          </button>
+          </TooltipButton>
         );
       })}
     </div>
@@ -123,14 +123,14 @@ function MatchList({ block }: { block: Extract<ToolBlock, { kind: "matches" }> }
         return (
           <div className="tool-match-group" key={`${group.path}-${index}`}>
             {rel ? (
-              <button
+              <TooltipButton
                 type="button"
                 className="tool-match-path is-linked"
-                title={t("chat.previewFile")}
+                tooltip={t("chat.previewFile")}
                 onClick={() => openTarget({ kind: "file", path: rel })}
               >
                 {group.path}
-              </button>
+              </TooltipButton>
             ) : (
               <span className="tool-match-path">{group.path}</span>
             )}

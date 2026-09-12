@@ -104,7 +104,7 @@ Account for the same 46px value in viewport-height calculations:
 The panel receives `window.pluginBridge`, not `pi`. Use the fixed bridge channels such as
 `ui.showToast`, `ui.closePanel`, `ui.getNotificationPermission`,
 `ui.requestNotificationPermission`, `ui.showNativeNotification`, `plugin.getSettings`,
-`workspace.get`, `fs.readText`, `fs.writeText`, `fs.glob`, `clipboard.readText`,
+`workspace.get`, `fs.readText`, `fs.stat`, `fs.readRange`, `fs.writeText`, `fs.glob`, `clipboard.readText`,
 `clipboard.getHistory`, `clipboard.writeText`, `shell.openExternal`, and `net.fetch`.
 Arbitrary Electron IPC and
 general custom panel RPC are not exposed.
@@ -154,6 +154,9 @@ broadly but leak nothing". `manifest.fs` says which paths each file mode may tou
   operating-system trash, and are rate-braked at 50 per minute.
 - `"root": "userSelected"` needs no scope: `pi.fs.requestDirectory()` asks the user to pick a
   directory, the handle is memory-only, and it dies with the plugin process.
+- Large-file plugins should use `fs.stat` and bounded `fs.readRange` instead of raw `node:fs`.
+  Panel plugins may call `pluginBridge.getDroppedFilePath(file)` and then
+  `fs.registerDropped` to obtain a one-file, session-only read grant for a real drop.
 
 The pre-scope names (`fs.read.workspace` and friends) still load, but the host downgrades
 them — `fs.write.workspace` ends up able to write nothing until the manifest says where.

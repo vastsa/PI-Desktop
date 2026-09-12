@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   GLOBAL_SCOPE,
@@ -8,6 +8,7 @@ import {
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../stores/app-store";
+import { useHostCollection } from "../../hooks/use-host-collection";
 import {
   AgentCapabilityPage,
   AgentProjectPicker,
@@ -34,7 +35,7 @@ import {
   type McpDraft,
 } from "../extensions/McpEditorSheet";
 import { IconPencil, IconPlay, IconPlus, IconServer, IconTerminal, IconTrash } from "../icons";
-import { cx } from "../ui";
+import { TooltipButton, cx } from "../ui";
 
 const GLOBAL_MCP_PATH = "~/.agents/servers";
 
@@ -55,15 +56,48 @@ type McpEditorState = {
   level: AgentCapabilityLevel;
 };
 
+type McpCollection = {
+  global: McpServerRecord[];
+  project: McpServerRecord[];
+  statuses: McpServerStatus[];
+};
+
+const EMPTY_MCP_COLLECTION: McpCollection = { global: [], project: [], statuses: [] };
+
 export function AgentMcpPage() {
   const { t } = useTranslation();
   const showToast = useAppStore((state) => state.showToast);
   const { selectedProjectPath, setSelectedProjectPath, options } = useAgentProjects();
-  const [globalServers, setGlobalServers] = useState<McpServerRecord[]>([]);
-  const [projectServers, setProjectServers] = useState<McpServerRecord[]>([]);
-  const [statuses, setStatuses] = useState<McpServerStatus[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const fetchServers = useCallback(async (): Promise<McpCollection> => {
+    const [global, project] = await Promise.all([
+      api.listMcpServers({
+        level: "global",
+        ...(selectedProjectPath ? { projectPath: selectedProjectPath } : {}),
+      }),
+      selectedProjectPath
+        ? api.listMcpServers({ level: "project", projectPath: selectedProjectPath })
+        : Promise.resolve({
+            servers: [] as McpServerRecord[],
+            statuses: [] as McpServerStatus[],
+          }),
+    ]);
+    return {
+      global: global.servers ?? [],
+      project: project.servers ?? [],
+      statuses: [...(global.statuses ?? []), ...(project.statuses ?? [])],
+    };
+  }, [selectedProjectPath]);
+  const {
+    data: { global: globalServers, project: projectServers, statuses },
+    setData: setServers,
+    loading,
+    refreshing,
+    reload: load,
+  } = useHostCollection(fetchServers, EMPTY_MCP_COLLECTION, (error) =>
+    showToast(error instanceof Error ? error.message : String(error), { variant: "error" }),
+  );
+  const setStatuses = (update: (current: McpServerStatus[]) => McpServerStatus[]) =>
+    setServers((current) => ({ ...current, statuses: update(current.statuses) }));
   const [filter, setFilter] = useState<CapabilityFilter>("all");
   const [search, setSearch] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -72,52 +106,6 @@ export function AgentMcpPage() {
   const [saving, setSaving] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
   const { armed, setArmed } = useArmedDelete();
-  // Skeletons belong to the first paint only; later reloads dim the list instead
-  // of tearing it down, so toggling a server never blinks the page away.
-  const hydrated = useRef(false);
-
-  const load = useCallback(async () => {
-    if (hydrated.current) setRefreshing(true);
-    else setLoading(true);
-    try {
-      const [global, project] = await Promise.all([
-        api.listMcpServers({
-          level: "global",
-          ...(selectedProjectPath ? { projectPath: selectedProjectPath } : {}),
-        }),
-        selectedProjectPath
-          ? api.listMcpServers({ level: "project", projectPath: selectedProjectPath })
-          : Promise.resolve({
-              servers: [] as McpServerRecord[],
-              statuses: [] as McpServerStatus[],
-            }),
-      ]);
-      setGlobalServers(global.servers ?? []);
-      setProjectServers(project.servers ?? []);
-      setStatuses([...(global.statuses ?? []), ...(project.statuses ?? [])]);
-      hydrated.current = true;
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
-      setGlobalServers([]);
-      setProjectServers([]);
-      setStatuses([]);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [selectedProjectPath, showToast]);
-
-  useEffect(() => {
-    void load();
-    const offPluginChanged = api.onPluginChanged(() => void load());
-    const offHostStatus = api.onHostStatus((status) => {
-      if (status.ok) void load();
-    });
-    return () => {
-      offPluginChanged();
-      offHostStatus();
-    };
-  }, [load]);
 
   const rowKey = (level: AgentCapabilityLevel, id: string) => `${level}:${id}`;
   const levelQuery = (level: AgentCapabilityLevel) => ({
@@ -130,8 +118,10 @@ export function AgentMcpPage() {
     id: string,
     patch: Partial<McpServerRecord>,
   ) => {
-    const setter = level === "global" ? setGlobalServers : setProjectServers;
-    setter((rows) => rows.map((row) => (row.id === id ? { ...row, ...patch } : row)));
+    setServers((current) => ({
+      ...current,
+      [level]: current[level].map((row) => (row.id === id ? { ...row, ...patch } : row)),
+    }));
   };
 
   /** New servers land at whichever level the filter is pointing at. */
@@ -357,16 +347,16 @@ export function AgentMcpPage() {
         description={server.description || t("settings.noCapabilityDescription")}
         actions={
           <>
-            <button
+            <TooltipButton
               type="button"
               className="settings-icon-button"
-              aria-label={t("settings.editMcpOf", { name })}
-              title={t("settings.editMcp")}
+              ariaLabel={t("settings.editMcpOf", { name })}
+              tooltip={t("settings.editMcp")}
               disabled={busy}
               onClick={() => openEdit(server, level)}
             >
               <IconPencil size={15} />
-            </button>
+            </TooltipButton>
             <CapabilityRowMenu
               label={t("extensions.mcp.rowActions", { name })}
               items={items}

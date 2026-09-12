@@ -95,6 +95,22 @@ type PluginNotificationPermission = "granted" | "denied" | "unknown" | "unsuppor
 不报告结果。本机交付是尽力而为：操作系统策略可能会抑制
 横幅而不更改持久任务通知收件箱。
 
+### 项目（需要 `project.create`）
+
+```ts
+pi.project.create(input: { path: string }): Promise<{
+  projectId: number
+  path: string
+  name: string
+}>
+```
+
+该方法创建或复用宿主持久项目记录，但不会切换当前工作区。返回的
+`projectId` 可以显式传给 `pi.session.import()` 或
+`pi.session.importBatch()` 的单项。插件传入项目 id 时必须持有
+`project.create`；省略 `projectId` 的导入会保持未绑定，`projectPath` 只是历史来源
+元数据，本身不会创建项目。
+
 ### 工作区/fs
 ```ts
 pi.workspace.get(): Promise<{ path: string; name: string } | null>
@@ -204,6 +220,82 @@ pi.session.getLlmContext(): Promise<PluginLlmContext>
 正在飞行的工具调用会从尾部剥掉。compaction 摘要替换检查点之前的历史。
 合计内容上限 200k 字符。
 
+### 插件拥有的会话（P0/P1；需要对应权限）
+
+插件只能导入和管理归属于自身的会话。来源必须在
+`manifest.contributes.sessionSources` 中声明；主机提供本地化来源标签，并生成
+持久会话 id 与消息 id。导入会话不会绑定工作区、provider 或 model；只有调用方显式
+提供已有的 `projectId` 时才会绑定项目；原始导入值仍在 `get().history` 中返回。
+
+```ts
+type PluginSessionSourceContrib = {
+  id: string
+  label?: string | { en: string; "zh-CN": string }
+}
+
+pi.session.import(input: {
+  source: string
+  externalId: string
+  title: string
+  projectId?: number | null // 来自 pi.project.create；省略即未绑定
+  projectPath?: string | null
+  modelId?: string | null
+  providerId?: string | null
+  createdAt: string // RFC3339
+  updatedAt: string // >= createdAt
+  messages: Array<{
+    role: "user" | "assistant" | "tool"
+    content: string
+    createdAt: string // 会话内单调递增
+    modelId?: string
+    providerId?: string
+    toolName?: string
+    toolCallId?: string
+    toolStatus?: "success" | "error"
+    toolArgs?: unknown
+    toolResult?: unknown
+  }>
+}): Promise<{ sessionId: string; imported: boolean; skipped: boolean }>
+
+pi.session.importBatch(input: {
+  source: string
+  sessions: Array<Omit<PluginSessionImportInput, "source">>
+  mode?: "skip" | "fail"
+}): Promise<PluginSessionBatchImportResult>
+
+pi.session.list(input?: {
+  limit?: number; cursor?: string; source?: string; updatedAfter?: string
+}): Promise<PluginSessionListResult>
+pi.session.get(input: { sessionId: string }): Promise<PluginSessionGetResult>
+pi.session.listMessages(input: {
+  sessionId: string; limit?: number; cursor?: string
+  order?: "asc" | "desc"; contentLimit?: number
+}): Promise<PluginSessionMessageListResult>
+pi.session.rename(input: { sessionId: string; title: string }): Promise<{ updated: boolean }>
+pi.session.delete(input: {
+  sessionId: string; mode?: "trash" | "purge"
+}): Promise<{ deleted: boolean }>
+```
+
+导入以 `(pluginId, source, externalId)` 幂等。`skip` 批量导入逐项继续，`fail`
+批量导入在任一项失败时全部回滚。`trash` 隐藏会话但保留其转录本和来源；`purge`
+同时删除两者并允许重新导入。读取、重命名和删除均按归属限制；未声明来源返回
+`PERMISSION_DENIED`。
+
+当会话显式绑定项目时，`projectId` 和 `bound.workspace` 报告该绑定，
+`get().projectPath` 解析为绑定项目的当前路径；原始导入的 `projectPath` 保留在
+`get().history` 中。
+
+导入、重命名或删除成功后，Electron main 会为这次变更发送一次宿主拥有的
+`sessionsChanged` 事件。渲染器沿用现有的 `refreshSessions()` 权威列表刷新链，
+Projects 页面也会据此刷新持久项目索引；插件不需要、也不应自行发送侧栏事件。
+通过该 API 创建的项目不会自动打开为侧栏项目标签，以保留现有的已关闭项目行为。
+
+主机限制每会话 2,000 条消息、每批 100 个会话、每条消息 512 KiB、每个工具值
+256 KiB、每个 payload 32 MiB、JSON 深度 8。每个插件每分钟最多 10 次单条导入、
+5 次批量导入和 20 次删除。写入前会移除工具 `__pi*` 与 `piDesktop.*` 对象键。
+P2/P3（会话创建、消息变更、任意重新绑定、provider/model 绑定、批量删除、标签）不属于本次接口。
+
 ### agent.complete（需要 `agent.complete`）
 ```ts
 pi.agent.complete(input: {
@@ -269,12 +361,11 @@ pi.browser.cdp(input: { method: string; params?: unknown }): Promise<unknown>
 `cdp` 默认拒绝；cookie、storage、target 和网络拦截方法以 `PERMISSION_DENIED` 失败。
 代理调用的会话身份来自进行中的 `plugins.execute` `sessionId`，而不是插件参数（D333 / ADR 0170）。
 
-`getHistory` 返回主机在应用运行期间捕获的条目，按最新优先排列，文本和图片按捕获
-时间混排。启动后的第一次采样只建立基线，不会把启动前的内容加入历史；通过
-`writeText` 写入的内容会立即记录。连续相同内容会合并并刷新时间戳。历史只保留在
+`getHistory` 返回由主机明确记录的条目，按最新优先排列，文本和图片按捕获时间混排。
+通过 `writeText` 写入的内容，以及 Composer 用户主动粘贴事件提供的内容会被记录；主机
+不会在后台轮询或重新读取系统剪贴板。连续相同内容会合并并刷新时间戳。历史只保留在
 内存中，最多保留 30 天、500 条和 256 MiB；单条文本最多 100 KiB UTF-8 字节，图片
-最多 50 MiB。图片统一返回 PNG 字节及像素尺寸。Electron 没有跨平台的剪贴板变化事件，
-因此由主机在运行期间采样。
+最多 50 MiB。图片统一返回 PNG 字节及像素尺寸。没有粘贴过的复制内容不会被记录。
 
 ### 服务（需要 `background.service`）
 ```ts
@@ -326,6 +417,49 @@ pi.net.fetch(input: {
 }): Promise<{ status: number; headers: Record<string, string>; bodyText: string }>
 ```
 
+### 桌面控制（需要 `desktop.control`）
+
+```ts
+pi.desktop.listOperations(): Promise<Array<{
+  id: string
+  description: string
+  risk: "read" | "write" | "dangerous"
+}>>
+
+pi.desktop.invoke(input: {
+  operation: string
+  args?: unknown[]
+  confirm?: boolean
+}): Promise<unknown>
+```
+
+这是第一方插件通往同一份已审查操作目录的网关，该目录也被可选启用的本地
+MCP 控制平面使用（ADR 0203 / D370）。返回的目录省略 Electron 通道名，插件也
+永远拿不到 MCP bearer token。调用复用控制器、IPC 处理器、生命周期检查、完成
+事件和审计边界；插件无法触达任意 Electron IPC。
+
+`dangerous` 操作（删除会话、更改权限模式、批准工具）需要两次答复。
+`confirm: true` 是插件的知会，必须先给出（否则返回
+`CONFIRMATION_REQUIRED`）。随后宿主在原生对话框中询问用户，对话框点名目录中
+的操作 id、目录描述和一段参数预览；对话框绝不显示插件或模型撰写的文本，
+因此一份被提示注入的转录本无法把 `session/delete` 重新包装成无害的东西。
+对话框被关闭、被拒绝，或宿主没有对话框服务，都会在触达控制器之前以
+`PERMISSION_DENIED` 失败。调用会连同插件 id、操作、风险等级和结果状态一起
+记入日志；参数值不会复制进审计条目。
+
+### 麦克风面板（需要 `ui.microphone`）
+
+只有当清单声明且用户授予了 `ui.microphone` 时，隔离面板才可以通过浏览器
+媒体 API 请求麦克风音频：
+
+```ts
+navigator.mediaDevices.getUserMedia({ audio: true })
+```
+
+宿主的权限处理器为该面板放行 `media` 权限，并继续拒绝摄像头和其他所有
+设备权限。插件拿不到原生麦克风句柄或宿主密钥；浏览器的语音识别和语音合成
+仍由页面持有。面板应提供文本回退，并通过其无障碍状态播报权限或识别失败。
+
 ## 4. 错误模型
 
 ```ts
@@ -338,6 +472,7 @@ type PluginApiError = {
  | "UNSUPPORTED"
  | "LIMIT_EXCEEDED" // a per-plugin cap is full (e.g. bus subscriptions)
  | "RATE_LIMITED" // a rolling window is exhausted (e.g. bus publishes)
+ | "CONFIRMATION_REQUIRED" // a dangerous desktop operation without confirm: true
  | "INTERNAL"
  message: string
 }

@@ -72,12 +72,13 @@ test("notification popover has bounded desktop and mobile layouts", () => {
   );
   assert.match(
     globalStyles,
-    /\.notification-popover\s*\{[^}]*bottom:\s*calc\(100% \+ 8px\);[^}]*left:\s*0;/s,
+    /\.notification-popover\s*\{[^}]*position:\s*fixed;[^}]*top:\s*auto;[^}]*left:\s*0;/s,
   );
   assert.match(
     globalStyles,
-    /\.notification-popover-portaled\s*\{[^}]*position:\s*fixed;[^}]*z-index:\s*60;/s,
+    /\.notification-popover-portaled\s*\{[^}]*z-index:\s*60;/s,
   );
+  assert.match(componentSource, /style=\{\{ bottom: popoverPos\.bottom, left: popoverPos\.left \}\}/);
   assert.match(globalStyles, /\.notification-badge\s*\{[^}]*var\(--ds-bg-sidebar\)/s);
   assert.match(globalStyles, /\.notification-list\s*\{[^}]*overflow-y:\s*auto;/s);
   assert.match(globalStyles, /\.notification-item\.unread\s*\{/);

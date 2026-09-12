@@ -22,6 +22,7 @@ import {
   IconCircleCheck,
   IconTrash,
 } from "./icons";
+import { TooltipButton } from "./ui";
 
 type NotificationFilter = "all" | "unread";
 
@@ -224,12 +225,12 @@ export function NotificationCenter({
 
   return (
     <div className="notification-center" ref={rootRef}>
-      <button
+      <TooltipButton
         ref={triggerRef}
         type="button"
         className={`footer-notification notification-trigger ${open ? "active" : ""}`}
-        aria-label={unreadLabel}
-        title={unreadLabel}
+        tooltip={unreadLabel}
+        ariaLabel={unreadLabel}
         aria-haspopup="dialog"
         aria-controls="notification-popover"
         aria-expanded={open}
@@ -247,7 +248,7 @@ export function NotificationCenter({
             {unreadCount > 99 ? "99+" : unreadCount}
           </span>
         ) : null}
-      </button>
+      </TooltipButton>
       <span className="sr-only" role="status" aria-live="polite">
         {unreadLabel}
       </span>
@@ -266,26 +267,26 @@ export function NotificationCenter({
           <header className="notification-header">
             <h2 id="notification-title">{t("notifications.title")}</h2>
             <div className="notification-actions">
-              <button
+              <TooltipButton
                 type="button"
                 className="notification-action"
-                aria-label={t("notifications.markAllRead")}
-                title={t("notifications.markAllRead")}
+                tooltip={t("notifications.markAllRead")}
+                ariaLabel={t("notifications.markAllRead")}
                 disabled={busy || unreadCount === 0}
                 onClick={() => void runToolbarAction(markAllNotificationsRead)}
               >
                 <IconCheckCheck size={15} aria-hidden />
-              </button>
-              <button
+              </TooltipButton>
+              <TooltipButton
                 type="button"
                 className="notification-action"
-                aria-label={t("notifications.clearAll")}
-                title={t("notifications.clearAll")}
+                tooltip={t("notifications.clearAll")}
+                ariaLabel={t("notifications.clearAll")}
                 disabled={busy || notifications.length === 0}
                 onClick={() => void runToolbarAction(clearNotifications)}
               >
                 <IconTrash size={15} aria-hidden />
-              </button>
+              </TooltipButton>
             </div>
           </header>
 

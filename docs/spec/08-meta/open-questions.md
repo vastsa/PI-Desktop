@@ -1,6 +1,6 @@
 # Open Questions
 
-> Updated for baseline `0.4.12` (icon-free composer prompt row).
+> Updated for baseline `0.4.16` (custom global UI font).
 > Frozen decisions live in [decisions-log.md](decisions-log.md); resolved
 > items move there instead of lingering here.
 

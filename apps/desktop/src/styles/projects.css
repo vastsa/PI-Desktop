@@ -441,15 +441,26 @@
 }
 
 .projects-menu {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 5px);
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: auto;
+  bottom: auto;
   z-index: 20;
   min-width: 196px;
   border-radius: var(--radius-md-plus);
   background: var(--ds-bg-elevated-opaque, var(--ds-bg-primary));
   box-shadow: 0 0 0 0.5px var(--ds-border-default), 0 12px 32px rgba(0, 0, 0, 0.2);
   padding: 5px;
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.projects-menu.is-open {
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
   animation: projects-menu-in var(--motion-duration-fast) var(--motion-ease-out) both;
 }
 
@@ -465,7 +476,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .projects-menu {
+  .projects-menu.is-open {
     animation: none;
   }
 }

@@ -6,6 +6,28 @@
 /* Surfaces and fields carry tone, not strokes (D297): a card is a soft tile,
    a field is a filled well that lifts and gains an accent ring only while
    focused. Both themes share the formula through the tile tokens. */
+.ui-tooltip {
+  position: fixed;
+  z-index: 1000;
+  max-width: calc(100vw - 16px);
+  transform: translate(-50%, -100%);
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--radius-sm);
+  background: var(--ds-bg-elevated-opaque);
+  box-shadow: var(--ds-raised-shadow);
+  padding: 3px 7px;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-compact);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.ui-tooltip-path {
+  width: max-content;
+  max-width: min(420px, calc(100vw - 16px));
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
 .panel-card {
   border-radius: var(--radius-lg);
   background: var(--ds-tile);

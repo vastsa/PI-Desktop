@@ -7,7 +7,7 @@ import {
   type AgentCapabilityLevel,
   type UserSkillRecord,
 } from "@pi-desktop/shared";
-import { Button, Field, Input, Textarea, cx } from "../ui";
+import { Button, Field, Input, Textarea, TooltipButton, cx } from "../ui";
 import { IconFolderOpen, IconX } from "../icons";
 
 /** Hard cap host-core enforces on a skill document. */
@@ -210,14 +210,15 @@ export function SkillEditorSheet({
             </h3>
             <p className="ext-sheet-sub">{t("extensions.skills.sheetSubtitle")}</p>
           </div>
-          <button
+          <TooltipButton
             type="button"
             className="ext-sheet-close"
-            aria-label={t("common.close")}
+            ariaLabel={t("common.close")}
+            tooltip={t("common.close")}
             onClick={onClose}
           >
             <IconX size={14} />
-          </button>
+          </TooltipButton>
         </div>
 
         <div className="ext-sheet-body">

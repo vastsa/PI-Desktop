@@ -18,6 +18,10 @@ const pageSource = await readFile(
   new URL("../src/components/settings/AgentSubagentsPage.tsx", import.meta.url),
   "utf8",
 );
+const hostCollectionSource = await readFile(
+  new URL("../src/hooks/use-host-collection.ts", import.meta.url),
+  "utf8",
+);
 const hostProcessSource = await readFile(
   new URL("../electron/main/host-process.ts", import.meta.url),
   "utf8",
@@ -37,6 +41,21 @@ test("every launch resolves the subagent catalog and its pinned models", () => {
   assert.match(mainSource, /subagentProviders: subagentBindings\.providers,/);
   // Discovery problems must not fail the turn, only be reported.
   assert.match(mainSource, /"subagent definitions have problems"/);
+});
+
+test("subagent models use the exact stored binding for thinking capability", () => {
+  assert.match(mainSource, /function effectiveSubagentModelConfig\(/);
+  assert.match(
+    mainSource,
+    /function effectiveSubagentModelConfig\([\s\S]*?bindingForModel\(provider, modelId\)[\s\S]*?modelConfigWithBinding\(/,
+  );
+  // The helper is used for definition pins, the pre-resolved delegation
+  // catalog, and the on-demand Task.model path.
+  assert.equal(mainSource.match(/effectiveSubagentModelConfig\(/g)?.length, 4);
+  assert.match(
+    mainSource,
+    /const configuredProvider = providers\.providers\.find\([\s\S]*?effectiveSubagentModelConfig\(/,
+  );
 });
 
 test("the sidecar forwards both subagent params to the runtime", () => {
@@ -108,8 +127,11 @@ test("a dead host transport degrades quietly instead of warning", () => {
 });
 
 test("the subagents page recovers when the host comes back", () => {
-  assert.match(pageSource, /api\.onHostStatus\(\(status\) => \{\n\s+if \(status\.ok\) void load\(\);/);
+  // The page loads through the shared host-collection hook, which owns the
+  // plugin-changed and host-status subscriptions.
+  assert.match(pageSource, /useHostCollection\(fetchSubagents/);
+  assert.match(hostCollectionSource, /api\.onHostStatus\(\(status\) => \{\n\s+if \(status\.ok\) void reload\(\);/);
   // Both subscriptions have to be released, so the effect returns a composed
   // cleanup rather than a single unsubscribe.
-  assert.match(pageSource, /offPluginChanged\(\);\n\s+offHostStatus\(\);/);
+  assert.match(hostCollectionSource, /offPluginChanged\(\);\n\s+offHostStatus\(\);/);
 });

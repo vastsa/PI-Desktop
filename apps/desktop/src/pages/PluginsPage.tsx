@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "../stores/app-store";
 import { api } from "../lib/api";
-import { Button, cx } from "../components/ui";
+import { Button, TooltipButton, cx } from "../components/ui";
 import {
   IconCheck,
   IconCircleAlert,
@@ -24,9 +24,11 @@ import {
 } from "../components/icons";
 import { Markdown } from "../components/Markdown";
 import { ScopeControl } from "../components/extensions/ScopeControl";
+import { AnchoredMenu } from "../components/settings/AnchoredMenu";
 import { MarketplaceSourceSettings } from "../components/plugins/MarketplaceSourceSettings";
 import { PluginSettingsSheet } from "../components/plugins/PluginSettingsSheet";
 import type {
+  PluginAgentExtensionStatus,
   ActivationScope,
   MarketPluginDetail,
   MarketPluginSummary,
@@ -49,12 +51,6 @@ type TabId = "installed" | "market";
 type GroupId = "attention" | "updates" | "active" | "disabled";
 
 const GROUP_ORDER: GroupId[] = ["attention", "updates", "active", "disabled"];
-
-/**
- * Rough height of the row overflow menu (two items plus a separator). When the
- * trigger sits closer than this to the viewport bottom the menu flips upwards.
- */
-const ROW_MENU_HEIGHT = 108;
 
 const GROUP_LABEL_KEYS: Record<GroupId, string> = {
   attention: "plugins.groupAttention",
@@ -85,6 +81,8 @@ const PERMISSION_RISK: Record<string, RiskTier> = {
   "agent.prompt.inject": "high",
   "agent.tool.register": "high",
   "agent.complete": "high",
+  "agent.extension": "high",
+  "desktop.control": "high",
   "session.read": "high",
   "browser.cdp": "high",
   // Reading is a tier below writing because what makes a read dangerous is
@@ -101,6 +99,7 @@ const PERMISSION_RISK: Record<string, RiskTier> = {
   "bus.publish": "medium",
   "bus.subscribe": "medium",
   "ui.panel": "low",
+  "ui.microphone": "medium",
   "ui.theme": "low",
   notify: "low",
 };
@@ -108,8 +107,10 @@ const PERMISSION_RISK: Record<string, RiskTier> = {
 /** Display order for capability badges: what it adds before what it runs. */
 const CAPABILITY_ORDER: PluginCapability[] = [
   "panel",
+  "views",
   "commands",
   "tools",
+  "agentExtension",
   "skills",
   "themes",
   "mcp",
@@ -370,6 +371,57 @@ function ServiceChips({ statuses }: { statuses: readonly PluginServiceStatus[] |
   );
 }
 
+/** Live state of a plugin's ExtensionAPI modules (spec 07-plugins/16 §11). */
+function AgentExtensionDetails({ status }: { status: PluginAgentExtensionStatus }) {
+  const { t } = useTranslation();
+  const names = [...status.toolNames, ...status.commandNames.map((name) => `/${name}`)];
+  return (
+    <div className="plugins-agent-extension">
+      <span
+        className={cx(
+          "agent-capability-badge",
+          status.state === "loaded" && "is-ready",
+          status.state === "error" && "is-failed",
+          status.state === "enabled" && "is-level",
+        )}
+      >
+        {t(`plugins.agentExtension.state.${status.state}`)}
+      </span>
+      {names.length ? <code className="plugins-agent-extension-names">{names.join(" · ")}</code> : null}
+      {status.diagnostics.length ? (
+        <ul className="agent-extension-diagnostics" aria-label={t("plugins.agentExtension.diagnostics")}>
+          {status.diagnostics.map((diagnostic) => (
+            <li
+              key={`${diagnostic.kind}:${diagnostic.member ?? ""}`}
+              className={cx(
+                "agent-extension-diagnostic",
+                (diagnostic.kind === "load_error" ||
+                  diagnostic.kind === "factory_error" ||
+                  diagnostic.kind === "handler_error" ||
+                  diagnostic.kind === "handler_timeout") &&
+                  "is-error",
+              )}
+            >
+              <span className="agent-extension-diagnostic-kind">
+                {t(`plugins.agentExtension.kinds.${diagnostic.kind}`)}
+              </span>
+              {diagnostic.member ? (
+                <code className="agent-extension-diagnostic-member">{diagnostic.member}</code>
+              ) : null}
+              <span className="agent-extension-diagnostic-message" title={diagnostic.stack}>
+                {diagnostic.message}
+              </span>
+              {diagnostic.count > 1 ? (
+                <span className="agent-capability-badge">×{diagnostic.count}</span>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 /** Keep the installed row calm while retaining the full capability readout on demand. */
 function PluginRowDetails({
   plugin,
@@ -382,12 +434,13 @@ function PluginRowDetails({
   const hasCapabilities = (plugin.capabilities?.length ?? 0) > 0;
   const hasServices = (services?.length ?? 0) > 0;
   const hasPermissions = (plugin.permissions?.length ?? 0) > 0;
+  const hasAgentExtension = plugin.agentExtension !== undefined;
   const hasFsScope = FS_MODES.some((mode) => plugin.fs?.[mode]);
   const legacyFs = (plugin.permissions ?? []).filter((permission) =>
     LEGACY_FS_PERMISSIONS.includes(permission),
   );
 
-  if (!hasCapabilities && !hasServices && !hasPermissions) return null;
+  if (!hasCapabilities && !hasServices && !hasPermissions && !hasAgentExtension) return null;
 
   return (
     <details className="plugins-row-details">
@@ -411,6 +464,14 @@ function PluginRowDetails({
           <div className="plugins-row-detail">
             <span className="plugins-row-detail-label">{t("plugins.servicesTitle")}</span>
             <ServiceChips statuses={services} />
+          </div>
+        ) : null}
+        {hasAgentExtension && plugin.agentExtension ? (
+          <div className="plugins-row-detail">
+            <span className="plugins-row-detail-label">
+              {t("plugins.agentExtension.title")}
+            </span>
+            <AgentExtensionDetails status={plugin.agentExtension} />
           </div>
         ) : null}
         {hasPermissions ? (
@@ -471,18 +532,18 @@ function SearchField({
         autoCapitalize="off"
       />
       {value ? (
-        <button
+        <TooltipButton
           type="button"
           className="plugins-search-clear"
-          aria-label={t("plugins.clearSearch")}
-          title={t("plugins.clearSearch")}
+          ariaLabel={t("plugins.clearSearch")}
+          tooltip={t("plugins.clearSearch")}
           onClick={() => {
             onChange("");
             inputRef.current?.focus();
           }}
         >
           <IconX size={12} />
-        </button>
+        </TooltipButton>
       ) : null}
     </div>
   );
@@ -525,15 +586,12 @@ export function PluginsPage() {
   const [marketSource, setMarketSource] = useState("");
   const [headerMenu, setHeaderMenu] = useState(false);
   const [rowMenu, setRowMenu] = useState<string | null>(null);
-  const [rowMenuUp, setRowMenuUp] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<MarketPluginDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [services, setServices] = useState<PluginServiceStatus[]>([]);
   const [selectedVersion, setSelectedVersion] = useState("");
   const [settingsPlugin, setSettingsPlugin] = useState<PluginSummary | null>(null);
-  const headerMenuRef = useRef<HTMLDivElement | null>(null);
-  const rowMenuRef = useRef<HTMLDivElement | null>(null);
 
   const refreshMarket = async (q = query, opts?: { refreshRemote?: boolean }) => {
     setMarketLoading(true);
@@ -631,28 +689,6 @@ export function PluginsPage() {
     return () => window.clearTimeout(handle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, query]);
-
-  // Menus are popovers: Escape or any outside press dismisses them, so a menu
-  // never outlives the control it belongs to.
-  useEffect(() => {
-    if (!headerMenu && !rowMenu) return;
-    const onPointerDown = (event: MouseEvent) => {
-      const target = event.target as Node;
-      if (headerMenu && !headerMenuRef.current?.contains(target)) setHeaderMenu(false);
-      if (rowMenu && !rowMenuRef.current?.contains(target)) setRowMenu(null);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      setHeaderMenu(false);
-      setRowMenu(null);
-    };
-    document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [headerMenu, rowMenu]);
 
   // Escape closes the detail sheet, but only while it owns the top layer: the
   // permission dialog in front of it handles its own dismissal.
@@ -779,6 +815,17 @@ export function PluginsPage() {
       await api.loadDevPlugin();
       await refreshPlugins();
       showToast(t("plugins.loadDevDone"), { variant: "success" });
+    });
+
+  // A pi CLI extension becomes a development plugin holding `agent.extension`
+  // (spec 07-plugins/16 §3); the confirm is the trust decision.
+  const importExtension = () =>
+    run(async () => {
+      if (!window.confirm(t("plugins.agentExtension.importConfirm"))) return;
+      const result = await api.importPiExtension();
+      if (result.canceled) return;
+      await refreshPlugins();
+      showToast(t("plugins.importExtensionDone", { id: result.id }), { variant: "success" });
     });
 
   const reloadPlugin = (id: string) =>
@@ -910,6 +957,7 @@ export function PluginsPage() {
     { key: "applyAutoUpdates", run: applyAutoUpdates },
     { key: "installPackage", run: installPackage },
     { key: "loadDev", run: loadDev },
+    { key: "importExtension", run: importExtension },
     {
       key: "newFromTemplate",
       run: async () => {
@@ -963,23 +1011,29 @@ export function PluginsPage() {
                 {t("plugins.browseMarket")}
               </Button>
             ) : null}
-            <div
+            <AnchoredMenu
               className="plugins-menu-wrap"
-              ref={headerMenu ? headerMenuRef : undefined}
+              open={headerMenu}
+              onClose={() => setHeaderMenu(false)}
+              menuClassName="plugins-menu is-end"
+              label={t("plugins.moreActions")}
+              role="menu"
+              align="end"
+              trigger={(ref) => (
+                <TooltipButton
+                  ref={ref}
+                  type="button"
+                  className="plugins-icon-btn plugins-header-menu"
+                  ariaLabel={t("plugins.moreActions")}
+                  tooltip={t("plugins.moreActions")}
+                  aria-haspopup="menu"
+                  aria-expanded={headerMenu}
+                  onClick={() => setHeaderMenu((open) => !open)}
+                >
+                  <IconMore size={16} />
+                </TooltipButton>
+              )}
             >
-              <button
-                type="button"
-                className="plugins-icon-btn plugins-header-menu"
-                aria-label={t("plugins.moreActions")}
-                title={t("plugins.moreActions")}
-                aria-haspopup="menu"
-                aria-expanded={headerMenu}
-                onClick={() => setHeaderMenu((open) => !open)}
-              >
-                <IconMore size={16} />
-              </button>
-              {headerMenu ? (
-                <div className="plugins-menu is-end" role="menu">
                   {overflowActions.map((action) => (
                     <button
                       key={action.key}
@@ -993,9 +1047,7 @@ export function PluginsPage() {
                       {t(`plugins.${action.key}`)}
                     </button>
                   ))}
-                </div>
-              ) : null}
-            </div>
+            </AnchoredMenu>
           </div>
         </div>
 
@@ -1217,67 +1269,56 @@ export function PluginsPage() {
                             />
                             <div className="plugins-row-actions">
                               {plugin.ui?.panel ? (
-                                <button
+                                <TooltipButton
                                   type="button"
                                   className="plugins-icon-btn"
-                                  aria-label={t("plugins.openPanel")}
-                                  title={t("plugins.openPanel")}
-                                  data-tip={t("plugins.openPanel")}
+                                  tooltip={t("plugins.openPanel")}
+                                  ariaLabel={t("plugins.openPanel")}
                                   onClick={() =>
                                     void run(() => api.openPluginPanel(plugin.id))
                                   }
                                 >
                                   <IconPanel size={15} />
-                                </button>
+                                </TooltipButton>
                               ) : null}
                               {plugin.enabled && plugin.settings?.length ? (
-                                <button
+                                <TooltipButton
                                   type="button"
                                   className="plugins-icon-btn"
-                                  aria-label={t("plugins.openSettings")}
-                                  title={t("plugins.openSettings")}
-                                  data-tip={t("plugins.openSettings")}
+                                  tooltip={t("plugins.openSettings")}
+                                  ariaLabel={t("plugins.openSettings")}
                                   onClick={() => setSettingsPlugin(plugin)}
                                 >
                                   <IconSettings size={15} />
-                                </button>
+                                </TooltipButton>
                               ) : null}
-                              <div
+                              <AnchoredMenu
                                 className="plugins-menu-wrap"
-                                ref={menuOpen ? rowMenuRef : undefined}
-                              >
-                                <button
-                                  type="button"
-                                  className="plugins-icon-btn"
-                                  aria-label={t("plugins.rowActions", {
-                                    name: plugin.name,
-                                  })}
-                                  title={t("plugins.rowActions", { name: plugin.name })}
-                                  data-tip={t("plugins.rowActions", { name: plugin.name })}
-                                  aria-haspopup="menu"
-                                  aria-expanded={menuOpen}
-                                  onClick={(event) => {
-                                    const rect =
-                                      event.currentTarget.getBoundingClientRect();
-                                    setRowMenuUp(
-                                      window.innerHeight - rect.bottom <
-                                        ROW_MENU_HEIGHT,
-                                    );
-                                    setRowMenu((cur) =>
-                                      cur === plugin.id ? null : plugin.id,
-                                    );
-                                  }}
-                                >
-                                  <IconMore size={15} />
-                                </button>
-                                {menuOpen ? (
-                                  <div
-                                    className={cx(
-                                      "plugins-menu is-end",
-                                      rowMenuUp && "is-up",
-                                    )}
-                                    role="menu"
+                                open={menuOpen}
+                                onClose={() => setRowMenu(null)}
+                                menuClassName="plugins-menu is-end"
+                                label={t("plugins.rowActions", { name: plugin.name })}
+                                role="menu"
+                                align="end"
+                                trigger={(ref) => (
+                                  <TooltipButton
+                                    ref={ref}
+                                    type="button"
+                                    className="plugins-icon-btn"
+                                    tooltip={t("plugins.rowActions", { name: plugin.name })}
+                                    ariaLabel={t("plugins.rowActions", { name: plugin.name })}
+                                    aria-haspopup="menu"
+                                    aria-expanded={menuOpen}
+                                    onClick={() =>
+                                      setRowMenu((cur) =>
+                                        cur === plugin.id ? null : plugin.id,
+                                      )
+                                    }
                                   >
+                                    <IconMore size={15} />
+                                  </TooltipButton>
+                                )}
+                              >
                                     {plugin.source === "dev" ? (
                                       <button
                                         type="button"
@@ -1330,9 +1371,7 @@ export function PluginsPage() {
                                       <IconTrash size={14} />
                                       {t("plugins.uninstall")}
                                     </button>
-                                  </div>
-                                ) : null}
-                              </div>
+                              </AnchoredMenu>
                             </div>
                           </div>
                         </div>
@@ -1353,7 +1392,6 @@ export function PluginsPage() {
             {settings ? (
               <MarketplaceSourceSettings
                 settings={settings}
-                activeSource={marketSource}
                 onSourceRefreshed={(source) => {
                   setMarketSource(source);
                   void refreshMarket(query);
@@ -1580,15 +1618,15 @@ export function PluginsPage() {
                   ) : null}
                 </div>
               </div>
-              <button
+              <TooltipButton
                 type="button"
                 className="plugins-icon-btn"
-                aria-label={t("plugins.closeDetail")}
-                title={t("plugins.closeDetail")}
+                ariaLabel={t("plugins.closeDetail")}
+                tooltip={t("plugins.closeDetail")}
                 onClick={closeDetail}
               >
                 <IconX size={15} />
-              </button>
+              </TooltipButton>
             </header>
 
             {detailLoading ? (

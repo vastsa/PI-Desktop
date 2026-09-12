@@ -356,7 +356,7 @@
 .prose-chat .table-wrap {
   margin: 0.9em 0;
   max-width: 100%;
-  width: fit-content;
+  width: 100%;
   overflow-x: auto;
   border-radius: var(--radius-md-plus);
 }
@@ -367,9 +367,8 @@
 
 .prose-chat .table-wrap table {
   margin: 0;
-  width: max-content;
-  min-width: 100%;
-  max-width: none;
+  width: 100%;
+  table-layout: auto;
   border-collapse: collapse;
   font-size: var(--text-md);
   line-height: var(--leading-normal);
@@ -380,6 +379,7 @@
   padding: 9px 14px;
   text-align: left;
   vertical-align: top;
+  overflow-wrap: anywhere;
 }
 
 .prose-chat th {
@@ -388,7 +388,6 @@
   background: var(--ds-tile-deep);
   font-size: var(--text-sm-plus);
   letter-spacing: var(--tracking-wide);
-  white-space: nowrap;
 }
 
 .prose-chat tbody tr:nth-child(even) td {

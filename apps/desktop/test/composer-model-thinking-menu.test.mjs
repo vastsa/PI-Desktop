@@ -13,7 +13,7 @@ test("Composer uses one model × reasoning popover with a root and in-place subm
   assert.match(composerSource, /useState<ComposerMenuView>\("root"\)/);
   assert.match(composerSource, /showModelThinkingView\("model"\)/);
   assert.match(composerSource, /showModelThinkingView\("thinking"\)/);
-  assert.match(composerSource, /className="composer-model-menu composer-model-thinking-menu"/);
+  assert.match(composerSource, /menuClassName="composer-model-menu composer-model-thinking-menu"/);
   assert.match(composerSource, /role="menuitem"[\s\S]*?aria-haspopup="menu"/);
   assert.match(composerSource, /className="composer-menu-back"/);
   assert.match(composerSource, /IconChevronLeft/);
@@ -29,6 +29,15 @@ test("model and reasoning selection return to the root without closing", () => {
   assert.match(composerSource, /const thinkingMenuLevels: ThinkingLevel\[\] = availableThinkingLevels\.length/);
 });
 
+test("opening the combined menu preloads model metadata before its submenu", () => {
+  assert.match(
+    composerSource,
+    /useEffect\(\(\) => \{\n    if \(!modelThinkingOpen\) return;\n    for \(const candidate of providers\)\s*\{/,
+  );
+  assert.match(composerSource, /void loadProviderModels\(candidate\.id\);/);
+  assert.match(composerSource, /\}, \[loadProviderModels, modelThinkingOpen, providers\]\);/);
+});
+
 test("the combined chip and menu meet the compact accessible visual contract", () => {
   assert.match(composerSource, /aria-haspopup="menu"/);
   assert.match(composerSource, /aria-expanded=\{modelThinkingOpen\}/);
@@ -37,7 +46,8 @@ test("the combined chip and menu meet the compact accessible visual contract", (
   assert.match(composerSource, /aria-checked=\{thinkingLevel === level\}/);
   assert.match(composerSource, /e\.key === "ArrowLeft"/);
   assert.match(composerSource, /e\.key === "Escape"/);
-  assert.match(stylesSource, /\.composer-model-thinking-menu\s*\{[\s\S]*?bottom:\s*calc\(100% \+ 8px\)/);
+  assert.match(stylesSource, /\.composer-model-thinking-menu\s*\{[\s\S]*?position:\s*fixed;/);
+  assert.match(stylesSource, /\.composer-model-thinking-menu\s*\{[\s\S]*?top:\s*0;/);
   assert.match(stylesSource, /\.composer-model-thinking-menu\s*\{[\s\S]*?width:\s*min\(300px,\s*calc\(100vw - 24px\)\)/);
   assert.match(composerSource, /className="composer-model-thinking-icon"[\s\S]*?<IconBot size=\{14\} \/>/);
   assert.doesNotMatch(stylesSource, /\.composer-model-thinking-icon\.is-off/);
@@ -50,6 +60,13 @@ test("model options are visually nested under their provider heading", () => {
     stylesSource,
     /\.composer-model-group \.composer-model-option\s*\{[\s\S]*?padding-left:\s*22px/,
   );
+});
+
+test("model groups use the account-aware display name", () => {
+  assert.match(composerSource, /composerProviderDisplayName\(candidate\)/);
+  assert.match(composerSource, /composerProviderSearchText\(candidate\)/);
+  assert.match(composerSource, /aria-label=\{group\.providerDisplayName\}/);
+  assert.match(composerSource, /\{group\.providerDisplayName\}/);
 });
 
 test("provider headings establish a stronger type level than model rows", () => {

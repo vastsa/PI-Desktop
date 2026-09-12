@@ -8,7 +8,7 @@
 
 ## 1. Core Immutable Rules
 
-These five rules govern every change to the PI-Desktop codebase and documentation. They cannot be relaxed by an agent without explicit human override.
+The rules below govern every change to the PI-Desktop codebase and documentation. R1–R4 restate the five numbered Immutable Rules in `AGENTS.md` (R4 covers both the merge-back and worktree clean-up rules); R5 and R6 restate its GitHub issue and pull request handling sections. They cannot be relaxed by an agent without explicit human override.
 
 ### R1 — Spec-first / Spec-sync
 
@@ -100,6 +100,55 @@ unambiguous issue number for this repository.
 - Do not comment on or close unrelated issues. Do not reopen a closed issue
   unless the user explicitly asks.
 
+### R6 — Merge a linked pull request whose principle is sound, then follow up
+
+> **A linked GitHub pull request whose direction is sound is merged first. Completeness, style, spec-sync, and polish happen after merge so the contributor's work is not discarded.**
+
+This rule applies when the user prompt includes a GitHub pull request URL or
+an unambiguous pull request number for this repository.
+
+- Fetch the pull request (title, body, files, commits, comments, checks, draft
+  state, base/head, and linked issues) before creating a replacement
+  implementation or requesting a rewrite.
+- Independently judge whether the **principle** is sound. The change must
+  address a real, in-scope problem, and the approach must be compatible with
+  the baseline, security boundaries, and architecture (or be a justified
+  spec-backed amendment). Judge the direction, not whether the pull request
+  already satisfies R1–R5 completeness.
+- Do not reimplement the pull request as a replacement, close it for nits, or
+  ask the contributor to start over when the principle is sound.
+- If the principle is sound:
+  1. Merge **that** pull request first, preserving the contributor's commits.
+     Use a repository-permitted merge strategy that keeps the contributor as
+     author of the landed work.
+  2. Missing specs, tests, i18n, e2e documentation, style, naming, and
+     commit-message nits are follow-up work, not merge blockers.
+  3. Landing blockers that would break `main` (the change does not compile,
+     fails existing tests for the changed area, or has merge conflicts) may
+     receive the smallest commits **on top of** the author's work so the pull
+     request can land. Do not squash away the author. Do not rewrite the
+     design.
+  4. After the pull request is in `main`, follow R4 for any follow-up
+     improvements from the updated `main`.
+  5. Comment on the pull request in its language: acknowledge the
+     contribution, state what was merged, and list follow-up if any.
+- If the principle is not sound, or a harm blocker exists (secrets, sandbox
+  or privilege bypass, malicious or clearly destructive changes, out-of-scope
+  reversal of a frozen decision, unrelated drive-by payload): do not merge.
+  Comment with the evidence in the pull request's language. Do not silently
+  reimplement the same idea as if the pull request never existed.
+- Do not merge a draft pull request the author has not marked ready, unless
+  the user explicitly asks to merge the draft. Comment with the principle
+  review and wait until it is ready.
+- A pull request link authorizes reviewing, commenting on, and merging
+  **that** pull request when this rule applies. It does not authorize
+  force-pushing the contributor's branch or publishing unrelated branches.
+  Follow-up still follows R4's opt-in remote publishing rule.
+- Do not comment on or merge unrelated pull requests. An already-merged pull
+  request is not reopened; remaining gaps become ordinary follow-up.
+- When both an issue and a pull request are linked, R6 applies to the pull
+  request and R5 still applies to the issue after the merged outcome.
+
 ### GitHub issue templates
 
 `.github/ISSUE_TEMPLATE` is the only public intake path (`blank_issues_enabled:
@@ -119,10 +168,11 @@ Do not weaken these required fields. Blank issues stay disabled.
 
 ## 2. Development Loop
 
-Every change follows this sequence. Steps may be iterated if the implementation reveals new requirements. If the prompt includes a GitHub issue, complete R5 verification before step 1.
+Every change follows this sequence. Steps may be iterated if the implementation reveals new requirements. If the prompt includes a GitHub issue, complete R5 verification before step 1. If the prompt includes a GitHub pull request, complete the R6 principle review (and merge when sound) before starting a replacement or follow-up implementation.
 
 ```
 0. If a GitHub issue is linked: verify the claim (R5) before any implementation
+0b. If a GitHub pull request is linked: review the principle (R6); merge first when sound; start follow-up only after it is in `main`
 1. Sync main + create a request branch and worktree
 2. Read baseline + relevant specs
 3. Plan change + list impacted specs and necessary validation
@@ -143,6 +193,7 @@ Every change follows this sequence. Steps may be iterated if the implementation 
 | Step | Action | Output |
 |---|---|---|
 | **0. Issue verify** | When a GitHub issue is linked, fetch it and independently verify that the reported problem exists. Stop here (comment, and close only if conclusive) when it does not. | Verified issue, or a comment and close/leave-open decision. |
+| **0b. PR review** | When a GitHub pull request is linked, fetch it and independently judge whether the principle is sound. Merge first when it is; start follow-up only after it is in `main`. Stop (comment, do not rewrite) when it is not. | Merged contributor PR plus follow-up plan, or a comment and no merge. |
 | **1. Branch + worktree** | Preserve existing work, update from `origin/main`, and create a dedicated request branch in a dedicated worktree. Reuse the primary checkout's environment where safe. | Isolated task files on current `main` with a consistent development environment. |
 | **2. Read** | Read `00-baseline.md` and any specs relevant to the change area. | Mental model of constraints. |
 | **3. Plan** | Describe the intended change. List every spec, ADR, and e2e scenario that will need updates, and assess whether local validation is necessary. | Change plan + impact and validation list. |
@@ -189,9 +240,10 @@ changes:
 3. Classify the failure boundary: publisher/catalog data, fetch/cache fallback,
    host version comparison, IPC propagation, or renderer presentation.
 4. Run `pnpm check:marketplace -- --url <catalog-url> --plugin <id>`. Missing
-   `shasum`, `url`, positive `sizeBytes`, or `permissions` is a release-data
-   failure, not evidence of a stale renderer. Incomplete releases remain
-   non-installable.
+   `shasum`, `url`, positive `sizeBytes`, or `permissions`, or a catalog
+   `author` that is not a string (for example `{ name, url }` copied from a
+   plugin manifest), is a release-data failure, not evidence of a stale
+   renderer. Incomplete releases remain non-installable.
 5. Reproduce with a fixture containing unsorted versions and incomplete
    metadata before changing host or renderer code.
 
@@ -218,7 +270,7 @@ Which change types require which doc updates.
 | UX change | Related `04-ux/` spec | — | — | New UI scenario | — |
 | Spec-only update | The spec itself | — | — | — | — |
 | Chore (deps, tooling) | — | — | If tooling decision | — | — |
-| **App version release / stable tag** | `06-delivery/06-release-runbook.md` (mandatory version-surface gate before tag: dual-locale `packages/shared/src/changelog.ts`, its test list, all workspace/Cargo/`APP_VERSION` versions, and the release line in `README.md` + `README.zh-CN.md`) | — | If release policy changes | Confirm E2E-067B still accurate | If milestone ship |
+| **App version release / stable tag** | `06-delivery/06-release-runbook.md` (mandatory version-surface gate before tag: shipped-locale `packages/shared/src/changelog.ts`, its test list, all workspace/Cargo/`APP_VERSION` versions, and the release line in `README.md` + `README.zh-CN.md`) | — | If release policy changes | Confirm E2E-067B still accurate | If milestone ship |
 
 ---
 
@@ -369,14 +421,17 @@ A change is **Done** when all of the following are true:
 11. If a GitHub issue was linked: the claim was verified before implementation;
     the issue received a comment in its language; and the issue was closed when
     the outcome was conclusive.
+12. If a GitHub pull request was linked: the principle was reviewed; the pull
+    request was merged first when sound; follow-up landed after merge; the
+    contributor's work was not discarded.
 
 ### Release / version-tag gate
 
 When the change is a **stable app version release** (version bump + tag),
 Definition of Done also requires, **before** the tag, that every
-version-bearing surface describes the new version: the dual-locale in-app
-changelog entry in `packages/shared/src/changelog.ts` (EN + zh-CN, aligned
-highlight counts) with its `changelog.test.ts` list, every workspace
+version-bearing surface describes the new version: the shipped-locale in-app
+changelog entries in `packages/shared/src/changelog.ts` (English and every
+shipped product locale, with aligned highlight counts) with its `changelog.test.ts` list, every workspace
 `package.json` (including `docs/package.json`), the Cargo workspace version and
 `host-core` lockfile entry, `APP_VERSION`, and the release line stated in
 `README.md` + `README.zh-CN.md`. `node scripts/check-release-docs.mjs` must
@@ -406,7 +461,11 @@ D164, and D260. GitHub release notes are not a substitute.
 | Mixing multiple logical changes in one commit without clear message | Loss of history granularity |
 | Implementing a linked GitHub issue without verifying the problem exists | Violates R5; wastes work on invalid or already-fixed claims |
 | Closing a linked GitHub issue without a comment in the issue language | Violates R5; leaves no public record of the outcome |
-| Tagging a stable app release without updating `packages/shared/src/changelog.ts` (EN + zh-CN) | Violates D164 / release runbook; in-app What's new is empty for that version |
+| Closing, rewriting, or requesting a restart of a linked pull request whose principle is sound | Violates R6; discards the contributor's work |
+| Blocking merge of a sound linked pull request solely for missing specs, tests, style, or agent-workflow completeness | Violates R6; completeness is follow-up after merge |
+| Merging a linked pull request whose principle is unsound or that introduces a harm blocker | Violates R6; merge-first does not apply to unsafe or wrong-direction changes |
+| Force-pushing a contributor's branch to land a linked pull request | Violates R6; landing fixes go on top of the author's commits |
+| Tagging a stable app release without updating `packages/shared/src/changelog.ts` for every shipped locale | Violates D164 / D345 / release runbook; in-app What's new is empty for that locale and version |
 | Tagging a stable app release while `README.md` / `README.zh-CN.md` still state an older release line, or bypassing `scripts/check-release-docs.mjs` with `--skip-docs-check` | Violates D260 / release runbook; published documentation advertises a version the release no longer matches |
 
 ---
@@ -415,7 +474,7 @@ D164, and D260. GitHub release notes are not a substitute.
 
 This workflow spec itself is accepted when:
 
-- [ ] R1/R2/R3/R4/R5 are stated clearly and cross-linked to relevant specs.
+- [ ] R1/R2/R3/R4/R5/R6 are stated clearly and cross-linked to relevant specs.
 - [ ] Development loop is documented and referenced by `AGENTS.md`.
 - [ ] Spec update matrix covers all change types in the baseline.
 - [ ] Git commit rules match existing repo commit style (`docs:`, `chore:`).
@@ -435,4 +494,6 @@ This workflow spec itself is accepted when:
 - [ ] `AGENTS.md` points to this doc, `04-e2e-test-plan.md`, and `05-change-checklist.md`.
 - [ ] Linked GitHub issues are verified before implementation, then commented
       on in the issue language and closed when conclusive.
+- [ ] Linked GitHub pull requests whose principle is sound are merged first,
+      then followed up; contributor work is not discarded.
 - [ ] All indexes updated (NAV, delivery README, spec README, docs README, BOARD).

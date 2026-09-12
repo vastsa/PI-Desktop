@@ -1,0 +1,91 @@
+name: Linux package validation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Linux x64 packages
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Prepare package inputs
+        # Mirrors release.yml: build host-core with --locked so a drifted
+        # Cargo.lock fails here instead of being silently rewritten by the
+        # desktop `build:host-release` script, which does not pass --locked.
+        run: |
+          set -euo pipefail
+          cargo build --release --locked -p host-core &
+          host_build_pid=$!
+          trap 'kill "$host_build_pid" 2>/dev/null || true' EXIT
+
+          pnpm install --frozen-lockfile
+          pnpm --filter '@pi-desktop/desktop^...' --fail-if-no-match build
+
+          wait "$host_build_pid"
+          trap - EXIT
+
+      - name: Build Linux packages
+        run: pnpm --filter @pi-desktop/desktop run dist:linux -- --x64
+
+      - name: Verify Linux host glibc floor
+        run: node scripts/check-linux-host-glibc.mjs target/release/pi-desktop-host-core
+
+      - name: Install RPM inspection tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y cpio rpm
+
+      - name: Verify RPM package
+        run: |
+          set -euo pipefail
+          mapfile -t packages < <(find apps/desktop/release -maxdepth 1 -type f -name '*.rpm' -print)
+          test "${#packages[@]}" -eq 1
+          rpm -qip "${packages[0]}"
+          rpm_package=$(realpath "${packages[0]}")
+          rpm_file_list=$(mktemp)
+          rpm -qpl "$rpm_package" > "$rpm_file_list"
+          if grep -E '^/usr/lib/\.build-id' "$rpm_file_list" >/dev/null; then
+            echo 'RPM must not ship global build-id links for bundled Electron binaries'
+            exit 1
+          fi
+          grep -Fx '/opt/PI-Desktop/resources/app.asar' "$rpm_file_list" >/dev/null
+          grep -Fx '/opt/PI-Desktop/resources/bin/pi-desktop-host-core' "$rpm_file_list" >/dev/null
+          grep -Fx '/usr/share/applications/pi-desktop.desktop' "$rpm_file_list" >/dev/null
+          grep -Fx '/usr/share/icons/hicolor/512x512/apps/pi-desktop.png' "$rpm_file_list" >/dev/null
+
+          desktop_root=$(mktemp -d)
+          (
+            cd "$desktop_root"
+            rpm2cpio "$rpm_package" | cpio --quiet -id './usr/share/applications/pi-desktop.desktop'
+          )
+          desktop_entry="$desktop_root/usr/share/applications/pi-desktop.desktop"
+          grep -Fx 'Icon=pi-desktop' "$desktop_entry" >/dev/null
+          grep -Fx 'StartupWMClass=pi-desktop' "$desktop_entry" >/dev/null
+
+      - name: Upload RPM package
+        uses: actions/upload-artifact@v4
+        with:
+          name: pi-desktop-linux-x64-rpm
+          if-no-files-found: error
+          retention-days: 7
+          path: apps/desktop/release/*.rpm

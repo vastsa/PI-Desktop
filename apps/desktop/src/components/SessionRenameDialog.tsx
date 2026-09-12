@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { MAX_SESSION_TITLE_LENGTH } from "@pi-desktop/shared";
 import type { SessionSummary } from "@pi-desktop/shared";
+import { TooltipButton } from "./ui";
 import { MAX_PROJECT_NAME_CHARS } from "../lib/sidebar-preferences";
 import { Button } from "./ui";
 import { IconClose, IconPencil } from "./icons";
@@ -129,16 +130,16 @@ function RenameDialog({
               {description}
             </p>
           </div>
-          <button
+          <TooltipButton
             type="button"
             className="session-rename-dialog-close"
-            aria-label={cancelLabel}
-            title={cancelLabel}
+            tooltip={cancelLabel}
+            ariaLabel={cancelLabel}
             disabled={saving}
             onClick={onClose}
           >
             <IconClose size={16} />
-          </button>
+          </TooltipButton>
         </div>
         <form onSubmit={(event) => void save(event)}>
           <label className="session-rename-dialog-label" htmlFor={inputId}>

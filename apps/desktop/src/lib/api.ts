@@ -10,7 +10,12 @@ import type {
   AgentPromptResponse,
   PromptEnhancementRequest,
   PromptEnhancementResponse,
+  SessionSummarizeTitleRequest,
+  SessionSummarizeTitleResponse,
   AgentStopResponse,
+  AgentQueueChangedEvent,
+  AgentQueuePushRequest,
+  QueuedTurnSummary,
   AgentStatus,
   AskToolResolution,
   AgentInstructionFile,
@@ -76,6 +81,9 @@ import type {
   UpdateState,
   WindowControlAction,
   CloseBehavior,
+  TrustedExtensionStatusEvent,
+  TrustedExtensionUiPrompt,
+  TrustedExtensionUiPromptResponse,
 } from "@pi-desktop/shared";
 import {
   defaultCommandShellForPlatform,
@@ -84,10 +92,18 @@ import {
   normalizeLargePasteThreshold,
   normalizeMode,
   normalizeNetworkProxy,
+  resolveFontScale,
   validateNetworkProxy,
 } from "@pi-desktop/shared";
 
 export type ImportSource = "claude-code" | "opencode" | "codex" | "pi";
+// One definition, owned by the shared package (the host and sidecar use the
+// same shape); re-exported so existing renderer imports keep working.
+import type {
+  ModelConfigImportCandidate,
+  ModelConfigImportSource,
+} from "@pi-desktop/shared";
+export type { ModelConfigImportCandidate, ModelConfigImportSource };
 
 export interface ImportCandidate {
   source: ImportSource;
@@ -115,6 +131,8 @@ declare global {
       platform: NodeJS.Platform;
       /** Authoritative OS locale passed from the main process at window creation. */
       locale?: string;
+      /** Resolve a native dropped File to its source path. */
+      getDroppedFilePath?: (file: File) => string | null;
     };
   }
 }
@@ -174,6 +192,7 @@ export function normalizeSettings(settings: AppSettings): AppSettings {
     largePasteThreshold: normalizeLargePasteThreshold(
       (settings as { largePasteThreshold?: unknown }).largePasteThreshold,
     ),
+    fontScale: resolveFontScale(settings),
     networkProxy: normalizeNetworkProxy(
       (settings as { networkProxy?: unknown }).networkProxy,
     ),
@@ -184,6 +203,7 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
   const value = settings as AppSettings & {
     defaultCommandShell?: unknown;
     largePasteThreshold?: unknown;
+    fontScale?: unknown;
     networkProxy?: unknown;
   };
   if (
@@ -200,6 +220,14 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
       value.largePasteThreshold
   ) {
     throw Object.assign(new Error("largePasteThreshold is invalid"), {
+      errorCode: "INVALID_PARAMS",
+    });
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(value, "fontScale") &&
+    resolveFontScale({ fontScale: value.fontScale }) !== value.fontScale
+  ) {
+    throw Object.assign(new Error("fontScale is invalid"), {
       errorCode: "INVALID_PARAMS",
     });
   }
@@ -279,6 +307,7 @@ export const api = {
   showNativeNotification: (input: {
     id: string;
     sessionId: string;
+    kind: "task" | "interactive";
     title: string;
     body: string;
   }) => invoke<{ shown: boolean }>(IPC.invoke.notificationShowNative, input),
@@ -312,10 +341,21 @@ export const api = {
   deleteSession: (id: string) => invoke(IPC.invoke.sessionDelete, id),
   getSessionScratchPath: (sessionId: string) =>
     invoke<{ path: string }>(IPC.invoke.sessionGetScratchPath, { sessionId }),
+  openSessionScratchPath: (sessionId: string) =>
+    invoke<{ ok: boolean; path: string }>(IPC.invoke.sessionOpenScratchPath, {
+      sessionId,
+    }),
   openProjectFolder: (path: string) =>
     invoke<{ ok: boolean; path: string }>(IPC.invoke.projectOpenFolder, path),
   renameSession: (id: string, title: string) =>
     invoke<{ ok: boolean }>(IPC.invoke.sessionRename, id, title),
+  moveSessionProject: (sessionId: string, projectPath: string) =>
+    invoke<{ session: SessionSummary }>(IPC.invoke.sessionMoveProject, {
+      sessionId,
+      projectPath,
+    }).then((result) => ({ ...result, session: normalizeSession(result.session) })),
+  summarizeSessionTitle: (req: SessionSummarizeTitleRequest) =>
+    invoke<SessionSummarizeTitleResponse>(IPC.invoke.sessionSummarizeTitle, req),
   configureSession: (
     id: string,
     config: Pick<SessionSummary, "mode" | "providerId" | "modelId"> &
@@ -330,6 +370,12 @@ export const api = {
     invoke<{ sessions: ImportCandidate[] }>(IPC.invoke.sessionImportScan),
   runImportSessions: (items: ImportCandidate[]) =>
     invoke<ImportRunResult>(IPC.invoke.sessionImportRun, items),
+  scanImportModelConfigs: () =>
+    invoke<{ providers: ModelConfigImportCandidate[] }>(
+      IPC.invoke.modelConfigImportScan,
+    ),
+  runImportModelConfigs: (items: ModelConfigImportCandidate[]) =>
+    invoke<ImportRunResult>(IPC.invoke.modelConfigImportRun, items),
   getSettings: () => invoke<AppSettings>(IPC.invoke.settingsGet).then(normalizeSettings),
   setSettings: (settings: AppSettings) =>
     invoke(IPC.invoke.settingsSet, validateSettingsWrite(settings)),
@@ -365,7 +411,7 @@ export const api = {
     baseUrl?: string;
     apiKey?: string;
     apiStyle?: string;
-    userAgent?: string;
+    headers?: Record<string, string>;
     source?: "cache" | "refresh";
   }) =>
     invoke<{
@@ -421,20 +467,29 @@ export const api = {
     invoke<{ workspace: ProjectWorkspace | null; canceled?: boolean }>(
       IPC.invoke.projectOpen,
     ),
+  cloneProject: (url: string) =>
+    invoke<{ workspace: ProjectWorkspace | null; canceled?: boolean }>(
+      IPC.invoke.projectClone,
+      { url },
+    ),
   pickFiles: () =>
-    invoke<{ paths: string[]; canceled?: boolean }>(IPC.invoke.composerPickFiles),
+    invoke<{ token: string | null; canceled?: boolean }>(IPC.invoke.composerPickFiles),
+  getDroppedFilePath: (file: File) =>
+    window.piDesktop?.getDroppedFilePath?.(file) ?? null,
   pickPhotos: () =>
-    invoke<{ paths: string[]; canceled?: boolean }>(IPC.invoke.composerPickPhotos),
-  importFiles: (sessionId: string, paths: string[]) =>
+    invoke<{ token: string | null; canceled?: boolean }>(IPC.invoke.composerPickPhotos),
+  importFiles: (sessionId: string, token: string) =>
     invoke<{ files: ComposerPastedFile[] }>(IPC.invoke.composerImportFiles, {
       sessionId,
-      paths,
+      token,
     }),
   pasteFiles: (sessionId: string, files: ComposerPasteFile[]) =>
     invoke<{ files: ComposerPastedFile[] }>(IPC.invoke.composerPasteFiles, {
       sessionId,
       files,
     }),
+  recordClipboardPaste: (text: string) =>
+    invoke<{ ok: boolean }>(IPC.invoke.clipboardRecordPaste, { text }),
   clearProject: () => invoke(IPC.invoke.projectClear),
   setProject: (path: string) =>
     invoke<{ workspace: ProjectWorkspace | null }>(IPC.invoke.projectSet, path),
@@ -487,6 +542,14 @@ export const api = {
     invoke(IPC.invoke.agentAbort, { sessionId }),
   stop: (sessionId: string) =>
     invoke<AgentStopResponse>(IPC.invoke.agentStop, { sessionId }),
+  queuePrompt: (req: AgentQueuePushRequest) =>
+    invoke<QueuedTurnSummary>(IPC.invoke.agentQueuePush, req),
+  listQueuedPrompts: (sessionId: string) =>
+    invoke<{ entries: QueuedTurnSummary[] }>(IPC.invoke.agentQueueList, { sessionId }),
+  removeQueuedPrompt: (turnId: string) =>
+    invoke(IPC.invoke.agentQueueRemove, { turnId }),
+  prioritizeQueuedPrompt: (turnId: string) =>
+    invoke(IPC.invoke.agentQueuePrioritize, { turnId }),
   getStatus: (sessionId: string) =>
     invoke<{ status: AgentStatus }>(IPC.invoke.agentGetStatus, sessionId),
   getAgentInstructions: (projectPath?: string) =>
@@ -712,6 +775,15 @@ export const api = {
       IPC.invoke.marketApplyUpdates,
       { onlyAuto },
     ),
+  /** Import a pi CLI extension file or directory as a development plugin (spec 16 §3). */
+  importPiExtension: () =>
+    invoke<{ canceled: true } | { canceled: false; id: string; path: string; entries: string[] }>(
+      IPC.invoke.pluginImportExtension,
+    ),
+  runExtensionCommand: (input: { sessionId: string; name: string; args: string }) =>
+    invoke<{ ok: boolean }>(IPC.invoke.extensionsCommandRun, input),
+  respondExtensionPrompt: (response: TrustedExtensionUiPromptResponse) =>
+    invoke<{ ok: boolean }>(IPC.invoke.extensionsUiRespond, response),
   searchCommands: (query: string) =>
     invoke<{ commands: CommandItem[] }>(
       IPC.invoke.commandPaletteSearch,
@@ -770,6 +842,11 @@ export const api = {
     invoke<{ requested: number; applied: number }>(
       IPC.invoke.windowSetWorkPanelChatWidth,
       { width },
+    ),
+  setWindowBackgroundColor: (theme: "light" | "dark") =>
+    invoke<{ applied: boolean; theme: "light" | "dark" }>(
+      IPC.invoke.windowSetBackgroundColor,
+      { theme },
     ),
   windowControl: (action: WindowControlAction) =>
     invoke<{ maximized: boolean }>(IPC.invoke.windowControl, { action }),
@@ -847,6 +924,12 @@ export const api = {
       listener(payload as AgentEventEnvelope),
     );
   },
+  onAgentQueueChanged: (listener: (event: AgentQueueChangedEvent) => void) => {
+    if (!window.piDesktop?.on) return () => undefined;
+    return window.piDesktop.on(IPC.event.agentQueueChanged, (payload) =>
+      listener(payload as AgentQueueChangedEvent),
+    );
+  },
   onPlansChanged: (listener: (event: PlanningStateEvent) => void) => {
     if (!window.piDesktop?.on) return () => undefined;
     return window.piDesktop.on(IPC.event.plansChanged, (payload) =>
@@ -857,6 +940,18 @@ export const api = {
     if (!window.piDesktop?.on) return () => undefined;
     return window.piDesktop.on(IPC.event.providersOauth, (payload) =>
       listener(payload as OAuthLoginEvent),
+    );
+  },
+  onExtensionPrompt: (listener: (prompt: TrustedExtensionUiPrompt) => void) => {
+    if (!window.piDesktop?.on) return () => undefined;
+    return window.piDesktop.on(IPC.event.extensionsUiPrompt, (payload) =>
+      listener(payload as TrustedExtensionUiPrompt),
+    );
+  },
+  onExtensionStatus: (listener: (event: TrustedExtensionStatusEvent) => void) => {
+    if (!window.piDesktop?.on) return () => undefined;
+    return window.piDesktop.on(IPC.event.extensionsStatus, (payload) =>
+      listener(payload as TrustedExtensionStatusEvent),
     );
   },
   onToast: (listener: (message: string) => void) => {
@@ -877,6 +972,26 @@ export const api = {
     if (!window.piDesktop?.on) return () => undefined;
     return window.piDesktop.on(IPC.event.notificationChanged, (payload) =>
       listener((payload as { notification: AppNotification }).notification),
+    );
+  },
+  onSessionsChanged: (
+    listener: (event: {
+      reason?: string;
+      pluginId?: string;
+      projectPath?: string | null;
+      selectSessionId?: string;
+    }) => void,
+  ) => {
+    if (!window.piDesktop?.on) return () => undefined;
+    return window.piDesktop.on(IPC.event.sessionsChanged, (payload) =>
+      listener(
+        (payload ?? {}) as {
+          reason?: string;
+          pluginId?: string;
+          projectPath?: string | null;
+          selectSessionId?: string;
+        },
+      ),
     );
   },
   onNotificationActivated: (

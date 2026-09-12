@@ -7,13 +7,11 @@ import { Input, Select } from "../ui";
 
 type MarketplaceSourceSettingsProps = {
   settings: AppSettings;
-  activeSource: string;
   onSourceRefreshed: (source: string) => void;
 };
 
 export function MarketplaceSourceSettings({
   settings,
-  activeSource,
   onSourceRefreshed,
 }: MarketplaceSourceSettingsProps) {
   const { t } = useTranslation();
@@ -65,15 +63,6 @@ export function MarketplaceSourceSettings({
           <h2 id="plugins-market-settings-title" className="settings-card-heading">
             {t("settings.marketProviderTitle")}
           </h2>
-          <p className="settings-row-desc">
-            {t("settings.marketProviderDesc")}
-            {source === "mirror" ? ` ${t("settings.marketProviderMirrorHint")}` : null}
-          </p>
-          {activeSource ? (
-            <p className="plugins-market-settings-active">
-              {t("settings.marketActiveSource", { url: activeSource })}
-            </p>
-          ) : null}
         </div>
         <div className="plugins-market-settings-control">
           <Select

@@ -59,6 +59,18 @@ Local plugins usable → developer-friendly → marketplace distribution → sig
 - Enterprise private sources (still planned)
 - Marketplace reviews / quality score (optional, still planned)
 
+### R7 — Agent extensions (v1.1 ✅, D387 / D388)
+- v1: ExtensionAPI adapter in the Agent sidecar; tools, commands, lifecycle and
+  provider hooks, basic UI prompts
+- v1.1: modules are a plugin contribution (`contributes.agentExtensions`, permission
+  `agent.extension`); "Import pi extension" turns a pi CLI extension into a
+  development plugin; no separate registry or settings tab
+- v2: custom session entries, `sessionManager` read shim, editor read/write,
+  shortcuts, markdown transformers; marketplace distribution once signing lands
+- v3: pi CLI `settings.json` hints, unified skill/prompt discovery, remote-control
+  prompt routing
+- Spec: [16-trusted-extensions.md](16-trusted-extensions.md); ADR 0214, ADR 0215
+
 ## 3. Mapping to product milestones
 
 | Product milestone | Plugin goal |

@@ -21,28 +21,28 @@ English while the sample conversation is Chinese. The
 The home screen is the first surface a new install shows: a hero, the composer,
 and the sidebar with sessions grouped by project.
 
-![PI-Desktop home in the light theme](/screenshots/app/en/home-light.webp)
+![PI-Desktop home in the light theme](../public/screenshots/app/en/home-light.webp)
 
-![PI-Desktop home in the dark theme](/screenshots/app/en/home-dark.webp)
+![PI-Desktop home in the dark theme](../public/screenshots/app/en/home-dark.webp)
 
-![The chat destination in the dark theme](/screenshots/app/en/dark-home.webp)
+![The chat destination in the dark theme](../public/screenshots/app/en/dark-home.webp)
 
 A conversation streams into the transcript with a minimap rail on the right;
 hovering the rail magnifies the markers and previews the message under the
 cursor.
 
-![A conversation with the minimap rail](/screenshots/app/en/minimap.webp)
+![A conversation with the minimap rail](../public/screenshots/app/en/minimap.webp)
 
-![The minimap rail magnified under the cursor](/screenshots/app/en/minimap-hover.webp)
+![The minimap rail magnified under the cursor](../public/screenshots/app/en/minimap-hover.webp)
 
 The Composer's model × reasoning chip switches the model for the session. In the
 composer, `/` opens the command menu and `@` opens the file reference menu.
 
-![The model and reasoning menu in the Composer](/screenshots/app/en/model-menu.webp)
+![The model and reasoning menu in the Composer](../public/screenshots/app/en/model-menu.webp)
 
-![The slash command menu in the composer](/screenshots/app/en/composer-slash.webp)
+![The slash command menu in the composer](../public/screenshots/app/en/composer-slash.webp)
 
-![The at-mention file menu in the composer](/screenshots/app/en/composer-at.webp)
+![The at-mention file menu in the composer](../public/screenshots/app/en/composer-at.webp)
 
 ## Work panels
 
@@ -50,112 +50,112 @@ The work panel opens beside the conversation when the agent produces an
 artifact. The frames below are the panels without an active workspace, which is
 the state a conversation starts in.
 
-![The review panel](/screenshots/app/en/panel-review.webp)
+![The review panel](../public/screenshots/app/en/panel-review.webp)
 
-![The browser preview panel](/screenshots/app/en/panel-browser.webp)
+![The browser preview panel](../public/screenshots/app/en/panel-browser.webp)
 
-![The file browser panel](/screenshots/app/en/panel-files.webp)
+![The file browser panel](../public/screenshots/app/en/panel-files.webp)
 
-![The work panel switcher menu](/screenshots/app/en/panel-menu.webp)
+![The work panel switcher menu](../public/screenshots/app/en/panel-menu.webp)
 
 ## Destinations
 
 Pull requests, the project archive, and scheduled tasks are full-page
 destinations reached from the sidebar.
 
-![The pull requests destination](/screenshots/app/en/pulls-live.webp)
+![The pull requests destination](../public/screenshots/app/en/pulls-live.webp)
 
-![The pull requests destination in the dark theme](/screenshots/app/en/dark-pulls.webp)
+![The pull requests destination in the dark theme](../public/screenshots/app/en/dark-pulls.webp)
 
-![The project archive](/screenshots/app/en/project-archive-live.webp)
+![The project archive](../public/screenshots/app/en/project-archive-live.webp)
 
-![The project archive in the dark theme](/screenshots/app/en/dark-project-archive.webp)
+![The project archive in the dark theme](../public/screenshots/app/en/dark-project-archive.webp)
 
-![Scheduled tasks](/screenshots/app/en/scheduled-live.webp)
+![Scheduled tasks](../public/screenshots/app/en/scheduled-live.webp)
 
 ## Notifications and toasts
 
 The notification inbox keeps a durable record of finished work, permission
 requests, and update notices. Toasts cover the transient end of the same range.
 
-![The notification inbox in the light theme](/screenshots/app/en/notifications-light.webp)
+![The notification inbox in the light theme](../public/screenshots/app/en/notifications-light.webp)
 
-![The notification inbox in the dark theme](/screenshots/app/en/notifications-dark.webp)
+![The notification inbox in the dark theme](../public/screenshots/app/en/notifications-dark.webp)
 
-![The notification popover in a narrow window](/screenshots/app/en/notifications-narrow.webp)
+![The notification popover in a narrow window](../public/screenshots/app/en/notifications-narrow.webp)
 
-![Success, warning, and error toasts in the light theme](/screenshots/app/en/toasts-light.webp)
+![Success, warning, and error toasts in the light theme](../public/screenshots/app/en/toasts-light.webp)
 
-![Success, warning, and error toasts in the dark theme](/screenshots/app/en/toasts-dark.webp)
+![Success, warning, and error toasts in the dark theme](../public/screenshots/app/en/toasts-dark.webp)
 
 ## Global search
 
 `⌘K` opens one dialog over sessions, pages, settings rows, and commands.
 Choosing a settings hit navigates to the tab and flashes the row.
 
-![Global search with recent sessions](/screenshots/app/en/search.webp)
+![Global search with recent sessions](../public/screenshots/app/en/search.webp)
 
-![Global search matching sessions](/screenshots/app/en/search-query.webp)
+![Global search matching sessions](../public/screenshots/app/en/search-query.webp)
 
-![Global search matching settings rows](/screenshots/app/en/search-settings.webp)
+![Global search matching settings rows](../public/screenshots/app/en/search-settings.webp)
 
-![Global search matching destination pages](/screenshots/app/en/search-pages.webp)
+![Global search matching destination pages](../public/screenshots/app/en/search-pages.webp)
 
-![A settings hit opened from search](/screenshots/app/en/search-anchor.webp)
+![A settings hit opened from search](../public/screenshots/app/en/search-anchor.webp)
 
-![Global search in the dark theme](/screenshots/app/en/search-dark.webp)
+![Global search in the dark theme](../public/screenshots/app/en/search-dark.webp)
 
 ## Plugins
 
 Installed plugins, the marketplace, and the package workflow live on the plugins
 destination.
 
-![Installed plugins](/screenshots/app/en/plugins-live.webp)
+![Installed plugins](../public/screenshots/app/en/plugins-live.webp)
 
-![The plugin marketplace](/screenshots/app/en/plugins-market.webp)
+![The plugin marketplace](../public/screenshots/app/en/plugins-market.webp)
 
-![The plugins page menu](/screenshots/app/en/plugins-menu.webp)
+![The plugins page menu](../public/screenshots/app/en/plugins-menu.webp)
 
-![The per-plugin row menu](/screenshots/app/en/plugins-row-menu.webp)
+![The per-plugin row menu](../public/screenshots/app/en/plugins-row-menu.webp)
 
-![The new plugin template dialog](/screenshots/app/en/plugins-template.webp)
+![The new plugin template dialog](../public/screenshots/app/en/plugins-template.webp)
 
 ## Extensions
 
 MCP servers, Skills, and Subagents are managed independently of plugins, each
 with global or project-scoped activation.
 
-![MCP servers](/screenshots/app/en/extensions-mcp.webp)
+![MCP servers](../public/screenshots/app/en/extensions-mcp.webp)
 
-![The activation scope selector](/screenshots/app/en/extensions-scope.webp)
+![The activation scope selector](../public/screenshots/app/en/extensions-scope.webp)
 
-![The MCP server editor](/screenshots/app/en/extensions-mcp-editor.webp)
+![The MCP server editor](../public/screenshots/app/en/extensions-mcp-editor.webp)
 
-![Skills](/screenshots/app/en/extensions-skills.webp)
+![Skills](../public/screenshots/app/en/extensions-skills.webp)
 
-![Subagents](/screenshots/app/en/extensions-subagents.webp)
+![Subagents](../public/screenshots/app/en/extensions-subagents.webp)
 
-![Plugin-provided subagents](/screenshots/app/en/extensions-subagents-provided.webp)
+![Plugin-provided subagents](../public/screenshots/app/en/extensions-subagents-provided.webp)
 
-![The subagent editor](/screenshots/app/en/extensions-subagent-editor.webp)
+![The subagent editor](../public/screenshots/app/en/extensions-subagent-editor.webp)
 
-![Subagents in the dark theme](/screenshots/app/en/extensions-subagents-dark.webp)
+![Subagents in the dark theme](../public/screenshots/app/en/extensions-subagents-dark.webp)
 
-![MCP servers in the dark theme](/screenshots/app/en/extensions-mcp-dark.webp)
+![MCP servers in the dark theme](../public/screenshots/app/en/extensions-mcp-dark.webp)
 
 ## Settings
 
 Settings is a full-page destination with a searchable tab rail.
 
-![Basics — language, theme, and appearance](/screenshots/app/en/settings-live.webp)
+![Basics — language, theme, and appearance](../public/screenshots/app/en/settings-live.webp)
 
-![Basics in the dark theme](/screenshots/app/en/dark-settings.webp)
+![Basics in the dark theme](../public/screenshots/app/en/dark-settings.webp)
 
-![Model configuration provider defaults](/screenshots/app/en/settings-models.webp)
+![Model configuration provider defaults](../public/screenshots/app/en/settings-models.webp)
 
-![Extensions marketplace with the catalog source picker](/screenshots/app/en/settings-extensions.webp)
+![Extensions marketplace with the catalog source picker](../public/screenshots/app/en/settings-extensions.webp)
 
-![Extensions marketplace with a custom catalog URL](/screenshots/app/en/settings-extensions-custom.webp)
+![Extensions marketplace with a custom catalog URL](../public/screenshots/app/en/settings-extensions-custom.webp)
 
 ## Regenerating these frames
 

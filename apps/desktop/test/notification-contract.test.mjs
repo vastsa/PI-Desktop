@@ -83,7 +83,7 @@ test("sidebar terminal outcomes are notification-backed, not lifecycle-backed", 
   assert.match(mainSource, /req\.viewingSessionId/);
 });
 
-test("native notifications only show for an unfocused window and navigate back", () => {
+test("task and interactive native notifications keep separate visibility rules", () => {
   assert.match(mainSource, /app\.setAppUserModelId\(APP_ID\)/);
   assert.match(mainSource, /mainWindow\.isFocused\(\)/);
   assert.match(mainSource, /SystemNotification\.isSupported\(\)/);
@@ -91,6 +91,9 @@ test("native notifications only show for an unfocused window and navigate back",
   assert.match(mainSource, /IPC\.event\.notificationActivated/);
   assert.match(mainSource, /mainWindow\.restore\(\)/);
   assert.match(appSource, /showNativeNotification/);
+  assert.match(appSource, /kind: "task"/);
+  assert.match(storeSource, /kind: "interactive"/);
+  assert.match(mainSource, /input\.kind === "interactive"/);
   assert.match(appSource, /openNotification\(id\)/);
   assert.match(
     storeSource,

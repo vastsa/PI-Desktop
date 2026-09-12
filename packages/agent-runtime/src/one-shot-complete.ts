@@ -16,6 +16,7 @@ import { classifyAgentError } from "./agent-errors.js";
 import { assistantContent, usageFromPi } from "./agent-messages.js";
 import {
   buildProviderModel,
+  copilotRequestHeaders,
   createProviderModels,
   type RuntimeProviderConfig,
 } from "./provider-binding.js";
@@ -23,7 +24,7 @@ import {
   openCodeEndpointFromProvider,
   withOpenCodeSessionHeaders,
 } from "./opencode-session-headers.js";
-import { withProviderUserAgent } from "./provider-user-agent.js";
+import { mergeProviderHeaders, withProviderHeaders } from "./provider-headers.js";
 import {
   captureProviderResponse,
   createProviderRetryStream,
@@ -85,7 +86,7 @@ export async function completeOneShot(
   let transientRetryAttempt = 0;
   let rateLimitRetryAttempt = 0;
 
-  const requestOptions: SimpleStreamOptions = withProviderUserAgent(
+  const requestOptions: SimpleStreamOptions = withProviderHeaders(
     withOpenCodeSessionHeaders(
       {
         ...(options.signal ? { signal: options.signal } : {}),
@@ -101,7 +102,10 @@ export async function completeOneShot(
         sessionId: options.sessionId,
       },
     ),
-    provider.userAgent,
+    mergeProviderHeaders(
+      copilotRequestHeaders(provider, context),
+      provider.headers,
+    ),
   );
   const stream = createProviderRetryStream(
     model,

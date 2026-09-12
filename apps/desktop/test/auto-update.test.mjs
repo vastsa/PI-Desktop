@@ -59,7 +59,7 @@ test("update IPC channels are declared and whitelisted for the preload bridge", 
   assert.match(
     typesSource,
     /releaseNotes\?: string/,
-    "UpdateState carries dual-locale product notes from Main",
+    "UpdateState carries localized product notes from Main",
   );
 });
 
@@ -76,14 +76,20 @@ test("main process registers update handlers and the auto-check lifecycle", () =
   assert.match(mainSource, /new AppUpdaterController\(/);
   assert.match(mainSource, /isPackaged:\s*!isDevelopmentBuild/);
   assert.match(mainSource, /updater\.startAutoCheck\(\)/);
+  assert.match(
+    mainSource,
+    /await ensureWindow\(\);[\s\S]*updater\.startAutoCheck\(\)/,
+    "auto-check starts after the first window exists, never on the boot await path",
+  );
   assert.match(mainSource, /updater\.dispose\(\)/);
 });
 
-test("updater gates delivery mode by platform, packaging and signature reality", () => {
-  // Unsigned macOS builds must not attempt in-app installs (Squirrel.Mac
-  // rejects them); dev builds are disabled outright.
+test("updater gates delivery mode by platform and delivery policy", () => {
+  // macOS stays manual-delivery even for notarized artifacts; dev builds are
+  // disabled outright.
   assert.match(updaterSource, /if \(!isPackaged\) return "disabled"/);
   assert.match(updaterSource, /win32.*in-app|in-app.*win32/s);
+  assert.match(updaterSource, /PORTABLE_EXECUTABLE_FILE \? "manual"/);
   assert.match(updaterSource, /APPIMAGE/);
   assert.match(updaterSource, /autoInstallOnAppQuit = true/);
   assert.match(
@@ -105,7 +111,7 @@ test("updater gates delivery mode by platform, packaging and signature reality",
   assert.match(
     updaterSource,
     /formatChangelogNotes/,
-    "in-app dual-locale notes attach from the shared changelog catalog",
+    "in-app localized notes attach from the shared changelog catalog",
   );
   assert.match(
     updaterSource,
@@ -116,6 +122,18 @@ test("updater gates delivery mode by platform, packaging and signature reality",
     updaterSource,
     /refreshReleaseNotes/,
     "locale changes re-resolve notes without a new feed check",
+  );
+  assert.match(
+    updaterSource,
+    /AUTO_CHECK_TIMEOUT_MS = 8_000/,
+    "auto GitHub checks must not wait for Chromium's ~60s socket timeout",
+  );
+  assert.match(updaterSource, /raceWithTimeout/);
+  assert.match(updaterSource, /UPDATE_CHECK_TIMEOUT/);
+  assert.match(
+    updaterSource,
+    /status === "checking"[\s\S]*status: "idle"/,
+    "a timed-out auto-check must leave checking so the next interval can run",
   );
 });
 
@@ -137,6 +155,7 @@ test("renderer exposes the updates API, banner and settings row", () => {
   assert.match(settingsSource, /updates\.releaseNotes/);
   assert.match(settingsSource, /<ReleaseNotesDialog/);
   assert.match(releaseNotesDialogSource, /CHANGELOG\[locale\]/);
+  assert.match(releaseNotesDialogSource, /new Intl\.DateTimeFormat\(locale,/);
   assert.match(releaseNotesDialogSource, /role="dialog"/);
   assert.match(releaseNotesDialogSource, /aria-modal="true"/);
   assert.match(releaseNotesDialogSource, /data-release-version/);
@@ -194,22 +213,48 @@ test("packaging publishes an electron-updater feed for GitHub Releases", () => {
     assert.match(pkg.scripts[script], /--publish never/, script);
   }
   assert.equal(pkg.build.linux.executableName, "pi-desktop");
-  // Scoped package name is not a valid deb package/file name.
+  const linuxTargets = pkg.build.linux.target.map((entry) => entry.target);
+  assert.deepEqual(
+    linuxTargets,
+    ["AppImage", "deb", "rpm"],
+    "Linux release targets",
+  );
+  // Scoped package name is not a valid deb/rpm package or file name.
   assert.equal(pkg.build.deb.packageName, "pi-desktop");
+  assert.equal(pkg.build.rpm.packageName, "pi-desktop");
   assert.ok(!pkg.build.deb.artifactName.includes("${name}"), "deb artifactName");
-  // GitHub asset URLs mangle spaces; keep the NSIS artifact name space-free.
+  assert.equal(
+    pkg.build.rpm.artifactName,
+    "pi-desktop-${version}-${arch}.${ext}",
+    "rpm artifactName",
+  );
+  assert.deepEqual(
+    pkg.build.rpm.fpm,
+    ["--rpm-rpmbuild-define", "_build_id_links none"],
+    "rpm build-id configuration",
+  );
+  // GitHub asset URLs mangle spaces; keep Windows artifact names space-free.
   assert.equal(pkg.build.nsis.artifactName, "PI-Desktop-Setup-${version}.${ext}");
+  const winTargets = pkg.build.win.target.map((entry) => entry.target);
+  assert.deepEqual(winTargets, ["nsis", "portable"], "Windows release targets");
+  assert.equal(
+    pkg.build.portable.artifactName,
+    "PI-Desktop-Portable-${version}.${ext}",
+  );
+  assert.equal(pkg.build.portable.requestExecutionLevel, "user");
   // The upload step must carry every updater feed, and the release publishes
   // all platforms unfiltered (D126/D285).
   assert.match(releaseWorkflowSource, /release\/\*\.zip/);
+  assert.match(releaseWorkflowSource, /release\/\*\.rpm/);
   assert.match(releaseWorkflowSource, /release\/latest\*\.yml/);
   assert.match(releaseWorkflowSource, /files: dist\/\*/);
 });
 
-test("shared dual-locale changelog is the in-app notes source of truth", () => {
+test("shared shipped-locale changelog is the in-app notes source of truth", () => {
   assert.match(changelogSource, /export const CHANGELOG/);
   assert.match(changelogSource, /formatChangelogNotes/);
   assert.match(changelogSource, /"zh-CN"/);
+  assert.match(changelogSource, /"zh-TW"/);
   assert.match(changelogSource, /version: "0\.2\.7"/);
   assert.match(
     mainSource,

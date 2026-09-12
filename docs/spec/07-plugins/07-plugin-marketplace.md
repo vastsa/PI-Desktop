@@ -34,6 +34,9 @@ The host is responsible for:
 - Default catalog URL: `https://raw.githubusercontent.com/vastsa/pi-desktop-plugins/main/catalog.json`
 - Package URLs may be absolute `https://` / `http://` / `file://`, or relative paths resolved against the catalog URL
 - HTTPS fetch uses `curl` in host-core
+- curl diagnostics are decoded as UTF-8 first and as the active Windows ANSI
+  code page when needed; a network failure remains `PLUGIN_NETWORK`, but its
+  localized message must not cross the RPC boundary as replacement characters
 
 ### Catalog source selection
 
@@ -105,6 +108,11 @@ A catalog without `schemaVersion` is v1 and keeps its current meaning. `schemaVe
 adds the fields below; every one of them is optional so a v1 catalog parses
 unchanged, and the client treats a missing field as "not asserted" rather than
 as a default-allow.
+
+Catalog `author` is a string in both v1 and v2. The plugin-manifest form
+`{ name, url?, email? }` is valid on `manifest.json` and invalid in
+`catalog.json`; host-core fails the whole refresh with `PLUGIN_MARKET_INVALID`
+if it receives a map there.
 
 ```jsonc
 {

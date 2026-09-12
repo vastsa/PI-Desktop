@@ -4,6 +4,12 @@
 
 Settings is a **full-window page** that replaces the app sidebar + main chrome (Codex electron behavior):
 
+- Settings remains usable when an unrelated startup read fails: a successfully
+  loaded settings snapshot is retained independently from the remaining
+  bootstrap data. If the settings read itself is unavailable, the content pane
+  shows a compact loading/failure state with a retry action instead of an empty
+  section.
+
 - Left settings rail only (sidebar surface `#f4f4f4` light / `#000` dark), **~275px** (Codex gold at 1200-wide)
 - Top of rail: traffic-light clearance, **Back to app** (`返回应用`), pill **Search settings…**
 - The 46px top band is a native window drag region across both the rail and the
@@ -22,7 +28,7 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   6. **Skills / 技能** — Lucide `BookOpen` (reusable agent instructions)
   7. **MCP** — Lucide `Server` (agent connections)
   8. **Subagents / 子智能体** — Lucide `Bot` (personal parallel agents)
-  9. **Import / 导入** — Lucide `Download` (bring sessions in from other tools)
+  9. **Import / 导入** — Lucide `Download` (bring sessions and model configuration in from other tools)
   10. **Projects / 项目** — Lucide `Archive` (durable project index)
   11. **Info / 信息** — Lucide `Info` (versions, logs, updates, developer)
   Icons are decorative (`aria-hidden` via the SVG default) and stay monochrome
@@ -65,6 +71,14 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
     (`--font-sans`) without a reload; System default clears the override;
     long system lists are windowed so only the visible slice is in the DOM
     (bounded font loading) and opening the picker never blocks input
+  - **Font size**: Starbucks-style cup presets (Tall / Grande / Venti /
+    Trenta) plus a
+    percentage slider (80%–150%). Cup labels stay on one line. Selection persists as
+    `AppSettings.fontScale` (`1` = product ramp; absent means 1). The
+    renderer sets `--font-scale` on the root so every `--text-*` step and
+    shared Lucide icon scales in proportion without a reload. Window Zoom
+    In/Out/Reset stays independent. The UI never asks for a px value
+    (D343 / ADR 0180)
   - **Auto language detection** resolves the OS locale through the main process
     (`app.getLocale()`) rather than the renderer's `navigator.language`, and the
     Auto option shows the detected language inline (e.g. "Currently 简体中文")
@@ -95,12 +109,18 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
 - **Permissions** card: the global permission-mode control
   (ask / accept-edits / auto) that governs how autonomously the agent acts.
 - **Defaults** card: the host-backed default operating mode (Agent / Plan / Goal),
-  command shell selection, Enter-to-send control, and the large text paste
-  threshold. The threshold controls when a text-only paste becomes a temporary
-  session-scratch file; it defaults to 600 characters and accepts integer values
-  from 1 through 1,000,000.
-- The **Command shell** row in Defaults uses the host-discovered catalog of native PowerShell,
-  cmd, Git Bash, and Bash with IDs `windows-powershell`, `cmd`, `git-bash`, and
+  command shell selection, Link open destination, context usage display
+  (remaining or used), Enter-to-send control, and the large text paste
+  threshold. Link open destination uses the Work panel browser by default
+  and can route plain HTTP(S) link clicks to the system browser. Context
+  usage display controls whether the composer toolbar context ring and its
+  popover lead with the remaining or the used capacity figure; the default
+  is remaining. The threshold controls when a text-only paste becomes a
+  temporary session-scratch file; it defaults to 600 characters and accepts
+  integer values from 1 through 1,000,000.
+- The **Command shell** row in Defaults uses the host-discovered catalog of native
+  PowerShell 5.1, PowerShell 7, cmd, Git Bash, and Bash with IDs
+  `windows-powershell`, `windows-pwsh`, `cmd`, `git-bash`, and
   `bash` where supported. The selected `defaultCommandShell` persists across
   restart; writes reject unavailable or wrong-platform IDs. If a persisted
   choice later becomes unavailable, the first available platform shell is used
@@ -168,7 +188,9 @@ a usage tab.
   - picking a vendor opens a single dialog that renders whatever the flow asks
     for — an opened browser with a copyable link, a device code, a choice, or a
     text field — with a cancel action that aborts the local callback server or
-    the polling loop
+    the polling loop. Plain text prompts submit their trimmed value, including
+    an empty string when the vendor defines it as the default (for example,
+    GitHub Copilot's blank Enterprise URL means github.com).
   - Remove account is a destructive, two-step action. It deletes that account's
     OAuth credential and provider row, clears or repairs the global default when
     needed, and leaves other accounts from the same vendor untouched
@@ -193,11 +215,18 @@ a usage tab.
     style, and secret). It shrinks to the overlay on a narrow window, and a
     focused credential field keeps its 2px accent ring inside the dialog
     instead of clipping against the scrolling body. It then selects one or
-    more models from a searchable multi-select catalog. Each selected model has an independent, compact
+    more models from a searchable multi-select catalog. The discovered-list
+    header has a checkbox that selects or clears every currently visible row,
+    including when a search filter is narrowing the list, and a Fetch list
+    action that re-probes the service immediately. Each selected model has an independent, compact
     configuration row for context window, max output, supported thinking
     levels, and the default thinking level. The row keeps the model ID,
     source, capabilities, and token limits visible at a glance, and expands
-    in place for edits. The first row starts expanded so the form remains
+    in place for edits. The expanded body is a compact sheet, not a stacked
+    form dump: 2xs labels, dense numeric fields without native spinners, the
+    alias hint as a title tooltip rather than a paragraph, the default
+    thinking selector on the thinking label row, and attachments plus
+    subagent delegation on one wrapping row. The first row starts expanded so the form remains
     discoverable; additional rows stay collapsed to keep large model sets
     scannable. The bundled models.dev release snapshot pre-fills known rows; custom IDs
     absent from it use the runtime generic values. The portaled
@@ -206,9 +235,11 @@ a usage tab.
     detached. Search results keep a dedicated no-match state instead of
     reusing the search placeholder.
   - each model option and configuration row shows a compact text/vision
-    capability state. Vision is derived only from the exact models.dev model
-    record; provider discovery or a user-entered ID cannot promote an unknown
-    model to image transport.
+    capability state. Settings compares the checkbox with the published model
+    record, while the Composer badge and runtime use the effective binding:
+    absent or `null` `supportsImages` follows the published value, and an
+    explicit `true` or `false` overrides it. An unknown model remains
+    conservative unless its configured binding explicitly enables image input.
   - model discovery is debounced after a valid endpoint, key, or API style
     change, including no-auth/local endpoints; named add-path discovery waits
     for an API key (editing reuses the stored secret) and does not mark
@@ -222,29 +253,46 @@ a usage tab.
     catalog does not describe — a hand-typed ID, a vendor-account model, or an
     endpoint that went quiet — still keeps its stored selections, so discovery
     being unavailable can never erase configuration.
-    The label and optional hint sit above one compact grouped control; the
-    options wrap only when the pane is narrow.
+    The label, optional hint, and default selector sit on one row above one
+    compact grouped control that spans the pane; the seven options share the
+    width equally and wrap only when the pane is narrow.
     Removing the current default falls back to the first enabled level; no
     enabled levels disable the default selector and show the model's
     manual-override hint
   - a new dialog starts with only **Service**. Named endpoints from
     models.dev (OpenAI, Anthropic, Google Gemini, OpenRouter, Groq, xAI,
     Mistral, Together, Fireworks, OpenCode Go, Z.AI, DeepSeek, Qwen/DashScope,
-    Moonshot/Kimi, Zhipu, SiliconFlow, Volcengine Ark, MiniMax, Xiaomi, Kimi
+    Moonshot/Kimi, Zhipu, SiliconFlow, Volcengine Ark, MiniMax,
+    MiniMax (OpenAI), Xiaomi, Kimi
     For Coding) then show Service + API key, with the published host as a
-    one-line summary. Custom endpoint then shows Service, Name, Base URL, then
-    API key beside API format. The custom Base URL field spans the dialog's
-    available width for long gateway paths, accepts only http(s) service base URLs,
-    and trims pasted operation paths such as `/models`, `/messages`,
-    `/chat/completions`, or `/responses` when the field loses focus. Invalid
-    URLs show an inline error and block discovery and save. Named display names
-    and the optional User-Agent stay behind Advanced. Empty User-Agent keeps
-    the adapter default.
+    one-line summary. Custom endpoint then shows Service, Name beside Base URL,
+    and API key beside API format in three explicit rows so each input keeps a
+    stable alignment as the form changes. The custom Base URL field accepts
+    only http(s) service base URLs and trims pasted operation paths such as `/models`,
+    `/messages`, `/chat/completions`, or `/responses` when the field loses
+    focus. The placeholder is enough — no helper paragraph under the URL.
+    Invalid URLs show an inline error and block discovery and save. A failed
+    model-list probe shows a compact classified error in the empty pane, or a
+    one-line banner above a cached list; raw HTTP/JSON dumps are not shown.
+    Named display names and optional custom headers stay behind Advanced settings.
+    The dialog header's upper-right actions include an explicit Advanced settings
+    button that opens a separate compact modal, keeping the main form focused on
+    the endpoint and model panes. The modal uses the header close action only;
+    it does not render a footer action row. The modal offers common presets including a
+    ready-to-use User-Agent, copies the same normalized header record used for
+    persistence as pretty-printed JSON (blank names omitted, last write wins),
+    and imports either a direct JSON header map or
+    `{ "headers": { ... } }`; imported keys merge case-insensitively without
+    duplicating existing rows. The editor keeps at most five header rows visible
+    and scrolls internally for additional rows. Empty headers keep adapter
+    defaults.
     Service is a searchable anchored menu of vendors (filter by localized
     name, vendor key, alias, or host), not a native select, region grouping,
     stepper, or vendor-card grid. Saved named rows store the models.dev `vendorKey` and
     the preset `apiStyle` (Chat Completions, Responses, Anthropic, Gemini, or
     `opencode_go`).
+    A saved row carrying an unknown or legacy API style remains editable; the
+    form shows the Chat Completions fallback and can repair the value on save.
   - helper copy stays out of the model cards; labels, status badges, and the
     empty/error state carry the necessary context without explanatory
     paragraphs
@@ -315,6 +363,57 @@ system while preserving their different data ownership:
   the width with evenly divided segments, search sits below it, and the
   actions wrap left-aligned. Group headers drop the resolved path so row copy
   keeps the width.
+- The Subagents create/edit sheet pins a model with a searchable, provider-
+  grouped anchored menu — the same option-menu control the service picker uses
+  — over the configured, runnable models the Composer offers, plus an
+  inherit-session option. A native `<select>` cannot serve this list: an
+  install can configure dozens of models, and only an anchored surface scrolls
+  inside itself and accepts a filter. Its thinking selector offers inherit-session,
+  do-not-send, and the seven canonical levels. Every option comes from the
+  configured provider catalog, so the sheet never accepts a hand-typed model
+  id; when no provider offers a runnable model it shows an empty state whose
+  action opens Models.
+  A pin that is no longer configured remains visible so editing does not
+  silently drop it. The stored frontmatter value is still
+  `vendorKey-or-name/modelId`; generic or colliding provider aliases use a
+  unique display name, then the stored provider id, to keep each provider's
+  choices distinct.
+
+- The selected model-configuration thinking chip uses a solid accent fill with
+  inverted primary text in both light and dark themes, so the enabled level is
+  visually distinct from the track.
+
+- Subagents open one **New subagent / Edit subagent** sheet that
+  pre-fills the same fields the runtime's `BUILTIN_SUBAGENT_DOCUMENTS` ship
+  with. Above the name field the sheet shows a "Start from template" row of
+  compact name chips (Explorer, Code reviewer, Test runner, Fixer, plus a
+  blank option). Chips show the localized name only; the selected chip's
+  one-line caption sits once under the row. Hyphenated preset ids
+  (`code-reviewer`, `test-runner`) resolve through an explicit catalog map
+  (`presetReviewerName` / `presetTestRunnerName`) — they must not be
+  turned into keys by capitalizing the first letter. Picking a chip
+  replaces the draft's description, tools, max turns and body wholesale.
+  The chip uses the same accent-tint pill as the tool grant row. Create
+  omits the long subtitle and the per-chip Apply label; model, thinking,
+  turn limit, output limit and scope sit behind an Advanced disclosure that
+  starts closed on create and open on edit. The output limit caps one delegate
+  response (issue #171). It defaults to an empty field, which reads as "follow
+  the model" rather than "no limit" — empty is the only spelling of that, so
+  the placeholder is the model default and not an unlimited label. It is
+  separate from the model binding's Advanced **Max output** because the binding
+  caps every caller of that model, while this caps one delegate's own
+  responses. The model field
+  is a picker over the configured providers' models; the picker groups entries
+  by provider and every option comes from the configured catalog, so there is
+  no hand-typed pin entry (issue #60). With no providers configured it shows
+  an empty state whose action opens Models. Builtins and project shadows stay
+  on the existing read-only rows; the picker is for new and user-owned
+  subagents only.
+  The create/edit sheet stays compact at desktop sizes: form controls are
+  local filled wells with restrained padding, the prompt editor is the only
+  intentionally tall control, and Advanced remains a compact disclosure. Hover
+  and focus lift a control without adding a persistent in-flow divider; invalid
+  form state is announced from the shared error region.
 
 ### Instructions (`instructions` tab)
 - Edit the global instruction Markdown used by every PI-Desktop Agent session.
@@ -323,10 +422,22 @@ system while preserving their different data ownership:
   menu and are resolved after the global layer.
 
 ### Import
-- Scan supported local agent stores and review candidates through
-  `SessionImportPanel`
-- Source and project-path grouping behavior follows
+- Scan supported local agent stores for **sessions** and **model configuration**
+  through two independent cards on the same destination. Neither scan runs
+  automatically (D007 / D342).
+- Sessions: review candidates through `SessionImportPanel`. Source and
+  project-path grouping behavior follows
   [08-component-spec §18](08-component-spec.md#18-sessionimportpanel)
+- Model configuration: review provider drafts through
+  `ModelConfigImportPanel`
+  ([08-component-spec §18.5](08-component-spec.md#185-modelconfigimportpanel)).
+  Stored API keys from those configs are copied into the host secret store;
+  subscription/OAuth logins are not copied. CC Switch (`~/.cc-switch`) is
+  scanned as its own source so saved profiles, not only the currently
+  applied live file, can be imported. Re-importing an equivalent provider
+  (same normalized base URL, API style, and credential) is skipped; profiles
+  with different credentials at one endpoint remain separate. If the app has
+  no default model yet, the first newly created provider becomes the default.
 
 ### Project archive
 - Reuses the durable Projects index as a settings-scale management surface
@@ -381,8 +492,9 @@ system while preserving their different data ownership:
   - developer mode is off unless the optional persisted
     `AppSettings.developerMode` value is `true`
   - the developer mode switch unlocks the Open console button, F12 on every
-    platform, Ctrl+Shift+I on Windows/Linux, and the macOS View-menu developer
-    tools item
+    platform, Ctrl+Shift+I on Windows/Linux, the macOS View-menu developer
+    tools item, and Copy conversation ID / Open session path on the
+    conversation overflow menu
   - disabling developer mode closes an open console and disables or removes
     every entry point; Settings search indexes the card, switch, and console
     action
@@ -391,7 +503,7 @@ system while preserving their different data ownership:
   localized to the product language and marking the current and available
   versions when present
 - When an update is available, downloading, or downloaded and Main attached
-  dual-locale product notes, the Updates row shows a compact "What's new"
+  localized product notes, the Updates row shows a compact "What's new"
   list under the status text (same notes as the ambient banner; D164). The
   full-history modal remains available when the app is up to date or update
   checks are disabled in development

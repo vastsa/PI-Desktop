@@ -1,6 +1,6 @@
 # ADR 0054: Selectable command shell catalog and execution identity
 
-- Status: Accepted for implementation (timeout bounds in §4 amended by ADR 0167 / D329)
+- Status: Accepted for implementation (timeout bounds in §4 amended by ADR 0167 / D329; the PowerShell 7 entry is added by ADR 0209 / D381)
 - Date: 2026-07-31
 - Baseline: `0.4.14`
 - Protocol: v9
@@ -22,14 +22,17 @@ Host-core exposes a platform-aware catalog with stable IDs:
 
 | ID | Shell | Discovery |
 |---|---|---|
-| `windows-powershell` | native PowerShell | `powershell.exe`/native PowerShell on Windows |
+| `windows-powershell` | in-box Windows PowerShell 5.1 | `powershell.exe`/native PowerShell on Windows |
+| `windows-pwsh` | PowerShell 7+ (side-by-side install) | `pwsh.exe` under `%ProgramFiles%\PowerShell\7` or on PATH |
 | `cmd` | Windows Command Prompt | `cmd.exe` on Windows |
 | `git-bash` | Git for Windows Bash | Git for Windows installation and PATH |
 | `bash` | Unix Bash | `/bin/bash`, `/usr/bin/bash`, or an approved PATH entry on macOS/Linux |
 
-The Windows catalog contains `windows-powershell`, `cmd`, and `git-bash`; the
-Unix catalog contains `bash`. The catalog does not accept an arbitrary
-renderer- or sidecar-supplied executable path.
+The Windows catalog contains `windows-powershell`, `windows-pwsh`, `cmd`, and
+`git-bash`; the Unix catalog contains `bash`. The catalog does not accept an
+arbitrary renderer- or sidecar-supplied executable path. Windows PowerShell 5.1
+stays the platform default; `windows-pwsh` is selectable but never selected
+implicitly, so choosing it cannot change an existing user's shell by surprise.
 
 Settings writes accept only an available ID for the current platform. Unknown,
 unavailable, and wrong-platform IDs are rejected. If a persisted ID later

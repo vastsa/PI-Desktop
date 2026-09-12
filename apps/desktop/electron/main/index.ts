@@ -12,7 +12,7 @@ import {
   shell,
   Tray,
 } from "electron";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
 import {
@@ -23,6 +23,7 @@ import {
 } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { listInstalledFonts } from "./system-fonts";
+import { cloneGitRepository } from "./git-clone";
 import {
   applyNetworkProxyFromAppSettings,
   currentNetworkProxy,
@@ -54,6 +55,12 @@ import {
   modelIdsMatch,
   ok,
   parseMcpImport,
+  draftMatchesExisting,
+  isModelConfigImportSource,
+  modelConfigImportKey,
+  providerCreateInputFromDraft,
+  publicModelConfigCandidate,
+  type ModelConfigImportDraft,
   type ActivationScope,
   type AgentCapabilityQuery,
   type ComposerPasteFile,
@@ -63,6 +70,7 @@ import {
   type AgentEventEnvelope,
   type AgentPromptRequest,
   type PromptEnhancementRequest,
+  type SessionSummarizeTitleRequest,
   type AgentStopRequest,
   type AskToolResolution,
   type AppMenuCommand,
@@ -70,6 +78,7 @@ import {
   type CloseBehavior,
   type CommandShellCatalog,
   type CommandShellId,
+  type ComposerCommand,
   type GlobalPermissionMode,
   type KeybindingOverrides,
   type McpServerInput,
@@ -77,7 +86,6 @@ import {
   type McpServerStatus,
   type ModelBinding,
   type Mode,
-  resolveTranscriptTruncation,
   type NativeMenuAction,
   type OAuthRespondInput,
   type PlanExecution,
@@ -88,6 +96,7 @@ import {
   type Risk,
   type ShortcutPlatform,
   type ThinkingLevel,
+  type HostStatusEvent,
   type UiMessage,
   type MessageUsage,
   addUsage,
@@ -95,6 +104,8 @@ import {
   type UserSubagentRecord,
   type WindowControlAction,
   validateNetworkProxy,
+  trustedExtensionCommandId,
+  trustedExtensionCommandName,
 } from "@pi-desktop/shared";
 import {
   capabilitiesFromModelConfig,
@@ -104,18 +115,22 @@ import {
   visionFromModelConfig,
   expandSlashInvocation,
   enhancePromptDraft,
+  summarizeSessionTitle,
   completeOneShot,
   loadComposerTemplates,
   globalInstructionPath,
   loadInstructionChain,
   loadSubagentDefinitions,
   resolveSubagentProviders,
-  withUserAgentHeaders,
+  mergeProviderHeaders,
+  optionalProviderHeaders,
   type ComposerTemplate,
   type ThinkingCapabilities,
   type RuntimeProviderConfig,
   type UserSubagentDocument,
 } from "@pi-desktop/agent-runtime";
+import { AgentExtensionBridge } from "./agent-extensions";
+import { registerAgentExtensionIpc } from "./agent-extensions-ipc";
 import { isTemplateName, scaffold } from "@pi-desktop/plugin-devkit";
 import type {
   PluginCompleteResult,
@@ -135,13 +150,15 @@ import {
 import { HostProcess } from "./host-process";
 import {
   shouldCreateTaskNotification as shouldCreateTaskNotificationPolicy,
+  shouldShowNativeNotification,
 } from "./notification-policy";
 import { PersistenceOutbox } from "./persistence-outbox";
 import { InflightCheckpointer } from "./inflight-checkpoint";
 import { AgentSidecar } from "./agent-sidecar";
-import { PluginRuntime } from "./plugin-runtime";
-import { ClipboardHistory, type ClipboardCapture } from "./clipboard-history";
+import { PluginRuntime, resolveInsidePlugin as resolveInsidePluginRoot } from "./plugin-runtime";
+import { ClipboardHistory } from "./clipboard-history";
 import { createFsConsentService } from "./plugin-fs-consent";
+import { createDesktopConsentService } from "./plugin-desktop-consent";
 import { UserMcpRuntime } from "./user-mcp";
 import {
   MCP_CALL_TIMEOUT_MS,
@@ -154,7 +171,18 @@ import { PluginPanelHost } from "./plugin-panel-host";
 import { PluginViewHost, pluginViewKey } from "./plugin-view-host";
 import { parseAllowedExternalUrl } from "./safe-open-external";
 import type { PluginAppearance } from "../shared/plugin-panel-chrome";
-import { Logger } from "./logger";
+import { Logger, ignoreBrokenStdio } from "./logger";
+import {
+  GLIBC_UNSUPPORTED_STATUS,
+  assertLinuxGlibcSupported,
+  isGlibcUnsupportedError,
+} from "./linux-glibc";
+import {
+  DB_SCHEMA_TOO_NEW_STATUS,
+  detectRuntimeArch,
+  isDbSchemaTooNewError,
+  schemaTooNewOf,
+} from "./host-boot-diagnostics";
 import { collectWorkspaceDiff } from "./git-diff";
 import { BrowserPane, resolveLocalFile } from "./browser-view";
 import {
@@ -182,10 +210,15 @@ import {
   importComposerFiles,
   saveComposerPasteFiles,
 } from "./composer-paste";
+import {
+  consumeComposerPickerSelection,
+  rememberComposerPickerSelection,
+} from "./composer-picker";
 import { builtinComposerCommands, builtinPaletteItems } from "./builtin-commands";
 import {
   convertSession,
   scanAllSources,
+  scanModelConfigs,
   type ExternalSessionSummary,
   type ExternalSource,
 } from "./importers";
@@ -228,6 +261,13 @@ import {
   writeWindowState,
 } from "./window-preferences";
 import { createPlanUiProbe } from "./plan-ui-probe";
+import {
+  createMcpControlController,
+  McpControlServer,
+  mcpControlRendererEvent,
+} from "./mcp-control";
+import { createAgentHostBridge, type AgentHostBridge } from "./agent-host-bridge";
+import type { AgentQueuePushRequest } from "@pi-desktop/shared";
 
 // The shared error-code union is reconciled in the shared lane. Keep desktop
 // source type-safe while that lane is temporarily staged at main.
@@ -257,6 +297,10 @@ function stripWinLongPrefix(p: string): string {
   }
   return p;
 }
+
+// A closed stdout/stderr (Linux AppImage, GUI launch without a TTY) must not
+// surface as Electron's "Uncaught Exception: write EPIPE" dialog.
+ignoreBrokenStdio();
 
 app.setName(APP_NAME);
 if (process.platform === "win32") {
@@ -301,6 +345,7 @@ let pluginLauncherWindow: BrowserWindow | null = null;
 let pluginLauncherCreationPromise: Promise<BrowserWindow> | null = null;
 let pluginLauncherAccelerator: string | null = null;
 let pluginLauncherBinding: string | null = null;
+let summonWindowAccelerator: string | null = null;
 let windowCreationPromise: Promise<void> | null = null;
 let applicationBooted = false;
 const isDevelopmentBuild =
@@ -334,6 +379,9 @@ let workPanelChatResizeTimer: NodeJS.Timeout | null = null;
 let setWorkPanelChatWidthForWindow: ((width: number) => number) | null = null;
 let host: HostProcess | null = null;
 let sidecar: AgentSidecar | null = null;
+let mcpControl: McpControlServer | null = null;
+let agentHostBridge: AgentHostBridge | null = null;
+let desktopControl: ReturnType<typeof createMcpControlController> | null = null;
 let quitting = false;
 let shutdownComplete = false;
 let shutdownPromise: Promise<void> | null = null;
@@ -413,29 +461,96 @@ async function requestPluginNotificationPermission(): Promise<PluginNotification
   return result.permission;
 }
 
-async function readSystemClipboard(): Promise<ClipboardCapture | null> {
-  const { clipboard } = await import("electron");
-  const hasImage = clipboard.availableFormats().some((format) => /^image\//i.test(format));
-  if (hasImage) {
-    const image = clipboard.readImage();
-    if (!image.isEmpty()) {
+const clipboardHistory = new ClipboardHistory();
+
+const MAX_CLIPBOARD_IMAGE_PIXELS = 64_000_000;
+const MAX_UNKNOWN_CLIPBOARD_IMAGE_BYTES = 8 * 1024 * 1024;
+
+function bytesFromPaste(data: unknown): Uint8Array | null {
+  if (data instanceof Uint8Array) return data;
+  if (data instanceof ArrayBuffer) return new Uint8Array(data);
+  return null;
+}
+
+function imageDimensions(data: Uint8Array): { width: number; height: number } | null {
+  if (data.byteLength >= 24 && data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4e && data[3] === 0x47) {
+    return {
+      width: new DataView(data.buffer, data.byteOffset, data.byteLength).getUint32(16),
+      height: new DataView(data.buffer, data.byteOffset, data.byteLength).getUint32(20),
+    };
+  }
+  if (data.byteLength >= 10 && data[0] === 0x47 && data[1] === 0x49 && data[2] === 0x46) {
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    return { width: view.getUint16(6, true), height: view.getUint16(8, true) };
+  }
+  if (data.byteLength >= 30 && data[0] === 0x52 && data[1] === 0x49 && data[2] === 0x46 && data[3] === 0x46 && data[8] === 0x57 && data[9] === 0x45 && data[10] === 0x42 && data[11] === 0x50 && data[12] === 0x56 && data[13] === 0x50 && data[14] === 0x38 && data[15] === 0x58) {
+    return {
+      width: 1 + data[24] + (data[25] << 8) + (data[26] << 16),
+      height: 1 + data[27] + (data[28] << 8) + (data[29] << 16),
+    };
+  }
+  if (data.byteLength >= 4 && data[0] === 0xff && data[1] === 0xd8) {
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    let offset = 2;
+    while (offset + 9 < data.byteLength) {
+      if (data[offset] !== 0xff) {
+        offset += 1;
+        continue;
+      }
+      const marker = data[offset + 1];
+      offset += 2;
+      if (marker === 0xd8 || marker === 0xd9) continue;
+      if (offset + 2 > data.byteLength) return null;
+      const segmentLength = view.getUint16(offset);
+      if (segmentLength < 2 || offset + segmentLength > data.byteLength) return null;
+      if ((marker >= 0xc0 && marker <= 0xc3) || (marker >= 0xc5 && marker <= 0xc7) || (marker >= 0xc9 && marker <= 0xcb) || (marker >= 0xcd && marker <= 0xcf)) {
+        if (segmentLength < 7) return null;
+        return { width: view.getUint16(offset + 5), height: view.getUint16(offset + 3) };
+      }
+      offset += segmentLength;
+    }
+  }
+  return null;
+}
+
+/** Record bytes already supplied by a user paste without reading the OS clipboard. */
+function recordPastedClipboardFiles(files: ComposerPasteFile[]): void {
+  for (const file of files) {
+    const bytes = bytesFromPaste(file?.data);
+    if (!bytes) continue;
+    const mimeType = typeof file.mimeType === "string" ? file.mimeType : "";
+    if (file.recordHistory && mimeType.toLowerCase() === "text/plain") {
+      clipboardHistory.recordText(new TextDecoder().decode(bytes));
+      continue;
+    }
+    const isImage =
+      mimeType.toLowerCase().startsWith("image/") ||
+      /\.(avif|bmp|gif|heic|jpe?g|png|tiff?|webp)$/i.test(file.name ?? "");
+    if (!isImage) continue;
+    const dimensions = imageDimensions(bytes);
+    if (
+      (dimensions &&
+        (dimensions.width < 1 ||
+          dimensions.height < 1 ||
+          dimensions.width * dimensions.height > MAX_CLIPBOARD_IMAGE_PIXELS)) ||
+      (!dimensions && bytes.byteLength > MAX_UNKNOWN_CLIPBOARD_IMAGE_BYTES)
+    ) continue;
+    try {
+      const image = nativeImage.createFromBuffer(Buffer.from(bytes));
+      if (image.isEmpty()) continue;
       const size = image.getSize();
-      return {
-        type: "image",
-        // NativeImage provides a stable cross-platform PNG representation even
-        // when the source clipboard format is JPEG, WebP, or OS-native data.
+      if (size.width * size.height > MAX_CLIPBOARD_IMAGE_PIXELS) continue;
+      clipboardHistory.recordImage({
         format: "png",
         data: new Uint8Array(image.toPNG()),
         width: size.width,
         height: size.height,
-      };
+      });
+    } catch {
+      // Invalid image bytes must not make an otherwise valid paste fail.
     }
   }
-  const text = clipboard.readText();
-  return text ? { type: "text", text } : null;
 }
-
-const clipboardHistory = new ClipboardHistory({ read: readSystemClipboard });
 
 async function safeOpenExternal(rawUrl: unknown): Promise<void> {
   const url = parseAllowedExternalUrl(rawUrl);
@@ -449,8 +564,8 @@ async function safeOpenExternal(rawUrl: unknown): Promise<void> {
 }
 
 const pluginPanels = new PluginPanelHost(
-  async (pluginId, channel, payload) =>
-    plugins.invokePanelBridge(pluginId, channel, payload),
+  async (pluginId, channel, payload, context) =>
+    plugins.invokePanelBridge(pluginId, channel, payload, context),
   // A panel reaching for an undeclared host is the shape an exfiltration
   // attempt takes, so it is logged like a denied API call rather than dropped
   // silently in the network layer.
@@ -461,8 +576,53 @@ const pluginPanels = new PluginPanelHost(
       data: { api: "panel.egress", ok: false, url, ts: Date.now() },
     });
   },
-
+  (pluginId, channel, error) => {
+    logger.app("plugin", "warn", "plugin.panel.bridge", {
+      pluginId,
+      code: (error as { code?: string })?.code ?? "PANEL_BRIDGE_FAILED",
+      data: { channel, error: String(error) },
+    });
+  },
 );
+const callPluginSessionHost = async (
+  method: string,
+  pluginId: string,
+  input: Record<string, unknown>,
+): Promise<unknown> => {
+  if (!host) {
+    throw Object.assign(new Error("host unavailable"), { code: "UNSUPPORTED" });
+  }
+  const result = await host.call(method, { ...input, pluginId });
+  const changed =
+    (method === "plugin.session.import" &&
+      (result as { imported?: unknown })?.imported === true) ||
+    (method === "plugin.session.importBatch" &&
+      Number((result as { imported?: unknown })?.imported ?? 0) > 0) ||
+    (method === "plugin.session.rename" &&
+      (result as { updated?: unknown })?.updated === true) ||
+    (method === "plugin.session.delete" &&
+      (result as { deleted?: unknown })?.deleted === true);
+  if (changed) {
+    sendToRenderer(IPC.event.sessionsChanged, { reason: method, pluginId });
+  }
+  return result;
+};
+const callPluginProjectHost = async (
+  pluginId: string,
+  input: Record<string, unknown>,
+): Promise<unknown> => {
+  if (!host) {
+    throw Object.assign(new Error("host unavailable"), { code: "UNSUPPORTED" });
+  }
+  const result = await host.call<{
+    project?: { id?: number; path?: string; name?: string };
+  }>("projects.create", { ...input, pluginId });
+  const project = result.project;
+  if (!project || typeof project.id !== "number" || !project.path || !project.name) {
+    throw Object.assign(new Error("invalid project response"), { code: "INTERNAL" });
+  }
+  return { projectId: project.id, path: project.path, name: project.name };
+};
 const plugins: PluginRuntime = new PluginRuntime({
   getWorkspacePath: () => {
     // Filled after host boots; temporary stub until services rebinding.
@@ -508,29 +668,10 @@ const plugins: PluginRuntime = new PluginRuntime({
   closePanel: async (pluginId) => {
     await pluginPanels.close(pluginId);
   },
-  fetch: async (input) => {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), input.timeoutMs ?? 15000);
-    try {
-      const res = await fetch(input.url, {
-        method: input.method ?? "GET",
-        headers: input.headers,
-        body: input.body,
-        signal: controller.signal,
-      });
-      const headers: Record<string, string> = {};
-      res.headers.forEach((value, key) => {
-        headers[key] = value;
-      });
-      return {
-        status: res.status,
-        headers,
-        bodyText: await res.text(),
-      };
-    } finally {
-      clearTimeout(timer);
-    }
-  },
+  // `net.fetch` is deliberately not overridden here: the runtime's own
+  // implementation follows redirects by hand and re-checks the manifest
+  // egress allowlist before every hop. A plain `fetch` service would let an
+  // allowlisted host 30x the request straight out to an undeclared one.
   audit: (entry) => {
     logger.app("plugin", "info", "plugin.api", entry);
   },
@@ -538,6 +679,13 @@ const plugins: PluginRuntime = new PluginRuntime({
   // and synchronously: the plugin's call is still waiting on the answer, so
   // there is no window in which the access happens before consent.
   confirmFsAccess: createFsConsentService({
+    getWindow: () => mainWindow,
+    getLocale: () => updaterLocale,
+  }),
+  // A dangerous desktop operation (session delete, permission-mode change,
+  // tool approval) requested by a plugin is decided by the user in a native
+  // dialog that names the catalog operation, never plugin-authored text.
+  confirmDesktopControl: createDesktopConsentService({
     getWindow: () => mainWindow,
     getLocale: () => updaterLocale,
   }),
@@ -594,6 +742,20 @@ const plugins: PluginRuntime = new PluginRuntime({
       } | null;
     }>("session.get", { id: sessionId });
     return pluginSessionContextFromSession(sessionId, detail?.session, stripToolName);
+  },
+  session: {
+    list: (pluginId, input) => callPluginSessionHost("plugin.session.list", pluginId, input),
+    get: (pluginId, input) => callPluginSessionHost("plugin.session.get", pluginId, input),
+    listMessages: (pluginId, input) =>
+      callPluginSessionHost("plugin.session.listMessages", pluginId, input),
+    import: (pluginId, input) => callPluginSessionHost("plugin.session.import", pluginId, input),
+    importBatch: (pluginId, input) =>
+      callPluginSessionHost("plugin.session.importBatch", pluginId, input),
+    rename: (pluginId, input) => callPluginSessionHost("plugin.session.rename", pluginId, input),
+    delete: (pluginId, input) => callPluginSessionHost("plugin.session.delete", pluginId, input),
+  },
+  project: {
+    create: (pluginId, input) => callPluginProjectHost(pluginId, input),
   },
   complete: async (input): Promise<PluginCompleteResult> => {
     if (!host) {
@@ -666,7 +828,7 @@ const plugins: PluginRuntime = new PluginRuntime({
     // the tab is still active and the plugin came back.
     pluginViews.closePlugin(pluginId);
     if (pluginId === BROWSER_PLUGIN_ID) browserHost.disposeGuest();
-    sendToRenderer(IPC.event.pluginChanged, { reason: "crash", pluginId });
+    sendToRenderer(IPC.event.pluginChanged,{ reason: "crash", pluginId });
   },
   // Supervision state is UI-only: the runtime owns restarts, the renderer just
   // reflects what happened.
@@ -675,7 +837,7 @@ const plugins: PluginRuntime = new PluginRuntime({
       pluginId: status.pluginId,
       data: { serviceId: status.serviceId, state: status.state, restarts: status.restarts },
     });
-    sendToRenderer(IPC.event.pluginChanged, {
+    sendToRenderer(IPC.event.pluginChanged,{
       reason: "service",
       pluginId: status.pluginId,
     });
@@ -693,7 +855,7 @@ const plugins: PluginRuntime = new PluginRuntime({
     // Views were loaded from the previous revision of the plugin's files.
     pluginViews.closePlugin(pluginId);
     if (pluginId === BROWSER_PLUGIN_ID) browserHost.disposeGuest();
-    sendToRenderer(IPC.event.pluginChanged, { reason: "reload", pluginId });
+    sendToRenderer(IPC.event.pluginChanged,{ reason: "reload", pluginId });
   },
 });
 const userMcp = new UserMcpRuntime({
@@ -762,6 +924,8 @@ pluginViews.onSurface = (surface) => {
   browserHost.setChromeSurface(surface);
 };
 plugins.setServices({
+  agentExtensionsChanged: () =>
+    sendToRenderer(IPC.event.pluginChanged, { reason: "agentExtensions" }),
   browser: {
     navigate: (input, sessionId) => browserHost.navigate(input, sessionId),
     action: (action) => browserHost.action(action),
@@ -782,6 +946,7 @@ plugins.setServices({
   },
 });
 let scannedImportSessions = new Map<string, ExternalSessionSummary>();
+let scannedModelConfigs = new Map<string, ModelConfigImportDraft>();
 
 const IMPORT_SOURCES = new Set<ExternalSource>([
   "claude-code",
@@ -792,6 +957,24 @@ const IMPORT_SOURCES = new Set<ExternalSource>([
 
 const dataDir =
   process.env.PI_DESKTOP_DATA_DIR || join(homedir(), ".pi-desktop");
+
+// Agent extensions (D387/D388, ADR 0214): plugins contribute the modules,
+// the sidecar loads them; this bridge carries commands, diagnostics, and
+// prompts between the two.
+const agentExtensions = new AgentExtensionBridge({
+  hasRenderer: () =>
+    !!mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed(),
+  onChanged: () => sendToRenderer(IPC.event.pluginChanged, { reason: "agentExtensions" }),
+  onPrompt: (prompt) => {
+    logger.app("plugin", "info", "extension prompt", {
+      sessionId: prompt.sessionId,
+      data: { promptId: prompt.promptId, kind: prompt.request.kind, extensionId: prompt.extensionId },
+    });
+    sendToRenderer(IPC.event.extensionsUiPrompt, prompt);
+  },
+  onToast: (message) => sendToRenderer(IPC.event.toast, { message }),
+  onStatus: (event) => sendToRenderer(IPC.event.extensionsStatus, event),
+});
 
 const logger = new Logger(
   dataDir,
@@ -818,7 +1001,7 @@ const inflightCheckpointer = new InflightCheckpointer(async (checkpoint) => {
   );
 });
 
-/** Product UI locale for dual-locale update notes (mirrored from settings). */
+/** Product UI locale for shipped-locale update notes (mirrored from settings). */
 let updaterLocale = "en";
 type PluginPanelTheme = "light" | "dark";
 let pluginPanelTheme: PluginPanelTheme = nativeTheme.shouldUseDarkColors
@@ -885,7 +1068,7 @@ type RuntimeProvider = {
   hasSecret?: boolean;
   hasOauth?: boolean;
   oauthAccountLabel?: string;
-  userAgent?: string;
+  headers?: Record<string, string>;
   enabled?: boolean;
   supportsVision?: boolean;
 };
@@ -912,6 +1095,26 @@ function modelsDevModelFor(
     baseUrl: provider.baseUrl,
     modelId,
   });
+}
+
+/**
+ * Apply the exact provider/model binding before exposing a model to a
+ * subagent. The catalog supplies the baseline, but an explicit binding owns
+ * the effective thinking capability for the endpoint (D283).
+ */
+function effectiveSubagentModelConfig(
+  provider: Pick<RuntimeProvider, "models">,
+  modelId: string,
+  catalogModelConfig: Parameters<typeof modelConfigWithBinding>[0],
+) {
+  const modelConfig = modelConfigWithBinding(
+    catalogModelConfig,
+    bindingForModel(provider, modelId),
+  );
+  return {
+    modelConfig,
+    capabilities: capabilitiesFromModelConfig(modelConfig),
+  };
 }
 
 function enrichProvider<T extends RuntimeProvider>(
@@ -1469,13 +1672,22 @@ async function resolveAgentRuntimeLaunch(
         baseUrl: pinned.baseUrl,
         modelId: pinnedModelId,
       });
-      const modelConfig = model
+      const catalogModelConfig = model
         ? modelConfigFromModelsDev(model, pinned.baseUrl)
         : genericModelConfig(pinnedModelId, pinned.baseUrl ?? "");
-      return {
-        modelConfig,
-        capabilities: capabilitiesFromModelConfig(modelConfig),
-      };
+      const configuredProvider = providers.providers.find(
+        (candidate) => candidate.id === pinned.id,
+      );
+      return configuredProvider
+        ? effectiveSubagentModelConfig(
+            configuredProvider,
+            pinnedModelId,
+            catalogModelConfig,
+          )
+        : {
+            modelConfig: catalogModelConfig,
+            capabilities: capabilitiesFromModelConfig(catalogModelConfig),
+          };
     },
   });
   // Delegation model catalog: every model binding flagged
@@ -1504,29 +1716,29 @@ async function resolveAgentRuntimeLaunch(
         }
         if (!apiKey) continue;
       }
-      let mc;
-      let caps;
+      let catalogModelConfig: Parameters<typeof modelConfigWithBinding>[0];
       if (isVendorAccount) {
         const vb = await vendorOAuth.bindingFor(row.id, binding.id);
         if (!vb) continue;
-        mc =
-          vb.modelConfig ??
-          genericModelConfig(binding.id, vb.baseUrl ?? row.baseUrl ?? "");
-        caps = {
-          supportsReasoning: vb.supportsReasoning,
-          supportedThinkingLevels: [...vb.supportedThinkingLevels],
-        };
+        catalogModelConfig =
+          vb.modelConfig ?? genericModelConfig(binding.id, vb.baseUrl ?? row.baseUrl ?? "");
       } else {
         const model = modelsDevCatalog.findModel({
           vendorKey: row.vendorKey,
           baseUrl: row.baseUrl,
           modelId: binding.id,
         });
-        mc = model
+        catalogModelConfig = model
           ? modelConfigFromModelsDev(model, row.baseUrl)
           : genericModelConfig(binding.id, row.baseUrl ?? "");
-        caps = capabilitiesFromModelConfig(mc);
       }
+      const effective = effectiveSubagentModelConfig(
+        row,
+        binding.id,
+        catalogModelConfig,
+      );
+      const mc = effective.modelConfig;
+      const caps = effective.capabilities;
       subagentBindings.providers[key] = {
         id: row.id,
         name: row.name,
@@ -1536,7 +1748,7 @@ async function resolveAgentRuntimeLaunch(
         apiKey,
         ...(row.authKind ? { authKind: row.authKind } : {}),
         ...(row.apiStyle ? { apiStyle: row.apiStyle } : {}),
-        ...(row.userAgent ? { userAgent: row.userAgent } : {}),
+        ...optionalProviderHeaders(row.headers),
         supportsReasoning: caps.supportsReasoning,
         supportedThinkingLevels: [...caps.supportedThinkingLevels],
         ...(mc ? { modelConfig: mc } : {}),
@@ -1596,7 +1808,7 @@ async function resolveAgentRuntimeLaunch(
         apiKey: secret.value || "",
         authKind: provider.authKind,
         apiStyle,
-        ...(provider.userAgent ? { userAgent: provider.userAgent } : {}),
+        ...optionalProviderHeaders(provider.headers),
         supportsReasoning: thinkingCapabilities.supportsReasoning,
         supportsVision: visionFromModelConfig(modelConfig),
         supportedThinkingLevels: [...thinkingCapabilities.supportedThinkingLevels],
@@ -1613,6 +1825,11 @@ async function resolveAgentRuntimeLaunch(
             ...(tool.risk === "low" || tool.risk === "medium" || tool.risk === "high"
               ? { risk: tool.risk as Risk }
               : {}),
+            // Plan-safe action list is forwarded to host-core so it can
+            // admit the tool in Plan/Goal modes (ADR 0211).
+            ...(tool.planSafeActions && tool.planSafeActions.length > 0
+              ? { planSafeActions: tool.planSafeActions }
+              : {}),
           })),
         ...userMcpTools.map((tool) => ({
           name: tool.fullName,
@@ -1623,6 +1840,18 @@ async function resolveAgentRuntimeLaunch(
       // Plugin skills (D174): only the catalog crosses to the sidecar; the
       // document body is fetched on demand through the local `Skill` tool.
       pluginSkills,
+      // Trusted extensions enabled for this project (spec 16 §3.2). The set
+      // is part of the runtime match, so a toggle retires the runtime.
+      trustedExtensions: plugins
+        .getAgentExtensions()
+        .filter((extension) => pluginActiveInProject(extension.pluginId, projectPath))
+        .map((extension) => ({
+          id: extension.id,
+          entry: extension.entry,
+          label: extension.pluginName,
+          source: "plugin" as const,
+          root: extension.root,
+        })),
       subagents: subagentCatalog.definitions,
       subagentProviders: subagentBindings.providers,
     },
@@ -1737,6 +1966,9 @@ function createTray() {
 
 
 function sendToRenderer(channel: string, payload: unknown) {
+  if (channel === IPC.event.pluginChanged) {
+    applyNativeThemeSource({ theme: appThemePreference });
+  }
   if (!IPC_WHITELIST.has(channel)) return;
   const window = mainWindow;
   if (
@@ -1837,6 +2069,14 @@ function executeNativeMenuAction(
   action: NativeMenuAction,
   target: BrowserWindow | null = mainWindow,
 ) {
+  if (action === "restoreMainWindow") {
+    restoreMainWindow();
+    const window = mainWindow;
+    return {
+      maximized: Boolean(window && !window.isDestroyed() && window.isMaximized()),
+      fullScreen: Boolean(window && !window.isDestroyed() && window.isFullScreen()),
+    };
+  }
   if (!target || target.isDestroyed()) {
     return { maximized: false, fullScreen: false };
   }
@@ -1919,6 +2159,31 @@ function applyDeveloperMode(settings?: { developerMode?: unknown } | null) {
   }
 }
 
+/**
+ * Drive Chromium and macOS native chrome (menus, vibrancy) from the same
+ * theme preference the renderer paints. `system` keeps following the OS;
+ * an explicit or plugin base locks the native appearance so a dark dock
+ * cannot sit on a light Liquid Glass plate (D348). Missing `plugin:` themes
+ * fall back to `system`, matching the renderer.
+ */
+function applyNativeThemeSource(settings?: { theme?: unknown } | null) {
+  const preference = settings?.theme;
+  let next: "system" | "light" | "dark" = "system";
+  if (preference === "light" || preference === "dark") {
+    next = preference;
+  } else if (typeof preference === "string" && preference.startsWith("plugin:")) {
+    const pluginTheme = plugins.getThemes().find((theme) => theme.id === preference);
+    if (pluginTheme?.base === "light" || pluginTheme?.base === "dark") {
+      next = pluginTheme.base;
+    }
+  }
+  if (nativeTheme.themeSource === next) return;
+  nativeTheme.themeSource = next;
+  if (process.platform === "darwin" && mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setVibrancy("sidebar");
+  }
+}
+
 /** Keep native labels and accelerators aligned with persisted app settings. */
 function applyApplicationMenuSettings(settings?: {
   language?: unknown;
@@ -1943,6 +2208,7 @@ function applyApplicationMenuSettings(settings?: {
       : typeof preference === "string" && preference.startsWith("plugin:")
         ? preference
         : "system";
+  applyNativeThemeSource(settings);
   if (preference === "light" || preference === "dark") {
     pluginPanelTheme = preference;
   } else if (typeof preference === "string" && preference.startsWith("plugin:")) {
@@ -1959,6 +2225,7 @@ function applyApplicationMenuSettings(settings?: {
       ? (settings.keybindings as KeybindingOverrides)
       : undefined;
   applyPluginLauncherShortcut(keybindings);
+  applySummonWindowShortcut(keybindings);
   const devMode = settings?.developerMode === true;
   const signature = JSON.stringify({ locale, keybindings, devMode });
   if (appliedMenuSettings === signature) return;
@@ -2046,6 +2313,20 @@ function importSelectionKey(value: unknown): string | null {
   return `${source}:${externalId}`;
 }
 
+function modelConfigSelectionKey(value: unknown): string | null {
+  if (!value || typeof value !== "object") return null;
+  const source = Reflect.get(value, "source");
+  const externalId = Reflect.get(value, "externalId");
+  if (
+    !isModelConfigImportSource(source) ||
+    typeof externalId !== "string" ||
+    !externalId
+  ) {
+    return null;
+  }
+  return modelConfigImportKey(source, externalId);
+}
+
 
 function scheduledPath() {
   return join(dataDir, "scheduled-tasks.json");
@@ -2079,6 +2360,28 @@ async function importLegacyScheduled() {
 
 /** sessionId → open host turn id, for turn bookkeeping across agent events. */
 const activeTurns = new Map<string, string>();
+const sessionOperationTails = new Map<string, Promise<void>>();
+
+async function acquireSessionOperation(sessionId: string): Promise<() => void> {
+  const id = sessionId.trim();
+  const previous = sessionOperationTails.get(id) ?? Promise.resolve();
+  let resolveCurrent!: () => void;
+  const current = new Promise<void>((resolve) => {
+    resolveCurrent = resolve;
+  });
+  const tail = previous.then(() => current);
+  sessionOperationTails.set(id, tail);
+  await previous;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    resolveCurrent();
+    if (sessionOperationTails.get(id) === tail) {
+      sessionOperationTails.delete(id);
+    }
+  };
+}
 /** Plan submission turns end without a task-complete notification. */
 const planSubmissionTurnIds = new Set<string>();
 /** sessionId → host execution id for an approved plan currently dispatched. */
@@ -2194,7 +2497,7 @@ function applyCloseBehavior(next: CloseBehavior) {
 async function askCloseBehavior(
   window: BrowserWindow,
 ): Promise<"tray" | "quit" | null> {
-  const labels = catalogs[resolveLocale(app.getLocale())];
+  const labels = catalogs[resolveLocale(updaterLocale)];
   const { response } = await dialog.showMessageBox(window, {
     type: "question",
     title: labels.tray.askTitle,
@@ -2215,7 +2518,7 @@ async function askCloseBehavior(
  * Returns `true` when the user confirms, `false` when they cancel.
  */
 async function confirmQuitDialog(): Promise<boolean> {
-  const labels = catalogs[resolveLocale(app.getLocale())];
+  const labels = catalogs[resolveLocale(updaterLocale)];
   const parent =
     mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
   const options = {
@@ -2398,11 +2701,11 @@ function createPluginLauncherWindow(): Promise<BrowserWindow> {
 }
 
 function prewarmPluginLauncher(): void {
-  void createPluginLauncherWindow().catch((error) =>
+  void createPluginLauncherWindow().catch((error) => {
     logger.app("diagnostics", "warn", "plugin launcher warm-up failed", {
       data: String(error),
-    }),
-  );
+    });
+  });
 }
 
 async function showPluginLauncher(): Promise<void> {
@@ -2483,6 +2786,43 @@ function applyPluginLauncherShortcut(keybindings?: KeybindingOverrides) {
   }
 }
 
+/**
+ * Register the summon-window shortcut (D384). The default `Mod+Shift+W`
+ * brings a hidden/minimized-to-tray window back into focus; this is the
+ * symmetrical counterpart to `closeWindow` (`Mod+W`).
+ */
+function applySummonWindowShortcut(keybindings?: KeybindingOverrides) {
+  const shortcut = KEYBOARD_SHORTCUTS.find(
+    (candidate) => candidate.id === "summonWindow",
+  );
+  if (!shortcut || !app.isReady()) return;
+  const platform: ShortcutPlatform =
+    process.platform === "darwin"
+      ? "darwin"
+      : process.platform === "win32"
+        ? "win32"
+        : "linux";
+  const binding = resolveKeybinding(shortcut, keybindings, platform);
+  const accelerator = keybindingToElectronAccelerator(binding, platform);
+
+  if (summonWindowAccelerator && summonWindowAccelerator !== accelerator) {
+    globalShortcut.unregister(summonWindowAccelerator);
+    summonWindowAccelerator = null;
+  }
+
+  if (!accelerator || accelerator === summonWindowAccelerator) return;
+  const registered = globalShortcut.register(accelerator, () => {
+    restoreMainWindow();
+  });
+  if (registered) {
+    summonWindowAccelerator = accelerator;
+  } else {
+    logger.app("diagnostics", "warn", "summon window shortcut unavailable", {
+      data: { accelerator, platform: process.platform },
+    });
+  }
+}
+
 async function createWindow() {
   notificationViewingSessionId = null;
   requestedWorkPanelReservation = 0;
@@ -2518,7 +2858,7 @@ async function createWindow() {
       ? {
           titleBarStyle: "hiddenInset" as const,
           trafficLightPosition: { x: 16, y: 16 },
-          vibrancy: "under-window" as const,
+          vibrancy: "sidebar" as const,
           visualEffectState: "followWindow" as const,
           transparent: true,
           backgroundColor: "#00000000",
@@ -3599,23 +3939,113 @@ async function createWindow() {
             await openPanelArtifact("browser");
             await new Promise((r) => setTimeout(r, 400));
             await shot("pi-panel-browser");
+            const probeWorkPanelNewPage = async (scene: string) => {
+              const probe = await mainWindow!.webContents.executeJavaScript(`(() => {
+                const blank = document.querySelector('[data-testid="work-panel-empty"]');
+                const add = document.querySelector('.work-panel-new-tab');
+                return {
+                  scene: ${JSON.stringify(scene)},
+                  viewport: { width: innerWidth, height: innerHeight },
+                  blankPage: Boolean(blank),
+                  launcherRows: blank?.querySelectorAll('.work-panel-launcher-row').length ?? 0,
+                  popupCount: blank?.querySelectorAll('[role="menu"]').length ?? 0,
+                  addHasPopup: add?.hasAttribute('aria-haspopup') ?? false,
+                };
+              })()`);
+              console.log("WORK_PANEL_NEW_PAGE_PROBE", probe);
+              if (!probe?.blankPage || probe.launcherRows < 1 || probe.popupCount || probe.addHasPopup) {
+                throw new Error(`work-panel blank page contract failed in ${scene}`);
+              }
+            };
+            await mainWindow!.webContents.executeJavaScript(
+              `window.__PI_DESKTOP__?.openNewWorkPanelTab?.()`,
+            );
+            await new Promise((r) => setTimeout(r, 350));
+            await shot("pi-panel-new");
+            await probeWorkPanelNewPage("new-page");
+            await setTheme("dark");
+            await new Promise((r) => setTimeout(r, 300));
+            await shot("pi-panel-new-dark");
+            await probeWorkPanelNewPage("new-page-dark");
+            await setTheme("light");
+            await new Promise((r) => setTimeout(r, 250));
+            await mainWindow!.webContents.executeJavaScript(`
+              document.querySelector('[data-work-panel-launcher-item="pi.browser/browser"]')?.dispatchEvent(
+                new MouseEvent('click', { bubbles: true }),
+              )
+            `);
+            await new Promise((r) => setTimeout(r, 500));
+            await shot("pi-panel-browser-from-new");
             await openPanelArtifact("file", "apps/desktop/src/App.tsx");
             await new Promise((r) => setTimeout(r, 500));
             await shot("pi-panel-files");
-            // The unified header menu (D173): tools first, then the file
-            // resource this run opened above.
-            await mainWindow!.webContents.executeJavaScript(`
-              (() => {
-                const btn = document.querySelector('.work-panel-switcher-trigger');
-                if (btn) btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-              })()
-            `);
+            await setTheme("dark");
             await new Promise((r) => setTimeout(r, 300));
-            await shot("pi-panel-menu");
-            await mainWindow!.webContents.executeJavaScript(`
-              document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-            `);
-            await new Promise((r) => setTimeout(r, 200));
+            await shot("pi-panel-files-dark");
+            await setTheme("light");
+            await new Promise((r) => setTimeout(r, 250));
+            const probeWorkPanelHeader = async (scene: string) => {
+              const probe = await mainWindow!.webContents.executeJavaScript(`(() => {
+                const rectFor = (selector) => {
+                  const element = document.querySelector(selector);
+                  if (!element) return null;
+                  const rect = element.getBoundingClientRect();
+                  return {
+                    left: Math.round(rect.left),
+                    top: Math.round(rect.top),
+                    right: Math.round(rect.right),
+                    bottom: Math.round(rect.bottom),
+                  };
+                };
+                const add = rectFor('.work-panel-new-tab');
+                const toggle = rectFor('.app-work-panel-toggle');
+                const header = rectFor('.work-panel-header');
+                return {
+                  scene: ${JSON.stringify(scene)},
+                  viewport: { width: innerWidth, height: innerHeight },
+                  header,
+                  add,
+                  toggle,
+                  gap: add && toggle ? toggle.left - add.right : null,
+                  overlaps: add && toggle
+                    ? add.left < toggle.right && add.right > toggle.left &&
+                      add.top < toggle.bottom && add.bottom > toggle.top
+                    : null,
+                };
+              })()`);
+              console.log("WORK_PANEL_HEADER_PROBE", probe);
+              if (probe?.overlaps) {
+                throw new Error(`work-panel header controls overlap in ${scene}`);
+              }
+              if (probe?.gap != null && probe.gap < 24) {
+                throw new Error(`work-panel header controls are too close in ${scene}`);
+              }
+            };
+            await probeWorkPanelHeader("browser-from-new");
+            // Exercise the smallest supported shell with the smallest panel
+            // width. The notification-only 420px scene below intentionally
+            // tests a clipped surface, so it is not suitable for this header
+            // geometry check.
+            await mainWindow!.webContents.executeJavaScript(
+              `window.__PI_DESKTOP__?.setWorkPanelWidth?.(244)`,
+            );
+            await new Promise((r) => setTimeout(r, 250));
+            captureViewportOverride = true;
+            try {
+              mainWindow!.setMinimumSize(1040, 700);
+              mainWindow!.setSize(1040, 700, false);
+              await new Promise((r) => setTimeout(r, 350));
+              await probeWorkPanelHeader("minimum-supported");
+              await shot("pi-panel-minimum-supported");
+            } finally {
+              mainWindow!.setSize(CODEX_BOUNDS.width, CODEX_BOUNDS.height, false);
+              mainWindow!.setMinimumSize(
+                workPanelMinimumWindowWidth(),
+                WINDOW_MIN_HEIGHT,
+              );
+              captureViewportOverride = false;
+            }
+            await new Promise((r) => setTimeout(r, 250));
             await mainWindow!.webContents.executeJavaScript(
               `window.__PI_DESKTOP__?.collapseWorkPanel()`,
             );
@@ -4228,7 +4658,7 @@ function wireHost(h: HostProcess) {
           },
         },
       };
-      sendToRenderer(IPC.event.agentMessage, envelope);
+      emitAgentEvent(envelope);
     } else if (method === "plugins.execute") {
       // Host dispatches plugin_* and mcp_* tools to us; run them and answer.
       void (async () => {
@@ -4238,6 +4668,7 @@ function wireHost(h: HostProcess) {
           toolCallId?: string;
           toolName: string;
           args: unknown;
+          mode?: string;
         };
         const projectPath = q.sessionId
           ? (sessionProjects.get(q.sessionId) ?? null)
@@ -4279,12 +4710,28 @@ function wireHost(h: HostProcess) {
           try {
             let modelKey: string | undefined;
             let thinkingLevel: string | undefined;
-            if (q.sessionId && host) {
+            // Host-core sends the session mode; fall back to a session.get
+            // call when it is missing (legacy callers). The plugin-runtime
+            // uses the mode to enforce plan-safe action restrictions
+            // (ADR 0211).
+            let sessionMode: "agent" | "plan" | "goal" | undefined;
+            const normalizedMode = typeof q.mode === "string" ? q.mode : undefined;
+            if (normalizedMode === "agent" || normalizedMode === "plan" || normalizedMode === "goal") {
+              sessionMode = normalizedMode;
+            } else if (q.sessionId && host) {
               try {
                 const detail = await host.call<{
-                  session?: { providerId?: string; modelId?: string; thinkingLevel?: string };
+                  session?: {
+                    mode?: string;
+                    providerId?: string;
+                    modelId?: string;
+                    thinkingLevel?: string;
+                  };
                 }>("session.get", { id: q.sessionId });
                 const session = detail?.session;
+                if (session?.mode === "agent" || session?.mode === "plan" || session?.mode === "goal") {
+                  sessionMode = session.mode;
+                }
                 if (session?.providerId && session?.modelId) {
                   modelKey = `${session.providerId}/${session.modelId}`;
                 }
@@ -4295,6 +4742,7 @@ function wireHost(h: HostProcess) {
             }
             const result = await tool.execute(q.args, {
               sessionId: q.sessionId,
+              mode: sessionMode,
               modelKey,
               thinkingLevel,
             });
@@ -4304,10 +4752,14 @@ function wireHost(h: HostProcess) {
               content: result ?? null,
             };
           } catch (e) {
+            const code =
+              e && typeof e === "object" && "code" in e && typeof e.code === "string"
+                ? e.code
+                : "TOOL_FAILED";
             payload = {
               executionId: q.executionId,
               ok: false,
-              errorCode: "TOOL_FAILED",
+              errorCode: code === "PERMISSION_DENIED" ? "PERMISSION_DENIED" : "TOOL_FAILED",
               content: { error: e instanceof Error ? e.message : String(e) },
             };
           }
@@ -4371,6 +4823,7 @@ function wireHost(h: HostProcess) {
 }
 
 async function startHost(): Promise<void> {
+  assertLinuxGlibcSupported();
   const h = new HostProcess(dataDir, (text) => logger.child("host", text));
   wireHost(h);
   host = h;
@@ -4407,6 +4860,12 @@ const planUiProbe = createPlanUiProbe({
   logger,
 });
 
+/** Fan an agent event out to the renderer and the headless Agent Host module. */
+function emitAgentEvent(envelope: AgentEventEnvelope) {
+  agentHostBridge?.ingest(envelope);
+  sendToRenderer(IPC.event.agentMessage, envelope);
+}
+
 function wireSidecar(s: AgentSidecar) {
   s.onNotification((method, params) => {
     if (method === "agent.event") {
@@ -4425,14 +4884,14 @@ function wireSidecar(s: AgentSidecar) {
           data: { isError: (event as any).isError === true },
         });
       }
-      sendToRenderer(IPC.event.agentMessage, params);
+      emitAgentEvent(envelope);
       const persistedMessage = persistAgentEvent(envelope);
       if (persistedMessage) {
         // The renderer may have reloaded while a long-running tool was open.
         // Replay the completed row through the existing message_end contract so
         // it can append the row when the original tool_start is no longer in
         // the in-memory transcript.
-        sendToRenderer(IPC.event.agentMessage, {
+        emitAgentEvent({
           ...envelope,
           event: { type: "message_end", message: persistedMessage },
         } satisfies AgentEventEnvelope);
@@ -4501,6 +4960,33 @@ async function startSidecar(): Promise<void> {
     // Request auth for a vendor account (ADR 0098). The sidecar names a provider
   // row it was launched with; main resolves that row's account and returns a
   // short-lived `ModelAuth`. The refresh token never crosses this boundary.
+  s.setTrustedExtensionBridge({
+    publishCommands: (params) =>
+      agentExtensions.publishCommands(
+        String(params.sessionId ?? ""),
+        Array.isArray(params.commands) ? (params.commands as any[]) : [],
+      ),
+    publishDiagnostics: (params) =>
+      agentExtensions.publishDiagnostics(
+        String(params.sessionId ?? ""),
+        Array.isArray(params.diagnostics) ? (params.diagnostics as any[]) : [],
+        Array.isArray(params.reports) ? (params.reports as any[]) : [],
+      ),
+    requestUi: (params) => agentExtensions.requestUi(params as any),
+    queuePush: async (params) => {
+      if (!agentHostBridge) throw new Error("agent host unavailable");
+      return agentHostBridge.queue.push({
+        sessionId: String(params.sessionId ?? ""),
+        content: String(params.content ?? ""),
+        ...(typeof params.idempotencyKey === "string" ? { idempotencyKey: params.idempotencyKey } : {}),
+      });
+    },
+    queuePrioritize: async (params) => {
+      if (!agentHostBridge) throw new Error("agent host unavailable");
+      await agentHostBridge.queue.prioritize(String(params.id ?? ""));
+      return { ok: true };
+    },
+  });
   s.setVendorAuthResolver(async ({ providerId }) =>
     vendorOAuth.resolveAuth(providerId),
   );
@@ -4542,24 +5028,28 @@ async function startSidecar(): Promise<void> {
     }
 
     await modelsDevCatalog.ensureLoaded();
-    let modelConfig;
-    let capabilities;
+    let catalogModelConfig: Parameters<typeof modelConfigWithBinding>[0];
     if (isVendorAccount) {
       const vendorBinding = await vendorOAuth.bindingFor(provider.id, modelId);
       if (!vendorBinding) throw new Error(`vendor "${provider.name}" does not offer "${modelId}"`);
-      modelConfig = vendorBinding.modelConfig ?? genericModelConfig(modelId, vendorBinding.baseUrl ?? provider.baseUrl ?? "");
-      capabilities = { supportsReasoning: vendorBinding.supportsReasoning, supportedThinkingLevels: [...vendorBinding.supportedThinkingLevels] };
+      catalogModelConfig =
+        vendorBinding.modelConfig ??
+        genericModelConfig(modelId, vendorBinding.baseUrl ?? provider.baseUrl ?? "");
     } else {
       const model = modelsDevCatalog.findModel({
         vendorKey: provider.vendorKey,
         baseUrl: provider.baseUrl,
         modelId,
       });
-      modelConfig = model
+      catalogModelConfig = model
         ? modelConfigFromModelsDev(model, provider.baseUrl)
         : genericModelConfig(modelId, provider.baseUrl ?? "");
-      capabilities = capabilitiesFromModelConfig(modelConfig);
     }
+    const { modelConfig, capabilities } = effectiveSubagentModelConfig(
+      provider,
+      modelId,
+      catalogModelConfig,
+    );
 
     return {
       id: provider.id,
@@ -4697,7 +5187,7 @@ async function startSidecar(): Promise<void> {
       for (const toast of plugins.drainToasts()) {
         sendToRenderer(IPC.event.toast, { message: toast });
       }
-      sendToRenderer(IPC.event.pluginChanged, { reason: "scaffold" });
+      sendToRenderer(IPC.event.pluginChanged,{ reason: "scaffold" });
     },
   });
   sidecar = s;
@@ -4760,7 +5250,7 @@ function finishTurn(
           if (result.recovered) {
             // Settle the renderer's streaming row the same way a final
             // message_end would have, so it does not stay "streaming" forever.
-            sendToRenderer(IPC.event.agentMessage, {
+            emitAgentEvent({
               sessionId,
               turnId,
               ts: Date.now(),
@@ -4822,18 +5312,16 @@ function finishTurn(
   })();
 
   turnFinalizations.set(sessionId, finalization);
-  void finalization.then(
-    () => {
-      if (turnFinalizations.get(sessionId) === finalization) {
-        turnFinalizations.delete(sessionId);
-      }
-    },
-    () => {
-      if (turnFinalizations.get(sessionId) === finalization) {
-        turnFinalizations.delete(sessionId);
-      }
-    },
-  );
+  const releaseFinalization = () => {
+    if (turnFinalizations.get(sessionId) === finalization) {
+      turnFinalizations.delete(sessionId);
+      // The terminal event reaches Agent Host while activeTurns still owns
+      // this session. Retry its deferred queue drain once settlement releases
+      // both busy guards, unless the application is shutting down.
+      if (!quitting) agentHostBridge?.agentHost.kick(sessionId);
+    }
+  };
+  void finalization.then(releaseFinalization, releaseFinalization);
   return finalization;
 }
 
@@ -4887,6 +5375,8 @@ async function dispatchApprovedPlan(rawExecution: unknown): Promise<void> {
     logger.app("runtime", "warn", "approved plan execution descriptor was invalid");
     return;
   }
+  const releaseSessionOperation = await acquireSessionOperation(initial.sessionId);
+  try {
   if (
     initial.state === "running" ||
     initial.state === "interrupted" ||
@@ -4998,8 +5488,11 @@ async function dispatchApprovedPlan(rawExecution: unknown): Promise<void> {
       data: { executionId: initial.id, error: String(error) },
     });
   } finally {
-    dispatchingApprovedExecutions.delete(initial.id);
+      dispatchingApprovedExecutions.delete(initial.id);
+    }  } finally {
+    releaseSessionOperation();
   }
+
 }
 
 async function drainApprovedPlanExecutions(): Promise<void> {
@@ -5175,7 +5668,7 @@ function persistAgentEvent(envelope: AgentEventEnvelope): UiMessage | undefined 
         }>("session.saveActiveRevision", { sessionId: envelope.sessionId });
         const root = saved.saved?.root;
         if (!root) return;
-        sendToRenderer(IPC.event.agentMessage, {
+        emitAgentEvent({
           sessionId: envelope.sessionId,
           ts: Date.now(),
           event: { type: "message_end", message: root },
@@ -5338,9 +5831,82 @@ async function superviseRestartLoop(kind: RestartKind): Promise<void> {
       });
       return;
     } catch (e) {
+      const schema = schemaTooNewOf(e);
+      if (schema) {
+        logger.app("runtime", "error", "local data schema is newer than this build", {
+          code: ErrorCodes.HOST_UNAVAILABLE,
+          data: schema,
+        });
+        sendToRenderer(IPC.event.hostStatus, {
+          ok: false,
+          component: kind,
+          fatal: true,
+          message: DB_SCHEMA_TOO_NEW_STATUS,
+          schema,
+        });
+        return;
+      }
+      if (isGlibcUnsupportedError(e)) {
+        logger.app("runtime", "error", "linux glibc is below the packaged host floor", {
+          code: ErrorCodes.HOST_UNAVAILABLE,
+          data: String(e),
+        });
+        sendToRenderer(IPC.event.hostStatus, {
+          ok: false,
+          component: kind,
+          fatal: true,
+          message: GLIBC_UNSUPPORTED_STATUS,
+        });
+        return;
+      }
       logger.app("runtime", "error", `${kind} restart failed`, { data: String(e) });
     }
   }
+}
+
+/**
+ * Boot outcome pushed once the renderer has mounted. Known unrecoverable
+ * failures travel as status tokens the UI can phrase; anything else is the
+ * raw error. The architecture check rides along even on success so an Intel
+ * build under Rosetta gets a hint instead of silently running slower.
+ */
+function bootHostStatus(bootError: unknown): HostStatusEvent {
+  const status: HostStatusEvent = { ok: !bootError };
+  if (bootError) {
+    status.component = "host";
+    status.fatal = true;
+    const schema = schemaTooNewOf(bootError);
+    if (schema) {
+      status.message = DB_SCHEMA_TOO_NEW_STATUS;
+      status.schema = schema;
+    } else if (isGlibcUnsupportedError(bootError)) {
+      status.message = GLIBC_UNSUPPORTED_STATUS;
+    } else {
+      status.message = String(bootError);
+    }
+  }
+  const arch = runtimeArch();
+  if (arch.mismatch) {
+    status.archMismatch = {
+      platform: arch.platform,
+      processArch: arch.processArch,
+      machineArch: arch.machineArch,
+    };
+  }
+  return status;
+}
+
+let runtimeArchCache: ReturnType<typeof detectRuntimeArch> | null = null;
+function runtimeArch() {
+  if (!runtimeArchCache) {
+    runtimeArchCache = detectRuntimeArch();
+    if (runtimeArchCache.mismatch) {
+      logger.app("lifecycle", "warn", "build is not native to this cpu", {
+        data: runtimeArchCache,
+      });
+    }
+  }
+  return runtimeArchCache;
 }
 
 async function bootBackends() {
@@ -5414,8 +5980,25 @@ async function bootBackends() {
 }
 
 function registerIpc() {
+  const ipcHandlers = new Map<string, (...args: any[]) => Promise<any>>();
   const handle = (channel: string, fn: (...args: any[]) => Promise<any>) => {
+    ipcHandlers.set(channel, fn);
     ipcMain.handle(channel, async (_event, ...args) => wrap(() => fn(...args)));
+  };
+  const handleWithEvent = (
+    channel: string,
+    fn: (event: { sender: { id: number } }, ...args: any[]) => Promise<any>,
+  ) => {
+    ipcMain.handle(channel, async (event, ...args) =>
+      wrap(() => fn(event, ...args)),
+    );
+  };
+  const assertMainWindowSender = (event: { sender: { id: number } }): void => {
+    if (event.sender.id !== mainWindow?.webContents.id) {
+      throw Object.assign(new Error("renderer is not the main window"), {
+        errorCode: "PERMISSION_DENIED",
+      });
+    }
   };
 
   handle(IPC.invoke.pluginLauncherToggle, async () => {
@@ -5642,22 +6225,38 @@ function registerIpc() {
   handle(IPC.invoke.notificationShowNative, async (input: {
     id?: string;
     sessionId?: string;
+    kind?: "task" | "interactive";
     title?: string;
     body?: string;
   } = {}) => {
     if (
       !mainWindow ||
       mainWindow.isDestroyed() ||
-      mainWindow.isFocused() ||
       !SystemNotification.isSupported()
     ) {
       return { shown: false };
     }
     const id = String(input.id ?? "");
     const sessionId = String(input.sessionId ?? "");
+    const kind = input.kind === "interactive" ? "interactive" : "task";
     const title = String(input.title ?? "").trim().slice(0, 100);
     const body = String(input.body ?? "").trim().slice(0, 240);
     if (!id || !sessionId || !title) return { shown: false };
+
+    const liveWindow = mainWindow !== null && !mainWindow.isDestroyed();
+    const windowVisible = liveWindow && mainWindow.isVisible() === true;
+    const windowFocused = liveWindow && mainWindow.isFocused() === true;
+    if (
+      !shouldShowNativeNotification({
+        kind,
+        sessionId,
+        viewingSessionId: notificationViewingSessionId,
+        windowVisible,
+        windowFocused,
+      })
+    ) {
+      return { shown: false };
+    }
 
     const notification = new SystemNotification({ title, body });
     notification.on("click", () => {
@@ -5801,6 +6400,72 @@ function registerIpc() {
     return host.call("session.rename", { id, title });
   });
   handle(
+    IPC.invoke.sessionMoveProject,
+    async (input: { sessionId?: string; projectPath?: string } = {}) => {
+      if (!host) throw new Error("host unavailable");
+      const sessionId = String(input.sessionId ?? "").trim();
+      const projectPath = String(input.projectPath ?? "").trim();
+      if (!sessionId) {
+        throw Object.assign(new Error("sessionId required"), {
+          errorCode: ErrorCodes.INVALID_ARGUMENT,
+        });
+      }
+      if (!projectPath) {
+        throw Object.assign(new Error("projectPath required"), {
+          errorCode: ErrorCodes.INVALID_ARGUMENT,
+        });
+      }
+      const releaseSessionOperation = await acquireSessionOperation(sessionId);
+      try {
+      if (activeTurns.has(sessionId)) {
+        throw Object.assign(new Error("Cannot move a running session"), {
+          errorCode: ErrorCodes.AGENT_BUSY,
+        });
+      }
+      let result: { session?: (RuntimeSession & { projectPath?: string | null }) | null };
+      try {
+        result = await host.call("session.moveProject", { sessionId, projectPath });
+      } catch (error: any) {
+        // The durable running-turn guard can still reject a session whose turn
+        // began between the check above and the host call.
+        if (error?.data?.errorCode === ErrorCodes.CONFLICT) {
+          throw Object.assign(new Error("Cannot move a running session"), {
+            errorCode: ErrorCodes.AGENT_BUSY,
+          });
+        }
+        throw error;
+      }
+      if (!result.session) return result;
+      const movedProjectPath = result.session.projectPath?.trim() || null;
+      sessionProjects.set(sessionId, movedProjectPath);
+      // The live pi-agent caches the project instruction root and vendor auth
+      // bindings. Drop it after a successful move so the next turn is rebuilt
+      // from the moved session's own project instead of the previous one.
+      if (sidecar) {
+        sidecar.clearProjectInstructionRoot(sessionId);
+        sidecar.clearVendorAuthBindings(sessionId);
+        await sidecar
+          .call("agent.disposeSession", { sessionId })
+          .catch(() => undefined);
+        if (movedProjectPath) {
+          sidecar.setProjectInstructionRoot(sessionId, movedProjectPath);
+        }
+      }
+      const { providers, defaults } = await sessionCapabilityContext();
+      logger.app("session", "info", "session project moved", {
+        sessionId,
+        data: { projectPath: movedProjectPath },
+      });
+      return {
+        ...result,
+        session: enrichSession(result.session, providers, defaults),
+      };
+      } finally {
+        releaseSessionOperation();
+      }
+    },
+  );
+  handle(
     IPC.invoke.sessionReplaceMessages,
     async (input: { sessionId: string; messages: unknown[] }) => {
       if (!host) throw new Error("host unavailable");
@@ -5878,6 +6543,25 @@ function registerIpc() {
     return host.call<{ path: string }>("session.getScratchPath", {
       sessionId: String(input?.sessionId || ""),
     });
+  });
+  handle(IPC.invoke.sessionOpenScratchPath, async (input: { sessionId: string }) => {
+    if (!host) throw new Error("host unavailable");
+    const sessionId = String(input?.sessionId || "").trim();
+    const result = await host.call<{ path: string }>("session.getScratchPath", {
+      sessionId,
+    });
+    const scratchPath = resolve(String(result?.path ?? ""));
+    const scratchRoot = resolve(join(dataDir, "scratch"));
+    const rel = relative(scratchRoot, scratchPath);
+    if (!rel || rel.startsWith("..") || isAbsolute(rel)) {
+      throw Object.assign(new Error("invalid session id"), {
+        errorCode: ErrorCodes.INVALID_ARGUMENT,
+      });
+    }
+    mkdirSync(scratchPath, { recursive: true });
+    const openError = await shell.openPath(stripWinLongPrefix(scratchPath));
+    if (openError) throw new Error(openError);
+    return { ok: true, path: scratchPath };
   });
   handle(
     IPC.invoke.sessionConfigure,
@@ -5969,6 +6653,116 @@ function registerIpc() {
     },
   );
 
+  handle(IPC.invoke.modelConfigImportScan, async () => {
+    const drafts = await scanModelConfigs();
+    scannedModelConfigs = new Map(
+      drafts.map((draft) => [modelConfigImportKey(draft.source, draft.externalId), draft]),
+    );
+    return { providers: drafts.map(publicModelConfigCandidate) };
+  });
+  handle(
+    IPC.invoke.modelConfigImportRun,
+    async (selections: unknown) => {
+      if (!host) throw new Error("host unavailable");
+      let imported = 0;
+      let skipped = 0;
+      let failed = 0;
+      const items = Array.isArray(selections) ? selections : [];
+      const existing = await host.call<{
+        providers: Array<{
+          id: string;
+          baseUrl?: string | null;
+          apiStyle?: string | null;
+          vendorKey?: string | null;
+          hasSecret?: boolean;
+        }>;
+      }>("providers.list", { includeDisabled: true });
+      // Matching an import by endpoint alone collapses distinct credentials.
+      // Resolve existing API keys in Electron main so same-endpoint profiles
+      // remain independent without exposing secrets to the renderer.
+      const known = await Promise.all(
+        (existing.providers ?? []).map(async (provider) => {
+          let secretValue: string | undefined;
+          if (provider.hasSecret) {
+            try {
+              secretValue = (
+                await host!.call<{ value?: string }>("providers.getSecret", {
+                  id: provider.id,
+                })
+              ).value;
+            } catch {
+              // A provider may only have an OAuth credential, or its secret
+              // backend may be temporarily unavailable. In either case,
+              // failing closed here avoids collapsing a new profile.
+            }
+          }
+          return { ...provider, secretValue };
+        }),
+      );
+      let firstImported:
+        | { id: string; defaultModelId?: string; models?: Array<{ id: string }> }
+        | undefined;
+      for (const selection of items) {
+        const key = modelConfigSelectionKey(selection);
+        const draft = key ? scannedModelConfigs.get(key) : undefined;
+        if (!draft) {
+          failed += 1;
+          logger.app("provider", "warn", "model config import selection rejected", {
+            data: { reason: "candidate was not returned by the latest scan" },
+          });
+          continue;
+        }
+        if (draftMatchesExisting(draft, known)) {
+          skipped += 1;
+          continue;
+        }
+        try {
+          const created = await host.call<{
+            provider: { id: string; defaultModelId?: string; models?: Array<{ id: string }> };
+          }>("providers.create", providerCreateInputFromDraft(draft));
+          imported += 1;
+          known.push({
+            ...draft,
+            id: created.provider.id,
+            secretValue: draft.secretValue,
+          });
+          firstImported ??= created.provider;
+        } catch (e) {
+          failed += 1;
+          logger.app("provider", "warn", "model config import failed", {
+            data: {
+              source: draft.source,
+              externalId: draft.externalId,
+              name: draft.name,
+              hasSecret: draft.hasSecret,
+              error: String(e),
+            },
+          });
+        }
+      }
+      if (firstImported) {
+        try {
+          const settings = await host.call<{ defaultProviderId?: string }>("settings.get");
+          if (!settings?.defaultProviderId) {
+            await host.call("settings.set", {
+              defaultProviderId: firstImported.id,
+              defaultModelId:
+                firstImported.models?.[0]?.id ?? firstImported.defaultModelId,
+            });
+          }
+        } catch (e) {
+          logger.app("provider", "warn", "model config import default not set", {
+            data: { error: String(e) },
+          });
+        }
+      }
+      logger.app("provider", "info", "model config import finished", {
+        data: { imported, skipped, failed },
+      });
+      return { imported, skipped, failed };
+    },
+  );
+
   handle(IPC.invoke.settingsGet, async () => {
     if (!host) throw new Error("host unavailable");
     const settings = await host.call("settings.get");
@@ -5996,6 +6790,7 @@ function registerIpc() {
     applyApplicationMenuSettings(
       validatedSettings as {
         language?: unknown;
+        theme?: unknown;
         keybindings?: unknown;
         developerMode?: unknown;
       } | null,
@@ -6054,7 +6849,7 @@ function registerIpc() {
     );
     if (!local.ok) return { ...local, network: "skipped" };
     const detail = await host.call<{
-      provider?: { baseUrl?: string; authKind?: string; userAgent?: string };
+      provider?: { baseUrl?: string; authKind?: string; headers?: Record<string, string> };
     }>("providers.get", { id });
     // A vendor account proves itself by resolving auth — refreshing the token
     // if it has expired — not by probing /models with a key it does not have.
@@ -6078,9 +6873,9 @@ function registerIpc() {
     const timer = setTimeout(() => controller.abort(), 8000);
     try {
       const res = await fetch(`${baseUrl.replace(/\/+$/, "")}/models`, {
-        headers: withUserAgentHeaders(
+        headers: mergeProviderHeaders(
           secret.value ? { Authorization: `Bearer ${secret.value}` } : {},
-          detail.provider?.userAgent,
+          detail.provider?.headers,
         ),
         signal: controller.signal,
       });
@@ -6150,7 +6945,7 @@ function registerIpc() {
             baseUrl?: string;
             apiKey?: string;
             apiStyle?: string;
-            userAgent?: string;
+            headers?: Record<string, string>;
             source?: "cache" | "refresh";
           },
     ) => {
@@ -6382,7 +7177,7 @@ function registerIpc() {
             baseUrl,
             apiKey,
             apiStyle,
-            userAgent: req.userAgent ?? provider?.userAgent,
+            headers: req.headers ?? provider?.headers,
           });
           if (discovered.length > 0) {
             const models = discovered.map((model) => decorate(model));
@@ -6518,6 +7313,27 @@ function registerIpc() {
     setCurrentWorkspacePath(res.workspace?.path ?? result.filePaths[0]);
     return { workspace: await withGitBranch(res.workspace), canceled: false };
   });
+  handle(IPC.invoke.projectClone, async (input: { url?: string } = {}) => {
+    const parentDefault = currentWorkspacePath()
+      ? dirname(currentWorkspacePath()!)
+      : homedir();
+    const picked = await dialog.showOpenDialog({
+      defaultPath: parentDefault,
+      properties: ["openDirectory", "createDirectory"],
+    });
+    if (picked.canceled || !picked.filePaths[0]) {
+      return { workspace: null, canceled: true };
+    }
+    const dest = await cloneGitRepository({
+      url: input.url ?? "",
+      parentPath: picked.filePaths[0],
+    });
+    const workspace = await withGitBranch({
+      path: dest,
+      name: dest.split(/[\\/]/).filter(Boolean).at(-1) || dest,
+    });
+    return { workspace, canceled: false };
+  });
   handle(IPC.invoke.projectSet, async (path: string) => {
     if (!host) throw new Error("host unavailable");
     setCurrentWorkspacePath(path);
@@ -6532,28 +7348,41 @@ function registerIpc() {
     return host.call("workspace.clear");
   });
 
-  handle(IPC.invoke.composerPickFiles, async () => {
+  handleWithEvent(IPC.invoke.composerPickFiles, async (event) => {
     const result = await dialog.showOpenDialog({
-      properties: ["openFile", "openDirectory", "multiSelections"],
+      properties: ["openFile", "multiSelections"],
     });
-    if (result.canceled) return { paths: [] as string[], canceled: true };
-    return { paths: result.filePaths, canceled: false };
+    if (result.canceled || result.filePaths.length === 0) {
+      return { token: null, canceled: true };
+    }
+    return {
+      token: rememberComposerPickerSelection(result.filePaths, event.sender.id),
+      canceled: false,
+    };
   });
 
-  handle(IPC.invoke.composerPickPhotos, async () => {
+  handleWithEvent(IPC.invoke.composerPickPhotos, async (event) => {
     const result = await dialog.showOpenDialog({
       properties: ["openFile", "multiSelections"],
       filters: [
         { name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp", "heic", "tif", "tiff"] },
       ],
     });
-    if (result.canceled) return { paths: [] as string[], canceled: true };
-    return { paths: result.filePaths, canceled: false };
+    if (result.canceled || result.filePaths.length === 0) {
+      return { token: null, canceled: true };
+    }
+    return {
+      token: rememberComposerPickerSelection(result.filePaths, event.sender.id),
+      canceled: false,
+    };
   });
 
-  handle(
+  handleWithEvent(
     IPC.invoke.composerImportFiles,
-    async (input: { sessionId?: unknown; paths?: unknown } = {}) => {
+    async (
+      event,
+      input: { sessionId?: unknown; token?: unknown } = {},
+    ) => {
       if (!host) throw new Error("host unavailable");
       const sessionId =
         typeof input.sessionId === "string" ? input.sessionId.trim() : "";
@@ -6570,24 +7399,35 @@ function registerIpc() {
           errorCode: ErrorCodes.NOT_FOUND,
         });
       }
-      if (!Array.isArray(input.paths)) {
-        throw Object.assign(new Error("paths must be an array"), {
-          errorCode: ErrorCodes.INVALID_ARGUMENT,
-        });
-      }
+      const paths = consumeComposerPickerSelection(input.token, event.sender.id);
       return {
         files: await importComposerFiles(
           dataDir,
           sessionId,
-          input.paths as string[],
+          paths,
         ),
       };
     },
   );
 
-  handle(
+  handleWithEvent(
+    IPC.invoke.clipboardRecordPaste,
+    async (event, input: { text?: unknown } = {}) => {
+      assertMainWindowSender(event);
+      if (typeof input.text !== "string") {
+        throw Object.assign(new Error("text must be a string"), {
+          errorCode: ErrorCodes.INVALID_ARGUMENT,
+        });
+      }
+      clipboardHistory.recordText(input.text);
+      return { ok: true };
+    },
+  );
+
+  handleWithEvent(
     IPC.invoke.composerPasteFiles,
-    async (input: { sessionId?: unknown; files?: unknown } = {}) => {
+    async (event, input: { sessionId?: unknown; files?: unknown } = {}) => {
+      assertMainWindowSender(event);
       if (!host) throw new Error("host unavailable");
       const sessionId =
         typeof input.sessionId === "string" ? input.sessionId.trim() : "";
@@ -6610,7 +7450,9 @@ function registerIpc() {
         });
       }
       const files = input.files as ComposerPasteFile[];
-      return { files: await saveComposerPasteFiles(dataDir, sessionId, files) };
+      const saved = await saveComposerPasteFiles(dataDir, sessionId, files);
+      recordPastedClipboardFiles(files);
+      return { files: saved };
     },
   );
 
@@ -6843,8 +7685,62 @@ function registerIpc() {
     return getWorkspaceFileIndex(root);
   });
 
-  handle(IPC.invoke.composerCommands, async () => {
-    const root = await optionalWorkspaceRoot();
+  registerAgentExtensionIpc({
+    handle,
+    bridge: agentExtensions,
+    window: () => mainWindow,
+    importRoot: join(dataDir, "plugins", "imported"),
+    loadDevPlugin: async (path) => {
+      if (!host) throw new Error("host unavailable");
+      const loaded = await host.call<{ plugin: any }>("plugins.loadDev", { path });
+      await plugins.loadFromPath(path, loaded.plugin?.permissions ?? [], { development: true });
+      if (loaded.plugin?.id) plugins.watchDevPlugin(loaded.plugin.id);
+      sendToRenderer(IPC.event.pluginChanged, { reason: "importExtension", pluginId: loaded.plugin?.id });
+      return loaded;
+    },
+    runCommand: async (input) => {
+      if (!sidecar) throw new Error("agent sidecar unavailable");
+      return sidecar.call<{ handled: boolean }>("extensions.command.run", input);
+    },
+  });
+
+  const loadComposerSkillCommands = async (
+    root: string | null,
+  ): Promise<ComposerCommand[]> => {
+    const builtins = builtinSkills({
+      workspacePath: root,
+      pluginPaths: plugins.listLoaded().map((loaded) => loaded.path),
+    });
+    const pluginSkills = plugins
+      .getSkills()
+      .filter((skill) => pluginActiveInProject(skill.pluginId, root))
+      .map((skill) => ({
+        id: skill.id,
+        name: skill.name,
+        description: skill.description,
+      }));
+    const userSkills = (await activeUserSkills(root ?? undefined)).map((skill) => ({
+      id: skill.id,
+      name: skill.name,
+      description: skill.description,
+    }));
+    const seen = new Set<string>();
+    return [...builtins, ...pluginSkills, ...userSkills].flatMap((skill) => {
+      if (!skill.id || seen.has(skill.id)) return [];
+      seen.add(skill.id);
+      return [
+        {
+          name: skill.id,
+          kind: "skill" as const,
+          title: skill.name,
+          ...(skill.description ? { description: skill.description } : {}),
+          skillId: skill.id,
+        },
+      ];
+    });
+  };
+
+  const buildComposerCommands = async (root: string | null): Promise<ComposerCommand[]> => {
     const templates = await loadComposerTemplatesCached(root).catch(() => []);
     const templateCommands = templates.map((template) => ({
       name: template.name,
@@ -6866,20 +7762,37 @@ function registerIpc() {
         ...(command.category ? { description: command.category } : {}),
         id: command.id,
       }));
+    // Trusted extension commands take arguments and run in the active
+    // session's sidecar (spec 16 §8); they come after plugin commands and
+    // before the final Skills group.
+    const extensionCommands = agentExtensions.allCommands().map((command) => ({
+      name: command.name,
+      kind: "extension" as const,
+      title: `/${command.name}`,
+      description: command.description ?? command.extensionLabel,
+      id: trustedExtensionCommandId(command.name),
+    }));
+    const skillCommands = await loadComposerSkillCommands(root).catch(() => []);
     // One namespace: builtin aliases win, then project templates, then user
-    // templates, then plugin commands (spec 04 §7).
-    const merged = new Map<
-      string,
-      ReturnType<typeof builtinComposerCommands>[number]
-    >();
+    // templates, then plugin commands, extension commands, and finally skills.
+    // Skills are deliberately appended last so the slash menu keeps them at
+    // the bottom without allowing a skill to shadow an existing command.
+    const merged = new Map<string, ComposerCommand>();
     for (const command of [
       ...builtinComposerCommands(),
       ...templateCommands,
       ...pluginCommands,
+      ...extensionCommands,
+      ...skillCommands,
     ]) {
       if (!merged.has(command.name)) merged.set(command.name, command);
     }
-    return { commands: [...merged.values()] };
+    return [...merged.values()];
+  };
+
+  handle(IPC.invoke.composerCommands, async () => {
+    const root = await optionalWorkspaceRoot();
+    return { commands: await buildComposerCommands(root) };
   });
 
   handle(
@@ -6923,6 +7836,23 @@ function registerIpc() {
       return { requested, applied };
     },
   );
+
+  handle(IPC.invoke.windowSetBackgroundColor, async (input: unknown = {}) => {
+    const theme = (input as { theme?: unknown })?.theme;
+    if (theme !== "light" && theme !== "dark") {
+      throw Object.assign(new Error("invalid window background theme"), {
+        errorCode: ErrorCodes.INVALID_ARGUMENT,
+      });
+    }
+    // macOS uses a transparent window with native sidebar vibrancy. Do not make
+    // this renderer-driven fallback opaque on that platform.
+    if (process.platform === "darwin") return { applied: false, theme };
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      throw new Error("main window unavailable");
+    }
+    mainWindow.setBackgroundColor(theme === "light" ? "#ffffff" : "#181818");
+    return { applied: true, theme };
+  });
 
   // Custom window-chrome buttons on Windows/Linux (renderer-drawn).
   handle(
@@ -7152,8 +8082,58 @@ function registerIpc() {
     return { enhancedDraft };
   });
 
+  handle(IPC.invoke.sessionSummarizeTitle, async (req: SessionSummarizeTitleRequest) => {
+    if (!host) throw new Error("backend unavailable");
+    const sessionId = typeof req?.sessionId === "string" ? req.sessionId.trim() : "";
+    const userPrompt = typeof req?.userPrompt === "string" ? req.userPrompt.trim() : "";
+    if (!sessionId || !userPrompt) {
+      throw Object.assign(new Error("sessionId and userPrompt required"), {
+        errorCode: ErrorCodes.INVALID_ARGUMENT,
+      });
+    }
+    const session = (await host.call<{ session?: any }>("session.get", { id: sessionId })).session;
+    if (!session) {
+      throw Object.assign(new Error("Session not found"), {
+        errorCode: ErrorCodes.NOT_FOUND,
+      });
+    }
+    const settings = await host.call<any>("settings.get");
+    const launch = await resolveAgentRuntimeLaunch(
+      `title-summary:${sessionId}`,
+      session,
+      settings,
+      {
+        mode: "agent",
+        providerId: typeof req.providerId === "string" ? req.providerId.trim() : undefined,
+        modelId: typeof req.modelId === "string" ? req.modelId.trim() : undefined,
+        thinkingLevel: "off",
+      },
+    );
+    const runtimeProvider = {
+      ...launch.sidecarParams.provider,
+      ...(launch.sidecarParams.provider.authKind === OAUTH_AUTH_KIND
+        ? { resolveAuth: () => vendorOAuth.resolveAuth(launch.providerId) }
+        : {}),
+    } as RuntimeProviderConfig;
+
+    const title = await summarizeSessionTitle(
+      runtimeProvider,
+      userPrompt,
+      req.assistantReply,
+      "off",
+      { sessionId },
+    );
+    logger.app("session", "info", "session title summarized", {
+      sessionId,
+      data: { title, providerId: launch.providerId, modelId: launch.modelId },
+    });
+    return { title };
+  });
+
   handle(IPC.invoke.agentPrompt, async (req: AgentPromptRequest) => {
     if (!host || !sidecar) throw new Error("backend unavailable");
+    const releaseSessionOperation = await acquireSessionOperation(req.sessionId);
+    try {
     // Install the renderer's prompt-time snapshot before any asynchronous
     // setup. This closes the gap where a fast completion could beat the
     // effect that reports the active chat session. Missing or mismatched
@@ -7167,6 +8147,7 @@ function registerIpc() {
     const settings = await host.call<any>("settings.get");
     const sessionResult = await host.call<{ session?: any }>("session.get", {
       id: req.sessionId,
+      messageLimit: 1,
     });
     let session = sessionResult.session;
     if (!session) {
@@ -7174,97 +8155,59 @@ function registerIpc() {
         errorCode: ErrorCodes.NOT_FOUND,
       });
     }
-    // The host's own transcript decides where the cut lands, so a renderer
-    // holding a bounded window cannot shift it.
-    const allMessages = Array.isArray(session.messages) ? session.messages : [];
-    const truncation = resolveTranscriptTruncation(allMessages, req);
-    if (truncation.kind === "unknown-message") {
-      throw Object.assign(
-        new Error("truncateFromMessageId is not in this session"),
-        { errorCode: ErrorCodes.NOT_FOUND },
-      );
-    }
-    if (truncation.kind === "cut") {
-      const all = allMessages;
-      const cut = truncation.index;
-      const kept = all.slice(0, cut);
-      const discarded = all.slice(cut);
-      // ChatGPT-style regenerate history: archive the discarded branch under
-      // its root user turn before truncating the live transcript.
-      const rootUser = discarded.find(
-        (message: any) => message?.role === "user" && message?.id,
-      );
-      if (rootUser && discarded.length > 0) {
-        try {
-          // Prefer an existing revision-family key so regenerates keep one
-          // linear variant set instead of forking a new root on every redo.
-          const stableRootUserId =
-            typeof rootUser.revisionRootId === "string" && rootUser.revisionRootId
-              ? rootUser.revisionRootId
-              : rootUser.id;
-          const listed = await host.call<{
-            revisions?: Array<{ revisionIndex: number; isActive?: boolean }>;
-          }>("session.listRevisions", { sessionId: req.sessionId, rootUserId: stableRootUserId });
-          const existing = listed.revisions ?? [];
-          // The stamp on the discarded root names the variant this tail is.
-          // It beats the DB active flag, which only moves on agent_end: after
-          // a regenerate whose turn failed, the DB still points at the
-          // previous variant and refreshing that would bury it.
-          const stamped =
-            typeof rootUser.activeRevision === "number" ? rootUser.activeRevision : 0;
-          const target =
-            stamped > 0
-              ? existing.find((revision) => revision.revisionIndex === stamped)
-              : existing.find((revision) => revision.isActive);
-          if (target) {
-            // The branch was archived on its agent_end, but every prompt since
-            // then appended to it (and an error-ended turn never re-archived
-            // it). Write the live tail back over that revision so the pager
-            // restores all of it, not a stale copy.
-            await host.call("session.saveRevision", {
-              sessionId: req.sessionId,
-              rootUserId: stableRootUserId,
-              messages: discarded,
-              revisionIndex: target.revisionIndex,
-            });
-          } else {
-            // First regenerate (the original tail is not stored yet), or a
-            // tail stamped by an earlier regenerate whose turn failed before
-            // agent_end archived it: a variant of its own.
-            await host.call("session.saveRevision", {
-              sessionId: req.sessionId,
-              rootUserId: stableRootUserId,
-              messages: discarded,
-              makeActive: false,
-            });
-          }
-          const revisions = await host.call<{ revisions?: Array<{ revisionIndex: number }> }>(
-            "session.listRevisions",
-            { sessionId: req.sessionId, rootUserId: stableRootUserId },
-          );
-          const count = revisions.revisions?.length ?? 0;
-          // Stamp the upcoming user prompt with pager metadata after append.
-          (req as any).__revisionMeta = {
-            rootUserId: stableRootUserId,
-            revisionCount: count + 1, // +1 for the branch about to be generated
-            activeRevision: count + 1,
-          };
-        } catch (error) {
-          logger.app("persistence", "warn", "save regenerate revision failed", {
-            sessionId: req.sessionId,
-            data: String(error),
-          });
-          // Regenerate is destructive after this point. If the running host is
-          // stale or revision persistence is unavailable, abort before
-          // truncating the live transcript so the renderer can reload the
-          // untouched branch.
-          throw error;
-        }
+    const truncateFromMessageId =
+      typeof req.truncateFromMessageId === "string"
+        ? req.truncateFromMessageId.trim()
+        : "";
+    const truncateBefore =
+      typeof req.truncateBefore === "number" &&
+      Number.isFinite(req.truncateBefore) &&
+      req.truncateBefore >= 0
+        ? Math.floor(req.truncateBefore)
+        : undefined;
+    if (truncateFromMessageId || truncateBefore !== undefined) {
+      // Host-owned cut: the kept prefix never crosses the JSON-RPC pipe
+      // (issue #211). Abort any leftover running turn first so beginTurn
+      // cannot see AGENT_BUSY after a timed-out retry.
+      if (sidecar) {
+        await sidecar
+          .call("agent.abort", { sessionId: req.sessionId })
+          .catch(() => undefined);
       }
-      await host.call("session.replaceMessages", {
-        sessionId: req.sessionId,
-        messages: kept,
-      });
+      await finishTurn(req.sessionId, "aborted", "TURN_ABORTED");
+
+      try {
+        await persistenceOutbox.flush(() => host);
+        const truncated = await host.call<{
+          revision?: {
+            rootUserId?: string;
+            revisionCount?: number;
+            activeRevision?: number;
+          } | null;
+        }>("session.truncateFrom", {
+          sessionId: req.sessionId,
+          ...(truncateFromMessageId ? { fromMessageId: truncateFromMessageId } : {}),
+          ...(truncateBefore !== undefined ? { truncateBefore } : {}),
+        });
+        const revision = truncated.revision;
+        if (
+          revision?.rootUserId &&
+          typeof revision.revisionCount === "number" &&
+          typeof revision.activeRevision === "number"
+        ) {
+          (req as any).__revisionMeta = {
+            rootUserId: revision.rootUserId,
+            revisionCount: revision.revisionCount,
+            activeRevision: revision.activeRevision,
+          };
+        }
+      } catch (error) {
+        logger.app("persistence", "warn", "truncate regenerate transcript failed", {
+          sessionId: req.sessionId,
+          data: String(error),
+        });
+        throw error;
+      }
       if (sidecar) {
         sidecar.clearProjectInstructionRoot(req.sessionId);
         sidecar.clearVendorAuthBindings(req.sessionId);
@@ -7274,9 +8217,11 @@ function registerIpc() {
       }
       const refreshed = await host.call<{ session?: any }>("session.get", {
         id: req.sessionId,
+        messageLimit: 1,
       });
-      session = refreshed.session ?? { ...session, messages: kept };
+      session = refreshed.session ?? session;
     }
+
     const launch = await resolveAgentRuntimeLaunch(
       req.sessionId,
       session,
@@ -7297,21 +8242,41 @@ function registerIpc() {
     activeTurns.set(req.sessionId, durableTurnId);
     activeTurnUsages.delete(req.sessionId);
 
-    // Slash template expansion (D123, ADR 0024): templates expand before
-    // persistence so reseed replays exactly what the model saw; the typed
-    // form rides along as `command` for transcript display. Builtin/plugin
-    // slash aliases never reach this channel, and unknown /names stay
-    // literal text.
+    // Slash expansion (D123, ADR 0024): templates expand before persistence
+    // so reseed replays exactly what the model saw; the typed form rides along
+    // as `command` for transcript display. Skill aliases are converted into a
+    // short model instruction that makes the existing Skill tool call
+    // explicit, while the typed form remains the visible transcript chip.
+    // Builtin/plugin slash aliases never reach this channel, and unknown
+    // /names stay literal text.
     let promptContent = req.content;
     let slashCommand: string | undefined;
     if (req.content.startsWith("/")) {
       try {
         const root = await optionalWorkspaceRoot();
-        const templates = await loadComposerTemplatesCached(root);
-        const expansion = expandSlashInvocation(req.content, templates);
-        if (expansion) {
-          promptContent = expansion.expanded;
-          slashCommand = expansion.command;
+        const commandEnd = req.content.search(/\s/);
+        const commandName = req.content.slice(
+          1,
+          commandEnd === -1 ? undefined : commandEnd,
+        );
+        const commands = await buildComposerCommands(launch.projectPath ?? root);
+        const command = commands.find((item) => item.name === commandName);
+        if (command?.kind === "skill" && command.skillId) {
+          const body = commandEnd === -1 ? "" : req.content.slice(commandEnd).trim();
+          promptContent = [
+            `Call the \`Skill\` tool with id ${JSON.stringify(command.skillId)} before answering this request. Follow the loaded skill instructions.`,
+            body,
+          ]
+            .filter(Boolean)
+            .join("\n\n");
+          slashCommand = req.content;
+        } else {
+          const templates = await loadComposerTemplatesCached(root);
+          const expansion = expandSlashInvocation(req.content, templates);
+          if (expansion) {
+            promptContent = expansion.expanded;
+            slashCommand = expansion.command;
+          }
         }
       } catch (error) {
         logger.app("session", "warn", "slash expansion failed; sending literal text", {
@@ -7357,7 +8322,11 @@ function registerIpc() {
     // The renderer already shows this row under its own id (D288); persisting
     // and echoing under the same id lets the echo replace it in place.
     const userMessage = {
-      id: durableUserMessageId(req.messageId, allMessages),
+      id: durableUserMessageId(
+        req.messageId,
+        Array.isArray(session.messages) ? session.messages : [],
+      ),
+
       role: "user" as const,
       content: promptContent,
       createdAt: new Date().toISOString(),
@@ -7390,12 +8359,12 @@ function registerIpc() {
       );
       throw error;
     }
-    sendToRenderer(IPC.event.agentMessage, {
+    emitAgentEvent({
       sessionId: req.sessionId,
       ts: Date.now(),
       event: { type: "message_start", message: userMessage },
     } satisfies AgentEventEnvelope);
-    sendToRenderer(IPC.event.agentMessage, {
+    emitAgentEvent({
       sessionId: req.sessionId,
       ts: Date.now(),
       event: { type: "message_end", message: userMessage },
@@ -7434,6 +8403,9 @@ function registerIpc() {
       data: { providerId: launch.providerId, modelId: launch.modelId },
     });
     return result;
+    } finally {
+      releaseSessionOperation();
+    }
   });
 
   handle(IPC.invoke.agentCompact, async (req: { sessionId: string }) => {
@@ -7469,6 +8441,7 @@ function registerIpc() {
   handle(IPC.invoke.agentAbort, async (req: { sessionId: string }) => {
     if (!sidecar) throw new Error("sidecar unavailable");
     logger.app("session", "info", "prompt aborted", { sessionId: req.sessionId });
+    agentHostBridge?.markAborting(req.sessionId);
     const executionId =
       approvedExecutionIdsBySession.get(req.sessionId) ??
       [...claimedExecutionSessions].find(
@@ -7476,6 +8449,8 @@ function registerIpc() {
       )?.[0];
     let result: unknown;
     try {
+      // An open extension prompt resolves with its abort value (spec 16 §9).
+      agentExtensions.cancelPrompts(req.sessionId);
       result = await sidecar.call("agent.abort", req);
     } finally {
       await finishTurn(req.sessionId, "aborted", "TURN_ABORTED");
@@ -7506,6 +8481,27 @@ function registerIpc() {
     return sidecar.call("agent.getStatus", { sessionId });
   });
 
+  // The Host-owned turn queue (D375 / D386). The renderer mirrors it; the
+  // headless module admits, orders, and drains it.
+  handle(IPC.invoke.agentQueuePush, async (req: AgentQueuePushRequest) => {
+    if (!agentHostBridge) throw new Error("agent host unavailable");
+    return agentHostBridge.queue.push(req);
+  });
+  handle(IPC.invoke.agentQueueList, async (req: { sessionId: string }) => {
+    if (!agentHostBridge) throw new Error("agent host unavailable");
+    return { entries: agentHostBridge.queue.list(req.sessionId) };
+  });
+  handle(IPC.invoke.agentQueueRemove, async (req: { turnId: string }) => {
+    if (!agentHostBridge) throw new Error("agent host unavailable");
+    await agentHostBridge.queue.remove(req.turnId);
+    return { ok: true };
+  });
+  handle(IPC.invoke.agentQueuePrioritize, async (req: { turnId: string }) => {
+    if (!agentHostBridge) throw new Error("agent host unavailable");
+    await agentHostBridge.queue.prioritize(req.turnId);
+    return { ok: true };
+  });
+
   handle(IPC.invoke.toolResolvePermission, async (resolution: {
     requestId: string;
     decision: string;
@@ -7514,7 +8510,15 @@ function registerIpc() {
     logger.app("permission", "info", "permission resolved", {
       data: { requestId: resolution.requestId, decision: resolution.decision },
     });
-    return host.call("permissions.resolve", resolution);
+    const resolved = await host.call("permissions.resolve", resolution);
+    agentHostBridge?.settleApproval(resolution.requestId, {
+      ...(resolution.decision === "allow-once" ||
+      resolution.decision === "allow-session" ||
+      resolution.decision === "deny"
+        ? { decision: resolution.decision }
+        : {}),
+    });
+    return resolved;
   });
 
   handle(IPC.invoke.askToolResolve, async (resolution: AskToolResolution) => {
@@ -7576,6 +8580,10 @@ function registerIpc() {
       ...(version !== undefined ? { version } : {}),
       ...(targetPermissionMode ? { targetPermissionMode } : {}),
     });
+    agentHostBridge?.settleApproval(proposalId, {
+      decision: action,
+      ...(targetPermissionMode ? { permissionMode: targetPermissionMode } : {}),
+    });
     if (action === "approve") {
       const execution = executionFromResponse(result);
       if (execution) {
@@ -7593,12 +8601,19 @@ function registerIpc() {
     rememberPluginScopes(result.plugins ?? []);
     const pluginsWithSettings = await Promise.all(
       (result.plugins ?? []).map(async (plugin) => {
-        if (!plugin?.settings?.length || !plugins.getLoaded(plugin.id)) return plugin;
+        const extensionIds = plugins
+          .getAgentExtensions()
+          .filter((extension) => extension.pluginId === plugin?.id)
+          .map((extension) => extension.id);
+        const withExtension = extensionIds.length
+          ? { ...plugin, agentExtension: agentExtensions.statusForPlugin(extensionIds) }
+          : plugin;
+        if (!plugin?.settings?.length || !plugins.getLoaded(plugin.id)) return withExtension;
         try {
           const settings = await plugins.getPluginSettings(plugin.id);
-          return { ...plugin, settings };
+          return { ...withExtension, settings };
         } catch {
-          return plugin;
+          return withExtension;
         }
       }),
     );
@@ -7617,7 +8632,7 @@ function registerIpc() {
         String(payload?.id ?? ""),
         payload?.settings ?? {},
       );
-      sendToRenderer(IPC.event.pluginChanged, {
+      sendToRenderer(IPC.event.pluginChanged,{
         reason: "settings",
         pluginId: String(payload?.id ?? ""),
       });
@@ -7642,7 +8657,7 @@ function registerIpc() {
     for (const toast of plugins.drainToasts()) {
       sendToRenderer(IPC.event.toast, { message: toast });
     }
-    sendToRenderer(IPC.event.pluginChanged, {
+    sendToRenderer(IPC.event.pluginChanged,{
       reason: "loadDev",
       pluginId: loaded.plugin?.id,
     });
@@ -7661,7 +8676,7 @@ function registerIpc() {
     for (const toast of plugins.drainToasts()) {
       sendToRenderer(IPC.event.toast, { message: toast });
     }
-    sendToRenderer(IPC.event.pluginChanged, { reason: "reload", pluginId: id });
+    sendToRenderer(IPC.event.pluginChanged,{ reason: "reload", pluginId: id });
     return { plugin };
   });
 
@@ -7724,7 +8739,7 @@ function registerIpc() {
     for (const toast of plugins.drainToasts()) {
       sendToRenderer(IPC.event.toast, { message: toast });
     }
-    sendToRenderer(IPC.event.pluginChanged, {
+    sendToRenderer(IPC.event.pluginChanged,{
       reason: "install",
       pluginId: installed.result?.plugin?.id,
     });
@@ -7756,7 +8771,7 @@ function registerIpc() {
     for (const toast of plugins.drainToasts()) {
       sendToRenderer(IPC.event.toast, { message: toast });
     }
-    sendToRenderer(IPC.event.pluginChanged, {
+    sendToRenderer(IPC.event.pluginChanged,{
       reason: "install",
       pluginId: installed.result?.plugin?.id,
     });
@@ -7773,7 +8788,7 @@ function registerIpc() {
       if (res.plugin.source === "dev") plugins.watchDevPlugin(id);
     }
     logger.app("plugin", "info", "plugin enabled", { pluginId: id });
-    sendToRenderer(IPC.event.pluginChanged, { reason: "enable", pluginId: id });
+    sendToRenderer(IPC.event.pluginChanged,{ reason: "enable", pluginId: id });
     return res;
   });
 
@@ -7784,7 +8799,7 @@ function registerIpc() {
     await plugins.unload(id);
     logger.app("plugin", "info", "plugin disabled", { pluginId: id });
     const res = await host.call("plugins.disable", { id });
-    sendToRenderer(IPC.event.pluginChanged, { reason: "disable", pluginId: id });
+    sendToRenderer(IPC.event.pluginChanged,{ reason: "disable", pluginId: id });
     return res;
   });
 
@@ -7794,7 +8809,7 @@ function registerIpc() {
     await plugins.unload(id);
     logger.app("plugin", "info", "plugin uninstalled", { pluginId: id });
     const res = await host.call("plugins.uninstall", { id });
-    sendToRenderer(IPC.event.pluginChanged, { reason: "uninstall", pluginId: id });
+    sendToRenderer(IPC.event.pluginChanged,{ reason: "uninstall", pluginId: id });
     return res;
   });
 
@@ -7822,7 +8837,7 @@ function registerIpc() {
         pluginId: payload.id,
         data: { mode: payload.scope?.mode, projects: payload.scope?.projects?.length ?? 0 },
       });
-      sendToRenderer(IPC.event.pluginChanged, { reason: "scope", pluginId: payload.id });
+      sendToRenderer(IPC.event.pluginChanged,{ reason: "scope", pluginId: payload.id });
       return res;
     },
   );
@@ -7847,7 +8862,7 @@ function registerIpc() {
     if (!host) throw new Error("host unavailable");
     const res = await host.call<{ server: McpServerRecord }>("mcp.upsert", { server });
     await refreshUserMcp(currentWorkspacePath());
-    sendToRenderer(IPC.event.pluginChanged, { reason: "mcp", pluginId: res.server?.id });
+    sendToRenderer(IPC.event.pluginChanged,{ reason: "mcp", pluginId: res.server?.id });
     return res;
   });
 
@@ -7857,7 +8872,7 @@ function registerIpc() {
       if (!host) throw new Error("host unavailable");
       const res = await host.call("mcp.remove", payload);
       await refreshUserMcp(currentWorkspacePath());
-      sendToRenderer(IPC.event.pluginChanged, { reason: "mcp", pluginId: payload.id });
+      sendToRenderer(IPC.event.pluginChanged,{ reason: "mcp", pluginId: payload.id });
       return res;
     },
   );
@@ -7868,7 +8883,7 @@ function registerIpc() {
       if (!host) throw new Error("host unavailable");
       const res = await host.call("mcp.setEnabled", payload);
       await refreshUserMcp(currentWorkspacePath());
-      sendToRenderer(IPC.event.pluginChanged, { reason: "mcp", pluginId: payload.id });
+      sendToRenderer(IPC.event.pluginChanged,{ reason: "mcp", pluginId: payload.id });
       return res;
     },
   );
@@ -7879,7 +8894,7 @@ function registerIpc() {
       if (!host) throw new Error("host unavailable");
       const res = await host.call("mcp.setScope", payload);
       await refreshUserMcp(currentWorkspacePath());
-      sendToRenderer(IPC.event.pluginChanged, { reason: "mcp", pluginId: payload.id });
+      sendToRenderer(IPC.event.pluginChanged,{ reason: "mcp", pluginId: payload.id });
       return res;
     },
   );
@@ -7902,7 +8917,7 @@ function registerIpc() {
       ]);
       const status = await userMcp.test(payload.id);
       await refreshUserMcp(currentWorkspacePath());
-      sendToRenderer(IPC.event.pluginChanged, { reason: "mcp", pluginId: payload.id });
+      sendToRenderer(IPC.event.pluginChanged,{ reason: "mcp", pluginId: payload.id });
       return { status };
     },
   );
@@ -7926,7 +8941,7 @@ function registerIpc() {
     }
     await refreshUserMcp(currentWorkspacePath());
     if (imported.length) {
-      sendToRenderer(IPC.event.pluginChanged, { reason: "mcp" });
+      sendToRenderer(IPC.event.pluginChanged,{ reason: "mcp" });
     }
     return { imported, failed };
   });
@@ -7941,7 +8956,7 @@ function registerIpc() {
   handle(IPC.invoke.skillCreate, async (skill: Record<string, unknown>) => {
     if (!host) throw new Error("host unavailable");
     const res = await host.call("skills.create", { skill });
-    sendToRenderer(IPC.event.pluginChanged, { reason: "skill" });
+    sendToRenderer(IPC.event.pluginChanged,{ reason: "skill" });
     return res;
   });
 
@@ -7958,7 +8973,7 @@ function registerIpc() {
       path: picked.filePaths[0],
       ...query,
     });
-    sendToRenderer(IPC.event.pluginChanged, { reason: "skill" });
+    sendToRenderer(IPC.event.pluginChanged,{ reason: "skill" });
     return res;
   });
 
@@ -7968,7 +8983,7 @@ function registerIpc() {
       if (!host) throw new Error("host unavailable");
       const { id, ...skill } = payload;
       const res = await host.call("skills.update", { id, skill });
-      sendToRenderer(IPC.event.pluginChanged, { reason: "skill" });
+      sendToRenderer(IPC.event.pluginChanged,{ reason: "skill" });
       return res;
     },
   );
@@ -7988,7 +9003,7 @@ function registerIpc() {
       if (!host) throw new Error("host unavailable");
       const request = typeof payload === "string" ? { id: payload } : payload;
       const res = await host.call("skills.remove", request);
-      sendToRenderer(IPC.event.pluginChanged, { reason: "skill" });
+      sendToRenderer(IPC.event.pluginChanged,{ reason: "skill" });
       return res;
     },
   );
@@ -7998,7 +9013,7 @@ function registerIpc() {
     async (payload: { id: string; enabled: boolean } & Partial<AgentCapabilityQuery>) => {
       if (!host) throw new Error("host unavailable");
       const res = await host.call("skills.setEnabled", payload);
-      sendToRenderer(IPC.event.pluginChanged, { reason: "skill" });
+      sendToRenderer(IPC.event.pluginChanged,{ reason: "skill" });
       return res;
     },
   );
@@ -8008,7 +9023,7 @@ function registerIpc() {
     async (payload: { id: string; scope: ActivationScope }) => {
       if (!host) throw new Error("host unavailable");
       const res = await host.call("skills.setScope", payload);
-      sendToRenderer(IPC.event.pluginChanged, { reason: "skill" });
+      sendToRenderer(IPC.event.pluginChanged,{ reason: "skill" });
       return res;
     },
   );
@@ -8055,7 +9070,7 @@ function registerIpc() {
   handle(IPC.invoke.subagentCreate, async (subagent: Record<string, unknown>) => {
     if (!host) throw new Error("host unavailable");
     const res = await host.call("agents.create", { subagent });
-    sendToRenderer(IPC.event.pluginChanged, { reason: "subagent" });
+    sendToRenderer(IPC.event.pluginChanged,{ reason: "subagent" });
     return res;
   });
 
@@ -8065,7 +9080,7 @@ function registerIpc() {
       if (!host) throw new Error("host unavailable");
       const { id, ...subagent } = payload;
       const res = await host.call("agents.update", { id, subagent });
-      sendToRenderer(IPC.event.pluginChanged, { reason: "subagent" });
+      sendToRenderer(IPC.event.pluginChanged,{ reason: "subagent" });
       return res;
     },
   );
@@ -8078,7 +9093,7 @@ function registerIpc() {
   handle(IPC.invoke.subagentRemove, async (id: string) => {
     if (!host) throw new Error("host unavailable");
     const res = await host.call("agents.remove", { id });
-    sendToRenderer(IPC.event.pluginChanged, { reason: "subagent" });
+    sendToRenderer(IPC.event.pluginChanged,{ reason: "subagent" });
     return res;
   });
 
@@ -8087,7 +9102,7 @@ function registerIpc() {
     async (payload: { id: string; enabled: boolean }) => {
       if (!host) throw new Error("host unavailable");
       const res = await host.call("agents.setEnabled", payload);
-      sendToRenderer(IPC.event.pluginChanged, { reason: "subagent" });
+      sendToRenderer(IPC.event.pluginChanged,{ reason: "subagent" });
       return res;
     },
   );
@@ -8097,26 +9112,24 @@ function registerIpc() {
     async (payload: { id: string; scope: ActivationScope }) => {
       if (!host) throw new Error("host unavailable");
       const res = await host.call("agents.setScope", payload);
-      sendToRenderer(IPC.event.pluginChanged, { reason: "subagent" });
+      sendToRenderer(IPC.event.pluginChanged,{ reason: "subagent" });
       return res;
     },
   );
 
   /**
-   * Show a definition document in the OS file manager. Registry entries resolve
-   * through the registry; project documents pass their own path, since main
-   * never records them.
+   * Show a definition document in the OS file manager. The path always comes
+   * from the host registry: a renderer-supplied path is never handed to the
+   * shell, so this channel cannot be used to reveal arbitrary locations.
    */
   handle(IPC.invoke.subagentReveal, async (payload: { id?: string; path?: string }) => {
-    let path = payload.path;
-    if (!path) {
-      if (!host) throw new Error("host unavailable");
-      const res = await host.call<{ subagent: UserSubagentRecord | null }>(
-        "agents.read",
-        { id: payload.id },
-      );
-      path = res.subagent?.path;
-    }
+    if (!host) throw new Error("host unavailable");
+    if (!payload.id) throw new Error("subagent id required");
+    const res = await host.call<{ subagent: UserSubagentRecord | null }>(
+      "agents.read",
+      { id: payload.id },
+    );
+    const path = res.subagent?.path;
     if (!path) throw new Error("subagent not found");
     shell.showItemInFolder(stripWinLongPrefix(path));
     return { ok: true };
@@ -8130,6 +9143,8 @@ function registerIpc() {
     if (!(loaded.permissions.has("ui.panel"))) {
       throw new Error("PERMISSION_DENIED: ui.panel");
     }
+    const htmlPath = resolveInsidePluginRoot(loaded.path, manifest.ui.panel);
+    if (!htmlPath) throw new Error("plugin panel must stay inside the plugin");
     await pluginPanels.open({
       pluginId: id,
       title: resolvePluginLocalizedString(manifest.ui.title, updaterLocale, manifest.name),
@@ -8137,7 +9152,7 @@ function registerIpc() {
       theme: pluginPanelTheme,
       width: manifest.ui.width ?? 480,
       height: manifest.ui.height ?? 360,
-      htmlPath: join(loaded.path, manifest.ui.panel),
+      htmlPath,
     });
     return { ok: true };
   });
@@ -8320,7 +9335,7 @@ function registerIpc() {
     for (const toast of plugins.drainToasts()) {
       sendToRenderer(IPC.event.toast, { message: toast });
     }
-    sendToRenderer(IPC.event.pluginChanged, { reason: "market.install", pluginId: payload.id });
+    sendToRenderer(IPC.event.pluginChanged,{ reason: "market.install", pluginId: payload.id });
     return installed;
   });
 
@@ -8345,7 +9360,7 @@ function registerIpc() {
         await plugins.loadFromPath(plugin.path, plugin.permissions ?? []);
       }
     }
-    sendToRenderer(IPC.event.pluginChanged, { reason: "market.applyUpdates" });
+    sendToRenderer(IPC.event.pluginChanged,{ reason: "market.applyUpdates" });
     return applied;
   });
 
@@ -8364,8 +9379,16 @@ function registerIpc() {
         source: "plugin" as const,
         pluginId: c.pluginId,
       }));
+    const extensionCmds = agentExtensions.allCommands().map((c) => ({
+      id: trustedExtensionCommandId(c.name),
+      title: `/${c.name}`,
+      category: c.extensionLabel,
+      keywords: c.description ? [c.description] : [],
+      source: "extension" as const,
+      extensionId: c.extensionId,
+    }));
     return {
-      commands: [...builtin, ...pluginCmds].filter((c) => {
+      commands: [...builtin, ...pluginCmds, ...extensionCmds].filter((c) => {
         if (!q) return true;
         const hay = `${c.title} ${c.category ?? ""} ${(c as any).keywords?.join(" ") ?? ""}`.toLowerCase();
         return hay.includes(q);
@@ -8376,6 +9399,13 @@ function registerIpc() {
   handle(IPC.invoke.commandPaletteExecute, async (commandId: string) => {
     if (commandId.startsWith("builtin.")) {
       return { ok: true, commandId };
+    }
+    if (trustedExtensionCommandName(commandId) !== undefined) {
+      // Extension commands need a session; the renderer routes them through
+      // `extensions/commands/run` with the active session id.
+      throw Object.assign(new Error("extension commands run inside a session"), {
+        errorCode: ErrorCodes.INVALID_ARGUMENT,
+      });
     }
     const cmd = plugins.getCommands().find((c) => c.id === commandId);
     if (!cmd) throw new Error("command not found");
@@ -8413,20 +9443,44 @@ function registerIpc() {
     else contents.closeDevTools();
     return { open };
   });
+
+  return async (channel: string, args: readonly unknown[] = []) => {
+    const handler = ipcHandlers.get(channel);
+    if (!handler) {
+      throw Object.assign(new Error(`IPC channel is not available to external agents: ${channel}`), {
+        errorCode: ErrorCodes.NOT_FOUND,
+      });
+    }
+    return handler(...args);
+  };
 }
+
+// A rejected promise nobody awaited must land in the log with its stack, not
+// in Electron's default handler. Main must keep running: the renderer, the
+// host, and the sidecar are supervised separately and a stray rejection from
+// one plugin bridge or IPC handler is not a reason to lose all of them.
+process.on("unhandledRejection", (reason) => {
+  logger.app("runtime", "error", "unhandled promise rejection in main", {
+    data: reason instanceof Error ? `${reason.stack ?? reason.message}` : String(reason),
+  });
+});
+
+// Default hardening for every web contents Electron creates, applied before
+// the owning surface can wire its own handlers (which replace these). A new
+// window that forgets to set a window-open handler therefore denies popups
+// and cannot attach a <webview> instead of inheriting Chromium's defaults.
+app.on("web-contents-created", (_event, contents) => {
+  contents.setWindowOpenHandler(() => ({ action: "deny" }));
+  contents.on("will-attach-webview", (event) => {
+    event.preventDefault();
+  });
+});
 
 app.whenReady().then(async () => {
   // A launch that lost the single-instance lock is already quitting. Never
   // create a window, a tray, or a child process on top of the running app.
   if (!hasSingleInstanceLock) return;
   applyDevelopmentBranding();
-  try {
-    await clipboardHistory.start();
-  } catch (error) {
-    logger.app("plugin", "warn", "clipboard history sampling unavailable", {
-      data: String(error),
-    });
-  }
   // Load the close-behavior preference before the first window exists: the
   // close handler reads `closeBehavior` synchronously, and a window created
   // while it still held the "ask" default would prompt a user who already
@@ -8448,12 +9502,29 @@ app.whenReady().then(async () => {
   // parallel with host/plugin boot, so the first post-boot Option+Space does
   // not race the renderer allocation just because backend startup was slow.
   prewarmPluginLauncher();
-  registerIpc();
+  const invokeIpc = registerIpc();
+  agentHostBridge = createAgentHostBridge({
+    invoke: invokeIpc,
+    channels: IPC.invoke,
+    getHost: () => host,
+    isSessionBusy: (sessionId) => activeTurns.has(sessionId) || turnFinalizations.has(sessionId),
+    onQueueChange: (event) => sendToRenderer(IPC.event.agentQueueChanged, event),
+    log: (level, message, data) => logger.app("runtime", level, message, { data }),
+  });
+  const control = createMcpControlController({
+    invoke: invokeIpc,
+    channels: IPC.invoke,
+    onOperationComplete: async (operation, result, args) => {
+      const event = mcpControlRendererEvent(operation, result, args);
+      if (event) sendToRenderer(IPC.event.sessionsChanged, event);
+    },
+  });
+  desktopControl = control;
+  plugins.setServices({ desktopControl: control });
   // Load the local model snapshot immediately. A changed APP_VERSION marks the
   // snapshot stale, so every release performs one bounded update without
   // blocking the first window; Settings can force the same refresh on demand.
   void modelsDevCatalog.ensureLoaded();
-  updater.startAutoCheck();
   let bootError: unknown = null;
   try {
     await bootBackends();
@@ -8465,10 +9536,18 @@ app.whenReady().then(async () => {
     });
   }
   if (!bootError) planUiProbe.install();
+  if (!bootError && agentHostBridge) {
+    // Restore the persisted turn queue now that host-core answers. Restored
+    // entries stay held until a controller attaches (D375).
+    agentHostBridge.agentHost.start().catch((error) => {
+      logger.app("runtime", "warn", "agent host queue restore failed", { data: String(error) });
+    });
+  }
   if (host) {
     try {
       const stored = (await host.call("settings.get")) as {
         language?: unknown;
+        theme?: unknown;
         keybindings?: unknown;
         developerMode?: unknown;
       } | null;
@@ -8479,22 +9558,44 @@ app.whenReady().then(async () => {
       // Keep the OS-locale menu until settings can be read again, while
       // retaining the historical default launcher fallback for this failure.
       applyPluginLauncherShortcut();
+      applySummonWindowShortcut();
     }
   } else {
     // If the backend never started, retain the default focused/global path.
     applyPluginLauncherShortcut();
+    applySummonWindowShortcut();
   }
   await ensureWindow();
+  if (process.env.PI_DESKTOP_MCP_CONTROL === "1") {
+    try {
+      mcpControl = new McpControlServer({
+        dataDir,
+        invoke: invokeIpc,
+        channels: IPC.invoke,
+        version: APP_VERSION,
+        port: process.env.PI_DESKTOP_MCP_PORT
+          ? Number(process.env.PI_DESKTOP_MCP_PORT)
+          : undefined,
+        controller: desktopControl ?? undefined,
+        log: (level, message, data) => logger.app("runtime", level, message, { data }),
+      });
+      await mcpControl.start();
+    } catch (error) {
+      logger.app("runtime", "warn", "MCP control server failed to start", {
+        data: String(error),
+      });
+      mcpControl = null;
+    }
+  }
+  // GitHub discovery is delayed and time-bounded. Never start it before the
+  // first window exists: a hung feed used to sit in "checking" for ~60s and
+  // compete with boot for the net stack.
+  updater.startAutoCheck();
   // createWindow awaits the initial load (loadFile resolves on
   // did-finish-load), so the page is up; give React a beat to mount its
   // event subscriptions before pushing the boot outcome.
   setTimeout(() => {
-    sendToRenderer(IPC.event.hostStatus, {
-      ok: !bootError,
-      ...(bootError
-        ? { component: "host", fatal: true, message: String(bootError) }
-        : {}),
-    });
+    sendToRenderer(IPC.event.hostStatus, bootHostStatus(bootError));
     applicationBooted = true;
     flushPendingApplicationMenuCommands();
   }, 300);
@@ -8660,12 +9761,15 @@ app.on("before-quit", (event) => {
   }
 
   quitting = true;
-  clipboardHistory.stop();
   tray?.destroy();
   tray = null;
   if (pluginLauncherAccelerator) {
     globalShortcut.unregister(pluginLauncherAccelerator);
     pluginLauncherAccelerator = null;
+  }
+  if (summonWindowAccelerator) {
+    globalShortcut.unregister(summonWindowAccelerator);
+    summonWindowAccelerator = null;
   }
   shutdownPromise = (async () => {
     // Replies still streaming are stopped through the sidecar first so their
@@ -8674,6 +9778,7 @@ app.on("before-quit", (event) => {
     // (D299). Bounded: a quit must not hang on an unresponsive provider.
     await settleRunningTurnsForQuit();
     const hostShutdown = host?.dispose();
+    const mcpShutdown = mcpControl?.stop();
     const pluginPanelShutdown = pluginPanels.closeAll();
     updater.dispose();
     logger.app("lifecycle", "info", "app shutdown");
@@ -8692,7 +9797,12 @@ app.on("before-quit", (event) => {
     } catch (error) {
       logger.app("lifecycle", "warn", "host shutdown failed", { data: String(error) });
     }
-    await Promise.allSettled([pluginPanelShutdown, pluginShutdown, sidecarShutdown]);
+    await Promise.allSettled([
+      pluginPanelShutdown,
+      pluginShutdown,
+      sidecarShutdown,
+      mcpShutdown,
+    ]);
   })();
 
   const releaseQuit = () => {

@@ -4,6 +4,7 @@
 - Date: 2026-08-18
 - Deciders: PI-Desktop runtime and desktop UI maintainers
 - Amends: D197, ADR 0059, ADR 0070
+- Amended by: D361 (inline bound is 10 MB, matching MiniMax's OpenAI-compatible cap), D392 / ADR 0218 (binding image-input overrides)
 
 ## Context
 
@@ -27,7 +28,7 @@ renderer discovery and user-entered model ids are not sufficient evidence.
    the content-addressed attachment root. Images are stored as
    `attachments/<sha256>` and the durable `UiMessage` stores only the reference
    and metadata.
-4. For a vision-capable model, an image within the 20 MiB inline limit crosses
+4. For a vision-capable model, an image within the 10 MB inline limit crosses
    the sidecar only as transient base64 data and becomes a pi-ai image content
    block. The base64 value is never persisted in SQLite, JSONL, or renderer
    transcript state.
@@ -50,7 +51,7 @@ renderer discovery and user-entered model ids are not sufficient evidence.
 - Attachment garbage collection remains a later storage task; references are
   content-addressed so it can be added without changing the message contract.
 - Full visual previews, drag-and-drop, image transforms, and provider-specific
-  image limits remain out of scope. The 20 MiB inline threshold is an app-side
+  image limits remain out of scope. The 10 MB inline threshold is an app-side
   safety bound; providers may impose stricter limits and return their normal
   provider error.
 

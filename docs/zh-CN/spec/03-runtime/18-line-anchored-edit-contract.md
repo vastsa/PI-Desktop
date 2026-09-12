@@ -402,7 +402,7 @@ dest       := path | quoted_path
 |---|---|
 | `EDIT_TAG_MISMATCH`，然后 `EDIT_LINES_UNSEEN` | 两者都不计数：两次不同的诚实失败，各有自己的宽限 |
 | 两次 `EDIT_TAG_MISMATCH` | 第二次计为尝试 1 |
-| 两次 `EDIT_PARSE_FAILED` | 尝试 2——本轮停止 |
+| `EDIT_PARSE_FAILED` 三次 | 第 3 次尝试——本轮停止 |
 | 一次失败，然后一次成功 `Edit`，然后一次失败 | 尝试 1——落盘的写入清除该路径的历史 |
 
 宽限按代码计数，而不是按调用计数，因此过时 tag 后跟未显示行是两次不同的诚实失败，而同一个
@@ -507,10 +507,9 @@ turn 与一个选择什么都不说的模型无法区分。
 
 ### 13.4 渲染器
 
-`apps/desktop/src/lib/tool-presentation.ts:501` 目前由 `old_string` / `new_string` 推导
-Edit 差异。这些字段已不存在。Edit 行改为从审核记录的 hunks 渲染——ADR 0043 已经在产出
-它们——并原样展示操作头作为模型陈述的意图。已解析的块跨度以及 §8.4、§9.2、§10 的每一条
-警告都在该行上呈现，而不是被吞掉。
+Edit 行改为从审核记录的 hunks 渲染——ADR 0043 已经在产出它们——并原样展示操作头作为
+模型陈述的意图。已解析的块跨度以及 §8.4、§9.2、§10 的每一条警告都在该行上呈现，而不是
+被吞掉。
 
 ### 13.5 子代理
 
@@ -542,11 +541,11 @@ host-core 中的 `builtin_tool_defs()` 与 `packages/agent-runtime/src/runtime.t
 
 | 期 | 内容 | 退出标准 |
 |---|---|---|
-| 1 | 快照存储、把 `session_id` 贯穿到 `execute_tool_with_path_access`、为 `Read`/`Grep`/`Write` 加 tag、带行号的 `Read` | tag 往返可用；`Edit` 尚未改动 |
-| 2 | 范围与间隙（`PUT N.=M:`、`PUT <N:`、`PUT >N:`、`PUT >$:`、`CUT N.=M`）、tag 校验、来源闸门、`REM`/`MV` | 移除 `old_string`；§9 的分支 A/B/D 上线 |
+| 1 | 快照存储、把 `session_id` 贯穿到 `execute_tool_with_path_access`、为 `Read`/`Grep`/`Write` 加 tag、带行号的 `Read` | **已上线。** tag 往返可用 |
+| 2 | 范围与间隙（`PUT N.=M:`、`PUT <N:`、`PUT >N:`、`PUT >$:`、`CUT N.=M`）、tag 校验、来源闸门、`REM`/`MV` | **已上线。** 移除 `old_string`；§9 的分支 A/B/D 上线 |
 | 3 | 漂移恢复（§10）与路径恢复（§9.2） | 分支 C 上线 |
-| 4 | tree-sitter 块操作（`N*`、`>N*`）及其解析回显 | 块操作在不受支持的语言上干净拒绝 |
-| 5 | 寄存器（§7.5）与边界修复（§8.4） | 跨调用搬移可用；并列被拒绝 |
+| 4 | tree-sitter 块操作（`N*`、`>N*`）及其解析回显 | 块操作在不受支持的语言上干净拒绝（今天是 `EDIT_BLOCK_UNRESOLVED`） |
+| 5 | 寄存器（§7.5）与边界修复（§8.4） | 命名 `CUT`/`PUT @name` 捕获；边界修复并列被拒绝 |
 
 第 2 期是旧契约的不可回头点，必须与 §13.4 的渲染器改动以及 §13.6 的提示词改动在同一个
 版本中发布。

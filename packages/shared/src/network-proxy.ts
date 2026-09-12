@@ -13,8 +13,6 @@ export const NETWORK_PROXY_SCHEMES = [
   "http",
   "https",
   "socks",
-  "socks4",
-  "socks4a",
   "socks5",
   "socks5h",
 ] as const;
@@ -116,7 +114,7 @@ export function parseProxyUrl(raw: string): ParseProxyUrlResult {
   if (!SCHEME_SET.has(scheme)) {
     return {
       ok: false,
-      error: "proxy scheme must be http, https, or socks5",
+      error: "proxy scheme must be http, https, socks, socks5, or socks5h",
     };
   }
   const host = url.hostname.trim();
@@ -135,8 +133,14 @@ export function parseProxyUrl(raw: string): ParseProxyUrlResult {
     }
     port = parsedPort;
   }
-  const username = decodeURIComponent(url.username);
-  const password = decodeURIComponent(url.password);
+  let username: string;
+  let password: string;
+  try {
+    username = decodeURIComponent(url.username);
+    password = decodeURIComponent(url.password);
+  } catch {
+    return { ok: false, error: "proxy credentials are invalid" };
+  }
   const isSocks = scheme.startsWith("socks");
   const href = formatProxyHref({
     scheme: scheme as NetworkProxyScheme,

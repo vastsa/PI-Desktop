@@ -28,7 +28,8 @@
 
 | Shortcut | Action | Context |
 |---|---|---|
-| `Enter` | Send message | Composer focused |
+| `Enter` | Send message when Enter-to-send is on; newline when it is off | Composer focused |
+| `Cmd/Ctrl + Enter` | Send message when Enter-to-send is off | Composer focused |
 | `Shift + Enter` | Newline | Composer focused |
 | `Escape` | Clear input / blur composer | Composer focused |
 | `Cmd/Ctrl + ↑` | Scroll to top of transcript | Transcript focused |
@@ -93,10 +94,11 @@ recency only breaks ties between equally relevant matches.
   platform text-editing, zoom, fullscreen, hide, and quit behavior.
 - Windows/Linux render no application menu in the window. Their frameless
   titlebar keeps sidebar actions at the left edge and native window controls at
-  the conversation pane's right edge. While the work panel is open, the
-  controls remain in the conversation pane and the panel header uses its full
-  width for resource actions; its collapse control no longer sits ahead of the
-  window controls. Destination history has no visible back/forward
+  the conversation pane's right edge while the work panel is closed. While the
+  work panel is open, those controls stay viewport-fixed at the window's right
+  edge over the panel header, which reserves the control band plus the
+  work-panel toggle so resource close remains reachable. The sole panel
+  collapse control is that viewport-fixed toggle. Destination history has no visible back/forward
   controls and remains available through the renderer shortcuts. The first
   transcript row starts below the 46px titlebar control band so user and
   assistant content cannot overlap the minimize, maximize/restore, or close
@@ -109,8 +111,9 @@ recency only breaks ties between equally relevant matches.
   web-content behavior.
 - Developer tools are opt-in. With developer mode enabled, Main handles F12 on
   every platform and Ctrl+Shift+I on Windows/Linux; macOS exposes its native
-  developer-tools role in View. With the mode disabled these product entry
-  points remain unavailable, and disabling it closes an open console.
+  developer-tools role in View; the conversation overflow menu adds Copy
+  conversation ID and Open session path. With the mode disabled these product
+  entry points remain unavailable, and disabling it closes an open console.
 - Main queues native commands until the renderer acknowledges that its menu
   event subscription is active on macOS. Closing and recreating a window
   resets this handshake.
@@ -129,7 +132,11 @@ recency only breaks ties between equally relevant matches.
   click restores the window; `quit` exits the app. Close behavior never creates
   or destroys the tray — D216 owns it, so the icon is resident under either
   choice. The choice is persisted, revisitable in Settings → General, and
-  applied by both the close button and the close shortcut. macOS keeps the
+  applied by both the close button and the close shortcut. Explicit quit
+  (Cmd+Q, application-menu Quit, tray Quit) is a separate confirm step
+  (D363): Cancel leaves the app running; Confirm runs the ordered shutdown.
+  A D230 window-close Quit does not ask again. Automated boot, supervision,
+  and capture probes skip the dialog. macOS keeps the
   native Dock lifecycle (close keeps the app in the Dock; activating recreates
   the window). The bounds watchdog never restores a minimized or tray-hidden
   window.
@@ -214,8 +221,11 @@ may be retained while exactly one workspace supplies the visible shell context.
   never leaves a hidden archived row as the active context.
 - **Sort** offers Recently updated (`recent`), Created date (`created`),
   Oldest first (`oldest`), and Name (`name`). Missing/invalid values fall back
-  to `recent`. A persisted `manual` value is accepted for compatibility, but
-  no drag or manual-reorder interaction is promised in this baseline.
+  to `recent`. Pressing a project title and moving 8px, or ArrowUp/ArrowDown
+  on that focused title, switches project ordering to `manual` and persists a
+  contiguous order per normalized path. Archived and pinned priority remains
+  ahead of the manual order; projects without an assigned order fall back to
+  a stable path order until they are moved.
 - Each project group shows the ten most-recent rows in the active sort order
   by default; the remaining sessions fold behind a **Load N more…** control
   (the same affordance used for time-grouped overflow). Selecting it expands
@@ -320,6 +330,18 @@ may be retained while exactly one workspace supplies the visible shell context.
   capped for narrow viewports. This includes the Sessions sort menu,
   session/project overflow menus, and section create menus.
 
+#### Floating dropdown surfaces
+
+- Every renderer-owned custom dropdown/menu opens as a viewport-fixed floating
+  layer, outside its triggering row or card, so opening it never changes parent
+  height, width, or scroll allocation.
+- Shared anchored menus are measured before reveal, clamp to the viewport,
+  prefer the requested side, and recalculate on anchor movement, scroll, and
+  resize. Outside press and Escape close the surface and restore focus to its
+  trigger unless the pattern explicitly retains input focus.
+- Native `<select>` popups remain platform-owned; this rule covers custom
+  renderer surfaces only.
+
 ### 1.6 Local profile footer
 
 - The `44px` profile trigger toggles the menu; its chevron and
@@ -351,9 +373,11 @@ may be retained while exactly one workspace supplies the visible shell context.
    An `aborted` turn never creates one.
 3. Electron emits `notification.changed` to every live renderer so the bell
    badge and currently open inbox refresh.
-4. If the main window is focused, no other surface appears. If it is
-   unfocused and native notifications are supported, Electron shows one
-   platform notification derived from the event kind and session title. On
+4. For a task result, a focused main window produces no native banner. If
+   it is unfocused and native notifications are supported, Electron shows one
+   platform notification derived from the event kind and session title. The
+   separate interactive ask/permission/plan path may alert for a focused
+   background session while suppressing the exact visible session. On
    Windows, the banner is attributed to the canonical PI-Desktop
    AppUserModelID shared with the NSIS package and taskbar identity.
 5. Clicking the native notification shows/restores and focuses the main
@@ -386,38 +410,34 @@ may be retained while exactly one workspace supplies the visible shell context.
 
 ### 1.8 Work panel entry and resources (D128, D142, D154, D173, D179, D207, D221)
 
-- The shell starts without a visible work panel. `Cmd/Ctrl + J` toggles the
-  active session's panel: it reveals the retained context without creating a
-  resource tab, and collapses the visible panel through the same path as the
-  header collapse control, retaining tabs, active resource, and committed
-  width. It is a no-op without an active session or while Settings is the
-  active page. The panel's context trigger can then create Browser or an
-  in-scope plugin view.
+- The shell starts without a visible work panel. The viewport-fixed toggle and
+  `Cmd/Ctrl + J` both toggle the active session's panel: they reveal the
+  retained context without creating a resource tab, and collapse the visible
+  panel without deleting tabs, retaining tabs, active resource, and committed
+  width. They are a no-op without an active session or while Settings is the
+  active page. The panel's `+` trigger can then create a New launcher tab whose
+  body offers Browser or an in-scope plugin view.
 - An artifact trigger atomically creates or reuses its resource, activates it,
   and opens the panel. Background artifacts never open the visible panel.
 - File resources use normalized paths as identity. Browser and plugin views
   are singletons; repeated triggers preserve resource order and activate the
   existing resource.
-- Once open, the panel's unified context trigger anchors the left of the header
-  and opens a single dropdown. Its top section lists Browser and in-scope
-  plugin views, each row carrying its own open state and, once open, its own
-  close control. A second section appears after a divider only when the
-  transcript opened further resources, so no entry is ever listed twice. The
-  right action cluster is pinned to the header's right edge behind a divider
-  and never shifts with the label length (D173).
-- Menu rows own DOM focus. Opening with the trigger's ArrowDown/ArrowUp lands on
-  the active row or the last row respectively; Arrow/Home/End then walk rows
-  only, never their trailing close buttons. Delete/Backspace closes the focused
-  row's resource without dismissing the menu and keeps focus on the neighbor
-  that takes its place. Selecting a row, Escape, or Tab closes the menu and
-  restores focus to the trigger; only a session switch dismisses it implicitly
-  (D173).
+- Once open, the panel header is a `tablist` that scrolls horizontally while a
+  tight `+` trigger stays fixed beside it. Each tab owns its active state and
+  close button; the active tab is scrolled into view. Clicking `+` creates a
+  unique New launcher tab; its data-driven Review, Files, Browser, and plugin
+  view rows are ordinary buttons in the page body.
+- Tab focus uses roving `tabIndex`: ArrowLeft/ArrowRight/Home/End move across
+  tabs and Delete/Backspace closes the focused tab. Middle-click closes a tab;
+  closing an active tab selects the right neighbor, then the left. Selecting a
+  launcher row replaces that New tab with the destination or activates its
+  existing singleton. Shortcut labels appear only for bindings that actually
+  exist.
 - Activating a tool that is already open activates its existing resource instead
   of replacing it, so Browser keeps its URL and Files its selection (D173).
-- Every resource can be closed from the menu, and the active resource has
-  a direct header close control. Closing the active resource selects the right
-  neighbor, then the left; closing the final tab hides the panel. The separate
-  panel collapse control in the session pane top-right hides the panel without
+- Every resource can be closed from its tab. Closing the active resource selects
+  the right neighbor, then the left; closing the final tab keeps the panel open
+  on the New launcher. The viewport-fixed panel toggle hides the panel without
   deleting tabs.
 - On every platform, opening and collapsing the visible panel change only the
   internal flex allocation; native window bounds remain unchanged. The inner
@@ -465,7 +485,8 @@ may be retained while exactly one workspace supplies the visible shell context.
 - Settings → Info and application-menu checks share one typed update state.
   Manual checks expose up-to-date or error feedback; automatic failures do not
   open a toast or ambient banner.
-- Manual delivery (`darwin` and non-AppImage Linux) stops at `available` and
+- Manual delivery (`darwin`, non-AppImage Linux, and Windows portable runs
+  with `PORTABLE_EXECUTABLE_FILE`) stops at `available` and
   offers the fixed GitHub Releases page. In-app delivery (Windows NSIS and
   Linux AppImage readiness builds) automatically advances through
   `downloading` to the stable `downloaded` state.
@@ -478,13 +499,12 @@ may be retained while exactly one workspace supplies the visible shell context.
   progress when available, and keeps the relevant action inside the same
   surface. Dismissal suppresses the current version-and-status stage; a later
   stage such as `downloaded` appears again.
-- When Main attaches dual-locale product notes for the discovered version
+- When Main attaches localized product notes for the discovered version
   (`UpdateState.releaseNotes`, D164), the notice and Settings → Info Updates
   row show a compact "What's new" list under the status message. Notes come
-  from the shipped EN/zh-CN changelog catalog selected by the product UI
-  locale — never from a renderer-supplied feed or remote URL. Missing catalog
-  entries omit the section; locale changes re-resolve notes without a new
-  check.
+  from the shipped-locale changelog catalog selected by the product UI locale
+  — never from a renderer-supplied feed or remote URL. Missing catalog entries
+  omit the section; locale changes re-resolve notes without a new check.
 - Settings → Info keeps a Release notes action available in every updater
   state. It opens a modal over Settings with the complete local stable
   changelog in newest-first order, localized from the same shared catalog.
@@ -492,7 +512,7 @@ may be retained while exactly one workspace supplies the visible shell context.
   compact badges. The list scrolls independently, closes by its close control,
   Escape, or the backdrop, and restores focus to the invoking control.
 - D126 tag releases publish all platform manifests and installers. Windows
-  NSIS and Linux AppImage therefore use the in-app lane; macOS and Linux deb
+  NSIS and Linux AppImage therefore use the in-app lane; macOS and Linux deb/rpm
   remain notify-and-link delivery modes.
 
 ## 2. Streaming message behavior
@@ -514,10 +534,12 @@ may be retained while exactly one workspace supplies the visible shell context.
 - Cursor indicator: subtle pulsing accent dot or line at the end of streaming content
 - Before the first assistant or tool event, the active turn shows one compact
   localized `Working…` status with elapsed time. When the runtime reports a
-  quiet interval, that same row identifies whether the turn is waiting for the
-  model, retrying a provider request, or waiting for delegated work. It is
-  replaced by concrete thinking/tool/answer feedback or the inline permission
-  card as soon as one of those states exists.
+  quiet interval, that same row names the wait: starting, waiting for the
+  model, preparing the next request, compacting context, recovering an empty
+  response, retrying a provider request, or waiting for delegated work (with
+  each running subagent's latest coarse action). It is replaced by concrete
+  thinking/tool/answer feedback or the inline permission card as soon as one of
+  those states exists.
 - When stream completes: cursor indicator replaced by success state (2s fade)
 
 ### 2.2 Auto-scroll
@@ -554,9 +576,10 @@ may be retained while exactly one workspace supplies the visible shell context.
 - An active turn keeps the lower transcript surface clear. Streamed assistant
   and tool rows remain inline with the transcript; no generic understanding,
   working, or checking card is rendered underneath them. A compact runtime
-  status row is the only exception, and appears only when it explains a
-  provider retry or a delegated-work wait that has no transcript row of its
-  own.
+  status row is the only exception, and appears only when it explains a quiet
+  interval that has no transcript row of its own: a provider wait or retry,
+  context compaction, silent-turn recovery, the gap before the next request,
+  or a delegated-work wait.
 - A permission card remains visible only when the agent is blocked on an
   explicit approval. It is an actionable interruption, not a progress status
   card.
@@ -566,16 +589,19 @@ may be retained while exactly one workspace supplies the visible shell context.
 
 ### 2.5 Turn outcome closure
 
-- A failed visible turn renders one session-scoped recovery card after the
-  transcript content. It is based on the terminal agent event, not a timeout
-  or a guessed spinner state. Completed turns do not add a success card; their
-  existing transcript and message-scoped review cards remain the completion
-  evidence.
-- Failure copy states that the existing work remains available. The card has
-  exactly one **Continue** action and no **Regenerate** action. Continue appends
-  the current locale's continuation prompt (`Continue the user's unfinished
-  task.` / `继续用户未完成的任务`) to the same session and starts a new turn without
-  truncating the failed turn or its completed work.
+- A failed visible turn without a structured assistant error renders one
+  session-scoped recovery card after the transcript content. It is based on the
+  terminal agent event, not a timeout or a guessed spinner state. If the failed
+  turn already contains a structured assistant error, that inline error card is
+  the only failure surface and the session-scoped recovery card is omitted;
+  users must not see duplicate failure summaries for one turn. Completed turns
+  do not add a success card; their existing transcript and message-scoped
+  review cards remain the completion evidence.
+- Failure copy states that the existing work remains available. The applicable
+  failure surface has exactly one **Continue** action and no **Regenerate**
+  action. Continue appends the current locale's continuation prompt (`Continue
+  the user's unfinished task.` / `继续用户未完成的任务`) to the same session and
+  starts a new turn without truncating the failed turn or its completed work.
 - Aborted turns do not render a failure card. Starting a new turn clears the
   previous card, and background-session results remain scoped until that
   session is selected.
@@ -617,18 +643,24 @@ may be retained while exactly one workspace supplies the visible shell context.
 
 ### 3.4 Queued send
 
-- While a session is running, Send remains enabled alongside Abort. Accepted
-  prompts clear the composer and append to that session's renderer-local FIFO
-  queue; session switching never moves or clears another session's queue.
+- While a session is running, the composer shows Send when the draft has
+  content and Stop when it is empty. Accepted prompts clear the composer and
+  append to that session's Host-owned, persisted FIFO queue; session switching
+  never moves or clears another session's queue.
 - The queue renders above the composer. Each row has an independently
   keyboard-reachable Remove action and a Send now action.
 - Send now moves its row to the head and requests the new `agent/stop` channel.
   The current assistant response and completed tool batch finish normally;
-  after `agent_end`, the promoted row is dispatched through the normal
-  `agent/prompt` flow before the remaining rows. An idle Send now dispatches
-  immediately.
-- Abort remains immediate and never clears the queue. Queued prompts are
-  intentionally lost on application restart because the queue is not durable.
+  after `agent_end` and durable turn finalization, the promoted row is
+  dispatched through the normal `agent/prompt` flow before the remaining rows.
+  An idle Send now dispatches immediately.
+- Without Send now, the next FIFO row starts automatically after the active
+  turn completes, fails, or is aborted. A terminal event can arrive before
+  persistence releases the session; finalization must wake the queue again
+  after releasing ownership. No additional send or session switch is required.
+- Abort remains immediate and never clears the queue. Queued prompts survive
+  application restart and remain held until a controller attaches (ADR 0213).
+  Finalization during application shutdown must not start another queued turn.
 
 ## 3A. Context checkpoint lifecycle
 
@@ -676,14 +708,22 @@ may be retained while exactly one workspace supplies the visible shell context.
 
 - Tool activity starts as a lightweight collapsed row; failed calls open
   automatically so the error remains local to its invocation.
-- Consecutive tool activity is wrapped in one collapsed processing group. Its
-  header updates elapsed time once per second while active, freezes after the
-  next transcript message, and exposes the number of contained steps.
+- Consecutive tool activity is wrapped in one processing group. Its header
+  updates elapsed time once per second while active, freezes after the next
+  transcript message, and exposes the number of contained steps. The latest
+  action remains in the activity rows or dedicated runtime indicator; no
+  additional status capsule is rendered.
+- While the turn is active, the latest processing group opens automatically so
+  its activity list is visible, but tool-call details remain collapsed by
+  default. The latest thinking row opens automatically while it streams. When
+  the activity settles, only automatic thinking disclosures close. A click or
+  keyboard activation on a group, row, or collapse rail makes that disclosure
+  user-owned; stream updates and completion never override it.
 - A failed row is invocation-local truth and remains visible immediately. The
   containing group reports processing duration only and settles as processed,
   even when a later call recovers. Terminal turn failure is derived only from
-  the terminal agent event and appears through the assistant error,
-  TurnOutcomeCard, sidebar state, and notification surfaces.
+  the terminal agent event and appears through either the assistant error or
+  TurnOutcomeCard surface, plus sidebar state and notification surfaces.
 - Expanding the processing group reveals the ordered rows; each row retains its
   own nested disclosure for output and input.
 - Activating the row reveals clamped output first and raw input second.
@@ -825,6 +865,22 @@ Running turns and pending approvals continue to gate the controls.
 - Error toasts require manual dismiss or timeout at 8s (longer than success)
 - Success toasts auto-dismiss at 4s
 
+### 6.4 Icon-only action labels
+
+- Every icon-only action exposes a localized purpose through both its accessible
+  name and its hover/focus tooltip.
+- Use the shared `TooltipButton` for interactive buttons and `Tooltip` for
+  non-button controls. Both render the themed tooltip in a body-level portal so
+  it is not clipped by pane overflow or hidden below a neighboring surface.
+  Native `title` remains for full-value metadata such as paths, IDs, and
+  descriptions; rich hover cards and popovers keep their specialized surfaces.
+- Decorative icons remain `aria-hidden` and do not need a tooltip.
+- Tooltip text must describe the action, not the icon shape, and must come from
+  the active i18n catalog.
+- Clicking an action dismisses its tooltip immediately and suppresses it until
+  the pointer leaves or focus moves away; keyboard focus still reveals the
+  tooltip before activation.
+
 ## 7. Focus management
 
 ### 7.1 Focus flow on page load
@@ -883,15 +939,17 @@ Work-panel and application-window resizing are implemented in MVP:
 
 - The 10px inner left-edge separator anchors to the press position and
   starting panel width, then follows pointer delta without jumping. Moving it
-  left grows the panel; moving it right gives space back to MainChat.
+  left grows the panel until MainChat's 515px minimum; moving it right gives
+  space back to MainChat.
 - The inner divider's target clamps to the renderer-owned panel range of
   `244px–720px`; pointer movement is frame-coalesced and release commits the
   preferred width. Escape, pointer cancellation, and lost capture restore the
   press-time panel width.
 - Opening and closing animate the dock's `width` and `flex-basis` together with
   the bounded opacity/transform feedback, so MainChat reflows continuously
-  inside the existing client area instead of changing width before the first
-  motion frame.
+  inside the existing client area until its 515px minimum instead of changing
+  width before the first motion frame. The composer toolbar remains a single
+  unsqueezed row throughout.
 - No panel action requests a positive native reservation. The preferred panel
   width is renderer-local, and native window edges resize only the fixed app
   window. Background-session artifacts never update the visible panel or window
@@ -918,22 +976,50 @@ Sidebar width resizing is also implemented in MVP:
 - Collapsing the sidebar hides the handle but does not discard the preferred
   expanded width; re-expanding restores that width.
 
-The following gestures remain reserved for future milestones:
+Project ordering is implemented for retained project groups. There is no
+reorder grip. Pressing the project title and moving 8px starts a project drag,
+so a click still activates and toggles collapse, and menus and nested
+session rows keep their existing click behavior. A drop inserts before or after
+the target group based on the pointer position and persists the result.
 
-- Drag project/session items to assign manual order
-- File drag into the composer remains unhandled; clipboard file/image paste
-  uses the session-scratch reference flow below
+Sidebar drag/drop is implemented:
 
-### 8.2 Spec reservation
+- A session row is draggable while idle. Dropping it on another project group
+  moves that session to the project: the host updates only the session's
+  project association, and the transcript, attachments, tasks, revisions,
+  artifacts, notifications, and scratch data stay with the session.
+- A running session is not draggable, and the session menu's project targets
+  are disabled for it. The host rejects the move as well, so a turn that starts
+  mid-drag cannot leave the agent bound to the previous project's instructions.
+- The dragged row paints at opacity 0.5 and the eligible project group
+  highlights with an accent outline. A session's own project group is not a
+  drop target, so a same-project drag never issues a request.
+- The session menu keeps a "Move to project" list of every other project, so
+  the same move is available without a pointer drag.
+- Dropping a folder on the projects list adds it as a project, or switches to
+  it when it is already known; duplicate paths resolve to one project row. A
+  drop that carries no folder reports why nothing happened.
 
-When drag/drop is implemented, these patterns should apply:
+Native file-system drops into the composer are implemented. The target uses an
+accent outline without changing layout; regular files use the session-scratch
+reference flow below. A dropped folder is never attached: it raises an explicit
+choice between opening it as a project and inserting the literal directory path
+into the draft, so an unknown directory tree cannot enter the context.
 
-- Drag handle must be visible on hover (no invisible drag affordance)
-- Drop targets highlight with accent border during hover
+### 8.2 Project drag/drop contract
+
+Project drag/drop follows these patterns:
+
+- The project title is the reorder control: press and move 8px to arm a drag
+- A click with no qualifying movement still selects and toggles collapse
+- Touch does not start a reorder so the list can scroll
+- An accent insertion line shows before/after placement
 - Cancel drag with Escape
-- Drag feedback: opacity 0.5 on source, accent outline on target
+- Drag feedback: opacity 0.5 on source
+- ArrowUp/ArrowDown on the focused title moves the project one row and
+  persists the same manual order without requiring a pointer
 
-## 8a. Composer autocomplete and clipboard files (D123–D125, D197, D209, D262, D331, ADR 0131)
+## 8a. Composer autocomplete and clipboard files (D123–D125, D197, D209, D262, D362, D397, ADR 0131, ADR 0222)
 
 ### 8a.1 Triggers
 
@@ -997,6 +1083,15 @@ When drag/drop is implemented, these patterns should apply:
   line. It names visual transport for a model whose pi-ai `input` includes
   `image`, and names the file-path fallback for unknown/non-vision models.
   The status is informational, keyboard-safe, and never relies on color alone.
+- A native file-system drop over the Composer prevents the browser's default
+  file-open behavior and shows the same accent target outline for the whole
+  shell. Regular files are read through the existing bounded paste bridge and
+  become removable leaf-name chips in drop order. A dropped folder is not
+  traversed or copied; its complete native path is inserted at the caret using
+  the literal `@<path>/` directory form so the path remains visible; directory
+  tokens without spaces can continue into `@` completion. Mixed file/folder
+  drops preserve their order, and the draft/focus/caret are retained across the
+  asynchronous file save.
 - Accepted dispatch retains an in-memory, session/turn-scoped copy of the
   visible text and structured references only while unanswered smart Stop can
   undo the send. That undo restores the original chip order and labels; it
@@ -1012,8 +1107,8 @@ When drag/drop is implemented, these patterns should apply:
 ### 8a.3 Keyboard while open
 
 - ↑/↓ move the highlight with wraparound; Home/End are left to the textarea.
-- Enter / Tab accept the highlighted item; Enter never sends while the menu
-  has a highlighted item (this precedes the Enter-to-send setting, which
+- Enter / Tab accept the highlighted item; Enter and Cmd/Ctrl+Enter never send
+  while the menu has a highlighted item (this precedes the Enter-to-send setting).
   otherwise keeps its behavior).
 - Escape closes only the menu — it takes precedence over the composer's
   "clear input or blur" Escape and must not propagate to overlay handlers.
@@ -1059,12 +1154,28 @@ When drag/drop is implemented, these patterns should apply:
 - Button appears as soon as upward scrolling releases follow mode
 - Click button: scrolls to bottom, resumes auto-scroll
 - Button disappears when at bottom
-- An expanded delegate run's `.subagent-run-rows` scroller uses that same
-  contract independently of the parent transcript (D302): expanding pins to
-  the latest output, new nested rows keep the viewport at the bottom while
-  pinned, the first upward gesture pauses follow and shows a nested
-  jump-to-latest control, and a layout clamp or programmatic follow `scrollTo`
-  never releases it. Native overflow anchoring is disabled on that scroller.
+- The subagent task dock uses the same single-body scroll owner as the work
+  panel. It renders the task description followed by the delegate's live
+  thinking, tool, and answer rows in normal content flow; it does not mount a
+  nested `.subagent-run-rows` workflow scrollbar. While the panel is pinned,
+  new process rows stay in view; a real upward gesture pauses follow and shows
+  the standard jump-to-latest control. This keeps the process readable without
+  a second scrollbar or an empty tail.
+- Clicking a delegation topology node toggles an inset grouped side sheet in the
+  right-side work-panel dock instead of expanding the transcript. Clicking the
+  selected node again closes the side sheet; selecting another node replaces
+  the current detail in place. The dock has
+  a sticky identity header (avatar, name, and model caption on the left; status
+  capsule and elapsed time trailing on the same row), the Task call's selectable description as a full-width grouped
+  card under a Task section label, capped at four lines with an inline Show
+  more / Show less control for longer tasks, and its live process under an
+  Activity section on one subtle vertical timeline; it does not render separate
+  details, output, or workflow tabs. At the minimum panel width, long commands,
+  paths, and tool summaries remain contained by the dock instead of expanding
+  the side sheet past the client area.
+  Selecting another node replaces the task in place, closing it restores the
+  prior resource view when present, and switching sessions or routes hides the
+  selection. `Cmd/Ctrl + J` hides the whole dock.
 
 ### 9.1a Sidebar project path and open folder
 
@@ -1086,6 +1197,11 @@ When drag/drop is implemented, these patterns should apply:
   tag chips, **Workspace**, branch (when the project exposes one), and
   **Updated {{when}}**. Temporary/scratch sessions show the localized
   "Temporary" / "临时对话" placeholder instead of a workspace name.
+- Before showing a project session card, the renderer re-reads the active
+  workspace through the existing project-read operation. This keeps the Git
+  branch current after an external checkout without activating a project or
+  changing the selected conversation. If the read fails, the last cached
+  branch is used.
 - The card is rendered through a portal at `document.body`, never widens
   beyond 320px, never causes horizontal scroll on the underlying row, and
   stays non-interactive so the row keeps receiving pointer events.
@@ -1178,7 +1294,7 @@ This does not prevent state changes — it makes them instant.
 ## 11. Acceptance criteria
 
 1. All keyboard shortcuts in §1 are functional and do not conflict with system shortcuts
-2. Enter sends message; Shift+Enter inserts newline in composer
+2. Enter sends when Enter-to-send is on; when it is off, Cmd/Ctrl+Enter sends and Enter/Shift+Enter insert a newline
 3. Abort immediately cancels running turn and pending permissions without confirmation dialog
 3a. Send stays enabled while running, queues prompts per session, and Send now
     finishes the current boundary before releasing its prioritized prompt
@@ -1202,22 +1318,26 @@ This does not prevent state changes — it makes them instant.
 11. Command palette traps focus; Escape returns to previous focus
 12. All animations respect `prefers-reduced-motion: reduce` — state changes are instant, no decorative motion
 13. Project/session rows support non-destructive pin/archive, independent
-    project collapse, and the documented user-facing sort modes
+    project collapse, project drag/manual reorder, and the documented
+    user-facing sort modes
 14. Shell chrome does not create accidental text selections, while editable
     controls and transcript/code/tool content remain selectable and copyable
 15. Retained project tabs survive restart; activating one changes the selected
     shell workspace without redirecting background session tool roots
-16. Drag/manual reorder is not implemented; `manual` remains a compatibility
-    value and future drag patterns follow §8
+16. Project groups can be reordered by dragging the title or with
+    ArrowUp/ArrowDown on that title; the normalized-path order survives a
+    renderer restart and does not change the host workspace identity
 17. Completed and failed turns appear exactly once in the durable inbox;
     aborted turns never appear
 18. All/Unread, mark-all-read, clear, row activation, Escape/focus restore, and
     arrow/Home/End keyboard navigation behave as documented in §1.7
-19. Native notifications appear only while the main window is unfocused and
-    their activation focuses the window and opens the corresponding session
+19. Native task notifications appear only while the main window is unfocused;
+    interactive prompt notifications may alert for a focused background session.
+    Activation focuses the window and opens the corresponding session
 20. Streamed message updates stay within the chat render boundary; shell
     navigation, composer, completed rows, and work-panel content do not rerender
     solely because the current assistant message appended content
 21. The work panel opens and collapses inside the fixed client area; the inner
-    divider changes the renderer-owned panel target within 244px–720px, and
-    divider cancellation restores the prior panel width (ADR 0151)
+    divider changes the renderer-owned panel target within 244px–720px while
+    MainChat keeps its 515px minimum, and divider cancellation restores the
+    prior panel width (ADR 0151 / ADR 0226)

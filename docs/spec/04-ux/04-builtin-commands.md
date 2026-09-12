@@ -97,3 +97,30 @@ The prompt body remains the visible user turn; a failed dispatch does not clear
 the composer draft. Former builtin aliases are no longer resolved and are
 handled as ordinary unknown slash text unless supplied by another command
 source.
+
+## 8. Composer skill entries
+
+Active built-in, plugin, and user-owned Skills also surface in the composer `/`
+menu. They use the exact Skill id as the slash name, show the Skill's display
+name and description, and form a separate **Skills** group after extension
+commands. This group is always last; a Skill never shadows a command or
+template with the same name.
+
+Selecting a Skill inserts `/<skill-id> `. Sending `/<skill-id>` with optional
+prompt text keeps that typed form as the visible transcript chip and asks the
+model to call the existing `Skill` tool with the validated id before answering.
+Only Skills active for the current project are listed or accepted, so project
+scope and plugin activation remain enforced at send time. If the Skill is no
+longer active, the text follows the normal unknown-slash prompt path.
+
+## 9. Ideographic comma opens the slash menu (D405)
+
+A Chinese IME produces `、` (U+3001) where the ASCII `/` is meant, so reaching
+the menu otherwise means switching input methods mid-sentence. When the composer
+is empty, a committed `、` as its first character is rewritten to `/` before
+trigger detection runs, and the ordinary slash menu opens with the same
+insertion, filtering, and send behavior described above.
+
+Only the first character of an empty draft is rewritten. A `、` anywhere else in
+the draft is ordinary punctuation and is never touched, and the alias has no
+effect on the `@` file menu.

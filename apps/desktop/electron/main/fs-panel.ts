@@ -1,5 +1,4 @@
-import { readFileSync, statSync } from "node:fs";
-import { readdir, realpath, stat } from "node:fs/promises";
+import { readFile, readdir, realpath, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { FsEntry, FsImageDataUrlResult, FsReadResult } from "@pi-desktop/shared";
 
@@ -282,12 +281,14 @@ export function imageMimeFor(displayPath: string, mimeType?: string): string | u
  * Used by the host Files tab and by `pi.fs.readPreview` so the two
  * surfaces cannot drift on size caps or image detection.
  */
-export function previewFile(
+export async function previewFile(
   fullPath: string,
   rel: string,
   mimeType?: string,
-): FsReadResult {
-  const info = statSync(fullPath);
+): Promise<FsReadResult> {
+  // Async reads: a Files-tab preview or a markdown image can be several MB
+  // and must not stall the main thread's IPC loop while it is read.
+  const info = await stat(fullPath);
   if (!info.isFile()) throw new Error("not a file");
 
   const imageMime = imageMimeFor(rel, mimeType);
@@ -295,7 +296,7 @@ export function previewFile(
     if (info.size > MAX_IMAGE_BYTES) {
       return { kind: "tooLarge", size: info.size };
     }
-    const buffer = readFileSync(fullPath);
+    const buffer = await readFile(fullPath);
     if (buffer.length > MAX_IMAGE_BYTES) {
       return { kind: "tooLarge", size: buffer.length };
     }
@@ -309,7 +310,7 @@ export function previewFile(
   if (info.size > MAX_TEXT_BYTES) {
     return { kind: "tooLarge", size: info.size };
   }
-  const buffer = readFileSync(fullPath);
+  const buffer = await readFile(fullPath);
   if (looksBinary(buffer)) {
     return { kind: "binary", size: info.size };
   }
@@ -361,7 +362,7 @@ export async function readOpenableImage(
     return { kind: "missing", errorCode: "PATH_OUTSIDE_ALLOWED_ROOT" };
   }
   try {
-    const result = previewFile(target, path, mimeType);
+    const result = await previewFile(target, path, mimeType);
     if (result.kind === "image" && result.dataUrl) {
       return { kind: "image", dataUrl: result.dataUrl, size: result.size };
     }

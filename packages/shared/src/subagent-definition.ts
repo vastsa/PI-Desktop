@@ -14,7 +14,10 @@
  * - a delegate never inherits mutation rights from the parent session.
  */
 
-import { THINKING_LEVELS, type ThinkingLevel } from "./types.js";
+import {
+  SUBAGENT_THINKING_LEVELS,
+  type SubagentThinkingLevel,
+} from "./types.js";
 
 /**
  * Where a definition came from. User-owned global documents shadow builtins by
@@ -37,8 +40,11 @@ export type SubagentDefinition = {
   tools: string[];
   /** Provider/model this definition pins, when it pins one. */
   model?: SubagentModelPin;
-  /** Reasoning level for the delegate, clamped against the model in main. */
-  thinkingLevel?: ThinkingLevel;
+  /**
+   * Reasoning level for the delegate, clamped against the model in main.
+   * omit leaves the provider's own default untouched.
+   */
+  thinkingLevel?: SubagentThinkingLevel;
   /**
    * Permission scope for the delegate's tool calls (ADR 0089). `inherit`
    * follows the session's effective mode; the other values override it for the
@@ -48,6 +54,13 @@ export type SubagentDefinition = {
   permission?: SubagentPermission;
   /** Optional hard cap on delegate turns; omitted means unlimited turns. */
   maxTurns?: number;
+  /**
+   * Output-token cap for one delegate response. Omitted follows the model's
+   * own published limit, which is what every definition did before this field
+   * existed (D383). A delegate is a bounded worker, so the cap is per response
+   * rather than per run.
+   */
+  maxTokens?: number;
   /** Idle watchdog in seconds; parser materializes the default for documents. */
   idleTimeoutSeconds?: number;
   /** Total runtime watchdog in seconds; parser materializes the default. */
@@ -86,6 +99,15 @@ export const DEFAULT_SUBAGENT_TOOLS: readonly SubagentAssignableTool[] = [
 ];
 
 export const MAX_SUBAGENT_MAX_TURNS = 80;
+/**
+ * Defensive ceiling for a declared output cap. No published model accepts an
+ * output limit above 128k, so a value past this is a typo rather than an
+ * intent; the clamp keeps a document from asking a provider for something it
+ * can only reject. The floor is 1 — a cap of 0 would mean "no output", which
+ * is what leaving the field out already expresses.
+ */
+export const MAX_SUBAGENT_MAX_TOKENS = 200_000;
+export const MIN_SUBAGENT_MAX_TOKENS = 1;
 /**
  * Parsed from definition frontmatter for compatibility. Idle and duration
  * watchdogs are withdrawn (D328): the parent agent decides when to stop a
@@ -301,11 +323,11 @@ export function parseSubagentDefinition(
   const model = parseModelPin(frontmatter, errors);
 
   const declaredThinking = asScalar(frontmatter.get("thinkinglevel"));
-  let thinkingLevel: ThinkingLevel | undefined;
+  let thinkingLevel: SubagentThinkingLevel | undefined;
   if (declaredThinking) {
     const candidate = declaredThinking.trim().toLowerCase();
-    if ((THINKING_LEVELS as readonly string[]).includes(candidate)) {
-      thinkingLevel = candidate as ThinkingLevel;
+    if ((SUBAGENT_THINKING_LEVELS as readonly string[]).includes(candidate)) {
+      thinkingLevel = candidate as SubagentThinkingLevel;
     } else {
       warnings.push(`ignoring unknown thinking level "${declaredThinking}"`);
     }
@@ -328,6 +350,10 @@ export function parseSubagentDefinition(
   }
 
   const maxTurns = parseMaxTurns(asScalar(frontmatter.get("maxturns")), warnings);
+  const maxTokens = parseMaxTokens(
+    asScalar(frontmatter.get("maxtokens")),
+    warnings,
+  );
   const idleTimeoutSeconds = parseTimeoutSeconds(
     asScalar(frontmatter.get("idletimeout")) ??
       asScalar(frontmatter.get("idletimeoutseconds")),
@@ -361,6 +387,7 @@ export function parseSubagentDefinition(
       ...(thinkingLevel ? { thinkingLevel } : {}),
       ...(permission ? { permission } : {}),
       ...(maxTurns !== undefined ? { maxTurns } : {}),
+      ...(maxTokens !== undefined ? { maxTokens } : {}),
       idleTimeoutSeconds,
       maxDurationSeconds,
       prompt,
@@ -421,6 +448,39 @@ function parseMaxTurns(
       `clamping \`maxTurns\` ${parsed} to ${MAX_SUBAGENT_MAX_TURNS}`,
     );
     return MAX_SUBAGENT_MAX_TURNS;
+  }
+  return parsed;
+}
+
+/**
+ * Parse the delegate's output cap.
+ *
+ * Everything that means "no cap" — an absent key, `none`, or `0` — returns
+ * `undefined` rather than a number, so a definition without the field keeps
+ * following the model's published limit. A negative or fractional value is a
+ * typo, not a cap, so it is ignored with a warning instead of being coerced
+ * into something the provider would reject.
+ */
+function parseMaxTokens(
+  value: string | undefined,
+  warnings: string[],
+): number | undefined {
+  if (!value || value.trim().toLowerCase() === "none") {
+    return undefined;
+  }
+  const parsed = Number(value);
+  if (parsed === 0) return undefined;
+  if (!Number.isInteger(parsed) || parsed < MIN_SUBAGENT_MAX_TOKENS) {
+    warnings.push(
+      `ignoring invalid \`maxTokens\` "${value}" (following the model limit)`,
+    );
+    return undefined;
+  }
+  if (parsed > MAX_SUBAGENT_MAX_TOKENS) {
+    warnings.push(
+      `clamping \`maxTokens\` ${parsed} to ${MAX_SUBAGENT_MAX_TOKENS}`,
+    );
+    return MAX_SUBAGENT_MAX_TOKENS;
   }
   return parsed;
 }

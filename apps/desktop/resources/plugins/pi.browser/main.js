@@ -16,12 +16,20 @@ const ACTIONS = [
   "cdp",
 ];
 
+// Read-only actions that stay available in Plan and Goal modes (ADR 0211).
+// navigate visits a URL/path; snapshot reads the accessibility tree;
+// screenshot captures the visible page; console returns existing console
+// messages. The mutating actions (click/fill/evaluate/cdp) remain
+// Agent-only.
+const PLAN_SAFE_ACTIONS = ["navigate", "snapshot", "screenshot", "console"];
+
 export async function onLoad() {
   await pi.agent.registerTool({
     name: "Browser",
     description:
       "Drive PI-Desktop's work-panel browser via CDP: snapshot the accessibility tree, click/fill by uid, screenshot, evaluate JavaScript, read console output, or send an allowlisted raw CDP method. Call ToolSearch for \"browser\" or \"cdp\" to load this tool. Use BrowserPreview to open a workspace HTML file with live reload.",
     risk: "medium",
+    planSafeActions: PLAN_SAFE_ACTIONS,
     schema: {
       type: "object",
       properties: {

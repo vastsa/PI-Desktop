@@ -6,8 +6,11 @@ import {
   formatCommandInsert,
   formatFileInsert,
   normalizeLargePasteThreshold,
+  restoreInlineComposerFileReferenceTokens,
+  rewriteIdeographicCommaTrigger,
   serializeComposerFileReferences,
   serializeInlineComposerFileReferences,
+  stripInlineComposerFileReferenceTokens,
 } from "./composer-trigger.js";
 
 describe("detectTrigger — slash mode", () => {
@@ -44,6 +47,28 @@ describe("detectTrigger — slash mode", () => {
   it("never triggers mid-draft or on later lines", () => {
     expect(detectTrigger("hi /cmd", 7)).toBeNull();
     expect(detectTrigger("hi\n/cmd", 7)).toBeNull();
+  });
+});
+
+describe("rewriteIdeographicCommaTrigger", () => {
+  it("turns a leading ideographic comma into the slash trigger", () => {
+    expect(rewriteIdeographicCommaTrigger("、")).toBe("/");
+    expect(rewriteIdeographicCommaTrigger("、rev")).toBe("/rev");
+  });
+
+  it("leaves the mark alone anywhere else in the draft", () => {
+    expect(rewriteIdeographicCommaTrigger("你好、世界")).toBe("你好、世界");
+    expect(rewriteIdeographicCommaTrigger("/cmd 、")).toBe("/cmd 、");
+    expect(rewriteIdeographicCommaTrigger("")).toBe("");
+  });
+
+  it("opens the menu through the ordinary detector once rewritten", () => {
+    const draft = rewriteIdeographicCommaTrigger("、rev");
+    expect(detectTrigger(draft, draft.length)).toMatchObject({
+      mode: "slash",
+      query: "rev",
+      tokenStart: 0,
+    });
   });
 });
 
@@ -216,6 +241,28 @@ describe("compact file references", () => {
         { path: "src/b.ts", token: "\uE002" },
       ]),
     ).toBe("@src/a.ts @src/b.ts inspect");
+  });
+
+  it("keeps inline chips intact while enhancing their surrounding text", () => {
+    const references = [{ path: "/tmp/image.png", token: "\uE001" }];
+    const source = "\uE001make this clearer";
+    expect(stripInlineComposerFileReferenceTokens(source, references)).toBe(
+      "make this clearer",
+    );
+    expect(
+      restoreInlineComposerFileReferenceTokens(
+        source,
+        "\uE001Make this much clearer",
+        references,
+      ),
+    ).toBe("\uE001Make this much clearer");
+    expect(
+      restoreInlineComposerFileReferenceTokens(
+        source,
+        "Make this much clearer",
+        references,
+      ),
+    ).toBe("\uE001Make this much clearer");
   });
 
   it("normalizes large-paste thresholds to the supported range", () => {

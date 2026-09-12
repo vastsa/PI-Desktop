@@ -6,9 +6,9 @@
 //! Spawn failures and `rg` exit 2 fall back to the in-process searcher so a
 //! missing or broken install never changes the tool's public shape.
 
-use super::{BUDGET_SEARCH, MAX_LINE_CHARS, clip_chars, display_tool_path, grep_output};
+use super::{clip_chars, display_tool_path, grep_output, BUDGET_SEARCH, MAX_LINE_CHARS};
 use crate::workspace::ToolRoot;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
@@ -23,6 +23,9 @@ pub struct SystemGrep<'a> {
     pub pattern: &'a str,
     pub search_dir: &'a Path,
     pub workspace_root: &'a Path,
+    /// Root whose `.pi-desktopignore` applies (workspace root, or the search
+    /// root for scratch/external searches).
+    pub ignore_root: &'a Path,
     pub root_kind: ToolRoot,
     pub scoped: bool,
     pub include: Option<&'a str>,
@@ -32,33 +35,23 @@ pub struct SystemGrep<'a> {
 }
 
 #[cfg(test)]
-static TEST_RG: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
-
-#[cfg(test)]
-static TEST_RG_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-#[cfg(test)]
-pub struct TestRgGuard {
-    _serial: std::sync::MutexGuard<'static, ()>,
+thread_local! {
+    static TEST_RG: std::cell::RefCell<Option<PathBuf>> = std::cell::RefCell::new(None);
 }
 
 #[cfg(test)]
+pub struct TestRgGuard;
+
+#[cfg(test)]
 pub fn install_test_rg(path: PathBuf) -> TestRgGuard {
-    let serial = TEST_RG_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    *TEST_RG
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(path);
-    TestRgGuard { _serial: serial }
+    TEST_RG.with(|rg| *rg.borrow_mut() = Some(path));
+    TestRgGuard
 }
 
 #[cfg(test)]
 impl Drop for TestRgGuard {
     fn drop(&mut self) {
-        *TEST_RG
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+        TEST_RG.with(|rg| *rg.borrow_mut() = None);
     }
 }
 
@@ -70,10 +63,7 @@ pub fn try_system_rg(req: SystemGrep<'_>) -> Option<Value> {
 fn resolve_rg() -> Option<PathBuf> {
     #[cfg(test)]
     {
-        return TEST_RG
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone();
+        return TEST_RG.with(|rg| rg.borrow().clone());
     }
     #[cfg(not(test))]
     {
@@ -107,6 +97,7 @@ fn grep_with_rg(rg: &Path, req: SystemGrep<'_>) -> Option<Value> {
     if req.scoped {
         args.push("--no-ignore-parent".into());
     }
+    args.extend(super::ignore_rules::rg_args(req.ignore_root, req.scoped));
     if let Some(include) = req.include {
         args.push("--glob".into());
         args.push(include.to_string());
@@ -118,6 +109,9 @@ fn grep_with_rg(rg: &Path, req: SystemGrep<'_>) -> Option<Value> {
 
     let mut child = Command::new(rg)
         .args(&args)
+        // `--ignore-file` patterns are matched relative to the working
+        // directory, so anchor it at the ignore root.
+        .current_dir(req.ignore_root)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -188,6 +182,11 @@ fn consume_rg_line(line: &str, search_dir: &Path, parsed: &mut BTreeMap<PathBuf,
     let mut path = PathBuf::from(path_text);
     if path.is_relative() {
         path = search_dir.join(path);
+    }
+    // Belt and braces for the security denylist: `.env.*` cannot be expressed
+    // as an rg exclude glob without flipping the run into whitelist mode.
+    if super::ignore_rules::is_sensitive_path(&path) {
+        return;
     }
     let line_no = data.get("line_number").and_then(Value::as_u64).unwrap_or(0) as usize;
     let text = data

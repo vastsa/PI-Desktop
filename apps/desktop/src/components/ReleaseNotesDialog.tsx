@@ -7,6 +7,7 @@ import {
 } from "@pi-desktop/shared";
 import { Badge, cx } from "./ui";
 import { IconClose } from "./icons";
+import { TooltipButton } from "./ui";
 
 export function ReleaseNotesDialog({
   currentVersion,
@@ -29,7 +30,7 @@ export function ReleaseNotesDialog({
 
   const dateFormatter = useMemo(
     () =>
-      new Intl.DateTimeFormat(locale === "zh-CN" ? "zh-CN" : "en", {
+      new Intl.DateTimeFormat(locale, {
         year: "numeric",
         month: "short",
         day: "numeric",
@@ -98,16 +99,16 @@ export function ReleaseNotesDialog({
               {t("updates.releaseCount", { count: entries.length })}
             </p>
           </div>
-          <button
+          <TooltipButton
             ref={closeRef}
             type="button"
             className="icon-btn release-notes-close"
-            aria-label={t("updates.closeReleaseNotes")}
-            title={t("updates.closeReleaseNotes")}
+            tooltip={t("updates.closeReleaseNotes")}
+            ariaLabel={t("updates.closeReleaseNotes")}
             onClick={onClose}
           >
             <IconClose size={16} />
-          </button>
+          </TooltipButton>
         </header>
 
         <div className="release-notes-list selectable">

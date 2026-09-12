@@ -44,6 +44,12 @@ describe("parseProxyUrl", () => {
       ok: false,
     });
     expect(parseProxyUrl("file:///tmp/proxy")).toMatchObject({ ok: false });
+    expect(parseProxyUrl("socks4://127.0.0.1:1080")).toMatchObject({ ok: false });
+    expect(parseProxyUrl("socks4a://127.0.0.1:1080")).toMatchObject({ ok: false });
+    expect(parseProxyUrl("http://%ZZ@proxy.example:8080")).toEqual({
+      ok: false,
+      error: "proxy credentials are invalid",
+    });
   });
 
   it("preserves credentials in the canonical href and redacts passwords", () => {

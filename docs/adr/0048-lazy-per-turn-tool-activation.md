@@ -41,12 +41,18 @@ Providers with native deferred-tool search can serialize the newly activated
 schemas at that load point; providers without it receive the active schemas
 through the ordinary tool list.
 
-The deferred set is cleared at the start of every new user prompt. ToolSearch
-does not call host-core and does not bypass permissions, workspace containment,
-timeouts, or audit behavior. The activation marker is retained inside the
-persisted tool result so transcript reconstruction preserves provider message
-semantics. A restarted runtime still requires a new ToolSearch call before it
-uses a deferred capability.
+The in-memory deferred set is cleared at the start of every new user prompt and
+then rebuilt from successful activation evidence in the effective session
+context. A successful `ToolSearch` result contributes its `addedToolNames`, and
+a successful result from a deferred tool contributes that tool's name. Only
+names still present in the current mode's deferred catalog are restored; failed,
+interrupted, and missing-result rows are ignored, as is assistant/user prose.
+ToolSearch does not call host-core and does not bypass permissions, workspace
+containment, timeouts, or audit behavior. The activation marker is retained
+inside the persisted tool result so transcript reconstruction preserves provider
+message semantics. A restarted runtime can reuse an eligible deferred
+capability while its successful marker remains in effective context; a fresh
+ToolSearch call is required when no such marker is present.
 
 ## Consequences
 

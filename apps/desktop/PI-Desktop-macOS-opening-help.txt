@@ -1,0 +1,13 @@
+PI-Desktop macOS first launch
+
+This build is unsigned. After moving PI-Desktop.app to Applications, if macOS
+says the app is damaged or does not open, open Terminal and run:
+
+xattr -r -d com.apple.quarantine /Applications/PI-Desktop.app
+
+Use this only for an app obtained from a trusted PI-Desktop source. It removes
+only Apple's quarantine attribute from PI-Desktop.app. Signed and notarized
+builds do not need it.
+
+The macOS ZIP package also includes PI-Desktop-macOS-open.command, which can
+clear the same attribute and launch the app after installation.

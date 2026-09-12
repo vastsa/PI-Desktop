@@ -8,13 +8,26 @@ import {
 import { validateMcpServer } from "./mcp-config.js";
 import { parseNetDomains, type PluginNetDomain } from "./net-policy.js";
 
+/**
+ * Manifest id shape frozen by docs/spec/07-plugins/02-plugin-manifest-schema.md:
+ * a lowercase dotted namespace such as `demo.hello` or `pi.browser`.
+ */
+export const PLUGIN_ID_PATTERN = /^[a-z0-9]+(\.[a-z0-9_-]+)+$/;
+
+/** `author` may be a display string or a contact object (manifest schema §2). */
+export type PluginManifestAuthor =
+  | string
+  | { name: string; email?: string; url?: string };
+
 export type PluginManifest = {
   schemaVersion: number;
   id: string;
   name: string;
   version: string;
   description?: string;
-  author?: string;
+  author?: PluginManifestAuthor;
+  homepage?: string;
+  repository?: string;
   main: string;
   icon?: string;
   /**
@@ -40,10 +53,25 @@ export type PluginManifest = {
       name: string;
       description: string;
       risk?: "low" | "medium" | "high";
+      /**
+       * Action names that may run in Plan or Goal mode. Omitted or empty
+       * means the tool is hidden from the model in those modes (ADR 0211).
+       * Only meaningful when the schema has an `action` enum and every
+       * entry is a value of that enum; the host enforces the restriction
+       * even if a plugin mis-declares, so misuse is caught at execute time.
+       */
+      planSafeActions?: readonly string[];
       schema?: unknown;
     }>;
     /** Relative skill paths, or entries that override the parsed metadata. */
     skills?: Array<string | PluginSkillContrib>;
+    /**
+     * ExtensionAPI modules (the pi CLI extension contract) that run inside the
+     * agent process with the agent's own access. Requires the
+     * `agent.extension` permission; each path is a `.ts` / `.js` file inside
+     * the plugin directory (spec 07-plugins/16).
+     */
+    agentExtensions?: string[];
     settings?: PluginSettingContrib[];
     themes?: PluginThemeContrib[];
     mcpServers?: PluginMcpServerContrib[];
@@ -51,6 +79,8 @@ export type PluginManifest = {
     bus?: PluginBusContrib;
     /** Surfaces the plugin docks inside the host's work panel. */
     views?: PluginViewContrib[];
+    /** External session namespaces this plugin may import and own. */
+    sessionSources?: PluginSessionSourceContrib[];
   };
   permissions?: string[];
   /**
@@ -76,6 +106,135 @@ export type PluginLocalizedString = {
   "zh-CN": string;
 };
 
+export type PluginSessionSourceContrib = {
+  id: string;
+  label?: string | PluginLocalizedString;
+};
+
+export type PluginSessionMessage =
+  | { role: "user"; content: string; createdAt: string }
+  | {
+      role: "assistant";
+      content: string;
+      createdAt: string;
+      modelId?: string;
+      providerId?: string;
+    }
+  | {
+      role: "tool";
+      content: string;
+      createdAt: string;
+      toolName: string;
+      toolCallId: string;
+      toolStatus: "success" | "error";
+      toolArgs?: unknown;
+      toolResult?: unknown;
+    };
+
+export type PluginSessionImportInput = {
+  source: string;
+  externalId: string;
+  title: string;
+  /** Explicit host project created through `pi.project.create`; omitted stays unbound. */
+  projectId?: number | null;
+  projectPath?: string | null;
+  modelId?: string | null;
+  providerId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  messages: PluginSessionMessage[];
+};
+
+export type PluginSessionImportResult = {
+  sessionId: string;
+  imported: boolean;
+  skipped: boolean;
+};
+
+export type PluginSessionBatchImportInput = {
+  source: string;
+  sessions: Array<Omit<PluginSessionImportInput, "source">>;
+  mode?: "skip" | "fail";
+};
+
+export type PluginSessionBatchImportResult = {
+  results: Array<{
+    externalId: string;
+    sessionId: string | null;
+    status: "imported" | "skipped" | "failed";
+    errorCode?: string;
+    errorMessage?: string;
+  }>;
+  imported: number;
+  skipped: number;
+  failed: number;
+};
+
+export type PluginProjectRecord = {
+  projectId: number;
+  path: string;
+  name: string;
+};
+
+export type PluginSessionListItem = {
+  sessionId: string;
+  title: string;
+  source: string;
+  externalId: string;
+  projectId: number | null;
+  messageCount: number;
+  originKind: "imported" | "created";
+  bound: { workspace: boolean; model: boolean };
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PluginSessionListResult = {
+  items: PluginSessionListItem[];
+  nextCursor?: string;
+};
+
+export type PluginSessionGetResult = {
+  sessionId: string;
+  title: string;
+  source: string;
+  externalId: string;
+  originKind: "imported" | "created";
+  projectId: number | null;
+  projectPath: string | null;
+  modelId: string | null;
+  providerId: string | null;
+  history: {
+    projectPath: string | null;
+    modelId: string | null;
+    providerId: string | null;
+  };
+  messageCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PluginSessionMessageResult = {
+  id: string;
+  role: "user" | "assistant" | "tool";
+  content: string;
+  contentTruncated?: boolean;
+  createdAt: string;
+  origin: "external";
+  tool?: {
+    name: string;
+    callId: string;
+    status: "success" | "error";
+    args?: unknown;
+    result?: unknown;
+  };
+};
+
+export type PluginSessionMessageListResult = {
+  items: PluginSessionMessageResult[];
+  nextCursor?: string;
+};
+
 /** Resolve a plugin label using the active PI-Desktop locale. */
 export function resolvePluginLocalizedString(
   value: string | PluginLocalizedString | undefined,
@@ -84,7 +243,16 @@ export function resolvePluginLocalizedString(
 ): string {
   if (typeof value === "string") return value || fallback;
   if (!value) return fallback;
-  const preferred = locale?.toLowerCase().startsWith("zh") ? value["zh-CN"] : value.en;
+  const normalized = locale?.replaceAll("_", "-").toLowerCase();
+  const simplifiedChinese =
+    normalized === "zh" ||
+    normalized === "zh-cn" ||
+    normalized?.startsWith("zh-cn-") ||
+    normalized === "zh-hans" ||
+    normalized?.startsWith("zh-hans-") ||
+    normalized === "zh-sg" ||
+    normalized?.startsWith("zh-sg-");
+  const preferred = simplifiedChinese ? value["zh-CN"] : value.en;
   return preferred || value.en || value["zh-CN"] || fallback;
 }
 
@@ -236,6 +404,14 @@ export type PluginTool = {
   name: string;
   description: string;
   risk?: "low" | "medium" | "high";
+  /**
+   * Action names that may run in Plan or Goal mode. Omitted or empty
+   * means the tool is hidden from the model in those modes (ADR 0211).
+   * Only meaningful when the schema has an `action` enum and every
+   * entry is a value of that enum; the host enforces the restriction
+   * even if a plugin mis-declares, so misuse is caught at execute time.
+   */
+  planSafeActions?: readonly string[];
   schema?: unknown;
   execute: (args: unknown, ctx?: PluginToolExecContext) => Promise<unknown> | unknown;
 };
@@ -243,6 +419,8 @@ export type PluginTool = {
 export type PluginToolExecContext = {
   sessionId?: string;
   turnId?: string;
+  /** Durable session operating mode. Host-core is authoritative (ADR 0211). */
+  mode?: "agent" | "plan" | "goal";
   /** Executor model for this session, `providerId/modelId`. Configuration, not transcript. */
   modelKey?: string;
   thinkingLevel?: string;
@@ -353,6 +531,30 @@ export type PluginFsEntry = {
   isDirectory: boolean;
   /** Files only. */
   size?: number;
+  /** Files only; milliseconds since the Unix epoch. */
+  mtimeMs?: number;
+};
+
+export type PluginFsStat = {
+  size: number;
+  mtimeMs: number;
+};
+
+export type PluginFsRange = {
+  bytes: Uint8Array;
+  totalSize: number;
+};
+
+export type PluginDesktopOperation = {
+  id: string;
+  description: string;
+  risk: "read" | "write" | "dangerous";
+};
+
+export type PluginDesktopInvokeInput = {
+  operation: string;
+  args?: unknown[];
+  confirm?: boolean;
 };
 
 /** Classified preview returned by `fs.readPreview`. */
@@ -365,10 +567,26 @@ export type PluginFsPreview = {
   size: number;
 };
 
+/**
+ * The appearance the host is currently showing. Mirrors `PluginAppearance` in
+ * the desktop's plugin panel chrome; keep the two shapes identical.
+ */
+export type PluginAppearance = {
+  /** Raw preference: "light" | "dark" | "system" | "plugin:<pluginId>:<themeId>". */
+  theme: string;
+  /** Resolved palette: "light" | "dark", or "system" when unresolved. */
+  base: "light" | "dark" | "system";
+  /** Active app language tag (e.g. "en", "zh-CN"). */
+  locale: string;
+  /** The active contributed theme, when the preference selects one. */
+  pluginTheme: { id: string; base: "light" | "dark"; css: string } | null;
+};
+
 export type PluginHostApi = {
   app: {
     getVersion: () => Promise<string>;
     getLocale: () => Promise<string>;
+    getAppearance: () => Promise<PluginAppearance>;
   };
   plugin: {
     getId: () => string;
@@ -392,8 +610,16 @@ export type PluginHostApi = {
       input: PluginNativeNotificationInput,
     ) => Promise<PluginNativeNotificationResult>;
   };
+  project: {
+    create: (input: { path: string }) => Promise<PluginProjectRecord>;
+  };
   workspace: {
     get: () => Promise<{ path: string; name: string } | null>;
+  };
+  /** Reviewed host operations shared with the local MCP control plane. */
+  desktop: {
+    listOperations: () => Promise<PluginDesktopOperation[]>;
+    invoke: (input: PluginDesktopInvokeInput) => Promise<unknown>;
   };
   /**
    * Paths are relative to the rule's root: the workspace by default, or the
@@ -402,6 +628,15 @@ export type PluginHostApi = {
    */
   fs: {
     readText: (pathFromRoot: string) => Promise<string>;
+    /** Read the size and modification time of one file without loading it. */
+    stat: (pathFromRoot: string, grantId?: string) => Promise<PluginFsStat>;
+    /** Read a bounded byte range; `grantId` is only for a dropped-file grant. */
+    readRange: (
+      pathFromRoot: string,
+      byteOffset: number,
+      length: number,
+      grantId?: string,
+    ) => Promise<PluginFsRange>;
     /**
      * Bounded classified preview of one existing readable file. Images return
      * a data URL; text is capped; binary and oversized files are reported
@@ -439,6 +674,27 @@ export type PluginHostApi = {
   };
   session: {
     getLlmContext: () => Promise<PluginLlmContext>;
+    list: (input?: {
+      limit?: number;
+      cursor?: string;
+      source?: string;
+      updatedAfter?: string;
+    }) => Promise<PluginSessionListResult>;
+    get: (input: { sessionId: string }) => Promise<PluginSessionGetResult>;
+    listMessages: (input: {
+      sessionId: string;
+      limit?: number;
+      cursor?: string;
+      order?: "asc" | "desc";
+      contentLimit?: number;
+    }) => Promise<PluginSessionMessageListResult>;
+    import: (input: PluginSessionImportInput) => Promise<PluginSessionImportResult>;
+    importBatch: (input: PluginSessionBatchImportInput) => Promise<PluginSessionBatchImportResult>;
+    rename: (input: { sessionId: string; title: string }) => Promise<{ updated: boolean }>;
+    delete: (input: {
+      sessionId: string;
+      mode?: "trash" | "purge";
+    }) => Promise<{ deleted: boolean }>;
   };
   services: {
     /**
@@ -506,9 +762,13 @@ export type PluginModule = {
   onPanelInvoke?: (channel: string, payload: unknown) => Promise<unknown> | unknown;
 };
 
+/** Upper bound on ExtensionAPI modules one plugin may contribute. */
+export const MAX_AGENT_EXTENSIONS_PER_PLUGIN = 8;
+
 export const PLUGIN_PERMISSIONS = [
   "ui.panel",
   "ui.view",
+  "ui.microphone",
   "ui.theme",
   "clipboard.read",
   "clipboard.write",
@@ -519,8 +779,15 @@ export const PLUGIN_PERMISSIONS = [
   "agent.tool.register",
   "agent.prompt.inject",
   "agent.complete",
+  "agent.extension",
+  "desktop.control",
   "models.list",
+  "project.create",
   "session.read",
+  "session.import",
+  "session.read.own",
+  "session.update.own",
+  "session.delete.own",
   "net.fetch",
   "shell.openExternal",
   "mcp.server.local",
@@ -554,14 +821,24 @@ export function validateManifest(raw: unknown): {
   if (typeof m.main !== "string" || !m.main) {
     return { ok: false, error: "manifest.main is required" };
   }
+  const mainError = relativePathError(m.main, "manifest.main");
+  if (mainError) return { ok: false, error: mainError };
   if (typeof m.schemaVersion !== "number") {
     return { ok: false, error: "manifest.schemaVersion is required" };
   }
   if (m.enabledByDefault !== undefined && typeof m.enabledByDefault !== "boolean") {
     return { ok: false, error: "manifest.enabledByDefault must be a boolean" };
   }
+  const authorError = manifestAuthorError(m.author);
+  if (authorError) return { ok: false, error: authorError };
+  for (const field of ["homepage", "repository"] as const) {
+    const value = (m as Record<string, unknown>)[field];
+    if (value !== undefined && (typeof value !== "string" || !value.trim())) {
+      return { ok: false, error: `manifest.${field} must be a non-empty string` };
+    }
+  }
   const ui = m.ui as
-    | { title?: unknown }
+    | { title?: unknown; panel?: unknown }
     | null
     | undefined;
   if (ui !== undefined) {
@@ -570,8 +847,22 @@ export function validateManifest(raw: unknown): {
     }
     const titleError = localizedStringError(ui.title, "manifest.ui.title");
     if (titleError) return { ok: false, error: titleError };
+    if (ui.panel !== undefined) {
+      if (typeof ui.panel !== "string" || !ui.panel.trim()) {
+        return { ok: false, error: "manifest.ui.panel must be a non-empty string" };
+      }
+      const panelError = relativePathError(ui.panel, "manifest.ui.panel");
+      if (panelError) return { ok: false, error: panelError };
+    }
   }
   const contributesError = validateContributions(m.contributes);
+  if (
+    !contributesError &&
+    (m.contributes?.agentExtensions?.length ?? 0) > 0 &&
+    !(m.permissions ?? []).includes("agent.extension")
+  ) {
+    return { ok: false, error: "contributes.agentExtensions requires the agent.extension permission" };
+  }
   if (contributesError) {
     return { ok: false, error: contributesError };
   }
@@ -617,7 +908,22 @@ export function validateContributions(
 
   const settings = contributes.settings ?? [];
   const settingKeys = new Set<string>();
-  const commandIds = new Set((contributes.commands ?? []).map((command) => command.id));
+  const commands = contributes.commands ?? [];
+  if (!Array.isArray(commands)) return "contributes.commands must be an array";
+  const commandIds = new Set<string>();
+  for (const command of commands) {
+    if (!command || typeof command !== "object") {
+      return "contributes.commands entries must be objects";
+    }
+    if (typeof command.id !== "string" || !command.id.trim()) {
+      return "contributes.commands entries need an id";
+    }
+    if (typeof command.title !== "string" || !command.title.trim()) {
+      return `command "${command.id}" requires a title`;
+    }
+    if (commandIds.has(command.id)) return `duplicate command id "${command.id}"`;
+    commandIds.add(command.id);
+  }
   for (const setting of settings) {
     if (!setting || typeof setting !== "object") {
       return "contributes.settings entries must be objects";
@@ -688,6 +994,22 @@ export function validateContributions(
     if (pathError) return pathError;
   }
 
+  const agentExtensions = contributes.agentExtensions ?? [];
+  if (!Array.isArray(agentExtensions)) return "contributes.agentExtensions must be an array";
+  if (agentExtensions.length > MAX_AGENT_EXTENSIONS_PER_PLUGIN) {
+    return `contributes.agentExtensions allows at most ${MAX_AGENT_EXTENSIONS_PER_PLUGIN} entries`;
+  }
+  for (const entry of agentExtensions) {
+    if (typeof entry !== "string" || !entry.trim()) {
+      return "contributes.agentExtensions entries must be paths";
+    }
+    const pathError = relativePathError(entry, "contributes.agentExtensions path");
+    if (pathError) return pathError;
+    if (!/\.(ts|mts|js|mjs)$/.test(entry)) {
+      return "contributes.agentExtensions entries must be .ts or .js files";
+    }
+  }
+
   const themeIds = new Set<string>();
   for (const theme of contributes.themes ?? []) {
     if (!theme || typeof theme !== "object") return "contributes.themes entries must be objects";
@@ -730,6 +1052,28 @@ export function validateContributions(
     }
     // `icon` is intentionally unchecked: an unknown token degrades to a letter
     // tile, so rejecting one would break a plugin over a cosmetic detail.
+  }
+
+  const sessionSourceIds = new Set<string>();
+  for (const source of contributes.sessionSources ?? []) {
+    if (!source || typeof source !== "object") {
+      return "contributes.sessionSources entries must be objects";
+    }
+    if (
+      typeof source.id !== "string" ||
+      !/^[a-zA-Z][a-zA-Z0-9._-]{0,63}$/.test(source.id)
+    ) {
+      return "session source id must match [a-zA-Z][a-zA-Z0-9._-]{0,63}";
+    }
+    if (sessionSourceIds.has(source.id)) {
+      return `duplicate session source id "${source.id}"`;
+    }
+    sessionSourceIds.add(source.id);
+    const labelError = localizedStringError(source.label, `session source "${source.id}" label`);
+    if (labelError) return labelError;
+    if (typeof source.label === "string" && !source.label.trim()) {
+      return `session source "${source.id}" label must not be empty`;
+    }
   }
 
   const serverIds = new Set<string>();
@@ -804,6 +1148,26 @@ function localizedStringError(value: unknown, field: string): string | undefined
   return undefined;
 }
 
+function manifestAuthorError(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value === "string") {
+    return value.trim() ? undefined : "manifest.author must not be empty";
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return "manifest.author must be a string or { name, email?, url? }";
+  }
+  const author = value as Record<string, unknown>;
+  if (typeof author.name !== "string" || !author.name.trim()) {
+    return "manifest.author.name is required";
+  }
+  for (const field of ["email", "url"] as const) {
+    if (author[field] !== undefined && typeof author[field] !== "string") {
+      return `manifest.author.${field} must be a string`;
+    }
+  }
+  return undefined;
+}
+
 function relativePathError(value: string, field: string): string | undefined {
   if (/^[a-zA-Z]:[\\/]/.test(value) || value.startsWith("/") || value.startsWith("\\")) {
     return `${field} must not be an absolute path`;
@@ -854,6 +1218,7 @@ export {
   type ParsedSkillDoc,
 } from "./skills.js";
 export {
+  decodeCssEscapes,
   sanitizeThemeCss,
   THEME_CSS_MAX_BYTES,
   type ThemeCssResult,
@@ -877,12 +1242,14 @@ export {
   type McpValidationResult,
 } from "./mcp-config.js";
 export {
+  isLocalNetDomain,
   isNetHostAllowed,
   isNetUrlAllowed,
   parseNetDomains,
   type PluginNetDomain,
 } from "./net-policy.js";
 export {
+  fsGlobIgnoresCase,
   isDeniedFsPath,
   isFsPathInScope,
   isWholeTreePattern,
@@ -894,6 +1261,7 @@ export {
   FS_DENY_FILE_PATTERNS,
   LEGACY_FS_PERMISSIONS,
   PLUGIN_FS_MODES,
+  type MatchFsGlobOptions,
   type PluginFsMode,
   type PluginFsPolicy,
   type PluginFsRoot,

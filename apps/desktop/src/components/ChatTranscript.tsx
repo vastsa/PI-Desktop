@@ -10,10 +10,10 @@ import {
   useRef,
   useState,
 } from "react";
-import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import type {
   AgentActivity,
+  AgentActivityAgent,
   ContextCompactionMark,
   MessageAttachment,
   MessageUsage,
@@ -21,7 +21,12 @@ import type {
   ProposalKind,
   UiMessage,
 } from "@pi-desktop/shared";
-import { proposalKindForMode } from "@pi-desktop/shared";
+import {
+  PROVIDER_RETRY_MAX_RETRIES,
+  proposalKindForMode,
+  THINKING_LEVELS,
+  type ThinkingLevel,
+} from "@pi-desktop/shared";
 import { ConversationMinimap } from "./ConversationMinimap";
 import { TurnOutcomeCard } from "./TurnOutcomeCard";
 import { ReviewChangeCard } from "./ReviewChangeCard";
@@ -43,6 +48,7 @@ import {
   toolResultChips,
 } from "../lib/tool-presentation";
 import {
+  collectDelegationFailures,
   collectDelegationStatuses,
   collectDelegationTimings,
   delegationRoster,
@@ -54,6 +60,7 @@ import {
   subagentOutcome,
   summarizeSubagentActivity,
   type DelegationActivityItem,
+  type DelegationFailure,
   type SubagentOutcome,
   type SubagentTiming,
 } from "../lib/subagent-topology";
@@ -88,9 +95,7 @@ import {
   assistantTurnContent,
   assistantTurnMessages,
   assistantTurnResponseDuration,
-  assistantTurnResponseOutputIsEstimated,
   assistantTurnResponseOutputTokens,
-  assistantTurnTools,
   assistantTurnUsage,
   buildTranscriptEntries,
   messageThinking as thinkingText,
@@ -102,22 +107,14 @@ import {
   type SubagentRunItem,
   type TranscriptEntry,
 } from "../lib/assistant-turns";
-import {
-  aggregateToolTokenUsage,
-  calculateCacheRate,
-  calculateContextUsage,
-  calculateTokenRate,
-  DEFAULT_CONTEXT_WINDOW,
-  latestMessageUsage,
-  resolveContextWindow,
-  usageTokenTotal,
-} from "../lib/context-usage";
+import { calculateTokenRate } from "../lib/context-usage";
 import {
   IconArrowDown,
   IconBot,
   IconBranch,
   IconCheck,
   IconCircleAlert,
+  IconChevronDown,
   IconChevronLeft,
   IconChevronRight,
   IconCopy,
@@ -144,6 +141,9 @@ import {
 import { useAppStore } from "../stores/app-store";
 import type { PendingPermission } from "../lib/pending-permissions";
 import { PermissionCard } from "./PermissionCard";
+import { TooltipButton } from "./ui";
+
+type Translate = (key: string, options?: Record<string, unknown>) => string;
 
 /**
  * Copy chip. Message toolbars are glyph-only (`icon`) with the label in a
@@ -162,17 +162,28 @@ function CopyButton({
   const { copied, copy } = useCopy();
   const { t } = useTranslation();
   const tip = copied ? t("chat.copied") : label;
+  if (withLabel) {
+    return (
+      <button
+        className={`copy-btn ${copied ? "copied" : ""}`}
+        title={tip}
+        aria-label={label}
+        onClick={() => copy(text)}
+      >
+        {copied ? <IconCheck size={13} /> : <IconCopy size={13} />}
+        <span>{tip}</span>
+      </button>
+    );
+  }
   return (
-    <button
-      className={`copy-btn ${withLabel ? "" : "icon"} ${copied ? "copied" : ""}`}
-      data-tip={withLabel ? undefined : tip}
-      title={withLabel ? tip : undefined}
-      aria-label={label}
+    <TooltipButton
+      className={`copy-btn icon ${copied ? "copied" : ""}`}
+      tooltip={tip}
+      ariaLabel={label}
       onClick={() => copy(text)}
     >
       {copied ? <IconCheck size={13} /> : <IconCopy size={13} />}
-      {withLabel ? <span>{tip}</span> : null}
-    </button>
+    </TooltipButton>
   );
 }
 
@@ -184,388 +195,25 @@ function formatTokenCount(value: number): string {
   return String(value);
 }
 
-const CONTEXT_RING_RADIUS = 9;
-const CONTEXT_RING_CIRCUMFERENCE = 2 * Math.PI * CONTEXT_RING_RADIUS;
-const CONTEXT_POPOVER_GAP = 8;
-const CONTEXT_VIEWPORT_MARGIN = 16;
-
-type ContextPopoverPosition = {
-  top: number;
-  left: number;
-};
-
-function ContextUsageInspector({
-  usage,
-  turnUsage,
-  contextWindow,
-  tools,
-  responseDurationMs,
-  responseOutputTokens,
-  responseOutputEstimated = false,
-}: {
-  usage: MessageUsage;
-  turnUsage: MessageUsage;
-  contextWindow: number;
-  tools: UiMessage[];
-  responseDurationMs?: number;
-  responseOutputTokens?: number;
-  responseOutputEstimated?: boolean;
-}) {
-  const { t } = useTranslation();
-  const panelId = useId();
-  // The transcript shows one row per compaction; the inspector adds what those
-  // rows cannot — how much of the model context the newest summary occupies.
-  const compaction = useAppStore((state) =>
-    state.activeSessionId
-      ? state.sessionCompactions[state.activeSessionId]?.at(-1)
-      : undefined,
-  );
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const popoverRef = useRef<HTMLDivElement>(null);
-  const [open, setOpen] = useState(false);
-  const [popoverPosition, setPopoverPosition] =
-    useState<ContextPopoverPosition | null>(null);
-  const context = calculateContextUsage(usage, contextWindow);
-  const turnTotal = usageTokenTotal(turnUsage);
-  const throughput = calculateTokenRate(
-    responseOutputTokens ?? turnUsage.outputTokens,
-    responseDurationMs,
-  );
-  const cacheRate = calculateCacheRate(
-    turnUsage.inputTokens,
-    turnUsage.cacheReadTokens,
-  );
-  const toolRows = aggregateToolTokenUsage(tools);
-  const toolTotal = toolRows.reduce(
-    (total, row) => total + row.totalTokens,
-    0,
-  );
-  const level =
-    context.remainingPercent <= 10
-      ? "critical"
-      : context.remainingPercent <= 25
-        ? "warning"
-      : "comfortable";
-
-  const closeInspector = useCallback(() => {
-    setOpen(false);
-    setPopoverPosition(null);
-  }, []);
-
-  // The panel is click-toggled rather than hover-opened: reading the token
-  // breakdown takes long enough that a pointer leaving the trigger should not
-  // dismiss it.
-  const toggleInspector = useCallback(() => {
-    setOpen((previous) => {
-      if (previous) setPopoverPosition(null);
-      return !previous;
-    });
-  }, []);
-
-  const updatePopoverPosition = useCallback(() => {
-    const trigger = triggerRef.current;
-    const popover = popoverRef.current;
-    if (!trigger || !popover) return;
-
-    const triggerRect = trigger.getBoundingClientRect();
-    const triggerVisible =
-      triggerRect.bottom > 0 && triggerRect.top < window.innerHeight;
-    if (!triggerVisible) {
-      setOpen(false);
-      setPopoverPosition(null);
-      return;
-    }
-    const popoverRect = popover.getBoundingClientRect();
-    const maxLeft = Math.max(
-      CONTEXT_VIEWPORT_MARGIN,
-      window.innerWidth - popoverRect.width - CONTEXT_VIEWPORT_MARGIN,
-    );
-    const left = Math.min(
-      Math.max(CONTEXT_VIEWPORT_MARGIN, triggerRect.left),
-      maxLeft,
-    );
-    const above = triggerRect.top - popoverRect.height - CONTEXT_POPOVER_GAP;
-    const below = triggerRect.bottom + CONTEXT_POPOVER_GAP;
-    const maxTop = Math.max(
-      CONTEXT_VIEWPORT_MARGIN,
-      window.innerHeight - popoverRect.height - CONTEXT_VIEWPORT_MARGIN,
-    );
-    const top =
-      above >= CONTEXT_VIEWPORT_MARGIN && above <= maxTop
-        ? above
-        : below >= CONTEXT_VIEWPORT_MARGIN && below <= maxTop
-          ? below
-          : Math.min(Math.max(CONTEXT_VIEWPORT_MARGIN, below), maxTop);
-
-    setPopoverPosition((previous) =>
-      previous?.top === top && previous.left === left
-        ? previous
-        : { top, left },
-    );
-  }, []);
-
-  useLayoutEffect(() => {
-    if (!open) return;
-    const frame = window.requestAnimationFrame(updatePopoverPosition);
-    return () => window.cancelAnimationFrame(frame);
-  }, [
-    compaction,
-    context.usedTokens,
-    contextWindow,
-    open,
-    toolRows.length,
-    toolTotal,
-    turnTotal,
-    throughput,
-    updatePopoverPosition,
-  ]);
-
-  useEffect(() => {
-    if (!open) return;
-    const handleViewportChange = () => updatePopoverPosition();
-    window.addEventListener("resize", handleViewportChange);
-    window.addEventListener("scroll", handleViewportChange, true);
-    return () => {
-      window.removeEventListener("resize", handleViewportChange);
-      window.removeEventListener("scroll", handleViewportChange, true);
-    };
-  }, [open, updatePopoverPosition]);
-
-  useEffect(() => {
-    if (!open || !popoverRef.current || typeof ResizeObserver === "undefined") {
-      return;
-    }
-    const observer = new ResizeObserver(updatePopoverPosition);
-    observer.observe(popoverRef.current);
-    return () => observer.disconnect();
-  }, [open, updatePopoverPosition]);
-
-  useEffect(() => {
-    if (!open) return;
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target as Node | null;
-      if (!target) return;
-      if (
-        triggerRef.current?.contains(target) ||
-        popoverRef.current?.contains(target)
-      ) {
-        return;
-      }
-      closeInspector();
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      closeInspector();
-      triggerRef.current?.focus();
-    };
-    window.addEventListener("pointerdown", handlePointerDown, true);
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", handlePointerDown, true);
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [closeInspector, open]);
-
-  const popover = open ? (
-    <div
-      ref={popoverRef}
-      className={`context-inspector-popover${popoverPosition ? " is-open" : ""}`}
-      id={panelId}
-      role="dialog"
-      aria-label={t("chat.usageContextLabel")}
-      style={
-        popoverPosition
-          ? {
-              top: `${popoverPosition.top}px`,
-              left: `${popoverPosition.left}px`,
-            }
-          : undefined
-      }
-    >
-      <div className="context-inspector-heading">
-        <div className="context-inspector-heading-copy">
-          <span className="context-inspector-eyebrow">
-            {t("chat.usageContextLabel")}
-          </span>
-          <strong>
-            {t("chat.usageContextLeft", {
-              count: formatTokenCount(context.remainingTokens),
-            })}
-          </strong>
-        </div>
-        <div className="context-inspector-remaining">
-          <strong>{context.remainingPercent}%</strong>
-          <span>{t("chat.usageContextRemaining")}</span>
-        </div>
-      </div>
-      <div className="context-inspector-window">
-        <span>{t("chat.usageContextWindow")}</span>
-        <strong>
-          {t("chat.usageContextTokens", {
-            used: formatTokenCount(context.usedTokens),
-            window: formatTokenCount(contextWindow),
-          })}
-        </strong>
-        <span className="context-inspector-window-percent">
-          {context.usedPercent}%
-        </span>
-      </div>
-      <div className="context-inspector-kpis">
-        <div>
-          <span>{t("chat.usageTurnTotal")}</span>
-          <strong>{formatTokenCount(turnTotal)}</strong>
-        </div>
-        <div>
-          <span>{t("chat.usageThroughputLabel")}</span>
-          <strong>
-            {throughput === undefined
-              ? t("chat.usageThroughputUnavailable")
-              : t(
-                  responseOutputEstimated
-                    ? "chat.usageThroughputEstimated"
-                    : "chat.usageThroughput",
-                  {
-                    count: formatTokenCount(throughput),
-                  },
-                )}
-          </strong>
-        </div>
-      </div>
-      <div className="context-inspector-summary">
-        <div className="context-inspector-summary-row">
-          <strong>{t("chat.usageProviderUsage")}</strong>
-          <span className="context-inspector-summary-values">
-            <span>
-              {t("chat.usageInput")} {formatTokenCount(turnUsage.inputTokens)}
-            </span>
-            <span>
-              {t("chat.usageOutput")} {formatTokenCount(turnUsage.outputTokens)}
-            </span>
-            {turnUsage.cacheReadTokens !== undefined ? (
-              <span>
-                {t("chat.usageCacheRead")} {formatTokenCount(turnUsage.cacheReadTokens)}
-              </span>
-            ) : null}
-            {cacheRate !== undefined ? (
-              <span>
-                {t("chat.usageCacheRate")} {cacheRate}%
-              </span>
-            ) : null}
-            {turnUsage.cacheWriteTokens !== undefined ? (
-              <span>
-                {t("chat.usageCacheWrite")} {formatTokenCount(turnUsage.cacheWriteTokens)}
-              </span>
-            ) : null}
-            {turnUsage.reasoningTokens !== undefined ? (
-              <span>
-                {t("chat.usageReasoning")} {formatTokenCount(turnUsage.reasoningTokens)}
-              </span>
-            ) : null}
-          </span>
-        </div>
-        <div className="context-inspector-summary-row">
-          <strong>{t("chat.usageTools")}</strong>
-          <span className="context-inspector-summary-values">
-            {toolRows.length > 0
-              ? t("chat.usageToolsSummary", {
-                  count: toolRows.length,
-                  calls: tools.length,
-                  tokens: formatTokenCount(toolTotal),
-                })
-              : t("chat.usageNoTools")}
-          </span>
-        </div>
-      </div>
-      {compaction ? (
-        <div className="context-inspector-compaction">
-          <span>
-            {t("chat.usageCompaction", { times: compaction.generation })}
-          </span>
-          <strong>~{formatTokenCount(compaction.summaryTokens)}</strong>
-        </div>
-      ) : null}
-    </div>
-  ) : null;
-
-  return (
-    <div
-      className="context-inspector"
-      data-level={level}
-      data-open={open ? "true" : "false"}
-    >
-      <button
-        ref={triggerRef}
-        type="button"
-        className="context-inspector-trigger"
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        aria-controls={open ? panelId : undefined}
-        aria-label={t("chat.usageContextAria", {
-          percent: context.remainingPercent,
-          remaining: formatTokenCount(context.remainingTokens),
-        })}
-        onClick={toggleInspector}
-      >
-        <svg
-          className="context-inspector-ring"
-          viewBox="0 0 24 24"
-          aria-hidden="true"
-        >
-          <circle
-            className="context-inspector-ring-track"
-            cx="12"
-            cy="12"
-            r={CONTEXT_RING_RADIUS}
-          />
-          <circle
-            className="context-inspector-ring-progress"
-            cx="12"
-            cy="12"
-            r={CONTEXT_RING_RADIUS}
-            strokeDasharray={CONTEXT_RING_CIRCUMFERENCE}
-            strokeDashoffset={
-              CONTEXT_RING_CIRCUMFERENCE * (1 - context.remainingRatio)
-            }
-          />
-        </svg>
-        <span className="context-inspector-trigger-copy">
-          <span>{t("chat.usageContextLabel")}</span>
-          <strong>{context.remainingPercent}%</strong>
-        </span>
-      </button>
-      {popover && typeof document !== "undefined"
-        ? createPortal(popover, document.body)
-        : null}
-    </div>
-  );
-}
 
 function MessageMeta({
   modelId,
   usage,
-  contextUsage,
-  contextWindow = DEFAULT_CONTEXT_WINDOW,
-  tools = [],
   responseDurationMs,
   responseOutputTokens,
-  responseOutputEstimated,
 }: {
   modelId?: string;
   usage?: MessageUsage;
-  contextUsage?: MessageUsage;
-  contextWindow?: number;
-  tools?: UiMessage[];
   responseDurationMs?: number;
   responseOutputTokens?: number;
-  responseOutputEstimated?: boolean;
 }) {
   const { t } = useTranslation();
-  const visibleContextUsage = contextUsage ?? usage;
   const throughput = calculateTokenRate(
     responseOutputTokens ?? usage?.outputTokens ?? 0,
     responseDurationMs,
   );
-  if (!modelId && !usage && !visibleContextUsage && throughput === undefined) {
+  const showThroughput = !usage && throughput !== undefined;
+  if (!modelId && !showThroughput) {
     return null;
   }
   return (
@@ -575,18 +223,7 @@ function MessageMeta({
           {modelId}
         </span>
       ) : null}
-      {visibleContextUsage ? (
-        <ContextUsageInspector
-          usage={visibleContextUsage}
-          turnUsage={usage ?? visibleContextUsage}
-          contextWindow={contextWindow}
-          tools={tools}
-          responseDurationMs={responseDurationMs}
-          responseOutputTokens={responseOutputTokens}
-          responseOutputEstimated={responseOutputEstimated}
-        />
-      ) : null}
-      {!visibleContextUsage && throughput !== undefined ? (
+      {showThroughput ? (
         <span className="message-meta-chip throughput">
           {t("chat.usageThroughputEstimated", {
             count: formatTokenCount(throughput),
@@ -754,6 +391,42 @@ function ToolActionIcon({ action }: { action: ToolAction }) {
   }
 }
 
+/**
+ * Automatic disclosure is deliberately separate from user disclosure state.
+ * A running process may open its latest details and close them when it settles,
+ * but one user click takes ownership for the rest of that component's lifetime.
+ * Layout effects keep the automatic transition from moving the transcript for a
+ * painted frame.
+ */
+function useAutomaticDisclosure(automaticOpen: boolean) {
+  const [open, setOpen] = useState(automaticOpen);
+  const userInteractedRef = useRef(false);
+  const previousAutomaticOpenRef = useRef(automaticOpen);
+
+  useLayoutEffect(() => {
+    if (userInteractedRef.current) return;
+    if (previousAutomaticOpenRef.current === automaticOpen) return;
+    previousAutomaticOpenRef.current = automaticOpen;
+    setOpen(automaticOpen);
+  }, [automaticOpen]);
+
+  const claim = useCallback(() => {
+    userInteractedRef.current = true;
+  }, []);
+
+  const toggle = useCallback(() => {
+    claim();
+    setOpen((value) => !value);
+  }, [claim]);
+
+  const collapse = useCallback(() => {
+    claim();
+    setOpen(false);
+  }, [claim]);
+
+  return { open, toggle, collapse, claim };
+}
+
 /** Actions whose path/url argument makes sense to preview in the panel. */
 const PREVIEWABLE_ACTIONS = new Set<ToolAction>(["read", "write", "edit", "fetch"]);
 
@@ -864,15 +537,16 @@ function LinkifiedText({ text }: { text: string }) {
             onOpen={openFileRef}
           />
         ) : (
-          <button
+          <TooltipButton
             key={index}
             type="button"
             className="chat-text-link"
-            title={t("chat.previewUrl")}
+            tooltip={t("chat.previewUrl")}
+            ariaLabel={segment.text}
             onClick={() => openTarget(segment.target)}
           >
             {segment.text}
-          </button>
+          </TooltipButton>
         ),
       )}
     </>
@@ -894,6 +568,34 @@ function delegateAgentName(
   return "";
 }
 
+/** Effective model resolved for this delegation, recorded by the Task result. */
+function delegateModelId(message: UiMessage): string {
+  const payload = toolResultPayload(message);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return "";
+  }
+  const modelId = (payload as { modelId?: unknown }).modelId;
+  return typeof modelId === "string" ? modelId.trim() : "";
+}
+
+/** Effective thinking level resolved for this delegation, from the Task result.
+ * `off` and `omit` deliberately have no visible suffix. */
+function delegateThinkingLevel(message: UiMessage): ThinkingLevel | undefined {
+  const payload = toolResultPayload(message);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return undefined;
+  }
+  const value = (payload as { thinkingLevel?: unknown }).thinkingLevel;
+  if (
+    typeof value !== "string" ||
+    value === "off" ||
+    !THINKING_LEVELS.includes(value as ThinkingLevel)
+  ) {
+    return undefined;
+  }
+  return value as ThinkingLevel;
+}
+
 /**
  * Copies a run row's command from its head. The expanded body holds only the
  * output, so this is the one place the command can be taken from (D226).
@@ -902,14 +604,14 @@ function ToolCommandCopy({ command }: { command: string }) {
   const { t } = useTranslation();
   const { copied, copy } = useCopy();
   return (
-    <button
+    <TooltipButton
       className={`tool-row-head-copy${copied ? " copied" : ""}`}
-      aria-label={`${t("chat.copy")} ${t("chat.toolBlockCommand")}`}
-      title={copied ? t("chat.copied") : t("chat.copy")}
+      ariaLabel={`${t("chat.copy")} ${t("chat.toolBlockCommand")}`}
+      tooltip={copied ? t("chat.copied") : t("chat.copy")}
       onClick={() => copy(command)}
     >
       {copied ? <IconCheck size={12} /> : <IconCopy size={12} />}
-    </button>
+    </TooltipButton>
   );
 }
 
@@ -919,6 +621,8 @@ type ToolRowProps = {
   delegate?: SubagentRun;
   /** Card treatment used when several Task calls form a delegation topology. */
   variant?: "default" | "topology";
+  /** Claims the containing activity group when this row is manually used. */
+  onUserInteraction?: () => void;
   /** Live delegation statuses read from the turn's lifecycle-tool rows. */
   delegationStatuses?: ReadonlyMap<string, SubagentOutcome>;
   /** Runtime timings read from the turn's delegation lifecycle rows. */
@@ -946,6 +650,7 @@ function toolRowPropsEqual(
   if (
     previous.message !== next.message ||
     previous.variant !== next.variant ||
+    previous.onUserInteraction !== next.onUserInteraction ||
     !subagentRunsEqual(previous.delegate, next.delegate)
   ) {
     return false;
@@ -969,6 +674,7 @@ const ToolRow = memo(function ToolRow({
   message,
   delegate,
   variant = "default",
+  onUserInteraction,
   delegationStatuses,
   delegationTimings,
 }: ToolRowProps) {
@@ -976,6 +682,8 @@ const ToolRow = memo(function ToolRow({
   const detailsId = useId();
   const root = useAppStore((s) => s.workspace?.path);
   const openTarget = useOpenPreviewTarget();
+  const toggleSubagentPanel = useAppStore((s) => s.toggleSubagentPanel);
+  const subagentPanel = useAppStore((s) => s.subagentPanel);
   const status = message.toolStatus;
   const action = getToolAction(message.toolName);
   // A run row states what the command did, not what the call around it did: an
@@ -983,7 +691,18 @@ const ToolRow = memo(function ToolRow({
   // (D227). Property reads only, so a streaming row can afford it every tick.
   const run = action === "run" ? runOutcome(message) : null;
   const failed = status === "error" || run === "failed";
-  const [open, setOpen] = useState(failed);
+  // Tool details are always user-opened. Failure stays visible in the row head
+  // through its status icon/label without expanding the payload automatically.
+  const disclosure = useAutomaticDisclosure(false);
+  const { open, toggle: toggleDisclosure, collapse: collapseDisclosure } = disclosure;
+  const toggleRow = useCallback(() => {
+    onUserInteraction?.();
+    toggleDisclosure();
+  }, [onUserInteraction, toggleDisclosure]);
+  const collapseRow = useCallback(() => {
+    onUserInteraction?.();
+    collapseDisclosure();
+  }, [collapseDisclosure, onUserInteraction]);
   const actionLabel = t(
     status === "running" ? TOOL_RUNNING_KEYS[action] : TOOL_ACTION_KEYS[action],
   );
@@ -1014,13 +733,18 @@ const ToolRow = memo(function ToolRow({
     action === "delegate" && !lifecycle
       ? delegateAgentName(message, delegate)
       : "";
+  const modelId = variant === "topology" ? delegateModelId(message) : "";
+  const thinkingLevel =
+    variant === "topology" ? delegateThinkingLevel(message) : undefined;
+  const thinkingLabel = thinkingLevel ?? "";
+  const modelLabel = [modelId, thinkingLabel].filter(Boolean).join(" ");
   // The delegate's last answer row is its report, so the body must not print
   // the same text a second time.
   const nestedReport = delegate?.items.some((item) => item.kind === "answer");
   // Streaming updates replace the message object each tick; only pay the
   // full payload walk once the row is actually expanded.
   const blocks =
-    open && hasDetails
+    variant !== "topology" && open && hasDetails
       ? buildToolPresentation(message, {
           hideSummaryArg: true,
           ...(nestedReport ? { hideDelegateReport: true } : {}),
@@ -1061,6 +785,15 @@ const ToolRow = memo(function ToolRow({
     delegationPayload && typeof delegationPayload === "object"
       ? (delegationPayload as { delegationId?: unknown }).delegationId
       : undefined;
+  const panelSelectionId =
+    typeof delegationId === "string" && delegationId
+      ? delegationId
+      : message.toolCallId || message.id;
+  const panelOpen =
+    variant === "topology" &&
+    subagentPanel?.delegationId === panelSelectionId;
+  const renderedOpen = variant === "topology" ? panelOpen : open;
+  const inlineOpen = variant !== "topology" && open;
   const delegationTiming =
     typeof delegationId === "string"
       ? delegationTimings?.get(delegationId)
@@ -1079,14 +812,6 @@ const ToolRow = memo(function ToolRow({
     typeof durationMs === "number" && durationMs > 0
       ? formatToolDuration(durationMs / 1000)
       : "";
-
-  useEffect(() => {
-    if (failed) setOpen(true);
-  }, [failed]);
-
-  useEffect(() => {
-    if (outcome === "failed") setOpen(true);
-  }, [outcome]);
 
   useEffect(() => {
     if (outcome !== "running") return;
@@ -1108,19 +833,23 @@ const ToolRow = memo(function ToolRow({
   return (
     <div
       className={`tool-row ${variant === "topology" ? "subagent-topology-node" : ""} ${
-        open ? "open" : ""
+        renderedOpen ? "open" : ""
       } status-${run === "failed" ? "error" : status || "success"}${outcome ? ` outcome-${outcome.replaceAll("_", "-")}` : ""}`}
       role={variant === "topology" ? "listitem" : "region"}
-      aria-label={`${t("chat.toolCall")}: ${rawName}${statusLabel ? `, ${statusLabel}` : ""}`}
+      aria-label={`${t("chat.toolCall")}: ${rawName}${agentName ? `, ${agentName}` : ""}${modelLabel ? `, ${modelLabel}` : ""}${statusLabel ? `, ${statusLabel}` : ""}`}
     >
       {variant === "topology" ? (
         <button
           className="subagent-topology-node-header"
-          aria-expanded={open}
-          aria-controls={hasDetails ? detailsId : undefined}
+          aria-expanded={panelOpen}
+          aria-controls={hasDetails ? "subagent-panel" : undefined}
           disabled={!hasDetails}
-          title={summary || agentName || rawName}
-          onClick={() => hasDetails && setOpen((value) => !value)}
+          title={[agentName || rawName, modelLabel, summary].filter(Boolean).join(" · ")}
+          onClick={() => {
+            if (!hasDetails) return;
+            onUserInteraction?.();
+            toggleSubagentPanel(panelSelectionId);
+          }}
         >
           <span className="subagent-topology-avatar" aria-hidden>
             <IconBot size={15} />
@@ -1141,6 +870,15 @@ const ToolRow = memo(function ToolRow({
               <span className="subagent-topology-node-title">
                 {agentName || t("chat.subagentUnnamed")}
               </span>
+              {modelLabel ? (
+                <span
+                  className="subagent-topology-node-model"
+                  title={modelLabel}
+                  aria-label={modelLabel}
+                >
+                  {modelLabel}
+                </span>
+              ) : null}
               <span className="subagent-topology-node-status">
                 {statusLabel}
                 {duration ? ` · ${duration}` : ""}
@@ -1158,11 +896,6 @@ const ToolRow = memo(function ToolRow({
           {outcome === "running" ? (
             <span className="tool-spinner" aria-label={t("chat.running")} />
           ) : null}
-          {hasDetails ? (
-            <span className="tool-row-caret" aria-hidden>
-              <IconChevronRight size={12} />
-            </span>
-          ) : null}
         </button>
       ) : (
         <div className={`tool-row-head${runHead ? " is-run" : ""}`}>
@@ -1172,7 +905,7 @@ const ToolRow = memo(function ToolRow({
             aria-controls={hasDetails ? detailsId : undefined}
             disabled={!hasDetails}
             title={summary || rawName}
-            onClick={() => hasDetails && setOpen((value) => !value)}
+            onClick={() => hasDetails && toggleRow()}
           >
             <span
               className={`tool-row-icon${lifecycle ? " is-subagent" : ""}`}
@@ -1265,7 +998,7 @@ const ToolRow = memo(function ToolRow({
               className="tool-row-caret is-toggle"
               aria-hidden="true"
               tabIndex={-1}
-              onClick={() => setOpen((value) => !value)}
+              onClick={toggleRow}
             >
               {caret}
             </button>
@@ -1281,16 +1014,16 @@ const ToolRow = memo(function ToolRow({
         <div className="tool-row-body" id={detailsId}>
           <DisclosureCollapseRail
             label={t("chat.collapseDetails")}
-            onCollapse={() => setOpen(false)}
+            onCollapse={collapseRow}
           />
           <ToolDetailBlocks blocks={blocks} plain={runHead} />
         </div>
       ) : null}
-      {open && delegate ? (
+      {inlineOpen && delegate ? (
         <SubagentRunRows
           run={delegate}
           agentName={agentName}
-          onCollapse={() => setOpen(false)}
+          onCollapse={collapseRow}
         />
       ) : null}
     </div>
@@ -1308,32 +1041,50 @@ function SubagentRunRows({
   run,
   agentName,
   onCollapse,
+  scrollable = true,
+  variant = "inline",
 }: {
   run: SubagentRun;
   agentName: string;
-  onCollapse: () => void;
+  onCollapse?: () => void;
+  /** Side-panel mode lets the parent panel own the only scrollbar. */
+  scrollable?: boolean;
+  /** Dock headings are section labels; inline headings name the delegate. */
+  variant?: "inline" | "dock";
 }) {
   const { t } = useTranslation();
   const headingId = useId();
   if (run.items.length === 0) return null;
+  const dock = variant === "dock";
   return (
-    <div className="subagent-run">
-      <DisclosureCollapseRail
-        label={t("chat.collapseDetails")}
-        onCollapse={onCollapse}
-      />
-      <div className="subagent-run-heading" id={headingId}>
-        <IconBot size={13} aria-hidden />
+    <div className={dock ? "subagent-run is-dock" : "subagent-run"}>
+      {onCollapse ? (
+        <DisclosureCollapseRail
+          label={t("chat.collapseDetails")}
+          onCollapse={onCollapse}
+        />
+      ) : null}
+      <div
+        className={dock ? "subagent-run-heading is-dock" : "subagent-run-heading"}
+        id={headingId}
+      >
+        {dock ? null : <IconBot size={13} aria-hidden />}
         <span>
-          {agentName
-            ? t("chat.subagentWork", { agent: agentName })
-            : t("chat.subagentWorkUnnamed")}
+          {dock
+            ? t("chat.subagentProcess")
+            : agentName
+              ? t("chat.subagentWork", { agent: agentName })
+              : t("chat.subagentWorkUnnamed")}
         </span>
         <span className="subagent-run-count">
           {t("chat.processingSteps", { count: run.items.length })}
         </span>
       </div>
-      <SubagentRunFollow headingId={headingId} items={run.items} />
+      <SubagentRunFollow
+        headingId={headingId}
+        items={run.items}
+        scrollable={scrollable}
+      />
     </div>
   );
 }
@@ -1346,9 +1097,11 @@ function SubagentRunRows({
 function SubagentRunFollow({
   headingId,
   items,
+  scrollable = true,
 }: {
   headingId: string;
   items: SubagentRunItem[];
+  scrollable?: boolean;
 }) {
   const { t } = useTranslation();
   const {
@@ -1361,8 +1114,9 @@ function SubagentRunFollow({
   } = useFollowScroll();
 
   useLayoutEffect(() => {
+    if (!scrollable) return;
     scheduleFollowScroll();
-  }, [items, scheduleFollowScroll]);
+  }, [items, scheduleFollowScroll, scrollable]);
 
   return (
     <div className="subagent-run-follow">
@@ -1372,11 +1126,11 @@ function SubagentRunFollow({
         * area the pointer can already use. */}
       <div
         ref={scrollRef}
-        className="subagent-run-rows"
+        className={`subagent-run-rows${scrollable ? "" : " is-panel-flow"}`}
         role="group"
-        tabIndex={0}
+        tabIndex={scrollable ? 0 : undefined}
         aria-labelledby={headingId}
-        onScroll={handleScroll}
+        onScroll={scrollable ? handleScroll : undefined}
       >
         <div ref={contentRef}>
           {items.map((item) =>
@@ -1406,16 +1160,278 @@ function SubagentRunFollow({
           )}
         </div>
       </div>
-      {showJump ? (
-        <button
+      {scrollable && showJump ? (
+        <TooltipButton
           type="button"
           className="jump-latest-btn"
-          aria-label={t("chat.scrollToBottom")}
-          title={t("chat.scrollToBottom")}
+          ariaLabel={t("chat.scrollToBottom")}
+          tooltip={t("chat.scrollToBottom")}
           onClick={jumpToLatest}
         >
           <IconArrowDown size={14} />
-        </button>
+        </TooltipButton>
+      ) : null}
+    </div>
+  );
+}
+
+/** The task text sent to the delegate, shown as the conversation-like body. */
+function delegateTaskDescription(message: UiMessage): string {
+  const args = message.toolArgs;
+  if (!args || typeof args !== "object" || Array.isArray(args)) return "";
+  const task = (args as { task?: unknown }).task;
+  return typeof task === "string" ? task.trim() : "";
+}
+
+/**
+ * Why a settled delegate failed, at the foot of its detail panel (issue #161).
+ *
+ * The step stream ends on `Failed` / `Timed out` / `Aborted` without saying
+ * why: a delegate that dies before emitting a message row has no other carrier
+ * for its reason, and the badge plus a duration is all a reader gets. The
+ * runtime already reports `error: { code, message }` on the delegation roster
+ * entry, so it is rendered here with the same visual language as the parent
+ * reply's error card instead of being reachable only by reading the raw tool
+ * result.
+ */
+function SubagentFailureCard({
+  outcome,
+  failure,
+}: {
+  outcome: SubagentOutcome;
+  failure: DelegationFailure;
+}) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(true);
+  const detailsId = useId();
+  const headingId = useId();
+  // A known runtime code already has a localized sentence; otherwise the
+  // outcome's own label is the summary, which stays truthful and localized.
+  const localizedKey = `errors.${failure.code}`;
+  const localized = failure.code ? t(localizedKey) : localizedKey;
+  const summary =
+    failure.code && localized !== localizedKey
+      ? localized
+      : t(`chat.subagentStatus.${outcome}`);
+  // A code-only error carries no detail to disclose, so it stays a one-line
+  // card rather than opening onto an empty box.
+  const hasMessage = failure.message.length > 0;
+
+  return (
+    <section
+      className="message-error subagent-failure"
+      aria-labelledby={headingId}
+      data-testid="subagent-failure"
+    >
+      <div className="message-error-heading">
+        <span className="message-error-icon" aria-hidden>
+          <IconCircleAlert size={16} />
+        </span>
+        <div className="message-error-copy">
+          <strong id={headingId}>{summary}</strong>
+          {failure.code ? <code>{failure.code}</code> : null}
+        </div>
+        <div className="message-error-actions">
+          {/* The toggle stays outside the collapsed region, otherwise hiding
+            * the details would take away the control that brings them back. */}
+          {hasMessage ? (
+            <button
+              type="button"
+              className="message-error-toggle"
+              aria-expanded={open}
+              aria-controls={detailsId}
+              onClick={() => setOpen((value) => !value)}
+            >
+              <IconChevronRight size={12} aria-hidden />
+              {open ? t("chat.hideErrorDetails") : t("chat.showErrorDetails")}
+            </button>
+          ) : null}
+        </div>
+      </div>
+      {hasMessage ? (
+        <div
+          id={detailsId}
+          className={`message-error-details ${open ? "open" : ""}`}
+          hidden={!open}
+        >
+          <div className="message-error-raw">
+            <pre className="selectable">{failure.message}</pre>
+            <CopyButton text={failure.message} label={t("chat.copyErrorDetails")} />
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+/**
+ * The side-sheet view for a selected delegate. It shows a sticky identity
+ * header, the task as an inset grouped card, and the live process timeline.
+ * Reports and counters remain omitted from this compact surface.
+ */
+export function SubagentDetail({
+  message,
+  delegate,
+  delegationStatuses,
+  delegationFailures,
+  delegationTimings,
+}: {
+  message: UiMessage;
+  delegate?: SubagentRun;
+  delegationStatuses?: ReadonlyMap<string, SubagentOutcome>;
+  delegationFailures?: ReadonlyMap<string, DelegationFailure>;
+  delegationTimings?: ReadonlyMap<string, SubagentTiming>;
+}) {
+  const { t } = useTranslation();
+  const agentName = delegateAgentName(message, delegate);
+  const modelId = delegateModelId(message);
+  const thinkingLevel = delegateThinkingLevel(message);
+  const thinkingLabel = thinkingLevel ?? "";
+  const modelLabel = [modelId, thinkingLabel].filter(Boolean).join(" ");
+  const outcome = subagentOutcome(message, delegationStatuses);
+  const payload = toolResultPayload(message);
+  const payloadRecord =
+    payload && typeof payload === "object" && !Array.isArray(payload)
+      ? (payload as { delegationId?: unknown; startedAt?: unknown; completedAt?: unknown })
+      : undefined;
+  const delegationId =
+    typeof payloadRecord?.delegationId === "string"
+      ? payloadRecord.delegationId
+      : message.toolCallId || message.id;
+  const timing = delegationTimings?.get(delegationId);
+  const failure = delegationFailures?.get(delegationId);
+  const startedAt =
+    timing?.startedAt ??
+    (typeof payloadRecord?.startedAt === "number" ? payloadRecord.startedAt : undefined);
+  const completedAt =
+    timing?.completedAt ??
+    (typeof payloadRecord?.completedAt === "number" ? payloadRecord.completedAt : undefined);
+  const [now, setNow] = useState(Date.now);
+  const durationMs =
+    startedAt !== undefined
+      ? Math.max(0, (completedAt ?? (outcome === "running" ? now : startedAt)) - startedAt)
+      : message.toolDurationMs;
+  const duration =
+    typeof durationMs === "number" && durationMs > 0
+      ? formatToolDuration(durationMs / 1000)
+      : "";
+  const taskDescription = delegateTaskDescription(message);
+  const taskBodyId = useId();
+  const taskLabelId = useId();
+  const taskBodyRef = useRef<HTMLDivElement>(null);
+  const [taskExpanded, setTaskExpanded] = useState(false);
+  const [taskOverflow, setTaskOverflow] = useState(false);
+  const outcomeClass = outcome.replaceAll("_", "-");
+
+  useLayoutEffect(() => {
+    setTaskExpanded(false);
+  }, [taskDescription]);
+
+  useLayoutEffect(() => {
+    const element = taskBodyRef.current;
+    if (!element) return;
+    const measure = () => {
+      const overflowing = element.scrollHeight > element.clientHeight + 1;
+      setTaskOverflow((current) => (taskExpanded ? current : overflowing));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [taskDescription, taskExpanded]);
+
+  useEffect(() => {
+    if (outcome !== "running") return;
+    setNow(Date.now());
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [outcome]);
+
+  return (
+    <div className="subagent-detail" data-testid="subagent-detail">
+      <header className="subagent-detail-hero">
+        <div className="subagent-detail-heading">
+          <span className="subagent-detail-avatar" aria-hidden>
+            <IconBot size={18} />
+            <span className={`subagent-detail-status outcome-${outcomeClass}`} />
+          </span>
+          <div className="subagent-detail-heading-copy">
+            <strong className="subagent-detail-name">
+              {agentName || t("chat.subagentUnnamed")}
+            </strong>
+            {modelLabel ? (
+              <span
+                className="subagent-detail-model"
+                title={modelLabel}
+                aria-label={modelLabel}
+              >
+                {modelLabel}
+              </span>
+            ) : null}
+          </div>
+        </div>
+        <div
+          className="subagent-detail-summary"
+          role="list"
+          aria-label={t("panel.subagent")}
+        >
+          <span
+            className={`subagent-detail-badge outcome-${outcomeClass}`}
+            role="listitem"
+          >
+            {t(`chat.subagentStatus.${outcome}`)}
+          </span>
+          {duration ? (
+            <span className="subagent-detail-meta" role="listitem">
+              {duration}
+            </span>
+          ) : null}
+        </div>
+      </header>
+      <section className="subagent-detail-task" aria-labelledby={taskLabelId}>
+        <div className="subagent-detail-section-label" id={taskLabelId}>
+          {t("panel.subagentTask")}
+        </div>
+        <div className="subagent-detail-task-card">
+          <div
+            id={taskBodyId}
+            ref={taskBodyRef}
+            className={`subagent-task-message-body selectable${
+              taskExpanded ? " is-expanded" : " is-collapsed"
+            }`}
+          >
+            {taskDescription || t("panel.subagentTaskEmpty")}
+          </div>
+          {taskOverflow ? (
+            <button
+              type="button"
+              className="subagent-task-toggle"
+              aria-expanded={taskExpanded}
+              aria-controls={taskBodyId}
+              onClick={() => setTaskExpanded((expanded) => !expanded)}
+            >
+              <span>
+                {taskExpanded
+                  ? t("chat.subagentTaskCollapse")
+                  : t("chat.subagentTaskExpand")}
+              </span>
+              <IconChevronDown size={12} aria-hidden />
+            </button>
+          ) : null}
+        </div>
+      </section>
+      {delegate ? (
+        <SubagentRunRows
+          run={delegate}
+          agentName={agentName}
+          scrollable={false}
+          variant="dock"
+        />
+      ) : null}
+      {/* A completed delegate has nothing to explain, so the card is tied to a
+        * non-success terminal outcome rather than to the error field alone. */}
+      {failure && outcome !== "completed" && outcome !== "running" ? (
+        <SubagentFailureCard outcome={outcome} failure={failure} />
       ) : null}
     </div>
   );
@@ -1431,10 +1447,12 @@ function SubagentTopology({
   items,
   delegationStatuses,
   delegationTimings,
+  onUserInteraction,
 }: {
   items: DelegationActivityItem[];
   delegationStatuses?: ReadonlyMap<string, SubagentOutcome>;
   delegationTimings?: ReadonlyMap<string, SubagentTiming>;
+  onUserInteraction?: () => void;
 }) {
   const { t } = useTranslation();
   const labelId = useId();
@@ -1465,6 +1483,7 @@ function SubagentTopology({
             message={item.message}
             {...(item.delegate ? { delegate: item.delegate } : {})}
             variant="topology"
+            onUserInteraction={onUserInteraction}
             {...(delegationStatuses ? { delegationStatuses } : {})}
             {...(delegationTimings ? { delegationTimings } : {})}
           />
@@ -1482,27 +1501,19 @@ function SubagentTopology({
  */
 type ActivityItem = AssistantActivityItem;
 
-function activityItemSummary(
-  item: ActivityItem,
-  t: (key: string) => string,
-): string {
+function activityItemDetail(item: ActivityItem): string {
   if (item.kind === "thinking") {
-    // Latest thought line, so the collapsed header reads like a live ticker.
+    // Latest thought line, so a collapsed header reads like a live ticker.
     const lines = thinkingText(item.message)
       .split("\n")
       .map((line) => line.replace(/^#+\s*|\*\*/g, "").trim())
       .filter(Boolean);
     return lines[lines.length - 1] || "";
   }
-  const message = item.message;
-  const action = getToolAction(message.toolName);
-  const actionLabel = t(
-    message.toolStatus === "running"
-      ? TOOL_RUNNING_KEYS[action]
-      : TOOL_ACTION_KEYS[action],
-  );
-  const summary = getToolSummary(message.toolName, message.toolArgs);
-  return summary ? `${actionLabel} ${summary}` : actionLabel;
+  if (lifecycleKindOf(item.message)) {
+    return delegationRosterSummary(delegationRoster(item.message));
+  }
+  return getToolSummary(item.message.toolName, item.message.toolArgs);
 }
 
 function DisclosureCollapseRail({
@@ -1513,11 +1524,11 @@ function DisclosureCollapseRail({
   onCollapse: () => void;
 }) {
   return (
-    <button
+    <TooltipButton
       type="button"
       className="disclosure-collapse-rail"
-      aria-label={label}
-      title={label}
+      ariaLabel={label}
+      tooltip={label}
       onClick={onCollapse}
     />
   );
@@ -1527,13 +1538,26 @@ function DisclosureCollapseRail({
 function ThinkingRow({
   message,
   streaming,
+  autoOpen = false,
+  onUserInteraction,
 }: {
   message: UiMessage;
   streaming: boolean;
+  autoOpen?: boolean;
+  onUserInteraction?: () => void;
 }) {
   const { t } = useTranslation();
   const detailsId = useId();
-  const [open, setOpen] = useState(false);
+  const { open, toggle: toggleDisclosure, collapse: collapseDisclosure } =
+    useAutomaticDisclosure(autoOpen);
+  const toggleRow = useCallback(() => {
+    onUserInteraction?.();
+    toggleDisclosure();
+  }, [onUserInteraction, toggleDisclosure]);
+  const collapseRow = useCallback(() => {
+    onUserInteraction?.();
+    collapseDisclosure();
+  }, [collapseDisclosure, onUserInteraction]);
   const text = thinkingText(message);
   const summary = text.replace(/\s+/g, " ").trim();
   return (
@@ -1543,7 +1567,7 @@ function ThinkingRow({
         aria-expanded={open}
         aria-controls={detailsId}
         aria-label={t(open ? "chat.thinkingHide" : "chat.thinkingShow")}
-        onClick={() => setOpen((value) => !value)}
+        onClick={toggleRow}
       >
         <span className="tool-row-icon">
           <IconSparkles size={15} aria-hidden />
@@ -1560,7 +1584,7 @@ function ThinkingRow({
         <div className="tool-row-body" id={detailsId}>
           <DisclosureCollapseRail
             label={t("chat.thinkingHide")}
-            onCollapse={() => setOpen(false)}
+            onCollapse={collapseRow}
           />
           <div className="prose-chat thinking-prose">
             <Markdown source={text} renderDiagrams={false} />
@@ -1571,10 +1595,81 @@ function ThinkingRow({
   );
 }
 
+function waitingSubagentActionLabel(
+  agent: AgentActivityAgent,
+  t: Translate,
+): string {
+  if (agent.lastPhase === "thinking") return t("chat.thinking");
+  if (agent.lastPhase === "waiting-model") return t("chat.waitingForModel");
+  if (agent.lastToolName) {
+    return t(TOOL_RUNNING_KEYS[getToolAction(agent.lastToolName)]);
+  }
+  return "";
+}
+
+function waitingSubagentsLabel(
+  activity: Extract<AgentActivity, { phase: "waiting-subagents" }>,
+  t: Translate,
+): string {
+  const agents = activity.agents ?? [];
+  if (agents.length === 1) {
+    const action = waitingSubagentActionLabel(agents[0], t);
+    const named = t("chat.waitingForSubagentNamed", { name: agents[0].name });
+    return action ? `${named} · ${action}` : named;
+  }
+  const base = t("chat.waitingForSubagents", { count: activity.subagentCount });
+  if (agents.length === 0) return base;
+  const details = agents
+    .map((agent) => {
+      const action = waitingSubagentActionLabel(agent, t);
+      return action ? `${agent.name} ${action}` : agent.name;
+    })
+    .join(", ");
+  return `${base} · ${details}`;
+}
+
+function retryDelaySeconds(
+  activity: Extract<AgentActivity, { phase: "retrying" }>,
+  now: number,
+): number {
+  const delayMs = activity.retryDelayMs ?? 0;
+  const elapsedMs = Math.max(0, now - activity.since);
+  return Math.max(0, Math.ceil((delayMs - elapsedMs) / 1000));
+}
+
+function runActivityLabel(
+  activity: AgentActivity,
+  t: Translate,
+  now = Date.now(),
+): string {
+  switch (activity.phase) {
+    case "starting":
+      return t("chat.startingTurn");
+    case "waiting-model":
+      return t("chat.waitingForModel");
+    case "preparing":
+      return t("chat.preparingNextRequest");
+    case "compacting":
+      return t("chat.compactingContext");
+    case "recovering":
+      return t("chat.recoveringTurn");
+    case "retrying":
+      return t("chat.retryingModel", {
+        delaySeconds: retryDelaySeconds(activity, now),
+        attempt: activity.attempt,
+        maxAttempts: PROVIDER_RETRY_MAX_RETRIES,
+      });
+    case "waiting-subagents":
+      return waitingSubagentsLabel(activity, t);
+  }
+}
+
 type ActivityGroupProps = {
   items: ActivityItem[];
   isActive: boolean;
   endedAt?: string;
+  /** Current runtime wait phase, when the group owns the live turn tail. */
+  runtimeActivity?: AgentActivity;
   /** Delegation statuses from the entire assistant turn (cross-activity-part). */
   turnDelegationStatuses?: ReadonlyMap<string, SubagentOutcome>;
   /** Delegation timings from the entire assistant turn (cross-activity-part). */
@@ -1602,6 +1697,7 @@ function activityGroupPropsEqual(
   if (
     previous.isActive !== next.isActive ||
     previous.endedAt !== next.endedAt ||
+    previous.runtimeActivity !== next.runtimeActivity ||
     previous.items.length !== next.items.length ||
     previous.turnDelegationStatuses !== next.turnDelegationStatuses ||
     previous.turnDelegationTimings !== next.turnDelegationTimings
@@ -1617,6 +1713,7 @@ const ActivityGroup = memo(function ActivityGroup({
   items,
   isActive,
   endedAt,
+  runtimeActivity,
   turnDelegationStatuses,
   turnDelegationTimings,
 }: ActivityGroupProps) {
@@ -1644,11 +1741,15 @@ const ActivityGroup = memo(function ActivityGroup({
   // this card is not the turn's live tail while its delegates are still running.
   const topologyLive = hasSubagentTopology && subagentSummary.running > 0;
   const live = isActive || topologyLive;
-  const [open, setOpen] = useState(hasSubagentTopology && live);
+  const {
+    open,
+    toggle: toggleDisclosure,
+    collapse: collapseDisclosure,
+    claim: claimDisclosure,
+  } = useAutomaticDisclosure(live);
   const [now, setNow] = useState(Date.now);
   const [finishedAt, setFinishedAt] = useState<number | null>(null);
   const wasActiveRef = useRef(live);
-  const topologyAutoOpenedRef = useRef(hasSubagentTopology && live);
   const messages = items.map((item) => item.message);
   const topologyTiming = hasSubagentTopology
     ? delegationTimingBounds(delegateItems, delegationTimings)
@@ -1705,7 +1806,12 @@ const ActivityGroup = memo(function ActivityGroup({
           : // History reloads keep no end timestamp for pure-thinking groups.
             t("chat.thinking", { defaultValue: "Thinking" })
         : t("chat.processedFor", { time: elapsed });
-  const tail = isActive && !open && lastItem ? activityItemSummary(lastItem, t) : "";
+  const runtimeStatus = runtimeActivity
+    ? runActivityLabel(runtimeActivity, t as Translate)
+    : "";
+  const currentDetail =
+    live && !runtimeStatus && lastItem ? activityItemDetail(lastItem) : "";
+  const tail = live && !open ? currentDetail : "";
 
   useEffect(() => {
     if (wasActiveRef.current && !live) setFinishedAt(Date.now());
@@ -1716,15 +1822,9 @@ const ActivityGroup = memo(function ActivityGroup({
     return () => window.clearInterval(id);
   }, [live]);
 
-  useEffect(() => {
-    if (!live || !hasSubagentTopology || topologyAutoOpenedRef.current) return;
-    topologyAutoOpenedRef.current = true;
-    setOpen(true);
-  }, [hasSubagentTopology, live]);
-
   const renderActivityItems = () => {
     let renderedTopology = false;
-    return items.map((item) => {
+    return items.map((item, itemIndex) => {
       if (hasSubagentTopology && isDelegationActivityItem(item)) {
         if (renderedTopology) return null;
         renderedTopology = true;
@@ -1734,6 +1834,7 @@ const ActivityGroup = memo(function ActivityGroup({
             items={delegateItems}
             delegationStatuses={delegationStatuses}
             delegationTimings={delegationTimings}
+            onUserInteraction={claimDisclosure}
           />
         );
       }
@@ -1741,6 +1842,7 @@ const ActivityGroup = memo(function ActivityGroup({
         <Fragment key={item.message.id}>
           <ToolRow
             message={item.message}
+            onUserInteraction={claimDisclosure}
             {...(item.delegate ? { delegate: item.delegate } : {})}
           />
           <ReviewChangeCard message={item.message} />
@@ -1750,6 +1852,8 @@ const ActivityGroup = memo(function ActivityGroup({
           key={`thinking-${item.message.id}`}
           message={item.message}
           streaming={isActive && item.message.status === "streaming"}
+          autoOpen={live && itemIndex === items.length - 1}
+          onUserInteraction={claimDisclosure}
         />
       );
     });
@@ -1759,15 +1863,15 @@ const ActivityGroup = memo(function ActivityGroup({
     <div
       className={`tool-activity-group ${hasSubagentTopology ? "has-subagents" : ""} ${
         open ? "open" : ""
-      } ${
-        live ? "active" : ""
+      } ${live ? "active" : ""}${
+        runtimeActivity ? ` phase-${runtimeActivity.phase}` : ""
       }`}
     >
       <button
         className="tool-activity-header"
         aria-expanded={open}
         aria-controls={detailsId}
-        onClick={() => setOpen((value) => !value)}
+        onClick={toggleDisclosure}
       >
         <span className="tool-activity-icon" aria-hidden>
           {hasSubagentTopology ? (
@@ -1776,7 +1880,7 @@ const ActivityGroup = memo(function ActivityGroup({
             <IconSparkles size={14} />
           )}
         </span>
-        <span className={`tool-activity-label ${isActive ? "running" : ""}`}>
+        <span className={`tool-activity-label ${live ? "running" : ""}`}>
           {label}
         </span>
         {hasSubagentTopology ? (
@@ -1813,7 +1917,7 @@ const ActivityGroup = memo(function ActivityGroup({
           <div className="tool-activity-body" id={detailsId}>
             <DisclosureCollapseRail
               label={t("chat.collapseDetails")}
-              onCollapse={() => setOpen(false)}
+              onCollapse={collapseDisclosure}
             />
             {renderActivityItems()}
           </div>
@@ -1861,11 +1965,10 @@ function WorkingIndicator({ startedAt }: { startedAt?: number } = {}) {
   );
 }
 
-type VisibleAgentActivity = Exclude<AgentActivity, { phase: "starting" }>;
-
-function RunActivityIndicator({ activity }: { activity: VisibleAgentActivity }) {
+function RunActivityIndicator({ activity }: { activity: AgentActivity }) {
   const { t } = useTranslation();
   const [now, setNow] = useState(Date.now);
+  const retryErrorDetailsId = useId();
 
   useEffect(() => {
     setNow(Date.now());
@@ -1876,14 +1979,53 @@ function RunActivityIndicator({ activity }: { activity: VisibleAgentActivity }) 
   const elapsed = formatToolDuration(
     Math.max(0, Math.floor((now - activity.since) / 1000)),
   );
-  const label =
-    activity.phase === "waiting-model"
-      ? t("chat.waitingForModel")
-      : activity.phase === "retrying"
-        ? t("chat.retryingModel", { attempt: activity.attempt })
-        : t("chat.waitingForSubagents", {
-            count: activity.subagentCount,
-          });
+  const label = runActivityLabel(activity, t as Translate, now);
+  const retryError = activity.phase === "retrying" ? activity.error : undefined;
+  const retryErrorSummary = retryError
+    ? (() => {
+        const key = `errors.${retryError.code}`;
+        const localized = t(key);
+        return localized === key ? t("chat.responseFailed") : localized;
+      })()
+    : undefined;
+  const retryLabel = retryError
+    ? `${label}: ${retryErrorSummary}: ${retryError.message}`
+    : label;
+  const labelContent = retryError ? (
+    <span
+      className="run-activity-retry-reason"
+      tabIndex={0}
+      aria-describedby={retryErrorDetailsId}
+      aria-label={retryLabel}
+    >
+      <span className="working-indicator-label">{label}</span>
+      <span
+        id={retryErrorDetailsId}
+        className="run-activity-error-popover message-error"
+        role="tooltip"
+      >
+        <span className="message-error-heading">
+          <span className="message-error-icon" aria-hidden>
+            <IconCircleAlert size={16} />
+          </span>
+          <span className="message-error-copy">
+            <strong>{retryErrorSummary}</strong>
+            <code>
+              {retryError.code}
+              {retryError.providerStatus !== undefined
+                ? ` · HTTP ${retryError.providerStatus}`
+                : ""}
+            </code>
+          </span>
+        </span>
+        <span className="run-activity-error-message selectable">
+          {retryError.message}
+        </span>
+      </span>
+    </span>
+  ) : (
+    <span className="working-indicator-label">{label}</span>
+  );
 
   return (
     <div
@@ -1898,7 +2040,7 @@ function RunActivityIndicator({ activity }: { activity: VisibleAgentActivity }) 
         <span />
         <span />
       </span>
-      <span className="working-indicator-label">{label}</span>
+      {labelContent}
       <span className="working-elapsed" aria-hidden="true">
         {elapsed}
       </span>
@@ -2089,27 +2231,27 @@ const MessageRow = memo(function MessageRow({
           <div className="message-actions">
             {showRevisionPager ? (
               <div className="message-revision-pager" role="group" aria-label={t("chat.revisions")}>
-                <button
+                <TooltipButton
                   className="copy-btn icon revision-nav"
-                  data-tip={t("chat.revisionPrev")}
-                  aria-label={t("chat.revisionPrev")}
+                  tooltip={t("chat.revisionPrev")}
+                  ariaLabel={t("chat.revisionPrev")}
                   disabled={isRunning || activeRevision <= 1}
                   onClick={() =>
                     void activateMessageRevision(message.id, Math.max(1, activeRevision - 1))
                   }
                 >
                   <IconChevronLeft size={13} />
-                </button>
+                </TooltipButton>
                 <span className="message-revision-label">
                   {t("chat.revisionPager", {
                     current: activeRevision,
                     total: revisionCount,
                   })}
                 </span>
-                <button
+                <TooltipButton
                   className="copy-btn icon revision-nav"
-                  data-tip={t("chat.revisionNext")}
-                  aria-label={t("chat.revisionNext")}
+                  tooltip={t("chat.revisionNext")}
+                  ariaLabel={t("chat.revisionNext")}
                   disabled={isRunning || activeRevision >= revisionCount}
                   onClick={() =>
                     void activateMessageRevision(
@@ -2119,15 +2261,15 @@ const MessageRow = memo(function MessageRow({
                   }
                 >
                   <IconChevronRight size={13} />
-                </button>
+                </TooltipButton>
               </div>
             ) : null}
             {hasAnswer ? <CopyButton text={message.content} label={copyLabel} /> : null}
             {isUser ? (
-              <button
+              <TooltipButton
                 className="copy-btn icon"
-                data-tip={editLabel}
-                aria-label={editLabel}
+                tooltip={editLabel}
+                ariaLabel={editLabel}
                 disabled={isRunning}
                 onClick={() => {
                   setEditValue(editSeed);
@@ -2135,18 +2277,18 @@ const MessageRow = memo(function MessageRow({
                 }}
               >
                 <IconPencil size={13} />
-              </button>
+              </TooltipButton>
             ) : null}
             {isUser ? (
-              <button
+              <TooltipButton
                 className="copy-btn icon danger"
-                data-tip={deleteLabel}
-                aria-label={deleteLabel}
+                tooltip={deleteLabel}
+                ariaLabel={deleteLabel}
                 disabled={isRunning}
                 onClick={() => void deleteMessage(message.id)}
               >
                 <IconTrash size={13} />
-              </button>
+              </TooltipButton>
             ) : null}
           </div>
         ) : null}
@@ -2158,6 +2300,7 @@ const MessageRow = memo(function MessageRow({
 type AssistantTurnProps = {
   entry: AssistantTurnEntry;
   isActive: boolean;
+  runtimeActivity?: AgentActivity;
 };
 
 function assistantTurnPropsEqual(
@@ -2166,6 +2309,7 @@ function assistantTurnPropsEqual(
 ) {
   if (
     previous.isActive !== next.isActive ||
+    previous.runtimeActivity !== next.runtimeActivity ||
     previous.entry.anchorId !== next.entry.anchorId ||
     previous.entry.parts.length !== next.entry.parts.length
   ) {
@@ -2228,13 +2372,21 @@ function TranscriptEntryView({
   entry,
   isRunning,
   isActive,
+  runtimeActivity,
 }: {
   entry: TranscriptEntry;
   isRunning: boolean;
   isActive: boolean;
+  runtimeActivity?: AgentActivity;
 }) {
   if (entry.kind === "assistant-turn") {
-    return <AssistantTurn entry={entry} isActive={isActive} />;
+    return (
+      <AssistantTurn
+        entry={entry}
+        isActive={isActive}
+        runtimeActivity={runtimeActivity}
+      />
+    );
   }
   if (entry.kind === "compaction") {
     return <CompactionRow mark={entry.mark} />;
@@ -2290,33 +2442,36 @@ const TranscriptTail = memo(function TranscriptTail({
   entry,
   isRunning,
   isActive,
+  runtimeActivity,
 }: {
   entry: TranscriptEntry;
   isRunning: boolean;
   isActive: boolean;
+  runtimeActivity?: AgentActivity;
 }) {
   return (
     <TranscriptEntryView
       entry={entry}
       isRunning={isRunning}
       isActive={isActive}
+      runtimeActivity={runtimeActivity}
     />
   );
 }, (previous, next) =>
   previous.isRunning === next.isRunning &&
   previous.isActive === next.isActive &&
+  previous.runtimeActivity === next.runtimeActivity &&
   transcriptEntryEqual(previous.entry, next.entry)
 );
 
 const AssistantTurn = memo(function AssistantTurn({
   entry,
   isActive,
+  runtimeActivity,
 }: AssistantTurnProps) {
   const { t } = useTranslation();
   const retryAssistantMessage = useAppStore((s) => s.retryAssistantMessage);
   const forkAssistantMessage = useAppStore((s) => s.forkAssistantMessage);
-  const providerModels = useAppStore((s) => s.providerModels);
-  const providers = useAppStore((s) => s.providers);
   const messages = assistantTurnMessages(entry);
   const content = assistantTurnContent(entry);
   const actionMessage = [...messages]
@@ -2334,21 +2489,10 @@ const AssistantTurn = memo(function AssistantTurn({
   const latestUsageMessage = [...messages]
     .reverse()
     .find((message) => message.usage);
-  const latestUsage = latestMessageUsage(messages);
   const usage = assistantTurnUsage(entry);
-  const tools = assistantTurnTools(entry);
   const responseDurationMs = assistantTurnResponseDuration(entry);
   const responseOutputTokens = assistantTurnResponseOutputTokens(entry);
-  const responseOutputEstimated = assistantTurnResponseOutputIsEstimated(entry);
   const modelId = metaMessage?.modelId ?? latestUsageMessage?.modelId;
-  const contextWindow = latestUsage
-    ? resolveContextWindow(
-        latestUsageMessage?.providerId ?? metaMessage?.providerId,
-        latestUsageMessage?.modelId ?? modelId,
-        providerModels,
-        providers,
-      )
-    : DEFAULT_CONTEXT_WINDOW;
   const hasError = messages.some((message) => Boolean(message.error));
   const complete =
     !isActive && !hasError && Boolean(content) && Boolean(actionMessage);
@@ -2389,6 +2533,7 @@ const AssistantTurn = memo(function AssistantTurn({
               items={part.items}
               endedAt={part.endedAt}
               isActive={isActive && index === entry.parts.length - 1}
+              runtimeActivity={runtimeActivity}
               turnDelegationStatuses={turnDelegationStatuses}
               turnDelegationTimings={turnDelegationTimings}
             />
@@ -2416,36 +2561,34 @@ const AssistantTurn = memo(function AssistantTurn({
           <MessageMeta
             modelId={modelId}
             usage={usage}
-            contextUsage={latestUsage}
-            contextWindow={contextWindow}
-            tools={tools}
             responseDurationMs={responseDurationMs}
             responseOutputTokens={responseOutputTokens}
-            responseOutputEstimated={responseOutputEstimated}
           />
         ) : null}
         {(content || hasError) && actionMessage ? (
           <div className="message-actions">
-            {content ? <CopyButton text={content} label={t("chat.copy")} /> : null}
             {complete ? (
-              <button
+              <CopyButton text={content} label={t("chat.copy")} />
+            ) : null}
+            {complete ? (
+              <TooltipButton
                 className="copy-btn icon"
-                data-tip={t("chat.forkResponse")}
-                aria-label={t("chat.forkResponse")}
+                tooltip={t("chat.forkResponse")}
+                ariaLabel={t("chat.forkResponse")}
                 onClick={() => void forkAssistantMessage(actionMessage.id)}
               >
                 <IconBranch size={13} />
-              </button>
+              </TooltipButton>
             ) : null}
             {complete ? (
-              <button
+              <TooltipButton
                 className="copy-btn icon"
-                data-tip={t("chat.retry")}
-                aria-label={t("chat.retry")}
+                tooltip={t("chat.retry")}
+                ariaLabel={t("chat.retry")}
                 onClick={() => void retryAssistantMessage(actionMessage.id)}
               >
                 <IconReview size={13} />
-              </button>
+              </TooltipButton>
             ) : null}
           </div>
         ) : null}
@@ -3105,10 +3248,7 @@ export const ChatTranscript = memo(function ChatTranscript({
     lastTurnPart?.kind === "message" &&
     lastTurnPart.message.status === "streaming" &&
     Boolean((lastTurnPart.message.content || "").trim());
-  const specializedActivity =
-    agentActivity && agentActivity.phase !== "starting"
-      ? agentActivity
-      : undefined;
+  const specializedActivity = agentActivity;
   const hasSpecializedActivity = specializedActivity !== undefined;
   const showRunActivity =
     isRunning &&
@@ -3192,6 +3332,7 @@ export const ChatTranscript = memo(function ChatTranscript({
               entry={tailEntry}
               isRunning={isRunning}
               isActive={isRunning && tailEntry.kind === "assistant-turn"}
+              runtimeActivity={specializedActivity}
             />
           ) : null}
           <TurnOutcomeCard
@@ -3209,15 +3350,7 @@ export const ChatTranscript = memo(function ChatTranscript({
             <RunActivityIndicator activity={specializedActivity} />
           ) : null}
           {showPlanning ? <PlanningIndicator kind={planningKind} /> : null}
-          {showWorking ? (
-            <WorkingIndicator
-              startedAt={
-                agentActivity?.phase === "starting"
-                  ? agentActivity.since
-                  : undefined
-              }
-            />
-          ) : null}
+          {showWorking ? <WorkingIndicator /> : null}
         </div>
       </div>
       {veilPhase !== "off" ? (
@@ -3251,10 +3384,10 @@ export const ChatTranscript = memo(function ChatTranscript({
         </div>
       ) : null}
       {showJump && !veilCovering ? (
-        <button
+        <TooltipButton
           className="jump-latest-btn"
-          aria-label={t("chat.scrollToBottom")}
-          title={t("chat.scrollToBottom")}
+          ariaLabel={t("chat.scrollToBottom")}
+          tooltip={t("chat.scrollToBottom")}
           onClick={() => {
             pinnedRef.current = true;
             setShowJump(false);
@@ -3266,7 +3399,7 @@ export const ChatTranscript = memo(function ChatTranscript({
           }}
         >
           <IconArrowDown size={14} />
-        </button>
+        </TooltipButton>
       ) : null}
     </div>
   );

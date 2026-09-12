@@ -66,6 +66,17 @@ const PLUGIN_MAIN = `
       if (channel === "try.write") {
         return attempt(() => pi.fs.writeText(payload.path, payload.content ?? "x"));
       }
+      if (channel === "try.stat") {
+        return attempt(() => pi.fs.stat(payload.path, payload.grantId));
+      }
+      if (channel === "try.range") {
+        return attempt(() => pi.fs.readRange(
+          payload.path,
+          payload.byteOffset,
+          payload.length,
+          payload.grantId,
+        ));
+      }
       throw new Error("unknown channel: " + channel);
     },
   };
@@ -180,6 +191,102 @@ test("a read inside the declared scope lands and one outside is refused", async 
     ),
     "the refused read is audited",
   );
+});
+
+test("stat and readRange share the read permission and byte cap", async (t) => {
+  const { runtime, audits } = await harness(t, {
+    id: "fs.read.range",
+    permissions: ["fs.read"],
+    fs: { read: { scope: ["docs/**"] } },
+  });
+
+  const stat = await runtime.invokePanelBridge("fs.read.range", "try.stat", {
+    path: "docs/a.md",
+  });
+  assert.equal(stat.ok, true);
+  assert.equal(stat.value.size, 1);
+  assert.equal(typeof stat.value.mtimeMs, "number");
+
+  const range = await runtime.invokePanelBridge("fs.read.range", "try.range", {
+    path: "docs/a.md",
+    byteOffset: 0,
+    length: 8,
+  });
+  assert.equal(range.ok, true);
+  assert.equal(String.fromCharCode(...Object.values(range.value.bytes)), "a");
+  assert.equal(range.value.totalSize, 1);
+
+  const empty = await runtime.invokePanelBridge("fs.read.range", "try.range", {
+    path: "docs/a.md",
+    byteOffset: 99,
+    length: 8,
+  });
+  assert.equal(empty.ok, true);
+  assert.equal(Object.keys(empty.value.bytes).length, 0);
+
+  const tooLarge = await runtime.invokePanelBridge("fs.read.range", "try.range", {
+    path: "docs/a.md",
+    byteOffset: 0,
+    length: 8 * 1024 * 1024 + 1,
+  });
+  assert.equal(tooLarge.ok, false);
+  assert.equal(tooLarge.code, "INVALID_ARGUMENT");
+  assert.ok(audits.some((entry) => entry.api === "fs.read" && entry.errorCode === "INVALID_ARGUMENT"));
+});
+
+test("a real panel drop creates a one-file read grant", async (t) => {
+  const droppedDir = mkdtempSync(join(tmpdir(), "pi-fs-scope-dropped-"));
+  const droppedPath = join(droppedDir, "dropped.log");
+  writeFileSync(droppedPath, "dropped contents", "utf8");
+  const { runtime } = await harness(t, {
+    id: "fs.read.dropped",
+    permissions: ["fs.read"],
+    fs: { read: { scope: [] } },
+  });
+
+  await refused(
+    t,
+    runtime.invokePanelBridge("fs.read.dropped", "fs.registerDropped", {
+      path: droppedPath,
+    }),
+    "PERMISSION_DENIED",
+    /not dropped/,
+  );
+  const grant = await runtime.invokePanelBridge(
+    "fs.read.dropped",
+    "fs.registerDropped",
+    { path: droppedPath },
+    { droppedPath },
+  );
+  assert.equal(typeof grant.grantId, "string");
+
+  const stat = await runtime.invokePanelBridge("fs.read.dropped", "try.stat", {
+    path: droppedPath,
+    grantId: grant.grantId,
+  });
+  assert.equal(stat.ok, true);
+  assert.equal(stat.value.size, "dropped contents".length);
+
+  const range = await runtime.invokePanelBridge("fs.read.dropped", "try.range", {
+    path: droppedPath,
+    grantId: grant.grantId,
+    byteOffset: 0,
+    length: 32,
+  });
+  assert.equal(range.ok, true);
+  assert.equal(
+    String.fromCharCode(...Object.values(range.value.bytes)),
+    "dropped contents",
+  );
+
+  const outside = await runtime.invokePanelBridge("fs.read.dropped", "try.range", {
+    path: join(droppedDir, "other.log"),
+    grantId: grant.grantId,
+    byteOffset: 0,
+    length: 8,
+  });
+  assert.equal(outside.ok, false);
+  assert.equal(outside.code, "PERMISSION_DENIED");
 });
 
 test("a write outside the declared scope is refused", async (t) => {

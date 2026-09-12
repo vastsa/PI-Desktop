@@ -128,4 +128,54 @@ describe("pack", () => {
     expect(result.check.ok).toBe(true);
     expect(result.check.warnings.map((w) => w.code)).toContain("permission.high-risk");
   });
+
+  it("leaves credential files out of the package and lists them", async () => {
+    const dir = join(await tempDir(), "secrets");
+    await scaffold({ dir, template: "panel-basic" });
+    await writeFile(join(dir, ".env"), "TOKEN=secret", "utf8");
+    await writeFile(join(dir, ".env.local"), "TOKEN=secret", "utf8");
+    await writeFile(join(dir, "server.key"), "-----BEGIN-----", "utf8");
+    await mkdir(join(dir, "certs"), { recursive: true });
+    await writeFile(join(dir, "certs/client.pem"), "-----BEGIN-----", "utf8");
+    await writeFile(join(dir, ".npmrc"), "//registry/:_authToken=abc", "utf8");
+
+    const result = await pack(dir);
+    expect(result.skipped.sort()).toEqual([
+      ".env",
+      ".env.local",
+      ".npmrc",
+      "certs/client.pem",
+      "server.key",
+    ]);
+    expect(result.check.warnings.map((w) => w.code)).toContain("package.secret-skipped");
+    const names = readZipLikeHostCore(await readFile(result.packagePath)).map((e) => e.name);
+    expect(names).not.toContain(".env");
+    expect(names).not.toContain("certs/client.pem");
+    expect(names).toContain("manifest.json");
+  });
+
+  it("orders entries by code unit so the sha256 does not depend on ICU", async () => {
+    const dir = join(await tempDir(), "ordered");
+    await scaffold({ dir, template: "panel-basic" });
+    await writeFile(join(dir, "Zeta.txt"), "z", "utf8");
+    await writeFile(join(dir, "alpha.txt"), "a", "utf8");
+    await writeFile(join(dir, "_under.txt"), "u", "utf8");
+    const names = readZipLikeHostCore(await readFile((await pack(dir)).packagePath)).map(
+      (e) => e.name,
+    );
+    const top = names.filter((name) => !name.includes("/"));
+    expect(top).toEqual([...top].sort());
+    expect(top.indexOf("Zeta.txt")).toBeLessThan(top.indexOf("_under.txt"));
+    expect(top.indexOf("_under.txt")).toBeLessThan(top.indexOf("alpha.txt"));
+  });
+
+  it("refuses an id that cannot name a package", async () => {
+    const dir = join(await tempDir(), "badid");
+    await scaffold({ dir, template: "panel-basic" });
+    const manifestPath = join(dir, "manifest.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    manifest.id = "../Escape";
+    await writeFile(manifestPath, JSON.stringify(manifest), "utf8");
+    await expect(pack(dir)).rejects.toThrow(/manifest\.id|plugin id/);
+  });
 });

@@ -19,6 +19,9 @@ No PI-Desktop account. No mandatory relay. No editor lock-in.
 [![License](https://img.shields.io/github/license/vastsa/PI-Desktop)](LICENSE)
 ![Platforms](https://img.shields.io/badge/platform-macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-4c8dd8)
 
+<a href="https://trendshift.io/repositories/178787?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-178787" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/178787" alt="vastsa/PI-Desktop | Trendshift" width="250" height="55"/></a>
+<a href="https://www.producthunt.com/products/pi-desktop?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-pi-desktop" target="_blank" rel="noopener noreferrer"><img alt="PI-Desktop - Your local-first desktop workspace for AI coding agents | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1245457&amp;theme=dark&amp;t=1788955688339"/></a>
+
 **[Download PI-Desktop](https://github.com/vastsa/PI-Desktop/releases/latest)** ·
 [Documentation](https://pi-docs.aiuo.net/) ·
 [Screenshots](docs/guide/screenshots.md) ·
@@ -233,9 +236,27 @@ Skills can be installed globally or activated for individual projects.
 
 Connect external tools and services through Model Context Protocol servers without baking them into the desktop application.
 
+PI-Desktop can also be controlled by an external MCP Agent. Start the app with
+`PI_DESKTOP_MCP_CONTROL=1`; then read the loopback endpoint and bearer token
+from `mcp-control.json` in the Electron user-data directory. The endpoint
+supports project/session/Agent workflows and a reviewed desktop operation
+catalog. It is disabled by default, binds loopback only, and grants the
+calling local Agent the same authority as the desktop for those operations —
+`confirm: true` is not a user prompt.
+
 ### Subagents
 
 Create specialized agents with their own instructions, tools, and model choices, then delegate work to them from another agent.
+
+### pi extensions
+
+Extensions written for the [pi](https://github.com/badlogic/pi-mono) CLI run
+inside PI-Desktop's agent unchanged: a plugin lists them under
+`contributes.agentExtensions`, and Plugins → "Import pi extension" wraps an
+existing extension file or directory in a plugin for you. They register
+tools, slash commands, and hooks on every turn, tool call, and provider
+request, and run with the same access as the agent's own tools, which the
+`agent.extension` permission asks you to confirm.
 
 ### Plugins
 
@@ -288,24 +309,44 @@ Download the latest build from **[GitHub Releases](https://github.com/vastsa/PI-
 | -------- | ------------- | -------------------- |
 | macOS    | Apple Silicon | `.dmg` / `.zip`      |
 | macOS    | Intel         | `.dmg` / `.zip`      |
-| Windows  | x64           | NSIS installer       |
-| Linux    | x64           | `.AppImage` / `.deb` |
+| Windows  | x64           | NSIS installer / portable exe |
+| Linux    | x64           | `.AppImage` / `.deb` / `.rpm` / `.asar` |
 
-Packaged builds can check GitHub Releases for updates and surface new versions inside the application.
+Packaged builds can check GitHub Releases for updates and surface new versions inside the application. Windows NSIS and Linux AppImage can download and install in-app; macOS, Linux deb/rpm, and the Windows portable exe open the releases page. The Linux `.asar` asset is available for repackaging with a system Electron; launch it with `electron PI-Desktop-<version>-linux-x64.asar` after adding the native host and packaged resources required by the target distribution.
+
+### Linux
+
+Linux x64 packages need **glibc 2.35** or newer. That is the library shipped with:
+
+* Ubuntu 22.04 or later
+* Debian 12 or later
+* Fedora 36 or later
+
+Ubuntu 20.04, Debian 11, Fedora 35, and older releases cannot load the bundled host. Check with `ldd --version`.
 
 ### macOS
 
-macOS builds are not yet code-signed or notarized.
+The tagged-release workflow publishes unsigned macOS artifacts by default. For
+a trusted unsigned install, move `PI-Desktop.app` to Applications and open it.
+If macOS says the app is damaged or does not open:
 
-If macOS blocks the application, right-click **PI-Desktop.app** and choose **Open**.
+1. Confirm that the app came from a trusted PI-Desktop release.
+2. Move `PI-Desktop.app` to `/Applications`.
+3. Open Terminal and run:
 
-If necessary, you can also clear the quarantine attribute:
+   ```sh
+   xattr -r -d com.apple.quarantine /Applications/PI-Desktop.app
+   ```
 
-```bash
-xattr -cr /Applications/PI-Desktop.app
-```
+4. Open PI-Desktop again.
 
-Signing and notarization are on the roadmap.
+The DMG includes `If app won't open, read this.txt` with these instructions.
+The macOS ZIP package also includes `PI-Desktop-macOS-open.command`, which can
+perform the same trusted-source fallback after the app is moved to Applications.
+The command removes only Apple's quarantine attribute; do not use it for an
+untrusted app. A manually dispatched run with `sign_macos: true` signs,
+notarizes, and staples macOS artifacts with Developer ID credentials before
+publication; signed builds do not need this fallback.
 
 ---
 
@@ -355,11 +396,11 @@ The **Rust Host Core** owns privileged workspace operations, permissions, persis
 
 PI-Desktop is an early preview under active development.
 
-The current **0.13.x** line includes the desktop shell, streaming agent runtime, Agent / Plan / Goal workflows, permission-aware workspace tools, projects and sessions, session imports, MCP / Skills / Subagents, background delegation, multi-provider model configuration, plugins and marketplace support, context checkpoints, notifications, release notes, and cross-platform packaging.
+The current **0.14.x** line includes the desktop shell, streaming agent runtime, Agent / Plan / Goal workflows, permission-aware workspace tools, projects and sessions, session imports, local MCP control, MCP / Skills / Subagents, background delegation, multi-provider model configuration, plugins and marketplace support, context checkpoints, notifications, release notes, and cross-platform packaging.
 
 Current priorities include:
 
-* macOS code signing and notarization
+* macOS tagged-release qualification
 * installer upgrade and rollback qualification
 * continued runtime and session-recovery hardening
 * stronger plugin sandboxing and publisher verification
@@ -503,3 +544,11 @@ See [LICENSE](LICENSE) for details.
 <sub>macOS · Windows · Linux</sub>
 
 </div>
+
+---
+
+## Code Signing
+
+Windows releases of PI-Desktop are digitally signed with free code signing
+provided by [SignPath.io](https://signpath.io/), using a certificate from the
+[SignPath Foundation](https://signpath.org/).

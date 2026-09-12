@@ -70,6 +70,7 @@ MCP 服务器、常驻服务和消息总线集成。
 - Agent / Plan / Goal 具有主机拥有的批准工件的操作合约
 - 工作面板：审阅、终端、浏览器和文件
 - 项目存档、多项目侧边栏、会话 fork/import 和通知
+- 默认关闭的本地 MCP 控制，覆盖项目、会话、Agent、工作区和已审查的桌面操作
 - 扩展页面：本地插件、市场包、MCP、技能和
   具有激活范围的子代理
 - 具有手动执行和节奏元数据的计划任务记录
@@ -77,7 +78,7 @@ MCP 服务器、常驻服务和消息总线集成。
 
 ## 5. 超出范围（当前阶段）
 
-- 远程网关/浏览器远程控制
+- 远程 Gateway / 浏览器远程控制；本地回环 MCP 控制是 ADR 0203 描述的有界例外
 - 云账户同步
 - 完整的IDE体验
 - 值得信赖的插件 provenance/signatures 和原始插件的功能沙箱
@@ -134,5 +135,5 @@ Plan 和 Goal 是合约模式，而不是严格的只读安全配置文件：Bas
 |---|---|---|
 | macOS 苹果芯片 | 已发表 | 初级开发及验收平台； signing/notarization 仍受凭证控制 |
 | macOS 英特尔 | 已发表 | 本机 x64 DMG/ZIP 发布通道；signing/notarization 仍受凭证控制 |
-| Windows x64 | 已发表 | NSIS 安装程序和应用内更新通道；本土资格继续 |
-| Linux x64 | 已发表 | AppImage 和 deb 包； AppImage更新通道；本土资格继续 |
+| Windows x64 | 已发表 | NSIS 安装程序、免安装便携版 exe，以及仅适用于 NSIS 的应用内更新通道；本土资格继续 |
+| Linux x64 | 已发表 | AppImage、deb 和 rpm 包；AppImage 更新通道；glibc 2.35+（Ubuntu 22.04、Debian 12、Fedora 36+）；本土资格继续 |

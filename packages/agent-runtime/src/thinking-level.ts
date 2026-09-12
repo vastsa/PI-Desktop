@@ -57,6 +57,11 @@ export type ModelConfig = {
   maxTokens: number;
   headers?: Record<string, string>;
   compat?: Record<string, unknown>;
+  /**
+   * Wire API pinned by the catalog for this model (e.g. "openai-responses").
+   * When present it wins over the provider-wide apiStyle (see #105).
+   */
+  api?: string;
 };
 
 const THINKING_LEVELS: ThinkingLevel[] = [

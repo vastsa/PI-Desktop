@@ -91,7 +91,13 @@ test("custom API format is a common-path choice, named services skip it", () => 
   assert.match(setupSource, /settings\.apiStyle/);
   assert.match(setupSource, /API_STYLES/);
   assert.match(setupSource, /custom \? \(/);
-  assert.doesNotMatch(setupSource, /provider-advanced/);
+  assert.match(setupSource, /provider-advanced-dialog/);
+  assert.doesNotMatch(setupSource, /provider-setup-advanced-toggle/);
+});
+
+test("editing a provider with an unknown persisted API style stays renderable", () => {
+  assert.match(setupSource, /normalizeApiStyle\(provider\?\.apiStyle\)/);
+  assert.match(setupSource, /default:\s*return \["\/chat\/completions", "\/models"\]/);
 });
 
 test("both credential kinds share one live list and one binding shape", () => {
@@ -116,10 +122,46 @@ test("one picker component serves the service dialog and the account dialog", ()
     assert.doesNotMatch(source, /visibleRows/);
     assert.doesNotMatch(source, /addCustomModel/);
     assert.doesNotMatch(source, /toggleModel/);
+    assert.doesNotMatch(source, /applyVisibleModelSelection/);
+    assert.doesNotMatch(source, /selectAllVisibleModels/);
+    assert.doesNotMatch(source, /fetchModelList/);
+    assert.match(source, /onReload=\{discovery\.reload\}/);
   }
   // Only the heading of the discovered list differs between them.
   assert.match(setupSource, /listTitle=\{t\("settings\.serviceModels"\)\}/);
   assert.match(vendorDialogSource, /listTitle=\{t\("settings\.accountModels"\)\}/);
+});
+
+test("a header action probes the live list without waiting for debounce", () => {
+  assert.match(hookSource, /reload: \(\) => void/);
+  assert.match(hookSource, /skipCache: true/);
+  assert.match(hookSource, /skipCache \? modelsRef\.current/);
+  assert.match(hookSource, /canReload/);
+  // Idle-with-a-valid-URL (the edit debounce) must still be reloadable.
+  assert.match(hookSource, /status !== "loading"/);
+  assert.match(pickerSource, /disabled=\{busy \|\| !discovery\.canReload\}/);
+  assert.doesNotMatch(
+    pickerSource,
+    /discovery\.status === "idle" \|\| discovery\.status === "loading"/,
+  );
+  // The automatic path still waits; only the header action skips the window.
+  assert.match(hookSource, /FETCH_DEBOUNCE_MS/);
+  assert.match(pickerSource, /settings\.fetchModelList/);
+  assert.match(pickerSource, /provider-models-reload/);
+  assert.match(pickerSource, /onReload/);
+  assert.doesNotMatch(pickerSource, /provider-models-state/);
+});
+
+test("the shared picker can select or clear every visible model at once", () => {
+  assert.match(pickerSource, /export function applyVisibleModelSelection/);
+  assert.match(pickerSource, /provider-models-select-all/);
+  assert.match(pickerSource, /toggleVisibleModels/);
+  assert.match(pickerSource, /settings\.selectAllVisibleModels/);
+  assert.match(pickerSource, /settings\.deselectAllVisibleModels/);
+  assert.match(pickerSource, /el\.indeterminate/);
+  // A filtered select-all must not drop models the filter is hiding.
+  assert.match(pickerSource, /a filtered select-all does not touch hidden matches/);
+  assert.match(pickerSource, /visibleRows\.length > 0/);
 });
 
 test("the shared picker owns the advanced per-model controls for both kinds", () => {
@@ -172,4 +214,29 @@ test("the rejected catalog-browser styles are gone from the cascade", () => {
   // Only the dialog body scrolls, so the action bar stays reachable.
   assert.match(styles, /\.provider-setup-body\s*\{[\s\S]*?overflow-y: auto;/);
   assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
+});
+
+test("model ids are copyable and a configured model can carry an alias", () => {
+  // The shell is non-selectable, so the id/name text opts back in.
+  assert.match(pickerSource, /provider-models-row-copy selectable/);
+  assert.match(pickerSource, /provider-chosen-row-id font-mono selectable/);
+  // A drag-selection inside the row is a copy gesture, not a checkbox toggle.
+  // The guard is row-scoped, so a stale selection elsewhere on the page cannot
+  // cancel a plain click or the Space key's synthetic click.
+  assert.match(pickerSource, /selection\.isCollapsed/);
+  assert.match(pickerSource, /row\.contains\(selection\.anchorNode\)/);
+  assert.match(pickerSource, /row\.contains\(selection\.focusNode\)/);
+  // Keyboard activation reports detail 0 and must still toggle.
+  assert.match(pickerSource, /event\.detail === 0/);
+  // A selection left behind by copying must not block an explicit checkbox click.
+  assert.match(pickerSource, /event\.target instanceof HTMLInputElement/);
+  assert.match(pickerSource, /event\.preventDefault\(\)/);
+  assert.doesNotMatch(pickerSource, /window\.getSelection\(\)\?\.toString\(\)/);
+  // The alias is edited in the Advanced body and shown beside the id.
+  assert.match(pickerSource, /settings\.modelAlias/);
+  assert.match(pickerSource, /updateBinding\(binding\.id, \{/);
+  // The 60-character cap counts Unicode scalars, matching host-core.
+  assert.match(pickerSource, /\[\.\.\.event\.target\.value\]\.slice\(0, 60\)/);
+  assert.match(pickerSource, /provider-chosen-row-alias/);
+  assert.match(styles, /\.provider-chosen-row-alias\s*\{/);
 });

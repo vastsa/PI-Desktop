@@ -144,6 +144,12 @@
   box-shadow: 0 7px 24px color-mix(in oklab, var(--ds-text-primary) 9%, transparent);
 }
 
+/* Native file-system drops get a target cue without changing shell geometry. */
+.composer-shell.is-drop-target {
+  outline: 2px solid color-mix(in oklab, var(--ds-accent) 72%, transparent);
+  outline-offset: 3px;
+}
+
 .composer-input-wrap {
   position: relative;
   display: flex;
@@ -310,6 +316,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  flex-wrap: nowrap;
+  min-width: 0;
   padding: 4px 8px 8px;
 }
 
@@ -318,7 +326,11 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  min-width: 0;
+  flex: 0 0 auto;
+}
+
+.composer-right .context-inspector-trigger {
+  min-height: 28px;
 }
 
 .icon-btn {
@@ -691,4 +703,43 @@
     flex: 0 0 auto;
   }
 
+}
+
+/* A folder drop asks for an explicit choice instead of attaching contents. */
+.composer-directory-drop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  background: var(--ds-tile);
+  color: var(--ds-text-primary);
+  font-size: var(--text-sm);
+}
+
+.composer-directory-drop-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-directory-drop-action {
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  background: var(--ds-tile-deep);
+  color: var(--ds-text-primary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.composer-directory-drop-action:nth-of-type(1) {
+  margin-left: auto;
+}
+
+.composer-directory-drop-action:hover {
+  background: var(--ds-tile-hover);
 }

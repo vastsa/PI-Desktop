@@ -1,12 +1,9 @@
 {
   "schemaVersion": 1,
   "id": "local.roundtable",
-  "name": { "en": "Roundtable Discussion", "zh-CN": "圆桌讨论" },
+  "name": "Roundtable Discussion",
   "version": "0.1.0",
-  "description": {
-    "en": "Run structured multi-agent roundtable discussions",
-    "zh-CN": "运行结构化的多代理圆桌讨论"
-  },
+  "description": "Run structured multi-agent roundtable discussions",
   "main": "main.js",
   "contributes": {
     "skills": ["./skills/roundtable.md"],

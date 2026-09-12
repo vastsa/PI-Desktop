@@ -98,11 +98,13 @@ Adopt the inline **token/cost chip and model badge** on assistant messages
 input/output/cached breakdown). Data already exists in the runtime usage
 events.
 
-**Adopted in D103 (tokens-only first cut)**: completed assistant turns show a
-model badge plus a compact Codex-style context inspector under the answer. The
-inspector shows remaining context percentage in a small ring and clicking the
-trigger toggles a light summary panel with remaining/window counts and two
-unboxed turn/speed values. Provider input/output/cache/reasoning usage stays
+**Adopted in D103 (tokens-only first cut), placement amended by D347**:
+completed assistant turns show a model badge under the answer. The compact
+Codex-style context inspector lives in the composer toolbar next to the model
+picker and always mirrors the newest assistant turn that reported usage. The
+trigger shows remaining context percentage in a small ring; clicking it
+toggles a light summary panel with remaining/window counts and two unboxed
+turn/speed values. Provider input/output/cache/reasoning usage stays
 available as one inline exact-usage row, while tool usage is reduced to one
 aggregate row with tool types, calls, and estimated tokens. Per-tool rows,
 share bars, badges, and explanatory estimate copy are omitted from the default

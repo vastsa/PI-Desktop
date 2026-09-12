@@ -14,7 +14,7 @@ Provide a permission–capability–risk–default-policy reference table for re
 | `clipboard.read` | medium | `clipboard.readText`, `clipboard.getHistory` | Confirm on first use | May read sensitive information and retained clipboard history |
 | `clipboard.write` | medium | `clipboard.writeText` | Confirm on first use | Prevents clipboard pollution |
 | `notify` | low | `ui.notify`, `ui.getNotificationPermission`, `ui.requestNotificationPermission`, `ui.showNativeNotification` | Can be granted by default | Native delivery is OS-controlled; avoid notification-spam abuse |
-| `fs.read` | medium | `fs.readText` / `fs.readPreview` / `fs.openDefault` / `fs.reveal` / `fs.glob` / `fs.list` / `fs.requestDirectory` | Granted at install, bounded by `manifest.fs.read` | `fs.readPreview`, `fs.openDefault`, and `fs.reveal` are limited to an explicit file and the same read scope; all file calls remain root- and deny-list-checked |
+| `fs.read` | medium | `fs.readText` / `fs.stat` / `fs.readRange` / `fs.readPreview` / `fs.openDefault` / `fs.reveal` / `fs.glob` / `fs.list` / `fs.requestDirectory` / dropped-file grant | Granted at install, bounded by `manifest.fs.read` | `fs.stat` and `fs.readRange` share the read gate; a dropped-file grant is one-file, read-only, memory-only, and gesture-bound; all file calls remain root- and deny-list-checked |
 | `fs.write` | high | `fs.writeText` | Granted at install, bounded by `manifest.fs.write` | Scope is required; a whole-tree pattern fails validation. Out of scope asks the user |
 | `fs.delete` | high | `fs.remove` | Granted at install, bounded by `manifest.fs.delete` | Two tiers (`own` / `scope`), always via the OS trash, non-recursive, rate-braked (§2B) |
 | `fs.read.workspace` | medium | — | Downgraded on load to `fs.read` with a whole-tree scope | Legacy name; predates scopes |
@@ -22,6 +22,7 @@ Provide a permission–capability–risk–default-policy reference table for re
 | `fs.delete.workspace` | high | — | Downgraded on load to `fs.delete` with `own: true` | Legacy name; only the plugin's own output goes without asking |
 | `agent.tool.register` | high | Register an agent tool | Confirm at install | Tool execution is audited separately |
 | `agent.prompt.inject` | high | Inject a system prompt; activates `contributes.skills` | Deny by default / strong confirmation | Easily leads to behavior hijacking |
+| `agent.extension` | high | Run `contributes.agentExtensions` modules inside the agent process | Explicit confirmation; local imports and development plugins only in v1.1 | Same access as the agent's own tools; the plugin sandbox does not apply (spec 16) |
 | `net.fetch` | high | `net.fetch` | Deny by default | Confined to `manifest.net.domains`; an empty or malformed list means no egress (§2A) |
 | `shell.openExternal` | medium | Open external link | Confirm on first use | Prevents phishing links |
 | `mcp.server.local` | high | Spawn a `transport: "stdio"` MCP server declared in the manifest | Deny by default | Runs a local executable; its tools reach the agent |
@@ -30,8 +31,15 @@ Provide a permission–capability–risk–default-policy reference table for re
 | `bus.publish` | medium | `bus.publish` to declared topics | Confirm at install | Other plugins can act on the message |
 | `bus.subscribe` | medium | `bus.subscribe` to declared patterns | Confirm at install | Can observe another plugin's messages |
 | `browser.cdp` | high | `pi.browser.*` against the host work-panel guest | Confirm at install | Guest bounds are clamped to the calling plugin view; CDP is allowlisted |
+| `desktop.control` | high | `pi.desktop.listOperations`, `pi.desktop.invoke` | Confirm at install | Shared with the local MCP control plane's reviewed operation catalog; a `dangerous` operation needs `confirm: true` from the plugin **and** the user's answer to a host-owned native dialog that names the catalog operation; the MCP bearer token and Electron channel names are never exposed |
+| `ui.microphone` | medium | `navigator.mediaDevices.getUserMedia({ audio: true })` inside the plugin's isolated panel | Confirm at install | Audio only; camera and every other device permission stay denied; no native handle or host secret reaches the plugin |
 | `models.list` | medium | `pi.models.list` | Confirm at install | Ready provider/model rows only; no secrets |
+| `project.create` | high | `pi.project.create` and explicit `projectId` on session import | Confirm at install | Creates or reuses a durable project row without activating the workspace; imported sessions remain unbound unless the id is supplied |
 | `session.read` | high | `pi.session.getLlmContext` | Confirm at install | In-flight tool session only; compaction-aware projection (D019 / D336) |
+| `session.import` | high | `pi.session.import`, `pi.session.importBatch` | Confirm at install | Imports only into the calling plugin's declared session sources; bounded and rate-limited |
+| `session.read.own` | medium | `pi.session.list`, `pi.session.get`, `pi.session.listMessages` | Confirm at install | Reads only sessions imported by the calling plugin; no cross-plugin access |
+| `session.update.own` | medium | `pi.session.rename` | Confirm at install | Renames only the calling plugin's active imported sessions |
+| `session.delete.own` | high | `pi.session.delete` | Confirm at install | Trash/purge only the calling plugin's imported sessions; rate-limited |
 | `agent.complete` | high | `pi.agent.complete` | Confirm at install | Host-owned one-shot; spends user quota; `includeSessionContext` also needs `session.read` |
 
 ## 2A. A permission is the switch; the manifest carries the range
@@ -111,6 +119,7 @@ so "Modify the files it lists" is followed by the list.
 | `notify` | Show in-app and native notifications | 显示应用内和系统通知 |
 | `agent.tool.register` | Provide executable tools to the AI Agent | 向 AI Agent 提供可执行工具 |
 | `agent.prompt.inject` | Adjust agent instructions | 调整智能体指令 |
+| `agent.extension` | Run code inside the agent | 在 agent 内运行代码 |
 | `net.fetch` | Access the network | 访问网络 |
 | `shell.openExternal` | Open external links | 打开外部链接 |
 | `ui.theme` | Provide a theme | 提供主题 |
@@ -122,6 +131,10 @@ so "Modify the files it lists" is followed by the list.
 | `browser.cdp` | Control the work-panel browser | 控制工作面板浏览器 |
 | `models.list` | List authenticated models | 列出已登录的模型 |
 | `session.read` | Read the current conversation sent to the model | 读取当前发给模型的对话 |
+| `session.import` | Import bounded session history into your declared sources | 导入受限的会话历史到已声明的数据源 |
+| `session.read.own` | Read sessions imported by this plugin | 读取此插件导入的会话 |
+| `session.update.own` | Rename sessions imported by this plugin | 重命名此插件导入的会话 |
+| `session.delete.own` | Trash or purge sessions imported by this plugin | 将此插件导入的会话移入回收站或清除 |
 | `agent.complete` | Run a one-shot completion with your models | 用你的模型发起一次补全 |
 
 ## 5. Adding permissions on upgrade

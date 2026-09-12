@@ -1,6 +1,7 @@
 {
   "name": "@pi-desktop/desktop",
-  "version": "0.13.11",
+  "version": "0.14.7-beta.1",
+  "desktopName": "pi-desktop.desktop",
   "private": true,
   "description": "PI-Desktop Electron application",
   "homepage": "https://github.com/vastsa/PI-Desktop",
@@ -33,7 +34,8 @@
     "electron-updater": "^6.8.9"
   },
   "devDependencies": {
-    "@earendil-works/pi-ai": "0.85.0",
+    "@earendil-works/pi-ai": "0.85.1",
+    "@pi-desktop/agent-host": "workspace:*",
     "@pi-desktop/agent-runtime": "workspace:*",
     "@pi-desktop/i18n": "workspace:*",
     "@pi-desktop/plugin-devkit": "workspace:*",
@@ -44,7 +46,7 @@
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^4.6.0",
     "dompurify": "^3.4.13",
-    "electron": "^43.4.0",
+    "electron": "^43.4.1",
     "electron-builder": "^26.15.3",
     "electron-vite": "^4.0.0",
     "i18next": "^26.3.6",
@@ -95,7 +97,13 @@
       "en-US",
       "zh-CN",
       "zh_CN",
-      "tr"
+      "zh-TW",
+      "zh_TW",
+      "tr",
+      "de",
+      "es",
+      "fr",
+      "ko"
     ],
     "extraResources": [
       {
@@ -120,6 +128,7 @@
       }
     ],
     "mac": {
+      "artifactName": "PI-Desktop-${version}-${arch}-mac.${ext}",
       "target": [
         {
           "target": "dmg"
@@ -130,7 +139,6 @@
       ],
       "category": "public.app-category.developer-tools",
       "icon": "build/icon.icns",
-      "identity": null,
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
@@ -144,6 +152,39 @@
           "from": "build/tray-icon-mac.png",
           "to": "tray-icon-mac.png"
         }
+      ],
+      "extraDistFiles": [
+        "PI-Desktop-macOS-open.command",
+        "PI-Desktop-macOS-opening-help.txt"
+      ]
+    },
+    "dmg": {
+      "artifactName": "PI-Desktop-${version}-${arch}.${ext}",
+      "background": "build/dmg-background.png",
+      "window": {
+        "width": 720,
+        "height": 500
+      },
+      "iconSize": 96,
+      "iconTextSize": 12,
+      "contents": [
+        {
+          "x": 180,
+          "y": 240
+        },
+        {
+          "x": 540,
+          "y": 240,
+          "type": "link",
+          "path": "/Applications"
+        },
+        {
+          "x": 470,
+          "y": 370,
+          "type": "file",
+          "name": "If app won't open, read this.txt",
+          "path": "PI-Desktop-macOS-opening-help.txt"
+        }
       ]
     },
     "win": {
@@ -151,6 +192,12 @@
       "target": [
         {
           "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
           "arch": [
             "x64"
           ]
@@ -170,12 +217,25 @@
       "shortcutName": "PI-Desktop",
       "artifactName": "PI-Desktop-Setup-${version}.${ext}"
     },
+    "portable": {
+      "artifactName": "PI-Desktop-Portable-${version}.${ext}",
+      "requestExecutionLevel": "user"
+    },
     "deb": {
       "packageName": "pi-desktop",
       "artifactName": "pi-desktop_${version}_${arch}.${ext}"
     },
+    "rpm": {
+      "packageName": "pi-desktop",
+      "artifactName": "pi-desktop-${version}-${arch}.${ext}",
+      "fpm": [
+        "--rpm-rpmbuild-define",
+        "_build_id_links none"
+      ]
+    },
     "linux": {
       "executableName": "pi-desktop",
+      "syncDesktopName": true,
       "target": [
         {
           "target": "AppImage",
@@ -185,6 +245,12 @@
         },
         {
           "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "rpm",
           "arch": [
             "x64"
           ]

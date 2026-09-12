@@ -7,6 +7,10 @@ const pickerSource = await readFile(
   new URL("../src/components/settings/ModelSelectionPanes.tsx", import.meta.url),
   "utf8",
 );
+const composerSource = await readFile(
+  new URL("../src/components/Composer.tsx", import.meta.url),
+  "utf8",
+);
 const capabilitiesSource = await readFile(
   new URL(
     "../../../packages/agent-runtime/src/model-capabilities.ts",
@@ -70,6 +74,10 @@ test("the capability row carries no explanatory copy or extra controls", () => {
   assert.doesNotMatch(styles, /provider-chosen-capability-(reset|state|hint)/);
 });
 
+test("the Composer model rows use the provider binding for vision badges", () => {
+  assert.match(composerSource, /composerModelBadges\(model, group\.provider\)/);
+});
+
 test("capability overrides reach the transport modality arrays", () => {
   assert.match(capabilitiesSource, /function modalityOverride\(/);
   assert.match(capabilitiesSource, /nextInput\.add\("image"\)/);
@@ -89,6 +97,15 @@ test("the capability controls and default selector are styled", () => {
   assert.match(styles, /\.provider-chosen-thinking-select:focus-visible \{/);
 });
 
+test("selected thinking chips keep high contrast in both themes", () => {
+  const selectedRule = styles.match(
+    /\.provider-thinking-chip\.selected \{[\s\S]*?\n\}/,
+  )?.[0];
+  assert.ok(selectedRule);
+  assert.match(selectedRule, /background: var\(--ds-accent\)/);
+  assert.match(selectedRule, /color: var\(--ds-bg-primary\)/);
+});
+
 test("thinking levels use a compact accessible grouped control", () => {
   assert.match(
     pickerSource,
@@ -99,7 +116,11 @@ test("thinking levels use a compact accessible grouped control", () => {
   assert.match(styles, /\.provider-chosen-thinking-hint \{/);
   assert.match(
     styles,
-    /\.provider-chosen-thinking-chips \{[\s\S]*?width: fit-content;[\s\S]*?max-width: 100%;/,
+    /\.provider-chosen-thinking-chips \{[\s\S]*?width: 100%;[\s\S]*?max-width: 100%;/,
+  );
+  assert.match(
+    styles,
+    /\.provider-chosen-thinking-chips \{[\s\S]*?grid-template-columns: repeat\(7, minmax\(0, 1fr\)\);/,
   );
   assert.match(
     styles,
@@ -167,6 +188,35 @@ test("a model the catalog does not describe still reports its binding overrides"
   assert.doesNotMatch(
     mainSource,
     /const modelConfig = catalogModelConfig\s*\n\s*\? modelConfigWithBinding/,
+  );
+});
+
+test("the advanced body is a compact sheet without helper paragraphs", () => {
+  // The generic Field + hint paragraph made the disclosure a stacked form dump
+  // inside a half-pane. Labels stay 2xs, the alias hint is a title tooltip, and
+  // the default selector sits on the thinking label row.
+  assert.match(pickerSource, /className="provider-chosen-field"/);
+  assert.match(pickerSource, /title=\{t\("settings.modelAliasHint"\)\}/);
+  assert.doesNotMatch(pickerSource, /hint=\{t\("settings.modelAliasHint"\)\}/);
+  assert.match(pickerSource, /aria-controls=\{advancedId\}/);
+  assert.match(pickerSource, /models\[0\]\?\.id \?\? null/);
+  assert.match(
+    pickerSource,
+    /className="provider-chosen-thinking-head">[\s\S]*?provider-chosen-thinking-default[\s\S]*?provider-chosen-thinking-chips/,
+  );
+  assert.match(
+    pickerSource,
+    /className="provider-chosen-capability-rows">[\s\S]*?provider-chosen-delegation/,
+  );
+  assert.match(styles, /\.provider-chosen-field \{/);
+  assert.match(styles, /\.provider-chosen-row-body\[hidden\] \{/);
+  assert.match(
+    styles,
+    /\.provider-chosen-advanced-toggle\[aria-expanded="true"\]/,
+  );
+  assert.match(
+    styles,
+    /input\[type="number"\]::-webkit-inner-spin-button/,
   );
 });
 

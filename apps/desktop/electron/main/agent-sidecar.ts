@@ -67,7 +67,26 @@ const HOST_PROXY_ALLOWED = new Set([
   "provider.resolveAuth",
   "provider.resolveSubagentModel",
   "app.health",
+  // Trusted extensions (D387): answered by main, plus the session methods
+  // the ExtensionAPI reaches (spec 16 §10.1).
+  "extensions.commands.publish",
+  "extensions.ui.request",
+  "extensions.diagnostics.publish",
+  "session.rename",
+  "session.create",
+  "session.fork",
+  "session.queuePush",
 ]);
+
+/** Main-side answers for the `extensions.*` proxy methods. */
+export type TrustedExtensionSidecarBridge = {
+  publishCommands: (params: Record<string, unknown>) => void;
+  publishDiagnostics: (params: Record<string, unknown>) => void;
+  requestUi: (params: Record<string, unknown>) => Promise<unknown>;
+  /** `sendUserMessage`: the Host-owned queue drains it (D386); host-core alone would only store it. */
+  queuePush: (params: Record<string, unknown>) => Promise<unknown>;
+  queuePrioritize: (params: Record<string, unknown>) => Promise<unknown>;
+};
 
 function resolveSidecarEntry(): string {
   const candidates = [
@@ -111,6 +130,7 @@ export class AgentSidecar {
   // immediately before starting a runtime turn.
   private projectInstructionRoots = new Map<string, string>();
   private vendorAuthResolver: VendorAuthResolver | null = null;
+  private trustedExtensionBridge: TrustedExtensionSidecarBridge | null = null;
   // Vendor-account rows this session was launched with. The sidecar can only
   // ask for auth it is already using, and a session that never bound an OAuth
   // row can ask for nothing at all.
@@ -271,6 +291,10 @@ export class AgentSidecar {
 
   setVendorAuthResolver(resolver: VendorAuthResolver): void {
     this.vendorAuthResolver = resolver;
+  }
+
+  setTrustedExtensionBridge(bridge: TrustedExtensionSidecarBridge): void {
+    this.trustedExtensionBridge = bridge;
   }
 
   /**
@@ -447,6 +471,20 @@ export class AgentSidecar {
           );
           return;
         }
+        if (method.startsWith("extensions.") || method === "session.queuePush" || method === "session.queuePrioritize") {
+          const bridge = this.trustedExtensionBridge;
+          if (!bridge) throw new Error("trusted extension bridge unavailable");
+          let result: unknown = { ok: true };
+          if (method === "extensions.commands.publish") bridge.publishCommands(params);
+          else if (method === "extensions.diagnostics.publish") bridge.publishDiagnostics(params);
+          else if (method === "session.queuePush") result = await bridge.queuePush(params);
+          else if (method === "session.queuePrioritize") result = await bridge.queuePrioritize(params);
+          else result = await bridge.requestUi(params);
+          this.writeToChild(
+            JSON.stringify({ jsonrpc: "2.0", id: msg.id, result }) + "\n",
+          );
+          return;
+        }
         // Main-local tools short-circuit before host-core (which doesn't
         // know them); everything else proxies through unchanged.
         const localTool =
@@ -569,6 +607,20 @@ export class AgentSidecar {
     this.vendorAuthBindings.clear();
     this.closeTransport(new Error("agent sidecar disposed"));
     this.exitHandlers.clear();
-    this.child.kill();
+    if (this.child.exitCode !== null || this.child.signalCode !== null) return;
+    // Wait for the process to actually leave so quit's settle step is real
+    // rather than returning while the sidecar is still tearing down.
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, SIDECAR_DISPOSE_GRACE_MS);
+      timer.unref?.();
+      this.child.once("exit", () => {
+        clearTimeout(timer);
+        resolve();
+      });
+      this.child.kill();
+    });
   }
 }
+
+/** Upper bound on how long `dispose()` waits for the killed sidecar to exit. */
+const SIDECAR_DISPOSE_GRACE_MS = 2_000;

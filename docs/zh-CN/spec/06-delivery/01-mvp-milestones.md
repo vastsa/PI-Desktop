@@ -85,7 +85,7 @@ Goal：用户可安装的本地扩展系统。
 - 禁用删除贡献
 
 ### M5 — 桌面强化
-状态：**除凭据门控 macOS 公证外已完成**
+状态：**除 macOS 工件的发布资格验证外已完成**
 
 Goal：日常可用的包。
 
@@ -99,16 +99,13 @@ Goal：日常可用的包。
 进展：
 - [x] 包装脚手架（电子构建器 macOS arm64 `--dir`、host/sidecar 资源）
 - [x] 对主要内容进行大量 settings/session/UI 打磨
-- [x] 代码签名通道（未签名的本地默认值；开发者 ID + 强化
-  运行时 + 由 `scripts/release-macos.sh`、D078 注入的权利）
+- [x] 代码签名和公证发布通道（所需 CI 密钥、DMG 装订和上传前验证）
 - [x] 自定义应用程序图标（生成 pi 标记 → `build/icon.icns`，D079）
 - [x] isolation/logging 强化（渲染器沙箱 D081、NDJSON 日志
   通道 D082、碰撞监控 D080、窗口状态 D083)
 - [x] 打包的 macOS 更新发现、修复的发布链接、键入的更新状态、
   和标签工作流源资产（手动交付，D120 / ADR 0022）
-- [ ] 完整的 DMG + 公证 — 操作手册准备就绪
-  ([06-release-runbook](/zh-CN/spec/06-delivery/06-release-runbook));仅在 Apple 上被阻止
-  开发人员凭证（操作，而非代码）
+- [x] 已配置 CI 密钥、DMG 装订和上传前验证的签名及公证 macOS 发布通道
 
 ### M6 — Plan 操作状态
 状态：**完成（2026-08-05）**
@@ -174,7 +171,7 @@ E2E-108/E2E-109 覆盖主机重启中断且无重播。
 剩余工作将作为产品强化而不是未启动的 MVP 范围进行跟踪：
 
 - 更强大的插件运行时沙箱和发布者签名
-- signed/notarized macOS 分发和原生 Windows/Linux 资格
+- 已标记 macOS 发布构建的资格验证和原生 Windows/Linux 资格
 - 完整的 Playwright/UI-driven E2E 覆盖
 - 附带的 zh-CN 目录之外的其他语言环境
 

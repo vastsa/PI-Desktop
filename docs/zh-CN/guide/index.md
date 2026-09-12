@@ -30,8 +30,9 @@ Renderer UI  →  Electron orchestration  →  Rust host core
   transcript          pi Node sidecar          SQLite + processes
 ```
 
-Renderer 负责呈现，Electron 协调桌面能力，pi sidecar 负责代理循环和模型工作，
-Rust host 负责特权进程、文件系统、RPC 与持久化边界。
+Renderer 负责呈现；Electron main 协调桌面能力：窗口生命周期、IPC 路由、进程监管、
+更新客户端，以及插件、MCP 桥接和可选的回环 MCP 控制服务；Rust host 负责工具执行与
+工作区沙箱、权限网关、插件宿主服务、RPC 与持久化；pi sidecar 负责代理循环和模型工作。
 
 ## 文档语言说明
 

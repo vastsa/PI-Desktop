@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 register(pathToFileURL(join(here, "helpers/ts-import-hooks.mjs")));
 const {
+  collectDelegationFailures,
   collectDelegationStatuses,
   collectDelegationTimings,
   delegationRoster,
@@ -174,6 +175,111 @@ test("reads stopped status from TaskStop, including a running snapshot", () => {
     subagentOutcome(task("d1", "success", "running").message, statuses),
     "stopped",
   );
+});
+
+// Issue #161: the status says *that* a delegate failed; the error says why.
+// `Task` returns before the delegate settles (ADR 0089), so only the lifecycle
+// rows can carry the reason.
+test("reads a failed delegation's error from a TaskWait roster entry", () => {
+  const failures = collectDelegationFailures([
+    task("d1", "success", "running"),
+    lifecycle("TaskWait", {
+      delegations: [
+        {
+          delegationId: "d1",
+          status: "failed",
+          error: { code: "SUBAGENT_FAILED", message: "Provider returned 500." },
+        },
+      ],
+    }),
+  ]);
+
+  assert.deepEqual(failures.get("d1"), {
+    code: "SUBAGENT_FAILED",
+    message: "Provider returned 500.",
+  });
+});
+
+test("reads a failed delegation's error from TaskStop's `stopped` list", () => {
+  const failures = collectDelegationFailures([
+    lifecycle("TaskStop", {
+      stopped: [
+        {
+          delegationId: "d9",
+          status: "aborted",
+          error: {
+            code: "DELEGATION_ABORTED",
+            message: "Parent turn ended.",
+          },
+        },
+      ],
+    }),
+  ]);
+
+  assert.deepEqual(failures.get("d9"), {
+    code: "DELEGATION_ABORTED",
+    message: "Parent turn ended.",
+  });
+});
+
+test("a later lifecycle row replaces an earlier failure for the same delegate", () => {
+  const failures = collectDelegationFailures([
+    lifecycle("TaskWait", {
+      delegations: [
+        {
+          delegationId: "d1",
+          status: "failed",
+          error: { code: "PROVIDER_ERROR", message: "first" },
+        },
+      ],
+    }),
+    lifecycle("TaskList", {
+      delegations: [
+        {
+          delegationId: "d1",
+          status: "failed",
+          error: { code: "PROVIDER_ERROR", message: "second" },
+        },
+      ],
+    }),
+  ]);
+
+  assert.equal(failures.get("d1").message, "second");
+});
+
+test("ignores roster entries that report no error at all", () => {
+  const failures = collectDelegationFailures([
+    lifecycle("TaskWait", {
+      delegations: [
+        { delegationId: "ok", status: "completed" },
+        { delegationId: "empty", status: "failed", error: {} },
+        { delegationId: "blank", status: "failed", error: { message: "   " } },
+        { status: "failed", error: { code: "X", message: "no id" } },
+      ],
+    }),
+  ]);
+
+  assert.equal(failures.size, 0);
+});
+
+test("a Task row never carries its own failure, only lifecycle rows do", () => {
+  const failures = collectDelegationFailures([
+    {
+      kind: "tool",
+      message: {
+        ...task("d1", "error", "failed").message,
+        toolResult: {
+          details: {
+            delegationId: "d1",
+            status: "failed",
+            error: { code: "NOPE", message: "not a carrier" },
+          },
+        },
+      },
+    },
+  ]);
+
+  assert.equal(failures.size, 0);
 });
 
 test("a finished turn treats leftover running delegates as aborted", () => {

@@ -16,6 +16,7 @@ const layout = read("../src/components/settings/AgentCapabilityLayout.tsx");
 const skills = read("../src/components/settings/AgentSkillsPage.tsx");
 const mcp = read("../src/components/settings/AgentMcpPage.tsx");
 const subagents = read("../src/components/settings/AgentSubagentsPage.tsx");
+const hostCollection = read("../src/hooks/use-host-collection.ts");
 const mcpEditor = read("../src/components/extensions/McpEditorSheet.tsx");
 const electron = read("../electron/main/index.ts");
 const skillImport = electron.slice(
@@ -206,11 +207,14 @@ test("a busy row does not lock the page and a refresh does not flash skeletons",
     // Busy is scoped to the row that is working, never to the whole list.
     assert.match(source, /busy=\{busy/);
     assert.doesNotMatch(source, /disabled=\{loading \|\| busy/);
-    // Skeletons are first paint only; later loads dim the rows they already have.
-    assert.match(source, /hydrated = useRef\(false\)/);
-    assert.match(source, /if \(hydrated\.current\) setRefreshing\(true\)/);
+    // Skeletons are first paint only; later loads dim the rows they already
+    // have. The shared collection hook owns that state for all three pages.
+    assert.match(source, /useHostCollection\(/);
+    assert.doesNotMatch(source, /hydrated = useRef\(false\)/);
     assert.match(source, /refreshing=\{refreshing\}/);
   }
+  assert.match(hostCollection, /hydrated = useRef\(false\)/);
+  assert.match(hostCollection, /if \(hydrated\.current\) setRefreshing\(true\)/);
   assert.match(styles, /\.agent-capability-panel\.is-refreshing \.agent-capability-list\s*\{/);
   assert.match(layout, /settings\.capabilityRefreshing/);
 });

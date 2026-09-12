@@ -1,9 +1,9 @@
 # ADR 0022: Application Update Delivery
 
-- Status: Accepted
+- Status: Accepted (amended by D364 / ADR 0197)
 - Date: 2026-07-26
 - Deciders: PI-Desktop core
-- Related: D120, D126, D010, ADR 0021
+- Related: D120, D126, D364, D010, ADR 0021, ADR 0197
 
 ## Context
 
@@ -23,7 +23,9 @@ download-and-install flow.
 2. Development builds keep updates disabled. Packaged macOS and non-AppImage
    Linux use manual delivery: discovery stops at `available` and opens the
    fixed releases page. Windows NSIS and Linux AppImage use in-app download and
-   quit-and-install delivery.
+   quit-and-install delivery. Windows portable builds (`PORTABLE_EXECUTABLE_FILE`)
+   use the same notify-and-link path as macOS so an NSIS installer cannot replace
+   a no-install run.
 3. The updater always sets `allowPrerelease = false`. electron-updater would
    otherwise pin prerelease installs (for example `0.2.0-rc.6`) to the same
    custom channel (`rc`) and never offer a newer stable GitHub latest release.
@@ -53,7 +55,7 @@ download-and-install flow.
 - The sandboxed renderer cannot redirect update traffic or install arbitrary
   packages.
 - Windows NSIS and Linux AppImage can update in-app from published tag feeds;
-  macOS and Linux deb users install from the release page.
+  macOS, Linux deb, and Windows portable users install from the release page.
 - Prerelease installs graduate to newer stable releases through the same
   latest feed; a dedicated RC channel is not active.
 - In-app bilingual release highlights ship with the build and follow the

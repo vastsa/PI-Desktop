@@ -28,13 +28,20 @@ impl SecretStore {
         } else {
             let mut key = [0u8; 32];
             rng().fill_bytes(&mut key);
-            fs::write(&key_path, key)?;
+            // Create the file owner-only from the first byte instead of
+            // tightening it afterwards, so no umask-dependent window exists.
+            let mut options = fs::OpenOptions::new();
+            options.write(true).create_new(true);
             #[cfg(unix)]
             {
-                use std::os::unix::fs::PermissionsExt;
-                let mut perms = fs::metadata(&key_path)?.permissions();
-                perms.set_mode(0o600);
-                fs::set_permissions(&key_path, perms)?;
+                use std::os::unix::fs::OpenOptionsExt;
+                options.mode(0o600);
+            }
+            {
+                use std::io::Write;
+                let mut file = options.open(&key_path)?;
+                file.write_all(&key)?;
+                file.sync_all()?;
             }
             key
         };

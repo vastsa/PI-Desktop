@@ -6,34 +6,25 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 register(pathToFileURL(join(here, "helpers/ts-import-hooks.mjs")));
-const { ClipboardHistory, CLIPBOARD_HISTORY_MAX_ENTRIES, CLIPBOARD_HISTORY_MAX_TEXT_BYTES } =
-  await import("../electron/main/clipboard-history.ts");
+const {
+  ClipboardHistory,
+  CLIPBOARD_HISTORY_MAX_ENTRIES,
+  CLIPBOARD_HISTORY_MAX_TEXT_BYTES,
+  CLIPBOARD_HISTORY_RETENTION_MS,
+} = await import("../electron/main/clipboard-history.ts");
 
-test("clipboard history establishes a baseline, interleaves text and images, and clones bytes", async (t) => {
+test("clipboard history records explicit text and image captures and clones bytes", () => {
   let now = Date.parse("2026-08-21T00:00:00.000Z");
-  let current = { type: "text", text: "before the app started" };
-  const history = new ClipboardHistory({
-    read: async () => current,
-    now: () => now,
-    pollIntervalMs: 60_000,
-  });
-  t.after(() => history.stop());
+  const history = new ClipboardHistory({ now: () => now });
 
-  await history.start();
-  assert.deepEqual(history.getHistory(), []);
-
-  current = { type: "text", text: "hello" };
+  history.recordText("hello");
   now += 1000;
-  await history.poll();
-  current = {
-    type: "image",
+  history.recordImage({
     format: "png",
     data: new Uint8Array([1, 2, 3]),
     width: 2,
     height: 3,
-  };
-  now += 1000;
-  await history.poll();
+  });
 
   const result = history.getHistory();
   assert.equal(result.length, 2);
@@ -45,36 +36,40 @@ test("clipboard history establishes a baseline, interleaves text and images, and
   assert.deepEqual([...history.getHistory()[0].data], [1, 2, 3]);
 });
 
+test("history does not read or poll the system clipboard", () => {
+  const history = new ClipboardHistory();
+  assert.equal(typeof history.start, "undefined");
+  assert.equal(typeof history.poll, "undefined");
+  assert.equal(typeof history.stop, "undefined");
+});
+
 test("consecutive duplicates refresh the timestamp without creating entries", () => {
   let now = Date.parse("2026-08-21T00:00:00.000Z");
-  const history = new ClipboardHistory({ read: async () => null, now: () => now });
+  const history = new ClipboardHistory({ now: () => now });
 
-  history.recordText("same", new Date(now).toISOString());
+  history.recordText("same");
   now += 5000;
-  history.recordText("same", new Date(now).toISOString());
+  history.recordText("same");
 
   const result = history.getHistory();
   assert.equal(result.length, 1);
   assert.equal(result[0].capturedAt, new Date(now).toISOString());
 });
 
-test("host writes are captured even when the value was the startup baseline", async (t) => {
-  const current = { type: "text", text: "same as before startup" };
-  const history = new ClipboardHistory({
-    read: async () => current,
-    pollIntervalMs: 60_000,
-  });
-  t.after(() => history.stop());
+test("an expired duplicate can be recorded again", () => {
+  let now = Date.parse("2026-08-21T00:00:00.000Z");
+  const history = new ClipboardHistory({ now: () => now });
 
-  await history.start();
-  history.recordText(current.text);
-  await history.poll();
+  history.recordText("expires");
+  now += CLIPBOARD_HISTORY_RETENTION_MS + 1;
+  assert.deepEqual(history.getHistory(), []);
+  history.recordText("expires");
 
-  assert.deepEqual(history.getHistory().map((entry) => entry.text), [current.text]);
+  assert.equal(history.getHistory().length, 1);
 });
 
 test("history skips oversized text and enforces the entry cap", () => {
-  const history = new ClipboardHistory({ read: async () => null });
+  const history = new ClipboardHistory();
   history.recordText("x".repeat(CLIPBOARD_HISTORY_MAX_TEXT_BYTES + 1));
   assert.deepEqual(history.getHistory(), []);
 

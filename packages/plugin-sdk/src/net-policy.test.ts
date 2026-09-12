@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isNetHostAllowed, isNetUrlAllowed, parseNetDomains } from "./net-policy.js";
+import { isLocalNetDomain, isNetHostAllowed, isNetUrlAllowed, parseNetDomains } from "./net-policy.js";
 
 describe("parseNetDomains", () => {
   it("treats an absent list as no egress rather than an error", () => {
@@ -40,6 +40,38 @@ describe("parseNetDomains", () => {
   it("rejects non-array and non-string input", () => {
     expect(parseNetDomains("api.github.com").ok).toBe(false);
     expect(parseNetDomains([1]).ok).toBe(false);
+  });
+});
+
+describe("isLocalNetDomain", () => {
+  it("flags loopback, link-local, and cloud metadata hosts", () => {
+    for (const entry of [
+      "localhost",
+      "*.localhost",
+      "app.localhost",
+      "127.0.0.1",
+      "127.1.2.3",
+      "0.0.0.0",
+      "169.254.169.254",
+      "169.254.0.7",
+      "metadata.google.internal",
+      "LOCALHOST.",
+    ]) {
+      expect(isLocalNetDomain(entry), entry).toBe(true);
+    }
+  });
+
+  it("leaves public hosts alone", () => {
+    for (const entry of [
+      "api.github.com",
+      "*.example.com",
+      "10.0.0.1",
+      "192.168.1.1",
+      "localhost.example.com",
+      "metadata.example.com",
+    ]) {
+      expect(isLocalNetDomain(entry), entry).toBe(false);
+    }
   });
 });
 

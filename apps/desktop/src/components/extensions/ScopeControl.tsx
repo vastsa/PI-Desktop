@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import {
   activationState,
@@ -10,7 +10,8 @@ import {
   type ActivationState,
   type ProjectRecord,
 } from "@pi-desktop/shared";
-import { cx } from "../ui";
+import { TooltipButton, cx } from "../ui";
+import { AnchoredMenu } from "../settings/AnchoredMenu";
 import {
   IconCheck,
   IconChevronDown,
@@ -91,35 +92,8 @@ export function ScopeControl({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [compactOpen, setCompactOpen] = useState(false);
   const compactWrapRef = useRef<HTMLDivElement | null>(null);
-  const [compactFlipUp, setCompactFlipUp] = useState(false);
   const state = activationState(target);
   const scope = resolveScope(target.scope);
-
-  useEffect(() => {
-    if (!compact || !compactOpen) return;
-    const onPointerDown = (event: MouseEvent) => {
-      if (!compactWrapRef.current?.contains(event.target as Node)) {
-        setCompactOpen(false);
-      }
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.stopPropagation();
-      setCompactOpen(false);
-    };
-    document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [compact, compactOpen]);
-
-  useLayoutEffect(() => {
-    if (!compact || !compactOpen) return;
-    const rect = compactWrapRef.current?.getBoundingClientRect();
-    if (rect) setCompactFlipUp(window.innerHeight - rect.bottom < 220);
-  }, [compact, compactOpen]);
 
   const select = (next: ActivationState) => {
     if (disabled) return;
@@ -162,58 +136,63 @@ export function ScopeControl({
     <div className={cx("scope-control", compact && "is-compact")}>
       {compact ? (
         <div className="scope-compact-wrap" ref={compactWrapRef}>
-          <button
-            type="button"
-            className={cx("scope-compact-trigger", `is-${state}`)}
-            aria-label={`${t("extensions.scope.ariaLabel", { name: label })}: ${currentStateLabel}`}
-            aria-haspopup={pickerOpen ? "dialog" : "menu"}
-            aria-expanded={compactOpen || pickerOpen}
-            title={t(STATE_HINT_KEYS[state])}
-            data-tip={t(STATE_HINT_KEYS[state])}
-            disabled={disabled}
-            onClick={() => {
-              if (pickerOpen) {
-                setPickerOpen(false);
-                return;
-              }
-              setCompactOpen((open) => !open);
-            }}
+          <AnchoredMenu
+            className="scope-compact-menu-anchor"
+            open={compactOpen}
+            onClose={() => setCompactOpen(false)}
+            menuClassName="scope-compact-menu"
+            label={t("extensions.scope.ariaLabel", { name: label })}
+            role="menu"
+            align="end"
+            trigger={(ref) => (
+              <TooltipButton
+                ref={ref}
+                type="button"
+                className={cx("scope-compact-trigger", `is-${state}`)}
+                ariaLabel={`${t("extensions.scope.ariaLabel", { name: label })}: ${currentStateLabel}`}
+                tooltip={t(STATE_HINT_KEYS[state])}
+                aria-haspopup={pickerOpen ? "dialog" : "menu"}
+                aria-expanded={compactOpen || pickerOpen}
+                disabled={disabled}
+                onClick={() => {
+                  if (pickerOpen) {
+                    setPickerOpen(false);
+                    return;
+                  }
+                  setCompactOpen((open) => !open);
+                }}
+              >
+                <StateIcon state={state} />
+                <span className="scope-compact-label">{currentStateLabel}</span>
+                <IconChevronDown className="scope-compact-chevron" size={12} />
+              </TooltipButton>
+            )}
           >
-            <StateIcon state={state} />
-            <span className="scope-compact-label">{currentStateLabel}</span>
-            <IconChevronDown className="scope-compact-chevron" size={12} />
-          </button>
-          {compactOpen ? (
-            <div
-              className={cx("scope-compact-menu", compactFlipUp && "is-up")}
-              role="menu"
-              aria-label={t("extensions.scope.ariaLabel", { name: label })}
+          {STATE_ORDER.map((option) => (
+            <TooltipButton
+              key={option}
+              type="button"
+              role="menuitemradio"
+              aria-checked={state === option}
+              className={cx("scope-compact-option", state === option && "is-active")}
+              tooltip={t(STATE_HINT_KEYS[option])}
+              ariaLabel={t(STATE_LABEL_KEYS[option])}
+              disabled={disabled}
+              onClick={() => select(option)}
             >
-              {STATE_ORDER.map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={state === option}
-                  className={cx("scope-compact-option", state === option && "is-active")}
-                  title={t(STATE_HINT_KEYS[option])}
-                  disabled={disabled}
-                  onClick={() => select(option)}
-                >
-                  <StateIcon state={option} />
-                  <span className="scope-compact-option-copy">
-                    <span className="scope-compact-option-label">
-                      {t(STATE_LABEL_KEYS[option])}
-                    </span>
-                    <span className="scope-compact-option-hint">
-                      {t(STATE_HINT_KEYS[option])}
-                    </span>
-                  </span>
-                  {state === option ? <IconCheck size={13} /> : null}
-                </button>
-              ))}
-            </div>
-          ) : null}
+              <StateIcon state={option} />
+              <span className="scope-compact-option-copy">
+                <span className="scope-compact-option-label">
+                  {t(STATE_LABEL_KEYS[option])}
+                </span>
+                <span className="scope-compact-option-hint">
+                  {t(STATE_HINT_KEYS[option])}
+                </span>
+              </span>
+              {state === option ? <IconCheck size={13} /> : null}
+            </TooltipButton>
+          ))}
+          </AnchoredMenu>
           {state === "projects" ? (
             <ScopeProjectsSummary
               compact
@@ -236,19 +215,20 @@ export function ScopeControl({
             aria-label={t("extensions.scope.ariaLabel", { name: label })}
           >
             {STATE_ORDER.map((option) => (
-              <button
+              <TooltipButton
                 key={option}
                 type="button"
                 role="radio"
                 aria-checked={state === option}
                 className={cx("scope-seg", state === option && "is-active")}
-                title={t(STATE_HINT_KEYS[option])}
+                tooltip={t(STATE_HINT_KEYS[option])}
+                ariaLabel={t(STATE_LABEL_KEYS[option])}
                 disabled={disabled}
                 onClick={() => select(option)}
               >
                 <StateIcon state={option} />
                 <span>{t(STATE_LABEL_KEYS[option])}</span>
-              </button>
+              </TooltipButton>
             ))}
           </div>
           {state === "projects" ? (
@@ -285,7 +265,7 @@ function ScopeProjectsSummary({
   label,
 }: {
   compact?: boolean;
-  anchorRef?: { current: HTMLElement | null };
+  anchorRef?: RefObject<HTMLElement | null>;
   scope: ActivationScope;
   projects: readonly ProjectRecord[];
   currentProjectPath?: string | null;
@@ -295,35 +275,7 @@ function ScopeProjectsSummary({
   label: string;
 }) {
   const { t } = useTranslation();
-  const wrapRef = useRef<HTMLDivElement | null>(null);
-  const [flipUp, setFlipUp] = useState(false);
   const [query, setQuery] = useState("");
-
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: MouseEvent) => {
-      if (!wrapRef.current?.contains(event.target as Node)) onOpenChange(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.stopPropagation();
-      onOpenChange(false);
-    };
-    document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open, onOpenChange]);
-
-  // Measured before paint: a popover that opens downwards and then jumps up
-  // reads as a glitch.
-  useLayoutEffect(() => {
-    if (!open) return;
-    const rect = (anchorRef ?? wrapRef).current?.getBoundingClientRect();
-    if (rect) setFlipUp(window.innerHeight - rect.bottom < 320);
-  }, [anchorRef, open]);
 
   useEffect(() => {
     if (!open) setQuery("");
@@ -371,48 +323,57 @@ function ScopeProjectsSummary({
   const count = scope.projects.length;
 
   return (
-    <div className={cx("scope-projects", compact && "is-compact")} ref={wrapRef}>
-      {!compact ? (
-        <>
-          <button
-            type="button"
-            className={cx("scope-chip", count === 0 && "is-empty", open && "is-open")}
-            aria-haspopup="dialog"
-            aria-expanded={open}
-            onClick={() => onOpenChange(!open)}
-          >
-            <IconFolder size={12} />
-            {count === 0
-              ? t("extensions.scope.pickProjects")
-              : count === 1
-                ? projectLabel(scope.projects[0])
-                : t("extensions.scope.projectCount", { count })}
-          </button>
-          {count === 0 ? (
-            <span className="scope-warn" role="status">
-              {t("extensions.scope.noProjectsWarning")}
-            </span>
-          ) : null}
-        </>
-      ) : null}
-      {open ? (
-        <div
-          className={cx("scope-popover", flipUp && "is-up")}
-          role="dialog"
-          aria-label={t("extensions.scope.pickerTitle", { name: label })}
-        >
-          <div className="scope-popover-head">
-            <div className="scope-popover-title">{t("extensions.scope.pickerTitle", { name: label })}</div>
+    <AnchoredMenu
+      className={cx("scope-projects", compact && "is-compact")}
+      open={open}
+      onClose={() => onOpenChange(false)}
+      anchorRef={anchorRef}
+      menuClassName="scope-popover"
+      label={t("extensions.scope.pickerTitle", { name: label })}
+      role="dialog"
+      align="end"
+      initialFocus="input"
+      trigger={(ref) =>
+        compact ? null : (
+          <>
             <button
+              ref={ref}
+              type="button"
+              className={cx("scope-chip", count === 0 && "is-empty", open && "is-open")}
+              aria-haspopup="dialog"
+              aria-expanded={open}
+              onClick={() => onOpenChange(!open)}
+            >
+              <IconFolder size={12} />
+              {count === 0
+                ? t("extensions.scope.pickProjects")
+                : count === 1
+                  ? projectLabel(scope.projects[0])
+                  : t("extensions.scope.projectCount", { count })}
+            </button>
+            {count === 0 ? (
+              <span className="scope-warn" role="status">
+                {t("extensions.scope.noProjectsWarning")}
+              </span>
+            ) : null}
+          </>
+        )
+      }
+    >
+      <>
+        <div className="scope-popover-head">
+            <div className="scope-popover-title">{t("extensions.scope.pickerTitle", { name: label })}</div>
+            <TooltipButton
               type="button"
               className="scope-popover-close"
-              aria-label={t("common.close")}
+              tooltip={t("common.close")}
+              ariaLabel={t("common.close")}
               onClick={() => onOpenChange(false)}
             >
               <IconX size={12} />
-            </button>
-          </div>
-          <div className="scope-popover-search">
+            </TooltipButton>
+        </div>
+        <div className="scope-popover-search">
             <IconSearch size={12} />
             <input
               value={query}
@@ -422,8 +383,8 @@ function ScopeProjectsSummary({
               aria-label={t("extensions.scope.searchProjects")}
               onChange={(event) => setQuery(event.target.value)}
             />
-          </div>
-          <div className="scope-popover-list" role="listbox" aria-multiselectable>
+        </div>
+        <div className="scope-popover-list" role="listbox" aria-multiselectable>
             {rows.length === 0 ? (
               <p className="scope-popover-empty">{t("extensions.scope.noProjects")}</p>
             ) : (
@@ -454,10 +415,9 @@ function ScopeProjectsSummary({
                 );
               })
             )}
-          </div>
-          <p className="scope-popover-foot">{t("extensions.scope.subdirectoryNote")}</p>
         </div>
-      ) : null}
-    </div>
+        <p className="scope-popover-foot">{t("extensions.scope.subdirectoryNote")}</p>
+      </>
+    </AnchoredMenu>
   );
 }

@@ -28,6 +28,17 @@ export const API_STYLES = [
 export type CatalogApiStyle = (typeof API_STYLES)[number];
 
 /**
+ * Keep persisted provider rows editable when an older or newer client stored
+ * an API style this renderer does not know yet. Runtime transport resolution
+ * uses the same Chat Completions fallback for unknown styles.
+ */
+export function normalizeApiStyle(value?: string | null): CatalogApiStyle {
+  return API_STYLES.some((style) => style === value)
+    ? (value as CatalogApiStyle)
+    : "chat_completions";
+}
+
+/**
  * models.dev publishes an `npm` adapter package per provider. That value is the
  * most reliable published signal for which wire API a provider speaks, so the
  * setup flow derives the API style from it instead of asking the user to guess.

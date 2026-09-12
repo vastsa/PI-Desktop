@@ -11,20 +11,36 @@
  * ============================================================ */
 
 .composer-autocomplete {
-  position: absolute;
+  position: fixed;
+  top: 0;
   left: 0;
-  right: 0;
-  bottom: calc(100% + 8px);
+  right: auto;
+  bottom: auto;
   z-index: 40;
   display: flex;
   flex-direction: column;
+  width: min(100%, calc(100vw - 24px));
   max-height: min(380px, calc(100vh - 160px));
+  max-width: calc(100vw - 24px);
   border-radius: var(--radius-lg);
   background: var(--ds-bg-elevated-opaque);
   box-shadow: var(--ds-shadow-dialog);
   border: 1px solid var(--ds-border-subtle);
   color: var(--ds-text-primary);
   overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.composer-autocomplete-anchor {
+  display: contents;
+}
+
+.composer-autocomplete.is-open {
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
 }
 
 .composer-ac-list {

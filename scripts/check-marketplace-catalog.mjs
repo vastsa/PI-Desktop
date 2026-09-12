@@ -196,6 +196,11 @@ function validateCatalog(catalog, pluginFilter, catalogSource) {
   for (const plugin of catalog.plugins) {
     if (pluginFilter && plugin.id !== pluginFilter) continue;
     if (!plugin.id) errors.push("plugin is missing id");
+    if (typeof plugin.author !== "string" || !plugin.author.trim()) {
+      errors.push(
+        `${plugin.id || "<unknown>"}: author must be a string (not a {name,url} object)`,
+      );
+    }
     if (plugin.trust !== undefined && !TRUST_TIERS.has(String(plugin.trust))) {
       errors.push(`${plugin.id || "<unknown>"}: unknown trust tier ${plugin.trust}`);
     }

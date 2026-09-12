@@ -9,7 +9,7 @@ const composerSource = await readFile(
 
 test("Agent and Plan permission menus present only effective selectable modes", () => {
   const permissionControlSource = composerSource.slice(
-    composerSource.indexOf('<div className="composer-permission"'),
+    composerSource.indexOf('className="composer-permission"'),
     composerSource.indexOf('<div className="composer-right">'),
   );
 
@@ -31,7 +31,7 @@ test("Agent and Plan permission menus present only effective selectable modes", 
 
 test("Goal keeps the permission chip visible but fixes it to Full auto", () => {
   const permissionControlSource = composerSource.slice(
-    composerSource.indexOf('<div className="composer-permission"'),
+    composerSource.indexOf('className="composer-permission"'),
     composerSource.indexOf('<div className="composer-right">'),
   );
 

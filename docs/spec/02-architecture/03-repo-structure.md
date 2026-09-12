@@ -34,7 +34,7 @@ PI-Desktop/
 │   └── src/                  # rpc/, tools/, plus one module per domain
 ├── packages/
 │ ├── shared/                 # IPC/protocol contracts, error codes, changelog
-│ ├── i18n/                   # en and zh-CN catalogs plus locale helpers
+│ ├── i18n/                   # shipped UI catalogs plus locale helpers
 │ ├── agent-runtime/          # pi sidecar and runtime wrapper (bundled into the app)
 │ ├── plugin-sdk/             # plugin author types and validators
 │ └── plugin-devkit/          # pi-plugin CLI: scaffold, check, pack, publish
@@ -94,8 +94,8 @@ Cross-boundary contracts:
 - changelog entries surfaced in the app
 
 ### `packages/i18n`
-- English source catalog and the zh-CN catalog
-- locale resolution helpers
+- English source catalog and shipped translated catalogs
+- locale registry and resolution helpers
 - message ID conventions
 
 ### `packages/plugin-sdk`

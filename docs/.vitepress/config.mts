@@ -151,6 +151,7 @@ const enNav: DefaultTheme.NavItem[] = [
   { text: 'Specs', link: '/spec/README' },
   { text: 'ADRs', link: '/adr/README' },
   { text: 'Plugin guide', link: '/plugin-development' },
+  { text: 'Privacy policy', link: '/privacy-policy' },
   { text: 'GitHub', link: 'https://github.com/vastsa/PI-Desktop' },
 ]
 
@@ -159,6 +160,7 @@ const zhNav: DefaultTheme.NavItem[] = [
   { text: '规格', link: '/zh-CN/spec/README' },
   { text: 'ADR', link: '/zh-CN/adr/' },
   { text: '插件开发', link: '/zh-CN/plugin-development' },
+  { text: '隐私政策（英文）', link: '/privacy-policy' },
   { text: 'GitHub', link: 'https://github.com/vastsa/PI-Desktop' },
 ]
 
@@ -193,7 +195,7 @@ export default defineConfig({
         darkModeSwitchLabel: '外观',
         langMenuLabel: '切换语言',
         editLink: { pattern: 'https://github.com/vastsa/PI-Desktop/edit/main/docs/:path', text: '在 GitHub 上编辑此页' },
-        footer: { message: '为本地优先开发而构建。', copyright: 'Copyright © 2026 PI-Desktop 贡献者' },
+        footer: { message: '为本地优先开发而构建。 <a href="https://aiuo.net" target="_blank" rel="noreferrer">AIUO.NET</a>', copyright: 'Copyright © 2026 PI-Desktop 贡献者' },
       },
     },
   },
@@ -203,14 +205,14 @@ export default defineConfig({
     theme: { light: 'github-light', dark: 'github-dark' },
   },
   themeConfig: {
-    logo: '/brand-mark.svg',
+    logo: '/app-icon.png',
     siteTitle: 'PI-Desktop',
     search: { provider: 'local' },
     socialLinks: [{ icon: 'github', link: 'https://github.com/vastsa/PI-Desktop' }],
     editLink: { pattern: 'https://github.com/vastsa/PI-Desktop/edit/main/docs/:path', text: 'Edit this page on GitHub' },
     outline: { level: 'deep', label: 'On this page' },
     docFooter: { prev: 'Previous', next: 'Next' },
-    footer: { message: 'Built for local-first development.', copyright: 'Copyright © 2026 PI-Desktop contributors' },
+    footer: { message: 'Built for local-first development. <a href="https://aiuo.net" target="_blank" rel="noreferrer">AIUO.NET</a>', copyright: 'Copyright © 2026 PI-Desktop contributors' },
     nav: enNav,
     sidebar: enSidebar,
   },

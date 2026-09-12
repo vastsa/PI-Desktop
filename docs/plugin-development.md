@@ -15,7 +15,7 @@ A plugin can contribute one or more of these capabilities:
 | Panel | A small isolated HTML interface | `ui.panel`, `ui.panel` permission, `window.pluginBridge` |
 | Work panel view | An interface docked in the app's right work panel | `contributes.views`, `ui.view` permission, `window.pluginBridge` |
 | Agent tool | A function the Agent can call | `contributes.agentTools`, `pi.agent.registerTool` |
-| Reviewer completion | A host-owned one-shot against the user's models | `pi.models.list`, `pi.session.getLlmContext`, `pi.agent.complete` |
+| One-shot completion | A host-owned completion against the user's models | `pi.models.list`, `pi.session.getLlmContext`, `pi.agent.complete` |
 | Skill | Instructions loaded by the Agent on demand | `contributes.skills`, `agent.prompt.inject` permission |
 | Theme | Design-token overrides | `contributes.themes`, `ui.theme` permission |
 | MCP server | Tools discovered from a local or remote MCP server | `contributes.mcpServers`, an MCP permission |
@@ -658,6 +658,71 @@ Call `unsubscribe()` during unload. A plugin does not receive its own bus
 messages. Treat topics as public to any installed plugin with a matching
 subscription; never put secrets in the payload.
 
+### 6.11 Agent extension (pi ExtensionAPI module)
+
+A plugin can ship code that runs inside the agent process itself: a module
+written against the pi CLI `ExtensionAPI`, the same contract pi extensions
+use. It registers tools, slash commands, and hooks on every turn, tool call,
+and provider request. Declare the modules and the `agent.extension`
+permission:
+
+```json
+{
+  "contributes": { "agentExtensions": ["src/index.ts"] },
+  "permissions": ["agent.extension"]
+}
+```
+
+```ts
+// src/index.ts
+import { Type } from "typebox";
+import { defineTool } from "@earendil-works/pi-coding-agent";
+
+export default function (pi) {
+  pi.registerTool(defineTool({
+    name: "fx_add", label: "Add", description: "Adds two numbers",
+    parameters: Type.Object({ a: Type.Number(), b: Type.Number() }),
+    async execute(_id, { a, b }) {
+      return { content: [{ type: "text", text: String(a + b) }], details: {} };
+    },
+  }));
+  pi.on("tool_call", (event) =>
+    event.toolName === "Bash" ? { block: true, reason: "not here" } : undefined,
+  );
+  pi.registerCommand("greet", {
+    description: "Say hello",
+    async handler(args, ctx) {
+      const name = await ctx.ui.input("Your name?");
+      ctx.ui.notify(`Hello ${name} ${args}`);
+    },
+  });
+}
+```
+
+What to know before you use it:
+
+- **It is not sandboxed.** The module runs in the agent process with the
+  same access as the agent's own tools. `agent.extension` is a high-risk
+  permission the user confirms explicitly; the manifest is rejected if you
+  list modules without it.
+- **TypeScript is fine.** Modules are loaded with jiti, so `.ts` needs no
+  build step. `typebox`, `@earendil-works/pi-agent-core`, `@earendil-works/pi-ai`,
+  and `@earendil-works/pi-coding-agent` resolve to the app's copies;
+  `@earendil-works/pi-tui` resolves to an inert stub, so terminal-UI calls
+  do nothing and show up as diagnostics.
+- **Tools are deferred.** Like plugin tools, the model activates them
+  through `ToolSearch` on demand. Names that collide with core or plugin
+  tools are rejected with a diagnostic.
+- **Slash commands** appear in the composer `/` menu and global search and
+  take the rest of the line as `args`. `ctx.ui.input` / `select` / `confirm`
+  open native dialogs; `ui.notify` is a toast.
+- **Supported members** are listed in spec 07-plugins/16 §5. Unsupported
+  ones (`setWidget`, `registerMessageRenderer`, `navigateTree`, and the
+  other terminal-only surfaces) are inert and reported in the plugin row's
+  details, never thrown.
+- **Existing pi extensions** need no changes: Plugins → overflow menu →
+  "Import pi extension" wraps a file or directory in a generated plugin.
+
 ## 7. Permission design
 
 Permissions are both declared in `manifest.json` and granted by the user.
@@ -761,6 +826,35 @@ To test the exact artifact users receive:
 The Agent can also run `PluginCheck` in every operating mode. `PluginScaffold`
 and `PluginPack` are Agent-mode tools and are restricted to the current
 workspace.
+
+### Prepare a plugin center submission with `pi-plugin publish`
+
+`publish` packs the plugin and pins the package to the git commit it was built
+from, so the plugin center can rebuild and compare the artifact:
+
+```bash
+pnpm pi-plugin publish ../my-first-plugin [--out <dir>] [--ref <ref>] [--channel stable|beta] [--allow-dirty]
+```
+
+The command runs the same `check` and `pack` steps, then reads the `origin`
+remote and `HEAD` of the plugin's repository. SSH remotes are rewritten to the
+canonical `https://` form; remotes with embedded credentials or a non-HTTPS
+scheme are rejected. The working tree must be clean unless you pass
+`--allow-dirty`, which produces a submission the center cannot reproduce and
+prints a warning. The pinned `ref` is `--ref` when given, otherwise the tag
+that points at `HEAD` as `refs/tags/<tag>`; without a tag the bare commit is
+submitted with a warning. The plugin's path relative to the repository root is
+recorded so a plugin may live in a subdirectory.
+
+The result is `dist/<id>-<version>.submission.json` (or `--out`), a
+`schemaVersion: 1` payload with `pluginId`, `version`, `channel`, the
+`source` pin (`repository`, `ref`, `commit`, `path`), the `artifact`
+(`publisher-release` mode, file name, SHA-256, size), the declared
+`permissions`, and an `idempotencyKey` that is stable per plugin, version,
+commit, and artifact so a retried submission is not a new release. Attach the
+`.piplug` to a release on that commit, then submit the payload to the plugin
+center. The center re-resolves the source from the forge and does not trust
+the recorded values.
 
 ## 10. Prepare a release
 

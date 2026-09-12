@@ -14,7 +14,7 @@
 export const SCROLLING_ATTRIBUTE = "data-scrolling";
 
 /** Quiet time after the last scroll event before the thumb hides again. */
-export const SCROLLBAR_REVEAL_HOLD_MS = 800;
+export const SCROLLBAR_REVEAL_HOLD_MS = 300;
 
 interface MarkableElement {
   setAttribute(name: string, value: string): void;

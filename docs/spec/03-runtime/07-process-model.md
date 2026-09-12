@@ -56,8 +56,14 @@ After host-core is up, Electron main reads `AppSettings.networkProxy` and
 applies it before spawning the agent sidecar (D340). Chromium sessions use
 `session.setProxy`; main-process `fetch` is `net.fetch`; the sidecar receives
 the same config through `sidecar.configure` and `PI_DESKTOP_PROXY_JSON`.
+HTTP(S) provider requests use undici's proxy dispatcher; SOCKS5 provider
+requests use a buffered CONNECT tunnel so a proxy may coalesce the SOCKS
+handshake response without stalling the request.
 host-core marketplace `curl` gets `--proxy` from the stored settings and does
 **not** inherit proxy env, so workspace Bash cannot see proxy credentials.
+Marketplace curl diagnostics prefer UTF-8 and fall back to the active Windows
+ANSI code page before crossing the UTF-8 RPC boundary, so localized Schannel
+errors remain readable instead of becoming replacement characters.
 
 ## 4. Crash policy
 
@@ -68,9 +74,47 @@ host-core marketplace `curl` gets `--proxy` from the stored settings and does
 | Node agent crash | abort active turns and live approval waiters/queue entries, keep pending sessions in their contract mode, preserve already-approved Agent mode in Rust, restart sidecar, and never replay an execution |
 | Electron main crash | full app exit |
 
+Broken stdout/stderr (`EPIPE`/`EIO`) is not a main-process crash. Main ignores
+those writes so a Linux AppImage or GUI launch without a live TTY keeps
+supervising host/sidecar instead of showing Electron's uncaught exception
+dialog.
+
+Linux packaged host-core is built on Ubuntu 22.04 and needs glibc 2.35 or newer
+(Ubuntu 22.04, Debian 12, Fedora 36+). A lower glibc is a fatal host status,
+not a restart loop: the UI names those releases instead of "Can't reach the
+local service". The Linux tag job must not use a newer runner that would raise
+the needed glibc.
+
+Two more boot outcomes are named rather than left as a generic outage (D380):
+
+- **Downgraded build.** host-core refuses a data directory whose SQLite schema
+  is newer than the build supports (`database schema version N is newer than
+  supported M` on stderr). Electron parses that line from the last stderr
+  before exit, stops the restart loop on the first failure, and pushes
+  `hostStatus` with `message: "DB_SCHEMA_TOO_NEW"` and both numbers. The banner
+  tells the user to install the newer PI-Desktop that last opened this data.
+  No data is migrated down.
+- **Non-native build.** At boot Electron compares `process.arch` with the CPU
+  (on macOS via `sysctl.proc_translated`, which is `1` only under Rosetta 2;
+  elsewhere via `os.machine()`). A mismatch rides on the boot `hostStatus` as
+  `archMismatch` even when boot succeeded, and the renderer shows a dismissible
+  hint naming the build (Intel / Apple Silicon on macOS) and the matching
+  download. An arm64 build on an Intel Mac never launches, so only the
+  Intel-on-Apple-Silicon direction is detectable.
+
+Windows packages target x64. The Windows host-core build uses the
+`x86_64-pc-windows-msvc` target with `target-feature=+crt-static`, so the NSIS
+package does not require a separately installed Visual C++ Redistributable to
+start its local service. Windows 11 ARM64 systems run this x64 package through
+the operating system's x64 emulation; native Windows ARM64 artifacts are not
+currently published.
+
 Supervision parameters (implemented in Electron main):
 
 - Child exit rejects all in-flight RPCs for that child immediately (no 130s timeout wait).
+- An NDJSON request line over 64 MiB is drained and answered with `LIMIT_EXCEEDED`; it does not end the stdin reader (ADR 0216). Electron rejects the same size before writing stdin (ADR 0217).
+- The Windows Alt+Space hook retains only a weak stdout sender. After stdin EOF, serve drops the last strong sender and host-core exits. A leaked sender cannot block shutdown for more than 5 s (ADR 0217).
+
 - Auto-restart with exponential backoff `0.5s → 1s → 2s` (cap 4s).
 - At most **3 restarts per 2-minute window** per child; beyond that the app
   stays degraded and emits `hostStatus { ok: false, component, fatal: true }`.
@@ -187,11 +231,29 @@ sidecar/host shutdown sequence runs before the updater replaces the app.
   pure-JS helpers it calls without changing process or protocol ownership
 - renderer dependencies ship through Vite output rather than duplicate raw
   package trees; no interactive PTY native module is packaged
-- packaged builds use the Main-owned update controller. macOS and non-AppImage
-  Linux are manual-delivery modes; Windows NSIS and Linux AppImage use the
-  in-app feeds published by D126 tag releases
+- packaged builds use the Main-owned update controller. macOS, non-AppImage
+  Linux, and Windows portable runs are manual-delivery modes; Windows NSIS and
+  Linux AppImage use the in-app feeds published by D126 tag releases
 
-## 7. Acceptance
+## 7. Remote target topology (post-MVP)
+
+Remote control does not add a public listener to Rust host-core or the current
+renderer IPC surface. The target Agent Host is a headless module
+(`packages/agent-host`) that owns session and turn admission, the turn queue,
+the approval broker, and the event log, supervised beside the Node pi sidecar
+and Rust host-core, with an authenticated RACP server above it (D374). The
+first remote deployment (D375) runs that module as a headless `pi-host` on a
+remote machine, bound to loopback and reached from the desktop through an SSH
+port forward. The unscheduled Gateway topology would add an outbound Host
+link; the Gateway routes authenticated clients and never owns workspace
+state.
+
+The detailed topology, ownership, and migration boundary are specified in
+[`02-architecture/05-remote-agent-control.md`](../02-architecture/05-remote-agent-control.md).
+The current four-process local topology and shutdown order remain unchanged
+until a post-MVP implementation milestone explicitly amends this section.
+
+## 8. Acceptance
 
 1. Clean boot path documented and scriptable
 2. Host crash does not silently continue tool execution

@@ -82,7 +82,7 @@ Exit criteria:
 - disable removes contributions
 
 ### M5 — Desktop Hardening
-Status: **Complete except credential-gated macOS notarization**
+Status: **Complete except a release-qualification run for macOS artifacts**
 
 Goal: daily-usable package.
 
@@ -96,16 +96,14 @@ Deliverables:
 Progress:
 - [x] packaging scaffold (electron-builder macOS arm64 `--dir`, host/sidecar resources)
 - [x] substantial settings/session/UI polish on main
-- [x] code signing lanes (unsigned local default; Developer ID + hardened
-  runtime + entitlements injected by `scripts/release-macos.sh`, D078)
+- [x] signed and notarized macOS release lane with required CI secrets, DMG
+  stapling, and pre-upload verification
 - [x] custom app icon (generated pi mark → `build/icon.icns`, D079)
 - [x] isolation/logging hardening (renderer sandbox D081, NDJSON log
   channels D082, crash supervision D080, window state D083)
 - [x] packaged macOS update discovery, fixed release link, typed update state,
   and tag-workflow feed assets (manual delivery, D120 / ADR 0022)
-- [ ] full DMG + notarization — runbook ready
-  ([06-release-runbook](06-release-runbook.md)); blocked only on Apple
-  Developer credentials (operational, not code)
+- [x] full DMG signing and notarization with pre-upload verification
 
 ### M6 — Plan Operating State
 Status: **Complete (2026-08-05)**
@@ -171,7 +169,7 @@ Implemented after the M6 Plan checkpoint:
 Remaining work is tracked as product hardening rather than unstarted MVP scope:
 
 - stronger plugin runtime sandboxing and publisher signatures
-- signed/notarized macOS distribution and native Windows/Linux qualification
+- qualification of a tagged macOS release build and native Windows/Linux qualification
 - full Playwright/UI-driven E2E coverage
 - additional locales beyond the shipped zh-CN catalog
 

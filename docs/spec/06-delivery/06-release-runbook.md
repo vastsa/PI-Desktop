@@ -1,7 +1,7 @@
 # 06. Desktop Release Runbook
 
 > Scope: D126/D285 tag artifacts for macOS arm64 and Intel x64, Windows x64,
-> and Linux x64;
+> and Linux x64, including the Linux system-Electron ASAR asset;
 > macOS signing/notarization remains the detailed qualification lane below.
 > Cross-references: [milestones](01-mvp-milestones.md) · [process model](../03-runtime/07-process-model.md) · [security](../05-security/01-security.md)
 
@@ -10,13 +10,15 @@
 | Lane | Command | Signing | Use |
 |---|---|---|---|
 | Dev | `pnpm dev` | none | daily development |
-| Local package | `pnpm --filter @pi-desktop/desktop pack` | unsigned (`identity: null`) | packaging smoke (`--dir` output) |
-| Local DMG | `pnpm --filter @pi-desktop/desktop dist` | unsigned | local install test |
-| Release | `scripts/release-macos.sh` | Developer ID + optional notarization | distributable artifact |
+| Local package | `pnpm --filter @pi-desktop/desktop pack` | unsigned without a configured certificate | packaging smoke (`--dir` output) |
+| Local DMG | `pnpm --filter @pi-desktop/desktop dist` | unsigned without a configured certificate | local install test |
+| Release | `scripts/release-macos.sh` | Developer ID + mandatory notarization | distributable artifact |
 
-The static electron-builder config stays unsigned-friendly (`identity: null`)
-so contributors without certificates can always package. The release script
-injects the real identity via `-c.mac.identity` at build time.
+The static electron-builder config does not embed a certificate identity, so
+contributors without certificates can still package locally. The release lane
+requires an injected Developer ID identity (local) or `CSC_LINK` certificate
+(CI), and fails before publication if signing or notarization verification does
+not pass.
 
 On macOS, `pnpm dev` creates and reuses a fingerprinted branded Electron host
 bundle under `.cache/electron-dev/`. Its bundle name, executable, identifier,
@@ -46,8 +48,8 @@ when macOS `iconutil` is available, without overwriting the canonical source.
    the login keychain.
 2. Environment variables:
    - `MAC_SIGNING_IDENTITY` — e.g. `Developer ID Application: <Name> (<TEAMID>)`
-   - `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` — required only
-     for notarization; the script builds signed-but-unnotarized without them.
+   - `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` — required for
+     notarization.
 3. Rust toolchain and pnpm workspace installed. The Rust toolchain must run on
    the native macOS runner: arm64 for Apple Silicon or x86_64 for Intel.
 
@@ -57,6 +59,10 @@ when macOS `iconutil` is available, without overwriting the canonical source.
   (`build/entitlements.mac.plist`: JIT + unsigned-executable-memory +
   library-validation disable — the standard Electron set).
 - `Resources/bin/pi-desktop-host-core` — Rust host binary (release build).
+- Windows NSIS builds include an x64 `pi-desktop-host-core.exe` statically
+  linked to the MSVC CRT, so a clean Windows x64 or Windows 11 ARM64
+  (x64-emulated) installation does not need a separate Visual C++
+  Redistributable before the local service can start.
 - `Resources/agent-runtime/` — bundled sidecar, executed with
   `ELECTRON_RUN_AS_NODE=1` (no separate Node shipped).
 - `Resources/licenses/` — notices that must remain distributable when the
@@ -64,8 +70,9 @@ when macOS `iconutil` is available, without overwriting the canonical source.
 - `Resources/app.asar` — Electron Main, preload, renderer output, and only the
   runtime-resolved production modules. Renderer libraries are already present
   in Vite output and are not copied again as raw package trees.
-- Chromium locale packs for English and Simplified Chinese only. Product
-  `en`/`zh-CN` catalogs remain bundled independently of Chromium locales.
+- Chromium locale packs for English, Simplified Chinese, Traditional Chinese,
+  Turkish, German, Spanish, French, and Korean. Product catalogs remain bundled
+  independently of Chromium locales.
 - App icon `build/icon.icns` (derived from canonical `build/icon_1024.png` by
   `scripts/make-icon.py`).
 - macOS menu bar template `build/tray-icon-mac.png`, derived from the dark PI
@@ -77,7 +84,7 @@ when macOS `iconutil` is available, without overwriting the canonical source.
 ### 4.1 Mandatory release version-surface gate (D164 + D260)
 
 **Every product release that bumps a stable app version and cuts a tag MUST
-first update every version-bearing surface: the dual-locale in-app product
+first update every version-bearing surface: the shipped-locale in-app product
 changelog and the version numbers stated in project documentation.** Tagging a
 stable version while any surface still describes an older version is a
 **release process failure**: packaged builds cannot show "what's new" without a
@@ -89,7 +96,7 @@ Surfaces in scope:
 
 | Surface | Requirement |
 |---|---|
-| `packages/shared/src/changelog.ts` | Newest-first EN + zh-CN entries for the version, matching highlight counts |
+| `packages/shared/src/changelog.ts` | Newest-first entries for every shipped product locale, matching highlight counts |
 | `packages/shared/src/changelog.test.ts` | Version added at the top of the newest-first list |
 | `package.json`, `apps/*/package.json`, `packages/*/package.json`, `docs/package.json` | Same version (`docs` is a third workspace root, not under `apps`/`packages`) |
 | `Cargo.toml` `[workspace.package]`, `Cargo.lock` `host-core` | Same version |
@@ -100,7 +107,7 @@ Blocking steps:
 
 1. Edit `packages/shared/src/changelog.ts` **before**
    `node scripts/release.mjs <version>` / `git tag`:
-   - Add a **newest-first** entry under both `en` and `zh-CN`.
+   - Add a **newest-first** entry under `en` and every shipped product locale.
    - Same `version` string (semver **without** a leading `v`, matching
      `apps/desktop` / `APP_VERSION`).
    - Optional ISO `date` (`YYYY-MM-DD`).
@@ -118,7 +125,9 @@ Blocking steps:
    now describe incorrectly. Both locales stay structurally in sync; English is
    the source of truth and the zh-CN file links the `docs/zh-CN/` mirrors.
 5. Run the preflight and fix every reported surface:
-   `pnpm check:release-docs [version]` (`node scripts/check-release-docs.mjs`).
+   `pnpm check:release-docs [version]` (`node scripts/check-release-docs.mjs`). The
+   preflight compiles the TypeScript changelog in a temporary directory, so it does
+   not require a prior workspace build.
    `scripts/release.mjs` runs
    the same check after bumping and refuses to commit or tag while it fails;
    `--skip-docs-check` exists only for a deliberate non-release bump.
@@ -129,7 +138,8 @@ Blocking steps:
 
 Pre-tag checklist:
 
-- [ ] `packages/shared/src/changelog.ts` has EN + zh-CN entries for the version
+- [ ] `packages/shared/src/changelog.ts` has entries for every shipped product
+      locale for the version
       about to be tagged
 - [ ] Highlight counts match across locales
 - [ ] Shared changelog tests pass
@@ -155,7 +165,7 @@ Artifacts land in `apps/desktop/release/` (DMG + ZIP + blockmaps).
 `MAC_ARCH=arm64` or `MAC_ARCH=x64` only when that architecture matches the
 host. This keeps the native Rust host sidecar and Electron package aligned.
 
-### 4.3 GitHub tag workflow
+### 4.3 GitHub tag and manual workflow
 
 The GitHub Release workflow starts all native platform runners without a
 separate validation-job barrier. Each runner validates that the pushed tag
@@ -171,18 +181,100 @@ runtime, verifying the host build, building the Desktop application once, and
 invoking electron-builder. This avoids a redundant Desktop build without
 changing the package scripts or release artifacts.
 
+**Default macOS release policy:** the GitHub Release workflow packages macOS
+DMG/ZIP artifacts unsigned by default. Tag pushes and manual runs with
+`sign_macos` omitted or set to `false` disable identity discovery, do not receive
+signing or notarization secrets, and skip macOS stapling and signature
+verification. To explicitly sign a run, manually dispatch the workflow for the
+target tag with `sign_macos: true`. The local `scripts/release-macos.sh` command
+remains the explicit signed lane.
+
 The macOS matrix uses `macos-15` for arm64 and `macos-15-intel` for Intel x64.
 Each job verifies `uname -m`, passes the matching `--arm64` or `--x64` flag to
 electron-builder, and builds `pi-desktop-host-core` on that same native
-runner. The per-architecture `latest-mac.yml` files are renamed before upload;
-the publish job merges them into one feed after downloading both artifacts.
+runner. The default macOS package step is unsigned. When a manual run explicitly
+sets `sign_macos: true`, it receives `CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`,
+`APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID` only from GitHub Actions
+secrets. It then forces code signing and notarization, verifies the Developer ID
+authority, code-signing integrity, Gatekeeper assessment, and stapled app
+ticket, and explicitly staples and validates the generated DMG before any
+artifact upload. The per-architecture
+`latest-mac.yml` files are renamed before upload; the publish job merges them
+into one feed after downloading both artifacts.
 
-DMG, ZIP, NSIS, AppImage, deb, blockmap, and updater feed outputs are already
+The shared electron-builder configuration applies the architecture-labelled
+pattern at the macOS platform level for ZIPs and overrides it at the DMG target
+level. Both public architectures are therefore explicit: the arm64 lane
+publishes `PI-Desktop-<version>-arm64.dmg` and
+`PI-Desktop-<version>-arm64-mac.zip`, while the Intel x64 lane publishes
+`PI-Desktop-<version>-x64.dmg` and `PI-Desktop-<version>-x64-mac.zip`. This
+applies to both unsigned and signed macOS lanes, including local release builds,
+and ensures each generated updater feed references its architecture-labelled
+asset names and matching checksums. Before upload, each macOS runner requires
+exactly one architecture-labelled DMG and ZIP (including blockmaps) and rejects
+any unlabelled or wrong-architecture macOS artifact.
+
+The DMG uses a branded 720×500 background with a clear drag-to-Applications
+gesture. The app and Applications link occupy the main row; the first-launch
+opening note sits in a secondary row so the unsigned-build path is discoverable
+without making it the normal installation action. The note is displayed as
+`If app won't open, read this.txt`; the DMG does not include the executable command helper.
+
+Every macOS DMG includes the companion
+`PI-Desktop-macOS-opening-help.txt` at the package root under that display
+name. The macOS ZIP includes both that note and the executable
+`PI-Desktop-macOS-open.command`. After moving `PI-Desktop.app` to
+`/Applications` or `~/Applications`, ZIP users can double-click the helper. It
+searches only those two fixed locations, removes only the recursive
+`com.apple.quarantine` attribute when present, and opens PI-Desktop. Before
+doing so it verifies `CFBundleIdentifier=com.pi-desktop.app`. It does not use
+`sudo` or accept an arbitrary application path. The manual fallback for the
+standard system location is:
+
+```sh
+xattr -r -d com.apple.quarantine /Applications/PI-Desktop.app
+```
+
+This helper is only for a trusted unsigned artifact when macOS reports that the
+app is damaged. Signed and notarized builds should open without it.
+
+DMG, ZIP, NSIS, AppImage, deb, rpm, blockmap, and updater feed outputs are already
 compressed or compression-insensitive. The workflow therefore uploads their
 temporary Actions artifacts with compression level zero before the publish job
-assembles the GitHub Release.
+assembles the GitHub Release. The Linux runner also copies
+`linux-unpacked/resources/app.asar` to the versioned
+`PI-Desktop-<version>-linux-x64.asar` asset before upload. This preserves the
+exact archive used by the Linux installers for downstream repackaging with a
+system Electron.
+
+### 4.4 CNB mirror trigger
+
+After `softprops/action-gh-release` publishes or updates a GitHub Release,
+`.github/workflows/mirror-to-cnb.yml` starts the CNB pipeline at
+`aixk/Pi-Desktop`. GitHub Release remains the canonical artifact source; CNB
+is a copy of the same tag for users who pull from
+https://cnb.cool/aixk/Pi-Desktop.
+
+The job:
+
+- runs only on `vastsa/PI-Desktop`
+- fires on `release` `published` / `edited`, and on `workflow_dispatch` with
+  an explicit tag such as `v0.14.6`
+- sends event `api_trigger_mirror` and `MIRROR_TAGS` set to that tag
+- uses repository secret `CNB_MIRROR_TOKEN` (already configured) and fails
+  closed if the secret is empty
+- builds the JSON body with `jq` so a missing tag cannot produce an empty
+  `MIRROR_TAGS` value on a manual run
+
+Re-running the workflow for the same tag is safe if the CNB pipeline is
+idempotent. It does not rebuild desktop artifacts and does not change
+electron-updater feeds.
 
 ## 5. Verification gates
+
+For the default unsigned macOS lane, do not treat macOS artifacts as
+Gatekeeper-qualified. The signature and staple checks below apply only when a
+run explicitly enables `sign_macos: true`.
 
 Run after every release build:
 
@@ -190,9 +282,10 @@ Run after every release build:
 for APP in apps/desktop/release/mac-*/PI-Desktop.app; do
   codesign -dv --verbose=2 "$APP"          # identity + hardened runtime flags
   codesign --verify --deep --strict "$APP" # signature integrity
-  spctl -a -vv "$APP"                      # Gatekeeper assessment (notarized builds)
-  xcrun stapler validate "$APP"             # notarization staple (if notarized)
+  spctl -a -vv "$APP"                      # Gatekeeper assessment (notarized Developer ID)
+  xcrun stapler validate "$APP"             # notarization staple
 done
+xcrun stapler validate apps/desktop/release/*.dmg
 ```
 
 ### 5.1 Package footprint gate
@@ -213,7 +306,8 @@ The package inventory must confirm:
   tree in ASAR
 - required third-party license and notice files remain in ASAR or
   `Resources/licenses` when their non-runtime package trees are pruned
-- only the configured English and Simplified Chinese Chromium locale packs
+- only the configured English, Simplified Chinese, Traditional Chinese,
+  Turkish, German, Spanish, French, and Korean Chromium locale packs
 
 The first audited optimized package establishes the platform baseline. Keep
 per-platform measurements rather than applying one budget to different
@@ -231,7 +325,7 @@ applicable to this directory-only validation build.
 | `Contents/Resources` | 33,102,807 | 31.6 |
 | `Resources/app.asar` | 20,944,962 | 20.0 |
 | `Resources/app.asar.unpacked` native payload | 137,336 | 0.1 |
-| English and Simplified Chinese Chromium locale packs | 1,033,673 | 1.0 |
+| Historical English and Simplified Chinese Chromium locale packs baseline | 1,033,673 | 1.0 |
 | Agent sidecar | 3,258,983 | 3.1 |
 | Rust host | 7,160,000 | 6.8 |
 
@@ -289,8 +383,8 @@ Manual smoke on a clean profile (`PI_DESKTOP_DATA_DIR=$(mktemp -d)`):
 5. One permissioned tool call (Write) allow + deny paths.
 6. Quit/relaunch → session history restored, window bounds restored.
 7. `~/.pi-desktop/logs/` contains categorized NDJSON under `app/`, `host/`,
-   and `agent/`; timing records are in `host/timing.log` and
-   `agent/timing.log`.
+   and `agent/`; key lifecycle, tool, provider, plugin, and error records are
+   available without dedicated timing files.
 8. With network access disabled, the shell still starts; English/Chinese
    switching, syntax highlighting, shell highlighting, KaTeX, Mermaid
    fallback/rendering, host health, and sidecar health continue to use packaged
@@ -318,10 +412,33 @@ D126/D285.
 
 Native-runner output matrix:
 
-- macOS arm64: DMG and ZIP
-- macOS Intel x64: DMG and ZIP
-- Windows x64: NSIS installer
-- Linux x64: AppImage and deb
+- macOS arm64: `PI-Desktop-<version>-arm64.dmg` and
+  `PI-Desktop-<version>-arm64-mac.zip`
+- macOS Intel x64: `PI-Desktop-<version>-x64.dmg` and
+  `PI-Desktop-<version>-x64-mac.zip`
+- Windows x64: NSIS installer `PI-Desktop-Setup-<version>.exe` and portable
+  exe `PI-Desktop-Portable-<version>.exe`
+- Linux x64: AppImage, deb, and rpm
+- Linux x64 system Electron asset: `PI-Desktop-<version>-linux-x64.asar`
+
+The portable Windows target does not write `latest.yml`. Packaged portable
+runs use notify-and-link delivery (`PORTABLE_EXECUTABLE_FILE`); NSIS keeps
+the in-app download and quit-and-install lane. Data stays in the existing
+application data directory. Portable requests user execution level, so launch
+does not require administrator rights.
+
+RPM targets pass `_build_id_links none` to FPM. Bundled Electron binaries live
+under `/opt/PI-Desktop`; omitting global `/usr/lib/.build-id` links prevents
+collisions with other applications that bundle the same Electron binaries.
+
+The ASAR asset contains the Electron application archive, not a complete Linux
+distribution. To repackage it, place it as the application archive in the
+target Electron resources layout together with the native host and other
+resources from the target package, then launch it with:
+
+```bash
+electron PI-Desktop-<version>-linux-x64.asar
+```
 
 Shell smoke on each native runner:
 
@@ -335,6 +452,13 @@ Shell smoke on each native runner:
 
 ## 7. Known limitations
 
-- macOS and Linux deb remain notify-and-link update modes.
-- Signed in-app macOS delivery, rollback, staged rollout, and prerelease
-  channel policy remain open release work.
+- macOS, Linux deb/rpm, and the Windows portable exe remain notify-and-link
+  update modes.
+- Linux x64 packages are built on Ubuntu 22.04 so host-core needs glibc 2.35
+  or newer (Ubuntu 22.04, Debian 12, Fedora 36+). The tag job runs
+  `scripts/check-linux-host-glibc.mjs` and refuses a binary that needs a
+  newer glibc.
+- In-app macOS delivery, rollback, staged rollout, and prerelease channel
+  policy remain open release work. GitHub Release macOS artifacts are unsigned
+  by default; only a manual `sign_macos: true` run receives Developer ID
+  signing, notarization, and stapling before publication.

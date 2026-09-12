@@ -6,7 +6,6 @@
  "description": "PI-Desktop 示例插件：命令面板 + 面板 + Echo Tool + 技能 / 主题 / 常驻服务 / 消息总线",
  "author": "PI-Desktop",
  "main": "main.js",
- "icon": "icon.png",
  "ui": {
  "panel": "renderer/index.html",
  "width": 420,

@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
+use crate::db::{ms_to_ts, now_ms};
+
 pub const PERMISSION_TIMEOUT_MS: u64 = 120_000;
 
 /// Longest string leaf kept in a permission request's args preview. Full args
@@ -79,14 +81,35 @@ pub struct PermissionRequestParams<'a> {
 #[derive(Debug)]
 struct Pending {
     created_at: Instant,
+    /// Wall-clock twin of `created_at` for the `permissions.pending` read.
+    created_at_ms: i64,
+    /// Arrival order; two requests can share a millisecond.
+    sequence: u64,
     session_id: String,
     tool_call_id: String,
+    /// The request as it was emitted, already preview-bounded, so a client
+    /// that attaches after the notification can render the same card.
+    request: PermissionRequest,
     tx: Option<tokio::sync::oneshot::Sender<PermissionDecision>>,
+}
+
+/// One open permission request as returned by `permissions.pending`
+/// (D374/D375). Pending requests are Host state, not connection state: a
+/// late-attaching client reads them here instead of missing the notification.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingPermission {
+    #[serde(flatten)]
+    pub request: PermissionRequest,
+    pub created_at: String,
+    pub expires_at: String,
+    pub remaining_ms: u64,
 }
 
 #[derive(Default)]
 pub struct PermissionManager {
     pending: HashMap<String, Pending>,
+    next_sequence: u64,
 }
 
 impl PermissionManager {
@@ -141,6 +164,7 @@ impl PermissionManager {
             permission_mode,
             session_grants,
             None,
+            None,
         )
     }
 
@@ -153,6 +177,7 @@ impl PermissionManager {
         permission_mode: &str,
         session_grants: &HashMap<String, Vec<String>>,
         declared_risk: Option<&str>,
+        plan_safe_actions: Option<&[String]>,
     ) -> Option<PermissionDecision> {
         self.evaluate_auto_with_permission_mode_and_risk_and_path(
             session_id,
@@ -162,6 +187,7 @@ impl PermissionManager {
             session_grants,
             declared_risk,
             false,
+            plan_safe_actions,
         )
     }
 
@@ -178,12 +204,33 @@ impl PermissionManager {
         session_grants: &HashMap<String, Vec<String>>,
         declared_risk: Option<&str>,
         requires_external_path_permission: bool,
+        plan_safe_actions: Option<&[String]>,
     ) -> Option<PermissionDecision> {
         // The contract modes' tool allowlist is authoritative. This check
         // intentionally precedes low-risk classification, auto, grants, and
         // scratch paths, and covers Goal as well as Plan (D198).
+        //
+        // Plugin tools get a narrow carve-out: a plugin may declare a
+        // non-empty `planSafeActions` list (ADR 0211). When the runtime
+        // forwards that list, host-core admits the plugin tool in
+        // contract modes and the plugin-runtime enforces the per-action
+        // restriction at execute time. Without the list the plugin tool
+        // stays Plan-denied, exactly as ADR 0052 / ADR 0053 require.
         if crate::sessions::is_contract_mode(mode) && !Self::plan_mode_allows(tool_name) {
-            return Some(PermissionDecision::Deny);
+            if tool_name.starts_with("plugin_") {
+                if let Some(actions) = plan_safe_actions {
+                    if !actions.is_empty() {
+                        // Fall through; plugin-runtime will gate the
+                        // actual action.
+                    } else {
+                        return Some(PermissionDecision::Deny);
+                    }
+                } else {
+                    return Some(PermissionDecision::Deny);
+                }
+            } else {
+                return Some(PermissionDecision::Deny);
+            }
         }
 
         if requires_external_path_permission {
@@ -274,16 +321,45 @@ impl PermissionManager {
             command_shell_id: command_shell_id.map(str::to_string),
         };
         let (tx, rx) = tokio::sync::oneshot::channel();
+        self.next_sequence += 1;
         self.pending.insert(
             request_id,
             Pending {
                 created_at: Instant::now(),
+                created_at_ms: now_ms(),
+                sequence: self.next_sequence,
                 session_id: session_id.to_string(),
                 tool_call_id: tool_call_id.to_string(),
+                request: request.clone(),
                 tx: Some(tx),
             },
         );
         (request, rx)
+    }
+
+    /// Open requests, oldest first, optionally scoped to one session. Requests
+    /// past the timeout are omitted even before `expire_stale` sweeps them,
+    /// so a reader never sees a request that can no longer be answered.
+    pub fn pending_requests(&self, session_id: Option<&str>) -> Vec<PendingPermission> {
+        let timeout = Duration::from_millis(PERMISSION_TIMEOUT_MS);
+        let mut open: Vec<&Pending> = self
+            .pending
+            .values()
+            .filter(|pending| pending.created_at.elapsed() <= timeout)
+            .filter(|pending| session_id.is_none_or(|id| pending.session_id == id))
+            .collect();
+        open.sort_by_key(|pending| (pending.created_at_ms, pending.sequence));
+        open.into_iter()
+            .map(|pending| {
+                let elapsed = pending.created_at.elapsed();
+                PendingPermission {
+                    request: pending.request.clone(),
+                    created_at: ms_to_ts(pending.created_at_ms),
+                    expires_at: ms_to_ts(pending.created_at_ms + PERMISSION_TIMEOUT_MS as i64),
+                    remaining_ms: timeout.saturating_sub(elapsed).as_millis() as u64,
+                }
+            })
+            .collect()
     }
 
     pub fn resolve(
@@ -355,6 +431,38 @@ mod tests {
 
     fn no_grants() -> HashMap<String, Vec<String>> {
         HashMap::new()
+    }
+
+    #[test]
+    fn pending_requests_lists_open_requests_until_resolved() {
+        let mut pm = PermissionManager::default();
+        let (first, _rx1) = pm.create_request(
+            "session-a",
+            "call-1",
+            "Bash",
+            serde_json::json!({ "command": "ls" }),
+            "high risk",
+        );
+        let (second, _rx2) = pm.create_request(
+            "session-b",
+            "call-2",
+            "Write",
+            serde_json::json!({ "path": "x" }),
+            "high risk",
+        );
+        let all = pm.pending_requests(None);
+        assert_eq!(all.len(), 2);
+        assert_eq!(all[0].request.request_id, first.request_id);
+        assert_eq!(all[0].request.tool_name, "Bash");
+        assert!(all[0].remaining_ms <= PERMISSION_TIMEOUT_MS);
+        assert!(all[0].expires_at > all[0].created_at);
+        let scoped = pm.pending_requests(Some("session-b"));
+        assert_eq!(scoped.len(), 1);
+        assert_eq!(scoped[0].request.request_id, second.request_id);
+        pm.resolve(&first.request_id, PermissionDecision::Deny).unwrap();
+        assert_eq!(pm.pending_requests(None).len(), 1);
+        pm.cancel(&second.request_id);
+        assert!(pm.pending_requests(None).is_empty());
     }
 
     #[test]
@@ -512,6 +620,7 @@ mod tests {
                 &no_grants(),
                 None,
                 true,
+                None,
             );
             assert_eq!(
                 decision, None,
@@ -526,6 +635,7 @@ mod tests {
             &no_grants(),
             None,
             true,
+            None,
         );
         assert_eq!(auto, Some(PermissionDecision::AllowOnce));
     }
@@ -536,7 +646,7 @@ mod tests {
         let mut grants = HashMap::new();
         grants.insert("s".to_string(), vec!["Grep".to_string()]);
         let decision = pm.evaluate_auto_with_permission_mode_and_risk_and_path(
-            "s", "Grep", "plan", "ask", &grants, None, true,
+            "s", "Grep", "plan", "ask", &grants, None, true, None,
         );
         assert_eq!(decision, Some(PermissionDecision::AllowSession));
     }
@@ -548,6 +658,48 @@ mod tests {
         grants.insert("s".to_string(), vec!["Bash".to_string()]);
         let d = pm.evaluate_auto_with_permission_mode("s", "Bash", "agent", "ask", &grants);
         assert_eq!(d, Some(PermissionDecision::AllowSession));
+    }
+
+    #[test]
+    fn contract_mode_admits_plugin_tools_only_with_plan_safe_actions() {
+        let pm = PermissionManager::default();
+        let denied = pm.evaluate_auto_with_permission_mode_and_risk_and_path(
+            "s",
+            "plugin_x_run",
+            "plan",
+            "auto",
+            &no_grants(),
+            None,
+            false,
+            None,
+        );
+        assert_eq!(denied, Some(PermissionDecision::Deny));
+
+        let empty: [String; 0] = [];
+        let empty_denied = pm.evaluate_auto_with_permission_mode_and_risk_and_path(
+            "s",
+            "plugin_x_run",
+            "goal",
+            "auto",
+            &no_grants(),
+            None,
+            false,
+            Some(&empty),
+        );
+        assert_eq!(empty_denied, Some(PermissionDecision::Deny));
+
+        let actions = ["navigate".to_string()];
+        let admitted = pm.evaluate_auto_with_permission_mode_and_risk_and_path(
+            "s",
+            "plugin_x_run",
+            "plan",
+            "auto",
+            &no_grants(),
+            None,
+            false,
+            Some(&actions),
+        );
+        assert_eq!(admitted, Some(PermissionDecision::AllowOnce));
     }
 
     #[test]

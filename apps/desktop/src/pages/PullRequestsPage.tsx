@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { PullRequestSummary } from "@pi-desktop/shared";
 import { useAppStore } from "../stores/app-store";
 import { api } from "../lib/api";
-import { Badge, Button, Panel } from "../components/ui";
+import { Badge, Button, TooltipButton, Panel } from "../components/ui";
 import { IconExternal, IconPullRequest } from "../components/icons";
 
 type Filter = "open" | "draft" | "all";
@@ -156,14 +156,15 @@ export function PullRequestsPage() {
                   </div>
                 </div>
                 <div className="dest-row-actions">
-                  <button
+                  <TooltipButton
                     type="button"
                     className="icon-btn"
-                    title={pr.url}
-                    onClick={() => window.open(pr.url, "_blank")}
+                    tooltip={t("pulls.open")}
+                    ariaLabel={t("pulls.open")}
+                    onClick={() => void api.browserOpenExternal(pr.url)}
                   >
                     <IconExternal size={15} />
-                  </button>
+                  </TooltipButton>
                   <Button
                     size="sm"
                     variant="secondary"

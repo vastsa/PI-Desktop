@@ -25,6 +25,10 @@ const settingsComponents = new Map(
     .map((name) => [name, readFileSync(join(settingsDir, name), "utf8")]),
 );
 const pageSrc = readFileSync(join(here, "../src/pages/PluginsPage.tsx"), "utf8");
+const marketSettingsSrc = readFileSync(
+  join(here, "../src/components/plugins/MarketplaceSourceSettings.tsx"),
+  "utf8",
+);
 const settingsPageSrc = readFileSync(join(here, "../src/pages/SettingsPage.tsx"), "utf8");
 const electronMainSrc = readFileSync(join(here, "../electron/main/index.ts"), "utf8");
 const hostCapabilitySources = [
@@ -107,6 +111,15 @@ test("the extensions page uses tabs instead of the removed capability overview",
   assert.match(pageSrc, /className="plugins-segment"/);
 });
 
+test("marketplace source settings omit redundant explanatory copy", () => {
+  assert.match(marketSettingsSrc, /marketProviderTitle/);
+  assert.doesNotMatch(
+    marketSettingsSrc,
+    /marketProviderDesc|marketProviderMirrorHint|marketActiveSource|plugins-market-settings-active/,
+  );
+  assert.match(marketSettingsSrc, /marketCustomUrlDesc/);
+});
+
 test("installed plugin rows keep secondary detail behind a disclosure", () => {
   assert.match(pageSrc, /function PluginRowDetails/);
   assert.match(pageSrc, /<details className="plugins-row-details">/);
@@ -114,9 +127,9 @@ test("installed plugin rows keep secondary detail behind a disclosure", () => {
 });
 
 test("extension row actions stay visible and labelled", () => {
-  assert.match(pageSrc, /data-tip=\{t\("plugins\.openPanel"\)\}/);
-  assert.match(pageSrc, /data-tip=\{t\("plugins\.rowActions", \{ name: plugin\.name \}\)\}/);
-  assert.match(styles, /\.plugins-icon-btn\[data-tip\]::after[\s\S]*?content: attr\(data-tip\)/);
+  assert.match(pageSrc, /<TooltipButton[\s\S]*?tooltip=\{t\("plugins\.openPanel"\)\}/);
+  assert.match(pageSrc, /<TooltipButton[\s\S]*?tooltip=\{t\("plugins\.rowActions", \{ name: plugin\.name \}\)\}/);
+  assert.match(styles, /\.ui-tooltip\s*\{[\s\S]*?position:\s*fixed;/);
   const actionBlock = styles.match(/\.ext-row-actions\s*\{[^}]*\}/)?.[0] ?? "";
   assert.match(actionBlock, /opacity:\s*1/);
 });

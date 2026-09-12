@@ -397,6 +397,62 @@
 .ext-tool-opt.is-on.is-mutating {
   background: color-mix(in oklab, var(--ds-warning) 16%, transparent);
 }
+/* ----------------------------------------------------------- preset picker */
+/*
+ * Issue #60: the subagent editor offers built-in templates (explorer /
+ * code-reviewer / test-runner / fixer). The chips are the same wrapping
+ * pills as the tool-grant row: name only, one shared caption under the
+ * row, accent-tint for the chosen option.
+ */
+.ext-preset-pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ext-preset-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 11px;
+  background: var(--ds-tile-hover);
+  border: 0;
+  border-radius: var(--radius-full);
+  color: var(--ds-text-secondary);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--motion-duration-fast) var(--motion-ease-out),
+    color var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.ext-preset-chip:hover {
+  background: var(--ds-tile-deep);
+}
+
+.ext-preset-chip:focus-visible,
+.ext-sheet-advanced-toggle:focus-visible {
+  outline: 2px solid var(--ds-accent-soft);
+  outline-offset: 1px;
+}
+
+.ext-preset-chip.is-selected {
+  background: color-mix(in oklab, var(--ds-accent) 14%, transparent);
+  color: var(--ds-text-primary);
+}
+
+.ext-preset-chip-name {
+  font-weight: var(--font-weight-medium);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.ext-preset-desc {
+  margin: 0;
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs-plus);
+  line-height: var(--leading-body);
+}
+
 
 /* --------------------------------------------------------- scope control */
 
@@ -443,6 +499,10 @@
   display: inline-flex;
   align-items: center;
   min-width: 0;
+}
+
+.scope-compact-menu-anchor {
+  display: contents;
 }
 
 .scope-compact-trigger {
@@ -500,40 +560,13 @@
   cursor: default;
 }
 
-.scope-compact-trigger[data-tip]::after {
-  content: attr(data-tip);
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + 5px);
-  z-index: 40;
-  border: 1px solid var(--ds-border-default);
-  border-radius: var(--radius-sm);
-  background: var(--ds-bg-elevated-opaque, var(--ds-bg-primary));
-  box-shadow: var(--ds-shadow-composer);
-  padding: 3px 7px;
-  color: var(--ds-text-secondary);
-  font-size: var(--text-2xs);
-  font-weight: var(--font-weight-normal);
-  line-height: var(--leading-compact);
-  white-space: nowrap;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--motion-duration-fast) var(--motion-ease-out);
-}
-
-.scope-compact-trigger[data-tip]:hover::after,
-.scope-compact-trigger[data-tip]:focus-visible::after {
-  opacity: 1;
-}
-
-.scope-compact-trigger[data-tip]:disabled::after {
-  content: none;
-}
 
 .scope-compact-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: auto;
+  bottom: auto;
   z-index: 30;
   display: flex;
   width: min(252px, calc(100vw - 40px));
@@ -543,12 +576,16 @@
   background: var(--ds-bg-elevated-opaque, var(--ds-bg-primary));
   box-shadow: 0 0 0 0.5px var(--ds-border-default), 0 14px 38px rgba(0, 0, 0, 0.22);
   padding: 5px;
-  animation: scope-popover-in var(--motion-duration-fast) var(--motion-ease-out) both;
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
 }
 
-.scope-compact-menu.is-up {
-  top: auto;
-  bottom: calc(100% + 6px);
+.scope-compact-menu.is-open {
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
+  animation: scope-popover-in var(--motion-duration-fast) var(--motion-ease-out) both;
 }
 
 .scope-compact-option {
@@ -694,9 +731,11 @@
 }
 
 .scope-popover {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 6px);
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: auto;
+  bottom: auto;
   z-index: 30;
   display: flex;
   flex-direction: column;
@@ -705,13 +744,17 @@
   border-radius: var(--radius-md-plus);
   background: var(--ds-bg-elevated-opaque, var(--ds-bg-primary));
   box-shadow: 0 0 0 0.5px var(--ds-border-default), 0 14px 38px rgba(0, 0, 0, 0.22);
-  animation: scope-popover-in var(--motion-duration-fast) var(--motion-ease-out) both;
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
   overflow: hidden;
 }
 
-.scope-popover.is-up {
-  top: auto;
-  bottom: calc(100% + 6px);
+.scope-popover.is-open {
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
+  animation: scope-popover-in var(--motion-duration-fast) var(--motion-ease-out) both;
 }
 
 @keyframes scope-popover-in {
@@ -917,14 +960,14 @@
 
 .ext-sheet-overlay {
   align-items: flex-start;
-  padding: 40px 24px;
+  padding: 28px 20px;
   overflow-y: auto;
 }
 
 .ext-sheet {
   display: flex;
-  width: min(100%, 560px);
-  max-height: calc(100vh - 80px);
+  width: min(100%, 520px);
+  max-height: calc(100vh - 56px);
   flex-direction: column;
   gap: 0;
   padding: 0;
@@ -938,9 +981,9 @@
 /* D297: head, body and actions are set apart by spacing, not rules. */
 .ext-sheet-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
-  padding: 16px 16px 6px 18px;
+  padding: 18px 20px 10px;
 }
 
 .ext-sheet-head > div:first-child {
@@ -988,15 +1031,103 @@
   min-height: 0;
   flex-direction: column;
   gap: 14px;
-  padding: 16px 18px;
+  padding: 10px 20px 14px;
   overflow-y: auto;
+}
+
+/*
+ * The shared field primitive is intentionally roomy enough for normal Settings
+ * rows. A create/edit sheet carries several fields in one viewport, so its
+ * controls use the same filled-well language at a calmer, denser scale. Keep
+ * this override local to subagent sheets so the rest of the Settings surface
+ * does not silently change density.
+ */
+.ext-sheet .field-input,
+.ext-sheet .field-select,
+.ext-sheet .field-textarea {
+  min-height: 34px;
+  border-radius: var(--radius-xs);
+  background: var(--ds-tile);
+  padding: 7px 10px;
+  font-size: var(--text-md);
+  line-height: var(--leading-compact);
+}
+
+.ext-sheet .field-input:hover,
+.ext-sheet .field-select:hover,
+.ext-sheet .field-textarea:hover {
+  background: var(--ds-tile-hover);
+}
+
+.ext-sheet .field-input:focus,
+.ext-sheet .field-select:focus,
+.ext-sheet .field-textarea:focus {
+  background: var(--ds-raised);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 22%, transparent);
+}
+
+.ext-sheet .field-textarea {
+  min-height: 68px;
+}
+
+.ext-sheet .ext-skill-body {
+  min-height: 166px;
+  padding: 10px 12px;
+  font-size: var(--text-sm-plus);
+  line-height: var(--leading-relaxed);
+}
+
+.ext-sheet-advanced {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ext-sheet-advanced-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  margin: 0 0 0 -7px;
+  border-radius: var(--radius-xs);
+  padding: 5px 7px;
+  border: 0;
+  background: transparent;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm-plus);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+}
+
+.ext-sheet-advanced-toggle:hover {
+  background: var(--ds-bg-hover);
+  color: var(--ds-text-primary);
+}
+
+.ext-sheet-advanced-toggle svg {
+  flex: 0 0 auto;
+  transition: transform var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.ext-sheet-advanced-toggle[aria-expanded="true"] svg {
+  transform: rotate(90deg);
+}
+
+.ext-sheet-advanced-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ext-sheet-advanced-body[hidden] {
+  display: none;
 }
 
 .ext-sheet-actions {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 6px 18px 14px;
+  padding: 8px 20px 16px;
 }
 
 .ext-sheet-actions-end {
@@ -1024,7 +1155,7 @@
 }
 
 .ext-sheet-error {
-  margin: 0 18px;
+  margin: 0 20px;
   border-radius: var(--radius-sm);
   background: color-mix(in oklab, var(--ds-error) 8%, transparent);
   padding: 8px 12px;
@@ -1065,6 +1196,12 @@
   grid-template-columns: 1fr 1fr;
   gap: 12px;
   min-width: 0;
+}
+
+/* A field with nothing to pick yet: the action replaces the control. */
+.ext-field-empty {
+  display: flex;
+  align-items: center;
 }
 
 /* The transport choice is two cards, not a select: it changes the whole form. */
@@ -1415,6 +1552,8 @@
     .scope-compact-option,
     .scope-chip,
   .ext-transport-card,
+  .ext-preset-chip,
+  .ext-sheet-advanced-toggle svg,
   .scope-option,
   .scope-option-check,
   .kv-add {

@@ -56,6 +56,11 @@ export type ModelsDevModel = {
   providerKey: string;
   providerName: string;
   providerApi?: string;
+  /**
+   * Wire API published for this model (e.g. "openai-responses").
+   * models.dev omits it; modelFromRaw fills known ids from RESPONSES_ONLY_MODEL_IDS.
+   */
+  modelApi?: string;
   modelId: string;
   displayName: string;
   description?: string;
@@ -372,6 +377,16 @@ function parseInterleaved(value: unknown): ModelInterleaved | undefined {
   return field ? { field } : undefined;
 }
 
+/**
+ * models.dev publishes no per-model wire API, yet some models only serve one.
+ * Keep this list to verified responses-only ids; everything else falls back
+ * to the provider-wide style (see #105).
+ */
+const RESPONSES_ONLY_MODEL_IDS: ReadonlySet<string> = new Set([
+  "muse-spark-1.2-contributor",
+  "muse-spark-1.3-contributor",
+]);
+
 function modelFromRaw(
   providerKey: string,
   provider: JsonRecord,
@@ -387,6 +402,14 @@ function modelFromRaw(
   const limit = parseLimit(raw.limit);
   const experimental = publishedExperimental(raw.experimental);
   const providerMetadata = publishedMetadata(raw.provider);
+  // Scoped to opencode-go on purpose: the same model ids exist under other
+  // providers (e.g. meta, llmgateway) where the completions path is correct
+  // and must not be rerouted (see #105).
+  const modelApi =
+    nonEmptyString(raw.api) ??
+    (providerKey === "opencode-go" && RESPONSES_ONLY_MODEL_IDS.has(modelId.toLowerCase())
+      ? "openai-responses"
+      : undefined);
   const displayName = nonEmptyString(raw.name) ?? modelId;
   const inputPublished = modalityResult.inputPublished;
   const outputPublished = modalityResult.outputPublished;
@@ -422,6 +445,7 @@ function modelFromRaw(
     ...(nonEmptyString(raw.status) ? { status: nonEmptyString(raw.status) } : {}),
     ...(experimental !== undefined ? { experimental } : {}),
     ...(providerMetadata !== undefined ? { provider: providerMetadata } : {}),
+    ...(modelApi !== undefined ? { modelApi } : {}),
   };
 }
 
@@ -744,6 +768,7 @@ export function modelConfigFromModelsDev(
     config.provider = model.provider;
     config.catalogProvider = model.provider;
   }
+  if (model.modelApi !== undefined) config.api = model.modelApi;
   return config;
 }
 

@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 import { IPC, IPC_WHITELIST } from "@pi-desktop/shared";
 
 const LOCALE_ARGUMENT_PREFIX = "--pi-desktop-locale=";
@@ -36,6 +36,14 @@ const api = {
   // creation argument. This keeps the locale available before first paint
   // without importing Electron's main-only `app` module in the sandbox.
   locale: readOsLocale(),
+  /** Resolve a real dropped File without exposing Node or Electron to the page. */
+  getDroppedFilePath: (file: File): string | null => {
+    try {
+      return webUtils.getPathForFile(file) || null;
+    } catch {
+      return null;
+    }
+  },
 };
 
 contextBridge.exposeInMainWorld("piDesktop", api);

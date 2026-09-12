@@ -101,11 +101,11 @@ remains an optional hard backstop with a maximum of 80.
 
 Fan-out makes one same-process ordering problem real, and the sidecar owns it.
 host-core admits one mutation per session at a time, so concurrent writes cannot
-tear, but it defines no order between two same-path mutations — and the sidecar's
-edit-recovery contract counts failures per path and terminates the second failed
-`Edit` on one file, which only means "re-read and retry once" if the attempts
-were ordered. A `PathMutex` in the sidecar serializes mutating calls per
-normalized path; different paths never wait on each other, which is the point.
+tear, but it defines no order between same-path mutations — and the sidecar's
+edit-recovery contract allows three counted failures per path before terminating
+the prompt, which only means "re-read and retry" if the attempts were ordered. A
+`PathMutex` in the sidecar serializes mutating calls per normalized path;
+different paths never wait on each other, which is the point.
 Delegates also run under the same bounded provider retry policy as the parent
 (one retry, 8s delay cap), so a fan-out cannot turn one failing provider into a
 retry storm.

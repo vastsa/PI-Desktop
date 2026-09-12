@@ -10,8 +10,10 @@ const {
   isKnownWorkPanelTab,
   isToolWorkPanelTab,
   normalizeWorkPanelFilePath,
+  newWorkPanelTab,
   openWorkPanelTabState,
   pluginWorkPanelTab,
+  replaceWorkPanelTabState,
   sanitizeWorkPanelTabsState,
   shouldOpenReviewArtifact,
   switchWorkPanelContextState,
@@ -26,6 +28,42 @@ test("work panel tabs open on demand and deduplicate by resource", () => {
 
   assert.deepEqual(reopened.tabs.map((tab) => tab.id), ["review", "file:src/App.tsx"]);
   assert.equal(reopened.activeTabId, "review");
+});
+
+test("new tabs are unique launcher pages and replace themselves with a tool", () => {
+  const first = newWorkPanelTab();
+  const second = newWorkPanelTab();
+  assert.equal(first.kind, "new");
+  assert.equal(second.kind, "new");
+  assert.match(first.id, /^new:/);
+  assert.notEqual(first.id, second.id);
+
+  const state = openWorkPanelTabState(
+    openWorkPanelTabState({ tabs: [], activeTabId: null }, first),
+    second,
+  );
+  const replaced = replaceWorkPanelTabState(
+    state,
+    second.id,
+    browserPluginTab("https://example.com"),
+  );
+
+  assert.deepEqual(replaced.tabs.map((tab) => tab.id), [first.id, "plugin:pi.browser/browser"]);
+  assert.equal(replaced.activeTabId, "plugin:pi.browser/browser");
+  assert.equal(replaced.tabs.find((tab) => tab.id === first.id)?.kind, "new");
+});
+
+test("selecting an already-open tool removes only the source launcher tab", () => {
+  const browser = browserPluginTab("https://example.com");
+  const launcher = newWorkPanelTab();
+  const state = {
+    tabs: [browser, launcher],
+    activeTabId: launcher.id,
+  };
+  const replaced = replaceWorkPanelTabState(state, launcher.id, browser);
+
+  assert.deepEqual(replaced.tabs, [browser]);
+  assert.equal(replaced.activeTabId, browser.id);
 });
 
 test("file tabs normalize lexical paths and remain distinct by resource", () => {
@@ -99,6 +137,7 @@ test("only plugin views are launchable tools", () => {
   assert.equal(isToolWorkPanelTab(fileWorkPanelTab("README.md")), false);
   assert.equal(isToolWorkPanelTab(pluginWorkPanelTab("pi.files", "files")), true);
   assert.equal(isKnownWorkPanelTab({ id: "browser", kind: "browser" }), false);
+  assert.equal(isKnownWorkPanelTab(newWorkPanelTab()), true);
 });
 
 test("review artifacts are recognized independently of the visible session", () => {

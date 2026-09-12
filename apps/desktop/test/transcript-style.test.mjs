@@ -8,6 +8,14 @@ const transcriptSource = await readFile(
   new URL("../src/components/ChatTranscript.tsx", import.meta.url),
   "utf8",
 );
+const inspectorSource = await readFile(
+  new URL("../src/components/ContextUsageInspector.tsx", import.meta.url),
+  "utf8",
+);
+const composerSource = await readFile(
+  new URL("../src/components/Composer.tsx", import.meta.url),
+  "utf8",
+);
 const minimapSource = await readFile(
   new URL("../src/components/ConversationMinimap.tsx", import.meta.url),
   "utf8",
@@ -130,7 +138,7 @@ test("transcript density and hover actions are quiet", () => {
   assert.match(stylesSource, /\.message-row \{[\s\S]*?padding:\s*12px 0;/);
   assert.match(
     stylesSource,
-    /\.thread-content \{[\s\S]*?padding:\s*20px 28px calc\(var\(--composer-dock-height, 228px\) \+ 16px\);/,
+    /\.thread-content \{[\s\S]*?padding:\s*20px 32px calc\(var\(--composer-dock-height, 228px\) \+ 16px\);/,
   );
   assert.match(
     stylesSource,
@@ -261,69 +269,87 @@ test("editing a user prompt regenerates it and keeps the old branch reachable", 
 });
 
 test("message toolbars are icon-only with hover tooltips", () => {
-  // No worded chips in the toolbar: labels ride on data-tip + aria-label.
+  // No worded chips in the toolbar: labels ride on tooltip + aria-label.
   assert.doesNotMatch(
     transcriptSource,
     /<span>\{(?:forkLabel|retryLabel|editLabel|copyLabel)\}<\/span>/,
   );
   for (const label of ["editLabel", "deleteLabel"]) {
     assert.ok(
-      transcriptSource.includes(`aria-label={${label}}`),
+      transcriptSource.includes(`ariaLabel={${label}}`),
       `${label} needs an aria-label`,
     );
     assert.ok(
-      transcriptSource.includes(`data-tip={${label}}`),
+      transcriptSource.includes(`tooltip={${label}}`),
       `${label} needs a hover tooltip`,
     );
   }
   for (const key of ["chat.forkResponse", "chat.retry"]) {
-    assert.match(transcriptSource, new RegExp(`aria-label=\\{t\\("${key}"\\)\\}`));
-    assert.match(transcriptSource, new RegExp(`data-tip=\\{t\\("${key}"\\)\\}`));
+    assert.match(transcriptSource, new RegExp(`ariaLabel=\\{t\\("${key}"\\)\\}`));
+    assert.match(transcriptSource, new RegExp(`tooltip=\\{t\\("${key}"\\)\\}`));
   }
   assert.ok(transcriptSource.includes("label={copyLabel}"));
   assert.match(transcriptSource, /className="copy-btn icon"/);
-  assert.match(transcriptSource, /data-tip=\{t\("chat\.forkResponse"\)\}/);
-  assert.match(stylesSource, /\.copy-btn\[data-tip\]::after \{[\s\S]*?content:\s*attr\(data-tip\);/);
-  assert.match(
-    stylesSource,
-    /\.copy-btn\[data-tip\]:hover::after,\s*\.copy-btn\[data-tip\]:focus-visible::after \{\s*opacity:\s*1;/,
-  );
+  assert.match(transcriptSource, /tooltip=\{t\("chat\.forkResponse"\)\}/);
+  assert.match(transcriptSource, /import \{ TooltipButton \} from "\.\/ui"/);
+  assert.match(transcriptSource, /<TooltipButton/);
+  assert.match(stylesSource, /\.ui-tooltip\s*\{[\s\S]*?position:\s*fixed;/);
+  assert.match(stylesSource, /\.ui-tooltip\s*\{[\s\S]*?z-index:\s*1000;/);
+  assert.match(stylesSource, /\.ui-tooltip\s*\{[\s\S]*?transform:\s*translate\(-50%,\s*-100%\)/);
   // Worded surfaces (error details) keep their label.
   assert.match(transcriptSource, /withLabel/);
+});
+
+test("streaming assistant turns hide answer copy until idle", () => {
+  assert.ok(transcriptSource.includes("{complete ? ("));
+  assert.ok(
+    transcriptSource.includes(
+      '<CopyButton text={content} label={t("chat.copy")} />',
+    ),
+  );
 });
 
 test("assistant context inspector keeps a compact summary and retry action wired", () => {
   assert.match(transcriptSource, /function MessageMeta/);
   assert.match(transcriptSource, /message-meta-chip/);
-  assert.match(transcriptSource, /function ContextUsageInspector/);
-  assert.match(transcriptSource, /className="context-inspector"/);
-  assert.match(transcriptSource, /chat\.usageTools/);
-  assert.match(transcriptSource, /aggregateToolTokenUsage/);
-  assert.match(transcriptSource, /context-inspector-summary/);
-  assert.match(transcriptSource, /context-inspector-summary-row/);
-  assert.match(transcriptSource, /chat\.usageToolsSummary/);
-  assert.match(transcriptSource, /context-inspector-kpis/);
-  assert.match(transcriptSource, /context-inspector-window-percent/);
-  assert.match(transcriptSource, /chat\.usageContextRemaining/);
-  assert.match(transcriptSource, /chat\.usageThroughput/);
-  assert.match(transcriptSource, /calculateCacheRate/);
-  assert.match(transcriptSource, /chat\.usageCacheRate/);
-  assert.match(transcriptSource, /assistantTurnTools/);
-  assert.match(transcriptSource, /assistantTurnResponseDuration/);
-  assert.match(transcriptSource, /createPortal\(popover, document\.body\)/);
-  assert.match(transcriptSource, /getBoundingClientRect\(\)/);
-  assert.match(transcriptSource, /addEventListener\("scroll", handleViewportChange, true\)/);
-  assert.match(transcriptSource, /ResizeObserver\(updatePopoverPosition\)/);
-  assert.match(transcriptSource, /latestMessageUsage/);
-  assert.match(transcriptSource, /resolveContextWindow/);
-  assert.match(transcriptSource, /aria-controls=\{open \? panelId : undefined\}/);
+  assert.doesNotMatch(transcriptSource, /ContextUsageInspector/);
+  assert.match(transcriptSource, /showThroughput/);
+  assert.match(composerSource, /latest-turn-context/);
+  assert.match(composerSource, /latestTurnContextInspector/);
+  assert.match(composerSource, /sessionCompactions/);
+  assert.match(inspectorSource, /export function ContextUsageInspector/);
+  assert.match(inspectorSource, /className="context-inspector"/);
+  assert.match(inspectorSource, /chat\.usageTools/);
+  assert.match(inspectorSource, /aggregateToolTokenUsage/);
+  assert.match(inspectorSource, /context-inspector-summary/);
+  assert.match(inspectorSource, /context-inspector-summary-row/);
+  assert.match(inspectorSource, /chat\.usageToolsSummary/);
+  assert.match(inspectorSource, /context-inspector-kpis/);
+  assert.match(inspectorSource, /context-inspector-window-percent/);
+  assert.match(inspectorSource, /chat\.usageContextLeft/);
+  assert.match(inspectorSource, /chat\.usageThroughput/);
+  assert.match(inspectorSource, /calculateCacheRate/);
+  assert.match(inspectorSource, /chat\.usageCacheRate/);
+  assert.match(inspectorSource, /contextOccupancyTokens\(usage\)/);
+  assert.match(inspectorSource, /usage\.cacheReadTokens/);
+  assert.doesNotMatch(inspectorSource, /turnUsage\.cacheReadTokens/);
+  assert.match(inspectorSource, /createPortal\(popover, document\.body\)/);
+  assert.match(inspectorSource, /getBoundingClientRect\(\)/);
+  assert.match(inspectorSource, /addEventListener\("scroll", handleViewportChange, true\)/);
+  assert.match(inspectorSource, /ResizeObserver\(updatePopoverPosition\)/);
+  assert.match(inspectorSource, /aria-controls=\{open \? panelId : undefined\}/);
   assert.match(transcriptSource, /retryAssistantMessage/);
   assert.match(transcriptSource, /chat\.retry/);
   assert.match(stylesSource, /\.context-inspector-ring-progress/);
+  assert.match(stylesSource, /\.context-inspector-ring-value/);
   assert.match(stylesSource, /\.context-inspector-summary/);
   assert.match(stylesSource, /\.context-inspector-summary-values/);
-  assert.doesNotMatch(transcriptSource, /context-inspector-source-badge/);
-  assert.doesNotMatch(transcriptSource, /context-inspector-tool-meta/);
+  assert.doesNotMatch(
+    stylesSource,
+    /\.context-inspector-(window|kpis|summary|compaction)[^{]*\{[^}]*border-top:/,
+  );
+  assert.doesNotMatch(inspectorSource, /context-inspector-source-badge/);
+  assert.doesNotMatch(inspectorSource, /context-inspector-tool-meta/);
   assert.doesNotMatch(stylesSource, /\.context-inspector-meter\s*\{/);
   assert.doesNotMatch(stylesSource, /\.context-inspector-source-badge/);
   assert.doesNotMatch(stylesSource, /\.context-inspector-tool-/);
@@ -335,6 +361,7 @@ test("assistant context inspector keeps a compact summary and retry action wired
 });
 
 test("context inspector keeps generation speed completion-only", () => {
+  assert.doesNotMatch(inspectorSource, /useLiveElapsedMs|usageThroughputLive/);
   assert.doesNotMatch(transcriptSource, /useLiveElapsedMs|usageThroughputLive/);
   assert.doesNotMatch(transcriptSource, /assistantTurnStreamingMessage/);
   assert.doesNotMatch(stylesSource, /message-meta-live-rate|live-rate-pulse/);
@@ -343,20 +370,20 @@ test("context inspector keeps generation speed completion-only", () => {
 test("context inspector panel opens on click, not hover (D225)", () => {
   // The trigger toggles; pointer enter/leave and focus/blur no longer open or
   // close the panel, so no hover-grace timer is needed.
-  assert.match(transcriptSource, /onClick=\{toggleInspector\}/);
-  assert.match(transcriptSource, /aria-haspopup="dialog"/);
-  assert.match(transcriptSource, /role="dialog"/);
-  assert.doesNotMatch(transcriptSource, /onPointerEnter=\{(openInspector|cancelClose)\}/);
-  assert.doesNotMatch(transcriptSource, /onPointerLeave=\{scheduleClose\}/);
-  assert.doesNotMatch(transcriptSource, /onFocus=\{openInspector\}/);
-  assert.doesNotMatch(transcriptSource, /closeTimerRef/);
+  assert.match(inspectorSource, /onClick=\{toggleInspector\}/);
+  assert.match(inspectorSource, /aria-haspopup="dialog"/);
+  assert.match(inspectorSource, /role="dialog"/);
+  assert.doesNotMatch(inspectorSource, /onPointerEnter=\{(openInspector|cancelClose)\}/);
+  assert.doesNotMatch(inspectorSource, /onPointerLeave=\{scheduleClose\}/);
+  assert.doesNotMatch(inspectorSource, /onFocus=\{openInspector\}/);
+  assert.doesNotMatch(inspectorSource, /closeTimerRef/);
   // Explicit dismissal: outside pointerdown and Escape, which refocuses.
   assert.match(
-    transcriptSource,
+    inspectorSource,
     /addEventListener\("pointerdown", handlePointerDown, true\)/,
   );
-  assert.match(transcriptSource, /event\.key !== "Escape"/);
-  assert.match(transcriptSource, /triggerRef\.current\?\.focus\(\)/);
+  assert.match(inspectorSource, /event\.key !== "Escape"/);
+  assert.match(inspectorSource, /triggerRef\.current\?\.focus\(\)/);
 });
 
 test("regenerate rewrites the current turn instead of appending", async () => {
@@ -385,12 +412,15 @@ test("regenerate rewrites the current turn instead of appending", async () => {
   assert.match(mainSource, /agent\.disposeSession/);
   assert.match(mainSource, /truncateFromMessageId/);
   // The host resolves the boundary against its own transcript, and an
-  // unresolvable boundary fails instead of truncating at a guessed position.
+  // unresolvable identity is rejected instead of truncating at a guessed position.
   assert.match(
     mainSource,
-    /resolveTranscriptTruncation\(allMessages,\s*req\)/,
+    /"session\.truncateFrom",\s*\{\s*sessionId:\s*req\.sessionId/,
   );
-  assert.match(mainSource, /truncation\.kind === "unknown-message"/);
+  assert.doesNotMatch(
+    mainSource,
+    /resolveTranscriptTruncation|truncation\.kind === "unknown-message"/,
+  );
   assert.match(protocolSource, /sessionReplaceMessages/);
 });
 
@@ -417,7 +447,7 @@ test("conversation minimap hides until content overflows one viewport", () => {
 test("thread scroll reserves stable gutters before overflow appears", () => {
   assert.match(
     stylesSource,
-    /\.thread-scroll\s*\{[\s\S]*?overflow:\s*auto;[\s\S]*?scrollbar-gutter:\s*stable both-edges;/,
+    /\.thread-scroll\s*\{[\s\S]*?overflow:\s*auto;[\s\S]*?scrollbar-gutter:\s*stable;/,
   );
 });
 
@@ -478,10 +508,10 @@ test("regenerate history pager and stable revision family are wired", async () =
   assert.match(storeSource, /activateSessionRevision/);
   assert.match(mainSource, /session\.saveRevision/);
   assert.match(mainSource, /revisionRootId/);
-  assert.match(mainSource, /revisionCount: count \+ 1/);
+  assert.match(mainSource, /revisionCount: revision\.revisionCount/);
   assert.match(
     mainSource,
-    /save regenerate revision failed[\s\S]*?throw error;[\s\S]*?session\.replaceMessages/,
+    /truncate regenerate transcript failed[\s\S]*?throw error;/,
   );
   assert.match(sharedSource, /revisionRootId\?: string/);
   assert.match(sharedSource, /MessageRevisionSummary/);

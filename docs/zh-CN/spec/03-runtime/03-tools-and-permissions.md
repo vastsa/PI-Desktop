@@ -4,17 +4,18 @@
 
 
 > 应用的决定：D003、D004、D005、D006、D013、D015、D093、D114、D115、D181、D186、
-> D189、D190、D195（ADR 0057）、D315、ADR 0087
+> D189、D190、D195（ADR 0057）、D315、D384（ADR 0211）、ADR 0087
 
 ## 0. 冻结政策总结
 
 | 主题 | 决定 |
 |---|---|
 | 默认模式 | Agent |
-| Agent 工具 | 读取/Glob/Grep/写入/编辑/Bash |
-| Plan 工具 | 读取 / Glob / Grep / BrowserPreview / Bash / SubmitPlan |
-| Goal 工具 | 读取/Glob/Grep/BrowserPreview/Bash/SubmitGoal |
-| Plan 和 Goal 硬拒绝 | 编写/编辑/所有插件工具/未知工具/其他类型的提交工具 |
+| Agent 工具 | 读取 / Glob / Grep / 写入 / 编辑 / Bash + 已注册的插件工具 |
+| Plan 工具 | 读取 / Glob / Grep / BrowserPreview / Bash / SubmitPlan + 声明 plan-safe 动作的插件工具 |
+| Goal 工具 | 读取 / Glob / Grep / BrowserPreview / Bash / SubmitGoal + 声明 plan-safe 动作的插件工具 |
+| Plan 和 Goal 硬拒绝 | 写入 / 编辑 / 没有 `planSafeActions` 的插件工具 / 未知工具 / 另一类的提交工具 |
+| 插件 `planSafeActions` | 非空的 `action` 字符串数组；运行时在 Plan/Goal 中隐藏没有该列表的插件工具，host 放行已列出的工具，plugin-runtime 拒绝列表外的任何动作（ADR 0211） |
 | 权限超时 | 120秒→拒绝 |
 | 允许会话范围 | 工具名称 |
 | 重击风格 | 非交互式；具有流输出的选定主机目录外壳 |
@@ -49,14 +50,15 @@
 
 按照 pi 的编码代理默认值，第一个 Agent 请求仅激活
 `Read`、`Bash`、`Edit` 和 `Write`； `Glob` 和 `Grep` 按需加载。
-Plan 和 Goal 保留其 read/inspection 核心。运行时还注册功能
+Plan 和 Goal 保留其 read/inspection 核心。`Skill` 有意不作延迟：`/skill-id`
+调用会指示模型调用它，而模式中不存在的工具根本无法被调用，因此只要技能目录非空，
+它就会随第一个请求一起发送（D404、ADR 0230）。运行时还注册功能
 无需预先发送其完整模式：
 
 - Agent 模式下的 `Glob` 和 `Grep`
 - `BrowserPreview`
 - `PluginCheck`、`PluginScaffold` 和 `PluginPack`
 - 插件声明的代理工具
-- `Skill` 当启用的插件贡献技能时
 
 这些工具出现在有界的 `# On-demand tools` 目录中，具有紧凑的结构
 描述。该模型使用确切的名称调用本地 `ToolSearch` 工具或
@@ -285,13 +287,10 @@ type ReviewChange = {
 序列化同时保护快照存储，生产者与 `Edit` 都会修改它：没有按会话的
 突变许可，一次并发记录可能落在校验与写入之间。
 
-sidecar 的工具计时线包括 `mutationFailureKind` 和
-`mutationFailureAttempt` 用于失败的同路径 `Edit` 调用和已识别的 shell
-修补命令，对按 §9.3 被宽限的失败使用 `mutationFailureGrace=true`，并在耗尽额度
-的那次失败上使用 `terminate=true`。最后一项是
-通过 pi-agent-core 的仅运行时终止提示；它不会改变
-耐用的工具结果形状。由于该提示会结束代理循环，runtime 还会用
-`MUTATION_RETRY_BUDGET_EXHAUSTED` 敲定该 assistant 行，而不是让本轮无声完成。
+在一个提示内同一路径累计三次失败后（见 18-line-anchored-edit-contract §9.3），第 3 次
+计数的失败 `Edit`——或第 3 次失败的 shell 修补命令（`apply_patch`、`git apply` 或
+`patch`）——返回带有错误专属恢复提示的终止工具结果，代理随后停止并报告准确的不匹配。
+不要手动编辑旧的 unified-diff 块头，也不要继续修复循环。
 
 ## 5. Bash 规则
 
@@ -308,7 +307,7 @@ sidecar 的工具计时线包括 `mutationFailureKind` 和
   `errorCode: TOOL_FAILED`，同时保留其 `exitCode`、stdout 和 stderr
   在 `content` 中，以便代理可以诊断命令而无需盲目重试。
 
-Shell 目录 (D190) 公开稳定 ID `windows-powershell`、`cmd`、
+Shell 目录 (D190) 公开稳定 ID `windows-powershell`、`windows-pwsh`、`cmd`、
 平台支持的 `git-bash` 和 `bash`。楼主坚持
 `defaultCommandShell`；如果那个持续的选择后来变得不可用，
 有效的目录选择有意回退到第一个可用的目录
@@ -335,6 +334,11 @@ tool/protocol 名称，请求中单独携带固定的 shell ID。
 - 安装程序中没有捆绑 bash：Windows 的 Git 是 Windows 的先决条件（无论如何，该应用程序都需要 git）
 - 解决失败返回稳定的 `SHELL_NOT_FOUND` 并提供安装指导
 - Windows PowerShell 和 cmd 使用其本机非交互式调用。
+- PowerShell 7 先解析 `%ProgramFiles%\PowerShell\7`（宿主进程为 32 位时为
+  `ProgramW6432`）下的 `pwsh.exe`，再回退到 PATH，覆盖机器级安装、Store、
+  用户级与便携安装。它与 Windows PowerShell 5.1 共用同一调用契约，且从不被
+  隐式选中，因此不会改变既有用户的默认 shell。解析失败返回
+  `SHELL_NOT_FOUND`，并列出已搜索的位置。
 - Git Bash 使用发现的 Git 来执行 Windows 可执行文件。
 - Unix Bash 使用经过批准的系统 Bash 条目。
 - 用户中止和超时在返回之前终止整个进程树。
@@ -388,8 +392,8 @@ tool/protocol 名称，请求中单独携带固定的 shell ID。
 - 会话值存储在 `sessions.permission_mode` 中
   （`inherit | ask | accept-edits | auto`，默认 `inherit`，架构 v5）和
   通过 `session.configure` `permissionMode` 设置。
-- Plan 的硬拒绝胜过 Write/Edit 和插件的所有权限模式
-  工具。 `auto` 无法重新启用隐藏或拒绝的工具。
+- Plan 的硬拒绝胜过 Write/Edit 以及缺少 `planSafeActions` 的插件
+  工具的所有权限模式。 `auto` 无法重新启用隐藏或拒绝的工具。
 - 会话根目录内的低风险工具（`allow-once`/`allow-session`/`deny`）自动允许
   每种模式都和以前一样。
 - `BrowserPreview` 是显式只读 UI 检查功能，并且是
@@ -445,24 +449,24 @@ tool call
 
 MVP 可以通过写入 SQLite 或日志文件来启动。
 
-计时以分段记录，而不是作为一个持续时间 (D183)：`prompted`
-（是否出示许可卡）、`permissionWaitMs`、`durationMs`（
-工具体）、`overheadMs`（主机簿记）和 `totalMs`。拒绝来电携带
-具有零工具体的相同字段。参见
-[09.日志记录和可观测性](/zh-CN/spec/03-runtime/09-logging-and-observability)
-匹配日志行。
+审计行可以保留既有的分段时长字段用于取证检查：`prompted`
+（是否出示许可卡）、`permissionWaitMs`、`durationMs`（工具体）、
+`overheadMs`（主机簿记）和 `totalMs`。拒绝调用携带工具体为零的相同字段。
+这些是结构化审计字段，不会作为 timing 日志行写入进程日志。关于当前的
+关键日志策略，请参见
+[09.日志记录和可观测性](/zh-CN/spec/03-runtime/09-logging-and-observability)。
 
 ## 10. 操作模式矩阵
 
 | 模式 | Read/Glob/Grep | BrowserPreview | Write/Edit | 重击 | 插件 |
 |---|---|---|---|---|---|
 | Agent | 允许 | 允许 | 许可政策 | 许可政策 | 注册风险政策 |
-| Plan | 允许 | 允许 | 否认 | Plan/`ask`：确认； `auto`：允许 | 否认 |
-| Goal | 允许 | 允许 | 否认 | Plan/`ask`：确认； `auto`：允许 | 否认 |
+| Plan | 允许 | 允许 | 否认 | Plan/`ask`：确认； `auto`：允许 | 仅 plan-safe 动作 |
+| Goal | 允许 | 允许 | 否认 | Plan/`ask`：确认； `auto`：允许 | 仅 plan-safe 动作 |
 
 ### 注释
-- 权限 UI 之前的 Plan 和 Goal 硬否认 Write/Edit/plugin 工具；直接主机
-  调用不能绕过矩阵。
+- 权限 UI 之前，Plan 和 Goal 硬拒绝 Write/Edit 以及没有 `planSafeActions` 的插件工具；直接主机
+  调用不能绕过矩阵。声明了非空列表的插件工具会被放行；运行器仍会拒绝列表外的任何动作（ADR 0211）。
 - Agent 模式使用权限卡或选定的自动策略
   Write/Edit/Bash 和注册的插件工具。
 - 当用户选择“自动”时，Plan 和 Goal Bash 可能会改变工作区或暂存状态；
@@ -524,19 +528,21 @@ sidecar 不附加覆盖，委托使用会话的有效权限模式；因此父会
 
 ## 11. 插件工具
 
-插件只能通过 Agent 中的 `agentTools` 提供工具：
+插件可通过 `agentTools` 贡献工具。Agent 模式能看到每一个已注册的
+插件工具。Plan 和 Goal 只看到 `planSafeActions` 列表
+非空的工具（ADR 0211 / D384）：
 
 1. 舱单声明
 2. 用户授予 `agent.tool.register`
 3.PluginManager将它们注册到ToolHost中
 4.执行经过统一的permission/audit/timeout包装器
 
-无论清单如何，Plan 或 Goal 中均不可见或可执行任何插件工具
-风险、声明的权限、会话授予或 `auto`。直接尝试返回
-`PLUGIN_DISABLED_IN_PLAN` — `_IN_PLAN` 代码由两个合约共享
+没有 `planSafeActions` 的插件工具在 Plan 和 Goal 中对模型隐藏。
+直接尝试返回 `PLUGIN_DISABLED_IN_PLAN` — `_IN_PLAN` 代码由两个合约共享
 模式而不是每种重复 - 并且作为合同模式政策进行审核
-否认。对于 Agent，缺失或无效的插件风险默认为 `medium`，并且从不
-授予合同模式访问权限。
+否认。当列表存在时，host-core 放行该工具，plugin-runtime 拒绝列表外的任何 `action`，
+返回 `PERMISSION_DENIED`。对于 Agent，缺失或无效的插件风险默认为 `medium`，并且从不
+仅凭风险授予合同模式访问权限。
 
 命名：
 - 内部全名：`plugin.<pluginId>.<toolName>`

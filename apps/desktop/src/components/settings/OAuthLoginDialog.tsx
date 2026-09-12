@@ -11,7 +11,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { OAuthPromptRequest, OAuthVendor } from "@pi-desktop/shared";
 import type { OAuthLoginSession } from "../../lib/oauth-login-session";
-import { Button, Input, cx } from "../ui";
+import { canSubmitOAuthPrompt } from "../../lib/oauth-login-prompt";
+import { Button, Input, TooltipButton, cx } from "../ui";
 import { IconCheck, IconCopy, IconExternal } from "../icons";
 
 type AuthUrlState = { url: string; instructions?: string; opened: boolean };
@@ -141,6 +142,7 @@ export function OAuthLoginDialog({
       .respond(promptId, value)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
   };
+  const canSubmitAnswer = canSubmitOAuthPrompt(prompt, answer);
 
   return (
     <div className="overlay provider-dialog-overlay" role="presentation">
@@ -199,10 +201,11 @@ export function OAuthLoginDialog({
                 <div className="oauth-block-text">
                   {t("settings.vendorDeviceCodeHint")}
                 </div>
-                <button
+                <TooltipButton
                   type="button"
                   className="oauth-device-code font-mono"
-                  title={t("settings.vendorCopyCode")}
+                  tooltip={t("settings.vendorCopyCode")}
+                  ariaLabel={t("settings.vendorCopyCode")}
                   onClick={() => copy(deviceCode.userCode)}
                 >
                   <span>{deviceCode.userCode}</span>
@@ -211,7 +214,7 @@ export function OAuthLoginDialog({
                   ) : (
                     <IconCopy size={14} />
                   )}
-                </button>
+                </TooltipButton>
                 <a
                   className="oauth-link"
                   href={deviceCode.verificationUri}
@@ -248,7 +251,7 @@ export function OAuthLoginDialog({
                     className="oauth-answer"
                     onSubmit={(event) => {
                       event.preventDefault();
-                      if (answer.trim()) submitAnswer(answer.trim());
+                      if (canSubmitAnswer) submitAnswer(answer.trim());
                     }}
                   >
                     <Input
@@ -262,7 +265,7 @@ export function OAuthLoginDialog({
                       autoComplete="off"
                       autoFocus
                     />
-                    <Button type="submit" variant="primary" disabled={!answer.trim()}>
+                    <Button type="submit" variant="primary" disabled={!canSubmitAnswer}>
                       {t("settings.vendorSubmit")}
                     </Button>
                   </form>

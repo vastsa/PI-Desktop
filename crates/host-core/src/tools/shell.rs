@@ -19,12 +19,23 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 pub const WINDOWS_POWERSHELL_ID: &str = "windows-powershell";
+/// PowerShell 7+ (`pwsh.exe`). It installs side by side with, and is not
+/// replaced by, the in-box Windows PowerShell 5.1 that
+/// [`WINDOWS_POWERSHELL_ID`] resolves to, so it needs its own catalog entry.
+pub const PWSH_ID: &str = "windows-pwsh";
 pub const CMD_ID: &str = "cmd";
 pub const GIT_BASH_ID: &str = "git-bash";
 pub const BASH_ID: &str = "bash";
 
 pub const SHELL_MISSING_GUIDANCE: &str =
     "No usable command shell was found. Install or enable a supported shell and try again.";
+
+/// Guidance for a selected but absent PowerShell 7. It names the locations the
+/// resolver searched so the user can fix the install or PATH instead of
+/// guessing why the choice is unavailable.
+#[cfg(windows)]
+pub const PWSH_MISSING_GUIDANCE: &str =
+    "PowerShell 7 (pwsh.exe) was not found. Install PowerShell 7, or add its install directory to PATH. Searched %ProgramFiles%\\PowerShell\\7\\pwsh.exe, then pwsh.exe on PATH.";
 
 /// Windows CreateProcess accepts at most 32,767 UTF-16 code units in its
 /// command line. Keep the builder below that limit, including executable and
@@ -83,12 +94,17 @@ pub fn default_shell_id() -> &'static str {
 }
 
 pub fn is_known_shell_id(id: &str) -> bool {
-    matches!(id, WINDOWS_POWERSHELL_ID | CMD_ID | GIT_BASH_ID | BASH_ID)
+    matches!(
+        id,
+        WINDOWS_POWERSHELL_ID | PWSH_ID | CMD_ID | GIT_BASH_ID | BASH_ID
+    )
 }
 
 pub fn dialect_for_id(id: &str) -> Option<&'static str> {
     match id {
-        WINDOWS_POWERSHELL_ID => Some("powershell"),
+        // Both PowerShell generations share one invocation contract, so the
+        // dialect stays `powershell` while the pinned ID keeps them distinct.
+        WINDOWS_POWERSHELL_ID | PWSH_ID => Some("powershell"),
         CMD_ID => Some("cmd"),
         GIT_BASH_ID | BASH_ID => Some("posix"),
         _ => None,
@@ -153,6 +169,7 @@ pub fn resolve_shell_for_platform(
             WINDOWS_POWERSHELL_ID => {
                 find_windows_powershell().map(|program| ResolvedShell { program })
             }
+            PWSH_ID => find_pwsh().map(|program| ResolvedShell { program }),
             CMD_ID => find_cmd().map(|program| ResolvedShell { program }),
             GIT_BASH_ID => find_bash().map(|program| ResolvedShell { program }),
             _ => Err(format!("command shell '{id}' is not available on Windows")),
@@ -179,7 +196,9 @@ pub fn build_invocation_for_platform(
 
     let args = match platform {
         ShellPlatform::Windows => match shell_id {
-            WINDOWS_POWERSHELL_ID => {
+            // PowerShell 7 keeps the PowerShell 5.1 invocation contract, so the
+            // same non-interactive script drives both generations.
+            WINDOWS_POWERSHELL_ID | PWSH_ID => {
                 let script = format!(
                     "$OutputEncoding = New-Object System.Text.UTF8Encoding($false); [Console]::OutputEncoding = $OutputEncoding; $ErrorActionPreference = 'Continue'; $ProgressPreference = 'SilentlyContinue'; $global:LASTEXITCODE = 0; $script:piPowerShellError = $false; & {{ {command} }} 2>&1 | ForEach-Object {{ if ($_ -is [System.Management.Automation.ErrorRecord]) {{ $script:piPowerShellError = $true; [Console]::Error.WriteLine($_.Exception.Message) }} else {{ [Console]::Out.WriteLine([string]$_) }} }}; $piNativeExitCode = $LASTEXITCODE; if ($script:piPowerShellError) {{ exit 1 }}; exit $piNativeExitCode"
                 );
@@ -258,6 +277,13 @@ fn choices_for_platform(platform: ShellPlatform) -> Vec<ShellOption> {
                 dialect: "powershell".into(),
                 available: false,
                 is_default: true,
+            },
+            ShellOption {
+                id: PWSH_ID.into(),
+                label: "PowerShell 7".into(),
+                dialect: "powershell".into(),
+                available: false,
+                is_default: false,
             },
             ShellOption {
                 id: CMD_ID.into(),
@@ -370,6 +396,34 @@ fn find_windows_powershell() -> Result<PathBuf, String> {
 #[cfg(not(windows))]
 fn find_windows_powershell() -> Result<PathBuf, String> {
     Err("Windows PowerShell is not available on this platform".into())
+}
+
+/// Resolve PowerShell 7. A machine-scope install (MSI, `winget --scope
+/// machine`) lands in `%ProgramFiles%\PowerShell\7`; Store, user-scope, and
+/// portable installs surface through a PATH entry instead (the `WindowsApps`
+/// execution alias or the extracted folder). Both are probed in that order and
+/// failure names both, because neither location is discoverable by guessing.
+#[cfg(windows)]
+fn find_pwsh() -> Result<PathBuf, String> {
+    // `ProgramW6432` covers a 32-bit host process on 64-bit Windows, where
+    // `ProgramFiles` points at the x86 tree instead.
+    for base in ["ProgramFiles", "ProgramW6432"] {
+        if let Some(root) = env::var_os(base) {
+            let candidate = PathBuf::from(root)
+                .join("PowerShell")
+                .join("7")
+                .join("pwsh.exe");
+            if is_executable(&candidate) {
+                return Ok(candidate);
+            }
+        }
+    }
+    search_path("pwsh.exe", |_| true).ok_or_else(|| PWSH_MISSING_GUIDANCE.to_string())
+}
+
+#[cfg(not(windows))]
+fn find_pwsh() -> Result<PathBuf, String> {
+    Err("PowerShell 7 is not available on this platform".into())
 }
 
 #[cfg(windows)]
@@ -540,19 +594,41 @@ mod tests {
 
         let windows = catalog_for_platform(ShellPlatform::Windows, None, |_| true);
         assert_eq!(windows.configured_id, WINDOWS_POWERSHELL_ID);
-        assert_eq!(windows.choices.len(), 3);
+        assert_eq!(windows.choices.len(), 4);
         assert_eq!(windows.choices[0].label, "Windows PowerShell");
         assert!(windows.choices[0].is_default);
+        assert_eq!(windows.choices[1].id, PWSH_ID);
+        assert_eq!(windows.choices[1].label, "PowerShell 7");
+        assert_eq!(windows.choices[1].dialect, "powershell");
+        assert!(!windows.choices[1].is_default);
 
+        // The fallback follows catalog order, so PowerShell 7 — placed directly
+        // after the in-box 5.1 entry — is the first available choice once 5.1 is
+        // gone. Both entries keep the `powershell` dialect, so the fallback
+        // cannot change the command language a pinned turn runs.
         let fallback =
             catalog_for_platform(ShellPlatform::Windows, Some(WINDOWS_POWERSHELL_ID), |id| {
                 id != WINDOWS_POWERSHELL_ID
             });
         assert_eq!(
             fallback.effective.as_ref().map(|option| option.id.as_str()),
-            Some(CMD_ID)
+            Some(PWSH_ID)
         );
         assert!(fallback.fallback);
+
+        // With both PowerShell entries gone, `cmd` comes next in catalog order.
+        let cmd_fallback =
+            catalog_for_platform(ShellPlatform::Windows, Some(WINDOWS_POWERSHELL_ID), |id| {
+                id == CMD_ID || id == GIT_BASH_ID
+            });
+        assert_eq!(
+            cmd_fallback
+                .effective
+                .as_ref()
+                .map(|option| option.id.as_str()),
+            Some(CMD_ID)
+        );
+        assert!(cmd_fallback.fallback);
     }
 
     #[test]
@@ -585,6 +661,85 @@ mod tests {
         let plain = dir.path().join("not-a-shell");
         std::fs::write(&plain, "text").unwrap();
         assert!(!is_executable(&plain));
+    }
+
+    #[test]
+    fn powershell_7_is_a_distinct_selection_with_the_powershell_contract() {
+        // The 5.1 and 7 entries stay separately selectable while sharing one
+        // dialect and one non-interactive script.
+        assert!(is_known_shell_id(PWSH_ID));
+        assert_eq!(dialect_for_id(PWSH_ID), Some("powershell"));
+        assert_ne!(PWSH_ID, WINDOWS_POWERSHELL_ID);
+
+        let selected = catalog_for_platform(ShellPlatform::Windows, Some(PWSH_ID), |id| {
+            id != WINDOWS_POWERSHELL_ID
+        });
+        assert_eq!(selected.configured_id, PWSH_ID);
+        assert!(!selected.fallback);
+        assert_eq!(
+            selected.effective.as_ref().map(|option| option.id.as_str()),
+            Some(PWSH_ID)
+        );
+
+        let pwsh = build_invocation_for_platform(
+            ShellPlatform::Windows,
+            PWSH_ID,
+            PathBuf::from("pwsh.exe"),
+            "Write-Output 'hello'",
+        )
+        .unwrap();
+        let legacy = build_invocation_for_platform(
+            ShellPlatform::Windows,
+            WINDOWS_POWERSHELL_ID,
+            PathBuf::from("powershell.exe"),
+            "Write-Output 'hello'",
+        )
+        .unwrap();
+        assert_eq!(pwsh.args, legacy.args);
+        assert_eq!(pwsh.args[7], "-Command");
+        assert!(pwsh.args[8].contains("Write-Output 'hello'"));
+    }
+
+    #[test]
+    fn unavailable_powershell_7_falls_back_and_reports_it() {
+        let catalog = catalog_for_platform(ShellPlatform::Windows, Some(PWSH_ID), |id| {
+            id != PWSH_ID
+        });
+        assert_eq!(catalog.configured_id, PWSH_ID);
+        assert_eq!(
+            catalog.effective.as_ref().map(|option| option.id.as_str()),
+            Some(WINDOWS_POWERSHELL_ID)
+        );
+        assert!(catalog.fallback);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn missing_powershell_7_guidance_names_the_searched_locations() {
+        // "was not found" alone leaves the user unable to act; the message has
+        // to name both probed locations.
+        assert!(PWSH_MISSING_GUIDANCE.contains("pwsh.exe"));
+        assert!(PWSH_MISSING_GUIDANCE.contains("ProgramFiles"));
+        assert!(PWSH_MISSING_GUIDANCE.contains("PATH"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn powershell_7_resolves_only_through_its_own_locations() {
+        // Guards the resolver contract without depending on whether this
+        // machine has PowerShell 7 installed: either it resolves to a real
+        // `pwsh.exe`, or it fails with the guidance that names the locations.
+        match resolve_shell(PWSH_ID) {
+            Ok(resolved) => assert_eq!(
+                resolved
+                    .program
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .map(str::to_ascii_lowercase),
+                Some("pwsh.exe".to_string())
+            ),
+            Err(message) => assert_eq!(message, PWSH_MISSING_GUIDANCE),
+        }
     }
 
     #[test]

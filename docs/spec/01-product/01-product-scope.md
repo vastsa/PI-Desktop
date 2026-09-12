@@ -67,6 +67,8 @@ notifications, and run scheduled prompts manually or on a remembered cadence.
 - Agent / Plan / Goal operating contracts with host-owned approval artifacts
 - Work panel: Review artifacts, Browser previews, transcript-linked files, and the bundled Files view
 - Project archive, multi-project sidebar, session fork/import, and notifications
+- Opt-in local MCP control for project, session, Agent, workspace, and reviewed
+  desktop operations
 - Extensions page: local plugins, marketplace packages, MCP, Skills, and
   Subagents with activation scopes
 - Scheduled task records with manual execution and cadence metadata
@@ -74,7 +76,8 @@ notifications, and run scheduled prompts manually or on a remembered cadence.
 
 ## 5. Out of scope (current phase)
 
-- Remote Gateway / browser remote control
+- Remote Gateway / browser remote control; local loopback MCP control is the
+  explicitly bounded exception described by ADR 0203
 - Cloud account sync
 - Full IDE experience
 - Trusted plugin provenance/signatures and a capability sandbox for raw plugin
@@ -131,5 +134,5 @@ the internal `page = "chat"` route value; that value is not an operating mode.
 |---|---|---|
 | macOS Apple Silicon | Published | Primary development and acceptance platform; signing/notarization remains credential-gated |
 | macOS Intel | Published | Native x64 DMG/ZIP release lane; signing/notarization remains credential-gated |
-| Windows x64 | Published | NSIS installer and in-app update lane; native qualification continues |
-| Linux x64 | Published | AppImage and deb packages; AppImage update lane; native qualification continues |
+| Windows x64 | Published | NSIS installer, portable exe, and in-app update lane for NSIS; native qualification continues |
+| Linux x64 | Published | AppImage, deb, and rpm packages; AppImage update lane; glibc 2.35+ (Ubuntu 22.04, Debian 12, Fedora 36+); native qualification continues |

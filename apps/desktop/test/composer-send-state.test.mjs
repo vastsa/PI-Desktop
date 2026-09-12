@@ -62,7 +62,7 @@ test("running session configuration is queued for the next turn", () => {
   assert.match(store, /pendingSessionConfigurations = new Map/);
   assert.match(
     store,
-    /get\(\)\.runningSessions\[sessionId\][\s\S]*pendingSessionConfigurations\.set\(sessionId, config\)/,
+    /get\(\)\.runningSessions\[sessionId\][\s\S]*pendingSessionConfigurations\.set\(\n\s*sessionId,\n\s*mergeSessionConfiguration\(pendingSessionConfigurations\.get\(sessionId\), config\),\n\s*\)/,
   );
   assert.match(store, /applyOptimisticSessionConfiguration\(session, config\)/);
   assert.match(store, /event\.type === "agent_end"[\s\S]*flushPendingSessionConfiguration\(envelope\.sessionId\)/);
@@ -72,7 +72,12 @@ test("running prompts use a removable per-session FIFO queue", () => {
   assert.match(store, /queuedPrompts: QueuedPrompts/);
   assert.match(store, /enqueueQueuedPrompt\(state\.queuedPrompts, item\)/);
   assert.match(store, /prioritizeQueuedPrompt\(/);
-  assert.match(store, /event\.type === "agent_end"[\s\S]*drainQueuedPrompts\(envelope\.sessionId\)/);
+  // The Host owns the queue (D375 / D386): the renderer pushes through the
+  // agent/queue channels and mirrors the durable entries after agent_end.
+  assert.match(store, /api\s*\.queuePrompt\(/);
+  assert.match(store, /api\.prioritizeQueuedPrompt\(promptId\)/);
+  assert.match(store, /event\.type === "agent_end"[\s\S]*refreshQueuedPrompts\(envelope\.sessionId\)/);
+  assert.doesNotMatch(store, /drainQueuedPrompts/);
   assert.match(composer, /data-testid="queued-prompt"/);
   assert.match(composer, /removeQueuedPrompt\(item\.id\)/);
   assert.match(composer, /sendQueuedNow\(item\.id\)/);
@@ -256,6 +261,9 @@ test("the user row is inserted before the host round trip and echoed under the s
   assert.match(editUserMessage, /messages: \[\.\.\.kept, optimisticMessage\]/);
   assert.match(editUserMessage, /messageId: optimisticMessage\.id/);
   // The host persists and echoes under the renderer's id when it is a fresh UUID.
-  assert.match(main, /id: durableUserMessageId\(req\.messageId, allMessages\)/);
+  assert.match(
+    main,
+    /id: durableUserMessageId\(\s*req\.messageId,\s*Array\.isArray\(session\.messages\)\s*\?\s*session\.messages\s*:\s*\[\],\s*\)/,
+  );
   assert.match(attachments, /export function durableUserMessageId\([\s\S]*?UUID_PATTERN\.test\(requested\)[\s\S]*?!existing\.some\(\(message\) => message\?\.id === requested\)/);
 });

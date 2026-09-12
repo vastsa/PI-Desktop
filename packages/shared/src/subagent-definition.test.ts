@@ -4,6 +4,7 @@ import {
   DEFAULT_SUBAGENT_MAX_DURATION_SECONDS,
   DEFAULT_SUBAGENT_TOOLS,
   MAX_SUBAGENT_DEFINITIONS,
+  MAX_SUBAGENT_MAX_TOKENS,
   MAX_SUBAGENT_MAX_TURNS,
   mergeSubagentDefinitions,
   normalizeSubagentName,
@@ -59,6 +60,19 @@ Review the diff and report only defects you can point at a line for.
         "Review the diff and report only defects you can point at a line for.",
       source: "user",
     });
+    expect(result.warnings).toEqual([]);
+  });
+
+  it("preserves the no-pass thinking selection", () => {
+    const result = parse(`---
+description: Uses the provider default.
+thinkingLevel: omit
+---
+Leave the provider's thinking default unchanged.`);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.definition.thinkingLevel).toBe("omit");
     expect(result.warnings).toEqual([]);
   });
 
@@ -355,6 +369,78 @@ maxTurns: ${value}
 Read it.`);
       expect(result.ok).toBe(true);
       if (result.ok) expect(result.definition.maxTurns).toBeUndefined();
+    }
+  });
+
+  it("reads a declared output cap and keeps the loose frontmatter keys", () => {
+    for (const key of ["maxTokens", "max-tokens", "max_tokens"]) {
+      const result = parse(`---
+description: Reads code.
+${key}: 16000
+---
+Read it.`);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.definition.maxTokens).toBe(16_000);
+        expect(result.warnings).toEqual([]);
+      }
+    }
+  });
+
+  it("treats an absent, `none`, or zero output cap as following the model", () => {
+    const absent = parse(`---
+description: Reads code.
+---
+Read it.`);
+    expect(absent.ok).toBe(true);
+    if (absent.ok) expect(absent.definition.maxTokens).toBeUndefined();
+
+    for (const value of ["none", "0", "0.0"]) {
+      const result = parse(`---
+description: Reads code.
+maxTokens: ${value}
+---
+Read it.`);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.definition.maxTokens).toBeUndefined();
+        expect(result.warnings).toEqual([]);
+      }
+    }
+  });
+
+  it("clamps an output cap above the ceiling and ignores one that is not a cap", () => {
+    // No model accepts an output limit this high, so it is a typo, and the
+    // clamp keeps a document from asking a provider for the impossible.
+    const tooLarge = parse(`---
+description: Reads code.
+max-tokens: 5000000
+---
+Read it.`);
+    expect(tooLarge.ok).toBe(true);
+    if (tooLarge.ok) {
+      expect(tooLarge.definition.maxTokens).toBe(MAX_SUBAGENT_MAX_TOKENS);
+      expect(tooLarge.warnings).toEqual([
+        `clamping \`maxTokens\` 5000000 to ${MAX_SUBAGENT_MAX_TOKENS}`,
+      ]);
+    }
+
+    // A negative or fractional value is not a cap at all; ignoring it leaves
+    // the delegate on the model's published limit rather than on a value the
+    // provider would reject outright.
+    for (const value of ["soon", "-5", "1.5"]) {
+      const invalid = parse(`---
+description: Reads code.
+maxTokens: ${value}
+---
+Read it.`);
+      expect(invalid.ok).toBe(true);
+      if (invalid.ok) {
+        expect(invalid.definition.maxTokens).toBeUndefined();
+        expect(invalid.warnings).toEqual([
+          `ignoring invalid \`maxTokens\` "${value}" (following the model limit)`,
+        ]);
+      }
     }
   });
 

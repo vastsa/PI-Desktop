@@ -1,7 +1,6 @@
 import {
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -9,7 +8,8 @@ import { useTranslation } from "react-i18next";
 import type { ProjectRecord } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../stores/app-store";
-import { Button, Select, cx } from "../ui";
+import { Button, Select, TooltipButton, cx } from "../ui";
+import { AnchoredMenu } from "./AnchoredMenu";
 import {
   IconChevronDown,
   IconFolder,
@@ -300,14 +300,15 @@ export function CapabilityToolbar({
           onChange={(event) => onSearchChange(event.target.value)}
         />
         {search ? (
-          <button
+          <TooltipButton
             type="button"
             className="agent-capability-search-clear"
-            aria-label={t("settings.clearSearch")}
+            tooltip={t("settings.clearSearch")}
+            ariaLabel={t("settings.clearSearch")}
             onClick={() => onSearchChange("")}
           >
             <IconX size={11} />
-          </button>
+          </TooltipButton>
         ) : null}
       </div>
       {projectPicker}
@@ -472,40 +473,31 @@ export function CapabilityRowMenu({
   disabled?: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const wrapRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: MouseEvent) => {
-      if (!wrapRef.current?.contains(event.target as Node)) onOpenChange(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onOpenChange(false);
-    };
-    document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open, onOpenChange]);
-
   return (
-    <div className="agent-capability-menu-wrap" ref={wrapRef}>
-      <button
-        type="button"
-        className="settings-icon-button"
-        aria-label={label}
-        title={label}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        disabled={disabled}
-        onClick={() => onOpenChange(!open)}
-      >
-        <IconMore size={16} />
-      </button>
-      {open ? (
-        <div className="agent-capability-menu" role="menu">
+    <AnchoredMenu
+      className="agent-capability-menu-wrap"
+      open={open}
+      onClose={() => onOpenChange(false)}
+      menuClassName="agent-capability-menu"
+      label={label}
+      role="menu"
+      align="end"
+      trigger={(ref) => (
+        <TooltipButton
+          ref={ref}
+          type="button"
+          className="settings-icon-button"
+          tooltip={label}
+          ariaLabel={label}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          disabled={disabled}
+          onClick={() => onOpenChange(!open)}
+        >
+          <IconMore size={16} />
+        </TooltipButton>
+      )}
+    >
           {items.map((item) => (
             <button
               key={item.key}
@@ -519,9 +511,7 @@ export function CapabilityRowMenu({
               {item.label}
             </button>
           ))}
-        </div>
-      ) : null}
-    </div>
+    </AnchoredMenu>
   );
 }
 
@@ -583,12 +573,28 @@ export function CapabilityButton({
   // No `size="sm"`: its utilities live in Tailwind's `utilities` layer while the
   // style partials are unlayered, so `.btn` wins regardless. Toolbar buttons get
   // their compact geometry from `.agent-capability-toolbar-actions > .btn`.
+  const className = cx(
+    "btn",
+    variant === "primary" ? "btn-primary" : "btn-secondary",
+  );
+  if (title) {
+    return (
+      <TooltipButton
+        tooltip={title}
+        className={className}
+        disabled={disabled || busy}
+        aria-busy={busy || undefined}
+        onClick={onClick}
+      >
+        {children}
+      </TooltipButton>
+    );
+  }
   return (
     <Button
       variant={variant}
       disabled={disabled || busy}
       aria-busy={busy || undefined}
-      title={title}
       onClick={onClick}
     >
       {children}

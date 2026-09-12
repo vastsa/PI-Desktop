@@ -1,8 +1,8 @@
 export const PROTOCOL_VERSION = 11 as const;
-export const SCHEMA_VERSION = 13 as const;
+export const SCHEMA_VERSION = 14 as const;
 export const APP_ID = "com.pi-desktop.app";
 export const APP_NAME = "PI-Desktop";
-export const APP_VERSION = "0.13.11";
+export const APP_VERSION = "0.14.7-beta.1";
 
 export const APP_MENU_COMMANDS = [
   "newTask",
@@ -33,6 +33,7 @@ export const NATIVE_MENU_ACTIONS = [
   "minimize",
   "toggleMaximize",
   "close",
+  "restoreMainWindow",
 ] as const;
 
 export type NativeMenuAction = (typeof NATIVE_MENU_ACTIONS)[number];
@@ -71,23 +72,32 @@ export const IPC = {
     agentCompact: "pi-desktop/agent/compact",
     agentAbort: "pi-desktop/agent/abort",
     agentStop: "pi-desktop/agent/stop",
+    agentQueuePush: "pi-desktop/agent/queue/push",
+    agentQueueList: "pi-desktop/agent/queue/list",
+    agentQueueRemove: "pi-desktop/agent/queue/remove",
+    agentQueuePrioritize: "pi-desktop/agent/queue/prioritize",
     agentGetStatus: "pi-desktop/agent/getStatus",
     agentInstructionsGet: "pi-desktop/agent/instructions/get",
     agentInstructionsSave: "pi-desktop/agent/instructions/save",
     sessionList: "pi-desktop/session/list",
     sessionCreate: "pi-desktop/session/create",
     sessionFork: "pi-desktop/session/fork",
+    sessionMoveProject: "pi-desktop/session/moveProject",
     sessionGet: "pi-desktop/session/get",
     sessionDelete: "pi-desktop/session/delete",
     sessionRename: "pi-desktop/session/rename",
+    sessionSummarizeTitle: "pi-desktop/session/summarizeTitle",
     sessionConfigure: "pi-desktop/session/configure",
     sessionImportScan: "pi-desktop/session/importScan",
     sessionImportRun: "pi-desktop/session/importRun",
+    modelConfigImportScan: "pi-desktop/modelConfig/importScan",
+    modelConfigImportRun: "pi-desktop/modelConfig/importRun",
     sessionReplaceMessages: "pi-desktop/session/replaceMessages",
     sessionSaveRevision: "pi-desktop/session/saveRevision",
     sessionListRevisions: "pi-desktop/session/listRevisions",
     sessionActivateRevision: "pi-desktop/session/activateRevision",
     sessionGetScratchPath: "pi-desktop/session/getScratchPath",
+    sessionOpenScratchPath: "pi-desktop/session/openScratchPath",
     projectOpenFolder: "pi-desktop/project/openFolder",
     settingsGet: "pi-desktop/settings/get",
     settingsSet: "pi-desktop/settings/set",
@@ -97,6 +107,7 @@ export const IPC = {
     secretsDelete: "pi-desktop/secrets/delete",
     secretsHas: "pi-desktop/secrets/has",
     projectOpen: "pi-desktop/project/open",
+    projectClone: "pi-desktop/project/clone",
     projectGet: "pi-desktop/project/get",
     projectList: "pi-desktop/project/list",
     projectSet: "pi-desktop/project/set",
@@ -125,6 +136,10 @@ export const IPC = {
     providersOauthCancel: "pi-desktop/providers/oauth/cancel",
     providersOauthDelete: "pi-desktop/providers/oauth/delete",
     pluginList: "pi-desktop/plugin/list",
+    /** Plugin-contributed agent extensions (D387/D388, ADR 0214). */
+    pluginImportExtension: "pi-desktop/plugin/importExtension",
+    extensionsCommandRun: "pi-desktop/extensions/commands/run",
+    extensionsUiRespond: "pi-desktop/extensions/ui/respond",
     pluginLoadDev: "pi-desktop/plugin/loadDev",
     pluginReload: "pi-desktop/plugin/reload",
     pluginCreateFromTemplate: "pi-desktop/plugin/createFromTemplate",
@@ -186,6 +201,7 @@ export const IPC = {
     composerPickPhotos: "pi-desktop/composer/pickPhotos",
     composerImportFiles: "pi-desktop/composer/importFiles",
     composerPasteFiles: "pi-desktop/composer/pasteFiles",
+    clipboardRecordPaste: "pi-desktop/clipboard/recordPaste",
     composerCommands: "pi-desktop/composer/commands",
     workspaceDiff: "pi-desktop/workspace/diff",
     workspaceReviewRollback: "pi-desktop/workspace/review/rollback",
@@ -205,6 +221,7 @@ export const IPC = {
     windowSetWorkPanelReservation:
       "pi-desktop/window/setWorkPanelReservation",
     windowSetWorkPanelChatWidth: "pi-desktop/window/setWorkPanelChatWidth",
+    windowSetBackgroundColor: "pi-desktop/window/setBackgroundColor",
     windowControl: "pi-desktop/window/control",
     closeBehaviorGet: "pi-desktop/window/closeBehavior/get",
     closeBehaviorSet: "pi-desktop/window/closeBehavior/set",
@@ -213,8 +230,11 @@ export const IPC = {
   },
   event: {
     pluginChanged: "pi-desktop/event/pluginChanged",
+    extensionsUiPrompt: "pi-desktop/extensions/event/uiPrompt",
+    extensionsStatus: "pi-desktop/extensions/event/status",
     pluginLauncherShown: "pi-desktop/pluginLauncher/event/shown",
     agentMessage: "pi-desktop/agent/event/message",
+    agentQueueChanged: "pi-desktop/agent/event/queueChanged",
     hostStatus: "pi-desktop/app/event/hostStatus",
     toast: "pi-desktop/app/event/toast",
     browserState: "pi-desktop/browser/event/state",
@@ -224,6 +244,7 @@ export const IPC = {
     windowWorkPanelResize: "pi-desktop/window/event/workPanelResize",
     menuCommand: "pi-desktop/menu/event/command",
     notificationChanged: "pi-desktop/notification/event/changed",
+    sessionsChanged: "pi-desktop/session/event/changed",
     notificationActivated: "pi-desktop/notification/event/activated",
     plansChanged: "pi-desktop/plans/event/changed",
     providersOauth: "pi-desktop/providers/oauth/event",

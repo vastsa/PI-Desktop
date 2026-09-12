@@ -35,6 +35,11 @@ type AppError = {
 2. `message` 为英文源文本（i18n 键可单独映射）
 3. UI 应该更喜欢从 `code` 派生的 i18n 密钥（如果可用）
 
+桌面测试套件（`apps/desktop/test/error-code-registry.test.mjs`）会验证
+`ErrorCodes` 的每一项都出现在本文档中，并且 host-core 从其 RPC 调度器和原生
+工具发出的每一个 `errorCode` 都已注册；§3.7 中的保留代码在有实现发出它们
+之前，刻意不出现在 `ErrorCodes` 里。
+
 ## 3. 代码注册
 
 ### 3. 1 应用程序/协议
@@ -48,10 +53,24 @@ type AppError = {
 | `APP_DEGRADED` | 是的 | 应用程序以有限的功能运行 |
 | `INTERNAL` | 也许 | 意外的内部故障 |
 | `INVALID_ARGUMENT` | 不 | 请求 schema/args 无效，包括错误 file/directory 类型的本机工具路径 |
+| `INVALID_PARAMS` | 不 | host-core RPC 参数校验失败（数字码 `1002`）；sidecar 和渲染器原样透传 |
 | `UNAUTHORIZED` | 不 | capability/auth 边界拒绝呼叫 |
 | `NOT_FOUND` | 不 | 未找到实体 |
+| `SESSION_NOT_FOUND` | 不 | 会话作用域的 RPC（包括 `tools.execute`）点名了主机没有的会话；未知 id 永远不会继承全局工作区 |
 | `CONFLICT` | 也许 | 状态冲突/资源繁忙 |
+| `UNSUPPORTED` | 不 | 该操作在此界面上没有实现，例如没有桌面窗口时的受信任扩展提示（规格 16 §9） |
+| `FORBIDDEN` | 不 | RACP：主体的角色不允许该方法（规格 19 §13） |
+| `METHOD_NOT_FOUND` | 不 | RACP：此 Host 上未知的方法，例如没有 Gateway 时的 `host/list` |
+| `IDEMPOTENCY_CONFLICT` | 不 | 队列或回合的幂等 key 以不同输入被重用（D386） |
+| `CURSOR_EXPIRED` | 不 | RACP：回放游标早于保留窗口；从快照重新订阅 |
+| `CLIENT_TOO_SLOW` | 是的 | RACP：客户端落后于事件流并被断开 |
+| `APPROVAL_EXPIRED` | 不 | RACP：审批期限在回答到达前已过 |
+| `APPROVAL_STALE` | 不 | RACP：审批已被处理或属于更早的回合 |
+| `PAYLOAD_TOO_LARGE` | 不 | RACP：帧超过协商的大小上限 |
 | `TIMEOUT` | 是的 | 通用超时 |
+| `HOST_SHUTTING_DOWN` | 是的 | 主机收到 EOF 正在排空；调用被拒绝而不是被启动 |
+| `RATE_LIMITED` | 是的 | 某个按调用方计的主机预算（插件会话导入、批量操作）在其窗口内被超出 |
+| `LIMIT_EXCEEDED` | 不 | 载荷超过了固定的主机上限（条目数、字节数）并被拒绝 |
 
 `HOST_UNAVAILABLE` 是为丢失或损坏的主机 process/transport 保留的，
 不是普通的入学压力。 RPC 容量返回 `HOST_OVERLOADED`，并且
@@ -64,7 +83,7 @@ stdio 与 Tokio 的动态阻塞池隔离，因此后一种情况
 
 | 代码 | 可重审的 | 意义 |
 |---|---|---|
-| `AGENT_BUSY` | 不 | 会话已经有活动轮次 |
+| `AGENT_BUSY` | 不 | 会话已经有活动轮次；父级终态错误后的残留子智能体不会让会话保持忙碌（D352） |
 | `AGENT_NOT_FOUND` | 不 | 会话丢失 |
 | `TURN_NOT_FOUND` | 不 | 使 id 无效 |
 | `TURN_ABORTED` | 不 | 回合被 user/system 中止 |
@@ -85,11 +104,15 @@ stdio 与 Tokio 的动态阻塞池隔离，因此后一种情况
 | 代码 | 可重审的 | 意义 |
 |---|---|---|
 | `WORKSPACE_REQUIRED` | 不 | 无工作空间限制 |
-| `PATH_OUTSIDE_WORKSPACE` | 不 | 在显式外部路径权限决策或未经许可的兼容性调用到达解析器之前，路径逃逸沙箱 |
+| `PATH_OUTSIDE_WORKSPACE` | 不 | 在显式外部路径权限决策之前路径逃逸沙箱，或提示词附件位于其会话 scratch/project/attachment 根目录之外 |
+| `WORKSPACE_PATH_DENIED` | 不 | 显式的 `Read`/`Write`/`Edit` 路径命中了始终开启的安全拒绝名单（私钥、`.env` 文件、凭证包、`.git/objects`）；外部路径授权不会解除它（规格 15 §3） |
+| `READ_PATH_IS_DIRECTORY` | 不 | `Read` 拿到的是目录；结果附带一条 `Glob` 建议 |
+| `TOOL_BINARY_CONTENT` | 不 | `Read` 拒绝把二进制文件倾倒进模型上下文 |
 | `TOOL_NOT_FOUND` | 不 | 未知工具 |
 | `TOOL_DENIED` | 不 | 权限被拒绝/模式被禁止 |
 | `TOOL_TIMEOUT` | 是的 | 工具执行超时 |
 | `TOOL_FAILED` | 也许 | 工具已执行但失败 |
+| `TOOL_ABORTED` | 不 | 工具在完成前被用户停止或回合中止取消 |
 | `MUTATION_RETRY_BUDGET_EXHAUSTED` | 是 | 重复保护在同路径 `Edit` 或 shell patch 反复失败后终止了本轮；携带 `details.kind`（`edit` 或 `patch-command`）与最后一个工具错误代码 |
 | `PROCESS_RESOURCE_EXHAUSTED` | 是的 | shell 进程无法启动，因为操作系统暂时耗尽了进程资源 |
 | `SHELL_NOT_FOUND` | 不 | 目录回退后没有有效的平台 shell 可用；消息承载指引 |
@@ -110,6 +133,36 @@ stdio 与 Tokio 的动态阻塞池隔离，因此后一种情况
 | `PLAN_ARTIFACT_WRITE_FAILED` | 不 | 主机无法将确切的字节写入新的 `.pi/<kind>/*.md` 工件 |
 | `PLAN_EXECUTION_INTERRUPTED` | 不 | 已批准的 queued/running Plan 或 Goal 执行已停止且不重播 |
 | `PLAN_REQUIRES_INTERACTIVE_SESSION` | 不 | unattended/scheduled Plan 或 Goal 运行无法请求批准 |
+| `PLAN_NOT_FOUND` | 不 | 没有审批记录与该提案 id 匹配 |
+| `PLAN_SESSION_NOT_FOUND` | 不 | Plan/Goal RPC 点名了主机没有的会话 |
+| `PLAN_WORKSPACE_REQUIRED` | 不 | 会话没有持久化的项目；临时会话无法进入 Plan 或 Goal |
+| `PLAN_ALREADY_ACTIVE` | 不 | 会话已经有一份正在协商的契约 |
+| `PLAN_ALREADY_PENDING` | 不 | 同一回合的审批仍在等待时又收到了一次提交 |
+| `PLAN_ALREADY_RESOLVED` | 不 | 第二次 approve/reject 到达了一个已经裁决的审批 |
+| `PLAN_APPROVAL_CONFLICT` | 不 | 审批记录在版本守卫更新底下被改动 |
+| `PLAN_INVALID_ACTION` | 不 | 审批响应既不是 `approve` 也不是 `reject` |
+| `PLAN_INVALID_ARGUMENT` | 不 | submit/resolve 参数校验失败 |
+| `PLAN_PERMISSION_MODE_REQUIRED` | 不 | approve 没有选择 `ask`、`accept-edits` 或 `auto` |
+| `PLAN_PERMISSION_MODE_INVALID` | 不 | 选定的权限模式不是这三者之一 |
+| `PLAN_MARKDOWN_TOO_LARGE` | 不 | 提交的 Markdown 超出工件大小上限 |
+| `PLAN_REJECTED` | 不 | 用户拒绝了提案；本轮结束且不执行 |
+| `PLAN_SUBMIT_FAILED` | 也许 | 主机无法记录提案 |
+| `PLAN_CONFIGURATION_BLOCKED` | 不 | 提案或执行进行中时 `session.configure` 被拒绝 |
+| `PLAN_ARTIFACT_INVALID` | 不 | 检查点工件在执行前未通过校验 |
+| `PLAN_ARTIFACT_NOT_READY` | 不 | 工件尚未持久写入就被认领执行 |
+| `PLAN_ARTIFACT_PATH_UNSAFE` | 不 | 工件路径逃逸了 `<workspaceRoot>/.pi/<kind>/` |
+| `PLAN_ARTIFACT_COLLISION_LIMIT` | 不 | 主机用尽了唯一的工件名 |
+| `PLAN_ARTIFACT_HASH_MISMATCH` | 不 | 执行时工件字节与记录的哈希不再一致 |
+| `PLAN_EXECUTION_ACTIVE` | 不 | 该会话已有一个已批准的执行在运行 |
+| `PLAN_EXECUTION_NOT_FOUND` | 不 | 没有排队中的执行与认领匹配 |
+| `PLAN_EXECUTION_ALREADY_CLAIMED` | 不 | 另一个认领者抢先拿走了排队中的执行 |
+| `PLAN_EXECUTION_STALE` | 不 | 执行 epoch 与当前会话不再匹配 |
+| `PLAN_EXECUTION_STATUS_INVALID` | 不 | 当前状态不允许该状态迁移 |
+| `PLAN_EXECUTION_CONFLICT` | 不 | 执行记录在版本守卫更新底下被改动 |
+| `PLAN_EXECUTION_FAILED` | 也许 | 已批准的执行以错误结束 |
+| `PLAN_INTERNAL` | 也许 | 没有更细分类的 Plan/Goal 主机失败 |
+| `WRITE_DISABLED_IN_CHAT` | 不 | 历史遗留（D188 之前的 Chat profile）；为已存储的转录本保留注册，不再发出 |
+| `BASH_DISABLED_IN_CHAT` | 不 | 历史遗留（D188 之前的 Chat profile）；为已存储的转录本保留注册，不再发出 |
 
 `_IN_PLAN` 后缀和 `PLAN_` 前缀是历史性的：两种合约模式
 （Plan 和 Goal）共享这些代码，而不是复制 `_IN_GOAL` 集
@@ -152,6 +205,7 @@ reveal 不并入任何行，必须重新读取。
 | 代码 | 可重审的 | 意义 |
 |---|---|---|
 | `PROVIDER_SECRET_MISSING` | 不 | 启用的提供程序需要 API 密钥 |
+| `MODEL_ALIAS_TOO_LONG` | 不 | 已配置模型别名超过 60 个 Unicode 字符 |
 | `SECRET_STORE_UNAVAILABLE` | 也许 | 操作系统安全存储不可用（保留） |
 | `SETTINGS_INVALID` | 不 | 设置有效负载无效（保留） |
 
@@ -159,11 +213,21 @@ reveal 不并入任何行，必须重新读取。
 
 | 代码 | 可重审的 | 意义 |
 |---|---|---|
-| `PLUGIN_NOT_FOUND` | 不 | 插件 ID 缺失（保留） |
+| `PLUGIN_NOT_FOUND` | 不 | 插件 ID 缺失 |
 | `PLUGIN_INVALID` | 不 | manifest/package 无效 |
 | `PLUGIN_LOAD_FAILED` | 也许 | enable/load 失败 |
 | `PLUGIN_DISABLED` | 不 | 插件已禁用（保留） |
-| `PLUGIN_PERMISSION_DENIED` | 不 | 插件缺少 declared/granted 权限（保留） |
+| `PLUGIN_PERMISSION_DENIED` | 不 | 插件缺少该调用所需的已声明且已授予的权限 |
+| `PLUGIN_INTEGRITY` | 不 | 包校验和或签名与目录条目不匹配 |
+| `PLUGIN_NETWORK` | 是的 | 市场下载或目录拉取失败 |
+| `PLUGIN_HOST_TOO_OLD` | 不 | 包的 `engines.piDesktop` 范围排除了当前宿主 |
+| `PLUGIN_MARKET_INVALID` | 不 | 市场目录格式错误或缺少必需的发布字段 |
+| `PLUGIN_MARKET_UNTRUSTED_HOST` | 不 | 目录或包 URL 不在可信市场主机之内 |
+| `PLUGIN_MARKET_YANKED` | 不 | 请求的发布版本已从目录中撤回 |
+| `MCP_INVALID` | 不 | 用户的 MCP 服务器定义校验失败 |
+| `SKILL_INVALID` | 不 | 用户的技能文档校验失败 |
+| `SUBAGENT_INVALID` | 不 | 用户的子代理文档校验失败 |
+| `CAPABILITY_INVALID` | 不 | Agent 能力根目录或作用域设置校验失败 |
 | `PLUGIN_COMMAND_NOT_FOUND` | 不 | 命令 ID 丢失（保留） |
 | `PLUGIN_CRASHED` | 是的 | 插件运行时崩溃（保留） |
 | `PLUGIN_CONTRACT_MISMATCH` | 不 | 不支持的 manifest/api 版本（保留） |
@@ -181,8 +245,9 @@ reveal 不并入任何行，必须重新读取。
 | `PROVIDER_TIMEOUT` | `TIMEOUT` | network/server 超时（可重试） |
 | `PROVIDER_UNSUPPORTED_CAPABILITY` | `PROVIDER_ERROR` | tools/vision 不支持 |
 | `PROVIDER_DISABLED` | `MODEL_NOT_CONFIGURED` | 提供商已禁用 |
-| `WORKSPACE_PATH_DENIED` | `PATH_OUTSIDE_WORKSPACE` | ignore/denylist 块 |
-| `TOOL_BINARY_CONTENT` | `TOOL_FAILED` | 拒绝二进制转储 |
+
+`WORKSPACE_PATH_DENIED` 和 `TOOL_BINARY_CONTENT` 在主机开始发出它们时已从
+本表移出（§3.3）。
 
 历史别名（切勿在新代码中使用）：`PROVIDER_AUTH_FAILED` →
 `PROVIDER_UNAUTHORIZED`； `PROVIDER_STREAM_INTERRUPTED` → `STREAM_FAILED`；
@@ -253,9 +318,8 @@ UI/host 超时在内部发出 `PERMISSION_TIMEOUT`，工具结果向代理显示
 包含经过编辑的提供商响应的可访问详细信息披露，
 提供商 ID 和模型 ID。提供商详细信息上限为 600 个字符，并且
 公共 credential/header 值在事件发射之前进行编辑或
-坚持。如果有的话，详细信息披露和计时日志也可能
-显示有界 `phase`、`providerStatus`、`providerCode`、`providerWaitMs`、
-`streamMs` 和 `retryAttempt` 字段。
+详细信息披露也可能显示有界的 `phase`、`providerStatus`、`providerCode`、
+`providerWaitMs`、`streamMs` 和 `retryAttempt` 字段。
 
 ## 6. i18n 按键约定
 

@@ -1,6 +1,6 @@
 # ADR 0087: Replace textual Edit matching with a line-anchored, tag-verified contract
 
-- Status: Accepted for implementation
+- Status: Implemented (phases 1–2; block ops, drift recovery, and boundary repair remain phased)
 - Date: 2026-08-15
 - Deciders: PI-Desktop core
 - Amends: D186, ADR 0069 §2 (`Read` output shape), ADR 0043 §1 (review keying)
@@ -127,9 +127,10 @@ instead of failing. A no-op apply is an error.
   to the lines it is actually writing, which removes the dominant `Edit` failure
   cause rather than prescribing a recovery for it.
 - Edits against content the session never displayed become impossible instead of
-  being undetectable. §4d's "one re-read, then stop" loop guard stays, but the
-  cases that trigger it shrink to genuine drift. It also stops counting the
-  three recoverable codes on their first occurrence: each one hands the retry
+- Edits against content the session never displayed become impossible instead of
+  being undetectable. §4d's bounded loop guard stays, now allowing three counted
+  failures per path before termination. It also stops counting the three
+  recoverable codes on their first occurrence: each one hands the retry
   what it needs, so each gets one grace per path, and the failure that does
   exhaust the budget ends the turn with a visible `MUTATION_RETRY_BUDGET_EXHAUSTED`
   row rather than a silently completed turn.

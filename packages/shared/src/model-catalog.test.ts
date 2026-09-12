@@ -6,6 +6,7 @@ import {
   effectiveContextWindow,
   bindingSupportsImages,
   modelMatchesFilter,
+  normalizeApiStyle,
 } from "./model-catalog.js";
 import type { ModelInfo } from "./types.js";
 
@@ -40,6 +41,20 @@ describe("effective model context windows", () => {
   it("preserves a non-default per-model override", () => {
     expect(effectiveContextWindow(1_050_000, 256_000)).toBe(256_000);
     expect(effectiveContextWindow(1_050_000, undefined)).toBe(1_050_000);
+  });
+});
+
+describe("provider API style compatibility", () => {
+  it("falls back to Chat Completions for missing or unknown persisted styles", () => {
+    expect(normalizeApiStyle(undefined)).toBe("chat_completions");
+    expect(normalizeApiStyle("auto")).toBe("chat_completions");
+    expect(normalizeApiStyle("legacy_style")).toBe("chat_completions");
+  });
+
+  it("preserves every current API style", () => {
+    expect(normalizeApiStyle("responses")).toBe("responses");
+    expect(normalizeApiStyle("anthropic_messages")).toBe("anthropic_messages");
+    expect(normalizeApiStyle("opencode_go")).toBe("opencode_go");
   });
 });
 

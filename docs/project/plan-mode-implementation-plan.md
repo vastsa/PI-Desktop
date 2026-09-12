@@ -36,7 +36,8 @@ host restart with no replay. A pending interruption leaves the session Plan;
 an already-approved queued or running interruption leaves it Agent.
 
 The Bash tool retains its protocol name while using a host shell catalog. The
-catalog IDs are `windows-powershell`, `cmd`, `git-bash`, and `bash`. The
+catalog IDs are `windows-powershell`, `windows-pwsh`, `cmd`, `git-bash`, and
+`bash`. The
 effective shell ID and dialect are pinned for each turn, stdout/stderr stream
 separately, the default timeout is exactly 60 seconds, explicit timeouts are
 bounded to 1-300 seconds, and cancellation shuts down the full process tree.
@@ -51,7 +52,7 @@ bounded to 1-300 seconds, and cancellation shuts down the full process tree.
 | Approval status | `pending`, `approved`, `rejected`, `expired`, `interrupted` | `plan_approvals.status` |
 | Execution state | `queued`, `running`, `completed`, `interrupted` | `plan_approvals.execution_state` |
 | Permission mode | `inherit`, `ask`, `accept-edits`, `auto` | Host settings/session policy |
-| Shell ID | `windows-powershell`, `cmd`, `git-bash`, `bash` | Host catalog/settings |
+| Shell ID | `windows-powershell`, `windows-pwsh`, `cmd`, `git-bash`, `bash` | Host catalog/settings |
 | Shell dialect | `powershell`, `cmd`, `posix` | Effective shell option |
 
 The renderer and sidecar hold projections. The renderer retains the latest Plan
@@ -210,7 +211,7 @@ Host-core returns a platform-aware catalog:
 
 | Platform | IDs in catalog |
 |---|---|
-| Windows | `windows-powershell`, `cmd`, `git-bash` |
+| Windows | `windows-powershell`, `windows-pwsh`, `cmd`, `git-bash` |
 | macOS/Linux | `bash` |
 
 Each option contains its stable ID, display label, dialect, availability, and

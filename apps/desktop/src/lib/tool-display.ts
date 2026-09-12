@@ -191,6 +191,15 @@ export function getToolSummary(toolName: string | undefined, args: unknown) {
 
 export function formatToolDuration(totalSeconds: number) {
   const seconds = Math.max(0, Math.floor(totalSeconds));
-  if (seconds < 60) return `${seconds}s`;
-  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+  const hours = Math.floor(seconds / 3_600);
+  const minutes = Math.floor((seconds % 3_600) / 60);
+  const remainingSeconds = seconds % 60;
+  const parts: string[] = [];
+
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0) parts.push(`${minutes}m`);
+  if (remainingSeconds > 0) parts.push(`${remainingSeconds}s`);
+  if (parts.length === 0) parts.push("0s");
+
+  return parts.join(" ");
 }

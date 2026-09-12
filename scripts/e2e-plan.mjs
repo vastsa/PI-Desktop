@@ -437,7 +437,7 @@ async function verifyArtifact(ctx, proposal, markdown, title, question) {
 }
 
 function shellDialectForId(id) {
-  if (id === "windows-powershell") return "powershell";
+  if (id === "windows-powershell" || id === "windows-pwsh") return "powershell";
   if (id === "cmd") return "cmd";
   if (id === "git-bash" || id === "bash") return "posix";
   return undefined;
@@ -588,7 +588,7 @@ async function scenario105(binary, tempRoot) {
       ["Write", { path: "forged-write.txt", content: "must-not-write" }, "WRITE_DISABLED_IN_PLAN"],
       [
         "Edit",
-        { path: "readme.txt", old_string: "fixture", new_string: "changed" },
+        { path: "readme.txt", tag: "ABCD", ops: "PUT 1.=1:\n+changed\n" },
         "EDIT_DISABLED_IN_PLAN",
       ],
       ["plugin_fake_tool", {}, "PLUGIN_DISABLED_IN_PLAN"],
@@ -961,7 +961,7 @@ async function scenario112(binary, tempRoot) {
     assert(choices.length > 0, `empty shell catalog: ${shortJson(catalog)}`);
     const expectedIds =
       process.platform === "win32"
-        ? ["windows-powershell", "cmd", "git-bash"]
+        ? ["windows-powershell", "windows-pwsh", "cmd", "git-bash"]
         : ["bash"];
     for (const id of expectedIds) {
       assert(choices.some((choice) => choice.id === id), `missing platform shell ${id}`);
@@ -1059,7 +1059,9 @@ async function scenario115(binary, tempRoot) {
     const invalidLegs = [
       ["zero", 0, ["INVALID_ARGUMENT"]],
       ["negative", -1, ["INVALID_PARAMS"]],
-      ["over-max", 300_001, ["INVALID_ARGUMENT"]],
+      // host-core caps timeoutMs at i32::MAX (MAX_TIMEOUT_MS); the agent-side
+      // 21,600 s ceiling lives in agent-runtime's Bash schema.
+      ["over-max", 2_147_483_648, ["INVALID_ARGUMENT"]],
     ];
     const invalidDetails = [];
     for (const [name, timeoutMs, codes] of invalidLegs) {

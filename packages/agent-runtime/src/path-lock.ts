@@ -5,9 +5,9 @@
  * `tools.execute` calls independently. host-core admits one mutation per
  * session at a time, so the writes themselves cannot tear; what it does not
  * give is a defined order for two same-path mutations, and the sidecar's own
- * per-path bookkeeping needs one. The edit-recovery contract counts failures
- * per path and terminates the second failed `Edit` for the same file, which
- * only means "read fresh content and try again" if the two attempts were
+ * per-path bookkeeping needs one. The edit-recovery contract allows three
+ * counted failures per path before terminating the prompt, which only means
+ * "read fresh content and try again" if the attempts were ordered.
  * ordered. With subagents able to fan out (ADR 0062) they no longer are, so the
  * sidecar queues same-path mutations before they reach the host.
  *

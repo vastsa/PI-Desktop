@@ -145,5 +145,5 @@ export function serializePluginLlmContext(messages: readonly PluginLlmMessage[])
     .join("\n\n");
 }
 
-export const PLUGIN_ADVISOR_DEFAULT_TAIL =
-  "Please advise on the executor's situation above.";
+export const PLUGIN_COMPLETE_DEFAULT_TAIL =
+  "Please respond to the request.";

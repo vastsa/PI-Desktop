@@ -6,8 +6,8 @@ The prompt-enhancement capability supports a one-shot `Enhance prompt` request
 for a non-empty draft. The Composer renders it as a standalone Sparkles action
 between the combined model × reasoning selector and the single Stop/Send
 submit slot. When invoked, the request rewrites only the draft text with the
-model currently displayed in the Composer. File-reference chips remain
-unchanged.
+model currently displayed in the Composer. Inline file-reference chips,
+including pasted image chips, remain unchanged and do not disable the action.
 
 This is a v1 utility action, not an agent turn: it does not append a message,
 read session history, run tools, or persist a transcript row.
@@ -46,15 +46,18 @@ The completion context contains exactly:
 
 1. the static `PROMPT_ENHANCEMENT_SYSTEM_PROMPT` from
    `packages/agent-runtime/src/prompt-templates.ts`; and
-2. one user message, `Draft:\n<draft>`.
+2. one user message, `Draft:\n<draft text>`.
 
 No prior conversation, tools, attachments, or configurable template are
-included. The selected thinking level is passed to pi-ai, and provider setup
-retries use the existing bounded retry controller. When the resolved provider
-is OpenCode Go (or another `opencode.ai` host), the one-shot forwards the
-Composer session id as `x-opencode-session`; a request with no session gets a
-per-call id. Model output is consumed as plain text and trimmed. Empty or
-whitespace-only output is a `PROMPT_ENHANCEMENT_EMPTY` failure.
+included. The renderer removes its inline file-reference chip tokens before
+the request and restores those chips in their original order and relative
+position after the text response; the model is not trusted to preserve opaque
+renderer sentinels. The selected thinking level is passed to pi-ai, and
+provider setup retries use the existing bounded retry controller. When the
+resolved provider is OpenCode Go (or another `opencode.ai` host), the one-shot
+forwards the Composer session id as `x-opencode-session`; a request with no
+session gets a per-call id. Model output is consumed as plain text and trimmed.
+Empty or whitespace-only output is a `PROMPT_ENHANCEMENT_EMPTY` failure.
 
 ## 4. Failure and race handling
 

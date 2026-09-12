@@ -100,29 +100,44 @@
 }
 
 /*
-  Named services are Service + key. Custom is Service, then Name / URL, then
-  the key. An unchosen service is one searchable picker so the first decision
-  is which endpoint, not which of five fields.
+  Named services are Service + key. Custom is Service, then Name beside URL,
+  then the key beside API format. An unchosen service is one searchable picker
+  so the first decision is which endpoint, not which of five fields.
 */
 .provider-setup-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.provider-setup-field-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px 12px;
   align-items: start;
+  min-width: 0;
 }
 
-.provider-setup-fields.is-empty .provider-setup-service,
-.provider-setup-fields.is-custom .provider-setup-service {
-  grid-column: 1 / -1;
+.provider-setup-field-row > * {
+  min-width: 0;
 }
 
-/* Long gateway URLs get the whole row; the key and API format stay paired. */
-.provider-setup-fields.is-custom {
-  grid-template-columns: minmax(160px, 0.7fr) minmax(0, 1.3fr);
+.provider-setup-field-row.is-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Keep the endpoint readable without making the display name feel incidental. */
+.provider-setup-custom-identity-row {
+  grid-template-columns: minmax(180px, 0.8fr) minmax(0, 1.2fr);
+}
+
+/* The key needs room for long tokens; the format remains a compact peer. */
+.provider-setup-custom-auth-row {
+  grid-template-columns: minmax(0, 1.25fr) minmax(180px, 0.75fr);
 }
 
 .provider-setup-base-url {
-  grid-column: 1 / -1;
   min-width: 0;
 }
 
@@ -332,27 +347,131 @@
   white-space: nowrap;
 }
 
-.provider-setup-advanced-toggle {
-  appearance: none;
-  align-self: start;
-  border: 0;
-  background: transparent;
-  padding: 0;
+.provider-setup-advanced {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.provider-advanced-overlay {
+  z-index: 70;
+}
+
+.provider-advanced-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(560px, calc(100vw - 48px));
+  max-width: 100%;
+  min-width: 0;
+  max-height: min(560px, calc(100vh - 64px));
+  padding: 16px;
+}
+
+.provider-advanced-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex: none;
+}
+
+.provider-advanced-title {
+  margin: 0;
+  color: var(--ds-text-primary);
+  font-size: var(--text-base-plus);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--leading-tight);
+}
+
+.provider-advanced-body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 2px;
+}
+
+.provider-setup-headers {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.provider-setup-headers-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.provider-setup-headers-label {
+  min-width: 0;
   color: var(--ds-text-secondary);
   font-size: var(--text-sm);
   line-height: var(--leading-tight);
-  cursor: pointer;
 }
 
-.provider-setup-advanced-toggle:hover {
-  color: var(--ds-text-primary);
+.provider-setup-headers-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
 }
 
-.provider-setup-advanced {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px 12px;
-  align-items: start;
+.provider-setup-header-preset {
+  width: auto;
+  max-width: 170px;
+  min-height: 26px;
+  padding: 3px 7px;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-2xs);
+}
+
+.provider-setup-header-import,
+.provider-setup-header-copy {
+  flex: none;
+  max-width: 100%;
+  padding: 4px 8px;
+  overflow: hidden;
+  font-size: var(--text-2xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Copy feedback stays compact while making the successful state distinct. */
+.provider-setup-header-copy.is-copied {
+  background: color-mix(in oklab, var(--ds-accent) 12%, transparent);
+  color: var(--ds-accent);
+}
+
+.provider-setup-header-file {
+  display: none;
+}
+
+/* Keep five header rows visible; additional rows scroll without moving models. */
+.provider-setup-header-list {
+  min-height: 0;
+  max-height: min(220px, 30vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 2px;
+  margin: -2px;
+}
+
+.provider-setup-header-error {
+  margin: 0;
+  color: var(--ds-warning);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-relaxed);
 }
 
 /* Pick on the left, review on the right; both stretch to the same height. */
@@ -412,6 +531,17 @@
   padding: 7px 7px 3px;
 }
 
+.provider-models-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.provider-models-select-all {
+  flex: none;
+}
+
 .provider-models-title {
   margin: 0;
   color: var(--ds-text-secondary);
@@ -422,10 +552,52 @@
   text-transform: uppercase;
 }
 
-.provider-models-state {
-  color: var(--ds-text-faint);
-  font-size: var(--text-3xs);
+.provider-models-reload {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  margin: 0;
+  padding: 0 7px;
+  min-height: 24px;
+  border: 0;
+  border-radius: var(--radius-2xs);
+  background: var(--ds-bg-chip);
+  color: var(--ds-text-secondary);
+  font-size: var(--text-2xs);
   line-height: var(--leading-normal);
+  cursor: pointer;
+}
+
+.provider-models-reload:hover:not(:disabled) {
+  background: var(--ds-bg-hover);
+  color: var(--ds-text-primary);
+}
+
+.provider-models-reload:disabled {
+  cursor: default;
+  color: var(--ds-text-faint);
+}
+
+.provider-models-reload:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 24%, transparent);
+}
+
+.provider-models-reload.is-loading svg {
+  animation: provider-models-reload-spin 700ms linear infinite;
+}
+
+@keyframes provider-models-reload-spin {
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .provider-models-reload.is-loading svg {
+    animation: none;
+  }
 }
 
 .provider-models-search-wrap {
@@ -473,7 +645,11 @@
 }
 
 .provider-models-note.is-error {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   color: var(--ds-warning);
+  overflow-wrap: anywhere;
 }
 
 .provider-models-placeholder {
@@ -489,6 +665,23 @@
   font-size: var(--text-2xs);
   line-height: var(--leading-relaxed);
   text-align: center;
+}
+
+.provider-models-placeholder.is-error {
+  flex-direction: column;
+  gap: 6px;
+  color: var(--ds-warning);
+  overflow-wrap: anywhere;
+}
+
+.provider-models-error-summary {
+  font-weight: var(--font-weight-medium);
+}
+
+.provider-models-error-detail,
+.provider-models-error-hint {
+  color: var(--ds-text-muted);
+  max-width: 36ch;
 }
 
 .provider-models-list {
@@ -663,6 +856,21 @@
   white-space: nowrap;
 }
 
+/* The configured alias, shown beside the id it names. */
+.provider-chosen-row-alias {
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  background: var(--ds-tile-deep);
+  color: var(--ds-text-secondary);
+  font-size: var(--text-3xs);
+  line-height: var(--leading-normal);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .provider-chosen-row-limits {
   flex: none;
   color: var(--ds-text-faint);
@@ -682,7 +890,8 @@
   cursor: pointer;
 }
 
-.provider-chosen-advanced-toggle:hover {
+.provider-chosen-advanced-toggle:hover,
+.provider-chosen-advanced-toggle[aria-expanded="true"] {
   background: var(--ds-bg-active);
   color: var(--ds-text-primary);
 }
@@ -712,19 +921,57 @@
   color: var(--ds-text-primary);
 }
 
+/*
+  Compact property sheet in a half-pane: 2xs labels, dense fields, no helper
+  paragraphs. Native number spinners are hidden so the two limit fields match.
+  Author `display: flex` would otherwise override the HTML hidden attribute.
+*/
 .provider-chosen-row-body {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 0 8px 8px;
+  gap: 8px;
+  padding: 2px 8px 8px;
   font-size: var(--text-sm);
-  padding-top: 8px;
+}
+
+.provider-chosen-row-body[hidden] {
+  display: none;
 }
 
 .provider-chosen-row-body .field-input,
 .provider-chosen-row-body .field-select {
-  font-size: inherit;
+  min-height: 28px;
+  padding: 4px 8px;
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
 }
+
+.provider-chosen-row-body input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.provider-chosen-row-body input[type="number"]::-webkit-outer-spin-button,
+.provider-chosen-row-body input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
+
+.provider-chosen-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.provider-chosen-field-label {
+  color: var(--ds-text-secondary);
+  font-size: var(--text-2xs);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--leading-normal);
+}
+
 .provider-chosen-limits {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -739,9 +986,9 @@
 
 .provider-chosen-thinking-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   flex-wrap: wrap;
-  gap: 3px 8px;
+  gap: 4px 8px;
   min-width: 0;
 }
 
@@ -762,6 +1009,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  margin-left: auto;
 }
 
 .provider-chosen-thinking-select {
@@ -788,9 +1036,10 @@
 }
 
 .provider-chosen-capability-rows {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
 }
 
 .provider-chosen-capability {
@@ -805,11 +1054,11 @@
 }
 
 .provider-chosen-thinking-chips {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  align-items: stretch;
   gap: 3px;
-  width: fit-content;
+  width: 100%;
   max-width: 100%;
   padding: 3px;
   border-radius: var(--radius-md);
@@ -817,15 +1066,18 @@
 }
 
 .provider-thinking-chip {
-  min-width: 42px;
+  min-width: 0;
   min-height: 26px;
-  padding: 3px 9px;
+  padding: 3px 4px;
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--ds-text-secondary);
   font-size: var(--text-2xs);
   line-height: var(--leading-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   cursor: pointer;
   transition:
     background var(--motion-duration-fast) var(--motion-ease-out),
@@ -839,9 +1091,9 @@
 
 /* The chosen level is the raised segment of the track (D297). */
 .provider-thinking-chip.selected {
-  background: var(--ds-raised);
+  background: var(--ds-accent);
   box-shadow: var(--ds-raised-shadow);
-  color: var(--ds-text-primary);
+  color: var(--ds-bg-primary);
 }
 
 .provider-thinking-chip:focus-visible {
@@ -868,30 +1120,6 @@
   color: var(--ds-text-secondary);
 }
 
-.provider-chosen-delegation-help[data-tip]::after {
-  content: attr(data-tip);
-  position: absolute;
-  bottom: calc(100% + 5px);
-  left: 50%;
-  z-index: 8;
-  transform: translateX(-50%);
-  border: 1px solid var(--ds-border-default);
-  border-radius: var(--radius-sm);
-  background: var(--ds-bg-elevated-opaque);
-  box-shadow: var(--ds-shadow-composer);
-  padding: 3px 7px;
-  color: var(--ds-text-secondary);
-  font-size: var(--text-2xs);
-  line-height: var(--leading-compact);
-  white-space: nowrap;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--motion-duration-fast) var(--motion-ease-out);
-}
-
-.provider-chosen-delegation-help[data-tip]:hover::after {
-  opacity: 1;
-}
 
 .provider-custom-model {
   flex: none;
@@ -1337,8 +1565,9 @@
 
 @media (max-width: 940px) {
   /* Two panes stop being readable before the dialog itself gets narrow. */
-  .provider-setup-fields,
-  .provider-setup-advanced {
+  .provider-setup-field-row,
+  .provider-setup-custom-identity-row,
+  .provider-setup-custom-auth-row {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -1374,6 +1603,21 @@
     justify-content: flex-end;
   }
 
+  .provider-setup-headers-toolbar {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .provider-setup-headers-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .provider-setup-header-preset {
+    flex: 1 1 120px;
+    min-width: 0;
+  }
+
   .model-provider-row {
     flex-direction: column;
     align-items: flex-start;
@@ -1381,6 +1625,10 @@
 
   .model-provider-row-actions {
     align-self: flex-end;
+  }
+
+  .provider-chosen-thinking-chips {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
 }

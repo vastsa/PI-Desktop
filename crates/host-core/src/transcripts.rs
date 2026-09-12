@@ -477,6 +477,12 @@ fn append_line(path: &Path, header: Option<String>, line: String) -> Result<()> 
             buf.push_str(&header);
             buf.push('\n');
         }
+    } else if !ends_with_newline(path)? {
+        // A crash mid-append left a torn tail. `scan_layout` tolerates it on
+        // read, but appending straight after it would fuse the torn bytes and
+        // this record into one invalid line and lose both. Terminate the torn
+        // line first so this record starts on its own line.
+        buf.push('\n');
     }
     buf.push_str(&line);
     buf.push('\n');
@@ -485,6 +491,20 @@ fn append_line(path: &Path, header: Option<String>, line: String) -> Result<()> 
     // Message durability matches the DB's WAL synchronous=NORMAL guarantees.
     file.sync_data()?;
     Ok(())
+}
+
+/// Whether a non-empty file ends in a newline; an empty file counts as
+/// terminated so the header path above stays untouched.
+fn ends_with_newline(path: &Path) -> Result<bool> {
+    let mut file = File::open(path)?;
+    let len = file.metadata()?.len();
+    if len == 0 {
+        return Ok(true);
+    }
+    file.seek(SeekFrom::End(-1))?;
+    let mut last = [0u8; 1];
+    std::io::Read::read_exact(&mut file, &mut last)?;
+    Ok(last[0] == b'\n')
 }
 
 fn header_line(session_id: &str, session_created_at: &str) -> Result<String> {
@@ -882,6 +902,22 @@ mod tests {
     use super::*;
     use serde_json::json;
     use tempfile::tempdir;
+
+    #[test]
+    fn append_after_torn_tail_terminates_the_torn_line_first() {
+        let dir = tempdir().unwrap();
+        append_message(dir.path(), "s1", "2026-07-26T00:00:00Z", &record("m1", "one")).unwrap();
+        let path = dir.path().join("sessions").join("s1.jsonl");
+        // Simulate a crash mid-append: a partial record without its newline.
+        {
+            let mut file = OpenOptions::new().append(true).open(&path).unwrap();
+            file.write_all(br#"{"type":"message","id":"torn""#).unwrap();
+        }
+        append_message(dir.path(), "s1", "2026-07-26T00:00:00Z", &record("m2", "two")).unwrap();
+        let read = read_transcript(dir.path(), "s1").unwrap();
+        let ids: Vec<&str> = read.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(ids, vec!["m1", "m2"], "the record after a torn tail must survive");
+    }
 
     fn record(id: &str, text: &str) -> MessageRecord {
         MessageRecord {

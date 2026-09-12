@@ -15,6 +15,8 @@ import {
   SIDEBAR_WIDTH_MIN,
   sortProjects,
   sortSessions,
+  filterSwitcherProjects,
+  listSwitcherProjects,
 } from "../src/lib/sidebar-preferences.ts";
 import { loadRecentProjects, renameRecentProject } from "../src/lib/recent-projects.ts";
 
@@ -145,6 +147,50 @@ test("projects sort by name while retaining pinned priority", () => {
     projects.map((project) => project.name),
     ["Beta", "Alpha", "Zeta"],
   );
+});
+
+test("manual project order follows persisted metadata while retaining pinned priority", () => {
+  const projects = sortProjects(
+    [
+      { path: "/work/third", name: "Third" },
+      { path: "/work/first", name: "First" },
+      { path: "/work/pinned", name: "Pinned" },
+      { path: "/work/unordered", name: "Unordered" },
+    ],
+    {
+      "/work/third": { order: 2 },
+      "/work/first": { order: 0 },
+      "/work/pinned": { pinned: true, order: 1 },
+    },
+    "manual",
+  );
+
+  assert.deepEqual(
+    projects.map((project) => project.name),
+    ["Pinned", "First", "Third", "Unordered"],
+  );
+});
+
+test("manual project order ignores negative and fractional persisted ranks", () => {
+  const projects = [
+    { path: "/work/invalid", name: "Invalid" },
+    { path: "/work/fractional", name: "Fractional" },
+    { path: "/work/valid", name: "Valid" },
+  ];
+  const sorted = sortProjects(
+    projects,
+    {
+      "/work/invalid": { order: -1 },
+      "/work/fractional": { order: 1.5 },
+      "/work/valid": { order: 0 },
+    },
+    "manual",
+  );
+  assert.deepEqual(sorted.map((project) => project.path), [
+    "/work/valid",
+    "/work/fractional",
+    "/work/invalid",
+  ]);
 });
 
 test("all user-facing session sort modes produce stable secondary order", () => {
@@ -322,6 +368,8 @@ test("persists retained project paths and per-project collapse state", () => {
     const loaded = loadSidebarPreferences();
     assert.deepEqual(loaded.openProjectPaths, ["/work/a/", "/work/b"]);
     assert.equal(projectIsCollapsed("/work/a", loaded.projectMeta), true);
+    assert.equal(loaded.projectMeta["/work/a"].order, 2);
+    assert.equal(loaded.projectMeta["/work/b"].order, 1);
     assert.equal(loaded.projectSort, "name");
     assert.equal(loaded.sessionView.sort, "created");
     assert.equal(loaded.sessionView.archived, true);
@@ -370,6 +418,31 @@ test("clamps and persists the expanded sidebar width", () => {
   }
 });
 
+test("manual title metadata survives a renderer restart", () => {
+  const values = new Map();
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => values.set(key, value),
+    },
+  });
+  try {
+    saveSidebarPreferences({
+      sessionMeta: { custom: { manualTitle: true } },
+      projectMeta: {},
+      projectSort: "recent",
+      sessionView: { sort: "recent", archived: false },
+      openProjectPaths: [],
+    });
+    assert.equal(loadSidebarPreferences().sessionMeta.custom.manualTitle, true);
+  } finally {
+    if (previous) Object.defineProperty(globalThis, "localStorage", previous);
+    else delete globalThis.localStorage;
+  }
+});
+
 test("renames a recent project without changing its recency", () => {
   const values = new Map([
     [
@@ -411,4 +484,84 @@ test("renames a recent project without changing its recency", () => {
   } finally {
     globalThis.localStorage = previousStorage;
   }
+});
+
+test("home switcher lists retained sidebar projects and the active workspace", () => {
+  const projects = listSwitcherProjects({
+    openProjectPaths: ["/Users/lan/PI-Desktop", "/Users/lan/pi-desktop-plugins"],
+    openProjects: [
+      { path: "/Users/lan/PI-Desktop", name: "PI-Desktop" },
+      { path: "/Users/lan/pi-desktop-plugins", name: "pi-desktop-plugins" },
+    ],
+    workspace: { path: "/Users/lan/other", name: "other" },
+    projectMeta: {},
+    projectSort: "name",
+  });
+
+  assert.deepEqual(
+    projects.map((project) => project.name),
+    ["other", "PI-Desktop", "pi-desktop-plugins"],
+  );
+});
+
+test("home switcher hides archived projects and prefers renamed labels", () => {
+  const projects = listSwitcherProjects({
+    openProjectPaths: ["/tmp/alpha", "/tmp/beta"],
+    openProjects: [
+      { path: "/tmp/alpha", name: "alpha" },
+      { path: "/tmp/beta", name: "beta" },
+    ],
+    workspace: { path: "/tmp/alpha", name: "alpha" },
+    projectMeta: {
+      "/tmp/alpha": { name: "Alpha App" },
+      "/tmp/beta": { archived: true },
+    },
+    projectSort: "name",
+  });
+
+  assert.deepEqual(
+    projects.map((project) => ({ name: project.name, path: project.path })),
+    [{ name: "Alpha App", path: "/tmp/alpha" }],
+  );
+});
+
+test("home switcher search matches name or path and ignores case", () => {
+  const projects = [
+    { key: "/tmp/pi-desktop", path: "/tmp/pi-desktop", name: "PI-Desktop", pinned: false },
+    {
+      key: "/tmp/plugins",
+      path: "/tmp/plugins",
+      name: "pi-desktop-plugins",
+      pinned: false,
+    },
+  ];
+
+  assert.deepEqual(
+    filterSwitcherProjects(projects, "PLUGIN").map((project) => project.name),
+    ["pi-desktop-plugins"],
+  );
+  assert.deepEqual(
+    filterSwitcherProjects(projects, "/tmp/pi-desktop").map((project) => project.name),
+    ["PI-Desktop"],
+  );
+  assert.equal(filterSwitcherProjects(projects, "   ").length, 2);
+});
+
+test("home switcher collapses aliased paths and follows retained-tab recency", () => {
+  const projects = listSwitcherProjects({
+    openProjectPaths: ["/tmp/older", "/tmp/alpha/"],
+    openProjects: [
+      { path: "/tmp/older", name: "older" },
+      { path: "/tmp/alpha", name: "alpha" },
+    ],
+    workspace: { path: "/tmp/alpha" },
+    projectMeta: {},
+    projectSort: "recent",
+  });
+
+  assert.deepEqual(
+    projects.map((project) => project.name),
+    ["alpha", "older"],
+  );
+  assert.equal(projects.length, 2);
 });

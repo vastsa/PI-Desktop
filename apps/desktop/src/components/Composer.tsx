@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type ClipboardEvent,
+  type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { useTranslation } from "react-i18next";
@@ -17,16 +18,21 @@ import type {
 } from "@pi-desktop/shared";
 import {
   fileReferenceLabel,
+  formatFileInsert,
   formatTokenCount,
   initialThinkingLevelForBinding,
   modelIdsMatch,
   normalizeLargePasteThreshold,
   PERMISSION_MODES,
+  restoreInlineComposerFileReferenceTokens,
+  rewriteIdeographicCommaTrigger,
   serializeComposerFileReferences,
   serializeInlineComposerFileReferences,
+  stripInlineComposerFileReferenceTokens,
 } from "@pi-desktop/shared";
 import { materializeDraftSession, useAppStore } from "../stores/app-store";
 import type { ComposerDraftSnapshot } from "../lib/composer-smart-stop";
+import { latestTurnContextInspector } from "../lib/latest-turn-context";
 import {
   HOME_DRAFT_KEY,
   captureComposerDraft,
@@ -42,10 +48,13 @@ import { api } from "../lib/api";
 import { isActivePlanExecution } from "../lib/plan-mode-state";
 import { headAsk, queuedAskCount } from "../lib/pending-asks";
 import type { QueuedPrompt } from "../lib/queued-prompts";
-import { runPaletteCommand } from "../lib/commands";
+import { runExtensionCommand, runPaletteCommand } from "../lib/commands";
 import {
   composerModelBadges,
+  composerModelDisplayName,
   composerModelMatchesQuery,
+  composerProviderDisplayName,
+  composerProviderSearchText,
   composerModelsForProvider,
 } from "../lib/composer-models";
 import {
@@ -57,14 +66,20 @@ import {
   useComposerAutocomplete,
 } from "../hooks/use-composer-autocomplete";
 import { ComposerAutocomplete } from "./ComposerAutocomplete";
+import {
+  composerDropItems,
+  hasComposerFileDrag,
+  type ComposerDropItem,
+} from "../lib/composer-drop";
+import { TooltipButton } from "./ui";
+import { AnchoredMenu } from "./settings/AnchoredMenu";
+import { ContextUsageInspector } from "./ContextUsageInspector";
 import { AskToolCard } from "./AskToolCard";
 import { PlanApprovalBar } from "./PlanApprovalBar";
 import {
   IconArrowUp,
   IconUndo2,
   IconPlus,
-  IconFolder,
-  IconImage,
   IconShield,
   IconStop,
   IconChevronDown,
@@ -77,6 +92,7 @@ import {
   IconSparkles,
   IconTarget,
   IconX,
+  IconFolder,
 } from "./icons";
 
 const COMPOSER_MIN_HEIGHT_PX = 28;
@@ -108,6 +124,15 @@ type ComposerFileReference = {
 
 function isImageFilePath(path: string): boolean {
   return /\.(avif|bmp|gif|heic|jpe?g|png|tiff?|webp)$/i.test(path);
+}
+
+function formatDroppedDirectoryPath(path: string): string {
+  const normalized = path.replace(/[\\/]+$/, "");
+  const formatted = formatFileInsert(normalized, "dir");
+  // `formatFileInsert` leaves a spaced directory quote open for interactive
+  // @ completion. A completed native drop needs a closed token so mixed drops
+  // can separate the directory from the following file chip.
+  return /\s/.test(normalized) ? `${formatted}"` : formatted;
 }
 
 /** Paste/scratch files keep absolute paths; `@` menu entries are workspace-relative. */
@@ -405,9 +430,9 @@ function paintEditorValue(
   };
   for (const char of Array.from(value)) {
     if (isChipTokenChar(char)) {
-      flush();
       const reference = referenceByToken.get(char);
       if (reference) {
+        flush();
         el.appendChild(
           buildChipElement(
             reference,
@@ -416,8 +441,10 @@ function paintEditorValue(
             onRemove,
           ),
         );
+        continue;
       }
-      continue;
+      // A private-use code point with no chip behind it is user text (Nerd
+      // Font glyphs pasted from a terminal, icon fonts); keep it verbatim.
     }
     textBuffer += char;
   }
@@ -476,26 +503,6 @@ export const THINKING_LEVELS: readonly ThinkingLevel[] = [
   "xhigh",
   "max",
 ];
-
-export const THINKING_LEVEL_LABELS: Record<ThinkingLevel, string> = {
-  off: "Off",
-  minimal: "Minimal",
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  xhigh: "XHigh",
-  max: "Max",
-};
-
-const THINKING_LEVEL_I18N_KEYS: Record<ThinkingLevel, string> = {
-  off: "chat.effortOff",
-  minimal: "chat.effortMinimal",
-  low: "chat.effortLow",
-  medium: "chat.effortMid",
-  high: "chat.effortHigh",
-  xhigh: "chat.effortXhigh",
-  max: "chat.effortMax",
-};
 
 function isThinkingLevel(value: unknown): value is ThinkingLevel {
   return typeof value === "string" && THINKING_LEVELS.includes(value as ThinkingLevel);
@@ -611,6 +618,21 @@ export function Composer({
   const workspacePath = useAppStore((s) => s.workspace?.path ?? "");
   const providers = useAppStore((s) => s.providers);
   const providerModels = useAppStore((s) => s.providerModels);
+  const liveMessages = useAppStore((s) => s.messages);
+  const sessionCompactions = useAppStore((s) =>
+    s.activeSessionId ? s.sessionCompactions[s.activeSessionId] : undefined,
+  );
+  // One inspector in the composer toolbar, always the newest turn with usage.
+  const composerContextUsage = useMemo(
+    () =>
+      latestTurnContextInspector(
+        liveMessages,
+        providerModels,
+        providers,
+        sessionCompactions,
+      ),
+    [liveMessages, providerModels, providers, sessionCompactions],
+  );
   const loadProviderModels = useAppStore((s) => s.loadProviderModels);
   const configureActiveSession = useAppStore((s) => s.configureActiveSession);
   const showToast = useAppStore((s) => s.showToast);
@@ -656,21 +678,21 @@ export function Composer({
     `${variant}:${activeSessionId ?? HOME_DRAFT_KEY}`,
   );
   const [permissionOpen, setPermissionOpen] = useState(false);
-  const permissionRef = useRef<HTMLDivElement>(null);
-  const [plusOpen, setPlusOpen] = useState(false);
-  const plusRef = useRef<HTMLDivElement>(null);
   const [modelThinkingOpen, setModelThinkingOpen] = useState(false);
   const [modelThinkingView, setModelThinkingView] =
     useState<ComposerMenuView>("root");
   const [modelQuery, setModelQuery] = useState("");
   const [modelHighlight, setModelHighlight] = useState(-1);
   const [thinkingHighlight, setThinkingHighlight] = useState(-1);
-  const modelThinkingRef = useRef<HTMLDivElement>(null);
   const rootMenuRef = useRef<HTMLDivElement>(null);
   const modelSearchRef = useRef<HTMLInputElement>(null);
   const modelListRef = useRef<HTMLDivElement>(null);
   const thinkingListRef = useRef<HTMLDivElement>(null);
   const [pasting, setPasting] = useState(false);
+  const [dropTargetActive, setDropTargetActive] = useState(false);
+  const [droppedDirectories, setDroppedDirectories] = useState<ComposerDropItem[]>(
+    [],
+  );
   const [enhancingPrompt, setEnhancingPrompt] = useState(false);
   const [enhancementUndoText, setEnhancementUndoText] = useState<string | null>(null);
   const [enhancementError, setEnhancementError] =
@@ -678,6 +700,7 @@ export function Composer({
   const enhancementVersionRef = useRef(0);
   const enhancementRequestRef = useRef<symbol | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const composerShellRef = useRef<HTMLDivElement>(null);
   const dockRef = useRef<HTMLDivElement>(null);
   const publishedDockHeightRef = useRef(-1);
   const draftKeyRef = useRef(draftKey);
@@ -690,11 +713,9 @@ export function Composer({
   const activeFileReferences = fileReferences.filter(
     (fileReference) => fileReference.sessionId === referenceSessionId,
   );
-  // Chips are inline now: every attachment occupies one sentinel character in
-  // the draft, so "inline" is the only kind of reference.
-  const activeInlineFileReferences = activeFileReferences.filter(
-    (fileReference) =>
-      Boolean(fileReference.token && value.includes(fileReference.token)),
+  const enhancementDraft = stripInlineComposerFileReferenceTokens(
+    value,
+    activeFileReferences,
   );
   const referenceByToken = useMemo(() => {
     const map = new Map<string, ComposerFileReference>();
@@ -939,26 +960,9 @@ export function Composer({
 
   useEffect(() => {
     if (!controlsBlocked) return;
-    setPlusOpen(false);
     setPermissionOpen(false);
     setModelThinkingOpen(false);
   }, [controlsBlocked]);
-
-  useEffect(() => {
-    if (!plusOpen) return;
-    const onPointer = (e: MouseEvent) => {
-      if (!plusRef.current?.contains(e.target as Node)) setPlusOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setPlusOpen(false);
-    };
-    window.addEventListener("mousedown", onPointer);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("mousedown", onPointer);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [plusOpen]);
 
   useEffect(() => {
     // Relative autocomplete references belong to the workspace that produced
@@ -1105,44 +1109,11 @@ export function Composer({
   }, [value]);
 
   useEffect(() => {
-    if (!permissionOpen) return;
-    const onPointer = (e: MouseEvent) => {
-      if (!permissionRef.current?.contains(e.target as Node))
-        setPermissionOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setPermissionOpen(false);
-    };
-    window.addEventListener("mousedown", onPointer);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("mousedown", onPointer);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [permissionOpen]);
-
-  useEffect(() => {
-    if (!modelThinkingOpen) {
-      setModelThinkingView("root");
-      setModelQuery("");
-      setModelHighlight(-1);
-      setThinkingHighlight(-1);
-      return;
-    }
-    const onPointer = (e: MouseEvent) => {
-      if (!modelThinkingRef.current?.contains(e.target as Node)) {
-        setModelThinkingOpen(false);
-      }
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setModelThinkingOpen(false);
-    };
-    window.addEventListener("mousedown", onPointer);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("mousedown", onPointer);
-      window.removeEventListener("keydown", onKey);
-    };
+    if (modelThinkingOpen) return;
+    setModelThinkingView("root");
+    setModelQuery("");
+    setModelHighlight(-1);
+    setThinkingHighlight(-1);
   }, [modelThinkingOpen]);
 
   const activeSession = sessions.find((session) => session.id === activeSessionId);
@@ -1216,15 +1187,15 @@ export function Composer({
     thinkingProvider,
     configuredThinkingLevel,
   );
-  const thinkingLabel = t(THINKING_LEVEL_I18N_KEYS[thinkingLevel], {
-    defaultValue: THINKING_LEVEL_LABELS[thinkingLevel],
-  });
+  const thinkingLabel = thinkingLevel;
   const selectedModel = provider?.id
     ? composerModelsForProvider(provider, providerModels[provider.id]).find(
-        (model) => model.modelId === modelId,
+        (model) => modelIdsMatch(model.modelId, modelId ?? ""),
       )
     : undefined;
-  const modelLabel = selectedModel?.displayName || modelId || t("chat.model");
+  const modelLabel = provider && modelId
+    ? composerModelDisplayName(provider, modelId, selectedModel?.displayName)
+    : selectedModel?.displayName || modelId || t("chat.model");
   const thinkingMenuLevels: ThinkingLevel[] = availableThinkingLevels.length
     ? availableThinkingLevels
     : ["off"];
@@ -1241,6 +1212,8 @@ export function Composer({
       );
       return {
         provider: candidate,
+        providerDisplayName: composerProviderDisplayName(candidate),
+        providerSearchText: composerProviderSearchText(candidate),
         models,
       };
     })
@@ -1251,7 +1224,11 @@ export function Composer({
         .map((group) => ({
           ...group,
           models: group.models.filter((model) =>
-            composerModelMatchesQuery(model, group.provider.name, modelQueryNeedle),
+            composerModelMatchesQuery(
+              model,
+              group.providerSearchText,
+              modelQueryNeedle,
+            ),
           ),
         }))
         .filter((group) => group.models.length > 0)
@@ -1336,13 +1313,13 @@ export function Composer({
   }, [modelThinkingOpen, modelThinkingView, thinkingHighlight]);
 
   useEffect(() => {
-    if (!modelThinkingOpen || modelThinkingView !== "model") return;
+    if (!modelThinkingOpen) return;
     for (const candidate of providers) {
       if (candidate.enabled && (candidate.hasSecret || candidate.authKind === "none")) {
         void loadProviderModels(candidate.id);
       }
     }
-  }, [loadProviderModels, modelThinkingOpen, modelThinkingView, providers]);
+  }, [loadProviderModels, modelThinkingOpen, providers]);
 
   const showModelThinkingView = (view: ComposerMenuView) => {
     setModelThinkingView(view);
@@ -1518,14 +1495,17 @@ export function Composer({
 
   const enhancePrompt = async () => {
     const sourceText = value;
+    const textToEnhance = stripInlineComposerFileReferenceTokens(
+      sourceText,
+      activeFileReferences,
+    );
     const sourceKey = draftKey;
     const sourceVersion = enhancementVersionRef.current;
     if (
-      !sourceText.trim() ||
-      sourceText.trim().startsWith("/") ||
+      !textToEnhance.trim() ||
+      textToEnhance.trim().startsWith("/") ||
       !modelReady ||
       sendBlocked ||
-      activeInlineFileReferences.length > 0 ||
       enhancingPrompt
     ) {
       return;
@@ -1539,7 +1519,7 @@ export function Composer({
     try {
       const result = await api.enhancePrompt({
         sessionId: activeSessionId,
-        draft: sourceText,
+        draft: textToEnhance,
         providerId: provider?.id,
         modelId,
         thinkingLevel,
@@ -1552,12 +1532,20 @@ export function Composer({
       ) {
         return;
       }
-      const enhancedDraft = result.enhancedDraft.trim();
-      if (!enhancedDraft) {
+      const modelDraft = result.enhancedDraft.trim();
+      if (
+        !modelDraft ||
+        !stripInlineComposerFileReferenceTokens(modelDraft, activeFileReferences).trim()
+      ) {
         throw Object.assign(new Error("The model returned an empty enhanced draft."), {
           code: "PROMPT_ENHANCEMENT_EMPTY",
         });
       }
+      const enhancedDraft = restoreInlineComposerFileReferenceTokens(
+        sourceText,
+        modelDraft,
+        activeFileReferences,
+      );
       enhancementVersionRef.current += 1;
       setValue(enhancedDraft);
       setCursor(enhancedDraft.length);
@@ -1622,8 +1610,9 @@ export function Composer({
     invalidatePromptEnhancement();
     const submittedDraftKey = draftKey;
     // Slash dispatch (D123): builtin/plugin aliases execute locally without
-    // a session or a model; templates and unknown /names stay prompt text
-    // (main expands templates). Runs before the model-ready gate on purpose.
+    // a session or a model; templates, skills, and unknown /names stay prompt
+    // text (main expands templates and routes skills to the Skill tool). Runs
+    // before the model-ready gate on purpose.
     if (serializedContent.startsWith("/")) {
       const commandEnd = serializedContent.search(/\s/);
       const name = serializedContent.slice(
@@ -1659,6 +1648,20 @@ export function Composer({
               draftSnapshot(visibleCommandBody),
             );
             if (accepted) clearDraftForKey(submittedDraftKey);
+          } catch (e) {
+            showToast(e instanceof Error ? e.message : String(e), {
+              variant: "error",
+            });
+          }
+          return;
+        }
+
+        // Trusted extension commands take the rest of the line as their
+        // argument string (spec 16 §8).
+        if (command.kind === "extension") {
+          try {
+            await runExtensionCommand(command.name, commandBody);
+            clearDraftForKey(submittedDraftKey);
           } catch (e) {
             showToast(e instanceof Error ? e.message : String(e), {
               variant: "error",
@@ -1728,11 +1731,12 @@ export function Composer({
         ...(token ? { token } : {}),
       }));
 
-  const pickAndAttach = async (kind: "files" | "photos") => {
-    setPlusOpen(false);
+  const pickAndAttach = async () => {
     try {
-      const result = kind === "photos" ? await api.pickPhotos() : await api.pickFiles();
-      if (result.canceled || !result.paths.length || inputBlocked) return;
+      // The picker intentionally accepts every regular file. The importer
+      // classifies images from MIME/extension metadata after selection.
+      const result = await api.pickFiles();
+      if (result.canceled || !result.token || inputBlocked) return;
 
       const editor = ref.current;
       const sourceValue = editor ? readEditorValue(editor) : valueRef.current;
@@ -1748,7 +1752,7 @@ export function Composer({
         // before native paths are copied into scratch.
         const sessionId = sourceSessionId ?? (await materializeDraftSession());
         if (!sessionId) throw new Error("session unavailable");
-        const imported = await api.importFiles(sessionId, result.paths);
+        const imported = await api.importFiles(sessionId, result.token);
         const chips = imported.files.map((file) => {
           const token = nextChipToken();
           return {
@@ -1833,6 +1837,7 @@ export function Composer({
                 {
                   name: `pasted-text-${crypto.randomUUID().slice(0, 8)}.txt`,
                   mimeType: "text/plain",
+                  recordHistory: true,
                   data: bytes.buffer.slice(
                     bytes.byteOffset,
                     bytes.byteOffset + bytes.byteLength,
@@ -1921,6 +1926,9 @@ export function Composer({
     // contenteditable insertion would paste rich HTML markup).
     event.preventDefault();
     if (!text) return;
+    // The paste event already supplied the text; do not read the OS clipboard
+    // again just to make it available to host-owned history.
+    void api.recordClipboardPaste(text).catch(() => undefined);
     if (!document.execCommand("insertText", false, text)) {
       const selection = window.getSelection();
       if (!selection || selection.rangeCount === 0) return;
@@ -1939,6 +1947,167 @@ export function Composer({
       setValue(nextValue);
       updateCursor(start);
     }
+  };
+
+  const attachDroppedItems = async (items: ComposerDropItem[]) => {
+    if (inputBlocked || items.length === 0) return;
+    const editor = ref.current;
+    const sourceValue = editor ? readEditorValue(editor) : valueRef.current;
+    const { start: selectionStart, end: selectionEnd } = editor
+      ? editorSelectionRange(editor)
+      : { start: sourceValue.length, end: sourceValue.length };
+    const sourceSessionId = activeSessionId;
+    const sourceDraftKey = draftKey;
+    const previousReferences = snapshotReferences(sourceSessionId ?? "");
+    const fileItems = items.filter((item) => !item.isDirectory);
+    setPasting(true);
+    try {
+      let sessionId = sourceSessionId;
+      if (fileItems.length && !sessionId) {
+        sessionId = (await materializeDraftSession()) ?? "";
+      }
+      if (fileItems.length && !sessionId) throw new Error("session unavailable");
+
+      const pasted = fileItems.length
+        ? await api.pasteFiles(
+            sessionId!,
+            await Promise.all(
+              fileItems.map(async ({ file }) => ({
+                name: file.name || undefined,
+                mimeType: file.type || undefined,
+                data: await file.arrayBuffer(),
+              })),
+            ),
+          ).then((result) => result.files)
+        : [];
+      const chips = pasted.map((file) => {
+        const token = nextChipToken();
+        return {
+          token,
+          reference: createFileReference(file.path, file.name, sessionId ?? "", {
+            kind: file.kind,
+            mimeType: file.mimeType,
+            token,
+          }),
+        };
+      });
+      let fileIndex = 0;
+      const inserted = items
+        .map((item) => {
+          if (item.isDirectory) {
+            return item.path ? formatDroppedDirectoryPath(item.path) : "";
+          }
+          const chip = chips[fileIndex];
+          fileIndex += 1;
+          return chip?.token ?? "";
+        })
+        .filter(Boolean)
+        .join(" ");
+      if (!inserted) return;
+
+      const nextText =
+        sourceValue.slice(0, selectionStart) +
+        inserted +
+        sourceValue.slice(selectionEnd);
+      const ownerSessionId = sessionId ?? "";
+      const nextReferences = [
+        ...previousReferences.map((reference) =>
+          createFileReference(reference.path, reference.name, ownerSessionId, reference),
+        ),
+        ...chips.map((chip) => chip.reference),
+      ];
+      const targetKey = sessionId || sourceDraftKey;
+      writeComposerDraft(targetKey, {
+        text: nextText,
+        fileReferences: [
+          ...previousReferences,
+          ...chips.map((chip) => ({
+            path: chip.reference.path,
+            name: chip.reference.name,
+            kind: chip.reference.kind,
+            ...(chip.reference.mimeType ? { mimeType: chip.reference.mimeType } : {}),
+            token: chip.token,
+          })),
+        ],
+      });
+      const currentSessionId = useAppStore.getState().activeSessionId;
+      if (currentSessionId === sessionId) {
+        applyEditorDraft(nextText, nextReferences, selectionStart + inserted.length);
+      } else if (sourceDraftKey === HOME_DRAFT_KEY && sessionId) {
+        deleteComposerDraft(HOME_DRAFT_KEY);
+      }
+      if (chips.length) {
+        showToast(t("chat.filesAttached", { count: chips.length }), {
+          variant: "success",
+        });
+      }
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error), {
+        variant: "error",
+      });
+    } finally {
+      setPasting(false);
+    }
+  };
+
+  const onComposerDragEnter = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (!hasComposerFileDrag(event.dataTransfer)) return;
+    event.preventDefault();
+    setDropTargetActive(true);
+  };
+
+  const onComposerDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (!hasComposerFileDrag(event.dataTransfer)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  };
+
+  const onComposerDragLeave = (event: ReactDragEvent<HTMLDivElement>) => {
+    const relatedTarget = event.relatedTarget;
+    if (relatedTarget instanceof Node && event.currentTarget.contains(relatedTarget)) {
+      return;
+    }
+    setDropTargetActive(false);
+  };
+
+  const openDroppedFolderAsProject = async () => {
+    const directories = droppedDirectories;
+    setDroppedDirectories([]);
+    try {
+      for (const directory of directories) {
+        if (directory.path) {
+          await useAppStore.getState().activateProject(directory.path);
+        }
+      }
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error), {
+        variant: "error",
+      });
+    }
+  };
+
+  /**
+   * Second explicit step for a folder drop: keep the literal directory path in
+   * the draft. Dropping a folder never attaches unknown directory contents.
+   */
+  const insertDroppedDirectoryPaths = () => {
+    const directories = droppedDirectories;
+    setDroppedDirectories([]);
+    if (directories.length) void attachDroppedItems(directories);
+  };
+
+  const onComposerDrop = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (!hasComposerFileDrag(event.dataTransfer)) return;
+    event.preventDefault();
+    setDropTargetActive(false);
+    if (inputBlocked) return;
+    const items = composerDropItems(event.dataTransfer, api.getDroppedFilePath);
+    const directories = items.filter((item) => item.isDirectory);
+    const files = items.filter((item) => !item.isDirectory);
+    // Attaching a directory is not an attachment decision: it needs an explicit
+    // choice between opening the folder as a project and referencing its path.
+    if (directories.length) setDroppedDirectories(directories);
+    if (files.length) void attachDroppedItems(files);
   };
 
   const composerAc = useComposerAutocomplete({
@@ -2038,15 +2207,15 @@ export function Composer({
                   <span className="composer-queued-prompt-text" title={label}>
                     {label}
                   </span>
-                  <button
+                  <TooltipButton
                     type="button"
                     className="composer-queued-prompt-action"
-                    title={t("chat.removeQueuedPrompt")}
-                    aria-label={t("chat.removeQueuedPrompt")}
+                    tooltip={t("chat.removeQueuedPrompt")}
+                    ariaLabel={t("chat.removeQueuedPrompt")}
                     onClick={() => removeQueuedPrompt(item.id)}
                   >
                     <IconX size={13} aria-hidden />
-                  </button>
+                  </TooltipButton>
                   <button
                     type="button"
                     className="composer-queued-prompt-send-now"
@@ -2071,20 +2240,69 @@ export function Composer({
               {t("chat.enhancementFailed")}: {enhancementError.message}
             </span>
             <code>{enhancementError.code}</code>
-            <button
+            <TooltipButton
               type="button"
               className="composer-enhancement-error-dismiss"
-              title={t("chat.dismissEnhancementError")}
-              aria-label={t("chat.dismissEnhancementError")}
+              tooltip={t("chat.dismissEnhancementError")}
+              ariaLabel={t("chat.dismissEnhancementError")}
               onClick={() => setEnhancementError(null)}
             >
               <IconX size={13} aria-hidden="true" />
-            </button>
+            </TooltipButton>
           </div>
         ) : null}
-        <div className={`composer-shell${inputBlocked ? " is-gated" : ""}`}>
+        {droppedDirectories.length ? (
+          <div className="composer-directory-drop" role="status">
+            <IconFolder size={13} aria-hidden />
+            <span className="composer-directory-drop-name">
+              {t("project.droppedFolder", {
+                count: droppedDirectories.length,
+                defaultValue: "Folder dropped",
+              })}
+            </span>
+            <button
+              type="button"
+              className="composer-directory-drop-action"
+              data-action="open-dropped-folder-project"
+              onClick={() => void openDroppedFolderAsProject()}
+            >
+              {t("project.openAsProject", { defaultValue: "Open as project" })}
+            </button>
+            <button
+              type="button"
+              className="composer-directory-drop-action"
+              data-action="reference-dropped-folder"
+              onClick={insertDroppedDirectoryPaths}
+            >
+              {t("project.referenceFolder", { defaultValue: "Reference folder" })}
+            </button>
+            <TooltipButton
+              type="button"
+              className="composer-directory-drop-dismiss"
+              tooltip={t("nav.dismissFolderDrop")}
+              ariaLabel={t("nav.dismissFolderDrop")}
+              onClick={() => setDroppedDirectories([])}
+            >
+              <IconX size={13} aria-hidden />
+            </TooltipButton>
+          </div>
+        ) : null}
+        <div
+          ref={composerShellRef}
+          className={`composer-shell${inputBlocked ? " is-gated" : ""}${
+            dropTargetActive ? " is-drop-target" : ""
+          }`}
+          onDragEnter={onComposerDragEnter}
+          onDragOver={onComposerDragOver}
+          onDragLeave={onComposerDragLeave}
+          onDrop={onComposerDrop}
+        >
           {inputFocused ? (
-            <ComposerAutocomplete ac={composerAc} onAccept={acceptCompletion} />
+            <ComposerAutocomplete
+              anchorRef={composerShellRef}
+              ac={composerAc}
+              onAccept={acceptCompletion}
+            />
           ) : null}
           <div className="composer-input-wrap">
             <div className="composer-input-stage">
@@ -2120,10 +2338,26 @@ export function Composer({
                 }}
                 onInput={(e) => {
                   const el = e.currentTarget;
-                  const nextValue = readEditorValue(el);
+                  const source = readEditorValue(el);
                   const { start } = editorSelectionRange(el);
+                  // A Chinese IME commits "、" where an ASCII "/" is meant, and
+                  // a leading "/" is what makes the slash menu reachable
+                  // without switching input methods (D405). Only the first
+                  // character of a draft that was empty is rewritten, so the
+                  // mark stays ordinary punctuation anywhere else.
+                  const nextValue =
+                    valueRef.current === ""
+                      ? rewriteIdeographicCommaTrigger(source)
+                      : source;
                   invalidatePromptEnhancement();
-                  editorValueRef.current = nextValue;
+                  if (nextValue === source) {
+                    editorValueRef.current = nextValue;
+                  } else {
+                    // Leave editorValueRef stale so the layout effect repaints
+                    // the editable with the substituted "/" and puts the caret
+                    // back after it.
+                    pendingEditorCaretRef.current = start;
+                  }
                   valueRef.current = nextValue;
                   setValue(nextValue);
                   // `filter` allocates even when it drops nothing, and a new
@@ -2184,7 +2418,11 @@ export function Composer({
                       return;
                     }
                   }
-                  if (e.key === "Enter" && !e.shiftKey && enterToSend) {
+                  if (
+                    e.key === "Enter" &&
+                    !e.shiftKey &&
+                    (enterToSend || e.metaKey || e.ctrlKey)
+                  ) {
                     e.preventDefault();
                     void submit();
                   }
@@ -2204,52 +2442,28 @@ export function Composer({
 
           <div className="composer-toolbar">
             <div className="composer-left">
-              <div className="composer-plus" ref={plusRef}>
-                <button
+              <div className="composer-plus">
+                <TooltipButton
                   type="button"
-                  className={`icon-btn ${plusOpen ? "active" : ""}`}
-                  title={t("chat.addFiles")}
-                  aria-label={t("chat.addFiles")}
-                  aria-expanded={plusOpen}
-                  aria-haspopup="menu"
+                  className="icon-btn"
+                  tooltip={t("chat.addFiles")}
+                  ariaLabel={t("chat.addFiles")}
                   disabled={controlsBlocked || pasting}
                   onClick={() => {
                     setPermissionOpen(false);
-                    setPlusOpen((open) => !open);
+                    void pickAndAttach();
                   }}
                 >
                   <IconPlus size={15} aria-hidden="true" />
-                </button>
-                {plusOpen ? (
-                  <div className="composer-plus-menu" role="menu">
-                    <button
-                      type="button"
-                      className="composer-plus-item"
-                      role="menuitem"
-                      onClick={() => void pickAndAttach("files")}
-                    >
-                      <IconFolder size={15} aria-hidden="true" />
-                      <span>{t("chat.attachFiles")}</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="composer-plus-item"
-                      role="menuitem"
-                      onClick={() => void pickAndAttach("photos")}
-                    >
-                      <IconImage size={15} aria-hidden="true" />
-                      <span>{t("chat.addPhotos")}</span>
-                    </button>
-                  </div>
-                ) : null}
+                </TooltipButton>
               </div>
-              <button
+              <TooltipButton
+                type="button"
                 className="icon-btn mode-chip composer-mode-chip"
                 data-mode={mode}
                 data-planning={planningLive ? "true" : undefined}
-                title={
-                  planningLive ? t(`${mode}.planning`) : t("settings.mode")
-                }
+                tooltip={planningLive ? t(`${mode}.planning`) : t("settings.mode")}
+                ariaLabel={planningLive ? t(`${mode}.planning`) : t("settings.mode")}
                 disabled={controlsBlocked}
                 onClick={async () => {
                   setModelThinkingOpen(false);
@@ -2275,130 +2489,153 @@ export function Composer({
                     {t(MODE_LABEL_KEYS[mode])}
                   </span>
                 </span>
-              </button>
+              </TooltipButton>
               {mode === "agent" || mode === "plan" || mode === "goal" ? (
-                <div className="composer-permission" ref={permissionRef}>
-                  <button
-                    className={`icon-btn mode-chip ${permissionOpen ? "active" : ""}`}
-                    title={
-                      mode === "goal"
-                        ? `${t("chat.permissionMode")} · ${t("goal.autoWarning")}`
-                        : mode === "plan" && composerPermissionMode === "auto"
-                          ? `${t("chat.permissionMode")} · ${t("plan.autoWarning")}`
-                          : t("chat.permissionMode")
-                    }
-                    aria-haspopup={mode === "goal" ? undefined : "menu"}
-                    aria-expanded={mode === "goal" ? false : permissionOpen}
-                    disabled={controlsBlocked || mode === "goal"}
-                    onClick={() => {
-                      setModelThinkingOpen(false);
-                      setPermissionOpen((open) => !open);
-                    }}
-                  >
-                    <span className="text-sm">
-                      {t(PERMISSION_MODE_I18N_KEYS[composerPermissionMode])}
-                    </span>
-                    <IconChevronDown size={12} />
-                  </button>
-                  {permissionOpen && mode !== "goal" && (
-                    <div className="composer-permission-menu" role="menu">
-                      {(["ask", "accept-edits", "auto"] as const).map(
-                        (candidate) => (
-                          <button
-                            key={candidate}
-                            type="button"
-                            role="menuitemradio"
-                            aria-checked={composerPermissionMode === candidate}
-                            disabled={controlsBlocked}
-                            className={`composer-plus-item ${
-                              composerPermissionMode === candidate ? "active" : ""
-                            }`}
-                            onClick={async () => {
-                              setPermissionOpen(false);
-                              try {
-                                await configureActiveSession({
-                                  mode,
-                                  providerId: provider?.id,
-                                  modelId,
-                                  thinkingLevel,
-                                  permissionMode: candidate,
-                                });
-                              } catch (e) {
-                                showToast(
-                                  e instanceof Error ? e.message : String(e),
-                                  { variant: "error" },
-                                );
-                              }
-                            }}
-                          >
-                            <span className="flex-1 text-left">
-                              {t(PERMISSION_MODE_I18N_KEYS[candidate])}
-                            </span>
-                            {composerPermissionMode === candidate ? (
-                              <IconCheck size={13} />
-                            ) : null}
-                          </button>
-                        ),
-                      )}
-                    </div>
+                <AnchoredMenu
+                  className="composer-permission"
+                  open={permissionOpen && mode !== "goal"}
+                  onClose={() => setPermissionOpen(false)}
+                  menuClassName="composer-permission-menu"
+                  label={t("chat.permissionMode")}
+                  role="menu"
+                  align="start"
+                  side="top"
+                  trigger={(ref) => (
+                    <TooltipButton
+                      ref={ref}
+                      type="button"
+                      className={`icon-btn mode-chip ${permissionOpen ? "active" : ""}`}
+                      tooltip={
+                        mode === "goal"
+                          ? `${t("chat.permissionMode")} · ${t("goal.autoWarning")}`
+                          : mode === "plan" && composerPermissionMode === "auto"
+                            ? `${t("chat.permissionMode")} · ${t("plan.autoWarning")}`
+                            : t("chat.permissionMode")
+                      }
+                      ariaLabel={
+                        mode === "goal"
+                          ? `${t("chat.permissionMode")} · ${t("goal.autoWarning")}`
+                          : mode === "plan" && composerPermissionMode === "auto"
+                            ? `${t("chat.permissionMode")} · ${t("plan.autoWarning")}`
+                            : t("chat.permissionMode")
+                      }
+                      aria-haspopup={mode === "goal" ? undefined : "menu"}
+                      aria-expanded={mode === "goal" ? false : permissionOpen}
+                      disabled={controlsBlocked || mode === "goal"}
+                      onClick={() => {
+                        setModelThinkingOpen(false);
+                        setPermissionOpen((open) => !open);
+                      }}
+                    >
+                      <span className="text-sm">
+                        {t(PERMISSION_MODE_I18N_KEYS[composerPermissionMode])}
+                      </span>
+                      <IconChevronDown size={12} />
+                    </TooltipButton>
                   )}
-                </div>
+                >
+                  {(["ask", "accept-edits", "auto"] as const).map(
+                    (candidate) => (
+                      <button
+                        key={candidate}
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={composerPermissionMode === candidate}
+                        disabled={controlsBlocked}
+                        className={`composer-plus-item ${
+                          composerPermissionMode === candidate ? "active" : ""
+                        }`}
+                        onClick={async () => {
+                          setPermissionOpen(false);
+                          try {
+                            await configureActiveSession({
+                              mode,
+                              providerId: provider?.id,
+                              modelId,
+                              thinkingLevel,
+                              permissionMode: candidate,
+                            });
+                          } catch (e) {
+                            showToast(
+                              e instanceof Error ? e.message : String(e),
+                              { variant: "error" },
+                            );
+                          }
+                        }}
+                      >
+                        <span className="flex-1 text-left">
+                          {t(PERMISSION_MODE_I18N_KEYS[candidate])}
+                        </span>
+                        {composerPermissionMode === candidate ? (
+                          <IconCheck size={13} />
+                        ) : null}
+                      </button>
+                    ),
+                  )}
+                </AnchoredMenu>
               ) : null}
             </div>
 
             <div className="composer-right">
-              <div
+              {composerContextUsage ? (
+                <ContextUsageInspector {...composerContextUsage} />
+              ) : null}
+              <AnchoredMenu
                 className="composer-model-thinking"
-                ref={modelThinkingRef}
-                onKeyDown={onModelThinkingMenuKeyDown}
-              >
-                <button
-                  type="button"
-                  className={`icon-btn composer-model-thinking-chip ${
-                    modelThinkingOpen ? "active" : ""
-                  }`}
-                  title={`${modelLabel} · ${t("chat.reasoningLevel")}: ${thinkingLabel}`}
-                  aria-label={`${t("chat.model")}: ${modelLabel}. ${t("chat.reasoningLevel")}: ${thinkingLabel}`}
-                  aria-haspopup="menu"
-                  aria-expanded={modelThinkingOpen}
-                  disabled={controlsBlocked}
-                  onClick={() => {
-                    setPermissionOpen(false);
-                    if (!modelThinkingOpen) {
-                      setModelThinkingView("root");
-                      setModelQuery("");
-                      setModelHighlight(-1);
-                      setThinkingHighlight(-1);
-                    }
-                    setModelThinkingOpen((open) => !open);
-                  }}
-                >
-                  <span className="composer-model-thinking-icon" aria-hidden="true">
-                    <IconBot size={14} />
-                  </span>
-                  <span className="composer-model-thinking-model">
-                    {modelLabel}
-                  </span>
-                  {thinkingLevel !== "off" ? (
-                    <>
-                      <span className="composer-model-thinking-dot" aria-hidden="true">
-                        ·
-                      </span>
-                      <span className="composer-model-thinking-level">
-                        {thinkingLabel}
-                      </span>
-                    </>
-                  ) : null}
-                  <IconChevronDown size={12} aria-hidden="true" />
-                </button>
-                {modelThinkingOpen ? (
-                  <div
-                    className="composer-model-menu composer-model-thinking-menu"
-                    role="menu"
-                    aria-label={`${t("chat.model")} ${t("chat.reasoningLevel")}`}
+                open={modelThinkingOpen}
+                onClose={() => setModelThinkingOpen(false)}
+                menuClassName="composer-model-menu composer-model-thinking-menu"
+                label={`${t("chat.model")} ${t("chat.reasoningLevel")}`}
+                role="menu"
+                align="end"
+                side="top"
+                initialFocus="none"
+                onMenuKeyDown={onModelThinkingMenuKeyDown}
+                trigger={(ref) => (
+                  <TooltipButton
+                    ref={ref}
+                    type="button"
+                    className={`icon-btn composer-model-thinking-chip ${
+                      modelThinkingOpen ? "active" : ""
+                    }`}
+                    tooltip={`${modelLabel} · ${t("chat.reasoningLevel")}: ${thinkingLabel}`}
+                    ariaLabel={`${t("chat.model")}: ${modelLabel}. ${t("chat.reasoningLevel")}: ${thinkingLabel}`}
+                    aria-haspopup="menu"
+                    aria-expanded={modelThinkingOpen}
+                    disabled={controlsBlocked}
+                    onClick={() => {
+                      setPermissionOpen(false);
+                      if (!modelThinkingOpen) {
+                        setModelThinkingView("root");
+                        setModelQuery("");
+                        setModelHighlight(-1);
+                        setThinkingHighlight(-1);
+                      }
+                      setModelThinkingOpen((open) => !open);
+                    }}
                   >
-                    {modelThinkingView === "root" ? (
-                      <div className="composer-menu-root" ref={rootMenuRef}>
+                    <span className="composer-model-thinking-icon" aria-hidden="true">
+                      <IconBot size={14} />
+                    </span>
+                    <span className="composer-model-thinking-model">
+                      {modelLabel}
+                    </span>
+                    {thinkingLevel !== "off" ? (
+                      <>
+                        <span className="composer-model-thinking-dot" aria-hidden="true">
+                          ·
+                        </span>
+                        <span className="composer-model-thinking-level">
+                          {thinkingLabel}
+                        </span>
+                      </>
+                    ) : null}
+                    <IconChevronDown size={12} aria-hidden="true" />
+                  </TooltipButton>
+                )}
+              >
+                {modelThinkingView === "root" ? (
+                  <div className="composer-menu-root" ref={rootMenuRef}>
                         <button
                           type="button"
                           className="composer-menu-entry"
@@ -2434,9 +2671,9 @@ export function Composer({
                           </span>
                           <IconChevronRight size={14} aria-hidden="true" />
                         </button>
-                      </div>
-                    ) : (
-                      <>
+                  </div>
+                ) : (
+                  <>
                         <button
                           type="button"
                           className="composer-menu-back"
@@ -2476,16 +2713,16 @@ export function Composer({
                                     key={group.provider.id}
                                     className="composer-model-group"
                                     role="group"
-                                    aria-label={group.provider.name}
+                                    aria-label={group.providerDisplayName}
                                   >
                                     <div className="composer-model-group-label">
-                                      {group.provider.name}
+                                      {group.providerDisplayName}
                                     </div>
                                     {group.models.map((model) => {
                                       const index = flatIndex++;
                                       const active =
                                         provider?.id === group.provider.id &&
-                                        modelId === model.modelId;
+                                        modelIdsMatch(modelId ?? "", model.modelId);
                                       const optionTitle =
                                         model.displayName || model.modelId;
                                       return (
@@ -2511,7 +2748,7 @@ export function Composer({
                                               {optionTitle}
                                             </span>
                                             <span className="composer-model-option-meta">
-                                              {composerModelBadges(model).map(
+                                              {composerModelBadges(model, group.provider).map(
                                                 (badge) => (
                                                   <span
                                                     key={badge}
@@ -2581,9 +2818,7 @@ export function Composer({
                                   onClick={() => void selectThinkingLevel(level)}
                                 >
                                   <span className="flex-1">
-                                    {t(THINKING_LEVEL_I18N_KEYS[level], {
-                                      defaultValue: THINKING_LEVEL_LABELS[level],
-                                    })}
+                                    {level}
                                   </span>
                                   {thinkingLevel === level ? (
                                     <IconCheck
@@ -2597,27 +2832,24 @@ export function Composer({
                             </div>
                           </>
                         )}
-                      </>
-                    )}
-                  </div>
-                ) : null}
-              </div>
-              <button
+                  </>
+                )}
+              </AnchoredMenu>
+              <TooltipButton
                 type="button"
                 className={`icon-btn composer-enhance-btn${enhancingPrompt ? " is-loading" : ""}`}
-                title={t("chat.enhancePrompt")}
-                aria-label={
+                tooltip={t("chat.enhancePrompt")}
+                ariaLabel={
                   enhancingPrompt
                     ? t("chat.enhancingPrompt")
                     : t("chat.enhancePrompt")
                 }
                 aria-busy={enhancingPrompt}
                 disabled={
-                  !value.trim() ||
-                  value.trim().startsWith("/") ||
+                  !enhancementDraft.trim() ||
+                  enhancementDraft.trim().startsWith("/") ||
                   !modelReady ||
                   sendBlocked ||
-                  activeInlineFileReferences.length > 0 ||
                   enhancingPrompt
                 }
                 onClick={() => void enhancePrompt()}
@@ -2630,37 +2862,35 @@ export function Composer({
                 ) : (
                   <IconSparkles size={15} aria-hidden="true" />
                 )}
-              </button>
+              </TooltipButton>
               {enhancementUndoText !== null ? (
-                <button
+                <TooltipButton
                   type="button"
                   className="icon-btn composer-enhance-undo"
-                  title={t("chat.undoEnhancement")}
-                  aria-label={t("chat.undoEnhancement")}
+                  tooltip={t("chat.undoEnhancement")}
+                  ariaLabel={t("chat.undoEnhancement")}
                   disabled={controlsBlocked}
                   onClick={undoPromptEnhancement}
                 >
                   <IconUndo2 size={15} aria-hidden="true" />
-                </button>
+                </TooltipButton>
               ) : null}
               {runActive && !hasDraftContent ? (
-                <button
+                <TooltipButton
                   type="button"
                   className="stop-btn"
-                  title={t("chat.stopGenerating")}
-                  aria-label={t("chat.stopGenerating")}
+                  tooltip={t("chat.stopGenerating")}
+                  ariaLabel={t("chat.stopGenerating")}
                   onClick={() => void abort()}
                 >
                   <IconStop size={14} />
-                </button>
+                </TooltipButton>
               ) : (
-                <button
+                <TooltipButton
                   type="button"
                   className="send-btn"
-                  aria-label={modelReady ? t("chat.send") : t("settings.addProvider")}
-                  title={
-                    modelReady ? t("chat.send") : t("settings.addProvider")
-                  }
+                  ariaLabel={modelReady ? t("chat.send") : t("settings.addProvider")}
+                  tooltip={modelReady ? t("chat.send") : t("settings.addProvider")}
                   disabled={
                     !hasDraftContent ||
                     sendBlocked ||
@@ -2669,7 +2899,7 @@ export function Composer({
                   onClick={() => void submit()}
                 >
                   <IconArrowUp size={15} />
-                </button>
+                </TooltipButton>
               )}
             </div>
           </div>

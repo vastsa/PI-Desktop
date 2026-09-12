@@ -10,10 +10,16 @@ intentionally targets a path outside the session workspace.
 
 1. **Security denylist** (always on, not user-disable in MVP)
 2. **App defaults** (shipped)
-3. **Workspace rules** (`.pi-desktopignore` or settings)
-4. **User global ignore** (`~/.pi-desktop/ignore`)
+3. **Workspace rules** (`.pi-desktopignore` at the workspace root)
+4. **User global ignore** (`<data_dir>/ignore`, i.e. `~/.pi-desktop/ignore`
+   by default)
 5. Explicit tool path still subject to the security denylist and the
    outside-path permission gate
+
+An explicit `path` argument on `Glob`/`Grep` opts that walk out of layers 2–4
+(the same way it already bypasses parent `.gitignore` rules), so a caller who
+names `node_modules/pkg` or `dist` can still search it. Layer 1 applies to
+every walk and every explicit path.
 
 ## 3. Security denylist (always)
 
@@ -22,17 +28,27 @@ Outside-workspace read/write/search is denied by default. An explicit
 the permission mode: `auto` allows it, while `ask` and `accept-edits` ask the
 user. An implicit recursive walk never gains outside-workspace access.
 
-Also deny inside workspace for:
-- `.git/objects/**` (optional optimize; metadata may be readable later)
+Also deny inside workspace (and inside the scratch or an approved external
+root) for:
+- `.git/objects/**`
 - private key patterns: `*.pem`, `*.key`, `id_rsa`, `id_ed25519`
-- `.env`, `.env.*` (read may be allowed with permission prompt in later revision; MVP default deny for Grep content export)
+- `.env`, `.env.*` — except the documentation variants `.env.example`,
+  `.env.sample`, and `.env.template`, which hold no secrets and are what a
+  coding task usually needs
 - credential files: `*.p12`, `*.pfx`, `credentials.json` (Google), `.npmrc` with tokens (best-effort)
 
-> Exact env-file policy can be relaxed later with explicit permission; fail closed in MVP for content search.
+File-name matching is case-insensitive. `Glob` and `Grep` drop matching files
+from their results silently; an explicit `Read`, `Write`, or `Edit` (including
+the `Edit` move destination) fails with `WORKSPACE_PATH_DENIED`, and an
+outside-path grant does not lift the denial. `Bash` is not filtered (§6).
+
+> Read may be allowed with an explicit permission prompt in a later revision;
+> MVP fails closed.
 
 ## 4. Default ignore (app)
 
 ```gitignore
+.git/
 node_modules/
 dist/
 build/
@@ -65,27 +81,26 @@ Syntax: gitignore-compatible subset.
 
 | tool | ignore application |
 |---|---|
-| Glob | filtered results |
-| Grep | filtered file set |
-| Read | permission-gated when explicit path is outside; `TOOL_DENIED` after denial |
-| Write/Edit | permission-gated when explicit path is outside; `TOOL_DENIED` after denial |
+| Glob | unscoped walk: layers 1–4 filter results; explicit `path`: layer 1 only |
+| Grep | unscoped walk: layers 1–4 filter the file set (in-process walker and the system `rg` fast path alike); explicit `path`: layer 1 only |
+| Read | `WORKSPACE_PATH_DENIED` on a denylisted file; otherwise permission-gated when the explicit path is outside; `TOOL_DENIED` after denial |
+| Write/Edit | `WORKSPACE_PATH_DENIED` on a denylisted file or move destination; otherwise permission-gated when the explicit path is outside; `TOOL_DENIED` after denial |
 | Bash | path sandbox still enforced by host; ignore file does not expand bash powers |
 
 ## 7. Diagnostics
 
 Tools should return stable errors:
 - `PATH_OUTSIDE_WORKSPACE` — path escapes the workspace root before an
-  outside-path permission decision, or a non-permissioned compatibility call
-  reaches the resolver
+  outside-path permission decision
 - `TOOL_DENIED` — outside-path permission was denied, timed out, or cancelled
-- `WORKSPACE_PATH_DENIED` — reserved detail code for ignore/denylist blocks
-  (maps to `PATH_OUTSIDE_WORKSPACE` today; see [08-error-codes §3.7](08-error-codes.md))
+- `WORKSPACE_PATH_DENIED` — an explicit path hit the security denylist (see
+  [08-error-codes §3.3](08-error-codes.md))
 
 UI can show “hidden by ignore rules” counts for Glob/Grep optionally later.
 
 ## 8. Acceptance criteria
 
 - [x] outside paths require permission in non-auto modes and are allowed in Auto
-- [ ] default ignores hide node_modules from Glob/Grep
-- [ ] workspace ignore file honored
-- [ ] security denylist cannot be disabled from UI in MVP
+- [x] default ignores hide node_modules from Glob/Grep
+- [x] workspace ignore file honored
+- [x] security denylist cannot be disabled from UI in MVP

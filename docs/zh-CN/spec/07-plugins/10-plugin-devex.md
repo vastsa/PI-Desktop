@@ -60,6 +60,11 @@ Create from template            (the folder opens as the project)
 - 清单验证功能
 - 测试助手（模拟主机）
 
+SDK 的剪贴板接口包含 `pi.clipboard.getHistory()`，通过现有的 `clipboard.read` 权限
+返回有界、按最新优先排列的文本和图片条目。主机只记录明确的写入和 Composer 粘贴事件，
+不会在后台轮询。插件应使用此 API 实现剪贴板历史功能，而不是轮询 `readText()` 并维护
+第二份存储。
+
 `@pi-desktop/plugin-devkit` 是工具，而不是运行时，并且可以使用 Node。它拥有
 `scaffold` / `check` / `pack` 和 `pi-plugin` CLI。三位开发商
 表面（CLI、代理工具、插件页面）调用它，因此一旦成立就会强制执行规则

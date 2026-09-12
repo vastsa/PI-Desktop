@@ -64,8 +64,10 @@ dependency-free and Node-free. It provides:
 
 The SDK's clipboard surface includes `pi.clipboard.getHistory()`, which
 returns bounded, newest-first text and image entries through the existing
-`clipboard.read` permission. Plugin authors should use it for clipboard-history
-features instead of polling `readText()` and maintaining a second store.
+`clipboard.read` permission. The host records explicit writes and Composer
+paste events without background polling. Plugin authors should use this API for
+clipboard-history features instead of polling `readText()` and maintaining a
+second store.
 
 `@pi-desktop/plugin-devkit` is tooling, not runtime, and may use Node. It owns
 `scaffold` / `check` / `pack` and the `pi-plugin` CLI. All three developer

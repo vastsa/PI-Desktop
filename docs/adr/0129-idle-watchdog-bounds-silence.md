@@ -1,6 +1,7 @@
 # ADR 0129: The Subagent Idle Watchdog Bounds Silence, Not Slowness
 
-- Status: Accepted for implementation
+- Status: Accepted for implementation (amended by ADR 0166: watchdogs no longer
+  kill; the parent judges subagent lifetime)
 - Date: 2026-08-27
 - Deciders: PI-Desktop core
 - Related: D260 (amends D254), ADR 0119 (event-driven subagent timeouts),

@@ -255,6 +255,12 @@
   user-select: none !important;
 }
 
+:root[data-project-reordering="true"],
+:root[data-project-reordering="true"] * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+
 .sidebar.is-exiting {
   pointer-events: none;
   animation: sidebar-out var(--motion-duration-fast) var(--motion-ease-in) both;
@@ -332,7 +338,7 @@
 }
 
 /*
- * macOS supplies the blur through native under-window vibrancy. The renderer
+ * macOS supplies the blur through native sidebar vibrancy. The renderer
  * only adds a thin tint plus sheen on the sidebar, rail, and boot splash —
  * an opaque splash would flash a painted panel before the glass sidebar.
  * The sheen keeps the material reading as glass; a flat tint looks painted.
@@ -488,6 +494,11 @@
 .conversation-topbar .ct-right {
   flex: 0 0 auto;
   justify-content: flex-end;
+  padding-right: 36px;
+}
+
+.conversation-topbar.ct-work-panel-open .ct-right {
+  padding-right: 0;
 }
 
 .conversation-topbar .ct-title-wrap {
@@ -515,10 +526,11 @@
   line-height: var(--leading-compact);
 }
 
-.conversation-topbar .ct-icon-btn {
+.conversation-topbar .ct-icon-btn,
+.app-work-panel-toggle {
   display: inline-flex;
-  height: 28px;
-  width: 28px;
+  height: var(--ds-work-panel-toggle-size);
+  width: var(--ds-work-panel-toggle-size);
   align-items: center;
   justify-content: center;
   border: none;
@@ -530,12 +542,14 @@
     color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
-.conversation-topbar .ct-icon-btn:hover:not(:disabled) {
+.conversation-topbar .ct-icon-btn:hover:not(:disabled),
+.app-work-panel-toggle:hover:not(:disabled) {
   background: var(--ds-bg-hover);
   color: var(--ds-text-primary);
 }
 
-.conversation-topbar .ct-icon-btn:disabled {
+.conversation-topbar .ct-icon-btn:disabled,
+.app-work-panel-toggle:disabled {
   opacity: 0.4;
   cursor: default;
 }
@@ -551,7 +565,54 @@
 .conversation-topbar .ct-actions {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 0;
+  padding: 2px;
+  border-radius: var(--radius-md);
+  background: var(--ds-tile);
+}
+
+/* Keep the sole work-panel toggle anchored to the viewport while the in-flow
+ * panel changes MainPane width. AppShell ownership keeps it available on every
+ * non-Settings route and above the panel header throughout both animations. */
+.app-work-panel-toggle {
+  position: fixed;
+  top: 9px;
+  right: var(--ds-work-panel-toggle-inset);
+  z-index: 30;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.app-work-panel-toggle[aria-pressed="true"] {
+  background: var(--ds-tile-deep);
+  color: var(--ds-text-primary);
+  box-shadow: var(--ds-raised-shadow);
+}
+
+.app-work-panel-toggle-icon {
+  position: relative;
+  display: inline-flex;
+  width: 15px;
+  height: 15px;
+}
+
+.app-work-panel-toggle-icon > svg {
+  position: absolute;
+  inset: 0;
+  transition: opacity var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.app-work-panel-toggle[aria-pressed="false"] .app-work-panel-toggle-icon > svg:last-child,
+.app-work-panel-toggle[aria-pressed="true"] .app-work-panel-toggle-icon > svg:first-child {
+  opacity: 0;
+}
+
+:root[data-platform="win32"] .app-work-panel-toggle,
+:root[data-platform="linux"] .app-work-panel-toggle {
+  right: calc(
+    var(--ds-window-controls-width) + var(--ds-work-panel-toggle-inset)
+  );
 }
 
 /* macOS traffic lights occupy the top-left ~76px; only reserve that space
@@ -631,7 +692,8 @@
 
 :root[data-platform="win32"] .conversation-topbar.ct-work-panel-open,
 :root[data-platform="linux"] .conversation-topbar.ct-work-panel-open {
-  right: var(--ds-window-controls-width);
+  /* Window controls stay viewport-fixed over the panel, not this pane. */
+  right: 0;
 }
 
 .notification-center {
@@ -664,9 +726,11 @@
 }
 
 .notification-popover {
-  position: absolute;
-  bottom: calc(100% + 8px);
+  position: fixed;
+  top: auto;
   left: 0;
+  right: auto;
+  bottom: auto;
   z-index: 60;
   display: flex;
   width: min(360px, calc(100vw - 24px));
@@ -681,8 +745,6 @@
 
 /* Portaled to document.body so the main pane cannot paint over the dialog. */
 .notification-popover-portaled {
-  position: fixed;
-  right: auto;
   z-index: 60;
 }
 
@@ -894,6 +956,7 @@
 @media (max-width: 480px) {
   .notification-popover {
     position: fixed;
+    top: auto;
     bottom: 8px;
     right: 8px;
     left: 8px;
@@ -922,10 +985,10 @@
   /* Continuous with the adjacent titlebar: no side seam (D297). */
 }
 
-/* The main shell puts the controls inside the conversation pane so the right
- * work panel can use its own complete header without inheriting app chrome. */
+/* The main shell keeps one control band mounted inside MainPane, but its
+ * viewport-fixed position must not follow MainPane while the work panel reflows. */
 .window-controls.window-controls-in-pane {
-  position: absolute;
+  position: fixed;
 }
 
 .window-control-btn {
@@ -965,7 +1028,7 @@
 
 :root[data-platform="win32"] .main-titlebar.work-panel-open,
 :root[data-platform="linux"] .main-titlebar.work-panel-open {
-  right: var(--ds-window-controls-width);
+  right: 0;
 }
 
 .sidebar-header {

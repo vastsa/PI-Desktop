@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { en, flattenCatalog, zhCN } from "../src/index.ts";
+import { en, flattenCatalog, ko, zhCN, zhTW } from "../src/index.ts";
 
 const english = flattenCatalog(en);
 const chinese = flattenCatalog(zhCN);
+const traditional = flattenCatalog(zhTW);
+const korean = flattenCatalog(ko);
 
 test("shell status and crash copy stay user-facing", () => {
   assert.equal(english["app.tagline"], "Local AI coding partner");
@@ -14,6 +16,14 @@ test("shell status and crash copy stay user-facing", () => {
   assert.equal(english["status.hostOk"], "Connected");
   assert.equal(english["status.degraded"], "Limited");
   assert.equal(english["status.fatal"], "Can't reach the local service");
+  assert.equal(
+    english["status.unsupportedGlibc"],
+    "This Linux build needs glibc 2.35 or newer (Ubuntu 22.04, Debian 12, Fedora 36+).",
+  );
+  assert.equal(
+    chinese["status.unsupportedGlibc"],
+    "当前 Linux 构建需要 glibc 2.35 或更高版本（Ubuntu 22.04、Debian 12、Fedora 36+）。",
+  );
   assert.equal(english["errors.TURN_ABORTED"], "Stopped.");
   assert.equal(chinese["app.tagline"], "本地 AI 编程助手");
   assert.equal(chinese["app.uiCrashed"], "界面出现了问题");
@@ -28,6 +38,14 @@ test("failed turns expose a localized continuation prompt", () => {
   assert.equal(
     chinese["chat.continueUnfinishedTaskPrompt"],
     "继续用户未完成的任务",
+  );
+  assert.equal(
+    english["errors.MUTATION_RETRY_BUDGET_EXHAUSTED"],
+    "The same edit failed three times, so this turn stopped instead of retrying blind. Ask again to continue.",
+  );
+  assert.equal(
+    chinese["errors.MUTATION_RETRY_BUDGET_EXHAUSTED"],
+    "同一处修改连续失败三次，本轮已停止，不再盲目重试。再说一次即可继续。",
   );
 });
 
@@ -52,11 +70,21 @@ test("common setup and marketplace copy avoid developer jargon", () => {
   assert.equal(chinese["settings.providers"], "AI 服务");
   assert.equal(chinese["menu.refreshMarket"], "刷新插件市场");
   assert.equal(chinese["chat.emptyHint"], "添加服务并打开项目即可开始。");
+  assert.equal(traditional["nav.temporarySessions"], "臨時對話");
+  assert.equal(traditional["settings.providers"], "AI 服務");
+  assert.equal(traditional["menu.refreshMarket"], "重新整理外掛市場");
+  assert.equal(traditional["chat.emptyHint"], "新增服務並開啟專案即可開始。");
+  assert.equal(korean["settings.language"], "언어");
+  assert.equal(korean["nav.projects"], "프로젝트");
+  assert.equal(korean["nav.temporarySessions"], "임시 대화");
+  assert.notEqual(korean["chat.emptyHint"], english["chat.emptyHint"]);
 });
 
 test("Plan mode and Auto permission copy stay explicit in both locales", () => {
   assert.equal(english["settings.modePlan"], "Plan");
   assert.equal(chinese["settings.modePlan"], "规划");
+  assert.equal(chinese["chat.permissionAcceptEdits"], "允许编辑");
+  assert.equal(traditional["chat.permissionAcceptEdits"], "允許編輯");
   assert.equal(english["plan.approvalRegion"], "Plan approval");
   assert.equal(
     english["plan.readyAnnouncement"],
@@ -88,4 +116,15 @@ test("page copy keeps actions and removes redundant explanatory paragraphs", () 
   assert.equal(chinese["panel.empty.body"], "选择工具或打开资源。");
   assert.doesNotMatch(english["project.archiveSubtitle"], /without losing|Activate|archive the rest/);
   assert.doesNotMatch(chinese["project.archiveSubtitle"], /可以|而不丢失/);
+});
+
+test("font size presets use Starbucks-style cup names", () => {
+  assert.equal(english["settings.fontSizeSmall"], "Tall");
+  assert.equal(english["settings.fontSizeDefault"], "Grande");
+  assert.equal(english["settings.fontSizeLarge"], "Venti");
+  assert.equal(english["settings.fontSizeXl"], "Trenta");
+  assert.equal(chinese["settings.fontSizeSmall"], "中杯");
+  assert.equal(chinese["settings.fontSizeDefault"], "大杯");
+  assert.equal(chinese["settings.fontSizeLarge"], "超大杯");
+  assert.equal(chinese["settings.fontSizeXl"], "超超大杯");
 });
