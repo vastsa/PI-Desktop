@@ -1,3 +1,4 @@
+import { readAppSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -8,10 +9,7 @@ const sidebarSource = await readFile(
   "utf8",
 );
 const globalStyles = await loadStyles();
-const appSource = await readFile(
-  new URL("../src/App.tsx", import.meta.url),
-  "utf8",
-);
+const appSource = await readAppSource();
 const panelSource = await readFile(
   new URL("../src/components/workpanel/WorkPanel.tsx", import.meta.url),
   "utf8",

@@ -1,3 +1,4 @@
+import { readComposerSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -9,7 +10,7 @@ const [chatSurface, styles, checklist, composer] = await Promise.all([
   read("../src/components/ChatSurface.tsx"),
   loadStyles(),
   read("../src/components/OnboardingChecklist.tsx"),
-  read("../src/components/Composer.tsx"),
+  readComposerSource(),
 ]);
 
 test("empty home uses a single scrollable stack instead of dual-grow portals", () => {

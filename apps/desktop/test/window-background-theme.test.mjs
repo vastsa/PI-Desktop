@@ -1,3 +1,4 @@
+import { readAppSource, readMainSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -6,18 +7,12 @@ const protocolSource = await readFile(
   new URL("../../../packages/shared/src/protocol.ts", import.meta.url),
   "utf8",
 );
-const mainSource = await readFile(
-  new URL("../electron/main/index.ts", import.meta.url),
-  "utf8",
-);
+const mainSource = await readMainSource();
 const apiSource = await readFile(
   new URL("../src/lib/api.ts", import.meta.url),
   "utf8",
 );
-const appSource = await readFile(
-  new URL("../src/App.tsx", import.meta.url),
-  "utf8",
-);
+const appSource = await readAppSource();
 
 test("theme changes synchronize the native non-macOS window background", () => {
   assert.match(

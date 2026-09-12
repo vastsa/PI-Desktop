@@ -1,3 +1,8 @@
+import {
+  readAppSourceSync,
+  readMainModuleSync,
+  readMainSourceSync,
+} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
@@ -17,9 +22,10 @@ import {
 const desktopRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = join(desktopRoot, "../..");
 const read = (rel) => readFileSync(join(desktopRoot, rel), "utf8");
-const mainSrc = read("electron/main/index.ts");
+const mainSrc = readMainSourceSync();
+const lifecycleSrc = readMainModuleSync("runtime/lifecycle.ts");
 const hostSrc = read("electron/main/host-process.ts");
-const appSrc = read("src/App.tsx");
+const appSrc = readAppSourceSync();
 const enSrc = readFileSync(join(repoRoot, "packages/i18n/src/locales/en/index.ts"), "utf8");
 const zhSrc = readFileSync(join(repoRoot, "packages/i18n/src/locales/zh-CN/index.ts"), "utf8");
 
@@ -111,12 +117,12 @@ test("host-process turns the refusal into a typed error before glibc matching", 
 });
 
 test("main stops restarting on a schema refusal and pushes a named status", () => {
-  const loop = mainSrc.slice(mainSrc.indexOf("async function superviseRestartLoop("));
-  const schemaAt = loop.indexOf("schemaTooNewOf(e)");
-  const glibcAt = loop.indexOf("isGlibcUnsupportedError(e)");
+  const loop = lifecycleSrc.slice(lifecycleSrc.indexOf("async function superviseRestartLoop("));
+  const schemaAt = loop.indexOf("schemaTooNewOf(error)");
+  const glibcAt = loop.indexOf("isGlibcUnsupportedError(error)");
   assert.ok(schemaAt > 0 && schemaAt < glibcAt);
   assert.match(loop.slice(schemaAt, glibcAt), /message: DB_SCHEMA_TOO_NEW_STATUS,\s*schema,\s*\}\);\s*return;/);
-  const boot = mainSrc.slice(mainSrc.indexOf("function bootHostStatus("));
+  const boot = lifecycleSrc.slice(lifecycleSrc.indexOf("const bootHostStatus ="));
   assert.match(boot, /status\.message = DB_SCHEMA_TOO_NEW_STATUS;\s*status\.schema = schema;/);
   assert.match(boot, /status\.archMismatch = \{/);
   assert.match(mainSrc, /sendToRenderer\(IPC\.event\.hostStatus, bootHostStatus\(bootError\)\);/);

@@ -1,0 +1,15 @@
+{
+  "typescript": {
+    "apps/desktop/electron/main/bootstrap/window.ts": "Existing window lifecycle extraction from the main-process facade; further decomposition is outside this follow-up scope."
+  },
+  "rust": {
+    "crates/host-core/src/rpc/mod.rs": "Legacy RPC dispatch module; its extraction is outside this refactor scope.",
+    "crates/host-core/src/sessions.rs": "Legacy session service module; its extraction is outside this refactor scope.",
+    "crates/host-core/src/tools/mod.rs": "Legacy builtin tool dispatch module; its extraction is outside this refactor scope.",
+    "crates/host-core/src/plugin_sessions.rs": "Legacy plugin session lifecycle module; its extraction is outside this refactor scope.",
+    "crates/host-core/src/transcripts.rs": "Legacy transcript persistence module; its extraction is outside this refactor scope.",
+    "crates/host-core/src/plugins/tests.rs": "Existing plugin-domain test module retained while production plugin code is split.",
+    "crates/host-core/src/db/tests.rs": "Existing database-domain test module retained while production database code is split.",
+    "crates/host-core/src/providers/tests.rs": "Existing provider-domain test module retained while production provider code is split."
+  }
+}

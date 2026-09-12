@@ -1,3 +1,4 @@
+import { readAppSource, readComposerSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
 import test from "node:test";
@@ -22,9 +23,9 @@ const [
     read("../src/components/BrandLogo.tsx"),
     read("../src/components/icons.tsx"),
     read("../src/components/Sidebar.tsx"),
-    read("../src/App.tsx"),
+    readAppSource(),
     read("../src/components/ChatSurface.tsx"),
-    read("../src/components/Composer.tsx"),
+    readComposerSource(),
     loadStyles(),
     read("../src/components/HomeMascotLogo.tsx"),
   ]);

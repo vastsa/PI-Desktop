@@ -17,6 +17,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readSharedTypesSource } from "./helpers/source-contracts.mjs";
 
 const editorSource = await readFile(
   new URL("../src/components/settings/SubagentEditorSheet.tsx", import.meta.url),
@@ -30,10 +31,7 @@ const sharedDefinition = await readFile(
   new URL("../../../packages/shared/src/subagent-definition.ts", import.meta.url),
   "utf8",
 );
-const sharedTypes = await readFile(
-  new URL("../../../packages/shared/src/types.ts", import.meta.url),
-  "utf8",
-);
+const sharedTypes = await readSharedTypesSource();
 const runtimeSource = await readFile(
   new URL("../../../packages/agent-runtime/src/subagent.ts", import.meta.url),
   "utf8",

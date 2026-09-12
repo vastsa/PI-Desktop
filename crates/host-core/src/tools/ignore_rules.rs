@@ -196,9 +196,12 @@ pub fn rg_args(ignore_root: &Path, scoped: bool) -> Vec<String> {
         args.push("--glob".into());
         args.push(format!("!*{suffix}"));
     }
-    for file in [workspace_ignore_file(ignore_root), user_global_ignore_file()]
-        .into_iter()
-        .flatten()
+    for file in [
+        workspace_ignore_file(ignore_root),
+        user_global_ignore_file(),
+    ]
+    .into_iter()
+    .flatten()
     {
         args.push("--ignore-file".into());
         args.push(file.to_string_lossy().into_owned());

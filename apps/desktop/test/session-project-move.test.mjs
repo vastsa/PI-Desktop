@@ -1,3 +1,4 @@
+import { readStoreSourceSync, readComposerSourceSync, readMainSourceSync } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
@@ -7,13 +8,13 @@ const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 const protocol = read("../../../packages/shared/src/protocol.ts");
 const sessions = read("../../../crates/host-core/src/sessions.rs");
 const rpc = read("../../../crates/host-core/src/rpc/mod.rs");
-const main = read("../electron/main/index.ts");
+const main = readMainSourceSync();
 const mcpControl = read("../electron/main/mcp-control.ts");
 const api = read("../src/lib/api.ts");
-const store = read("../src/stores/app-store.ts");
+const store = readStoreSourceSync();
 const sidebar = read("../src/components/Sidebar.tsx");
 const sidebarPreferences = read("../src/lib/sidebar-preferences.ts");
-const composer = read("../src/components/Composer.tsx");
+const composer = readComposerSourceSync();
 const sessionsCss = read("../src/styles/sessions.css");
 const composerCss = read("../src/styles/composer.css");
 

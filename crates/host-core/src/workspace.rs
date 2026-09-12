@@ -43,8 +43,8 @@ impl WorkspaceState {
     }
 
     pub fn set(&mut self, path: impl AsRef<Path>) -> ProjectWorkspace {
-        let path = simple_canonicalize(path.as_ref())
-            .unwrap_or_else(|_| path.as_ref().to_path_buf());
+        let path =
+            simple_canonicalize(path.as_ref()).unwrap_or_else(|_| path.as_ref().to_path_buf());
         let name = path
             .file_name()
             .and_then(|s| s.to_str())
@@ -163,8 +163,8 @@ fn resolve_with_existing_ancestor(normalized: PathBuf) -> Result<PathBuf, String
             current = normalize_lexical(&next);
             continue;
         }
-        let mut resolved = simple_canonicalize(&existing)
-            .map_err(|e| format!("path canonicalize failed: {e}"))?;
+        let mut resolved =
+            simple_canonicalize(&existing).map_err(|e| format!("path canonicalize failed: {e}"))?;
         for part in tail.iter().rev() {
             resolved.push(part);
         }

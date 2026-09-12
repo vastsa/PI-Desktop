@@ -164,7 +164,10 @@ mod tests {
     #[test]
     fn normalized_drops_blanks_and_duplicates() {
         let scope = projects(&["/repo/", "/REPO", "  ", "/other"]).normalized();
-        assert_eq!(scope.projects, vec!["/repo".to_string(), "/other".to_string()]);
+        assert_eq!(
+            scope.projects,
+            vec!["/repo".to_string(), "/other".to_string()]
+        );
     }
 
     #[test]

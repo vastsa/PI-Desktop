@@ -702,9 +702,8 @@ mod tests {
 
     #[test]
     fn unavailable_powershell_7_falls_back_and_reports_it() {
-        let catalog = catalog_for_platform(ShellPlatform::Windows, Some(PWSH_ID), |id| {
-            id != PWSH_ID
-        });
+        let catalog =
+            catalog_for_platform(ShellPlatform::Windows, Some(PWSH_ID), |id| id != PWSH_ID);
         assert_eq!(catalog.configured_id, PWSH_ID);
         assert_eq!(
             catalog.effective.as_ref().map(|option| option.id.as_str()),

@@ -1,3 +1,10 @@
+import {
+  readAppSource,
+  readMainModuleSync,
+  readStoreModuleSync,
+  readStoreSource,
+  readMainSource,
+} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -15,13 +22,16 @@ const [
 ] =
   await Promise.all([
     read("../../../packages/shared/src/protocol.ts"),
-    read("../electron/main/index.ts"),
+    readMainSource(),
     read("../src/lib/api.ts"),
-    read("../src/stores/app-store.ts"),
-    read("../src/App.tsx"),
+  readStoreSource(),
+    readAppSource(),
     read("../src/components/Sidebar.tsx"),
     read("../electron/main/plugin-runtime.ts"),
   ]);
+
+const eventsSource = readStoreModuleSync("slices/events-slice.ts");
+const notificationIpcSource = readMainModuleSync("ipc/notification-ipc.ts");
 
 test("notification IPC stays behind the shared preload allowlist", () => {
   assert.match(protocolSource, /PROTOCOL_VERSION = 11/);
@@ -61,21 +71,20 @@ test("terminal notifications flow from host completion to the renderer", () => {
 
 test("the visible chat session suppresses durable task notifications", () => {
   assert.match(mainSource, /shouldCreateTaskNotificationPolicy/);
-  assert.match(mainSource, /viewingSessionId: notificationViewingSessionId/);
-  assert.match(mainSource, /mainWindow(?:\?\.)?isVisible\(\)/);
-  assert.match(mainSource, /mainWindow(?:\?\.)?isFocused\(\)/);
+  assert.match(mainSource, /viewingSessionId: getViewingSessionId\(\)/);
+  assert.match(mainSource, /window\?\.isVisible\(\)/);
+  assert.match(mainSource, /window\?\.isFocused\(\)/);
   assert.match(mainSource, /createNotification,/);
-  assert.match(mainSource, /"did-start-loading"[\s\S]*notificationViewingSessionId = null/);
-  assert.match(mainSource, /"render-process-gone"[\s\S]*notificationViewingSessionId = null/);
+  assert.match(mainSource, /"did-start-loading"[\s\S]*windowState\.notificationViewingSessionId = null/);
+  assert.match(mainSource, /"render-process-gone"[\s\S]*windowState\.notificationViewingSessionId = null/);
   assert.match(appSource, /page === "chat" \? activeSessionId \?\? null : null/);
   assert.match(appSource, /setNotificationViewingSession\(viewingSessionId\)/);
 });
 
 test("sidebar terminal outcomes are notification-backed, not lifecycle-backed", () => {
-  const terminalBlock =
-    storeSource.match(
-      /} else if \(\n\s*event\.type === "agent_end"[\s\S]*?void flushPendingSessionConfiguration\(envelope\.sessionId\);/,
-    )?.[0] ?? "";
+  const terminalStart = eventsSource.indexOf('} else if (event.type === "agent_end" || event.type === "error")');
+  const terminalEnd = eventsSource.indexOf('      if (event.type === "planning_state")', terminalStart);
+  const terminalBlock = eventsSource.slice(terminalStart, terminalEnd);
   assert.match(terminalBlock, /latestTurnResults/);
   assert.doesNotMatch(terminalBlock, /sessionOutcomes:/);
   assert.match(storeSource, /receiveNotification:[\s\S]*sessionOutcomes:/);
@@ -89,7 +98,7 @@ test("task and interactive native notifications keep separate visibility rules",
   assert.match(mainSource, /SystemNotification\.isSupported\(\)/);
   assert.match(mainSource, /new SystemNotification/);
   assert.match(mainSource, /IPC\.event\.notificationActivated/);
-  assert.match(mainSource, /mainWindow\.restore\(\)/);
+  assert.match(notificationIpcSource, /window\.restore\(\)/);
   assert.match(appSource, /showNativeNotification/);
   assert.match(appSource, /kind: "task"/);
   assert.match(storeSource, /kind: "interactive"/);

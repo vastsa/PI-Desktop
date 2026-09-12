@@ -1,3 +1,4 @@
+import { readAppSource, readStoreSource, readTranscriptSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -10,14 +11,8 @@ const workPanelSource = await readFile(
   new URL("../src/components/workpanel/WorkPanel.tsx", import.meta.url),
   "utf8",
 );
-const appSource = await readFile(
-  new URL("../src/App.tsx", import.meta.url),
-  "utf8",
-);
-const transcriptSource = await readFile(
-  new URL("../src/components/ChatTranscript.tsx", import.meta.url),
-  "utf8",
-);
+const appSource = await readAppSource();
+const transcriptSource = await readTranscriptSource();
 const detailSource = transcriptSource.slice(
   transcriptSource.indexOf("export function SubagentDetail"),
   transcriptSource.indexOf("/**\n * A truthful one-level graph", transcriptSource.indexOf("export function SubagentDetail")),
@@ -26,10 +21,7 @@ const failureCardSource = transcriptSource.slice(
   transcriptSource.indexOf("function SubagentFailureCard("),
   transcriptSource.indexOf("export function SubagentDetail"),
 );
-const storeSource = await readFile(
-  new URL("../src/stores/app-store.ts", import.meta.url),
-  "utf8",
-);
+const storeSource = await readStoreSource();
 const workPanelCss = await readFile(
   new URL("../src/styles/work-panel.css", import.meta.url),
   "utf8",

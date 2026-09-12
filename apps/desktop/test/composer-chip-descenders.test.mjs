@@ -1,12 +1,10 @@
+import { readComposerSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { loadStyles } from "./helpers/styles.mjs";
 
-const composerSource = await readFile(
-  new URL("../src/components/Composer.tsx", import.meta.url),
-  "utf8",
-);
+const composerSource = await readComposerSource();
 const styles = await loadStyles();
 
 function ruleBlock(source, selector) {

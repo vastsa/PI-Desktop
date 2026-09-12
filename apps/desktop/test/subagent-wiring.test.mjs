@@ -1,11 +1,13 @@
+import { readMainModule } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const mainSource = await readFile(
-  new URL("../electron/main/index.ts", import.meta.url),
-  "utf8",
-);
+const sessionLaunchSource = await readMainModule("runtime/session-launch.ts");
+const providerCatalogSource = await readMainModule("runtime/provider-catalog.ts");
+const desktopSidecarSource = await readMainModule("runtime/sidecar.ts");
+const eventPersistenceSource = await readMainModule("runtime/event-persistence.ts");
+const hostRuntimeSource = await readMainModule("runtime/host.ts");
 const sidecarSource = await readFile(
   new URL("../../../packages/agent-runtime/src/sidecar.ts", import.meta.url),
   "utf8",
@@ -28,32 +30,34 @@ const hostProcessSource = await readFile(
 );
 
 test("every launch resolves the subagent catalog and its pinned models", () => {
-  assert.match(mainSource, /loadSubagentDefinitions,\n  resolveSubagentProviders,/);
+  assert.match(sessionLaunchSource, /loadSubagentDefinitions,/);
+  assert.match(sessionLaunchSource, /resolveSubagentProviders,/);
   // The catalog is re-read per prompt, registry documents included, so an edit
   // in the UI takes effect on the next turn with no restart (D202).
-  assert.match(mainSource, /await loadSubagentDefinitions\(projectPath, \{/);
+  assert.match(sessionLaunchSource, /await loadSubagentDefinitions\(projectPath, \{/);
   assert.match(
-    mainSource,
+    sessionLaunchSource,
     /userDocuments: await activeUserSubagentDocuments\(projectPath\),/,
   );
-  assert.match(mainSource, /await resolveSubagentProviders\(\{/);
-  assert.match(mainSource, /subagents: subagentCatalog\.definitions,/);
-  assert.match(mainSource, /subagentProviders: subagentBindings\.providers,/);
+  assert.match(sessionLaunchSource, /await resolveSubagentProviders\(\{/);
+  assert.match(sessionLaunchSource, /subagents: subagentCatalog\.definitions,/);
+  assert.match(sessionLaunchSource, /subagentProviders: subagentBindings\.providers,/);
   // Discovery problems must not fail the turn, only be reported.
-  assert.match(mainSource, /"subagent definitions have problems"/);
+  assert.match(sessionLaunchSource, /"subagent definitions have problems"/);
 });
 
 test("subagent models use the exact stored binding for thinking capability", () => {
-  assert.match(mainSource, /function effectiveSubagentModelConfig\(/);
+  assert.match(providerCatalogSource, /const effectiveSubagentModelConfig = \(/);
   assert.match(
-    mainSource,
-    /function effectiveSubagentModelConfig\([\s\S]*?bindingForModel\(provider, modelId\)[\s\S]*?modelConfigWithBinding\(/,
+    providerCatalogSource,
+    /const effectiveSubagentModelConfig = \([\s\S]*?bindingForModel\(provider, modelId\)[\s\S]*?modelConfigWithBinding\(/,
   );
   // The helper is used for definition pins, the pre-resolved delegation
   // catalog, and the on-demand Task.model path.
-  assert.equal(mainSource.match(/effectiveSubagentModelConfig\(/g)?.length, 4);
+  const modelSource = [providerCatalogSource, sessionLaunchSource, desktopSidecarSource].join("\n");
+  assert.equal(modelSource.match(/effectiveSubagentModelConfig\(/g)?.length, 3);
   assert.match(
-    mainSource,
+    sessionLaunchSource,
     /const configuredProvider = providers\.providers\.find\([\s\S]*?effectiveSubagentModelConfig\(/,
   );
 });
@@ -72,12 +76,12 @@ test("the sidecar forwards both subagent params to the runtime", () => {
 
 test("persisted subagent rows keep their attribution", () => {
   assert.match(
-    mainSource,
+    eventPersistenceSource,
     /function subagentTagged\(message: UiMessage, envelope: AgentEventEnvelope\)/,
   );
-  assert.match(mainSource, /message: subagentTagged\(event\.message, envelope\),/);
-  assert.match(mainSource, /started\?\.parentToolCallId/);
-  assert.match(mainSource, /started\?\.agentName/);
+  assert.match(eventPersistenceSource, /message: subagentTagged\(event\.message, envelope\),/);
+  assert.match(eventPersistenceSource, /started\?\.parentToolCallId/);
+  assert.match(eventPersistenceSource, /started\?\.agentName/);
   // host-core round-trips both through the message `meta` object.
   assert.match(hostSessionsSource, /pub parent_tool_call_id: Option<String>/);
   assert.match(hostSessionsSource, /meta_obj\.insert\("parentToolCallId"\.into\(\)/);
@@ -85,9 +89,9 @@ test("persisted subagent rows keep their attribution", () => {
 });
 
 test("a permission request names the delegate that asked", () => {
-  assert.match(mainSource, /const asking = activeToolCalls\.get\(/);
-  assert.match(mainSource, /asking\?\.agentName \? \{ agentName: asking\.agentName \}/);
-  assert.match(mainSource, /asking\?\.parentToolCallId/);
+  assert.match(hostRuntimeSource, /const asking = activeToolCalls\.get\(/);
+  assert.match(hostRuntimeSource, /asking\?\.agentName \? \{ agentName: asking\.agentName \}/);
+  assert.match(hostRuntimeSource, /asking\?\.parentToolCallId/);
 });
 
 test("a dead host transport degrades quietly instead of warning", () => {
@@ -100,19 +104,19 @@ test("a dead host transport degrades quietly instead of warning", () => {
     "activeUserSkills",
     "activeUserSubagentDocuments",
   ]) {
-    const start = mainSource.indexOf(`async function ${fn}(`);
+    const start = sessionLaunchSource.indexOf(`async function ${fn}(`);
     assert.notEqual(start, -1, fn);
-    const body = mainSource.slice(start, start + 1800);
-    assert.match(body, /if \(!host\?\.isAvailable\(\)\) return \[\];/, fn);
+    const body = sessionLaunchSource.slice(start, start + 1800);
+    assert.match(body, /if \(!runtimeState\.host\?\.isAvailable\(\)\) return \[\];/, fn);
     // The guard only stops calls that have not started; one already in flight at
     // dispose is rejected too, so the catch has to classify it as well.
     assert.match(body, /if \(!isHostUnavailable\(error\)\) \{/, fn);
   }
   // The bare guard only covers a host that was never constructed.
-  assert.doesNotMatch(mainSource, /^\s+if \(!host\) return \[\];$/m);
+  assert.doesNotMatch(sessionLaunchSource, /^\s+if \(!host\) return \[\];$/m);
   assert.match(
-    mainSource,
-    /function isHostUnavailable\(error: unknown\): boolean \{[\s\S]*?ErrorCodes\.HOST_UNAVAILABLE/,
+    sessionLaunchSource,
+    /const isHostUnavailable = \(error: unknown\): boolean =>[\s\S]*?ErrorCodes\.HOST_UNAVAILABLE/,
   );
   // Classification works only because both teardown rejections are tagged.
   assert.match(

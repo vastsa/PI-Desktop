@@ -19,7 +19,7 @@ const examplePanelSource = await readFile(
   "utf8",
 );
 const hostCorePluginSource = await readFile(
-  new URL("../../../crates/host-core/src/plugins.rs", import.meta.url),
+  new URL("../../../crates/host-core/src/plugins/marketplace/catalog.rs", import.meta.url),
   "utf8",
 );
 const bundledPanelSources = [

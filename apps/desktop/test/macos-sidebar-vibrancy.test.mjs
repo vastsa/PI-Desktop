@@ -1,17 +1,15 @@
+import { readMainModule, readMainSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { loadStyles } from "./helpers/styles.mjs";
 
-const mainSource = await readFile(
-  new URL("../electron/main/index.ts", import.meta.url),
-  "utf8",
-);
+const mainSource = await readMainSource();
+const windowSource = await readMainModule("bootstrap/window.ts");
+const lifecycleSource = await readMainModule("bootstrap/app-lifecycle.ts");
 const stylesSource = await loadStyles();
 
-const createWindowSource = mainSource.slice(
-  mainSource.indexOf("async function createWindow()"),
-);
+const createWindowSource = windowSource.slice(windowSource.indexOf("export async function createWindow("));
 const mainWindowBlock =
   createWindowSource.match(/mainWindow = new BrowserWindow\(\{[\s\S]*?\n  \}\);/)?.[0] ?? "";
 const macOptions =
@@ -23,11 +21,11 @@ function styleBlock(selector) {
   return stylesSource.match(new RegExp(`${selector}\\s*\\{[^}]*\\}`))?.[0] ?? "";
 }
 
-function functionSource(name) {
-  const start = mainSource.indexOf(`function ${name}(`);
+function functionSource(source, name) {
+  const start = source.indexOf(`function ${name}(`);
   assert.ok(start >= 0, `expected function ${name}`);
-  const next = mainSource.indexOf("\nfunction ", start + 1);
-  return mainSource.slice(start, next === -1 ? undefined : next);
+  const next = source.indexOf("\n  function ", start + 1);
+  return source.slice(start, next === -1 ? undefined : next);
 }
 
 test("macOS main window enables native sidebar vibrancy only in its platform branch", () => {
@@ -57,9 +55,9 @@ test("macOS main window enables native sidebar vibrancy only in its platform bra
 });
 
 test("native theme source maps preferences and only resets vibrancy on change", () => {
-  const applyNative = functionSource("applyNativeThemeSource");
-  const applyMenu = functionSource("applyApplicationMenuSettings");
-  const send = functionSource("sendToRenderer");
+  const applyNative = functionSource(lifecycleSource, "applyNativeThemeSource");
+  const applyMenu = functionSource(lifecycleSource, "applyApplicationMenuSettings");
+  const send = functionSource(mainSource, "sendToRenderer");
 
   assert.match(applyNative, /let next: "system" \| "light" \| "dark" = "system"/);
   assert.match(
@@ -80,13 +78,13 @@ test("native theme source maps preferences and only resets vibrancy on change", 
   assert.match(applyNative, /if \(nativeTheme\.themeSource === next\) return;/);
   assert.match(
     applyNative,
-    /nativeTheme\.themeSource = next;\s*if \(process\.platform === "darwin" && mainWindow && !mainWindow\.isDestroyed\(\)\) \{\s*mainWindow\.setVibrancy\("sidebar"\);/,
+    /nativeTheme\.themeSource = next;\s*if \(process\.platform === "darwin" && state\.mainWindow && !state\.mainWindow\.isDestroyed\(\)\) \{\s*state\.mainWindow\.setVibrancy\("sidebar"\);/,
   );
 
   assert.match(applyMenu, /applyNativeThemeSource\(settings\)/);
   assert.match(
     send,
-    /if \(channel === IPC\.event\.pluginChanged\) \{\s*applyNativeThemeSource\(\{ theme: appThemePreference \}\);/,
+    /if \(channel === IPC\.event\.pluginChanged\) \{\s*applicationLifecycle\?\.applyNativeThemeSource\(\{\s*theme: applicationAppearanceState\.appThemePreference,/,
   );
 });
 

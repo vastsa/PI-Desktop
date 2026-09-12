@@ -1,3 +1,9 @@
+import {
+  readSettingsSourceSync,
+  readStoreModuleSync,
+  readStoreSourceSync,
+  readComposerSourceSync,
+} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -13,15 +19,16 @@ const [approvalBar, approvalPreferences, apiSource, storeSource, settingsPage, s
     readDesktop("src/components/PlanApprovalBar.tsx"),
     readDesktop("src/lib/plan-approval-preferences.ts"),
     readDesktop("src/lib/api.ts"),
-    readDesktop("src/stores/app-store.ts"),
-    readDesktop("src/pages/SettingsPage.tsx"),
+    readStoreSourceSync(),
+    readSettingsSourceSync(),
     readDesktop("src/lib/settings-search.ts"),
     loadStyles(),
     readPackage("src/locales/en/index.ts"),
     readPackage("src/locales/zh-CN/index.ts"),
     readDesktop("src/lib/plan-mode-state.ts"),
-    readDesktop("src/components/Composer.tsx"),
+    readComposerSourceSync(),
   ]);
+const interactionSource = readStoreModuleSync("slices/interaction-slice.ts");
 
 test("plan approval exposes only the artifact and remembers the selected mode", () => {
   assert.match(approvalBar, /proposal\.title/);
@@ -59,17 +66,18 @@ test("approval card omits validity details while the pending gate stays actionab
   );
   assert.match(
     storeSource,
-    /const generation = nextPlanSyncGeneration\(sessionId\)/,
+    /const generation = runtime\.nextPlanSyncGeneration\(sessionId\)/,
   );
   assert.match(storeSource, /await api\.pendingPlans\(sessionId\)/);
   assert.match(
     storeSource,
-    /if \(generation !== planSyncGeneration\(sessionId\)\) return "unavailable"/,
+    /if \(generation !== runtime\.planSyncGeneration\(sessionId\)\) return "unavailable"/,
   );
   assert.doesNotMatch(storeSource, /pendingPlanLoads|pendingPlanLoadGenerations|pendingPlanFollowUps/);
-  const resolveBlock =
-    storeSource.match(/resolvePlan: async \(resolution\)[\s\S]*?\n  showToast:/)?.[0] ?? "";
-  assert.match(resolveBlock, /ErrorCodes\.PLAN_APPROVAL_TIMEOUT/);
+  const resolveBlock = interactionSource.slice(
+    interactionSource.indexOf("resolvePlan: async"),
+  );
+  assert.match(resolveBlock, /PLAN_APPROVAL_TIMEOUT/);
   assert.match(
     resolveBlock,
     /await get\(\)\.restorePendingPlan\(resolution\.sessionId\)/,

@@ -1,3 +1,9 @@
+import {
+  readSettingsSourceSync,
+  readPluginsSourceSync,
+  readMainSourceSync,
+  readMainModuleSync,
+} from "./helpers/source-contracts.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -10,19 +16,16 @@ const here = dirname(fileURLToPath(import.meta.url));
 const srcDir = join(here, "../src");
 const settingsDir = join(srcDir, "components/settings");
 const read = (path) => readFileSync(join(here, path), "utf8");
-const settingsPage = read("../src/pages/SettingsPage.tsx");
-const pluginsPage = read("../src/pages/PluginsPage.tsx");
+const settingsPage = readSettingsSourceSync();
+const pluginsPage = readPluginsSourceSync();
 const layout = read("../src/components/settings/AgentCapabilityLayout.tsx");
 const skills = read("../src/components/settings/AgentSkillsPage.tsx");
 const mcp = read("../src/components/settings/AgentMcpPage.tsx");
 const subagents = read("../src/components/settings/AgentSubagentsPage.tsx");
 const hostCollection = read("../src/hooks/use-host-collection.ts");
 const mcpEditor = read("../src/components/extensions/McpEditorSheet.tsx");
-const electron = read("../electron/main/index.ts");
-const skillImport = electron.slice(
-  electron.indexOf("handle(IPC.invoke.skillImport"),
-  electron.indexOf("handle(IPC.invoke.skillUpdate"),
-);
+const electron = readMainSourceSync();
+const skillImport = readMainModuleSync("ipc/skills-ipc.ts");
 const styles = await loadStyles();
 
 // Keep this suite source-oriented like the neighboring desktop contracts: it

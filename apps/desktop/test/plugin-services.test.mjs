@@ -1,3 +1,4 @@
+import { readPluginsSourceSync, readMainSourceSync } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { fork } from "node:child_process";
@@ -17,9 +18,9 @@ const { PluginRuntime } = await import("../electron/main/plugin-runtime.ts");
 
 const hostSrc = readFileSync(hostProcessEntry, "utf8");
 const runtimeSrc = readFileSync(join(desktopRoot, "electron/main/plugin-runtime.ts"), "utf8");
-const mainSrc = readFileSync(join(desktopRoot, "electron/main/index.ts"), "utf8");
+const mainSrc = readMainSourceSync();
 const apiSrc = readFileSync(join(desktopRoot, "src/lib/api.ts"), "utf8");
-const pluginsPageSrc = readFileSync(join(desktopRoot, "src/pages/PluginsPage.tsx"), "utf8");
+const pluginsPageSrc = readPluginsSourceSync();
 const protocolSrc = readFileSync(join(repoRoot, "packages/shared/src/protocol.ts"), "utf8");
 const enSrc = readFileSync(join(repoRoot, "packages/i18n/src/locales/en/index.ts"), "utf8");
 

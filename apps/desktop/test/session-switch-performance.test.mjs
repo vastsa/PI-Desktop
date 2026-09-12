@@ -1,3 +1,8 @@
+import {
+  readMainModule,
+  readStoreModule,
+  readTranscriptSource,
+} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -5,18 +10,22 @@ import { loadStyles } from "./helpers/styles.mjs";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-const [store, sidebar, chatSurface, pane, panes, transcript, api, main, styles] =
+const [sessionRuntime, sessionSlice, sessionCoordination, events, sidebar, chatSurface, pane, panes, transcript, api, main, styles] =
   await Promise.all([
-    read("../src/stores/app-store.ts"),
+    readStoreModule("runtime/session-runtime.ts"),
+    readStoreModule("slices/session-slice.ts"),
+    readStoreModule("runtime/session-coordination.ts"),
+    readStoreModule("slices/events-slice.ts"),
     read("../src/components/Sidebar.tsx"),
     read("../src/components/ChatSurface.tsx"),
     read("../src/components/SessionPane.tsx"),
     read("../src/lib/session-panes.ts"),
-    read("../src/components/ChatTranscript.tsx"),
+    readTranscriptSource(),
     read("../src/lib/api.ts"),
-    read("../electron/main/index.ts"),
+    readMainModule("ipc/session-ipc.ts"),
     loadStyles(),
   ]);
+const store = [sessionRuntime, sessionSlice, sessionCoordination, events].join("\n");
 
 test("session reads use a bounded tail and load older pages on demand", () => {
   assert.match(store, /SESSION_TRANSCRIPT_PAGE_SIZE = 100/);
@@ -52,13 +61,13 @@ test("session reads are coalesced, bounded, and never globally serialized", () =
   assert.match(store, /const SESSION_TRANSCRIPT_CACHE_LIMIT = 20/);
   assert.match(store, /const sessionDetailLoads = new Map/);
   assert.match(store, /const active = sessionDetailLoads\.get\(id\)/);
-  assert.match(store, /const detailPromise = loadSessionDetail\(id, \{/);
+  assert.match(sessionSlice, /const detailPromise = runtime\.loadSessionDetail\(id, \{/);
   assert.doesNotMatch(store, /sessionSelectionQueue/);
 });
 
 test("only the latest navigation may commit a loaded transcript", () => {
-  const selection = store.match(
-    /selectSession: async[\s\S]*?\n  newSession: async/,
+  const selection = sessionSlice.match(
+    /selectSession: async[\s\S]*?\n    newSession: async/,
   )?.[0] ?? "";
   assert.match(selection, /set\(\{ selectingSessionId: id, page: "chat" \}\)/);
   assert.match(selection, /navigationIntentIsCurrent\(intent\)/);
@@ -67,8 +76,8 @@ test("only the latest navigation may commit a loaded transcript", () => {
     /commitSelection\(selectedMessages, false, historyWindow\)/,
   );
   assert.ok(
-    selection.indexOf("const detailPromise = loadSessionDetail(id)") <
-      selection.indexOf("await alignWorkspaceLatest(summary.projectPath)"),
+    selection.indexOf("const detailPromise = runtime.loadSessionDetail(id)") <
+      selection.indexOf("await runtime.queueWorkspaceAlignment"),
   );
   // A warm switch must be revealed before any await, otherwise a session that is
   // already fully painted still waits for workspace alignment to show up.
@@ -78,7 +87,7 @@ test("only the latest navigation may commit a loaded transcript", () => {
   );
   assert.ok(
     selection.indexOf("const retainedMessages") <
-      selection.indexOf("await alignWorkspaceLatest(summary.projectPath)"),
+      selection.indexOf("await runtime.queueWorkspaceAlignment"),
     "the retained pane must be revealed before workspace alignment is awaited",
   );
   // Reusing an empty New Task slot is also a first-frame reveal: there is no
@@ -87,7 +96,7 @@ test("only the latest navigation may commit a loaded transcript", () => {
   assert.match(selection, /commitSelection\(\[\], true, EMPTY_SESSION_WINDOW\)/);
   assert.ok(
     selection.indexOf("commitSelection([], true, EMPTY_SESSION_WINDOW)") <
-      selection.indexOf("await alignWorkspaceLatest(summary.projectPath)"),
+      selection.indexOf("await runtime.queueWorkspaceAlignment"),
     "an empty destination must be revealed before workspace alignment is awaited",
   );
 });
@@ -108,7 +117,7 @@ test("each retained session keeps its own mounted pane", () => {
   // already-painted pane instead of re-pointing one transcript (ADR 0137).
   assert.match(
     chatSurface,
-    /retainedSessionIds\.map\(\(id\) => \(\s*<SessionPane\s*key=\{id\}\s*sessionId=\{id\}\s*visible=\{id === visibleSessionId\}/,
+    /retainedSessionIds\.map\(\(id\) => \(\s*<SessionPane\s*key=\{id\}\s*sessionId=\{id\}\s*visible=\{id === visibleSessionId\}\s*\/>/,
   );
   assert.match(chatSurface, /const visibleSessionId = retainedSessionIds\[0\]/);
   // The retention bound lives in a pure module, so eviction is unit-testable
@@ -118,7 +127,7 @@ test("each retained session keeps its own mounted pane", () => {
   assert.match(panes, /\.slice\(0, RETAINED_SESSION_PANE_LIMIT\)/);
   assert.match(panes, /export function retainSessionPane\(/);
   assert.match(panes, /export function releaseSessionPane\(/);
-  assert.match(store, /\.\.\.retainSessionPane\(s, id, messages\)/);
+  assert.match(sessionSlice, /\.\.\.retainSessionPane\(state, id, messages\)/);
   // A pane reads the live projection only while it owns the active session.
   assert.match(
     pane,
@@ -172,10 +181,10 @@ test("reopening a running session never lets durable detail erase its live tail"
 
 test("reopening an idle session keeps a completed live tail until the durable page has it (D324)", () => {
   const selectBlock =
-    store.match(/selectSession: async[\s\S]*?\n  newSession: async/)?.[0] ?? "";
+    sessionSlice.match(/selectSession: async[\s\S]*?\n    newSession: async/)?.[0] ?? "";
   assert.match(
     selectBlock,
-    /runningAtSelection \|\|\s*currentState\.runningSessions\[id\] === true \|\|\s*liveSessionTranscripts\.has\(id\)/,
+    /runningAtSelection \|\|\s*currentState\.runningSessions\[id\] === true \|\|\s*runtime\.liveSessionTranscripts\.has\(id\)/,
   );
   assert.match(selectBlock, /durableCoversLiveSessionMessages\(/);
   assert.doesNotMatch(

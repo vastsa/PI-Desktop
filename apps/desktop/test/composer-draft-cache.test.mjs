@@ -1,3 +1,7 @@
+import {
+  readComposerSource,
+  readComposerModule,
+} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -17,10 +21,8 @@ import {
   writeComposerDraft,
 } from "../src/lib/composer-draft-cache.ts";
 
-const composer = await readFile(
-  new URL("../src/components/Composer.tsx", import.meta.url),
-  "utf8",
-);
+const composer = await readComposerSource();
+const draftHook = await readComposerModule("hooks/useComposerDraft.ts");
 
 test.afterEach(() => {
   resetComposerDraftCache();
@@ -108,14 +110,14 @@ test("flushing a scheduled adopt uses the Composer persist that rewrote home", (
 });
 
 test("composer hydrates from the shared cache and persists across unmount and hidden windows", () => {
-  assert.match(composer, /from "\.\.\/lib\/composer-draft-cache"/);
+  assert.match(draftHook, /composer-draft-cache/);
   assert.match(composer, /readComposerDraft\(draftKey\)/);
   assert.match(composer, /useState\(\(\) => initialDraft\?\.text \?\? ""\)/);
   assert.match(composer, /persistDraft\(draftKeyRef\.current\)/);
   assert.match(composer, /document\.visibilityState === "hidden"/);
   assert.match(composer, /window\.addEventListener\("blur", onWindowBlur\)/);
   assert.match(composer, /window\.addEventListener\("focus", onVisibility\)/);
-  assert.match(composer, /paintCurrentDraft\(el, expected\)/);
+  assert.match(composer, /paintCurrentDraft\(element, expected\)/);
   assert.match(composer, /const previousKey = draftKeyRef\.current/);
   assert.match(composer, /persistDraft\(previousKey\)/);
   assert.match(composer, /flushScheduledHomeDraftAdopt\(draftKey\)/);
