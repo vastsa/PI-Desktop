@@ -56,12 +56,11 @@ Chinese Markdown file, and that the companion satisfies all of:
 
 Conditions 5 and 6 make the gate structural rather than cosmetic: a Chinese page
 that drops a table row or a code block is reported even when its prose reads
-complete. That is also why the gate is not yet wired into CI — several
-companions predate it and are structurally behind their English sources, so
-`docs:check` currently exits non-zero on `main`. Treat a failure as a list of
-mirrors to finish, and do not add a new English specification without its
-companion. The VitePress production build separately validates the rendered
-routes and internal links.
+complete. The gate runs in `.github/workflows/docs-check.yml`, which covers the
+documentation paths intentionally ignored by the application CI workflow. Treat
+any failure as a list of mirrors to finish, and do not add a new English
+specification without its companion. The VitePress production build separately
+validates the rendered routes and internal links.
 
 ## Content rules
 

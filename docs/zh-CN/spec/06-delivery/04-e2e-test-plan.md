@@ -14,7 +14,8 @@
 - 记录 MVP 必须验证的每个用户可见和协议可见的行为。
 - 提供映射到验收标准 (A–H) 和里程碑 (M1–M6) 的场景目录。
 - 作为可追溯性主干：场景 ID ↔ 验收标准 ↔ 规范。
-- 为未来的自动化做好准备，无需立即实施。
+- 定义代码 pull request 的相关 E2E 合入门。
+- 让验证证据与准备合入的可执行提交保持关联。
 
 ## 2. 非目标
 
@@ -44,9 +45,8 @@
 | **整合** | IPC 合约，主机↔渲染器，主机↔sidecar | 中等 | Vitest + IPC 模拟或现场 Electron |
 | **E2E** | 桌面应用程序的完整用户旅程 | 100 多个功能+ US-UI 视觉目录 | 现在协议烟雾 + Electron 探针；后来成为剧作家 |
 
-**策略**：立即记录所有 E2E 场景；添加或更新 unit/integration
-当变更风险需要时，与代码一起进行测试；自动化 E2E 之后
-M5。
+**策略**：记录所有 E2E 场景；当变更风险需要时，与代码一起添加或更新
+unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E 套件。低层级测试用于定位正确性，E2E 用于验证跨进程运行时行为；低层级测试通过不能豁免相关 E2E 门禁。
 
 ---
 
@@ -60,7 +60,7 @@ M5。
 | **Electron 探针** | 启动桥+崩溃监控 | 活跃（`test:e2e:boot`、`test:e2e:supervision`） |
 | **剧作家** | 完整的 UI 驱动旅程 | 计划（M5 之后） |
 
-> 决策：立即记录场景；当代码准备好进行 M5 硬化时，选择具体的 E2E 流道。
+> 决策：协议烟雾测试和 Electron 探针是活跃的验证资产；更广泛的桌面旅程按场景执行，所需平台不可用时记录为环境受限。
 
 ---
 
@@ -94,6 +94,28 @@ M5。
 ```
 
 ---
+
+## E2E PR 合入门
+
+每个代码 pull request 都必须在合入前通过与其回归面相关的 E2E。代码变更包括渲染器、Electron Main、Preload、Agent Runtime、Rust host-core、会话、转录、计划、插件、MCP、权限、供应商/模型运行时、持久化、进程生命周期、打包/启动，以及影响应用执行的构建或 CI 行为。仅文档更改在不影响可执行行为时可豁免。
+
+根目录 `package.json` 是可执行命令的事实来源。最低选择如下：
+
+- 跨域运行时、host 或 IPC：`pnpm test:e2e`。
+- Electron 启动、preload 或窗口生命周期：`pnpm test:e2e` 和 `pnpm test:e2e:boot`。
+- Plan host/runtime：`pnpm test:e2e` 和 `pnpm test:e2e:plan`。
+- Plan UI：`pnpm test:e2e:plan` 和 `pnpm test:e2e:plan-ui`。
+- host/sidecar 监督、崩溃恢复或重启：`pnpm test:e2e` 和 `pnpm test:e2e:supervision`。
+- 子代理生命周期：`pnpm test:e2e` 和 `pnpm test:e2e:subagents`。
+- 同时涉及多个面的改动使用适用套件的并集。
+
+`pnpm test:e2e` 是 host RPC、IPC、Agent 执行、插件、持久化集成和共享运行时合约的默认跨系统烟雾测试。由于显示、平台、凭据、硬件或其他环境能力缺失而无法运行的必需套件，必须记录为 `NOT RUN`，并说明原因、替代验证和剩余风险。在具备条件且可信的环境中通过前，该 pull request 不具备合入条件。
+
+必需结果必须对应准备合入的可执行提交。E2E 通过后如果可执行代码发生变化，必须重新运行受影响套件。报告命令、结果、测试提交以及相关环境限制；不得声称未运行的套件已通过。
+
+## E2E 失败策略
+
+必需 E2E 失败时必须先分类为实现回归、测试回归、环境失败或已知的不稳定基础设施，修复产品或测试缺陷后重新运行受影响套件。不得删除场景、削弱断言或添加掩盖确定性失败的重试。所需平台尚未自动化时，保留已记录状态并说明仍需进行的平台验证。
 
 ## 7. MVP 场景目录
 
@@ -1474,7 +1496,7 @@ M5。
   `03-runtime/11-provider-model-system.md` §6.4、ADR 0062、ADR 0089
 - **验收**：B（模型配置）、C（对话和流）、品质
 - **里程碑**：M6+
-- **状态**：单元/源代码契约已覆盖；完整 UI 旅程为草稿（除非明确要求，否则不要在本地运行 E2E）
+- **状态**：单元/源代码契约已覆盖；完整 UI 旅程为草稿（适用变更合入前需在具备条件的环境中运行 E2E）
 
 #### E2E-200：Linux RPM 保留 Wayland 桌面身份
 
@@ -3333,7 +3355,7 @@ IPC 请求无法关闭。
 - **关联规格**：`06-delivery/06-release-runbook.md`、`05-security/01-security.md`
 - **验收**：质量、安全
 - **里程碑**：M6+
-- **状态**：工作流脚本/单元已覆盖；每次发布仍需在干净机器上验证（除非明确要求，不要在本地运行 E2E）
+- **状态**：工作流脚本/单元已覆盖；每次发布仍需在干净机器上验证（适用变更合入前需在具备条件的环境中运行 E2E）
 
 #### E2E-212：GitHub Release 启动 CNB 镜像流水线
 
@@ -4218,7 +4240,7 @@ IPC 请求无法关闭。
   F（坚持），品质
 - **里程碑**：M5
 - **状态**：单位覆盖（`apps/desktop/test/composer-paste-files.test.mjs`）；
-  完整的 UI 旅程草案（除非明确要求，否则不要在本地运行 E2E）
+  完整的 UI 旅程草案（适用变更合入前需在具备条件的环境中运行 E2E）
 
 #### E2E-102a：Composer 文件引用结果使用紧凑的叶名称
 
@@ -4248,7 +4270,7 @@ IPC 请求无法关闭。
 - **里程碑**：M5
 - **状态**：单位覆盖
   （`apps/desktop/test/composer-file-reference-display.test.mjs`）；完整的用户界面
-  旅程草稿（除非明确要求，否则不要在本地运行 E2E）
+  旅程草稿（适用变更合入前需在具备条件的环境中运行 E2E）
 
 #### E2E-102b：未答复的停止恢复紧凑的文件参考草稿
 
@@ -4277,7 +4299,7 @@ IPC 请求无法关闭。
 - **里程碑**：M5
 - **状态**：单位覆盖
   （`composer-file-reference-display.test.mjs`，`transcript-style.test.mjs`）；
-  完整的 UI 旅程草案（除非明确要求，否则不要在本地运行 E2E）
+  完整的 UI 旅程草案（适用变更合入前需在具备条件的环境中运行 E2E）
 
 #### E2E-102g：大段文本粘贴成为内联会话临时文件引用
 
@@ -4298,7 +4320,7 @@ IPC 请求无法关闭。
 - **链接规格**：`04-ux/06-settings-ia.md`、`04-ux/07-ui-design-system.md` §8.1、`04-ux/08-component-spec.md` §11.7–11.8、`04-ux/09-interaction-patterns.md` §8a、`03-runtime/01-ipc-protocol.md` §8、`03-runtime/04-data-storage.md` §7、`08-meta/decisions-log.md`（D262）、ADR 0059、ADR 0070、ADR 0131
 - **接受**：C（对话和流）、E（工具和权限）、F（持久）、质量
 - **里程碑**：M5
-- **状态**：单位覆盖（`composer-trigger.test.ts`、`apps/desktop/test/composer-paste-files.test.mjs`）；完整 UI 旅程草稿（除非明确要求，否则不要在本地运行 E2E）
+- **状态**：单位覆盖（`composer-trigger.test.ts`、`apps/desktop/test/composer-paste-files.test.mjs`）；完整 UI 旅程草稿（适用变更合入前需在具备条件的环境中运行 E2E）
 
 #### E2E-103：设置 > 智能体管理文件能力
 
@@ -4422,7 +4444,7 @@ IPC 请求无法关闭。
 品质
 - **里程碑**：M6
 - **状态**：Unit/source-contract 已覆盖；完整的跨平台 UI 之旅草案
-  （除非明确请求，否则不要在本地运行 E2E）
+  （适用变更合入前需在具备条件的环境中运行 E2E）
 
 #### E2E-121：Goal 批准恢复自主验收标准执行
 
@@ -4451,8 +4473,7 @@ IPC 请求无法关闭。
   F（持久性）、H（诊断）、安全性
 - **里程碑**：M6+
 - **状态**：Unit/source-contract 已覆盖（`packages/agent-runtime` 和
-  host-core Goal 测试）；完整的 UI 旅程草案（不要在本地运行 E2E，除非
-  明确要求）
+  host-core Goal 测试）；完整的 UI 旅程草案（适用变更合入前需在具备条件的环境中运行 E2E）
 
 #### E2E-122：插件请求并传递本机通知
 
@@ -4476,7 +4497,7 @@ IPC 请求无法关闭。
 - **接受**：E（工具和权限）、G（插件）、安全性、质量
 - **里程碑**：M6+
 - **状态**：Unit/source-contract 已覆盖；完整的跨平台操作系统权限
-  旅程草稿（除非明确要求，否则不要在本地运行 E2E）
+  旅程草稿（适用变更合入前需在具备条件的环境中运行 E2E）
 
 #### E2E-148：插件设置与插件域快捷键可编辑
 
@@ -4546,7 +4567,7 @@ IPC 请求无法关闭。
 - **链接规格**：`07-plugins/03-plugin-api.md` §3、`07-plugins/13-plugin-permissions-matrix.md` §2、`04-ux/08-component-spec.md` §5、ADR 0104、ADR 0105、ADR 0109、ADR 0111、ADR 0169
 - **接受**：G（插件）、D（工作区）、安全性、品质
 - **里程碑**：M6+
-- **状态**：`apps/desktop/test/bundled-plugins.test.mjs`、`apps/desktop/test/plugin-fs-scope.test.mjs`（`fs.list`、`fs.readPreview`、`fs.openDefault`、`fs.reveal`）、`apps/desktop/test/plugin-work-panel-views.test.mjs`（停靠视图事件广播）、`apps/desktop/test/fs-panel-guard.test.mjs`（分类预览）已覆盖；完整打包旅程为草稿（除非明确要求，否则不要在本地运行 E2E）
+- **状态**：`apps/desktop/test/bundled-plugins.test.mjs`、`apps/desktop/test/plugin-fs-scope.test.mjs`（`fs.list`、`fs.readPreview`、`fs.openDefault`、`fs.reveal`）、`apps/desktop/test/plugin-work-panel-views.test.mjs`（停靠视图事件广播）、`apps/desktop/test/fs-panel-guard.test.mjs`（分类预览）已覆盖；完整打包旅程为草稿（适用变更合入前需在具备条件的环境中运行 E2E）
 
 ## 8. 可追溯性矩阵
 
@@ -5858,7 +5879,7 @@ IPC 请求无法关闭。
 - **里程碑**：M6
 - **状态**：单元已覆盖（`session-thinking.test.mjs`、`thinking-ui.test.mjs`、
   `composer-send-state.test.mjs`）；完整 UI 场景草稿
-  （除非明确请求，否则不要在本地运行 E2E）
+  （适用变更合入前需在具备条件的环境中运行 E2E）
 
 #### E2E-174：绑定的默认思考等级播种草稿和新会话
 
@@ -6067,7 +6088,7 @@ IPC 请求无法关闭。
 - **验收**：G（插件 Agent 工具）、C（对话）
 - **里程碑**：M5
 - **状态**：单元已覆盖（`bundled-plugins.test.mjs`）；完整 UI 旅程仍为草稿
-  （除非用户明确要求，否则不要在本地运行 E2E）
+  （适用变更合入前需在具备条件的环境中运行 E2E）
 
 #### E2E-190：设置中的网络代理应用到应用自有 HTTP
 
@@ -6119,7 +6140,7 @@ IPC 请求无法关闭。
   ADR 0200、D367
 - **验收**：安全、质量
 - **里程碑**：M6+
-- **状态**：单元/RPC/连线已覆盖；完整 UI 路径草稿（除非用户明确要求，不要在本地运行 E2E）
+- **状态**：单元/RPC/连线已覆盖；完整 UI 路径草稿（适用变更合入前需在具备条件的环境中运行 E2E）
 
 #### E2E-215：插件批量导入与删除生命周期
 
@@ -6137,7 +6158,7 @@ IPC 请求无法关闭。
   ADR 0200、D367
 - **验收**：安全、质量、恢复
 - **里程碑**：M6+
-- **状态**：主机/RPC/单元已覆盖；完整 UI 路径草稿（除非用户明确要求，不要在本地运行 E2E）
+- **状态**：主机/RPC/单元已覆盖；完整 UI 路径草稿（适用变更合入前需在具备条件的环境中运行 E2E）
 
 #### E2E-216：插件显式绑定项目与宿主拥有的侧栏刷新
 
@@ -6155,7 +6176,7 @@ IPC 请求无法关闭。
   `03-runtime/01-ipc-protocol.md`、`03-runtime/06-host-rpc-protocol.md`、ADR 0201、D368
 - **验收**：C（会话）、安全、质量
 - **里程碑**：M6+
-- **状态**：单元/源码契约已覆盖；完整 UI 路径草稿（除非用户明确要求，否则不要在本地运行 E2E）
+- **状态**：单元/源码契约已覆盖；完整 UI 路径草稿（适用变更合入前需在具备条件的环境中运行 E2E）
 
 #### E2E-217：Windows 在全新 x64 模拟 ARM64 安装上启动主机
 
@@ -6170,8 +6191,7 @@ IPC 请求无法关闭。
 - **关联规格**：`03-runtime/07-process-model.md`、`06-delivery/06-release-runbook.md`
 - **验收**：A（应用启动）、质量（全新安装打包）
 - **里程碑**：M6+
-- **状态**：源码契约已覆盖；全新 Windows x64 与 ARM64 资格验证仍需运行器验证（除非用户明确要求，
-  不要在本地运行 E2E）
+- **状态**：源码契约已覆盖；全新 Windows x64 与 ARM64 资格验证仍需运行器验证（适用变更合入前需在具备条件的环境中运行 E2E）
 #### E2E-211：Windows 便携版 exe 无需安装即可启动（D364）
 
 - **前提条件**：Windows x64 标签或 `dist:win` 包已从共享 electron-builder 配置
@@ -6250,7 +6270,7 @@ IPC 请求无法关闭。
 - **链接规格**：`03-runtime/13-model-catalog-and-selection.md`、`04-ux/08-component-spec.md`
 - **验收**：质量（首帧稳定）、B（模型选择）
 - **里程碑**：M6+
-- **状态**：单元/源合同已覆盖（`composer-models.test.mjs`）；完整 UI 路径仍需运行器验证（除非明确要求，否则不要在本地运行 E2E）
+- **状态**：单元/源合同已覆盖（`composer-models.test.mjs`）；完整 UI 路径仍需运行器验证（适用变更合入前需在具备条件的环境中运行 E2E）
 
 #### E2E-220：本地 MCP 控制驱动运行中的桌面
 
