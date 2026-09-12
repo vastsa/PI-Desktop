@@ -1852,7 +1852,7 @@ Each scenario is documented in this format:
 - **Expected**: The dragged idle session lists under the target project with its
   transcript, attachments, and tasks unchanged, and the move survives a restart
   because the session's project membership is persisted. The running session is
-  not draggable, its "Move to project" entries are disabled, and a move issued
+  not draggable, its context menu has no project-move list, and a move issued
   after a turn starts is rejected as busy rather than rebinding the agent.
   Dropping a folder on the projects list adds or switches to that project
   without creating a duplicate row, and a non-folder drop explains that a folder
@@ -2484,7 +2484,8 @@ Each scenario is documented in this format:
   6) Close B. 7) Restart the app. 8) Reopen B from Settings → Project archive.
 - **Expected**: A and B render as separate exact-path sidebar groups in a
   compact continuous list with one keyboard stop per directory disclosure;
-  every non-action point in A's row toggles only A, project actions appear on
+  every non-action point in A's row toggles only A, project activation is owned
+  by the directory row rather than its overflow menu, and project actions appear on
   hover/focus without shifting labels, the project title hover/focus path shows
   A's full absolute path in a content-sized tooltip (long paths wrap within a
   420px maximum), Open folder is a project-menu action only and opens A
