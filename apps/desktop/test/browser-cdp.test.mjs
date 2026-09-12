@@ -1,3 +1,4 @@
+import { readMainSourceSync } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -110,7 +111,7 @@ const runtimeSource = readFileSync(
   resolve("electron/main/plugin-runtime.ts"),
   "utf8",
 );
-const mainSource = readFileSync(resolve("electron/main/index.ts"), "utf8");
+const mainSource = readMainSourceSync();
 
 test("in-flight tool.execute session survives the child host-api round trip", () => {
   assert.match(runtimeSource, /private executingToolSessions = new Map/);

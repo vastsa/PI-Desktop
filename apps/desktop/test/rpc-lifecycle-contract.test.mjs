@@ -1,3 +1,4 @@
+import { readMainModule, readMainSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -10,10 +11,10 @@ const hostSource = await readFile(
   new URL("../electron/main/host-process.ts", import.meta.url),
   "utf8",
 );
-const mainSource = await readFile(
-  new URL("../electron/main/index.ts", import.meta.url),
-  "utf8",
-);
+const mainSource = await readMainSource();
+const plansSource = await readMainModule("runtime/plans.ts");
+const shutdownModuleSource = await readMainModule("bootstrap/shutdown.ts");
+const mainIndexSource = await readMainModule("index.ts");
 const runtimeSource = await readFile(
   new URL("../../../packages/agent-runtime/src/runtime.ts", import.meta.url),
   "utf8",
@@ -111,12 +112,12 @@ test("Bash defaults are finite and the tool advertises the effective timeout", (
 });
 
 test("turn ownership and execution queue wake only after durable turn settlement", () => {
-  const finishStart = mainSource.indexOf("function finishTurn(");
-  const finishEnd = mainSource.indexOf("function isRecord", finishStart);
-  const finishSource = mainSource.slice(finishStart, finishEnd);
+  const finishStart = plansSource.indexOf("function finishTurn(");
+  const finishEnd = plansSource.indexOf("async function finishApprovedExecution(", finishStart);
+  const finishSource = plansSource.slice(finishStart, finishEnd);
 
-  assert.match(mainSource, /const turnFinalizations = new Map/);
-  assert.match(finishSource, /await host\.call<[\s\S]*?\("session\.endTurn"/);
+  assert.match(plansSource, /turnFinalizations\.get\(sessionId\)/);
+  assert.match(finishSource, /await runtimeState\.host\.call<[\s\S]*?\("session\.endTurn"/);
   assert.ok(
     finishSource.indexOf('"session.endTurn"') <
       finishSource.lastIndexOf("activeTurns.delete"),
@@ -147,21 +148,22 @@ test("late tool metadata cleanup is scoped to the turn that started the call", (
 });
 
 test("app quit waits for one idempotent teardown before allowing the follow-up quit", () => {
-  const shutdownStart = mainSource.indexOf('app.on("before-quit"');
-  const shutdownSource = mainSource.slice(shutdownStart);
+  const shutdownSource = shutdownModuleSource.slice(
+    shutdownModuleSource.indexOf('app.on("before-quit"'),
+  );
 
-  assert.match(mainSource, /let shutdownComplete = false/);
-  assert.match(mainSource, /let shutdownPromise: Promise<void> \| null = null/);
-  assert.match(shutdownSource, /if \(shutdownComplete\) return/);
+  assert.match(shutdownModuleSource, /shutdownComplete: boolean/);
+  assert.match(shutdownModuleSource, /shutdownPromise: Promise<void> \| null/);
+  assert.match(shutdownSource, /if \(state\.shutdownComplete\) return/);
   assert.match(shutdownSource, /event\.preventDefault\(\)/);
-  assert.match(shutdownSource, /if \(shutdownPromise\) return/);
+  assert.match(shutdownSource, /if \(state\.shutdownPromise\) return/);
   assert.ok(
     shutdownSource.indexOf("event.preventDefault()") <
-      shutdownSource.indexOf("if (shutdownPromise) return"),
+      shutdownSource.indexOf("if (state.shutdownPromise) return"),
     "the first quit must be prevented before the idempotence guard returns",
   );
   assert.ok(
-    shutdownSource.indexOf("host?.dispose()") <
+    shutdownSource.indexOf("getHost()?.dispose()") <
       shutdownSource.indexOf("pluginPanels.closeAll()"),
     "host disposal must start before other application teardown",
   );
@@ -177,7 +179,7 @@ test("app quit waits for one idempotent teardown before allowing the follow-up q
     releaseQuit,
     "the follow-up quit must run only after shutdownComplete is set",
   );
-  assert.match(shutdownSource, /void shutdownPromise\.then\(releaseQuit, releaseQuit\)/);
+  assert.match(shutdownSource, /void state\.shutdownPromise\.then\(releaseQuit, releaseQuit\)/);
 });
 
 test("settings writes validate without applying read defaults", () => {
@@ -198,12 +200,12 @@ test("settings writes validate without applying read defaults", () => {
 });
 
 test("renderer notification drops silently when the render frame is disposed", () => {
-  const sendStart = mainSource.indexOf("function sendToRenderer(");
-  const sendEnd = mainSource.indexOf(
+  const sendStart = mainIndexSource.indexOf("function sendToRenderer(");
+  const sendEnd = mainIndexSource.indexOf(
     "function resetMenuRendererReady",
     sendStart,
   );
-  const sendSource = mainSource.slice(sendStart, sendEnd);
+  const sendSource = mainIndexSource.slice(sendStart, sendEnd);
   assert.ok(sendSource.includes("window.webContents.send(channel, payload)"));
   assert.ok(sendSource.includes("try {"));
   assert.ok(sendSource.includes("} catch {"));

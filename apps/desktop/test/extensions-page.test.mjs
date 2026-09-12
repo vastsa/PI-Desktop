@@ -1,3 +1,4 @@
+import { readSettingsSourceSync, readPluginsSourceSync, readMainSourceSync } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync, readdirSync } from "node:fs";
@@ -24,13 +25,13 @@ const settingsComponents = new Map(
     .filter((name) => name.endsWith(".tsx"))
     .map((name) => [name, readFileSync(join(settingsDir, name), "utf8")]),
 );
-const pageSrc = readFileSync(join(here, "../src/pages/PluginsPage.tsx"), "utf8");
+const pageSrc = readPluginsSourceSync();
 const marketSettingsSrc = readFileSync(
   join(here, "../src/components/plugins/MarketplaceSourceSettings.tsx"),
   "utf8",
 );
-const settingsPageSrc = readFileSync(join(here, "../src/pages/SettingsPage.tsx"), "utf8");
-const electronMainSrc = readFileSync(join(here, "../electron/main/index.ts"), "utf8");
+const settingsPageSrc = readSettingsSourceSync();
+const electronMainSrc = readMainSourceSync();
 const hostCapabilitySources = [
   readFileSync(join(here, "../../../crates/host-core/src/agent_capabilities.rs"), "utf8"),
   readFileSync(join(here, "../../../crates/host-core/src/user_skills.rs"), "utf8"),

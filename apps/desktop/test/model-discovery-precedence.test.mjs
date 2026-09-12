@@ -1,3 +1,4 @@
+import { readMainSource } from "./helpers/source-contracts.mjs";
 /**
  * The AI service is the authority on which models it serves.
  *
@@ -12,10 +13,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const mainSource = await readFile(
-  new URL("../electron/main/index.ts", import.meta.url),
-  "utf8",
-);
+const mainSource = await readMainSource();
 
 /** Body of the providersListModels handler, so offsets are local to it. */
 const handler = (() => {

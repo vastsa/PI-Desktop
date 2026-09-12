@@ -13,7 +13,7 @@ const [dialog, page, api, protocol, main, runtime, sidecar, db, rpc] = await Pro
   readMainSource(),
   read("../../../packages/agent-runtime/src/runtime.ts"),
   read("../../../packages/agent-runtime/src/sidecar.ts"),
-  read("../../../crates/host-core/src/db.rs"),
+  read("../../../crates/host-core/src/db/repositories.rs"),
   read("../../../crates/host-core/src/rpc/mod.rs"),
 ]);
 

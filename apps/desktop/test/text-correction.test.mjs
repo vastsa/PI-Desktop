@@ -1,3 +1,4 @@
+import { readSettingsSource, readPluginsSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -32,9 +33,9 @@ test("primary editable surfaces disable browser text correction", async () => {
     ["../src/components/Composer.tsx", await readComposerSource()],
     ["../src/components/ChatTranscript.tsx", await readTranscriptSource()],
     ["../src/components/SearchDialog.tsx", await read("../src/components/SearchDialog.tsx")],
-    ["../src/pages/SettingsPage.tsx", await read("../src/pages/SettingsPage.tsx")],
+    ["../src/pages/SettingsPage.tsx", await readSettingsSource()],
     ["../src/pages/ProjectsPage.tsx", await read("../src/pages/ProjectsPage.tsx")],
-    ["../src/pages/PluginsPage.tsx", await read("../src/pages/PluginsPage.tsx")],
+    ["../src/pages/PluginsPage.tsx", await readPluginsSource()],
     [
       "../src/components/settings/ModelSelectionPanes.tsx",
       await read("../src/components/settings/ModelSelectionPanes.tsx"),

@@ -1,4 +1,5 @@
 import { readdir, readFile } from "node:fs/promises";
+import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -31,4 +32,30 @@ export async function readComposerSource() {
     }),
   );
   return chunks.join("\n");
+}
+
+export async function readComposerModule(relativePath) {
+  return readFile(join(composerRoot, relativePath), "utf8");
+}
+
+function sourceFilesSync(directory) {
+  return readdirSync(directory, { withFileTypes: true })
+    .sort((left, right) => left.name.localeCompare(right.name))
+    .flatMap((entry) => {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) return sourceFilesSync(path);
+      return entry.isFile() && /\.(ts|tsx)$/.test(path) ? [path] : [];
+    });
+}
+
+export function readComposerSourceSync() {
+  const facade = join(desktopSourceRoot, "components/Composer.tsx");
+  const autocompleteHook = join(desktopSourceRoot, "hooks/use-composer-autocomplete.ts");
+  return [facade, autocompleteHook, ...sourceFilesSync(composerRoot)]
+    .map((path) => `\n/* ${relative(desktopSourceRoot, path)} */\n${readFileSync(path, "utf8")}`)
+    .join("\n");
+}
+
+export function readComposerModuleSync(relativePath) {
+  return readFileSync(join(composerRoot, relativePath), "utf8");
 }

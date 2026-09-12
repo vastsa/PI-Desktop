@@ -1,3 +1,4 @@
+import { readAppSource, readSettingsSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -7,14 +8,8 @@ const rowSource = await readFile(
   new URL("../src/components/settings/FontSizeRow.tsx", import.meta.url),
   "utf8",
 );
-const appSource = await readFile(
-  new URL("../src/App.tsx", import.meta.url),
-  "utf8",
-);
-const settingsPageSource = await readFile(
-  new URL("../src/pages/SettingsPage.tsx", import.meta.url),
-  "utf8",
-);
+const appSource = await readAppSource();
+const settingsPageSource = await readSettingsSource();
 const tokensSource = await readFile(
   new URL("../src/styles/tokens.css", import.meta.url),
   "utf8",

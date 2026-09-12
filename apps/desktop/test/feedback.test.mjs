@@ -1,3 +1,4 @@
+import { readSettingsSource, readMainSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -20,9 +21,9 @@ const [
   read("../../../.github/ISSUE_TEMPLATE/feature_request.yml"),
   read("../../../.github/ISSUE_TEMPLATE/config.yml"),
   read("../../../packages/shared/src/protocol.ts"),
-  read("../electron/main/index.ts"),
+  readMainSource(),
   read("../src/lib/api.ts"),
-  read("../src/pages/SettingsPage.tsx"),
+  readSettingsSource(),
   read("../src/lib/settings-search.ts"),
   read("../../../packages/i18n/src/locales/en/index.ts"),
   read("../../../packages/i18n/src/locales/zh-CN/index.ts"),

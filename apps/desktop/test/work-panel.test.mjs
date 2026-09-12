@@ -1,3 +1,4 @@
+import { readAppSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
 import test from "node:test";
@@ -11,10 +12,7 @@ import {
   WORK_PANEL_MAX_WIDTH,
   WORK_PANEL_MIN_WIDTH,
 } from "../src/lib/work-panel-resize.ts";
-const appSource = await readFile(
-  new URL("../src/App.tsx", import.meta.url),
-  "utf8",
-);
+const appSource = await readAppSource();
 const mainSource = await readMainSource();
 const apiSource = await readFile(
   new URL("../src/lib/api.ts", import.meta.url),

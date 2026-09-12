@@ -1,4 +1,5 @@
 import { readdir, readFile } from "node:fs/promises";
+import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -31,4 +32,28 @@ export async function readMainSource() {
     }),
   );
   return chunks.join("\n");
+}
+
+export async function readMainModule(relativePath) {
+  return readFile(join(mainRoot, relativePath), "utf8");
+}
+
+function sourceFilesSync(directory) {
+  return readdirSync(directory, { withFileTypes: true })
+    .sort((left, right) => left.name.localeCompare(right.name))
+    .flatMap((entry) => {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) return sourceFilesSync(path);
+      return entry.isFile() && path.endsWith(".ts") ? [path] : [];
+    });
+}
+
+export function readMainSourceSync() {
+  return sourceFilesSync(mainRoot)
+    .map((path) => `\n/* ${relative(mainRoot, path)} */\n${readFileSync(path, "utf8")}`)
+    .join("\n");
+}
+
+export function readMainModuleSync(relativePath) {
+  return readFileSync(join(mainRoot, relativePath), "utf8");
 }

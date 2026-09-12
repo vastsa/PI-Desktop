@@ -1,3 +1,4 @@
+import { readStoreSourceSync } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -113,7 +114,7 @@ test("the host no longer offers Files or Browser as built-in tools", () => {
 
 test("Review still opens itself from workspace edit artifacts", () => {
   // Removing the launcher entry must not remove the way Review appears at all.
-  const storeSource = read("src/stores/app-store.ts");
+  const storeSource = readStoreSourceSync();
   assert.match(storeSource, /shouldOpenReviewArtifact\(\{/);
   assert.match(storeSource, /toolWorkPanelTab\("review"\)/);
 });

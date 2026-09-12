@@ -1,11 +1,9 @@
+import { readTranscriptSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const transcriptSource = await readFile(
-  new URL("../src/components/ChatTranscript.tsx", import.meta.url),
-  "utf8",
-);
+const transcriptSource = await readTranscriptSource();
 const rendererHtml = await readFile(
   new URL("../index.html", import.meta.url),
   "utf8",

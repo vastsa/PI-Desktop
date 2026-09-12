@@ -18,10 +18,6 @@ const hostProcess = await readFile(
   new URL("../electron/main/host-process.ts", import.meta.url),
   "utf8",
 );
-const pluginsSource = await readFile(
-  new URL("../../../crates/host-core/src/plugins.rs", import.meta.url),
-  "utf8",
-);
 const hostProxy = await readFile(
   new URL("../../../crates/host-core/src/network_proxy.rs", import.meta.url),
   "utf8",
@@ -44,7 +40,7 @@ test("sidecar reconfigures undici without a restart", () => {
 });
 
 test("host-core marketplace curl uses --proxy and Bash does not inherit env", () => {
-  assert.match(pluginsSource, /curl_proxy_args/);
+  assert.match(hostProxy, /curl_proxy_args/);
   assert.match(hostProxy, /"--proxy"/);
   assert.match(hostProcess, /stripProxyEnv\(process\.env\)/);
 });

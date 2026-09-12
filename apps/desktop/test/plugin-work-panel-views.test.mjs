@@ -1,3 +1,8 @@
+import {
+  readAppSourceSync,
+  readMainModuleSync,
+  readMainSourceSync,
+} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -24,7 +29,10 @@ const viewTabSource = read("src/components/workpanel/PluginViewTab.tsx");
 const viewHostSource = read("electron/main/plugin-view-host.ts");
 const panelHostSource = read("electron/main/plugin-panel-host.ts");
 const preloadSource = read("electron/preload/plugin-panel.ts");
-const mainSource = read("electron/main/index.ts");
+const mainSource = readMainSourceSync();
+const pluginIpcSource = readMainModuleSync("ipc/plugin-ipc.ts");
+const pluginServicesSource = readMainModuleSync("services/plugin-services.ts");
+const pluginLifecycleSource = `${pluginIpcSource}\n${pluginServicesSource}`;
 
 test("a plugin view is addressed by plugin id and view id", () => {
   const tab = pluginWorkPanelTab("acme.git", "changes");
@@ -209,9 +217,12 @@ test("only one view is attached at a time and the cache is bounded", () => {
 test("views are dropped when the plugin behind them goes away", () => {
   assert.match(viewHostSource, /closePlugin\(pluginId: string\)/);
   for (const reason of ["crash", "reload", "disable", "uninstall"]) {
-    const index = mainSource.indexOf(`reason: "${reason}"`);
+    const source = reason === "crash" || reason === "reload"
+      ? pluginServicesSource
+      : pluginIpcSource;
+    const index = source.indexOf(`reason: "${reason}"`);
     assert.ok(index > 0, `expected a ${reason} notification`);
-    const before = mainSource.slice(Math.max(0, index - 700), index);
+    const before = source.slice(Math.max(0, index - 900), index);
     assert.match(
       before,
       /pluginViews\.closePlugin\(/,
@@ -250,7 +261,7 @@ test("the view list is filtered by permission, scope, and entry existence", () =
 });
 
 test("opening a different project refreshes the scope-filtered view list", () => {
-  const appSource = read("src/App.tsx");
+  const appSource = readAppSourceSync();
   assert.match(
     appSource,
     /refreshPluginViews\(\)[\s\S]*api\.onPluginChanged\(refresh\)[\s\S]*\}, \[ready, projectPath\]\)/,

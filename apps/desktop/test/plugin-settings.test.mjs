@@ -1,3 +1,4 @@
+import { readAppSource, readPluginsSource, readMainSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -6,11 +7,11 @@ const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 const shared = await read("../../../packages/shared/src/types.ts");
 const sdk = await read("../../../packages/plugin-sdk/src/index.ts");
 const runtime = await read("../electron/main/plugin-runtime.ts");
-const main = await read("../electron/main/index.ts");
+const main = await readMainSource();
 const protocol = await read("../../../packages/shared/src/protocol.ts");
-const page = await read("../src/pages/PluginsPage.tsx");
+const page = await readPluginsSource();
 const sheet = await read("../src/components/plugins/PluginSettingsSheet.tsx");
-const app = await read("../src/App.tsx");
+const app = await readAppSource();
 
 test("plugin settings expose generated fields and plugin-local shortcut metadata", () => {
   assert.match(shared, /PluginSettingType[\s\S]*"shortcut"/);

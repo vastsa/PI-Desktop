@@ -1,3 +1,4 @@
+import { readPluginsSourceSync, readMainSourceSync } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
@@ -9,9 +10,9 @@ const here = dirname(fileURLToPath(import.meta.url));
 const desktopRoot = join(here, "..");
 const repoRoot = join(desktopRoot, "../..");
 
-const mainSrc = readFileSync(join(desktopRoot, "electron/main/index.ts"), "utf8");
+const mainSrc = readMainSourceSync();
 const apiSrc = readFileSync(join(desktopRoot, "src/lib/api.ts"), "utf8");
-const pageSrc = readFileSync(join(desktopRoot, "src/pages/PluginsPage.tsx"), "utf8");
+const pageSrc = readPluginsSourceSync();
 const stylesSrc = loadStylesSync();
 const protocolSrc = readFileSync(
   join(repoRoot, "packages/shared/src/protocol.ts"),

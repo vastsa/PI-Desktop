@@ -1,3 +1,4 @@
+import { readAppSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -6,7 +7,7 @@ import { loadStyles } from "./helpers/styles.mjs";
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
 const [app, main, splash, css, english, chinese] = await Promise.all([
-  read("../src/App.tsx"),
+  readAppSource(),
   read("../src/main.tsx"),
   read("../src/components/StartupSplash.tsx"),
   loadStyles(),

@@ -1,3 +1,10 @@
+import {
+  readAppSource,
+  readStoreModuleSync,
+  readStoreSource,
+  readTranscriptSource,
+  readComposerSource,
+} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -24,17 +31,22 @@ import { createNavigationIntentController } from "../src/lib/navigation-intent.t
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 const [appSource, chatSurfaceSource, sessionPaneSource, composerSource, transcriptSource, cardSource, askCardSource, storeSource, browserSource, messageStyleSource] =
   await Promise.all([
-    read("../src/App.tsx"),
+    readAppSource(),
     read("../src/components/ChatSurface.tsx"),
     read("../src/components/SessionPane.tsx"),
-    read("../src/components/Composer.tsx"),
-    read("../src/components/ChatTranscript.tsx"),
+    readComposerSource(),
+    readTranscriptSource(),
     read("../src/components/PermissionCard.tsx"),
     read("../src/components/AskToolCard.tsx"),
-    read("../src/stores/app-store.ts"),
+    readStoreSource(),
     read("../src/components/workpanel/PluginViewTab.tsx"),
     read("../src/styles/messages.css"),
   ]);
+
+const eventsSource = readStoreModuleSync("slices/events-slice.ts");
+const interactionSource = readStoreModuleSync("slices/interaction-slice.ts");
+const transcriptSliceSource = readStoreModuleSync("slices/transcript-slice.ts");
+const sessionRuntimeSource = readStoreModuleSync("runtime/session-runtime.ts");
 
 function permission(sessionId, requestId, extra = {}) {
   return {
@@ -225,7 +237,7 @@ test("background permission events update only session-scoped state", () => {
     /pendingPermissions:\s*PermissionQueues/,
   );
   assert.doesNotMatch(storeSource, /permission\?:\s*ToolPermissionRequest/);
-  const backgroundBlock = storeSource.match(
+  const backgroundBlock = eventsSource.match(
     /if \(envelope\.sessionId !== get\(\)\.activeSessionId\)[\s\S]*?return;/,
   )?.[0];
   assert.ok(backgroundBlock);
@@ -235,7 +247,7 @@ test("background permission events update only session-scoped state", () => {
     /selectSession|activeSessionId:\s*|messages:\s*|page:\s*/,
   );
   assert.match(
-    storeSource,
+    interactionSource,
     /resolvePermission: async \(sessionId, requestId, decision\)/,
   );
   // Only the request on screen is answerable, and a late answer clears that
@@ -246,7 +258,8 @@ test("background permission events update only session-scoped state", () => {
     /removePermission\([\s\S]*state\.pendingPermissions,[\s\S]*sessionId,[\s\S]*requestId/,
   );
   assert.match(storeSource, /removePermissionForToolCall\(/);
-  const abortBlock = storeSource.match(/abort: async[\s\S]*?\n  openProject:/)?.[0] ?? "";
+  const abortStart = transcriptSliceSource.indexOf("abort: async");
+  const abortBlock = transcriptSliceSource.slice(abortStart);
   assert.match(abortBlock, /Promise\.allSettled/);
   assert.match(abortBlock, /decision: "deny"/);
   // Every open request is denied: a queued delegate would otherwise keep its
@@ -279,18 +292,18 @@ test("new navigation intents invalidate older asynchronous commits", async () =>
 test("session and page navigation share the latest-intent guard", () => {
   assert.match(storeSource, /createNavigationIntentController/);
   assert.doesNotMatch(storeSource, /sessionSelectionQueue/);
-  assert.match(storeSource, /let sessionWorkspaceQueue: Promise<void>/);
+  assert.match(sessionRuntimeSource, /let sessionWorkspaceQueue: Promise<unknown>/);
   assert.match(
     storeSource,
-    /const detailPromise = loadSessionDetail\(id,\s*\{/,
+    /const detailPromise = runtime\.loadSessionDetail\(id,\s*\{/,
   );
-  assert.match(storeSource, /opts\?\.navigationIntent \?\? beginNavigationIntent\(\)/);
-  assert.match(storeSource, /sessionWorkspaceQueue\.then/);
+  assert.match(storeSource, /opts\?\.navigationIntent \?\? runtime\.beginNavigationIntent\(\)/);
+  assert.match(sessionRuntimeSource, /sessionWorkspaceQueue\.then/);
   assert.ok(
     storeSource.match(/navigationIntentIsCurrent\(intent\)/g)?.length >= 12,
     "navigation intent must be checked after asynchronous boundaries",
   );
-  assert.match(storeSource, /setPage: \(page, opts\) => \{\s*beginNavigationIntent\(\)/);
+  assert.match(interactionSource, /setPage: \(page, opts\) => \{\s*runtime\.beginNavigationIntent\(\)/);
   assert.match(storeSource, /activateProject: async \(path, opts\)/);
   assert.match(storeSource, /clearProject: async \(opts\)/);
 });

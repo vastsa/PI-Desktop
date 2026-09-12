@@ -1,9 +1,12 @@
+import { readMainModuleSync } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const [main, renderer, launcher, styles] = await Promise.all([
-  readFile(new URL("../electron/main/index.ts", import.meta.url), "utf8"),
+  Promise.resolve(
+    `${readMainModuleSync("bootstrap/launcher.ts")}\n${readMainModuleSync("bootstrap/window.ts")}\n${readMainModuleSync("bootstrap/startup.ts")}`,
+  ),
   readFile(new URL("../src/main.tsx", import.meta.url), "utf8"),
   readFile(new URL("../src/components/PluginLauncher.tsx", import.meta.url), "utf8"),
   readFile(new URL("../src/styles/plugin-launcher.css", import.meta.url), "utf8"),
@@ -20,10 +23,10 @@ test("global plugin launcher is a centered frameless cross-platform utility wind
   assert.match(main, /globalShortcut\.register\(accelerator/);
   assert.match(main, /keyboard\.setGlobalShortcut/);
   assert.match(main, /pluginLauncherBinding === "Alt\+Space"/);
-  assert.match(main, /let pluginLauncherCreationPromise: Promise<BrowserWindow>/);
+  assert.match(main, /creationPromise: Promise<BrowserWindow> \| null/);
   assert.match(
     main,
-    /if \(pluginLauncherCreationPromise\) return pluginLauncherCreationPromise/,
+    /if \(launcherState\.creationPromise\) return launcherState\.creationPromise/,
   );
   assert.match(main, /function prewarmPluginLauncher\(\): void/);
   assert.ok(

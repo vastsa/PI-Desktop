@@ -1,3 +1,4 @@
+import { readAppSource, readSettingsSource, readMainSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -26,13 +27,13 @@ const [
   read("../../../packages/shared/src/protocol.ts"),
   read("../../../packages/shared/src/types.ts"),
   read("../electron/main/updater.ts"),
-  read("../electron/main/index.ts"),
+  readMainSource(),
   read("../electron/main/application-menu.ts"),
   read("../src/lib/api.ts"),
   read("../src/components/UpdateBanner.tsx"),
   read("../src/components/ReleaseNotesDialog.tsx"),
-  read("../src/pages/SettingsPage.tsx"),
-  read("../src/App.tsx"),
+  readSettingsSource(),
+  readAppSource(),
   loadStyles(),
   read("../package.json"),
   read("../../../.github/workflows/release.yml"),

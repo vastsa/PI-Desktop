@@ -1,11 +1,13 @@
+import {
+  readStoreModule,
+  readStoreSource,
+  readTranscriptSource,
+} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const transcriptSource = await readFile(
-  new URL("../src/components/ChatTranscript.tsx", import.meta.url),
-  "utf8",
-);
+const transcriptSource = await readTranscriptSource();
 const detailSource = transcriptSource.slice(
   transcriptSource.indexOf("function delegateTaskDescription"),
   transcriptSource.indexOf("/**\n * A truthful one-level graph", transcriptSource.indexOf("function delegateTaskDescription")),
@@ -22,10 +24,9 @@ const followScrollSource = await readFile(
   new URL("../src/hooks/use-follow-scroll.ts", import.meta.url),
   "utf8",
 );
-const storeSource = await readFile(
-  new URL("../src/stores/app-store.ts", import.meta.url),
-  "utf8",
-);
+const storeSource = await readStoreSource();
+const eventsSource = await readStoreModule("slices/events-slice.ts");
+const sessionRuntimeSource = await readStoreModule("runtime/session-runtime.ts");
 const messagesCss = await readFile(
   new URL("../src/styles/messages.css", import.meta.url),
   "utf8",
@@ -118,14 +119,14 @@ test("a live delegate row keeps the attribution its stream carried", () => {
 });
 
 test("a terminal tool event repairs a row lost during renderer reload", () => {
-  assert.match(storeSource, /const toolStartsByCallId = new Map/);
-  assert.match(storeSource, /const existing = s\.messages\.some\(/);
+  assert.match(sessionRuntimeSource, /const toolStartsByCallId = new Map/);
+  assert.match(eventsSource, /const existing = state\.messages\.some\(/);
   assert.match(
-    storeSource,
-    /messages: existing\s*\? s\.messages\.map\([\s\S]*?: \[\.\.\.s\.messages, completed\]/,
+    eventsSource,
+    /messages: existing\s*\? state\.messages\.map\([\s\S]*?: \[\.\.\.state\.messages, completed\]/,
   );
-  assert.match(storeSource, /toolDurationMs: toolStart\s*\n\s*\? Math\.max/);
-  assert.match(storeSource, /toolName: message\.toolName \?\? completed\.toolName/);
+  assert.match(eventsSource, /toolDurationMs: toolStart\s*\n\s*\? Math\.max/);
+  assert.match(eventsSource, /toolName: message\.toolName \?\? completed\.toolName/);
 });
 
 test("the shared side-panel detail keeps the live conversation process", () => {

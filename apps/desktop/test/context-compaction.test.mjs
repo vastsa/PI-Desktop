@@ -1,3 +1,9 @@
+import {
+  readStoreSource,
+  readStoreModule,
+  readTranscriptSource,
+  readMainSource,
+} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -11,6 +17,7 @@ const [
   main,
   api,
   store,
+  events,
   runtime,
   commands,
   hostRpc,
@@ -25,16 +32,17 @@ const [
 ] = await Promise.all([
   read("../../../packages/shared/src/protocol.ts"),
   read("../../../packages/shared/src/types.ts"),
-  read("../electron/main/index.ts"),
+  readMainSource(),
   read("../src/lib/api.ts"),
-  read("../src/stores/app-store.ts"),
+  readStoreSource(),
+  readStoreModule("slices/events-slice.ts"),
   read("../../../packages/agent-runtime/src/runtime.ts"),
   read("../electron/main/builtin-commands.ts"),
   read("../../../crates/host-core/src/rpc/mod.rs"),
   read("../../../crates/host-core/src/permissions.rs"),
   read("../../../crates/host-core/src/sessions.rs"),
   read("../../../crates/host-core/src/transcripts.rs"),
-  read("../src/components/ChatTranscript.tsx"),
+  readTranscriptSource(),
   read("../src/components/ContextUsageInspector.tsx"),
   read("../src/lib/assistant-turns.ts"),
   loadStyles(),
@@ -201,7 +209,7 @@ test("compaction lifecycle keeps the renderer busy until its actual terminal eve
 
 test("every compaction announces itself once, on top of the specific toasts", () => {
   const compactionEnd =
-    store.match(/case "compaction_end":[\s\S]*?\n      case "agent_end":/)?.[0] ??
+    events.match(/case "compaction_end":[\s\S]*?\n        case "agent_end":/)?.[0] ??
     "";
   assert.ok(compactionEnd.length > 0, "compaction_end handler not found");
   // Codex warns after every compaction; ours is unconditional and lands before

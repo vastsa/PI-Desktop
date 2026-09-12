@@ -4,7 +4,6 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const desktopSourceRoot = fileURLToPath(new URL("../../src/", import.meta.url));
-const transcriptRoot = join(desktopSourceRoot, "features/chat/transcript");
 
 async function sourceFiles(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -20,10 +19,10 @@ async function sourceFiles(directory) {
   return nested.flat();
 }
 
-/** Read the legacy facade and all transcript domain modules together. */
-export async function readTranscriptSource() {
-  const facade = join(desktopSourceRoot, "components/ChatTranscript.tsx");
-  const paths = [facade, ...(await sourceFiles(transcriptRoot))];
+async function readDomainSource(facadeRelativePath, domainRelativePath) {
+  const facade = join(desktopSourceRoot, facadeRelativePath);
+  const domainRoot = join(desktopSourceRoot, domainRelativePath);
+  const paths = [facade, ...(await sourceFiles(domainRoot))];
   const chunks = await Promise.all(
     paths.map(async (path) => {
       const source = await readFile(path, "utf8");
@@ -31,10 +30,6 @@ export async function readTranscriptSource() {
     }),
   );
   return chunks.join("\n");
-}
-
-export async function readTranscriptModule(relativePath) {
-  return readFile(join(transcriptRoot, relativePath), "utf8");
 }
 
 function sourceFilesSync(directory) {
@@ -47,13 +42,37 @@ function sourceFilesSync(directory) {
     });
 }
 
-export function readTranscriptSourceSync() {
-  const facade = join(desktopSourceRoot, "components/ChatTranscript.tsx");
-  return [facade, ...sourceFilesSync(transcriptRoot)]
+function readDomainSourceSync(facadeRelativePath, domainRelativePath) {
+  const facade = join(desktopSourceRoot, facadeRelativePath);
+  const domainRoot = join(desktopSourceRoot, domainRelativePath);
+  return [facade, ...sourceFilesSync(domainRoot)]
     .map((path) => `\n/* ${relative(desktopSourceRoot, path)} */\n${readFileSync(path, "utf8")}`)
     .join("\n");
 }
 
-export function readTranscriptModuleSync(relativePath) {
-  return readFileSync(join(transcriptRoot, relativePath), "utf8");
+/** Read App.tsx and the shell/runtime modules as one renderer contract surface. */
+export function readAppSource() {
+  return readDomainSource("App.tsx", "features/app");
+}
+
+export function readAppSourceSync() {
+  return readDomainSourceSync("App.tsx", "features/app");
+}
+
+/** Read the stable SettingsPage facade and all settings sections together. */
+export function readSettingsSource() {
+  return readDomainSource("pages/SettingsPage.tsx", "features/settings");
+}
+
+export function readSettingsSourceSync() {
+  return readDomainSourceSync("pages/SettingsPage.tsx", "features/settings");
+}
+
+/** Read the stable PluginsPage facade and all plugin domain modules together. */
+export function readPluginsSource() {
+  return readDomainSource("pages/PluginsPage.tsx", "features/plugins");
+}
+
+export function readPluginsSourceSync() {
+  return readDomainSourceSync("pages/PluginsPage.tsx", "features/plugins");
 }
