@@ -1391,9 +1391,10 @@ export const zhTW = {
     loadDevDone: "本地外掛已載入",
     importExtension: "匯入 pi 擴充",
     importExtensionDone: "已匯入為外掛 {{id}}",
+    importExtensionDepsFailed: "已匯入為外掛 {{id}}，但相依套件安裝失敗：{{error}}",
     agentExtension: {
       title: "Agent 擴充",
-      importConfirm: "匯入的擴充將在 agent 程序內執行，擁有與 agent 自身工具相同的權限。要繼續嗎？",
+      importConfirm: "匯入的擴充將在 agent 程序內執行，擁有與 agent 自身工具相同的權限。宣告的相依套件將透過 npm 安裝（停用安裝指令碼）。要繼續嗎？",
       diagnostics: "診斷",
       commandNeedsSession: "請先開始一個對話，再執行擴充命令。",
       state: {
