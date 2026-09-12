@@ -2631,14 +2631,24 @@ fn relative_display(root: &Path, path: &Path) -> String {
     // `\\?\` prefix, which never matches a resolved path and made every
     // workspace-relative label fall back to an absolute one.
     let canonical_root = simple_canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
-    path.strip_prefix(&canonical_root)
+    let display = path
+        .strip_prefix(&canonical_root)
         .or_else(|_| path.strip_prefix(root))
         .unwrap_or(path)
         .to_string_lossy()
-        // Tool results are protocol-visible: keep POSIX separators on every
-        // platform so Grep/Glob/Read paths match plugin-package and session
-        // path spelling (and the host-core assertions in #209).
-        .replace('\\', "/")
+        .to_string();
+
+    // Tool results are protocol-visible: Windows separators are normalized to
+    // POSIX spelling, while POSIX filenames may legally contain a literal
+    // backslash that must remain round-trippable through Read/Edit.
+    #[cfg(windows)]
+    {
+        display.replace('\\', "/")
+    }
+    #[cfg(not(windows))]
+    {
+        display
+    }
 }
 
 pub fn builtin_tool_defs() -> Value {
@@ -2775,6 +2785,46 @@ mod tests {
 
     fn plain_read(content: &str) -> String {
         hashline::strip_write_markup(content)
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn grep_preserves_posix_literal_backslashes_in_workspace_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("src")).unwrap();
+        let file = dir.path().join("src").join(r"util\test.ts");
+        std::fs::write(&file, "const needle = 1;\n").unwrap();
+
+        let result = execute_tool(
+            Some(dir.path()),
+            None,
+            "Grep",
+            &serde_json::json!({ "pattern": "needle" }),
+            5_000,
+        )
+        .await;
+        assert!(result.ok, "grep failed: {:?}", result.content);
+        assert_eq!(
+            result.content["matches"][0]["path"].as_str(),
+            Some(r"src/util\test.ts")
+        );
+        assert_eq!(
+            result.content["tags"][r"src/util\test.ts"]
+                .as_str()
+                .map(str::len),
+            Some(4)
+        );
+
+        let read = execute_tool(
+            Some(dir.path()),
+            None,
+            "Read",
+            &serde_json::json!({ "path": r"src/util\test.ts" }),
+            5_000,
+        )
+        .await;
+        assert!(read.ok, "read failed: {:?}", read.content);
+        assert_eq!(read.content["path"].as_str(), Some(r"src/util\test.ts"));
     }
 
     #[test]
