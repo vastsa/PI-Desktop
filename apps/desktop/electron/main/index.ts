@@ -270,6 +270,10 @@ import { createSidecarRuntime } from "./runtime/sidecar";
 import { createEventPersistence } from "./runtime/event-persistence";
 import { createPlanRuntime, type PlanRuntimeState } from "./runtime/plans";
 import { createRuntimeLifecycle } from "./runtime/lifecycle";
+import {
+  createProviderCatalogRuntime,
+  type RuntimeProvider,
+} from "./runtime/provider-catalog";
 import { registerDiagnosticsIpc } from "./ipc/diagnostics-ipc";
 import { registerMarketIpc } from "./ipc/market-ipc";
 import { registerMcpIpc } from "./ipc/mcp-ipc";
@@ -1218,264 +1222,23 @@ const vendorOAuth = new VendorOAuth({
   },
 });
 
-type RuntimeProvider = {
-  id: string;
-  name: string;
-  vendorKey?: string;
-  baseUrl?: string;
-  modelId?: string;
-  models?: ModelBinding[];
-  defaultModelId?: string;
-  apiKey?: string;
-  authKind?: string;
-  apiStyle?: string;
-  hasSecret?: boolean;
-  hasOauth?: boolean;
-  oauthAccountLabel?: string;
-  headers?: Record<string, string>;
-  enabled?: boolean;
-  supportsVision?: boolean;
-};
-
-type RuntimeSession = {
-  providerId?: string;
-  modelId?: string;
-  thinkingLevel?: ThinkingLevel;
-};
-
-function bindingForModel(
-  provider: Pick<RuntimeProvider, "models">,
-  modelId: string,
-): ModelBinding | undefined {
-  return provider.models?.find((binding) => modelIdsMatch(binding.id, modelId));
-}
-
-function modelsDevModelFor(
-  provider: RuntimeProvider,
-  modelId: string,
-) {
-  return modelsDevCatalog.findModel({
-    vendorKey: provider.vendorKey,
-    baseUrl: provider.baseUrl,
-    modelId,
-  });
-}
-
-/**
- * Apply the exact provider/model binding before exposing a model to a
- * subagent. The catalog supplies the baseline, but an explicit binding owns
- * the effective thinking capability for the endpoint (D283).
- */
-function effectiveSubagentModelConfig(
-  provider: Pick<RuntimeProvider, "models">,
-  modelId: string,
-  catalogModelConfig: Parameters<typeof modelConfigWithBinding>[0],
-) {
-  const modelConfig = modelConfigWithBinding(
-    catalogModelConfig,
-    bindingForModel(provider, modelId),
-  );
-  return {
-    modelConfig,
-    capabilities: capabilitiesFromModelConfig(modelConfig),
-  };
-}
-
-function enrichProvider<T extends RuntimeProvider>(
-  provider: T,
-  selectedModelId?: string,
-): T & ThinkingCapabilities & { supportsVision: boolean } {
-  const modelId =
-    selectedModelId || provider.modelId || provider.models?.[0]?.id || provider.defaultModelId || "";
-  const storedModel = bindingForModel(provider, modelId);
-  const modelsDevModel = modelsDevModelFor(provider, modelId);
-  // The generic shape is the same fallback the launch path uses, so a model the
-  // catalog does not describe still reports the capabilities its binding
-  // overrides — otherwise a hand-typed id would advertise no image input here
-  // while the transport happily inlined one.
-  const modelConfig = modelConfigWithBinding(
-    modelsDevModel
-      ? modelConfigFromModelsDev(modelsDevModel, provider.baseUrl)
-      : genericModelConfig(modelId, provider.baseUrl ?? ""),
-    storedModel,
-  );
-  // Provider discovery is lazy in the renderer. Publish the same effective
-  // limits on the provider snapshot so the context inspector is correct before
-  // Composer has loaded the per-provider model list.
-  const models = provider.models?.map((binding) => {
-    const catalogModel = modelsDevModelFor(provider, binding.id);
-    if (!catalogModel) return binding;
-    const effective = modelConfigWithBinding(
-      modelConfigFromModelsDev(catalogModel, provider.baseUrl),
-      binding,
-    );
-    return {
-      ...binding,
-      contextWindow: effective.contextWindow,
-      maxTokens: effective.maxTokens,
-    };
-  });
-  return {
-    ...provider,
-    ...(models ? { models } : {}),
-    ...(modelsDevModel
-      ? {
-          contextWindow: modelConfig.contextWindow,
-          maxOutputTokens: modelConfig.maxTokens,
-        }
-      : {}),
-    ...capabilitiesFromModelConfig(modelConfig),
-    supportsVision: visionFromModelConfig(modelConfig),
-  };
-}
-
-function normalizeThinkingLevel(value: unknown): ThinkingLevel {
-  return typeof value === "string" &&
-    (THINKING_LEVELS as readonly string[]).includes(value)
-    ? (value as ThinkingLevel)
-    : "off";
-}
-
-function normalizeSettings<T>(settings: T): T & {
-  defaultCommandShell: CommandShellId;
-} {
-  const value = (
-    settings && typeof settings === "object" ? settings : {}
-  ) as T & {
-    defaultCommandShell?: unknown;
-  };
-  return {
-    ...(value as T),
-    defaultCommandShell: isCommandShellId(value.defaultCommandShell)
-      ? value.defaultCommandShell
-      : defaultCommandShellForPlatform(process.platform),
-  } as T & {
-    defaultCommandShell: CommandShellId;
-  };
-}
-
-function validateSettingsWrite<T>(settings: T): T {
-  if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
-    return settings;
-  }
-  const value = settings as T & {
-    defaultCommandShell?: unknown;
-    networkProxy?: unknown;
-  };
-  if (
-    Object.prototype.hasOwnProperty.call(value, "defaultCommandShell") &&
-    !isCommandShellId(value.defaultCommandShell)
-  ) {
-    throw Object.assign(new Error("defaultCommandShell is invalid"), {
-      errorCode: ErrorCodes.COMMAND_SHELL_INVALID,
-    });
-  }
-  if (Object.prototype.hasOwnProperty.call(value, "networkProxy")) {
-    const proxy = validateNetworkProxy(
-      (value as { networkProxy?: unknown }).networkProxy,
-    );
-    if (!proxy.ok) {
-      throw Object.assign(new Error(proxy.error), {
-        errorCode: ErrorCodes.INVALID_ARGUMENT,
-      });
-    }
-    value.networkProxy = proxy.value;
-  }
-  return settings;
-}
-
-async function enrichProviderList<T extends RuntimeProvider>(result: { providers: T[] }) {
-  await modelsDevCatalog.ensureLoaded();
-  return {
-    ...result,
-    providers: result.providers.map((provider) => enrichProvider(provider)),
-  };
-}
-
-type SessionCapabilityDefaults = {
-  defaultProviderId?: string;
-  defaultModelId?: string;
-};
-
-async function loadSessionCapabilityDefaults(): Promise<SessionCapabilityDefaults> {
-  if (!host) return {};
-  try {
-    const settings = await host.call<{
-      defaultProviderId?: string;
-      defaultModelId?: string;
-    }>("settings.get");
-    return {
-      defaultProviderId: settings?.defaultProviderId,
-      defaultModelId: settings?.defaultModelId,
-    };
-  } catch {
-    return {};
-  }
-}
-
-async function sessionCapabilityContext() {
-  const [providers, defaults] = await Promise.all([
-    listRuntimeProviders(),
-    loadSessionCapabilityDefaults(),
-  ]);
-  return { providers, defaults };
-}
-
-function resolveSessionCapabilityTarget(
-  session: RuntimeSession,
-  providers: readonly RuntimeProvider[],
-  defaults?: SessionCapabilityDefaults,
-): { provider: RuntimeProvider; modelId: string } | null {
-  const pinnedProvider = session.providerId
-    ? providers.find((item) => item.id === session.providerId)
-    : undefined;
-  const provider =
-    pinnedProvider ||
-    (defaults?.defaultProviderId
-      ? providers.find((item) => item.id === defaults.defaultProviderId)
-      : undefined);
-  if (!provider) return null;
-  const pinnedModelId = pinnedProvider && session.modelId ? session.modelId : undefined;
-  const inheritedModelId =
-    provider.id === defaults?.defaultProviderId ? defaults.defaultModelId : undefined;
-  const modelId =
-    pinnedModelId ||
-    inheritedModelId ||
-    provider.models?.[0]?.id ||
-    provider.defaultModelId;
-  if (!modelId) return null;
-  return { provider, modelId };
-}
-
-function enrichSession<T extends RuntimeSession>(
-  session: T,
-  providers: readonly RuntimeProvider[],
-  defaults?: SessionCapabilityDefaults,
-): T & ThinkingCapabilities & { supportsVision: boolean } {
-  const target = resolveSessionCapabilityTarget(session, providers, defaults);
-  if (!target) {
-    return {
-      ...session,
-      supportsReasoning: false,
-      supportsVision: false,
-      supportedThinkingLevels: ["off"],
-    };
-  }
-  const { provider, modelId } = target;
-  const storedModel = bindingForModel(provider, modelId);
-  const modelsDevModel = modelsDevModelFor(provider, modelId);
-  const modelConfig = modelConfigWithBinding(
-    modelsDevModel
-      ? modelConfigFromModelsDev(modelsDevModel, provider.baseUrl)
-      : genericModelConfig(modelId, provider.baseUrl ?? ""),
-    storedModel,
-  );
-  return {
-    ...session,
-    ...capabilitiesFromModelConfig(modelConfig),
-    supportsVision: visionFromModelConfig(modelConfig),
-  };
-}
+const providerCatalogRuntime = createProviderCatalogRuntime({
+  getHost: () => host,
+  modelsDevCatalog,
+});
+const {
+  bindingForModel,
+  modelsDevModelFor,
+  effectiveSubagentModelConfig,
+  enrichProvider,
+  enrichProviderList,
+  sessionCapabilityContext,
+  enrichSession,
+  normalizeSettings,
+  validateSettingsWrite,
+  normalizeThinkingLevel,
+  listRuntimeProviders,
+} = providerCatalogRuntime;
 
 /**
  * Refresh the cached plugin scopes from a `plugins.list` payload.
@@ -2020,19 +1783,6 @@ async function resolveAgentRuntimeLaunch(
       subagentProviders: subagentBindings.providers,
     },
   };
-}
-
-async function listRuntimeProviders(includeDisabled = true) {
-  if (!host) throw new Error("host unavailable");
-  const result = await host.call<{ providers: RuntimeProvider[] }>(
-    "providers.list",
-    { includeDisabled },
-  );
-  // Model capability enrichment is synchronous after this one process-scoped
-  // load. A version change triggers one remote refresh; otherwise the local
-  // api.json snapshot is reused.
-  await modelsDevCatalog.ensureLoaded();
-  return result.providers;
 }
 
 function applyDevelopmentBranding() {
