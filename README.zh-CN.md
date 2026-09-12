@@ -291,7 +291,7 @@ PI_DESKTOP_MCP_CONTROL=1
 
 **Plugins → Import pi extension**
 
-直接把现有 extension 文件或目录包装成 PI-Desktop 插件。
+直接把现有 extension 文件或目录包装成 PI-Desktop 插件。若目录声明了 npm `dependencies`，会在首次加载前安装到生成的插件中（`--ignore-scripts`，绝不运行第三方安装脚本）。
 
 这些扩展可以注册：
 

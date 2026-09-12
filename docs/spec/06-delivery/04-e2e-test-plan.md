@@ -10288,6 +10288,46 @@ sample extensions under `apps/desktop/test/fixtures/pi-extensions/`.
 - **Milestone**: Post-MVP (R7 v1, delivered first as the bundling spike)
 - **Status**: Unit-covered by `packages/agent-runtime/src/extensions/bundle.test.ts`
   (esbuild bundle run from a temp directory); packaged-app journey Draft
+#### E2E-PLUGIN-import-extension-installs-dependencies: Importing an extension with npm dependencies installs them before first load
+
+- **Preconditions**: A pi extension directory shipping a `package.json` with
+  `dependencies` (a pure-JavaScript package is sufficient) and no
+  `node_modules`; npm reachable; the import confirm accepted.
+- **Steps**: 1) Plugins → Import pi extension, pick the directory. 2)
+  Inspect `plugins/imported/<slug>/`. 3) Send a prompt that exercises the
+  extension.
+- **Expected**: The plugin root holds the copied `package.json` with any
+  `workspaces` field stripped and a `node_modules` directory created by
+  `npm install --omit=dev --legacy-peer-deps --no-audit --no-fund
+  --ignore-scripts` (no install script ran); the extension row reaches
+  `loaded` with its tools, commands, and hooks registered, and they take
+  effect in the turn.
+- **Specs linked**: `07-plugins/16-trusted-extensions.md` §3.2, §10.2
+- **Acceptance**: Security, Quality
+- **Milestone**: Post-MVP (R7 v1)
+- **Status**: Unit-covered by `apps/desktop/test/agent-extensions.test.mjs`
+  and verified manually with `pi-hermes-memory` through the sidecar bundle
+  (tools, commands, and hooks registered, zero diagnostics); no CI journey yet
+
+#### E2E-PLUGIN-import-extension-reports-missing-dependency: A failed dependency install or unloadable dependency is surfaced, never silent
+
+- **Preconditions**: A pi extension directory whose `package.json` declares
+  a dependency that cannot install (npm offline or unresolvable); and one
+  whose dependency installs but fails to load (for example a native module
+  that needs a build script).
+- **Steps**: 1) Import the first directory with npm failing. 2) Inspect the
+  toast and the plugin row. 3) Import the second directory and start a turn.
+- **Expected**: The renderer shows a warning toast carrying the npm stderr
+  tail; the plugin still registers; the row reports the extension `error`
+  state with a `load_error` diagnostic; the session and all other extensions
+  keep working.
+- **Specs linked**: `07-plugins/16-trusted-extensions.md` §3.2, §4.4, §10.2
+- **Acceptance**: Security, Quality
+- **Milestone**: Post-MVP (R7 v1)
+- **Status**: Unit-covered by `apps/desktop/test/agent-extensions.test.mjs`
+  (skip, failure, and invalid-manifest paths); no CI journey yet
+
+
 ---
 
 #### E2E-233: Icon-only actions explain their purpose in the active language

@@ -254,6 +254,8 @@ export type DependencyCommandRunner = (
 const NPM_INSTALL_TIMEOUT_MS = 120_000;
 /** npm output is not toast-shaped; the tail carries the actual failure. */
 const DEPENDENCY_ERROR_TAIL_CHARS = 200;
+/** Rolling cap so a chatty npm cannot balloon the main process's memory. */
+const DEPENDENCY_STDERR_KEEP_CHARS = 8192;
 
 function dependencyErrorTail(text: string): string {
   return text.length > DEPENDENCY_ERROR_TAIL_CHARS
@@ -261,7 +263,7 @@ function dependencyErrorTail(text: string): string {
     : text;
 }
 
-function defaultDependencyRunner(
+export function defaultDependencyRunner(
   command: string,
   args: string[],
   cwd: string,
@@ -269,6 +271,8 @@ function defaultDependencyRunner(
 ): Promise<{ code: number; stderr: string }> {
   return new Promise((resolve, reject) => {
     // Shell only where npm is a .cmd shim (Windows); every arg is a literal.
+    // A shell kill on Windows terminates the shim, possibly leaving npm
+    // itself running — accepted for v1, the timeout result still resolves.
     const child = spawn(command, args, {
       cwd,
       shell: process.platform === "win32",
@@ -277,18 +281,26 @@ function defaultDependencyRunner(
     let stderr = "";
     child.stderr?.on("data", (chunk: Buffer) => {
       stderr += chunk.toString("utf8");
+      if (stderr.length > DEPENDENCY_STDERR_KEEP_CHARS * 2) {
+        stderr = stderr.slice(-DEPENDENCY_STDERR_KEEP_CHARS);
+      }
     });
+    let killTimer: ReturnType<typeof setTimeout> | undefined;
     const timer = setTimeout(() => {
       stderr += `\nnpm install exceeded ${timeoutMs}ms and was terminated`;
       child.kill("SIGTERM");
+      killTimer = setTimeout(() => child.kill("SIGKILL"), 5_000);
     }, timeoutMs);
-    child.on("error", (err) => {
+    const settle = (fn: () => void) => {
       clearTimeout(timer);
-      reject(err);
+      if (killTimer) clearTimeout(killTimer);
+      fn();
+    };
+    child.on("error", (err) => {
+      settle(() => reject(err));
     });
     child.on("close", (code) => {
-      clearTimeout(timer);
-      resolve({ code: code ?? 1, stderr });
+      settle(() => resolve({ code: code ?? 1, stderr }));
     });
   });
 }
@@ -444,8 +456,25 @@ export function generateImportedExtensionPlugin(
     "utf8",
   );
   if (isDirectory) {
-    for (const file of ["package.json", "package-lock.json", "npm-shrinkwrap.json"]) {
-      if (existsSync(join(resolved, file))) copyFileSync(join(resolved, file), join(dir, file));
+    const rootPackageJson = join(resolved, "package.json");
+    if (existsSync(rootPackageJson)) {
+      // A `workspaces` field would send npm into the copied sources under
+      // src/; strip it so the install sees only the declared dependencies.
+      try {
+        const pkg = JSON.parse(readFileSync(rootPackageJson, "utf8")) as Record<string, unknown>;
+        if (pkg && typeof pkg === "object" && "workspaces" in pkg) {
+          delete pkg.workspaces;
+          writeFileSync(join(dir, "package.json"), JSON.stringify(pkg, null, 2) + "\n", "utf8");
+        } else {
+          copyFileSync(rootPackageJson, join(dir, "package.json"));
+        }
+      } catch {
+        // Not valid JSON: copy verbatim; the install step reports the failure.
+        copyFileSync(rootPackageJson, join(dir, "package.json"));
+      }
+      for (const file of ["package-lock.json", "npm-shrinkwrap.json"]) {
+        if (existsSync(join(resolved, file))) copyFileSync(join(resolved, file), join(dir, file));
+      }
     }
   }
   return { path: dir, id, entries };

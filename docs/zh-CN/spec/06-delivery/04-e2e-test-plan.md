@@ -6462,6 +6462,38 @@ IPC 请求无法关闭。
 - **里程碑**：MVP 后（R7 v1，作为打包 spike 首先交付）
 - **状态**：由 `packages/agent-runtime/src/extensions/bundle.test.ts` 单元覆盖
   （esbuild 打包产物在临时目录运行）；打包应用旅程为草稿
+#### E2E-PLUGIN-import-extension-installs-dependencies：导入带 npm 依赖的扩展会在首次加载前安装依赖
+
+- **前置条件**：一个自带 `package.json` 且声明了 `dependencies`（纯 JavaScript 包即可）、
+  无 `node_modules` 的 pi 扩展目录；npm 可达；导入确认已接受。
+- **步骤**：1）插件页 → 导入 pi 扩展，选择该目录。2）检查 `plugins/imported/<slug>/`。
+  3）发送一个会用到该扩展的提示。
+- **预期**：插件根有复制来的 `package.json`（`workspaces` 字段已被剥离）和由
+  `npm install --omit=dev --legacy-peer-deps --no-audit --no-fund --ignore-scripts`
+  创建的 `node_modules`（没有运行任何安装脚本）；扩展行达到 `loaded`，工具、命令与
+  hooks 均已注册，并在回合中生效。
+- **链接规格**：`07-plugins/16-trusted-extensions.md` §3.2、§10.2
+- **验收**：安全、质量
+- **里程碑**：MVP 后（R7 v1）
+- **状态**：由 `apps/desktop/test/agent-extensions.test.mjs` 单元覆盖，并已用
+  `pi-hermes-memory` 经 sidecar 打包产物人工验证（工具、命令与 hooks 注册成功，零
+  诊断）；暂无 CI 旅程
+
+#### E2E-PLUGIN-import-extension-reports-missing-dependency：依赖安装失败或依赖无法加载会被呈现，绝不静默
+
+- **前置条件**：一个 `package.json` 声明了无法安装依赖（npm 离线或无法解析）的 pi 扩展
+  目录；以及一个依赖可安装但无法加载（例如需要构建脚本的原生模块）的扩展目录。
+- **步骤**：1）在 npm 失败的情况下导入第一个目录。2）检查 toast 与插件行。3）导入
+  第二个目录并开始回合。
+- **预期**：渲染层出现携带 npm stderr 尾部的警告 toast；插件仍然注册；该行显示扩展
+  `error` 状态与 `load_error` 诊断；会话与其他扩展均不受影响。
+- **链接规格**：`07-plugins/16-trusted-extensions.md` §3.2、§4.4、§10.2
+- **验收**：安全、质量
+- **里程碑**：MVP 后（R7 v1）
+- **状态**：由 `apps/desktop/test/agent-extensions.test.mjs`（跳过、失败与无效 manifest
+  路径）单元覆盖；暂无 CI 旅程
+
+
 #### E2E-234：工作区安全拒绝名单与忽略层
 
 - **前提条件**：一个项目包含 `.env`、`.env.example`、`server.pem`、`keys/id_rsa`、

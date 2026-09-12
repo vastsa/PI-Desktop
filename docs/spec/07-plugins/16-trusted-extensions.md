@@ -84,6 +84,16 @@ A package that explicitly declares `pi.skills` and has no `pi.extensions` (or
 an empty array) is skill-only: incidental scripts, including `index.js`, are
 copied as resources but never promoted to executable agent extensions.
 
+A directory that ships a `package.json` also has it (plus its lockfile) copied
+to the plugin root with any `workspaces` field stripped; if it declares
+`dependencies`, main installs them into the plugin root before the first load
+with `npm install --omit=dev --legacy-peer-deps --no-audit --no-fund
+--ignore-scripts` (bounded time, no third-party install script ever runs,
+kernel packages keep resolving through virtual modules). A failed install is
+reported to the renderer and never blocks the import — the extension then
+reports its own load error. The confirm discloses the npm step alongside the
+skills disclosure.
+
 | Source | Becomes |
 |---|---|
 | A pi extension directory or file | A local plugin under `plugins/imported`, id `imported.<slug>` |
