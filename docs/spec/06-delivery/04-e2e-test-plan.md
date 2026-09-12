@@ -5808,16 +5808,20 @@ Each scenario is documented in this format:
      paste text one character above it at the beginning, middle, and end of
      drafts, including multiline and Unicode content.
   3. Inspect the draft after each oversized paste: confirm the exact prefix and
-     suffix remain, a generated `@temporary-name` plus a space appears at the
-     original selection, the textarea does not contain the scratch absolute
-     path, and the composer reports its busy/error state correctly during the
-     transfer.
-  4. Inspect the session `scratch/<sessionId>/pasted/` file bytes, send the
-     mixed draft, and inspect the renderer request, persisted user message,
-     and agent-readable path. Switch projects and sessions before sending a
-     cached draft, then remove the generated token and confirm it is no longer
-     dispatched.
-  5. Delete the owning session and confirm its temporary paste files are
+     suffix remain, a generated `pasted-text-*.txt` chip appears at the original
+     selection, the editor does not contain the scratch absolute path, and the
+     composer reports its busy/error state correctly during the transfer.
+  4. Click the generated TXT chip and repeat with keyboard focus plus Enter and
+     Space. Confirm the exact UTF-8 contents replace the chip at its position,
+     the text is editable, the caret lands after it, and subsequent send uses
+     the edited text. While a read is pending, switch drafts or remove the chip
+     and confirm a stale response does not change the current draft.
+  5. Inspect the session `scratch/<sessionId>/pasted/` file bytes, send a mixed
+     draft that still contains a chip, and inspect the renderer request,
+     persisted user message, and agent-readable path. Switch projects and
+     sessions before sending a cached draft, then remove the chip and confirm it
+     is no longer dispatched.
+  6. Delete the owning session and confirm its temporary paste files are
      removed.
 - **Expected**:
   - The threshold is persisted as an AI default, defaults to 600 on older
@@ -5825,10 +5829,14 @@ Each scenario is documented in this format:
   - Text at or below the threshold remains native. Text above it is saved
     byte-for-byte as UTF-8 `text/plain` under the owning session's scratch
     `pasted/` directory, without changing the project or creating an artifact.
-  - The inline token is inserted at the exact paste selection, including in the
-    middle of a multiline draft. Dispatch resolves its canonical path in place
-    exactly once; it is neither appended as a basename nor duplicated as an
-    attachment. Removing or editing out the token removes that mapping.
+  - The sentinel-backed TXT chip is inserted at the exact paste selection,
+    including in the middle of a multiline draft. Clicking or pressing Enter /
+    Space expands it to editable exact text and removes its reference; edits
+    made afterward are what dispatch sends. A failed, binary, image, or
+    oversized read leaves the chip and mapping intact.
+  - Any remaining chip is resolved to its canonical path in place exactly once;
+    it is neither appended as a basename nor duplicated as an attachment.
+    Removing the chip removes that mapping.
   - Session switching, project switching, unanswered Stop restoration, and
     session deletion respect the existing session ownership and cleanup rules.
 - **Specs linked**: `04-ux/06-settings-ia.md`,
