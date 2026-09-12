@@ -178,7 +178,9 @@ test("default runner caps captured stderr and escalates the timeout kill", async
     30_000,
   );
   assert.equal(flooded.code, 0);
-  assert.ok(flooded.stderr.length <= 8192 + 64, "stderr is capped to a rolling tail");
+  // Invariant of the rolling cap: after every chunk the buffer is at most
+  // 2× the keep size, regardless of how the pipe chunks the writes.
+  assert.ok(flooded.stderr.length <= 16384, "stderr is capped to a bounded tail");
 
   const stalled = await defaultDependencyRunner(
     process.execPath,
