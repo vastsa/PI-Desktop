@@ -96,11 +96,10 @@ export function registerWorkspaceIpc({
   stripWinLongPrefix,
 }: WorkspaceIpcDependencies): void {
   let host: HostProcess | null = null;
-  let sidecar: AgentSidecar | null = null;
   const handle = (channel: string, fn: (...args: any[]) => Promise<any>) => {
     registrar.handle(channel, async (...args) => {
       host = getHost();
-      sidecar = getSidecar();
+      getSidecar();
       return fn(...args);
     });
   };
@@ -110,7 +109,7 @@ export function registerWorkspaceIpc({
   ) => {
     registrar.handleWithEvent(channel, async (event, ...args) => {
       host = getHost();
-      sidecar = getSidecar();
+      getSidecar();
       return fn(event, ...args);
     });
   };

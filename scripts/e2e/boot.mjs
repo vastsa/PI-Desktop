@@ -17,7 +17,7 @@ export function desktopPaths(root = repositoryRoot()) {
 }
 
 export function resolveElectronBinary(root = repositoryRoot()) {
-  const { appDir, electronBinary } = desktopPaths(root);
+  const { appDir } = desktopPaths(root);
   const electronDir = join(appDir, "node_modules", "electron");
   const pathFile = join(electronDir, "path.txt");
   const relativeBinary = existsSync(pathFile)
