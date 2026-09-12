@@ -676,7 +676,11 @@ Electron 主进程用该会话精确 provider/API URL 与 model 的本地 models
 - `session/importScan`
 - `session/importRun(candidates) -> { imported, skipped, failed }`
 
-导入候选者携带 `projectPath: string | null`。导入成功
+导入候选者携带 `projectPath: string | null` 与
+`messageCount: number | null`。扫描对每个源文件全量读取的上限为导入器的
+采样阈值；超过阈值的文件只做采样（头部 + 尾部），使多吉字节归档的扫描
+保持可交互，其 `messageCount` 为 null——导入列表对它渲染破折号，而导入
+后的会话总是在 convert 阶段计算真实的消息数。导入成功
 刷新会话和持久项目索引。
 
 重新生成或编辑重发会在追加新的用户回合前截断持久转录本。`agent/prompt`

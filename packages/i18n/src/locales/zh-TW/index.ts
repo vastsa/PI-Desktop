@@ -712,6 +712,7 @@ export const zhTW = {
     importMessages: "{{count}} 條訊息",
     importMessages_one: "1 條訊息",
     importMessages_other: "{{count}} 條訊息",
+    importMessagesUnknown: "—",
     importNoProject: "未關聯專案",
     importSessionCount: "{{count}} 個會話",
     importSessionCount_one: "1 個會話",

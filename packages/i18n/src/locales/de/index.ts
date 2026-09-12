@@ -706,6 +706,7 @@ export const de = {
     "importMessages": "{{count}} Nachrichten",
     "importMessages_one": "1 Nachricht",
     "importMessages_other": "{{count}} Nachrichten",
+    "importMessagesUnknown": "—",
     "importNoProject": "Kein Projekt",
     "importSessionCount": "{{count}} Sitzungen",
     "importSessionCount_one": "1 Sitzung",

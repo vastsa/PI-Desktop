@@ -788,7 +788,12 @@ Minimal interface:
 - `modelConfig/importScan -> { providers }`
 - `modelConfig/importRun(candidates) -> { imported, skipped, failed }`
 
-Import candidates carry `projectPath: string | null`. A successful import
+Import candidates carry `projectPath: string | null` and
+`messageCount: number | null`. A scan reads each source file fully up to the
+importer's sampled-scan threshold; larger files are sampled (head + tail) so
+scanning a multi-gigabyte archive stays interactive, and their `messageCount`
+is null — the import list renders an em dash for it, while imported sessions
+always compute their real message count at convert time. A successful import
 refreshes both sessions and the durable Projects index.
 
 `modelConfig/importScan` reads Claude Code, Codex, OpenCode, Pi, and CC

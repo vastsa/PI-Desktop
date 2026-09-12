@@ -712,6 +712,7 @@ export const zhCN = {
     importMessages: "{{count}} 条消息",
     importMessages_one: "1 条消息",
     importMessages_other: "{{count}} 条消息",
+    importMessagesUnknown: "—",
     importNoProject: "未关联项目",
     importSessionCount: "{{count}} 个会话",
     importSessionCount_one: "1 个会话",

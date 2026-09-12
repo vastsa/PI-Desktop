@@ -714,6 +714,7 @@ export const en = {
     importMessages: "{{count}} messages",
     importMessages_one: "1 message",
     importMessages_other: "{{count}} messages",
+    importMessagesUnknown: "—",
     importNoProject: "No project",
     importSessionCount: "{{count}} sessions",
     importSessionCount_one: "1 session",
