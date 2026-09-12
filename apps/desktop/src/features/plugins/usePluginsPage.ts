@@ -294,13 +294,21 @@ export function usePluginsPage() {
     });
 
   // A pi CLI extension becomes a development plugin holding `agent.extension`
-  // (spec 07-plugins/16 §3); the confirm is the trust decision.
+  // (spec 07-plugins/16 §3); the confirm is the trust decision. Declared npm
+  // dependencies are installed (scripts disabled) before the first load.
   const importExtension = () =>
     run(async () => {
       if (!window.confirm(t("plugins.agentExtension.importConfirm"))) return;
       const result = await api.importPiExtension();
       if (result.canceled) return;
       await refreshPlugins();
+      if (result.dependencies.state === "failed") {
+        showToast(
+          t("plugins.importExtensionDepsFailed", { id: result.id, error: result.dependencies.error }),
+          { variant: "warning" },
+        );
+        return;
+      }
       showToast(t("plugins.importExtensionDone", { id: result.id }), { variant: "success" });
     });
 

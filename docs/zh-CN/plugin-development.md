@@ -634,7 +634,12 @@ export default function (pi) {
   `registerMessageRenderer`、`navigateTree` 及其他仅终端可用的界面）是空操作，在插件行
   的详情里报告，绝不抛出。
 - **已有的 pi 扩展**无需修改：插件页 → 溢出菜单 →“导入 pi 扩展”会把文件或目录包成
-  生成的插件。
+  生成的插件。若目录自带声明了 `dependencies` 的 `package.json`，会在首次加载前把
+  依赖安装到插件根（`npm install --omit=dev --legacy-peer-deps --no-audit --no-fund
+  --ignore-scripts`）：绝不运行第三方安装脚本，因此需要构建脚本的原生模块会以诊断的
+  形式加载失败——在该插件目录内用 Electron 头重建（`npx @electron/rebuild -v
+  <electron 版本>`）即可修复。安装失败绝不阻塞导入；你会收到带 npm 错误的警告
+  toast，插件行显示加载错误。
 
 ## 7.权限设计
 

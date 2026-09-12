@@ -65,8 +65,13 @@ agent 循环上注册工具、命令和事件处理器。`ExtensionAPI` 契约�
 `pi-coding-agent` loader 规则解析入口（`package.json` 的 `pi.extensions` 字段，否则
 `index.ts` / `index.js`，否则一层深度内的松散 `*.ts` / `*.js` 文件），把源码复制到
 `<dataDir>/plugins/imported/<slug>/src/`，写出上面的 manifest（id 为 `imported.<slug>`），
-并经与“加载本地插件”相同的路径注册为开发插件。选择器之前的确认就是信任决定；之后
-该行像其他授权一样显示 `agent.extension` 权限。
+并经与“加载本地插件”相同的路径注册为开发插件。目录若自带 `package.json`，会（连同其
+lockfile）一并复制到插件根并剥离 `workspaces` 字段；若声明了 `dependencies`，main 会在
+首次加载前把依赖安装到插件根，命令为 `npm install --omit=dev --legacy-peer-deps
+--no-audit --no-fund --ignore-scripts`（限时执行、绝不运行第三方安装脚本、内核包继续经
+virtual modules 解析）。安装失败会上报渲染层且绝不阻塞导入——扩展随后上报自身的 load
+error。选择器之前的确认会披露 npm 安装步骤，它就是信任决定；之后该行像其他授权一样显示
+`agent.extension` 权限。
 
 | 来源 | 结果 |
 |---|---|

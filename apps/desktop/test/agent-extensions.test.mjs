@@ -142,6 +142,54 @@ test("importing a directory keeps its package.json at the plugin root and never 
   assert.ok(!existsSync(join(single.path, "package.json")), "a lone file has nothing to install from");
 });
 
+test("importing strips workspaces from the copied package.json so npm never enters src/", () => {
+  const root = mkdtempSync(join(tmpdir(), "pi-ax-ws-"));
+  const extDir = join(root, "monorepo-ext");
+  mkdirSync(extDir, { recursive: true });
+  writeFileSync(join(extDir, "index.ts"), "export default function () {}\n");
+  writeFileSync(
+    join(extDir, "package.json"),
+    JSON.stringify({ name: "monorepo-ext", workspaces: ["packages/*"], dependencies: { "some-dep": "^1" } }),
+  );
+
+  const generated = generateImportedExtensionPlugin(extDir, join(root, "imported"));
+  const pkg = JSON.parse(readFileSync(join(generated.path, "package.json"), "utf8"));
+  assert.ok(!("workspaces" in pkg), "workspaces is stripped from the plugin root copy");
+  assert.deepEqual(pkg.dependencies, { "some-dep": "^1" });
+
+  const plainDir = join(root, "plain-ext");
+  mkdirSync(plainDir, { recursive: true });
+  writeFileSync(join(plainDir, "index.ts"), "export default function () {}\n");
+  writeFileSync(join(plainDir, "package.json"), JSON.stringify({ name: "plain-ext", dependencies: {} }));
+  const plain = generateImportedExtensionPlugin(plainDir, join(root, "imported"));
+  assert.deepEqual(JSON.parse(readFileSync(join(plain.path, "package.json"), "utf8")), {
+    name: "plain-ext",
+    dependencies: {},
+  }, "a package.json without workspaces is copied verbatim");
+});
+
+test("default runner caps captured stderr and escalates the timeout kill", async () => {
+  const { defaultDependencyRunner } = await import("../electron/main/agent-extensions.ts");
+
+  const flooded = await defaultDependencyRunner(
+    process.execPath,
+    ["-e", "process.stderr.write('x'.repeat(40000)); process.exit(0)"],
+    process.cwd(),
+    30_000,
+  );
+  assert.equal(flooded.code, 0);
+  assert.ok(flooded.stderr.length <= 8192 + 64, "stderr is capped to a rolling tail");
+
+  const stalled = await defaultDependencyRunner(
+    process.execPath,
+    ["-e", "setTimeout(() => {}, 60000)"],
+    process.cwd(),
+    300,
+  );
+  assert.notEqual(stalled.code, 0, "a stalled install is killed");
+  assert.match(stalled.stderr, /exceeded 300ms and was terminated/);
+});
+
 test("dependency install: skips without a manifest or dependencies, runs npm with pinned flags, surfaces failures", async () => {
   const root = mkdtempSync(join(tmpdir(), "pi-ax-deps-"));
   const write = (name, json) => {

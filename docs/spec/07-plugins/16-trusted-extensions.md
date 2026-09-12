@@ -75,9 +75,17 @@ D344) for a file or a directory. Main resolves entries with the
 `index.ts` / `index.js`, else loose `*.ts` / `*.js` files one level deep),
 copies the source under `<dataDir>/plugins/imported/<slug>/src/`, writes the
 manifest above with id `imported.<slug>`, and registers the directory as a
-development plugin through the same path as "Load local plugin". The confirm
-before the picker is the trust decision; the row then shows the
-`agent.extension` permission like any other grant.
+development plugin through the same path as "Load local plugin". A directory
+that ships a `package.json` also has it (plus its lockfile) copied to the
+plugin root with any `workspaces` field stripped; if it declares
+`dependencies`, main installs them into the plugin root before the first load
+with `npm install --omit=dev --legacy-peer-deps --no-audit --no-fund
+--ignore-scripts` (bounded time, no third-party install script ever runs,
+kernel packages keep resolving through virtual modules). A failed install is
+reported to the renderer and never blocks the import — the extension then
+reports its own load error. The confirm before the picker discloses the npm
+step and is the trust decision; the row then shows the `agent.extension`
+permission like any other grant.
 
 | Source | Becomes |
 |---|---|

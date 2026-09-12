@@ -721,7 +721,16 @@ What to know before you use it:
   other terminal-only surfaces) are inert and reported in the plugin row's
   details, never thrown.
 - **Existing pi extensions** need no changes: Plugins → overflow menu →
-  "Import pi extension" wraps a file or directory in a generated plugin.
+  "Import pi extension" wraps a file or directory in a generated plugin. If
+  the directory ships a `package.json` with `dependencies`, they are
+  installed into the plugin root before the first load
+  (`npm install --omit=dev --legacy-peer-deps --no-audit --no-fund
+  --ignore-scripts`): no third-party install script ever runs, so a native
+  module that needs one fails to load with a diagnostic — rebuild it against
+  Electron headers (`npx @electron/rebuild -v <electron version>`) inside
+  the plugin directory to fix it. A failed install never blocks the import;
+  you get a warning toast with the npm error and the row shows the load
+  error.
 
 ## 7. Permission design
 
