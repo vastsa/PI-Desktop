@@ -1,3 +1,4 @@
+import { readStoreSource, readTranscriptSource, readMainSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -10,8 +11,8 @@ const readRoot = (path) =>
 test("provider failures stay in the transcript as structured assistant messages", async () => {
   const [runtime, store, main] = await Promise.all([
     readRoot("packages/agent-runtime/src/runtime.ts"),
-    read("src/stores/app-store.ts"),
-    read("electron/main/index.ts"),
+    readStoreSource(),
+    readMainSource(),
   ]);
 
   assert.match(runtime, /error:\s*classifiedError,\s*isError:\s*true/);
@@ -22,7 +23,7 @@ test("provider failures stay in the transcript as structured assistant messages"
 });
 
 test("assistant error messages expose readable provider details and one Continue action", async () => {
-  const transcript = await read("src/components/ChatTranscript.tsx");
+  const transcript = await readTranscriptSource();
   const component = transcript.slice(
     transcript.indexOf("function AssistantErrorMessage"),
     transcript.indexOf("const TOOL_ACTION_KEYS"),

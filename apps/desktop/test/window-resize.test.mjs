@@ -1,11 +1,9 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readMainSource } from "./helpers/main-source.mjs";
 
-const mainSource = await readFile(
-  new URL("../electron/main/index.ts", import.meta.url),
-  "utf8",
-);
+const mainSource = await readMainSource();
 
 const reservationHandler = mainSource.slice(
   mainSource.indexOf("IPC.invoke.windowSetWorkPanelReservation"),
@@ -14,8 +12,8 @@ const reservationHandler = mainSource.slice(
 
 test("the main window keeps native edge and corner resizing enabled", () => {
   assert.match(mainSource, /resizable:\s*true/);
-  assert.match(mainSource, /minWidth:\s*WINDOW_MIN_WIDTH/);
-  assert.match(mainSource, /minHeight:\s*WINDOW_MIN_HEIGHT/);
+  assert.match(mainSource, /minWidth:\s*windowMinWidth/);
+  assert.match(mainSource, /minHeight:\s*windowMinHeight/);
 });
 
 test("bounds recovery waits for a stable native resize snapshot", () => {
@@ -30,8 +28,8 @@ test("bounds recovery waits for a stable native resize snapshot", () => {
 
 test("work-panel reservation is an inert compatibility seam", () => {
   assert.match(reservationHandler, /parseWorkPanelReservationWidth/);
-  assert.match(reservationHandler, /requestedWorkPanelReservation = 0/);
-  assert.match(reservationHandler, /workPanelReservation = emptyWorkPanelReservationState\(\)/);
+  assert.match(reservationHandler, /setWorkPanelReservationWidth\(0\)/);
+  assert.match(reservationHandler, /setWorkPanelReservation\(emptyWorkPanelReservationState\(\)\)/);
   assert.match(reservationHandler, /return \{ requested: 0, reserved: 0 \}/);
   assert.doesNotMatch(reservationHandler, /applyWorkPanelReservation/);
 });

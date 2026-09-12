@@ -1,3 +1,4 @@
+import { readAppSourceSync, readSettingsSourceSync, readStoreSourceSync, readMainSourceSync } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
@@ -9,11 +10,11 @@ const desktopRoot = join(here, "..");
 const repoRoot = join(desktopRoot, "../..");
 
 const runtimeSrc = readFileSync(join(desktopRoot, "electron/main/plugin-runtime.ts"), "utf8");
-const mainSrc = readFileSync(join(desktopRoot, "electron/main/index.ts"), "utf8");
-const appSrc = readFileSync(join(desktopRoot, "src/App.tsx"), "utf8");
-const settingsSrc = readFileSync(join(desktopRoot, "src/pages/SettingsPage.tsx"), "utf8");
+const mainSrc = readMainSourceSync();
+const appSrc = readAppSourceSync();
+const settingsSrc = readSettingsSourceSync();
 const themeRowSrc = readFileSync(join(desktopRoot, "src/components/settings/ThemeRow.tsx"), "utf8");
-const storeSrc = readFileSync(join(desktopRoot, "src/stores/app-store.ts"), "utf8");
+const storeSrc = readStoreSourceSync();
 const protocolSrc = readFileSync(join(repoRoot, "packages/shared/src/protocol.ts"), "utf8");
 
 test("contributed css is sanitized in the main process, not the renderer", () => {

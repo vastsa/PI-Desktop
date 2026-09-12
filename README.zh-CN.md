@@ -47,7 +47,7 @@
 ---
 
 > [!IMPORTANT]
-> **PI-Desktop 目前仍处于 Early Preview 阶段。**  
+> **PI-Desktop 目前仍处于 Early Preview 阶段。**
 > 它已经可以承担真实的编程工作流，但 API、扩展接口和部分桌面行为仍会持续演进。
 
 ## 不是又一个 AI 聊天框

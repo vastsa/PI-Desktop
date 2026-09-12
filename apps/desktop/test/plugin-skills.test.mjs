@@ -1,3 +1,4 @@
+import { readMainSourceSync } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
@@ -11,7 +12,7 @@ const repoRoot = join(desktopRoot, "../..");
 const runtimeSrc = readFileSync(join(desktopRoot, "electron/main/plugin-runtime.ts"), "utf8");
 const builtinSrc = readFileSync(join(desktopRoot, "electron/main/builtin-skills.ts"), "utf8");
 const devToolsSrc = readFileSync(join(desktopRoot, "electron/main/plugin-dev-tools.ts"), "utf8");
-const mainSrc = readFileSync(join(desktopRoot, "electron/main/index.ts"), "utf8");
+const mainSrc = readMainSourceSync();
 const packageJson = JSON.parse(readFileSync(join(desktopRoot, "package.json"), "utf8"));
 const skillDoc = readFileSync(
   join(desktopRoot, "resources/skills/plugin-development.md"),

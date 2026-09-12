@@ -2,13 +2,16 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { loadStyles } from "./helpers/styles.mjs";
+import { readComposerSource } from "./helpers/composer-source.mjs";
+import { readStoreSource } from "./helpers/store-source.mjs";
+import { readTranscriptSource } from "./helpers/transcript-source.mjs";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
 const [store, transcript, composer, outcome, styles] = await Promise.all([
-  read("../src/stores/app-store.ts"),
-  read("../src/components/ChatTranscript.tsx"),
-  read("../src/components/Composer.tsx"),
+  readStoreSource(),
+  readTranscriptSource(),
+  readComposerSource(),
   read("../src/components/TurnOutcomeCard.tsx"),
   loadStyles(),
 ]);
@@ -17,7 +20,10 @@ test("terminal agent events retain a session-scoped result for the transcript", 
   assert.match(store, /latestTurnResults: Record<string, AgentTurnResult>/);
   assert.match(store, /status: event\.type === "error" \? "failed" : "completed"/);
   assert.match(store, /turnId:\s*\n\s*envelope\.turnId \?\?/);
-  assert.match(store, /error\.code === "TURN_ABORTED"[\s\S]*?withoutRecordKey\(s\.latestTurnResults/);
+  assert.match(
+    store,
+    /event\.type === "error" && event\.error\.code === "TURN_ABORTED"[\s\S]*?withoutRecordKey\(\s*state\.latestTurnResults/,
+  );
   assert.match(transcript, /<TurnOutcomeCard[\s\S]*?result=\{latestTurnResult\}/);
   assert.doesNotMatch(composer, /<TurnOutcomeCard/);
 });

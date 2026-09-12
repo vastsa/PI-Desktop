@@ -1,3 +1,4 @@
+import { readMainSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -8,7 +9,7 @@ const read = (relativePath) =>
 const [protocolSource, apiSource, mainSource] = await Promise.all([
   read("../../../packages/shared/src/protocol.ts"),
   read("../src/lib/api.ts"),
-  read("../electron/main/index.ts"),
+  readMainSource(),
 ]);
 
 test("open-folder is exposed as a project-only IPC action", () => {

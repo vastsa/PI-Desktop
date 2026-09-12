@@ -1,3 +1,4 @@
+import { readComposerSource, readMainSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -5,9 +6,9 @@ import test from "node:test";
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
 const [composer, api, main, protocol, runtime, oneShot, en, zh] = await Promise.all([
-  read("../src/components/Composer.tsx"),
+  readComposerSource(),
   read("../src/lib/api.ts"),
-  read("../electron/main/index.ts"),
+  readMainSource(),
   read("../../../packages/shared/src/protocol.ts"),
   read("../../../packages/agent-runtime/src/prompt-enhancement.ts"),
   read("../../../packages/agent-runtime/src/one-shot-complete.ts"),

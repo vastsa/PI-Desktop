@@ -1,3 +1,9 @@
+import {
+  readMainModuleSync,
+  readPluginsSourceSync,
+  readStoreModuleSync,
+  readMainSourceSync,
+} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
@@ -17,9 +23,16 @@ const repoRoot = join(desktopRoot, "../..");
 
 const runtimeSrc = readFileSync(join(desktopRoot, "electron/main/plugin-runtime.ts"), "utf8");
 const panelSrc = readFileSync(join(desktopRoot, "electron/main/plugin-panel-host.ts"), "utf8");
-const mainSrc = readFileSync(join(desktopRoot, "electron/main/index.ts"), "utf8");
-const pageSrc = readFileSync(join(desktopRoot, "src/pages/PluginsPage.tsx"), "utf8");
+const mainSrc = readMainSourceSync();
+const pageSrc = readPluginsSourceSync();
 const protocolSrc = readFileSync(join(repoRoot, "packages/shared/src/protocol.ts"), "utf8");
+const marketIpcSrc = readMainModuleSync("ipc/market-ipc.ts");
+const catalogSliceSrc = readStoreModuleSync("slices/catalog-slice.ts");
+const registrySrc = readFileSync(join(repoRoot, "crates/host-core/src/plugins/registry.rs"), "utf8");
+const marketplaceSrc = readFileSync(join(repoRoot, "crates/host-core/src/plugins/marketplace.rs"), "utf8");
+const validationSrc = readFileSync(join(repoRoot, "crates/host-core/src/plugins/validation.rs"), "utf8");
+const installSrc = readFileSync(join(repoRoot, "crates/host-core/src/plugins/install.rs"), "utf8");
+const modelSrc = readFileSync(join(repoRoot, "crates/host-core/src/plugins/model.rs"), "utf8");
 
 test("plugin runtime exposes gated high-risk host APIs", () => {
   for (const token of [
@@ -89,8 +102,7 @@ test("the plugins page shows the file scope behind a file permission", () => {
   assert.match(pageSrc, /t\("plugins\.legacyFsDowngraded"\)/);
   // The scope reaches the renderer from the registry, not from a second read
   // of the manifest, so an old record simply has no scope to show.
-  const hostSrc = readFileSync(join(repoRoot, "crates/host-core/src/plugins.rs"), "utf8");
-  assert.match(hostSrc, /fs: manifest\.fs\.clone\(\)/);
+  assert.match(registrySrc, /fs: manifest\.fs\.clone\(\)/);
   for (const catalog of Object.values(catalogs)) {
     assert.equal(typeof catalog.plugins.legacyFsDowngraded, "string");
     assert.equal(typeof catalog.plugins.fsMode.delete, "string");
@@ -127,12 +139,12 @@ test("plugins page includes marketplace install and auto-update controls", () =>
 test("plugins page refreshes installed update metadata when it opens", () => {
   assert.match(pageSrc, /useEffect\(\(\) => \{[\s\S]*api\.marketCheckUpdates\(false\)[\s\S]*refreshPlugins\(\)/);
   assert.match(
-    mainSrc,
+    marketIpcSrc,
     /IPC\.invoke\.marketCheckUpdates[\s\S]*refreshRemote: payload\?\.refreshRemote \?\? true/,
   );
   assert.match(
-    readFileSync(join(desktopRoot, "src/stores/app-store.ts"), "utf8"),
-    /pluginRefreshInFlight[\s\S]*if \(pluginRefreshInFlight\) return pluginRefreshInFlight/,
+    catalogSliceSrc,
+    /const existing = catalogRuntime\.getPluginRefresh\(\);\s*if \(existing\) return existing/,
   );
 });
 
@@ -175,7 +187,7 @@ test("marketplace blocks install for a version with no published package", () =>
   assert.match(pageSrc, /t\("plugins\.packagePending"\)/);
   assert.match(pageSrc, /t\("plugins\.packagePendingHint", \{/);
 
-  const hostSrc = readFileSync(join(repoRoot, "crates/host-core/src/plugins.rs"), "utf8");
+  const hostSrc = marketplaceSrc;
   assert.match(hostSrc, /fn has_package_metadata\(version: &MarketVersion\) -> bool/);
   // `installable` is the single answer every install affordance reads, so it
   // has to cover every reason the host would refuse the download: no package
@@ -194,7 +206,7 @@ test("marketplace blocks install for a version with no published package", () =>
 // download boundary is what keeps a catalog entry from aiming a request
 // anywhere it likes.
 test("marketplace package downloads stay inside the host allowlist", () => {
-  const hostSrc = readFileSync(join(repoRoot, "crates/host-core/src/plugins.rs"), "utf8");
+  const hostSrc = validationSrc + "\n" + installSrc;
   assert.match(
     hostSrc,
     /const PACKAGE_HOST_ALLOWLIST: &\[&str\] = &\["github\.com", "githubusercontent\.com", "cnb\.cool"\]/,
@@ -212,7 +224,7 @@ test("marketplace package downloads stay inside the host allowlist", () => {
 // A withdrawn version is a distribution signal, not permission to disable
 // software somebody is relying on.
 test("a withdrawn version is never offered and never silently disabled", () => {
-  const hostSrc = readFileSync(join(repoRoot, "crates/host-core/src/plugins.rs"), "utf8");
+  const hostSrc = marketplaceSrc + "\n" + modelSrc;
   assert.match(hostSrc, /\.filter\(\|version\| !version\.yanked\)/);
   assert.match(hostSrc, /PLUGIN_MARKET_YANKED/);
   assert.match(hostSrc, /PLUGIN_HOST_TOO_OLD/);
@@ -231,7 +243,7 @@ test("a withdrawn version is never offered and never silently disabled", () => {
 // The verified shield is a claim about a publisher, so it must come from the
 // center rather than from text a publisher can write.
 test("verified trust is not something a catalog entry can grant itself", () => {
-  const hostSrc = readFileSync(join(repoRoot, "crates/host-core/src/plugins.rs"), "utf8");
+  const hostSrc = marketplaceSrc;
   assert.match(hostSrc, /fn resolve_trust\(&self, entry: &MarketCatalogEntry\) -> String/);
   assert.match(hostSrc, /"verified" if self\.is_official_market_source\(\) => "verified"/);
   assert.match(hostSrc, /"verified" => "community"/);

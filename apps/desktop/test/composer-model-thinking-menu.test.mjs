@@ -1,18 +1,20 @@
+import { readComposerModule } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { loadStyles } from "./helpers/styles.mjs";
 
-const composerSource = await readFile(
-  new URL("../src/components/Composer.tsx", import.meta.url),
-  "utf8",
-);
+const [modelMenuSource, pickerSource] = await Promise.all([
+  readComposerModule("hooks/useComposerModelMenu.ts"),
+  readComposerModule("ComposerModelPicker.tsx"),
+]);
+const composerSource = `${modelMenuSource}\n${pickerSource}`;
 const stylesSource = await loadStyles();
 
 test("Composer uses one model × reasoning popover with a root and in-place submenus", () => {
   assert.match(composerSource, /useState<ComposerMenuView>\("root"\)/);
-  assert.match(composerSource, /showModelThinkingView\("model"\)/);
-  assert.match(composerSource, /showModelThinkingView\("thinking"\)/);
+  assert.match(composerSource, /showView\("model"\)/);
+  assert.match(composerSource, /showView\("thinking"\)/);
   assert.match(composerSource, /menuClassName="composer-model-menu composer-model-thinking-menu"/);
   assert.match(composerSource, /role="menuitem"[\s\S]*?aria-haspopup="menu"/);
   assert.match(composerSource, /className="composer-menu-back"/);
@@ -23,29 +25,29 @@ test("Composer uses one model × reasoning popover with a root and in-place subm
 
 test("model and reasoning selection return to the root without closing", () => {
   assert.match(composerSource, /await configureActiveSession\(\{[\s\S]*?thinkingLevel: nextThinkingLevel/);
-  assert.match(composerSource, /setModelQuery\(""\);[\s\S]*?setModelThinkingView\("root"\)/);
+  assert.match(composerSource, /setQuery\(""\);[\s\S]*?setView\("root"\)/);
   assert.match(composerSource, /const selectThinkingLevel = async/);
-  assert.match(composerSource, /setModelThinkingView\("root"\);[\s\S]*?setThinkingHighlight\(-1\)/);
+  assert.match(composerSource, /setView\("root"\);[\s\S]*?setThinkingHighlight\(-1\)/);
   assert.match(composerSource, /const thinkingMenuLevels: ThinkingLevel\[\] = availableThinkingLevels\.length/);
 });
 
 test("opening the combined menu preloads model metadata before its submenu", () => {
   assert.match(
     composerSource,
-    /useEffect\(\(\) => \{\n    if \(!modelThinkingOpen\) return;\n    for \(const candidate of providers\)\s*\{/,
+    /useEffect\(\(\) => \{\n    if \(!open\) return;\n    for \(const candidate of providers\)\s*\{/,
   );
   assert.match(composerSource, /void loadProviderModels\(candidate\.id\);/);
-  assert.match(composerSource, /\}, \[loadProviderModels, modelThinkingOpen, providers\]\);/);
+  assert.match(composerSource, /\}, \[loadProviderModels, open, providers\]\);/);
 });
 
 test("the combined chip and menu meet the compact accessible visual contract", () => {
   assert.match(composerSource, /aria-haspopup="menu"/);
-  assert.match(composerSource, /aria-expanded=\{modelThinkingOpen\}/);
+  assert.match(composerSource, /aria-expanded=\{open\}/);
   assert.match(composerSource, /role="menuitemradio"/);
   assert.match(composerSource, /aria-checked=\{active\}/);
   assert.match(composerSource, /aria-checked=\{thinkingLevel === level\}/);
-  assert.match(composerSource, /e\.key === "ArrowLeft"/);
-  assert.match(composerSource, /e\.key === "Escape"/);
+  assert.match(composerSource, /event\.key === "ArrowLeft"/);
+  assert.match(composerSource, /event\.key === "Escape"/);
   assert.match(stylesSource, /\.composer-model-thinking-menu\s*\{[\s\S]*?position:\s*fixed;/);
   assert.match(stylesSource, /\.composer-model-thinking-menu\s*\{[\s\S]*?top:\s*0;/);
   assert.match(stylesSource, /\.composer-model-thinking-menu\s*\{[\s\S]*?width:\s*min\(300px,\s*calc\(100vw - 24px\)\)/);

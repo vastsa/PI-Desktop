@@ -1,3 +1,4 @@
+import { readAppSource, readMainSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -6,14 +7,8 @@ const sidecarSource = await readFile(
   new URL("../electron/main/agent-sidecar.ts", import.meta.url),
   "utf8",
 );
-const mainSource = await readFile(
-  new URL("../electron/main/index.ts", import.meta.url),
-  "utf8",
-);
-const appSource = await readFile(
-  new URL("../src/App.tsx", import.meta.url),
-  "utf8",
-);
+const mainSource = await readMainSource();
+const appSource = await readAppSource();
 const apiSource = await readFile(
   new URL("../src/lib/api.ts", import.meta.url),
   "utf8",

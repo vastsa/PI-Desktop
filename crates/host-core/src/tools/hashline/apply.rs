@@ -1,13 +1,13 @@
 //! Apply parsed ops against a tagged snapshot (spec 18 §8–§9, phase 2).
 
 use super::parse::{
-    Locator, MAX_REGISTER_BYTES, MAX_REGISTER_LINES, ParseError, ParsedOp, ParsedOps, parse_ops,
+    parse_ops, Locator, ParseError, ParsedOp, ParsedOps, MAX_REGISTER_BYTES, MAX_REGISTER_LINES,
 };
 use super::store::HashlineStore;
 use super::tag::{
-    NormalizedFile, encode_bytes, join_lines, normalize_file, split_lines, tag_of_lf_text,
+    encode_bytes, join_lines, normalize_file, split_lines, tag_of_lf_text, NormalizedFile,
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 

@@ -1,3 +1,8 @@
+import {
+  readComposerSource,
+  readMainModule,
+  readMainSource,
+} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -7,10 +12,7 @@ const pickerSource = await readFile(
   new URL("../src/components/settings/ModelSelectionPanes.tsx", import.meta.url),
   "utf8",
 );
-const composerSource = await readFile(
-  new URL("../src/components/Composer.tsx", import.meta.url),
-  "utf8",
-);
+const composerSource = await readComposerSource();
 const capabilitiesSource = await readFile(
   new URL(
     "../../../packages/agent-runtime/src/model-capabilities.ts",
@@ -22,10 +24,8 @@ const catalogSource = await readFile(
   new URL("../../../packages/shared/src/model-catalog.ts", import.meta.url),
   "utf8",
 );
-const mainSource = await readFile(
-  new URL("../electron/main/index.ts", import.meta.url),
-  "utf8",
-);
+const mainSource = await readMainSource();
+const providerCatalogSource = await readMainModule("runtime/provider-catalog.ts");
 const sidecarSource = await readFile(
   new URL("../../../packages/agent-runtime/src/sidecar.ts", import.meta.url),
   "utf8",
@@ -181,12 +181,24 @@ test("a model the catalog does not describe still reports its binding overrides"
   // Both enrichment helpers fall back to the generic shape and then apply the
   // binding, matching the launch path; returning undefined instead would report
   // no image support for a hand-typed id whose transport does inline images.
-  const enrichments = mainSource.match(
-    /modelConfigWithBinding\(\s*\n\s*modelsDevModel\s*\n?\s*\?\s*modelConfigFromModelsDev/g,
-  ) ?? [];
-  assert.equal(enrichments.length, 2);
+  const providerBlock = providerCatalogSource.slice(
+    providerCatalogSource.indexOf("const enrichProvider ="),
+    providerCatalogSource.indexOf("const normalizeThinkingLevel ="),
+  );
+  const sessionBlock = providerCatalogSource.slice(
+    providerCatalogSource.indexOf("const enrichSession ="),
+    providerCatalogSource.indexOf(
+      "\n  return {\n    bindingForModel",
+      providerCatalogSource.indexOf("const enrichSession ="),
+    ),
+  );
+  for (const block of [providerBlock, sessionBlock]) {
+    assert.match(block, /modelConfigWithBinding\(/);
+    assert.match(block, /genericModelConfig\(modelId, provider\.baseUrl \?\? ""\)/);
+    assert.match(block, /bindingForModel\(provider, modelId\)/);
+  }
   assert.doesNotMatch(
-    mainSource,
+    providerCatalogSource,
     /const modelConfig = catalogModelConfig\s*\n\s*\? modelConfigWithBinding/,
   );
 });

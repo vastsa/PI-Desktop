@@ -1,11 +1,15 @@
+import {
+  readMainSource,
+  readMainModule,
+} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const mainSource = await readFile(
-  new URL("../electron/main/index.ts", import.meta.url),
-  "utf8",
-);
+const mainSource = await readMainSource();
+const closeBehaviorSource = await readMainModule("bootstrap/close-behavior.ts");
+const windowSource = await readMainModule("bootstrap/window.ts");
+const shutdownSource = await readMainModule("bootstrap/shutdown.ts");
 
 test("one tray owns both minimize-to-tray and close-to-tray", () => {
   // D216's tray and D210's close-to-tray tray are the same icon. A second
@@ -31,8 +35,8 @@ test("the tray icon resolves through the packaged resource path", () => {
 test("choosing quit never destroys the resident tray", () => {
   // The tray is the only way back from a minimized (hidden) window, so
   // switching close behavior away from "tray" must leave it alone.
-  const apply = mainSource.slice(
-    mainSource.indexOf("function applyCloseBehavior"),
+  const apply = closeBehaviorSource.slice(
+    closeBehaviorSource.indexOf("const applyCloseBehavior"),
   );
   const body = apply.slice(0, apply.indexOf("\n}\n") + 2);
   assert.match(body, /if \(next === "tray"\) createTray\(\)/);
@@ -40,11 +44,11 @@ test("choosing quit never destroys the resident tray", () => {
 });
 
 test("Windows/Linux minimize stays in the taskbar while macOS may hide to tray", () => {
-  const minimize = mainSource.slice(mainSource.indexOf('window.on("minimize"'));
+  const minimize = windowSource.slice(windowSource.indexOf('window.on("minimize"'));
   const body = minimize.slice(0, minimize.indexOf("});") + 3);
   assert.match(
     body,
-    /if \(quitting \|\| !tray \|\| process\.platform !== "darwin"\) return;/,
+    /if \(windowState\.quitting \|\| !windowState\.tray \|\| process\.platform !== "darwin"\) return;/,
   );
   assert.match(body, /window\.hide\(\)/);
 
@@ -56,7 +60,7 @@ test("Windows/Linux minimize stays in the taskbar while macOS may hide to tray",
   );
   assert.match(
     windowControl.slice(0, windowControl.indexOf('case "toggleMaximize":')),
-    /window\.minimize\(\)/,
+    /mainWindow\.minimize\(\)/,
   );
 });
 
@@ -64,12 +68,12 @@ test("a stored quit preference still quits while the tray is resident", () => {
   // `window-all-closed` used to skip `app.quit()` whenever a tray existed.
   // With D216's always-present tray that meant a "quit" user could never
   // exit, so the guard now reads the user's choice instead of the tray.
-  const handler = mainSource.slice(
-    mainSource.indexOf('app.on("window-all-closed"'),
+  const handler = shutdownSource.slice(
+    shutdownSource.indexOf('app.on("window-all-closed"'),
   );
   const body = handler.slice(0, handler.indexOf("});") + 3);
   assert.doesNotMatch(body, /!tray/);
-  assert.match(body, /closeBehavior === "tray" && tray/);
+  assert.match(body, /state\.closeBehavior === "tray" && state\.tray/);
   assert.match(body, /app\.quit\(\)/);
 
   // The close path itself quits directly rather than relying on that handler.
@@ -112,18 +116,18 @@ test("close behavior is not settable on macOS", () => {
 });
 
 test("explicit quit asks for confirmation except automated probes", () => {
-  assert.match(mainSource, /async function confirmQuitDialog/);
-  assert.match(mainSource, /labels\.tray\.confirmQuitTitle/);
-  const quitHandler = mainSource.slice(
-    mainSource.indexOf('app.on("before-quit"'),
+  assert.match(closeBehaviorSource, /const confirmQuitDialog = async/);
+  assert.match(closeBehaviorSource, /labels\.tray\.confirmQuitTitle/);
+  const quitHandler = shutdownSource.slice(
+    shutdownSource.indexOf('app.on("before-quit"'),
   );
   const body = quitHandler.slice(0, quitHandler.indexOf("shutdownPromise ="));
   assert.match(body, /PI_DESKTOP_BOOT_PROBE/);
-  assert.match(body, /!quitConfirmed && !isAutomatedMode/);
+  assert.match(body, /!state\.quitConfirmed && !isAutomatedMode/);
   assert.match(body, /confirmQuitDialog\(\)/);
   // Window-close Quit already chose to exit in the close-behavior dialog.
   assert.match(
-    mainSource,
-    /already chose to quit in the close-behavior dialog[\s\S]*?quitConfirmed = true/,
+    windowSource,
+    /already chose to quit in the close-behavior dialog[\s\S]*?windowState\.quitConfirmed = true/,
   );
 });

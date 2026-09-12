@@ -1,3 +1,4 @@
+import { readMainModuleSync } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { register } from "node:module";
@@ -17,7 +18,10 @@ const {
 } = await import("../electron/main/safe-open-external.ts");
 
 const read = (rel) => readFileSync(join(here, rel), "utf8");
-const mainSource = read("../electron/main/index.ts");
+const desktopServicesSource = readMainModuleSync("services/desktop-services.ts");
+const windowSource = readMainModuleSync("bootstrap/window.ts");
+const appIpcSource = readMainModuleSync("ipc/app-ipc.ts");
+const mainIndexSource = readMainModuleSync("index.ts");
 const runtimeSource = read("../electron/main/plugin-runtime.ts");
 const viewHostSource = read("../electron/main/plugin-view-host.ts");
 const browserSource = read("../electron/main/browser-view.ts");
@@ -103,18 +107,18 @@ test("openAllowedExternal calls the opener only for allowlisted hrefs and throws
 });
 
 test("main, plugins, preview, and updater share the allowlist before openExternal", () => {
-  assert.match(mainSource, /import \{ parseAllowedExternalUrl \} from "\.\/safe-open-external"/);
-  assert.match(mainSource, /async function safeOpenExternal\(rawUrl: unknown\)/);
-  assert.match(mainSource, /const url = parseAllowedExternalUrl\(rawUrl\)/);
-  assert.match(mainSource, /throw new Error\("DISALLOWED_EXTERNAL_URL"\)/);
+  assert.match(desktopServicesSource, /import \{ parseAllowedExternalUrl \} from "\.\.\/safe-open-external"/);
+  assert.match(desktopServicesSource, /const safeOpenExternal = async \(rawUrl: unknown\)/);
+  assert.match(desktopServicesSource, /const url = parseAllowedExternalUrl\(rawUrl\)/);
+  assert.match(desktopServicesSource, /throw new Error\("DISALLOWED_EXTERNAL_URL"\)/);
   assert.match(
-    mainSource,
+    windowSource,
     /window\.webContents\.setWindowOpenHandler\(\(\{ url \}\) => \{\s*void safeOpenExternal\(url\)\.catch/,
   );
-  assert.match(mainSource, /openExternal: async \(url\) => \{\s*await safeOpenExternal\(url\);/);
-  assert.match(mainSource, /assertFeedbackIssueUrl\(url\);\s*await safeOpenExternal\(url\);/);
+  assert.match(mainIndexSource, /openExternal: async \(url\) => \{\s*await safeOpenExternal\(url\);/);
+  assert.match(appIpcSource, /assertFeedbackIssueUrl\(url\);\s*await safeOpenExternal\(url\);/);
   assert.doesNotMatch(
-    mainSource,
+    windowSource,
     /setWindowOpenHandler\(\(\{ url \}\) => \{\s*void shell\.openExternal\(url\)/,
   );
 
