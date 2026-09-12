@@ -429,6 +429,9 @@ export function createTranscriptSlice({
       const sessionId = stateBeforeAbort.activeSessionId;
       if (!sessionId) return;
       const submittedDraft = runtime.submittedComposerDrafts.get(sessionId);
+      const preserveSteering = stateBeforeAbort.messages
+        .slice(submittedDraft?.messageCountBeforeSend ?? 0)
+        .findLast((message) => message.role === "user")?.steering;
       const stoppedAtMs = Date.now();
       if (submittedDraft && !submittedDraft.abortResolution) {
         submittedDraft.abortResolution = new Promise<boolean>((resolve) => {
@@ -463,7 +466,9 @@ export function createTranscriptSlice({
         }));
         return;
       }
-      const smartStop = resolveComposerSmartStop(state.messages, submittedDraft);
+      const smartStop = preserveSteering
+        ? { kind: "settle" as const }
+        : resolveComposerSmartStop(state.messages, submittedDraft);
       if (smartStop.kind === "restore") {
         const fullMessages = await runtime.loadFullSessionMessages(sessionId);
         if (!fullMessages || get().activeSessionId !== sessionId) {

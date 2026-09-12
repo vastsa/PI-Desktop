@@ -240,6 +240,8 @@ export const fr = {
     "enhancementFailed": "L'amélioration de l'invite a échoué",
     "dismissEnhancementError": "Ignorer l'erreur d'amélioration",
     "abort": "Arrêter",
+    sendWhileRunning: "Envoyer à la suite · {{shortcut}} pour réorienter",
+    steeringUnavailable: "Ce tour ne peut plus recevoir de consignes. Votre brouillon a été conservé.",
     "stopGenerating": "Arrêter de générer",
     "running": "Travailler…",
     "loadingSession": "Chargement de la conversation…",

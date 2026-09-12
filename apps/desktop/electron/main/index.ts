@@ -557,6 +557,7 @@ const logger = new Logger(
 const persistenceOutbox = new PersistenceOutbox(dataDir, (level, message, data) => {
   logger.app("persistence", level, message, { data });
 });
+const steeringReplies = new Set<string>();
 const scheduledRuntime = createScheduledRuntime({
   dataDir,
   getHost: () => host,
@@ -1129,6 +1130,7 @@ const {
 
 const eventPersistence = createEventPersistence({
   runtimeState,
+  steeringReplies,
   activeTurns,
   activeToolCalls,
   activeToolCallKey,
@@ -1149,6 +1151,7 @@ const { persistAgentEvent } = eventPersistence;
 
 const sidecarRuntime = createSidecarRuntime({
   runtimeState,
+  steeringReplies,
   logger,
   sendToRenderer,
   persistAgentEvent,
@@ -1235,6 +1238,7 @@ function registerIpc() {
     updater,
     dataDir,
     activeTurns,
+    turnFinalizations,
     sessionProjects,
     persistenceOutbox,
     logger,

@@ -5,6 +5,7 @@ import type {
   AgentCompactRequest,
   AgentCompactResponse,
   AgentPromptRequest,
+  AgentSteerRequest,
   UiMessage,
   MessageRevisionSummary,
   AgentPromptResponse,
@@ -544,6 +545,8 @@ export const api = {
     prefix: UiMessage[];
   }) =>
     invoke<{ messages: UiMessage[] }>(IPC.invoke.sessionActivateRevision, input),
+  steer: (req: AgentSteerRequest) =>
+    invoke<AgentPromptResponse>(IPC.invoke.agentSteer, req),
   prompt: (req: AgentPromptRequest) =>
     invoke<AgentPromptResponse>(IPC.invoke.agentPrompt, req),
   enhancePrompt: (req: PromptEnhancementRequest) =>

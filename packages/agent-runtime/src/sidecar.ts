@@ -480,6 +480,20 @@ async function handle(method: string, params: any): Promise<unknown> {
       });
       return { accepted: true, turnId };
     }
+    case "agent.steeringContext":
+    case "agent.steer": {
+      const runtime = runtimes.get(String(params.sessionId ?? ""));
+      if (!runtime) {
+        throw Object.assign(new Error("No active turn to steer"), { errorCode: "TURN_NOT_FOUND" });
+      }
+      const expectedTurnId = String(params.expectedTurnId ?? "");
+      if (method === "agent.steeringContext") return runtime.steeringContext(expectedTurnId);
+      return runtime.steer(
+        { text: String(params.content ?? ""), attachments: params.attachments },
+        expectedTurnId,
+        params.message,
+      );
+    }
     case "agent.executeApprovedPlan": {
       const sessionId = String(params.sessionId ?? "");
       const turnId = String(params.turnId ?? "").trim();

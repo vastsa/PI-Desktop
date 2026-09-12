@@ -70,6 +70,8 @@ export type UiMessage = {
   content: string;
   /** Files or images associated with a user turn, kept separate from text. */
   attachments?: MessageAttachment[];
+  /** Accepted input to an existing turn; Stop must preserve it after reload. */
+  steering?: boolean;
   /** Model reasoning kept separate from the answer text. */
   thinking?: string;
   createdAt: string;
