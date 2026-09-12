@@ -18,11 +18,13 @@ concurrency:
 
 jobs:
   js:
-    name: JS build / typecheck / lint / test
+    name: JS build / typecheck / lint / architecture / test
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
 
@@ -46,11 +48,16 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      - name: Check architecture budgets
+        env:
+          ARCHITECTURE_BASE: ${{ github.event.pull_request.base.sha || github.event.before || 'HEAD^' }}
+        run: node scripts/check-architecture.mjs
+
       - name: Unit tests
         run: pnpm -r --if-present test
 
   rust:
-    name: Rust host-core test
+    name: Rust host-core format / lint / test
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -59,6 +66,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --all-features
 
       - name: Test
         run: cargo test -p host-core --locked
