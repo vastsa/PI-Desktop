@@ -2944,7 +2944,13 @@ compatibility remains owned by pi-ai.
    without native spinners, seven thinking-level chips, a constrained
    default-thinking select on the thinking label row, and one wrapping row
    for attachment and delegation checkboxes. The seven thinking controls use
-   the canonical values as-is and are not localized. The thinking label,
+   the canonical values as-is and are not localized. Each numeric limit is
+   topped by a preset ladder of five compact chips (context window
+   128k/256k/312k/500k/1M, max output 4k/8k/16k/32k/128k) in the thinking
+   chips' segmented-track language: clicking a chip writes its token count
+   into the input, the input stays hand-editable, and the chip matching the
+   current value is highlighted; the labels use the canonical values as-is
+   and are not localized. The thinking label,
    optional catalog hint, and default selector sit above one compact,
    keyboard-operable
    grouped control that spans the pane; its seven options share the width
