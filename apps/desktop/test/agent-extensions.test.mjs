@@ -142,6 +142,33 @@ test("importing a directory keeps its package.json at the plugin root and never 
   assert.ok(!existsSync(join(single.path, "package.json")), "a lone file has nothing to install from");
 });
 
+test("importing a source directory that itself sits under node_modules keeps its entries", () => {
+  const root = mkdtempSync(join(tmpdir(), "pi-ax-npm-layout-"));
+  // The npm-installed pi extension layout from issue #242: the selected
+  // source root is inside a node_modules tree.
+  const extDir = join(root, "fake-pi", "agent", "npm", "node_modules", "pi-flow");
+  mkdirSync(extDir, { recursive: true });
+  writeFileSync(join(extDir, "index.ts"), "export default function () {}\n");
+  writeFileSync(
+    join(extDir, "package.json"),
+    JSON.stringify({ name: "pi-flow", pi: { extensions: ["index.ts"] }, dependencies: { "some-dep": "^1" } }),
+  );
+  mkdirSync(join(extDir, "nested", "node_modules", "inner"), { recursive: true });
+  writeFileSync(join(extDir, "nested", "real.ts"), "export const y = 2;\n");
+
+  const generated = generateImportedExtensionPlugin(extDir, join(root, "imported"));
+  assert.ok(existsSync(join(generated.path, generated.entries[0])), "the declared entry is copied");
+  assert.ok(existsSync(join(generated.path, "package.json")), "the manifest's package.json is kept");
+  assert.ok(
+    existsSync(join(generated.path, "src", "nested", "real.ts")),
+    "descendant files are copied",
+  );
+  assert.ok(
+    !existsSync(join(generated.path, "src", "nested", "node_modules")),
+    "descendant node_modules is still excluded",
+  );
+});
+
 test("importing strips workspaces from the copied package.json so npm never enters src/", () => {
   const root = mkdtempSync(join(tmpdir(), "pi-ax-ws-"));
   const extDir = join(root, "monorepo-ext");
@@ -203,6 +230,16 @@ test("dependency install: skips without a manifest or dependencies, runs npm wit
 
   const noPackage = write("no-package", null);
   assert.deepEqual(await installExtensionDependencies(noPackage), { state: "skipped", reason: "no-package-json" });
+
+  const nullJson = write("null-json", "null");
+  const nullResult = await installExtensionDependencies(nullJson);
+  assert.equal(nullResult.state, "failed", "valid JSON null must not throw into the IPC and abort the import");
+  assert.match(nullResult.error, /not a JSON object/);
+
+  const arrayJson = write("array-json", "[]");
+  const arrayResult = await installExtensionDependencies(arrayJson);
+  assert.equal(arrayResult.state, "failed");
+  assert.match(arrayResult.error, /not a JSON object/);
 
   const noDeps = write("no-deps", JSON.stringify({ name: "x" }));
   assert.deepEqual(await installExtensionDependencies(noDeps), { state: "skipped", reason: "no-dependencies" });

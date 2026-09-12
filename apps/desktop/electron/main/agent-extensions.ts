@@ -326,7 +326,13 @@ export async function installExtensionDependencies(
   }
   let manifest: { dependencies?: Record<string, unknown> };
   try {
-    manifest = JSON.parse(readFileSync(packageJsonPath, "utf8"));
+    const parsed: unknown = JSON.parse(readFileSync(packageJsonPath, "utf8"));
+    // JSON "null" parses fine and would throw on the property access below,
+    // aborting the import; any non-object is reported instead.
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { state: "failed", error: "package.json is not a JSON object" };
+    }
+    manifest = parsed as { dependencies?: Record<string, unknown> };
   } catch (err) {
     return {
       state: "failed",
@@ -396,7 +402,16 @@ export function generateImportedExtensionPlugin(
   const srcDir = join(dir, "src");
   mkdirSync(srcDir, { recursive: true });
   if (isDirectory) {
-    cpSync(resolved, srcDir, { recursive: true, filter: (p) => !p.includes("node_modules") });
+    cpSync(resolved, srcDir, {
+      recursive: true,
+      // Only exclude node_modules segments below the selected root: the root
+      // itself may live inside one, since npm-installed pi extensions sit at
+      // `~/.pi/agent/npm/node_modules/<package>` (issue #242).
+      filter: (p) => {
+        const rel = relative(resolved, p);
+        return rel === "" || !rel.split(/[\\/]/).includes("node_modules");
+      },
+    });
   } else {
     cpSync(resolved, join(srcDir, basename(resolved)));
   }
