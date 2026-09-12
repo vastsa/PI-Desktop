@@ -1,4 +1,9 @@
-import { readSettingsSource, readPluginsSource, readMainSource } from "./helpers/source-contracts.mjs";
+import {
+  readSettingsSource,
+  readPluginsSource,
+  readMainSource,
+  readSharedTypesSource,
+} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -78,10 +83,7 @@ const preloadSource = await readFile(
   new URL("../electron/preload/index.ts", import.meta.url),
   "utf8",
 );
-const sharedTypesSource = await readFile(
-  new URL("../../../packages/shared/src/types.ts", import.meta.url),
-  "utf8",
-);
+const sharedTypesSource = await readSharedTypesSource();
 const stylesSource = await loadStyles();
 
 test("Basics and AI tabs expose their respective app and AI controls", () => {

@@ -1,4 +1,9 @@
-import { readAppSource, readSettingsSource, readMainSource } from "./helpers/source-contracts.mjs";
+import {
+  readAppSource,
+  readSettingsSource,
+  readMainSource,
+  readSharedTypesSource,
+} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -25,7 +30,7 @@ const [
   changelogSource,
 ] = await Promise.all([
   read("../../../packages/shared/src/protocol.ts"),
-  read("../../../packages/shared/src/types.ts"),
+  readSharedTypesSource(),
   read("../electron/main/updater.ts"),
   readMainSource(),
   read("../electron/main/application-menu.ts"),

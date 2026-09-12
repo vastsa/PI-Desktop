@@ -2,9 +2,10 @@ import { readAppSource, readPluginsSource, readMainSource } from "./helpers/sour
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readSharedTypesSource } from "./helpers/source-contracts.mjs";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
-const shared = await read("../../../packages/shared/src/types.ts");
+const shared = await readSharedTypesSource();
 const sdk = await read("../../../packages/plugin-sdk/src/index.ts");
 const runtime = await read("../electron/main/plugin-runtime.ts");
 const main = await readMainSource();

@@ -1,5 +1,9 @@
-import { readSettingsSource, readMainSource } from "./helpers/source-contracts.mjs";
-import { readAppSource } from "./helpers/source-contracts.mjs";
+import {
+  readSettingsSource,
+  readMainSource,
+  readAppSource,
+  readSharedTypesSource,
+} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -9,10 +13,7 @@ const shortcutSource = await readFile(
   new URL("../../../packages/shared/src/keyboard-shortcuts.ts", import.meta.url),
   "utf8",
 );
-const sharedTypesSource = await readFile(
-  new URL("../../../packages/shared/src/types.ts", import.meta.url),
-  "utf8",
-);
+const sharedTypesSource = await readSharedTypesSource();
 const appSource = await readAppSource();
 const menuSource = await readFile(
   new URL("../electron/main/application-menu.ts", import.meta.url),

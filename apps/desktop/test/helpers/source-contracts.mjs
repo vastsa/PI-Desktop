@@ -23,6 +23,10 @@ export {
   readComposerModuleSync,
 } from "./composer-source.mjs";
 export {
+  readSharedTypesSource,
+  readSharedTypesSourceSync,
+} from "./shared-types-source.mjs";
+export {
   readAppSource,
   readAppSourceSync,
   readPluginsSource,

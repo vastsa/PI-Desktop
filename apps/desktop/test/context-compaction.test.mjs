@@ -3,6 +3,7 @@ import {
   readStoreModule,
   readTranscriptSource,
   readMainSource,
+  readSharedTypesSource,
 } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -31,7 +32,7 @@ const [
   enLocale,
 ] = await Promise.all([
   read("../../../packages/shared/src/protocol.ts"),
-  read("../../../packages/shared/src/types.ts"),
+  readSharedTypesSource(),
   readMainSource(),
   read("../src/lib/api.ts"),
   readStoreSource(),

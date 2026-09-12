@@ -6,6 +6,7 @@ import { readMainSource } from "./helpers/main-source.mjs";
 import { loadStyles } from "./helpers/styles.mjs";
 import { readStoreSource } from "./helpers/store-source.mjs";
 import { readTranscriptSource } from "./helpers/transcript-source.mjs";
+import { readSharedTypesSource } from "./helpers/shared-types-source.mjs";
 
 const stylesSource = await loadStyles();
 const transcriptSource = await readTranscriptSource();
@@ -460,10 +461,7 @@ test("conversation minimap stays centered below titlebar at high density", () =>
 test("regenerate history pager and stable revision family are wired", async () => {
   const storeSource = await readStoreSource();
   const mainSource = await readMainSource();
-  const sharedSource = await readFile(
-    new URL("../../../packages/shared/src/types.ts", import.meta.url),
-    "utf8",
-  );
+  const sharedSource = await readSharedTypesSource();
   assert.match(transcriptSource, /message-revision-pager/);
   assert.match(transcriptSource, /activateMessageRevision/);
   assert.match(transcriptSource, /chat\.revisionPager/);
