@@ -325,7 +325,7 @@ jobs:
           rm latest-mac-arm64.yml latest-mac-x64.yml
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           # D126/D285/D364: all desktop platforms and both native macOS
           # architectures ship from tag builds — installers, the Windows
