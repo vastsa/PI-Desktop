@@ -45,6 +45,7 @@ event: pi-desktop/<domain>/event/<name>
 Examples:
 
 - `pi-desktop/agent/prompt`
+- `pi-desktop/agent/steer`
 - `pi-desktop/agent/stop`
 - `pi-desktop/agent/abort`
 - `pi-desktop/agent/event/message`
@@ -177,6 +178,42 @@ current turn. On a vision runtime, persisted image refs are hydrated from the
 session-bound attachment/scratch roots when history is rebuilt; oversized or
 unavailable images remain path fallbacks. This keeps renderer, main, sidecar, the models.dev catalog, and host
 persistence on one capability-aware contract.
+
+### 5.1a Steer an active turn
+
+`pi-desktop/agent/steer` accepts `AgentSteerRequest`:
+
+```ts
+type AgentSteerRequest = {
+ sessionId: string;
+ expectedTurnId: string;
+ content: string;
+ messageId?: string;
+ attachments?: AgentPromptAttachment[];
+};
+```
+
+It returns `{ accepted: true, turnId }` for the existing turn. Main checks its
+active durable turn, asks the existing sidecar runtime for the active project's
+attachment roots and model image capability, then applies the ordinary bounded
+attachment preparation. The sidecar revalidates `expectedTurnId` after that IO.
+A missing, ended, stopping, or mismatched turn, or a pending plan/goal approval,
+fails with `TURN_NOT_FOUND`; it never falls back to starting or queueing a turn.
+An empty payload fails with `INVALID_ARGUMENT`.
+
+The internal `agent.steeringContext` and `agent.steer` methods use only an
+existing runtime. They do not run launch configuration, `runtimeFor`, or
+`session.beginTurn`. Steering cannot change the active model, permission mode,
+workspace, or approved execution. Slash text is literal input on this channel.
+
+Accepted input is echoed as ordinary user message events with the current
+`turnId` and main-prepared attachment refs. A user `message_end` can additionally
+carry `precedingAssistant`, a streaming snapshot that reserves the reply's
+position before the input is persisted. Main writes both through its replayable
+outbox; the host replaces only that provisional assistant row with its terminal
+snapshot, preserving its id, sequence and owning turn. No image bytes enter the
+durable message. This is an additive desktop channel and event field; it does
+not change RACP, the host RPC version, or the storage schema. See ADR active-turn-steering.
 
 ### 5.2 stop at the next turn boundary
 

@@ -247,6 +247,8 @@ export const en = {
     enhancementFailed: "Prompt enhancement failed",
     dismissEnhancementError: "Dismiss enhancement error",
     abort: "Stop",
+    sendWhileRunning: "Send follow-up · Alt+Enter to steer",
+    steeringUnavailable: "This turn can no longer accept steering. Your draft was kept.",
     stopGenerating: "Stop generating",
     running: "Working…",
     loadingSession: "Loading conversation…",

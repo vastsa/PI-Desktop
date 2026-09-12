@@ -126,7 +126,7 @@ test("cross-session agent_end cannot clear the active session's running flag", (
 
 test("send clears the composer before the round trip and restores a rejected draft (D287)", () => {
   const submit = composer.match(
-    /const submit = async \(\) => \{[\s\S]*?\n  const applyEditorDraft = \(/,
+    /const submit = async \(steering = false\) => \{[\s\S]*?\n  const applyEditorDraft = \(/,
   )?.[0] ?? "";
   assert.ok(submit.length > 0, "composer submit implementation not found");
   // The DOM value is the source of truth for what gets sent: a state update
@@ -140,10 +140,10 @@ test("send clears the composer before the round trip and restores a rejected dra
   assert.match(submit, /if \(pasting\) showToast\(t\("chat\.pasteInProgress"\)/);
   assert.match(
     submit,
-    /if \(!modelReady\) \{\s*showToast\(t\("errors\.MODEL_NOT_CONFIGURED"\), \{ variant: "error" \}\);\s*return;\s*\}/,
+    /if \(!steering && !modelReady\) \{\s*showToast\(t\("errors\.MODEL_NOT_CONFIGURED"\), \{ variant: "error" \}\);\s*return;\s*\}/,
   );
   // Optimistic clear, restore on rejection. The clear must precede the await.
-  const clearAt = submit.indexOf("clearDraftForKey(submittedDraftKey);\n    const accepted = await sendPrompt(inlineContent, submittedDraft);");
+  const clearAt = submit.indexOf("clearDraftForKey(submittedDraftKey);\n    const accepted = steering");
   assert.ok(clearAt > 0, "draft must be cleared before awaiting sendPrompt");
   assert.match(submit, /if \(!accepted\) restoreDraftForKey\(submittedDraftKey, submittedDraft\);/);
   assert.doesNotMatch(submit, /if \(accepted\) clearDraftForKey\(submittedDraftKey\);\s*\};/);
@@ -161,7 +161,7 @@ test("send clears the composer before the round trip and restores a rejected dra
 
 test("mode slash prefixes send the trailing prompt and retain failed drafts", () => {
   const submit = composer.match(
-    /const submit = async \(\) => \{[\s\S]*?\n  \};\n\n  const composerAc/,
+    /const submit = async \(steering = false\) => \{[\s\S]*?\n  \};\n\n  const composerAc/,
   )?.[0] ?? "";
   assert.ok(submit.length > 0, "composer submit implementation not found");
   assert.match(submit, /const commandBody =/);
@@ -176,7 +176,7 @@ test("mode slash prefixes send the trailing prompt and retain failed drafts", ()
   );
   assert.match(
     submit,
-    /const submittedDraft = draftSnapshot\(text\);\s*clearDraftForKey\(submittedDraftKey\);\s*const accepted = await sendPrompt\(inlineContent, submittedDraft\);\s*if \(!accepted\) restoreDraftForKey\(submittedDraftKey, submittedDraft\);/,
+    /const submittedDraft = draftSnapshot\(text\);\s*clearDraftForKey\(submittedDraftKey\);\s*const accepted = steering[\s\S]*?await steerPrompt\(inlineContent, submittedDraft\)[\s\S]*?await sendPrompt\(inlineContent, submittedDraft\);\s*if \(!accepted\) restoreDraftForKey\(submittedDraftKey, submittedDraft\);/,
   );
   assert.match(store, /draft\?: ComposerDraftSnapshot/);
   const sendPrompt = store.match(

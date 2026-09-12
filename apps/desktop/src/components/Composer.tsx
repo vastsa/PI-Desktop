@@ -628,6 +628,7 @@ export function Composer({
 }) {
   const { t } = useTranslation();
   const sendPrompt = useAppStore((s) => s.sendPrompt);
+  const steerPrompt = useAppStore((s) => s.steerPrompt);
   const removeQueuedPrompt = useAppStore((s) => s.removeQueuedPrompt);
   const sendQueuedNow = useAppStore((s) => s.sendQueuedNow);
   const abort = useAppStore((s) => s.abort);
@@ -1615,7 +1616,7 @@ export function Composer({
     });
   };
 
-  const submit = async () => {
+  const submit = async (steering = false) => {
     // The editable is what the user sees. Under load a state update from a
     // late input event can still be pending when Enter arrives; sending the
     // DOM value rather than the closure's `value` never drops characters.
@@ -1638,7 +1639,7 @@ export function Composer({
     // a session or a model; templates, skills, and unknown /names stay prompt
     // text (main expands templates and routes skills to the Skill tool). Runs
     // before the model-ready gate on purpose.
-    if (serializedContent.startsWith("/")) {
+    if (!steering && serializedContent.startsWith("/")) {
       const commandEnd = serializedContent.search(/\s/);
       const name = serializedContent.slice(
         1,
@@ -1712,7 +1713,7 @@ export function Composer({
         }
       }
     }
-    if (!modelReady) {
+    if (!steering && !modelReady) {
       showToast(t("errors.MODEL_NOT_CONFIGURED"), { variant: "error" });
       return;
     }
@@ -1722,7 +1723,9 @@ export function Composer({
     // puts the draft back.
     const submittedDraft = draftSnapshot(text);
     clearDraftForKey(submittedDraftKey);
-    const accepted = await sendPrompt(inlineContent, submittedDraft);
+    const accepted = steering
+      ? await steerPrompt(inlineContent, submittedDraft)
+      : await sendPrompt(inlineContent, submittedDraft);
     if (!accepted) restoreDraftForKey(submittedDraftKey, submittedDraft);
   };
 
@@ -2467,6 +2470,12 @@ export function Composer({
                   // never drive the autocomplete menu (D125).
                   if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229)
                     return;
+                  if (e.key === "Enter" && e.altKey && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
+                    e.preventDefault();
+                    composerAc.close();
+                    void submit(runActive);
+                    return;
+                  }
                   if (composerAc.open && e.key === "Escape") {
                     // Escape closes only the menu; overlay handlers must not
                     // also fire on the same press.
@@ -2963,7 +2972,7 @@ export function Composer({
                   type="button"
                   className="send-btn"
                   ariaLabel={modelReady ? t("chat.send") : t("settings.addProvider")}
-                  tooltip={modelReady ? t("chat.send") : t("settings.addProvider")}
+                  tooltip={runActive ? t("chat.sendWhileRunning") : modelReady ? t("chat.send") : t("settings.addProvider")}
                   disabled={
                     !hasDraftContent ||
                     sendBlocked ||

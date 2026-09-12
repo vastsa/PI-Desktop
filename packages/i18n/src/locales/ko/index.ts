@@ -249,6 +249,8 @@ export const ko = {
     enhancementFailed: "프롬프트 개선 실패",
     dismissEnhancementError: "프롬프트 개선 오류 닫기",
     abort: "중지",
+    sendWhileRunning: "후속 메시지 보내기 · Alt+Enter로 방향 수정",
+    steeringUnavailable: "현재 턴에 지시를 추가할 수 없습니다. 초안은 유지됩니다.",
     stopGenerating: "생성 중지",
     running: "작업 중…",
     loadingSession: "대화 불러오는 중…",

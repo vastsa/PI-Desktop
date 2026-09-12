@@ -618,6 +618,14 @@ export type AgentPromptAttachment = {
   size?: number;
 };
 
+/** Append input to an existing turn without changing its configuration. */
+export type AgentSteerRequest = Pick<
+  AgentPromptRequest,
+  "sessionId" | "content" | "attachments" | "messageId"
+> & {
+  expectedTurnId: string;
+};
+
 export type AgentPromptResponse = {
   accepted: boolean;
   turnId: string;
@@ -771,7 +779,7 @@ export type AgentEvent =
       deltaText?: string;
       deltaThinking?: string;
     }
-  | { type: "message_end"; message: UiMessage }
+  | { type: "message_end"; message: UiMessage; precedingAssistant?: UiMessage }
   | { type: "tool_start"; toolCallId: string; toolName: string; args: unknown }
   | { type: "tool_update"; toolCallId: string; partialResult?: unknown }
   | {

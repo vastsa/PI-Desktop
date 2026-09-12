@@ -373,6 +373,7 @@ type SubmittedComposerDraft = {
   resolveAbort?: (restored: boolean) => void;
 };
 const submittedComposerDrafts = new Map<string, SubmittedComposerDraft>();
+const steeringMessageIds = new Map<string, Set<string>>();
 type SessionConfiguration = Pick<
   SessionSummary,
   "mode" | "providerId" | "modelId" | "thinkingLevel"
@@ -914,6 +915,7 @@ export type AppState = {
     draft?: ComposerDraftSnapshot,
     targetSessionId?: string,
   ) => Promise<boolean>;
+  steerPrompt: (content: string, draft?: ComposerDraftSnapshot) => Promise<boolean>;
   enqueuePrompt: (
     content: string,
     draft?: ComposerDraftSnapshot,
@@ -2338,6 +2340,37 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  steerPrompt: async (content, draft) => {
+    const state = get();
+    const sessionId = state.activeSessionId;
+    const expectedTurnId = sessionId ? state.agentStatuses[sessionId]?.currentTurnId : undefined;
+    if (!sessionId || !expectedTurnId || !state.runningSessions[sessionId] || state.pendingPlans[sessionId]?.status === "pending") {
+      state.showToast(i18n.t("chat.steeringUnavailable"), { variant: "info" });
+      return false;
+    }
+    const message = optimisticUserMessage(crypto.randomUUID(), content, draft?.fileReferences ?? []);
+    insertOptimisticUserMessage(sessionId, message);
+    const steeringIds = steeringMessageIds.get(sessionId) ?? new Set<string>();
+    steeringIds.add(message.id);
+    steeringMessageIds.set(sessionId, steeringIds);
+    try {
+      await api.steer({
+        sessionId, expectedTurnId, content, messageId: message.id,
+        attachments: draft ? promptAttachmentsFromDraft(draft.fileReferences) : [],
+      });
+      return true;
+    } catch (error) {
+      retractOptimisticUserMessage(sessionId, message);
+      steeringIds.delete(message.id);
+      if (!steeringIds.size && steeringMessageIds.get(sessionId) === steeringIds) {
+        steeringMessageIds.delete(sessionId);
+      }
+      const failure = messageErrorFromUnknown(error);
+      get().showToast(failure.code === "TURN_NOT_FOUND" ? i18n.t("chat.steeringUnavailable") : failure.message, { variant: "error" });
+      return false;
+    }
+  },
+
   compactContext: async () => {
     const state = get();
     const sessionId = state.activeSessionId;
@@ -2745,6 +2778,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     // Capture before awaiting the abort IPC: its terminal event may arrive
     // first and clear the pending snapshot.
     const submittedDraft = submittedComposerDrafts.get(sessionId);
+    // A turn containing steering has multiple user inputs. Smart Stop must
+    // not remove its last input and restore the original prompt in its place.
+    const preserveSteering = Boolean(steeringMessageIds.get(sessionId)?.size);
     const stoppedAtMs = Date.now();
     if (submittedDraft && !submittedDraft.abortResolution) {
       submittedDraft.abortResolution = new Promise<boolean>((resolve) => {
@@ -2782,7 +2818,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       }));
       return;
     }
-    const smartStop = resolveComposerSmartStop(state.messages, submittedDraft);
+    const smartStop = preserveSteering
+      ? { kind: "settle" as const }
+      : resolveComposerSmartStop(state.messages, submittedDraft);
     if (smartStop.kind === "restore") {
       // Nothing came back yet — undo the send: pull the prompt into the
       // composer and drop the turn from the transcript. The rewrite must start
@@ -3709,6 +3747,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const event = envelope.event;
     if (event.type === "agent_end" || event.type === "error") {
       submittedComposerDrafts.delete(envelope.sessionId);
+      steeringMessageIds.delete(envelope.sessionId);
     }
     if (!flushingStreamUpdates) {
       if (event.type === "message_update") {

@@ -1,3 +1,4 @@
+import { createAssistantMessageEventStream, Type } from "@earendil-works/pi-ai";
 import { describe, expect, it, vi } from "vitest";
 import { estimateTokens } from "@earendil-works/pi-agent-core";
 import { buildSessionContext } from "./session-context.js";
@@ -6292,6 +6293,200 @@ describe("DesktopAgentRuntime deferred tool restore (#225)", () => {
     runtime.setMode("agent");
 
     expect(hasTool(runtime, "BrowserPreview")).toBe(true);
+    await runtime.dispose();
+  });
+});
+
+
+describe("DesktopAgentRuntime active-turn steering", () => {
+  const userText = (message: any) => typeof message.content === "string" ? message.content : message.content[0].text;
+  const steeringMessage = (id: string, content: string): UiMessage => ({
+    id, role: "user", content, status: "complete", createdAt: new Date().toISOString(),
+  });
+
+  function controlledRuntime() {
+    const events: any[] = [];
+    const runtime = createRuntime({ onEvent: (event) => events.push(event) });
+    const agent = (runtime as any).agent;
+    const requests: any[] = [];
+    let finishFirst!: (message?: any) => void;
+    agent.streamFunction = (_model: any, context: any) => {
+      requests.push(structuredClone(context.messages));
+      const stream = createAssistantMessageEventStream();
+      const response = assistantMessage({ content: [{ type: "text", text: "reply" }] }) as any;
+      stream.push({ type: "start", partial: response });
+      const finish = (message = response) => {
+        if (message.stopReason === "aborted" || message.stopReason === "error") {
+          stream.push({ type: "error", reason: message.stopReason, error: message });
+        } else stream.push({ type: "done", reason: message.stopReason, message });
+      };
+      if (requests.length === 1) finishFirst = finish;
+      else finish();
+      return stream;
+    };
+    return { runtime, agent, events, requests, finish: (message?: any) => finishFirst(message) };
+  }
+
+  it("injects text and images into the next request of the same turn", async () => {
+    const { runtime, agent, events, requests, finish } = controlledRuntime();
+    const run = runtime.prompt("original", "original-id", "turn-1");
+    await vi.waitFor(() => expect(requests).toHaveLength(1));
+    expect(runtime.steer({ text: "change direction" }, "turn-1", steeringMessage("steer-1", "change direction")))
+      .toEqual({ accepted: true, turnId: "turn-1" });
+    runtime.steer({ text: "use this", attachments: [{ path: "attachments/image", name: "image.png", kind: "image", mimeType: "image/png", size: 3, data: "YWJj" }] }, "turn-1", steeringMessage("steer-2", "use this"));
+    expect(requests).toHaveLength(1);
+    expect(events.find((event) => event.event.message?.id === "steer-1" && event.event.type === "message_end").event.precedingAssistant.id).toBeTruthy();
+    finish();
+    await run;
+    expect(requests).toHaveLength(2);
+    const users = requests[1].filter((message: any) => message.role === "user");
+    expect(users.map((message: any) => userText(message))).toEqual(["original", "change direction", "use this"]);
+    expect(users[2].content[1]).toEqual({ type: "image", mimeType: "image/png", data: "YWJj" });
+    expect(events.filter((event) => event.event.type === "agent_start")).toHaveLength(1);
+    expect(events.filter((event) => event.event.type === "agent_end")).toHaveLength(1);
+    expect(new Set(events.map((event) => event.turnId))).toEqual(new Set(["turn-1"]));
+    expect((runtime as any).fullEntries.filter((entry: any) => entry.message.role === "user").map((entry: any) => entry.id)).toEqual(["original-id", "steer-1", "steer-2"]);
+    expect(agent.hasQueuedMessages()).toBe(false);
+    await runtime.dispose();
+  });
+
+  it("lets the current tool finish before consuming steering", async () => {
+    const { runtime, agent, requests, finish } = controlledRuntime();
+    let releaseTool!: () => void;
+    let toolStarted = false;
+    vi.spyOn(runtime as any, "resetDeferredToolsForPrompt").mockImplementation(() => {});
+    agent.state.tools = [{ name: "Hold", label: "Hold", description: "Hold", parameters: Type.Object({}), execute: async () => {
+      toolStarted = true;
+      await new Promise<void>((resolve) => { releaseTool = resolve; });
+      return { content: [{ type: "text", text: "tool finished" }] };
+    } }];
+    const run = runtime.prompt("original", "original-id", "turn-tool");
+    await vi.waitFor(() => expect(requests).toHaveLength(1));
+    finish(assistantMessage({ content: [{ type: "toolCall", id: "hold-1", name: "Hold", arguments: {} }], stopReason: "toolUse" }));
+    await vi.waitFor(() => expect(toolStarted).toBe(true));
+    runtime.steer({ text: "new direction" }, "turn-tool", steeringMessage("steer-tool", "new direction"));
+    expect(requests).toHaveLength(1);
+    expect(agent.signal.aborted).toBe(false);
+    releaseTool();
+    await run;
+    expect(requests).toHaveLength(2);
+    expect(requests[1].at(-2).role).toBe("toolResult");
+    expect(userText(requests[1].at(-1))).toBe("new direction");
+    await runtime.dispose();
+  });
+
+  it("drains input admitted after the final queue poll without starting a new durable turn", async () => {
+    const { runtime, events, requests, finish } = controlledRuntime();
+    const handle = (runtime as any).handleAgentEvent.bind(runtime);
+    let admitted = false;
+    (runtime as any).handleAgentEvent = async (event: any) => {
+      if (event.type === "agent_end" && !admitted) {
+        admitted = true;
+        runtime.steer({ text: "last moment" }, "turn-late", steeringMessage("late-id", "last moment"));
+      }
+      await handle(event);
+    };
+    const run = runtime.prompt("original", "original-id", "turn-late");
+    await vi.waitFor(() => expect(requests).toHaveLength(1));
+    finish();
+    await run;
+    expect(requests).toHaveLength(2);
+    expect(userText(requests[1].at(-1))).toBe("last moment");
+    expect(events.filter((event) => event.event.type === "agent_start")).toHaveLength(1);
+    expect(events.filter((event) => event.event.type === "agent_end")).toHaveLength(1);
+    expect(runtime.getStatus().currentTurnId).toBe("turn-late");
+    await runtime.dispose();
+  });
+
+  it.each(["abort", "stop"])("retains accepted input as history after %s without replaying the queue", async (action) => {
+    const { runtime, agent, requests, finish } = controlledRuntime();
+    const run = runtime.prompt("original", "original-id", "turn-stop");
+    await vi.waitFor(() => expect(requests).toHaveLength(1));
+    runtime.steer({ text: "accepted input" }, "turn-stop", steeringMessage("retained-id", "accepted input"));
+    if (action === "abort") await runtime.abort();
+    else runtime.requestGracefulStop();
+    expect(() => runtime.steer({ text: "too late" }, "turn-stop", steeringMessage("rejected", "too late"))).toThrow(/no longer/);
+    finish(assistantMessage({ content: [{ type: "text", text: "stopped" }], stopReason: action === "abort" ? "aborted" : "stop" }));
+    await run;
+    expect(requests).toHaveLength(1);
+    expect(agent.hasQueuedMessages()).toBe(false);
+    expect((runtime as any).fullEntries.some((entry: any) => entry.id === "retained-id")).toBe(true);
+    await runtime.prompt("next prompt", "next-id", "turn-next");
+    expect(requests).toHaveLength(2);
+    expect(requests[1].filter((message: any) => message.role === "user").map((message: any) => userText(message)))
+      .toEqual(["original", "accepted input", "next prompt"]);
+    await runtime.dispose();
+  });
+
+  it("wakes an idle parent immediately while background delegates are still running", async () => {
+    const { runtime, requests, finish } = controlledRuntime();
+    const run = runtime.prompt("original", "original-id", "turn-delegate");
+    await vi.waitFor(() => expect(requests).toHaveLength(1));
+    let resolveCompletion!: () => void;
+    const record = {
+      delegationId: "delegate-1", agentName: "explorer", status: "running",
+      startedEpoch: (runtime as any).turnEpoch, reportDelivered: false,
+      startedAt: Date.now(), lastActivityAt: Date.now(), lastPhase: "waiting-model", turns: 0, toolCalls: 0,
+      completion: new Promise<void>((resolve) => { resolveCompletion = resolve; }),
+      abort: () => {}, result: undefined as any,
+    };
+    (runtime as any).delegations.set(record.delegationId, record);
+    finish();
+    await vi.waitFor(() => expect((runtime as any).steeringWaitAbort).toBeDefined());
+    runtime.steer({ text: "change the parent task" }, "turn-delegate", steeringMessage("parent-steer", "change the parent task"));
+    await vi.waitFor(() => expect(requests).toHaveLength(2));
+    expect(record.status).toBe("running");
+    expect(userText(requests[1].at(-1))).toBe("change the parent task");
+    record.status = "completed";
+    record.result = { report: "delegate report", status: "completed" };
+    resolveCompletion();
+    await run;
+    expect(requests).toHaveLength(3);
+    expect(runtime.getStatus().isRunning).toBe(false);
+    await runtime.dispose();
+  });
+
+  it("leaves pending steering to the existing recovery path", async () => {
+    const { runtime, agent, requests, finish } = controlledRuntime();
+    const run = runtime.prompt("original", "original-id", "turn-recovery");
+    await vi.waitFor(() => expect(requests).toHaveLength(1));
+    const handle = (runtime as any).handleAgentEvent.bind(runtime);
+    let preparedRecovery = false;
+    (runtime as any).handleAgentEvent = async (event: any) => {
+      if (event.type === "agent_end" && !preparedRecovery) {
+        preparedRecovery = true;
+        runtime.steer({ text: "new instruction" }, "turn-recovery", steeringMessage("recovery-steer", "new instruction"));
+        (runtime as any).suppressSilentTurnRunEnd = true;
+      }
+      await handle(event);
+    };
+    const recover = vi.spyOn(runtime as any, "runPendingRecoveries").mockImplementation(async () => {
+      expect(requests).toHaveLength(1);
+      (runtime as any).suppressSilentTurnRunEnd = false;
+      await agent.continue();
+      await agent.waitForIdle();
+      return true;
+    });
+    finish();
+    await run;
+    expect(recover).toHaveBeenCalledOnce();
+    expect(requests).toHaveLength(2);
+    expect(userText(requests[1].at(-1))).toBe("new instruction");
+    await runtime.dispose();
+  });
+
+  it("rejects idle and stale targets without changing the active run", async () => {
+    const { runtime, events, requests, finish } = controlledRuntime();
+    const message = steeringMessage("rejected", "do not accept");
+    expect(() => runtime.steer({ text: message.content }, "missing", message)).toThrow(/no longer/);
+    const run = runtime.prompt("original", "original-id", "current-turn");
+    await vi.waitFor(() => expect(requests).toHaveLength(1));
+    expect(() => runtime.steer({ text: message.content }, "previous-turn", message)).toThrow(/no longer/);
+    expect(runtime.getStatus().currentTurnId).toBe("current-turn");
+    expect(events.some((event) => event.event.message?.id === "rejected")).toBe(false);
+    finish();
+    await run;
+    expect(() => runtime.steer({ text: message.content }, "current-turn", message)).toThrow(/no longer/);
     await runtime.dispose();
   });
 });

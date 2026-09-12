@@ -1583,12 +1583,43 @@ pub fn append_message(
 ) -> Result<()> {
     let session_created = ensure_session_for_append(db, session_id)?;
     let (record, text) = ui_to_record(message);
-    // Electron may replay an outbox entry after a host restart. Message ids
-    // are globally unique, so an existing row is already the durable result.
+    // A steering input reserves its preceding streaming assistant's position.
+    // Only a terminal assistant snapshot may replace that provisional row;
+    // completed rows remain immutable under outbox replay.
     if message_indexed(db, session_id, &record.id)? {
+        if message.role == "assistant"
+            && message.status.as_deref() != Some("streaming")
+            && streaming_assistant_indexed(db, session_id, &record.id)?
+        {
+            invalidate_transcript_layout(session_id);
+            if !transcripts::update_message(db.data_dir(), session_id, &record)? {
+                return Err(anyhow!("streaming assistant is missing from its transcript"));
+            }
+            db.conn().execute(
+                "UPDATE messages SET text = ?3, is_error = ?4 WHERE session_id = ?1 AND id = ?2",
+                params![session_id, record.id, text, record.is_error],
+            )?;
+        } else {
+            return Ok(());
+        }
+    } else {
+        append_record(db, session_id, &session_created, &record, text.as_deref(), turn_id)?;
+    }
+    if message.role == "assistant" && message.status.as_deref() == Some("streaming") {
+        // Even an empty reservation needs a checkpoint so a crash can settle
+        // it as aborted. Later stream checkpoints replace this snapshot.
+        let existing = transcripts::read_inflight(db.data_dir(), session_id)?;
+        if existing.as_ref().is_none_or(|checkpoint| {
+            ts_to_ms(&checkpoint.message.created_at) < ts_to_ms(&record.created_at)
+        }) {
+            transcripts::write_inflight(db.data_dir(), session_id, &transcripts::InflightRecord {
+                schema: transcripts::INFLIGHT_SCHEMA,
+                session_id: session_id.to_string(), turn_id: turn_id.map(str::to_string),
+                saved_at: ms_to_ts(now_ms()), message: record,
+            })?;
+        }
         return Ok(());
     }
-    append_record(db, session_id, &session_created, &record, text.as_deref(), turn_id)?;
     // The final assistant row supersedes any checkpoint of the same message
     // (D299). A checkpoint for a different id belongs to a newer fragment and
     // stays until its own final row or the turn end settles it.
@@ -1613,6 +1644,25 @@ fn message_indexed(db: &Database, session_id: &str, message_id: &str) -> Result<
         )
         .optional()?;
     Ok(existing.is_some())
+}
+
+/// Find the latest copy by message identity. SQLite sequence numbers are not
+/// physical file offsets when an older transcript contains retried lines.
+fn streaming_assistant_indexed(db: &Database, session_id: &str, message_id: &str) -> Result<bool> {
+    let layout = session_layout(db, session_id)?;
+    let mut end = layout.message_count();
+    while end > 0 {
+        let start = end.saturating_sub(64);
+        let window = transcripts::read_transcript_window_with_layout(
+            db.data_dir(), session_id, &layout, start, Some(end - start),
+        )?;
+        if let Some(record) = window.messages.iter().rev().find(|record| record.id == message_id) {
+            return Ok(record.role == "assistant" && record.meta.as_ref()
+                .and_then(|meta| meta.get("status")).and_then(Value::as_str) == Some("streaming"));
+        }
+        end = start;
+    }
+    Ok(false)
 }
 
 /// Append one canonical record: transcript line first, then the index row.
@@ -1670,7 +1720,9 @@ pub fn save_inflight_message(
     if !has_text {
         return Ok(false);
     }
-    if message_indexed(db, session_id, &message.id)? {
+    if message_indexed(db, session_id, &message.id)?
+        && !streaming_assistant_indexed(db, session_id, &message.id)?
+    {
         transcripts::remove_inflight(db.data_dir(), session_id)?;
         return Ok(false);
     }
@@ -1711,7 +1763,8 @@ pub fn recover_inflight_message(
             return Ok(None);
         }
     };
-    if message_indexed(db, session_id, &inflight.message.id)? {
+    let indexed = message_indexed(db, session_id, &inflight.message.id)?;
+    if indexed && !streaming_assistant_indexed(db, session_id, &inflight.message.id)? {
         transcripts::remove_inflight(db.data_dir(), session_id)?;
         return Ok(None);
     }
@@ -1742,14 +1795,11 @@ pub fn recover_inflight_message(
     meta.insert("status".into(), json!(promoted_status));
     record.meta = Some(Value::Object(meta));
     let text = record_index_text(&record);
-    append_record(
-        db,
-        session_id,
-        &session_created,
-        &record,
-        text.as_deref(),
-        inflight.turn_id.as_deref(),
-    )?;
+    if indexed {
+        append_message(db, session_id, &record_to_ui(record.clone()), inflight.turn_id.as_deref())?;
+    } else {
+        append_record(db, session_id, &session_created, &record, text.as_deref(), inflight.turn_id.as_deref())?;
+    }
     Ok(Some(record_to_ui(record)))
 }
 
@@ -2741,7 +2791,9 @@ pub fn end_turn_settling(
         }
         Some(session_id) if status != "aborted" => {
             if let Some(inflight) = transcripts::read_inflight(db.data_dir(), session_id)? {
-                if message_indexed(db, session_id, &inflight.message.id)? {
+                if message_indexed(db, session_id, &inflight.message.id)?
+                    && !streaming_assistant_indexed(db, session_id, &inflight.message.id)?
+                {
                     transcripts::remove_inflight(db.data_dir(), session_id)?;
                 }
             }
@@ -5067,6 +5119,67 @@ mod tests {
         message.status = Some("streaming".into());
         message.thinking = Some("still thinking".into());
         message
+    }
+
+    #[test]
+    fn steering_reservation_finishes_in_place_and_replay_cannot_overwrite_it() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let turn = begin_turn(&db, &session.id, None, None).unwrap();
+        let prefix = user_msg("prefix", "original", "2025-05-01T00:00:00Z");
+        append_message(&db, &session.id, &prefix, Some(&turn)).unwrap();
+        transcripts::append_message(db.data_dir(), &session.id, &session.created_at, &ui_to_record(&prefix).0).unwrap();
+        let partial = streaming_assistant("a1", "partial");
+        append_message(&db, &session.id, &partial, Some(&turn)).unwrap();
+        append_message(&db, &session.id, &user_msg("steer", "new direction", "2025-05-01T00:00:02Z"), Some(&turn)).unwrap();
+        let mut final_row = partial.clone();
+        final_row.content = "complete answer".into();
+        final_row.status = Some("complete".into());
+        append_message(&db, &session.id, &final_row, Some(&turn)).unwrap();
+        append_message(&db, &session.id, &partial, Some(&turn)).unwrap();
+        let mut replay = final_row.clone();
+        replay.content = "stale replay".into();
+        append_message(&db, &session.id, &replay, Some(&turn)).unwrap();
+        let messages = get_session(&db, &session.id).unwrap().unwrap().messages;
+        assert_eq!(messages.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(), vec!["prefix", "a1", "steer"]);
+        assert_eq!(messages[1].content, "complete answer");
+        assert_eq!(messages[1].status.as_deref(), Some("complete"));
+        assert_eq!(search_messages(&db, "complete", 10).unwrap().len(), 1);
+        assert!(transcripts::read_inflight(db.data_dir(), &session.id).unwrap().is_none());
+        let owner: String = db.conn().query_row("SELECT turn_id FROM messages WHERE id = 'a1'", [], |row| row.get(0)).unwrap();
+        assert_eq!(owner, turn);
+    }
+
+    #[test]
+    fn steering_reservation_recovers_the_latest_checkpoint_in_place() {
+        for content in ["", "partial"] {
+            let db = test_db();
+            let session = create_session(&db, None, None, None, None, None).unwrap();
+            let turn = begin_turn(&db, &session.id, None, None).unwrap();
+            append_message(&db, &session.id, &streaming_assistant("a1", content), Some(&turn)).unwrap();
+            append_message(&db, &session.id, &user_msg("steer", "new direction", "2025-05-01T00:00:02Z"), Some(&turn)).unwrap();
+            assert!(save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a1", "latest checkpoint")).unwrap());
+            let recovered = recover_inflight_message(&db, &session.id, false).unwrap().unwrap();
+            assert_eq!(recovered.content, "latest checkpoint");
+            assert_eq!(recovered.status.as_deref(), Some("aborted"));
+            let messages = get_session(&db, &session.id).unwrap().unwrap().messages;
+            assert_eq!(messages.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(), vec!["a1", "steer"]);
+            assert_eq!(messages[0].content, "latest checkpoint");
+        }
+    }
+
+    #[test]
+    fn steering_reservation_does_not_replace_a_newer_checkpoint_and_end_keeps_it() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let turn = begin_turn(&db, &session.id, None, None).unwrap();
+        save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a1", "newer text")).unwrap();
+        append_message(&db, &session.id, &streaming_assistant("a1", "older snapshot"), Some(&turn)).unwrap();
+        end_turn(&db, &turn, "completed", None, None, false).unwrap();
+        assert!(transcripts::read_inflight(db.data_dir(), &session.id).unwrap().is_some());
+        let recovered = recover_inflight_message(&db, &session.id, true).unwrap().unwrap();
+        assert_eq!(recovered.content, "newer text");
+        assert_eq!(recovered.status.as_deref(), Some("complete"));
     }
 
     #[test]

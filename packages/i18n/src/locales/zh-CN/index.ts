@@ -242,6 +242,8 @@ export const zhCN = {
     enhancementFailed: "提示词增强失败",
     dismissEnhancementError: "关闭增强错误",
     abort: "停止",
+    sendWhileRunning: "发送后续消息 · Alt+Enter 立即转向",
+    steeringUnavailable: "当前轮已无法接收转向输入，草稿已保留。",
     stopGenerating: "停止生成",
     running: "正在处理…",
     loadingSession: "正在加载会话…",

@@ -240,6 +240,8 @@ export const es = {
     "enhancementFailed": "Error en la mejora de solicitud",
     "dismissEnhancementError": "Descartar error de mejora",
     "abort": "Detener",
+    sendWhileRunning: "Enviar seguimiento · Alt+Enter para orientar",
+    steeringUnavailable: "Este turno ya no acepta indicaciones. Se conservó el borrador.",
     "stopGenerating": "Dejar de generar",
     "running": "Trabajando...",
     "loadingSession": "Cargando conversación...",

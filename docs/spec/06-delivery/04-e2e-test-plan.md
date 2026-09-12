@@ -317,3 +317,41 @@ Behavior is identified but the scenario is incomplete or not yet accepted.
 ## Documented
 
 Scenario is fully specified but no automated implementation currently
+
+#### E2E-AGENT-alt-enter-steers-active-turn: Enter follows up and Alt+Enter steers the active turn
+
+- **Preconditions**: A session with a configured model and a controllable
+  streaming response/tool; an image-capable model for the attachment case.
+- **Steps**:
+  1. Start a prompt, then type a follow-up and press Enter. Confirm a FIFO row.
+  2. During the same turn, type a correction and press Alt+Enter. Repeat with
+     an image chip and with two corrections before the current request ends.
+  3. Finish the current response/tool batch and inspect the next model input,
+     transcript and durable turn id. Let the turn finish and observe follow-up.
+  4. Repeat with Enter-to-send off, an open autocomplete menu, Shift+Enter,
+     Alt+Shift+Enter and a Chinese IME candidate confirmation.
+  5. Race steering against turn completion, Stop, and a pending plan approval;
+     switch sessions while a rejected request is pending.
+  6. Change the next-turn model while running, then steer. Verify the active
+     model and permission configuration remain unchanged.
+  7. Steer while the parent waits for background delegates; leave them running
+     and verify the parent receives the correction before their reports finish.
+  8. Reload after completion and simulate a crash after a streaming reply was
+     reserved by steering. Inspect row order, recovered text and owning turn.
+- **Expected**: Enter queues an ordinary follow-up. Alt+Enter creates a user
+  row in the current turn with no queue row or new public `agent_start`.
+  Started tools finish, then the next request contains the corrections/images.
+  The ordinary FIFO starts only after durable turn finalization. IME and
+  newline actions never submit; idle Alt+Enter sends normally. A stale/closed
+  target keeps the draft in its own session and never fails the active turn.
+  Accepted input is not replayed independently after Stop. Completed replies
+  replace provisional snapshots in place; crash recovery preserves the latest
+  checkpoint and adjacent steering rows without duplicates.
+- **Specs linked**: `03-runtime/01-ipc-protocol.md` (§5.1a),
+  `03-runtime/02-agent-runtime.md` (§4.0), `03-runtime/04-data-storage.md`,
+  `04-ux/09-interaction-patterns.md` (§3.5), ADR active-turn-steering, active-turn-steering
+- **Acceptance**: C (conversation & stream), E (tools & permissions), Quality
+- **Milestone**: M5
+- **Status**: Unit-covered (runtime steering, Composer/store keyboard action,
+  outbox and host reservation tests); rendered desktop journey Draft
+  (do not run E2E locally unless explicitly requested)

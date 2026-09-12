@@ -1250,3 +1250,22 @@ columns for anything the host filters, joins, sums, or indexes.
     session, `(pluginId, source, externalId)` idempotency, no project or model
     binding unless an explicit host-created `projectId` is supplied,
     ownership-scoped reads/mutations, and recoverable trash before purge.
+
+
+## Active-turn steering transcript reservations
+
+An accepted steering input is journaled through Electron's existing message
+outbox. If an assistant is still streaming, its provisional snapshot is queued
+first to reserve its transcript position before the new user row. The host
+stores the provisional row and an in-flight checkpoint, including an empty
+reservation so crash recovery can settle it. Further stream checkpoints remain
+valid while the indexed assistant has `status: streaming`.
+
+`session.appendMessage` retains idempotent replay for completed messages. Its
+narrow exception lets a terminal assistant replace an indexed streaming
+assistant with the same session/message id. It updates exactly that transcript
+line and search text, retaining sequence, owning turn and every other row.
+Late partial snapshots and duplicate terminal snapshots cannot overwrite the
+settled result. Recovery promotes the latest checkpoint in that same position.
+The outbox likewise keeps a newer snapshot that replaces an append while its
+host call is still pending. No schema migration is required.

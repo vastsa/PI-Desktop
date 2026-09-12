@@ -59,3 +59,34 @@ test("deleting a session drops its queued outbox entries (D318)", async () => {
   );
 });
 
+
+
+test("a final reply replaces an in-flight steering checkpoint without being dropped", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-steering-outbox-"));
+  const outbox = new PersistenceOutbox(dir, silent);
+  let releaseFirst;
+  let firstStarted;
+  const started = new Promise((resolve) => { firstStarted = resolve; });
+  const writes = [];
+  const host = {
+    isAvailable: () => true,
+    call: async (_method, params) => {
+      writes.push(params.message);
+      if (writes.length === 1) {
+        firstStarted();
+        await new Promise((resolve) => { releaseFirst = resolve; });
+      }
+    },
+  };
+  const row = { key: "message:session:reply", sessionId: "session", turnId: "turn" };
+  await outbox.enqueue({ ...row, message: { id: "reply", content: "partial", status: "streaming" } }, () => host);
+  await started;
+  await outbox.enqueue({ key: "message:session:input", sessionId: "session", message: { id: "input", content: "steer" }, turnId: "turn" }, () => host);
+  await outbox.enqueue({ ...row, message: { id: "reply", content: "complete reply", status: "complete" } }, () => host);
+  releaseFirst();
+  await outbox.flush(() => host);
+  assert.deepEqual(writes.map((message) => [message.id, message.content]), [
+    ["reply", "partial"], ["reply", "complete reply"], ["input", "steer"],
+  ]);
+  assert.equal(outbox.size(), 0);
+});

@@ -240,6 +240,8 @@ export const de = {
     "enhancementFailed": "Eingabeaufforderung zur Verbesserung fehlgeschlagen",
     "dismissEnhancementError": "Verbesserungsfehler verwerfen",
     "abort": "Stoppen",
+    sendWhileRunning: "Folgenachricht senden · Alt+Enter zum Lenken",
+    steeringUnavailable: "Diese Runde nimmt keine weiteren Eingaben an. Dein Entwurf wurde behalten.",
     "stopGenerating": "Generieren stoppen",
     "running": "Funktioniert…",
     "loadingSession": "Konversation wird geladen…",

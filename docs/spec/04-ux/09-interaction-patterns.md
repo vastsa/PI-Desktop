@@ -31,6 +31,7 @@
 | `Enter` | Send message when Enter-to-send is on; newline when it is off | Composer focused |
 | `Cmd/Ctrl + Enter` | Send message when Enter-to-send is off | Composer focused |
 | `Shift + Enter` | Newline | Composer focused |
+| `Alt + Enter` (`Option + Enter` on macOS) | Steer the current turn; send normally when idle | Composer focused, outside IME composition |
 | `Escape` | Clear input / blur composer | Composer focused |
 | `Cmd/Ctrl + ↑` | Scroll to top of transcript | Transcript focused |
 | `Cmd/Ctrl + ↓` | Scroll to bottom of transcript | Transcript focused |
@@ -644,7 +645,8 @@ may be retained while exactly one workspace supplies the visible shell context.
 ### 3.4 Queued send
 
 - While a session is running, the composer shows Send when the draft has
-  content and Stop when it is empty. Accepted prompts clear the composer and
+  content and Stop when it is empty. Normal Send and Enter-to-send are follow-up
+  actions. Accepted follow-ups clear the composer and
   append to that session's Host-owned, persisted FIFO queue; session switching
   never moves or clears another session's queue.
 - The queue renders above the composer. Each row has an independently
@@ -661,6 +663,29 @@ may be retained while exactly one workspace supplies the visible shell context.
 - Abort remains immediate and never clears the queue. Queued prompts survive
   application restart and remain held until a controller attaches (ADR 0213).
   Finalization during application shutdown must not start another queued turn.
+
+### 3.5 Steer the current turn
+
+- `Alt+Enter` submits the visible draft to the current turn immediately. On
+  macOS this is `Option+Enter`. It works with Enter-to-send on or off and takes
+  precedence over an open autocomplete menu. An idle composer sends normally.
+- `Shift+Enter` and `Alt+Shift+Enter` insert a newline. An Enter confirming an
+  IME candidate (`isComposing` or key code 229) never sends or steers.
+- Steering appears as a user message in the current transcript, clears the
+  draft immediately, and reaches the next model request after the current
+  response/tool batch. It creates no FIFO row and does not interrupt tools.
+- Submission captures the session and current turn identity. If that target
+  ends, rejects input, or is awaiting approval, the draft is restored in its
+  own session and a concise error is shown. New text typed after submission
+  takes precedence over restoration. The running turn is not marked failed.
+- File/image chips use the existing attachment checks and the active model's
+  capability. Queued configuration changes apply to the next ordinary turn;
+  steering keeps the current configuration and sends slash-prefixed text
+  literally, without dispatching local mode or extension commands.
+- Stop retains all accepted steering input as history. Smart Stop does not
+  remove the latest steering row or restore the original prompt over it.
+- The Send tooltip identifies follow-up and the steering shortcut. The
+  existing single Send/Stop slot and Host-owned follow-up list are retained.
 
 ## 3A. Context checkpoint lifecycle
 
@@ -1112,7 +1137,8 @@ Project drag/drop follows these patterns:
 ### 8a.3 Keyboard while open
 
 - ↑/↓ move the highlight with wraparound; Home/End are left to the textarea.
-- Enter / Tab accept the highlighted item; Enter and Cmd/Ctrl+Enter never send
+- Enter / Tab accept the highlighted item; Alt+Enter uses active-turn steering
+  instead of accepting a suggestion. Enter and Cmd/Ctrl+Enter never send
   while the menu has a highlighted item (this precedes the Enter-to-send setting).
   otherwise keeps its behavior).
 - Escape closes only the menu — it takes precedence over the composer's
