@@ -18,7 +18,6 @@ import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
 import {
   existsSync,
-  mkdirSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -88,7 +87,6 @@ import {
   type Risk,
   type ShortcutPlatform,
   type ThinkingLevel,
-  type HostStatusEvent,
   type UiMessage,
   type MessageUsage,
   addUsage,
@@ -164,15 +162,7 @@ import { parseAllowedExternalUrl } from "./safe-open-external";
 import type { PluginAppearance } from "../shared/plugin-panel-chrome";
 import { Logger, ignoreBrokenStdio } from "./logger";
 import {
-  GLIBC_UNSUPPORTED_STATUS,
-  assertLinuxGlibcSupported,
-  isGlibcUnsupportedError,
-} from "./linux-glibc";
-import {
-  DB_SCHEMA_TOO_NEW_STATUS,
-  detectRuntimeArch,
   isDbSchemaTooNewError,
-  schemaTooNewOf,
 } from "./host-boot-diagnostics";
 import { collectWorkspaceDiff } from "./git-diff";
 import { BrowserPane, resolveLocalFile } from "./browser-view";
@@ -279,6 +269,7 @@ import { createHostRuntime } from "./runtime/host";
 import { createSidecarRuntime } from "./runtime/sidecar";
 import { createEventPersistence } from "./runtime/event-persistence";
 import { createPlanRuntime, type PlanRuntimeState } from "./runtime/plans";
+import { createRuntimeLifecycle } from "./runtime/lifecycle";
 import { registerDiagnosticsIpc } from "./ipc/diagnostics-ipc";
 import { registerMarketIpc } from "./ipc/market-ipc";
 import { registerMcpIpc } from "./ipc/mcp-ipc";
@@ -3004,16 +2995,12 @@ function applySummonWindowShortcut(keybindings?: KeybindingOverrides) {
 }
 
 
-const RESTART_WINDOW_MS = 120_000;
-const MAX_RESTARTS_PER_WINDOW = 3;
-const restartState = {
-  host: { count: 0, windowStart: 0 },
-  sidecar: { count: 0, windowStart: 0 },
-};
-type RestartKind = "host" | "sidecar";
-const restartInFlight: Record<RestartKind, Promise<void> | null> = {
-  host: null,
-  sidecar: null,
+let runtimeLifecycle: ReturnType<typeof createRuntimeLifecycle> | null = null;
+const superviseRestart = (kind: "host" | "sidecar"): Promise<void> => {
+  if (!runtimeLifecycle) {
+    return Promise.reject(new Error("runtime lifecycle is not initialized"));
+  }
+  return runtimeLifecycle.superviseRestart(kind);
 };
 
 const planUiProbe = createPlanUiProbe({
@@ -3132,202 +3119,23 @@ const { wireHost, startHost } = createHostRuntime({
   superviseRestart,
   isQuitting: () => quitting,
 });
-function superviseRestart(kind: RestartKind): Promise<void> {
-  const existing = restartInFlight[kind];
-  if (existing) return existing;
-  const run = superviseRestartLoop(kind).finally(() => {
-    if (restartInFlight[kind] === run) restartInFlight[kind] = null;
-  });
-  restartInFlight[kind] = run;
-  return run;
-}
 
-async function superviseRestartLoop(kind: RestartKind): Promise<void> {
-  const st = restartState[kind];
-  while (!quitting) {
-    const now = Date.now();
-    if (now - st.windowStart > RESTART_WINDOW_MS) {
-      st.windowStart = now;
-      st.count = 0;
-    }
-    st.count += 1;
-    if (st.count > MAX_RESTARTS_PER_WINDOW) {
-      logger.app("runtime", "error", `${kind} restart limit reached; giving up`, {
-        code: ErrorCodes.HOST_UNAVAILABLE,
-      });
-      sendToRenderer(IPC.event.hostStatus, {
-        ok: false,
-        component: kind,
-        fatal: true,
-      });
-      return;
-    }
-    const delay = Math.min(500 * 2 ** (st.count - 1), 4000);
-    await new Promise((r) => setTimeout(r, delay));
-    if (quitting) return;
-    try {
-      if (kind === "host") {
-        await startHost();
-        if (sidecar && host) sidecar.setHost(host);
-      } else {
-        await startSidecar();
-      }
-      await drainApprovedPlanExecutions();
-      logger.app("runtime", "warn", `${kind} restarted after crash`);
-      sendToRenderer(IPC.event.hostStatus, {
-        ok: true,
-        component: kind,
-        restarted: true,
-      });
-      return;
-    } catch (e) {
-      const schema = schemaTooNewOf(e);
-      if (schema) {
-        logger.app("runtime", "error", "local data schema is newer than this build", {
-          code: ErrorCodes.HOST_UNAVAILABLE,
-          data: schema,
-        });
-        sendToRenderer(IPC.event.hostStatus, {
-          ok: false,
-          component: kind,
-          fatal: true,
-          message: DB_SCHEMA_TOO_NEW_STATUS,
-          schema,
-        });
-        return;
-      }
-      if (isGlibcUnsupportedError(e)) {
-        logger.app("runtime", "error", "linux glibc is below the packaged host floor", {
-          code: ErrorCodes.HOST_UNAVAILABLE,
-          data: String(e),
-        });
-        sendToRenderer(IPC.event.hostStatus, {
-          ok: false,
-          component: kind,
-          fatal: true,
-          message: GLIBC_UNSUPPORTED_STATUS,
-        });
-        return;
-      }
-      logger.app("runtime", "error", `${kind} restart failed`, { data: String(e) });
-    }
-  }
-}
-
-/**
- * Boot outcome pushed once the renderer has mounted. Known unrecoverable
- * failures travel as status tokens the UI can phrase; anything else is the
- * raw error. The architecture check rides along even on success so an Intel
- * build under Rosetta gets a hint instead of silently running slower.
- */
-function bootHostStatus(bootError: unknown): HostStatusEvent {
-  const status: HostStatusEvent = { ok: !bootError };
-  if (bootError) {
-    status.component = "host";
-    status.fatal = true;
-    const schema = schemaTooNewOf(bootError);
-    if (schema) {
-      status.message = DB_SCHEMA_TOO_NEW_STATUS;
-      status.schema = schema;
-    } else if (isGlibcUnsupportedError(bootError)) {
-      status.message = GLIBC_UNSUPPORTED_STATUS;
-    } else {
-      status.message = String(bootError);
-    }
-  }
-  const arch = runtimeArch();
-  if (arch.mismatch) {
-    status.archMismatch = {
-      platform: arch.platform,
-      processArch: arch.processArch,
-      machineArch: arch.machineArch,
-    };
-  }
-  return status;
-}
-
-let runtimeArchCache: ReturnType<typeof detectRuntimeArch> | null = null;
-function runtimeArch() {
-  if (!runtimeArchCache) {
-    runtimeArchCache = detectRuntimeArch();
-    if (runtimeArchCache.mismatch) {
-      logger.app("lifecycle", "warn", "build is not native to this cpu", {
-        data: runtimeArchCache,
-      });
-    }
-  }
-  return runtimeArchCache;
-}
-
-async function bootBackends() {
-  mkdirSync(join(dataDir, "logs"), { recursive: true });
-  logger.app("lifecycle", "info", `app boot ${APP_NAME} ${APP_VERSION}`, {
-    data: { protocolVersion: PROTOCOL_VERSION },
-  });
-  await startHost();
-  try {
-    const stored = await host!.call("settings.get");
-    await applyNetworkProxyFromAppSettings(stored);
-  } catch {
-    await applyNetworkProxyFromAppSettings({ mode: "system" });
-  }
-  await startSidecar();
-
-  // Keep plugin host services wired to live workspace / app metadata.
-  plugins.setServices({
-    getWorkspacePath: () => {
-      try {
-        // Best-effort sync cache; refreshed on demand by callers that await host.
-        return (globalThis as any).__piWorkspacePath ?? null;
-      } catch {
-        return null;
-      }
-    },
-    getAppVersion: () => APP_VERSION,
-  });
-  try {
-    const ws = await host!.call<{ workspace: { path?: string } | null }>("workspace.get");
-    setCurrentWorkspacePath(ws.workspace?.path ?? null);
-  } catch {
-    setCurrentWorkspacePath(null);
-  }
-
-  // Restore enabled plugins
-  try {
-    const listed = await host!.call<{ plugins: any[] }>("plugins.list");
-    rememberPluginScopes(listed.plugins ?? []);
-    for (const p of listed.plugins ?? []) {
-      if (p.enabled && p.path) {
-        try {
-          await plugins.loadFromPath(p.path, p.permissions ?? [], {
-            development: p.source === "dev",
-          });
-          // Dev plugins keep hot reload across restarts: the folder was picked
-          // once, and the edit loop should not have to pick it again.
-          if (p.source === "dev") plugins.watchDevPlugin(p.id);
-          logger.app("plugin", "info", "plugin restored", { pluginId: p.id });
-        } catch (e) {
-          logger.app("plugin", "error", "plugin restore failed", {
-            pluginId: p.id,
-            data: String(e),
-          });
-        }
-      }
-    }
-  } catch (e) {
-    logger.app("plugin", "error", "plugin list failed", { data: String(e) });
-  }
-
-  // The user's MCP servers are only *registered* here; each one connects the
-  // first time a session that can see it is assembled, so a project-scoped
-  // server costs nothing until that project is open.
-  await refreshUserMcp();
-  await drainApprovedPlanExecutions().catch((error) =>
-    logger.app("runtime", "warn", "queued approved plan drain failed", {
-      data: String(error),
-    }),
-  );
-}
+runtimeLifecycle = createRuntimeLifecycle({
+  runtimeState,
+  dataDir,
+  logger,
+  sendToRenderer,
+  startHost,
+  startSidecar,
+  drainApprovedPlanExecutions,
+  applyNetworkProxyFromAppSettings,
+  plugins,
+  setCurrentWorkspacePath,
+  rememberPluginScopes,
+  refreshUserMcp,
+  isQuitting: () => quitting,
+});
+const { bootHostStatus, runtimeArch, bootBackends } = runtimeLifecycle;
 
 function registerIpc() {
   return registerIpcHandlers({
