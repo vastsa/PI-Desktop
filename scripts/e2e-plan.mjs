@@ -9,6 +9,7 @@ import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { setTimeout as delay } from "node:timers/promises";
 import { PROTOCOL_VERSION as SHARED_PROTOCOL_VERSION } from "../packages/shared/dist/protocol.js";
 
 import {
