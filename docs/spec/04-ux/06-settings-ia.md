@@ -445,6 +445,10 @@ system while preserving their different data ownership:
   the destination still has no visibility toggle
 - Supports project search, add, activate, project-session expansion, pin,
   archive/restore, and close
+- A successful session import bound to an archived project restores that
+  project's renderer presentation state after the session refresh, making the
+  imported session visible in the default sidebar. Ordinary refreshes and
+  skipped imports preserve the archive choice.
 - Add project opens the Create project dialog. The user supplies a display name
   and can select multiple local folders in one native picker; the first folder
   is the Primary workspace and the remaining folders are retained as open

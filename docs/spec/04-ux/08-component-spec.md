@@ -2863,6 +2863,11 @@ groups, select candidates, and start an explicit import.
   leaves every group collapsed.
 - A successful import creates or reuses one durable Projects-index entry for
   each distinct non-empty project path and refreshes sessions/projects.
+- When a successful core or plugin import adds a project-bound session under an
+  archived project, the renderer restores that project's presentation state
+  after the refresh so the project and imported session are visible in the
+  default sidebar. This applies only to newly added bound sessions; ordinary
+  refreshes, pathless sessions, and skipped imports preserve archive state.
 - Path-less imports create no project entry and remain under Temporary
   sessions. Import never creates a physical filesystem directory.
 - Re-importing an existing source session skips it without duplicating its

@@ -6478,6 +6478,10 @@ needed.
 | C — Conversation & stream (IME slash alias) | E2E-255 |
 | E — Tools & permissions (Skill residency) | E2E-254 |
 | Quality (Skill residency and IME slash alias) | E2E-254, E2E-255 |
+| C — Conversation & stream (import visibility) | E2E-257 |
+| F — Persistence (import visibility) | E2E-257 |
+| G — Plugins (import visibility) | E2E-257 |
+| Quality (import visibility) | E2E-257 |
 
 | Milestone | Scenarios |
 |---|---|
@@ -6490,7 +6494,7 @@ needed.
 | M2 (IME slash alias) | E2E-255 |
 | M5 (Skill residency) | E2E-254 |
 | M6 | E2E-104, E2E-105, E2E-106, E2E-107, E2E-108, E2E-109, E2E-110, E2E-111, E2E-112, E2E-113, E2E-114, E2E-115, E2E-116, E2E-117, E2E-118, E2E-119, E2E-120, E2E-103, E2E-172 |
-| M6+ | E2E-121, E2E-122, E2E-148, E2E-150, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159, E2E-160, E2E-161, E2E-162, E2E-163, E2E-166, E2E-168, E2E-173, E2E-174, E2E-176, E2E-179, E2E-196a, E2E-196b, E2E-196c, E2E-198, E2E-199, E2E-200, E2E-202, E2E-203, E2E-205, E2E-209, E2E-210, E2E-212, E2E-213, E2E-214, E2E-215, E2E-216, E2E-217, E2E-218, E2E-219 |
+| M6+ | E2E-121, E2E-122, E2E-148, E2E-150, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159, E2E-160, E2E-161, E2E-162, E2E-163, E2E-166, E2E-168, E2E-173, E2E-174, E2E-176, E2E-179, E2E-196a, E2E-196b, E2E-196c, E2E-198, E2E-199, E2E-200, E2E-202, E2E-203, E2E-205, E2E-209, E2E-210, E2E-212, E2E-213, E2E-214, E2E-215, E2E-216, E2E-217, E2E-218, E2E-219, E2E-257 |
 | Post-MVP | E2E-022A, E2E-022B, E2E-022C, E2E-024I, E2E-024J, E2E-024K, E2E-024L, E2E-024M (plugin roadmap R2/R3/R6) |
 | Post-baseline local automation | E2E-220 |
 | Post-MVP remote control | E2E-221, E2E-222, E2E-223, E2E-224, E2E-225, E2E-226, E2E-227, E2E-228, E2E-229, E2E-230, E2E-231, E2E-232 |
@@ -10342,3 +10346,36 @@ sample extensions under `apps/desktop/test/fixtures/pi-extensions/`.
 - **Status**: Unit-covered (`home-project-switcher.test.mjs`,
   `git-clone.test.mjs`, `sidebar-preferences.test.mjs`); full UI scenario Draft
   (run only in a capable environment when this surface changes)
+
+#### E2E-257: Importing into an archived project restores its visibility
+
+- **Preconditions**: A durable project has been archived in the renderer
+  sidebar preferences and is hidden from the default sidebar. A core import
+  candidate has that project's path, and a test plugin can import a session
+  with an explicit host project id.
+- **Steps**:
+  1. Open Settings → Project archive and confirm the archived project remains
+     available there while the default sidebar omits it.
+  2. Scan and import the core candidate whose project path belongs to the
+     archived project.
+  3. Confirm the project and its imported session appear in the default
+     sidebar, then archive the project again.
+  4. Use the plugin's `session.importBatch` with the existing project's id and
+     inspect the sidebar after the host refresh event.
+  5. Refresh sessions without importing anything, import a pathless session,
+     and repeat an already imported session.
+- **Expected**: Each successful import that adds a project-bound session clears
+  the archived presentation state for that exact normalized project path and
+  makes the project/session discoverable. Ordinary refreshes, pathless
+  sessions, skipped imports, and plugin history paths without an explicit
+  project binding leave archive state unchanged; no host project row or
+  transcript is deleted or recreated.
+- **Specs linked**: `04-ux/06-settings-ia.md`, `04-ux/08-component-spec.md`,
+  `03-runtime/04-data-storage.md`, ADR 0236, D407
+- **Acceptance**: C (conversation & stream), F (persistence), G (plugins),
+  Quality
+- **Milestone**: M6+
+- **Status**: Unit/source-contract covered (`sidebar-session-groups.test.mjs`,
+  `project-import-archive.test.mjs`, `plugin-session-refresh.test.mjs`);
+  rendered desktop journey Draft (run only in a capable environment when this
+  surface changes)
