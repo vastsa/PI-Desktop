@@ -189,14 +189,15 @@ Intel x64 通道发布 `PI-Desktop-<version>-x64.dmg` 和
 blockmap），任何无后缀或架构错误的 macOS 工件都会使发布失败。
 
 DMG 使用带有品牌视觉的 720×500 背景，并明确展示拖入 Applications 的安装手势。
-应用和 Applications 链接位于主区域；首次启动助手和说明文件位于下方的辅助区域，
-这样未签名构建的处理路径可被发现，但不会被误认为正常安装动作。
+应用和 Applications 链接位于主区域；打开说明位于下方的辅助区域，这样未签名构建的
+处理路径可被发现，但不会被误认为正常安装动作。说明显示为 `If app won't open, read this.txt`；
+DMG 不包含可执行的 command 助手。
 
-每个 macOS DMG 和 ZIP 的安装包根目录都会包含可执行的
-`PI-Desktop-macOS-open.command` 以及配套的
-`PI-Desktop-macOS-opening-help.txt`。将 `PI-Desktop.app` 移动到
-`/Applications` 或 `~/Applications` 后，用户可以双击该助手。它只搜索这两个固定
-位置，在存在时递归删除唯一的 `com.apple.quarantine` 属性，然后打开 PI-Desktop。
+每个 macOS DMG 的安装包根目录都会包含配套的
+`PI-Desktop-macOS-opening-help.txt`，显示名为 `If app won't open, read this.txt`。macOS ZIP
+还包含该说明和可执行的 `PI-Desktop-macOS-open.command`。将 `PI-Desktop.app` 移动到
+`/Applications` 或 `~/Applications` 后，ZIP 用户可以双击该助手。它只搜索这两个
+固定位置，在存在时递归删除唯一的 `com.apple.quarantine` 属性，然后打开 PI-Desktop。
 在执行前它会校验 `CFBundleIdentifier=com.pi-desktop.app`。它不会使用 `sudo`，也不
 接受任意应用路径。标准系统位置的终端备用命令为：
 

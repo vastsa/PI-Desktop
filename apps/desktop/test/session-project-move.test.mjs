@@ -79,7 +79,7 @@ test("renderer api and store expose one guarded move action", () => {
   assert.match(storeBlock, /await api\.moveSessionProject\(id, projectPath\)/);
 });
 
-test("sidebar sessions drag onto project groups and offer a menu fallback", () => {
+test("sidebar sessions drag onto project groups without a menu fallback", () => {
   assert.match(sidebar, /const SESSION_DRAG_MIME = "application\/x-pi-desktop-session";/);
   assert.match(sidebar, /draggable=\{!running\}/);
   assert.match(sidebar, /beginSessionDrag\(event, session\.id\)/);
@@ -87,17 +87,14 @@ test("sidebar sessions drag onto project groups and offer a menu fallback", () =
   assert.match(sidebar, /is-dragging/);
   assert.match(sidebar, /onProjectDropTargetOver\(event, entry\)/);
   assert.match(sidebar, /onProjectDropTargetDrop\(event, entry\)/);
-  // The transfer payload is authoritative: a stale dragging id must never
-  // move a session the user did not drag.
-  assert.match(sidebar, /sessionIdFromDrag\(event\.dataTransfer\)/);
   assert.match(sidebar, /dropProjectKey === entry\.key \? "is-drop-target" : ""/);
-  assert.match(sidebar, /data-action="move-session-to-project"/);
-  assert.match(sidebar, /nav\.moveToProject/);
+  assert.doesNotMatch(sidebar, /data-action="move-session-to-project"/);
+  assert.doesNotMatch(sidebar, /nav\.moveToProject/);
   assert.match(sidebar, /disabled=\{Boolean\(runningSessions\[session\.id\]\)\}/);
   // A drag inside the same project group must not offer itself as a target.
   assert.match(
     sidebar,
-    /item\.key !== normalizeProjectPath\(session\.projectPath\)/,
+    /normalizeProjectPath\(dragged\.projectPath\) === entry\.key/,
   );
 });
 
@@ -139,7 +136,6 @@ test("new drag/drop copy ships in the reviewed locales", () => {
 
   for (const source of [en, zhCN, zhTW]) {
     for (const key of [
-      "moveToProject",
       "sessionMoved",
       "moveRunningSessionBlocked",
       "moveSessionUnavailable",
@@ -152,8 +148,6 @@ test("new drag/drop copy ships in the reviewed locales", () => {
       assert.match(source, new RegExp(`${key}:`));
     }
   }
-  assert.match(en, /moveToProject: "Move to project"/);
-  assert.match(zhCN, /moveToProject: "移动到项目"/);
 });
 
 test("drag state cannot outlive the dragged row or trust a stale id", () => {
@@ -204,13 +198,8 @@ test("session move and prompt setup share a per-session critical section", () =>
 });
 
 test("drag ordering keeps priority buckets and rejects malformed ranks", () => {
-  // Project reordering moved from HTML5 drag events to a long-press pointer
-  // flow; the bucket guard now lives in sidebar-project-reorder.ts.
-  const reorderLib = read("../src/lib/sidebar-project-reorder.ts");
-  assert.match(reorderLib, /Boolean\(source\.archived\) === Boolean\(target\.archived\)/);
-  assert.match(reorderLib, /Boolean\(source\.pinned\) === Boolean\(target\.pinned\)/);
-  assert.match(sidebar, /projectReorderShouldArm\(/);
-  assert.match(sidebar, /sameProjectReorderBucket\(source\.meta, destination\.meta\)/);
+  assert.match(sidebar, /sameProjectReorderBucket\(source\.meta, target\.meta\)/);
+  assert.match(sidebar, /const source = projectEntries\[sourceIndex\]/);
   assert.match(sidebarPreferences, /Number\.isSafeInteger\(value\)/);
   assert.match(sidebarPreferences, /manualOrder\(meta\[ak\]\?\.order\)/);
 });

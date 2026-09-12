@@ -445,6 +445,10 @@ system while preserving their different data ownership:
   the destination still has no visibility toggle
 - Supports project search, add, activate, project-session expansion, pin,
   archive/restore, and close
+- Add project opens the Create project dialog. The user supplies a display name
+  and can select multiple local folders in one native picker; the first folder
+  is the Primary workspace and the remaining folders are retained as open
+  project tabs after creation.
 - The destination is one workbench, not a stack of bands (D267, revising D168):
   a quiet intro line above a single toolbar above a single elevated panel. It
   reuses the same composition, control height, and row rhythm as the agent
@@ -473,6 +477,12 @@ system while preserving their different data ownership:
   pinned tag remains as the localized text cue.
 - The row menu groups create/edit actions above pin, archive/restore, and the
   destructive Close action, and closes on Escape or any outside press
+- The row menu includes Project memory. Its editor is a compact viewport-level
+  dialog with a list of editable memory cards. Each card supports an optional
+  title, multiline content, and removal; the dialog also supports adding
+  entries, shows an empty state, and keeps Cancel/Save actions. Saved entries
+  are scoped to that project's path and are available in later chats for the
+  project.
 - Project search also matches session titles. Matching a session retains and
   expands its owning project; expanded sessions are ordered by latest activity,
   show a count and relative update time, and reveal additional rows in batches

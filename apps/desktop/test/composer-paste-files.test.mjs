@@ -53,6 +53,16 @@ test("composer converts oversized text paste and materializes clipboard files", 
   assert.match(composer, /await materializeDraftSession\(\)/);
 });
 
+test("expanding a pasted text chip preserves it when the bounded read fails", () => {
+  assert.match(composer, /if \(result\.kind !== "text" \|\| result\.content === undefined\)/);
+  assert.match(composer, /showToast\(message, \{ variant: "error" \}\)/);
+  assert.match(
+    composer,
+    /if \([\s\S]*?liveReference\.sessionId !== sourceSessionId[\s\S]*?liveReference\.path !== reference\.path[\s\S]*?\) \{\s*return;/,
+  );
+  assert.match(composer, /if \(index === -1\) return;/);
+});
+
 test("chip sentinels stay unique inside the private-use range", () => {
   const baseLiteral = composer.match(/const CHIP_TOKEN_BASE = (0x[0-9a-f]+);/)?.[1];
   const endLiteral = composer.match(/const CHIP_TOKEN_END = (0x[0-9a-f]+);/)?.[1];

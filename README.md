@@ -327,11 +327,26 @@ Ubuntu 20.04, Debian 11, Fedora 35, and older releases cannot load the bundled h
 ### macOS
 
 The tagged-release workflow publishes unsigned macOS artifacts by default. For
-a trusted unsigned install, move `PI-Desktop.app` to Applications and
-double-click `PI-Desktop-macOS-open.command` if macOS says the app is damaged.
-A manually dispatched run with `sign_macos: true` signs, notarizes, and staples
-macOS artifacts with Developer ID credentials before publication; signed builds
-do not need the helper.
+a trusted unsigned install, move `PI-Desktop.app` to Applications and open it.
+If macOS says the app is damaged or does not open:
+
+1. Confirm that the app came from a trusted PI-Desktop release.
+2. Move `PI-Desktop.app` to `/Applications`.
+3. Open Terminal and run:
+
+   ```sh
+   xattr -r -d com.apple.quarantine /Applications/PI-Desktop.app
+   ```
+
+4. Open PI-Desktop again.
+
+The DMG includes `If app won't open, read this.txt` with these instructions.
+The macOS ZIP package also includes `PI-Desktop-macOS-open.command`, which can
+perform the same trusted-source fallback after the app is moved to Applications.
+The command removes only Apple's quarantine attribute; do not use it for an
+untrusted app. A manually dispatched run with `sign_macos: true` signs,
+notarizes, and staples macOS artifacts with Developer ID credentials before
+publication; signed builds do not need this fallback.
 
 ---
 

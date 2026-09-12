@@ -323,10 +323,24 @@ Ubuntu 20.04、Debian 11、Fedora 35 及更旧的发行版无法加载自带的 
 ### macOS
 
 带标签发布工作流程默认发布未签名的 macOS 工件。对于可信的未签名安装，将
-`PI-Desktop.app` 移动到 Applications；如果 macOS 提示应用已损坏，双击
-`PI-Desktop-macOS-open.command` 即可。手动运行并设置 `sign_macos: true` 时，工作流
-会在发布前使用 Developer ID 凭据完成 macOS 工件的签名、公证和装订；已签名版本无需
-使用该助手。
+`PI-Desktop.app` 移动到 Applications 后直接打开。如果 macOS 提示应用已损坏或应用
+打不开：
+
+1. 确认应用来自可信的 PI-Desktop 发布版本。
+2. 将 `PI-Desktop.app` 移动到 `/Applications`。
+3. 打开“终端”，执行：
+
+   ```sh
+   xattr -r -d com.apple.quarantine /Applications/PI-Desktop.app
+   ```
+
+4. 再次打开 PI-Desktop。
+
+DMG 中的 `If app won't open, read this.txt` 也包含这份说明。macOS ZIP 安装包还附带
+`PI-Desktop-macOS-open.command`，将应用移到 Applications 后可用于同一可信来源的兜底
+处理。该命令只会移除 Apple 的 quarantine 属性；不要对不可信的应用使用。手动运行并
+设置 `sign_macos: true` 时，工作流会在发布前使用 Developer ID 凭据完成 macOS 工件的
+签名、公证和装订；已签名版本无需使用此兜底方式。
 
 ---
 

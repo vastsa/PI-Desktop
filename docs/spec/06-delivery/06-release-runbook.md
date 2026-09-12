@@ -216,18 +216,20 @@ any unlabelled or wrong-architecture macOS artifact.
 
 The DMG uses a branded 720×500 background with a clear drag-to-Applications
 gesture. The app and Applications link occupy the main row; the first-launch
-helper and opening note sit in a secondary row so the unsigned-build path is
-discoverable without making it the normal installation action.
+opening note sits in a secondary row so the unsigned-build path is discoverable
+without making it the normal installation action. The note is displayed as
+`If app won't open, read this.txt`; the DMG does not include the executable command helper.
 
-Every macOS DMG and ZIP includes the executable
-`PI-Desktop-macOS-open.command` and the companion
-`PI-Desktop-macOS-opening-help.txt` at the package root. After moving
-`PI-Desktop.app` to `/Applications` or `~/Applications`, users can double-click
-the helper. It searches only those two fixed locations, removes only the
-recursive `com.apple.quarantine` attribute when present, and opens PI-Desktop.
-Before doing so it verifies `CFBundleIdentifier=com.pi-desktop.app`. It does
-not use `sudo` or accept an arbitrary application path. The manual fallback
-for the standard system location is:
+Every macOS DMG includes the companion
+`PI-Desktop-macOS-opening-help.txt` at the package root under that display
+name. The macOS ZIP includes both that note and the executable
+`PI-Desktop-macOS-open.command`. After moving `PI-Desktop.app` to
+`/Applications` or `~/Applications`, ZIP users can double-click the helper. It
+searches only those two fixed locations, removes only the recursive
+`com.apple.quarantine` attribute when present, and opens PI-Desktop. Before
+doing so it verifies `CFBundleIdentifier=com.pi-desktop.app`. It does not use
+`sudo` or accept an arbitrary application path. The manual fallback for the
+standard system location is:
 
 ```sh
 xattr -r -d com.apple.quarantine /Applications/PI-Desktop.app

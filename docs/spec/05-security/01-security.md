@@ -154,12 +154,15 @@ replace an artifact.
 - The client carries no GitHub token. A private or otherwise unreachable feed
   fails closed; automatic failures stay ambient and explicit checks expose the
   error.
-- Unsigned macOS distributions include an explicit first-launch helper for a
-  trusted source. It searches only `/Applications/PI-Desktop.app` and
-  `~/Applications/PI-Desktop.app`, verifies `CFBundleIdentifier` is
-  `com.pi-desktop.app`, removes only `com.apple.quarantine` recursively when
-  present, and opens the app. It accepts no arbitrary path, uses no privilege
-  escalation, and is not a substitute for Developer ID signing or notarization.
+- Unsigned macOS distributions keep a narrow first-launch fallback for trusted
+  sources. The DMG exposes only a text note named `If app won't open, read this.txt`; it gives
+  the manual `com.apple.quarantine` command and says signed/notarized builds do
+  not need it. The ZIP package also includes the executable helper, which
+  searches only `/Applications/PI-Desktop.app` and `~/Applications/PI-Desktop.app`,
+  verifies `CFBundleIdentifier` is `com.pi-desktop.app`, removes only
+  `com.apple.quarantine` recursively when present, and opens the app. It accepts
+  no arbitrary path, uses no privilege escalation, and is not a substitute for
+  Developer ID signing or notarization.
 - Localized product "what's new" text (D164/D345) is selected in Main from the
   shipped changelog catalog and attached to `UpdateState.releaseNotes`. The
   renderer cannot supply a notes URL, feed, or remote body; missing catalog

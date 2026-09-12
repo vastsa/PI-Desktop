@@ -3292,23 +3292,24 @@ IPC 请求无法关闭。
 - **里程碑**：M6+
 - **状态**：当前默认行为；本场景不满足 E2E-196c。
 
-#### E2E-196b：未签名的 macOS 软件包包含首次启动助手
+#### E2E-196b：未签名的 macOS 软件包展示首次启动指引
 
 - **先决条件**：默认未签名的 macOS 发布已为至少一个本机架构生成 DMG 和 ZIP 工件；
   测试 macOS 账户可以将应用复制到 `/Applications` 或 `~/Applications`。
 - **步骤**：1) 打开 DMG 并检查根目录和布局。2) 确认应用与 Applications 链接位于主
-  区域，首次启动助手与说明文件位于下方辅助区域。3) 不解压应用内容，检查 ZIP 根目录。
-  4) 阅读 `PI-Desktop-macOS-opening-help.txt`，检查
-  `PI-Desktop-macOS-open.command` 的可执行权限和内容。5) 将应用移动到
-  `/Applications`，然后双击该助手。
-- **预期**：两个软件包的根目录都包含可执行助手和同一份打开说明文件。DMG 使用带品牌
-  的 720×500 背景，助手明确标为首次启动动作。说明包含
-  `xattr -r -d com.apple.quarantine /Applications/PI-Desktop.app`，并说明助手仅适用于
-  macOS 对可信未签名工件提示应用已损坏的场景；已签名/公证版本无需执行。助手只查找
-  `/Applications/PI-Desktop.app` 和 `~/Applications/PI-Desktop.app`，在存在时只删除
-  `com.apple.quarantine` 属性，然后打开应用，不使用 `sudo`，也不接受任意路径；助手会
-  在修改属性前校验 `CFBundleIdentifier=com.pi-desktop.app`。说明不会声称未签名工件已
-  通过 Gatekeeper 资质验证。
+  区域，且下方唯一的辅助项是 `If app won't open, read this.txt`。3) 确认 DMG 不含 command 助手。
+  4) 不解压应用内容，检查 ZIP 根目录，并确认其中同时存在
+  `PI-Desktop-macOS-opening-help.txt` 和可执行的 `PI-Desktop-macOS-open.command`。
+  5) 阅读说明，将应用移动到 `/Applications`，然后双击 ZIP 中的助手。
+- **预期**：DMG 使用带品牌的 720×500 背景，包含应用、Applications 链接和显示为
+  `If app won't open, read this.txt` 的纯文本说明，不包含或暴露 command 助手。ZIP 根目录包含助手
+  和同一份说明。说明包含
+  `xattr -r -d com.apple.quarantine /Applications/PI-Desktop.app`，并说明兜底方式仅适用
+  于 macOS 对可信未签名工件提示应用已损坏或应用打不开的场景；已签名/公证版本无需
+  执行。ZIP 助手只查找 `/Applications/PI-Desktop.app` 和 `~/Applications/PI-Desktop.app`，
+  在存在时只删除 `com.apple.quarantine` 属性，然后打开应用，不使用 `sudo`，也不接受
+  任意路径；助手会在修改属性前校验 `CFBundleIdentifier=com.pi-desktop.app`。说明不会
+  声称未签名工件已通过 Gatekeeper 资质验证。
 - **关联规格**：`06-delivery/06-release-runbook.md`、`05-security/01-security.md`
 - **验收**：质量、安全
 - **里程碑**：M6+
@@ -4284,13 +4285,15 @@ IPC 请求无法关闭。
 - **步骤**：
   1. 打开设置 → AI → 默认项，确认大段文本粘贴阈值为 600；将其改为测试值并保存，然后返回输入框。
   2. 粘贴刚好达到阈值的文本，确认仍使用原生文本区域；在草稿开头、中间和末尾粘贴多一个字符的文本，包括多行和 Unicode 内容。
-  3. 检查每次超阈值粘贴：确认前后文本保持不变，原始选择处出现生成的 `@temporary-name` 和空格，文本区域没有临时文件绝对路径，传输期间显示正确的忙碌/错误状态。
-  4. 检查会话 `scratch/<sessionId>/pasted/` 文件字节，发送混合草稿并检查渲染器请求、持久化用户消息和代理可读取的路径。发送前切换项目和会话以检查缓存草稿，再删除内联标记并确认它不再发送。
-  5. 删除所属会话，确认临时粘贴文件被删除。
+  3. 检查每次超阈值粘贴：确认前后文本保持不变，原始选择处出现生成的 `pasted-text-*.txt` 芯片，编辑器没有临时文件绝对路径，传输期间显示正确的忙碌/错误状态。
+  4. 点击生成的 TXT 芯片，再用键盘聚焦并按 Enter、Space 重复测试。确认准确的 UTF-8 内容在原位置替换芯片，文本可以继续编辑，插入符号位于内容末尾，随后发送使用修改后的文本。读取等待期间切换草稿或删除芯片，确认过期响应不会修改当前草稿。
+  5. 检查会话 `scratch/<sessionId>/pasted/` 文件字节，发送仍含芯片的混合草稿并检查渲染器请求、持久化用户消息和代理可读取的路径。发送前切换项目和会话以检查缓存草稿，再删除芯片并确认它不再发送。
+  6. 删除所属会话，确认临时粘贴文件被删除。
 - **预期**：
   - 阈值持久化在 AI 默认项中；旧设置默认使用 600，且只接受 1 至 1,000,000 的整数。
   - 不超过阈值的文本仍走原生路径；超过阈值的文本以 UTF-8 `text/plain` 原样保存到所属会话的临时 `pasted/` 目录，不修改项目或创建工件。
-  - 内联标记插入在准确的粘贴位置；发送时只在原位置解析一次为规范路径，不追加 basename，也不作为重复附件发送。删除或编辑掉标记后会移除映射。
+  - 由哨兵支持的 TXT 芯片插入在准确的粘贴位置，包括多行草稿中间。点击或按 Enter/Space 会将其展开为准确的可编辑文本并移除引用；之后的修改就是发送内容。读取失败、二进制、图像或过大时保留芯片和映射。
+  - 仍存在的芯片会在原位置只解析一次为规范路径，不追加 basename，也不作为重复附件发送。删除芯片后会移除映射。
   - 会话切换、项目切换、未答复 Stop 恢复以及会话删除遵循现有会话归属和清理规则。
 - **链接规格**：`04-ux/06-settings-ia.md`、`04-ux/07-ui-design-system.md` §8.1、`04-ux/08-component-spec.md` §11.7–11.8、`04-ux/09-interaction-patterns.md` §8a、`03-runtime/01-ipc-protocol.md` §8、`03-runtime/04-data-storage.md` §7、`08-meta/decisions-log.md`（D262）、ADR 0059、ADR 0070、ADR 0131
 - **接受**：C（对话和流）、E（工具和权限）、F（持久）、质量

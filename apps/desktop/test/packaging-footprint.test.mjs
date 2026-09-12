@@ -208,7 +208,7 @@ test("macOS targets follow the native architecture selected by the runner", () =
   assert.doesNotMatch(packageJson.scripts["dist:mac"], /--(?:arm64|x64)/);
 });
 
-test("macOS installers include trusted-source first-launch guidance", () => {
+test("macOS installers expose DMG guidance and retain the ZIP helper", () => {
   assert.deepEqual(packageJson.build.mac.extraDistFiles, [
     "PI-Desktop-macOS-open.command",
     "PI-Desktop-macOS-opening-help.txt",
@@ -221,20 +221,18 @@ test("macOS installers include trusted-source first-launch guidance", () => {
     { x: 180, y: 240 },
     { x: 540, y: 240, type: "link", path: "/Applications" },
     {
-      x: 250,
-      y: 370,
-      type: "file",
-      name: "Open PI-Desktop.command",
-      path: "PI-Desktop-macOS-open.command",
-    },
-    {
       x: 470,
       y: 370,
       type: "file",
-      name: "Read me first.txt",
+      name: "If app won't open, read this.txt",
       path: "PI-Desktop-macOS-opening-help.txt",
     },
   ]);
+  assert.doesNotMatch(
+    JSON.stringify(packageJson.build.dmg.contents),
+    /PI-Desktop-macOS-open\.command|Open PI-Desktop\.command/,
+    "the DMG must not expose the command helper",
+  );
   assert.deepEqual([...dmgBackground.subarray(0, 8)], [
     137, 80, 78, 71, 13, 10, 26, 10,
   ]);
@@ -246,13 +244,13 @@ test("macOS installers include trusted-source first-launch guidance", () => {
   assert.equal(dmgBackgroundRetina.readUInt32BE(16), 1440);
   assert.equal(dmgBackgroundRetina.readUInt32BE(20), 1000);
   assert.ok(macOpenScriptStat.mode & 0o111, "opening helper must be executable");
-  assert.match(macOpenFixNote, /Open PI-Desktop\.command/);
   assert.match(
     macOpenFixNote,
     /xattr -r -d com\.apple\.quarantine \/Applications\/PI-Desktop\.app/,
   );
   assert.match(macOpenFixNote, /trusted PI-Desktop source/);
-  assert.match(macOpenFixNote, /Signed and\s+notarized builds do not need/);
+  assert.match(macOpenFixNote, /Signed and\s+notarized\s+builds do not need/);
+  assert.match(macOpenFixNote, /PI-Desktop-macOS-open\.command/);
   assert.match(macOpenScript, /\/Applications\/\$\{APP_BUNDLE_NAME\}/);
   assert.match(macOpenScript, /CFBundleIdentifier/);
   assert.match(macOpenScript, /com\.pi-desktop\.app/);

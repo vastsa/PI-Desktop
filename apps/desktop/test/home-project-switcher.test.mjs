@@ -21,19 +21,19 @@ test("empty-home project name opens a switcher instead of the folder picker", ()
   assert.match(emptyBlock, /<HomeProjectSwitcher[\s\S]*\/>/);
 });
 
-test("home project switcher lists sidebar projects and can open another folder", () => {
+test("home project switcher lists sidebar projects and can clone a git repo", () => {
   assert.match(switcher, /<AnchoredMenu/);
   assert.match(switcher, /listSwitcherProjects/);
   assert.match(switcher, /project\.searchPlaceholder/);
   assert.match(switcher, /newSession\(\{ projectPath: nextPath \}\)/);
-  assert.match(switcher, /nextKey !== previous/);
-  assert.match(switcher, /data-switcher-index=\{index\}/);
-  assert.match(switcher, /nav\.newProject/);
+  assert.match(switcher, /cloneProject/);
+  assert.match(switcher, /parseGitCloneUrl/);
+  assert.match(switcher, /project\.clone/);
   assert.match(switcher, /project\.open/);
   assert.match(switcher, /await openProject\(\)/);
+  assert.doesNotMatch(switcher, /nav\.newProject/);
   assert.match(switcher, /data-testid="home-project-switcher"/);
   assert.match(switcher, /aria-haspopup="menu"/);
-  assert.match(switcher, /aria-activedescendant/);
   assert.match(switcher, /initialFocus="input"/);
 });
 

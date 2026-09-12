@@ -810,6 +810,7 @@ export type AppState = {
   /** Open project tabs and the host's currently active workspace. */
   openProjects: ProjectWorkspace[];
   openProjectPaths: string[];
+  createProjectDialogOpen: boolean;
   activeProjectPath?: string;
   projectMeta: Record<string, ProjectMeta>;
   /** Kept as a flat map for lightweight consumers (Sidebar). */
@@ -940,6 +941,13 @@ export type AppState = {
   ) => Promise<ReviewRollbackResult | null>;
   abort: () => Promise<void>;
   openProject: () => Promise<void>;
+  closeProjectDialog: () => void;
+  createProjectFromFolders: (input: {
+    name: string;
+    folders: string[];
+    primaryPath: string;
+  }) => Promise<void>;
+  cloneProject: (url: string) => Promise<ProjectWorkspace | null>;
   /** Re-read the active workspace metadata without changing the visible project. */
   refreshProject: (path: string) => Promise<ProjectWorkspace | null>;
   activateProject: (
@@ -1314,6 +1322,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     ),
   ),
   openProjectPaths: initialSidebarPreferences.openProjectPaths,
+  createProjectDialogOpen: false,
   activeProjectPath: undefined,
   projectMeta: initialSidebarPreferences.projectMeta,
   projectCollapsed: Object.fromEntries(
@@ -2976,54 +2985,55 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   closeProject: async (path) => get().closeProjectPath(path),
 
-  openProject: async () => {
+  cloneProject: async (url) => {
     const intent = beginNavigationIntent();
-    const result = await api.openProject();
-    if (!navigationIntentIsCurrent(intent)) return;
-    if (!result.canceled && result.workspace) {
-      const workspace = withProjectDisplayName(result.workspace, get().projectMeta);
-      if (
-        normalizeProjectPath(get().activeProjectPath) !==
-        normalizeProjectPath(workspace.path)
-      ) {
-        get().resetWorkPanelContext();
-      }
-      set((state) => {
-        const switchesVisibleProject =
-          normalizeProjectPath(state.activeProjectPath) !==
-          normalizeProjectPath(workspace.path);
-        const openProjectPaths = promoteProjectPath(
-          state.openProjectPaths,
-          workspace.path,
-        );
-        return {
-          workspace,
-          activeProjectPath: workspace.path,
-          openProjectPaths,
-          openProjects: upsertWorkspace(state.openProjects, workspace),
-          page: "chat" as const,
-          ...(switchesVisibleProject
-            ? {
-                ...clearSessionPanes(),
-                activeSessionId: undefined,
-                messages: [],
-                isRunning: false,
-              }
-            : {}),
-        };
-      });
-      if (workspace.path) {
-        rememberProject({
-          path: workspace.path,
-          name: workspace.name || workspace.path,
-          branch: workspace.branch,
-        });
-      }
-      persistCurrentSidebar(get);
-      const onboarding = await api.getOnboarding();
-      if (!navigationIntentIsCurrent(intent)) return;
-      set({ onboarding, page: "chat" });
+    const result = await api.cloneProject(url);
+    if (!navigationIntentIsCurrent(intent)) return null;
+    if (result.canceled || !result.workspace?.path) return null;
+    return get().activateProject(result.workspace.path, { navigationIntent: intent });
+  },
+
+  openProject: async () => {
+    set({ createProjectDialogOpen: true });
+  },
+  closeProjectDialog: () => {
+    set({ createProjectDialogOpen: false });
+  },
+  createProjectFromFolders: async ({ name, folders, primaryPath }) => {
+    const normalizedName = name.trim();
+    if (!normalizedName) {
+      throw new Error(i18n.t("errors.projectNameLength"));
     }
+    const uniqueFolders = folders.filter(
+      (path, index, all) =>
+        Boolean(normalizeProjectPath(path)) &&
+        all.findIndex(
+          (candidate) => normalizeProjectPath(candidate) === normalizeProjectPath(path),
+        ) === index,
+    );
+    if (uniqueFolders.length === 0) {
+      throw new Error(i18n.t("project.createFolderRequired"));
+    }
+    const normalizedPrimary = normalizeProjectPath(primaryPath);
+    const primary =
+      uniqueFolders.find((path) => normalizeProjectPath(path) === normalizedPrimary) ??
+      uniqueFolders[0];
+    const orderedFolders = [
+      primary,
+      ...uniqueFolders.filter((path) => normalizeProjectPath(path) !== normalizeProjectPath(primary)),
+    ];
+    const intent = beginNavigationIntent();
+    for (const path of orderedFolders) {
+      await get().activateProject(path, { navigationIntent: intent });
+      if (!navigationIntentIsCurrent(intent)) return;
+    }
+    get().renameProject(primary, normalizedName);
+    if (normalizeProjectPath(get().activeProjectPath) !== normalizeProjectPath(primary)) {
+      await get().activateProject(primary, { navigationIntent: intent });
+    }
+    const onboarding = await api.getOnboarding();
+    if (!navigationIntentIsCurrent(intent)) return;
+    set({ createProjectDialogOpen: false, onboarding, page: "chat" });
   },
 
   clearProject: async (opts) => {

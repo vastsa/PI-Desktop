@@ -34,6 +34,9 @@ The host is responsible for:
 - Default catalog URL: `https://raw.githubusercontent.com/vastsa/pi-desktop-plugins/main/catalog.json`
 - Package URLs may be absolute `https://` / `http://` / `file://`, or relative paths resolved against the catalog URL
 - HTTPS fetch uses `curl` in host-core
+- curl diagnostics are decoded as UTF-8 first and as the active Windows ANSI
+  code page when needed; a network failure remains `PLUGIN_NETWORK`, but its
+  localized message must not cross the RPC boundary as replacement characters
 
 ### Catalog source selection
 

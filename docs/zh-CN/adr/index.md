@@ -57,7 +57,8 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 | [ADR 0198：为每个安静间隔命名活动行](/adr/0198-quiet-interval-activity-phases) | 补齐 starting / preparing / compacting / recovering，并在等待 Subagent 时展示各自的粗粒度动作 |
 | [ADR 0200：宿主拥有的插件会话导入与归属 API](/adr/0200-plugin-owned-session-api) | 插件历史会话由主机生成 id，并按插件、来源和外部 id 归属 |
 | [ADR 0201：显式插件项目 id 与宿主拥有的会话刷新](/adr/0201-plugin-project-ids-and-session-refresh) | 插件可显式绑定主机项目，成功写入由主机通知渲染器刷新 |
-| [ADR 0204：未签名 macOS 首次启动助手](/adr/0204-unsigned-macos-first-launch-helper) | 只清理 PI-Desktop 的 quarantine 属性，并用 Finder 一键启动可信的未签名应用 |
+| [ADR 0204：未签名 macOS 首次启动助手](/adr/0204-unsigned-macos-first-launch-helper) | 只清理 PI-Desktop 的 quarantine 属性，并用 Finder 一键启动可信的未签名应用（由 ADR 0232 修订） |
+| [ADR 0232：macOS DMG 只保留打开说明](/adr/0232-macos-dmg-text-only-opening-guidance) | DMG 只显示“如果打不开请看”说明，ZIP 保留首次启动助手 |
 
 ## 完整索引
 
@@ -266,8 +267,9 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 | 0201 | [显式插件项目 id 与宿主拥有的会话刷新](/adr/0201-plugin-project-ids-and-session-refresh) | 已接受 |
 | 0202 | [暴露有效的子智能体思考元数据](/adr/0202-effective-subagent-thinking-metadata) | 已接受 |
 | 0203 | [桌面操作的本地 MCP 控制平面](/adr/0203-local-mcp-control-plane) | 已接受（由 D372 修订） |
-| 0204 | [未签名 macOS 首次启动助手](/adr/0204-unsigned-macos-first-launch-helper) | 已接受 |
+| 0204 | [未签名 macOS 首次启动助手](/adr/0204-unsigned-macos-first-launch-helper) | 已接受（由 D406 / ADR 0232 修订） |
 | 0205 | [远程 Agent 控制使用专用的 Host 边界](/adr/0205-remote-agent-control-boundary) | 已接受待实现（MVP 之后；由 D376 修订） |
+| 0232 | [macOS DMG 只保留打开说明](/adr/0232-macos-dmg-text-only-opening-guidance) | 已接受（修订 D371 / ADR 0204） |
 
 ## 什么时候看 ADR
 

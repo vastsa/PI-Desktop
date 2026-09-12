@@ -1,9 +1,9 @@
 # ADR 0204: Explicit Unsigned macOS First-Launch Helper
 
-- Status: Accepted
+- Status: Accepted (amended by D406 / ADR 0232)
 - Date: 2026-09-09
 - Deciders: PI-Desktop core
-- Related: D078, D371, E2E-196b
+- Related: D078, D371, D406, E2E-196b
 
 ## Context
 
@@ -35,14 +35,22 @@ single attribute that causes this launch failure.
 
 ## Consequences
 
-- A user can complete the documented unsigned first launch with one Finder
-  double-click after the normal drag-to-Applications step.
+- A user can read the documented unsigned first-launch fallback from the DMG;
+  the ZIP retains the one-Finder-double-click helper after the normal
+  drag-to-Applications step.
 - Other extended attributes remain intact, reducing the scope of the
   quarantine workaround.
 - The helper cannot repair an app installed outside the two standard
   Applications directories; the opening note provides the supported Terminal
   fallback for `/Applications`.
 - The same helper is harmless in signed packages but is not needed there.
+
+## Amendment (D406 / ADR 0232)
+
+The DMG-specific helper placement is replaced. DMGs now expose only the
+opening-help note, displayed as `If app won't open, read this.txt`; the executable helper
+remains in the macOS ZIP package. The note is the DMG fallback and no longer
+describes a helper that is present in the DMG.
 
 ## Alternatives considered
 

@@ -1,6 +1,6 @@
 {
   "name": "@pi-desktop/desktop",
-  "version": "0.14.6",
+  "version": "0.14.7-beta.1",
   "desktopName": "pi-desktop.desktop",
   "private": true,
   "description": "PI-Desktop Electron application",
@@ -179,17 +179,10 @@
           "path": "/Applications"
         },
         {
-          "x": 250,
-          "y": 370,
-          "type": "file",
-          "name": "Open PI-Desktop.command",
-          "path": "PI-Desktop-macOS-open.command"
-        },
-        {
           "x": 470,
           "y": 370,
           "type": "file",
-          "name": "Read me first.txt",
+          "name": "If app won't open, read this.txt",
           "path": "PI-Desktop-macOS-opening-help.txt"
         }
       ]

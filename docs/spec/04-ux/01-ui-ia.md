@@ -136,9 +136,9 @@ destination, chat as the home surface, tools and permissions inline.
 ### 3.1 Chat home (default)
 - Empty state: a restrained hero title ("What can I help you build?" — a
   project-bound session turns the project name into a dotted-underline
-  switcher that lists the sidebar's open projects, can search them, and
-  can open another local folder), an optional first-run checklist, and a
-  bottom-reserved composer. Task entry starts directly in the composer; no
+  switcher that lists the sidebar's open projects, can search them, can
+  clone a git repository, and can open another local folder), an optional first-run
+  checklist, and a bottom-reserved composer. Task entry starts directly in the composer; no
   redundant supporting paragraph, developer starter cards, or contextual
   quick-action row is rendered (D204/D206).
 - With transcript: message stream + tool disclosure rows (D071), a contextual
@@ -283,7 +283,7 @@ shared capability contract:
 | Profile menu | sidebar footer | Settings / Logs / Theme cycle (D041) |
 | Notification inbox | sidebar footer bell | All/Unread views, task failure rows only (successful completions are hidden, D295), mark-all-read and clear actions (D130/D117) |
 | Toasts | events (plugin toast, backend restored, copy) | top-center; 4s default, 8s for errors |
-| Project switcher | empty-home underlined project name | sidebar open projects + search + new/open project |
+| Project switcher | empty-home underlined project name | sidebar open projects + search + clone git project + open project |
 
 ## 5. Navigation model
 

@@ -141,6 +141,7 @@ function createRuntime(
     projectPath: string;
     scratchDir: string;
     projectInstructions: import("./project-instructions.js").ProjectInstructions;
+    projectMemory: string;
     pluginTools: PluginToolDef[];
     subagents: SubagentDefinition[];
     subagentProviders: Record<string, RuntimeProviderConfig>;
@@ -169,6 +170,7 @@ function createRuntime(
     subagents: overrides.subagents,
     subagentProviders: overrides.subagentProviders,
     projectInstructions: overrides.projectInstructions,
+    projectMemory: overrides.projectMemory,
     pluginSkills: overrides.pluginSkills,
     onEvent: overrides.onEvent ?? vi.fn(),
   });
@@ -209,6 +211,7 @@ function runtimeMatches(
     pluginTools: (runtime as any).pluginTools,
     pluginSkills: (runtime as any).pluginSkills,
     projectInstructions: (runtime as any).baseProjectInstructions,
+    projectMemory: (runtime as any).projectMemory,
     projectPath: (runtime as any).projectPath,
     commandShell: (runtime as any).commandShell,
     subagents: (runtime as any).subagents,
@@ -218,6 +221,13 @@ function runtimeMatches(
 }
 
 describe("DesktopAgentRuntime configuration matching", () => {
+  it("retires an idle runtime when project memory changes", async () => {
+    const runtime = createRuntime({ projectMemory: "Use the staging database." });
+    expect(runtimeMatches(runtime, { projectMemory: "Use the staging database." })).toBe(true);
+    expect(runtimeMatches(runtime, { projectMemory: "Use the production database." })).toBe(false);
+    await runtime.dispose();
+  });
+
   it("accepts no-auth providers and reuses only an exact pi configuration", async () => {
     const runtime = createRuntime();
 

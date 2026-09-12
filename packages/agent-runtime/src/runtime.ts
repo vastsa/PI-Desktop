@@ -136,6 +136,7 @@ import { clampThinkingLevel } from "./thinking-level.js";
 import { visionFromModelConfig } from "./model-capabilities.js";
 import type { ProjectInstructions } from "./project-instructions.js";
 import { projectInstructionsPrompt } from "./project-instructions-prompt.js";
+import { projectMemoryPrompt } from "./project-memory-prompt.js";
 import {
   pluginSkillsPrompt,
   SKILL_TOOL_NAME,
@@ -764,6 +765,8 @@ export type AgentRuntimeOptions = {
   projectPath?: string;
   /** Instructions resolved from the session's workspace. */
   projectInstructions?: ProjectInstructions;
+  /** Durable project context loaded from host-owned project memory. */
+  projectMemory?: string;
   /** Persisted transcript to seed the agent with (session isolation: each
    * session's agent carries only its own history). */
   history?: UiMessage[];
@@ -811,6 +814,7 @@ export type RuntimeMatchConfig = {
   pluginSkills?: PluginSkillDef[];
   trustedExtensions?: TrustedExtensionSpec[];
   projectInstructions?: ProjectInstructions;
+  projectMemory?: string;
   projectPath?: string;
   commandShell: CommandShellOption;
   subagents?: SubagentDefinition[];
@@ -1406,6 +1410,7 @@ export class DesktopAgentRuntime {
   private commandShell: CommandShellOption;
   private baseProjectInstructions?: ProjectInstructions;
   private projectInstructions?: ProjectInstructions;
+  private projectMemory?: string;
   /** Per-prompt claims prevent repeated path-resolution RPCs for one directory. */
   private pathInstructionClaims = new Map<
     string,
@@ -1528,6 +1533,7 @@ export class DesktopAgentRuntime {
     this.projectPath = opts.projectPath?.trim() || undefined;
     this.baseProjectInstructions = opts.projectInstructions;
     this.projectInstructions = opts.projectInstructions;
+    this.projectMemory = opts.projectMemory?.trim() || undefined;
     this.compactionEnabled = compactionEnabled(opts.compactionSettings);
     this.compactionStrategy = resolveCompactionStrategy(opts.compactionStrategy);
 
@@ -1747,6 +1753,7 @@ Delegation rules:
 
   private composeSystemPrompt(): string {
     const projectPrompt = projectInstructionsPrompt(this.projectInstructions);
+    const memoryPrompt = projectMemoryPrompt(this.projectMemory);
     const optionalToolsPrompt = this.optionalToolsPrompt();
     return composeModeSystemPrompt(
       this.mode,
@@ -1754,6 +1761,7 @@ Delegation rules:
         this.baseSystemPrompt,
         ...(optionalToolsPrompt ? [optionalToolsPrompt] : []),
         ...(projectPrompt ? [projectPrompt] : []),
+        ...(memoryPrompt ? [memoryPrompt] : []),
       ].join("\n\n"),
     );
   }
@@ -1966,6 +1974,7 @@ Delegation rules:
       safeJson(this.commandShell) === safeJson(config.commandShell) &&
       safeJson(this.baseProjectInstructions ?? null) ===
         safeJson(config.projectInstructions ?? null) &&
+      (this.projectMemory ?? "") === (config.projectMemory?.trim() ?? "") &&
       (this.projectPath ?? "") === (config.projectPath?.trim() ?? "") &&
       // Enabling a plugin, revoking agent.prompt.inject or renaming a skill
       // changes the catalog digest, which retires the runtime and its stale

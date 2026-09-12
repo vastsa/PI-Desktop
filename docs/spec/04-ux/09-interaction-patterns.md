@@ -989,13 +989,13 @@ Sidebar drag/drop is implemented:
   project association, and the transcript, attachments, tasks, revisions,
   artifacts, notifications, and scratch data stay with the session.
 - A running session is not draggable, and the session menu's project targets
-  are disabled for it. The host rejects the move as well, so a turn that starts
+  are not available. The host rejects the move as well, so a turn that starts
   mid-drag cannot leave the agent bound to the previous project's instructions.
 - The dragged row paints at opacity 0.5 and the eligible project group
   highlights with an accent outline. A session's own project group is not a
   drop target, so a same-project drag never issues a request.
-- The session menu keeps a "Move to project" list of every other project, so
-  the same move is available without a pointer drag.
+- Project reassignment is available through the drag/drop interaction only;
+  the session context menu does not contain a project list.
 - Dropping a folder on the projects list adds it as a project, or switches to
   it when it is already known; duplicate paths resolve to one project row. A
   drop that carries no folder reports why nothing happened.
@@ -1055,18 +1055,23 @@ Project drag/drop follows these patterns:
   The composer leaves visible text unchanged, appends leaf-name reference
   chips in clipboard order, then restores the textarea selection and focus.
 - For an oversized text-only paste, the renderer sends the exact UTF-8
-  `text/plain` bytes through the same session bridge, inserts a generated
-  `@<temporary-name>` token plus a space at the original selection, and keeps a
-  token-to-canonical-path mapping in the draft. The token remains inline in the
-  textarea rather than becoming a chip; dispatch replaces it in place exactly
-  once with the canonical scratch path. Pasting in the middle of a draft keeps
-  both the prefix and suffix intact.
+  `text/plain` bytes through the same session bridge, inserts a
+  sentinel-backed `pasted-text-*.txt` chip at the original selection, and keeps
+  a token-to-canonical-path mapping in the draft. Clicking the chip or pressing
+  Enter/Space reads the bounded text file and replaces the sentinel in place
+  with editable text, removing the reference and placing the caret after the
+  inserted content. A failed or unsupported read leaves the chip intact.
+  Pasting in the middle of a draft keeps both the prefix and suffix intact.
 - If the home composer has no active session, it creates or reuses one before
   writing. Failure leaves the existing draft unchanged and shows the error in
   the normal toast surface.
 - A chip remove button removes only that draft reference and restores textarea
   focus; it does not eagerly delete session scratch bytes. Backspace on an
   empty textarea removes the most recent active reference.
+- A text/plain or `.txt` chip exposes button semantics and expands on click or
+  Enter/Space. The read is bounded by the existing `fsRead` policy; binary,
+  image, oversized, or failed reads show the normal error toast and preserve
+  the chip.
 - A reference-only draft enables Send. Before dispatch, active references are
   appended after visible text and ordinary references are serialized with the
   canonical relative or absolute paths and existing whitespace quoting.
@@ -1183,8 +1188,9 @@ Project drag/drop follows these patterns:
 - The truncated project name remains visible in the row; the full path is
   tooltip/accessible-description only and never forces horizontal scroll.
 - Right-clicking a project row or opening its overflow menu exposes **Open
-  folder** as a project action. Conversation overflow no longer carries that
-  action.
+  folder** as a project action, along with the project management actions. It
+  does not expose project activation; click the directory row to activate it.
+  Conversation overflow no longer carries the folder action.
 - Choosing **Open folder** opens the project directory in the system file
   manager without changing the active session transcript.
 

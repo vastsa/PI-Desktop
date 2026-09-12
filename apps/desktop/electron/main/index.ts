@@ -23,6 +23,7 @@ import {
 } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { listInstalledFonts } from "./system-fonts";
+import { cloneGitRepository } from "./git-clone";
 import {
   applyNetworkProxyFromAppSettings,
   currentNetworkProxy,
@@ -1618,6 +1619,19 @@ async function resolveAgentRuntimeLaunch(
       ? session.projectPath.trim()
       : undefined;
   const projectInstructions = await loadInstructionChain(projectPath);
+  let projectMemory: string | undefined;
+  if (projectPath) {
+    try {
+      const result = await host.call<{ memory?: { content?: string } }>(
+        "project.memory.get",
+        { path: projectPath },
+      );
+      const content = result.memory?.content?.trim();
+      if (content) projectMemory = content;
+    } catch {
+      // Project memory is best effort; it must never prevent a session launch.
+    }
+  }
   sessionProjects.set(sessionId, projectPath ?? null);
   // Everything below is filtered by activation scope: a plugin, MCP server or
   // skill limited to certain projects must be invisible to a session on any
@@ -1798,6 +1812,7 @@ async function resolveAgentRuntimeLaunch(
       attachmentsDir: join(dataDir, "attachments"),
       projectPath,
       projectInstructions,
+      projectMemory,
       provider: {
         id: provider.id,
         name: provider.name,
@@ -6172,6 +6187,31 @@ function registerIpc() {
     },
   );
 
+  handle(
+    IPC.invoke.projectMemoryGet,
+    async (input: { projectPath?: unknown } = {}) => {
+      const projectPath = await managedProjectPath(input.projectPath);
+      if (!host) throw new Error("host unavailable");
+      return host.call("project.memory.get", { path: projectPath });
+    },
+  );
+
+  handle(
+    IPC.invoke.projectMemorySave,
+    async (input: { projectPath?: unknown; content?: unknown; entries?: unknown } = {}) => {
+      const projectPath = await managedProjectPath(input.projectPath);
+      if (!host) throw new Error("host unavailable");
+      if (Array.isArray(input.entries)) {
+        return host.call("project.memory.set", {
+          path: projectPath,
+          entries: input.entries,
+        });
+      }
+      const content = typeof input.content === "string" ? input.content : "";
+      return host.call("project.memory.set", { path: projectPath, content });
+    },
+  );
+
   handle(IPC.invoke.updatesGetState, async () => updater.getState());
 
   handle(IPC.invoke.updatesCheck, async () => updater.check({ manual: true }));
@@ -7311,6 +7351,36 @@ function registerIpc() {
     })) as { workspace: { path: string; name: string } | null };
     setCurrentWorkspacePath(res.workspace?.path ?? result.filePaths[0]);
     return { workspace: await withGitBranch(res.workspace), canceled: false };
+  });
+  handle(IPC.invoke.projectPickFolders, async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ["openDirectory", "multiSelections", "createDirectory"],
+    });
+    return {
+      folders: result.canceled ? [] : result.filePaths,
+      canceled: result.canceled,
+    };
+  });
+  handle(IPC.invoke.projectClone, async (input: { url?: string } = {}) => {
+    const parentDefault = currentWorkspacePath()
+      ? dirname(currentWorkspacePath()!)
+      : homedir();
+    const picked = await dialog.showOpenDialog({
+      defaultPath: parentDefault,
+      properties: ["openDirectory", "createDirectory"],
+    });
+    if (picked.canceled || !picked.filePaths[0]) {
+      return { workspace: null, canceled: true };
+    }
+    const dest = await cloneGitRepository({
+      url: input.url ?? "",
+      parentPath: picked.filePaths[0],
+    });
+    const workspace = await withGitBranch({
+      path: dest,
+      name: dest.split(/[\\/]/).filter(Boolean).at(-1) || dest,
+    });
+    return { workspace, canceled: false };
   });
   handle(IPC.invoke.projectSet, async (path: string) => {
     if (!host) throw new Error("host unavailable");

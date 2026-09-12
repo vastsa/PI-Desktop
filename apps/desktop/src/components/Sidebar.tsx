@@ -1873,11 +1873,6 @@ export function Sidebar({
     const entry = projectMenu
       ? projectEntries.find((item) => item.key === projectMenu)
       : undefined;
-    const otherProjects = session
-      ? projectEntries.filter(
-          (item) => item.key !== normalizeProjectPath(session.projectPath),
-        )
-      : [];
     if (!session && !entry) return null;
     return createPortal(
       <div
@@ -1962,31 +1957,6 @@ export function Sidebar({
                 </button>
               </>
             ) : null}
-            {otherProjects.length ? (
-              <>
-                <div className="sidebar-popover-divider" />
-                <div className="sidebar-popover-title">
-                  {t("nav.moveToProject", { defaultValue: "Move to project" })}
-                </div>
-                {otherProjects.map((project) => (
-                  <button
-                    key={project.key}
-                    type="button"
-                    role="menuitem"
-                    data-action="move-session-to-project"
-                    data-project-key={project.key}
-                    disabled={Boolean(runningSessions[session.id])}
-                    onClick={() => {
-                      closeMenus(false);
-                      void moveSessionToProject(session.id, project.path, project.name);
-                    }}
-                  >
-                    <IconFolder size={14} />
-                    {project.name}
-                  </button>
-                ))}
-              </>
-            ) : null}
             <button
               type="button"
               role="menuitem"
@@ -2003,23 +1973,6 @@ export function Sidebar({
           <>
             <button
               ref={menuFirstItemRef}
-              type="button"
-              role="menuitem"
-              onClick={() =>
-                void selectProject(entry.path).then((ok) => {
-                  if (ok) {
-                    closeMenus(false);
-                    focusComposer();
-                  }
-                })
-              }
-            >
-              <IconFolder size={14} />
-              {entry.active
-                ? t("project.active", { defaultValue: "Active" })
-                : t("project.switch", { defaultValue: "Switch" })}
-            </button>
-            <button
               type="button"
               role="menuitem"
               data-action="open-project-folder"

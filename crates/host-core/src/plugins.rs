@@ -3129,6 +3129,68 @@ fn download_url(url: &str) -> Result<Vec<u8>> {
     download_url_guarded(url, None)
 }
 
+/// Decode text emitted by the external curl process.
+///
+/// curl writes UTF-8 on some installations but uses the active Windows ANSI
+/// code page for localized Schannel diagnostics on others. The RPC boundary is
+/// UTF-8, so treating every stderr buffer as UTF-8 turns a useful localized
+/// error into replacement characters. Prefer UTF-8 and only use the Windows
+/// code page fallback when the bytes prove not to be UTF-8.
+fn decode_curl_output(bytes: &[u8]) -> String {
+    if let Ok(text) = std::str::from_utf8(bytes) {
+        return text.to_owned();
+    }
+
+    #[cfg(windows)]
+    if let Some(text) = decode_windows_code_page(bytes, windows_sys::Win32::Globalization::CP_ACP)
+    {
+        return text;
+    }
+
+    String::from_utf8_lossy(bytes).into_owned()
+}
+
+#[cfg(windows)]
+fn decode_windows_code_page(bytes: &[u8], code_page: u32) -> Option<String> {
+    use std::ptr::null_mut;
+    use windows_sys::Win32::Globalization::MultiByteToWideChar;
+
+    let byte_len = i32::try_from(bytes.len()).ok()?;
+    if byte_len == 0 {
+        return Some(String::new());
+    }
+
+    let wide_len = unsafe {
+        MultiByteToWideChar(
+            code_page,
+            0,
+            bytes.as_ptr(),
+            byte_len,
+            null_mut(),
+            0,
+        )
+    };
+    if wide_len <= 0 {
+        return None;
+    }
+
+    let mut wide = vec![0u16; wide_len as usize];
+    let written = unsafe {
+        MultiByteToWideChar(
+            code_page,
+            0,
+            bytes.as_ptr(),
+            byte_len,
+            wide.as_mut_ptr(),
+            wide_len,
+        )
+    };
+    if written <= 0 {
+        return None;
+    }
+    Some(String::from_utf16_lossy(&wide[..written as usize]))
+}
+
 /// Unique scratch path for one guarded download.
 ///
 /// curl writes the body to a file so stdout can carry only the effective URL;
@@ -3221,7 +3283,7 @@ fn download_url_guarded(url: &str, package_guard: Option<&str>) -> Result<Vec<u8
         if let Some(scratch) = scratch.as_ref() {
             let _ = fs::remove_file(scratch);
         }
-        let err = String::from_utf8_lossy(&output.stderr);
+        let err = decode_curl_output(&output.stderr);
         // Fall through to raw HTTP only for http:// URLs.
         if url.starts_with("https://") {
             bail!("PLUGIN_NETWORK: curl failed for {url}: {err}");
@@ -3323,6 +3385,21 @@ mod tests {
                 "installed marketplace plugin must be present in the registry"
             );
         });
+    }
+
+    #[test]
+    fn curl_diagnostic_decoding_preserves_utf8() {
+        let diagnostic = "curl: (35) TLS handshake failed\n";
+        assert_eq!(decode_curl_output(diagnostic.as_bytes()), diagnostic);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn curl_diagnostic_decoding_handles_gbk() {
+        // "你好" encoded as GBK, representative of localized curl output on
+        // a Simplified Chinese Windows installation.
+        let gbk = [0xC4, 0xE3, 0xBA, 0xC3];
+        assert_eq!(decode_windows_code_page(&gbk, 936).as_deref(), Some("你好"));
     }
 
     #[test]

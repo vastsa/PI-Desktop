@@ -52,6 +52,8 @@ Examples:
 - `pi-desktop/session/list`
 - `pi-desktop/session/summarizeTitle`
 - `pi-desktop/project/open`
+- `pi-desktop/project/pickFolders`
+- `pi-desktop/project/clone`
 - `pi-desktop/project/openFolder`
 - `pi-desktop/session/getScratchPath`
 - `pi-desktop/session/openScratchPath`
@@ -1013,10 +1015,21 @@ authorization code. `accountLabel` is a display string.
 ## 9. Project API
 
 - `project/open()`: system directory picker
+- `project/pickFolders()`: multi-select directory picker used by the
+  renderer-owned Create project dialog; returns selected absolute paths without
+  changing the active workspace
+- `project/clone({ url })`: pick a parent directory, `git clone` the URL into
+  it, and return the cloned workspace (the renderer then activates it)
 - `project/openFolder(path)`: open a known project directory in the system file
   manager
 - `project/get()`: current workspace
 - `project/list()`: durable project records, including import-created entries
+- `project/memory/get(path)`: read the host-owned memory for a canonical project
+  path
+- `project/memory/save(path, entries)`: replace that project's durable memory
+  entries; the host derives a readable `content` value, caps it at 32 KiB, and
+  uses it as context in the next session launch. Legacy callers may still save
+  plain `content`.
 - `project/set(path)`: set workspace
 - `project/clear()`
 
@@ -1035,6 +1048,18 @@ type ProjectRecord = {
  pinned: boolean;
  createdAt: number;
  lastOpenedAt: number;
+};
+
+type ProjectMemory = {
+ content: string;
+ entries?: ProjectMemoryEntry[];
+ updatedAt?: number;
+};
+
+type ProjectMemoryEntry = {
+ id: string;
+ title: string;
+ content: string;
 };
 ```
 

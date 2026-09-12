@@ -187,29 +187,31 @@ Each scenario is documented in this format:
 - **Milestone**: M6+
 - **Status**: Active default; this scenario does not satisfy E2E-196c.
 
-#### E2E-196b: Unsigned macOS packages include a first-launch helper
+#### E2E-196b: Unsigned macOS packages expose first-launch guidance
 
 - **Preconditions**: A default unsigned macOS release has produced both DMG and
   ZIP artifacts for at least one native architecture; a test macOS account can
   copy an app into `/Applications` or `~/Applications`.
 - **Steps**: 1) Open the DMG and inspect its root and layout. 2) Confirm the
-  app and Applications link form the main row, and the opening helper and note
-  are visible in the secondary row. 3) Inspect the ZIP root without extracting
-  the application contents. 4) Read `PI-Desktop-macOS-opening-help.txt` and
-  inspect the executable mode and contents of `PI-Desktop-macOS-open.command`.
-  5) Move the app to `/Applications`, then double-click the helper.
-- **Expected**: Both packages contain the executable helper and the same
-  opening-help file at the package root. The DMG uses the branded 720×500
-  background and the helper is clearly labeled as a first-launch action. The
-  note includes `xattr -r -d com.apple.quarantine /Applications/PI-Desktop.app`,
-  explains that the helper is for a trusted unsigned artifact when macOS
-  reports that the app is damaged, and says signed/notarized builds do not need
-  it. The helper searches only `/Applications/PI-Desktop.app` and
+  app and Applications link form the main row, and `If app won't open, read this.txt` is the
+  only secondary item. 3) Confirm the DMG has no command helper. 4) Inspect
+  the ZIP root without extracting the application contents and confirm it has
+  both `PI-Desktop-macOS-opening-help.txt` and the executable
+  `PI-Desktop-macOS-open.command`. 5) Read the note, move the app to
+  `/Applications`, and double-click the ZIP helper.
+- **Expected**: The DMG contains the branded 720×500 background, the app,
+  Applications link, and the text-only opening note displayed as
+  `If app won't open, read this.txt`; it does not contain or expose the command helper. The
+  ZIP contains the helper and the same note at its root. The note includes
+  `xattr -r -d com.apple.quarantine /Applications/PI-Desktop.app`, explains
+  that the fallback is only for a trusted unsigned artifact when macOS reports
+  that the app is damaged or does not open, and says signed/notarized builds do
+  not need it. The ZIP helper searches only `/Applications/PI-Desktop.app` and
   `~/Applications/PI-Desktop.app`, removes only `com.apple.quarantine` when
-  present, and opens the app without `sudo` or an arbitrary path argument. The
-  helper validates `CFBundleIdentifier=com.pi-desktop.app` before changing
-  attributes. The guidance does not claim that an unsigned artifact has passed
-  Gatekeeper qualification.
+  present, and opens the app without `sudo` or an arbitrary path argument. It
+  validates `CFBundleIdentifier=com.pi-desktop.app` before changing attributes.
+  The guidance does not claim that an unsigned artifact has passed Gatekeeper
+  qualification.
 - **Specs linked**: `06-delivery/06-release-runbook.md`,
   `05-security/01-security.md`
 - **Acceptance**: Quality, Security
@@ -1080,6 +1082,34 @@ Each scenario is documented in this format:
 - **Milestone**: M2
 - **Status**: Source-level regression covered; full UI scenario Draft
 
+#### E2E-012b: Project memory persists only within its project
+
+- **Preconditions**: App running with two retained projects and a configured
+  provider.
+- **Steps**: 1) Open the first project row menu and choose Project memory. 2)
+  Add a memory card, enter a title and project-specific note, then save. 3)
+  Reopen the editor, edit the note, add a second card, remove the first card,
+  and save. 4) Start or continue a chat in the first project and verify the
+  next runtime receives the saved entries as derived context. 5) Switch to the
+  second project and start a chat. 6) Return to the first project and reopen
+  the editor.
+- **Expected**: The editor loads the saved cards after reopening. The first
+  project's runtime receives their readable projection as a labelled
+  user-context block; the second project's runtime does not. An existing
+  legacy plain-text memory opens as one untitled card. Empty memory is valid,
+  removing all cards clears the projection, saving replaces the prior value,
+  and content above 32 KiB is rejected without a partial save. The create
+  dialog's memory hint is concise and does not imply that memory is shared
+  across projects.
+- **Specs linked**: `03-runtime/01-ipc-protocol.md` (§9),
+  `03-runtime/04-data-storage.md` (§4.1),
+  `03-runtime/06-host-rpc-protocol.md` (Projects),
+  `04-ux/06-settings-ia.md` (Project archive),
+  `04-ux/08-component-spec.md` (Sidebar interactions)
+- **Acceptance**: C (chat/stream), D (project UI), F (persistence), Localization
+- **Milestone**: M5
+- **Status**: Unit/source covered; full provider/UI journey Draft
+
 #### E2E-011f: Send while running queues per-session prompts and supports Send now
 
 - **Preconditions**: Provider configured; session A can produce a delayed
@@ -1355,6 +1385,31 @@ Each scenario is documented in this format:
 - **Acceptance**: D (open project, show path)
 - **Milestone**: M3
 - **Status**: Draft
+
+#### E2E-012a: Create a named project from multiple folders
+
+- **Preconditions**: App running; no project dialog open; at least two local
+  folders are available.
+- **Steps**: 1) Invoke Add project from Settings → Project archive or the
+  sidebar Projects heading. 2) Enter a project name. 3) Add two folders with
+  the folder picker. 4) Confirm both rows render and the first row is marked
+  Primary. 5) Remove one row, add it again, and create the project.
+- **Expected**: The dialog traps focus, closes on Escape or outside click while
+  idle, and keeps the name and selected folders visible without horizontal
+  overflow. The native picker allows multiple directories in one selection.
+  Removing a folder updates the count and never removes another row. Create is
+  disabled until both a name and one folder are present. On creation the
+  primary folder receives the entered display name and becomes the active
+  workspace; every selected folder is retained as an open project tab. The
+  dialog is unavailable while creation is in flight and returns focus to the
+  invoking control after close.
+- **Specs linked**: `03-runtime/01-ipc-protocol.md` (§9),
+  `04-ux/06-settings-ia.md` (Project archive),
+  `04-ux/08-component-spec.md` (§3.5)
+- **Acceptance**: C (project creation UI), D (multi-folder project setup),
+  Accessibility, Localization
+- **Milestone**: M3
+- **Status**: Source-level regression covered; full UI scenario Draft
 
 #### E2E-013: Read-only tools work in project
 
@@ -1797,7 +1852,7 @@ Each scenario is documented in this format:
 - **Expected**: The dragged idle session lists under the target project with its
   transcript, attachments, and tasks unchanged, and the move survives a restart
   because the session's project membership is persisted. The running session is
-  not draggable, its "Move to project" entries are disabled, and a move issued
+  not draggable, its context menu has no project-move list, and a move issued
   after a turn starts is rejected as busy rather than rebinding the agent.
   Dropping a folder on the projects list adds or switches to that project
   without creating a duplicate row, and a non-folder drop explains that a folder
@@ -1901,6 +1956,22 @@ Each scenario is documented in this format:
 - **Specs linked**: `07-plugins/07-plugin-marketplace.md`
 - **Acceptance**: G (remote marketplace source)
 - **Status**: Documented / host-core unit covered
+
+#### E2E-024Z: Windows localized curl diagnostics stay readable
+
+- **Preconditions**: Windows x64 host. The official catalog request is forced
+  to fail with a localized, non-UTF-8 curl/Schannel diagnostic (a deterministic
+  fake curl in the test PATH may emit GBK stderr and exit 35).
+- **Steps**: 1) Select Extensions → Marketplace with GitHub (official) as the
+  source. 2) Refresh the marketplace. 3) Inspect the error toast. 4) Switch to
+  the CNB mirror and refresh again.
+- **Expected**: The failed request remains a `PLUGIN_NETWORK` failure and
+  retains the readable localized diagnostic without Unicode replacement
+  characters; switching to the mirror can refresh the catalog normally.
+- **Specs linked**: `07-plugins/07-plugin-marketplace.md`,
+  `03-runtime/07-process-model.md`
+- **Acceptance**: G (remote marketplace source)
+- **Status**: Documented / host-core unit covered; Windows rendered validation pending
 
 #### E2E-024B: Marketplace install with permission review
 
@@ -2413,7 +2484,8 @@ Each scenario is documented in this format:
   6) Close B. 7) Restart the app. 8) Reopen B from Settings → Project archive.
 - **Expected**: A and B render as separate exact-path sidebar groups in a
   compact continuous list with one keyboard stop per directory disclosure;
-  every non-action point in A's row toggles only A, project actions appear on
+  every non-action point in A's row toggles only A, project activation is owned
+  by the directory row rather than its overflow menu, and project actions appear on
   hover/focus without shifting labels, the project title hover/focus path shows
   A's full absolute path in a content-sized tooltip (long paths wrap within a
   420px maximum), Open folder is a project-menu action only and opens A
@@ -4003,7 +4075,7 @@ Each scenario is documented in this format:
 - **Expected**:
   - Sessions context menus apply the temporary-group empty-session reuse rule
     and focus the composer; a new durable row is visible before any message.
-  - Projects context menus open the same folder picker as the heading
+  - Projects context menus open the same Create project dialog as the heading
     folder-plus control.
   - Existing row context menus and heading glyph buttons remain available; the
     section menus stay one-item and theme-matched with other sidebar menus.
@@ -5790,16 +5862,20 @@ Each scenario is documented in this format:
      paste text one character above it at the beginning, middle, and end of
      drafts, including multiline and Unicode content.
   3. Inspect the draft after each oversized paste: confirm the exact prefix and
-     suffix remain, a generated `@temporary-name` plus a space appears at the
-     original selection, the textarea does not contain the scratch absolute
-     path, and the composer reports its busy/error state correctly during the
-     transfer.
-  4. Inspect the session `scratch/<sessionId>/pasted/` file bytes, send the
-     mixed draft, and inspect the renderer request, persisted user message,
-     and agent-readable path. Switch projects and sessions before sending a
-     cached draft, then remove the generated token and confirm it is no longer
-     dispatched.
-  5. Delete the owning session and confirm its temporary paste files are
+     suffix remain, a generated `pasted-text-*.txt` chip appears at the original
+     selection, the editor does not contain the scratch absolute path, and the
+     composer reports its busy/error state correctly during the transfer.
+  4. Click the generated TXT chip and repeat with keyboard focus plus Enter and
+     Space. Confirm the exact UTF-8 contents replace the chip at its position,
+     the text is editable, the caret lands after it, and subsequent send uses
+     the edited text. While a read is pending, switch drafts or remove the chip
+     and confirm a stale response does not change the current draft.
+  5. Inspect the session `scratch/<sessionId>/pasted/` file bytes, send a mixed
+     draft that still contains a chip, and inspect the renderer request,
+     persisted user message, and agent-readable path. Switch projects and
+     sessions before sending a cached draft, then remove the chip and confirm it
+     is no longer dispatched.
+  6. Delete the owning session and confirm its temporary paste files are
      removed.
 - **Expected**:
   - The threshold is persisted as an AI default, defaults to 600 on older
@@ -5807,10 +5883,14 @@ Each scenario is documented in this format:
   - Text at or below the threshold remains native. Text above it is saved
     byte-for-byte as UTF-8 `text/plain` under the owning session's scratch
     `pasted/` directory, without changing the project or creating an artifact.
-  - The inline token is inserted at the exact paste selection, including in the
-    middle of a multiline draft. Dispatch resolves its canonical path in place
-    exactly once; it is neither appended as a basename nor duplicated as an
-    attachment. Removing or editing out the token removes that mapping.
+  - The sentinel-backed TXT chip is inserted at the exact paste selection,
+    including in the middle of a multiline draft. Clicking or pressing Enter /
+    Space expands it to editable exact text and removes its reference; edits
+    made afterward are what dispatch sends. A failed, binary, image, or
+    oversized read leaves the chip and mapping intact.
+  - Any remaining chip is resolved to its canonical path in place exactly once;
+    it is neither appended as a basename nor duplicated as an attachment.
+    Removing the chip removes that mapping.
   - Session switching, project switching, unanswered Stop restoration, and
     session deletion respect the existing session ownership and cleanup rules.
 - **Specs linked**: `04-ux/06-settings-ia.md`,
@@ -10205,18 +10285,20 @@ sample extensions under `apps/desktop/test/fixtures/pi-extensions/`.
   2. Click the underlined name and inspect the menu.
   3. Search for a sidebar project, select a different one, and inspect the
      hero and sidebar.
-  4. Reopen the menu and choose New project / Open project, then pick a
-     folder or cancel.
-  5. Open a temporary empty session and confirm the underline is absent.
+  4. Reopen the menu and choose Open project, then pick a folder or cancel.
+  5. Reopen the menu, choose Clone git project, paste a repository URL, then
+     pick a parent folder or cancel.
+  6. Open a temporary empty session and confirm the underline is absent.
 - **Expected**: The click opens a searchable, fixed switcher of the sidebar's
   open projects instead of the folder picker. Choosing another project
   activates it and lands on that project's empty home (reusing an empty
-  session when one exists). New/Open project still uses the folder picker.
-  Temporary and no-session heroes stay without the switcher. Escape and
-  outside click dismiss the menu.
+  session when one exists). Open project still uses the folder picker. Clone
+  git project asks for a URL, then a folder, runs `git clone`, and opens the
+  cloned project. Temporary and no-session heroes stay without the switcher.
+  Escape and outside click dismiss the menu.
 - **Specs linked**: `04-ux/01-ui-ia.md`, `04-ux/08-component-spec.md`
 - **Acceptance**: Quality (navigation and accessibility)
 - **Milestone**: M5
 - **Status**: Unit-covered (`home-project-switcher.test.mjs`,
-  `sidebar-preferences.test.mjs`); full UI scenario Draft (do not run E2E
-  locally unless explicitly requested)
+  `git-clone.test.mjs`, `sidebar-preferences.test.mjs`); full UI scenario Draft
+  (do not run E2E locally unless explicitly requested)

@@ -61,6 +61,9 @@ requests use a buffered CONNECT tunnel so a proxy may coalesce the SOCKS
 handshake response without stalling the request.
 host-core marketplace `curl` gets `--proxy` from the stored settings and does
 **not** inherit proxy env, so workspace Bash cannot see proxy credentials.
+Marketplace curl diagnostics prefer UTF-8 and fall back to the active Windows
+ANSI code page before crossing the UTF-8 RPC boundary, so localized Schannel
+errors remain readable instead of becoming replacement characters.
 
 ## 4. Crash policy
 

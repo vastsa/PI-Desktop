@@ -53,6 +53,7 @@ event: pi-desktop/<domain>/event/<name>
 - `pi-desktop/agent/askTool/resolve`
 - `pi-desktop/session/list`
 - `pi-desktop/project/open`
+- `pi-desktop/project/clone`
 - `pi-desktop/project/openFolder`
 
 ## 4. 通用响应包络
@@ -865,8 +866,8 @@ StrictMode 会在挂载时把 effect 跑两遍，第二次尝试会再开一个�
 ## 9. 项目 API
 
 - `project/open()`：系统目录选择器
+- `project/clone({ url })`：选择父目录，将 URL `git clone` 进去，并返回克隆后的工作区（由渲染器激活）
 - `project/openFolder(path)`：打开系统文件中已知的项目目录
-经理
 - `project/get()`：当前工作空间
 - `project/list()`：持久的项目记录，包括导入创建的条目
 - `project/set(path)`：设置工作空间

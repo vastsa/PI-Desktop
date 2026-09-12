@@ -801,14 +801,17 @@ transcript paints those same references as composer-matching leaf-name chips
 rather than full-path text (D320).
 
 Large text pastes use a second presentation: text-only input at or below the
-configured `largePasteThreshold` remains native textarea content, while input
+configured `largePasteThreshold` remains native editor content, while input
 above it is written as UTF-8 under the active session's scratch `pasted/`
-directory. The textarea receives a generated `@<temporary-name>` token at the
-paste caret, including when pasted in the middle of an existing draft. The
-renderer keeps the token-to-canonical-path mapping out of the visible text and
-resolves that token exactly once immediately before dispatch. The threshold is
-an AI → Defaults setting, defaults to 600 characters, and applies only to
-text-only pastes; clipboard files and images retain their chip presentation.
+directory and rendered as one sentinel-backed `pasted-text-*.txt` chip at the
+paste caret. The chip remains atomic until the user clicks it or presses
+Enter/Space; the composer then reads the bounded text file, replaces the
+sentinel at its current position with editable text, removes the reference, and
+places the caret after the inserted content. A failed or unsupported read keeps
+the chip in place. The renderer resolves any remaining sentinel references
+exactly once immediately before dispatch. The threshold is an AI → Defaults
+setting, defaults to 600 characters, and applies only to text-only pastes;
+clipboard files and images retain their chip presentation.
 
 ## 8.2 Composer runtime controls
 

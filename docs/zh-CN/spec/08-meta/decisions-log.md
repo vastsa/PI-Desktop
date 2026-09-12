@@ -80,6 +80,7 @@
 | D403 | 按住标题移动即可重排 | **修订 D402 / D093 / ADR 0228：鼠标和触控笔按住项目标题并移动 8px 开始重排；没有足够移动的单击仍会选中并折叠/展开。触摸不会开始重排。强调色插入线标出前/后放置位置。`ArrowUp`/`ArrowDown` 与 Escape 不变。见 ADR 0229 与 E2E-253。** | 静止按住 400ms 是移动端长按模式，比 ChatGPT 一类桌面侧边栏列表更慢。 |
 | D404 | Skill 随 Agent 核心工具集下发 | **修订 D174 / D185 / ADR 0048 / ADR 0219：`Skill` 加入 Agent 模式核心工具集，因此只要技能目录非空，第一个 provider 请求就带有它的 schema。它从延迟目录中移除，不再出现在 `# On-demand tools`；其他按需能力与 `ToolSearch` 不变，Plan 与 Goal 仍然完全不提供该工具。不改协议、存储、权限或技能正文。见 ADR 0230 与 E2E-254。** | 用户输入的 `/skill-id` 与 `# Skills` 段落都要求模型调用 `Skill`，而 schema 中不存在的工具根本无法被调用；延迟注册让任何技能正文加载前都多一次发现往返（issue #204）。 |
 | D405 | 顿号打开斜杠菜单 | **修订 D123 / D139 / ADR 0024：当输入框为空时，第 1 个字符提交的「、」（U+3001）会在触发检测前改写为 `/`，中文输入法因此无需切换输入方式即可打开普通斜杠菜单。只改写该位置；其他位置的「、」仍是普通标点，`@` 文件菜单不受影响。仅共享语法与渲染器改动；不改 IPC、存储或补全数据源。见 ADR 0231 与 E2E-255。** | 要唤出 `/new`、`/compact`、模式别名或某个 Skill，中文输入法用户必须在书写中途切到 ASCII 输入再切回（issue #65）。 |
+| D406 | macOS DMG 只保留打开说明 | **修订 D371 / ADR 0204：macOS DMG 以 Finder 名称 `If app won't open, read this.txt` 展示打开说明，不再包含或暴露可执行的 `PI-Desktop-macOS-open.command`。macOS ZIP 安装包保留说明和助手。说明为可信未签名构建提供范围明确的终端备用命令；已签名和公证版本无需执行。见 ADR 0232 与 E2E-196b。** | DMG 应保持应用拖入 Applications 的正常安装路径简洁，同时在未签名应用打不开时提供可见且可执行的处理指引。 |
 | D244 | 紧凑的上下文用量摘要 | **修订 D103 / D184 / ADR 0047：保留上下文检查器的剩余容量触发器、已用/窗口计数、回合合计、已完成回合速度、精确的提供商数值、聚合的工具类型/调用数/令牌数以及检查点摘要，但把它们渲染为一段简短摘要。从默认面板中移除逐工具行、占比条、来源徽章、解释性估算段落和已用容量计量条。不改动协议、存储、运行时计费或模型元数据。** *（由 D347 修订：触发器移到输入框工具栏。）* | 之前的诊断式布局让一次例行的容量检查变得又高又密。保留聚合信号、移除下钻装饰，使默认状态界面可以快速浏览，同时不改变底层用量数据。参见 ADR 0103 与 E2E-060d / US-UI-61。 |
 | D347 | 输入框工具栏中的上下文用量检查器 | **修订 D103 / D184 / D244 / ADR 0047 / ADR 0103：紧凑上下文检查器放在输入框右侧工具栏、模型 × 推理芯片左侧，始终对应当前最新一条已报告用量的助手回合。触发器保留剩余容量圆环和百分比，去掉重复的 Context 文字。弹层标题为剩余 tokens + 百分比；下方行用同一套左标签/右数值节奏，只用留白分隔，不画内部分隔线（D297）。答案下方的助理元只保留模型徽章。仅渲染器改动。** | 挂在最新答案下方的检查器会随记录滚出视野。输入框只保留一个入口作为最新快照的权威位置；标题双线通过去掉多余说明文字解决，而不是加分隔线。参见 ADR 0184 与 E2E-060d / US-UI-61。 |
 | D355 | 上下文检查器按最后一次请求计算占用 | **修订 D103 / D184 / D244 / D347 / ADR 0047 / ADR 0103 / ADR 0184：剩余容量、已用/窗口计数、本轮合计，以及模型 input/output/cache/reasoning/命中率，都取最新一条已报告用量的助手消息（最后一次模型请求）。占用为该消息的 `input + output + reasoning + cacheRead + cacheWrite`。它们不是视觉工具循环里每一次请求的加总。已完成回合速度和聚合工具行仍描述该视觉回合。仅渲染器改动；宿主回合汇总和 Token Insights 仍做账单累加。** | 把工具循环里的缓存读取加总后，367k 缓存读取会紧挨着 55k 窗口。OpenCode 的上下文组件只用最后一条助手消息。参见 ADR 0193 与 E2E-060d。 |
@@ -431,7 +432,7 @@
 | D126 | 三平台发布交付（电梯D010） | *(amended by D364)* **标签构建将矩阵生成的每个工件发布到 GitHub 版本：macOS dmg/zip (arm64)、Windows NSIS x64、Linux AppImage + deb (x64)，每个都有块图和平台的 `latest*.yml` 电子更新器提要。发布提要会激活 D120 的 Windows NSIS 和 Linux AppImage 的应用内更新通道； macOS 保持通知和链接模式，直到签名通道合格为止。 NSIS 工件名称固定为无空格 (`PI-Desktop-Setup-${version}.${ext}`)，因为 GitHub 资产 URL 会损坏空格。根据基线凹凸规则（基线 `0.4.7`），D010 的仅限 macOS 范围被提升；发布管道本身在 v0.1.1-rc.1/v0.1.1 上通过了端到端合格。** | 无论如何，管道都会在每个标签上构建并验证所有三个平台；将安装程序保留为过期的 Actions 工件（保留 90 天）会阻止用户安装它们，而不会增加安全性。发布更新源是交付的重点：具有应用程序内通道的平台会静默更新，并且未来的平台回归会通过实际安装而不是未使用的工件来呈现。 |
 | D364 | Windows portable exe without installer | **Amend D120 / D126 / ADR 0022: tag builds publish a Windows x64 portable exe `PI-Desktop-Portable-${version}.exe` alongside the NSIS installer `PI-Desktop-Setup-${version}.exe`. The portable target does not write `latest.yml`. Packaged portable runs (`PORTABLE_EXECUTABLE_FILE`) use notify-and-link delivery. NSIS installs keep in-app download and quit-and-install. Data stays in the existing application data directory. Portable requests user execution level.** | Company environments that whitelist a single executable cannot run the NSIS installer. Applying the NSIS updater to a portable run would install the app, so portable stays manual (ADR 0197, E2E-211). |
 | D260 | 发布文档是一个版本载体 | **稳定版本号提升必须在打标签之前更新每一处带版本号的载体：双语言的应用内变更日志及其测试清单、每个工作区的 `package.json`（包括之前被第三个工作区根 `scripts/release.mjs` 跳过的 `docs/package.json`）、Cargo 工作区版本与 `host-core` 的锁文件条目、`APP_VERSION`，以及 `README.md` 和 `README.zh-CN.md` 中声明的 `<major>.<minor>.x` 发布线。`scripts/check-release-docs.mjs` 校验全部这些；`scripts/release.mjs` 在提升版本号之后运行它，只要任一载体不一致就拒绝提交或打标签，`--skip-docs-check` 仅保留给刻意的非发布性版本提升。扩展 D164。** | 仅有应用内变更日志这道闸门，导致已发布的文档落后：版本已到 `0.10.8`，两个 README 仍在宣传 `0.5.x` 线，而 `docs/package.json` 停在 `0.5.8`。标签是不可逆的，所以这项检查在标签存在之前运行，而不是作为评审礼节。 |
-| D371 | 显式的未签名 macOS 首次启动助手 | **每个 macOS 分发都附带可执行的 `PI-Desktop-macOS-open.command`，放在 DMG 上拖入 Applications 手势下方的可见首启行。它只查找 `/Applications/PI-Desktop.app` 与 `~/Applications/PI-Desktop.app`，校验 `CFBundleIdentifier` 为 `com.pi-desktop.app`，仅在存在时移除 `com.apple.quarantine`，然后打开应用。永不使用 `sudo`，不接受任意路径，也不替代 Developer ID 签名或公证。** | 未签名的 macOS 通道可能被 quarantine 拦截并显示误导性的"已损坏"提示，而仅限终端的 `xattr -cr` 说明比启动失败所需的范围更宽（ADR 0204，E2E-196b） |
+| D371 | 显式的未签名 macOS 首次启动助手 | *（由 D406 修订）* **每个 macOS 分发都附带可执行的 `PI-Desktop-macOS-open.command`，放在 DMG 上拖入 Applications 手势下方的可见首启行。它只查找 `/Applications/PI-Desktop.app` 与 `~/Applications/PI-Desktop.app`，校验 `CFBundleIdentifier` 为 `com.pi-desktop.app`，仅在存在时移除 `com.apple.quarantine`，然后打开应用。永不使用 `sudo`，不接受任意路径，也不替代 Developer ID 签名或公证。** | 未签名的 macOS 通道可能被 quarantine 拦截并显示误导性的"已损坏"提示，而仅限终端的 `xattr -cr` 说明比启动失败所需的范围更宽（ADR 0204，E2E-196b） |
 
 ## V. 扩展激活决策
 
@@ -3541,7 +3542,7 @@ D193 和 D194。
   不改动主机协议、存储架构、provider 请求或生命周期行为。D395 / ADR 0221
   移除了规范值的翻译。参见 E2E-219。
 
-## 2026-09-09 —— 未签名 macOS 首次启动助手（D371）
+## 2026-09-09 —— 未签名 macOS 首次启动助手（D371；由 D406 修订）
 
 - 默认 macOS 通道仍保持未签名；下载的可信工件仍可能因为 Apple 的 quarantine
   检查而被阻止，并显示容易误解的“应用已损坏”。原有的 `xattr -cr` 说明只能
@@ -3874,3 +3875,12 @@ D193 和 D194。
 - 当输入框为空时，第 1 个字符提交的「、」会在触发检测之前改写为 `/`，中文输入法因此无需切换输入方式即可打开普通斜杠菜单。
 - 只改写该位置：出现在草稿其他位置的「、」仍是普通标点，`@` 文件菜单不受影响。
 - 决策 D405 修订 D123 / D139 / ADR 0024。见 ADR 0231 与 E2E-255。
+
+## 2026-09-12 —— macOS DMG 只保留打开说明（D406）
+
+- macOS DMG 展示 `PI-Desktop-macOS-opening-help.txt`，Finder 名称为
+  `If app won't open, read this.txt`，不再包含或暴露可执行的
+  `PI-Desktop-macOS-open.command`。
+- macOS ZIP 安装包保留打开说明和可执行助手。说明为可信未签名构建提供范围明确的
+  终端备用命令；已签名和公证版本无需执行。
+- 决策 D406 修订 D371 / ADR 0204。见 ADR 0232 与 E2E-196b。

@@ -352,20 +352,38 @@ function chipSvg(key: string, size = 13): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${CHIP_ICON_SVG[key] ?? CHIP_ICON_SVG.file}</svg>`;
 }
 
+function isEditableTextReference(reference: ComposerFileReference): boolean {
+  return reference.mimeType?.toLowerCase() === "text/plain" || /\.txt$/i.test(reference.name);
+}
+
 /** Build the atomic inline chip element for one attachment reference. */
 function buildChipElement(
   reference: ComposerFileReference,
   token: string,
   removeLabel: string,
   onRemove: (token: string) => void,
+  onExpandText: (token: string) => void,
 ): HTMLElement {
   const chip = document.createElement("span");
   chip.className = "composer-chip";
   chip.contentEditable = "false";
   chip.dataset.token = token;
   chip.title = reference.path;
-  chip.setAttribute("role", "listitem");
+  const editableText = isEditableTextReference(reference);
+  chip.setAttribute("role", editableText ? "button" : "listitem");
   chip.setAttribute("aria-label", `${reference.name} — ${reference.path}`);
+  if (editableText) {
+    chip.tabIndex = 0;
+    chip.dataset.action = "expand-text-reference";
+    chip.addEventListener("click", () => onExpandText(token));
+    chip.addEventListener("keydown", (event) => {
+      if (event.target !== chip) return;
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      event.stopPropagation();
+      onExpandText(token);
+    });
+  }
 
   const icon = document.createElement("span");
   icon.className = "composer-chip-icon";
@@ -383,7 +401,10 @@ function buildChipElement(
   remove.innerHTML = chipSvg("x", 11);
   // Swallow the mousedown so removing a chip never moves the editable caret.
   remove.addEventListener("mousedown", (event) => event.preventDefault());
-  remove.addEventListener("click", () => onRemove(token));
+  remove.addEventListener("click", (event) => {
+    event.stopPropagation();
+    onRemove(token);
+  });
 
   chip.append(icon, nameSpan, remove);
   return chip;
@@ -419,6 +440,7 @@ function paintEditorValue(
   referenceByToken: Map<string, ComposerFileReference>,
   removeLabelFor: (name: string) => string,
   onRemove: (token: string) => void,
+  onExpandText: (token: string) => void,
 ): void {
   el.replaceChildren();
   let textBuffer = "";
@@ -439,6 +461,7 @@ function paintEditorValue(
             char,
             removeLabelFor(reference.name),
             onRemove,
+            onExpandText,
           ),
         );
         continue;
@@ -765,6 +788,7 @@ export function Composer({
   const referenceByTokenRef = useRef(referenceByToken);
   referenceByTokenRef.current = referenceByToken;
   const removeChipByTokenRef = useRef<(token: string) => void>(() => {});
+  const expandTextReferenceRef = useRef<(token: string) => void>(() => {});
 
   const liveDraftText = () =>
     ref.current ? readEditorValue(ref.current) : valueRef.current;
@@ -779,6 +803,7 @@ export function Composer({
       referenceByTokenRef.current,
       (name) => t("chat.removeFileReference", { name }),
       (token) => removeChipByTokenRef.current(token),
+      (token) => expandTextReferenceRef.current(token),
     );
     editorValueRef.current = nextValue;
   };
@@ -1718,6 +1743,54 @@ export function Composer({
       setEditorCaret(el, caret);
     });
   };
+
+  const expandTextReference = async (token: string) => {
+    if (inputBlocked) return;
+    const reference = referenceByTokenRef.current.get(token);
+    const editor = ref.current;
+    if (!reference || !isEditableTextReference(reference) || !editor) return;
+    if (!readEditorValue(editor).includes(token)) return;
+    const sourceSessionId = reference.sessionId;
+    try {
+      const result = await api.fsRead(reference.path, reference.mimeType);
+      if (result.kind !== "text" || result.content === undefined) {
+        const message =
+          result.kind === "tooLarge"
+            ? t("panel.files.tooLarge")
+            : result.kind === "binary"
+              ? t("panel.files.binary")
+              : t("panel.files.error");
+        showToast(message, { variant: "error" });
+        return;
+      }
+      const liveEditor = ref.current;
+      const liveReference = referenceByTokenRef.current.get(token);
+      if (
+        !liveEditor ||
+        (useAppStore.getState().activeSessionId ?? "") !== sourceSessionId ||
+        !liveReference ||
+        liveReference.sessionId !== sourceSessionId ||
+        liveReference.path !== reference.path
+      ) {
+        return;
+      }
+      const source = readEditorValue(liveEditor);
+      const index = source.indexOf(token);
+      if (index === -1) return;
+      const nextText =
+        source.slice(0, index) + result.content + source.slice(index + token.length);
+      const nextReferences = fileReferencesRef.current.filter(
+        (fileReference) => fileReference.token !== token,
+      );
+      invalidatePromptEnhancement();
+      applyEditorDraft(nextText, nextReferences, index + result.content.length);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error), {
+        variant: "error",
+      });
+    }
+  };
+  expandTextReferenceRef.current = expandTextReference;
 
   /** Clean snapshot references (drop runtime-only fields). */
   const snapshotReferences = (sourceSessionId: string) =>
