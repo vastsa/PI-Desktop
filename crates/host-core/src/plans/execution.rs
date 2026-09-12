@@ -35,8 +35,8 @@ pub(crate) fn resolution_from_proposal(proposal: PlanProposal) -> Result<PlanRes
 }
 
 /// Prevent renderer configuration calls from bypassing durable Plan work.
-/// Every persisted configuration change is blocked while its session has
-
+/// Every persisted configuration change is blocked while its session has an
+/// active or pending Plan operation.
 impl PlanManager {
     pub fn queued_executions(
         &self,

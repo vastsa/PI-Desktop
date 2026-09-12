@@ -13,7 +13,7 @@ use crate::agent_capabilities::CapabilityLevel;
 use crate::artifacts;
 use crate::audit;
 use crate::notifications;
-use crate::permissions::{PermissionDecision, PermissionManager};
+use crate::permissions::{PermissionDecision, PermissionEvaluationParams, PermissionManager};
 use crate::plans;
 use crate::plugin_sessions;
 use crate::providers::{self, DiscoveredModelInput, ProviderCreateInput, ProviderUpdateInput};
@@ -2768,14 +2768,16 @@ async fn handle_request(
                     let mut auto = st
                         .permissions
                         .evaluate_auto_with_permission_mode_and_risk_and_path(
-                            &p.session_id,
-                            &p.tool_name,
-                            &durable_mode,
-                            &effective_pm,
-                            &st.session_grants,
-                            p.declared_risk.as_deref(),
-                            external_path_permission,
-                            p.plan_safe_actions.as_deref(),
+                            PermissionEvaluationParams {
+                                session_id: &p.session_id,
+                                tool_name: &p.tool_name,
+                                mode: &durable_mode,
+                                permission_mode: &effective_pm,
+                                session_grants: &st.session_grants,
+                                declared_risk: p.declared_risk.as_deref(),
+                                requires_external_path_permission: external_path_permission,
+                                plan_safe_actions: p.plan_safe_actions.as_deref(),
+                            },
                         );
                     // Write/Edit targeting the session scratch dir never touch
                     // the user's project — skip the prompt (D114). The lexical
@@ -3117,10 +3119,12 @@ async fn handle_request(
                         scratch_path.as_deref(),
                         &p.tool_name,
                         &p.args,
-                        execution_timeout_ms,
-                        bash_options,
-                        external_path_permission,
-                        Some(&hashline_ctx),
+                        tools::ToolExecutionOptions {
+                            timeout_ms: execution_timeout_ms,
+                            bash_options,
+                            allow_external_paths: external_path_permission,
+                            hashline: Some(hashline_ctx),
+                        },
                     )
                     .await
                 };
@@ -3291,16 +3295,16 @@ async fn handle_request(
             );
             let decision = st
                 .permissions
-                .evaluate_auto_with_permission_mode_and_risk_and_path(
+                .evaluate_auto_with_permission_mode_and_risk_and_path(PermissionEvaluationParams {
                     session_id,
                     tool_name,
-                    &mode,
-                    &effective_pm,
-                    &st.session_grants,
+                    mode: &mode,
+                    permission_mode: &effective_pm,
+                    session_grants: &st.session_grants,
                     declared_risk,
-                    external_path_permission,
-                    plan_safe_actions.as_deref(),
-                );
+                    requires_external_path_permission: external_path_permission,
+                    plan_safe_actions: plan_safe_actions.as_deref(),
+                });
             Ok(json!({
                 "decision": decision,
                 "risk": PermissionManager::tool_risk_with_declared(tool_name, declared_risk),
@@ -4433,10 +4437,12 @@ mod tests {
             Some(&scratch),
             "Write",
             &json!({ "path": "notes.txt", "content": "temporary" }),
-            None,
-            None,
-            false,
-            None,
+            crate::tools::ToolExecutionOptions {
+                timeout_ms: None,
+                bash_options: None,
+                allow_external_paths: false,
+                hashline: None,
+            },
         )
         .await;
         assert!(written.ok);
@@ -4451,10 +4457,12 @@ mod tests {
             Some(&scratch),
             "Read",
             &json!({ "path": "notes.txt" }),
-            None,
-            None,
-            false,
-            None,
+            crate::tools::ToolExecutionOptions {
+                timeout_ms: None,
+                bash_options: None,
+                allow_external_paths: false,
+                hashline: None,
+            },
         )
         .await;
         assert!(read.ok);

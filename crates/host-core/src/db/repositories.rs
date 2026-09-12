@@ -336,7 +336,7 @@ impl Database {
     pub fn set_project_memory(&self, path: &str, content: &str) -> Result<ProjectMemoryRecord> {
         let project_path = canonical_project_path(path)
             .ok_or_else(|| anyhow!("project path must not be blank"))?;
-        if content.as_bytes().len() > MAX_PROJECT_MEMORY_BYTES {
+        if content.len() > MAX_PROJECT_MEMORY_BYTES {
             return Err(anyhow!(
                 "project memory exceeds {MAX_PROJECT_MEMORY_BYTES} bytes"
             ));
@@ -364,7 +364,7 @@ impl Database {
             .ok_or_else(|| anyhow!("project path must not be blank"))?;
         let entries = normalize_project_memory_entries(raw_entries)?;
         let content = render_project_memory_entries(&entries);
-        if content.as_bytes().len() > MAX_PROJECT_MEMORY_BYTES {
+        if content.len() > MAX_PROJECT_MEMORY_BYTES {
             return Err(anyhow!(
                 "project memory exceeds {MAX_PROJECT_MEMORY_BYTES} bytes"
             ));

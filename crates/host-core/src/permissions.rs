@@ -78,6 +78,17 @@ pub struct PermissionRequestParams<'a> {
     pub command_shell_id: Option<&'a str>,
 }
 
+pub struct PermissionEvaluationParams<'a> {
+    pub session_id: &'a str,
+    pub tool_name: &'a str,
+    pub mode: &'a str,
+    pub permission_mode: &'a str,
+    pub session_grants: &'a HashMap<String, Vec<String>>,
+    pub declared_risk: Option<&'a str>,
+    pub requires_external_path_permission: bool,
+    pub plan_safe_actions: Option<&'a [String]>,
+}
+
 #[derive(Debug)]
 struct Pending {
     created_at: Instant,
@@ -157,38 +168,24 @@ impl PermissionManager {
         permission_mode: &str,
         session_grants: &HashMap<String, Vec<String>>,
     ) -> Option<PermissionDecision> {
-        self.evaluate_auto_with_permission_mode_and_risk(
+        self.evaluate_auto_with_permission_mode_and_risk(PermissionEvaluationParams {
             session_id,
             tool_name,
             mode,
             permission_mode,
             session_grants,
-            None,
-            None,
-        )
+            declared_risk: None,
+            requires_external_path_permission: false,
+            plan_safe_actions: None,
+        })
     }
 
     #[cfg(test)]
     pub fn evaluate_auto_with_permission_mode_and_risk(
         &self,
-        session_id: &str,
-        tool_name: &str,
-        mode: &str,
-        permission_mode: &str,
-        session_grants: &HashMap<String, Vec<String>>,
-        declared_risk: Option<&str>,
-        plan_safe_actions: Option<&[String]>,
+        params: PermissionEvaluationParams<'_>,
     ) -> Option<PermissionDecision> {
-        self.evaluate_auto_with_permission_mode_and_risk_and_path(
-            session_id,
-            tool_name,
-            mode,
-            permission_mode,
-            session_grants,
-            declared_risk,
-            false,
-            plan_safe_actions,
-        )
+        self.evaluate_auto_with_permission_mode_and_risk_and_path(params)
     }
 
     /// Evaluate a tool that explicitly targets a path outside the session's
@@ -197,15 +194,18 @@ impl PermissionManager {
     /// mode needs a card (unless the session already granted this tool).
     pub fn evaluate_auto_with_permission_mode_and_risk_and_path(
         &self,
-        session_id: &str,
-        tool_name: &str,
-        mode: &str,
-        permission_mode: &str,
-        session_grants: &HashMap<String, Vec<String>>,
-        declared_risk: Option<&str>,
-        requires_external_path_permission: bool,
-        plan_safe_actions: Option<&[String]>,
+        params: PermissionEvaluationParams<'_>,
     ) -> Option<PermissionDecision> {
+        let PermissionEvaluationParams {
+            session_id,
+            tool_name,
+            mode,
+            permission_mode,
+            session_grants,
+            declared_risk,
+            requires_external_path_permission,
+            plan_safe_actions,
+        } = params;
         // The contract modes' tool allowlist is authoritative. This check
         // intentionally precedes low-risk classification, auto, grants, and
         // scratch paths, and covers Goal as well as Plan (D198).
@@ -614,30 +614,33 @@ mod tests {
         let pm = PermissionManager::default();
         for mode in ["ask", "accept-edits"] {
             let decision = pm.evaluate_auto_with_permission_mode_and_risk_and_path(
-                "s",
-                "Read",
-                "agent",
-                mode,
-                &no_grants(),
-                None,
-                true,
-                None,
+                PermissionEvaluationParams {
+                    session_id: "s",
+                    tool_name: "Read",
+                    mode: "agent",
+                    permission_mode: mode,
+                    session_grants: &no_grants(),
+                    declared_risk: None,
+                    requires_external_path_permission: true,
+                    plan_safe_actions: None,
+                },
             );
             assert_eq!(
                 decision, None,
                 "Read outside workspace must prompt in {mode}"
             );
         }
-        let auto = pm.evaluate_auto_with_permission_mode_and_risk_and_path(
-            "s",
-            "Read",
-            "agent",
-            "auto",
-            &no_grants(),
-            None,
-            true,
-            None,
-        );
+        let auto =
+            pm.evaluate_auto_with_permission_mode_and_risk_and_path(PermissionEvaluationParams {
+                session_id: "s",
+                tool_name: "Read",
+                mode: "agent",
+                permission_mode: "auto",
+                session_grants: &no_grants(),
+                declared_risk: None,
+                requires_external_path_permission: true,
+                plan_safe_actions: None,
+            });
         assert_eq!(auto, Some(PermissionDecision::AllowOnce));
     }
 
@@ -646,9 +649,17 @@ mod tests {
         let pm = PermissionManager::default();
         let mut grants = HashMap::new();
         grants.insert("s".to_string(), vec!["Grep".to_string()]);
-        let decision = pm.evaluate_auto_with_permission_mode_and_risk_and_path(
-            "s", "Grep", "plan", "ask", &grants, None, true, None,
-        );
+        let decision =
+            pm.evaluate_auto_with_permission_mode_and_risk_and_path(PermissionEvaluationParams {
+                session_id: "s",
+                tool_name: "Grep",
+                mode: "plan",
+                permission_mode: "ask",
+                session_grants: &grants,
+                declared_risk: None,
+                requires_external_path_permission: true,
+                plan_safe_actions: None,
+            });
         assert_eq!(decision, Some(PermissionDecision::AllowSession));
     }
 
@@ -664,42 +675,45 @@ mod tests {
     #[test]
     fn contract_mode_admits_plugin_tools_only_with_plan_safe_actions() {
         let pm = PermissionManager::default();
-        let denied = pm.evaluate_auto_with_permission_mode_and_risk_and_path(
-            "s",
-            "plugin_x_run",
-            "plan",
-            "auto",
-            &no_grants(),
-            None,
-            false,
-            None,
-        );
+        let denied =
+            pm.evaluate_auto_with_permission_mode_and_risk_and_path(PermissionEvaluationParams {
+                session_id: "s",
+                tool_name: "plugin_x_run",
+                mode: "plan",
+                permission_mode: "auto",
+                session_grants: &no_grants(),
+                declared_risk: None,
+                requires_external_path_permission: false,
+                plan_safe_actions: None,
+            });
         assert_eq!(denied, Some(PermissionDecision::Deny));
 
         let empty: [String; 0] = [];
-        let empty_denied = pm.evaluate_auto_with_permission_mode_and_risk_and_path(
-            "s",
-            "plugin_x_run",
-            "goal",
-            "auto",
-            &no_grants(),
-            None,
-            false,
-            Some(&empty),
-        );
+        let empty_denied =
+            pm.evaluate_auto_with_permission_mode_and_risk_and_path(PermissionEvaluationParams {
+                session_id: "s",
+                tool_name: "plugin_x_run",
+                mode: "goal",
+                permission_mode: "auto",
+                session_grants: &no_grants(),
+                declared_risk: None,
+                requires_external_path_permission: false,
+                plan_safe_actions: Some(&empty),
+            });
         assert_eq!(empty_denied, Some(PermissionDecision::Deny));
 
         let actions = ["navigate".to_string()];
-        let admitted = pm.evaluate_auto_with_permission_mode_and_risk_and_path(
-            "s",
-            "plugin_x_run",
-            "plan",
-            "auto",
-            &no_grants(),
-            None,
-            false,
-            Some(&actions),
-        );
+        let admitted =
+            pm.evaluate_auto_with_permission_mode_and_risk_and_path(PermissionEvaluationParams {
+                session_id: "s",
+                tool_name: "plugin_x_run",
+                mode: "plan",
+                permission_mode: "auto",
+                session_grants: &no_grants(),
+                declared_risk: None,
+                requires_external_path_permission: false,
+                plan_safe_actions: Some(&actions),
+            });
         assert_eq!(admitted, Some(PermissionDecision::AllowOnce));
     }
 

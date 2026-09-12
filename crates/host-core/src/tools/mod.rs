@@ -344,9 +344,8 @@ where
 async fn monitor_runner_control_pipe(mut control: tokio::io::Stdin) -> io::Result<()> {
     let mut buffer = [0u8; 1024];
     loop {
-        match control.read(&mut buffer).await? {
-            0 => return Ok(()),
-            _ => {}
+        if control.read(&mut buffer).await? == 0 {
+            return Ok(());
         }
     }
 }
@@ -427,7 +426,7 @@ pub async fn run_internal_tool_runner() -> Result<i32> {
                 let control_error = match control_result {
                     Ok(Ok(())) => None,
                     Ok(Err(error)) => Some(error),
-                    Err(error) => Some(io::Error::new(io::ErrorKind::Other, error)),
+                    Err(error) => Some(io::Error::other(error)),
                 };
                 let kill_result = kill_runner_process_group();
                 if let Some(error) = control_error {
@@ -779,6 +778,13 @@ impl BashExecutionOptions {
     }
 }
 
+pub struct ToolExecutionOptions<'a> {
+    pub timeout_ms: Option<u64>,
+    pub bash_options: Option<BashExecutionOptions>,
+    pub allow_external_paths: bool,
+    pub hashline: Option<HashlineContext<'a>>,
+}
+
 pub fn validate_timeout_ms(timeout_ms: Option<u64>) -> Result<(), (String, String)> {
     if let Some(timeout_ms) = timeout_ms {
         if timeout_ms == 0 || timeout_ms > MAX_TIMEOUT_MS {
@@ -1001,10 +1007,12 @@ pub async fn execute_tool_with_options(
         scratch,
         tool_name,
         args,
-        timeout_ms,
-        bash_options,
-        false,
-        None,
+        ToolExecutionOptions {
+            timeout_ms,
+            bash_options,
+            allow_external_paths: false,
+            hashline: None,
+        },
     )
     .await
 }
@@ -1016,13 +1024,16 @@ pub async fn execute_tool_with_path_access(
     scratch: Option<&Path>,
     tool_name: &str,
     args: &Value,
-    timeout_ms: Option<u64>,
-    bash_options: Option<BashExecutionOptions>,
-    allow_external_paths: bool,
-    hashline: Option<&HashlineContext<'_>>,
+    options: ToolExecutionOptions<'_>,
 ) -> ToolsExecuteResult {
+    let ToolExecutionOptions {
+        timeout_ms: requested_timeout_ms,
+        bash_options,
+        allow_external_paths,
+        hashline,
+    } = options;
     let started = Instant::now();
-    let timeout_ms = effective_timeout_ms(tool_name, timeout_ms);
+    let timeout_ms = effective_timeout_ms(tool_name, requested_timeout_ms);
     let tool_call_id = bash_options
         .as_ref()
         .map(|options| options.tool_call_id.clone())
@@ -1038,37 +1049,60 @@ pub async fn execute_tool_with_path_access(
             let _ = std::fs::create_dir_all(dir);
         }
     }
-    let result: Result<Value, hashline::ToolError> =
-        match tool_name {
-            "Read" => tool_read(workspace, scratch, args, allow_external_paths, hashline)
-                .map_err(Into::into),
-            "Glob" => tool_glob(workspace, scratch, args, allow_external_paths).map_err(Into::into),
-            "Grep" => tool_grep(workspace, scratch, args, allow_external_paths, hashline)
-                .map_err(Into::into),
-            "Write" => tool_write(workspace, scratch, args, allow_external_paths, hashline)
-                .map_err(Into::into),
-            "Edit" => tool_edit(workspace, scratch, args, allow_external_paths, hashline),
-            "Bash" => {
-                let options = bash_options.unwrap_or_else(|| {
-                    let id = shell::catalog(None)
-                        .effective
-                        .map(|option| option.id)
-                        .unwrap_or_else(|| shell::default_shell_id().to_string());
-                    BashExecutionOptions::local(id, timeout_ms)
-                });
-                tool_bash(workspace, scratch, args, options)
-                    .await
-                    .map_err(Into::into)
-            }
-            other if is_desktop_dispatched(other) => Err(hashline::ToolError::new(
-                "TOOL_NOT_FOUND",
-                format!("{other} requires the desktop runner (dispatched via plugins.execute)"),
-            )),
-            other => Err(hashline::ToolError::new(
-                "TOOL_NOT_FOUND",
-                format!("unknown tool: {other}"),
-            )),
-        };
+    let result: Result<Value, hashline::ToolError> = match tool_name {
+        "Read" => tool_read(
+            workspace,
+            scratch,
+            args,
+            allow_external_paths,
+            hashline.as_ref(),
+        )
+        .map_err(Into::into),
+        "Glob" => tool_glob(workspace, scratch, args, allow_external_paths).map_err(Into::into),
+        "Grep" => tool_grep(
+            workspace,
+            scratch,
+            args,
+            allow_external_paths,
+            hashline.as_ref(),
+        )
+        .map_err(Into::into),
+        "Write" => tool_write(
+            workspace,
+            scratch,
+            args,
+            allow_external_paths,
+            hashline.as_ref(),
+        )
+        .map_err(Into::into),
+        "Edit" => tool_edit(
+            workspace,
+            scratch,
+            args,
+            allow_external_paths,
+            hashline.as_ref(),
+        ),
+        "Bash" => {
+            let options = bash_options.unwrap_or_else(|| {
+                let id = shell::catalog(None)
+                    .effective
+                    .map(|option| option.id)
+                    .unwrap_or_else(|| shell::default_shell_id().to_string());
+                BashExecutionOptions::local(id, timeout_ms)
+            });
+            tool_bash(workspace, scratch, args, options)
+                .await
+                .map_err(Into::into)
+        }
+        other if is_desktop_dispatched(other) => Err(hashline::ToolError::new(
+            "TOOL_NOT_FOUND",
+            format!("{other} requires the desktop runner (dispatched via plugins.execute)"),
+        )),
+        other => Err(hashline::ToolError::new(
+            "TOOL_NOT_FOUND",
+            format!("unknown tool: {other}"),
+        )),
+    };
 
     match result {
         Ok(content) => {
@@ -3178,10 +3212,12 @@ mod tests {
             None,
             "Read",
             &serde_json::json!({ "path": ".env" }),
-            Some(5_000),
-            None,
-            true,
-            None,
+            ToolExecutionOptions {
+                timeout_ms: Some(5_000),
+                bash_options: None,
+                allow_external_paths: true,
+                hashline: None,
+            },
         )
         .await;
         assert_eq!(
@@ -3335,10 +3371,12 @@ mod tests {
             None,
             "Read",
             &serde_json::json!({ "path": file.to_str().unwrap() }),
-            None,
-            None,
-            true,
-            None,
+            ToolExecutionOptions {
+                timeout_ms: None,
+                bash_options: None,
+                allow_external_paths: true,
+                hashline: None,
+            },
         )
         .await;
         assert!(read.ok, "external read failed: {:?}", read.content);
@@ -3356,10 +3394,12 @@ mod tests {
                 "pattern": "needle",
                 "path": outside.path().to_str().unwrap(),
             }),
-            None,
-            None,
-            true,
-            None,
+            ToolExecutionOptions {
+                timeout_ms: None,
+                bash_options: None,
+                allow_external_paths: true,
+                hashline: None,
+            },
         )
         .await;
         assert!(grep.ok, "external grep failed: {:?}", grep.content);
@@ -3377,10 +3417,12 @@ mod tests {
                 "pattern": "needle",
                 "path": file.to_str().unwrap(),
             }),
-            None,
-            None,
-            true,
-            None,
+            ToolExecutionOptions {
+                timeout_ms: None,
+                bash_options: None,
+                allow_external_paths: true,
+                hashline: None,
+            },
         )
         .await;
         assert!(
@@ -3402,10 +3444,12 @@ mod tests {
                 "pattern": "*.rs",
                 "path": outside.path().join("src").to_str().unwrap(),
             }),
-            None,
-            None,
-            true,
-            None,
+            ToolExecutionOptions {
+                timeout_ms: None,
+                bash_options: None,
+                allow_external_paths: true,
+                hashline: None,
+            },
         )
         .await;
         assert!(glob.ok, "external glob failed: {:?}", glob.content);
@@ -3427,10 +3471,12 @@ mod tests {
             None,
             "Write",
             &serde_json::json!({ "path": file.to_str().unwrap(), "content": "before" }),
-            None,
-            None,
-            true,
-            None,
+            ToolExecutionOptions {
+                timeout_ms: None,
+                bash_options: None,
+                allow_external_paths: true,
+                hashline: None,
+            },
         )
         .await;
         assert!(write.ok, "external write failed: {:?}", write.content);
@@ -3446,10 +3492,12 @@ mod tests {
                 "tag": tag,
                 "ops": "PUT 1.=1:\n+after\n",
             }),
-            None,
-            None,
-            true,
-            None,
+            ToolExecutionOptions {
+                timeout_ms: None,
+                bash_options: None,
+                allow_external_paths: true,
+                hashline: None,
+            },
         )
         .await;
         assert!(edit.ok, "external edit failed: {:?}", edit.content);

@@ -36,7 +36,7 @@ pub struct SystemGrep<'a> {
 
 #[cfg(test)]
 thread_local! {
-    static TEST_RG: std::cell::RefCell<Option<PathBuf>> = std::cell::RefCell::new(None);
+    static TEST_RG: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
 }
 
 #[cfg(test)]
@@ -63,7 +63,7 @@ pub fn try_system_rg(req: SystemGrep<'_>) -> Option<Value> {
 fn resolve_rg() -> Option<PathBuf> {
     #[cfg(test)]
     {
-        return TEST_RG.with(|rg| rg.borrow().clone());
+        TEST_RG.with(|rg| rg.borrow().clone())
     }
     #[cfg(not(test))]
     {
