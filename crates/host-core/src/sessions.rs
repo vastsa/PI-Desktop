@@ -1588,7 +1588,14 @@ pub fn append_message(
     if message_indexed(db, session_id, &record.id)? {
         return Ok(());
     }
-    append_record(db, session_id, &session_created, &record, text.as_deref(), turn_id)?;
+    append_record(
+        db,
+        session_id,
+        &session_created,
+        &record,
+        text.as_deref(),
+        turn_id,
+    )?;
     // The final assistant row supersedes any checkpoint of the same message
     // (D299). A checkpoint for a different id belongs to a newer fragment and
     // stays until its own final row or the turn end settles it.
@@ -1899,13 +1906,13 @@ pub fn truncate_from(
         Some(message_id) => messages
             .iter()
             .position(|message| message.id == message_id)
-            .ok_or_else(|| {
-                anyhow!("NOT_FOUND: truncateFromMessageId is not in this session")
-            })?,
+            .ok_or_else(|| anyhow!("NOT_FOUND: truncateFromMessageId is not in this session"))?,
         None => match truncate_before {
             Some(count) if count >= 0 => (count as usize).min(messages.len()),
             Some(_) => {
-                return Err(anyhow!("INVALID_PARAMS: truncateBefore must be non-negative"));
+                return Err(anyhow!(
+                    "INVALID_PARAMS: truncateBefore must be non-negative"
+                ));
             }
             None => {
                 return Err(anyhow!(
@@ -2004,7 +2011,6 @@ fn archive_discarded_regenerate_branch(
         active_revision: count + 1,
     }))
 }
-
 
 /// Persist the rollback state on the tool message that owns a review snapshot.
 /// The tool result remains the message-local source of truth after restart.
@@ -2133,7 +2139,11 @@ pub fn save_message_revision(
 
 /// Owning turn per message id, for the messages of one branch. The turn is
 /// index-row state, so an archived branch carries it explicitly.
-fn owning_turns_for(db: &Database, session_id: &str, messages: &[UiMessage]) -> Result<HashMap<String, String>> {
+fn owning_turns_for(
+    db: &Database,
+    session_id: &str,
+    messages: &[UiMessage],
+) -> Result<HashMap<String, String>> {
     let mut stmt = db.conn().prepare_cached(
         "SELECT id, turn_id FROM messages
          WHERE session_id = ?1 AND turn_id IS NOT NULL",
@@ -2674,7 +2684,15 @@ pub fn end_turn(
     usage: Option<&Value>,
     create_notification: bool,
 ) -> Result<EndTurnResult> {
-    end_turn_settling(db, turn_id, status, error_code, usage, create_notification, false)
+    end_turn_settling(
+        db,
+        turn_id,
+        status,
+        error_code,
+        usage,
+        create_notification,
+        false,
+    )
 }
 
 /// `end_turn` that also settles the session's in-flight reply checkpoint
@@ -2736,9 +2754,7 @@ pub fn end_turn_settling(
     // the aborted final row is still on its way and removes it on arrival,
     // and the boot sweep settles a row that never came.
     let recovered = match session_id.as_deref() {
-        Some(session_id) if recover_inflight => {
-            recover_inflight_message(db, session_id, true)?
-        }
+        Some(session_id) if recover_inflight => recover_inflight_message(db, session_id, true)?,
         Some(session_id) if status != "aborted" => {
             if let Some(inflight) = transcripts::read_inflight(db.data_dir(), session_id)? {
                 if message_indexed(db, session_id, &inflight.message.id)? {
@@ -2851,7 +2867,10 @@ fn resolve_history_range(
     bucket: &str,
 ) -> (i64, i64) {
     let now = chrono::Local::now();
-    let end = end_date.filter(|v| *v > 0).and_then(local_from_ms).unwrap_or(now);
+    let end = end_date
+        .filter(|v| *v > 0)
+        .and_then(local_from_ms)
+        .unwrap_or(now);
     let start = start_date
         .filter(|v| *v > 0)
         .and_then(local_from_ms)
@@ -2885,8 +2904,7 @@ fn filled_history_keys(start_ms: i64, end_ms: i64, bucket: &str) -> Vec<(String,
             let end_y = end.year();
             let end_m = end.month();
             loop {
-                if let chrono::LocalResult::Single(dt)
-                | chrono::LocalResult::Ambiguous(dt, _) =
+                if let chrono::LocalResult::Single(dt) | chrono::LocalResult::Ambiguous(dt, _) =
                     chrono::Local.with_ymd_and_hms(year, month, 1, 0, 0, 0)
                 {
                     keys.push((dt.format("%Y-%m").to_string(), dt.timestamp_millis()));
@@ -3375,19 +3393,11 @@ mod tests {
             .unwrap();
         assert_eq!(after, before);
 
-        assert!(rename_session(
-            &db,
-            &session.id,
-            &"界".repeat(MAX_SESSION_TITLE_CHARS),
-        )
-        .is_ok());
+        assert!(rename_session(&db, &session.id, &"界".repeat(MAX_SESSION_TITLE_CHARS),).is_ok());
         assert!(rename_session(&db, &session.id, "   ").is_err());
-        assert!(rename_session(
-            &db,
-            &session.id,
-            &"x".repeat(MAX_SESSION_TITLE_CHARS + 1),
-        )
-        .is_err());
+        assert!(
+            rename_session(&db, &session.id, &"x".repeat(MAX_SESSION_TITLE_CHARS + 1),).is_err()
+        );
         assert!(!rename_session(&db, "missing", "Valid").unwrap());
     }
 
@@ -3710,7 +3720,11 @@ mod tests {
             append_message(
                 &db,
                 &session.id,
-                &user_msg(&format!("m{index}"), &format!("body {index}"), "2025-05-01T00:00:00Z"),
+                &user_msg(
+                    &format!("m{index}"),
+                    &format!("body {index}"),
+                    "2025-05-01T00:00:00Z",
+                ),
                 None,
             )
             .unwrap();
@@ -3747,7 +3761,10 @@ mod tests {
         // matters: the pre-change clamp against `last_seq` dropped the newest
         // ones entirely.
         for id in ["m0", "m1", "m2", "m3"] {
-            assert!(collected.iter().any(|seen| seen == id), "missing {id} in {collected:?}");
+            assert!(
+                collected.iter().any(|seen| seen == id),
+                "missing {id} in {collected:?}"
+            );
         }
         // The retried line is physically last, so it is the newest line the tail
         // window returns; the keep-last content wins and the renderer merges the
@@ -4984,14 +5001,20 @@ mod tests {
 
         let detail = get_session(&db, &session.id).unwrap().unwrap();
         assert_eq!(
-            detail.messages.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            detail
+                .messages
+                .iter()
+                .map(|m| m.id.as_str())
+                .collect::<Vec<_>>(),
             vec!["u0"]
         );
         let status: String = db
             .conn()
-            .query_row("SELECT status FROM turns WHERE id = ?1", params![turn], |row| {
-                row.get(0)
-            })
+            .query_row(
+                "SELECT status FROM turns WHERE id = ?1",
+                params![turn],
+                |row| row.get(0),
+            )
             .unwrap();
         assert_eq!(status, "aborted");
         let listed = list_message_revisions(&db, &session.id, "u1").unwrap();
@@ -5022,7 +5045,14 @@ mod tests {
         .unwrap();
         let error = truncate_from(&db, &session.id, Some("gone"), None).unwrap_err();
         assert!(error.to_string().contains("NOT_FOUND"));
-        assert_eq!(get_session(&db, &session.id).unwrap().unwrap().messages.len(), 1);
+        assert_eq!(
+            get_session(&db, &session.id)
+                .unwrap()
+                .unwrap()
+                .messages
+                .len(),
+            1
+        );
     }
 
     #[test]
@@ -5055,11 +5085,14 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(
-            payload.messages.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            payload
+                .messages
+                .iter()
+                .map(|m| m.id.as_str())
+                .collect::<Vec<_>>(),
             vec!["u1", "a1"]
         );
     }
-
 
     fn streaming_assistant(id: &str, content: &str) -> UiMessage {
         let mut message = user_msg(id, content, "2025-05-01T00:00:01Z");
@@ -5076,14 +5109,40 @@ mod tests {
         let db = Database::open(&path).unwrap();
         let session = create_session(&db, None, None, None, None, None).unwrap();
         let turn = begin_turn(&db, &session.id, None, None).unwrap();
-        append_message(&db, &session.id, &user_msg("u1", "hello", "2025-05-01T00:00:00Z"), Some(&turn))
-            .unwrap();
+        append_message(
+            &db,
+            &session.id,
+            &user_msg("u1", "hello", "2025-05-01T00:00:00Z"),
+            Some(&turn),
+        )
+        .unwrap();
 
         // Two checkpoints of the same reply: the file is replaced, not appended.
-        assert!(save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a1", "par")).unwrap());
-        assert!(save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a1", "partial")).unwrap());
-        assert!(transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
-        assert_eq!(get_session(&db, &session.id).unwrap().unwrap().messages.len(), 1);
+        assert!(save_inflight_message(
+            &db,
+            &session.id,
+            Some(&turn),
+            &streaming_assistant("a1", "par")
+        )
+        .unwrap());
+        assert!(save_inflight_message(
+            &db,
+            &session.id,
+            Some(&turn),
+            &streaming_assistant("a1", "partial")
+        )
+        .unwrap());
+        assert!(transcripts::inflight_path(db.data_dir(), &session.id)
+            .unwrap()
+            .exists());
+        assert_eq!(
+            get_session(&db, &session.id)
+                .unwrap()
+                .unwrap()
+                .messages
+                .len(),
+            1
+        );
         drop(db);
 
         // A new process: the boot sweep aborts the turn, then the checkpoint
@@ -5094,7 +5153,9 @@ mod tests {
         assert_eq!(recovered[0].0, session.id);
         assert_eq!(recovered[0].1.content, "partial");
         assert_eq!(recovered[0].1.status.as_deref(), Some("aborted"));
-        assert!(!transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
+        assert!(!transcripts::inflight_path(db.data_dir(), &session.id)
+            .unwrap()
+            .exists());
 
         let messages = get_session(&db, &session.id).unwrap().unwrap().messages;
         assert_eq!(messages.len(), 2);
@@ -5103,7 +5164,9 @@ mod tests {
         assert_eq!(messages[1].status.as_deref(), Some("aborted"));
         let owning: Option<String> = db
             .conn()
-            .query_row("SELECT turn_id FROM messages WHERE id = 'a1'", [], |r| r.get(0))
+            .query_row("SELECT turn_id FROM messages WHERE id = 'a1'", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(owning.as_deref(), Some(turn.as_str()));
         // Running it again finds nothing to do.
@@ -5115,17 +5178,35 @@ mod tests {
         let db = test_db();
         let session = create_session(&db, None, None, None, None, None).unwrap();
         let turn = begin_turn(&db, &session.id, None, None).unwrap();
-        assert!(save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a1", "partial")).unwrap());
+        assert!(save_inflight_message(
+            &db,
+            &session.id,
+            Some(&turn),
+            &streaming_assistant("a1", "partial")
+        )
+        .unwrap());
 
         let mut final_row = streaming_assistant("a1", "partial and complete");
         final_row.status = Some("complete".into());
         append_message(&db, &session.id, &final_row, Some(&turn)).unwrap();
-        assert!(!transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
+        assert!(!transcripts::inflight_path(db.data_dir(), &session.id)
+            .unwrap()
+            .exists());
 
         // A checkpoint call that was already in flight when the final row landed.
-        assert!(!save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a1", "partial")).unwrap());
-        assert!(!transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
-        assert!(recover_inflight_message(&db, &session.id, true).unwrap().is_none());
+        assert!(!save_inflight_message(
+            &db,
+            &session.id,
+            Some(&turn),
+            &streaming_assistant("a1", "partial")
+        )
+        .unwrap());
+        assert!(!transcripts::inflight_path(db.data_dir(), &session.id)
+            .unwrap()
+            .exists());
+        assert!(recover_inflight_message(&db, &session.id, true)
+            .unwrap()
+            .is_none());
 
         let messages = get_session(&db, &session.id).unwrap().unwrap().messages;
         assert_eq!(messages.len(), 1);
@@ -5138,12 +5219,20 @@ mod tests {
         let db = test_db();
         let session = create_session(&db, None, None, None, None, None).unwrap();
         let turn = begin_turn(&db, &session.id, None, None).unwrap();
-        assert!(save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a2", "second")).unwrap());
+        assert!(save_inflight_message(
+            &db,
+            &session.id,
+            Some(&turn),
+            &streaming_assistant("a2", "second")
+        )
+        .unwrap());
 
         let mut earlier = streaming_assistant("a1", "first");
         earlier.status = Some("complete".into());
         append_message(&db, &session.id, &earlier, Some(&turn)).unwrap();
-        assert!(transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
+        assert!(transcripts::inflight_path(db.data_dir(), &session.id)
+            .unwrap()
+            .exists());
     }
 
     #[test]
@@ -5153,8 +5242,16 @@ mod tests {
         let mut empty = streaming_assistant("a1", "   ");
         empty.thinking = None;
         assert!(!save_inflight_message(&db, &session.id, None, &empty).unwrap());
-        assert!(!transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
-        assert!(save_inflight_message(&db, &session.id, None, &user_msg("u1", "x", "2025-05-01T00:00:00Z")).is_err());
+        assert!(!transcripts::inflight_path(db.data_dir(), &session.id)
+            .unwrap()
+            .exists());
+        assert!(save_inflight_message(
+            &db,
+            &session.id,
+            None,
+            &user_msg("u1", "x", "2025-05-01T00:00:00Z")
+        )
+        .is_err());
     }
 
     #[test]
@@ -5162,7 +5259,13 @@ mod tests {
         let db = test_db();
         let session = create_session(&db, None, None, None, None, None).unwrap();
         let turn = begin_turn(&db, &session.id, None, None).unwrap();
-        assert!(save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a1", "partial")).unwrap());
+        assert!(save_inflight_message(
+            &db,
+            &session.id,
+            Some(&turn),
+            &streaming_assistant("a1", "partial")
+        )
+        .unwrap());
 
         let ended = end_turn_settling(&db, &turn, "completed", None, None, false, false).unwrap();
         assert!(ended.updated);
@@ -5173,17 +5276,19 @@ mod tests {
                 .exists(),
             "outbox may still be draining; do not drop the only copy (D327)"
         );
-        assert!(get_session(&db, &session.id).unwrap().unwrap().messages.is_empty());
+        assert!(get_session(&db, &session.id)
+            .unwrap()
+            .unwrap()
+            .messages
+            .is_empty());
 
         assert!(
             recover_inflight_messages(&db, false).unwrap().is_empty(),
             "boot leaves a completed leftover for the outbox"
         );
-        assert!(
-            transcripts::inflight_path(db.data_dir(), &session.id)
-                .unwrap()
-                .exists()
-        );
+        assert!(transcripts::inflight_path(db.data_dir(), &session.id)
+            .unwrap()
+            .exists());
 
         let recovered = recover_inflight_messages(&db, true).unwrap();
         assert_eq!(recovered.len(), 1);
@@ -5200,7 +5305,13 @@ mod tests {
         let db = test_db();
         let session = create_session(&db, None, None, None, None, None).unwrap();
         let turn = begin_turn(&db, &session.id, None, None).unwrap();
-        assert!(save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a1", "partial")).unwrap());
+        assert!(save_inflight_message(
+            &db,
+            &session.id,
+            Some(&turn),
+            &streaming_assistant("a1", "partial")
+        )
+        .unwrap());
         let mut final_row = streaming_assistant("a1", "partial and complete");
         final_row.status = Some("complete".into());
         append_message(&db, &session.id, &final_row, Some(&turn)).unwrap();
@@ -5208,7 +5319,9 @@ mod tests {
         let ended = end_turn_settling(&db, &turn, "completed", None, None, false, false).unwrap();
         assert!(ended.updated);
         assert!(ended.recovered.is_none());
-        assert!(!transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
+        assert!(!transcripts::inflight_path(db.data_dir(), &session.id)
+            .unwrap()
+            .exists());
         let messages = get_session(&db, &session.id).unwrap().unwrap().messages;
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].content, "partial and complete");
@@ -5220,14 +5333,31 @@ mod tests {
         let db = test_db();
         let session = create_session(&db, None, None, None, None, None).unwrap();
         let turn = begin_turn(&db, &session.id, None, None).unwrap();
-        assert!(save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a1", "partial")).unwrap());
+        assert!(save_inflight_message(
+            &db,
+            &session.id,
+            Some(&turn),
+            &streaming_assistant("a1", "partial")
+        )
+        .unwrap());
 
-        let ended = end_turn_settling(&db, &turn, "aborted", Some("TURN_ABORTED"), None, false, true).unwrap();
+        let ended = end_turn_settling(
+            &db,
+            &turn,
+            "aborted",
+            Some("TURN_ABORTED"),
+            None,
+            false,
+            true,
+        )
+        .unwrap();
         assert!(ended.updated);
         let recovered = ended.recovered.expect("checkpoint promoted");
         assert_eq!(recovered.id, "a1");
         assert_eq!(recovered.status.as_deref(), Some("aborted"));
-        assert!(!transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
+        assert!(!transcripts::inflight_path(db.data_dir(), &session.id)
+            .unwrap()
+            .exists());
         let messages = get_session(&db, &session.id).unwrap().unwrap().messages;
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].content, "partial");
@@ -5236,7 +5366,14 @@ mod tests {
         let mut late = streaming_assistant("a1", "partial");
         late.status = Some("aborted".into());
         append_message(&db, &session.id, &late, Some(&turn)).unwrap();
-        assert_eq!(get_session(&db, &session.id).unwrap().unwrap().messages.len(), 1);
+        assert_eq!(
+            get_session(&db, &session.id)
+                .unwrap()
+                .unwrap()
+                .messages
+                .len(),
+            1
+        );
     }
 
     #[test]
@@ -5244,25 +5381,57 @@ mod tests {
         let db = test_db();
         let session = create_session(&db, None, None, None, None, None).unwrap();
         let turn = begin_turn(&db, &session.id, None, None).unwrap();
-        assert!(save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a1", "partial")).unwrap());
+        assert!(save_inflight_message(
+            &db,
+            &session.id,
+            Some(&turn),
+            &streaming_assistant("a1", "partial")
+        )
+        .unwrap());
 
-        let ended = end_turn_settling(&db, &turn, "aborted", Some("TURN_ABORTED"), None, false, false).unwrap();
+        let ended = end_turn_settling(
+            &db,
+            &turn,
+            "aborted",
+            Some("TURN_ABORTED"),
+            None,
+            false,
+            false,
+        )
+        .unwrap();
         assert!(ended.updated);
         assert!(ended.recovered.is_none());
-        assert!(transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
+        assert!(transcripts::inflight_path(db.data_dir(), &session.id)
+            .unwrap()
+            .exists());
 
         let mut final_row = streaming_assistant("a1", "partial");
         final_row.status = Some("aborted".into());
         append_message(&db, &session.id, &final_row, Some(&turn)).unwrap();
-        assert!(!transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
-        assert_eq!(get_session(&db, &session.id).unwrap().unwrap().messages.len(), 1);
+        assert!(!transcripts::inflight_path(db.data_dir(), &session.id)
+            .unwrap()
+            .exists());
+        assert_eq!(
+            get_session(&db, &session.id)
+                .unwrap()
+                .unwrap()
+                .messages
+                .len(),
+            1
+        );
     }
 
     #[test]
     fn delete_session_removes_the_checkpoint_file() {
         let db = test_db();
         let session = create_session(&db, None, None, None, None, None).unwrap();
-        assert!(save_inflight_message(&db, &session.id, None, &streaming_assistant("a1", "partial")).unwrap());
+        assert!(save_inflight_message(
+            &db,
+            &session.id,
+            None,
+            &streaming_assistant("a1", "partial")
+        )
+        .unwrap());
         let path = transcripts::inflight_path(db.data_dir(), &session.id).unwrap();
         assert!(path.exists());
         assert!(delete_session(&db, &session.id).unwrap());
@@ -5284,14 +5453,21 @@ mod tests {
             "reasoningTokens": 20
         });
 
-        let ended = end_turn_settling(&db, &turn, "completed", None, Some(&usage), false, false).unwrap();
+        let ended =
+            end_turn_settling(&db, &turn, "completed", None, Some(&usage), false, false).unwrap();
         assert!(ended.updated);
         let ended_at: i64 = db
             .conn()
-            .query_row("SELECT ended_at FROM turns WHERE id = ?1", params![turn], |r| r.get(0))
+            .query_row(
+                "SELECT ended_at FROM turns WHERE id = ?1",
+                params![turn],
+                |r| r.get(0),
+            )
             .unwrap();
 
-        let history = get_token_usage_history(&db, Some(ended_at - 1_000), Some(ended_at + 1_000), "day").unwrap();
+        let history =
+            get_token_usage_history(&db, Some(ended_at - 1_000), Some(ended_at + 1_000), "day")
+                .unwrap();
         let totals = history.get("totals").unwrap();
         assert_eq!(totals.get("inputTokens").unwrap().as_i64(), Some(120));
         assert_eq!(totals.get("outputTokens").unwrap().as_i64(), Some(80));
@@ -5338,7 +5514,10 @@ mod tests {
             .iter()
             .find(|item| item.get("turnCount").and_then(|v| v.as_i64()) == Some(1))
             .expect("iso week");
-        assert_eq!(active.get("date").and_then(|v| v.as_str()), Some("2026-W01"));
+        assert_eq!(
+            active.get("date").and_then(|v| v.as_str()),
+            Some("2026-W01")
+        );
     }
 
     #[test]
@@ -5348,6 +5527,14 @@ mod tests {
         let items = history.get("items").unwrap().as_array().unwrap();
         assert!(items.len() >= 365);
         assert!(items.len() <= 53 * 7 + 1);
-        assert_eq!(history.get("totals").unwrap().get("turnCount").unwrap().as_i64(), Some(0));
+        assert_eq!(
+            history
+                .get("totals")
+                .unwrap()
+                .get("turnCount")
+                .unwrap()
+                .as_i64(),
+            Some(0)
+        );
     }
 }

@@ -459,7 +459,8 @@ mod tests {
         let scoped = pm.pending_requests(Some("session-b"));
         assert_eq!(scoped.len(), 1);
         assert_eq!(scoped[0].request.request_id, second.request_id);
-        pm.resolve(&first.request_id, PermissionDecision::Deny).unwrap();
+        pm.resolve(&first.request_id, PermissionDecision::Deny)
+            .unwrap();
         assert_eq!(pm.pending_requests(None).len(), 1);
         pm.cancel(&second.request_id);
         assert!(pm.pending_requests(None).is_empty());

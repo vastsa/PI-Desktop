@@ -3126,7 +3126,10 @@ mod tests {
             None,
         )
         .await;
-        assert_eq!(external.error_code.as_deref(), Some("WORKSPACE_PATH_DENIED"));
+        assert_eq!(
+            external.error_code.as_deref(),
+            Some("WORKSPACE_PATH_DENIED")
+        );
 
         let example = execute_tool(
             Some(dir.path()),
@@ -3198,9 +3201,18 @@ mod tests {
         .await;
         let shown = unscoped.content.to_string();
         assert!(shown.contains("src.txt"), "{shown}");
-        assert!(!shown.contains("node_modules"), "app defaults hide dependency trees: {shown}");
-        assert!(!shown.contains("generated"), ".pi-desktopignore is honored: {shown}");
-        assert!(!shown.contains("debug.log"), "*.log is an app default: {shown}");
+        assert!(
+            !shown.contains("node_modules"),
+            "app defaults hide dependency trees: {shown}"
+        );
+        assert!(
+            !shown.contains("generated"),
+            ".pi-desktopignore is honored: {shown}"
+        );
+        assert!(
+            !shown.contains("debug.log"),
+            "*.log is an app default: {shown}"
+        );
 
         for path in ["node_modules/pkg", "generated"] {
             let scoped = execute_tool(
@@ -3824,24 +3836,18 @@ mod tests {
         let edit = by_name("Edit");
         assert!(edit["parameters"]["properties"]["tag"].is_object());
         assert!(edit["parameters"]["properties"]["ops"].is_object());
-        assert!(
-            edit["description"]
-                .as_str()
-                .unwrap()
-                .contains("PUT 48.=48:` followed by a `+replacement` row")
-        );
-        assert!(
-            edit["description"]
-                .as_str()
-                .unwrap()
-                .contains("PUT 48.=48` followed by `+` rows is invalid")
-        );
-        assert!(
-            edit["description"]
-                .as_str()
-                .unwrap()
-                .contains("classify the error")
-        );
+        assert!(edit["description"]
+            .as_str()
+            .unwrap()
+            .contains("PUT 48.=48:` followed by a `+replacement` row"));
+        assert!(edit["description"]
+            .as_str()
+            .unwrap()
+            .contains("PUT 48.=48` followed by `+` rows is invalid"));
+        assert!(edit["description"]
+            .as_str()
+            .unwrap()
+            .contains("classify the error"));
         assert!(edit["parameters"]["required"]
             .as_array()
             .unwrap()
