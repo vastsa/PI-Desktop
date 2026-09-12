@@ -440,9 +440,9 @@ visually distinct from list content.
   as Primary. The primary folder is activated and named after creation; every
   other selected folder is retained as an open project tab. The form uses a
   compact ChatGPT-like hierarchy: an explicit name label, a quiet memory hint,
-  then the folder list and one primary action. The surface presents this flow
-  as two numbered task panels with a fixed action row; on narrow windows the
-  panels stack while the action row remains reachable.
+  then the folder list and one primary action. The surface uses two compact
+  sections with a fixed action row; on narrow windows the content remains
+  single-column while the action row stays reachable.
 - Right-click the `Projects` heading or empty project-list chrome: open a
   single-item create menu that runs the same Create project dialog action
 - Click project `+`: activate that project, then select its most recent empty

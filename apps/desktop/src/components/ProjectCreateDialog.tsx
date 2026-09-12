@@ -8,7 +8,6 @@ import { Button, TooltipButton } from "./ui";
 import {
   IconClose,
   IconFolder,
-  IconFolderOpen,
   IconMonitor,
   IconNewProject,
   IconSparkles,
@@ -148,9 +147,6 @@ export function ProjectCreateDialog() {
       >
         <div className="project-create-dialog-head">
           <div className="project-create-dialog-heading">
-            <span className="project-create-dialog-mark" aria-hidden>
-              <IconNewProject size={21} />
-            </span>
             <div className="project-create-dialog-heading-copy">
               <span className="project-create-dialog-kicker">{t("project.title")}</span>
               <h2 id="project-create-dialog-title" className="project-create-dialog-title">
@@ -183,16 +179,13 @@ export function ProjectCreateDialog() {
         >
           <div className="project-create-dialog-content">
             <section
-              className="project-create-dialog-panel project-create-dialog-identity"
+              className="project-create-dialog-section project-create-dialog-identity"
               aria-labelledby="project-create-name-heading"
             >
-              <div className="project-create-dialog-panel-head">
-                <span className="project-create-dialog-step" aria-hidden>
-                  01
-                </span>
+              <div className="project-create-dialog-section-head project-create-dialog-name-head">
                 <label
                   id="project-create-name-heading"
-                  className="project-create-dialog-panel-title project-create-dialog-field-label"
+                  className="project-create-dialog-section-title project-create-dialog-field-label"
                   htmlFor="project-create-name"
                 >
                   {t("project.createNameLabel")}
@@ -219,28 +212,19 @@ export function ProjectCreateDialog() {
                   autoCapitalize="off"
                 />
               </div>
-              <div className="project-create-dialog-panel-footnote">
-                <IconFolderOpen size={14} aria-hidden />
-                <span>{t("project.createAddFolderHint")}</span>
-              </div>
             </section>
 
             <section
-              className="project-create-dialog-panel project-create-dialog-folders"
+              className="project-create-dialog-section project-create-dialog-folders"
               aria-labelledby="project-create-folders-heading"
             >
               <div className="project-create-dialog-section-head">
-                <div className="project-create-dialog-section-heading">
-                  <span className="project-create-dialog-step" aria-hidden>
-                    02
-                  </span>
-                  <h3 id="project-create-folders-heading" className="project-create-dialog-section-title">
-                    {t("project.createFoldersLabel")}
-                    {folders.length > 0 ? (
-                      <span className="project-create-dialog-count">{folders.length}</span>
-                    ) : null}
-                  </h3>
-                </div>
+                <h3 id="project-create-folders-heading" className="project-create-dialog-section-title">
+                  {t("project.createFoldersLabel")}
+                  {folders.length > 0 ? (
+                    <span className="project-create-dialog-count">{folders.length}</span>
+                  ) : null}
+                </h3>
                 <span className="project-create-dialog-location">
                   <IconMonitor size={15} aria-hidden />
                   {t("project.createComputer")}
