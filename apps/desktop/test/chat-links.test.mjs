@@ -219,3 +219,58 @@ test("remarkChatFileLinks is a unified attacher, not a transformer", () => {
   assert.equal(tree.children[0].children[1].type, "link");
   assert.equal(tree.children[0].children[1].url, "apps/desktop/src/App.tsx");
 });
+
+test("parseFileRef accepts unicode filenames and home paths", () => {
+  assert.equal(parseFileRef("报告.pdf"), "报告.pdf");
+  assert.equal(parseFileRef("docs/规范/架构.md"), "docs/规范/架构.md");
+  assert.equal(parseFileRef("src/报告.ts:42"), "src/报告.ts");
+  assert.equal(parseFileRef("~/Downloads/x.png"), "~/Downloads/x.png");
+});
+
+test("splitChatText linkifies workspace unicode filenames", () => {
+  const segments = splitChatText("先看 报告.pdf，再看 docs/规范/架构.md", ROOT);
+  assert.deepEqual(
+    segments
+      .filter((s) => s.kind === "target" && s.target.kind === "file")
+      .map((s) => s.target.path),
+    ["报告.pdf", "docs/规范/架构.md"],
+  );
+});
+
+test("splitChatText resolves a unicode absolute path under the root", () => {
+  const segments = splitChatText(`see ${ROOT}/src/报告.md please`, ROOT);
+  assert.deepEqual(
+    segments
+      .filter((s) => s.kind === "target" && s.target.kind === "file")
+      .map((s) => s.target.path),
+    ["src/报告.md"],
+  );
+});
+
+test("splitChatText leaves outside absolute and home paths as plain text", () => {
+  // #235: the scanner used to drop the leading "/" (or "~") and chip the
+  // suffix as a workspace-relative path that could never open.
+  const outside = splitChatText(
+    "see /elsewhere/a.ts and ~/Downloads/x.png here",
+    ROOT,
+  );
+  assert.deepEqual(outside, [
+    { kind: "text", text: "see /elsewhere/a.ts and ~/Downloads/x.png here" },
+  ]);
+});
+
+test("splitChatText keeps unknown extensions literal", () => {
+  assert.deepEqual(splitChatText("安装包.dmg 在下载目录", ROOT), [
+    { kind: "text", text: "安装包.dmg 在下载目录" },
+  ]);
+});
+
+test("an ascii filename followed by cjk prose still linkifies", () => {
+  const segments = splitChatText("打开 App.tsx文件 看看", ROOT);
+  assert.deepEqual(
+    segments
+      .filter((s) => s.kind === "target" && s.target.kind === "file")
+      .map((s) => s.target.path),
+    ["App.tsx"],
+  );
+});

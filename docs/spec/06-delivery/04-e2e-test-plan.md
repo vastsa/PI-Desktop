@@ -8889,7 +8889,10 @@ are withdrawn with ADR 0165.
   assistant markdown. 2) Prompt a turn whose assistant reply mentions
   `apps/desktop/src/App.tsx` as a bare path, as inline code, and as a
   markdown link. 3) Click each. 4) Open the ADR markdown file in the work-panel
-  files viewer and click a `../spec/00-baseline.md` link.
+  files viewer and click a `../spec/00-baseline.md` link. 5) Prompt a turn
+  whose reply mentions a workspace file with a non-ASCII name (e.g.
+  `docs/规范/架构.md`), an absolute path outside the workspace, and a
+  `~/Downloads/…` path.
 - **Expected**:
   - Opening the session paints the transcript without throwing.
   - Each chat path opens the work-panel files viewer on
@@ -8897,6 +8900,8 @@ are withdrawn with ADR 0165.
   - The markdown-file `../` link opens `docs/spec/00-baseline.md`, not a
     workspace-root `spec/00-baseline.md`.
   - A `../../../outside.ts` link from `docs/adr` stays inert.
+  - The non-ASCII workspace path chips and opens like an ASCII one; the
+    outside-absolute and `~/` mentions stay plain text with no dead chip.
 - **Specs linked**: `04-ux/08-component-spec.md` §8.3,
   `08-meta/decisions-log.md` (D322)
 - **Acceptance**: C (conversation & stream), D (workspace), Quality

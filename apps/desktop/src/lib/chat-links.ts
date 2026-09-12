@@ -8,6 +8,13 @@
  * prose (`store.messages`) stay plain text. Explicit `@path` tokens from the
  * composer (D124 / D320) are accepted even when quoted or absolute.
  *
+ * Path tokens recognize Unicode letters and digits, so non-ASCII filenames
+ * (CJK above all) link exactly like ASCII ones. Absolute and `~/` tokens are
+ * captured whole and then resolved by the same workspace rules: a path under
+ * the root resolves normally, and one outside it — or any home path — stays
+ * plain text instead of rendering a chip that could never open. Links still
+ * cannot escape the workspace (D322).
+ *
  * Relative paths are workspace-rooted unless they start with `./` or `../`,
  * in which case they resolve against an optional markdown-file directory and
  * still cannot escape the workspace (D322).
@@ -31,7 +38,7 @@ const KNOWN_BARE_NAMES = new Set([
 ]);
 
 const FILE_TOKEN_RE =
-  /^\/?(?:\.{1,2}\/)?[\w@+.-]+(?:\/[\w@+.-]+)*(?::\d+(?::\d+)?)?$/;
+  /^(?:~\/|\/)?(?:\.{1,2}\/)?[\p{L}\p{N}_@+.-]+(?:\/[\p{L}\p{N}_@+.-]+)*(?::\d+(?::\d+)?)?$/u;
 
 const AT_QUOTED_RE = /^@"([^"\n]+)"$/;
 const AT_UNQUOTED_RE = /^@(\/?[^\s]+)$/;
@@ -231,8 +238,14 @@ export type ChatTextSegment =
       target: ChatPreviewTarget;
     };
 
+// Unicode-aware scan (#235). `~`- and `/`-prefixed paths are captured whole
+// so the resolver sees the real anchor: under-root absolutes resolve, while
+// outside absolutes and home paths fail resolution and stay plain text
+// instead of chipping a suffix that could never open. The extension tail
+// uses `(?![A-Za-z0-9_])` rather than `\b`: in unicode mode `\b` treats CJK
+// letters as word characters, which would stop `App.tsx文件` from linking.
 const SCAN_RE =
-  /@"[^"\n]+"|@[^\s]+|https?:\/\/[^\s<>"'()[\]{}]+|\.{1,2}\/(?:[\w@+.-]+\/)*[\w@+.-]+(?::\d+(?::\d+)?)?|(?:[\w@+.-]+\/)+[\w@+.-]+(?::\d+(?::\d+)?)?|[\w@+-][\w@+.-]*\.[A-Za-z0-9]{1,8}\b/g;
+  /@"[^"\n]+"|@[^\s]+|https?:\/\/[^\s<>"'()[\]{}]+|(?:~\/)?\/?\.{1,2}\/(?:[\p{L}\p{N}_@+.-]+\/)*[\p{L}\p{N}_@+.-]+(?::\d+(?::\d+)?)?|(?:~\/)?\/?(?:[\p{L}\p{N}_@+.-]+\/)+[\p{L}\p{N}_@+.-]+(?::\d+(?::\d+)?)?|[\p{L}\p{N}_@+-][\p{L}\p{N}_@+.-]*\.[A-Za-z0-9]{1,8}(?![A-Za-z0-9_])/gu;
 
 /**
  * Split plain chat text (user messages) into literal runs and previewable
