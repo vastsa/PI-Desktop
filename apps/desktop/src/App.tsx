@@ -31,6 +31,7 @@ import { ChatSurface } from "./components/ChatSurface";
 import { SearchDialog } from "./components/SearchDialog";
 import { ToastHost } from "./components/Toast";
 import { ExtensionPromptHost } from "./components/ExtensionPromptDialog";
+import { ProjectCreateDialog } from "./components/ProjectCreateDialog";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { WindowControls } from "./components/WindowControls";
 import { useAppStore } from "./stores/app-store";
@@ -1017,6 +1018,7 @@ function AppShell() {
       style={{ "--ds-sidebar-width": `${sidebarWidth}px` } as CSSProperties}
     >
       {shell}
+      <ProjectCreateDialog />
       {splash}
     </div>
   );

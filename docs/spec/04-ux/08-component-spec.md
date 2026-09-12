@@ -434,10 +434,15 @@ visually distinct from list content.
 - Click the viewport-fixed work-panel toggle to reveal or hide the panel
   without deleting tabs; the work-panel header keeps its tab strip and fixed `+`
   menu, while each tab owns resource closing
-- Click the `Projects` heading folder-plus action: open the project picker and
-  retain the selected project
+- Click the `Projects` heading folder-plus action: open the Create project
+  dialog. The dialog accepts a project name and one or more local folders,
+  lists every selected folder with a remove action, and marks the first folder
+  as Primary. The primary folder is activated and named after creation; every
+  other selected folder is retained as an open project tab. The form uses a
+  compact ChatGPT-like hierarchy: an explicit name label, a quiet memory hint,
+  then the folder list and one primary action.
 - Right-click the `Projects` heading or empty project-list chrome: open a
-  single-item create menu that runs the same new-project picker action
+  single-item create menu that runs the same Create project dialog action
 - Click project `+`: activate that project, then select its most recent empty
   session or create a durable empty session bound to its exact path
 - Click the `Sessions` heading message-plus action: clear the workspace, then
@@ -447,8 +452,9 @@ visually distinct from list content.
   visually hidden at rest
 - Right-click the `Sessions` heading or empty standalone-list chrome: open a
   single-item create menu that applies the same temporary-group reuse rule
-- Project overflow: switch, open folder, rename, pin/unpin, archive/restore,
-  close retained tab. Rename edits the local display name only; open folder
+- Project overflow: open folder, rename, pin/unpin, archive/restore, close
+  retained tab. Project activation remains on the directory row rather than
+  in its overflow menu. Rename edits the local display name only; open folder
   reveals the project directory in the system file manager for the selected
   project row.
 - Conversation overflow: pin/unpin, archive/restore, Create branch, delete.
@@ -577,6 +583,7 @@ controls.
 | Project reorder | press-and-move on the title (8px), or ArrowUp/ArrowDown on that title, writes contiguous normalized-path order to sidebar preferences; accent insertion line; no visible grip |
 | Project archive | omitted from default view; restorable from archived view |
 | Project close | removes retained tab only; durable project/sessions remain |
+| Project memory | row-menu editor reads and saves a compact list of titled or untitled memory cards for the exact project path; cards can be added, edited, and removed, the context is available in later chats, and it is never a higher-priority instruction |
 | Session list | exact-path matches only; no basename grouping |
 | Active group | exactly one group reflects the selected host workspace |
 | Task state | In-progress, selected, completed, and failed indicators update by session without replacing the visible transcript; precedence is in-progress, selected, then terminal outcome |
@@ -2498,13 +2505,17 @@ Anatomy:
   a chip does not delete
   scratch bytes. A text-only paste longer than `largePasteThreshold` follows
   the same bounded session bridge with generated `text/plain` UTF-8 bytes,
-  inserts `@<sanitized-name>` plus a trailing space at the original selection,
-  and keeps its canonical path mapping in the renderer draft. The default
-  threshold is 600 characters and is persisted in app settings. Pasting either
-  files or oversized text counts as input, so the home composer materializes the
-  startup-only home draft into a durable session before saving when no active
-  session is available. The scratch lifecycle removes pasted files with the
-  session and never dirties the workspace git tree.
+  inserts a sentinel-backed `pasted-text-*.txt` chip at the original selection,
+  and keeps its canonical path mapping in the renderer draft. Clicking the chip
+  or activating it with Enter/Space reads the bounded text file, replaces the
+  sentinel with editable text at that position, removes the reference, and
+  places the caret after the inserted content; a failed or unsupported read
+  leaves the chip unchanged. The default threshold is 600 characters and is
+  persisted in app settings. Pasting either files or oversized text counts as
+  input, so the home composer materializes the startup-only home draft into a
+  durable session before saving when no active session is available. The scratch
+  lifecycle removes pasted files with the session and never dirties the
+  workspace git tree.
 - A `+` picker selection follows the same session ownership and chip flow: the
   renderer materializes a home draft when needed, sends a one-shot picker token
   through `composer/importFiles`, and keeps only the returned scratch
@@ -2514,8 +2525,11 @@ Anatomy:
   their tooltip and accessible name, and provide a focus-visible localized
   remove button that restores textarea focus. Duplicate leaf labels remain
   separate because identity and dispatch use the canonical path, not the name.
-  Image and file references use the same compact chip treatment; no separate
-  explanatory vision-status row is rendered.
+  Text/plain and `.txt` chips are also keyboard-focusable buttons: clicking or
+  pressing Enter/Space expands their bounded contents into editable draft text;
+  binary, image, oversized, or failed reads keep the chip. Image and other file
+  references use the same compact chip treatment; no separate explanatory
+  vision-status row is rendered.
 - Sent template invocations render in the transcript as a monospace command
   chip from the message's `command` field instead of the expanded body.
 - Sent `@path` file references (quoted or unquoted) render as the same compact

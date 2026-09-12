@@ -1201,6 +1201,41 @@ async fn handle_request(
                 .ok_or_else(|| rpc_err(1000, "project disappeared after creation", "INTERNAL"))?;
             Ok(json!({ "project": project }))
         }
+        "project.memory.get" => {
+            let path = params
+                .get("path")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| rpc_err(1002, "path required", "INVALID_PARAMS"))?;
+            let st = state.lock().await;
+            let memory = st
+                .db
+                .get_project_memory(path)
+                .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
+            Ok(json!({ "memory": memory }))
+        }
+        "project.memory.set" => {
+            let path = params
+                .get("path")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| rpc_err(1002, "path required", "INVALID_PARAMS"))?;
+            let st = state.lock().await;
+            if let Some(entries) = params.get("entries") {
+                let memory = st
+                    .db
+                    .set_project_memory_entries(path, entries)
+                    .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
+                return Ok(json!({ "memory": memory }));
+            }
+            let content = params
+                .get("content")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| rpc_err(1002, "content required", "INVALID_PARAMS"))?;
+            let memory = st
+                .db
+                .set_project_memory(path, content)
+                .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
+            Ok(json!({ "memory": memory }))
+        }
         "workspace.set" => {
             let path = params
                 .get("path")
@@ -3994,6 +4029,56 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(workspace["workspace"], Value::Null);
+    }
+
+    #[tokio::test]
+    async fn project_memory_rpc_roundtrips_without_switching_workspace() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let state = Arc::new(Mutex::new(app_state));
+        let path = data_dir.path().to_string_lossy().to_string();
+
+        let saved = handle_request(
+            state.clone(),
+            "project.memory.set",
+            json!({ "path": path, "content": "Use the staging database." }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        assert_eq!(saved["memory"]["content"], "Use the staging database.");
+
+        let loaded = handle_request(
+            state.clone(),
+            "project.memory.get",
+            json!({ "path": data_dir.path() }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        assert_eq!(loaded["memory"]["content"], "Use the staging database.");
+
+        let structured = handle_request(
+            state,
+            "project.memory.set",
+            json!({
+                "path": path,
+                "entries": [{
+                    "id": "deployment",
+                    "title": "Deployment",
+                    "content": "Use the staging database."
+                }]
+            }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            structured["memory"]["content"],
+            "## Deployment\n\nUse the staging database."
+        );
+        assert_eq!(structured["memory"]["entries"][0]["id"], "deployment");
     }
 
     #[tokio::test]

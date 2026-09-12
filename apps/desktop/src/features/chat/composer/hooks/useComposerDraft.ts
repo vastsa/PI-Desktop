@@ -13,6 +13,7 @@ import {
   rewriteIdeographicCommaTrigger,
 } from "@pi-desktop/shared";
 import { useAppStore } from "../../../../stores/app-store";
+import { api } from "../../../../lib/api";
 import type { ComposerDraftSnapshot } from "../../../../lib/composer-smart-stop";
 import {
   HOME_DRAFT_KEY,
@@ -28,6 +29,7 @@ import {
 import {
   editorSelectionRange,
   createFileReference,
+  isEditableTextReference,
   isPersistedScratchReference,
   paintEditorValue,
   readEditorValue,
@@ -91,6 +93,7 @@ type UseComposerDraftOptions = {
   prefill?: ComposerPrefill | null;
   t: TFunction;
   invalidatePromptEnhancement: () => void;
+  inputBlocked: boolean;
 };
 
 /**
@@ -108,6 +111,7 @@ export function useComposerDraft({
   prefill,
   t,
   invalidatePromptEnhancement,
+  inputBlocked,
 }: UseComposerDraftOptions): ComposerDraftController {
   const draftKey = draftKeyForSession(activeSessionId);
   const referenceSessionId = activeSessionId ?? "";
@@ -155,6 +159,7 @@ export function useComposerDraft({
   const referenceByTokenRef = useRef(referenceByToken);
   referenceByTokenRef.current = referenceByToken;
   const removeChipByTokenRef = useRef<(token: string) => void>(() => {});
+  const expandTextReferenceRef = useRef<(token: string) => void>(() => {});
   const pendingEditorCaretRef = useRef<number | null>(
     initialDraft?.text ? initialDraft.text.length : null,
   );
@@ -175,6 +180,7 @@ export function useComposerDraft({
       referenceByTokenRef.current,
       (name) => t("chat.removeFileReference", { name }),
       (token) => removeChipByTokenRef.current(token),
+      (token) => expandTextReferenceRef.current(token),
     );
     editorValueRef.current = nextValue;
   };
@@ -444,6 +450,55 @@ export function useComposerDraft({
       setEditorCaret(element, caret);
     });
   };
+
+  const expandTextReference = async (token: string) => {
+    if (inputBlocked) return;
+    const reference = referenceByTokenRef.current.get(token);
+    const editor = ref.current;
+    if (!reference || !isEditableTextReference(reference) || !editor) return;
+    if (!readEditorValue(editor).includes(token)) return;
+    const sourceSessionId = reference.sessionId;
+    try {
+      const result = await api.fsRead(reference.path, reference.mimeType);
+      if (result.kind !== "text" || result.content === undefined) {
+        const message =
+          result.kind === "tooLarge"
+            ? t("panel.files.tooLarge")
+            : result.kind === "binary"
+              ? t("panel.files.binary")
+              : t("panel.files.error");
+        useAppStore.getState().showToast(message, { variant: "error" });
+        return;
+      }
+      const liveEditor = ref.current;
+      const liveReference = referenceByTokenRef.current.get(token);
+      if (
+        !liveEditor ||
+        (useAppStore.getState().activeSessionId ?? "") !== sourceSessionId ||
+        !liveReference ||
+        liveReference.sessionId !== sourceSessionId ||
+        liveReference.path !== reference.path
+      ) {
+        return;
+      }
+      const source = readEditorValue(liveEditor);
+      const index = source.indexOf(token);
+      if (index === -1) return;
+      const nextText =
+        source.slice(0, index) + result.content + source.slice(index + token.length);
+      const nextReferences = fileReferencesRef.current.filter(
+        (fileReference) => fileReference.token !== token,
+      );
+      invalidatePromptEnhancement();
+      applyEditorDraft(nextText, nextReferences, index + result.content.length);
+    } catch (error) {
+      useAppStore.getState().showToast(
+        error instanceof Error ? error.message : String(error),
+        { variant: "error" },
+      );
+    }
+  };
+  expandTextReferenceRef.current = expandTextReference;
 
   const snapshotReferences = (sourceSessionId: string) =>
     fileReferencesRef.current

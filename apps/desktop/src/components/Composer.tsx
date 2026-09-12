@@ -146,6 +146,7 @@ export function Composer({
     prefill,
     t,
     invalidatePromptEnhancement,
+    inputBlocked: planCheckpoint?.status === "pending",
   });
   const {
     ref,

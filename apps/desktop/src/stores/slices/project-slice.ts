@@ -79,6 +79,8 @@ export function createProjectSlice({
   | "closeProject"
   | "cloneProject"
   | "openProject"
+  | "closeProjectDialog"
+  | "createProjectFromFolders"
   | "clearProject"
   | "toggleSessionPinned"
   | "toggleSessionArchived"
@@ -226,51 +228,51 @@ export function createProjectSlice({
     },
 
     openProject: async () => {
-      const intent = runtime.beginNavigationIntent();
-      const result = await api.openProject();
-      if (!runtime.navigationIntentIsCurrent(intent)) return;
-      if (!result.canceled && result.workspace) {
-        const workspace = withProjectDisplayName(result.workspace, get().projectMeta);
-        if (
-          normalizeProjectPath(get().activeProjectPath) !==
-          normalizeProjectPath(workspace.path)
-        ) {
-          get().resetWorkPanelContext();
-        }
-        set((state) => {
-          const switchesVisibleProject =
-            normalizeProjectPath(state.activeProjectPath) !==
-            normalizeProjectPath(workspace.path);
-          const openProjectPaths = promoteProjectPath(
-            state.openProjectPaths,
-            workspace.path,
-          );
-          return {
-            workspace,
-            activeProjectPath: workspace.path,
-            openProjectPaths,
-            openProjects: upsertWorkspace(state.openProjects, workspace),
-            page: "chat" as const,
-            ...(switchesVisibleProject
-              ? {
-                  ...clearSessionPanes(),
-                  activeSessionId: undefined,
-                  messages: [],
-                  isRunning: false,
-                }
-              : {}),
-          };
-        });
-        rememberProject({
-          path: workspace.path,
-          name: workspace.name || workspace.path,
-          branch: workspace.branch,
-        });
-        persistCurrentSidebar(get);
-        const onboarding = await api.getOnboarding();
-        if (!runtime.navigationIntentIsCurrent(intent)) return;
-        set({ onboarding, page: "chat" });
+      set({ createProjectDialogOpen: true });
+    },
+    closeProjectDialog: () => {
+      set({ createProjectDialogOpen: false });
+    },
+    createProjectFromFolders: async ({ name, folders, primaryPath }) => {
+      const normalizedName = name.trim();
+      if (!normalizedName) {
+        throw new Error(i18n.t("errors.projectNameLength"));
       }
+      const uniqueFolders = folders.filter(
+        (path, index, all) =>
+          Boolean(normalizeProjectPath(path)) &&
+          all.findIndex(
+            (candidate) => normalizeProjectPath(candidate) === normalizeProjectPath(path),
+          ) === index,
+      );
+      if (uniqueFolders.length === 0) {
+        throw new Error(i18n.t("project.createFolderRequired"));
+      }
+      const normalizedPrimary = normalizeProjectPath(primaryPath);
+      const primary =
+        uniqueFolders.find((path) => normalizeProjectPath(path) === normalizedPrimary) ??
+        uniqueFolders[0];
+      const orderedFolders = [
+        primary,
+        ...uniqueFolders.filter(
+          (path) => normalizeProjectPath(path) !== normalizeProjectPath(primary),
+        ),
+      ];
+      const intent = runtime.beginNavigationIntent();
+      for (const path of orderedFolders) {
+        await get().activateProject(path, { navigationIntent: intent });
+        if (!runtime.navigationIntentIsCurrent(intent)) return;
+      }
+      get().renameProject(primary, normalizedName);
+      if (
+        normalizeProjectPath(get().activeProjectPath) !==
+        normalizeProjectPath(primary)
+      ) {
+        await get().activateProject(primary, { navigationIntent: intent });
+      }
+      const onboarding = await api.getOnboarding();
+      if (!runtime.navigationIntentIsCurrent(intent)) return;
+      set({ createProjectDialogOpen: false, onboarding, page: "chat" });
     },
 
     clearProject: async (opts) => {

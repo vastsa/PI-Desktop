@@ -255,20 +255,38 @@ function chipSvg(key: string, size = 13): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${CHIP_ICON_SVG[key] ?? CHIP_ICON_SVG.file}</svg>`;
 }
 
+export function isEditableTextReference(reference: ComposerFileReference): boolean {
+  return reference.mimeType?.toLowerCase() === "text/plain" || /\.txt$/i.test(reference.name);
+}
+
 /** Build the atomic inline chip element for one attachment reference. */
 function buildChipElement(
   reference: ComposerFileReference,
   token: string,
   removeLabel: string,
   onRemove: (token: string) => void,
+  onExpandText: (token: string) => void,
 ): HTMLElement {
   const chip = document.createElement("span");
   chip.className = "composer-chip";
   chip.contentEditable = "false";
   chip.dataset.token = token;
   chip.title = reference.path;
-  chip.setAttribute("role", "listitem");
+  const editableText = isEditableTextReference(reference);
+  chip.setAttribute("role", editableText ? "button" : "listitem");
   chip.setAttribute("aria-label", `${reference.name} — ${reference.path}`);
+  if (editableText) {
+    chip.tabIndex = 0;
+    chip.dataset.action = "expand-text-reference";
+    chip.addEventListener("click", () => onExpandText(token));
+    chip.addEventListener("keydown", (event) => {
+      if (event.target !== chip) return;
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      event.stopPropagation();
+      onExpandText(token);
+    });
+  }
 
   const icon = document.createElement("span");
   icon.className = "composer-chip-icon";
@@ -286,7 +304,10 @@ function buildChipElement(
   remove.innerHTML = chipSvg("x", 11);
   // Swallow the mousedown so removing a chip never moves the editable caret.
   remove.addEventListener("mousedown", (event) => event.preventDefault());
-  remove.addEventListener("click", () => onRemove(token));
+  remove.addEventListener("click", (event) => {
+    event.stopPropagation();
+    onRemove(token);
+  });
 
   chip.append(icon, nameSpan, remove);
   return chip;
@@ -299,6 +320,7 @@ export function paintEditorValue(
   referenceByToken: Map<string, ComposerFileReference>,
   removeLabelFor: (name: string) => string,
   onRemove: (token: string) => void,
+  onExpandText: (token: string) => void,
 ): void {
   el.replaceChildren();
   let textBuffer = "";
@@ -319,6 +341,7 @@ export function paintEditorValue(
             char,
             removeLabelFor(reference.name),
             onRemove,
+            onExpandText,
           ),
         );
         continue;

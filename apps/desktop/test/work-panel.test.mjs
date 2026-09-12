@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
 import test from "node:test";
 import { loadStyles } from "./helpers/styles.mjs";
+import { readMainSource } from "./helpers/main-source.mjs";
+import { readStoreSource } from "./helpers/store-source.mjs";
+import { readTranscriptSource } from "./helpers/transcript-source.mjs";
 import {
   MAIN_PANE_MIN_WIDTH,
   WORK_PANEL_DEFAULT_WIDTH,
@@ -12,10 +15,7 @@ const appSource = await readFile(
   new URL("../src/App.tsx", import.meta.url),
   "utf8",
 );
-const mainSource = await readFile(
-  new URL("../electron/main/index.ts", import.meta.url),
-  "utf8",
-);
+const mainSource = await readMainSource();
 const apiSource = await readFile(
   new URL("../src/lib/api.ts", import.meta.url),
   "utf8",
@@ -28,14 +28,8 @@ const panelSource = await readFile(
   new URL("../src/components/workpanel/WorkPanel.tsx", import.meta.url),
   "utf8",
 );
-const transcriptSource = await readFile(
-  new URL("../src/components/ChatTranscript.tsx", import.meta.url),
-  "utf8",
-);
-const storeSource = await readFile(
-  new URL("../src/stores/app-store.ts", import.meta.url),
-  "utf8",
-);
+const transcriptSource = await readTranscriptSource();
+const storeSource = await readStoreSource();
 const globalStyles = await loadStyles();
 
 test("work panel replaces the context panel overlay", async () => {
@@ -136,7 +130,7 @@ test("work panel uses the fixed-window internal dock", () => {
   // only change the in-flow flex allocation inside the existing window.
   assert.match(appSource, /setWorkPanelReservation\(0\)/);
   assert.doesNotMatch(appSource, /requestedWidth\s*=\s*Math\.round\(workPanelWidth\)/);
-  assert.match(mainSource, /requestedWorkPanelReservation = 0/);
+  assert.match(mainSource, /setWorkPanelReservationWidth\(0\)/);
   assert.match(mainSource, /return \{ requested: 0, reserved: 0 \}/);
   assert.match(appSource, /commitWorkPanelPresentation/);
   assert.doesNotMatch(appSource, /\.finally\(\(\) => \{[\s\S]*setPresentedWorkPanelOpen/);
@@ -308,7 +302,7 @@ test("work panel width is renderer-owned inside the fixed window", () => {
     mainSource.indexOf("IPC.invoke.windowSetWorkPanelReservation"),
     mainSource.indexOf("IPC.invoke.windowSetWorkPanelChatWidth"),
   );
-  assert.match(reservationHandler, /requestedWorkPanelReservation = 0/);
+  assert.match(reservationHandler, /setWorkPanelReservationWidth\(0\)/);
   assert.match(reservationHandler, /return \{ requested: 0, reserved: 0 \}/);
   assert.doesNotMatch(reservationHandler, /applyWorkPanelReservation/);
 });
@@ -380,8 +374,8 @@ test("work panel separator exposes internal panel width resizing", () => {
 test("Electron enforces the responsive shell minimum", () => {
   assert.match(mainSource, /const WINDOW_MIN_WIDTH = 1040/);
   assert.match(mainSource, /const WINDOW_MIN_HEIGHT = 700/);
-  assert.match(mainSource, /minWidth:\s*WINDOW_MIN_WIDTH/);
-  assert.match(mainSource, /minHeight:\s*WINDOW_MIN_HEIGHT/);
+  assert.match(mainSource, /minWidth:\s*windowMinWidth/);
+  assert.match(mainSource, /minHeight:\s*windowMinHeight/);
 });
 
 test("built-in terminal is absent while the work panel keeps its other surfaces", () => {
@@ -424,7 +418,7 @@ test("work panel context is retained by session instead of cleared on selection"
   assert.match(storeSource, /workPanelContexts:\s*Record<string, WorkPanelContext>/);
   assert.match(storeSource, /openWorkPanelTabForSession:/);
   const selectBlock =
-    storeSource.match(/selectSession: async[\s\S]*?\n  newSession:/)?.[0] ?? "";
+    storeSource.match(/selectSession: async[\s\S]*?\n\s+newSession:/)?.[0] ?? "";
   assert.match(
     selectBlock,
     /switchWorkPanelSession\([\s\S]*id/,
@@ -453,7 +447,7 @@ test("background panel updates do not replace or resize the visible session", ()
   assert.ok(openForSessionBlock, "session-scoped tab action exists");
   assert.match(
     openForSessionBlock,
-    /const affectsVisibleSession\s*=\s*state\.activeSessionId\s*===\s*sessionId\s*&&\s*\(\s*pendingSessionSelection\s*===\s*null\s*\|\|\s*pendingSessionSelection\.id\s*===\s*sessionId\s*\)/,
+    /const affectsVisibleSession\s*=\s*state\.activeSessionId\s*===\s*sessionId\s*&&\s*\(\s*!isSessionSelectionPending\(sessionId\)\s*\)/,
     "visible-session updates require the active session and matching pending selection",
   );
   assert.match(openForSessionBlock, /workPanelContexts/);
@@ -470,7 +464,7 @@ test("background panel updates do not replace or resize the visible session", ()
 
 test("deleting a session also removes its retained work panel context", () => {
   const deleteBlock =
-    storeSource.match(/deleteSession: async[\s\S]*?\n  setSessionSort:/)?.[0] ?? "";
+    storeSource.match(/deleteSession: async[\s\S]*?\n\s+setSessionSort:/)?.[0] ?? "";
   assert.ok(deleteBlock, "deleteSession action exists");
   assert.match(deleteBlock, /workPanelContexts/);
   assert.match(

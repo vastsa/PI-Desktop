@@ -108,6 +108,7 @@ type RuntimeParams = {
   /** Session-bound workspace root supplied by Electron main. */
   projectPath?: string;
   projectInstructions?: ProjectInstructions;
+  projectMemory?: string;
   compactionSettings?: ContextCompactionSettings;
   attachmentsDir?: string;
   userMessageId?: string;
@@ -327,6 +328,7 @@ async function runtimeFor(
     subagents,
     subagentProviders,
     projectInstructions: params.projectInstructions,
+    projectMemory: params.projectMemory,
     projectPath: params.projectPath,
     commandShell: params.commandShell,
   })
@@ -384,6 +386,7 @@ async function runtimeFor(
     subagentProviders,
     projectPath: params.projectPath,
     projectInstructions: params.projectInstructions,
+    projectMemory: params.projectMemory,
     scratchDir:
       typeof params.scratchDir === "string" && params.scratchDir
         ? params.scratchDir

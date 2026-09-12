@@ -102,6 +102,7 @@ export type AppState = {
   /** Open project tabs and the host's currently active workspace. */
   openProjects: ProjectWorkspace[];
   openProjectPaths: string[];
+  createProjectDialogOpen: boolean;
   activeProjectPath?: string;
   projectMeta: Record<string, ProjectMeta>;
   /** Kept as a flat map for lightweight consumers (Sidebar). */
@@ -217,6 +218,12 @@ export type AppState = {
   ) => Promise<ReviewRollbackResult | null>;
   abort: () => Promise<void>;
   openProject: () => Promise<void>;
+  closeProjectDialog: () => void;
+  createProjectFromFolders: (input: {
+    name: string;
+    folders: string[];
+    primaryPath: string;
+  }) => Promise<void>;
   cloneProject: (url: string) => Promise<ProjectWorkspace | null>;
   /** Re-read the active workspace metadata without changing the visible project. */
   refreshProject: (path: string) => Promise<ProjectWorkspace | null>;

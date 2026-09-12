@@ -116,6 +116,35 @@ export function registerWorkspaceIpc({
   };
   const assertMainWindowSender = registrar.assertMainWindowSender;
 
+  const managedProjectPath = async (input: unknown): Promise<string> => {
+    if (!host) throw new Error("host unavailable");
+    const requestedPath = typeof input === "string" ? input.trim() : "";
+    if (!requestedPath) {
+      throw Object.assign(new Error("project path required"), {
+        errorCode: ErrorCodes.INVALID_ARGUMENT,
+      });
+    }
+    const projectPath = resolve(requestedPath);
+    const listed = (await host.call("projects.list")) as {
+      projects?: Array<{ path?: string }>;
+    };
+    const known = (listed.projects ?? []).some((project) => {
+      const candidate = String(project?.path ?? "").trim();
+      return candidate && resolve(candidate) === projectPath;
+    });
+    if (!known) {
+      throw Object.assign(new Error("project not found"), {
+        errorCode: ErrorCodes.NOT_FOUND,
+      });
+    }
+    if (!existsSync(projectPath) || !statSync(projectPath).isDirectory()) {
+      throw Object.assign(new Error("project folder not found"), {
+        errorCode: ErrorCodes.NOT_FOUND,
+      });
+    }
+    return projectPath;
+  };
+
   handle(IPC.invoke.projectGet, async () => {
     if (!host) throw new Error("host unavailable");
     let res = (await host.call("workspace.get")) as {
@@ -188,6 +217,15 @@ export function registerWorkspaceIpc({
     setCurrentWorkspacePath(res.workspace?.path ?? result.filePaths[0]);
     return { workspace: await withGitBranch(res.workspace), canceled: false };
   });
+  handle(IPC.invoke.projectPickFolders, async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ["openDirectory", "multiSelections", "createDirectory"],
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { folders: [], canceled: true };
+    }
+    return { folders: result.filePaths, canceled: false };
+  });
   handle(IPC.invoke.projectClone, async (input: { url?: string } = {}) => {
     const parentDefault = currentWorkspacePath()
       ? dirname(currentWorkspacePath()!)
@@ -222,6 +260,35 @@ export function registerWorkspaceIpc({
     if (!host) throw new Error("host unavailable");
     return host.call("workspace.clear");
   });
+
+  handle(
+    IPC.invoke.projectMemoryGet,
+    async (input: { projectPath?: unknown } = {}) => {
+      const projectPath = await managedProjectPath(input.projectPath);
+      if (!host) throw new Error("host unavailable");
+      return host.call("project.memory.get", { path: projectPath });
+    },
+  );
+
+  handle(
+    IPC.invoke.projectMemorySave,
+    async (input: {
+      projectPath?: unknown;
+      content?: unknown;
+      entries?: unknown;
+    } = {}) => {
+      const projectPath = await managedProjectPath(input.projectPath);
+      if (!host) throw new Error("host unavailable");
+      if (Array.isArray(input.entries)) {
+        return host.call("project.memory.set", {
+          path: projectPath,
+          entries: input.entries,
+        });
+      }
+      const content = typeof input.content === "string" ? input.content : "";
+      return host.call("project.memory.set", { path: projectPath, content });
+    },
+  );
 
   handleWithEvent(IPC.invoke.composerPickFiles, async (event) => {
     const result = await dialog.showOpenDialog({

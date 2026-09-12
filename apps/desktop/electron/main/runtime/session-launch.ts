@@ -324,6 +324,18 @@ export function createSessionLaunchRuntime({
         ? session.projectPath.trim()
         : undefined;
     const projectInstructions = await loadInstructionChain(projectPath);
+    let projectMemory: string | undefined;
+    if (projectPath) {
+      try {
+        const result = await runtimeState.host!.call<{
+          memory?: { content?: string };
+        }>("project.memory.get", { path: projectPath });
+        const content = result.memory?.content?.trim();
+        if (content) projectMemory = content;
+      } catch {
+        // Project memory is best effort; it must never prevent a session launch.
+      }
+    }
     sessionProjects.set(sessionId, projectPath ?? null);
     // Everything below is filtered by activation scope: a plugin, MCP server or
     // skill limited to certain projects must be invisible to a session on any
@@ -504,6 +516,7 @@ export function createSessionLaunchRuntime({
         attachmentsDir: join(dataDir, "attachments"),
         projectPath,
         projectInstructions,
+        projectMemory,
         provider: {
           id: provider.id,
           name: provider.name,

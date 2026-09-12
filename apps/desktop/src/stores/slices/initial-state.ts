@@ -33,6 +33,7 @@ export function createInitialState(): AppStateData {
       ),
     ),
     openProjectPaths: initialSidebarPreferences.openProjectPaths,
+    createProjectDialogOpen: false,
     activeProjectPath: undefined,
     projectMeta: initialSidebarPreferences.projectMeta,
     projectCollapsed: Object.fromEntries(
