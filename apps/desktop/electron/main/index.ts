@@ -261,6 +261,9 @@ import {
   createComposerTemplateLoader,
   registerWorkspaceIpc,
 } from "./ipc/workspace-ipc";
+import {
+  registerComposerIpc,
+} from "./ipc/composer-ipc";
 import type { IpcRegistrar } from "./ipc/types";
 
 // The shared error-code union is reconciled in the shared lane. Keep desktop
@@ -6033,6 +6036,15 @@ function registerIpc() {
     bindingForModel,
   });
   const loadComposerTemplatesCached = createComposerTemplateLoader(logger);
+  const composerCommandService = registerComposerIpc({
+    registrar,
+    plugins,
+    agentExtensions,
+    optionalWorkspaceRoot,
+    activeUserSkills,
+    pluginActiveInProject,
+    loadComposerTemplatesCached,
+  });
   registerWorkspaceIpc({
     registrar,
     getHost: () => host,
@@ -6067,97 +6079,6 @@ function registerIpc() {
       if (!sidecar) throw new Error("agent sidecar unavailable");
       return sidecar.call<{ handled: boolean }>("extensions.command.run", input);
     },
-  });
-
-  const loadComposerSkillCommands = async (
-    root: string | null,
-  ): Promise<ComposerCommand[]> => {
-    const builtins = builtinSkills({
-      workspacePath: root,
-      pluginPaths: plugins.listLoaded().map((loaded) => loaded.path),
-    });
-    const pluginSkills = plugins
-      .getSkills()
-      .filter((skill) => pluginActiveInProject(skill.pluginId, root))
-      .map((skill) => ({
-        id: skill.id,
-        name: skill.name,
-        description: skill.description,
-      }));
-    const userSkills = (await activeUserSkills(root ?? undefined)).map((skill) => ({
-      id: skill.id,
-      name: skill.name,
-      description: skill.description,
-    }));
-    const seen = new Set<string>();
-    return [...builtins, ...pluginSkills, ...userSkills].flatMap((skill) => {
-      if (!skill.id || seen.has(skill.id)) return [];
-      seen.add(skill.id);
-      return [
-        {
-          name: skill.id,
-          kind: "skill" as const,
-          title: skill.name,
-          ...(skill.description ? { description: skill.description } : {}),
-          skillId: skill.id,
-        },
-      ];
-    });
-  };
-
-  const buildComposerCommands = async (root: string | null): Promise<ComposerCommand[]> => {
-    const templates = await loadComposerTemplatesCached(root).catch(() => []);
-    const templateCommands = templates.map((template) => ({
-      name: template.name,
-      kind: "template" as const,
-      title: template.name,
-      ...(template.description ? { description: template.description } : {}),
-      ...(template.argumentHint ? { argumentHint: template.argumentHint } : {}),
-      source: template.source,
-    }));
-    // App-facing surfaces scope against the *window's* project, not a session's:
-    // this menu belongs to whatever folder is open in front of the user.
-    const pluginCommands = plugins
-      .getCommands()
-      .filter((command) => pluginActiveInProject(command.pluginId, root))
-      .map((command) => ({
-        name: command.id,
-        kind: "plugin" as const,
-        title: command.title,
-        ...(command.category ? { description: command.category } : {}),
-        id: command.id,
-      }));
-    // Trusted extension commands take arguments and run in the active
-    // session's sidecar (spec 16 §8); they come after plugin commands and
-    // before the final Skills group.
-    const extensionCommands = agentExtensions.allCommands().map((command) => ({
-      name: command.name,
-      kind: "extension" as const,
-      title: `/${command.name}`,
-      description: command.description ?? command.extensionLabel,
-      id: trustedExtensionCommandId(command.name),
-    }));
-    const skillCommands = await loadComposerSkillCommands(root).catch(() => []);
-    // One namespace: builtin aliases win, then project templates, then user
-    // templates, then plugin commands, extension commands, and finally skills.
-    // Skills are deliberately appended last so the slash menu keeps them at
-    // the bottom without allowing a skill to shadow an existing command.
-    const merged = new Map<string, ComposerCommand>();
-    for (const command of [
-      ...builtinComposerCommands(),
-      ...templateCommands,
-      ...pluginCommands,
-      ...extensionCommands,
-      ...skillCommands,
-    ]) {
-      if (!merged.has(command.name)) merged.set(command.name, command);
-    }
-    return [...merged.values()];
-  };
-
-  handle(IPC.invoke.composerCommands, async () => {
-    const root = await optionalWorkspaceRoot();
-    return { commands: await buildComposerCommands(root) };
   });
 
   handle(
@@ -6624,7 +6545,9 @@ function registerIpc() {
           1,
           commandEnd === -1 ? undefined : commandEnd,
         );
-        const commands = await buildComposerCommands(launch.projectPath ?? root);
+        const commands = await composerCommandService.buildComposerCommands(
+          launch.projectPath ?? root,
+        );
         const command = commands.find((item) => item.name === commandName);
         if (command?.kind === "skill" && command.skillId) {
           const body = commandEnd === -1 ? "" : req.content.slice(commandEnd).trim();
