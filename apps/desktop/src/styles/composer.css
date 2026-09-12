@@ -270,6 +270,15 @@
   -webkit-user-select: none;
 }
 
+.composer-chip[data-action="expand-text-reference"] {
+  cursor: pointer;
+}
+
+.composer-chip[data-action="expand-text-reference"]:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--ds-accent) 72%, transparent);
+  outline-offset: 1px;
+}
+
 .composer-chip-icon {
   display: inline-flex;
   flex: 0 0 auto;

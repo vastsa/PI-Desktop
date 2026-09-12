@@ -1055,18 +1055,23 @@ Project drag/drop follows these patterns:
   The composer leaves visible text unchanged, appends leaf-name reference
   chips in clipboard order, then restores the textarea selection and focus.
 - For an oversized text-only paste, the renderer sends the exact UTF-8
-  `text/plain` bytes through the same session bridge, inserts a generated
-  `@<temporary-name>` token plus a space at the original selection, and keeps a
-  token-to-canonical-path mapping in the draft. The token remains inline in the
-  textarea rather than becoming a chip; dispatch replaces it in place exactly
-  once with the canonical scratch path. Pasting in the middle of a draft keeps
-  both the prefix and suffix intact.
+  `text/plain` bytes through the same session bridge, inserts a
+  sentinel-backed `pasted-text-*.txt` chip at the original selection, and keeps
+  a token-to-canonical-path mapping in the draft. Clicking the chip or pressing
+  Enter/Space reads the bounded text file and replaces the sentinel in place
+  with editable text, removing the reference and placing the caret after the
+  inserted content. A failed or unsupported read leaves the chip intact.
+  Pasting in the middle of a draft keeps both the prefix and suffix intact.
 - If the home composer has no active session, it creates or reuses one before
   writing. Failure leaves the existing draft unchanged and shows the error in
   the normal toast surface.
 - A chip remove button removes only that draft reference and restores textarea
   focus; it does not eagerly delete session scratch bytes. Backspace on an
   empty textarea removes the most recent active reference.
+- A text/plain or `.txt` chip exposes button semantics and expands on click or
+  Enter/Space. The read is bounded by the existing `fsRead` policy; binary,
+  image, oversized, or failed reads show the normal error toast and preserve
+  the chip.
 - A reference-only draft enables Send. Before dispatch, active references are
   appended after visible text and ordinary references are serialized with the
   canonical relative or absolute paths and existing whitespace quoting.

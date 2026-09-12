@@ -2504,13 +2504,17 @@ Anatomy:
   a chip does not delete
   scratch bytes. A text-only paste longer than `largePasteThreshold` follows
   the same bounded session bridge with generated `text/plain` UTF-8 bytes,
-  inserts `@<sanitized-name>` plus a trailing space at the original selection,
-  and keeps its canonical path mapping in the renderer draft. The default
-  threshold is 600 characters and is persisted in app settings. Pasting either
-  files or oversized text counts as input, so the home composer materializes the
-  startup-only home draft into a durable session before saving when no active
-  session is available. The scratch lifecycle removes pasted files with the
-  session and never dirties the workspace git tree.
+  inserts a sentinel-backed `pasted-text-*.txt` chip at the original selection,
+  and keeps its canonical path mapping in the renderer draft. Clicking the chip
+  or activating it with Enter/Space reads the bounded text file, replaces the
+  sentinel with editable text at that position, removes the reference, and
+  places the caret after the inserted content; a failed or unsupported read
+  leaves the chip unchanged. The default threshold is 600 characters and is
+  persisted in app settings. Pasting either files or oversized text counts as
+  input, so the home composer materializes the startup-only home draft into a
+  durable session before saving when no active session is available. The scratch
+  lifecycle removes pasted files with the session and never dirties the
+  workspace git tree.
 - A `+` picker selection follows the same session ownership and chip flow: the
   renderer materializes a home draft when needed, sends a one-shot picker token
   through `composer/importFiles`, and keeps only the returned scratch
@@ -2520,8 +2524,11 @@ Anatomy:
   their tooltip and accessible name, and provide a focus-visible localized
   remove button that restores textarea focus. Duplicate leaf labels remain
   separate because identity and dispatch use the canonical path, not the name.
-  Image and file references use the same compact chip treatment; no separate
-  explanatory vision-status row is rendered.
+  Text/plain and `.txt` chips are also keyboard-focusable buttons: clicking or
+  pressing Enter/Space expands their bounded contents into editable draft text;
+  binary, image, oversized, or failed reads keep the chip. Image and other file
+  references use the same compact chip treatment; no separate explanatory
+  vision-status row is rendered.
 - Sent template invocations render in the transcript as a monospace command
   chip from the message's `command` field instead of the expanded body.
 - Sent `@path` file references (quoted or unquoted) render as the same compact
