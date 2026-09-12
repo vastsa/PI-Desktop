@@ -5387,6 +5387,10 @@ needed.
     a path list; Grep shows hits grouped per file with line numbers in `content`
     mode, a path list in `filesWithMatches`, and per-file totals in `count`; the
     failing command carries an `exit 1` chip.
+  - A Read row's collapsed chip shows the returned window as
+    `{lineCount},L{offset+1}-L{offset+lineCount}` (for example,
+    `50,L16-L65`), never `fileBytes`; a Read result without valid window
+    metadata has no size chip. Write continues to show its byte-size chip.
   - Each Glob/Grep path-list row is start-aligned with natural character
     spacing; glyphs are not distributed across the block width.
   - The workspace edit shows no inline diff (its ReviewChangeCard owns it); the

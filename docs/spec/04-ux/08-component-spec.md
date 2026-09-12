@@ -1655,10 +1655,15 @@ seconds when non-zero) from one hour onward. Zero-value units are omitted, so
   not the raw function name. Running actions use the progressive form.
 - The primary argument is a clamped single-line monospace hint.
 - Result chips follow the hint: exit code (error hue), match/file counts,
-  replacement count, written or read size, `truncated`, `scratch`. A successful
-  exit earns no chip — the row status already says so. The `truncated` chip
-  follows `details.truncated` and therefore appears only when this result was
-  cut short, not when a Read window of a longer file was filled (D306).
+  replacement count, Write byte size, Read line count plus its 1-based closed
+  line range (`{lineCount},L{offset+1}-L{offset+lineCount}`), `truncated`, and
+  `scratch`. Read uses `offset` and `lineCount` from the returned window rather
+  than `fileBytes`; if those fields are unavailable, it omits the read-size
+  chip instead of presenting the whole-file size as the amount read. A
+  successful exit earns no chip — the row status already says so. The
+  `truncated` chip follows `details.truncated` and therefore appears only when
+  this result was cut short, not when a Read window of a longer file was filled
+  (D306).
 - Live activity remains in the processing group, its latest row, or the
   dedicated runtime indicator; no additional status capsule is rendered.
   Long paths remain in the row summary and are ellipsized.

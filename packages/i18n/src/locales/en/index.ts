@@ -359,6 +359,7 @@ export const en = {
     toolChipReplacements_other: "{{count}} replacements",
     toolChipTruncated: "truncated",
     toolChipScratch: "scratch",
+    toolChipLines: "{{range}}",
     toolChipSize: "{{size}}",
     toolRead: "Read",
     toolListed: "Listed",

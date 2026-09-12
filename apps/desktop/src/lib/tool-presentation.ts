@@ -45,6 +45,7 @@ export type ToolPresentationMessage = {
 export type ToolChip =
   | { role: "exit" | "matches" | "files" | "replacements"; count: number }
   | { role: "truncated" | "scratch" }
+  | { role: "lines"; text: string }
   | { role: "size"; text: string };
 
 export type ToolBlockRole =
@@ -270,6 +271,25 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function formatReadLineRange(details: Record<string, unknown>): string | null {
+  const offset = numberAt(details, "offset");
+  const lineCount = numberAt(details, "lineCount");
+  if (
+    offset === null ||
+    lineCount === null ||
+    !Number.isSafeInteger(offset) ||
+    !Number.isSafeInteger(lineCount) ||
+    offset < 0 ||
+    lineCount <= 0
+  ) {
+    return null;
+  }
+  const end = offset + lineCount;
+  return Number.isSafeInteger(end)
+    ? `${lineCount},L${offset + 1}-L${end}`
+    : null;
+}
+
 /**
  * Minimal line diff used by review hunks and tests. Both sides are localized
  * snippets, so trimming the shared head/tail to a little context is enough to
@@ -483,8 +503,13 @@ export function toolResultChips(message: ToolPresentationMessage): ToolChip[] {
   if (replacements !== null && replacements > 0) {
     chips.push({ role: "replacements", count: replacements });
   }
-  const bytes = numberAt(details, "bytes") ?? numberAt(details, "fileBytes");
-  if (bytes !== null) chips.push({ role: "size", text: formatBytes(bytes) });
+  if (action === "read") {
+    const lineRange = formatReadLineRange(details);
+    if (lineRange !== null) chips.push({ role: "lines", text: lineRange });
+  } else {
+    const bytes = numberAt(details, "bytes") ?? numberAt(details, "fileBytes");
+    if (bytes !== null) chips.push({ role: "size", text: formatBytes(bytes) });
+  }
   if (details.truncated === true) chips.push({ role: "truncated" });
   if (details.root === "scratch") chips.push({ role: "scratch" });
   return chips;

@@ -352,6 +352,7 @@ export const de = {
     "toolChipReplacements_other": "{{count}} Ersatz",
     "toolChipTruncated": "abgeschnitten",
     "toolChipScratch": "Scratch",
+    "toolChipLines": "{{range}}",
     "toolChipSize": "{{size}}",
     "toolRead": "Lesen",
     "toolListed": "Aufgelistet",
