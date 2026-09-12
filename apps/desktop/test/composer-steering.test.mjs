@@ -1,3 +1,4 @@
+import { SteeringSubmissions } from "../src/lib/composer-submission.ts";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -41,59 +42,55 @@ test("ordinary send, newlines, autocomplete and IME retain their keyboard behavi
   }
 });
 
-const steerBody = store.match(/steerPrompt: (async \(content, draft\) => \{[\s\S]*?\n  \}),\n\n  compactContext:/)?.[1];
-assert.ok(steerBody, "read the actual store steering action");
-function steeringStore(steer = async () => ({ accepted: true, turnId: "turn-1" })) {
-  const state = { activeSessionId: "session-1", runningSessions: { "session-1": true }, agentStatuses: { "session-1": { currentTurnId: "turn-1" } }, pendingPlans: {}, showToast: () => {} };
+function steeringFixture(request = async () => ({ accepted: true, turnId: "turn-1" })) {
   const calls = [];
-  const steeringMessageIds = new Map();
-  const action = new Function("get", "api", "optimisticUserMessage", "insertOptimisticUserMessage", "retractOptimisticUserMessage", "promptAttachmentsFromDraft", "i18n", "crypto", "messageErrorFromUnknown", "steeringMessageIds", `return ${steerBody.replace(/new Set<string>\(\)/g, "new Set()")}`)(
-    () => state, { steer: (request) => { calls.push(request); return steer(request); } },
-    (id, content) => ({ id, content }), (...args) => calls.push(["insert", ...args]), (...args) => calls.push(["retract", ...args]),
-    (references) => references, { t: (key) => key }, { randomUUID: () => "message-1" }, (error) => error, steeringMessageIds,
-  );
-  return { action, state, calls, steeringMessageIds };
+  const service = new SteeringSubmissions({
+    request: (req) => { calls.push(req); return request(req); },
+    insert: (...args) => calls.push(["insert", ...args]),
+    retract: (...args) => calls.push(["retract", ...args]),
+    reportError: () => {},
+  });
+  const target = { sessionId: "session-1", turnId: "turn-1", running: true, approvalPending: false };
+  return { service, target, calls };
 }
 
-test("steering captures the target session and turn, without enqueueing or changing run state", async () => {
-  const { action, state, calls } = steeringStore();
-  assert.equal(await action("direction", { text: "direction", fileReferences: [{ path: "image.png" }] }), true);
-  assert.deepEqual(calls[1], { sessionId: "session-1", expectedTurnId: "turn-1", content: "direction", messageId: "message-1", attachments: [{ path: "image.png" }] });
-  assert.equal(state.runningSessions["session-1"], true);
+test("steering captures the target and transports image chips without changing run state", async () => {
+  const { service, target, calls } = steeringFixture();
+  assert.equal(await service.submit("direction", { text: "direction", fileReferences: [{ path: "image.png", name: "image.png" }] }, target), true);
+  assert.deepEqual(calls[1], { sessionId: "session-1", expectedTurnId: "turn-1", content: "direction", messageId: calls[0][2].id, attachments: [{ path: "image.png", name: "image.png", kind: "image" }] });
+  assert.equal(target.running, true);
+  assert.equal(service.hasInput("session-1"), true);
+  service.settle("session-1");
+  assert.equal(service.hasInput("session-1"), false);
 });
 
-test("a rejected steer retracts only its own optimistic row and lets Composer restore the draft", async () => {
+test("a rejected steer retracts its own row after session navigation and releases Stop protection", async () => {
   let reject;
-  const { action, state, calls } = steeringStore(() => new Promise((_resolve, rejectRequest) => { reject = rejectRequest; }));
-  const pending = action("direction");
-  state.activeSessionId = "session-2";
+  const { service, target, calls } = steeringFixture(() => new Promise((_resolve, rejectRequest) => { reject = rejectRequest; }));
+  const pending = service.submit("direction", undefined, target);
+  assert.equal(service.hasInput("session-1"), true);
+  target.sessionId = "session-2";
   reject({ code: "TURN_NOT_FOUND", message: "target ended" });
   assert.equal(await pending, false);
-  assert.deepEqual(calls.at(-1), ["retract", "session-1", { id: "message-1", content: "direction" }]);
-  assert.equal(state.runningSessions["session-1"], true);
+  assert.deepEqual(calls.at(-1), ["retract", "session-1", calls[0][2]]);
+  assert.equal(service.hasInput("session-1"), false);
   assert.match(composer, /if \(!accepted\) restoreDraftForKey\(submittedDraftKey, submittedDraft\)/);
 });
 
 test("missing turn identity and a pending approval reject before creating a message", async () => {
   for (const reason of ["missing", "approval", "idle"]) {
-    const { action, state, calls } = steeringStore();
-    if (reason === "missing") state.agentStatuses = {};
-    if (reason === "approval") state.pendingPlans["session-1"] = { status: "pending" };
-    if (reason === "idle") state.runningSessions["session-1"] = false;
-    assert.equal(await action("direction"), false);
+    const { service, target, calls } = steeringFixture();
+    if (reason === "missing") target.turnId = undefined;
+    if (reason === "approval") target.approvalPending = true;
+    if (reason === "idle") target.running = false;
+    assert.equal(await service.submit("direction", undefined, target), false);
     assert.deepEqual(calls, []);
   }
 });
 
-
-test("steering protects all turn inputs from smart Stop and a rejected request releases its marker", async () => {
-  const accepted = steeringStore();
-  await accepted.action("direction");
-  assert.equal(accepted.steeringMessageIds.get("session-1").size, 1);
-  const rejected = steeringStore(async () => { throw { code: "TURN_NOT_FOUND" }; });
-  await rejected.action("direction");
-  assert.equal(rejected.steeringMessageIds.size, 0);
-  assert.match(store, /const preserveSteering = Boolean\(steeringMessageIds\.get\(sessionId\)\?\.size\);[\s\S]*?await Promise\.allSettled/);
+test("the store snapshots steering before Stop and clears protection at terminal settlement", () => {
+  assert.match(store, /steerPrompt:[\s\S]*?steeringSubmissions\.submit\(content, draft/);
+  assert.match(store, /const preserveSteering = steeringSubmissions\.hasInput\(sessionId\);[\s\S]*?await Promise\.allSettled/);
   assert.match(store, /const smartStop = preserveSteering\s*\? \{ kind: "settle" as const \}/);
-  assert.match(store, /steeringMessageIds\.delete\(envelope\.sessionId\)/);
+  assert.match(store, /steeringSubmissions\.settle\(envelope\.sessionId\)/);
 });

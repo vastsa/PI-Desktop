@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { promptAttachmentsFromDraft } from "../src/lib/composer-submission.ts";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
@@ -190,17 +191,6 @@ test("mode slash prefixes send the trailing prompt and retain failed drafts", ()
 });
 
 test("draft attachment routing keeps image chips structured and file chips textual", () => {
-  const helperSource = store.match(
-    /function promptAttachmentsFromDraft\([\s\S]*?\n\}\n\nfunction promptAttachmentsFromMessage/,
-  )?.[0]?.replace(/\n\nfunction promptAttachmentsFromMessage[\s\S]*$/, "");
-  assert.ok(helperSource, "prompt attachment mapper not found");
-  const executable = helperSource.replace(
-    /function promptAttachmentsFromDraft\(\s*references: ComposerDraftSnapshot\["fileReferences"\],\s*\): AgentPromptAttachment\[\] \{/,
-    "function promptAttachmentsFromDraft(references) {",
-  );
-  const promptAttachmentsFromDraft = new Function(
-    `${executable}; return promptAttachmentsFromDraft;`,
-  )();
   const attachments = promptAttachmentsFromDraft([
     {
       path: "/tmp/photo.png",

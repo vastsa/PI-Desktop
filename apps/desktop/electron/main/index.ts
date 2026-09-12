@@ -1,3 +1,4 @@
+import { steerActiveTurn, SteeringTranscript } from "./agent-steering";
 import {
   app,
   BrowserWindow,
@@ -983,6 +984,9 @@ const logger = new Logger(
 );
 const persistenceOutbox = new PersistenceOutbox(dataDir, (level, message, data) => {
   logger.app("persistence", level, message, { data });
+});
+const steeringTranscript = new SteeringTranscript(persistenceOutbox, () => host, (message, sessionId, error) => {
+  logger.app("persistence", "warn", message, { sessionId, data: String(error) });
 });
 // The reply currently streaming in each session, checkpointed to host-core so
 // a quit or crash mid-reply keeps the text the user already saw (D299). A
@@ -2375,7 +2379,6 @@ async function importLegacyScheduled() {
 
 /** sessionId → open host turn id, for turn bookkeeping across agent events. */
 const activeTurns = new Map<string, string>();
-const steeringReservedReplies = new Set<string>();
 const sessionOperationTails = new Map<string, Promise<void>>();
 
 async function acquireSessionOperation(sessionId: string): Promise<() => void> {
@@ -4920,7 +4923,7 @@ function wireSidecar(s: AgentSidecar) {
     if (sidecar !== s) return;
     logger.flushChild("agent");
     sidecar = null;
-    steeringReservedReplies.clear();
+    steeringTranscript.clear();
     if (intentional || quitting) return;
     // A sidecar crash closes live approval waiters before the replacement
     // sidecar starts. This prevents an old renderer response from waking a
@@ -5702,25 +5705,7 @@ function persistAgentEvent(envelope: AgentEventEnvelope): UiMessage | undefined 
   if (event.type === "turn_end" && !envelope.parentToolCallId) {
     addActiveTurnUsage(envelope.sessionId, event.subagentUsage);
   }
-  if (event.type === "message_end" && event.message.role === "user" && !envelope.parentToolCallId) {
-    // Reserve the in-flight reply's existing UI position before appending input.
-    // The final assistant snapshot later updates this same transcript row.
-    if (event.precedingAssistant?.role === "assistant") {
-      steeringReservedReplies.add(event.precedingAssistant.id);
-      void persistenceOutbox.enqueue({
-        key: `message:${envelope.sessionId}:${event.precedingAssistant.id}`,
-        sessionId: envelope.sessionId, message: event.precedingAssistant, turnId: envelope.turnId ?? turnId,
-      }, () => host).catch((error) => logger.app("persistence", "warn", "steering checkpoint enqueue failed", {
-        sessionId: envelope.sessionId, data: String(error),
-      }));
-    }
-    void persistenceOutbox.enqueue({
-      key: `message:${envelope.sessionId}:${event.message.id}`,
-      sessionId: envelope.sessionId, message: event.message, turnId: envelope.turnId ?? turnId,
-    }, () => host).catch((error) => logger.app("persistence", "warn", "steering message persistence enqueue failed", {
-      sessionId: envelope.sessionId, data: String(error),
-    }));
-  }
+  steeringTranscript.persistInput(envelope, turnId);
   if (event.type === "message_end" && event.message.role === "assistant") {
     if (!envelope.parentToolCallId && event.message.usage) {
       addActiveTurnUsage(envelope.sessionId, event.message.usage);
@@ -5748,7 +5733,7 @@ function persistAgentEvent(envelope: AgentEventEnvelope): UiMessage | undefined 
     const empty =
       !(event.message.content || "").trim() &&
       !(event.message.thinking || "").trim();
-    const reservedForSteering = steeringReservedReplies.delete(event.message.id);
+    const reservedForSteering = steeringTranscript.settleReply(event.message.id);
     if (failed && empty && !event.message.error && !reservedForSteering) return;
     void persistenceOutbox
       .enqueue(
@@ -8201,40 +8186,11 @@ function registerIpc() {
     return { title };
   });
 
-  handle(IPC.invoke.agentSteer, async (req: AgentSteerRequest) => {
-    if (!host || !sidecar) throw new Error("backend unavailable");
-    if (!req?.sessionId || typeof req.content !== "string" || !req.expectedTurnId ||
-        (!req.content.trim() && !req.attachments?.length)) {
-      throw Object.assign(new Error("Steering input and expectedTurnId required"), { errorCode: ErrorCodes.INVALID_ARGUMENT });
-    }
-    if (activeTurns.get(req.sessionId) !== req.expectedTurnId || turnFinalizations.has(req.sessionId)) {
-      throw Object.assign(new Error("The target turn has ended"), { errorCode: ErrorCodes.TURN_NOT_FOUND });
-    }
-    const context = await sidecar.call<{ projectPath?: string; supportsVision: boolean }>(
-      "agent.steeringContext", { sessionId: req.sessionId, expectedTurnId: req.expectedTurnId },
-    );
-    const prepared = await preparePromptAttachments(
-      dataDir, req.sessionId, context.projectPath, req.attachments ?? [], context.supportsVision,
-    );
-    const session = await host.call<{ session?: { messages?: UiMessage[] } }>("session.get", {
-      id: req.sessionId, messageLimit: 1,
-    });
-    const message: UiMessage = {
-      id: durableUserMessageId(req.messageId, session.session?.messages ?? []),
-      role: "user", content: req.content, status: "complete", createdAt: new Date().toISOString(),
-      ...(prepared.length ? { attachments: prepared.map((attachment) => attachment.message) } : {}),
-    };
-    // Revalidate inside the runtime after all file/host IO. A stale target must
-    // never turn into a normal prompt or alter the next turn's configuration.
-    return sidecar.call<{ accepted: boolean; turnId: string }>("agent.steer", {
-      sessionId: req.sessionId, expectedTurnId: req.expectedTurnId, message,
-      content: appendPromptFallbackPaths(req.content, prepared),
-      attachments: prepared.filter((attachment) => attachment.inlineData).map((attachment) => ({
-        path: attachment.message.ref, name: attachment.message.name, kind: attachment.message.kind,
-        mimeType: attachment.message.mimeType, size: attachment.message.size, data: attachment.inlineData,
-      })),
-    });
-  });
+  handle(IPC.invoke.agentSteer, (req: AgentSteerRequest) => steerActiveTurn(req, {
+    host, sidecar, dataDir,
+    activeTurn: (sessionId) => activeTurns.get(sessionId),
+    isFinalizing: (sessionId) => turnFinalizations.has(sessionId),
+  }));
 
   handle(IPC.invoke.agentPrompt, async (req: AgentPromptRequest) => {
     if (!host || !sidecar) throw new Error("backend unavailable");

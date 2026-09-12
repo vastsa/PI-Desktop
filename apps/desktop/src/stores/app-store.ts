@@ -1,3 +1,4 @@
+import { promptAttachmentsFromDraft, SteeringSubmissions } from "../lib/composer-submission";
 import { create } from "zustand";
 import i18n from "i18next";
 import type {
@@ -171,30 +172,6 @@ const ErrorCodes = {
 } as const;
 
 export type { WorkPanelTab } from "../lib/work-panel-tabs";
-
-function promptAttachmentsFromDraft(
-  references: ComposerDraftSnapshot["fileReferences"],
-): AgentPromptAttachment[] {
-  return references.flatMap((reference) => {
-    const kind =
-      reference.kind ??
-      (/\.(avif|bmp|gif|heic|jpe?g|png|tiff?|webp)$/i.test(reference.path)
-        ? "image"
-        : "file");
-    // Inline chips use tokens for both files and images. Ordinary file chips
-    // already serialize to @path text (the model can Read them); only image
-    // chips need the structured transport for vision/fallback handling.
-    if (reference.token && kind !== "image") return [];
-    return [
-      {
-        path: reference.path,
-        name: reference.name,
-        kind,
-        ...(reference.mimeType ? { mimeType: reference.mimeType } : {}),
-      },
-    ];
-  });
-}
 
 function promptAttachmentsFromMessage(
   attachments: UiMessage["attachments"],
@@ -373,7 +350,18 @@ type SubmittedComposerDraft = {
   resolveAbort?: (restored: boolean) => void;
 };
 const submittedComposerDrafts = new Map<string, SubmittedComposerDraft>();
-const steeringMessageIds = new Map<string, Set<string>>();
+const steeringSubmissions = new SteeringSubmissions({
+  request: api.steer,
+  insert: insertOptimisticUserMessage,
+  retract: retractOptimisticUserMessage,
+  reportError: (error) => {
+    const failure = messageErrorFromUnknown(error);
+    useAppStore.getState().showToast(
+      !error || failure.code === "TURN_NOT_FOUND" ? i18n.t("chat.steeringUnavailable") : failure.message,
+      { variant: error ? "error" : "info" },
+    );
+  },
+});
 type SessionConfiguration = Pick<
   SessionSummary,
   "mode" | "providerId" | "modelId" | "thinkingLevel"
@@ -2340,35 +2328,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  steerPrompt: async (content, draft) => {
+  steerPrompt: (content, draft) => {
     const state = get();
     const sessionId = state.activeSessionId;
-    const expectedTurnId = sessionId ? state.agentStatuses[sessionId]?.currentTurnId : undefined;
-    if (!sessionId || !expectedTurnId || !state.runningSessions[sessionId] || state.pendingPlans[sessionId]?.status === "pending") {
-      state.showToast(i18n.t("chat.steeringUnavailable"), { variant: "info" });
-      return false;
-    }
-    const message = optimisticUserMessage(crypto.randomUUID(), content, draft?.fileReferences ?? []);
-    insertOptimisticUserMessage(sessionId, message);
-    const steeringIds = steeringMessageIds.get(sessionId) ?? new Set<string>();
-    steeringIds.add(message.id);
-    steeringMessageIds.set(sessionId, steeringIds);
-    try {
-      await api.steer({
-        sessionId, expectedTurnId, content, messageId: message.id,
-        attachments: draft ? promptAttachmentsFromDraft(draft.fileReferences) : [],
-      });
-      return true;
-    } catch (error) {
-      retractOptimisticUserMessage(sessionId, message);
-      steeringIds.delete(message.id);
-      if (!steeringIds.size && steeringMessageIds.get(sessionId) === steeringIds) {
-        steeringMessageIds.delete(sessionId);
-      }
-      const failure = messageErrorFromUnknown(error);
-      get().showToast(failure.code === "TURN_NOT_FOUND" ? i18n.t("chat.steeringUnavailable") : failure.message, { variant: "error" });
-      return false;
-    }
+    return steeringSubmissions.submit(content, draft, {
+      sessionId,
+      turnId: sessionId ? state.agentStatuses[sessionId]?.currentTurnId : undefined,
+      running: Boolean(sessionId && state.runningSessions[sessionId]),
+      approvalPending: Boolean(sessionId && state.pendingPlans[sessionId]?.status === "pending"),
+    });
   },
 
   compactContext: async () => {
@@ -2780,7 +2748,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const submittedDraft = submittedComposerDrafts.get(sessionId);
     // A turn containing steering has multiple user inputs. Smart Stop must
     // not remove its last input and restore the original prompt in its place.
-    const preserveSteering = Boolean(steeringMessageIds.get(sessionId)?.size);
+    const preserveSteering = steeringSubmissions.hasInput(sessionId);
     const stoppedAtMs = Date.now();
     if (submittedDraft && !submittedDraft.abortResolution) {
       submittedDraft.abortResolution = new Promise<boolean>((resolve) => {
@@ -3747,7 +3715,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const event = envelope.event;
     if (event.type === "agent_end" || event.type === "error") {
       submittedComposerDrafts.delete(envelope.sessionId);
-      steeringMessageIds.delete(envelope.sessionId);
+      steeringSubmissions.settle(envelope.sessionId);
     }
     if (!flushingStreamUpdates) {
       if (event.type === "message_update") {

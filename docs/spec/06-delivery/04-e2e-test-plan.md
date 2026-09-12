@@ -349,9 +349,9 @@ Scenario is fully specified but no automated implementation currently
   checkpoint and adjacent steering rows without duplicates.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md` (§5.1a),
   `03-runtime/02-agent-runtime.md` (§4.0), `03-runtime/04-data-storage.md`,
-  `04-ux/09-interaction-patterns.md` (§3.5), ADR active-turn-steering, active-turn-steering
+  `04-ux/09-interaction-patterns.md` (§3.5), ADR active-turn-steering
 - **Acceptance**: C (conversation & stream), E (tools & permissions), Quality
 - **Milestone**: M5
-- **Status**: Unit-covered (runtime steering, Composer/store keyboard action,
+- **Status**: Unit-covered (runtime steering, Composer keyboard and submission workflows,
   outbox and host reservation tests); rendered desktop journey Draft
   (do not run E2E locally unless explicitly requested)

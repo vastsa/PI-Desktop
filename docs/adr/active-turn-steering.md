@@ -24,9 +24,12 @@ confirmation and Shift+Enter retain their existing behavior. Idle Alt+Enter
 sends normally. During steering, slash-prefixed drafts remain literal input.
 
 Add a desktop `agent/steer` IPC request with an obligatory `expectedTurnId`.
-Main validates the durable turn and attachments against the running runtime's
-project and model. The existing runtime rechecks admission after asynchronous
-preparation, then queues all accepted messages through native `Agent.steer`.
+The main-process steering module validates the durable turn and attachments
+against the running runtime's project and model. A Composer submission module
+owns optimistic rows, rejection rollback and Stop protection; the store wires
+these ports to application state. The existing runtime rechecks admission
+after asynchronous preparation, then queues all accepted messages through
+native `Agent.steer`.
 Model, workspace, permissions and plan/goal execution identity remain fixed.
 There is no new provider-specific transport, remote RACP method, or new turn.
 
@@ -61,7 +64,8 @@ recovery also updates a reservation in place. This requires no schema change.
 Runtime tests exercise a real pi loop with controlled streams/tools, current
 turn identity, images, closing-boundary admission, stop/abort, recovery and an
 idle parent with live delegates. Desktop tests execute the Composer key
-handler and store action, and cover outbox replacement during an in-flight
-write. Host tests verify in-place finalization and crash recovery without
-changing adjacent user rows, turn ownership or replay idempotency. E2E-AGENT-alt-enter-steers-active-turn
-records the full UI scenario; local E2E remains opt-in.
+handler, submission workflow and main-process admission, and cover outbox
+replacement during an in-flight write. Host tests verify in-place finalization
+and crash recovery without changing adjacent user rows, turn ownership or
+replay idempotency. E2E-AGENT-alt-enter-steers-active-turn records the full UI
+scenario; local E2E remains opt-in.
