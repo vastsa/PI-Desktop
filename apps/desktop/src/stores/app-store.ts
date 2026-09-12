@@ -154,6 +154,12 @@ import type { AgentQueueChangedEvent, QueuedTurnSummary } from "@pi-desktop/shar
 import { settleBootstrapRequests } from "../lib/bootstrap-result";
 import type { SubagentPanelSelection } from "../lib/subagent-panel";
 import {
+  createSessionRuntime,
+  type SessionRuntime,
+  type SubmittedComposerDraft,
+} from "./runtime/session-runtime";
+import type { StoreAccess } from "./slices/types";
+import {
   createWorkPanelSlice,
   currentWorkPanelContext,
   switchWorkPanelSession,
@@ -170,6 +176,7 @@ import type {
   ToastOptions,
   ToastVariant,
 } from "./app-state";
+import { createSessionSlice } from "./slices/session-slice";
 export type {
   AgentTurnResult,
   DraftSessionConfiguration,
@@ -339,353 +346,6 @@ export { RETAINED_SESSION_PANE_LIMIT };
 // Preserve the original 320px tool-content minimum beside the 44px activity rail.
 export { WORK_PANEL_DEFAULT_WIDTH, WORK_PANEL_MIN_WIDTH };
 
-const navigationIntents = createNavigationIntentController();
-let pendingSessionSelection: { id: string; intent: number } | null = null;
-let sessionWorkspaceQueue: Promise<void> = Promise.resolve();
-const pendingNewSessionRequests = new Map<string, Promise<void>>();
-const sessionTranscriptCache = new Map<string, UiMessage[]>();
-// A cache entry can contain a completed row that is newer than the durable
-// read, so keep its live provenance until a selection has reconciled it.
-const liveSessionTranscripts = new Set<string>();
-type SessionHistoryWindow = {
-  messageStart: number;
-  hasMoreBefore: boolean;
-};
-const sessionHistoryCache = new Map<string, SessionHistoryWindow>();
-const planResolutionRequests = new Map<string, Promise<PlanResolutionResult>>();
-const planSyncGenerations = new Map<string, number>();
-type SubmittedComposerDraft = {
-  messageCountBeforeSend: number;
-  draft: ComposerDraftSnapshot;
-  abortResolution?: Promise<boolean>;
-  resolveAbort?: (restored: boolean) => void;
-};
-const submittedComposerDrafts = new Map<string, SubmittedComposerDraft>();
-type SessionConfiguration = Pick<
-  SessionSummary,
-  "mode" | "providerId" | "modelId" | "thinkingLevel"
-> &
-  Partial<Pick<SessionSummary, "permissionMode">>;
-/**
- * The host pins one configuration for an active turn. Composer changes made
- * while that turn runs are optimistic next-turn choices and flush once the
- * durable turn reaches a terminal event.
- */
-const pendingSessionConfigurations = new Map<string, SessionConfiguration>();
-const sessionConfigurationFlushes = new Map<string, Promise<void>>();
-
-/**
- * Later staged choices layer onto earlier ones field by field. The Composer's
- * model/mode pickers send no `permissionMode`, so replacing the entry wholesale
- * would silently drop a permission change staged a moment earlier.
- */
-function mergeSessionConfiguration(
-  current: SessionConfiguration | undefined,
-  next: SessionConfiguration,
-): SessionConfiguration {
-  if (!current) return next;
-  const merged: Record<string, unknown> = { ...current };
-  for (const [key, value] of Object.entries(next)) {
-    if (value !== undefined) merged[key] = value;
-  }
-  return merged as SessionConfiguration;
-}
-const sessionDetailLoads = new Map<
-  string,
-  ReturnType<typeof api.getSession>
->();
-const sessionOlderLoads = new Map<string, Promise<void>>();
-
-type NavigationOptions = {
-  /** Reuse an owning navigation's generation across nested async operations. */
-  navigationIntent?: number;
-};
-
-function beginNavigationIntent() {
-  return navigationIntents.begin();
-}
-
-function navigationIntentIsCurrent(intent: number) {
-  return navigationIntents.isCurrent(intent);
-}
-
-function newSessionScopeKey(projectPath?: string | null): string {
-  return normalizeProjectPath(projectPath) ?? "<temporary>";
-}
-
-function latestSessionInScope(
-  sessions: SessionSummary[],
-  projectPath: string | null,
-  sessionMeta: Record<string, SessionMeta>,
-): SessionSummary | undefined {
-  return sessions
-    .filter((session) => sessionMatchesProject(session, projectPath))
-    .sort((a, b) => {
-      const aUpdated = Date.parse(a.updatedAt);
-      const bUpdated = Date.parse(b.updatedAt);
-      const aTime = Number.isFinite(aUpdated) ? aUpdated : 0;
-      const bTime = Number.isFinite(bUpdated) ? bUpdated : 0;
-      return bTime - aTime || b.id.localeCompare(a.id);
-    })
-    .find((session) => !sessionIsArchived(session.id, sessionMeta));
-}
-
-function liveMessageCountForSession(
-  id: string,
-  state: { activeSessionId?: string; messages: UiMessage[]; retainedTranscripts: Record<string, UiMessage[]> },
-): number {
-  if (state.activeSessionId === id) return state.messages.length;
-  return (
-    sessionTranscriptCache.get(id)?.length ??
-    state.retainedTranscripts[id]?.length ??
-    0
-  );
-}
-
-function cacheSessionTranscript(
-  id: string,
-  messages: UiMessage[],
-  window?: SessionHistoryWindow,
-) {
-  const normalized = dedupeSessionMessages(messages);
-  sessionTranscriptCache.delete(id);
-  sessionTranscriptCache.set(id, normalized);
-  if (window) sessionHistoryCache.set(id, window);
-  while (sessionTranscriptCache.size > SESSION_TRANSCRIPT_CACHE_LIMIT) {
-    const oldestId = sessionTranscriptCache.keys().next().value;
-    if (typeof oldestId !== "string") break;
-    sessionTranscriptCache.delete(oldestId);
-    sessionHistoryCache.delete(oldestId);
-    liveSessionTranscripts.delete(oldestId);
-  }
-}
-
-function loadSessionDetail(
-  id: string,
-  options?: {
-    messageBefore?: number;
-    messageLimit?: number;
-    contentLimit?: number;
-  },
-) {
-  const active = sessionDetailLoads.get(id);
-  if (active && options?.messageBefore === undefined) return active;
-  const request = api.getSession(id, options).then((detail) => {
-    if (detail.session && options?.messageBefore === undefined) {
-      const state = useAppStore.getState();
-      const liveMessages =
-        sessionTranscriptCache.get(id) ?? state.retainedTranscripts[id];
-      const messages =
-        (liveSessionTranscripts.has(id) || state.runningSessions[id]) &&
-        liveMessages
-          ? mergeLiveSessionMessages(detail.session.messages ?? [], liveMessages)
-          : detail.session.messages ?? [];
-      cacheSessionTranscript(id, messages, {
-        messageStart: detail.session.messageStart ?? 0,
-        hasMoreBefore: detail.session.hasMoreBefore === true,
-      });
-    }
-    return detail;
-  });
-  if (options?.messageBefore === undefined) sessionDetailLoads.set(id, request);
-  const clear = () => {
-    if (
-      options?.messageBefore === undefined &&
-      sessionDetailLoads.get(id) === request
-    ) {
-      sessionDetailLoads.delete(id);
-    }
-  };
-  void request.then(clear, clear);
-  return request;
-}
-
-async function loadFullSessionMessages(id: string): Promise<UiMessage[] | null> {
-  const detail = await api.getSession(id);
-  if (!detail.session) return null;
-  const messages = detail.session.messages ?? [];
-  cacheSessionTranscript(id, messages, { messageStart: 0, hasMoreBefore: false });
-  return messages;
-}
-
-/**
- * Show the user's prompt the moment it is sent (D288). The visible session
- * appends the row to its transcript; a background session receives it through
- * its renderer cache, exactly where the host echo will land.
- */
-function insertOptimisticUserMessage(sessionId: string, message: UiMessage): void {
-  const state = useAppStore.getState();
-  if (state.activeSessionId === sessionId) {
-    useAppStore.setState((s) => ({
-      messages: upsertLiveSessionMessage(s.messages, message),
-    }));
-    return;
-  }
-  const cached = sessionTranscriptCache.get(sessionId);
-  if (cached) {
-    sessionTranscriptCache.set(sessionId, upsertLiveSessionMessage(cached, message));
-  }
-}
-
-/**
- * Undo the optimistic row when the send never reached the host. Only the
- * renderer's own object is removed: once the host has echoed the durable row
- * under the same id the failure happened after persistence, and the row stays.
- */
-function retractOptimisticUserMessage(sessionId: string, message: UiMessage): void {
-  const state = useAppStore.getState();
-  if (state.activeSessionId === sessionId) {
-    useAppStore.setState((s) =>
-      s.messages.includes(message)
-        ? { messages: removeLiveSessionMessage(s.messages, message.id) }
-        : s,
-    );
-    return;
-  }
-  const cached = sessionTranscriptCache.get(sessionId);
-  if (cached?.includes(message)) {
-    sessionTranscriptCache.set(sessionId, removeLiveSessionMessage(cached, message.id));
-  }
-}
-
-/**
- * Keep a warm session's renderer cache current while it streams in the
- * background. The hidden pane itself is not re-rendered; its next reveal reads
- * this cache and commits the latest available tail in one frame.
- */
-function cacheBackgroundTranscriptEvent(envelope: AgentEventEnvelope): void {
-  const { sessionId, event } = envelope;
-  const state = useAppStore.getState();
-  const current =
-    sessionTranscriptCache.get(sessionId) ?? state.retainedTranscripts[sessionId];
-  if (!current) return;
-
-  let next = current;
-  switch (event.type) {
-    case "message_start":
-    case "message_update":
-      next = upsertLiveSessionMessage(current, event.message);
-      break;
-    case "message_end": {
-      const failed =
-        event.message.status === "error" || event.message.status === "aborted";
-      const empty =
-        !(event.message.content || "").trim() &&
-        !(event.message.thinking || "").trim();
-      next =
-        failed && empty && !event.message.error
-          ? removeLiveSessionMessage(current, event.message.id)
-          : upsertLiveSessionMessage(current, event.message);
-      break;
-    }
-    case "tool_start":
-      next = upsertLiveSessionMessage(current, {
-        id: event.toolCallId,
-        role: "tool",
-        content: "",
-        createdAt: new Date(envelope.ts).toISOString(),
-        toolCallId: event.toolCallId,
-        toolName: event.toolName,
-        toolArgs: event.args,
-        toolStatus: "running",
-        status: "streaming",
-        ...(envelope.parentToolCallId
-          ? { parentToolCallId: envelope.parentToolCallId }
-          : {}),
-        ...(envelope.agentName ? { agentName: envelope.agentName } : {}),
-      });
-      break;
-    case "tool_update": {
-      if (event.partialResult === undefined) return;
-      const existing = current.find(
-        (message) =>
-          message.toolCallId === event.toolCallId &&
-          message.toolStatus === "running",
-      );
-      if (!existing) return;
-      next = upsertLiveSessionMessage(current, {
-        ...existing,
-        content:
-          typeof event.partialResult === "string"
-            ? event.partialResult
-            : formatToolValue(event.partialResult),
-        toolResult: event.partialResult,
-      });
-      break;
-    }
-    case "tool_end": {
-      const toolStart = toolStartsByCallId.get(event.toolCallId);
-      const completedAt = new Date(envelope.ts).toISOString();
-      const completed: UiMessage = {
-        id: event.toolCallId,
-        role: "tool",
-        content:
-          typeof event.result === "string"
-            ? event.result
-            : JSON.stringify(event.result, null, 2),
-        createdAt: toolStart?.createdAt ?? completedAt,
-        toolCallId: event.toolCallId,
-        ...(toolStart?.toolName ? { toolName: toolStart.toolName } : {}),
-        ...(toolStart ? { toolArgs: toolStart.args } : {}),
-        toolCompletedAt: completedAt,
-        toolDurationMs: toolStart
-          ? Math.max(0, envelope.ts - Date.parse(toolStart.createdAt))
-          : 0,
-        toolStatus: event.isError ? "error" : "success",
-        toolResult: event.result,
-        ...(event.toolUsage ? { toolUsage: event.toolUsage } : {}),
-        status: "complete",
-        isError: event.isError,
-      };
-      const existing = current.find(
-        (message) => message.toolCallId === event.toolCallId,
-      );
-      next = existing
-        ? upsertLiveSessionMessage(current, {
-            ...existing,
-            ...completed,
-            toolName: existing.toolName ?? completed.toolName,
-            toolArgs: existing.toolArgs ?? completed.toolArgs,
-            createdAt: existing.createdAt || completed.createdAt,
-          })
-        : upsertLiveSessionMessage(current, completed);
-      break;
-    }
-    default:
-      return;
-  }
-
-  if (next === current) return;
-  liveSessionTranscripts.add(sessionId);
-  cacheSessionTranscript(
-    sessionId,
-    next,
-    sessionHistoryCache.get(sessionId) ?? state.sessionHistory[sessionId],
-  );
-}
-
-function nextPlanSyncGeneration(sessionId: string): number {
-  const next = (planSyncGenerations.get(sessionId) ?? 0) + 1;
-  planSyncGenerations.set(sessionId, next);
-  return next;
-}
-
-function planSyncGeneration(sessionId: string): number {
-  return planSyncGenerations.get(sessionId) ?? 0;
-}
-
-/**
- * Projected planning state plus the contract kind decide the durable mode a
- * session is shown in: Plan and Goal both project `planning` (D198).
- */
-function sessionModeForPlanningState(
-  state: PlanningState,
-  kind: ProposalKind | undefined,
-): Mode {
-  if (state === "inactive") return "agent";
-  return modeForProposalKind(kind ?? "plan");
-}
-
 function messageErrorFromUnknown(error: unknown): AppError {
   const value = error as {
     code?: string;
@@ -735,6 +395,15 @@ export function isDefaultSessionTitle(title?: string | null) {
     trimmed === untitledTaskTitle().toLowerCase() ||
     trimmed === i18n.t("nav.newChat").toLowerCase()
   );
+}
+
+/** Project planning state and proposal kind determine the durable mode shown in the sidebar. */
+function sessionModeForPlanningState(
+  state: PlanningState,
+  kind: ProposalKind | undefined,
+): Mode {
+  if (state === "inactive") return "agent";
+  return modeForProposalKind(kind ?? "plan");
 }
 
 export type AppState = import("./app-state").AppState;
@@ -927,6 +596,44 @@ function withCompactionMark(
   return [...(marks ?? []).filter((existing) => existing.id !== mark.id), mark];
 }
 
+let storeAccess: StoreAccess | null = null;
+const runtimeStoreAccess: StoreAccess = {
+  get: () => {
+    if (!storeAccess) throw new Error("App store is not initialized");
+    return storeAccess.get();
+  },
+  set: (update) => {
+    if (!storeAccess) throw new Error("App store is not initialized");
+    storeAccess.set(update);
+  },
+};
+const sessionRuntime: SessionRuntime = createSessionRuntime(runtimeStoreAccess);
+const planResolutionRequests = new Map<string, Promise<PlanResolutionResult>>();
+const {
+  pendingNewSessionRequests,
+  sessionTranscriptCache,
+  liveSessionTranscripts,
+  sessionHistoryCache,
+  submittedComposerDrafts,
+  pendingSessionConfigurations,
+  sessionConfigurationFlushes,
+  sessionOlderLoads,
+  beginNavigationIntent,
+  navigationIntentIsCurrent,
+  newSessionScopeKey,
+  latestSessionInScope,
+  liveMessageCountForSession,
+  cacheSessionTranscript,
+  loadSessionDetail,
+  loadFullSessionMessages,
+  insertOptimisticUserMessage,
+  retractOptimisticUserMessage,
+  cacheBackgroundTranscriptEvent,
+  mergeSessionConfiguration,
+  nextPlanSyncGeneration,
+  planSyncGeneration,
+} = sessionRuntime;
+
 let flushingStreamUpdates = false;
 const streamUpdates = createFrameBatcher<AgentEventEnvelope>((envelopes) => {
   flushingStreamUpdates = true;
@@ -941,8 +648,23 @@ const streamUpdates = createFrameBatcher<AgentEventEnvelope>((envelopes) => {
   }
 });
 
-export const useAppStore = create<AppState>((set, get) => ({
+export const useAppStore = create<AppState>((set, get) => {
+  storeAccess = { get, set };
+  return {
   ...createInitialState(),
+
+  ...createSessionSlice({
+    get,
+    set,
+    runtime: sessionRuntime,
+    decorateSessions,
+    withoutRecordKey,
+    sessionModeForPlanningState,
+    openPlanArtifact,
+    rememberSessionCompactions,
+    commitForkedSession,
+    persistSessionAndSelect,
+  }),
 
   bootstrap: async () => {
     let recoveredSettings: AppSettings | undefined;
@@ -1131,537 +853,6 @@ export const useAppStore = create<AppState>((set, get) => ({
         error: e instanceof Error ? e.message : String(e),
       });
     }
-  },
-
-  refreshSessions: async () => {
-    const sessions = await api.listSessions();
-    set({ sessions: decorateSessions(sessions.sessions, get().sessionMeta) });
-  },
-
-  restorePendingPlan: async (sessionId) => {
-    if (!sessionId) return "unavailable";
-    const generation = nextPlanSyncGeneration(sessionId);
-    try {
-      const result = await api.pendingPlans(sessionId);
-      if (generation !== planSyncGeneration(sessionId)) return "unavailable";
-      const existingCheckpoint = get().planCheckpoints[sessionId];
-      const wasPending = existingCheckpoint?.status === "pending";
-      const proposal = latestPlanProposal(result.plans, sessionId);
-      const durableMode = get().sessions.find(
-        (session) => session.id === sessionId,
-      )?.mode;
-      const nextState =
-        result.state ??
-        (proposal?.status === "pending"
-          ? "awaiting_approval"
-          : durableMode === "plan" || durableMode === "goal"
-            ? "planning"
-            : "inactive");
-      // The host's live kind wins; a pending proposal or the durable mode is
-      // the fallback when the response predates the discriminator.
-      const nextKind: ProposalKind | undefined =
-        result.kind ??
-        proposal?.kind ??
-        (durableMode === "plan" || durableMode === "goal"
-          ? durableMode
-          : undefined);
-      const checkpoint =
-        proposal ??
-        (existingCheckpoint?.status === "pending" &&
-        nextState === "awaiting_approval"
-          ? existingCheckpoint
-          : terminalizeMissingPlan(existingCheckpoint, nextState));
-      const activeProposal =
-        nextState === "awaiting_approval" && isPendingPlan(checkpoint)
-          ? checkpoint
-          : undefined;
-      const executionActive = isActivePlanExecution(checkpoint);
-      const planRunSettled = Boolean(activeProposal || executionActive || wasPending);
-      set((state) => ({
-        planningStates: {
-          ...state.planningStates,
-          [sessionId]: nextState,
-        },
-        planCheckpoints: checkpoint
-          ? { ...state.planCheckpoints, [sessionId]: checkpoint }
-          : state.planCheckpoints,
-        pendingPlans: activeProposal
-          ? { ...state.pendingPlans, [sessionId]: activeProposal }
-          : withoutRecordKey(state.pendingPlans, sessionId),
-        runningSessions: planRunSettled
-          ? { ...state.runningSessions, [sessionId]: executionActive }
-          : state.runningSessions,
-        isRunning:
-          state.activeSessionId === sessionId && planRunSettled
-            ? executionActive
-            : state.isRunning,
-        sessions: state.sessions.map((session) =>
-          session.id === sessionId
-            ? {
-                ...session,
-                mode: sessionModeForPlanningState(nextState, nextKind),
-              }
-            : session,
-        ),
-      }));
-      if (checkpoint && activeProposal) {
-        openPlanArtifact(checkpoint, get().openWorkPanelTabForSession);
-      }
-      return activeProposal ? "pending" : "terminal";
-    } catch {
-      // A transient host failure must not erase a live approval already held
-      // by the renderer; the next host event or activation retries it.
-      return "unavailable";
-    }
-  },
-
-  refreshPlanCheckpoints: async () => {
-    const sessionIds = get().sessions.map((session) => session.id);
-    await Promise.allSettled(
-      sessionIds.map((sessionId) => get().restorePendingPlan(sessionId)),
-    );
-  },
-
-  prefetchSession: async (id) => {
-    if (!id || sessionTranscriptCache.has(id)) return;
-    await loadSessionDetail(id, {
-      messageLimit: SESSION_TRANSCRIPT_PAGE_SIZE,
-      contentLimit: SESSION_TRANSCRIPT_CONTENT_LIMIT,
-    });
-  },
-
-  loadOlderMessages: async (sessionId) => {
-    const window = get().sessionHistory[sessionId];
-    if (!window?.hasMoreBefore || sessionOlderLoads.has(sessionId)) return;
-    const before = window.messageStart;
-    const request = api
-      .getSession(sessionId, {
-        messageBefore: before,
-        messageLimit: SESSION_TRANSCRIPT_PAGE_SIZE,
-        contentLimit: SESSION_TRANSCRIPT_CONTENT_LIMIT,
-      })
-      .then((detail) => {
-        const page = detail.session;
-        if (!page) return;
-        const nextWindow = {
-          messageStart: page.messageStart ?? Math.max(0, before - page.messages.length),
-          hasMoreBefore: page.hasMoreBefore === true,
-        };
-        const cached = sessionTranscriptCache.get(sessionId) ?? [];
-        const cachedStart = sessionHistoryCache.get(sessionId)?.messageStart ?? before;
-        // A newer navigation or another prepend wins; never duplicate a page
-        // after a stale response arrives.
-        if (cachedStart !== before && cached.length > 0) return;
-        const merged = mergeLiveSessionMessages(page.messages, cached);
-        cacheSessionTranscript(sessionId, merged, nextWindow);
-        set((state) =>
-          state.activeSessionId === sessionId
-            ? {
-                messages: mergeLiveSessionMessages(page.messages, state.messages),
-                sessionHistory: {
-                  ...state.sessionHistory,
-                  [sessionId]: nextWindow,
-                },
-              }
-            : {
-                sessionHistory: {
-                  ...state.sessionHistory,
-                  [sessionId]: nextWindow,
-                },
-              },
-        );
-      })
-      .finally(() => {
-        if (sessionOlderLoads.get(sessionId) === request) {
-          sessionOlderLoads.delete(sessionId);
-        }
-      });
-    sessionOlderLoads.set(sessionId, request);
-    await request;
-  },
-
-  selectSession: async (id, opts) => {
-    const intent = opts?.navigationIntent ?? beginNavigationIntent();
-    const selection = { id, intent };
-    pendingSessionSelection = selection;
-    const stateAtStart = get();
-    const runningAtSelection = stateAtStart.runningSessions[id] === true;
-    if (runningAtSelection) liveSessionTranscripts.add(id);
-    if (stateAtStart.activeSessionId) {
-      cacheSessionTranscript(
-        stateAtStart.activeSessionId,
-        stateAtStart.messages,
-        stateAtStart.sessionHistory[stateAtStart.activeSessionId],
-      );
-    }
-    set({ selectingSessionId: id, page: "chat" });
-
-    const commitSelection = (
-      messages: UiMessage[],
-      revalidating: boolean,
-      historyWindow: SessionHistoryWindow =
-        sessionHistoryCache.get(id) ?? { messageStart: 0, hasMoreBefore: false },
-    ) => {
-      const record = opts?.record !== false;
-      if (!record) {
-        set((s) => ({
-          ...(s.activeSessionId === id ? {} : switchWorkPanelSession(s, id)),
-          ...retainSessionPane(s, id, messages),
-          activeSessionId: id,
-          selectingSessionId: revalidating ? id : undefined,
-          messages,
-          sessionHistory: { ...s.sessionHistory, [id]: historyWindow },
-          page: "chat",
-          isRunning: s.runningSessions[id] ?? false,
-        }));
-        return;
-      }
-      const entry = { page: "chat" as const, sessionId: id };
-      set((s) => {
-        const stack = s.navStack.slice(0, s.navIndex + 1);
-        const last = stack[stack.length - 1];
-        const same = last?.page === "chat" && last?.sessionId === id;
-        const nextStack = same ? stack : [...stack, entry].slice(-50);
-        return {
-          ...(s.activeSessionId === id ? {} : switchWorkPanelSession(s, id)),
-          ...retainSessionPane(s, id, messages),
-          activeSessionId: id,
-          selectingSessionId: revalidating ? id : undefined,
-          messages,
-          sessionHistory: { ...s.sessionHistory, [id]: historyWindow },
-          page: "chat" as const,
-          isRunning: s.runningSessions[id] ?? false,
-          navStack: nextStack,
-          navIndex: nextStack.length - 1,
-        };
-      });
-    };
-
-    const alignWorkspace = async (projectPath?: string | null) => {
-      if (projectPath) {
-        if (
-          !sessionMatchesProject(
-            { projectPath: get().activeProjectPath },
-            projectPath,
-          )
-        ) {
-          const workspace = await get().activateProject(projectPath, {
-            navigationIntent: intent,
-          });
-          if (!navigationIntentIsCurrent(intent)) return false;
-          if (!workspace) throw new Error(i18n.t("errors.workspaceActivationFailed"));
-        }
-      } else if (get().workspace) {
-        await get().clearProject({ navigationIntent: intent });
-        if (!navigationIntentIsCurrent(intent)) return false;
-      }
-      return navigationIntentIsCurrent(intent);
-    };
-
-    const alignWorkspaceLatest = (projectPath?: string | null) => {
-      const task = sessionWorkspaceQueue.then(
-        () => alignWorkspace(projectPath),
-        () => alignWorkspace(projectPath),
-      );
-      sessionWorkspaceQueue = task.then(
-        () => undefined,
-        () => undefined,
-      );
-      return task;
-    };
-
-    try {
-      if (!navigationIntentIsCurrent(intent)) return;
-      const summary = get().sessions.find((session) => session.id === id);
-      // Start transcript IO immediately. When summary metadata is available,
-      // workspace alignment runs beside it instead of adding another round trip.
-      const detailPromise = loadSessionDetail(id, {
-        messageLimit: SESSION_TRANSCRIPT_PAGE_SIZE,
-        contentLimit: SESSION_TRANSCRIPT_CONTENT_LIMIT,
-      });
-      let detail: Awaited<typeof detailPromise> | undefined;
-      // A retained pane already holds this session's painted transcript
-      // (ADR 0137). Reveal it before awaiting workspace alignment so a warm
-      // switch shows the destination on its first frame; the revalidated
-      // transcript lands in the same pane afterwards.
-      const retainedMessages =
-        sessionTranscriptCache.get(id) ?? get().retainedTranscripts[id];
-      if (retainedMessages && get().activeSessionId !== id && summary) {
-        commitSelection(retainedMessages, true);
-      } else if (
-        summary &&
-        get().activeSessionId !== id &&
-        sessionIsReusableEmpty(summary, {
-          running: runningAtSelection,
-          liveMessageCount: retainedMessages?.length ?? 0,
-          submitted: submittedComposerDrafts.has(id),
-        })
-      ) {
-        // An empty destination has nothing to load. Reveal it on this frame
-        // instead of leaving the previous transcript up during session.get.
-        cacheSessionTranscript(id, [], EMPTY_SESSION_WINDOW);
-        commitSelection([], true, EMPTY_SESSION_WINDOW);
-      }
-      if (summary) {
-        if (!(await alignWorkspaceLatest(summary.projectPath))) return;
-      } else {
-        detail = await detailPromise;
-        if (!navigationIntentIsCurrent(intent)) return;
-        if (!(await alignWorkspaceLatest(detail.session?.projectPath))) return;
-      }
-
-      const cachedMessages = sessionTranscriptCache.get(id);
-      if (cachedMessages && navigationIntentIsCurrent(intent)) {
-        cacheSessionTranscript(id, cachedMessages, sessionHistoryCache.get(id));
-        commitSelection(cachedMessages, true, sessionHistoryCache.get(id));
-      }
-
-      detail ??= await detailPromise;
-      if (!navigationIntentIsCurrent(intent)) return;
-      const historyWindow = detail.session
-        ? {
-            messageStart: detail.session.messageStart ?? 0,
-            hasMoreBefore: detail.session.hasMoreBefore === true,
-          }
-        : { messageStart: 0, hasMoreBefore: false };
-      const currentState = get();
-      const liveMessages =
-        (runningAtSelection ||
-          currentState.runningSessions[id] === true ||
-          liveSessionTranscripts.has(id))
-          ? currentState.activeSessionId === id
-            ? currentState.messages
-            : sessionTranscriptCache.get(id) ??
-              currentState.retainedTranscripts[id]
-          : undefined;
-      const selectedMessages = detail.session
-        ? liveMessages
-          ? mergeLiveSessionMessages(detail.session.messages ?? [], liveMessages)
-          : detail.session.messages ?? []
-        : liveMessages ?? [];
-      if (detail.session) {
-        cacheSessionTranscript(id, selectedMessages, historyWindow);
-      }
-      commitSelection(selectedMessages, false, historyWindow);
-      if (
-        currentState.runningSessions[id] !== true &&
-        durableCoversLiveSessionMessages(
-          detail.session?.messages ?? [],
-          liveMessages,
-        )
-      ) {
-        liveSessionTranscripts.delete(id);
-      }
-      rememberSessionCompactions(id, detail.session);
-      void get().restorePendingPlan(id);
-      void get().acknowledgeSessionOutcome(id);
-    } finally {
-      if (pendingSessionSelection === selection) {
-        pendingSessionSelection = null;
-        set((state) =>
-          state.selectingSessionId === id
-            ? { selectingSessionId: undefined }
-            : {},
-        );
-      }
-    }
-  },
-
-  newSession: async (options) => {
-    const requestedProjectPath =
-      options && "projectPath" in options
-        ? options.projectPath ?? null
-        : get().workspace?.path ?? null;
-    const scopeKey = newSessionScopeKey(requestedProjectPath);
-    const pending = pendingNewSessionRequests.get(scopeKey);
-    if (pending) {
-      await pending;
-      return;
-    }
-
-    const intent = beginNavigationIntent();
-    const request = (async () => {
-      if (
-        requestedProjectPath &&
-        !sessionMatchesProject(
-          { projectPath: get().activeProjectPath },
-          requestedProjectPath,
-        )
-      ) {
-        const workspace = await get().activateProject(requestedProjectPath, {
-          navigationIntent: intent,
-        });
-        if (!navigationIntentIsCurrent(intent)) return;
-        if (!workspace) throw new Error(i18n.t("errors.workspaceActivationFailed"));
-      }
-      if (requestedProjectPath === null && get().workspace) {
-        await get().clearProject({ navigationIntent: intent });
-        if (!navigationIntentIsCurrent(intent)) return;
-      }
-
-      // Reuse against renderer state: a just-sent first message is already
-      // visible as a running session, live rows, or a submitted draft, even
-      // when session.list has not yet refreshed messageCount.
-      const latest = latestSessionInScope(
-        get().sessions,
-        requestedProjectPath,
-        get().sessionMeta,
-      );
-      if (
-        latest &&
-        sessionIsReusableEmpty(latest, {
-          running: get().runningSessions[latest.id] === true,
-          liveMessageCount: liveMessageCountForSession(latest.id, get()),
-          submitted: submittedComposerDrafts.has(latest.id),
-        })
-      ) {
-        if (get().activeSessionId === latest.id && get().page === "chat") return;
-        await get().selectSession(latest.id, { navigationIntent: intent });
-        return;
-      }
-
-      await persistSessionAndSelect({
-        intent,
-        projectPath: requestedProjectPath,
-        draftConfiguration: null,
-      });
-    })();
-    pendingNewSessionRequests.set(scopeKey, request);
-    try {
-      await request;
-    } finally {
-      if (pendingNewSessionRequests.get(scopeKey) === request) {
-        pendingNewSessionRequests.delete(scopeKey);
-      }
-    }
-  },
-
-  forkSession: async (id) => {
-    const intent = beginNavigationIntent();
-    const state = get();
-    if (!id || state.runningSessions[id]) return;
-    const source = state.sessions.find((session) => session.id === id);
-    if (!source) throw new Error(i18n.t("errors.sessionNotFound"));
-
-    if (source.projectPath) {
-      if (
-        !sessionMatchesProject(
-          { projectPath: state.activeProjectPath },
-          source.projectPath,
-        )
-      ) {
-        const workspace = await get().activateProject(source.projectPath, {
-          navigationIntent: intent,
-        });
-        if (!navigationIntentIsCurrent(intent)) return;
-        if (!workspace) throw new Error(i18n.t("errors.workspaceActivationFailed"));
-      }
-    } else if (state.workspace) {
-      await get().clearProject({ navigationIntent: intent });
-      if (!navigationIntentIsCurrent(intent)) return;
-    }
-
-    const sourceTitle = source.title.trim() || i18n.t("chat.untitledTask");
-    const result = await api.forkSession(
-      id,
-      i18n.t("nav.branchTitle", { title: sourceTitle }),
-    );
-    // The child is already durable on the host. Recording it is unconditional;
-    // only activating it depends on this navigation still owning the view.
-    commitForkedSession(result.session, {
-      activate: navigationIntentIsCurrent(intent),
-    });
-  },
-
-  forkAssistantMessage: async (messageId) => {
-    const intent = beginNavigationIntent();
-    const state = get();
-    const sessionId = state.activeSessionId;
-    if (!sessionId || state.runningSessions[sessionId]) return;
-    const message = state.messages.find((candidate) => candidate.id === messageId);
-    const source = state.sessions.find((session) => session.id === sessionId);
-    if (!message || message.role !== "assistant" || !source) return;
-
-    try {
-      const sourceTitle = source.title.trim() || i18n.t("chat.untitledTask");
-      const result = await api.forkSession(
-        sessionId,
-        i18n.t("nav.branchTitle", { title: sourceTitle }),
-        messageId,
-      );
-      commitForkedSession(result.session, {
-        activate: navigationIntentIsCurrent(intent),
-        clearError: true,
-      });
-    } catch (error) {
-      set({
-        error: error instanceof Error ? error.message : String(error),
-        errorCode: (error as { code?: string })?.code ?? null,
-      });
-    }
-  },
-
-  configureActiveSession: async (config) => {
-    const sessionId = get().activeSessionId;
-    // The home composer can be visible while project/session navigation has
-    // cleared the active id. Keep the toolbar choice on the unpersisted
-    // draft and apply it when the first message creates the session instead
-    // of materializing a history row for a toolbar-only interaction.
-    if (!sessionId) {
-      set((state) => ({
-        draftConfiguration: {
-          mode: config.mode,
-          thinkingLevel: config.thinkingLevel,
-          providerId:
-            config.providerId ?? state.draftConfiguration?.providerId,
-          modelId: config.modelId ?? state.draftConfiguration?.modelId,
-          permissionMode:
-            config.permissionMode ?? state.draftConfiguration?.permissionMode,
-        },
-      }));
-      return;
-    }
-    if (get().pendingPlans[sessionId]?.status === "pending") return;
-    if (
-      get().runningSessions[sessionId] ||
-      sessionConfigurationFlushes.has(sessionId)
-    ) {
-      pendingSessionConfigurations.set(
-        sessionId,
-        mergeSessionConfiguration(pendingSessionConfigurations.get(sessionId), config),
-      );
-      set((state) => ({
-        sessions: state.sessions.map((session) =>
-          session.id === sessionId
-            ? applyOptimisticSessionConfiguration(session, config)
-            : session,
-        ),
-      }));
-      return;
-    }
-    // A configuration staged by an earlier turn that never flushed (the host
-    // rejected it) still carries the user's choice; layer the new fields on it.
-    const payload = mergeSessionConfiguration(
-      pendingSessionConfigurations.get(sessionId),
-      config,
-    );
-    pendingSessionConfigurations.delete(sessionId);
-    const result = await api.configureSession(sessionId, payload);
-    set((state) => ({
-      sessions: state.sessions.map((session) =>
-        session.id === sessionId
-          ? {
-              ...result.session,
-              pinned: sessionIsPinned(sessionId, state.sessionMeta),
-              archived: sessionIsArchived(sessionId, state.sessionMeta),
-            }
-          : session,
-      ),
-      planningStates: {
-        ...state.planningStates,
-        [sessionId]: result.session.mode === "plan" ? "planning" : "inactive",
-      },
-    }));
   },
 
   enqueuePrompt: (content, draft, requestedSessionId) => {
@@ -2439,7 +1630,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   activateProject: async (path, opts) => {
     const intent = opts?.navigationIntent ?? beginNavigationIntent();
-    const preserveConversation = pendingSessionSelection?.intent === intent;
+    const preserveConversation = sessionRuntime.isSessionSelectionForIntent(intent);
     const requestedPath = path.trim();
     if (!requestedPath) return null;
     const result = await api.setProject(requestedPath);
@@ -2616,7 +1807,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   clearProject: async (opts) => {
     const intent = opts?.navigationIntent ?? beginNavigationIntent();
-    const preserveConversation = pendingSessionSelection?.intent === intent;
+    const preserveConversation = sessionRuntime.isSessionSelectionForIntent(intent);
     await api.clearProject();
     if (!navigationIntentIsCurrent(intent)) return;
     if (!preserveConversation) get().resetWorkPanelContext();
@@ -3933,12 +3124,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     get,
     set,
     isSessionSelectionPending: (sessionId) =>
-      pendingSessionSelection?.id === sessionId,
+      sessionRuntime.isSessionSelectionPending(sessionId),
   }),
 
 
   clearComposerPrefill: () => set({ composerPrefill: null }),
-}));
+  };
+});
 
 /**
  * Mirror the live transcript into the active session's retained snapshot
