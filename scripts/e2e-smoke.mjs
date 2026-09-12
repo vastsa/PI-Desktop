@@ -17,6 +17,11 @@ import { tmpdir } from "node:os";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { PROTOCOL_VERSION } from "../packages/shared/dist/protocol.js";
+import {
+  loadDevelopmentPlugin,
+  resolvePluginExecution,
+  waitForPluginExecution,
+} from "./e2e/plugin.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..");
@@ -325,10 +330,10 @@ async function main() {
 
     // plugin load
     const hello = join(root, "examples/plugins/hello");
-    const plugin = await host.call("plugins.loadDev", { path: hello });
+    const plugin = await loadDevelopmentPlugin(host, hello);
     record(
       "E2E-022-plugin-load",
-      plugin.plugin?.id === "demo.hello" && plugin.plugin?.enabled === true,
+      plugin.id === "demo.hello" && plugin.enabled === true,
     );
 
     // E2E-024: plugin agent tool dispatch roundtrip. The smoke harness acts
@@ -345,16 +350,9 @@ async function main() {
         mode: "agent",
       });
       // wait for the plugins.execute notification and answer it
-      let execNote = null;
-      for (let i = 0; i < 100 && !execNote; i++) {
-        execNote = host.notifications.find(
-          (n) => n.method === "plugins.execute" && n.params?.toolName === toolName,
-        );
-        if (!execNote) await new Promise((r) => setTimeout(r, 50));
-      }
+      const execNote = await waitForPluginExecution(host, toolName);
       if (execNote) {
-        await host.call("plugins.resolveExecution", {
-          executionId: execNote.params.executionId,
+        await resolvePluginExecution(host, execNote, {
           ok: true,
           content: { echo: String(execNote.params.args?.text || "") },
         });
