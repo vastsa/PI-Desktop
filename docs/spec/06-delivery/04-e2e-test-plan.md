@@ -1577,7 +1577,11 @@ needed.
 - **Acceptance**: E (bounded cross-platform search)
 - **Milestone**: M5
 - **Status**: Unit-covered (host-core and agent-runtime); live multi-platform
-  protocol capture pending
+  protocol capture pending. The workspace-relative path expectation is covered
+  on Windows by `relative_display`, which must canonicalize the workspace root
+  with the resolver's own spelling (`simple_canonicalize`) — std
+  `Path::canonicalize` keeps the `\\?\` prefix there and silently degrades
+  every label to an absolute path.
 
 #### E2E-019a: Scratch-directory writes stay out of the workspace (D114)
 

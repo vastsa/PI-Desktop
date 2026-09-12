@@ -4,7 +4,12 @@ use std::path::{Component, Path, PathBuf};
 /// Canonicalize a path, stripping the Windows extended-length prefix (`\\?\`)
 /// when the result is a simple drive-letter path (e.g. `C:\...`). This keeps
 /// paths compatible with shell APIs (`ShellExecuteW`) that reject `\\?\`.
-fn simple_canonicalize(path: &Path) -> std::io::Result<PathBuf> {
+///
+/// Every path the resolver returns carries this spelling, so any caller that
+/// compares a resolved path against a root must canonicalize that root the
+/// same way — std `Path::canonicalize` keeps the `\\?\` prefix on Windows and
+/// would never match.
+pub(crate) fn simple_canonicalize(path: &Path) -> std::io::Result<PathBuf> {
     let canonical = path.canonicalize()?;
     #[cfg(windows)]
     {
