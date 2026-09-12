@@ -503,6 +503,11 @@ pi.desktop.invoke(input: {
 }): Promise<unknown>
 ```
 
+The reviewed catalog includes `session/open(sessionId)` for a plugin UI to
+open an existing durable session. Plugin-originated `session/create` and
+`agent/prompt` calls refresh session state without changing the active
+renderer session; `session/open` is explicit navigation.
+
 This is the first-party plugin gateway to the same reviewed operation catalog
 used by the opt-in local MCP control plane (ADR 0203 / D370). The returned
 catalog omits Electron channel names and the plugin never receives the MCP

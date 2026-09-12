@@ -149,8 +149,8 @@ export function registerApplicationStartup(deps: StartupDependencies): void {
     const control = createMcpControlController({
       invoke: invokeIpc,
       channels: IPC.invoke,
-      onOperationComplete: async (operation, result, args) => {
-        const event = mcpControlRendererEvent(operation, result, args);
+      onOperationComplete: async (operation, result, args, source) => {
+        const event = mcpControlRendererEvent(operation, result, args, source);
         if (event) sendToRenderer(IPC.event.sessionsChanged, event);
       },
     });
