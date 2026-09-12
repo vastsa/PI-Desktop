@@ -467,8 +467,33 @@ const COMPACTION_RETAINED_USER_MESSAGE_MAX_TOKENS = 20_000;
 const COMPACTION_FALLBACK_KEEP_RECENT_RATIO = 0.25;
 const COMPACTION_FALLBACK_MAX_SUMMARY_CHARS = 12_000;
 const COMPACTION_SUMMARY_PROMPT_SAFETY_TOKENS = 2_048;
-const COMPACTION_FALLBACK_MARKER =
+export const COMPACTION_FALLBACK_MARKER =
   "[automatic context recovery: older context was omitted after summary generation failed]";
+/** Stored in place of a carried-forward summary when a fallback had none. */
+const COMPACTION_FALLBACK_NO_SUMMARY =
+  "No previous context checkpoint is available.";
+
+/**
+ * A retained-tail fallback stores any carried-forward summary ahead of the
+ * recovery notice, separated by `COMPACTION_FALLBACK_MARKER` (see
+ * `createFallbackCheckpoint`). Only the notice is synthetic: the text before
+ * the marker is the real summary the failed compaction was carrying forward.
+ * Strip the notice — and the "no previous summary" placeholder — so the next
+ * summarization rebuilds from that real summary instead of updating a notice
+ * that never was a summary (#224), without discarding the history it carried.
+ */
+function stripCompactionFallbackNotice(
+  summary: string | undefined,
+): string | undefined {
+  if (!summary) return undefined;
+  const markerIndex = summary.indexOf(COMPACTION_FALLBACK_MARKER);
+  if (markerIndex === -1) return summary;
+  const carried = summary.slice(0, markerIndex).trim();
+  if (carried.length === 0 || carried === COMPACTION_FALLBACK_NO_SUMMARY) {
+    return undefined;
+  }
+  return carried;
+}
 /** Path-scoped rules are best-effort and must not stall a file tool turn. */
 export const PATH_INSTRUCTION_RESOLUTION_TIMEOUT_MS = 2_000;
 const PATH_SCOPED_INSTRUCTION_TOOLS = new Set([
@@ -4865,10 +4890,24 @@ Delegation rules:
       keepRecentTokens: budget.keepRecentTokens,
     } satisfies CompactionSettings);
     if (!prepared.ok || !prepared.value) return prepared;
+    // pi picks `previousSummary` straight from the previous compaction entry.
+    // A retained-tail fallback stores its carried-forward summary ahead of a
+    // recovery notice; feeding the notice to the next run makes the model
+    // *update* a summary that never existed and cements the failure. Strip the
+    // notice while keeping the carried-forward summary, so the next
+    // summarization request still sees the history it was carrying (#224).
+    const previousSummary = stripCompactionFallbackNotice(
+      prepared.value.previousSummary,
+    );
     return {
       ok: true as const,
       value: this.codexShapedPreparation(
-        prepared.value,
+        {
+          ...prepared.value,
+          ...(previousSummary === prepared.value.previousSummary
+            ? {}
+            : { previousSummary }),
+        },
         retainedUserTokens,
         retentionMode,
       ),
@@ -5180,7 +5219,7 @@ Delegation rules:
           preparation.previousSummary,
           Math.min(COMPACTION_FALLBACK_MAX_SUMMARY_CHARS, maxSummaryChars),
         )
-      : "No previous context checkpoint is available.";
+      : COMPACTION_FALLBACK_NO_SUMMARY;
     const continuation =
       retentionMode === "active_turn"
         ? "The provider is continuing the active turn. Use the one retained latest user request as the source of truth for that continuation."
@@ -5191,8 +5230,26 @@ Delegation rules:
       "The automatic summary request did not complete. Older messages before this checkpoint are omitted from the next model request.",
       `The complete transcript remains available in the session. ${continuation}`,
     ].join("\n\n");
+    // A completed-turn checkpoint normally retains no naked user messages, but
+    // an empty tail plus a carried-forward (or absent) summary leaves the next
+    // model request with nothing before the boundary: after a runtime rebuild
+    // — model switch, restart — the session restores as if it had just started.
+    // Fall back to the newest user messages under the same budget so the
+    // failure path still restores a bounded, non-empty context (#224).
+    const retainedTail =
+      preparation.retainedTail.length > 0
+        ? preparation.retainedTail
+        : selectRetainedUserMessages(
+            preparation.messagesToSummarize.filter(
+              (message): message is UserMessage => message.role === "user",
+            ),
+            preparation.settings.keepRecentTokens,
+          );
     return this.createCheckpoint(
-      preparation,
+      {
+        ...preparation,
+        retainedTail,
+      },
       throughMessageId,
       summary,
       undefined,
@@ -5333,7 +5390,12 @@ Delegation rules:
     if (!sourceInput.ok || !sourceInput.value) return preparation;
     return {
       ...sourceInput.value,
-      previousSummary: terminal.summary,
+      // Same rule as `prepareCompactionInput`: strip a fallback notice but keep
+      // the summary it carries forward, so a chained fallback cannot bake in
+      // the notice or discard the real history along with it (#224).
+      previousSummary:
+        stripCompactionFallbackNotice(terminal.summary) ??
+        sourceInput.value.previousSummary,
     };
   }
 

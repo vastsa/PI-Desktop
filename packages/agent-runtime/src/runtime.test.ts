@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { estimateTokens } from "@earendil-works/pi-agent-core";
 import { buildSessionContext } from "./session-context.js";
 import {
+  COMPACTION_FALLBACK_MARKER,
   DesktopAgentRuntime,
   PATH_INSTRUCTION_RESOLUTION_TIMEOUT_MS,
   looksLikePseudoToolCall,
@@ -4633,6 +4634,122 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
         compaction: expect.objectContaining({
           details: expect.objectContaining({ fallback: "retained_tail" }),
           summary: expect.stringContaining("The previous task summary."),
+        }),
+      }),
+    );
+    await runtime.dispose();
+  });
+
+  it("keeps the summary a fallback checkpoint carries forward", async () => {
+    // A fallback checkpoint stores any carried-forward summary ahead of its
+    // recovery notice (see `createFallbackCheckpoint`). The next preparation
+    // must strip only the notice: pi's `prepareCompaction` cannot rebuild the
+    // older context from the transcript on its own, so dropping the carried
+    // summary would lose it permanently (#224).
+    const runtime = createRuntime();
+    (runtime as any).fullEntries = [
+      {
+        type: "message",
+        id: "anchor-user",
+        seq: 0,
+        parentId: null,
+        timestamp: Date.parse("2026-08-01T00:00:00Z"),
+        message: { role: "user", content: "anchor ask", timestamp: 1 },
+      },
+      {
+        type: "message",
+        id: "later-user",
+        seq: 1,
+        parentId: "anchor-user",
+        timestamp: Date.parse("2026-08-01T00:00:01Z"),
+        message: { role: "user", content: "later ask", timestamp: 2 },
+      },
+    ];
+    (runtime as any).activeCompaction = {
+      id: "fallback-1",
+      summary: [
+        "The earlier task summary.",
+        COMPACTION_FALLBACK_MARKER,
+        "The automatic summary request did not complete.",
+      ].join("\n\n"),
+      firstKeptMessageId: "anchor-user",
+      throughMessageId: "anchor-user",
+      tokensBefore: 240_000,
+      retainedTail: [{ role: "user", content: "remembered ask", timestamp: 0 }],
+      details: { generation: 1, fallback: "retained_tail" },
+      providerId: "local",
+      modelId: "local-model",
+      createdAt: "2026-08-01T00:00:00Z",
+    };
+
+    const entries = (runtime as any).entriesWithCompaction();
+    const budget = (runtime as any).contextBudget(
+      buildSessionContext(entries).messages,
+    );
+    const preparation = (runtime as any).prepareCompactionInput(
+      entries,
+      budget,
+      20_000,
+      "active_turn",
+    );
+
+    expect(preparation.value.previousSummary).toBe("The earlier task summary.");
+    await runtime.dispose();
+  });
+
+  it("keeps the carried summary when a fallback checkpoint is the terminal entry", async () => {
+    // The rebuild path (`fallbackPreparation`) carries the terminal summary
+    // into a smaller-tail checkpoint. When that terminal entry is itself a
+    // fallback, the notice must be stripped without losing the summary it
+    // carries, or the older context disappears for good (#224).
+    const host = { call: vi.fn().mockResolvedValue(undefined) };
+    const runtime = createRuntime({
+      host,
+      history: [
+        {
+          id: "old-user",
+          role: "user",
+          content: "older task context",
+          createdAt: "2026-08-01T00:00:00Z",
+          status: "complete",
+        },
+        {
+          id: "recent-user",
+          role: "user",
+          content: "recent context",
+          createdAt: "2026-08-01T00:00:01Z",
+          status: "complete",
+        },
+      ],
+      compaction: {
+        id: "fallback-1",
+        summary: [
+          "The earlier task summary.",
+          COMPACTION_FALLBACK_MARKER,
+          "The automatic summary request did not complete.",
+        ].join("\n\n"),
+        throughMessageId: "recent-user",
+        tokensBefore: 220_000,
+        retainedTail: [
+          { role: "user", content: "recent context", timestamp: 2 },
+        ],
+        details: { generation: 1, fallback: "retained_tail" },
+        createdAt: "2026-08-01T00:00:02Z",
+      },
+    });
+    const generateCompaction = vi.spyOn(runtime as any, "generateCompaction");
+
+    await expect((runtime as any).runCompaction("threshold", false)).resolves.toBe(
+      true,
+    );
+
+    expect(generateCompaction).not.toHaveBeenCalled();
+    expect(host.call).toHaveBeenCalledWith(
+      "session.appendCompaction",
+      expect.objectContaining({
+        compaction: expect.objectContaining({
+          details: expect.objectContaining({ fallback: "retained_tail" }),
+          summary: expect.stringContaining("The earlier task summary."),
         }),
       }),
     );
