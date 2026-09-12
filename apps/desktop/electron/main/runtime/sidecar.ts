@@ -21,6 +21,7 @@ import type { RuntimeState } from "./context";
 
 export type SidecarRuntimeDependencies = {
   runtimeState: RuntimeState;
+  steeringReplies: Set<string>;
   logger: Logger;
   sendToRenderer: (channel: string, payload: unknown) => void;
   persistAgentEvent: (envelope: AgentEventEnvelope) => UiMessage | undefined;
@@ -49,6 +50,7 @@ export type SidecarRuntimeDependencies = {
 
 export function createSidecarRuntime({
   runtimeState,
+  steeringReplies,
   logger,
   sendToRenderer,
   persistAgentEvent,
@@ -121,6 +123,7 @@ export function createSidecarRuntime({
     if (runtimeState.sidecar !== s) return;
     logger.flushChild("agent");
     runtimeState.sidecar = null;
+    steeringReplies.clear();
     if (intentional || isQuitting()) return;
     // A sidecar crash closes live approval waiters before the replacement
     // sidecar starts. This prevents an old renderer response from waking a

@@ -1,4 +1,4 @@
-import { IPC, ErrorCodes, isGlobalPermissionMode, type AgentEventEnvelope, type AgentPromptRequest, type AgentQueuePushRequest, type AgentStopRequest, type AskToolResolution, type GlobalPermissionMode, type MessageUsage, type PlanExecutionFinishStatus, type PlanResolutionResult, type PlanResolveRequest, type PromptEnhancementRequest, type SessionSummarizeTitleRequest } from "@pi-desktop/shared";
+import { IPC, ErrorCodes, isGlobalPermissionMode, type AgentEventEnvelope, type AgentPromptRequest, type AgentSteerRequest, type UiMessage, type AgentQueuePushRequest, type AgentStopRequest, type AskToolResolution, type GlobalPermissionMode, type MessageUsage, type PlanExecutionFinishStatus, type PlanResolutionResult, type PlanResolveRequest, type PromptEnhancementRequest, type SessionSummarizeTitleRequest } from "@pi-desktop/shared";
 import { expandSlashInvocation, enhancePromptDraft, summarizeSessionTitle, visionFromModelConfig, type ComposerTemplate, type RuntimeProviderConfig } from "@pi-desktop/agent-runtime";
 import { OAUTH_AUTH_KIND, type VendorOAuth } from "../oauth";
 import { appendPromptFallbackPaths, durableUserMessageId, preparePromptAttachments, type PreparedPromptAttachment } from "../prompt-attachments";
@@ -23,6 +23,7 @@ export type AgentIpcDependencies = {
   persistenceOutbox: PersistenceOutbox;
   dataDir: string;
   activeTurns: Map<string, string>;
+  turnFinalizations: Map<string, Promise<void>>;
   activeTurnUsages: Map<string, MessageUsage>;
   approvedExecutionIdsBySession: Map<string, string>;
   claimedExecutionSessions: Map<string, string>;
@@ -51,6 +52,7 @@ export function registerAgentIpc({
   persistenceOutbox,
   dataDir,
   activeTurns,
+  turnFinalizations,
   activeTurnUsages,
   approvedExecutionIdsBySession,
   claimedExecutionSessions,
@@ -180,6 +182,51 @@ export function registerAgentIpc({
       data: { title, providerId: launch.providerId, modelId: launch.modelId },
     });
     return { title };
+  });
+
+  handle(IPC.invoke.agentSteer, async (req: AgentSteerRequest) => {
+    if (!host || !sidecar) throw new Error("backend unavailable");
+    if (
+      !req?.sessionId || typeof req.content !== "string" || !req.expectedTurnId ||
+      (!req.content.trim() && !req.attachments?.length)
+    ) {
+      throw Object.assign(new Error("Steering input and expectedTurnId required"), {
+        errorCode: ErrorCodes.INVALID_ARGUMENT,
+      });
+    }
+    if (activeTurns.get(req.sessionId) !== req.expectedTurnId || turnFinalizations.has(req.sessionId)) {
+      throw Object.assign(new Error("The target turn has ended"), {
+        errorCode: ErrorCodes.TURN_NOT_FOUND,
+      });
+    }
+    const context = await sidecar.call<{ projectPath?: string; supportsVision: boolean }>(
+      "agent.steeringContext", { sessionId: req.sessionId, expectedTurnId: req.expectedTurnId },
+    );
+    const prepared = await preparePromptAttachments(
+      dataDir, req.sessionId, context.projectPath, req.attachments ?? [], context.supportsVision,
+    );
+    const session = await host.call<{ session?: { messages?: UiMessage[] } }>("session.get", {
+      id: req.sessionId, messageLimit: 1,
+    });
+    const message: UiMessage = {
+      id: durableUserMessageId(req.messageId, session.session?.messages ?? []),
+      role: "user",
+      content: req.content,
+      status: "complete",
+      createdAt: new Date().toISOString(),
+      steering: true,
+      ...(prepared.length ? { attachments: prepared.map((attachment) => attachment.message) } : {}),
+    };
+    // Revalidate inside the runtime after all file/host IO. A stale target must
+    // never turn into a normal prompt or alter the next turn's configuration.
+    return sidecar.call<{ accepted: boolean; turnId: string }>("agent.steer", {
+      sessionId: req.sessionId, expectedTurnId: req.expectedTurnId, message,
+      content: appendPromptFallbackPaths(req.content, prepared),
+      attachments: prepared.filter((attachment) => attachment.inlineData).map((attachment) => ({
+        path: attachment.message.ref, name: attachment.message.name, kind: attachment.message.kind,
+        mimeType: attachment.message.mimeType, size: attachment.message.size, data: attachment.inlineData,
+      })),
+    });
   });
 
   handle(IPC.invoke.agentPrompt, async (req: AgentPromptRequest) => {

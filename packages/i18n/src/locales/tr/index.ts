@@ -249,6 +249,8 @@ export const tr = {
     enhancementFailed: "İstem iyileştirilemedi",
     dismissEnhancementError: "İyileştirme hatasını kapat",
     abort: "Durdur",
+    sendWhileRunning: "Takip mesajı gönder · {{shortcut}} ile yönlendir",
+    steeringUnavailable: "Bu tur artık yönlendirme kabul edemiyor. Taslağınız korundu.",
     stopGenerating: "Oluşturmayı durdur",
     running: "Çalışıyor…",
     loadingSession: "Sohbet yükleniyor…",

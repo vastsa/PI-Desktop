@@ -46,6 +46,7 @@ crates/host-core (tool execution + permissions)
 ```ts
 interface AgentRuntime {
  prompt(input: PromptInput): Promise<{ turnId: string }>
+ steer(input: RuntimePrompt, expectedTurnId: string, message: UiMessage): { accepted: boolean; turnId: string }
  requestGracefulStop(): { requested: boolean }
  abort(turnId?: string): Promise<void>
  getStatus(): RuntimeStatus
@@ -60,6 +61,29 @@ tool batch have completed, and emits a normal `agent_end` before another model
 request. It does not cancel an active provider stream or running tool. An idle
 runtime returns `{ requested: false }`; immediate `abort()` remains the
 separate cancellation path.
+
+### 4.0 Active-turn steering
+
+`steer` validates the current turn identity before changing any state, then
+queues user input through pi-agent-core's native steering queue in `all` mode.
+The current provider request and any started tool batch finish first; all
+accepted input is included at the next model-request boundary within the same
+durable turn. A live provider request is not rewritten or aborted. Main owns
+attachment validation and transcript persistence as for ordinary prompts.
+
+Queued input retains its renderer message id when pi consumes it, including
+when another input arrives before the initial user message has been consumed.
+An admission after pi's last queue poll suppresses the terminal event and
+continues once pi has released the run, with the same turn identity and without
+a second public `agent_start`. Existing context/provider recovery takes
+precedence over that continuation. Steering also wakes a parent that is idle
+waiting for background delegates; it does not cancel those delegates.
+
+Abort, graceful stop, fatal errors and terminal settlement close admission.
+Accepted but unconsumed input remains transcript/context history and is removed
+from pi's steering queue so it cannot execute independently on a later turn.
+An ordinary follow-up stays in the separate Host-owned FIFO until durable turn
+finalization. A steering failure must not terminate the active run.
 
 ### 4.1 Session title summarization
 

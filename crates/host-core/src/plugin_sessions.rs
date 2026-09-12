@@ -232,6 +232,7 @@ fn parse_message(
         role: role.to_string(),
         content: input.content.clone(),
         attachments: None,
+        steering: None,
         created_at,
         thinking: None,
         status: None,

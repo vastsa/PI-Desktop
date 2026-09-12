@@ -29,6 +29,7 @@ type UseComposerSubmitOptions = {
   activeFileReferences: ComposerFileReference[];
   t: TFunction;
   sendPrompt: AppState["sendPrompt"];
+  steerPrompt: AppState["steerPrompt"];
   showToast: AppState["showToast"];
   draft: Pick<
     ComposerDraftController,
@@ -49,7 +50,7 @@ export type ComposerSubmitController = {
   invalidatePromptEnhancement: () => void;
   enhancePrompt: () => Promise<void>;
   undoPromptEnhancement: () => void;
-  submit: () => Promise<void>;
+  submit: (steering?: boolean) => Promise<void>;
 };
 
 /**
@@ -70,6 +71,7 @@ export function useComposerSubmit({
   activeFileReferences,
   t,
   sendPrompt,
+  steerPrompt,
   showToast,
   draft,
 }: UseComposerSubmitOptions): ComposerSubmitController {
@@ -183,7 +185,7 @@ export function useComposerSubmit({
     });
   };
 
-  const submit = async () => {
+  const submit = async (steering = false) => {
     const text = draft.ref.current ? readEditorValue(draft.ref.current) : value;
     const inlineContent = serializeInlineComposerFileReferences(
       text,
@@ -199,7 +201,7 @@ export function useComposerSubmit({
     const submittedDraftKey = draftKey;
     // Slash dispatch stays local for builtin and extension commands, while
     // templates, skills, and unknown aliases continue as normal prompt text.
-    if (serializedContent.startsWith("/")) {
+    if (!steering && serializedContent.startsWith("/")) {
       const commandEnd = serializedContent.search(/\s/);
       const name = serializedContent.slice(
         1,
@@ -262,13 +264,15 @@ export function useComposerSubmit({
         }
       }
     }
-    if (!modelReady) {
+    if (!steering && !modelReady) {
       showToast(t("errors.MODEL_NOT_CONFIGURED"), { variant: "error" });
       return;
     }
     const submittedDraft = draft.draftSnapshot(text);
     draft.clearDraftForKey(submittedDraftKey);
-    const accepted = await sendPrompt(inlineContent, submittedDraft);
+    const accepted = steering
+      ? await steerPrompt(inlineContent, submittedDraft)
+      : await sendPrompt(inlineContent, submittedDraft);
     if (!accepted) draft.restoreDraftForKey(submittedDraftKey, submittedDraft);
   };
 

@@ -20,6 +20,7 @@ type AbortMessage = {
   role: string;
   content: string;
   thinking?: string;
+  steering?: boolean;
 };
 
 type SubmittedDraft = {
@@ -49,7 +50,11 @@ export function resolveComposerSmartStop<T extends AbortMessage>(
       (message.role === "assistant" &&
         Boolean(message.content.trim() || message.thinking?.trim())),
   );
-  if ((lastUserIndex < 0 && !submitted) || replyStarted) {
+  if (
+    (lastUserIndex < 0 && !submitted) ||
+    replyStarted ||
+    messages[lastUserIndex]?.steering
+  ) {
     return { kind: "settle" };
   }
 

@@ -270,6 +270,7 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 | 0204 | [未签名 macOS 首次启动助手](/adr/0204-unsigned-macos-first-launch-helper) | 已接受（由 D406 / ADR 0232 修订） |
 | 0205 | [远程 Agent 控制使用专用的 Host 边界](/adr/0205-remote-agent-control-boundary) | 已接受待实现（MVP 之后；由 D376 修订） |
 | 0232 | [macOS DMG 只保留打开说明](/adr/0232-macos-dmg-text-only-opening-guidance) | 已接受（修订 D371 / ADR 0204） |
+| active-turn-steering | [用 Alt+Enter 向当前回合补充指令](/adr/active-turn-steering) | 已接受 |
 
 ## 什么时候看 ADR
 

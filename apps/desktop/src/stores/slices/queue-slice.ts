@@ -66,6 +66,7 @@ export function createQueueSlice({
   | "refreshQueuedPrompts"
   | "applyQueueChanged"
   | "sendPrompt"
+  | "steerPrompt"
 > {
   const queuedDrafts = new Map<string, ComposerDraftSnapshot>();
 
@@ -242,6 +243,41 @@ export function createQueueSlice({
 
     applyQueueChanged: (event: AgentQueueChangedEvent) => {
       applyQueueEntries(event.sessionId, event.entries);
+    },
+
+    steerPrompt: async (content, draft) => {
+      const state = get();
+      const sessionId = state.activeSessionId;
+      const expectedTurnId = sessionId ? state.agentStatuses[sessionId]?.currentTurnId : undefined;
+      if (
+        !sessionId || !expectedTurnId || !state.runningSessions[sessionId] ||
+        state.pendingPlans[sessionId]?.status === "pending"
+      ) {
+        get().showToast(i18n.t("chat.steeringUnavailable"), { variant: "info" });
+        return false;
+      }
+      const message = optimisticUserMessage(
+        crypto.randomUUID(), content, draft?.fileReferences ?? [],
+      );
+      message.steering = true;
+      runtime.insertOptimisticUserMessage(sessionId, message);
+      try {
+        await api.steer({
+          sessionId, expectedTurnId, content, messageId: message.id,
+          attachments: draft ? promptAttachmentsFromDraft(draft.fileReferences) : [],
+        });
+        return true;
+      } catch (error) {
+        runtime.retractOptimisticUserMessage(sessionId, message);
+        const failure = messageErrorFromUnknown(error);
+        get().showToast(
+          failure.code === "TURN_NOT_FOUND"
+            ? i18n.t("chat.steeringUnavailable")
+            : failure.message,
+          { variant: "error" },
+        );
+        return false;
+      }
     },
 
     sendPrompt: async (content, draft, requestedSessionId) => {

@@ -49,6 +49,7 @@ crates/host-core (tool execution + permissions)
 ```ts
 interface AgentRuntime {
  prompt(input: PromptInput): Promise<{ turnId: string }>
+ steer(input: RuntimePrompt, expectedTurnId: string, message: UiMessage): { accepted: boolean; turnId: string }
  requestGracefulStop(): { requested: boolean }
  abort(turnId?: string): Promise<void>
  getStatus(): RuntimeStatus
@@ -62,6 +63,24 @@ interface AgentRuntime {
 模型请求之前正常地发出 `agent_end`。它不会取消进行中的提供商流或正在运行的
 工具。空闲的运行时返回 `{ requested: false }`；立即生效的 `abort()` 仍然是另
 一条独立的取消路径。
+
+### 4.0 当前回合补充指令
+
+`steer` 在改变任何状态之前验证当前回合标识，再通过 pi-agent-core 原生 steering 队列的
+`all` 模式加入用户输入。当前提供商请求和已启动的一批工具先完成；所有已接收输入在
+同一个持久回合的下一次模型请求边界进入上下文。进行中的请求不会被改写或中止。
+与普通提示相同，主进程负责附件验证和转录持久化。
+
+pi 消费排队输入时保留渲染器提供的消息 id；即使补充输入早于最初用户消息被消费，
+也遵循这一规则。如果输入在 pi 最后一次检查队列后才获准进入，运行时抑制终态事件，
+等 pi 释放执行后沿用同一回合继续，不再次公开发出 `agent_start`。现有上下文和提供商
+恢复流程优先于这次继续执行。补充指令也会唤醒正在空闲等待后台委托的父代理，
+不会取消这些委托。
+
+中止、优雅停止、致命错误和终态落定都会关闭接收入口。已接收但尚未消费的输入保留在
+转录和上下文历史中，并从 pi steering 队列移除，避免在后续回合独立执行。
+普通 follow-up 仍留在独立的 Host FIFO 中，直到当前持久回合最终落定。
+补充指令失败不得终止当前运行。
 
 ## 5. 提示流程
 

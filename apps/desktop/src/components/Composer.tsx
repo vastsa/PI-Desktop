@@ -79,6 +79,7 @@ export function Composer({
 }) {
   const { t } = useTranslation();
   const sendPrompt = useAppStore((s) => s.sendPrompt);
+  const steerPrompt = useAppStore((s) => s.steerPrompt);
   const removeQueuedPrompt = useAppStore((s) => s.removeQueuedPrompt);
   const sendQueuedNow = useAppStore((s) => s.sendQueuedNow);
   const abort = useAppStore((s) => s.abort);
@@ -392,6 +393,7 @@ export function Composer({
     activeFileReferences,
     t,
     sendPrompt,
+    steerPrompt,
     showToast,
     draft: {
       ref,
@@ -529,10 +531,11 @@ export function Composer({
             inputBlocked={inputBlocked}
             pasting={pasting}
             enterToSend={enterToSend}
+            runActive={runActive}
             composerAc={composerAc}
             onPaste={pasteClipboardFiles}
             onAcceptCompletion={acceptCompletion}
-            onSubmit={() => void submit()}
+            onSubmit={(steering) => void submit(steering)}
             onInsertNewline={insertNewlineInEditor}
             onInput={handleInput}
             onCompositionStart={() => setComposing(true)}

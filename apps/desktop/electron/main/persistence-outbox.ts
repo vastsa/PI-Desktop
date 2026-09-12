@@ -95,7 +95,9 @@ export class PersistenceOutbox {
         });
         return;
       }
-      this.entries.shift();
+      // An in-flight assistant checkpoint may have been replaced by its final
+      // snapshot while the host append was pending. Keep that newer write.
+      if (this.entries[0] === current) this.entries.shift();
       await this.persist();
     }
   }

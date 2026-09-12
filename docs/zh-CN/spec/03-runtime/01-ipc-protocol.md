@@ -48,6 +48,7 @@ event: pi-desktop/<domain>/event/<name>
 示例：
 
 - `pi-desktop/agent/prompt`
+- `pi-desktop/agent/steer`
 - `pi-desktop/agent/abort`
 - `pi-desktop/agent/event/message`
 - `pi-desktop/agent/askTool/resolve`
@@ -146,6 +147,37 @@ Root 用户轮次可能包括 `revisionRootId`、`revisionCount` 和
  输入框
 附件可供性保持隐藏，直到 main、sidecar、pi 模型
 功能和持久性都会消耗有效负载。
+
+### 5.1a 向当前回合补充指令
+
+`pi-desktop/agent/steer` 接受 `AgentSteerRequest`：
+
+```ts
+type AgentSteerRequest = {
+ sessionId: string;
+ expectedTurnId: string;
+ content: string;
+ messageId?: string;
+ attachments?: AgentPromptAttachment[];
+};
+```
+
+成功时返回现有回合的 `{ accepted: true, turnId }`。主进程检查正在运行的持久回合，
+从现有 sidecar 运行时读取当前项目的附件根目录和模型图像能力，再执行普通提示所用的
+有界附件准备。sidecar 在这些 IO 完成后重新验证 `expectedTurnId`。
+目标回合不存在、已结束、正在停止、标识不匹配，或正在等待 Plan/Goal 审批时，返回
+`TURN_NOT_FOUND`，不会退回到新建回合或排队。空载荷返回 `INVALID_ARGUMENT`。
+
+内部 `agent.steeringContext` 和 `agent.steer` 只使用已存在的运行时，不执行启动配置、
+`runtimeFor` 或 `session.beginTurn`。补充指令不能改变当前模型、权限模式、工作区或
+已批准的执行；此通道中的斜杠文本按普通输入处理。
+
+已接收的输入以普通用户消息事件回显，携带当前 `turnId`、主进程准备的附件引用和
+`UiMessage.steering: true`。这个持久标记确保渲染器重载后，Smart Stop 仍保留该输入。
+用户 `message_end` 还可携带 `precedingAssistant` 流式快照，在持久化输入前为回复预留
+位置。主进程通过可重放 outbox 写入两者；主机仅以终态快照替换该临时助手行，保留其
+id、顺序和所属回合。图像字节不进入持久消息。这是新增的桌面通道和事件字段，
+不改变 RACP、主机 RPC 版本或存储架构。见 ADR active-turn-steering。
 
 ### 5.2 在下一个回合边界停止
 
