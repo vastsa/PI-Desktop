@@ -268,6 +268,7 @@ import { registerWindowIpc } from "./ipc/window-ipc";
 import { registerPullsIpc } from "./ipc/pulls-ipc";
 import { registerScheduledIpc } from "./ipc/scheduled-ipc";
 import { registerAgentIpc } from "./ipc/agent-ipc";
+import { registerIpcHandlers } from "./ipc/register";
 import { registerDiagnosticsIpc } from "./ipc/diagnostics-ipc";
 import { registerMarketIpc } from "./ipc/market-ipc";
 import { registerMcpIpc } from "./ipc/mcp-ipc";
@@ -5947,68 +5948,21 @@ async function bootBackends() {
 }
 
 function registerIpc() {
-  const ipcHandlers = new Map<string, (...args: any[]) => Promise<any>>();
-  const handle = (channel: string, fn: (...args: any[]) => Promise<any>) => {
-    ipcHandlers.set(channel, fn);
-    ipcMain.handle(channel, async (_event, ...args) => wrap(() => fn(...args)));
-  };
-  const handleWithEvent = (
-    channel: string,
-    fn: (event: IpcMainInvokeEvent, ...args: any[]) => Promise<any>,
-  ) => {
-    ipcMain.handle(channel, async (event, ...args) =>
-      wrap(() => fn(event, ...args)),
-    );
-  };
-  const assertMainWindowSender = (event: IpcMainInvokeEvent): void => {
-    if (event.sender.id !== mainWindow?.webContents.id) {
-      throw Object.assign(new Error("renderer is not the main window"), {
-        errorCode: "PERMISSION_DENIED",
-      });
-    }
-  };
-
-  const optionalWorkspaceRoot = async (): Promise<string | null> => {
-    if (!host) return null;
-    try {
-      const result = (await host.call("workspace.get")) as {
-        workspace: { path?: string } | null;
-      };
-      return result.workspace?.path ?? null;
-    } catch {
-      return null;
-    }
-  };
-
-  const registrar: IpcRegistrar = {
+  return registerIpcHandlers({
     ipcMain,
-    handle,
-    handleWithEvent,
-    assertMainWindowSender,
-  };
-
-  registerAppIpc({
-    registrar,
+    wrap,
+    getMainWindow: () => mainWindow,
     getHost: () => host,
+    getSidecar: () => sidecar,
+    getAgentHostBridge: () => agentHostBridge,
+    getNotificationViewingSessionId: () => notificationViewingSessionId,
+    setNotificationViewingSessionId: (sessionId: string | null) => {
+      notificationViewingSessionId = sessionId;
+    },
     getPluginLauncherWindow: () => pluginLauncherWindow,
     togglePluginLauncher,
     safeOpenExternal,
     updater,
-  });
-  registerNotificationIpc({
-    registrar,
-    getHost: () => host,
-    getMainWindow: () => mainWindow,
-    getViewingSessionId: () => notificationViewingSessionId,
-    setViewingSessionId: (sessionId) => {
-      notificationViewingSessionId = sessionId;
-    },
-    sendToRenderer,
-  });
-  registerSessionIpc({
-    registrar,
-    getHost: () => host,
-    getSidecar: () => sidecar,
     dataDir,
     activeTurns,
     sessionProjects,
@@ -6019,12 +5973,6 @@ function registerIpc() {
     enrichSession,
     acquireSessionOperation,
     stripWinLongPrefix,
-  });
-  registerSettingsIpc({
-    registrar,
-    getHost: () => host,
-    getSidecar: () => sidecar,
-    dataDir,
     normalizeSettings,
     validateSettingsWrite,
     testNetworkProxy,
@@ -6033,36 +5981,20 @@ function registerIpc() {
     applyApplicationMenuSettings,
     applyDeveloperMode,
     resolveEffectiveCommandShell,
-  });
-  registerProviderIpc({
-    registrar,
-    getHost: () => host,
     modelsDevCatalog,
     vendorOAuth,
-    logger,
     enrichProvider,
     listRuntimeProviders,
     enrichProviderList,
     bindingForModel,
-  });
-  const loadComposerTemplatesCached = createComposerTemplateLoader(logger);
-  const composerCommandService = registerComposerIpc({
-    registrar,
-    plugins,
     agentExtensions,
-    optionalWorkspaceRoot,
     activeUserSkills,
     pluginActiveInProject,
-    loadComposerTemplatesCached,
-  });
-  registerWindowIpc({
-    registrar,
-    getMainWindow: () => mainWindow,
     getWorkPanelReservationWidth: () => requestedWorkPanelReservation,
-    setWorkPanelReservationWidth: (width) => {
+    setWorkPanelReservationWidth: (width: number) => {
       requestedWorkPanelReservation = width;
     },
-    setWorkPanelReservation: (state) => {
+    setWorkPanelReservation: (state: WorkPanelReservationState) => {
       workPanelReservation = state;
     },
     getWorkPanelChatWidthSetter: () => setWorkPanelChatWidthForWindow,
@@ -6070,154 +6002,36 @@ function registerIpc() {
     getCloseBehavior: () => closeBehavior,
     markMenuRendererReady,
     executeNativeMenuAction,
-  });
-  registerPullsIpc({ registrar, getHost: () => host });
-  registerScheduledIpc({
-    registrar,
-    getHost: () => host,
     scheduledRunsBySession,
-  });
-  registerWorkspaceIpc({
-    registrar,
-    getHost: () => host,
-    getSidecar: () => sidecar,
-    dataDir,
     isDevelopmentBuild,
-    plugins,
     browserHost,
     clipboardHistory,
-    logger,
     recordPastedClipboardFiles,
     currentWorkspacePath,
     setCurrentWorkspacePath,
     withGitBranch,
-    stripWinLongPrefix,
-  });
-
-  registerAgentExtensionIpc({
-    handle,
-    bridge: agentExtensions,
-    window: () => mainWindow,
-    importRoot: join(dataDir, "plugins", "imported"),
-    loadDevPlugin: async (path) => {
-      if (!host) throw new Error("host unavailable");
-      const loaded = await host.call<{ plugin: any }>("plugins.loadDev", { path });
-      await plugins.loadFromPath(path, loaded.plugin?.permissions ?? [], { development: true });
-      if (loaded.plugin?.id) plugins.watchDevPlugin(loaded.plugin.id);
-      sendToRenderer(IPC.event.pluginChanged, { reason: "importExtension", pluginId: loaded.plugin?.id });
-      return loaded;
-    },
-    runCommand: async (input) => {
-      if (!sidecar) throw new Error("agent sidecar unavailable");
-      return sidecar.call<{ handled: boolean }>("extensions.command.run", input);
-    },
-  });
-  registerAgentIpc({
-    registrar,
-    getHost: () => host,
-    getSidecar: () => sidecar,
-    getAgentHostBridge: () => agentHostBridge,
-    logger,
-    vendorOAuth,
-    agentExtensions,
-    persistenceOutbox,
-    dataDir,
-    activeTurns,
     activeTurnUsages,
     approvedExecutionIdsBySession,
     claimedExecutionSessions,
     resolveAgentRuntimeLaunch,
-    acquireSessionOperation,
     finishTurn,
     finishApprovedExecution,
     dispatchApprovedPlan,
     dispatchExecutionForProposal,
     emitAgentEvent,
-    setNotificationViewingSessionId: (sessionId) => {
-      notificationViewingSessionId = sessionId;
-    },
-    optionalWorkspaceRoot,
-    composerCommandService,
-    loadComposerTemplatesCached,
-  });
-
-  registerPluginIpc({
-    registrar,
-    getHost: () => host,
-    plugins,
-    agentExtensions,
-    browserHost,
+    userMcp,
+    refreshUserMcp,
+    describeError,
+    activeUserSubagentDocuments,
     pluginViews,
     pluginScopes,
     rememberPluginScopes,
-    sendToRenderer,
-    logger,
-  });
-
-
-  registerMcpIpc({
-    registrar,
-    getHost: () => host,
-    userMcp,
-    currentWorkspacePath,
-    refreshUserMcp,
-    describeError,
-    sendToRenderer,
-  });
-
-
-  registerSkillsIpc({
-    registrar,
-    getHost: () => host,
-    optionalWorkspaceRoot,
-    activeUserSubagentDocuments,
-    stripWinLongPrefix,
-    sendToRenderer,
-  });
-
-
-  registerPluginUiIpc({
-    registrar,
-    plugins,
-    browserHost,
-    pluginViews,
     pluginPanels,
-    pluginActiveInProject,
-    currentWorkspacePath,
     getUpdaterLocale: () => updaterLocale,
     getPluginPanelTheme: () => pluginPanelTheme,
-  });
-
-
-  registerMarketIpc({
-    registrar,
-    getHost: () => host,
-    plugins,
-    agentExtensions,
-    optionalWorkspaceRoot,
-    pluginActiveInProject,
+    isDeveloperMode: () => developerMode,
     sendToRenderer,
   });
-
-
-  registerDiagnosticsIpc({
-    registrar,
-    dataDir,
-    stripWinLongPrefix,
-    isDeveloperMode: () => developerMode,
-    getMainWindow: () => mainWindow,
-  });
-
-
-  return async (channel: string, args: readonly unknown[] = []) => {
-    const handler = ipcHandlers.get(channel);
-    if (!handler) {
-      throw Object.assign(new Error(`IPC channel is not available to external agents: ${channel}`), {
-        errorCode: ErrorCodes.NOT_FOUND,
-      });
-    }
-    return handler(...args);
-  };
 }
 
 // A rejected promise nobody awaited must land in the log with its stack, not
