@@ -228,8 +228,6 @@ function applyCodexLine(line: string, meta: CodexScanMeta): void {
   }
 }
 
-const CODEX_LAST_TIMESTAMP_RE = /"timestamp":"([^"]*)"/g;
-
 /** Last top-level timestamp in the final tail bytes, or null. */
 async function readTailTimestamp(
   handle: fs.FileHandle,
@@ -248,8 +246,17 @@ async function readTailTimestamp(
   }
   const text = buf.toString("utf8", from, read.bytesRead);
   let last: string | null = null;
-  for (const match of text.matchAll(CODEX_LAST_TIMESTAMP_RE)) {
-    last = match[1];
+  for (const line of text.split("\n")) {
+    try {
+      const obj = JSON.parse(line) as Record<string, unknown>;
+      // Match parseFile's `obj.timestamp` behavior. A nested payload
+      // timestamp is not the record timestamp and must not move updatedAt.
+      if (typeof obj.timestamp === "string" && obj.timestamp) {
+        last = obj.timestamp;
+      }
+    } catch {
+      // The first or last line can be partial at the sample boundary.
+    }
   }
   return last;
 }
@@ -278,9 +285,11 @@ async function scanLargeFile(
 
   if (meta.firstUserText === null) {
     // The title lives deeper than the head chunk (large synthetic preamble):
-    // stream on from the head boundary, parsing until it is found.
+    // stream on from the last complete line, parsing until it is found. If
+    // the head contains no newline, restart at byte zero so an oversized first
+    // JSON line is not parsed from its middle and silently discarded.
     const stream = createReadStream(filePath, {
-      start: headBytes,
+      start: headLastNewline === -1 ? 0 : headBytes,
       encoding: "utf8",
     });
     const lines = createInterface({

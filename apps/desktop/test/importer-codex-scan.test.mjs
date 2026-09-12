@@ -203,3 +203,73 @@ test("a large file whose real user message sits beyond the head is still found",
     },
   );
 });
+
+test("a large file with an oversized first line still yields its real title", async () => {
+  await withArchive(
+    [
+      [
+        "oversized-first-line.jsonl",
+        [
+          JSON.stringify({
+            timestamp: "2026-05-01T00:00:00Z",
+            type: "session_meta",
+            payload: {
+              id: "oversized-1",
+              cwd: "/repo/oversized",
+              timestamp: "2026-05-01T00:00:00Z",
+            },
+            padding: "x".repeat(1_048_576),
+          }),
+          responseItem("user", "首行很长但标题仍应保留", "2026-05-01T00:00:01Z"),
+          fillBytes(
+            CODEX_SCAN_FULL_PARSE_MAX_BYTES + 512 * 1024,
+            JSON.stringify({
+              type: "response_item",
+              payload: { type: "function_call_output", output: "padding" },
+            }),
+          ),
+        ].join("\n"),
+      ],
+    ],
+    async (dir) => {
+      const [s] = await scanCodexSessions(dir);
+      assert.equal(s.externalId, "oversized-1");
+      assert.equal(s.title, "首行很长但标题仍应保留");
+      assert.equal(s.createdAt, iso("2026-05-01T00:00:00Z"));
+    },
+  );
+});
+
+test("sampled updatedAt uses top-level timestamps only", async () => {
+  await withArchive(
+    [
+      [
+        "nested-timestamp.jsonl",
+        [
+          metaLine("nested-1", "/repo/nested", "2026-06-01T00:00:00Z"),
+          responseItem("user", "只应使用顶层时间戳", "2026-06-01T00:00:01Z"),
+          fillBytes(
+            CODEX_SCAN_FULL_PARSE_MAX_BYTES + 512 * 1024,
+            JSON.stringify({
+              type: "response_item",
+              payload: { type: "function_call_output", output: "padding" },
+            }),
+          ),
+          JSON.stringify({
+            type: "response_item",
+            payload: {
+              type: "message",
+              role: "assistant",
+              content: [{ type: "output_text", text: "done" }],
+              metadata: { timestamp: "2099-01-01T00:00:00Z" },
+            },
+          }),
+        ].join("\n"),
+      ],
+    ],
+    async (dir) => {
+      const [s] = await scanCodexSessions(dir);
+      assert.equal(s.updatedAt, iso("2026-06-01T00:00:01Z"));
+    },
+  );
+});
