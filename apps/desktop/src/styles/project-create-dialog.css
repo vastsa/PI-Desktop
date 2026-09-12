@@ -57,6 +57,13 @@
   flex-direction: column;
 }
 
+.project-create-dialog-field-label {
+  margin-bottom: 8px;
+  color: var(--ds-text-primary);
+  font-size: var(--text-sm-plus);
+  font-weight: var(--font-weight-medium-plus);
+}
+
 .project-create-dialog-name-field {
   display: flex;
   min-height: 54px;
@@ -73,6 +80,25 @@
 .project-create-dialog-name-field:focus-within {
   background: var(--ds-raised);
   box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 24%, transparent);
+}
+
+.project-create-dialog-memory-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 10px;
+  border-radius: var(--radius-md);
+  background: var(--ds-tile-hover);
+  padding: 10px 12px;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-body);
+}
+
+.project-create-dialog-memory-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--ds-accent);
 }
 
 .project-create-dialog-name-icon {

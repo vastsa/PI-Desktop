@@ -1949,6 +1949,11 @@ export type AgentInstructionFile = {
   exists: boolean;
 };
 
+export type ProjectMemory = {
+  content: string;
+  updatedAt?: number;
+};
+
 /** Workspace-relative entry of the `fs/index` snapshot for the "@" menu (D124). */
 export type FsIndexEntry = {
   path: string;

@@ -251,3 +251,4 @@ Each ADR includes:
 | 0231 | Ideographic comma opens the composer slash menu | Accepted (amends D123 / D139 / ADR 0024; issue #65) |
 | 0232 | Keep macOS DMG opening guidance text-only | Accepted (amends D371 / ADR 0204) |
 | 0233 | Renderer-owned multi-folder project creation | Accepted (amends ADR 0011 / ADR 0016) |
+| 0234 | Keep project memory host-owned and path-scoped | Accepted |

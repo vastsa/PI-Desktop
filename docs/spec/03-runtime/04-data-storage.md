@@ -208,6 +208,7 @@ CREATE TABLE kv (
 | `ui` | non-critical UI state the renderer asks the host to keep |
 | `cache` | model-refresh stamps, recent model refs (spec 13 §3) |
 | `plugin:<id>` | per-plugin settings; uninstall = `DELETE WHERE ns = ?` |
+| `projectMemory` | durable user-authored context keyed by canonical project path; each value contains `content` and `updatedAt` |
 
 New config domains (e.g. MCP servers) start as a namespace; they graduate to
 tables only when they need relations or indexes.
@@ -287,6 +288,11 @@ CREATE TABLE projects (
 - The *current* visible workspace is `kv(app, currentProjectId)` — no singleton
   table, no partial-unique flag. Retained tabs do not add more current-project
   fields.
+- Project memory is host-owned in `kv(ns='projectMemory', key=<canonical path>)`
+  rather than renderer preferences. It is independent for every project path,
+  capped at 32 KiB, and is loaded by Electron main when a project session
+  starts. The runtime labels it as user-provided context so it cannot become a
+  replacement for safety, tool, or collaboration rules.
 
 ### 4.3 providers
 

@@ -18,6 +18,7 @@ import {
   IconPlus,
   IconSearch,
   IconStar,
+  IconSparkles,
   IconX,
 } from "../components/icons";
 import {
@@ -31,6 +32,7 @@ import {
   sessionMatchesProject,
 } from "../lib/sidebar-session-groups";
 import { ProjectInstructionsDialog } from "../components/ProjectInstructionsDialog";
+import { ProjectMemoryDialog } from "../components/ProjectMemoryDialog";
 import { ProjectRenameDialog, SessionRenameDialog } from "../components/SessionRenameDialog";
 import { AnchoredMenu } from "../components/settings/AnchoredMenu";
 
@@ -128,6 +130,10 @@ export function ProjectsPage() {
   } | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const [instructionsFor, setInstructionsFor] = useState<{
+    name: string;
+    path: string;
+  } | null>(null);
+  const [memoryFor, setMemoryFor] = useState<{
     name: string;
     path: string;
   } | null>(null);
@@ -673,6 +679,20 @@ export function ProjectsPage() {
                               <button
                                 type="button"
                                 role="menuitem"
+                                onClick={() => {
+                                  setMenuFor(null);
+                                  setMemoryFor({
+                                    name: project.name,
+                                    path: project.path,
+                                  });
+                                }}
+                              >
+                                <IconSparkles size={14} />
+                                {t("project.editMemory")}
+                              </button>
+                              <button
+                                type="button"
+                                role="menuitem"
                                 data-action="rename-project"
                                 onClick={() => {
                                   setMenuFor(null);
@@ -831,6 +851,18 @@ export function ProjectsPage() {
           project={instructionsFor}
           onClose={() => setInstructionsFor(null)}
           onSaved={() => showToast(t("project.instructionsSaved"), { variant: "success" })}
+          onError={(error) =>
+            showToast(error instanceof Error ? error.message : String(error), {
+              variant: "error",
+            })
+          }
+        />
+      ) : null}
+      {memoryFor ? (
+        <ProjectMemoryDialog
+          project={memoryFor}
+          onClose={() => setMemoryFor(null)}
+          onSaved={() => showToast(t("project.memorySaved"), { variant: "success" })}
           onError={(error) =>
             showToast(error instanceof Error ? error.message : String(error), {
               variant: "error",

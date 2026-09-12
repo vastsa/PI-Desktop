@@ -10,6 +10,7 @@ import {
   IconFolder,
   IconMonitor,
   IconNewProject,
+  IconSparkles,
   IconStar,
   IconX,
 } from "./icons";
@@ -166,6 +167,9 @@ export function ProjectCreateDialog() {
             void submit();
           }}
         >
+          <span className="project-create-dialog-field-label">
+            {t("project.createNameLabel")}
+          </span>
           <label className="project-create-dialog-name-field" htmlFor="project-create-name">
             <span className="project-create-dialog-name-icon" aria-hidden>
               <IconFolder size={18} />
@@ -185,6 +189,13 @@ export function ProjectCreateDialog() {
               autoCapitalize="off"
             />
           </label>
+
+          <div className="project-create-dialog-memory-hint">
+            <span className="project-create-dialog-memory-icon" aria-hidden>
+              <IconSparkles size={16} />
+            </span>
+            <span>{t("project.createMemoryHint")}</span>
+          </div>
 
           <div className="project-create-dialog-section-head">
             <span className="project-create-dialog-section-title">

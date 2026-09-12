@@ -20,6 +20,8 @@ test("create project dialog supports named multi-folder setup", () => {
   assert.match(dialog, /result\.folders/);
   assert.match(dialog, /project\.createRemoveFolder/);
   assert.match(dialog, /project\.createPrimary/);
+  assert.match(dialog, /project\.createMemoryHint/);
+  assert.match(dialog, /project-create-dialog-field-label/);
   assert.match(dialog, /disabled=\{!name\.trim\(\) \|\| folders\.length === 0 \|\| busy\}/);
   assert.match(dialog, /querySelectorAll<HTMLElement>\(/);
 });

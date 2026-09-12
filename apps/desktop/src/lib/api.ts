@@ -52,6 +52,7 @@ import type {
   MarketPluginDetail,
   PluginInstallResult,
   ProjectRecord,
+  ProjectMemory,
   ProjectWorkspace,
   PullRequestSummary,
   ScheduledTask,
@@ -469,6 +470,13 @@ export const api = {
     ),
   pickProjectFolders: () =>
     invoke<{ folders: string[]; canceled?: boolean }>(IPC.invoke.projectPickFolders),
+  getProjectMemory: (projectPath: string) =>
+    invoke<{ memory: ProjectMemory }>(IPC.invoke.projectMemoryGet, { projectPath }),
+  saveProjectMemory: (projectPath: string, content: string) =>
+    invoke<{ memory: ProjectMemory }>(IPC.invoke.projectMemorySave, {
+      projectPath,
+      content,
+    }),
   cloneProject: (url: string) =>
     invoke<{ workspace: ProjectWorkspace | null; canceled?: boolean }>(
       IPC.invoke.projectClone,

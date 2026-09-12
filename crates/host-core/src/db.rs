@@ -41,6 +41,16 @@ pub struct ProjectRecord {
     pub last_opened_at: i64,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectMemoryRecord {
+    pub content: String,
+    pub updated_at: i64,
+}
+
+const PROJECT_MEMORY_NAMESPACE: &str = "projectMemory";
+const MAX_PROJECT_MEMORY_BYTES: usize = 32 * 1024;
+
 fn normalize_project_path(path: &str) -> Option<String> {
     let trimmed = path.trim();
     if trimmed.is_empty() {
@@ -842,6 +852,48 @@ impl Database {
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
+
+    pub fn get_project_memory(&self, path: &str) -> Result<ProjectMemoryRecord> {
+        let key = canonical_project_path(path)
+            .ok_or_else(|| anyhow!("project path must not be blank"))?;
+        let value = self.kv_get(PROJECT_MEMORY_NAMESPACE, &key)?;
+        let content = value
+            .as_ref()
+            .and_then(|item| item.get("content"))
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let updated_at = value
+            .as_ref()
+            .and_then(|item| item.get("updatedAt"))
+            .and_then(Value::as_i64)
+            .unwrap_or_default();
+        Ok(ProjectMemoryRecord {
+            content,
+            updated_at,
+        })
+    }
+
+    pub fn set_project_memory(&self, path: &str, content: &str) -> Result<ProjectMemoryRecord> {
+        let project_path = canonical_project_path(path)
+            .ok_or_else(|| anyhow!("project path must not be blank"))?;
+        if content.as_bytes().len() > MAX_PROJECT_MEMORY_BYTES {
+            return Err(anyhow!(
+                "project memory exceeds {MAX_PROJECT_MEMORY_BYTES} bytes"
+            ));
+        }
+        self.ensure_project(&project_path, false)?;
+        let updated_at = now_ms();
+        self.kv_set(
+            PROJECT_MEMORY_NAMESPACE,
+            &project_path,
+            &serde_json::json!({ "content": content, "updatedAt": updated_at }),
+        )?;
+        Ok(ProjectMemoryRecord {
+            content: content.to_string(),
+            updated_at,
+        })
+    }
 }
 
 // ---- legacy database reset ----------------------------------------------
@@ -1401,6 +1453,50 @@ fn migrate_v14_to_v15(conn: &Connection, path: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn project_memory_is_path_scoped_and_bounded() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = dir.path().join("first");
+        let second = dir.path().join("second");
+        std::fs::create_dir_all(&first).unwrap();
+        std::fs::create_dir_all(&second).unwrap();
+        let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+
+        assert_eq!(
+            db.get_project_memory(first.to_str().unwrap())
+                .unwrap()
+                .content,
+            ""
+        );
+        let saved = db
+            .set_project_memory(first.to_str().unwrap(), "Keep the API stable.")
+            .unwrap();
+        assert_eq!(saved.content, "Keep the API stable.");
+        assert!(saved.updated_at > 0);
+        assert_eq!(
+            db.get_project_memory(&format!("{}/", first.to_string_lossy()))
+                .unwrap()
+                .content,
+            "Keep the API stable."
+        );
+        assert_eq!(
+            db.get_project_memory(second.to_str().unwrap())
+                .unwrap()
+                .content,
+            ""
+        );
+        let oversized = "x".repeat(MAX_PROJECT_MEMORY_BYTES + 1);
+        assert!(db
+            .set_project_memory(first.to_str().unwrap(), &oversized)
+            .is_err());
+        assert_eq!(
+            db.get_project_memory(first.to_str().unwrap())
+                .unwrap()
+                .content,
+            "Keep the API stable."
+        );
+    }
 
     fn table_exists(conn: &Connection, name: &str) -> bool {
         conn.query_row(

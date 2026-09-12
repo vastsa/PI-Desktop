@@ -1082,6 +1082,30 @@ Each scenario is documented in this format:
 - **Milestone**: M2
 - **Status**: Source-level regression covered; full UI scenario Draft
 
+#### E2E-012b: Project memory persists only within its project
+
+- **Preconditions**: App running with two retained projects and a configured
+  provider.
+- **Steps**: 1) Open the first project row menu and choose Project memory. 2)
+  Save a short project-specific note. 3) Start or continue a chat in the first
+  project and verify the next runtime receives the note. 4) Switch to the
+  second project and start a chat. 5) Return to the first project and reopen
+  the editor.
+- **Expected**: The editor loads the saved note after reopening. The first
+  project's runtime receives it as a labelled user-context block; the second
+  project's runtime does not. Empty memory is valid, saving replaces the prior
+  value, and content above 32 KiB is rejected without a partial save. The
+  create dialog's memory hint is concise and does not imply that memory is
+  shared across projects.
+- **Specs linked**: `03-runtime/01-ipc-protocol.md` (§9),
+  `03-runtime/04-data-storage.md` (§4.1),
+  `03-runtime/06-host-rpc-protocol.md` (Projects),
+  `04-ux/06-settings-ia.md` (Project archive),
+  `04-ux/08-component-spec.md` (Sidebar interactions)
+- **Acceptance**: C (chat/stream), D (project UI), F (persistence), Localization
+- **Milestone**: M5
+- **Status**: Unit/source covered; full provider/UI journey Draft
+
 #### E2E-011f: Send while running queues per-session prompts and supports Send now
 
 - **Preconditions**: Provider configured; session A can produce a delayed

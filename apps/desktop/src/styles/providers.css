@@ -1079,6 +1079,25 @@
   line-height: var(--leading-heading);
 }
 
+.project-memory-dialog .project-instructions-dialog-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.project-memory-dialog-description,
+.project-memory-dialog-hint {
+  margin: 0;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-body);
+}
+
+.project-memory-dialog-hint {
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs-plus);
+}
+
 .project-instructions-dialog-project,
 .project-instructions-dialog-path {
   color: var(--ds-text-secondary);

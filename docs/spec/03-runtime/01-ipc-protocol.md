@@ -1024,6 +1024,10 @@ authorization code. `accountLabel` is a display string.
   manager
 - `project/get()`: current workspace
 - `project/list()`: durable project records, including import-created entries
+- `project/memory/get(path)`: read the host-owned memory for a canonical project
+  path
+- `project/memory/save(path, content)`: replace that project's durable memory;
+  content is capped at 32 KiB and is used as context in the next session launch
 - `project/set(path)`: set workspace
 - `project/clear()`
 
@@ -1042,6 +1046,11 @@ type ProjectRecord = {
  pinned: boolean;
  createdAt: number;
  lastOpenedAt: number;
+};
+
+type ProjectMemory = {
+ content: string;
+ updatedAt?: number;
 };
 ```
 

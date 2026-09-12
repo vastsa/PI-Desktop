@@ -477,6 +477,10 @@ system while preserving their different data ownership:
   pinned tag remains as the localized text cue.
 - The row menu groups create/edit actions above pin, archive/restore, and the
   destructive Close action, and closes on Escape or any outside press
+- The row menu includes Project memory. Its editor is a compact viewport-level
+  dialog with one durable textarea, a concise hint, and Cancel/Save actions;
+  saved content is scoped to that project's path and is available in later
+  chats for the project.
 - Project search also matches session titles. Matching a session retains and
   expands its owning project; expanded sessions are ordered by latest activity,
   show a count and relative update time, and reveal additional rows in batches
