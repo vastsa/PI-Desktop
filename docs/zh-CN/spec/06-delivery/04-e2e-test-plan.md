@@ -843,7 +843,8 @@ unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E
   `suggestedTool=Glob` 和有界参数；更正后的调用成功。搜索
   结果使用项目内工作区相对路径和绝对路径
   仅适用于经批准的外部地点。没有特定于 shell 的路径语法
-  所需的和超大的结果仍然有限。
+  所需的和超大的结果仍然有限；工作区相对路径使用 `/` 表示平台分隔符，
+  POSIX 文件名中的字面量反斜杠保持不变。
 - **链接规格**：`03-runtime/03-tools-and-permissions.md`，
   `03-runtime/16-tool-result-limits.md`、ADR 0057、ADR 0069
 - **接受**：E（有界跨平台搜索）

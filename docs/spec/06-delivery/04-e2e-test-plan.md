@@ -1571,7 +1571,9 @@ needed.
   `suggestedTool=Glob` and bounded args; the corrected call succeeds. Search
   results use workspace-relative paths inside the project and absolute paths
   only for approved external locations. No shell-specific path syntax is
-  required and oversized results remain bounded.
+  required, workspace-relative paths use `/` for platform separators while
+  literal backslashes in POSIX filenames remain intact, and oversized results
+  remain bounded.
 - **Specs linked**: `03-runtime/03-tools-and-permissions.md`,
   `03-runtime/16-tool-result-limits.md`, ADR 0057, ADR 0069
 - **Acceptance**: E (bounded cross-platform search)
