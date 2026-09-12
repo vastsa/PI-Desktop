@@ -18,7 +18,10 @@ const [dialog, page, api, protocol, main, runtime, sidecar, db, rpc] = await Pro
 
 test("project memory has a host-backed editor and project menu entry", () => {
   assert.match(dialog, /api\.getProjectMemory\(project\.path\)/);
-  assert.match(dialog, /api\.saveProjectMemory\(project\.path, draft\)/);
+  assert.match(dialog, /api\.saveProjectMemory\(project\.path, normalized\)/);
+  assert.match(dialog, /project\.memoryAdd/);
+  assert.match(dialog, /project\.memoryRemove/);
+  assert.match(dialog, /entriesFromMemory/);
   assert.match(dialog, /project\.memoryDescription/);
   assert.match(page, /ProjectMemoryDialog/);
   assert.match(page, /project\.editMemory/);

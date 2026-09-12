@@ -207,9 +207,11 @@ type ToolBudgetHealth = {
   changing the active workspace and returns the host-generated project id
 - `project.memory.get({ path })` — returns the durable memory for the canonical
   project path, or an empty record when no memory has been saved
-- `project.memory.set({ path, content })` — validates and stores up to 32 KiB of
-  project memory; the value is injected into that project's next runtime
-  context as user-provided context
+- `project.memory.set({ path, entries })` — normalizes and stores visual memory
+  entries, derives readable `content`, and validates the 32 KiB limit. The
+  derived value is injected into that project's next runtime context as
+  user-provided context. `{ path, content }` remains supported for legacy
+  callers and returns a memory record without structured entries.
 
 ### Secrets
 - `secrets.set`

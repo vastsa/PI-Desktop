@@ -1951,7 +1951,14 @@ export type AgentInstructionFile = {
 
 export type ProjectMemory = {
   content: string;
+  entries?: ProjectMemoryEntry[];
   updatedAt?: number;
+};
+
+export type ProjectMemoryEntry = {
+  id: string;
+  title: string;
+  content: string;
 };
 
 /** Workspace-relative entry of the `fs/index` snapshot for the "@" menu (D124). */

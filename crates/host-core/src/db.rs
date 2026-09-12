@@ -45,7 +45,17 @@ pub struct ProjectRecord {
 #[serde(rename_all = "camelCase")]
 pub struct ProjectMemoryRecord {
     pub content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub entries: Option<Vec<ProjectMemoryEntryRecord>>,
     pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectMemoryEntryRecord {
+    pub id: String,
+    pub title: String,
+    pub content: String,
 }
 
 const PROJECT_MEMORY_NAMESPACE: &str = "projectMemory";
@@ -868,8 +878,10 @@ impl Database {
             .and_then(|item| item.get("updatedAt"))
             .and_then(Value::as_i64)
             .unwrap_or_default();
+        let entries = value.as_ref().and_then(parse_project_memory_entries);
         Ok(ProjectMemoryRecord {
             content,
+            entries,
             updated_at,
         })
     }
@@ -891,9 +903,105 @@ impl Database {
         )?;
         Ok(ProjectMemoryRecord {
             content: content.to_string(),
+            entries: None,
             updated_at,
         })
     }
+
+    pub fn set_project_memory_entries(
+        &self,
+        path: &str,
+        raw_entries: &Value,
+    ) -> Result<ProjectMemoryRecord> {
+        let project_path = canonical_project_path(path)
+            .ok_or_else(|| anyhow!("project path must not be blank"))?;
+        let entries = normalize_project_memory_entries(raw_entries)?;
+        let content = render_project_memory_entries(&entries);
+        if content.as_bytes().len() > MAX_PROJECT_MEMORY_BYTES {
+            return Err(anyhow!(
+                "project memory exceeds {MAX_PROJECT_MEMORY_BYTES} bytes"
+            ));
+        }
+        self.ensure_project(&project_path, false)?;
+        let updated_at = now_ms();
+        self.kv_set(
+            PROJECT_MEMORY_NAMESPACE,
+            &project_path,
+            &serde_json::json!({
+                "format": "entries-v1",
+                "content": content,
+                "entries": entries,
+                "updatedAt": updated_at
+            }),
+        )?;
+        Ok(ProjectMemoryRecord {
+            content,
+            entries: Some(entries),
+            updated_at,
+        })
+    }
+}
+
+fn parse_project_memory_entries(value: &Value) -> Option<Vec<ProjectMemoryEntryRecord>> {
+    let entries = value.get("entries")?.as_array()?;
+    entries
+        .iter()
+        .map(|entry| {
+            Some(ProjectMemoryEntryRecord {
+                id: entry.get("id")?.as_str()?.to_string(),
+                title: entry.get("title")?.as_str()?.to_string(),
+                content: entry.get("content")?.as_str()?.to_string(),
+            })
+        })
+        .collect()
+}
+
+fn normalize_project_memory_entries(value: &Value) -> Result<Vec<ProjectMemoryEntryRecord>> {
+    let entries = value
+        .as_array()
+        .ok_or_else(|| anyhow!("project memory entries must be an array"))?;
+    let mut normalized = Vec::with_capacity(entries.len());
+    for entry in entries {
+        let id = entry
+            .get("id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| anyhow!("project memory entry id required"))?;
+        let title = entry
+            .get("title")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .trim();
+        let content = entry
+            .get("content")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .trim();
+        if content.is_empty() {
+            continue;
+        }
+        normalized.push(ProjectMemoryEntryRecord {
+            id: id.to_string(),
+            title: title.to_string(),
+            content: content.to_string(),
+        });
+    }
+    Ok(normalized)
+}
+
+fn render_project_memory_entries(entries: &[ProjectMemoryEntryRecord]) -> String {
+    entries
+        .iter()
+        .map(|entry| {
+            if entry.title.is_empty() {
+                entry.content.clone()
+            } else {
+                format!("## {}\n\n{}", entry.title, entry.content)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n")
 }
 
 // ---- legacy database reset ----------------------------------------------
@@ -1486,6 +1594,31 @@ mod tests {
                 .content,
             ""
         );
+        let structured = serde_json::json!([
+            {
+                "id": "api",
+                "title": "API",
+                "content": "Keep the API stable."
+            },
+            {
+                "id": "blank",
+                "title": "Ignored",
+                "content": "  "
+            }
+        ]);
+        let structured_saved = db
+            .set_project_memory_entries(first.to_str().unwrap(), &structured)
+            .unwrap();
+        assert_eq!(structured_saved.content, "## API\n\nKeep the API stable.");
+        assert_eq!(structured_saved.entries.as_ref().unwrap().len(), 1);
+        assert_eq!(
+            db.get_project_memory(first.to_str().unwrap())
+                .unwrap()
+                .entries
+                .unwrap()[0]
+                .title,
+            "API"
+        );
         let oversized = "x".repeat(MAX_PROJECT_MEMORY_BYTES + 1);
         assert!(db
             .set_project_memory(first.to_str().unwrap(), &oversized)
@@ -1494,7 +1627,7 @@ mod tests {
             db.get_project_memory(first.to_str().unwrap())
                 .unwrap()
                 .content,
-            "Keep the API stable."
+            "## API\n\nKeep the API stable."
         );
     }
 

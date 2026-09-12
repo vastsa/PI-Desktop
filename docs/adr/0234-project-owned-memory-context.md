@@ -13,12 +13,14 @@ session switches projects.
 
 ## Decision
 
-Store one user-authored memory document per canonical project path in the
-existing host `kv` table under the `projectMemory` namespace. Limit the UTF-8
-content to 32 KiB. Electron main loads the value for the session-bound project
-path and passes it to the agent runtime. The runtime renders it after project
-instructions as explicitly user-provided context and compares it when deciding
-whether an idle runtime can be reused.
+Store one user-authored memory collection per canonical project path in the
+existing host `kv` table under the `projectMemory` namespace. The visual editor
+stores normalized entries with an id, optional title, and content using the
+`entries-v1` format. The host also derives a readable plain-text `content`
+value, limited to 32 KiB, for runtime injection. Electron main loads the value
+for the session-bound project path and passes it to the agent runtime. The
+runtime renders it after project instructions as explicitly user-provided
+context and compares it when deciding whether an idle runtime can be reused.
 
 The memory editor is exposed from the Project archive row menu. Creating a
 project keeps the creation surface compact and shows that project memory is
@@ -28,6 +30,9 @@ application does not implement.
 ## Consequences
 
 - Memory survives renderer restarts and is isolated by canonical project path.
+- The visual editor can add, edit, and remove memory entries while the runtime
+  consumes the host-derived plain-text projection. Existing legacy records that
+  contain only `content` remain readable as one untitled entry.
 - Changing memory retires the next reusable runtime so a follow-up prompt sees
   the new value.
 - Project memory cannot override runtime safety, tool, or collaboration rules.

@@ -6198,9 +6198,15 @@ function registerIpc() {
 
   handle(
     IPC.invoke.projectMemorySave,
-    async (input: { projectPath?: unknown; content?: unknown } = {}) => {
+    async (input: { projectPath?: unknown; content?: unknown; entries?: unknown } = {}) => {
       const projectPath = await managedProjectPath(input.projectPath);
       if (!host) throw new Error("host unavailable");
+      if (Array.isArray(input.entries)) {
+        return host.call("project.memory.set", {
+          path: projectPath,
+          entries: input.entries,
+        });
+      }
       const content = typeof input.content === "string" ? input.content : "";
       return host.call("project.memory.set", { path: projectPath, content });
     },

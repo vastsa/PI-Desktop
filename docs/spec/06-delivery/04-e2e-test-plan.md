@@ -1087,16 +1087,20 @@ Each scenario is documented in this format:
 - **Preconditions**: App running with two retained projects and a configured
   provider.
 - **Steps**: 1) Open the first project row menu and choose Project memory. 2)
-  Save a short project-specific note. 3) Start or continue a chat in the first
-  project and verify the next runtime receives the note. 4) Switch to the
-  second project and start a chat. 5) Return to the first project and reopen
+  Add a memory card, enter a title and project-specific note, then save. 3)
+  Reopen the editor, edit the note, add a second card, remove the first card,
+  and save. 4) Start or continue a chat in the first project and verify the
+  next runtime receives the saved entries as derived context. 5) Switch to the
+  second project and start a chat. 6) Return to the first project and reopen
   the editor.
-- **Expected**: The editor loads the saved note after reopening. The first
-  project's runtime receives it as a labelled user-context block; the second
-  project's runtime does not. Empty memory is valid, saving replaces the prior
-  value, and content above 32 KiB is rejected without a partial save. The
-  create dialog's memory hint is concise and does not imply that memory is
-  shared across projects.
+- **Expected**: The editor loads the saved cards after reopening. The first
+  project's runtime receives their readable projection as a labelled
+  user-context block; the second project's runtime does not. An existing
+  legacy plain-text memory opens as one untitled card. Empty memory is valid,
+  removing all cards clears the projection, saving replaces the prior value,
+  and content above 32 KiB is rejected without a partial save. The create
+  dialog's memory hint is concise and does not imply that memory is shared
+  across projects.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md` (§9),
   `03-runtime/04-data-storage.md` (§4.1),
   `03-runtime/06-host-rpc-protocol.md` (Projects),
