@@ -44,13 +44,29 @@ function itemText(item: CodexItem): string {
     .trim();
 }
 
-// Codex prepends synthetic user messages carrying repo instructions/env info.
+// Codex prepends synthetic user messages carrying repo instructions, IDE
+// context, and tooling state, so the first real user message (the scan title)
+// must skip them. The list is evidence-driven from real archives (#265):
+// newer Codex builds inject an IDE-context family alongside the original
+// AGENTS.md block. Real user messages can legitimately start with "# "
+// (pasted markdown such as "# Role: …"), so matching stays on the exact
+// evidenced prefixes instead of a blanket "#" rule — extend the list when a
+// new injection shows up, one archive sample at a time.
+const SYNTHETIC_USER_PREFIXES = [
+  "<",
+  "# AGENTS.md",
+  "# Context from my IDE setup",
+  "# In app browser:",
+  "# Browser comments:",
+  "# Files mentioned by the user:",
+  "# Diff comments:",
+  "# Selected text:",
+  "# Review findings:",
+  "You are Codex",
+];
+
 function isSyntheticUserText(text: string): boolean {
-  return (
-    text.startsWith("<") ||
-    text.startsWith("# AGENTS.md") ||
-    text.startsWith("You are Codex")
-  );
+  return SYNTHETIC_USER_PREFIXES.some((prefix) => text.startsWith(prefix));
 }
 
 async function parseFile(filePath: string): Promise<ParsedCodexFile | null> {
@@ -157,6 +173,8 @@ interface CodexScanMeta {
   cwd: string | null;
   startedAt: string | null;
   lastAt: string | null;
+  /** File mtime, the honest fallback when stored timestamps are corrupt (#265). */
+  mtimeMs: number | null;
   /** Exact item count, or null when the file was too large to scan fully. */
   itemCount: number | null;
   /** Whether any item line was seen (mirrors `parsed.items.length > 0`). */
@@ -170,6 +188,7 @@ function newScanMeta(): CodexScanMeta {
     cwd: null,
     startedAt: null,
     lastAt: null,
+    mtimeMs: null,
     itemCount: 0,
     sawItem: false,
     firstUserText: null,
@@ -315,16 +334,17 @@ async function scanLargeFile(
 
 async function scanFile(filePath: string): Promise<CodexScanMeta | null> {
   let handle: fs.FileHandle;
-  let size: number;
+  let stats: Awaited<ReturnType<typeof handle.stat>>;
   try {
     handle = await fs.open(filePath, "r");
-    size = (await handle.stat()).size;
+    stats = await handle.stat();
   } catch {
     return null;
   }
   try {
-    if (size <= CODEX_SCAN_FULL_PARSE_MAX_BYTES) {
+    if (stats.size <= CODEX_SCAN_FULL_PARSE_MAX_BYTES) {
       const meta = newScanMeta();
+      meta.mtimeMs = stats.mtimeMs;
       const stream = createReadStream(filePath, { encoding: "utf8" });
       const lines = createInterface({ input: stream, crlfDelay: Infinity });
       for await (const line of lines) {
@@ -336,7 +356,9 @@ async function scanFile(filePath: string): Promise<CodexScanMeta | null> {
       if (!meta.externalId) meta.externalId = path.basename(filePath, ".jsonl");
       return meta;
     }
-    return await scanLargeFile(filePath, size, handle);
+    const meta = await scanLargeFile(filePath, stats.size, handle);
+    if (meta) meta.mtimeMs = stats.mtimeMs;
+    return meta;
   } catch {
     return null;
   } finally {
@@ -352,14 +374,18 @@ export async function scanCodexSessions(
   for (const filePath of files) {
     const meta = await scanFile(filePath);
     if (!meta || meta.firstUserText === null) continue;
+    // A corrupt or out-of-range stored timestamp must not rewrite the
+    // session's history to the import moment (#265): the file's own mtime is
+    // the honest fallback for both ends.
+    const fileTime = toIso(meta.mtimeMs);
     summaries.push({
       source: "codex",
       externalId: meta.externalId,
       title: truncateTitle(meta.firstUserText) || meta.externalId,
       projectPath: meta.cwd,
       model: null,
-      createdAt: toIso(meta.startedAt),
-      updatedAt: toIso(meta.lastAt, toIso(meta.startedAt)),
+      createdAt: toIso(meta.startedAt, fileTime),
+      updatedAt: toIso(meta.lastAt, toIso(meta.startedAt, fileTime)),
       messageCount: meta.itemCount,
       filePath,
     });
