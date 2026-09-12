@@ -978,6 +978,20 @@
   gap: 8px;
 }
 
+/* Preset ladders above the two numeric limit inputs (#202): the same
+   segmented-track language as the thinking chips, five stops per ladder. */
+.provider-limit-presets {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 3px;
+  width: 100%;
+  max-width: 100%;
+  padding: 3px;
+  border-radius: var(--radius-md);
+  background: var(--ds-bg-chip);
+}
+
 .provider-chosen-thinking {
   display: flex;
   flex-direction: column;

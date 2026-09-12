@@ -22,6 +22,11 @@ import {
   type ModelInfo,
   type ThinkingLevel,
 } from "@pi-desktop/shared";
+import {
+  CONTEXT_WINDOW_PRESETS,
+  MAX_OUTPUT_PRESETS,
+  matchPresetIndex,
+} from "../../lib/model-limit-presets";
 import { Button, Field, Input, Tooltip, TooltipButton, cx } from "../ui";
 import { IconClose, IconHelp, IconPlus, IconRefresh, IconSearch } from "../icons";
 import { describeModelsFetchError } from "./model-fetch-error";
@@ -512,6 +517,41 @@ export function ModelSelectionPanes({
                         <span className="provider-chosen-field-label">
                           {t("settings.contextWindow")}
                         </span>
+                        {/* Preset ladder (#202): click writes the token count;
+                            the input stays hand-editable off the ladder. */}
+                        <div
+                          className="provider-limit-presets"
+                          role="group"
+                          aria-label={t("settings.contextWindow")}
+                        >
+                          {CONTEXT_WINDOW_PRESETS.map((preset, index) => {
+                            const on =
+                              matchPresetIndex(
+                                CONTEXT_WINDOW_PRESETS,
+                                binding.contextWindow,
+                              ) === index;
+                            return (
+                              <TooltipButton
+                                key={preset.label}
+                                type="button"
+                                className={cx(
+                                  "provider-thinking-chip",
+                                  on && "selected",
+                                )}
+                                ariaLabel={preset.label}
+                                tooltip={preset.label}
+                                aria-pressed={on}
+                                onClick={() =>
+                                  updateBinding(binding.id, {
+                                    contextWindow: preset.tokens,
+                                  })
+                                }
+                              >
+                                {preset.label}
+                              </TooltipButton>
+                            );
+                          })}
+                        </div>
                         <Input
                           type="number"
                           min={1}
@@ -528,6 +568,39 @@ export function ModelSelectionPanes({
                         <span className="provider-chosen-field-label">
                           {t("settings.maxOutput")}
                         </span>
+                        <div
+                          className="provider-limit-presets"
+                          role="group"
+                          aria-label={t("settings.maxOutput")}
+                        >
+                          {MAX_OUTPUT_PRESETS.map((preset, index) => {
+                            const on =
+                              matchPresetIndex(
+                                MAX_OUTPUT_PRESETS,
+                                binding.maxTokens,
+                              ) === index;
+                            return (
+                              <TooltipButton
+                                key={preset.label}
+                                type="button"
+                                className={cx(
+                                  "provider-thinking-chip",
+                                  on && "selected",
+                                )}
+                                ariaLabel={preset.label}
+                                tooltip={preset.label}
+                                aria-pressed={on}
+                                onClick={() =>
+                                  updateBinding(binding.id, {
+                                    maxTokens: preset.tokens,
+                                  })
+                                }
+                              >
+                                {preset.label}
+                              </TooltipButton>
+                            );
+                          })}
+                        </div>
                         <Input
                           type="number"
                           min={1}
