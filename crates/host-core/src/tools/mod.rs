@@ -2630,8 +2630,7 @@ fn relative_display(root: &Path, path: &Path) -> String {
     // use that same spelling: std `Path::canonicalize` keeps the Windows
     // `\\?\` prefix, which never matches a resolved path and made every
     // workspace-relative label fall back to an absolute one.
-    let canonical_root =
-        simple_canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+    let canonical_root = simple_canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
     path.strip_prefix(&canonical_root)
         .or_else(|_| path.strip_prefix(root))
         .unwrap_or(path)
