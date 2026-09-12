@@ -1,46 +1,68 @@
-/* Create Project — a compact, ChatGPT-like workspace sheet with an explicit
-   folder list. The first selected folder remains the active workspace; the
-   rest are retained as project tabs after creation. */
+/* Create Project — a quiet, compact floating surface that follows the main
+   shell's neutral layers instead of introducing a second visual language. */
 
 .project-create-dialog-overlay {
-  padding: 20px;
+  padding: 24px;
 }
 
 .project-create-dialog {
   display: flex;
-  width: min(100%, 560px);
-  max-height: min(720px, calc(100vh - 40px));
+  width: min(100%, 520px);
+  max-height: min(680px, calc(100vh - 48px));
   flex-direction: column;
-  padding: 26px;
-  border-radius: var(--radius-2xl);
+  overflow: hidden;
+  border-radius: var(--radius-lg-plus);
+  padding: 0;
 }
 
 .project-create-dialog-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 22px;
+  padding: 20px 20px 0;
+}
+
+.project-create-dialog-heading {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.project-create-dialog-kicker {
+  color: var(--ds-text-muted);
+  font-size: var(--text-2xs);
+  font-weight: var(--font-weight-medium);
+  letter-spacing: var(--tracking-wide);
+  line-height: var(--leading-normal);
+  text-transform: uppercase;
+}
+
+:lang(zh-CN) .project-create-dialog-kicker,
+:lang(zh-TW) .project-create-dialog-kicker {
+  letter-spacing: var(--tracking-normal);
+  text-transform: none;
 }
 
 .project-create-dialog-title {
   margin: 0;
   color: var(--ds-text-primary);
-  font-size: var(--text-2xl);
+  font-size: var(--text-lg-plus);
   font-weight: var(--font-weight-strong);
-  letter-spacing: var(--tracking-tighter);
-  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-heading);
 }
 
 .project-create-dialog-close {
   display: inline-flex;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-full);
-  color: var(--ds-text-muted);
+  border-radius: var(--radius-sm);
+  color: var(--ds-text-secondary);
   transition:
     background var(--motion-duration-fast) var(--motion-ease-out),
     color var(--motion-duration-fast) var(--motion-ease-out);
@@ -55,23 +77,41 @@
   display: flex;
   min-height: 0;
   flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 18px 20px 20px;
+  scrollbar-gutter: stable;
+}
+
+.project-create-dialog-field-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 7px;
 }
 
 .project-create-dialog-field-label {
-  margin-bottom: 8px;
   color: var(--ds-text-primary);
   font-size: var(--text-sm-plus);
   font-weight: var(--font-weight-medium-plus);
 }
 
+.project-create-dialog-name-count {
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs-plus);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .project-create-dialog-name-field {
   display: flex;
-  min-height: 54px;
+  min-height: 44px;
   align-items: center;
-  gap: 13px;
-  border-radius: var(--radius-lg);
-  background: var(--ds-tile-hover);
-  padding: 0 15px;
+  gap: 10px;
+  border-radius: var(--radius-sm);
+  background: var(--ds-tile);
+  padding: 0 12px;
   transition:
     background var(--motion-duration-fast) var(--motion-ease-out),
     box-shadow var(--motion-duration-fast) var(--motion-ease-out);
@@ -80,25 +120,6 @@
 .project-create-dialog-name-field:focus-within {
   background: var(--ds-raised);
   box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 24%, transparent);
-}
-
-.project-create-dialog-memory-hint {
-  display: flex;
-  align-items: flex-start;
-  gap: 9px;
-  margin-top: 10px;
-  border-radius: var(--radius-md);
-  background: var(--ds-tile-hover);
-  padding: 10px 12px;
-  color: var(--ds-text-secondary);
-  font-size: var(--text-sm);
-  line-height: var(--leading-body);
-}
-
-.project-create-dialog-memory-icon {
-  display: inline-flex;
-  flex: 0 0 auto;
-  color: var(--ds-accent);
 }
 
 .project-create-dialog-name-icon {
@@ -114,11 +135,28 @@
   outline: 0;
   background: transparent;
   color: var(--ds-text-primary);
-  font-size: var(--text-md-plus);
+  font-size: var(--text-base);
   font-weight: var(--font-weight-medium-plus);
+  line-height: var(--leading-compact-plus);
 }
 
 .project-create-dialog-name-field input::placeholder {
+  color: var(--ds-text-muted);
+}
+
+.project-create-dialog-memory-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 9px 2px 0;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-body);
+}
+
+.project-create-dialog-memory-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
   color: var(--ds-text-muted);
 }
 
@@ -127,7 +165,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  margin: 28px 0 10px;
+  margin: 24px 0 8px;
 }
 
 .project-create-dialog-section-title,
@@ -139,8 +177,9 @@
 
 .project-create-dialog-section-title {
   color: var(--ds-text-primary);
-  font-size: var(--text-md-plus);
+  font-size: var(--text-lg);
   font-weight: var(--font-weight-strong);
+  line-height: var(--leading-heading);
 }
 
 .project-create-dialog-location {
@@ -156,23 +195,26 @@
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-full);
-  background: color-mix(in oklab, var(--ds-accent) 14%, transparent);
+  background: var(--ds-tile-deep);
   padding: 0 6px;
-  color: var(--ds-accent);
+  color: var(--ds-text-secondary);
   font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
+  line-height: var(--leading-none);
 }
 
 .project-create-dialog-folder-list {
   display: flex;
-  max-height: min(340px, 42vh);
-  min-height: 92px;
+  max-height: min(300px, 34vh);
+  min-height: 76px;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   overflow-y: auto;
-  border-radius: var(--radius-lg);
-  background: color-mix(in oklab, var(--ds-text-primary) 3.5%, transparent);
-  padding: 6px;
+  border-radius: var(--radius-md);
+  background: var(--ds-tile);
+  padding: 4px;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .project-create-folder-row,
@@ -180,30 +222,30 @@
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 11px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
 }
 
 .project-create-folder-row {
-  min-height: 58px;
-  background: var(--ds-tile);
-  padding: 9px 10px;
+  min-height: 50px;
+  gap: 8px;
+  background: var(--ds-bg-tertiary);
+  padding: 7px 8px;
+  transition:
+    background var(--motion-duration-fast) var(--motion-ease-out),
+    color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 .project-create-folder-row:hover {
-  background: var(--ds-tile-hover);
+  background: var(--ds-tile-deep);
 }
 
 .project-create-folder-icon {
   display: inline-flex;
-  width: 30px;
-  height: 30px;
+  width: 24px;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-xs);
-  background: color-mix(in oklab, var(--ds-accent) 12%, transparent);
-  color: var(--ds-accent);
+  color: var(--ds-text-secondary);
 }
 
 .project-create-folder-copy {
@@ -224,14 +266,16 @@
 
 .project-create-folder-name {
   color: var(--ds-text-primary);
-  font-size: var(--text-md);
+  font-size: var(--text-md-plus);
   font-weight: var(--font-weight-medium-plus);
+  line-height: var(--leading-compact);
 }
 
 .project-create-folder-path {
   color: var(--ds-text-muted);
   font-family: var(--font-mono);
   font-size: var(--text-xs-plus);
+  line-height: var(--leading-compact);
 }
 
 .project-create-primary-tag {
@@ -240,12 +284,17 @@
   align-items: center;
   gap: 4px;
   border-radius: var(--radius-full);
-  background: color-mix(in oklab, var(--ds-accent) 13%, transparent);
-  padding: 4px 8px;
-  color: var(--ds-accent);
+  background: var(--ds-tile-deep);
+  padding: 3px 7px;
+  color: var(--ds-text-secondary);
   font-size: var(--text-xs);
   font-weight: var(--font-weight-medium);
+  line-height: var(--leading-normal);
   white-space: nowrap;
+}
+
+.project-create-primary-tag svg {
+  color: var(--ds-text-muted);
 }
 
 .project-create-folder-remove {
@@ -255,7 +304,7 @@
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-xs);
   color: var(--ds-text-muted);
   transition:
     background var(--motion-duration-fast) var(--motion-ease-out),
@@ -268,26 +317,26 @@
 }
 
 .project-create-add-folder {
-  min-height: 58px;
+  min-height: 46px;
   justify-content: flex-start;
-  border: 1px dashed color-mix(in oklab, var(--ds-text-primary) 22%, transparent);
+  gap: 8px;
   background: transparent;
-  padding: 9px 12px;
-  color: var(--ds-text-primary);
+  padding: 8px 10px;
+  color: var(--ds-text-secondary);
   text-align: left;
   transition:
     background var(--motion-duration-fast) var(--motion-ease-out),
-    border-color var(--motion-duration-fast) var(--motion-ease-out);
+    color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 .project-create-add-folder:hover:not(:disabled) {
-  border-color: color-mix(in oklab, var(--ds-accent) 55%, transparent);
-  background: color-mix(in oklab, var(--ds-accent) 7%, transparent);
+  background: var(--ds-tile-hover);
+  color: var(--ds-text-primary);
 }
 
 .project-create-add-folder > svg {
   flex: 0 0 auto;
-  color: var(--ds-accent);
+  color: var(--ds-text-secondary);
 }
 
 .project-create-add-folder-hint {
@@ -301,11 +350,11 @@
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  margin-top: 26px;
+  margin-top: 18px;
 }
 
 .project-create-dialog-actions .btn-primary {
-  min-width: 132px;
+  min-width: 124px;
 }
 
 @media (max-width: 520px) {
@@ -315,9 +364,17 @@
   }
 
   .project-create-dialog {
+    width: 100%;
     max-height: calc(100vh - 20px);
-    padding: 20px;
-    border-radius: var(--radius-xl);
+    border-radius: var(--radius-lg-plus);
+  }
+
+  .project-create-dialog-head {
+    padding: 16px 16px 0;
+  }
+
+  .project-create-dialog-form {
+    padding: 16px 16px 16px;
   }
 
   .project-create-dialog-section-head {
@@ -327,7 +384,7 @@
   }
 
   .project-create-folder-row {
-    min-height: 54px;
+    min-height: 48px;
   }
 
   .project-create-primary-tag {
@@ -336,6 +393,10 @@
 
   .project-create-add-folder-hint {
     display: none;
+  }
+
+  .project-create-dialog-actions .btn {
+    flex: 1 1 0;
   }
 }
 
