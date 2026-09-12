@@ -2536,3 +2536,18 @@
     transition: none !important;
   }
 }
+
+.mcpm-status {
+  margin: 0;
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs);
+}
+
+.mcpm-status.is-error {
+  color: var(--ds-warning);
+}
+
+.mcpm-badge.is-remote {
+  background: color-mix(in oklab, var(--ds-accent) 10%, transparent);
+  color: var(--ds-text-muted);
+}

@@ -1,8 +1,9 @@
-import { useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import {
   BUILTIN_MCP_CATALOG,
   GLOBAL_SCOPE,
+  mergeRegistryEntries,
   resolveCatalogEntry,
   validateMcpCatalogFile,
   type McpCatalogCategory,
@@ -22,6 +23,13 @@ const CATEGORIES: readonly McpCatalogCategory[] = [
 ];
 
 const { servers } = validateMcpCatalogFile(BUILTIN_MCP_CATALOG).catalog;
+
+type RemoteState = {
+  status: "idle" | "loading" | "ready" | "error";
+  entries: McpCatalogEntry[];
+};
+
+const REMOTE_IDLE: RemoteState = { status: "idle", entries: [] };
 
 /**
  * The market view of the MCP settings page: browse the builtin catalog,
@@ -45,17 +53,57 @@ export function McpMarketPanel({
   const [installFor, setInstallFor] = useState<McpCatalogEntry | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const [remote, setRemote] = useState<RemoteState>(REMOTE_IDLE);
+
+  // The official registry is searched live (debounced); built-in picks render
+  // immediately and stay as the offline floor when the registry is down.
+  useEffect(() => {
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      setRemote((current) =>
+        current.status === "idle" || current.status === "ready"
+          ? { status: "loading", entries: current.entries }
+          : current,
+      );
+      api
+        .searchMcpMarketRegistry(search)
+        .then((result) => {
+          if (!cancelled) {
+            setRemote({
+              status: result.error ? "error" : "ready",
+              entries: result.entries ?? [],
+            });
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setRemote({ status: "error", entries: [] });
+        });
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [search]);
+
+  const remoteIds = useMemo(
+    () => new Set(remote.entries.map((entry) => entry.id)),
+    [remote.entries],
+  );
 
   const visible = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
-    return servers.filter((entry) => {
+    const matches = (entry: McpCatalogEntry) => {
       if (category !== "all" && !(entry.categories ?? []).includes(category)) return false;
       if (!query) return true;
       return [entry.name, entry.description, entry.author]
         .filter(Boolean)
         .some((text) => text!.toLocaleLowerCase().includes(query));
-    });
-  }, [search, category]);
+    };
+    return mergeRegistryEntries(
+      servers.filter(matches),
+      remote.entries.filter(matches),
+    );
+  }, [remote.entries, search, category]);
 
   const openInstall = (entry: McpCatalogEntry) => {
     const prefilled: Record<string, string> = {};
@@ -243,6 +291,17 @@ export function McpMarketPanel({
         ))}
       </div>
 
+      {remote.status === "loading" ? (
+        <p className="mcpm-status" role="status">
+          {t("settings.mcpMarket.remoteLoading")}
+        </p>
+      ) : null}
+      {remote.status === "error" ? (
+        <p className="mcpm-status is-error" role="status">
+          {t("settings.mcpMarket.remoteError")}
+        </p>
+      ) : null}
+
       <div className="mcpm-list" role="list">
         {visible.length === 0 ? (
           <p className="mcpm-empty">{t("settings.mcpMarket.empty")}</p>
@@ -272,6 +331,11 @@ export function McpMarketPanel({
                     {entry.verified ? (
                       <span className="mcpm-badge is-verified">
                         ✓ {t("settings.mcpMarket.verified")}
+                      </span>
+                    ) : null}
+                    {remoteIds.has(entry.id) ? (
+                      <span className="mcpm-badge is-remote">
+                        {t("settings.mcpMarket.remoteBadge")}
                       </span>
                     ) : null}
                     {(entry.categories ?? []).slice(0, 1).map((id) => (

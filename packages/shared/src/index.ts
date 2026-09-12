@@ -10,6 +10,7 @@ export * from "./fuzzy.js";
 export * from "./mcp-import.js";
 export * from "./mcp-catalog.js";
 export * from "./mcp-catalog-builtin.js";
+export * from "./mcp-registry.js";
 export * from "./model-config-import.js";
 export * from "./thinking-levels.js";
 export * from "./command-shells.js";

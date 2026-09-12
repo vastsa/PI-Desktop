@@ -1,5 +1,6 @@
 import { IPC, parseMcpImport, type ActivationScope, type AgentCapabilityQuery, type McpServerInput, type McpServerRecord, type McpServerStatus } from "@pi-desktop/shared";
 import type { HostProcess } from "../host-process";
+import type { McpRegistrySearchResult } from "../mcp-registry-catalog";
 import type { UserMcpRuntime } from "../user-mcp";
 import type { IpcRegistrar } from "./types";
 
@@ -11,6 +12,7 @@ export type McpIpcDependencies = {
   refreshUserMcp: (projectPath?: string | null) => Promise<McpServerRecord[]>;
   describeError: (error: unknown) => string;
   sendToRenderer: (channel: string, payload?: unknown) => void;
+  searchMcpRegistry: (query: string) => Promise<McpRegistrySearchResult>;
 };
 
 /** Register user-owned MCP server registry and runtime channels. */
@@ -22,6 +24,7 @@ export function registerMcpIpc({
   refreshUserMcp,
   describeError,
   sendToRenderer,
+  searchMcpRegistry,
 }: McpIpcDependencies): void {
   let host: HostProcess | null = null;
   const handle = (channel: string, fn: (...args: any[]) => Promise<any>) => {
@@ -30,6 +33,13 @@ export function registerMcpIpc({
       return fn(...args);
     });
   };
+
+  // The market's registry client never touches the host process, so it
+  // registers outside the host-bound wrapper.
+  registrar.handle(IPC.invoke.mcpMarketSearch, async ({ query }: { query?: string } = {}) =>
+    searchMcpRegistry(query ?? ""),
+  );
+
 handle(IPC.invoke.mcpList, async (query: Partial<AgentCapabilityQuery> = {}) => {
     if (!host) throw new Error("host unavailable");
     const result = await host.call<{ servers: McpServerRecord[]; statuses?: McpServerStatus[] }>(
