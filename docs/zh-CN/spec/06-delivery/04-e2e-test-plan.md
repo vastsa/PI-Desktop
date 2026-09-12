@@ -2322,7 +2322,8 @@ MainChat 弥补了缺口。 Maximized/fullscreen 调用保留最新的
   Windows 运行使用 NSIS 安装的应用程序或标准开发命令。
 - **步骤**：1) 让应用程序专注于 A 并在 A 中完成一个回合。2) 当
   仍然专注于 A，在 B 中完成一个回合。3) 在 A 仍然存在时取消应用程序的焦点
-当前并完成 A 中的另一回合。 4) 单击 A 的本机通知。 5）
+当前并完成 A 中的另一回合。4) 等待 A 的通知进入操作系统通知中心，然后
+  单击它。5）
   最小化应用程序，再次失败，然后单击其本机通知。 6）
   取消应用程序的焦点并中止回合。 7) 重复并抑制本机传递
   由操作系统。 8) 在 Windows 上，检查本机通知属性，
@@ -2332,8 +2333,8 @@ MainChat 弥补了缺口。 Maximized/fullscreen 调用保留最新的
   聚焦背景 B 创建一个没有本机横幅的收件箱行。不专心
   当前 A 和最小化故障分别创建一个持久行和一个
   本地化的本机通知。单击可恢复、显示并聚焦
-  激活匹配会话之前的主窗口；没有事件打开错误
-  当前选定的会话。中止不显示两个表面。操作系统抑制确实
+  激活匹配会话之前的主窗口，即使通知已经进入 Windows 操作中心；
+  没有事件打开错误当前选定的会话。中止不显示两个表面。操作系统抑制确实
   不会丢失持久行或出现误导性应用程序错误。每检查一次
   Windows系统表面识别`PI-Desktop`；无库存 Electron 应用程序
   姓名或身份被暴露。
@@ -2342,7 +2343,8 @@ MainChat 弥补了缺口。 Maximized/fullscreen 调用保留最新的
   `08-meta/decisions-log.md` (D117/D141)
 - **验收**：C（回合完成），质量
 - **里程碑**：M5
-- **状态**：草案
+- **状态**：已覆盖源代码契约（`notification-contract.test.mjs`）；打包版
+  Windows 操作中心激活仍需运行环境验证；完整 UI 场景草案
 
 #### E2E-065a：本机交互询问通知按会话感知
 
@@ -4494,8 +4496,8 @@ IPC 请求无法关闭。
   返回尽力而为的 `granted`、`denied` 或 `unsupported` 结果；理所当然的
   插件接收 `{ shown: true, permission: "granted" }` 以进行本机交付，
   而 denied/unsupported 传递返回 `shown: false` 且不会导致
-  插件。缺少 `notify` 将失败并显示 `PERMISSION_DENIED`。原生插件
-  通知不会添加持久任务收件箱行或激活聊天会话。
+  插件。缺少 `notify` 将失败并显示 `PERMISSION_DENIED`。点击已交付的原生插件
+  通知会恢复并聚焦主窗口，但原生插件通知不会添加持久任务收件箱行或激活聊天会话。
 - **链接规格**：`07-plugins/01-plugin-system.md`，
 `07-plugins/03-plugin-api.md`、`07-plugins/13-plugin-permissions-matrix.md`、
   ADR 0074

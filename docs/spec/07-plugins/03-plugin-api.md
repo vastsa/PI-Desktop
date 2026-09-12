@@ -101,7 +101,9 @@ permission probe by showing a short confirmation notification; Electron does
 not expose a cross-platform read-only notification permission API, so
 `unknown` is returned before the first probe and when the operating system does
 not report a result. Native delivery is best-effort: an OS policy may suppress
-the banner without changing the durable task notification inbox.
+the banner without changing the durable task notification inbox. Clicking a
+delivered plugin notification restores and focuses the main window, but never
+activates a session or creates a durable task notification.
 
 ### project (requires `project.create`)
 

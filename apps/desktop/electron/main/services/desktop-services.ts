@@ -2,6 +2,7 @@ import {
   nativeImage,
   Notification as SystemNotification,
   shell,
+  type BrowserWindow,
 } from "electron";
 import {
   APP_NAME,
@@ -20,7 +21,13 @@ const PLUGIN_NOTIFICATION_TIMEOUT_MS = 2_000;
 const MAX_CLIPBOARD_IMAGE_PIXELS = 64_000_000;
 const MAX_UNKNOWN_CLIPBOARD_IMAGE_BYTES = 8 * 1024 * 1024;
 
-export function createDesktopServices({ getLogger }: { getLogger: () => Logger }) {
+export function createDesktopServices({
+  getLogger,
+  getMainWindow,
+}: {
+  getLogger: () => Logger;
+  getMainWindow: () => BrowserWindow | null;
+}) {
   let pluginNotificationPermission: PluginNotificationPermission = "unknown";
   const pluginNativeNotifications = new Set<SystemNotification>();
   const clipboardHistory = new ClipboardHistory();
@@ -64,6 +71,17 @@ export function createDesktopServices({ getLogger }: { getLogger: () => Logger }
 
       notification.once("show", () => finish("granted", true));
       notification.once("close", () => pluginNativeNotifications.delete(notification));
+      notification.once("click", () => {
+        const window = getMainWindow();
+        try {
+          if (!window || window.isDestroyed()) return;
+          if (window.isMinimized()) window.restore();
+          window.show();
+          window.focus();
+        } finally {
+          pluginNativeNotifications.delete(notification);
+        }
+      });
       (
         notification as unknown as {
           once: (

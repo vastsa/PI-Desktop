@@ -408,6 +408,8 @@ because Electron does not expose a cross-platform read-only OS permission API;
 `unknown` means the platform has not reported a result yet, and
 `unsupported` means desktop notifications are unavailable. Native plugin
 notifications are not added to PI-Desktop's durable task notification inbox.
+Clicking a delivered notification restores and focuses the main window, but
+does not activate a session.
 
 The panel bridge also exposes `ui.showToast`, `ui.closePanel`,
 `plugin.getSettings`, and `workspace.get`. A channel the host does not implement
