@@ -789,9 +789,19 @@ export const api = {
     ),
   /** Import a pi CLI extension file or directory as a development plugin (spec 16 §3). */
   importPiExtension: () =>
-    invoke<{ canceled: true } | { canceled: false; id: string; path: string; entries: string[] }>(
-      IPC.invoke.pluginImportExtension,
-    ),
+    invoke<
+      | { canceled: true }
+      | {
+          canceled: false;
+          id: string;
+          path: string;
+          entries: string[];
+          dependencies:
+            | { state: "skipped"; reason: "no-package-json" | "no-dependencies" }
+            | { state: "installed" }
+            | { state: "failed"; error: string };
+        }
+    >(IPC.invoke.pluginImportExtension),
   runExtensionCommand: (input: { sessionId: string; name: string; args: string }) =>
     invoke<{ ok: boolean }>(IPC.invoke.extensionsCommandRun, input),
   respondExtensionPrompt: (response: TrustedExtensionUiPromptResponse) =>

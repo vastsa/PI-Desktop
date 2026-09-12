@@ -1383,9 +1383,10 @@ export const fr = {
     "loadDevDone": "Plugin local chargé",
     "importExtension": "Importer une extension pi",
     "importExtensionDone": "Importée comme plugin {{id}}",
+    "importExtensionDepsFailed": "Importée comme plugin {{id}}, mais l'installation des dépendances a échoué : {{error}}",
     "agentExtension": {
       "title": "Extension de l'agent",
-      "importConfirm": "Les extensions importées s’exécutent dans le processus de l’agent avec les mêmes droits que ses outils. Les compétences déclarées peuvent ajouter des instructions à l’agent. Continuer ?",
+"importConfirm": "Les extensions importées s’exécutent dans le processus de l’agent avec les mêmes droits que ses outils. Les compétences déclarées peuvent ajouter des instructions à l’agent et les dépendances déclarées sont installées avec npm (scripts d’installation désactivés). Continuer ?",
       "diagnostics": "Diagnostics",
       "commandNeedsSession": "Démarrez d'abord une discussion pour exécuter une commande d'extension.",
       "state": {

@@ -8,8 +8,9 @@
  * the modal prompts between the sidecar and the renderer. Discovery and
  * enablement are the plugin system's job; nothing here touches the filesystem.
  */
+import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { cpSync, existsSync, lstatSync, mkdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { assertImportedPackagePath, discoverImportedPackageSkills } from "./imported-package-skills";
 import { discoverManualPath } from "@pi-desktop/agent-runtime";
@@ -237,6 +238,115 @@ export class AgentExtensionBridge {
   }
 }
 
+export type ExtensionDependencyInstallResult =
+  | { state: "skipped"; reason: "no-package-json" | "no-dependencies" }
+  | { state: "installed" }
+  | { state: "failed"; error: string };
+
+/** Injectable so tests never run npm. Resolves with the exit code and captured stderr. */
+export type DependencyCommandRunner = (
+  command: string,
+  args: string[],
+  cwd: string,
+  timeoutMs: number,
+) => Promise<{ code: number; stderr: string }>;
+
+const NPM_INSTALL_TIMEOUT_MS = 120_000;
+/** npm output is not toast-shaped; the tail carries the actual failure. */
+const DEPENDENCY_ERROR_TAIL_CHARS = 200;
+
+function dependencyErrorTail(text: string): string {
+  return text.length > DEPENDENCY_ERROR_TAIL_CHARS
+    ? `…${text.slice(-DEPENDENCY_ERROR_TAIL_CHARS)}`
+    : text;
+}
+
+function defaultDependencyRunner(
+  command: string,
+  args: string[],
+  cwd: string,
+  timeoutMs: number,
+): Promise<{ code: number; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    // Shell only where npm is a .cmd shim (Windows); every arg is a literal.
+    const child = spawn(command, args, {
+      cwd,
+      shell: process.platform === "win32",
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    let stderr = "";
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf8");
+    });
+    const timer = setTimeout(() => {
+      stderr += `\nnpm install exceeded ${timeoutMs}ms and was terminated`;
+      child.kill("SIGTERM");
+    }, timeoutMs);
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      resolve({ code: code ?? 1, stderr });
+    });
+  });
+}
+
+/**
+ * Install an imported extension's npm dependencies inside the generated plugin
+ * directory (spec 07-plugins/16 §3): the sidecar's jiti resolves bare imports
+ * from the plugin root's `node_modules`, and the kernel packages (`pi-ai`,
+ * `pi-coding-agent`, `pi-tui`) keep winning through virtual modules, so
+ * installing them is harmless. `--legacy-peer-deps` keeps `pi-coding-agent`
+ * peers out of the tree; `--ignore-scripts` means no third-party install
+ * script ever runs here — a native module that needs one fails to load with a
+ * diagnostic instead (documented workaround: rebuild against Electron
+ * headers). A failure never blocks the import; the extension reports its own
+ * load error and the renderer surfaces this result.
+ */
+export async function installExtensionDependencies(
+  pluginDir: string,
+  options?: { runner?: DependencyCommandRunner; timeoutMs?: number },
+): Promise<ExtensionDependencyInstallResult> {
+  const packageJsonPath = join(pluginDir, "package.json");
+  if (!existsSync(packageJsonPath)) {
+    return { state: "skipped", reason: "no-package-json" };
+  }
+  let manifest: { dependencies?: Record<string, unknown> };
+  try {
+    manifest = JSON.parse(readFileSync(packageJsonPath, "utf8"));
+  } catch (err) {
+    return {
+      state: "failed",
+      error: `package.json is not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+  if (!manifest.dependencies || Object.keys(manifest.dependencies).length === 0) {
+    return { state: "skipped", reason: "no-dependencies" };
+  }
+  try {
+    const result = await (options?.runner ?? defaultDependencyRunner)(
+      "npm",
+      ["install", "--omit=dev", "--legacy-peer-deps", "--no-audit", "--no-fund", "--ignore-scripts"],
+      pluginDir,
+      options?.timeoutMs ?? NPM_INSTALL_TIMEOUT_MS,
+    );
+    if (result.code !== 0) {
+      return {
+        state: "failed",
+        error: dependencyErrorTail(`npm install exited ${result.code}: ${result.stderr.trim()}`),
+      };
+    }
+    return { state: "installed" };
+  } catch (err) {
+    return {
+      state: "failed",
+      error: dependencyErrorTail(err instanceof Error ? err.message : String(err)),
+    };
+  }
+}
+
 const PLUGIN_ID_PREFIX = "imported.";
 
 function slugFor(path: string): string {
@@ -250,7 +360,10 @@ function slugFor(path: string): string {
 /**
  * Build a plugin directory from a pi extension file or directory (spec §3):
  * copies the source under `src/`, writes a manifest that declares the entry
- * files as `contributes.agentExtensions`, and a no-op `main.js`.
+ * files as `contributes.agentExtensions`, and a no-op `main.js`. A directory
+ * that ships a `package.json` also gets it (plus its lockfile) at the plugin
+ * root so {@link installExtensionDependencies} can resolve its dependencies
+ * there; `node_modules` itself is never copied — it is reinstalled.
  */
 export function generateImportedExtensionPlugin(
   source: string,
@@ -330,5 +443,10 @@ export function generateImportedExtensionPlugin(
     "// Generated by PI-Desktop: declarative skills and/or agent extensions.\nmodule.exports = {};\n",
     "utf8",
   );
+  if (isDirectory) {
+    for (const file of ["package.json", "package-lock.json", "npm-shrinkwrap.json"]) {
+      if (existsSync(join(resolved, file))) copyFileSync(join(resolved, file), join(dir, file));
+    }
+  }
   return { path: dir, id, entries };
 }

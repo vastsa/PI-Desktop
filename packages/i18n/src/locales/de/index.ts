@@ -1383,9 +1383,10 @@ export const de = {
     "loadDevDone": "Lokales Plugin geladen",
     "importExtension": "pi-Erweiterung importieren",
     "importExtensionDone": "Als Plugin {{id}} importiert",
+    "importExtensionDepsFailed": "Als Plugin {{id}} importiert, aber die Abhängigkeiten konnten nicht installiert werden: {{error}}",
     "agentExtension": {
       "title": "Agent-Erweiterung",
-      "importConfirm": "Importierte Erweiterungen laufen im Agentenprozess mit denselben Rechten wie die Tools des Agenten. Deklarierte Skills können dem Agenten Anweisungen hinzufügen. Fortfahren?",
+"importConfirm": "Importierte Erweiterungen laufen im Agentenprozess mit denselben Rechten wie die Tools des Agenten. Deklarierte Skills können dem Agenten Anweisungen hinzufügen, und deklarierte Abhängigkeiten werden mit npm installiert (Installationsskripte deaktiviert). Fortfahren?",
       "diagnostics": "Diagnosen",
       "commandNeedsSession": "Starte zuerst einen Chat, um einen Erweiterungsbefehl auszuführen.",
       "state": {

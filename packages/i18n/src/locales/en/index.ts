@@ -1400,9 +1400,10 @@ export const en = {
     loadDevDone: "Local plugin loaded",
     importExtension: "Import pi extension",
     importExtensionDone: "Imported as plugin {{id}}",
+    importExtensionDepsFailed: "Imported as plugin {{id}}, but installing dependencies failed: {{error}}",
     agentExtension: {
       title: "Agent extension",
-      importConfirm: "Imported extensions run inside the agent process with the same access as the agent's own tools. Declared skills can add instructions to the agent. Continue?",
+importConfirm: "Imported extensions run inside the agent process with the same access as the agent's own tools. Declared skills can add instructions to the agent, and declared dependencies are installed with npm (install scripts disabled). Continue?",
       diagnostics: "Diagnostics",
       commandNeedsSession: "Start a chat first to run an extension command.",
       state: {

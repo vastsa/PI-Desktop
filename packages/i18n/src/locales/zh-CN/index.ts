@@ -1392,9 +1392,14 @@ export const zhCN = {
     loadDevDone: "本地插件已加载",
     importExtension: "导入 pi 扩展",
     importExtensionDone: "已导入为插件 {{id}}",
+    importExtensionDepsFailed: "已导入为插件 {{id}}，但依赖安装失败：{{error}}",
     agentExtension: {
       title: "Agent 扩展",
+<<<<<<< HEAD
       importConfirm: "导入的扩展会在 agent 进程内运行，拥有与 agent 自身工具相同的权限；包声明的技能可向 agent 提供指令。继续吗？",
+=======
+      importConfirm: "导入的扩展将在 agent 进程内运行，拥有与 agent 自身工具相同的权限。声明的依赖将通过 npm 安装（禁用安装脚本）。继续吗？",
+>>>>>>> 8e55819 (feat(plugins): install imported pi extension dependencies)
       diagnostics: "诊断",
       commandNeedsSession: "请先开始一个对话，再运行扩展命令。",
       state: {

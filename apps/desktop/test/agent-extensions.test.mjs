@@ -9,6 +9,7 @@ register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
 const {
   AgentExtensionBridge,
   generateImportedExtensionPlugin,
+  installExtensionDependencies,
 } = await import("../electron/main/agent-extensions.ts");
 
 function bridge(overrides = {}) {
@@ -118,4 +119,77 @@ test("importing a pi extension directory or file generates a plugin holding agen
 
   writeFileSync(join(root, "notes.md"), "# no");
   assert.throws(() => generateImportedExtensionPlugin(join(root, "notes.md"), importRoot), /no extension entry/);
+});
+
+test("importing a directory keeps its package.json at the plugin root and never copies node_modules", () => {
+  const root = mkdtempSync(join(tmpdir(), "pi-ax-pkg-"));
+  const extDir = join(root, "memory-ext");
+  mkdirSync(join(extDir, "node_modules", "some-dep"), { recursive: true });
+  writeFileSync(join(extDir, "node_modules", "some-dep", "index.js"), "module.exports = {};");
+  writeFileSync(join(extDir, "index.ts"), "export default function () {}\n");
+  writeFileSync(
+    join(extDir, "package.json"),
+    JSON.stringify({ name: "memory-ext", dependencies: { "some-dep": "^1.0.0" }, pi: { extensions: ["index.ts"] } }),
+  );
+  writeFileSync(join(extDir, "package-lock.json"), "{}");
+
+  const generated = generateImportedExtensionPlugin(extDir, join(root, "imported"));
+  assert.equal(readFileSync(join(generated.path, "package.json"), "utf8"), readFileSync(join(extDir, "package.json"), "utf8"), "package.json lands at the plugin root for dependency install");
+  assert.ok(existsSync(join(generated.path, "package-lock.json")));
+  assert.ok(!existsSync(join(generated.path, "src", "node_modules")), "node_modules is reinstalled, never copied");
+
+  const file = join(root, "solo.ts");
+  writeFileSync(file, "export default function () {}\n");
+  const single = generateImportedExtensionPlugin(file, join(root, "imported"));
+  assert.ok(!existsSync(join(single.path, "package.json")), "a lone file has nothing to install from");
+});
+
+test("dependency install: skips without a manifest or dependencies, runs npm with pinned flags, surfaces failures", async () => {
+  const root = mkdtempSync(join(tmpdir(), "pi-ax-deps-"));
+  const write = (name, json) => {
+    const dir = join(root, name);
+    mkdirSync(dir, { recursive: true });
+    if (json !== null) writeFileSync(join(dir, "package.json"), json);
+    return dir;
+  };
+
+  const noPackage = write("no-package", null);
+  assert.deepEqual(await installExtensionDependencies(noPackage), { state: "skipped", reason: "no-package-json" });
+
+  const noDeps = write("no-deps", JSON.stringify({ name: "x" }));
+  assert.deepEqual(await installExtensionDependencies(noDeps), { state: "skipped", reason: "no-dependencies" });
+
+  const badJson = write("bad-json", "{ not json");
+  const bad = await installExtensionDependencies(badJson);
+  assert.equal(bad.state, "failed");
+  assert.match(bad.error, /package\.json is not valid JSON/);
+
+  const calls = [];
+  const installed = write("installed", JSON.stringify({ name: "x", dependencies: { "some-dep": "^1" } }));
+  const runner = async (command, args, cwd, timeoutMs) => {
+    calls.push({ command, args, cwd, timeoutMs });
+    return { code: 0, stderr: "" };
+  };
+  assert.deepEqual(await installExtensionDependencies(installed, { runner, timeoutMs: 1234 }), { state: "installed" });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].command, "npm");
+  assert.deepEqual(calls[0].args, ["install", "--omit=dev", "--legacy-peer-deps", "--no-audit", "--no-fund", "--ignore-scripts"]);
+  assert.equal(calls[0].cwd, installed, "npm runs inside the plugin directory");
+  assert.equal(calls[0].timeoutMs, 1234);
+
+  const failing = write("failing", JSON.stringify({ name: "x", dependencies: { "some-dep": "^1" } }));
+  const result = await installExtensionDependencies(failing, {
+    runner: async () => ({ code: 1, stderr: "npm error code ENOTFOUND\nnpm error network unreachable" }),
+  });
+  assert.equal(result.state, "failed");
+  assert.match(result.error, /exited 1/);
+  assert.match(result.error, /ENOTFOUND/);
+
+  const throwing = write("throwing", JSON.stringify({ name: "x", dependencies: { "some-dep": "^1" } }));
+  const thrown = await installExtensionDependencies(throwing, {
+    runner: async () => {
+      throw new Error("npm not found");
+    },
+  });
+  assert.deepEqual(thrown, { state: "failed", error: "npm not found" });
 });
