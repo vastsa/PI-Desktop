@@ -177,6 +177,7 @@ import type {
   ToastVariant,
 } from "./app-state";
 import { createSessionSlice } from "./slices/session-slice";
+import { createQueueSlice } from "./slices/queue-slice";
 export type {
   AgentTurnResult,
   DraftSessionConfiguration,
@@ -666,6 +667,21 @@ export const useAppStore = create<AppState>((set, get) => {
     persistSessionAndSelect,
   }),
 
+  ...createQueueSlice({
+    get,
+    set,
+    runtime: sessionRuntime,
+    promptAttachmentsFromDraft,
+    withoutRecordKey,
+    promptFallbackSessionTitle,
+    untitledTaskTitle,
+    isDefaultSessionTitle,
+    viewingSessionIdForPrompt,
+    messageErrorFromUnknown,
+    assistantErrorMessage,
+    materializeDraftSession,
+  }),
+
   bootstrap: async () => {
     let recoveredSettings: AppSettings | undefined;
     try {
@@ -852,251 +868,6 @@ export const useAppStore = create<AppState>((set, get) => {
         ...(recoveredSettings ? { settings: recoveredSettings } : {}),
         error: e instanceof Error ? e.message : String(e),
       });
-    }
-  },
-
-  enqueuePrompt: (content, draft, requestedSessionId) => {
-    const sessionId = requestedSessionId ?? get().activeSessionId;
-    if (!sessionId) return;
-    const queuedDraft: ComposerDraftSnapshot = draft
-      ? {
-          text: draft.text,
-          fileReferences: draft.fileReferences.map((reference) => ({
-            ...reference,
-          })),
-        }
-      : { text: content, fileReferences: [] };
-    // The Host owns the queue (D375 / D386). Show the row at once and let
-    // the durable entry replace it when the Host answers.
-    const item: QueuedPrompt = {
-      id: `pending:${crypto.randomUUID()}`,
-      sessionId,
-      content,
-      draft: queuedDraft,
-      createdAt: Date.now(),
-    };
-    set((state) => ({
-      queuedPrompts: enqueueQueuedPrompt(state.queuedPrompts, item),
-    }));
-    const attachments = promptAttachmentsFromDraft(queuedDraft.fileReferences);
-    void api
-      .queuePrompt({
-        sessionId,
-        content,
-        ...(attachments.length ? { attachments } : {}),
-      })
-      .then((entry) => {
-        queuedDrafts.set(entry.id, queuedDraft);
-        set((state) => ({
-          queuedPrompts: removeQueuedPrompt(state.queuedPrompts, sessionId, item.id),
-        }));
-        return get().refreshQueuedPrompts(sessionId);
-      })
-      .catch((error) => {
-        set((state) => ({
-          queuedPrompts: removeQueuedPrompt(state.queuedPrompts, sessionId, item.id),
-        }));
-        get().showToast(
-          error instanceof Error ? error.message : String(error),
-          { variant: "error" },
-        );
-      });
-  },
-
-  removeQueuedPrompt: (promptId) => {
-    const sessionId = get().activeSessionId;
-    if (!sessionId) return;
-    set((state) => ({
-      queuedPrompts: removeQueuedPrompt(
-        state.queuedPrompts,
-        sessionId,
-        promptId,
-      ),
-    }));
-    queuedDrafts.delete(promptId);
-    if (promptId.startsWith("pending:")) return;
-    void api.removeQueuedPrompt(promptId).catch((error) => {
-      get().showToast(
-        error instanceof Error ? error.message : String(error),
-        { variant: "error" },
-      );
-      void get().refreshQueuedPrompts(sessionId);
-    });
-  },
-
-  sendQueuedNow: async (promptId) => {
-    const sessionId = get().activeSessionId;
-    if (!sessionId) return;
-    const item = queuedPromptForSession(
-      get().queuedPrompts,
-      sessionId,
-      promptId,
-    );
-    if (!item || item.id.startsWith("pending:") || item.sendNowRequested) return;
-    set((state) => ({
-      queuedPrompts: prioritizeQueuedPrompt(
-        state.queuedPrompts,
-        sessionId,
-        promptId,
-      ),
-    }));
-    try {
-      // The Host moves the entry to the head of its queue; a running turn is
-      // asked to finish at its next boundary so that entry starts next.
-      await api.prioritizeQueuedPrompt(promptId);
-      if (get().runningSessions[sessionId]) {
-        const result = await api.stop(sessionId);
-        if (!result.requested) {
-          set((state) => ({
-            queuedPrompts: clearQueuedPromptSendNow(
-              state.queuedPrompts,
-              sessionId,
-            ),
-          }));
-        }
-      }
-    } catch (error) {
-      set((state) => ({
-        queuedPrompts: clearQueuedPromptSendNow(
-          state.queuedPrompts,
-          sessionId,
-        ),
-      }));
-      get().showToast(
-        error instanceof Error ? error.message : String(error),
-        { variant: "error" },
-      );
-    }
-  },
-
-  refreshQueuedPrompts: async (sessionId) => {
-    try {
-      const { entries } = await api.listQueuedPrompts(sessionId);
-      applyQueueEntries(sessionId, entries);
-    } catch {
-      // The next queue event resynchronizes the mirror.
-    }
-  },
-
-  applyQueueChanged: (event) => {
-    applyQueueEntries(event.sessionId, event.entries);
-  },
-
-  sendPrompt: async (content, draft, requestedSessionId) => {
-    let sessionId = requestedSessionId ?? get().activeSessionId;
-    if (sessionId && get().pendingPlans[sessionId]?.status === "pending") {
-      return false;
-    }
-    if (!sessionId) {
-      // The new-task draft is unpersisted until its first message: sending
-      // now creates the session and its sidebar history row.
-      const intent = beginNavigationIntent();
-      const createdId = await materializeDraftSession(intent);
-      if (!createdId) return false;
-      sessionId = createdId;
-    }
-    if (!sessionId) throw new Error(i18n.t("errors.noActiveSession"));
-    if (get().pendingPlans[sessionId]?.status === "pending") return false;
-    if (get().runningSessions[sessionId]) {
-      get().enqueuePrompt(content, draft, sessionId);
-      return true;
-    }
-    const startedIn = sessionId;
-    const messageCountBeforeSend =
-      startedIn === get().activeSessionId
-        ? get().messages.length
-        : sessionTranscriptCache.get(startedIn)?.length ?? 0;
-    const submission: SubmittedComposerDraft = {
-      messageCountBeforeSend,
-      draft: draft
-        ? {
-            text: draft.text,
-            fileReferences: draft.fileReferences.map((reference) => ({
-              ...reference,
-            })),
-          }
-        : { text: content, fileReferences: [] },
-    };
-    submittedComposerDrafts.set(startedIn, submission);
-    set((s) => ({
-      isRunning: s.activeSessionId === startedIn ? true : s.isRunning,
-      error: null,
-      errorCode: null,
-      errorRetriable: null,
-      runningSessions: { ...s.runningSessions, [startedIn]: true },
-      latestTurnResults: withoutRecordKey(s.latestTurnResults, startedIn),
-      sessionOutcomes: withoutRecordKey(s.sessionOutcomes, startedIn),
-    }));
-    // The prompt is on screen before the host round trip (D288). The host
-    // persists and echoes the row under this same id, so the echo replaces
-    // the optimistic row instead of adding a second one.
-    const optimisticMessage = optimisticUserMessage(
-      crypto.randomUUID(),
-      content,
-      submission.draft.fileReferences,
-    );
-    insertOptimisticUserMessage(startedIn, optimisticMessage);
-    try {
-      const current = get().sessions.find((s) => s.id === sessionId);
-      if (isDefaultSessionTitle(current?.title)) {
-        const nextTitle = promptFallbackSessionTitle(content, untitledTaskTitle());
-        // Fire-and-forget: renaming the sidebar title must not delay the prompt
-        // reaching the agent runtime — removes visible lag after pressing Enter.
-        api.renameSession(sessionId, nextTitle)
-          .then(() => get().refreshSessions())
-          .catch(() => { /* non-fatal */ });
-      }
-      if (get().pendingPlans[sessionId]?.status === "pending") {
-        submittedComposerDrafts.delete(startedIn);
-        retractOptimisticUserMessage(startedIn, optimisticMessage);
-        set((s) => ({
-          isRunning: s.activeSessionId === startedIn ? false : s.isRunning,
-          runningSessions: { ...s.runningSessions, [startedIn]: false },
-        }));
-        return false;
-      }
-      if (submission.abortResolution && (await submission.abortResolution)) {
-        // Smart stop already pulled the row back into the composer.
-        submittedComposerDrafts.delete(startedIn);
-        return false;
-      }
-      await api.prompt({
-        sessionId,
-        content,
-        messageId: optimisticMessage.id,
-        viewingSessionId: viewingSessionIdForPrompt(get(), sessionId),
-        attachments: draft
-          ? promptAttachmentsFromDraft(draft.fileReferences)
-          : [],
-      });
-      if (submission.abortResolution && (await submission.abortResolution)) {
-        return false;
-      }
-      return true;
-    } catch (e) {
-      submittedComposerDrafts.delete(startedIn);
-      retractOptimisticUserMessage(startedIn, optimisticMessage);
-      const messageError = messageErrorFromUnknown(e);
-      set((s) => ({
-        // The user may have switched sessions while the request was in
-        // flight; only reset the spinner if the failed session is visible.
-        isRunning: s.activeSessionId === startedIn ? false : s.isRunning,
-        runningSessions: { ...s.runningSessions, [startedIn]: false },
-        latestTurnResults: {
-          ...s.latestTurnResults,
-          [startedIn]: {
-            status: "failed",
-            turnId: `${startedIn}:${Date.now()}`,
-            finishedAt: Date.now(),
-            errorCode: messageError.code,
-          },
-        },
-        sessionOutcomes: { ...s.sessionOutcomes, [startedIn]: "failed" },
-        ...(s.activeSessionId === startedIn
-          ? { messages: [...s.messages, assistantErrorMessage(messageError)] }
-          : {}),
-      }));
-      return false;
     }
   },
 
@@ -3161,44 +2932,6 @@ useAppStore.subscribe((state, previous) => {
       : {},
   );
 });
-
-/** Composer drafts behind Host queue entries, so removing one restores it. */
-const queuedDrafts = new Map<string, ComposerDraftSnapshot>();
-
-function toQueuedPrompt(
-  entry: QueuedTurnSummary,
-  previous?: QueuedPrompt,
-): QueuedPrompt {
-  return {
-    id: entry.id,
-    sessionId: entry.sessionId,
-    content: entry.content,
-    draft: queuedDrafts.get(entry.id) ?? { text: entry.content, fileReferences: [] },
-    createdAt: Date.parse(entry.createdAt) || Date.now(),
-    ...(previous?.sendNowRequested ? { sendNowRequested: true } : {}),
-  };
-}
-
-/** The Host owns the queue (D375 / D386); the renderer mirrors its entries. */
-function applyQueueEntries(sessionId: string, entries: QueuedTurnSummary[]): void {
-  useAppStore.setState((state) => {
-    const current = state.queuedPrompts[sessionId] ?? [];
-    const pending = current.filter((item) => item.id.startsWith("pending:"));
-    const mirrored = entries.map((entry) =>
-      toQueuedPrompt(entry, current.find((item) => item.id === entry.id)),
-    );
-    for (const item of current) {
-      if (!item.id.startsWith("pending:") && !entries.some((entry) => entry.id === item.id)) {
-        queuedDrafts.delete(item.id);
-      }
-    }
-    const next = { ...state.queuedPrompts };
-    const merged = [...mirrored, ...pending];
-    if (merged.length === 0) delete next[sessionId];
-    else next[sessionId] = merged;
-    return { queuedPrompts: next };
-  });
-}
 
 function flushPendingSessionConfiguration(sessionId: string): Promise<void> {
   const active = sessionConfigurationFlushes.get(sessionId);
