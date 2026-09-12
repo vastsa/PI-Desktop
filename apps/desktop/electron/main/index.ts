@@ -11,6 +11,7 @@ import {
   screen,
   shell,
   Tray,
+  type IpcMainInvokeEvent,
 } from "electron";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
@@ -22,7 +23,6 @@ import {
   writeFileSync,
 } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { listInstalledFonts } from "./system-fonts";
 import { cloneGitRepository } from "./git-clone";
 import {
   applyNetworkProxyFromAppSettings,
@@ -34,8 +34,6 @@ import {
   APP_NAME,
   APP_VERSION,
   APP_MENU_COMMANDS,
-  assertFeedbackIssueUrl,
-  buildBugReportUrl,
   defaultCommandShellForPlatform,
   ErrorCodes as SharedErrorCodes,
   IPC,
@@ -118,7 +116,6 @@ import {
   summarizeSessionTitle,
   completeOneShot,
   loadComposerTemplates,
-  globalInstructionPath,
   loadInstructionChain,
   loadSubagentDefinitions,
   resolveSubagentProviders,
@@ -268,6 +265,9 @@ import {
 } from "./mcp-control";
 import { createAgentHostBridge, type AgentHostBridge } from "./agent-host-bridge";
 import type { AgentQueuePushRequest } from "@pi-desktop/shared";
+import { registerAppIpc } from "./ipc/app-ipc";
+import { registerNotificationIpc } from "./ipc/notification-ipc";
+import type { IpcRegistrar } from "./ipc/types";
 
 // The shared error-code union is reconciled in the shared lane. Keep desktop
 // source type-safe while that lane is temporarily staged at main.
@@ -5987,13 +5987,13 @@ function registerIpc() {
   };
   const handleWithEvent = (
     channel: string,
-    fn: (event: { sender: { id: number } }, ...args: any[]) => Promise<any>,
+    fn: (event: IpcMainInvokeEvent, ...args: any[]) => Promise<any>,
   ) => {
     ipcMain.handle(channel, async (event, ...args) =>
       wrap(() => fn(event, ...args)),
     );
   };
-  const assertMainWindowSender = (event: { sender: { id: number } }): void => {
+  const assertMainWindowSender = (event: IpcMainInvokeEvent): void => {
     if (event.sender.id !== mainWindow?.webContents.id) {
       throw Object.assign(new Error("renderer is not the main window"), {
         errorCode: "PERMISSION_DENIED",
@@ -6001,273 +6001,30 @@ function registerIpc() {
     }
   };
 
-  handle(IPC.invoke.pluginLauncherToggle, async () => {
-    await togglePluginLauncher();
-    return { visible: pluginLauncherWindow?.isVisible() ?? false };
-  });
-  ipcMain.handle(IPC.invoke.pluginLauncherDismiss, async (event) =>
-    wrap(async () => {
-      const window = BrowserWindow.fromWebContents(event.sender);
-      if (window && window === pluginLauncherWindow && !window.isDestroyed()) {
-        window.hide();
-      }
-      return { visible: false };
-    }),
-  );
-
-  handle(IPC.invoke.appOpenFeedback, async () => {
-    const hostVersion = host
-      ? await host
-          .call<{ version: string }>("app.getVersion")
-          .then((info) => info.version)
-          .catch(() => undefined)
-      : undefined;
-    const url = buildBugReportUrl({
-      version: APP_VERSION,
-      platform: process.platform,
-      arch: process.arch,
-      protocolVersion: PROTOCOL_VERSION,
-      hostVersion,
-    });
-    assertFeedbackIssueUrl(url);
-    await safeOpenExternal(url);
-    return { ok: true };
-  });
-
-  handle(IPC.invoke.appGetVersion, async () => {
-    const hostVersion = host
-      ? await host.call<{ version: string; protocolVersion: number }>(
-          "app.getVersion",
-        )
-      : undefined;
-    return {
-      name: APP_NAME,
-      version: APP_VERSION,
-      protocolVersion: PROTOCOL_VERSION,
-      hostProtocolVersion: hostVersion?.protocolVersion,
-      hostVersion: hostVersion?.version,
-      platform: process.platform,
-      arch: process.arch,
-    };
-  });
-
-  handle(IPC.invoke.appHealth, async () => {
-    if (!host) throw new Error("host unavailable");
-    return host.call("app.health");
-  });
-
-  handle(IPC.invoke.appGetOnboarding, async () => {
-    if (!host) throw new Error("host unavailable");
-    return host.call("app.getOnboarding");
-  });
-
-  handle(IPC.invoke.appDismissOnboarding, async () => {
-    if (!host) throw new Error("host unavailable");
-    const settings = await host.call<any>("settings.get");
-    await host.call("settings.set", { ...settings, onboardingDismissed: true });
-    return { ok: true };
-  });
-
-  // Installed system font families for the Settings font picker. Enumerating
-  // the OS font catalog is comparatively slow (a few hundred ms to seconds),
-  // so the result is cached briefly per process.
-  let systemFontsCache: { at: number; fonts: string[] } | null = null;
-  handle(IPC.invoke.systemFontsList, async () => {
-    const now = Date.now();
-    if (systemFontsCache && now - systemFontsCache.at < 60_000) {
-      return systemFontsCache.fonts;
-    }
-    const families = await listInstalledFonts().catch(() => []);
-    systemFontsCache = { at: now, fonts: families };
-    return families;
-  });
-
-  const instructionFile = async (
-    scope: "global" | "project",
-    projectPath?: string | null,
-  ) => {
-    const path =
-      scope === "global"
-        ? globalInstructionPath()
-        : projectPath
-          ? join(projectPath, "AGENTS.md")
-          : null;
-    if (!path) {
-      throw Object.assign(new Error("workspace required"), {
-        errorCode: ErrorCodes.INVALID_ARGUMENT,
-      });
-    }
-    const { readFile } = await import("node:fs/promises");
-    try {
-      return { scope, path, content: await readFile(path, "utf8"), exists: true };
-    } catch {
-      return { scope, path, content: "", exists: false };
-    }
+  const registrar: IpcRegistrar = {
+    ipcMain,
+    handle,
+    handleWithEvent,
+    assertMainWindowSender,
   };
 
-  const managedProjectPath = async (input: unknown): Promise<string> => {
-    if (!host) throw new Error("host unavailable");
-    const requestedPath = typeof input === "string" ? input.trim() : "";
-    if (!requestedPath) {
-      throw Object.assign(new Error("project path required"), {
-        errorCode: ErrorCodes.INVALID_ARGUMENT,
-      });
-    }
-    const projectPath = resolve(requestedPath);
-    const listed = (await host.call("projects.list")) as {
-      projects?: Array<{ path?: string }>;
-    };
-    const known = (listed.projects ?? []).some((project) => {
-      const candidate = String(project?.path ?? "").trim();
-      return candidate && resolve(candidate) === projectPath;
-    });
-    if (!known) {
-      throw Object.assign(new Error("project not found"), {
-        errorCode: ErrorCodes.NOT_FOUND,
-      });
-    }
-    if (!existsSync(projectPath) || !statSync(projectPath).isDirectory()) {
-      throw Object.assign(new Error("project folder not found"), {
-        errorCode: ErrorCodes.NOT_FOUND,
-      });
-    }
-    return projectPath;
-  };
-
-  handle(
-    IPC.invoke.agentInstructionsGet,
-    async (input: { projectPath?: unknown } = {}) => {
-      const projectPath = input.projectPath === undefined
-        ? null
-        : await managedProjectPath(input.projectPath);
-    return {
-      global: await instructionFile("global"),
-      ...(projectPath
-        ? { project: await instructionFile("project", projectPath) }
-        : {}),
-    };
+  registerAppIpc({
+    registrar,
+    getHost: () => host,
+    getPluginLauncherWindow: () => pluginLauncherWindow,
+    togglePluginLauncher,
+    safeOpenExternal,
+    updater,
   });
-
-  handle(
-    IPC.invoke.agentInstructionsSave,
-    async (input: {
-      scope?: "global" | "project";
-      content?: unknown;
-      projectPath?: unknown;
-    } = {}) => {
-      if (input.scope !== "global" && input.scope !== "project") {
-        throw Object.assign(new Error("instruction scope required"), {
-          errorCode: ErrorCodes.INVALID_ARGUMENT,
-        });
-      }
-      const scope = input.scope;
-      const projectPath = scope === "project"
-        ? await managedProjectPath(input.projectPath)
-        : null;
-      const file = await instructionFile(scope, projectPath);
-      const content = typeof input.content === "string" ? input.content : "";
-      const { mkdir, writeFile } = await import("node:fs/promises");
-      await mkdir(dirname(file.path), { recursive: true });
-      await writeFile(file.path, content, "utf8");
-      return { file: { ...file, content, exists: true } };
+  registerNotificationIpc({
+    registrar,
+    getHost: () => host,
+    getMainWindow: () => mainWindow,
+    getViewingSessionId: () => notificationViewingSessionId,
+    setViewingSessionId: (sessionId) => {
+      notificationViewingSessionId = sessionId;
     },
-  );
-
-  handle(IPC.invoke.updatesGetState, async () => updater.getState());
-
-  handle(IPC.invoke.updatesCheck, async () => updater.check({ manual: true }));
-
-  handle(IPC.invoke.updatesDownload, async () => updater.download());
-
-  handle(IPC.invoke.updatesInstall, async () => {
-    updater.install();
-    return { ok: true };
-  });
-
-  handle(IPC.invoke.updatesOpenReleases, async () => {
-    await updater.openReleases();
-    return { ok: true };
-  });
-
-  handle(IPC.invoke.notificationList, async (input: {
-    unreadOnly?: boolean;
-    limit?: number;
-  } = {}) => {
-    if (!host) throw new Error("host unavailable");
-    return host.call("notification.list", input);
-  });
-
-  handle(IPC.invoke.notificationMarkRead, async (input: { id?: string } = {}) => {
-    if (!host) throw new Error("host unavailable");
-    return host.call("notification.markRead", input);
-  });
-
-  handle(IPC.invoke.notificationMarkAllRead, async () => {
-    if (!host) throw new Error("host unavailable");
-    return host.call("notification.markAllRead");
-  });
-
-  handle(IPC.invoke.notificationClear, async () => {
-    if (!host) throw new Error("host unavailable");
-    return host.call("notification.clear");
-  });
-
-  handle(
-    IPC.invoke.notificationSetViewingSession,
-    async (input: { sessionId?: unknown } = {}) => {
-      const sessionId =
-        typeof input.sessionId === "string" ? input.sessionId.trim() : "";
-      notificationViewingSessionId = sessionId || null;
-      return { ok: true };
-    },
-  );
-
-  handle(IPC.invoke.notificationShowNative, async (input: {
-    id?: string;
-    sessionId?: string;
-    kind?: "task" | "interactive";
-    title?: string;
-    body?: string;
-  } = {}) => {
-    if (
-      !mainWindow ||
-      mainWindow.isDestroyed() ||
-      !SystemNotification.isSupported()
-    ) {
-      return { shown: false };
-    }
-    const id = String(input.id ?? "");
-    const sessionId = String(input.sessionId ?? "");
-    const kind = input.kind === "interactive" ? "interactive" : "task";
-    const title = String(input.title ?? "").trim().slice(0, 100);
-    const body = String(input.body ?? "").trim().slice(0, 240);
-    if (!id || !sessionId || !title) return { shown: false };
-
-    const liveWindow = mainWindow !== null && !mainWindow.isDestroyed();
-    const windowVisible = liveWindow && mainWindow.isVisible() === true;
-    const windowFocused = liveWindow && mainWindow.isFocused() === true;
-    if (
-      !shouldShowNativeNotification({
-        kind,
-        sessionId,
-        viewingSessionId: notificationViewingSessionId,
-        windowVisible,
-        windowFocused,
-      })
-    ) {
-      return { shown: false };
-    }
-
-    const notification = new SystemNotification({ title, body });
-    notification.on("click", () => {
-      if (!mainWindow || mainWindow.isDestroyed()) return;
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.show();
-      mainWindow.focus();
-      sendToRenderer(IPC.event.notificationActivated, { id, sessionId });
-    });
-    notification.show();
-    return { shown: true };
+    sendToRenderer,
   });
 
   handle(IPC.invoke.sessionList, async () => {
