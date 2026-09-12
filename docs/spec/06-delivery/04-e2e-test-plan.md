@@ -10379,3 +10379,29 @@ sample extensions under `apps/desktop/test/fixtures/pi-extensions/`.
   `project-import-archive.test.mjs`, `plugin-session-refresh.test.mjs`);
   rendered desktop journey Draft (run only in a capable environment when this
   surface changes)
+
+#### E2E-IMPORT-codex-scan-filters-synthetic-titles
+
+- **Preconditions**: A Codex archive whose sessions open with synthetic
+  injections (`# Context from my IDE setup:`, `# In app browser:`,
+  `# Browser comments:`, `# Files mentioned by the user:`,
+  `# Diff comments:`, `# Selected text:`, `# Review findings:`,
+  `# AGENTS.md`, `You are Codex`, `<environment>`) and at least one session
+  whose stored timestamps are corrupt or out of range.
+- **Steps**:
+  1. Run Settings → Session import → Scan over the archive.
+  2. Inspect candidate titles and the createdAt/updatedAt shown per session.
+  3. Import a session whose first real user message follows synthetic
+     injections.
+- **Expected**: Candidate titles come from the first real user message —
+  synthetic injections never surface as titles, while genuinely pasted
+  markdown that starts with `#` (for example `# Role: …`) is kept. Sessions
+  whose user messages are all synthetic do not appear as candidates. A
+  corrupt or out-of-range stored timestamp falls back to the source file's
+  mtime, never to the import moment.
+- **Specs linked**: `03-runtime/01-ipc-protocol.md`,
+  `04-ux/06-settings-ia.md`, D320
+- **Acceptance**: C (conversation & stream), F (persistence), Quality
+- **Milestone**: M6+
+- **Status**: Unit-covered (`importer-codex-scan.test.mjs`); UI journey Draft
+  (run only in a capable environment when this surface changes)

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { register } from "node:module";
@@ -270,6 +270,108 @@ test("sampled updatedAt uses top-level timestamps only", async () => {
     async (dir) => {
       const [s] = await scanCodexSessions(dir);
       assert.equal(s.updatedAt, iso("2026-06-01T00:00:01Z"));
+    },
+  );
+});
+
+test("newer IDE-context synthetic prefixes fall through to the first real user message", async () => {
+  // #265: 214/777 real sessions (27.5%) titled "# Context from my IDE setup:
+  // ## Active file …" because only the original AGENTS.md prefix was filtered.
+  const idePrefixes = [
+    "# Context from my IDE setup:  ## Active file: App.tsx",
+    "# In app browser: - The user has the in-app browser open.",
+    "# Files mentioned by the user:  ## notes.md",
+    "# Diff comments:  ## Comment 1 File: src/a.ts",
+    "# Selected text:  ## Selection 1",
+    "# Review findings:  ## Finding 1",
+  ];
+  for (const [index, prefix] of idePrefixes.entries()) {
+    await withArchive(
+      [
+        [
+          `ide-${index}.jsonl`,
+          [
+            metaLine(`ide-${index}`, "/repo/ide", "2026-05-01T00:00:00Z"),
+            responseItem("user", prefix, "2026-05-01T00:00:01Z"),
+            responseItem("user", "帮我看看这个报错", "2026-05-01T00:00:02Z"),
+          ].join("\n"),
+        ],
+      ],
+      async (dir) => {
+        const [s] = await scanCodexSessions(dir);
+        assert.equal(s.title, "帮我看看这个报错", `prefix: ${prefix}`);
+      },
+    );
+  }
+});
+
+test("real markdown first messages survive even when they start with #", async () => {
+  // A blanket "#" rule would erase genuinely user-pasted prompts (#265).
+  await withArchive(
+    [
+      [
+        "role.jsonl",
+        [
+          metaLine("role-1", "/repo/role", "2026-05-02T00:00:00Z"),
+          responseItem("user", "# Role: 资深 Java 后端开发工程师\n\n## Profile", "2026-05-02T00:00:01Z"),
+        ].join("\n"),
+      ],
+    ],
+    async (dir) => {
+      const [s] = await scanCodexSessions(dir);
+      assert.match(s.title, /^# Role: 资深 Java 后端开发工程师/);
+    },
+  );
+});
+
+test("corrupt stored timestamps fall back to the file mtime, not the import time", async () => {
+  await withArchive(
+    [
+      [
+        "corrupt.jsonl",
+        [
+          metaLine("corrupt-1", "/repo/corrupt", "1e309"),
+          responseItem("user", "时间戳坏掉的会话", "not-a-date"),
+        ].join("\n"),
+      ],
+    ],
+    async (dir) => {
+      // Pin the file's mtime so the expected fallback is deterministic.
+      const filePath = join(dir, "corrupt.jsonl");
+      const mtime = new Date("2024-05-01T08:00:00Z");
+      await utimes(filePath, mtime, mtime);
+      const [s] = await scanCodexSessions(dir);
+      assert.equal(s.createdAt, iso(mtime));
+      assert.equal(s.updatedAt, iso(mtime));
+    },
+  );
+});
+
+test("the sampled path also falls back to the file mtime", async () => {
+  await withArchive(
+    [
+      [
+        "big-corrupt.jsonl",
+        [
+          metaLine("big-corrupt-1", "/repo/big-corrupt", "not-a-date"),
+          responseItem("user", "大文件坏时间戳", "1e309"),
+          fillBytes(
+            CODEX_SCAN_FULL_PARSE_MAX_BYTES + 512 * 1024,
+            JSON.stringify({
+              type: "response_item",
+              payload: { type: "function_call_output", call_id: "c1", output: "pad" },
+            }),
+          ),
+        ].join("\n"),
+      ],
+    ],
+    async (dir) => {
+      const filePath = join(dir, "big-corrupt.jsonl");
+      const mtime = new Date("2024-06-01T09:30:00Z");
+      await utimes(filePath, mtime, mtime);
+      const [s] = await scanCodexSessions(dir);
+      assert.equal(s.createdAt, iso(mtime));
+      assert.equal(s.updatedAt, iso(mtime));
     },
   );
 });

@@ -60,6 +60,15 @@ export function toIso(value: string | number | undefined | null, fallback?: stri
   if (value !== undefined && value !== null) {
     const d = new Date(value);
     if (!Number.isNaN(d.getTime())) return d.toISOString();
+    // A provided-but-invalid timestamp is data corruption (truncated jsonl,
+    // out-of-range numbers): surface it instead of silently rewriting the
+    // session's history to the import moment (#265). Absent values stay
+    // silent — those are normal in optional fields.
+    console.warn(
+      `[importers] unparsable timestamp ${JSON.stringify(value)}; using ${
+        fallback ? "the provided fallback" : "the import time"
+      }`,
+    );
   }
   return fallback ?? new Date().toISOString();
 }

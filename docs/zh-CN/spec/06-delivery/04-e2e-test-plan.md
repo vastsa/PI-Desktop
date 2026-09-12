@@ -6601,3 +6601,16 @@ IPC 请求无法关闭。
 - **验收**：C（对话与流）、F（持久化）、G（插件）、品质
 - **里程碑**：M6+
 - **状态**：由源代码契约与单元测试覆盖（`sidebar-session-groups.test.mjs`、`project-import-archive.test.mjs`、`plugin-session-refresh.test.mjs`）；渲染桌面旅程为草稿（适用变更合入前需在具备条件的环境中运行 E2E）
+
+#### E2E-IMPORT-codex-scan-filters-synthetic-titles
+
+- **前提条件**：一个 Codex 归档，其中的会话以合成注入开头（`# Context from my IDE setup:`、`# In app browser:`、`# Browser comments:`、`# Files mentioned by the user:`、`# Diff comments:`、`# Selected text:`、`# Review findings:`、`# AGENTS.md`、`You are Codex`、`<environment>`），且至少一个会话的存储时间戳损坏或越界。
+- **步骤**：
+  1. 对该归档运行设置 → 会话导入 → 扫描。
+  2. 检查候选会话的标题与每条会话展示的 createdAt/updatedAt。
+  3. 导入一个首条真实用户消息位于合成注入之后的会话。
+- **预期**：候选标题取自第一条真实用户消息——合成注入绝不作为标题出现，而以 `#` 开头的真实粘贴内容（例如 `# Role: …`）予以保留。用户消息全为合成的会话不作为候选出现。损坏或越界的存储时间戳回退到源文件的 mtime，绝不回退到导入时刻。
+- **链接规格**：`03-runtime/01-ipc-protocol.md`、`04-ux/06-settings-ia.md`、D320
+- **验收**：C（对话与流）、F（持久化）、品质
+- **里程碑**：M6+
+- **状态**：由单元测试覆盖（`importer-codex-scan.test.mjs`）；UI 旅程为草稿（该表面变更时需在具备条件的环境中运行）

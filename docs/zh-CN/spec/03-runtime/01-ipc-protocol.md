@@ -680,7 +680,11 @@ Electron 主进程用该会话精确 provider/API URL 与 model 的本地 models
 `messageCount: number | null`。扫描对每个源文件全量读取的上限为导入器的
 采样阈值；超过阈值的文件只做采样（头部 + 尾部），使多吉字节归档的扫描
 保持可交互，其 `messageCount` 为 null——导入列表对它渲染破折号，而导入
-后的会话总是在 convert 阶段计算真实的消息数。导入成功
+后的会话总是在 convert 阶段计算真实的消息数。扫描标题取自第一条真实用户
+消息：已知的合成注入（仓库指令、`# Context from my IDE setup:`、
+`# Browser comments:` 等 IDE 上下文家族）会被跳过，而以 `#` 开头的真实
+粘贴内容予以保留。损坏或越界的存储时间戳回退到源文件的 mtime，绝不回退
+到导入时刻。导入成功
 刷新会话和持久项目索引。
 
 重新生成或编辑重发会在追加新的用户回合前截断持久转录本。`agent/prompt`
