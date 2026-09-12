@@ -3101,6 +3101,7 @@ pub fn get_token_usage_history(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::workspace::simple_canonicalize;
 
     fn test_db() -> Database {
         let dir = std::env::temp_dir().join(format!("pi-desktop-test-{}", Uuid::new_v4()));
@@ -3419,8 +3420,7 @@ mod tests {
         )
         .unwrap();
 
-        let canonical = project
-            .canonicalize()
+        let canonical = simple_canonicalize(&project)
             .unwrap()
             .to_string_lossy()
             .replace('\\', "/");
@@ -4482,7 +4482,10 @@ mod tests {
         )
         .unwrap();
 
-        let target_path = target.canonicalize().unwrap().to_string_lossy().to_string();
+        let target_path = simple_canonicalize(&target)
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
         let moved = move_session_project(&db, &session.id, &target.to_string_lossy()).unwrap();
         let MoveSessionProjectResult::Moved(summary) = moved else {
             panic!("an idle session must move to the requested project");

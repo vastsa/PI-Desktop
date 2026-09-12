@@ -3275,7 +3275,7 @@ mod tests {
         std::fs::create_dir_all(outside.path().join("src")).unwrap();
         let file = outside.path().join("src/outside.rs");
         std::fs::write(&file, "const needle = 1;\n").unwrap();
-        let canonical_file = file.canonicalize().unwrap();
+        let canonical_file = simple_canonicalize(&file).unwrap();
 
         let read = execute_tool_with_path_access(
             Some(workspace.path()),

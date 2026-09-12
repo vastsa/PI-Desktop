@@ -328,7 +328,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let root = dir.path();
         let p = resolve_in_workspace(root, "newdir/sub/file.txt").unwrap();
-        assert!(p.starts_with(root.canonicalize().unwrap()));
+        assert!(p.starts_with(simple_canonicalize(root).unwrap()));
         assert!(p.ends_with("newdir/sub/file.txt"));
     }
 
@@ -370,13 +370,19 @@ mod tests {
         let root = dir.path();
         std::os::unix::fs::symlink(root.join("not-yet.txt"), root.join("dangling")).unwrap();
         let resolved = resolve_in_workspace(root, "dangling").unwrap();
-        assert_eq!(resolved, root.canonicalize().unwrap().join("not-yet.txt"));
+        assert_eq!(
+            resolved,
+            simple_canonicalize(root).unwrap().join("not-yet.txt")
+        );
 
         // Relative link targets resolve against the link's own directory.
         std::fs::create_dir_all(root.join("sub")).unwrap();
         std::os::unix::fs::symlink("../elsewhere.txt", root.join("sub/rel")).unwrap();
         let resolved = resolve_in_workspace(root, "sub/rel").unwrap();
-        assert_eq!(resolved, root.canonicalize().unwrap().join("elsewhere.txt"));
+        assert_eq!(
+            resolved,
+            simple_canonicalize(root).unwrap().join("elsewhere.txt")
+        );
     }
 
     #[cfg(unix)]
@@ -396,7 +402,7 @@ mod tests {
         let scratch = tempdir().unwrap();
         let (p, root) = resolve_tool_path(ws.path(), Some(scratch.path()), "notes.txt").unwrap();
         assert_eq!(root, ToolRoot::Workspace);
-        assert!(p.starts_with(ws.path().canonicalize().unwrap()));
+        assert!(p.starts_with(simple_canonicalize(ws.path()).unwrap()));
     }
 
     #[test]
@@ -407,7 +413,7 @@ mod tests {
         let (p, root) =
             resolve_tool_path(ws.path(), Some(scratch.path()), input.to_str().unwrap()).unwrap();
         assert_eq!(root, ToolRoot::Scratch);
-        assert!(p.starts_with(scratch.path().canonicalize().unwrap()));
+        assert!(p.starts_with(simple_canonicalize(scratch.path()).unwrap()));
     }
 
     #[test]
@@ -452,7 +458,7 @@ mod tests {
             resolve_tool_path_with_external(ws.path(), None, input.to_str().unwrap(), true)
                 .unwrap();
         assert_eq!(root, ToolRoot::External);
-        assert_eq!(resolved, input.canonicalize().unwrap());
+        assert_eq!(resolved, simple_canonicalize(&input).unwrap());
     }
 
     #[test]
@@ -470,7 +476,7 @@ mod tests {
         );
         let (resolved, root) = resolve_tool_path_with_external(&ws, None, input, true).unwrap();
         assert_eq!(root, ToolRoot::External);
-        assert_eq!(resolved, outside.canonicalize().unwrap());
+        assert_eq!(resolved, simple_canonicalize(&outside).unwrap());
     }
 
     #[test]

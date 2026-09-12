@@ -4016,7 +4016,7 @@ mod tests {
         .await
         .unwrap();
         let project_id = result["project"]["id"].as_i64().unwrap();
-        let canonical_path = data_dir.path().canonicalize().unwrap();
+        let canonical_path = crate::workspace::simple_canonicalize(data_dir.path()).unwrap();
         assert_eq!(
             result["project"]["path"],
             canonical_path.to_string_lossy().as_ref()
@@ -4358,8 +4358,8 @@ mod tests {
         );
 
         assert_eq!(
-            resolved.canonicalize().unwrap(),
-            project_a.canonicalize().unwrap()
+            crate::workspace::simple_canonicalize(&resolved).unwrap(),
+            crate::workspace::simple_canonicalize(&project_a).unwrap()
         );
     }
 
@@ -6407,7 +6407,7 @@ mod tests {
         .unwrap();
         assert_eq!(result["ok"], true, "external auto Glob failed: {result}");
         // External Glob results are absolute rather than carrying a root field.
-        let canonical_outside_file = outside_file.canonicalize().unwrap();
+        let canonical_outside_file = crate::workspace::simple_canonicalize(&outside_file).unwrap();
         assert_eq!(
             result["content"]["matches"][0],
             json!(canonical_outside_file.to_string_lossy()),
