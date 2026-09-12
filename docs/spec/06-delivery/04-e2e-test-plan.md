@@ -399,8 +399,8 @@ needed.
 #### E2E-005: Add a provider and save API key
 
 - **Preconditions**: App running; no provider configured; the models.dev snapshot ships with the build.
-- **Steps**: 1) Open Settings → Model configuration and choose Add provider. 2) Confirm the dialog is ONE form and no stepper, no preset grid and no Next/Back buttons. The first control is Service — a searchable menu (Choose a service, Custom endpoint, then a flat vendor list from models.dev including Xiaomi), not a native select, region grouping, or vendor-card grid. Open it, type to filter client-side, then choose **Custom endpoint**. Confirm Name and Base URL appear on one row with no helper paragraph under the URL (placeholder only), API Key and API format appear side by side on the next row (not behind Advanced), and that a focused field plus its 2px accent ring stays fully inside the dialog, including on a window narrower than 1040px. 3) Enter a name and a base URL for a service that publishes a `/models` route, then paste an API key. 4) Confirm the models section fills with the models THAT SERVICE returned, not with every model its vendor publishes; confirm a model the deployment does not host is absent. 5) Type in the filter box and confirm the list narrows client-side with no network request per keystroke. 6) Confirm each row shows the models.dev-derived context/output for models the catalog knows, and that a model with no catalog match still lists with generic defaults. 7) Select two models with the checkboxes. 8) Expand Advanced on one chosen row, override its limits and toggle thinking chips; confirm the label and optional hint sit above one compact grouped control and do not force the options onto a second row at normal dialog width; confirm all seven canonical levels are available, that published levels start selected for a known reasoning model, and that a non-reasoning or unknown row shows the same chips unselected with the manual-override hint; enable one level on that row and confirm the other row is unaffected. 9) Open the form-level Advanced and confirm the API format is present but pre-derived. 10) Add a free-form model ID the service did not return; confirm it is added with 128,000 / 8,192 / no-thinking defaults, then enable a thinking level if the endpoint supports it; confirm re-adding the same ID in different letter case is rejected as already added. 11) Save.
-- **Expected**: The service is asked first and models.dev only enriches the answer and seeds known-model defaults. The settings picker always offers the seven canonical thinking levels, and the Composer later renders the explicit levels saved in the same model binding; an empty or `off`-only binding resolves to `off`. Discovery is debounced ~600 ms, does not mark loading until that window elapses, and a slow reply from an earlier keystroke never replaces a newer list; named add-path discovery waits for an API key, while an unsaved custom provider is probed with the typed base URL (and key, if any) before it exists. The user never types a token limit on the common path. Custom endpoint keeps API format beside the key and omits Base URL helper copy; named endpoints do not show format. Point the same custom form at an unreachable or unauthorized URL and confirm the left pane shows a classified error (not a raw JSON/HTML dump and not a second “no models” empty state); with cached rows from a later edit, the same error is a one-line banner above the list. Point a second provider at a base URL with no `/models` route and confirm the list falls back to the catalog, is labelled as coming from models.dev rather than the service, and still saves. The provider appears as a row with its host, model count and secret badge; the key is stored securely (not in plaintext config); `models` contains both bindings and `models[0]` remains the provider default.
+- **Steps**: 1) Open Settings → Model configuration and choose Add provider. 2) Confirm the dialog is ONE form with no stepper or Next/Back buttons. The first control is Service — a searchable menu (Choose a service, Custom endpoint, then a flat vendor list from models.dev including Xiaomi), not a native select, region grouping, or vendor-card grid. Open it, type to filter client-side, then choose **Custom endpoint**. Confirm Name and Base URL appear on one row with no helper paragraph under the URL (placeholder only), API Key and API format appear side by side on the next row (not behind Advanced), and that a focused field plus its 2px accent ring stays fully inside the dialog, including on a window narrower than 1040px. 3) Enter a name and a base URL for a service that publishes a `/models` route, then paste an API key. 4) Confirm the models section fills with the models THAT SERVICE returned, not with every model its vendor publishes; confirm a model the deployment does not host is absent. 5) Type in the filter box and confirm the list narrows client-side with no network request per keystroke. 6) Confirm each row shows the models.dev-derived context/output for models the catalog knows, and that a model with no catalog match still lists with generic defaults. 7) Select two models with the checkboxes. 8) Expand Advanced on one chosen row, override its limits and toggle thinking chips; confirm each numeric field has a five-chip preset ladder for common values, clicking a chip writes the value, hand editing remains possible, and a non-preset value leaves the ladder unselected. Confirm the label and optional hint sit above one compact grouped control and do not force the options onto a second row at normal dialog width; confirm all seven canonical levels are available, that published levels start selected for a known reasoning model, and that a non-reasoning or unknown row shows the same chips unselected with the manual-override hint; enable one level on that row and confirm the other row is unaffected. 9) Open the form-level Advanced and confirm the API format is present but pre-derived. 10) Add a free-form model ID the service did not return; confirm it is added with 128,000 / 8,192 / no-thinking defaults, then enable a thinking level if the endpoint supports it; confirm re-adding the same ID in different letter case is rejected as already added. 11) Save.
+- **Expected**: The service is asked first and models.dev only enriches the answer and seeds known-model defaults. The settings picker always offers the seven canonical thinking levels, and the Composer later renders the explicit levels saved in the same model binding; an empty or `off`-only binding resolves to `off`. Discovery is debounced ~600 ms, does not mark loading until that window elapses, and a slow reply from an earlier keystroke never replaces a newer list; named add-path discovery waits for an API key, while an unsaved custom provider is probed with the typed base URL (and key, if any) before it exists. Preset ladders cover common context/output limits while preserving hand-edited values. Custom endpoint keeps API format beside the key and omits Base URL helper copy; named endpoints do not show format. Point the same custom form at an unreachable or unauthorized URL and confirm the left pane shows a classified error (not a raw JSON/HTML dump and not a second “no models” empty state); with cached rows from a later edit, the same error is a one-line banner above the list. Point a second provider at a base URL with no `/models` route and confirm the list falls back to the catalog, is labelled as coming from models.dev rather than the service, and still saves. The provider appears as a row with its host, model count and secret badge; the key is stored securely (not in plaintext config); `models` contains both bindings and `models[0]` remains the provider default.
 - **Specs linked**: `03-runtime/11-provider-model-system.md`, `03-runtime/12-provider-config-schema.md`, `03-runtime/13-model-catalog-and-selection.md`, `03-runtime/14-secrets-storage.md`, `04-ux/06-settings-ia.md`
 - **Acceptance**: B (multi-model provider configuration, save key)
 - **Milestone**: M2
@@ -1704,7 +1704,7 @@ needed.
 
 - **Preconditions**: Supported local agent stores contain importable sessions across at least two project paths and two sources, including one session without a project path; the app can be launched once with an English system locale and once with a Simplified Chinese system locale.
 - **Steps**: 1) Launch in English and open Settings → Import. 2) Scan for sessions. 3) Inspect the initial source groups. 4) Expand one group and select a session. 5) Change Group by to Project path. 6) Switch back to Source. 7) Repeat the flow after launching with a Simplified Chinese system locale.
-- **Expected**: Source/来源 is the initial grouping; all groups are collapsed after the scan and after either grouping change; project-path mode shows exact project paths and a final No project/未关联项目 group; expanding one group leaves the others collapsed; the selected session remains selected across grouping changes; counts, dates, selection labels, accessible names, and the import result use the active locale without raw keys or unresolved double-brace placeholders.
+- **Expected**: Source/来源 is the initial grouping; all groups are collapsed after the scan and after either grouping change; project-path mode shows exact project paths and a final No project/未关联项目 group; expanding one group leaves the others collapsed; the selected session remains selected across grouping changes; counts, dates, selection labels, accessible names, and the import result use the active locale without raw keys or unresolved double-brace placeholders. A Codex archive above the scan threshold may show an em dash for its unknown message count during review, but it remains selectable and the later import converts the complete transcript.
 - **Specs linked**: `04-ux/01-ui-ia.md`, `04-ux/02-i18n-english-first.md`, `04-ux/08-component-spec.md`
 - **Acceptance**: F (session import review)
 - **Milestone**: M2
@@ -3124,7 +3124,8 @@ needed.
   unboxed turn/speed values, one inline provider-usage summary, and one
   aggregate tool-usage summary, with no doubled heading rule and no inner
   section hairlines. 5) Scroll the transcript and resize the window while the
-  panel is open. 6) Move the pointer away from the panel, then dismiss it by
+  panel is open. Toggle and resize the sidebar and work panel while the panel
+  remains open. 6) Move the pointer away from the panel, then dismiss it by
   clicking the trigger again, clicking outside it, and pressing Escape from
   the keyboard. 7) Open the work panel on a browser-preview artifact, open the
   context inspector, and confirm the summary stays inside the conversation pane:
@@ -8552,7 +8553,10 @@ This test plan spec is accepted when:
   checkpoint retains exactly the latest active user prompt, with no older user
   prompts or pre-boundary assistant/tool messages. Restart honors
   `retainedTailMode`, and legacy multi-user tails normalize to the latest user
-  message. The visible transcript remains complete and checkpoint rows remain.
+  message. If automatic summary generation fails, the fallback retains a
+  bounded recent user tail even after a completed turn, and a later retry
+  removes only the synthetic recovery notice while preserving any carried
+  summary. The visible transcript remains complete and checkpoint rows remain.
 - **Specs linked**: `03-runtime/02-agent-runtime.md`,
   `03-runtime/04-data-storage.md`, `03-runtime/16-tool-result-limits.md`,
   `08-meta/decisions-log.md` (D275), ADR 0136
@@ -8925,16 +8929,22 @@ are withdrawn with ADR 0165.
 
 - **Preconditions**: An Agent session in a workspace that contains
   `apps/desktop/src/App.tsx`, `docs/adr/0163-transcript-file-reference-chips.md`,
-  and `docs/spec/00-baseline.md`.
+  `docs/spec/00-baseline.md`, and a Unicode-named file such as `报告.pdf`.
 - **Steps**: 1) Open an existing session whose transcript already contains
   assistant markdown. 2) Prompt a turn whose assistant reply mentions
-  `apps/desktop/src/App.tsx` as a bare path, as inline code, and as a
-  markdown link. 3) Click each. 4) Open the ADR markdown file in the work-panel
-  files viewer and click a `../spec/00-baseline.md` link.
+  `apps/desktop/src/App.tsx` as a bare path, as inline code, a Unicode path such
+  as `报告.pdf`, and as a markdown link. 3) Click each. 4) Open the ADR markdown
+  file in the work-panel files viewer and click a `../spec/00-baseline.md` link.
+  5) Include an absolute path under the workspace, an outside absolute path,
+  and a `~/` path in chat; confirm only the under-root path becomes a target.
 - **Expected**:
   - Opening the session paints the transcript without throwing.
   - Each chat path opens the work-panel files viewer on
     `apps/desktop/src/App.tsx`.
+  - Unicode filenames and multi-segment paths inside the workspace become
+    targets, while an outside absolute path and a `~/` path stay plain text.
+  - An absolute path under the workspace resolves to its workspace-relative
+    target.
   - The markdown-file `../` link opens `docs/spec/00-baseline.md`, not a
     workspace-root `spec/00-baseline.md`.
   - A `../../../outside.ts` link from `docs/adr` stays inert.
