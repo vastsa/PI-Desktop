@@ -245,19 +245,20 @@ test("a failed compaction checkpoint still restores a non-empty context", () => 
   );
 });
 
-test("a fallback notice is never treated as a real summary", () => {
-  // pi copies `previousSummary` from the previous compaction entry. When that
-  // entry was a fallback, its summary is the recovery notice — feeding it to
-  // the next run makes the model update a summary that never existed. Both
-  // the normal and the rebuild path must strip the notice so the next
-  // summarization regenerates a real summary (#224).
+test("a fallback notice is stripped without discarding its carried summary", () => {
+  // pi copies `previousSummary` from the previous compaction entry. A fallback
+  // entry stores its carried-forward summary ahead of the recovery notice, so
+  // the notice must be stripped without taking the real summary with it —
+  // otherwise older task context is silently lost (#224). Both the normal and
+  // the rebuild path share one extraction helper.
+  assert.match(runtime, /function stripCompactionFallbackNotice\(/);
   assert.match(
     runtime,
-    /previousSummary\?\.includes\(\s*COMPACTION_FALLBACK_MARKER,\s*\)/,
+    /const previousSummary = stripCompactionFallbackNotice\(\s*prepared\.value\.previousSummary,\s*\)/,
   );
   assert.match(
     runtime,
-    /previousSummary: terminal\.summary\.includes\(COMPACTION_FALLBACK_MARKER\)/,
+    /previousSummary:\s*stripCompactionFallbackNotice\(terminal\.summary\)/,
   );
 });
 
