@@ -9660,21 +9660,28 @@ are withdrawn with ADR 0165.
   the parent Agent session has a configured authenticated provider/model and a
   project path. The parent is in Agent mode.
 - **Steps**: 1) Ask the parent to review Frontend, Electron, and Rust in
-  parallel. 2) Confirm that `SessionTask.spawn` returns three distinct worker
-  session ids and that each worker is visible in the normal session list. 3)
-  Confirm all three workers receive prompts without using `session/fork` and
-  can run concurrently. 4) Call `SessionTask.wait`, then `result` for each
-  worker. 5) Open one worker from the Agents panel, send it a follow-up, and
-  stop another worker. 6) Restart the plugin and confirm the relationship list
-  and durable worker sessions remain available.
+  parallel. 2) Confirm that `SessionTask.spawn` returns three distinct
+  original durable `sessionId` values and that each worker is visible in the
+  normal session list. 3) Confirm all three workers receive prompts without
+  using `session/fork` and can run concurrently. 4) Call `SessionTask.status`
+  while they are active and confirm it does not fetch worker transcripts. 5)
+  Call `SessionTask.wait` with its default bound, then `result` for each
+  worker. 6) Open one worker from the Agents panel, send it a follow-up using
+  the exact returned `sessionId`, and stop another worker. 7) Restart the
+  plugin and confirm the relationship list and durable worker sessions remain
+  available.
 - **Expected**: Each worker is a real durable session with the parent's
   project/model/thinking/permission ceiling and an independent empty
   transcript at creation. The parent receives only bounded final reports;
-  full worker transcripts remain inspectable in their own sessions. Send uses
-  the same worker id, cancel aborts without deletion, unrelated sessions and
-  the existing Task family are unchanged, and no localhost MCP call or token
-  access occurs. A worker cannot create another worker, and concurrency limits
-  fail closed.
+  full worker transcripts remain inspectable in their own sessions. `sessionId`
+  is the only canonical Worker identity and follow-up `send` reuses that same
+  session and context without creating a replacement. Status and panel refresh
+  use bounded lightweight polling; `wait` returns `timedOut` within its limit
+  instead of occupying the host tool deadline. Cancel aborts without
+  deletion, unrelated sessions and the existing Task family are unchanged,
+  and no localhost MCP call or token access occurs. A worker cannot create
+  another worker, unowned Session IDs are rejected, and concurrency limits fail
+  closed.
 - **Specs linked**: `07-plugins/03-plugin-api.md`,
   `07-plugins/04-plugin-security.md`, `07-plugins/11-plugin-storage-isolation.md`,
   `03-runtime/01-ipc-protocol.md`, `03-runtime/06-host-rpc-protocol.md`,
