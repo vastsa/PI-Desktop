@@ -1258,15 +1258,22 @@ storage but compose into one assistant turn until the next user message.
   remain discoverable through their content.
 - Load more continues host session pagination; a renderer's loaded sessions or
   the old 50-session/100-message limits cannot truncate discovery.
-- Clicking a session heading or either snippet closes global search and opens
-  the owning conversation through the normal session selection path. Show the
-  original rendered transcript and composer directly, with the same reading
-  position behavior as opening it from the sidebar. A result for the active
-  session reveals its existing pane without reloading its history. Focusing
-  the composer must not scroll the page.
-- Snippets identify which conversation to open; they do not open a separate
-  historical reader or force message-level navigation. Keep the original
-  transcript, live updates, and editing actions available immediately.
+- Clicking a message snippet closes search, opens its original conversation,
+  and scrolls to the clicked message's matching rendered text with a visible
+  literal highlight. A heading with body matches selects its first snippet;
+  metadata-only headings use ordinary session navigation. Mouse and keyboard
+  must select the same target ID, including individual assistant fragments.
+- Old targets load a bounded 60-line original `UiMessage` window centered on
+  their stable ID. The selected message keeps complete text beyond the usual
+  display cap. Render the same transcript, Markdown, message actions, and
+  composer; do not open a separate reader. Preserve the live cache separately.
+  Upward paging and Load later messages extend the reading window. The existing
+  latest-message control and a new turn return to live output. Actions on an
+  old message prepare canonical input before editing, retrying, or branching.
+- Release bottom following on a search jump. Brief layout corrections may keep
+  the selected text visible, but stop on a real reading gesture. Composer focus
+  must not move the transcript. A missing target reports failure without jumping
+  to an unrelated message; stale requests must not override a newer target.
 - Preserve the query in memory when closing/reopening search. Debounce queries
   and reject stale results and errors after a new query, closure, or navigation.
   Loading and failure states must not masquerade as an empty result.
@@ -1276,8 +1283,8 @@ storage but compose into one assistant turn until the next user message.
 
 ### 7.6 MVP constraints
 
-- Global search opens the original conversation (ADR session-content-search).
-  Message-level navigation and an independent in-transcript find bar remain
+- Global search locates a matching message inside its original conversation
+  (ADR session-content-search). An independent in-transcript find bar remains
   outside this scope.
 - No inline message branching tree; regenerate variants remain linear per user
   root turn. Session-level Create branch produces an independent conversation

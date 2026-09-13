@@ -30,6 +30,9 @@ export type SessionDetail = SessionSummary & {
   messages: UiMessage[];
   /** Zero-based offset of the first message returned by a bounded history read. */
   messageStart?: number;
+  /** Exclusive physical end of a bounded read; not the deduplicated length. */
+  messageEnd?: number;
+  hasMoreAfter?: boolean;
   /** True when older messages must be requested with another bounded read. */
   hasMoreBefore?: boolean;
   /** The checkpoint that governs the next model request, i.e. the last of

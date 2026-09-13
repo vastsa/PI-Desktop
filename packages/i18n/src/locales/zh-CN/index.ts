@@ -249,6 +249,7 @@ export const zhCN = {
     loadingSession: "正在加载会话…",
     pasteInProgress: "粘贴内容仍在保存中，请稍后再发送。",
     loadingEarlierMessages: "正在加载更早的消息…",
+    loadLaterMessages: "加载后续消息",
     showEarlierMessages: "显示更早的消息",
     copy: "复制",
     copied: "已复制",

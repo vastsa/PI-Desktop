@@ -281,6 +281,7 @@ export const AssistantTurn = memo(function AssistantTurn({
                   ? " streaming"
                   : ""
               }`}
+              data-message-id={part.message.id}
               key={part.message.id}
             >
               {part.message.content ? (

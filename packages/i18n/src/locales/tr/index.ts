@@ -256,6 +256,7 @@ export const tr = {
     loadingSession: "Sohbet yükleniyor…",
     pasteInProgress: "Yapıştırılan içerik hâlâ kaydediliyor. Biraz sonra yeniden deneyin.",
     loadingEarlierMessages: "Önceki iletiler yükleniyor…",
+    loadLaterMessages: "Sonraki mesajları yükle",
     showEarlierMessages: "Önceki iletileri göster",
     copy: "Kopyala",
     copied: "Kopyalandı",

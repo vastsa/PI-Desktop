@@ -24,7 +24,7 @@ export function SearchSessionResults({
   active: number;
   runningSessions: Record<string, boolean>;
   onActivate: (index: number) => void;
-  onSelect: (row: SearchRow) => void;
+  onSelect: (row: SearchRow, messageId?: string) => void;
 }) {
   const { t } = useTranslation();
   return (
@@ -88,7 +88,7 @@ export function SearchSessionResults({
                     aria-selected={active === optionIndex}
                     className={`search-item search-message-hit ${active === optionIndex ? "active" : ""}`}
                     onMouseEnter={() => onActivate(optionIndex)}
-                    onClick={() => onSelect(row)}
+                    onClick={() => onSelect(row, match.messageId)}
                   >
                     <span className="search-message-meta">
                       {match.role === "user" ? t("search.user") : t("search.assistant")} ·{" "}

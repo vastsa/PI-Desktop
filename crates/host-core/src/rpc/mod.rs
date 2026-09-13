@@ -1620,9 +1620,15 @@ async fn handle_request(
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| rpc_err(1002, "id required", "INVALID_PARAMS"))?;
             let message_before = params.get("messageBefore").and_then(|v| v.as_i64());
+            let message_around = params
+                .get("messageAround")
+                .and_then(|v| v.as_str())
+                .map(str::to_owned);
             let message_limit = params.get("messageLimit").and_then(|v| v.as_i64());
             if message_before.is_some_and(|value| value < 0)
                 || message_limit.is_some_and(|value| value <= 0)
+                || (message_around.is_some()
+                    && (message_before.is_some() || message_limit.is_none()))
             {
                 return Err(rpc_err(
                     1002,
@@ -1650,6 +1656,7 @@ async fn handle_request(
                 &st.db,
                 id,
                 sessions::SessionReadOptions {
+                    message_around,
                     message_before,
                     message_limit,
                     content_limit,

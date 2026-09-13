@@ -343,6 +343,108 @@ mod tests {
     }
 
     #[test]
+    fn transcript_navigation_reads_original_messages_by_stable_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::open(&dir.path().join("test.sqlite")).unwrap();
+        let session = sessions::create_session(&db, None, None, None, None, None).unwrap();
+        let text = format!(
+            "{}\n**needle** is in the original message.",
+            "prefix ".repeat(15_000)
+        );
+        for n in 0..150 {
+            sessions::append_message(
+                &db,
+                &session.id,
+                &message(
+                    &format!("m{n}"),
+                    if n == 20 || n == 21 {
+                        &text
+                    } else {
+                        "neighbor"
+                    },
+                ),
+                None,
+            )
+            .unwrap();
+            if n == 5 {
+                // A duplicate physical line shifts every later position away
+                // from SQLite's deduplicated message sequence.
+                let path = crate::transcripts::transcript_path(db.data_dir(), &session.id).unwrap();
+                let contents = std::fs::read_to_string(&path).unwrap();
+                let line = contents
+                    .lines()
+                    .find(|line| line.contains("\"id\":\"m5\""))
+                    .unwrap();
+                use std::io::Write;
+                writeln!(
+                    std::fs::OpenOptions::new().append(true).open(path).unwrap(),
+                    "{line}"
+                )
+                .unwrap();
+            }
+        }
+        let page = sessions::get_session_with_options(
+            &db,
+            &session.id,
+            sessions::SessionReadOptions {
+                message_around: Some("m20".into()),
+                message_limit: Some(10),
+                content_limit: Some(64 * 1024),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(page.messages.len(), 10);
+        assert_eq!(page.message_start, Some(17));
+        assert_eq!(page.message_end, Some(27));
+        assert_eq!(page.has_more_before, Some(true));
+        assert_eq!(page.has_more_after, Some(true));
+        assert_eq!(
+            page.messages
+                .iter()
+                .find(|m| m.id == "m20")
+                .unwrap()
+                .content,
+            text
+        );
+        assert!(
+            page.messages
+                .iter()
+                .find(|m| m.id == "m21")
+                .unwrap()
+                .content
+                .len()
+                < text.len()
+        );
+        let next = sessions::get_session_with_options(
+            &db,
+            &session.id,
+            sessions::SessionReadOptions {
+                message_before: Some(page.message_end.unwrap() + 10),
+                message_limit: Some(10),
+                content_limit: Some(64 * 1024),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(next.message_start, page.message_end);
+        assert_eq!(next.messages.first().unwrap().id, "m26");
+        let missing = sessions::get_session_with_options(
+            &db,
+            &session.id,
+            sessions::SessionReadOptions {
+                message_around: Some("deleted".into()),
+                message_limit: Some(60),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(missing.is_none());
+    }
+
+    #[test]
     fn search_counts_all_matches_and_pages_all_sessions() {
         let dir = tempfile::tempdir().unwrap();
         let db = Database::open(&dir.path().join("test.sqlite")).unwrap();

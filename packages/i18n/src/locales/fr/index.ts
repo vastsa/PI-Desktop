@@ -247,6 +247,7 @@ export const fr = {
     "loadingSession": "Chargement de la conversation…",
     "pasteInProgress": "Toujours enregistrer le contenu collé. Réessayez dans un instant.",
     "loadingEarlierMessages": "Chargement des messages précédents…",
+    loadLaterMessages: "Charger les messages suivants",
     "showEarlierMessages": "Afficher les messages précédents",
     "copy": "Copier",
     "copied": "Copié",

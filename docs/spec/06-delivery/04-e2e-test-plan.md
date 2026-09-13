@@ -10568,10 +10568,15 @@ sample extensions under `apps/desktop/test/fixtures/pi-extensions/`.
 - **Steps**: Search body-only user and assistant terms, then rename the owning
   session and repeat. Check aggregated counts and sender/time/snippet labels.
   Load every result page. Open a session heading and each of its two snippets;
-  verify that they all close search and open the same original conversation.
-  Check the normal Markdown, message actions, and composer. Scroll within the
-  active conversation, reopen search, and select its own result; the original
-  pane and reading position must remain. Reopen search and check the retained query.
+  verify that each snippet closes search, opens the same original conversation,
+  and scrolls to its own matching text. The heading selects its first snippet.
+  Check normal Markdown, message actions, and composer. Repeat with two assistant
+  fragments in one turn, an old target outside the latest page, and a match after
+  100,000 characters. Verify a visible highlight and that layout settling does
+  not pull the target away. Read upward and load later messages without gaps.
+  Use the latest-message control to resume the live transcript. Scroll within
+  the active conversation, reopen search, and select its own result; locate the
+  target inside the same pane. Edit, retry, branch, and delete an old message. Reopen search and check the retained query.
   Repeat with CJK and symbols. Change queries rapidly while delayed first-page
   and later-page requests resolve out of order. Close/reopen during loading.
   Retry after a transient search error.
@@ -10588,8 +10593,12 @@ sample extensions under `apps/desktop/test/fixtures/pi-extensions/`.
   the existing explicit-search rule and deleted sessions never appear. Each
   snippet opens its owning conversation directly without an intermediate
   context reader, plain-text replacement, or Back to conversation action.
-  Normal session selection preserves live output and retained reading positions;
-  selecting the active conversation does not reload or reset its history.
+  Each selected snippet lands at its exact message and matching rendered text,
+  including old history and individual assistant fragments. Reading-window
+  loads do not overwrite live output. New turns return to the live transcript.
+  Actions on historical messages work normally and do not leave obsolete rows.
+  Rapidly selecting another result rejects stale target/page completions.
+  Deleting a result before selection reports failure instead of landing at the tail.
   Later query ownership wins over stale results/errors. IME Enter does not
   execute an action. Search transport failures are explicit.
   Existing commands, pages, settings, and keyboard navigation still work.

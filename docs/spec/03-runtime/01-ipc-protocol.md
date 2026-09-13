@@ -802,12 +802,17 @@ Minimal interface:
   through the reviewed desktop-control path; it does not create or mutate the
   session
 - `session/fork({ sessionId, title?, throughMessageId? }) -> { session: SessionDetail }`
-- `session/get({ id, messageBefore?, messageLimit?, contentLimit? })` — without
+- `session/get({ id, messageBefore?, messageAround?, messageLimit?, contentLimit? })` — without
   read-window options returns the complete UI projection; with them returns a
   bounded newest/older page plus `messageStart` and `hasMoreBefore`. The
   content limit applies only to display values and never changes the lossless
   transcript or model context. `messageBefore` and `messageStart` are physical
   message-line positions in the transcript file, not deduplicated index counts.
+  `messageAround` centers a bounded read on a stable message ID; it requires
+  `messageLimit` and cannot accompany `messageBefore`. A missing target returns
+  no session. Only the selected user/assistant text bypasses the display cap.
+  Bounded responses also include exclusive `messageEnd` and `hasMoreAfter` for
+  forward paging; reading windows never replace the live transcript cache.
 - `session/search({ query, offset? }) -> SessionSearchPage` forwards to
   `search.sessions`; host-core owns discovery, counts, filtering, and pagination.
 - `session/searchContext(SessionSearchContextRequest) -> SessionSearchContext`

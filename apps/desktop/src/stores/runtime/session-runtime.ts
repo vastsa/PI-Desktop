@@ -75,7 +75,7 @@ export type SessionRuntime = {
       contentLimit?: number;
     },
   ) => ReturnType<typeof api.getSession>;
-  loadFullSessionMessages: (id: string) => Promise<UiMessage[] | null>;
+  loadFullSessionMessages: (id: string, cache?: boolean) => Promise<UiMessage[] | null>;
   insertOptimisticUserMessage: (sessionId: string, message: UiMessage) => void;
   retractOptimisticUserMessage: (sessionId: string, message: UiMessage) => void;
   cacheBackgroundTranscriptEvent: (envelope: AgentEventEnvelope) => void;
@@ -188,14 +188,14 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
     return request;
   }
 
-  async function loadFullSessionMessages(id: string): Promise<UiMessage[] | null> {
+  async function loadFullSessionMessages(id: string, cache = true): Promise<UiMessage[] | null> {
     const detail = await api.getSession(id);
     if (!detail.session) return null;
     const messages = detail.session.messages ?? [];
-    cacheSessionTranscript(id, messages, {
-      messageStart: 0,
-      hasMoreBefore: false,
-    });
+    if (cache) cacheSessionTranscript(id, messages, {
+        messageStart: 0,
+        hasMoreBefore: false,
+      });
     return messages;
   }
 

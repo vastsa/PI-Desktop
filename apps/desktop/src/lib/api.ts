@@ -178,6 +178,8 @@ function normalizeSessionDetail(detail: SessionDetail | null): SessionDetail | n
 }
 
 export type SessionHistoryReadOptions = {
+  /** Center a bounded read on this stable ID and retain its original text. */
+  messageAround?: string;
   /** Return the newest page ending before this zero-based message offset. */
   messageBefore?: number;
   /** Maximum number of messages in the returned page. */

@@ -3,6 +3,7 @@ import { ChatTranscript } from "./ChatTranscript";
 import { useAppStore } from "../stores/app-store";
 import { headPermission, sessionPermissions } from "../lib/pending-permissions";
 import { headAsk } from "../lib/pending-asks";
+import { useTranscriptNavigation } from "../hooks/use-transcript-navigation";
 
 /**
  * One retained conversation pane (ADR 0137).
@@ -47,6 +48,8 @@ export const SessionPane = memo(function SessionPane({
     Boolean(headAsk(state.pendingAsks, sessionId)),
   );
   const planningState = useAppStore((state) => state.planningStates[sessionId]);
+  const navigation = useTranscriptNavigation(sessionId, visible, isRunning);
+  const reading = navigation.window;
 
   return (
     <div
@@ -61,14 +64,20 @@ export const SessionPane = memo(function SessionPane({
     >
       <ChatTranscript
         sessionId={sessionId}
-        messages={messages}
-        hasMoreBefore={hasMoreBefore}
-        onLoadOlder={() => loadOlderMessages(sessionId)}
+        messages={reading?.messages ?? messages}
+        hasMoreBefore={reading ? reading.hasMoreBefore : hasMoreBefore}
+        onLoadOlder={reading ? navigation.loadBefore : () => loadOlderMessages(sessionId)}
+        searchTarget={reading ? navigation.target : null}
+        readingWindow={Boolean(reading)}
+        hasMoreAfter={reading?.hasMoreAfter}
+        onLoadNewer={navigation.loadAfter}
+        onReturnToLatest={navigation.clear}
+        navigationLoading={navigation.loading}
         isRunning={isRunning}
-        pendingPermission={pendingPermission}
+        pendingPermission={reading ? undefined : pendingPermission}
         queuedPermissions={queuedPermissions}
-        askPending={askPending}
-        planningState={planningState}
+        askPending={reading ? false : askPending}
+        planningState={reading ? undefined : planningState}
         paneVisible={visible}
       />
     </div>

@@ -266,6 +266,12 @@ to later refresh and inference; the vendor picker does not collect them.
   positions, clamped against the cached transcript layout rather than the
   deduplicated session index counter, and a window is served by seeking to its
   first selected line instead of scanning the history before it.
+  Optional `messageAround` centers that window on a stable message ID resolved
+  against the canonical file, requires `messageLimit`, and excludes
+  `messageBefore`. Missing IDs return no session. The focused user/assistant
+  message retains its complete text; neighboring text and tool fields stay
+  capped. Bounded reads also return exclusive physical `messageEnd` and
+  `hasMoreAfter` to support contiguous forward pages (ADR session-content-search).
 - `session.delete`
 - `session.getScratchPath` — the session's scratch directory (D114), created
   on demand

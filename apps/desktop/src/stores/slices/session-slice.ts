@@ -1,4 +1,5 @@
 import i18n from "i18next";
+import { prepareTranscriptAction } from "../runtime/transcript-action";
 import type {
   Mode,
   PlanProposal,
@@ -543,7 +544,8 @@ export function createSessionSlice({
 
     forkAssistantMessage: async (messageId) => {
       const intent = runtime.beginNavigationIntent();
-      const state = get();
+      const state = await prepareTranscriptAction({ get, set }, runtime, messageId);
+      if (!state || !runtime.navigationIntentIsCurrent(intent)) return;
       const sessionId = state.activeSessionId;
       if (!sessionId || state.runningSessions[sessionId]) return;
       const message = state.messages.find((candidate) => candidate.id === messageId);

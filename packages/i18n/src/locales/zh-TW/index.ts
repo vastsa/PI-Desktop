@@ -249,6 +249,7 @@ export const zhTW = {
     loadingSession: "正在載入會話…",
     pasteInProgress: "貼上內容仍在儲存中，請稍後再發送。",
     loadingEarlierMessages: "正在載入更早的訊息…",
+    loadLaterMessages: "載入後續訊息",
     showEarlierMessages: "顯示更早的訊息",
     copy: "複製",
     copied: "已複製",

@@ -1025,7 +1025,12 @@ projection. The full transcript remains lossless on disk and the sidecar's
 uncapped `session.get` path is unchanged for model context, edits, revisions,
 and other host-owned mutations. The renderer opens with the newest window and
 requests older windows on demand; the response's `messageStart` and
-`hasMoreBefore` fields are the only pagination state it needs.
+`hasMoreBefore` fields support backward paging. Search navigation additionally
+uses `messageAround` to center a bounded original-message window on a stable ID,
+plus exclusive physical `messageEnd` and `hasMoreAfter` for forward paging. Only
+the explicitly selected user/assistant text bypasses the display cap. The
+retained pane owns that reading window separately from live/model caches;
+missing targets never fall back to a different message (ADR session-content-search).
 
 A bounded window is served through a per-session **transcript layout**: the byte
 offset of every message and compaction line, plus the file length those offsets

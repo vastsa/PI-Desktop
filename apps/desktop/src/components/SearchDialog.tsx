@@ -235,7 +235,7 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
 
   if (!open) return null;
 
-  const run = async (row: SearchRow | null) => {
+  const run = async (row: SearchRow | null, messageId?: string) => {
     const request = ++selectionRequest.current;
     try {
       if (row) {
@@ -250,6 +250,10 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
           selected.page !== "chat"
         )
           return;
+        const targetId = messageId ?? row.hit?.matches[0]?.messageId;
+        if (targetId) useSessionSearchState.getState().navigate({
+          sessionId: row.session.id, messageId: targetId, query: query.trim(),
+        });
       } else await newSession();
       onClose();
       requestAnimationFrame(() => {
@@ -289,7 +293,7 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
     for (const row of rows) {
       if (active === row.optionIndex) return void run(row);
       const match = row.hit?.matches[active - row.optionIndex - 1];
-      if (match) return void run(row);
+      if (match) return void run(row, match.messageId);
     }
     if (active === moreIndex && search.nextOffset !== null) return search.loadMore();
     const pageIndex = active - pageBase;
@@ -383,7 +387,7 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
             active={active}
             runningSessions={runningSessions}
             onActivate={setActive}
-            onSelect={(row) => void run(row)}
+            onSelect={(row, messageId) => void run(row, messageId)}
           />
           {query.trim() && search.loading ? (
             <div className="search-empty" role="status">

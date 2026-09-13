@@ -33,6 +33,8 @@ import {
   isRecentScrollGesture,
   reduceTranscriptScroll,
 } from "../../../../lib/transcript-scroll";
+import type { TranscriptSearchTarget } from "../../../../lib/transcript-navigation";
+import { transcriptSearchRanges } from "../../../../lib/transcript-search-highlight";
 
 const HISTORY_REVEAL_THRESHOLD_PX = 120;
 
@@ -48,6 +50,8 @@ type UseTranscriptScrollOptions = {
   approvalPending: boolean;
   planningState?: PlanningState;
   paneVisible: boolean;
+  searchTarget: TranscriptSearchTarget | null;
+  readingWindow: boolean;
 };
 
 export function useTranscriptScroll({
@@ -62,6 +66,8 @@ export function useTranscriptScroll({
   approvalPending,
   planningState,
   paneVisible,
+  searchTarget,
+  readingWindow,
 }: UseTranscriptScrollOptions) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -81,6 +87,8 @@ export function useTranscriptScroll({
   // Read by `reachTop`, which must stay referentially stable for the scroll
   // listener; the projection it describes is only known later in this render.
   const historyLengthRef = useRef(0);
+  const positionedSearchRef = useRef(0);
+  const searchAlignUntilRef = useRef(0);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     const el = scrollRef.current;
@@ -105,6 +113,7 @@ export function useTranscriptScroll({
   // `handleScroll` can tell the two apart and never let a clamp between a
   // follow `scrollTo` and its native event release follow mode.
   const markScrollGesture = useCallback((event: Event) => {
+    searchAlignUntilRef.current = 0;
     if (
       event.type === "wheel" ||
       event.type === "touchstart" ||
@@ -278,6 +287,12 @@ export function useTranscriptScroll({
     const el = scrollRef.current;
     if (!el) return;
     if (el.scrollTop <= HISTORY_REVEAL_THRESHOLD_PX) reachTop();
+    if (readingWindow) {
+      pinnedRef.current = false;
+      lastScrollTopRef.current = el.scrollTop;
+      setShowJump(true);
+      return;
+    }
     const wasPinned = pinnedRef.current;
     const transition = reduceTranscriptScroll({
       previousScrollTop: lastScrollTopRef.current,
@@ -314,7 +329,7 @@ export function useTranscriptScroll({
       pinnedRef.current = transition.pinned;
       setShowJump(transition.showJump);
     }
-  }, [cancelFollowScroll, reachTop, scheduleFollowScroll]);
+  }, [cancelFollowScroll, reachTop, readingWindow, scheduleFollowScroll]);
 
   // Send / retry / regenerate always re-pins follow mode so the new prompt and
   // its stream stay in view, even if the user had scrolled up through history.
@@ -381,7 +396,7 @@ export function useTranscriptScroll({
   const deferredMessages = useDeferredValue(messages);
   const deferredCompactions = useDeferredValue(compactions);
   const renderedMessages =
-    firstCommit || paneRevealed ? messages : deferredMessages;
+    readingWindow || firstCommit || paneRevealed ? messages : deferredMessages;
   const renderedCompactions =
     firstCommit || paneRevealed ? compactions : deferredCompactions;
   const { entries, visible } = useMemo(
@@ -415,7 +430,7 @@ export function useTranscriptScroll({
   // its Markdown and highlighting for rows nobody was looking at.
   const [hydrationTick, setHydrationTick] = useState(0);
   const hydrationBounded =
-    firstCommit && allHistoryEntries.length > TRANSCRIPT_INITIAL_MOUNT;
+    !readingWindow && firstCommit && allHistoryEntries.length > TRANSCRIPT_INITIAL_MOUNT;
   // The bounded commit and the expansion must show the transcript at the same
   // place. A spacer sized from a per-entry guess cannot match the rows it stands
   // in for, so the expansion moved the visible text by the estimate error - the
@@ -458,7 +473,7 @@ export function useTranscriptScroll({
 
   const transcriptWindow = reduceTranscriptWindow({
     historyLength: allHistoryEntries.length,
-    windowSize,
+    windowSize: readingWindow ? allHistoryEntries.length : windowSize,
     initialCommit: hydrationBounded,
   });
   // Memoized so unrelated re-renders (jump pill, loading row) hand
@@ -471,6 +486,54 @@ export function useTranscriptScroll({
         : allHistoryEntries,
     [allHistoryEntries, transcriptWindow.bounded, transcriptWindow.mounted],
   );
+
+  useLayoutEffect(() => {
+    const scroller = scrollRef.current;
+    const content = contentRef.current;
+    if (!paneVisible || !searchTarget || !scroller || !content) return;
+    const message = content.querySelector<HTMLElement>(
+      `[data-message-id="${CSS.escape(searchTarget.messageId)}"]`,
+    );
+    if (!message) return;
+    const row = message.closest<HTMLElement>(".message-row") ?? message;
+    row.classList.add("transcript-search-target");
+    const fresh = positionedSearchRef.current !== searchTarget.requestId;
+    if (fresh) {
+      positionedSearchRef.current = searchTarget.requestId;
+      searchAlignUntilRef.current = performance.now() + 1500;
+      prependHeightRef.current = null;
+      cancelFollowScroll();
+      pinnedRef.current = false;
+      setShowJump(true);
+    }
+    let highlight: Highlight | undefined;
+    const locate = () => {
+      const ranges = transcriptSearchRanges(message, searchTarget.query);
+      if (typeof Highlight !== "undefined" && CSS.highlights) {
+        highlight = new Highlight(...ranges);
+        CSS.highlights.set("transcript-search", highlight);
+      }
+      if (performance.now() >= searchAlignUntilRef.current) return;
+      const rect = ranges[0]?.getBoundingClientRect() ?? message.getBoundingClientRect();
+      const viewport = scroller.getBoundingClientRect();
+      scroller.scrollTop += rect.top - viewport.top - Math.min(160, scroller.clientHeight / 3);
+      lastScrollTopRef.current = scroller.scrollTop;
+    };
+    locate();
+    // Syntax highlighting and images can settle after the first layout. Keep
+    // the target anchored briefly, stopping immediately on a reading gesture.
+    const resize = new ResizeObserver(locate);
+    resize.observe(content);
+    const mutation = new MutationObserver(locate);
+    mutation.observe(message, { childList: true, subtree: true, characterData: true });
+    return () => {
+      resize.disconnect();
+      mutation.disconnect();
+      row.classList.remove("transcript-search-target");
+      if (highlight && CSS.highlights?.get("transcript-search") === highlight)
+        CSS.highlights.delete("transcript-search");
+    };
+  }, [cancelFollowScroll, historyEntries, paneVisible, searchTarget, tailEntry]);
 
   // Runs in the same layout phase the expansion commits in, before the browser
   // paints it, so mounting the remaining history cannot move the rows the user
