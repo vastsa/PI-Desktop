@@ -77,6 +77,7 @@ function loadSources(): SkillMarketSource[] {
 const DEFAULT_SKILL_SOURCES: SkillMarketSource[] = [
   // Auto-scanned: every SKILL.md on the default branch becomes installable.
   { id: "anthropics-skills", name: "anthropics/skills", url: "https://github.com/anthropics/skills" },
+  { id: "obra-superpowers", name: "obra/superpowers", url: "https://github.com/obra/superpowers" },
 ];
 
 function saveSources(sources: SkillMarketSource[]): void {
@@ -272,26 +273,18 @@ export function SkillMarketPanel({
 
         <div className="ext-sheet-body">
           <ul className="sklm-source-list">
-            <li className="sklm-source">
-              <span className="sklm-glyph is-docs" aria-hidden>
-                <IconBookOpen size={16} />
-              </span>
-              <div className="sklm-source-body">
-                <span className="sklm-name">{t("settings.sklm.builtinSource")}</span>
-                <code className="sklm-cmd">{t("settings.sklm.builtinHint")}</code>
-              </div>
-              <span className="sklm-badge is-verified">✓</span>
-            </li>
-            <li className="sklm-source">
-              <span className="sklm-glyph is-coding" aria-hidden>
-                <IconCode size={16} />
-              </span>
-              <div className="sklm-source-body">
-                <span className="sklm-name">anthropics/skills</span>
-                <code className="sklm-cmd">https://github.com/anthropics/skills</code>
-              </div>
-              <span className="sklm-badge">GitHub</span>
-            </li>
+            {DEFAULT_SKILL_SOURCES.map((source) => (
+              <li key={source.id} className="sklm-source">
+                <span className="sklm-glyph is-coding" aria-hidden>
+                  <IconCode size={16} />
+                </span>
+                <div className="sklm-source-body">
+                  <span className="sklm-name">{source.name}</span>
+                  <code className="sklm-cmd">{source.url}</code>
+                </div>
+                <span className="sklm-badge">GitHub</span>
+              </li>
+            ))}
             {sources.map((source) => (
               <li key={source.id} className="sklm-source">
                 <span className="sklm-glyph is-docs" aria-hidden>
@@ -441,7 +434,8 @@ export function SkillMarketPanel({
         </div>
         <div className="sklm-head-actions">
           <button type="button" className="sklm-back" onClick={() => setSourcesOpen(true)}>
-            {t("settings.sklm.manageSources")} · {sources.length}
+            {t("settings.sklm.manageSources")} ·{" "}
+            {[...DEFAULT_SKILL_SOURCES, ...sources].length}
           </button>
         </div>
         <div className="sklm-search">
