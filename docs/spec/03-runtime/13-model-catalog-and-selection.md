@@ -178,6 +178,17 @@ invokes the Electron-only `providers.refreshModelCatalog` channel to refetch
 `https://models.dev/api.json`; a successful response replaces only the
 current process's in-memory models.dev catalog and never writes user data.
 
+Repeated metadata lookups use a bounded process-local cache keyed by the
+configured vendor key, base URL, and case-insensitive, trimmed model ID. Both
+matches and misses are cached; the original provider preference, alias
+matching, and candidate ranking remain unchanged. Replacing the catalog after
+a successful bundled load or Settings refresh invalidates the cache. A failed
+refresh preserves the previous catalog and its results. Session capability
+enrichment resolves a matching catalog record once per session and then applies
+the current provider/model binding and session defaults, so user overrides are
+never retained as stale cached capabilities. Refreshing a large session list
+must not repeat a full catalog scan for every occurrence of the same lookup.
+
 Provider model loading remains stale-while-revalidate:
 
 1. `source: "cache"` hydrates a saved provider's normalized discovery rows from

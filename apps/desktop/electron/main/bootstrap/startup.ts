@@ -24,6 +24,7 @@ import type { AppUpdaterController } from "../updater";
 import type { HostProcess } from "../host-process";
 import type { Logger } from "../logger";
 import type { PluginRuntime } from "../plugin-runtime";
+import { runSessionListProbe } from "../session-list-probe";
 
 type IpcInvoker = (
   channel: string,
@@ -269,6 +270,13 @@ export function registerApplicationStartup(deps: StartupDependencies): void {
             );
             probe.appName = app.getName();
             probe.menuCount = Menu.getApplicationMenu()?.items.length ?? 0;
+            if (!host || !window) throw new Error("session-list probe requires a healthy desktop");
+            probe.sessionList = await runSessionListProbe({
+              dataDir,
+              host,
+              window,
+              catalog: modelsDevCatalog,
+            });
             console.log("BOOT_PROBE", JSON.stringify(probe));
           } catch (error) {
             console.log(

@@ -17,6 +17,7 @@ import type { ModelConfig } from "@pi-desktop/agent-runtime";
 
 export const MODELS_DEV_API_URL = "https://models.dev/api.json";
 export const MODELS_DEV_TIMEOUT_MS = 10_000;
+const MODEL_LOOKUP_CACHE_LIMIT = 1_024;
 const DEFAULT_CONTEXT_WINDOW = 128_000;
 const DEFAULT_MAX_TOKENS = 8_192;
 const DEFAULT_THINKING_LEVELS: ThinkingLevel[] = ["low", "medium", "high"];
@@ -774,6 +775,7 @@ export function modelConfigFromModelsDev(
 
 export class ModelsDevCatalog {
   private providers = new Map<string, ModelsDevProvider>();
+  private readonly modelLookupCache = new Map<string, ModelsDevModel | undefined>();
   private loadPromise: Promise<boolean> | undefined;
   private loaded = false;
   private source: ModelsDevCatalogStatus["source"] = "empty";
@@ -804,6 +806,7 @@ export class ModelsDevCatalog {
         const parsed = parseModelsDevCatalog(raw);
         if (parsed.length === 0) throw new Error("models.dev snapshot contained no providers");
         this.providers = new Map(parsed.map((provider) => [provider.providerKey, provider]));
+        this.modelLookupCache.clear();
         this.loaded = true;
         this.source = "bundled";
         this.lastError = undefined;
@@ -842,6 +845,7 @@ export class ModelsDevCatalog {
         const parsed = parseModelsDevCatalog(await response.json());
         if (parsed.length === 0) throw new Error("models.dev catalog contained no usable providers");
         this.providers = new Map(parsed.map((provider) => [provider.providerKey, provider]));
+        this.modelLookupCache.clear();
         this.loaded = true;
         this.source = "remote";
         this.fetchedAt = new Date(this.now()).toISOString();
@@ -895,6 +899,15 @@ export class ModelsDevCatalog {
   findModel(input: { vendorKey?: string; baseUrl?: string; modelId: string }): ModelsDevModel | undefined {
     const requested = normalizedModelId(input.modelId);
     if (!requested) return undefined;
+    // Session lists repeatedly resolve the same bindings. Cache misses too,
+    // while keeping vendor and endpoint selection distinct for custom gateways.
+    const cacheKey = JSON.stringify([input.vendorKey ?? null, input.baseUrl ?? null, requested]);
+    if (this.modelLookupCache.has(cacheKey)) {
+      const cached = this.modelLookupCache.get(cacheKey);
+      this.modelLookupCache.delete(cacheKey);
+      this.modelLookupCache.set(cacheKey, cached);
+      return cached;
+    }
     const preferredProvider = this.providerFor(input);
     const providers = preferredProvider
       ? [preferredProvider, ...[...this.providers.values()].filter((item) => item !== preferredProvider)]
@@ -913,7 +926,13 @@ export class ModelsDevCatalog {
     candidates.sort((left, right) =>
       right.score - left.score || left.model.modelId.length - right.model.modelId.length,
     );
-    return candidates[0]?.model;
+    const model = candidates[0]?.model;
+    this.modelLookupCache.set(cacheKey, model);
+    if (this.modelLookupCache.size > MODEL_LOOKUP_CACHE_LIMIT) {
+      const oldestKey = this.modelLookupCache.keys().next().value;
+      if (oldestKey !== undefined) this.modelLookupCache.delete(oldestKey);
+    }
+    return model;
   }
 
   modelsForProvider(input: { vendorKey?: string; baseUrl?: string; providerId: string }): ModelInfo[] {

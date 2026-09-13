@@ -31,6 +31,7 @@ import {
   type SessionMeta,
 } from "../../lib/sidebar-preferences";
 import { api } from "../../lib/api";
+import { createRefreshCoordinator } from "../../lib/refresh-coordinator";
 import {
   applyOptimisticSessionConfiguration,
 } from "../../lib/session-thinking";
@@ -112,11 +113,16 @@ export function createSessionSlice({
   | "forkAssistantMessage"
   | "configureActiveSession"
 > {
+  const refreshSessionList = createRefreshCoordinator(async () => {
+    const result = await api.listSessions();
+    set({ sessions: decorateSessions(result.sessions, get().sessionMeta) });
+    return result;
+  });
+
   return {
     refreshSessions: async (options) => {
       const previousSessions = get().sessions;
-      const sessions = await api.listSessions();
-      set({ sessions: decorateSessions(sessions.sessions, get().sessionMeta) });
+      const sessions = await refreshSessionList();
       if (options?.revealImportedProjects) {
         get().restoreProjects(
           projectPathsForNewSessions(previousSessions, sessions.sessions),
