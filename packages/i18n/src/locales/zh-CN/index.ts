@@ -441,6 +441,7 @@ export const zhCN = {
     subagentCount_one: "{{count}} 个 Subagent",
     subagentCount_other: "{{count}} 个 Subagent",
     subagentFinishedCount: "已完成 {{finished}}/{{total}}",
+    subagentCreating: "正在创建子智能体…",
     subagentStatus: {
       running: "运行中",
       completed: "已完成",

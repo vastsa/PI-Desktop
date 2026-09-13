@@ -445,6 +445,7 @@ export const ko = {
     subagentCount_one: "서브에이전트 {{count}}개",
     subagentCount_other: "서브에이전트 {{count}}개",
     subagentFinishedCount: "{{finished}}/{{total}} 완료",
+    subagentCreating: "하위 에이전트 생성 중…",
     subagentStatus: {
       running: "실행 중",
       completed: "완료",

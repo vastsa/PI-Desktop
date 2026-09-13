@@ -394,7 +394,6 @@ The following are landing blockers:
 * build failure
 * typecheck failure
 * relevant test failure
-* required E2E failure
 * merge conflict
 * data corruption risk
 * security violation
@@ -403,6 +402,10 @@ The following are landing blockers:
 * unresolved incompatible protocol change
 
 A sound idea does not override a failing landing gate.
+
+Relevant E2E is a post-integration validation step defined in §15. A failed
+or unavailable post-integration E2E blocks declaring the delivered change
+complete and must be recorded with its remaining risk.
 
 ---
 
@@ -417,11 +420,11 @@ implement
 → format
 → typecheck
 → unit/integration validation
-→ relevant E2E
 → diff review
 → commit
 → PR checks
 → merge
+→ relevant E2E on integrated main
 ```
 
 Run validation appropriate to the affected source tree.
@@ -443,13 +446,18 @@ Never report a skipped command as passing.
 
 ---
 
-## 15. E2E Is a Merge Gate
+## 15. E2E Runs After Main Integration
 
-Every **code-bearing PR** must pass relevant E2E before merge.
+Every **code-bearing change** must pass relevant E2E after its branch commits
+have been merged into `main`.
 
-The same gate applies to code-bearing local `main` integration. Required
-validation is part of an authorized integration request and needs no separate
-E2E permission.
+Run the suite from the latest integrated `main` checkout and commit. A task
+branch's pre-merge E2E result is exploratory only and does not satisfy this
+requirement. The same rule applies after local integration and after remote
+`main` integration.
+
+Required validation is part of an authorized integration request and needs no
+separate E2E permission.
 
 Build, typecheck, unit tests, or manual inspection do not replace E2E.
 
@@ -461,9 +469,11 @@ The root `package.json` is the source of truth for available E2E commands.
 
 If the current environment cannot run required E2E:
 
-* the branch may be committed
-* a Draft / blocked PR may be opened
-* local integration and PR merge remain **blocked**
+* complete the requested main integration only when its other landing gates
+  pass
+* record the missing post-integration E2E as **NOT RUN**
+* keep delivery/release status incomplete until the suite runs in a capable
+  trusted environment
 
 Record:
 
@@ -475,7 +485,8 @@ Alternative validation:
 Remaining risk:
 ```
 
-Required E2E must pass in CI or another capable trusted environment before merge.
+Required E2E must pass in CI or another capable trusted environment after the
+change is present on `main`.
 
 Never claim an E2E suite passed unless it actually ran successfully.
 
@@ -637,15 +648,18 @@ Before integration:
 2. resolve conflicts carefully
 3. run required validation
 4. review the final diff
-5. verify required PR checks and E2E
+5. verify required PR checks; post-integration E2E is handled after `main`
+   contains the change
 
 After merge:
 
 1. verify expected commits are present in local `main`, and remote `main` for
    remote delivery
-2. remove your request worktree
-3. delete your merged local branch
-4. prune stale worktree metadata
+2. run the relevant E2E suites from the integrated `main` checkout for any
+   code-bearing change
+3. remove your request worktree
+4. delete your merged local branch
+5. prune stale worktree metadata
 
 Example:
 
@@ -696,8 +710,9 @@ A code task is Done only when all applicable conditions are true:
 * [ ] E2E documentation was updated when required
 * [ ] New E2E IDs use the multi-agent-safe semantic format
 * [ ] Relevant static / unit / integration checks pass
-* [ ] Relevant E2E passes for code-bearing PRs and local `main` integration
-* [ ] Test evidence applies to the intended merge code
+* [ ] Relevant E2E passes after each code-bearing change is integrated into
+  `main`
+* [ ] E2E evidence applies to the executable commit currently on `main`
 * [ ] Complete diff was reviewed
 * [ ] No secrets, local data, or unrelated changes are included
 * [ ] Logical changes are committed

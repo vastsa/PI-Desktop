@@ -32,6 +32,7 @@ import {
   type SubagentRunItem,
 } from "../../../lib/assistant-turns";
 import {
+  delegationIsCreating,
   delegationRoster,
   delegationRosterOutcome,
   delegationRosterSummary,
@@ -209,6 +210,13 @@ export const ToolRow = memo(function ToolRow({
       : null;
   const outcome =
     variant === "topology" ? subagentOutcome(message, delegationStatuses) : null;
+  // A bare `running` Task row (no delegation result yet) is still being
+  // created: the delegate runtime is spawning and no structured snapshot
+  // exists. Show it as starting rather than a generic running state.
+  const creating =
+    variant === "topology" &&
+    outcome === "running" &&
+    delegationIsCreating(message);
   const runLabel =
     run === "running"
       ? t("chat.running")
@@ -223,19 +231,21 @@ export const ToolRow = memo(function ToolRow({
   // running it has no roster yet, and `delegationIds` would otherwise reach the
   // head as a JSON blob of UUIDs (D268).
   const summary = lifecycle ? rosterSummary : argSummary;
-  const statusLabel = outcome
-    ? t(`chat.subagentStatus.${outcome}`)
-    : rosterOutcome
-      ? t(`chat.subagentStatus.${rosterOutcome}`)
-      : run
-      ? runLabel
-      : status === "running"
-        ? t("chat.running")
-        : status === "error"
-          ? t("chat.toolFailed")
-          : status === "denied"
-            ? t("chat.toolDenied")
-            : t("chat.toolCompleted");
+  const statusLabel = creating
+    ? t("chat.subagentCreating")
+    : outcome
+      ? t(`chat.subagentStatus.${outcome}`)
+      : rosterOutcome
+        ? t(`chat.subagentStatus.${rosterOutcome}`)
+        : run
+          ? runLabel
+          : status === "running"
+            ? t("chat.running")
+            : status === "error"
+              ? t("chat.toolFailed")
+              : status === "denied"
+                ? t("chat.toolDenied")
+                : t("chat.toolCompleted");
   const delegationPayload =
     variant === "topology" ? toolResultPayload(message) : undefined;
   const delegationId =
@@ -256,13 +266,22 @@ export const ToolRow = memo(function ToolRow({
       ? delegationTimings?.get(delegationId)
       : undefined;
   const [now, setNow] = useState(Date.now);
-  const durationMs =
+  // While a delegation is still being created it has no `startedAt` in the
+  // result, so the elapsed clock ticks from the call's own timestamp instead
+  // of waiting for the Task handle — the node never reads as stalled.
+  const nodeStartedAt =
     delegationTiming?.startedAt !== undefined
+      ? delegationTiming.startedAt
+      : creating && message.createdAt
+        ? Date.parse(message.createdAt) || undefined
+        : undefined;
+  const durationMs =
+    nodeStartedAt !== undefined
       ? Math.max(
           0,
-          (delegationTiming.completedAt ??
-            (outcome === "running" ? now : delegationTiming.startedAt)) -
-            delegationTiming.startedAt,
+          (delegationTiming?.completedAt ??
+            (outcome === "running" ? now : nodeStartedAt)) -
+            nodeStartedAt,
         )
       : message.toolDurationMs;
   const duration =
@@ -291,7 +310,7 @@ export const ToolRow = memo(function ToolRow({
     <div
       className={`tool-row ${variant === "topology" ? "subagent-topology-node" : ""} ${
         renderedOpen ? "open" : ""
-      } status-${run === "failed" ? "error" : status || "success"}${outcome ? ` outcome-${outcome.replaceAll("_", "-")}` : ""}`}
+      } status-${run === "failed" ? "error" : status || "success"}${outcome ? ` outcome-${outcome.replaceAll("_", "-")}` : ""}${creating ? " outcome-creating" : ""}`}
       role={variant === "topology" ? "listitem" : "region"}
       data-message-id={message.id}
       aria-label={`${t("chat.toolCall")}: ${rawName}${agentName ? `, ${agentName}` : ""}${modelLabel ? `, ${modelLabel}` : ""}${statusLabel ? `, ${statusLabel}` : ""}`}

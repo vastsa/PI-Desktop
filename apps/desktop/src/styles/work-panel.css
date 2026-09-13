@@ -505,7 +505,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .subagent-detail-status.outcome-running {
+  .subagent-detail-status.outcome-running,
+  .subagent-detail-status.outcome-creating {
     animation: none;
   }
 }
@@ -573,6 +574,16 @@
 .subagent-detail-badge.outcome-running {
   background: var(--ds-tile-deep);
   color: var(--ds-text-primary);
+}
+
+.subagent-detail-badge.outcome-creating {
+  background: color-mix(in oklab, var(--ds-purple) 16%, transparent);
+  color: var(--ds-purple);
+}
+
+.subagent-detail-status.outcome-creating {
+  background: var(--ds-purple);
+  animation: subagent-status-pulse 1.6s var(--motion-ease-standard) infinite;
 }
 
 .subagent-detail-badge.outcome-failed,

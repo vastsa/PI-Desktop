@@ -2018,6 +2018,31 @@
   background: var(--ds-text-muted);
 }
 
+.subagent-topology-node.outcome-creating .subagent-topology-status-icon {
+  background: var(--ds-purple);
+  animation: subagent-creating-pulse 1.4s var(--motion-ease-standard) infinite;
+}
+
+.subagent-topology-node.outcome-creating .subagent-topology-node-status {
+  color: var(--ds-purple);
+}
+
+@keyframes subagent-creating-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .subagent-topology-node.outcome-creating .subagent-topology-status-icon {
+    animation: none;
+  }
+}
+
 .subagent-topology-node-title-row {
   display: flex;
   min-width: 0;

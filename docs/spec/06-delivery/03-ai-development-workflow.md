@@ -71,10 +71,11 @@ The rules below govern every change to the PI-Desktop codebase and documentation
   and merge using a permitted strategy. Fetch and safely synchronize local
   `main` with the landed change. Do not infer permission to push directly to
   `main`, force-push, or discard unrelated local work.
-- Both routes retain the required validation, E2E, security, and conflict
-  gates. If a gate, authentication, permissions, or required review prevents
-  integration, report the actual blocker and remaining work; the requested
-  integration is not Done.
+- Both routes retain the required validation, security, and conflict gates.
+  Relevant E2E runs after the change is integrated into `main` under R7. If a
+  gate, authentication, permissions, or required review prevents integration,
+  report the actual blocker and remaining work; the requested integration is
+  not Done.
 - Worktree cleanup is mandatory and immediate. As soon as the request branch is
   integrated into `main` — including a local `main` merge when the request is
   delivered without a remote PR/MR — remove the worktree and delete the merged
@@ -165,9 +166,10 @@ an unambiguous pull request number for this repository.
 - When both an issue and a pull request are linked, R6 applies to the pull
   request and R5 still applies to the issue after the merged outcome.
 
-### R7 — Code-bearing pull requests require relevant E2E before merge
+### R7 — Code-bearing changes require relevant E2E after main integration
 
-> **No code-bearing pull request may merge without successful relevant E2E validation.**
+> **Every code-bearing change must pass relevant E2E after its commits are
+> merged into `main`.**
 
 This rule applies to pull requests that modify executable or runtime-affecting
 content, including `apps/`, `packages/`, `crates/`, runtime scripts, build or
@@ -175,19 +177,22 @@ CI configuration, packaging behavior, protocol behavior, and persisted data.
 Documentation-only changes are exempt when they do not alter executable
 behavior.
 
-E2E execution is mandatory for code-bearing pull requests. Select suites using
-the regression-surface guidance in `04-e2e-test-plan.md`; build, typecheck,
-lint, unit tests, integration tests, manual review, and source inspection do
-not replace relevant E2E.
+E2E execution is mandatory for code-bearing changes after main integration.
+Run the selected suites from the latest integrated `main` checkout and commit.
+A task branch's pre-merge E2E run may help with development, but does not
+satisfy R7. Select suites using the regression-surface guidance in
+`04-e2e-test-plan.md`; build, typecheck, lint, unit tests, integration tests,
+manual review, and source inspection do not replace relevant E2E.
 
-The same gate applies to code-bearing local `main` integration. Required
-validation and E2E are part of the authorized integration workflow and do not
-require a separate user request to run tests.
+Required validation is part of the authorized integration workflow and does
+not require a separate user request to run tests.
 
 If a required suite cannot run in the current environment, record the reason
-and leave the branch unmerged and any pull request Draft / Not Ready. Neither
-delivery route may merge until the suite passes in a capable trusted
-environment. A required E2E failure is a landing blocker.
+and keep the post-integration delivery status incomplete. The main integration
+may already be complete when the environment limitation is discovered, but
+the E2E result must be obtained in a capable trusted environment before the
+delivery is declared complete. A post-integration E2E failure is not hidden or
+reported as a pass.
 
 ### GitHub issue templates
 
@@ -219,12 +224,12 @@ Every change follows this sequence. Steps may be iterated if the implementation 
 4. Implement
 5. Update specs / ADR / decisions-log if needed
 6. Update or add e2e scenarios when R3 applies
-7. Run targeted local checks necessary for the change's risk and the relevant
-   E2E suites required for code-bearing main integration
+7. Run targeted local checks necessary for the change's risk
 8. Commit with conventional message
 9. Update BOARD if milestone-related
 10. If remote delivery is authorized: push branch + open PR/MR to main
-11. Complete requested main integration after applicable gates; verify and clean up
+11. Complete requested main integration after applicable gates; run relevant
+    E2E from the integrated `main`, then verify and clean up
 12. If launch was requested: build and start from integrated main
 ```
 
@@ -240,11 +245,11 @@ Every change follows this sequence. Steps may be iterated if the implementation 
 | **4. Implement** | Write code, config, or assets. | Changed files. |
 | **5. Spec-sync** | Update specs per the impact list. Add ADR if architectural. Update `decisions-log.md` if an implementation default changes. | Updated docs/spec/\* and/or docs/adr/\*. |
 | **6. E2E doc** | When R3 applies, add or update scenario entries in `04-e2e-test-plan.md` and link to acceptance criteria IDs (A–H). Otherwise, confirm no scenario update is needed. | Updated e2e test plan, or confirmed not applicable. |
-| **7. Validate** | Use change risk and regression scope to select the smallest useful local checks. Every code-bearing local or remote `main` integration also runs relevant E2E before it is merge-ready; a required suite that cannot run is recorded as not run and blocks merge. | Targeted check and E2E results, or an explicit environment limitation. |
+| **7. Validate** | Use change risk and regression scope to select the smallest useful local checks. Relevant E2E for a code-bearing change runs after its commits are integrated into `main`; a suite that cannot run is recorded as not run and keeps delivery incomplete. | Targeted check and E2E results, or an explicit environment limitation. |
 | **8. Commit** | Git commit with conventional message (see §4). | One or more commits. |
 | **9. BOARD** | If the change completes a milestone deliverable, update `docs/project/BOARD.md`. | Updated board. |
 | **10. Remote delivery** | Only when remote publishing is authorized, push the request branch and open a PR/MR targeting `main`. | Reviewable remote change with impacted specs and validation listed, or a local-only delivery route. |
-| **11. Integrate** | Complete the R4 delivery target after validation and applicable remote gates; verify the expected commits in local `main` and, for remote delivery, remote `main`; remove the merged worktree and branch. | Requested integration complete, or an explicit blocker / narrower user-requested handoff. |
+| **11. Integrate** | Complete the R4 delivery target after applicable pre-integration gates; run relevant E2E from integrated `main`, then verify the expected commits in local `main` and, for remote delivery, remote `main`; remove the merged worktree and branch. | Requested integration complete, or an explicit blocker / narrower user-requested handoff. |
 | **12. Launch** | When requested, build and start from the integrated `main` checkout and its development environment. | Running app includes the delivered change. |
 
 ### Local Validation and E2E Execution Policy
@@ -253,25 +258,26 @@ Every change follows this sequence. Steps may be iterated if the implementation 
   delivery. Documentation-only changes and low-risk mechanical edits normally
   require no local tests or checks and proceed to the authorized delivery route
   under R4. No separate approval or waiver is needed to skip unnecessary checks;
-  the required E2E merge gate still applies to code-bearing changes.
+  the required post-integration E2E still applies to code-bearing changes.
 - Changes with material regression risk, including security boundaries,
   protocol contracts, data migrations, build configuration, or widely shared
   behavior, normally require the smallest targeted non-E2E validation that can
   address that risk. A full local suite is not the default.
 - E2E scenario documentation and E2E execution are separate concerns. R3 still
   requires scenario updates for user-visible or protocol-visible behavior.
-- Every code-bearing PR or local `main` integration must run at least one
-  relevant E2E suite, and must run the union of suites required by the affected
-  regression surfaces. The available commands are defined by the root
-  `package.json` and the selection matrix in `04-e2e-test-plan.md`.
-- Development-time iteration remains risk-based: a small edit does not require
-  every suite after every change, but all relevant E2E must pass before merge.
-- If the local environment cannot run a required suite, record the suite,
-  reason, alternative validation, and remaining risk. The branch is not
-  merge-ready until the suite passes in a capable trusted environment.
-- Required E2E jobs that the hosting platform starts automatically after a
-  push or PR remain merge gates. Observe and report their result; rerun only
-  when the hosting platform or repository workflow requires it.
+- Every code-bearing change must run at least one relevant E2E suite after its
+  commits are integrated into `main`, and must run the union of suites required
+  by the affected regression surfaces. The available commands are defined by
+  the root `package.json` and the selection matrix in `04-e2e-test-plan.md`.
+- Development-time iteration remains risk-based: pre-merge E2E may be used for
+  debugging, but only a run against the integrated `main` commit satisfies this
+  policy.
+- If the environment cannot run a required post-integration suite, record the
+  suite, reason, alternative validation, and remaining risk. Delivery remains
+  incomplete until the suite passes in a capable trusted environment.
+- Required E2E jobs that the hosting platform starts before a remote merge do
+  not replace the post-integration run. Observe and report their result, then
+  rerun the relevant suite against `main` after the merge.
 
 ### Marketplace/update diagnosis gate
 
@@ -477,10 +483,10 @@ explicit branch-only or draft-only delivery scope:
 2. Code (or doc) implements the planned change.
 3. All impacted specs are updated.
 4. E2E scenarios are documented (or confirmed not needed per §3).
-5. Necessary targeted local validation passes, relevant E2E passes for every
-   code-bearing change, or any environment limitation is recorded and the
-   change remains unmergeable until the required E2E passes; automatically
-   triggered remote gates also pass.
+5. Necessary targeted local validation passes, relevant E2E passes after every
+   code-bearing change is integrated into `main`, or any environment
+   limitation is recorded and delivery remains incomplete until the required
+   E2E passes; automatically triggered remote gates also pass.
 6. Change is committed with a conventional message.
 7. BOARD is updated if a milestone deliverable completed.
 8. No secrets or local data are present in the commit.
@@ -522,7 +528,7 @@ D164, and D260. GitHub release notes are not a substitute.
 | Large uncommitted diffs | Violates R2; loss of granularity |
 | Changing behavior without spec update | Violates R1; specs become unreliable |
 | Skipping e2e doc for user-visible changes | Violates R3; traceability gap |
-| Integrating code-bearing changes into local or remote `main` without successful relevant E2E | Violates R7 and leaves cross-process behavior unverified |
+| Declaring a code-bearing change complete without successful relevant E2E after integration into local or remote `main` | Violates R7 and leaves cross-process behavior unverified |
 | Treating the full local test/check suite as an automatic pre-push requirement | Ignores risk-based validation and delays delivery without evidence of need |
 | Developing or creating development commits on `main`, or pushing it directly | Violates R4; bypasses isolation and review gates |
 | Developing a new request in the primary checkout or another request's worktree | Violates R4; mixes task files and local state |

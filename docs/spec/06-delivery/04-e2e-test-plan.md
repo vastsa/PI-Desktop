@@ -11,8 +11,10 @@
 - Document every user-visible and protocol-visible behavior that MVP must verify.
 - Provide a scenario catalog that maps to acceptance criteria (A–H) and milestones (M1–M6).
 - Serve as the traceability backbone: scenario ID ↔ acceptance criterion ↔ spec.
-- Define the relevant E2E merge gate for code-bearing pull requests.
-- Keep validation evidence tied to the executable commit that is intended to merge.
+- Define the relevant E2E validation for code-bearing changes after they reach
+  `main`.
+- Keep validation evidence tied to the executable commit currently integrated
+  into `main`.
 
 ## 2. Non-goals
 
@@ -99,15 +101,18 @@ Each scenario is documented in this format:
 
 ---
 
-## E2E PR Merge Gate
+## E2E Main Integration Validation
 
-Every code-bearing pull request must pass the E2E suites relevant to its
-regression surface before merge. Code-bearing changes include Renderer,
+Every code-bearing change must pass the E2E suites relevant to its regression
+surface after its commits are merged into `main`. Code-bearing changes include Renderer,
 Electron Main, Preload, Agent Runtime, Rust host-core, sessions, transcripts,
 plans, plugins, MCP, permissions, provider/model runtime, persistence, process
 lifecycle, packaging/runtime startup, and build or CI behavior that affects
 application execution. Documentation-only changes are exempt when they do not
 alter executable behavior.
+
+Run the selected suites from the latest integrated `main` checkout and commit.
+Any pre-merge E2E run is exploratory and does not satisfy this requirement.
 
 Use the root `package.json` as the source of truth for executable commands.
 The minimum selection is:
@@ -129,23 +134,24 @@ agent execution, plugins, persistence integration, and shared runtime
 contracts. A required suite that cannot run because of a missing display,
 platform, credential, hardware resource, or other environment capability must
 be recorded as `NOT RUN` with its reason, alternative validation, and remaining
-risk. Such a pull request is not merge-ready until the suite passes in a
+risk. The main integration may already be complete when that limitation is
+discovered, but delivery remains incomplete until the suite passes in a
 capable trusted environment.
 
-Required results must apply to the executable commit intended to merge. If
-executable code changes after E2E passes, rerun the affected suites. Report
-each command, result, tested commit, and any relevant environment limitation;
-never claim an unexecuted suite passed.
+Required results must apply to the executable commit currently integrated into
+`main`. If executable code changes after E2E passes, rerun the affected suites.
+Report each command, result, tested commit, and any relevant environment
+limitation; never claim an unexecuted suite passed.
 
 ## E2E Failure Policy
 
-A failed required E2E blocks merge until the failure is classified as an
-implementation regression, test regression, environment failure, or known
-flaky infrastructure. Fix the product or test defect and rerun the affected
-suite. Do not delete scenarios, weaken assertions, or add retries that hide a
-deterministic failure. When a scenario is not automated on the required
-platform, keep its status documented and identify the platform validation still
-needed.
+A failed required E2E blocks declaring the integrated delivery complete until
+the failure is classified as an implementation regression, test regression,
+environment failure, or known flaky infrastructure. Fix the product or test
+defect and rerun the affected suite against `main`. Do not delete scenarios,
+weaken assertions, or add retries that hide a deterministic failure. When a
+scenario is not automated on the required platform, keep its status documented
+and identify the platform validation still needed.
 
 ## 7. MVP Scenario Catalog
 

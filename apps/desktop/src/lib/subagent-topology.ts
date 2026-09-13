@@ -404,6 +404,24 @@ export function subagentOutcome(
   if (message.toolStatus === "denied") return "denied";
   return "completed";
 }
+/**
+ * Whether a running delegation is still being created rather than already
+ * executing.
+ *
+ * The parent `Task` call returns its structured handle (`delegationId`,
+ * `startedAt`) only at its own `tool_end` (ADR 0089). Until that result
+ * arrives the row is `toolStatus: "running"` with no delegation payload: the
+ * delegate runtime is still spawning and the UI cannot resolve a stable
+ * delegation id. Phrasing this stretch as a distinct "creating" state — with
+ * its own label and a live elapsed ticking from the call's own timestamp —
+ * keeps the transcript from reading as frozen while the create happens.
+ */
+export function delegationIsCreating(message: UiMessage): boolean {
+  if (message.toolStatus !== "running") return false;
+  const payload = asRecord(toolResultPayload(message));
+  if (payload && typeof payload.delegationId === "string") return false;
+  return true;
+}
 
 export function summarizeSubagentActivity(
   items: readonly DelegationActivityItem[],

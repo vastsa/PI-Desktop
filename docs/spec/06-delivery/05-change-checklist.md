@@ -115,14 +115,17 @@ After implementation (or alongside it):
   cross-component regression risk makes them necessary.
 - [ ] The smallest necessary targeted local checks passed, or local validation
   was assessed as unnecessary with no separate approval or waiver required.
-- [ ] Relevant E2E suites were selected and passed before code-bearing local
-  `main` integration or PR merge; required validation needs no separate user
+- [ ] Relevant E2E suites were selected and passed after the code-bearing
+  change was integrated into `main`; required validation needs no separate user
   request. Documentation-only changes retain their existing exemption.
-- [ ] Results apply to the executable commit intended to merge. Any required
-  suite not run is recorded with its reason, alternative validation, and
-  remaining risk; the branch remains unmergeable until that gate passes.
-- [ ] Required remote E2E jobs passed for authorized remote delivery; dispatch
-  or rerun follows the hosting platform's or repository workflow's requirements.
+- [ ] Results apply to the executable commit currently integrated into `main`.
+  Any required suite not run is recorded with its reason, alternative
+  validation, and remaining risk; delivery remains incomplete until that gate
+  passes.
+- [ ] Required remote E2E jobs passed for authorized remote delivery after the
+  change reached remote `main`; pre-merge jobs do not replace this result.
+  Dispatch or rerun follows the hosting platform's or repository workflow's
+  requirements.
 
 ---
 
@@ -220,7 +223,7 @@ user's delivery scope:
 | 2 | Code/doc implements the planned change | Step 4 of [development loop](03-ai-development-workflow.md#2-development-loop) |
 | 3 | All impacted specs updated | [R1 — Spec-sync](03-ai-development-workflow.md#r1--spec-first--spec-sync) |
 | 4 | E2E scenarios documented (or confirmed not needed) | [R3 — E2E coverage doc](03-ai-development-workflow.md#r3--e2e-coverage-doc) |
-| 5 | Targeted local checks follow the existing risk standard; relevant E2E passed for code-bearing local/remote integration and applicable remote gates passed; required tests need no separate user request | Steps 7 and 11 of development loop |
+| 5 | Targeted local checks follow the existing risk standard; relevant E2E passed after code-bearing local/remote `main` integration and applicable remote gates passed; required tests need no separate user request | Steps 7 and 11 of development loop |
 | 6 | Change committed with conventional message | [R2 — Commit-per-change](03-ai-development-workflow.md#r2--commit-per-change) |
 | 7 | BOARD updated if milestone deliverable completed | Step 9 of development loop |
 | 8 | No secrets or local data in commit | [§4.4 Never commit](03-ai-development-workflow.md#44-never-commit) |

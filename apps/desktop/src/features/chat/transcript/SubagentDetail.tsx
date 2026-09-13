@@ -10,6 +10,7 @@ import type { UiMessage } from "@pi-desktop/shared";
 import { formatToolDuration } from "../../../lib/tool-display";
 import { toolResultPayload } from "../../../lib/tool-presentation";
 import {
+  delegationIsCreating,
   subagentOutcome,
   summarizeSubagentActivity,
   type DelegationActivityItem,
@@ -152,6 +153,13 @@ export function SubagentDetail({
   const thinkingLabel = thinkingLevel ?? "";
   const modelLabel = [modelId, thinkingLabel].filter(Boolean).join(" ");
   const outcome = subagentOutcome(message, delegationStatuses);
+  // A bare `running` Task row (no delegation handle yet) is still being
+  // created: the delegate runtime is spawning. Name that phase explicitly
+  // instead of a generic running state, and keep the badge class distinct.
+  const creating = outcome === "running" && delegationIsCreating(message);
+  const statusKey = creating
+    ? "chat.subagentCreating"
+    : `chat.subagentStatus.${outcome}`;
   const payload = toolResultPayload(message);
   const payloadRecord =
     payload && typeof payload === "object" && !Array.isArray(payload)
@@ -165,7 +173,11 @@ export function SubagentDetail({
   const failure = delegationFailures?.get(delegationId);
   const startedAt =
     timing?.startedAt ??
-    (typeof payloadRecord?.startedAt === "number" ? payloadRecord.startedAt : undefined);
+    (typeof payloadRecord?.startedAt === "number"
+      ? payloadRecord.startedAt
+      : creating && message.createdAt
+        ? Date.parse(message.createdAt) || undefined
+        : undefined);
   const completedAt =
     timing?.completedAt ??
     (typeof payloadRecord?.completedAt === "number" ? payloadRecord.completedAt : undefined);
@@ -178,13 +190,15 @@ export function SubagentDetail({
     typeof durationMs === "number" && durationMs > 0
       ? formatToolDuration(durationMs / 1000)
       : "";
+  const statusClass = creating
+    ? "outcome-creating"
+    : outcome.replaceAll("_", "-");
   const taskDescription = delegateTaskDescription(message);
   const taskBodyId = useId();
   const taskLabelId = useId();
   const taskBodyRef = useRef<HTMLDivElement>(null);
   const [taskExpanded, setTaskExpanded] = useState(false);
   const [taskOverflow, setTaskOverflow] = useState(false);
-  const outcomeClass = outcome.replaceAll("_", "-");
 
   useLayoutEffect(() => {
     setTaskExpanded(false);
@@ -216,7 +230,7 @@ export function SubagentDetail({
         <div className="subagent-detail-heading">
           <span className="subagent-detail-avatar" aria-hidden>
             <IconBot size={18} />
-            <span className={`subagent-detail-status outcome-${outcomeClass}`} />
+            <span className={`subagent-detail-status outcome-${statusClass}`} />
           </span>
           <div className="subagent-detail-heading-copy">
             <strong className="subagent-detail-name">
@@ -239,10 +253,10 @@ export function SubagentDetail({
           aria-label={t("panel.subagent")}
         >
           <span
-            className={`subagent-detail-badge outcome-${outcomeClass}`}
+            className={`subagent-detail-badge outcome-${statusClass}`}
             role="listitem"
           >
-            {t(`chat.subagentStatus.${outcome}`)}
+            {t(statusKey)}
           </span>
           {duration ? (
             <span className="subagent-detail-meta" role="listitem">

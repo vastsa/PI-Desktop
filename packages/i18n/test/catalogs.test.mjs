@@ -62,6 +62,21 @@ test("settings subagent empty-state copy uses a non-conflicting key", () => {
   assert.equal(typeof english["extensions.subagents.empty"], "string");
 });
 
+test("creation-phase delegation copy is catalog-backed", () => {
+  assert.equal(english["chat.subagentCreating"], "Starting subagent…");
+  assert.equal(
+    flattenCatalog(zhCN)["chat.subagentCreating"],
+    "正在创建子智能体…",
+  );
+  for (const [id, catalog] of Object.entries(catalogs)) {
+    assert.equal(
+      typeof flattenCatalog(catalog)["chat.subagentCreating"],
+      "string",
+      id,
+    );
+  }
+});
+
 test("settings rail labels stay concise and parallel across locales", () => {
   const chinese = flattenCatalog(zhCN);
   const keys = [

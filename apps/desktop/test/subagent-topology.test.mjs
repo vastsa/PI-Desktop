@@ -10,6 +10,7 @@ const {
   collectDelegationFailures,
   collectDelegationStatuses,
   collectDelegationTimings,
+  delegationIsCreating,
   delegationRoster,
   delegationRosterOutcome,
   delegationRosterSummary,
@@ -114,6 +115,24 @@ test("prefers the structured delegate outcome over the transport status", () => 
     "failed",
   );
   assert.equal(subagentOutcome(task("denied", "denied").message), "denied");
+});
+
+test("running Task without a result handle is still being created", () => {
+  // ADR 0089: the parent `Task` returns its structured handle (delegationId)
+  // only at tool_end. A running row with no delegation payload is the window
+  // where the delegate runtime is still spawning.
+  assert.equal(delegationIsCreating(task("new", "running").message), true);
+  // Once the Task result carries a delegationId, the delegate has started.
+  assert.equal(
+    delegationIsCreating(task("done", "running", "running").message),
+    false,
+  );
+  assert.equal(
+    delegationIsCreating(task("settled", "success", "completed").message),
+    false,
+  );
+  // Not running is never treated as creating.
+  assert.equal(delegationIsCreating(task("idle", "success").message), false);
 });
 
 test("uses delegation lifecycle timestamps instead of the immediate Task duration", () => {

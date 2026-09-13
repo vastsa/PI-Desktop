@@ -443,6 +443,7 @@ export const en = {
     subagentCount_one: "{{count}} subagent",
     subagentCount_other: "{{count}} subagents",
     subagentFinishedCount: "{{finished}}/{{total}} finished",
+    subagentCreating: "Starting subagent…",
     subagentStatus: {
       running: "Running",
       completed: "Completed",

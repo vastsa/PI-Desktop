@@ -2006,6 +2006,16 @@ in place:
   lifecycle status source, same as `TaskWait`/`TaskList` `delegations[]`; a
   snapshot that still says `running` is presented as `stopped`. A finished
   session therefore never keeps a live “Subagent working” card.
+- The brief spawn window before a delegate settles is presented as a creating
+  state rather than a generic running one. Because the parent `Task` returns
+  its structured handle (`delegationId`, `startedAt`) only at its own
+  `tool_end` (ADR 0089), a `Task` row that is `running` with no delegation
+  payload is identified as still being created: its node and dock badge read
+  `chat.subagentCreating` (“Starting subagent…”), the status icon pulses in
+  the subagent accent, and the elapsed clock ticks from the call's own
+  `createdAt` instead of waiting for the handle — so the creation phase never
+  reads as stalled. Once the result arrives the node transitions to the normal
+  `running` presentation and continues from its real `startedAt`.
 - The expanded card renders a low-noise dotted canvas with one main-agent root
   connected to the `Task` nodes in parent-row order. The runtime exposes no
   delegate dependencies and forbids nested `Task`, so the renderer must not
