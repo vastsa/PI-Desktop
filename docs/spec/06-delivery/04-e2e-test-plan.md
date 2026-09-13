@@ -3322,7 +3322,8 @@ needed.
   Windows run uses the NSIS-installed app or the standard development command.
 - **Steps**: 1) Keep the app focused on A and complete a turn in A. 2) While
   still focused on A, complete a turn in B. 3) Unfocus the app while A remains
-  current and complete another turn in A. 4) Click A's native notification. 5)
+  current and complete another turn in A. 4) Let A's notification move into
+  the OS notification center, then click it. 5)
   Minimize the app, fail another turn, and click its native notification. 6)
   Unfocus the app and abort a turn. 7) Repeat with native delivery suppressed
   by the OS. 8) On Windows, inspect the native notification attribution,
@@ -3332,7 +3333,8 @@ needed.
   Focused-background B creates an inbox row without a native banner. Unfocused
   current A and the minimized failure each create one durable row and one
   localized native notification. Clicking restores, shows, and focuses the
-  main window before activating the matching session; no event opens the wrong
+  main window before activating the matching session, including after the
+  notification has moved to Windows Action Center; no event opens the wrong
   currently selected session. Abort shows neither surface. OS suppression does
   not lose the durable row or surface a misleading app error. Every inspected
   Windows system surface identifies `PI-Desktop`; no stock Electron application
@@ -3342,7 +3344,8 @@ needed.
   `08-meta/decisions-log.md` (D117/D141)
 - **Acceptance**: C (turn completion), Quality
 - **Milestone**: M5
-- **Status**: Draft
+- **Status**: Source-contract covered (`notification-contract.test.mjs`); packaged
+  Windows Action Center activation remains runner validation; full UI scenario Draft
 
 #### E2E-066: Provider model catalog survives restart and offline refresh
 
@@ -6201,8 +6204,10 @@ needed.
   returns a best-effort `granted`, `denied`, or `unsupported` result; a granted
   plugin receives `{ shown: true, permission: "granted" }` for native delivery,
   while denied/unsupported delivery returns `shown: false` without crashing the
-  plugin. Missing `notify` fails with `PERMISSION_DENIED`. Native plugin
-  notifications do not add durable task inbox rows or activate a chat session.
+  plugin. Missing `notify` fails with `PERMISSION_DENIED`. Clicking a delivered
+  native plugin notification restores and focuses the main window, but native
+  plugin notifications do not add durable task inbox rows or activate a chat
+  session.
 - **Specs linked**: `07-plugins/01-plugin-system.md`,
   `07-plugins/03-plugin-api.md`, `07-plugins/13-plugin-permissions-matrix.md`,
   ADR 0074
