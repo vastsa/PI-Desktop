@@ -4751,7 +4751,8 @@ Validation contract: E2E-TRAY-bounded-session-navigation.
 
 ### Unified transcript reading and complete search navigation
 
-[ADR session-content-search](/adr/session-content-search) now uses one renderer
+[ADR transcript-reading-ownership](/adr/transcript-reading-ownership) amends
+[ADR session-content-search](/adr/session-content-search) with one renderer
 reading view for ordinary history and search, shared by MainChat and the subagent
 dock. Live/model caches remain canonical. Nested targets receive capped parent
 Task context through additive `navigationParent`; parser source offsets locate

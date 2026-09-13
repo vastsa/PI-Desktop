@@ -74,7 +74,8 @@ reveals the Task activity group and the existing subagent dock locates the
 selected answer. A missing parent reports failure rather than an invisible hit.
 
 The renderer store owns one reading view per retained session for both ordinary
-history paging and search navigation. MainChat and subagent details consume the
+history paging and search navigation. This ownership is defined in
+[ADR transcript-reading-ownership](/adr/transcript-reading-ownership). MainChat and subagent details consume the
 same projection; no global target handoff, effect-driven navigation controller,
 or second historical reader is needed. Ordinary history merges authoritative
 live output. An explicit search keeps its selected snapshot until returning to
