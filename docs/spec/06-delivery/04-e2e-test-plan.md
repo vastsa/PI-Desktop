@@ -10481,6 +10481,29 @@ sample extensions under `apps/desktop/test/fixtures/pi-extensions/`.
 - **Acceptance**: F (persistence), Quality
 - **Milestone**: Post-M6 desktop shell maintenance
 - **Status**: Automated (`scripts/e2e-three-column-layout.mjs` via
-  `pnpm test:e2e:layout` — fixed-window width invariance, the 360px floor across
-  a pointer drag, sidebar yield/restore, and the 370px reopen target); unit
-  coverage in `work-panel-resize.test.mjs`
+  `pnpm test:e2e:layout` — fixed-window width invariance, the 450px floor across
+  a pointer drag, the unfolded composer row at that floor, sidebar
+  yield/restore, the 460px reopen target, and preview mode); unit coverage in
+  `work-panel-resize.test.mjs`
+
+#### E2E-LAYOUT-work-panel-maximize
+
+- **Preconditions**: A desktop session is open with the work panel visible.
+- **Steps**:
+  1. Note the current panel width and sidebar state, then click the panel
+     header's preview toggle.
+  2. Inspect the shell: MainChat, then click the toggle again.
+- **Expected**: Entering preview mode stops rendering MainChat and hands its
+  width to the panel, so the panel spans the client area minus the expanded
+  sidebar (the whole client area when the sidebar is collapsed). The native
+  window never changes size. The divider is inert while preview mode is on
+  (`aria-disabled`). Leaving preview mode restores the previous panel width and
+  keeps whatever sidebar state the user chose last. The mode is transient: it is
+  not persisted and ends when the panel closes.
+- **Specs linked**: `04-ux/01-ui-ia.md`, `04-ux/07-ui-design-system.md` §10,
+  `04-ux/08-component-spec.md` §5, `04-ux/09-interaction-patterns.md` §8,
+  ADR 0238 §6, issue #289
+- **Acceptance**: F (persistence), Quality
+- **Milestone**: Post-M6 desktop shell maintenance
+- **Status**: Automated (`scripts/e2e-three-column-layout.mjs` — preview mode
+  entry/exit widths, MainChat unmount, and window invariance)

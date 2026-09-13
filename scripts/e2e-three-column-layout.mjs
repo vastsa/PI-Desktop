@@ -32,8 +32,8 @@ const electronBin =
     ? join(appDir, "node_modules/electron/dist/electron.exe")
     : join(appDir, "node_modules/.bin/electron");
 const cdpPort = Number(process.env.PI_DESKTOP_LAYOUT_CDP_PORT || 9336);
-const MAIN_PANE_MIN_WIDTH = 360;
-const MAIN_PANE_REOPEN_TARGET_WIDTH = 370;
+const MAIN_PANE_MIN_WIDTH = 450;
+const MAIN_PANE_REOPEN_TARGET_WIDTH = 460;
 
 function resolveHostBinary() {
   const candidates = [
@@ -57,8 +57,19 @@ class CdpClient {
     this.ws = ws;
     this.seq = 0;
     this.pending = new Map();
+    this.console = [];
     ws.onmessage = (event) => {
       const message = JSON.parse(event.data);
+      if (
+        message.method === "Runtime.consoleAPICalled" ||
+        message.method === "Runtime.exceptionThrown"
+      ) {
+        this.console.push(
+          `[${message.method}] ${JSON.stringify(message.params).slice(0, 400)}`,
+        );
+        if (this.console.length > 40) this.console.shift();
+        return;
+      }
       const entry = this.pending.get(message.id);
       if (!entry) return;
       this.pending.delete(message.id);
@@ -146,6 +157,7 @@ const MEASURE = `(() => {
 })()`;
 
 const results = [];
+let activeCdp = null;
 function check(ok, label, detail = "") {
   results.push({ ok, label, detail });
   console.log(`${ok ? "PASS" : "FAIL"} ${label}${detail ? ` — ${detail}` : ""}`);
@@ -217,6 +229,7 @@ async function main() {
     }, "main window CDP target");
 
     const cdp = await CdpClient.connect(target.webSocketDebuggerUrl);
+    activeCdp = cdp;
     await cdp.send("Runtime.enable");
 
     const measure = () => cdp.evaluate(MEASURE);
@@ -370,7 +383,7 @@ async function main() {
       reopened.sidebarKind === "sidebar" &&
         reopened.main >= MAIN_PANE_MIN_WIDTH &&
         (reopened.panel === collapsed.panel || reopened.panel === expectedPanel),
-      "manual reopen spends panel width first, otherwise landing on the 370px target",
+      "manual reopen spends panel width first, otherwise landing on the 460px target",
       `collapsed=${JSON.stringify(collapsed)} reopened=${JSON.stringify(reopened)}`,
     );
     check(
@@ -399,6 +412,261 @@ async function main() {
       `window ${baseline.windowWidth} -> ${restored.windowWidth}`,
     );
 
+    const composer = await cdp.evaluate(`(() => {
+      const bar = document.querySelector(".composer-toolbar");
+      const left = document.querySelector(".composer-left");
+      const right = document.querySelector(".composer-right");
+      if (!bar || !left || !right) return null;
+      return {
+        width: Math.round(bar.getBoundingClientRect().width),
+        clipped: bar.scrollWidth > bar.clientWidth + 1,
+        sameRow:
+          Math.round(left.getBoundingClientRect().top) ===
+          Math.round(right.getBoundingClientRect().top),
+      };
+    })()`);
+    check(
+      composer !== null && composer.clipped === false && composer.sameRow === true,
+      "the composer toolbar stays on one unfolded row at the MainChat floor",
+      JSON.stringify(composer),
+    );
+
+    // 5. Preview (maximize) mode: MainChat yields its width to the panel.
+    await rig(`window.__PI_DESKTOP__.openWorkPanel()`);
+    await waitFor(
+      () => cdp.evaluate(`!!document.querySelector('[data-testid="work-panel"]')`),
+      "work panel mounted for preview mode",
+    );
+    await rig(`window.__PI_DESKTOP__.setWorkPanelWidth(500)`);
+    const beforeMaximize = await measure();
+    await cdp.evaluate(
+      `document.querySelector(".work-panel-maximize")?.dispatchEvent(new MouseEvent("click", { bubbles: true }))`,
+    );
+    await delay(700);
+    const maximizing = await measure();
+    const expectedMaximized =
+      maximizing.windowWidth -
+      (maximizing.sidebarKind === "sidebar" ? maximizing.sidebar ?? 0 : 0);
+    check(
+      maximizing.main === null && maximizing.panel === expectedMaximized,
+      "preview mode hides MainChat and hands its width to the panel",
+      JSON.stringify(maximizing),
+    );
+    check(
+      maximizing.windowWidth === beforeMaximize.windowWidth,
+      "preview mode never resizes the native window",
+      `window ${beforeMaximize.windowWidth} -> ${maximizing.windowWidth}`,
+    );
+    await cdp.evaluate(
+      `document.querySelector(".work-panel-maximize")?.dispatchEvent(new MouseEvent("click", { bubbles: true }))`,
+    );
+    await delay(700);
+    const restoredAfterMaximize = await measure();
+    check(
+      restoredAfterMaximize.panel === beforeMaximize.panel &&
+        restoredAfterMaximize.main === beforeMaximize.main &&
+        restoredAfterMaximize.sidebarKind === beforeMaximize.sidebarKind,
+      "leaving preview mode restores the previous three-column widths",
+      `before=${JSON.stringify(beforeMaximize)} after=${JSON.stringify(restoredAfterMaximize)}`,
+    );
+
+    // 6. Preview-mode details: inert divider, sidebar interop, persistence.
+    const storedBefore = await cdp.evaluate(
+      `localStorage.getItem("pi.desktop.workPanel")`,
+    );
+    await cdp.evaluate(
+      `document.querySelector(".work-panel-maximize")?.dispatchEvent(new MouseEvent("click", { bubbles: true }))`,
+    );
+    await delay(700);
+    const previewState = await measure();
+    const divider = await cdp.evaluate(`(() => {
+      const el = document.querySelector(".work-panel-resize");
+      if (!el) return null;
+      const rect = el.getBoundingClientRect();
+      return {
+        disabled: el.getAttribute("aria-disabled"),
+        x: Math.round(rect.left + rect.width / 2),
+        y: Math.round(rect.top + rect.height / 2),
+      };
+    })()`);
+    check(
+      divider?.disabled === "true",
+      "the divider is inert while preview mode is on",
+      JSON.stringify(divider),
+    );
+    if (divider) {
+      await cdp.send("Input.dispatchMouseEvent", {
+        type: "mousePressed",
+        x: divider.x,
+        y: divider.y,
+        button: "left",
+        clickCount: 1,
+        buttons: 1,
+      });
+      await cdp.send("Input.dispatchMouseEvent", {
+        type: "mouseMoved",
+        x: Math.max(20, divider.x - 300),
+        y: divider.y,
+        button: "left",
+        buttons: 1,
+      });
+      await cdp.send("Input.dispatchMouseEvent", {
+        type: "mouseReleased",
+        x: Math.max(20, divider.x - 300),
+        y: divider.y,
+        button: "left",
+        clickCount: 1,
+        buttons: 0,
+      });
+      await delay(500);
+    }
+    const afterDividerDrag = await measure();
+    check(
+      afterDividerDrag.main === null && afterDividerDrag.panel === previewState.panel,
+      "dragging the divider in preview mode leaves the layout untouched",
+      JSON.stringify(afterDividerDrag),
+    );
+    const storedAfterPreview = await cdp.evaluate(
+      `localStorage.getItem("pi.desktop.workPanel")`,
+    );
+    check(
+      storedBefore === storedAfterPreview,
+      "entering preview mode never rewrites the persisted preferred width",
+      `${storedBefore} -> ${storedAfterPreview}`,
+    );
+    // The sidebar toggle lives in MainChat's topbar, which preview mode does not
+    // render, so the keyboard shortcut is the path that stays available.
+    await cdp.send("Input.dispatchKeyEvent", {
+      type: "keyDown",
+      modifiers: 2,
+      key: "b",
+      code: "KeyB",
+      windowsVirtualKeyCode: 66,
+      nativeVirtualKeyCode: 66,
+    });
+    await cdp.send("Input.dispatchKeyEvent", {
+      type: "keyUp",
+      modifiers: 2,
+      key: "b",
+      code: "KeyB",
+      windowsVirtualKeyCode: 66,
+      nativeVirtualKeyCode: 66,
+    });
+    await delay(700);
+    const previewWithSidebar = await measure();
+    check(
+      previewWithSidebar.main === null &&
+        previewWithSidebar.sidebarKind === "sidebar" &&
+        previewWithSidebar.panel ===
+          previewWithSidebar.windowWidth - (previewWithSidebar.sidebar ?? 0),
+      "preview mode keeps the panel full-width when the sidebar is reopened",
+      JSON.stringify(previewWithSidebar),
+    );
+    const storedAfterReopen = await cdp.evaluate(
+      `localStorage.getItem("pi.desktop.workPanel")`,
+    );
+    // Reopening the sidebar while previewing is the documented reopen path: it
+    // spends panel width first, so the preferred width follows that gesture.
+    check(
+      storedAfterReopen ===
+        JSON.stringify({
+          width:
+            previewWithSidebar.windowWidth -
+            (previewWithSidebar.sidebar ?? 0) -
+            MAIN_PANE_REOPEN_TARGET_WIDTH,
+        }),
+      "reopening the sidebar from preview mode records the reopen width",
+      `${storedAfterPreview} -> ${storedAfterReopen}`,
+    );
+    await rig(`window.__PI_DESKTOP__.collapseWorkPanel()`);
+    await delay(900);
+    const closedFromPreview = await measure();
+    check(
+      closedFromPreview.main !== null &&
+        closedFromPreview.panel === null &&
+        closedFromPreview.windowWidth === previewState.windowWidth,
+      "closing the panel leaves preview mode and restores the shell",
+      JSON.stringify(closedFromPreview),
+    );
+
+    const e2eChromeSettle = async (ms) => {
+      await new Promise((resolve) => setTimeout(resolve, ms));
+    };
+    const e2eChromeProbe = `(() => {
+      const band = document.querySelector(".window-chrome-row");
+      const controls = document.querySelector(".window-chrome-row .window-controls");
+      const sidebar = document.querySelector(".sidebar, .sidebar-rail");
+      const handle = document.querySelector(".sidebar-resize-handle");
+      const panel = document.querySelector('[data-testid="work-panel"]');
+      const controlsBox = controls ? controls.getBoundingClientRect() : null;
+      return {
+        bandZ: band ? Number(getComputedStyle(band).zIndex) : null,
+        bandHeight: band ? Math.round(band.getBoundingClientRect().height) : null,
+        bandPointerEvents: band ? getComputedStyle(band).pointerEvents : null,
+        controlsPosition: controls ? getComputedStyle(controls).position : null,
+        controlsOnScreen: controlsBox
+          ? controlsBox.width > 0 && controlsBox.right <= window.innerWidth + 1
+          : null,
+        sidebarToggle: !!document.querySelector('.window-chrome-row [data-nav="toggle-sidebar"]'),
+        panelToggle: !!document.querySelector(".app-work-panel-toggle"),
+        sidebarWidth: sidebar ? Math.round(sidebar.getBoundingClientRect().width) : null,
+        handleVisible: handle ? getComputedStyle(handle).display !== "none" : false,
+        storedWidth: window.localStorage.getItem("pi.desktop.sidebarWidth"),
+        panelWidth: panel ? Math.round(panel.getBoundingClientRect().width) : null,
+        main: !!document.querySelector(".main-pane"),
+      };
+    })()`;
+
+    const e2eChromeSidebar = await cdp.evaluate(e2eChromeProbe);
+    check(
+      e2eChromeSidebar.sidebarWidth === null || e2eChromeSidebar.sidebarWidth === 275,
+      "sidebar stays at its fixed width",
+      JSON.stringify(e2eChromeSidebar),
+    );
+    check(
+      e2eChromeSidebar.handleVisible === false,
+      "the sidebar edge is no longer a resize affordance",
+      JSON.stringify(e2eChromeSidebar),
+    );
+    check(
+      e2eChromeSidebar.storedWidth === null,
+      "sidebar width is no longer persisted",
+      JSON.stringify(e2eChromeSidebar),
+    );
+
+    await cdp.evaluate(`document.querySelector(".app-work-panel-toggle")?.click?.()`);
+    await e2eChromeSettle(900);
+    await cdp.evaluate(`document.querySelector(".work-panel-maximize")?.click?.()`);
+    await e2eChromeSettle(900);
+    const e2eChromePreview = await cdp.evaluate(e2eChromeProbe);
+    check(
+      e2eChromePreview.main === false && e2eChromePreview.panelWidth !== null,
+      "preview mode keeps the panel and drops the center column",
+      JSON.stringify(e2eChromePreview),
+    );
+    check(
+      e2eChromePreview.bandZ !== null && e2eChromePreview.bandZ > 20,
+      "the preview band outranks the work panel so its buttons stay visible",
+      JSON.stringify(e2eChromePreview),
+    );
+    check(
+      e2eChromePreview.bandHeight === 46 && e2eChromePreview.bandPointerEvents === "none",
+      "the preview band is a 46px pass-through strip",
+      JSON.stringify(e2eChromePreview),
+    );
+    check(
+      e2eChromePreview.controlsPosition === "fixed" && e2eChromePreview.controlsOnScreen === true,
+      "system buttons keep their ordinary seat while previewing",
+      JSON.stringify(e2eChromePreview),
+    );
+    check(
+      e2eChromePreview.panelToggle === true,
+      "the panel toggle stays in the top row while previewing",
+      JSON.stringify(e2eChromePreview),
+    );
+    await cdp.evaluate(`document.querySelector(".work-panel-maximize")?.click?.()`);
+    await e2eChromeSettle(900);
+
     const failed = results.filter((entry) => !entry.ok);
     console.log(
       `\nE2E-LAYOUT-three-column-width-priority: ${results.length - failed.length}/${results.length} checks passed`,
@@ -416,6 +684,20 @@ async function main() {
     process.exit(0);
   } catch (error) {
     console.error(`FAIL three-column layout — ${error.message}`);
+    try {
+      if (activeCdp) {
+        console.error("--- renderer console tail ---");
+        for (const line of activeCdp.console.slice(-12)) console.error(line);
+        const dump = await activeCdp.evaluate(`({
+          body: (document.body?.innerText || "").slice(0, 300),
+          shell: !!document.querySelector(".app-shell"),
+          splash: !!document.querySelector(".startup-splash"),
+          main: !!document.querySelector(".main-pane"),
+          panel: !!document.querySelector('[data-testid="work-panel"]'),
+        })`);
+        console.error("--- renderer state ---", JSON.stringify(dump));
+      }
+    } catch {}
     console.error(output.slice(-2_000));
     cleanup();
     clearTimeout(timeout);

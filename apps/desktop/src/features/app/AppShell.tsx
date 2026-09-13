@@ -1,6 +1,6 @@
 import { lazy, Suspense, type CSSProperties, type ReactNode } from "react";
 import { TooltipButton, cx } from "../../components/ui";
-import { IconPanel, IconPanelOpen } from "../../components/icons";
+import { IconSidebar, IconPanel, IconPanelOpen } from "../../components/icons";
 import { Sidebar } from "../../components/Sidebar";
 import { ConversationTopbar } from "../../components/ConversationTopbar";
 import { WorkPanel } from "../../components/workpanel/WorkPanel";
@@ -65,6 +65,8 @@ export function AppShell() {
     workPanelExitGeneration,
     finishWorkPanelExit,
     togglePresentedWorkPanel,
+    workPanelMaximized,
+    toggleWorkPanelMaximize,
     backendDown,
     archMismatch,
     setArchMismatch,
@@ -104,6 +106,34 @@ export function AppShell() {
             />
           ) : null}
 
+          {workPanelMaximized && (
+            /* Preview mode hides MainChat, which normally owns the drag band and
+               the window controls. Keep the same top band with the same system
+               buttons, at the window level rather than inside the panel. */
+            <div className="window-chrome-row">
+              {sidebarCollapsed && (
+                <TooltipButton
+                  type="button"
+                  className="icon-btn"
+                  tooltip={
+                    sidebarToggleShortcut
+                      ? `${t("nav.expandSidebar")} (${sidebarToggleShortcut})`
+                      : t("nav.expandSidebar")
+                  }
+                  ariaLabel={t("nav.expandSidebar")}
+                  aria-expanded={false}
+                  data-nav="toggle-sidebar"
+                  onClick={toggleSidebar}
+                >
+                  <IconSidebar size={15} />
+                </TooltipButton>
+              )}
+              <div className="window-chrome-drag" aria-hidden />
+              <WindowControls contained />
+            </div>
+          )}
+
+          {!workPanelMaximized && (
           <section className="main-pane">
             <WindowControls contained />
             {page === "chat" ? (
@@ -207,6 +237,7 @@ export function AppShell() {
               )}
             </Suspense>
           </section>
+          )}
 
           {(presentedWorkPanelOpen || workPanelExiting) && (
             <WorkPanel
@@ -222,6 +253,8 @@ export function AppShell() {
               sidebarCollapsed={sidebarCollapsed}
               sidebarExiting={sidebarExiting}
               onAutoCollapseSidebar={autoCollapseSidebar}
+              maximized={workPanelMaximized}
+              onToggleMaximize={toggleWorkPanelMaximize}
             />
           )}
 
@@ -256,6 +289,7 @@ export function AppShell() {
         !ready && "app-shell-boot",
         page === "settings" && ready && "settings-mode",
         sidebarCollapsed && "sidebar-collapsed",
+        workPanelMaximized && "work-panel-maximized",
         showSplash && "is-booting",
       )}
       style={{ "--ds-sidebar-width": `${sidebarWidth}px` } as CSSProperties}

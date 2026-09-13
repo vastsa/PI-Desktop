@@ -1304,6 +1304,8 @@ export const ko = {
     subagentEmpty: "서브에이전트 세부 정보를 더 이상 사용할 수 없습니다.",
     collapse: "작업 패널 숨기기",
     resize: "작업 패널 크기 조절",
+    maximize: "Expand work panel",
+    restore: "Restore work panel",
     resizeChat: "대화 영역 크기 조절",
     tools: "도구",
     toolsAndPanels: "도구 및 패널",

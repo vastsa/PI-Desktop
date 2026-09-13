@@ -1285,6 +1285,8 @@ export const es = {
     "subagentEmpty": "Los detalles del subagente ya no están disponibles.",
     "collapse": "Ocultar panel de trabajo",
     "resize": "Cambiar tamaño del panel de trabajo",
+    "maximize": "Expand work panel",
+    "restore": "Restore work panel",
     "resizeChat": "Cambiar tamaño del área de conversación",
     "tools": "Herramientas",
     "toolsAndPanels": "Herramientas y paneles",

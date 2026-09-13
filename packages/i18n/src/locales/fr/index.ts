@@ -1285,6 +1285,8 @@ export const fr = {
     "subagentEmpty": "Les détails du sous-agent ne sont plus disponibles.",
     "collapse": "Masquer le panneau de travail",
     "resize": "Redimensionner le panneau de travail",
+    "maximize": "Expand work panel",
+    "restore": "Restore work panel",
     "resizeChat": "Redimensionner la zone de conversation",
     "tools": "Outils",
     "toolsAndPanels": "Outils et panneaux",

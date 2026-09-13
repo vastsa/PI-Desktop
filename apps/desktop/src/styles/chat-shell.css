@@ -41,7 +41,7 @@
   display: flex;
   /* MainChat is the first-priority column and must never be compressed below
      the shared three-column layout floor. */
-  min-width: var(--ds-main-pane-min-width, 360px);
+  min-width: var(--ds-main-pane-min-width, 450px);
   flex: 1;
   flex-direction: column;
   background: var(--ds-bg-primary);
@@ -65,7 +65,7 @@
 .route-page {
   position: relative;
   display: flex;
-  min-width: var(--ds-main-pane-min-width, 360px);
+  min-width: var(--ds-main-pane-min-width, 450px);
   min-height: 0;
   flex: 1;
   flex-direction: column;

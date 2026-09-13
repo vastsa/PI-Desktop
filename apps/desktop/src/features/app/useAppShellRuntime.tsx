@@ -66,7 +66,7 @@ export function useAppShellRuntime() {
 
   const [searchOpen, setSearchOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [sidebarWidth, setSidebarWidth] = useState(() => loadSidebarWidth());
+  const [sidebarWidth] = useState(() => loadSidebarWidth());
   const [sidebarExiting, setSidebarExiting] = useState(false);
   const [shellWidth, setShellWidth] = useState(0);
   const appShellRef = useRef<HTMLDivElement>(null);
@@ -98,14 +98,9 @@ export function useAppShellRuntime() {
     observer.observe(shell);
     return () => observer.disconnect();
   }, []);
-  const handleSidebarWidthChange = useCallback((width: number) => {
-    setSidebarWidth(clampSidebarWidth(width));
-  }, []);
-  const handleSidebarWidthCommit = useCallback((width: number) => {
-    const nextWidth = clampSidebarWidth(width);
-    setSidebarWidth(nextWidth);
-    saveSidebarWidth(nextWidth);
-  }, []);
+  // The sidebar is a fixed-width column: it only collapses and opens.
+  const handleSidebarWidthChange = useCallback(() => {}, []);
+  const handleSidebarWidthCommit = useCallback(() => {}, []);
   // Reopening prefers the right column: the work panel gives up width first so
   // MainChat keeps the width it already had, and only a would-be breach of the
   // 360px floor falls back to the 370px reopen target.
@@ -173,6 +168,7 @@ export function useAppShellRuntime() {
     return () => window.clearTimeout(timer);
   }, [sidebarExiting]);
   const [presentedWorkPanelOpen, setPresentedWorkPanelOpen] = useState(false);
+  const [workPanelMaximized, setWorkPanelMaximized] = useState(false);
   const [workPanelExiting, setWorkPanelExiting] = useState(false);
   const workPanelReservationRequest = useRef(0);
   const workPanelExitGeneration = useRef(0);
@@ -220,6 +216,13 @@ export function useAppShellRuntime() {
     workPanelExitingRef.current = workPanelExiting;
   }, [workPanelExiting]);
 
+  // Preview mode: MainChat is not rendered and the panel takes its width as
+  // well, so the user can read a wide plugin view or preview. Transient: it is
+  // never persisted and it ends with the panel.
+  const toggleWorkPanelMaximize = useCallback(() => {
+    setWorkPanelMaximized((current) => !current);
+  }, []);
+
   const togglePresentedWorkPanel = useCallback(() => {
     const store = useAppStore.getState();
     if (workPanelExitingRef.current) {
@@ -259,6 +262,7 @@ export function useAppShellRuntime() {
         generation === workPanelExitGeneration.current,
       commit: () => {
         setPresentedWorkPanelOpen(false);
+        setWorkPanelMaximized(false);
         setWorkPanelExiting(false);
         workPanelExitingRef.current = false;
         workPanelExitClosing.current = false;
@@ -337,6 +341,7 @@ export function useAppShellRuntime() {
       autoCollapsedSidebarRef.current = false;
       setSidebarCollapsed(false);
     }
+    if (!workPanelVisible) setWorkPanelMaximized(false);
     previousWorkPanelOpen.current = workPanelVisible;
   }, [workPanelVisible]);
 
@@ -834,6 +839,8 @@ export function useAppShellRuntime() {
     workPanelExitGeneration,
     finishWorkPanelExit,
     togglePresentedWorkPanel,
+    workPanelMaximized,
+    toggleWorkPanelMaximize,
     backendDown,
     archMismatch,
     setArchMismatch,
