@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_SUBAGENT_IDLE_TIMEOUT_SECONDS,
   MAX_SUBAGENT_PROVIDERS,
+  findSubagentPreset,
   subagentCanMutate,
   type SubagentDefinition,
 } from "@pi-desktop/shared";
@@ -61,6 +62,8 @@ describe("builtin subagent documents", () => {
     const designer = definitions.find((definition) => definition.name === "ui-designer")!;
     expect(designer.tools).toContain("BrowserPreview");
     expect(designer.maxTurns).toBe(80);
+    expect(designer.description).toBe(findSubagentPreset("ui-designer")?.description);
+    expect(designer.prompt).toBe(findSubagentPreset("ui-designer")?.body.trim());
   });
 });
 

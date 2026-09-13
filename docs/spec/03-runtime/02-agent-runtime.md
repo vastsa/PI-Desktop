@@ -704,7 +704,10 @@ typo and is clamped rather than forwarded to the provider.
 The built-in `explorer` declares `Read`,
 `Glob`, `Grep`, and `Bash`, while `code-reviewer` remains read-only;
 `fixer` and `ui-designer` write inside the workspace, and `ui-designer` adds
-`BrowserPreview` so it can check its rendered result before reporting. Its statuses are `completed`,
+`BrowserPreview` so it can open and inspect its rendered result before reporting.
+`BrowserPreview` only opens a live-reloading workspace HTML page; responsive,
+keyboard-focus, and reduced-motion checks require project-provided browser
+tests or other tooling. Its statuses are `completed`,
 `truncated`, `failed`, `aborted`, `timed_out` and the registry-only `stopped`;
 the terminal ones surface through `TaskWait`, whose text is
 the report (bounded to `MAX_SUBAGENT_REPORT_CHARS`, 12k) and whose details
