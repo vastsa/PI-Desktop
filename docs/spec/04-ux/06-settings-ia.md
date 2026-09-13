@@ -386,11 +386,12 @@ system while preserving their different data ownership:
 - Subagents open one **New subagent / Edit subagent** sheet that
   pre-fills the same fields the runtime's `BUILTIN_SUBAGENT_DOCUMENTS` ship
   with. Above the name field the sheet shows a "Start from template" row of
-  compact name chips (Explorer, Code reviewer, Test runner, Fixer, plus a
-  blank option). Chips show the localized name only; the selected chip's
-  one-line caption sits once under the row. Hyphenated preset ids
-  (`code-reviewer`, `test-runner`) resolve through an explicit catalog map
-  (`presetReviewerName` / `presetTestRunnerName`) — they must not be
+  compact name chips (Explorer, Code reviewer, Test runner, Fixer, UI
+  designer, plus a blank option). Chips show the localized name only; the
+  selected chip's one-line caption sits once under the row. Hyphenated preset
+  ids (`code-reviewer`, `test-runner`, `ui-designer`) resolve through an
+  explicit catalog map (`presetReviewerName` / `presetTestRunnerName` /
+  `presetUiDesignerName`) — they must not be
   turned into keys by capitalizing the first letter. Picking a chip
   replaces the draft's description, tools, max turns and body wholesale.
   The chip uses the same accent-tint pill as the tool grant row. Create

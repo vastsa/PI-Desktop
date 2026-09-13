@@ -1828,6 +1828,8 @@ export const tr = {
       presetTestRunnerDesc: "Test veya derleme komutunu çalıştırıp hataları raporlar.",
       presetFixerName: "Düzeltici",
       presetFixerDesc: "Bir spesifikasyona göre çok dosyalı değişikliği uygular.",
+      presetUiDesignerName: "UI tasarımcısı",
+      presetUiDesignerDesc: "Brief'e göre bir arayüz tasarlar ve uygular; tarayıcı önizlemesinde doğrular.",
       presetBlank: "Boş başla",
       presetBlankDesc: "Varsayılan araçlar. Yönergeleri siz yazın.",
       presetApply: "Uygula",

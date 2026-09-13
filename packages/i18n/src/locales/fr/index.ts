@@ -1791,6 +1791,8 @@ export const fr = {
       "presetTestRunnerDesc": "Exécute un test ou un build et signale les échecs.",
       "presetFixerName": "Correcteur",
       "presetFixerDesc": "Implémente un changement multi-fichiers à partir d’une spec.",
+      "presetUiDesignerName": "Designer UI",
+      "presetUiDesignerDesc": "Conçoit et implémente une interface à partir d’un brief, vérifiée dans l’aperçu navigateur.",
       "presetBlank": "Vierge",
       "presetBlankDesc": "Outils par défaut. Rédigez vos instructions.",
       "presetApply": "Appliquer",

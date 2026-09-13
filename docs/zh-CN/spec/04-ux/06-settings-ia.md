@@ -162,9 +162,9 @@ Token 用量**不是设置目的地**（D335 / ADR 0173）。已完成回合历�
   不发送持久化为 `thinkingLevel: omit`。
   模型配置里已选中的思考档芯片在浅色和深色主题下都使用实心强调底和反色主文本。
   新建表单在名称上方显示一行紧凑的模板名称 chips（探索者、代码审查员、测试执行者、
-  修复者、空白开始）：只显示名称，选中项的一句话说明出现在整行下方。带连字符的
-  id（`code-reviewer`、`test-runner`）必须走目录映射（`presetReviewerName` /
-  `presetTestRunnerName`），不能靠首字母大写拼 key。模型、推理、轮次上限和作用域
+  修复者、UI 设计师、空白开始）：只显示名称，选中项的一句话说明出现在整行下方。带连字符的
+  id（`code-reviewer`、`test-runner`、`ui-designer`）必须走目录映射（`presetReviewerName` /
+  `presetTestRunnerName` / `presetUiDesignerName`），不能靠首字母大写拼 key。模型、推理、轮次上限和作用域
   放在“高级”折叠区：新建时默认收起，编辑时默认展开。
 
 权限模式选择器在 Composer 中仍然可用，而

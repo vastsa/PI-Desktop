@@ -1801,6 +1801,8 @@ export const zhTW = {
       presetTestRunnerDesc: "執行測試或建置，並回報失敗原因。",
       presetFixerName: "修復者",
       presetFixerDesc: "依照規格實作跨檔案變更。",
+      presetUiDesignerName: "UI 設計師",
+      presetUiDesignerDesc: "按需求稿設計並實作介面，瀏覽器預覽驗收。",
       presetBlank: "空白開始",
       presetBlankDesc: "預設工具，自行撰寫指令。",
       presetApply: "套用",

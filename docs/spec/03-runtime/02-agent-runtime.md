@@ -595,9 +595,9 @@ criterion-by-criterion report of what was met and the evidence observed.
 The session Agent can hand separable pieces of work to delegates that run in
 their own context, in the background, and report back on demand.
 
-**Catalog.** Definitions are Markdown documents from two sources: the four
+**Catalog.** Definitions are Markdown documents from two sources: the five
 builtins shipped inline in `agent-runtime` (`explorer`, `code-reviewer`,
-`test-runner`, `fixer`) and the global user documents under
+`test-runner`, `fixer`, `ui-designer`) and the global user documents under
 `~/.agents/subagents/*.md`. There is no project-level subagent directory and
 `.pi/agents` is not scanned for capabilities. User documents are filtered by
 the app-local enabled state before they reach the loader. Electron main loads
@@ -617,11 +617,11 @@ arrives with the repository, so honoring its scope would let cloned code grant
 itself `auto`. A project document that declares a non-`inherit` scope keeps
 loading with a warning and its delegates run under the session's effective
 mode; a user who wants the scope copies the document into their own agents
-directory. Builtins, including `fixer`, do not override the parent session by
-default, so the one write-capable builtin follows `auto` completely (including
-explicit external paths) while `ask` and `accept-edits` retain their normal
-approval behavior. An explicit builtin or user scope remains an intentional
-override.
+directory. Builtins, including the write-capable `fixer` and `ui-designer`, do
+not override the parent session by default: they follow `auto` completely
+(including explicit external paths) while `ask` and `accept-edits` retain
+their normal approval behavior. An explicit builtin or user scope remains an
+intentional override.
 
 **Tools (ADR 0089).** Delegation is a four-tool lifecycle, built only in Agent
 mode and only when the catalog is non-empty, and all four belong to the Agent
@@ -692,7 +692,7 @@ the baseline only. It runs under
 the same bounded provider retry policy as the parent. `maxTurns` is an optional
 per-definition backstop (maximum 80); omitted, `none`, or `0` means unlimited
 turns. The built-ins declare one sized to their job — `explorer` 60,
-`code-reviewer` 50, `test-runner` 40, `fixer` 80 — so a delegate that loops
+`code-reviewer` 50, `test-runner` 40, `fixer` 80, `ui-designer` 80 — so a delegate that loops
 without converging ends as `truncated` with its partial report instead of
 running until the duration limit. `maxTokens` is an optional per-definition
 output cap (maximum 200000); omitted, `none`, or `0` follows the model's
@@ -702,7 +702,9 @@ so the adapter's derived `max_tokens` / `max_completion_tokens` /
 the session's requests keep the model binding. A value past the ceiling is a
 typo and is clamped rather than forwarded to the provider.
 The built-in `explorer` declares `Read`,
-`Glob`, `Grep`, and `Bash`, while `code-reviewer` remains read-only. Its statuses are `completed`,
+`Glob`, `Grep`, and `Bash`, while `code-reviewer` remains read-only;
+`fixer` and `ui-designer` write inside the workspace, and `ui-designer` adds
+`BrowserPreview` so it can check its rendered result before reporting. Its statuses are `completed`,
 `truncated`, `failed`, `aborted`, `timed_out` and the registry-only `stopped`;
 the terminal ones surface through `TaskWait`, whose text is
 the report (bounded to `MAX_SUBAGENT_REPORT_CHARS`, 12k) and whose details

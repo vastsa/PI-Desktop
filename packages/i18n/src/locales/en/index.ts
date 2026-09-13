@@ -1827,6 +1827,8 @@ export const en = {
       presetTestRunnerDesc: "Run a test or build command and report what failed.",
       presetFixerName: "Fixer",
       presetFixerDesc: "Implement a multi-file change from a spec.",
+      presetUiDesignerName: "UI designer",
+      presetUiDesignerDesc: "Design and implement an interface from a brief, verified in the browser preview.",
       presetBlank: "Start blank",
       presetBlankDesc: "Default tools. Write your own instructions.",
       presetApply: "Apply",
