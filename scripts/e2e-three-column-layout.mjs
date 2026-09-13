@@ -57,8 +57,19 @@ class CdpClient {
     this.ws = ws;
     this.seq = 0;
     this.pending = new Map();
+    this.console = [];
     ws.onmessage = (event) => {
       const message = JSON.parse(event.data);
+      if (
+        message.method === "Runtime.consoleAPICalled" ||
+        message.method === "Runtime.exceptionThrown"
+      ) {
+        this.console.push(
+          `[${message.method}] ${JSON.stringify(message.params).slice(0, 400)}`,
+        );
+        if (this.console.length > 40) this.console.shift();
+        return;
+      }
       const entry = this.pending.get(message.id);
       if (!entry) return;
       this.pending.delete(message.id);
@@ -146,6 +157,7 @@ const MEASURE = `(() => {
 })()`;
 
 const results = [];
+let activeCdp = null;
 function check(ok, label, detail = "") {
   results.push({ ok, label, detail });
   console.log(`${ok ? "PASS" : "FAIL"} ${label}${detail ? ` — ${detail}` : ""}`);
@@ -217,6 +229,7 @@ async function main() {
     }, "main window CDP target");
 
     const cdp = await CdpClient.connect(target.webSocketDebuggerUrl);
+    activeCdp = cdp;
     await cdp.send("Runtime.enable");
 
     const measure = () => cdp.evaluate(MEASURE);
@@ -593,6 +606,20 @@ async function main() {
     process.exit(0);
   } catch (error) {
     console.error(`FAIL three-column layout — ${error.message}`);
+    try {
+      if (activeCdp) {
+        console.error("--- renderer console tail ---");
+        for (const line of activeCdp.console.slice(-12)) console.error(line);
+        const dump = await activeCdp.evaluate(`({
+          body: (document.body?.innerText || "").slice(0, 300),
+          shell: !!document.querySelector(".app-shell"),
+          splash: !!document.querySelector(".startup-splash"),
+          main: !!document.querySelector(".main-pane"),
+          panel: !!document.querySelector('[data-testid="work-panel"]'),
+        })`);
+        console.error("--- renderer state ---", JSON.stringify(dump));
+      }
+    } catch {}
     console.error(output.slice(-2_000));
     cleanup();
     clearTimeout(timeout);
