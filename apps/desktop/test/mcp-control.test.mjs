@@ -520,12 +520,39 @@ test("renderer refresh events fire only for mutating control operations", () => 
     { reason: "mcp.session", selectSessionId: "s1", projectPath: "/tmp/p" },
   );
   assert.deepEqual(
+    mcpControlRendererEvent(
+      sessionOp("session/create"),
+      { session: { id: "s2", projectPath: "/tmp/p" } },
+      [],
+      "plugin",
+    ),
+    { reason: "plugin.session" },
+  );
+  assert.deepEqual(
     mcpControlRendererEvent(sessionOp("session/configure"), { session: { id: "s1" } }, ["s1", { mode: "agent" }]),
     { reason: "mcp.session" },
   );
   assert.deepEqual(
     mcpControlRendererEvent(sessionOp("agent/prompt"), { accepted: true }, [{ sessionId: "s1" }]),
     { reason: "mcp.prompt", selectSessionId: "s1" },
+  );
+  assert.deepEqual(
+    mcpControlRendererEvent(
+      sessionOp("agent/prompt"),
+      { accepted: true },
+      [{ sessionId: "s1" }],
+      "plugin",
+    ),
+    { reason: "plugin.prompt" },
+  );
+  assert.deepEqual(
+    mcpControlRendererEvent(
+      sessionOp("session/open"),
+      { session: { id: "s1", projectPath: "/tmp/p" } },
+      [],
+      "plugin",
+    ),
+    { reason: "plugin.session.open", selectSessionId: "s1", projectPath: "/tmp/p" },
   );
 });
 

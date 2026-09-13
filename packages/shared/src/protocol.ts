@@ -84,6 +84,8 @@ export const IPC = {
     sessionFork: "pi-desktop/session/fork",
     sessionMoveProject: "pi-desktop/session/moveProject",
     sessionGet: "pi-desktop/session/get",
+    /** Validate and select a durable session from a reviewed host operation. */
+    sessionOpen: "pi-desktop/session/open",
     sessionDelete: "pi-desktop/session/delete",
     sessionRename: "pi-desktop/session/rename",
     sessionSummarizeTitle: "pi-desktop/session/summarizeTitle",

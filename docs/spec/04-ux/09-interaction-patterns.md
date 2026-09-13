@@ -1352,4 +1352,4 @@ This does not prevent state changes — it makes them instant.
     divider follows the shared budget while MainChat keeps its 360px minimum,
     the expanded sidebar yields at the threshold and returns when the panel
     closes, and divider cancellation restores the prior panel width
-    (ADR 0033 / ADR 0151 / ADR 0237)
+    (ADR 0033 / ADR 0151 / ADR 0238)

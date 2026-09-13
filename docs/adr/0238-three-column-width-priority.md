@@ -1,4 +1,4 @@
-# ADR 0237: Prioritize MainChat in the three-column shell
+# ADR 0238: Prioritize MainChat in the three-column shell
 
 - Status: Accepted
 - Date: 2026-09-13

@@ -939,9 +939,9 @@ Codex parity decisions (D034/D070) supersede any older value here.
 | Titlebar row height | 46px | Codex toolbar rhythm (D034); traffic lights {x:16,y:16} |
 | Sidebar width (collapsed) | 48px | Icon-only rail |
 | Sidebar width (expanded) | `240px–520px` (default 275px) | Right-edge resize handle; persisted preferred width |
-| Main pane minimum readable width | 360px | The MainChat hard floor; the sidebar yields before it is breached (ADR 0237) |
+| Main pane minimum readable width | 360px | The MainChat hard floor; the sidebar yields before it is breached (ADR 0238) |
 | Work panel width (closed) | 0px | Hidden by default |
-| Work panel width (open) | `244px–720px` (new-profile default 360px), capped by `client width - 360px - expanded sidebar` | the panel is an in-flow column whose width is taken from the existing client area; the renderer owns its divider (ADR 0033 / ADR 0151 / ADR 0237); saved widths remain unchanged |
+| Work panel width (open) | `244px–720px` (new-profile default 360px), capped by `client width - 360px - expanded sidebar` | the panel is an in-flow column whose width is taken from the existing client area; the renderer owns its divider (ADR 0033 / ADR 0151 / ADR 0238); saved widths remain unchanged |
 | Composer shell minimum | ~80px | One-line draft + toolbar padding |
 | Composer toolbar | MainChat `≥360px` | Left/right control groups stay on one row and do not shrink; mode/permission labels stay single-line and ellipsize |
 | Composer draft height | 1–7 text lines | Auto-grow; internal scroll beyond line 7 |
@@ -952,7 +952,7 @@ Codex parity decisions (D034/D070) supersede any older value here.
 An open work panel is a fixed-width in-flow column inside the existing client
 area (ADR 0033 / ADR 0151). Its flex allocation comes from MainChat, but MainPane
 retains a 360px hard minimum and the panel's effective maximum is the remaining
-client width after the expanded sidebar and that floor (ADR 0237). When the
+client width after the expanded sidebar and that floor (ADR 0238). When the
 budget is exhausted the expanded sidebar collapses immediately, and the shared
 budget keeps counting it while `sidebar-out` occupies flex space. Side-dock
 resizing therefore cannot paint over or claim MainChat's floor. The renderer's

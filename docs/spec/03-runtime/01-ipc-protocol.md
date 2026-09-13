@@ -759,6 +759,9 @@ Minimal interface:
 
 - `session/list`
 - `session/create`
+- `session/open(sessionId)` — validate and select an existing durable session
+  through the reviewed desktop-control path; it does not create or mutate the
+  session
 - `session/fork({ sessionId, title?, throughMessageId? }) -> { session: SessionDetail }`
 - `session/get({ id, messageBefore?, messageLimit?, contentLimit? })` — without
   read-window options returns the complete UI projection; with them returns a

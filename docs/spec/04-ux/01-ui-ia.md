@@ -110,7 +110,7 @@ destination, chat as the home surface, tools and permissions inline.
   The work panel remains a fixed-width in-flow column beside MainChat inside
   the existing client area (ADR 0033 / ADR 0151). MainChat keeps a hard 360px
   minimum; the work panel's effective maximum is the remaining client width
-  after the expanded sidebar and that floor (ADR 0237). When the budget is
+  after the expanded sidebar and that floor (ADR 0238). When the budget is
   exhausted the sidebar collapses immediately through its existing animation
   (the budget still counts it while `sidebar-out` occupies flex space) and
   returns when the panel closes. Opening and collapsing change only the

@@ -101,7 +101,9 @@ permission probe by showing a short confirmation notification; Electron does
 not expose a cross-platform read-only notification permission API, so
 `unknown` is returned before the first probe and when the operating system does
 not report a result. Native delivery is best-effort: an OS policy may suppress
-the banner without changing the durable task notification inbox.
+the banner without changing the durable task notification inbox. Clicking a
+delivered plugin notification restores and focuses the main window, but never
+activates a session or creates a durable task notification.
 
 ### project (requires `project.create`)
 
@@ -502,6 +504,11 @@ pi.desktop.invoke(input: {
   confirm?: boolean
 }): Promise<unknown>
 ```
+
+The reviewed catalog includes `session/open(sessionId)` for a plugin UI to
+open an existing durable session. Plugin-originated `session/create` and
+`agent/prompt` calls refresh session state without changing the active
+renderer session; `session/open` is explicit navigation.
 
 This is the first-party plugin gateway to the same reviewed operation catalog
 used by the opt-in local MCP control plane (ADR 0203 / D370). The returned
