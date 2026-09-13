@@ -2855,6 +2855,9 @@ mod tests {
         assert_eq!(full.lines().count(), lines, "spill kept every line");
     }
 
+    // Requires a POSIX shell; Windows resolves Bash to PowerShell (see
+    // powershell_preserves_utf8_errors_quotes_cwd_and_native_exit_codes).
+    #[cfg(unix)]
     #[tokio::test]
     async fn bash_stderr_keeps_the_tail() {
         // A failing command's actionable message is its last line.
