@@ -4699,6 +4699,19 @@ D193, and D194.
   signed and notarized builds do not need it.
 - Decision D406 amends D371 / ADR 0204. See ADR 0232 and E2E-196b.
 
+
+## 2026-09-12 — Steer the active turn with Alt+Enter
+
+- Normal Send/Enter remains a Host-owned follow-up; Alt+Enter submits input to
+  the current durable turn using a required expected turn id.
+- Reuse pi-agent-core steering at the next model-request boundary, preserve
+  started tools, and retain the active model/workspace/permission configuration.
+- Stop and ended targets reject without redirecting input to another turn.
+  Accepted input remains history without independent replay after cancellation.
+- Journal accepted user input with a provisional preceding reply when needed;
+  finalize only an indexed streaming assistant in place and retain completed
+  message idempotency. See ADR active-turn-steering and E2E-AGENT-alt-enter-steers-active-turn.
+
 ## 2026-09-12 — Restore archived projects after session import (D407)
 
 - A core or plugin import that adds a new project-bound session clears the
@@ -4723,15 +4736,3 @@ D193, and D194.
   no panel width or x-offset geometry is applied.
 - Decision D408 records the issue #267 behavior. See ADR 0238 and
   E2E-LAYOUT-three-column-width-priority.
-
-## 2026-09-12 — Steer the active turn with Alt+Enter
-
-- Normal Send/Enter remains a Host-owned follow-up; Alt+Enter submits input to
-  the current durable turn using a required expected turn id.
-- Reuse pi-agent-core steering at the next model-request boundary, preserve
-  started tools, and retain the active model/workspace/permission configuration.
-- Stop and ended targets reject without redirecting input to another turn.
-  Accepted input remains history without independent replay after cancellation.
-- Journal accepted user input with a provisional preceding reply when needed;
-  finalize only an indexed streaming assistant in place and retain completed
-  message idempotency. See ADR active-turn-steering and E2E-AGENT-alt-enter-steers-active-turn.
