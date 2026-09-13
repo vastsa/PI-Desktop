@@ -397,7 +397,8 @@ root 本身。`net.fetch` 接受 HTTP(S)，并且只能到达 `manifest.net.doma
 因为 Electron 没有公开跨平台只读操作系统权限 API；
 `unknown` 表示平台尚未上报结果，且
 `unsupported` 表示桌面通知不可用。原生插件
-通知不会添加到 PI-Desktop 的持久任务通知收件箱中。
+通知不会添加到 PI-Desktop 的持久任务通知收件箱中。点击已交付的通知会恢复并聚焦主窗口，
+但不会激活会话。
 
 面板桥还暴露 `ui.showToast`、`ui.closePanel`、
 `plugin.getSettings` 和 `workspace.get`。主机自己没有实现的通道会被转发到

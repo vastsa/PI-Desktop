@@ -236,6 +236,26 @@ function persistAgentEvent(envelope: AgentEventEnvelope): UiMessage | undefined 
         }),
       );
   }
+  // Runtime settlement refreshes the original Task row through the existing
+  // full-message event; persist it as well as updating the live renderer.
+  if (event.type === "message_end" && event.message.role === "tool") {
+    void persistenceOutbox
+      .enqueue(
+        {
+          key: `message:${envelope.sessionId}:${event.message.id}`,
+          sessionId: envelope.sessionId,
+          message: subagentTagged(event.message, envelope),
+          turnId: envelope.turnId ?? turnId,
+        },
+        () => runtimeState.host,
+      )
+      .catch((error) =>
+        logger.app("persistence", "warn", "tool snapshot persistence enqueue failed", {
+          sessionId: envelope.sessionId,
+          data: String(error),
+        }),
+      );
+  }
   if (event.type === "tool_end") {
     const key = activeToolCallKey(envelope.sessionId, event.toolCallId);
     const started = activeToolCalls.get(key);

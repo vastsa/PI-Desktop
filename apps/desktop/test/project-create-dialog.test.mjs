@@ -23,6 +23,9 @@ test("create project dialog supports named multi-folder setup", () => {
   assert.match(dialog, /project\.createRemoveFolder/);
   assert.match(dialog, /project\.createPrimary/);
   assert.match(dialog, /project\.createMemoryHint/);
+  assert.match(dialog, /aria-describedby="project-create-memory-hint"/);
+  assert.match(dialog, /project-create-dialog-content/);
+  assert.match(dialog, /project-create-dialog-section/);
   assert.match(dialog, /project-create-dialog-field-label/);
   assert.match(dialog, /disabled=\{!name\.trim\(\) \|\| folders\.length === 0 \|\| busy\}/);
   assert.match(dialog, /querySelectorAll<HTMLElement>\(/);
@@ -55,6 +58,8 @@ test("folder picker is a renderer-only multi-directory selection", () => {
 test("create project dialog remains usable on narrow screens and reduced motion", () => {
   assert.match(styles, /@media \(max-width: 520px\)/);
   assert.match(styles, /align-items: flex-end/);
+  assert.match(styles, /min-height: 48px/);
+  assert.match(styles, /project-create-dialog-actions/);
   assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(styles, /overflow-y: auto/);
 });

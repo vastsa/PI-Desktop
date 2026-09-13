@@ -523,6 +523,33 @@ fn thinking_level_param(params: &Value) -> Result<Option<String>, JsonRpcError> 
     Ok(Some(level.to_string()))
 }
 
+/// Parse the optional parent session used for permission inheritance. The
+/// caller supplies an existing session id, never an arbitrary permission mode;
+/// the host resolves the persisted mode while holding its state lock.
+fn permission_parent_param(params: &Value) -> Result<Option<String>, JsonRpcError> {
+    let Some(value) = params.get("inheritPermissionFromSessionId") else {
+        return Ok(None);
+    };
+    if value.is_null() {
+        return Ok(None);
+    }
+    let Some(parent_id) = value.as_str() else {
+        return Err(rpc_err(
+            1002,
+            "inheritPermissionFromSessionId must be a string",
+            "INVALID_PARAMS",
+        ));
+    };
+    if parent_id.trim().is_empty() {
+        return Err(rpc_err(
+            1002,
+            "inheritPermissionFromSessionId must not be empty",
+            "INVALID_PARAMS",
+        ));
+    }
+    Ok(Some(parent_id.to_string()))
+}
+
 const DEFAULT_LARGE_PASTE_THRESHOLD: i64 = 600;
 const MIN_LARGE_PASTE_THRESHOLD: i64 = 1;
 const MAX_LARGE_PASTE_THRESHOLD: i64 = 1_000_000;
@@ -1497,30 +1524,43 @@ async fn handle_request(
         }
         "session.create" => {
             let thinking_level = thinking_level_param(&params)?;
+            let permission_parent = permission_parent_param(&params)?;
             let st = state.lock().await;
-            let session = sessions::create_session_with_thinking(
+            let permission_mode = if let Some(parent_id) = permission_parent {
+                Some(
+                    sessions::session_permission_mode(&st.db, &parent_id)
+                        .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
+                        .ok_or_else(|| rpc_err(1007, "parent session not found", "NOT_FOUND"))?,
+                )
+            } else {
+                None
+            };
+            let session = sessions::create_session_with_options(
                 &st.db,
-                params
-                    .get("title")
-                    .and_then(|v| v.as_str())
-                    .map(str::to_string),
-                params
-                    .get("mode")
-                    .and_then(|v| v.as_str())
-                    .map(str::to_string),
-                params
-                    .get("providerId")
-                    .and_then(|v| v.as_str())
-                    .map(str::to_string),
-                params
-                    .get("modelId")
-                    .and_then(|v| v.as_str())
-                    .map(str::to_string),
-                params
-                    .get("projectPath")
-                    .and_then(|v| v.as_str())
-                    .map(str::to_string),
-                thinking_level,
+                sessions::SessionCreateOptions {
+                    title: params
+                        .get("title")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string),
+                    mode: params
+                        .get("mode")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string),
+                    provider_id: params
+                        .get("providerId")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string),
+                    model_id: params
+                        .get("modelId")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string),
+                    project_path: params
+                        .get("projectPath")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string),
+                    thinking_level,
+                    permission_mode,
+                },
             )
             .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             Ok(json!({ "session": session }))
@@ -4086,6 +4126,79 @@ mod tests {
             "## Deployment\n\nUse the staging database."
         );
         assert_eq!(structured["memory"]["entries"][0]["id"], "deployment");
+    }
+
+    #[tokio::test]
+    async fn session_create_rpc_inherits_optional_permission_mode() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let parent_id = sessions::create_session_with_options(
+            &app_state.db,
+            sessions::SessionCreateOptions {
+                permission_mode: Some("ask".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .id;
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        let explicit = handle_request(
+            state.clone(),
+            "session.create",
+            json!({
+                "mode": "agent",
+                "thinkingLevel": "high",
+                "inheritPermissionFromSessionId": parent_id
+            }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(explicit["session"]["thinkingLevel"], "high");
+        assert_eq!(explicit["session"]["permissionMode"], "ask");
+
+        let legacy = handle_request(
+            state.clone(),
+            "session.create",
+            json!({ "mode": "agent" }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(legacy["session"]["permissionMode"], "inherit");
+
+        let arbitrary_permission = handle_request(
+            state.clone(),
+            "session.create",
+            json!({ "mode": "agent", "permissionMode": "auto" }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(arbitrary_permission["session"]["permissionMode"], "inherit");
+
+        let invalid = handle_request(
+            state.clone(),
+            "session.create",
+            json!({ "inheritPermissionFromSessionId": true }),
+            tx.clone(),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(invalid.data.unwrap()["errorCode"], "INVALID_PARAMS");
+
+        let malformed = handle_request(
+            state,
+            "session.create",
+            json!({ "inheritPermissionFromSessionId": "" }),
+            tx,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(malformed.data.unwrap()["errorCode"], "INVALID_PARAMS");
     }
 
     #[tokio::test]

@@ -15,6 +15,13 @@ export type NotificationIpcDependencies = {
   sendToRenderer: (channel: string, payload: unknown) => void;
 };
 
+// Windows delivers Action Center activation through the native notification
+// presenter, which can only find notifications that are still strongly
+// referenced by the main process. Keep task notifications alive until their
+// native lifecycle ends instead of letting the IPC handler's local reference
+// disappear as soon as it returns.
+const taskNativeNotifications = new Set<SystemNotification>();
+
 /** Register durable notification queries and native notification actions. */
 export function registerNotificationIpc({
   registrar,
@@ -103,15 +110,27 @@ export function registerNotificationIpc({
       }
 
       const notification = new SystemNotification({ title, body });
-      notification.on("click", () => {
+      taskNativeNotifications.add(notification);
+      const releaseNotification = () => taskNativeNotifications.delete(notification);
+      notification.once("close", releaseNotification);
+      notification.once("failed", releaseNotification);
+      notification.once("click", () => {
         const window = getMainWindow();
-        if (!window || window.isDestroyed()) return;
-        if (window.isMinimized()) window.restore();
-        window.show();
-        window.focus();
-        sendToRenderer(IPC.event.notificationActivated, { id, sessionId });
+        try {
+          if (!window || window.isDestroyed()) return;
+          if (window.isMinimized()) window.restore();
+          window.show();
+          window.focus();
+          sendToRenderer(IPC.event.notificationActivated, { id, sessionId });
+        } finally {
+          releaseNotification();
+        }
       });
-      notification.show();
+      try {
+        notification.show();
+      } catch {
+        releaseNotification();
+      }
       return { shown: true };
     },
   );

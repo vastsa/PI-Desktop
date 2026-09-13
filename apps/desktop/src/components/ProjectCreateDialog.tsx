@@ -142,14 +142,21 @@ export function ProjectCreateDialog() {
         role="dialog"
         aria-modal="true"
         aria-labelledby="project-create-dialog-title"
+        aria-describedby="project-create-memory-hint"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="project-create-dialog-head">
           <div className="project-create-dialog-heading">
-            <span className="project-create-dialog-kicker">{t("project.title")}</span>
-            <h2 id="project-create-dialog-title" className="project-create-dialog-title">
-              {t("project.createTitle")}
-            </h2>
+            <div className="project-create-dialog-heading-copy">
+              <span className="project-create-dialog-kicker">{t("project.title")}</span>
+              <h2 id="project-create-dialog-title" className="project-create-dialog-title">
+                {t("project.createTitle")}
+              </h2>
+              <div id="project-create-memory-hint" className="project-create-dialog-memory-hint">
+                <IconSparkles size={14} aria-hidden />
+                <span>{t("project.createMemoryHint")}</span>
+              </div>
+            </div>
           </div>
           <TooltipButton
             type="button"
@@ -170,92 +177,116 @@ export function ProjectCreateDialog() {
             void submit();
           }}
         >
-          <div className="project-create-dialog-field-head">
-            <label className="project-create-dialog-field-label" htmlFor="project-create-name">
-              {t("project.createNameLabel")}
-            </label>
-            <span className="project-create-dialog-name-count" aria-live="polite">
-              {name.length}/{MAX_PROJECT_NAME_CHARS}
-            </span>
-          </div>
-          <div className="project-create-dialog-name-field">
-            <span className="project-create-dialog-name-icon" aria-hidden>
-              <IconFolder size={18} />
-            </span>
-            <input
-              ref={inputRef}
-              id="project-create-name"
-              value={name}
-              maxLength={MAX_PROJECT_NAME_CHARS}
-              onChange={(event) => setName(event.target.value)}
-              placeholder={t("project.createNamePlaceholder")}
-              aria-label={t("project.createNameLabel")}
-              disabled={busy}
-              spellCheck={false}
-              autoCorrect="off"
-              autoCapitalize="off"
-            />
-          </div>
-
-          <div id="project-create-memory-hint" className="project-create-dialog-memory-hint">
-            <span className="project-create-dialog-memory-icon" aria-hidden>
-              <IconSparkles size={16} />
-            </span>
-            <span>{t("project.createMemoryHint")}</span>
-          </div>
-
-          <div className="project-create-dialog-section-head">
-            <span className="project-create-dialog-section-title">
-              {t("project.createFoldersLabel")}
-              {folders.length > 0 ? (
-                <span className="project-create-dialog-count">{folders.length}</span>
-              ) : null}
-            </span>
-            <span className="project-create-dialog-location">
-              <IconMonitor size={16} aria-hidden />
-              {t("project.createComputer")}
-            </span>
-          </div>
-
-          <div className="project-create-dialog-folder-list" role="list">
-            {folders.map((path, index) => (
-              <div className="project-create-folder-row" key={path} role="listitem">
-                <span className="project-create-folder-icon" aria-hidden>
+          <div className="project-create-dialog-content">
+            <section
+              className="project-create-dialog-section project-create-dialog-identity"
+              aria-labelledby="project-create-name-heading"
+            >
+              <div className="project-create-dialog-section-head project-create-dialog-name-head">
+                <label
+                  id="project-create-name-heading"
+                  className="project-create-dialog-section-title project-create-dialog-field-label"
+                  htmlFor="project-create-name"
+                >
+                  {t("project.createNameLabel")}
+                </label>
+                <span className="project-create-dialog-name-count" aria-live="polite">
+                  {name.length}/{MAX_PROJECT_NAME_CHARS}
+                </span>
+              </div>
+              <div className="project-create-dialog-name-field">
+                <span className="project-create-dialog-name-icon" aria-hidden>
                   <IconFolder size={18} />
                 </span>
-                <span className="project-create-folder-copy" title={path}>
-                  <span className="project-create-folder-name">{folderName(path)}</span>
-                  <span className="project-create-folder-path">{folderParent(path)}</span>
-                </span>
-                {index === 0 ? (
-                  <span className="project-create-primary-tag">
-                    <IconStar size={12} fill="currentColor" aria-hidden />
-                    {t("project.createPrimary")}
-                  </span>
-                ) : null}
-                <TooltipButton
-                  type="button"
-                  className="project-create-folder-remove"
-                  tooltip={t("project.createRemoveFolder")}
-                  ariaLabel={`${t("project.createRemoveFolder")}: ${folderName(path)}`}
+                <input
+                  ref={inputRef}
+                  id="project-create-name"
+                  value={name}
+                  maxLength={MAX_PROJECT_NAME_CHARS}
+                  onChange={(event) => setName(event.target.value)}
+                  placeholder={t("project.createNamePlaceholder")}
+                  aria-label={t("project.createNameLabel")}
                   disabled={busy}
-                  onClick={() => setFolders((current) => current.filter((item) => item !== path))}
-                >
-                  <IconX size={16} />
-                </TooltipButton>
+                  spellCheck={false}
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                />
               </div>
-            ))}
-            <button
-              type="button"
-              aria-label={t("project.createAddFolder")}
-              className="project-create-add-folder"
-              onClick={() => void addFolders()}
-              disabled={busy}
+            </section>
+
+            <section
+              className="project-create-dialog-section project-create-dialog-folders"
+              aria-labelledby="project-create-folders-heading"
             >
-              <IconNewProject size={18} aria-hidden />
-              <span>{t("project.createAddFolder")}</span>
-              <span className="project-create-add-folder-hint">{t("project.createAddFolderHint")}</span>
-            </button>
+              <div className="project-create-dialog-section-head">
+                <h3 id="project-create-folders-heading" className="project-create-dialog-section-title">
+                  {t("project.createFoldersLabel")}
+                  {folders.length > 0 ? (
+                    <span className="project-create-dialog-count">{folders.length}</span>
+                  ) : null}
+                </h3>
+                <span className="project-create-dialog-location">
+                  <IconMonitor size={15} aria-hidden />
+                  {t("project.createComputer")}
+                </span>
+              </div>
+
+              {folders.length > 0 ? (
+                <div className="project-create-dialog-folder-list" role="list">
+                  {folders.map((path, index) => (
+                    <div
+                      className={`project-create-folder-row${index === 0 ? " is-primary" : ""}`}
+                      key={path}
+                      role="listitem"
+                    >
+                      <span className="project-create-folder-icon" aria-hidden>
+                        <IconFolder size={17} />
+                      </span>
+                      <span className="project-create-folder-copy" title={path}>
+                        <span className="project-create-folder-name">{folderName(path)}</span>
+                        <span className="project-create-folder-path">{folderParent(path)}</span>
+                      </span>
+                      {index === 0 ? (
+                        <span className="project-create-primary-tag">
+                          <IconStar size={11} fill="currentColor" aria-hidden />
+                          {t("project.createPrimary")}
+                        </span>
+                      ) : null}
+                      <TooltipButton
+                        type="button"
+                        className="project-create-folder-remove"
+                        tooltip={t("project.createRemoveFolder")}
+                        ariaLabel={`${t("project.createRemoveFolder")}: ${folderName(path)}`}
+                        disabled={busy}
+                        onClick={() => setFolders((current) => current.filter((item) => item !== path))}
+                      >
+                        <IconX size={15} />
+                      </TooltipButton>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              <button
+                type="button"
+                aria-label={t("project.createAddFolder")}
+                className={`project-create-add-folder${folders.length === 0 ? " is-empty" : ""}`}
+                onClick={() => void addFolders()}
+                disabled={busy}
+              >
+                <span className="project-create-add-folder-icon" aria-hidden>
+                  <IconNewProject size={18} />
+                </span>
+                <span className="project-create-add-folder-copy">
+                  <span className="project-create-add-folder-title">
+                    {t("project.createAddFolder")}
+                  </span>
+                  <span className="project-create-add-folder-hint">
+                    {t("project.createAddFolderHint")}
+                  </span>
+                </span>
+              </button>
+            </section>
           </div>
 
           <div className="project-create-dialog-actions">

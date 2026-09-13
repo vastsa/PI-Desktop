@@ -518,6 +518,7 @@ const {
 
 const desktopServices = createDesktopServices({
   getLogger: () => logger,
+  getMainWindow: () => mainWindow,
 });
 const {
   clipboardHistory,

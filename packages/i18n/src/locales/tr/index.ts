@@ -361,6 +361,7 @@ export const tr = {
     toolChipReplacements_other: "{{count}} değişiklik",
     toolChipTruncated: "kesildi",
     toolChipScratch: "geçici",
+    toolChipLines: "{{range}}",
     toolChipSize: "{{size}}",
     toolRead: "Okundu",
     toolListed: "Listelendi",

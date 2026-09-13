@@ -939,21 +939,26 @@ Work-panel and application-window resizing are implemented in MVP:
 
 - The 10px inner left-edge separator anchors to the press position and
   starting panel width, then follows pointer delta without jumping. Moving it
-  left grows the panel until MainChat's 515px minimum; moving it right gives
-  space back to MainChat.
-- The inner divider's target clamps to the renderer-owned panel range of
-  `244px–720px`; pointer movement is frame-coalesced and release commits the
-  preferred width. Escape, pointer cancellation, and lost capture restore the
-  press-time panel width.
+  left grows the panel until the shared budget is exhausted; when MainChat
+  reaches its 360px minimum the expanded sidebar collapses immediately. Moving
+  it right gives space back to MainChat.
+- The inner divider's target clamps to the shared three-column budget
+  (`client width - 360px - expanded sidebar`, with no fixed pixel cap); pointer movement is
+  frame-coalesced and release commits the preferred width. Escape, pointer
+  cancellation, and lost capture restore the press-time panel width.
 - Opening and closing animate the dock's `width` and `flex-basis` together with
   the bounded opacity/transform feedback, so MainChat reflows continuously
-  inside the existing client area until its 515px minimum instead of changing
-  width before the first motion frame. The composer toolbar remains a single
-  unsqueezed row throughout.
-- No panel action requests a positive native reservation. The preferred panel
-  width is renderer-local, and native window edges resize only the fixed app
-  window. Background-session artifacts never update the visible panel or window
-  geometry.
+  inside the existing client area without crossing its 360px minimum instead of
+  changing width before the first motion frame. While `sidebar-out` still
+  occupies flex space, the shared budget continues to count the sidebar.
+- Reopening a sidebar the layout collapsed spends work-panel width first: the
+  panel keeps its width while MainChat stays at or above 360px, and otherwise
+  the reopen targets 370px. Closing the panel restores only a sidebar the
+  layout collapsed; a manual collapse stays collapsed.
+- No panel action requests a positive native reservation: the preferred panel
+  width is renderer-local, the native seam stays at zero, and native window
+  edges resize only the fixed app window. Background-session artifacts never
+  update the visible panel or window geometry.
 - The native Browser view still follows the renderer-measured panel rectangle;
   it is detached before collapse motion because it cannot participate in
   renderer CSS animation. Native bounds recovery and persistence continue to
@@ -1344,6 +1349,7 @@ This does not prevent state changes — it makes them instant.
     navigation, composer, completed rows, and work-panel content do not rerender
     solely because the current assistant message appended content
 21. The work panel opens and collapses inside the fixed client area; the inner
-    divider changes the renderer-owned panel target within 244px–720px while
-    MainChat keeps its 515px minimum, and divider cancellation restores the
-    prior panel width (ADR 0151 / ADR 0226)
+    divider follows the shared budget while MainChat keeps its 360px minimum,
+    the expanded sidebar yields at the threshold and returns when the panel
+    closes, and divider cancellation restores the prior panel width
+    (ADR 0033 / ADR 0151 / ADR 0238)

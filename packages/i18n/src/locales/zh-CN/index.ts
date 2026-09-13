@@ -354,6 +354,7 @@ export const zhCN = {
     toolChipReplacements_other: "替换 {{count}} 处",
     toolChipTruncated: "已截断",
     toolChipScratch: "临时目录",
+    toolChipLines: "{{range}}",
     toolChipSize: "{{size}}",
     toolRead: "读取",
     toolListed: "列出",

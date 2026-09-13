@@ -2885,7 +2885,7 @@ needed.
   launcher row replaces that New tab with the destination or activates its
   existing singleton. Closing the last tab leaves the panel open on New. Collapse
   retains runtime tabs but hides the panel until another artifact reopens it.
-  Width clamps to the fixed `244px–720px` range and
+  Width follows the shared three-column budget with no fixed pixel cap and
   previews its current/minimum/maximum values through the panel separator. The
   inner divider exposes the panel width to assistive technology and supports
   the documented keyboard steps. Pointer-down preserves the starting width,
@@ -3322,7 +3322,8 @@ needed.
   Windows run uses the NSIS-installed app or the standard development command.
 - **Steps**: 1) Keep the app focused on A and complete a turn in A. 2) While
   still focused on A, complete a turn in B. 3) Unfocus the app while A remains
-  current and complete another turn in A. 4) Click A's native notification. 5)
+  current and complete another turn in A. 4) Let A's notification move into
+  the OS notification center, then click it. 5)
   Minimize the app, fail another turn, and click its native notification. 6)
   Unfocus the app and abort a turn. 7) Repeat with native delivery suppressed
   by the OS. 8) On Windows, inspect the native notification attribution,
@@ -3332,7 +3333,8 @@ needed.
   Focused-background B creates an inbox row without a native banner. Unfocused
   current A and the minimized failure each create one durable row and one
   localized native notification. Clicking restores, shows, and focuses the
-  main window before activating the matching session; no event opens the wrong
+  main window before activating the matching session, including after the
+  notification has moved to Windows Action Center; no event opens the wrong
   currently selected session. Abort shows neither surface. OS suppression does
   not lose the durable row or surface a misleading app error. Every inspected
   Windows system surface identifies `PI-Desktop`; no stock Electron application
@@ -3342,7 +3344,8 @@ needed.
   `08-meta/decisions-log.md` (D117/D141)
 - **Acceptance**: C (turn completion), Quality
 - **Milestone**: M5
-- **Status**: Draft
+- **Status**: Source-contract covered (`notification-contract.test.mjs`); packaged
+  Windows Action Center activation remains runner validation; full UI scenario Draft
 
 #### E2E-066: Provider model catalog survives restart and offline refresh
 
@@ -5387,6 +5390,10 @@ needed.
     a path list; Grep shows hits grouped per file with line numbers in `content`
     mode, a path list in `filesWithMatches`, and per-file totals in `count`; the
     failing command carries an `exit 1` chip.
+  - A Read row's collapsed chip shows the returned window as
+    `{lineCount},L{offset+1}-L{offset+lineCount}` (for example,
+    `50,L16-L65`), never `fileBytes`; a Read result without valid window
+    metadata has no size chip. Write continues to show its byte-size chip.
   - Each Glob/Grep path-list row is start-aligned with natural character
     spacing; glyphs are not distributed across the block width.
   - The workspace edit shows no inline diff (its ReviewChangeCard owns it); the
@@ -6197,8 +6204,10 @@ needed.
   returns a best-effort `granted`, `denied`, or `unsupported` result; a granted
   plugin receives `{ shown: true, permission: "granted" }` for native delivery,
   while denied/unsupported delivery returns `shown: false` without crashing the
-  plugin. Missing `notify` fails with `PERMISSION_DENIED`. Native plugin
-  notifications do not add durable task inbox rows or activate a chat session.
+  plugin. Missing `notify` fails with `PERMISSION_DENIED`. Clicking a delivered
+  native plugin notification restores and focuses the main window, but native
+  plugin notifications do not add durable task inbox rows or activate a chat
+  session.
 - **Specs linked**: `07-plugins/01-plugin-system.md`,
   `07-plugins/03-plugin-api.md`, `07-plugins/13-plugin-permissions-matrix.md`,
   ADR 0074
@@ -6466,16 +6475,16 @@ needed.
 |---|---|
 | A — App startup | E2E-001, E2E-002, E2E-003, E2E-004, E2E-067, E2E-076, E2E-079, E2E-092, E2E-097, E2E-143, E2E-150, E2E-168, E2E-204 |
 | B — Model config | E2E-005, E2E-006, E2E-007, E2E-038, E2E-050, E2E-052, E2E-055, E2E-066, E2E-080, E2E-082, E2E-102c, E2E-102d, E2E-102e, E2E-151, E2E-154, E2E-163, E2E-166, E2E-172, E2E-174, E2E-197, E2E-005G, E2E-005J, E2E-199, E2E-201, E2E-202, E2E-203, E2E-205, E2E-206, E2E-209 |
-| C — Conversation & stream | E2E-008, E2E-008d, E2E-008a, E2E-009, E2E-010, E2E-011, E2E-011a, E2E-011b, E2E-011d, E2E-011e, E2E-011g, E2E-031, E2E-040, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-052, E2E-053, E2E-054, E2E-055, E2E-059, E2E-059a, E2E-060c, E2E-060d, E2E-061, E2E-061a, E2E-062, E2E-064, E2E-065, E2E-068, E2E-071, E2E-073, E2E-074, E2E-075, E2E-081, E2E-083, E2E-084, E2E-086, E2E-087, E2E-088, E2E-088b, E2E-089, E2E-090, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102g, E2E-106, E2E-109, E2E-111, E2E-114, E2E-116, E2E-117, E2E-118, E2E-119, E2E-120, E2E-121, E2E-218, E2E-219, E2E-AGENTS-001, E2E-142, E2E-144, E2E-145, E2E-146, E2E-146a, E2E-147, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159, E2E-161, E2E-162, E2E-166, E2E-172, E2E-173, E2E-174, E2E-177, E2E-178, E2E-179, E2E-180, E2E-182, E2E-183, E2E-187, E2E-198, E2E-199, E2E-202, E2E-203, E2E-207, E2E-208, E2E-250, E2E-102i |
+| C — Conversation & stream | E2E-008, E2E-008d, E2E-008a, E2E-009, E2E-010, E2E-011, E2E-011a, E2E-011b, E2E-011d, E2E-011e, E2E-011g, E2E-031, E2E-040, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-052, E2E-053, E2E-054, E2E-055, E2E-059, E2E-059a, E2E-060c, E2E-060d, E2E-061, E2E-061a, E2E-062, E2E-064, E2E-065, E2E-068, E2E-071, E2E-073, E2E-074, E2E-075, E2E-081, E2E-083, E2E-084, E2E-086, E2E-087, E2E-088, E2E-088b, E2E-089, E2E-090, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102g, E2E-106, E2E-109, E2E-111, E2E-114, E2E-116, E2E-117, E2E-118, E2E-119, E2E-120, E2E-121, E2E-218, E2E-219, E2E-AGENTS-001, E2E-142, E2E-144, E2E-145, E2E-146, E2E-146a, E2E-147, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159, E2E-161, E2E-162, E2E-166, E2E-172, E2E-173, E2E-174, E2E-177, E2E-178, E2E-179, E2E-180, E2E-182, E2E-183, E2E-187, E2E-198, E2E-199, E2E-202, E2E-203, E2E-207, E2E-208, E2E-250, E2E-102i, E2E-PLUGIN-session-orchestrator-real-workers, E2E-SUBAGENT-settlement-updates-before-parent-poll |
 | D — Workspace | E2E-012, E2E-013, E2E-022B, E2E-024I, E2E-047, E2E-049, E2E-057, E2E-058, E2E-060, E2E-068, E2E-075, E2E-078, E2E-153, E2E-158, E2E-182, E2E-187, E2E-252 |
 | D — Workspace (project ordering) | E2E-253 |
 | E — Tools & permissions | E2E-008a, E2E-014, E2E-015, E2E-016, E2E-017, E2E-018, E2E-019, E2E-024I, E2E-024K, E2E-040, E2E-049, E2E-074, E2E-093, E2E-097, E2E-099, E2E-100, E2E-101, E2E-102, E2E-102d, E2E-102e, E2E-102g, E2E-103, E2E-105, E2E-106, E2E-107, E2E-111, E2E-112, E2E-113, E2E-114, E2E-115, E2E-116, E2E-119, E2E-121, E2E-122, E2E-142, E2E-145, E2E-147, E2E-155, E2E-158, E2E-166, E2E-181 |
-| F — Persistence | E2E-020, E2E-021, E2E-021a, E2E-036, E2E-037, E2E-038, E2E-040, E2E-042, E2E-047, E2E-048, E2E-051, E2E-054, E2E-056, E2E-061, E2E-062, E2E-064, E2E-066, E2E-068, E2E-071, E2E-072, E2E-073, E2E-082, E2E-084, E2E-096, E2E-098, E2E-102, E2E-102b, E2E-102c, E2E-102d, E2E-102g, E2E-102i, E2E-103, E2E-AGENTS-001, E2E-061a, E2E-073a, E2E-104, E2E-106, E2E-107, E2E-108, E2E-109, E2E-110, E2E-112, E2E-118, E2E-119, E2E-120, E2E-121, E2E-123, E2E-142, E2E-146, E2E-146a, E2E-148, E2E-151, E2E-158, E2E-160, E2E-168, E2E-171, E2E-177, E2E-178, E2E-183, E2E-186, E2E-005J |
+| F — Persistence | E2E-020, E2E-021, E2E-021a, E2E-036, E2E-037, E2E-038, E2E-040, E2E-042, E2E-047, E2E-048, E2E-051, E2E-054, E2E-056, E2E-061, E2E-062, E2E-064, E2E-066, E2E-068, E2E-071, E2E-072, E2E-073, E2E-082, E2E-084, E2E-096, E2E-098, E2E-102, E2E-102b, E2E-102c, E2E-102d, E2E-102g, E2E-102i, E2E-103, E2E-AGENTS-001, E2E-061a, E2E-073a, E2E-104, E2E-106, E2E-107, E2E-108, E2E-109, E2E-110, E2E-112, E2E-118, E2E-119, E2E-120, E2E-121, E2E-123, E2E-142, E2E-146, E2E-146a, E2E-148, E2E-151, E2E-158, E2E-160, E2E-168, E2E-171, E2E-177, E2E-178, E2E-183, E2E-186, E2E-005J, E2E-PLUGIN-session-orchestrator-real-workers |
 | F — Persistence (project ordering) | E2E-251 |
 | G — Plugins | E2E-022, E2E-022A, E2E-022B, E2E-022C, E2E-023, E2E-024, E2E-024B, E2E-024C, E2E-024D, E2E-024E, E2E-024W, E2E-024F, E2E-024G, E2E-024H, E2E-024I, E2E-024J, E2E-024K, E2E-024L, E2E-024M, E2E-024N, E2E-024O, E2E-024P, E2E-025, E2E-026, E2E-105, E2E-117, E2E-120, E2E-122, E2E-123, E2E-024Q, E2E-148, E2E-152, E2E-153 |
 | H — Diagnostics | E2E-027, E2E-031, E2E-034, E2E-042, E2E-096, E2E-098, E2E-104, E2E-107, E2E-108, E2E-109, E2E-110, E2E-113, E2E-115, E2E-116, E2E-118, E2E-121, E2E-146, E2E-146a, E2E-155, E2E-159, E2E-176, E2E-194, E2E-195 |
 | Security | E2E-028, E2E-029, E2E-030, E2E-024J, E2E-024K, E2E-024M, E2E-049, E2E-068, E2E-086, E2E-102c, E2E-102d, E2E-102e, E2E-105, E2E-106, E2E-107, E2E-108, E2E-109, E2E-110, E2E-112, E2E-113, E2E-115, E2E-116, E2E-117, E2E-119, E2E-121, E2E-122, E2E-123, E2E-142, E2E-148, E2E-151, E2E-153, E2E-158, E2E-187, E2E-196c, E2E-196b, E2E-196 |
-| Quality | E2E-032, E2E-033, E2E-039, E2E-043, E2E-044, E2E-045, E2E-046, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-050, E2E-053, E2E-055, E2E-056, E2E-057, E2E-058, E2E-059, E2E-060, E2E-061, E2E-062, E2E-063, E2E-064, E2E-065, E2E-066, E2E-067, E2E-068, E2E-069, E2E-070, E2E-071, E2E-072, E2E-073, E2E-074, E2E-075, E2E-076, E2E-077, E2E-078, E2E-079, E2E-080, E2E-081, E2E-082, E2E-083, E2E-084, E2E-085, E2E-086, E2E-092, E2E-093, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-100, E2E-101, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102e, E2E-103, E2E-AGENTS-001, E2E-021a, E2E-024N, E2E-059a, E2E-060b, E2E-060c, E2E-061a, E2E-073a, E2E-111, E2E-114, E2E-117, E2E-118, E2E-119, E2E-120, E2E-122, E2E-123, E2E-142, E2E-143, E2E-144, E2E-145, E2E-146, E2E-147, E2E-148, E2E-150, E2E-151, E2E-153, E2E-155, E2E-158, E2E-159, E2E-160, E2E-161, E2E-162, E2E-163, E2E-168, E2E-172, E2E-173, E2E-174, E2E-011g, E2E-176, E2E-177, E2E-178, E2E-179, E2E-180, E2E-181, E2E-182, E2E-183, E2E-186, E2E-187, E2E-194, E2E-195, E2E-196a, E2E-196b, E2E-196c, E2E-198, E2E-199, E2E-200, E2E-196, E2E-201, E2E-204, E2E-202, E2E-203, E2E-205, E2E-206, E2E-207, E2E-208, E2E-209, E2E-210, E2E-218, E2E-219, E2E-250, E2E-252, E2E-102i |
+| Quality | E2E-032, E2E-033, E2E-039, E2E-043, E2E-044, E2E-045, E2E-046, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-050, E2E-053, E2E-055, E2E-056, E2E-057, E2E-058, E2E-059, E2E-060, E2E-061, E2E-062, E2E-063, E2E-064, E2E-065, E2E-066, E2E-067, E2E-068, E2E-069, E2E-070, E2E-071, E2E-072, E2E-073, E2E-074, E2E-075, E2E-076, E2E-077, E2E-078, E2E-079, E2E-080, E2E-081, E2E-082, E2E-083, E2E-084, E2E-085, E2E-086, E2E-092, E2E-093, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-100, E2E-101, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102e, E2E-103, E2E-AGENTS-001, E2E-021a, E2E-024N, E2E-059a, E2E-060b, E2E-060c, E2E-061a, E2E-073a, E2E-111, E2E-114, E2E-117, E2E-118, E2E-119, E2E-120, E2E-122, E2E-123, E2E-142, E2E-143, E2E-144, E2E-145, E2E-146, E2E-147, E2E-148, E2E-150, E2E-151, E2E-153, E2E-155, E2E-158, E2E-159, E2E-160, E2E-161, E2E-162, E2E-163, E2E-168, E2E-172, E2E-173, E2E-174, E2E-011g, E2E-176, E2E-177, E2E-178, E2E-179, E2E-180, E2E-181, E2E-182, E2E-183, E2E-186, E2E-187, E2E-194, E2E-195, E2E-196a, E2E-196b, E2E-196c, E2E-198, E2E-199, E2E-200, E2E-196, E2E-201, E2E-204, E2E-202, E2E-203, E2E-205, E2E-206, E2E-207, E2E-208, E2E-209, E2E-210, E2E-218, E2E-219, E2E-250, E2E-252, E2E-102i, E2E-SUBAGENT-settlement-updates-before-parent-poll |
 | Quality (project ordering) | E2E-253 |
 | C — Conversation & stream (IME slash alias) | E2E-255 |
 | E — Tools & permissions (Skill residency) | E2E-254 |
@@ -6484,6 +6493,9 @@ needed.
 | F — Persistence (import visibility) | E2E-257 |
 | G — Plugins (import visibility) | E2E-257 |
 | Quality (import visibility) | E2E-257 |
+| G — Plugins (Session Orchestrator) | E2E-PLUGIN-session-orchestrator-real-workers |
+| Security (Session Orchestrator) | E2E-PLUGIN-session-orchestrator-real-workers |
+| Quality (Session Orchestrator) | E2E-PLUGIN-session-orchestrator-real-workers |
 
 | Milestone | Scenarios |
 |---|---|
@@ -6496,7 +6508,8 @@ needed.
 | M2 (IME slash alias) | E2E-255 |
 | M5 (Skill residency) | E2E-254 |
 | M6 | E2E-104, E2E-105, E2E-106, E2E-107, E2E-108, E2E-109, E2E-110, E2E-111, E2E-112, E2E-113, E2E-114, E2E-115, E2E-116, E2E-117, E2E-118, E2E-119, E2E-120, E2E-103, E2E-172 |
-| M6+ | E2E-121, E2E-122, E2E-148, E2E-150, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159, E2E-160, E2E-161, E2E-162, E2E-163, E2E-166, E2E-168, E2E-173, E2E-174, E2E-176, E2E-179, E2E-196a, E2E-196b, E2E-196c, E2E-198, E2E-199, E2E-200, E2E-202, E2E-203, E2E-205, E2E-209, E2E-210, E2E-212, E2E-213, E2E-214, E2E-215, E2E-216, E2E-217, E2E-218, E2E-219, E2E-257 |
+| M6+ | E2E-121, E2E-122, E2E-148, E2E-150, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159, E2E-160, E2E-161, E2E-162, E2E-163, E2E-166, E2E-168, E2E-173, E2E-174, E2E-176, E2E-179, E2E-196a, E2E-196b, E2E-196c, E2E-198, E2E-199, E2E-200, E2E-202, E2E-203, E2E-205, E2E-209, E2E-210, E2E-212, E2E-213, E2E-214, E2E-215, E2E-216, E2E-217, E2E-218, E2E-219, E2E-257, E2E-SUBAGENT-settlement-updates-before-parent-poll |
+| M6+ (Session Orchestrator) | E2E-PLUGIN-session-orchestrator-real-workers |
 | Post-MVP | E2E-022A, E2E-022B, E2E-022C, E2E-024I, E2E-024J, E2E-024K, E2E-024L, E2E-024M (plugin roadmap R2/R3/R6) |
 | Post-baseline local automation | E2E-220 |
 | Post-MVP remote control | E2E-221, E2E-222, E2E-223, E2E-224, E2E-225, E2E-226, E2E-227, E2E-228, E2E-229, E2E-230, E2E-231, E2E-232 |
@@ -8165,8 +8178,30 @@ This test plan spec is accepted when:
 - **Status**: Documented; desktop journey pending. The failure card's data
   source is unit-tested in `subagent-topology.test.mjs`: a settled delegation's
   `error: { code, message }` read from `TaskWait` `delegations[]` and `TaskStop`
-  `stopped[]`, last-write-wins across rows, entries without an error, and the
-  `Task` row that must never carry one.
+  `stopped[]`, lifecycle row ordering, entries without an error, and the
+  terminal Task snapshot that carries a failure before parent polling.
+
+#### E2E-SUBAGENT-settlement-updates-before-parent-poll
+
+- **Preconditions**: An Agent session with two parallel delegates; one can
+  finish while the other continues and the parent does not poll lifecycle tools.
+- **Steps**: 1) Start both delegates and open the first delegate's detail dock.
+  2) Optionally let TaskList report both as running. 3) Complete only the first
+  delegate while the parent turn remains live. 4) Switch sessions and return,
+  then reload history after the turn finishes. 5) Repeat with failed and stopped
+  delegates, and with a delegate finishing before its Task result arrives.
+- **Expected**: The settled node stops spinning immediately, its status is
+  completed (green) or the actual failure/stop outcome, and its elapsed time
+  stops increasing. The sibling remains running; the aggregate reads one of
+  two settled. The open dock updates with the same status and failure details.
+  A stale running TaskList snapshot cannot undo settlement. Reload preserves
+  the actual terminal outcome and original Task identity, arguments, and usage.
+- **Specs linked**: `03-runtime/02-agent-runtime.md` §Subagents,
+  `04-ux/08-component-spec.md` delegation topology
+- **Acceptance criterion**: C, Quality
+- **Milestone**: M6+
+- **Status**: Runtime event-order and renderer projection regressions automated;
+  desktop journey documented. Required suites: `test:e2e`, `test:e2e:subagents`.
 
 #### E2E-161: A delegation lifecycle row reads as a subagent row
 
@@ -8402,7 +8437,7 @@ This test plan spec is accepted when:
   3. With the work panel open, drag its inner divider slowly in both directions
      and confirm the panel width changes inside the existing window while the
      native bounds stay fixed. Repeat below the panel minimum and above its
-     maximum, then verify the target clamps to `244..720px`.
+     maximum, then verify the target follows the live budget (`client width - 360px - expanded sidebar`) instead of a fixed cap.
   4. Close and relaunch the app after the resize settles.
 - **Expected**: Native edge and corner hit regions remain available in frameless
   chrome, the minimum size remains 1040×700, and the recovery watchdog does not
@@ -9619,6 +9654,38 @@ are withdrawn with ADR 0165.
   `apps/desktop/test/plugin-desktop-control.test.mjs`; the native dialog
   journey is documented and deferred by the no-local-E2E policy
 
+#### E2E-PLUGIN-session-orchestrator-real-workers: Session Orchestrator creates parallel durable workers
+
+- **Preconditions**: The marketplace `pi.session-orchestrator` plugin is installed and enabled;
+  the parent Agent session has a configured authenticated provider/model and a
+  project path. The parent is in Agent mode.
+- **Steps**: 1) Ask the parent to review Frontend, Electron, and Rust in
+  parallel. 2) Confirm that `SessionTask.spawn` returns three distinct worker
+  session ids and that each worker is visible in the normal session list. 3)
+  Confirm all three workers receive prompts without using `session/fork` and
+  can run concurrently. 4) Call `SessionTask.wait`, then `result` for each
+  worker. 5) Open one worker from the Agents panel, send it a follow-up, and
+  stop another worker. 6) Restart the plugin and confirm the relationship list
+  and durable worker sessions remain available.
+- **Expected**: Each worker is a real durable session with the parent's
+  project/model/thinking/permission ceiling and an independent empty
+  transcript at creation. The parent receives only bounded final reports;
+  full worker transcripts remain inspectable in their own sessions. Send uses
+  the same worker id, cancel aborts without deletion, unrelated sessions and
+  the existing Task family are unchanged, and no localhost MCP call or token
+  access occurs. A worker cannot create another worker, and concurrency limits
+  fail closed.
+- **Specs linked**: `07-plugins/03-plugin-api.md`,
+  `07-plugins/04-plugin-security.md`, `07-plugins/11-plugin-storage-isolation.md`,
+  `03-runtime/01-ipc-protocol.md`, `03-runtime/06-host-rpc-protocol.md`,
+  ADR 0237
+- **Acceptance**: C (parallel durable sessions), D (plugin security), Quality
+- **Milestone**: M6+
+- **Status**: marketplace plugin tests cover the plugin runtime; host-core and
+  desktop unit tests cover the additive host primitives. The full live
+  provider/Electron journey remains runner validation under the no-local-E2E
+  policy
+
 #### E2E-237: Plugin fetch re-checks egress on every redirect
 
 - **Preconditions**: A dev plugin with `net.domains: ["allowed.test"]` and
@@ -10407,3 +10474,35 @@ sample extensions under `apps/desktop/test/fixtures/pi-extensions/`.
 - **Milestone**: M6+
 - **Status**: Unit-covered (`importer-codex-scan.test.mjs`); UI journey Draft
   (run only in a capable environment when this surface changes)
+
+#### E2E-LAYOUT-three-column-width-priority
+
+- **Preconditions**: A desktop session is open in a non-Settings route with a
+  persisted preferred work-panel width, on a window wide enough for the three
+  columns.
+- **Steps**:
+  1. Open the work panel and request the user's preferred width.
+  2. Drag the inner divider toward MainChat's left edge, including during
+     pointer preview, then release.
+  3. Manually reopen the sidebar after the layout collapsed it.
+  4. Close the work panel and confirm the sidebar returns; repeat after
+     manually collapsing the sidebar.
+  5. Repeat divider changes with `ArrowLeft`, `ArrowRight`, `Home`, and `End`.
+- **Expected**: The native window width never changes. MainChat never measures
+  below 360px — including mid-drag and while `sidebar-out` still occupies flex
+  space. The effective panel maximum is the client width minus the 360px
+  MainChat floor and the expanded sidebar width, with no fixed pixel cap. When that
+  budget is exhausted the expanded sidebar collapses immediately, and the panel
+  may keep growing afterwards. A manual reopen spends panel width first;
+  MainChat is preserved where possible and otherwise lands on the 370px reopen
+  target. Closing the panel restores only a sidebar the layout collapsed. The
+  separator's ARIA minimum/maximum follow the same dynamic budget.
+- **Specs linked**: `04-ux/01-ui-ia.md`, `04-ux/07-ui-design-system.md` §10,
+  `04-ux/08-component-spec.md` §1 and §5, `04-ux/09-interaction-patterns.md` §8,
+  ADR 0238
+- **Acceptance**: F (persistence), Quality
+- **Milestone**: Post-M6 desktop shell maintenance
+- **Status**: Automated (`scripts/e2e-three-column-layout.mjs` via
+  `pnpm test:e2e:layout` — fixed-window width invariance, the 360px floor across
+  a pointer drag, sidebar yield/restore, and the 370px reopen target); unit
+  coverage in `work-panel-resize.test.mjs`
