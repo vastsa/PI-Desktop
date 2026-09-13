@@ -699,6 +699,8 @@ export const zhCN = {
       pageInfo: "第 {{page}} / {{pages}} 页 · 共 {{total}} 个",
       pagePrev: "上一页",
       pageNext: "下一页",
+      pageLast: "末页",
+      pageJump: "跳转",
       empty: "没有匹配的 server",
     },
     mcpToolCount: "{{count}} 个工具",

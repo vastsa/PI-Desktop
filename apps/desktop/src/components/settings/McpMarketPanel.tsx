@@ -107,6 +107,7 @@ export function McpMarketPanel({
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<"all" | McpCatalogCategory>("all");
   const [page, setPage] = useState(1);
+  const [jump, setJump] = useState("");
   const [installFor, setInstallFor] = useState<McpCatalogEntry | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -331,6 +332,16 @@ export function McpMarketPanel({
 
   const removeSource = (id: string) =>
     setSources((current) => current.filter((source) => source.id !== id));
+
+  const doJump = () => {
+    const target = Number.parseInt(jump, 10);
+    if (Number.isNaN(target)) {
+      setJump("");
+      return;
+    }
+    setPage(Math.min(totalPages, Math.max(1, target)));
+    setJump("");
+  };
 
   const addSource = () => {
     const url = draftSource.url.trim();
@@ -610,6 +621,38 @@ export function McpMarketPanel({
           >
             <IconChevronLeft size={14} />
           </button>
+
+          {(() => {
+            const wanted = new Set<number>([1, 2, totalPages, totalPages - 1]);
+            for (let p = currentPage - 2; p <= currentPage + 2; p += 1) {
+              if (p >= 1 && p <= totalPages) wanted.add(p);
+            }
+            const ordered = [...wanted].sort((a, b) => a - b);
+            const items: Array<number | "…"> = [];
+            let previous = 0;
+            for (const p of ordered) {
+              if (p - previous > 1) items.push("…");
+              items.push(p);
+              previous = p;
+            }
+            return items.map((item, index) =>
+              item === "…" ? (
+                <span key={`gap-${index}`} className="mcpm-page-ellipsis">
+                  …
+                </span>
+              ) : (
+                <button
+                  key={item}
+                  type="button"
+                  className={cx("mcpm-page-btn", item === currentPage && "is-active")}
+                  onClick={() => setPage(item)}
+                >
+                  {item}
+                </button>
+              ),
+            );
+          })()}
+
           <span className="mcpm-page-info">
             {t("settings.mcpMarket.pageInfo", {
               page: currentPage,
@@ -617,6 +660,31 @@ export function McpMarketPanel({
               total: visible.length,
             })}
           </span>
+
+          <input
+            className="mcpm-page-jump field-input"
+            type="text"
+            inputMode="numeric"
+            value={jump}
+            placeholder={String(currentPage)}
+            aria-label={t("settings.mcpMarket.pageJump")}
+            onChange={(event) => setJump(event.target.value.replace(/\D/g, ""))}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") doJump();
+            }}
+          />
+          <button type="button" className="mcpm-page-btn" onClick={doJump}>
+            {t("settings.mcpMarket.pageJump")}
+          </button>
+          <button
+            type="button"
+            className="mcpm-page-btn"
+            disabled={currentPage >= totalPages}
+            onClick={() => setPage(totalPages)}
+          >
+            {t("settings.mcpMarket.pageLast")}
+          </button>
+
           <button
             type="button"
             className="mcpm-page-btn"

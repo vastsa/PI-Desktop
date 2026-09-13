@@ -692,6 +692,8 @@ export const es = {
       pageInfo: "Página {{page}} de {{pages}} · {{total}} servidores",
       pagePrev: "Anterior",
       pageNext: "Siguiente",
+      pageLast: "Última",
+      pageJump: "Ir",
       empty: "Ningún servidor coincide",
     },
     "mcpProjectSubtitle": "Activo sólo en {{project}}.",

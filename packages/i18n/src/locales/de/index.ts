@@ -692,6 +692,8 @@ export const de = {
       pageInfo: "Seite {{page}} von {{pages}} · {{total}} Server",
       pagePrev: "Zurück",
       pageNext: "Weiter",
+      pageLast: "Letzte",
+      pageJump: "Los",
       empty: "Keine Server gefunden",
     },
     "mcpProjectSubtitle": "Nur in {{project}} aktiv.",

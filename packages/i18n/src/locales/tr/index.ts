@@ -704,6 +704,8 @@ export const tr = {
       pageInfo: "Sayfa {{page}} / {{pages}} · {{total}} sunucu",
       pagePrev: "Önceki sayfa",
       pageNext: "Sonraki sayfa",
+      pageLast: "Son",
+      pageJump: "Git",
       empty: "Eşleşen sunucu yok",
     },
     mcpToolCount: "{{count}} araç",

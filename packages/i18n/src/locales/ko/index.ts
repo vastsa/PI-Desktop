@@ -704,6 +704,8 @@ export const ko = {
       pageInfo: "{{page}} / {{pages}} 페이지 · 총 {{total}}개",
       pagePrev: "이전 페이지",
       pageNext: "다음 페이지",
+      pageLast: "마지막",
+      pageJump: "이동",
       empty: "일치하는 서버 없음",
     },
     mcpToolCount: "도구 {{count}}개",

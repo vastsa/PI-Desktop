@@ -2638,3 +2638,27 @@
   min-width: 180px;
   text-align: center;
 }
+
+.mcpm-page-btn.is-active {
+  background: var(--ds-accent);
+  color: var(--ds-bg-primary);
+  border-color: transparent;
+}
+
+.mcpm-page-ellipsis {
+  color: var(--ds-text-muted);
+  padding: 0 2px;
+  user-select: none;
+}
+
+.mcpm-page-jump {
+  width: 64px;
+  height: 30px;
+  padding: 0 8px;
+  text-align: center;
+  border-radius: var(--radius-full);
+}
+
+.mcpm-page-jump::placeholder {
+  color: var(--ds-text-muted);
+}
