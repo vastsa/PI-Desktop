@@ -537,7 +537,9 @@ activation-scope filtering (`CAPABILITY_INVALID` for an unknown scope).
   literal queries have a 500-character limit (`INVALID_ARGUMENT` above it).
   Each 30-session page includes `session`, `projectName`, `metadataMatch`, the
   full matching `messageCount`, and at most two `matches` containing
-  `messageId`, `role`, `createdAt`, and a match-centered `snippet`.
+  `messageId`, `role`, `createdAt`, and a `snippet` containing the matching
+  sentence or line. Long sentences are capped to a match-centered 180-character
+  window, extended when needed to preserve the complete literal query.
   `nextOffset: null` marks the last page. Sort by updated time descending and
   session ID ascending; exclude soft-deleted sessions. Empty queries return no
   hits because the renderer owns its recent-session presentation.

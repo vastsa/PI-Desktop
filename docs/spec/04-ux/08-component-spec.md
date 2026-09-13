@@ -1246,6 +1246,13 @@ storage but compose into one assistant turn until the next user message.
 - Group matches by session, show the complete matching-message count, and
   preview up to two snippets with localized sender labels, timestamps, and
   literal keyword highlighting. Metadata matches have a distinct badge.
+- Each body preview shows the sentence or line containing the first match,
+  using Chinese/English sentence punctuation and line breaks as boundaries.
+  Preserve the complete sentence when it fits 180 characters; longer sentences
+  use an ellipsized window that always includes the entire query. Render the
+  whole bounded preview with normal wrapping, including on narrow windows;
+  line clamping must never hide the matching text. Matches have a clearly
+  visible background highlight in both light and dark themes.
 - Keep archived sessions hidden in empty-query recents and discoverable through
   an explicit query. Exclude deleted sessions. Body-bearing untitled sessions
   remain discoverable through their content.

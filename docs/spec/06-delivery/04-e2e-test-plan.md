@@ -10562,6 +10562,9 @@ sample extensions under `apps/desktop/test/fixtures/pi-extensions/`.
   long session with a match beyond the latest 100 messages and a message whose
   matching text follows 100,000 characters. Include an actively streaming
   conversation and a fixture with repeated physical message lines.
+  Add short matching sentences surrounded by unrelated Chinese/English
+  sentences, multiple short lines before a match, a quoted sentence, a file
+  path containing periods, and a matching sentence longer than 180 characters.
 - **Steps**: Search body-only user and assistant terms, then rename the owning
   session and repeat. Check aggregated counts and sender/time/snippet labels.
   Load every result page. Open each of the two snippets in one session; inspect
@@ -10574,6 +10577,11 @@ sample extensions under `apps/desktop/test/fixtures/pi-extensions/`.
   Search a running conversation and return to its live stream, then switch
   conversations. Use arrows, Enter, Escape, Tab, and CJK IME confirmation, and
   exercise page/settings/plugin-command results.
+  Search a word in the middle sentence and verify that the
+  result shows that sentence with a background highlight on the literal match.
+  Repeat after multiple line breaks and at narrow window widths in light and
+  dark themes. Long-sentence truncation must keep the whole matching query
+  visible; short previews must omit unrelated adjacent sentences.
 - **Expected**: Every matching visible session is reachable; counts cover all
   125 messages, with no duplicate session rows. Archived visibility follows
   the existing explicit-search rule and deleted sessions never appear. Each

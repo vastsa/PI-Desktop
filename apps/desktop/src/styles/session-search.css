@@ -13,11 +13,7 @@
 }
 
 .search-message-snippet {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  white-space: pre-wrap;
+  white-space: normal;
   overflow-wrap: anywhere;
   text-align: left;
 }
@@ -93,5 +89,5 @@
 .search-context-text .search-hit,
 .search-message-snippet .search-hit {
   border-radius: var(--radius-sm);
-  background: color-mix(in oklab, var(--ds-accent) 12%, transparent);
+  background: color-mix(in oklab, var(--ds-accent) 28%, var(--ds-bg-primary));
 }

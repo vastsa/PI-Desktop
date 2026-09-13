@@ -31,6 +31,14 @@ and backslashes never become operators. Queries are trimmed and bounded to
 full matching-message counts, and at most two recent message excerpts. Offsets
 continue the current query; reopening refreshes results against current data.
 
+Body previews use the sentence or line containing the first match. Chinese and
+English sentence punctuation and line breaks bound the preview; periods inside
+paths or identifiers do not end a sentence. Sentences longer than 180 characters
+use a bounded match-centered excerpt that preserves the complete query. The
+renderer wraps the full returned preview without a line clamp and uses a
+visible background highlight, so preceding newlines or a narrow window cannot
+hide the matching text.
+
 Archive preferences stay renderer-owned: empty-query recents hide archived
 sessions, while explicit searches retain the existing archived-session discovery
 behavior. Tools, thinking, attachments, and discarded revisions do not expand

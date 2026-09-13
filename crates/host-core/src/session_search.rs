@@ -121,7 +121,7 @@ pub fn search(db: &Database, query: &str, offset: i64) -> Result<SearchPage> {
                     message_id: row.get(0)?,
                     role: row.get(1)?,
                     created_at: ms_to_ts(row.get(2)?),
-                    snippet: excerpt(&row.get::<_, String>(3)?, query, 180),
+                    snippet: sentence_excerpt(&row.get::<_, String>(3)?, query, 180),
                 })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -129,30 +129,81 @@ pub fn search(db: &Database, query: &str, offset: i64) -> Result<SearchPage> {
     Ok(SearchPage { hits, next_offset })
 }
 
-/// Center a bounded excerpt on the literal match, mapping lowercase expansion
-/// offsets (for example Turkish dotted I) back to original Unicode characters.
-pub fn excerpt(text: &str, query: &str, budget: usize) -> String {
+/// Map lowercase expansion offsets back to original Unicode characters.
+fn match_range(text: &str, query: &str) -> Option<(usize, usize)> {
     let needle = query.trim().to_lowercase();
+    if needle.is_empty() {
+        return None;
+    }
+    let hit = text.to_lowercase().find(&needle)?;
+    let mut folded_offset = 0;
     let mut position = 0;
-    let mut match_end = 0;
-    if !needle.is_empty() {
-        if let Some(hit) = text.to_lowercase().find(&needle) {
-            let mut folded_offset = 0;
-            let mut found_start = false;
-            for (index, ch) in text.chars().enumerate() {
-                let next = folded_offset + ch.to_lowercase().map(char::len_utf8).sum::<usize>();
-                if !found_start && next > hit {
-                    position = index;
-                    found_start = true;
-                }
-                if next >= hit + needle.len() {
-                    match_end = index + 1;
-                    break;
-                }
-                folded_offset = next;
+    let mut found_start = false;
+    for (index, ch) in text.chars().enumerate() {
+        let next = folded_offset + ch.to_lowercase().map(char::len_utf8).sum::<usize>();
+        if !found_start && next > hit {
+            position = index;
+            found_start = true;
+        }
+        if next >= hit + needle.len() {
+            return Some((position, index + 1));
+        }
+        folded_offset = next;
+    }
+    None
+}
+
+/// Return the sentence or line containing the match. Long sentences retain a
+/// bounded window around the complete query, rather than adjacent sentences.
+fn sentence_excerpt(text: &str, query: &str, budget: usize) -> String {
+    let Some((position, match_end)) = match_range(text, query) else {
+        return excerpt(text, query, budget);
+    };
+    let chars: Vec<char> = text.chars().collect();
+    let is_closing = |ch: char| matches!(ch, '"' | '\'' | '”' | '’' | '」' | '』' | ')' | '）');
+    let mut start = 0;
+    let mut end = chars.len();
+    let mut index = 0;
+    while index < chars.len() {
+        let ch = chars[index];
+        let newline = matches!(ch, '\n' | '\r' | '\u{2028}' | '\u{2029}');
+        let boundary = newline
+            || matches!(ch, '。' | '！' | '？' | '!' | '?')
+            || (ch == '.'
+                && chars
+                    .get(index + 1)
+                    .is_none_or(|next| next.is_whitespace() || is_closing(*next)));
+        index += 1;
+        if !boundary {
+            continue;
+        }
+        if !newline {
+            while index < chars.len()
+                && (is_closing(chars[index])
+                    || matches!(chars[index], '.' | '!' | '?' | '。' | '！' | '？'))
+            {
+                index += 1;
             }
         }
+        if index <= position {
+            start = index;
+        } else if index >= match_end {
+            end = index;
+            break;
+        }
     }
+    let sentence: String = chars[start..end].iter().collect();
+    let sentence = sentence.trim();
+    if sentence.chars().count() <= budget {
+        sentence.to_owned()
+    } else {
+        excerpt(sentence, query, budget)
+    }
+}
+
+/// Center a bounded excerpt on the literal match without splitting Unicode.
+pub fn excerpt(text: &str, query: &str, budget: usize) -> String {
+    let (position, match_end) = match_range(text, query).unwrap_or((0, 0));
     let total = text.chars().count();
     let start = position.saturating_sub(budget / 3);
     let end = (start + budget).max(match_end).min(total);
@@ -459,6 +510,77 @@ mod tests {
         assert!(context(&db, &session.id, "target", "around", "命中")
             .unwrap()
             .is_none());
+    }
+
+    #[test]
+    fn search_previews_show_the_matching_sentence() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::open(&dir.path().join("test.sqlite")).unwrap();
+        let session = sessions::create_session(&db, None, None, None, None, None).unwrap();
+        for (text, query, expected) in [
+            (
+                "前一句。消息一直在排队，没有继续执行。后一句。",
+                "排队",
+                "消息一直在排队，没有继续执行。",
+            ),
+            (
+                "Before. The NEEDLE is here! After.",
+                "needle",
+                "The NEEDLE is here!",
+            ),
+            (
+                "Before. Open src/main.rs for the needle. After.",
+                "needle",
+                "Open src/main.rs for the needle.",
+            ),
+            (
+                "Heading\n\nOne\nTwo\nThe needle is here\nUnrelated",
+                "needle",
+                "The needle is here",
+            ),
+            (
+                "前一句。“消息还在排队！”后一句。",
+                "排队",
+                "“消息还在排队！”",
+            ),
+            (
+                "Before. İSTANBUL is here. After.",
+                "i\u{0307}stanbul",
+                "İSTANBUL is here.",
+            ),
+        ] {
+            sessions::replace_messages(&db, &session.id, &[message("target", text)]).unwrap();
+            let result = search(&db, query, 0).unwrap();
+            assert_eq!(result.hits[0].matches[0].snippet, expected);
+        }
+    }
+
+    #[test]
+    fn sentence_previews_preserve_long_and_multiline_matches() {
+        assert_eq!(
+            sentence_excerpt(
+                &format!("{} The needle is here.", "!".repeat(100_000)),
+                "needle",
+                180
+            ),
+            "The needle is here."
+        );
+        let text = format!(
+            "Before. {}needle{}. After.",
+            "a".repeat(1000),
+            "z".repeat(1000)
+        );
+        let snippet = sentence_excerpt(&text, "needle", 180);
+        assert!(snippet.contains("needle"));
+        assert!(snippet.chars().count() <= 182);
+        assert!(!snippet.contains("Before") && !snippet.contains("After"));
+        assert_eq!(
+            sentence_excerpt("Before. One.\nTwo match! After.", "One.\nTwo", 180),
+            "One.\nTwo match!"
+        );
+        let query = "中".repeat(300);
+        let text = format!("Before. {}{} tail. After.", "İ".repeat(300), query);
+        assert!(sentence_excerpt(&text, &query, 180).contains(&query));
     }
 
     #[test]
