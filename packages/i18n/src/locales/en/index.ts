@@ -702,6 +702,7 @@ export const en = {
       pageInfo: "Page {{page}} of {{pages}} · {{total}} servers",
       pagePrev: "Previous page",
       pageNext: "Next page",
+      loadMore: "Load more",
       pageJump: "Go",
       empty: "No servers match",
     },

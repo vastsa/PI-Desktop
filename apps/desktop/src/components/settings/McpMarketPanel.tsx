@@ -62,9 +62,17 @@ type RemoteState = {
   status: "idle" | "loading" | "ready" | "error";
   entries: McpCatalogEntry[];
   failed: string[];
+  exhausted: boolean;
+  loadingMore: boolean;
 };
 
-const REMOTE_IDLE: RemoteState = { status: "idle", entries: [], failed: [] };
+const REMOTE_IDLE: RemoteState = {
+  status: "idle",
+  entries: [],
+  failed: [],
+  exhausted: false,
+  loadingMore: false,
+};
 
 type MarketItem = McpCatalogEntry & { sourceId?: string };
 
@@ -131,7 +139,13 @@ export function McpMarketPanel({
     const timer = setTimeout(() => {
       setRemote((current) =>
         current.status === "idle" || current.status === "ready"
-          ? { status: "loading", entries: current.entries, failed: current.failed }
+          ? {
+              status: "loading",
+              entries: current.entries,
+              failed: current.failed,
+              exhausted: current.exhausted,
+              loadingMore: false,
+            }
           : current,
       );
       api
@@ -144,11 +158,13 @@ export function McpMarketPanel({
               status: entries.length === 0 && failed.length > 0 ? "error" : "ready",
               entries,
               failed,
+              exhausted: result.exhausted ?? true,
+              loadingMore: false,
             });
           }
         })
         .catch(() => {
-          if (!cancelled) setRemote({ status: "error", entries: [], failed: [] });
+          if (!cancelled) setRemote({ status: "error", entries: [], failed: [], exhausted: false, loadingMore: false });
         });
     }, 350);
     return () => {
@@ -159,6 +175,27 @@ export function McpMarketPanel({
 
   const sourceName = (id?: string) =>
     id ? sources.find((source) => source.id === id)?.name : undefined;
+
+  const loadMore = async () => {
+    if (remote.loadingMore) return;
+    setRemote((current) => ({ ...current, loadingMore: true }));
+    try {
+      // Registry sources keep their cursor in the main process, so each call
+      // appends the next batch to the same browse window.
+      const result = await api.searchMcpMarketRegistry(search, sources, { more: true });
+      const failed = result.failedSources ?? [];
+      const entries = result.entries ?? [];
+      setRemote({
+        status: entries.length === 0 && failed.length > 0 ? "error" : "ready",
+        entries,
+        failed,
+        exhausted: result.exhausted ?? true,
+        loadingMore: false,
+      });
+    } catch {
+      setRemote((current) => ({ ...current, loadingMore: false }));
+    }
+  };
 
   const remoteIds = useMemo(
     () => new Set(remote.entries.map((entry) => entry.id)),
@@ -609,6 +646,12 @@ export function McpMarketPanel({
           })
         )}
       </div>
+
+      {!search && remote.status === "ready" && !remote.exhausted ? (
+        <button type="button" className="mcpm-install is-ghost" disabled={remote.loadingMore} onClick={() => void loadMore()}>
+          {remote.loadingMore ? t("common.loading") : t("settings.mcpMarket.loadMore")}
+        </button>
+      ) : null}
 
       {totalPages > 1 ? (
         <div className="mcpm-pager">

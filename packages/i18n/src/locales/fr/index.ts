@@ -692,6 +692,7 @@ export const fr = {
       pageInfo: "Page {{page}} sur {{pages}} · {{total}} serveurs",
       pagePrev: "Précédente",
       pageNext: "Suivante",
+      loadMore: "Charger plus",
       pageJump: "Aller",
       empty: "Aucun serveur correspondant",
     },

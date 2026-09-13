@@ -704,6 +704,7 @@ export const tr = {
       pageInfo: "Sayfa {{page}} / {{pages}} · {{total}} sunucu",
       pagePrev: "Önceki sayfa",
       pageNext: "Sonraki sayfa",
+      loadMore: "Daha fazla yükle",
       pageJump: "Git",
       empty: "Eşleşen sunucu yok",
     },

@@ -692,6 +692,7 @@ export const es = {
       pageInfo: "Página {{page}} de {{pages}} · {{total}} servidores",
       pagePrev: "Anterior",
       pageNext: "Siguiente",
+      loadMore: "Cargar más",
       pageJump: "Ir",
       empty: "Ningún servidor coincide",
     },

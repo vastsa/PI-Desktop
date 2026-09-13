@@ -699,6 +699,7 @@ export const zhCN = {
       pageInfo: "第 {{page}} / {{pages}} 页 · 共 {{total}} 个",
       pagePrev: "上一页",
       pageNext: "下一页",
+      loadMore: "加载更多",
       pageJump: "跳转",
       empty: "没有匹配的 server",
     },

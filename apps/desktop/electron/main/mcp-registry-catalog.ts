@@ -5,8 +5,15 @@
  * connections — the same reason models.dev fetching sits here. Two source
  * kinds are supported: registry endpoints speaking the official MCP registry
  * protocol (`/v0/servers`) and static catalog JSON files in the market's
- * built-in schema. Sources are fetched in parallel; one failing source only
- * costs itself, and a total outage degrades to the built-in catalog.
+ * built-in schema.
+ *
+ * Registry sources stream in incrementally: the first browse loads two pages
+ * so the market paints fast, and each "load more" extends the window by
+ * another batch from the remembered cursor. The registry holds thousands of
+ * servers — more than any user will scroll — so there is deliberately no
+ * "load everything". Searches always hit the registry server-side and see the
+ * whole catalog regardless of what is cached. One failing source only costs
+ * itself, and a total outage degrades to the built-in catalog.
  */
 import {
   isSafeMarketSourceUrl,
@@ -19,8 +26,9 @@ import {
 } from "@pi-desktop/shared";
 
 const PAGE_SIZE = 100;
-/** Cursor pages per registry source: ≈400 servers, built-in renders meanwhile. */
-const MAX_PAGES = 4;
+/** First browse paints two pages; every "load more" appends this many. */
+const INITIAL_PAGES = 2;
+const MORE_PAGES = 10;
 const CACHE_TTL_MS = 5 * 60_000;
 const TIMEOUT_MS = 8_000;
 
@@ -28,6 +36,8 @@ export type McpRegistrySearchResult = {
   entries: SourcedCatalogEntry[];
   /** Sources that could not be fetched (unsafe URL, offline, bad payload). */
   failedSources: string[];
+  /** False while a registry source still has cursor pages left to stream in. */
+  exhausted: boolean;
 };
 
 function registryUrl(endpoint: string, params: URLSearchParams): string {
@@ -40,140 +50,163 @@ async function fetchJson<T>(url: string): Promise<T> {
   return (await response.json()) as T;
 }
 
-async function fetchRegistrySource(
-  source: MarketSource,
-): Promise<SourcedCatalogEntry[]> {
-  const records: RegistryRecord[] = [];
-  let cursor: string | undefined;
-  for (let page = 0; page < MAX_PAGES; page += 1) {
-    const params = new URLSearchParams({ version: "latest", limit: String(PAGE_SIZE) });
-    if (cursor) params.set("cursor", cursor);
-    const body = await fetchJson<{
-      servers?: RegistryRecord[];
-      metadata?: { nextCursor?: string };
-    }>(registryUrl(source.url, params));
-    records.push(...(body.servers ?? []));
-    if (!body.metadata?.nextCursor) break;
-    cursor = body.metadata.nextCursor;
-  }
-  const entries: SourcedCatalogEntry[] = [];
-  const seen = new Set<string>();
+/** Per-registry-source streaming state, so "load more" continues a cursor. */
+type RegistryBrowse = {
+  entries: SourcedCatalogEntry[];
+  cursor?: string;
+  exhausted: boolean;
+};
+
+function ingest(records: RegistryRecord[], source: MarketSource, seen: Set<string>, into: SourcedCatalogEntry[]): void {
   for (const record of records) {
     const entry = mapRegistryServer(record);
     if (!entry || seen.has(entry.id)) continue;
     seen.add(entry.id);
-    entries.push({ ...entry, sourceId: source.id });
+    into.push({ ...entry, sourceId: source.id });
   }
-  return entries;
-}
-
-async function fetchCatalogSource(source: MarketSource): Promise<SourcedCatalogEntry[]> {
-  const body = await fetchJson<unknown>(source.url);
-  const { catalog } = validateMcpCatalogFile(body);
-  return catalog.servers.map((entry) => ({ ...entry, sourceId: source.id }));
-}
-
-function searchRegistrySource(
-  source: MarketSource,
-  query: string,
-): Promise<SourcedCatalogEntry[]> {
-  const params = new URLSearchParams({
-    version: "latest",
-    search: query,
-    limit: String(PAGE_SIZE),
-  });
-  return fetchRegistrySourcePage(source, registryUrl(source.url, params));
-}
-
-async function fetchRegistrySourcePage(
-  source: MarketSource,
-  url: string,
-): Promise<SourcedCatalogEntry[]> {
-  const body = await fetchJson<{
-    servers?: RegistryRecord[];
-    metadata?: { nextCursor?: string };
-  }>(url);
-  const entries: SourcedCatalogEntry[] = [];
-  const seen = new Set<string>();
-  for (const record of body.servers ?? []) {
-    const entry = mapRegistryServer(record);
-    if (!entry || seen.has(entry.id)) continue;
-    seen.add(entry.id);
-    entries.push({ ...entry, sourceId: source.id });
-  }
-  return entries;
-}
-
-async function searchCatalogSource(
-  source: MarketSource,
-  query: string,
-): Promise<SourcedCatalogEntry[]> {
-  // Catalog JSON has no server-side search: fetch whole file, filter locally.
-  const trimmed = query.trim().toLowerCase();
-  const entries = await fetchCatalogSource(source);
-  if (!trimmed) return entries;
-  return entries.filter((entry) =>
-    [entry.name, entry.description, entry.author]
-      .filter(Boolean)
-      .some((text) => text!.toLocaleLowerCase().includes(trimmed)),
-  );
 }
 
 export function createMcpMarketAggregator() {
-  const cache = new Map<string, { at: number; entries: SourcedCatalogEntry[] }>();
+  const registryBrowse = new Map<string, RegistryBrowse>();
+  const catalogCache = new Map<string, { at: number; entries: SourcedCatalogEntry[] }>();
+  const searchCache = new Map<string, { at: number; entries: SourcedCatalogEntry[] }>();
 
-  async function fetchSource(
-    source: MarketSource,
-    query: string,
-  ): Promise<SourcedCatalogEntry[]> {
-    const trimmed = query.trim().toLowerCase();
-    const key = `${source.id}|${source.url}|${trimmed}`;
-    const hit = cache.get(key);
+  async function extendRegistry(source: MarketSource, pages: number): Promise<RegistryBrowse> {
+    let state = registryBrowse.get(source.id);
+    if (!state) {
+      state = { entries: [], exhausted: false };
+      registryBrowse.set(source.id, state);
+    }
+    for (let page = 0; page < pages && !state.exhausted; page += 1) {
+      const params = new URLSearchParams({ version: "latest", limit: String(PAGE_SIZE) });
+      if (state.cursor) params.set("cursor", state.cursor);
+      const body = await fetchJson<{
+        servers?: RegistryRecord[];
+        metadata?: { nextCursor?: string };
+      }>(registryUrl(source.url, params));
+      const seen = new Set(state.entries.map((entry) => entry.id));
+      ingest(body.servers ?? [], source, seen, state.entries);
+      if (body.metadata?.nextCursor) state.cursor = body.metadata.nextCursor;
+      else state.exhausted = true;
+    }
+    return state;
+  }
+
+  async function browseRegistry(source: MarketSource, more: boolean): Promise<RegistryBrowse> {
+    const state = registryBrowse.get(source.id);
+    if (!state || (more && !state.exhausted)) return extendRegistry(source, more ? MORE_PAGES : INITIAL_PAGES);
+    return state;
+  }
+
+  async function loadCatalog(source: MarketSource): Promise<SourcedCatalogEntry[]> {
+    const hit = catalogCache.get(source.url);
     if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.entries;
-    const entries =
-      source.kind === "registry"
-        ? trimmed
-          ? await searchRegistrySource(source, trimmed)
-          : await fetchRegistrySource(source)
-        : await searchCatalogSource(source, trimmed);
-    cache.set(key, { at: Date.now(), entries });
+    const body = await fetchJson<unknown>(source.url);
+    const { catalog } = validateMcpCatalogFile(body);
+    const entries = catalog.servers.map((entry) => ({ ...entry, sourceId: source.id }));
+    catalogCache.set(source.url, { at: Date.now(), entries });
+    return entries;
+  }
+
+  async function searchRegistry(source: MarketSource, query: string): Promise<SourcedCatalogEntry[]> {
+    const trimmed = query.trim().toLowerCase();
+    const key = `${source.id}|${trimmed}`;
+    const hit = searchCache.get(key);
+    if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.entries;
+    const body = await fetchJson<{
+      servers?: RegistryRecord[];
+      metadata?: { nextCursor?: string };
+    }>(registryUrl(source.url, new URLSearchParams({ version: "latest", search: trimmed, limit: String(PAGE_SIZE) })));
+    const entries: SourcedCatalogEntry[] = [];
+    const seen = new Set<string>();
+    ingest(body.servers ?? [], source, seen, entries);
+    searchCache.set(key, { at: Date.now(), entries });
     return entries;
   }
 
   async function search(
     query: string,
     sources: MarketSource[],
+    options: { more?: boolean } = {},
   ): Promise<McpRegistrySearchResult> {
+    const trimmed = query.trim().toLowerCase();
     const safe = sources.filter((source) => isSafeMarketSourceUrl(source.url));
     const failedSources = sources
       .filter((source) => !isSafeMarketSourceUrl(source.url))
       .map((source) => source.name);
-    const settled = await Promise.allSettled(safe.map((source) => fetchSource(source, query)));
+
+    // A typed search is answered by each registry server-side, so it sees the
+    // whole catalog no matter how much of the browse window has streamed in.
+    if (trimmed) {
+      const settled = await Promise.allSettled(
+        safe.map((source) =>
+          source.kind === "registry"
+            ? searchRegistry(source, trimmed)
+            : loadCatalog(source).then((entries) =>
+                entries.filter((entry) =>
+                  [entry.name, entry.description, entry.author]
+                    .filter(Boolean)
+                    .some((text) => text!.toLocaleLowerCase().includes(trimmed)),
+                ),
+              ),
+        ),
+      );
+      const entries: SourcedCatalogEntry[] = [];
+      const seen = new Set<string>();
+      settled.forEach((result, index) => {
+        if (result.status === "rejected") {
+          failedSources.push(safe[index].name);
+          return;
+        }
+        for (const entry of result.value) {
+          if (seen.has(entry.id)) continue;
+          seen.add(entry.id);
+          entries.push(entry);
+        }
+      });
+      return { entries, failedSources, exhausted: true };
+    }
+
+    // Empty query = browse. Registry sources stream pages; catalog sources are
+    // complete files and always arrive whole.
+    const settled = await Promise.allSettled(
+      safe.map((source) =>
+        source.kind === "registry"
+          ? browseRegistry(source, options.more === true).then((state) => ({
+              entries: state.entries,
+              exhausted: state.exhausted,
+            }))
+          : loadCatalog(source).then((entries) => ({ entries, exhausted: true })),
+      ),
+    );
     const entries: SourcedCatalogEntry[] = [];
     const seen = new Set<string>();
+    let exhausted = true;
     settled.forEach((result, index) => {
       if (result.status === "rejected") {
         failedSources.push(safe[index].name);
         return;
       }
-      for (const entry of result.value) {
+      for (const entry of result.value.entries) {
         if (seen.has(entry.id)) continue;
         seen.add(entry.id);
         entries.push(entry);
       }
+      if (!result.value.exhausted) exhausted = false;
     });
-    return { entries, failedSources };
+    return { entries, failedSources, exhausted };
   }
 
   return { search };
 }
 
-/** Shared main-process instance so the cache survives across IPC calls. */
+/** Shared main-process instance so caches survive across IPC calls. */
 const aggregator = createMcpMarketAggregator();
 
 export function searchMcpMarket(
   query: string,
   sources: MarketSource[],
+  options: { more?: boolean } = {},
 ): Promise<McpRegistrySearchResult> {
-  return aggregator.search(query, sources);
+  return aggregator.search(query, sources, options);
 }

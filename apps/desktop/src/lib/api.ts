@@ -655,10 +655,10 @@ export const api = {
       failed: Array<{ id: string; reason: string }>;
     }>(IPC.invoke.mcpImport, { text }),
   /** Query the configured market sources; `failedSources` names dead ones. */
-  searchMcpMarketRegistry: (query: string, sources: MarketSource[]) =>
-    invoke<{ entries: McpCatalogEntry[]; failedSources?: string[] }>(
+  searchMcpMarketRegistry: (query: string, sources: MarketSource[], options?: { more?: boolean }) =>
+    invoke<{ entries: McpCatalogEntry[]; failedSources?: string[]; exhausted?: boolean }>(
       IPC.invoke.mcpMarketSearch,
-      { query, sources },
+      { query, sources, ...options },
     ),
 
   // --- Skills the user owns -------------------------------------------------

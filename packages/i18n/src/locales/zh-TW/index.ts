@@ -699,6 +699,7 @@ export const zhTW = {
       pageInfo: "第 {{page}} / {{pages}} 頁 · 共 {{total}} 個",
       pagePrev: "上一頁",
       pageNext: "下一頁",
+      loadMore: "載入更多",
       pageJump: "跳轉",
       empty: "沒有符合的 server",
     },

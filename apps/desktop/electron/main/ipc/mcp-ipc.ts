@@ -12,7 +12,11 @@ export type McpIpcDependencies = {
   refreshUserMcp: (projectPath?: string | null) => Promise<McpServerRecord[]>;
   describeError: (error: unknown) => string;
   sendToRenderer: (channel: string, payload?: unknown) => void;
-  searchMcpMarket: (query: string, sources: MarketSource[]) => Promise<McpRegistrySearchResult>;
+  searchMcpMarket: (
+    query: string,
+    sources: MarketSource[],
+    options?: { more?: boolean },
+  ) => Promise<McpRegistrySearchResult>;
 };
 
 /** Register user-owned MCP server registry and runtime channels. */
@@ -38,8 +42,12 @@ export function registerMcpIpc({
   // registers outside the host-bound wrapper.
   registrar.handle(
     IPC.invoke.mcpMarketSearch,
-    async ({ query, sources }: { query?: string; sources?: MarketSource[] } = {}) =>
-      searchMcpMarket(query ?? "", Array.isArray(sources) ? sources : []),
+    async ({
+      query,
+      sources,
+      more,
+    }: { query?: string; sources?: MarketSource[]; more?: boolean } = {}) =>
+      searchMcpMarket(query ?? "", Array.isArray(sources) ? sources : [], { more: more === true }),
   );
 
 handle(IPC.invoke.mcpList, async (query: Partial<AgentCapabilityQuery> = {}) => {
