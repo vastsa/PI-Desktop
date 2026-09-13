@@ -2157,3 +2157,508 @@
   font-size: var(--text-3xs);
   line-height: var(--leading-normal);
 }
+
+/* ── MCP market (mcpm) ───────────────────────────────────────────────────
+   Stays inside the neutral ds-token language; category identity comes from
+   one tinted hue per category, everything else animates in greys. */
+
+.mcpm {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: sklm-enter var(--motion-duration-normal) var(--motion-ease-out) both;
+}
+
+@keyframes sklm-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.sklm-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.sklm-head-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.sklm-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--ds-tile);
+  padding: 4px 12px 4px 8px;
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition:
+    background var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    transform var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.sklm-back:hover {
+  background: var(--ds-tile-hover);
+  color: var(--ds-text-primary);
+}
+
+.sklm-back:active {
+  transform: scale(0.97);
+}
+
+.sklm-title {
+  margin: 0;
+  color: var(--ds-text-primary);
+  font-size: var(--text-lg, 20px);
+  font-weight: var(--font-weight-strong);
+  letter-spacing: var(--tracking-wide);
+}
+
+.sklm-subtitle {
+  margin: 0;
+  color: var(--ds-text-muted);
+  font-size: var(--text-sm);
+}
+
+.sklm-search {
+  min-width: 240px;
+}
+
+.sklm-search .field-input {
+  border-radius: var(--radius-full);
+  transition:
+    border-color var(--motion-duration-fast) var(--motion-ease-standard),
+    box-shadow var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.sklm-search .field-input:focus-visible {
+  border-color: color-mix(in oklab, var(--gray-0) 32%, transparent);
+  box-shadow: 0 0 0 3px var(--ds-tile-deep);
+}
+
+.sklm-cats {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.sklm-chip {
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--ds-tile);
+  padding: 5px 14px;
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition:
+    background var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    transform var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.sklm-chip:hover {
+  background: var(--ds-tile-hover);
+  color: var(--ds-text-primary);
+  transform: translateY(-1px);
+}
+
+.sklm-chip:active {
+  transform: scale(0.95);
+}
+
+.sklm-chip.is-active {
+  background: var(--ds-accent);
+  color: var(--ds-bg-primary);
+  font-weight: var(--font-weight-strong);
+}
+
+.sklm-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 10px;
+}
+
+.sklm-card {
+  display: flex;
+  gap: 12px;
+  border: 1px solid var(--ds-tile-deep);
+  border-radius: var(--radius-lg, 12px);
+  background: var(--ds-tile);
+  padding: 14px;
+  animation: sklm-card-in var(--motion-duration-slow) var(--motion-ease-out) both;
+  animation-delay: calc(var(--stagger, 0) * 45ms);
+  transition:
+    transform var(--motion-duration-fast) var(--motion-ease-standard),
+    border-color var(--motion-duration-fast) var(--motion-ease-standard),
+    background var(--motion-duration-fast) var(--motion-ease-standard),
+    box-shadow var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.sklm-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in oklab, var(--gray-0) 20%, transparent);
+  background: var(--ds-tile-hover);
+  box-shadow: 0 10px 28px color-mix(in oklab, #000 24%, transparent);
+}
+
+@keyframes sklm-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+}
+
+.sklm-glyph {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-md, 10px);
+  background: color-mix(in oklab, var(--sklm-hue) 15%, transparent);
+  color: var(--sklm-hue);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--sklm-hue) 24%, transparent);
+  transition: transform var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.sklm-card:hover .sklm-glyph {
+  transform: scale(1.07);
+}
+
+.sklm-glyph.is-devtools {
+  --sklm-hue: oklch(72% 0.12 250);
+}
+
+.sklm-glyph.is-web {
+  --sklm-hue: oklch(74% 0.11 195);
+}
+
+.sklm-glyph.is-docs {
+  --sklm-hue: oklch(74% 0.1 295);
+}
+
+.sklm-glyph.is-data {
+  --sklm-hue: oklch(76% 0.12 80);
+}
+
+.sklm-glyph.is-productivity {
+  --sklm-hue: oklch(72% 0.13 155);
+}
+
+.sklm-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: 1;
+  min-width: 0;
+}
+
+.sklm-card-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.sklm-name {
+  color: var(--ds-text-primary);
+  font-size: var(--text-md);
+  font-weight: var(--font-weight-strong);
+}
+
+.sklm-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-full);
+  background: var(--ds-tile-deep);
+  padding: 2px 8px;
+  color: var(--ds-text-muted);
+  font-size: var(--text-3xs);
+  font-weight: var(--font-weight-medium);
+  letter-spacing: var(--tracking-wide);
+}
+
+.sklm-badge.is-verified {
+  background: color-mix(in oklab, var(--ds-success) 13%, transparent);
+  color: var(--ds-success);
+}
+
+.sklm-cmd {
+  align-self: flex-start;
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: var(--radius-sm, 6px);
+  background: var(--ds-tile-deep);
+  padding: 3px 8px;
+  color: var(--ds-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sklm-cmd.is-block {
+  border: 1px solid var(--ds-tile-deep);
+  padding: 8px 10px;
+}
+
+.sklm-desc {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--ds-text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-compact);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.sklm-card-actions {
+  display: flex;
+  align-items: center;
+}
+
+.sklm-install {
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--ds-accent);
+  padding: 7px 16px;
+  color: var(--ds-bg-primary);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-strong);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    transform var(--motion-duration-fast) var(--motion-ease-standard),
+    box-shadow var(--motion-duration-fast) var(--motion-ease-standard),
+    opacity var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.sklm-install:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 5px 16px color-mix(in oklab, #000 28%, transparent);
+}
+
+.sklm-install:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.sklm-install:disabled:not(.is-installed) {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.sklm-install.is-installed {
+  background: transparent;
+  border: 1px solid var(--ds-tile-deep);
+  color: var(--ds-text-muted);
+  cursor: default;
+}
+
+.sklm-install.is-ghost {
+  background: transparent;
+  border: 1px solid var(--ds-tile-deep);
+  color: var(--ds-text-muted);
+}
+
+.sklm-empty {
+  margin: 0;
+  padding: 40px 0;
+  color: var(--ds-text-muted);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+.sklm-note {
+  display: flex;
+  gap: 6px;
+  margin: 0;
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs);
+}
+
+.sklm-note-label {
+  flex: 0 0 auto;
+  color: var(--ds-text-primary);
+  font-weight: var(--font-weight-medium);
+}
+
+.sklm-sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sklm-overlay {
+  animation: sklm-overlay-in var(--motion-duration-normal) var(--motion-ease-standard) both;
+}
+
+@keyframes sklm-overlay-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.sklm-sheet {
+  animation: sklm-sheet-in var(--motion-duration-slow) var(--motion-ease-out) both;
+}
+
+@keyframes sklm-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mcpm,
+  .sklm-card,
+  .sklm-overlay,
+  .sklm-sheet,
+  .sklm-chip,
+  .sklm-install,
+  .sklm-glyph,
+  .sklm-back {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+.sklm-status {
+  margin: 0;
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs);
+}
+
+.sklm-status.is-error {
+  color: var(--ds-warning);
+}
+
+.sklm-badge.is-remote {
+  background: color-mix(in oklab, var(--ds-accent) 10%, transparent);
+  color: var(--ds-text-muted);
+}
+
+.sklm-head-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.sklm-source-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sklm-source {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--ds-tile-deep);
+  border-radius: var(--radius-md, 10px);
+  background: var(--ds-tile);
+  padding: 10px 12px;
+}
+
+.sklm-source-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.sklm-source-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-top: 1px solid var(--ds-tile-deep);
+  margin-top: 4px;
+  padding-top: 14px;
+}
+
+.sklm-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 6px 0 2px;
+}
+
+.sklm-page-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--ds-tile-deep);
+  border-radius: var(--radius-full);
+  background: var(--ds-tile);
+  color: var(--ds-text-primary);
+  cursor: pointer;
+  transition:
+    background var(--motion-duration-fast) var(--motion-ease-standard),
+    transform var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.sklm-page-btn:hover:not(:disabled) {
+  background: var(--ds-tile-hover);
+  transform: translateY(-1px);
+}
+
+.sklm-page-btn:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.sklm-page-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.sklm-page-info {
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs);
+  min-width: 180px;
+  text-align: center;
+}
+
+.sklm-page-btn.is-active {
+  background: var(--ds-accent);
+  color: var(--ds-bg-primary);
+  border-color: transparent;
+}
+
+.sklm-page-ellipsis {
+  color: var(--ds-text-muted);
+  padding: 0 2px;
+  user-select: none;
+}
+
+.sklm-page-jump {
+  width: 64px;
+  height: 30px;
+  padding: 0 8px;
+  text-align: center;
+  border-radius: var(--radius-full);
+}
+
+.sklm-page-jump::placeholder {
+  color: var(--ds-text-muted);
+}

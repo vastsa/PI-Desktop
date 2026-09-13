@@ -19,6 +19,7 @@ import { registerScheduledIpc } from "./scheduled-ipc";
 import { registerSessionIpc } from "./session-ipc";
 import { registerSettingsIpc } from "./settings-ipc";
 import { registerSkillsIpc } from "./skills-ipc";
+import { fetchSkillMarketDocument, searchSkillMarket } from "../skill-market-catalog";
 import { registerWindowIpc } from "./window-ipc";
 import { createComposerTemplateLoader, registerWorkspaceIpc } from "./workspace-ipc";
 import { registerComposerIpc } from "./composer-ipc";
@@ -334,6 +335,8 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
   registerSkillsIpc({
     registrar,
     getHost,
+    searchSkillMarket,
+    fetchSkillMarketDocument,
     optionalWorkspaceRoot,
     activeUserSubagentDocuments,
     stripWinLongPrefix,

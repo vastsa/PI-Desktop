@@ -177,6 +177,8 @@ export const IPC = {
     skillList: "pi-desktop/skill/list",
     skillCreate: "pi-desktop/skill/create",
     skillImport: "pi-desktop/skill/import",
+    skillMarketSearch: "pi-desktop/skill/market/search",
+    skillMarketFetch: "pi-desktop/skill/market/fetch",
     skillUpdate: "pi-desktop/skill/update",
     skillRemove: "pi-desktop/skill/remove",
     skillSetEnabled: "pi-desktop/skill/setEnabled",

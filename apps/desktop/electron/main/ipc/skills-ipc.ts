@@ -2,6 +2,12 @@ import { dialog, shell } from "electron";
 import { IPC, type ActivationScope, type AgentCapabilityQuery, type UserSkillRecord, type UserSubagentRecord } from "@pi-desktop/shared";
 import { loadSubagentDefinitions, type UserSubagentDocument } from "@pi-desktop/agent-runtime";
 import type { HostProcess } from "../host-process";
+import {
+  fetchSkillMarketDocument,
+  searchSkillMarket,
+  type SkillMarketDocument,
+  type SkillMarketSearchResult,
+} from "../skill-market-catalog";
 import type { IpcRegistrar } from "./types";
 
 export type SkillsIpcDependencies = {
@@ -11,6 +17,8 @@ export type SkillsIpcDependencies = {
   activeUserSubagentDocuments: (projectPath: string | undefined) => Promise<UserSubagentDocument[]>;
   stripWinLongPrefix: (path: string) => string;
   sendToRenderer: (channel: string, payload?: unknown) => void;
+  searchSkillMarket: (query: string, sources: { id: string; name: string; url: string }[]) => Promise<SkillMarketSearchResult>;
+  fetchSkillMarketEntryDocument: (entry: { id: string; name: string; url: string }) => Promise<SkillMarketDocument>;
 };
 
 /** Register user-owned skill and subagent definition channels. */
@@ -21,6 +29,8 @@ export function registerSkillsIpc({
   activeUserSubagentDocuments,
   stripWinLongPrefix,
   sendToRenderer,
+  searchSkillMarket,
+  fetchSkillMarketEntryDocument,
 }: SkillsIpcDependencies): void {
   let host: HostProcess | null = null;
   const handle = (channel: string, fn: (...args: any[]) => Promise<any>) => {
@@ -29,6 +39,21 @@ export function registerSkillsIpc({
       return fn(...args);
     });
   };
+// --- Skill market: catalog sources and document fetch -----------------------
+
+  // The market's catalog aggregator never touches the host process, so it
+  // registers outside the host-bound wrapper.
+  registrar.handle(
+    IPC.invoke.skillMarketSearch,
+    async ({ query, sources }: { query?: string; sources?: { id: string; name: string; url: string }[] } = {}) =>
+      searchSkillMarket(query ?? "", Array.isArray(sources) ? sources : []),
+  );
+  registrar.handle(
+    IPC.invoke.skillMarketFetch,
+    async ({ entry }: { entry: { id: string; name: string; url: string } }) =>
+      fetchSkillMarketEntryDocument(entry),
+  );
+
 // --- Skills the user owns -------------------------------------------------
 
   handle(IPC.invoke.skillList, async (query: Partial<AgentCapabilityQuery> = {}) => {

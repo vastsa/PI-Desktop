@@ -8,6 +8,8 @@ export * from "./changelog.js";
 export * from "./composer-trigger.js";
 export * from "./fuzzy.js";
 export * from "./mcp-import.js";
+export * from "./skill-catalog.js";
+export * from "./skill-catalog-builtin.js";
 export * from "./model-config-import.js";
 export * from "./thinking-levels.js";
 export * from "./command-shells.js";
