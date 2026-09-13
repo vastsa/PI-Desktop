@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
 import {
+  settledDelegationMessage,
+  taskMessageSnapshot,
+} from "./delegation-message.js";
+import {
   Agent,
   BACKGROUND_CONTEXT,
   compact,
@@ -317,6 +321,9 @@ export type DelegationStatus =
  */
 export type DelegationRecord = {
   delegationId: string;
+  /** Original Task transcript snapshot, available after its immediate result. */
+  taskMessage?: UiMessage;
+  taskTurnId?: string;
   agentName: string;
   modelId: string;
   thinkingLevel: SubagentThinkingLevel;
@@ -1456,7 +1463,7 @@ export class DesktopAgentRuntime {
   private suppressProgressTurnRunEnd = false;
   private activeToolCalls = new Map<
     string,
-    { toolName: string; args: unknown }
+    { toolName: string; args: unknown; startedAt: number }
   >();
   private pendingAskTools = new Map<
     string,
@@ -3467,6 +3474,7 @@ Delegation rules:
         });
         const record: DelegationRecord = {
           delegationId,
+          taskTurnId: this.turnId,
           agentName: definition.name,
           modelId: provider.modelId,
           thinkingLevel,
@@ -3592,9 +3600,21 @@ Delegation rules:
     if (result.usage) {
       this.turnSubagentUsage = addUsage(this.turnSubagentUsage, result.usage);
     }
+    this.publishDelegationSettlement(record);
     record.resolveCompletion();
     this.refreshDelegationWait();
     this.pruneFinishedDelegations();
+  }
+
+  private publishDelegationSettlement(record: DelegationRecord): void {
+    if (!record.taskMessage || record.status === "running") return;
+    this.emit(
+      {
+        type: "message_end",
+        message: settledDelegationMessage(record.taskMessage, delegationSummary(record)),
+      },
+      record.taskTurnId,
+    );
   }
 
   /** Cap retained history so a long session cannot grow the registry forever.
@@ -4447,11 +4467,11 @@ Delegation rules:
     };
   }
 
-  private emit(event: AgentEventEnvelope["event"], turnId?: string) {
+  private emit(event: AgentEventEnvelope["event"], turnId?: string, ts = Date.now()) {
     this.onEvent({
       sessionId: this.sessionId,
       turnId: turnId ?? this.turnId,
-      ts: Date.now(),
+      ts,
       event,
     });
   }
@@ -6077,19 +6097,22 @@ Delegation rules:
         }
         break;
       }
-      case "tool_execution_start":
+      case "tool_execution_start": {
+        const startedAt = Date.now();
         this.clearAgentActivity();
         this.activeToolCalls.set(event.toolCallId, {
           toolName: event.toolName,
           args: event.args,
+          startedAt,
         });
         this.emit({
           type: "tool_start",
           toolCallId: event.toolCallId,
           toolName: event.toolName,
           args: event.args,
-        });
+        }, undefined, startedAt);
         break;
+      }
       case "tool_execution_update":
         this.emit({
           type: "tool_update",
@@ -6130,7 +6153,24 @@ Delegation rules:
             result: event.result,
             isError: event.isError,
             ...(toolUsage ? { toolUsage } : {}),
-          });
+          }, undefined, endedAt);
+          if (activeTool?.toolName === SUBAGENT_TOOL_NAME && isRecord(event.result)) {
+            const details = event.result.details;
+            const record = isRecord(details) && typeof details.delegationId === "string"
+              ? this.delegations.get(details.delegationId)
+              : undefined;
+            if (record) {
+              record.taskMessage = taskMessageSnapshot({
+                ...activeTool,
+                toolCallId: event.toolCallId,
+                result: event.result,
+                endedAt,
+                ...(toolUsage ? { toolUsage } : {}),
+              });
+              // A fast delegate may settle before its Task tool_end arrives.
+              this.publishDelegationSettlement(record);
+            }
+          }
         }
         break;
       case "turn_end":

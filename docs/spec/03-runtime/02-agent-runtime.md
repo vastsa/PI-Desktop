@@ -645,6 +645,20 @@ core set rather than the on-demand catalog of §7.1:
   waits for each abort to settle, then persists `status: "stopped"` with
   `completedAt` on `details.stopped[]`. Stopped delegations read as `stopped`.
 
+**Live settlement.** When a delegate settles, the runtime refreshes its original
+`Task` transcript row with the terminal delegation summary (`status`,
+`completedAt`, counters, and failure details when present), using the existing
+full `message_end` snapshot. This does not depend on the parent calling
+`TaskWait` / `TaskList` / `TaskStop` or on other delegates finishing. The
+snapshot retains the Task call's identity, arguments, tool timing, and token
+usage; it does not execute the tool again or add usage to the parent turn.
+The initial Task result is emitted first even if the delegate settles before
+that result arrives. Electron persists the refreshed row through the normal
+message outbox so session switching and history reload preserve the outcome.
+An outbox write acknowledges only the snapshot sent to the host; a newer
+snapshot replacing the same message ID during that write remains queued.
+No new event type or storage schema is required.
+
 **Delegate loop.** A `SubagentRun` is a second pi `Agent` in the same sidecar
 process with the definition's system prompt, its (possibly pinned)
 provider/model, its declared tools, and the same host connection. A pinned or

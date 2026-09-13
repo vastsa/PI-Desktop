@@ -176,11 +176,12 @@ export function delegationTimingBounds(
 }
 
 /**
- * Latest status per delegation id, read from the lifecycle tools' results.
+ * Latest status per delegation id, from Task snapshots and lifecycle results.
  *
  * `Task` returns the moment the delegate starts (ADR 0089), so its own result
- * says `running` for the rest of the transcript no matter how the delegate
- * ended. TaskWait/TaskList report `details.delegations[]`; TaskStop reports
+ * initially says `running`. The runtime later refreshes that Task row with
+ * its terminal status, independently of parent lifecycle polling.
+ * TaskWait/TaskList report `details.delegations[]`; TaskStop reports
  * `details.stopped[]`. Those rows — which are deliberately not topology nodes —
  * are what tells a delegation card how its subagent actually finished.
  *
@@ -204,6 +205,18 @@ export function collectDelegationStatuses(
     ingestLifecycleStatuses(statuses, payload.delegations, false);
     ingestLifecycleStatuses(statuses, payload.stopped, true);
   }
+  // The runtime refreshes Task itself as soon as its delegate settles. This
+  // terminal snapshot outranks an older TaskList/TaskWait running snapshot,
+  // even though those lifecycle rows appear later in transcript order.
+  for (const item of items) {
+    if (!isDelegationActivityItem(item)) continue;
+    const payload = asRecord(toolResultPayload(item.message));
+    const status = asDelegationStatus(payload?.status);
+    const id = payload?.delegationId;
+    if (typeof id === "string" && id && status && status !== "running") {
+      statuses.set(id, status);
+    }
+  }
   if (options?.turnLive === false) {
     for (const item of items) {
       if (item.kind !== "tool" || !isDelegationActivityItem(item)) continue;
@@ -220,8 +233,9 @@ export function collectDelegationStatuses(
 /**
  * A settled subagent's failure as the runtime reported it.
  *
- * `Task` returns the moment a delegate starts (ADR 0089), so its own result can
- * never carry one. `TaskWait`/`TaskList` report `details.delegations[]` and
+ * `Task` initially returns when a delegate starts (ADR 0089); its refreshed
+ * terminal snapshot can carry a failure even before the parent polls.
+ * `TaskWait`/`TaskList` report `details.delegations[]` and
  * `TaskStop` reports `details.stopped[]`, and those entries do carry
  * `error: { code, message }` from `SubagentRunResult.error`.
  */
@@ -271,6 +285,13 @@ export function collectDelegationFailures(
         if (failure) failures.set(id, failure);
       }
     }
+  }
+  for (const item of items) {
+    if (!isDelegationActivityItem(item)) continue;
+    const payload = asRecord(toolResultPayload(item.message));
+    const id = payload?.delegationId;
+    const failure = readDelegationFailure(payload);
+    if (typeof id === "string" && id && failure) failures.set(id, failure);
   }
   return failures;
 }
