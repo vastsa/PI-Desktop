@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import {
   BUILTIN_MCP_CATALOG,
@@ -563,8 +564,11 @@ export function McpMarketPanel({
         )}
       </div>
 
-      {installSheet}
-      {sourcesSheet}
+      {/* The settings shell carries a transform, which would turn the
+          overlay's `position: fixed` into shell-relative positioning — portal
+          both sheets to <body> so they always cover the window. */}
+      {installSheet && createPortal(installSheet, document.body)}
+      {sourcesSheet && createPortal(sourcesSheet, document.body)}
     </div>
   );
 }
