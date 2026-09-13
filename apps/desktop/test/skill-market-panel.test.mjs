@@ -47,7 +47,7 @@ test("skill market strings exist in en and zh-CN", () => {
 });
 
 test("builtin catalog keeps the offline promise", () => {
-  assert.ok(BUILTIN_SKILL_CATALOG.skills.length >= 15);
+  assert.ok(BUILTIN_SKILL_CATALOG.skills.length >= 8);
   const ids = BUILTIN_SKILL_CATALOG.skills.map((s) => s.id);
   assert.equal(new Set(ids).size, ids.length, "duplicate catalog ids");
 });

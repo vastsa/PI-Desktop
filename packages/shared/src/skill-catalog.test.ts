@@ -72,7 +72,7 @@ describe("BUILTIN_SKILL_CATALOG", () => {
   it("is valid with unique ids and live https documents", () => {
     const { catalog, warnings } = validateSkillCatalogFile(BUILTIN_SKILL_CATALOG);
     expect(warnings).toEqual([]);
-    expect(catalog.skills.length).toBeGreaterThanOrEqual(15);
+    expect(catalog.skills.length).toBeGreaterThanOrEqual(8);
     expect(new Set(catalog.skills.map((s) => s.id)).size).toBe(catalog.skills.length);
     for (const skill of catalog.skills) {
       const liveHost =

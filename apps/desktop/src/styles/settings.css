@@ -2162,7 +2162,7 @@
    Stays inside the neutral ds-token language; category identity comes from
    one tinted hue per category, everything else animates in greys. */
 
-.mcpm {
+.sklm {
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -2524,7 +2524,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .mcpm,
+  .sklm,
   .sklm-card,
   .sklm-overlay,
   .sklm-sheet,

@@ -75,6 +75,56 @@ export function createSkillMarketAggregator() {
     return entries;
   }
 
+  const GITHUB_REPO = /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:[/?#]|$)/;
+
+  /**
+   * A GitHub repo source is auto-scanned: every SKILL.md in the default
+   * branch becomes an installable entry, so the source keeps growing with the
+   * repo. Documents stream from jsDelivr's CDN copy of the same ref.
+   */
+  async function loadGithubRepo(source: SkillMarketSource): Promise<SourcedSkillEntry[]> {
+    const hit = catalogCache.get(source.url);
+    if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.entries;
+    const match = GITHUB_REPO.exec(source.url.split("?")[0]);
+    if (!match) throw new Error(`not a GitHub repo url: ${source.url}`);
+    const [, owner, repo] = match;
+    const repoInfo = await fetchJson<{ default_branch?: string }>(
+      `https://api.github.com/repos/${owner}/${repo}`,
+    );
+    const branch = repoInfo.default_branch || "main";
+    const tree = await fetchJson<{ tree?: Array<{ path: string }> }>(
+      `https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`,
+    );
+    const entries: SourcedSkillEntry[] = [];
+    for (const path of (tree.tree ?? []).map((item) => item.path)) {
+      if (!path.endsWith("SKILL.md") || path.startsWith("template/")) continue;
+      const dir = path.replace(/\/SKILL\.md$/, "");
+      const slug =
+        dir
+          .split("/")
+          .pop()!
+          .toLowerCase()
+          .replace(/[^a-z0-9_-]+/g, "-")
+          .replace(/^-+|-+$/g, "") || `skill-${entries.length}`;
+      entries.push({
+        id: slug.slice(0, 64),
+        name: slug,
+        author: owner,
+        homepage: `https://github.com/${owner}/${repo}/tree/${branch}/${dir}`,
+        url: `https://cdn.jsdelivr.net/gh/${owner}/${repo}@${branch}/${path}`,
+        sourceId: source.id,
+      });
+    }
+    catalogCache.set(source.url, { at: Date.now(), entries });
+    return entries;
+  }
+
+  function loadSource(source: SkillMarketSource): Promise<SourcedSkillEntry[]> {
+    return GITHUB_REPO.test(source.url.split("?")[0])
+      ? loadGithubRepo(source)
+      : loadCatalog(source);
+  }
+
   async function fetchDocument(url: string): Promise<SkillMarketDocument> {
     const hit = documentCache.get(url);
     if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.document;
@@ -94,7 +144,7 @@ export function createSkillMarketAggregator() {
       .map((source) => source.name);
     const settled = await Promise.allSettled(
       usable.map(async (source) => {
-        const entries = await loadCatalog(source);
+        const entries = await loadSource(source);
         if (!trimmed) return entries;
         return entries.filter((entry) =>
           [entry.name, entry.description, entry.author]

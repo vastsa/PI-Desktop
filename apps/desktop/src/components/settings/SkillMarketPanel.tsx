@@ -74,6 +74,11 @@ function loadSources(): SkillMarketSource[] {
   }
 }
 
+const DEFAULT_SKILL_SOURCES: SkillMarketSource[] = [
+  // Auto-scanned: every SKILL.md on the default branch becomes installable.
+  { id: "anthropics-skills", name: "anthropics/skills", url: "https://github.com/anthropics/skills" },
+];
+
 function saveSources(sources: SkillMarketSource[]): void {
   try {
     window.localStorage?.setItem(SOURCES_STORAGE_KEY, JSON.stringify(sources));
@@ -129,7 +134,7 @@ export function SkillMarketPanel({
           : current,
       );
       api
-        .searchSkillMarket(search, sources)
+        .searchSkillMarket(search, [...DEFAULT_SKILL_SOURCES, ...sources])
         .then((result) => {
           if (!cancelled) {
             const failed = result.failedSources ?? [];
@@ -276,6 +281,16 @@ export function SkillMarketPanel({
                 <code className="sklm-cmd">{t("settings.sklm.builtinHint")}</code>
               </div>
               <span className="sklm-badge is-verified">✓</span>
+            </li>
+            <li className="sklm-source">
+              <span className="sklm-glyph is-coding" aria-hidden>
+                <IconCode size={16} />
+              </span>
+              <div className="sklm-source-body">
+                <span className="sklm-name">anthropics/skills</span>
+                <code className="sklm-cmd">https://github.com/anthropics/skills</code>
+              </div>
+              <span className="sklm-badge">GitHub</span>
             </li>
             {sources.map((source) => (
               <li key={source.id} className="sklm-source">

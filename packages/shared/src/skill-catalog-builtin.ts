@@ -1,15 +1,14 @@
 /**
  * The skill catalog that ships inside the app.
  *
- * Every entry is a real, live markdown document (currently from
- * anthropics/skills, Apache-2.0) so the market is useful before any remote
- * source exists. Custom catalog sources layer on top; this stays the offline
- * floor.
+ * Deliberately a small floor, not the shelf: a handful of high-signal,
+ * zero-setup skills so the market is useful offline. The main volume comes
+ * from configured sources (e.g. GitHub repos auto-scanned for SKILL.md).
+ * Documents are served via jsDelivr — raw.githubusercontent.com is
+ * TLS-flaky from some networks while the CDN edge reaches them reliably.
  */
 import type { SkillCatalogFile } from "./skill-catalog.js";
 
-// jsDelivr CDN: raw.githubusercontent.com is TLS-flaky from some networks,
-// while jsDelivr serves the same files from an edge that reaches CN reliably.
 const ANTHROPIC = "https://cdn.jsdelivr.net/gh/anthropics/skills@main/skills";
 const homepageFor = (slug: string) => `https://github.com/anthropics/skills/tree/main/skills/${slug}`;
 
@@ -69,16 +68,6 @@ export const BUILTIN_SKILL_CATALOG: SkillCatalogFile = {
       url: `${ANTHROPIC}/frontend-design/SKILL.md`,
     },
     {
-      id: "web-artifacts-builder",
-      name: "Web Artifacts Builder",
-      description: "用现代前端技术构建复杂的多组件 HTML 产物",
-      author: "anthropic",
-      homepage: homepageFor("web-artifacts-builder"),
-      categories: ["coding"],
-      verified: true,
-      url: `${ANTHROPIC}/web-artifacts-builder/SKILL.md`,
-    },
-    {
       id: "webapp-testing",
       name: "Webapp Testing",
       description: "用 Playwright 与本地 Web 应用交互并验证前端行为",
@@ -107,106 +96,6 @@ export const BUILTIN_SKILL_CATALOG: SkillCatalogFile = {
       categories: ["coding", "workflow"],
       verified: true,
       url: `${ANTHROPIC}/skill-creator/SKILL.md`,
-    },
-    {
-      id: "claude-api",
-      name: "Claude API",
-      description: "Claude API 与 SDK 的最佳实践参考",
-      author: "anthropic",
-      homepage: homepageFor("claude-api"),
-      categories: ["coding"],
-      verified: true,
-      url: `${ANTHROPIC}/claude-api/SKILL.md`,
-    },
-    {
-      id: "doc-coauthoring",
-      name: "Doc Coauthoring",
-      description: "结构化流程协同创作文档,从大纲到成稿",
-      author: "anthropic",
-      homepage: homepageFor("doc-coauthoring"),
-      categories: ["writing"],
-      verified: true,
-      url: `${ANTHROPIC}/doc-coauthoring/SKILL.md`,
-    },
-    {
-      id: "internal-comms",
-      name: "Internal Comms",
-      description: "按公司惯用格式撰写各类内部通讯与公告",
-      author: "anthropic",
-      homepage: homepageFor("internal-comms"),
-      categories: ["writing"],
-      verified: true,
-      url: `${ANTHROPIC}/internal-comms/SKILL.md`,
-    },
-    {
-      id: "algorithmic-art",
-      name: "Algorithmic Art",
-      description: "用 p5.js 创作算法艺术,支持种子随机与交互参数",
-      author: "anthropic",
-      homepage: homepageFor("algorithmic-art"),
-      categories: ["writing"],
-      verified: true,
-      url: `${ANTHROPIC}/algorithmic-art/SKILL.md`,
-    },
-    {
-      id: "canvas-design",
-      name: "Canvas Design",
-      description: "以设计哲学产出 .png/.pdf 视觉作品",
-      author: "anthropic",
-      homepage: homepageFor("canvas-design"),
-      categories: ["writing"],
-      verified: true,
-      url: `${ANTHROPIC}/canvas-design/SKILL.md`,
-    },
-    {
-      id: "theme-factory",
-      name: "Theme Factory",
-      description: "为幻灯、文档、报告与落地页套用主题样式",
-      author: "anthropic",
-      homepage: homepageFor("theme-factory"),
-      categories: ["writing"],
-      verified: true,
-      url: `${ANTHROPIC}/theme-factory/SKILL.md`,
-    },
-    {
-      id: "slack-gif-creator",
-      name: "Slack GIF Creator",
-      description: "制作适配 Slack 约束的动画 GIF",
-      author: "anthropic",
-      homepage: homepageFor("slack-gif-creator"),
-      categories: ["writing"],
-      verified: true,
-      url: `${ANTHROPIC}/slack-gif-creator/SKILL.md`,
-    },
-    {
-      id: "brand-guidelines",
-      name: "Brand Guidelines",
-      description: "把 Anthropic 官方品牌色与字体规范应用到产物上",
-      author: "anthropic",
-      homepage: homepageFor("brand-guidelines"),
-      categories: ["docs"],
-      verified: true,
-      url: `${ANTHROPIC}/brand-guidelines/SKILL.md`,
-    },
-    {
-      id: "academy-guide",
-      name: "Academy Guide",
-      description: "Claude 学院使用指南",
-      author: "anthropic",
-      homepage: homepageFor("academy-guide"),
-      categories: ["workflow"],
-      verified: true,
-      url: `${ANTHROPIC}/academy-guide/SKILL.md`,
-    },
-    {
-      id: "discernment-nudge",
-      name: "Discernment Nudge",
-      description: "在动手前先甄别请求意图的提示技能",
-      author: "anthropic",
-      homepage: homepageFor("discernment-nudge"),
-      categories: ["workflow"],
-      verified: true,
-      url: `${ANTHROPIC}/discernment-nudge/SKILL.md`,
     },
   ],
 };
