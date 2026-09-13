@@ -125,6 +125,7 @@ export const zhTW = {
     devDisabled: "開發版本不支援自動更新。",
   },
   nav: {
+    pinnedSessions: "釘選",
     home: "首頁",
     newTask: "新建任務",
     newProject: "新建專案",

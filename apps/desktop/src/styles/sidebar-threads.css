@@ -248,3 +248,32 @@
   font-size: var(--text-md); /* empty-state copy tracks group titles */
   line-height: var(--leading-compact);
 }
+
+.sidebar-pinned-sessions {
+  min-width: 0;
+  flex: 0 0 auto;
+}
+
+.sidebar-session-group-body.pinned {
+  max-height: min(224px, 30vh);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  padding: 0 2px;
+}
+
+.sidebar-pinned-sessions .thread-item-title {
+  min-width: 0;
+  flex: 1;
+}
+
+.thread-item-project {
+  min-width: 0;
+  max-width: 40%;
+  margin-left: auto;
+  overflow: hidden;
+  color: var(--ds-text-muted);
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

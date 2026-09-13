@@ -132,6 +132,7 @@ export const ko = {
     devDisabled: "개발 빌드에서는 업데이트가 비활성화됩니다.",
   },
   nav: {
+    "pinnedSessions": "고정됨",
     home: "홈",
     newTask: "새 작업",
     newProject: "새 프로젝트",

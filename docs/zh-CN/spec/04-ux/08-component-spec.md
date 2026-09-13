@@ -278,6 +278,8 @@ Expanded (~275px, D034/D070):
 +---------------------------+
 | [lights]             [◧] |  macOS
 | [π] PI-Desktop       [◧] |  Windows/Linux
+| PINNED                   |
+|   • Pinned task  project-A|
 | 会话 [消息+][↕] |
 | • 无路径会话 ↕ |
 | 项目 [目录+] |

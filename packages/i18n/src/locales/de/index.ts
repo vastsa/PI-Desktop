@@ -123,6 +123,7 @@ export const de = {
     "devDisabled": "Updates sind in Entwicklungs-Builds deaktiviert."
   },
   "nav": {
+    "pinnedSessions": "Angeheftet",
     "home": "Startseite",
     "newTask": "Neue Aufgabe",
     "newProject": "Neues Projekt",
