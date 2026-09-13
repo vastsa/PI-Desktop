@@ -7,7 +7,8 @@
     "dev": "vitepress dev .",
     "build": "vitepress build .",
     "preview": "vitepress preview .",
-    "check:locales": "node scripts/check-locales.mjs"
+    "check:locales": "node scripts/check-locales.mjs",
+    "test": "node --test"
   },
   "devDependencies": {
     "vitepress": "^1.6.4"

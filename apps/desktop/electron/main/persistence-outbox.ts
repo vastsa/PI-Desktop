@@ -95,8 +95,8 @@ export class PersistenceOutbox {
         });
         return;
       }
-      // An in-flight assistant checkpoint may have been replaced by its final
-      // snapshot while the host append was pending. Keep that newer write.
+      // A newer snapshot may have replaced this key while the host wrote it.
+      // Only remove the exact entry acknowledged by that write.
       if (this.entries[0] === current) this.entries.shift();
       await this.persist();
     }

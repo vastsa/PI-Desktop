@@ -620,7 +620,14 @@ mod tests {
         first.level = Some("project".into());
         first.project_path = Some(project_path.clone());
         let record = registry.upsert(first).unwrap();
-        let target = dir.path().join(".agents/servers/files.json");
+        let normalized_project = crate::agent_capabilities::normalize_project_path(&project_path);
+        let target = crate::agent_capabilities::capability_dir(
+            CapabilityLevel::Project,
+            Some(&normalized_project),
+            "servers",
+        )
+        .unwrap()
+        .join("files.json");
         assert_eq!(record.path.as_deref(), target.to_str());
         assert!(!fs::read_to_string(&target).unwrap().contains("enabled"));
 

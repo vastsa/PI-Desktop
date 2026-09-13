@@ -24,6 +24,7 @@
     "test:e2e:plan": "node scripts/e2e-plan.mjs",
     "test:e2e:plan-ui": "node scripts/e2e-plan-ui.mjs",
     "test:e2e:boot": "node scripts/e2e-electron-boot.mjs",
+    "test:e2e:layout": "node scripts/e2e-three-column-layout.mjs",
     "test:e2e:supervision": "node scripts/e2e-supervision.mjs",
     "test:e2e:subagents": "node scripts/e2e-subagents.mjs",
     "check:marketplace": "node scripts/check-marketplace-catalog.mjs",

@@ -93,7 +93,8 @@ type PluginNotificationPermission = "granted" | "denied" | "unknown" | "unsuppor
 不暴露跨平台只读通知权限API，所以
 `unknown` 在第一次探测之前以及操作系统执行探测操作时返回
 不报告结果。本机交付是尽力而为：操作系统策略可能会抑制
-横幅而不更改持久任务通知收件箱。
+横幅而不更改持久任务通知收件箱。点击已交付的插件通知会恢复并聚焦主窗口，
+但不会激活会话或创建持久任务通知。
 
 ### 项目（需要 `project.create`）
 

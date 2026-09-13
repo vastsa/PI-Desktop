@@ -21,6 +21,21 @@ export function sessionMatchesProject(
   return normalizeProjectPath(session.projectPath) === normalizeProjectPath(projectPath);
 }
 
+/** Return normalized project paths belonging to sessions added by a refresh. */
+export function projectPathsForNewSessions(
+  previousSessions: readonly Pick<SessionSummary, "id">[],
+  nextSessions: readonly Pick<SessionSummary, "id" | "projectPath">[],
+): string[] {
+  const previousIds = new Set(previousSessions.map((session) => session.id));
+  const paths = new Set<string>();
+  for (const session of nextSessions) {
+    if (previousIds.has(session.id)) continue;
+    const path = normalizeProjectPath(session.projectPath);
+    if (path) paths.add(path);
+  }
+  return [...paths];
+}
+
 export function groupSidebarSessions(
   sessions: SessionSummary[],
   projectPath?: string | null,

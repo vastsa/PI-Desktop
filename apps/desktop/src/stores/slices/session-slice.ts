@@ -22,6 +22,7 @@ import {
 } from "../../lib/session-panes";
 import {
   normalizeProjectPath,
+  projectPathsForNewSessions,
   sessionMatchesProject,
 } from "../../lib/sidebar-session-groups";
 import {
@@ -112,9 +113,15 @@ export function createSessionSlice({
   | "configureActiveSession"
 > {
   return {
-    refreshSessions: async () => {
+    refreshSessions: async (options) => {
+      const previousSessions = get().sessions;
       const sessions = await api.listSessions();
       set({ sessions: decorateSessions(sessions.sessions, get().sessionMeta) });
+      if (options?.revealImportedProjects) {
+        get().restoreProjects(
+          projectPathsForNewSessions(previousSessions, sessions.sessions),
+        );
+      }
     },
 
     restorePendingPlan: async (sessionId) => {

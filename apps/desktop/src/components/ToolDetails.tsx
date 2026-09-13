@@ -256,6 +256,7 @@ const CHIP_LABEL_KEYS: Record<ToolChip["role"], string> = {
   replacements: "chat.toolChipReplacements",
   truncated: "chat.toolChipTruncated",
   scratch: "chat.toolChipScratch",
+  lines: "chat.toolChipLines",
   size: "chat.toolChipSize",
 };
 
@@ -272,7 +273,11 @@ export function ToolChips({ chips }: { chips: ToolChip[] }) {
         >
           {t(CHIP_LABEL_KEYS[chip.role], {
             ...("count" in chip ? { count: chip.count } : {}),
-            ...("text" in chip ? { size: chip.text } : {}),
+            ...("text" in chip
+              ? chip.role === "lines"
+                ? { range: chip.text }
+                : { size: chip.text }
+              : {}),
           })}
         </span>
       ))}

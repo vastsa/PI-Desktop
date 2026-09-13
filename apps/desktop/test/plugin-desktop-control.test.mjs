@@ -43,6 +43,7 @@ function createRuntime(t, calls, extraServices = {}) {
     desktopControl: {
       operations: [
         { id: "project/set", channel: "projectSet", description: "Open a project", risk: "write" },
+        { id: "session/create", channel: "sessionCreate", description: "Create a durable session", risk: "write" },
         { id: "session/delete", channel: "sessionDelete", description: "Delete a session", risk: "dangerous" },
       ],
       invoke: async (input) => {
@@ -107,7 +108,7 @@ test("dangerous desktop operations need the user's native consent, not just conf
   answer = true;
   const granted = await runtime.invokePanelBridge("demo.dangerous", "desktop.test", {});
   assert.equal(granted.ok, true, JSON.stringify(granted));
-  assert.deepEqual(calls, [{ operation: "session/delete", args: ["s1"], confirm: true }]);
+  assert.deepEqual(calls, [{ operation: "session/delete", args: ["s1"], confirm: true, source: "plugin" }]);
 
   // A plugin that does not even acknowledge the risk never reaches the user.
   const unacknowledged = await runtime.invokePanelBridge("demo.dangerous", "desktop.test", { confirm: false });
@@ -130,9 +131,48 @@ test("desktop control is permission-gated and uses the shared controller", async
   const result = await runtime.invokePanelBridge("demo.desktop", "desktop.test");
   assert.deepEqual(result.operations, [
     { id: "project/set", description: "Open a project", risk: "write" },
+    { id: "session/create", description: "Create a durable session", risk: "write" },
     { id: "session/delete", description: "Delete a session", risk: "dangerous" },
   ]);
-  assert.deepEqual(calls, [{ operation: "project/set", args: ["/tmp/project"], confirm: false }]);
+  assert.deepEqual(calls, [{ operation: "project/set", args: ["/tmp/project"], confirm: false, source: "plugin" }]);
+});
+
+test("permission inheritance is bound to the current plugin tool session", async (t) => {
+  const calls = [];
+  const runtime = createRuntime(t, calls);
+  const dir = writePlugin("demo.inheritance", ["agent.tool.register", "desktop.control"], `
+    module.exports = {
+      onLoad: async () => pi.agent.registerTool({
+        name: "create_worker",
+        description: "Create a worker",
+        risk: "high",
+        schema: { type: "object" },
+        execute: async () => pi.desktop.invoke({
+          operation: "session/create",
+          args: [{ inheritPermissionFromSessionId: "parent" }],
+        }),
+      }),
+    };
+  `);
+  await runtime.loadFromPath(dir, ["agent.tool.register", "desktop.control"]);
+  const tool = runtime.getTools().find((entry) => entry.name === "create_worker");
+  assert.ok(tool);
+
+  await assert.rejects(
+    tool.execute({}, { sessionId: "other" }),
+    (error) => error.code === "PERMISSION_DENIED",
+  );
+  assert.deepEqual(calls, []);
+
+  await tool.execute({}, { sessionId: "parent" });
+  assert.deepEqual(calls, [
+    {
+      operation: "session/create",
+      args: [{ inheritPermissionFromSessionId: "parent" }],
+      confirm: false,
+      source: "plugin",
+    },
+  ]);
 });
 
 test("desktop control fails closed without its permission", async (t) => {

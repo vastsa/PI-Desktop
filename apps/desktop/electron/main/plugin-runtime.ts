@@ -3465,6 +3465,26 @@ export class PluginRuntime {
           if (!this.services.desktopControl) {
             throw apiError("UNSUPPORTED", "host api not available: desktop.invoke");
           }
+          if (operation === "session/create") {
+            const createInput = args[0];
+            const inheritedParent =
+              createInput && typeof createInput === "object" && !Array.isArray(createInput)
+                ? (createInput as Record<string, unknown>).inheritPermissionFromSessionId
+                : undefined;
+            if (inheritedParent !== undefined && inheritedParent !== null) {
+              const callerSessionId = this.inFlightTool(pluginId)?.sessionId?.trim();
+              if (
+                typeof inheritedParent !== "string" ||
+                !callerSessionId ||
+                inheritedParent.trim() !== callerSessionId
+              ) {
+                throw apiError(
+                  "PERMISSION_DENIED",
+                  "permission inheritance must name the current parent session",
+                );
+              }
+            }
+          }
           const operationInfo = this.services.desktopControl.operations.find(
             (candidate) => candidate.id === operation,
           );
@@ -3516,6 +3536,7 @@ export class PluginRuntime {
               operation,
               args,
               confirm: input.confirm === true,
+              source: "plugin",
             } satisfies McpControlInvokeInput);
             this.services.audit?.({
               pluginId,

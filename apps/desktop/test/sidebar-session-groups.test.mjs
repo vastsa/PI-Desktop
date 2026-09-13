@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   groupSidebarSessions,
   normalizeProjectPath,
+  projectPathsForNewSessions,
   sessionMatchesProject,
 } from "../src/lib/sidebar-session-groups.ts";
 
@@ -68,5 +69,20 @@ test("treats blank project paths as temporary", () => {
   assert.deepEqual(
     groups.temporarySessions.map((item) => item.id),
     ["blank", "missing"],
+  );
+});
+
+test("finds only newly imported project-bound sessions", () => {
+  assert.deepEqual(
+    projectPathsForNewSessions(
+      [session({ id: "existing", projectPath: "/work/archived" })],
+      [
+        session({ id: "existing", projectPath: "/work/archived" }),
+        session({ id: "new-a", projectPath: "/work/archived/" }),
+        session({ id: "new-b", projectPath: "C:\\work\\new" }),
+        session({ id: "temporary", projectPath: " " }),
+      ],
+    ),
+    ["/work/archived", "C:/work/new"],
   );
 });

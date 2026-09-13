@@ -101,6 +101,11 @@ Native file and search tools enforce distinct path shapes (D208, ADR 0069):
   searcher when `rg` is missing or fails (D315). The model-facing contract does
   not change.
 
+Workspace-relative paths in tool results use `/` for platform separators.
+On POSIX, a literal backslash in a filename remains a backslash so the result
+can be passed back to `Read` or `Edit`; Windows path separators are normalized
+to `/`.
+
 Agent mode keeps `Glob`/`Grep` deferred under D185. Each new user prompt clears
 their live activation and restores only eligible successful markers still in
 context; when no such marker exists, directory discovery activates `Glob`

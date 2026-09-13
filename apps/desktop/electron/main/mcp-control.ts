@@ -29,7 +29,11 @@ export type McpControlInvokeInput = {
   operation: string;
   args?: readonly unknown[];
   confirm?: boolean;
+  /** Internal origin used to keep plugin background work from stealing focus. */
+  source?: "mcp" | "plugin";
 };
+
+export type McpControlInvocationSource = NonNullable<McpControlInvokeInput["source"]>;
 
 export type McpControlController = {
   operations: readonly McpControlOperation[];
@@ -196,6 +200,7 @@ const CONTROL_OPERATION_SPECS: OperationSpec[] = [
   spec("sessionCreate", "session/create", "Create a durable session.", "write", ["input"]),
   spec("sessionFork", "session/fork", "Fork a session.", "write", ["input"]),
   spec("sessionGet", "session/get", "Read a session and its transcript.", "read", ["input"]),
+  spec("sessionOpen", "session/open", "Open a durable session in the desktop.", "write", ["sessionId"]),
   spec("sessionDelete", "session/delete", "Delete a session.", "dangerous", ["id"]),
   spec("sessionRename", "session/rename", "Rename a session.", "write", ["id", "title"]),
   spec("sessionConfigure", "session/configure", "Configure a session for its next turn, including permission mode.", "dangerous", ["id", "config"]),
@@ -601,6 +606,7 @@ export function mcpControlRendererEvent(
   operation: McpControlOperation,
   result: unknown,
   args: readonly unknown[],
+  source?: McpControlInvocationSource,
 ): McpControlRendererEvent | null {
   const payload = result as {
     session?: { id?: string; projectPath?: string | null } | null;
@@ -609,8 +615,17 @@ export function mcpControlRendererEvent(
   const sessionId = payload?.session?.id?.trim();
   if (operation.id === "session/create" || operation.id === "session/fork") {
     if (!sessionId) return null;
+    if (source === "plugin") return { reason: "plugin.session" };
     return {
       reason: "mcp.session",
+      selectSessionId: sessionId,
+      projectPath: payload?.session?.projectPath ?? null,
+    };
+  }
+  if (operation.id === "session/open") {
+    if (!sessionId) return null;
+    return {
+      reason: source === "plugin" ? "plugin.session.open" : "mcp.session.open",
       selectSessionId: sessionId,
       projectPath: payload?.session?.projectPath ?? null,
     };
@@ -623,6 +638,7 @@ export function mcpControlRendererEvent(
       ? (args[0] as { sessionId: string }).sessionId.trim()
       : "";
   if (operation.id === "agent/prompt" && promptedSessionId) {
+    if (source === "plugin") return { reason: "plugin.prompt" };
     return { reason: "mcp.prompt", selectSessionId: promptedSessionId };
   }
   if (operation.id === "project/set") {
@@ -650,6 +666,7 @@ export function createMcpControlController(options: {
     operation: McpControlOperation,
     result: unknown,
     args: readonly unknown[],
+    source?: McpControlInvocationSource,
   ) => void | Promise<void>;
 }): McpControlController {
   const operations = createMcpControlOperations(options.channels);
@@ -680,7 +697,7 @@ export function createMcpControlController(options: {
       }
       const sanitized = args.map((value) => stripSecretMaterial(value)) as unknown[];
       const result = await options.invoke(operation.channel, sanitized);
-      await options.onOperationComplete?.(operation, result, sanitized);
+      await options.onOperationComplete?.(operation, result, sanitized, input.source);
       return result;
     },
   };

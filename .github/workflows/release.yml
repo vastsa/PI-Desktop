@@ -43,11 +43,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
@@ -116,7 +116,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Verify native macOS runner architecture
         if: matrix.platform == 'macos'
@@ -152,9 +152,9 @@ jobs:
           console.log(`${path} is valid`);
           NODE
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           # Match the Node that Electron 43 bundles (24.18), so the released
           # artifacts are built against the runtime the app actually ships.
@@ -284,7 +284,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
@@ -325,7 +325,7 @@ jobs:
           rm latest-mac-arm64.yml latest-mac-x64.yml
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           # D126/D285/D364: all desktop platforms and both native macOS
           # architectures ship from tag builds — installers, the Windows

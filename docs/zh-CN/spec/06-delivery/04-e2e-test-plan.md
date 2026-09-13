@@ -843,13 +843,18 @@ unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E
   `suggestedTool=Glob` 和有界参数；更正后的调用成功。搜索
   结果使用项目内工作区相对路径和绝对路径
   仅适用于经批准的外部地点。没有特定于 shell 的路径语法
-  所需的和超大的结果仍然有限。
+  所需的和超大的结果仍然有限；工作区相对路径使用 `/` 表示平台分隔符，
+  POSIX 文件名中的字面量反斜杠保持不变。
 - **链接规格**：`03-runtime/03-tools-and-permissions.md`，
   `03-runtime/16-tool-result-limits.md`、ADR 0057、ADR 0069
 - **接受**：E（有界跨平台搜索）
 - **里程碑**：M5
 - **状态**：单元覆盖（host-core 和代理运行时）；多平台直播
-  协议捕获待处理
+  协议捕获待处理。工作区相对路径这一预期在 Windows 上由
+  `relative_display` 覆盖：它必须用解析器自身的拼写
+  （`simple_canonicalize`）规范化工作区根目录——标准库
+  `Path::canonicalize` 在 Windows 上会保留 `\\?\` 前缀，从而把所有标签
+  静默降级为绝对路径。
 
 #### E2E-019a：暂存目录写入不在工作区中 (D114)
 
@@ -1858,7 +1863,7 @@ hover/focus 不带移位标签，项目标题 hover/focus 路径显示
   选项卡和浏览器资源；切换到会话 B，创建不同的选项卡集，
   然后在A和B之间反复切换并选择一个没有活动的项目
   谈话。在不可见会话中生成背景工件。
-  7) 将左边缘手柄拖动到244px以下和720px以上；验证指针向下
+  7) 将左边缘手柄拖到 244px 以下以及超过右栏当前动态上限的位置；验证指针向下
   不跳过分隔线，使用 Escape 取消一个手势，然后聚焦
   处理并执行 Arrow/Shift+Arrow/Home/End。提交不同的宽度
 浏览器处于活动状态。 8) 在有足够工作区域的显示器上，记录MainChat宽度，
@@ -1898,7 +1903,7 @@ hover/focus 不带移位标签，项目标题 hover/focus 路径显示
   主动关闭选择右邻居，然后选择左邻居；关闭最后一个选项卡会保持面板打开并显示 New。
   折叠保留运行时间
   选项卡，但隐藏面板，直到另一个工件重新打开它。宽度夹至
-  固定的 `244px–720px` 范围，将这些 current/minimum/maximum 值暴露给
+  三栏共享预算（无固定像素上限），将这些 current/minimum/maximum 值暴露给
   辅助技术，并支持记录的键盘步骤。
 指针向下保留起始宽度，移动跟随指针
   连续，只有当宽度改变时release才提交一次。一个
@@ -2317,7 +2322,8 @@ MainChat 弥补了缺口。 Maximized/fullscreen 调用保留最新的
   Windows 运行使用 NSIS 安装的应用程序或标准开发命令。
 - **步骤**：1) 让应用程序专注于 A 并在 A 中完成一个回合。2) 当
   仍然专注于 A，在 B 中完成一个回合。3) 在 A 仍然存在时取消应用程序的焦点
-当前并完成 A 中的另一回合。 4) 单击 A 的本机通知。 5）
+当前并完成 A 中的另一回合。4) 等待 A 的通知进入操作系统通知中心，然后
+  单击它。5）
   最小化应用程序，再次失败，然后单击其本机通知。 6）
   取消应用程序的焦点并中止回合。 7) 重复并抑制本机传递
   由操作系统。 8) 在 Windows 上，检查本机通知属性，
@@ -2327,8 +2333,8 @@ MainChat 弥补了缺口。 Maximized/fullscreen 调用保留最新的
   聚焦背景 B 创建一个没有本机横幅的收件箱行。不专心
   当前 A 和最小化故障分别创建一个持久行和一个
   本地化的本机通知。单击可恢复、显示并聚焦
-  激活匹配会话之前的主窗口；没有事件打开错误
-  当前选定的会话。中止不显示两个表面。操作系统抑制确实
+  激活匹配会话之前的主窗口，即使通知已经进入 Windows 操作中心；
+  没有事件打开错误当前选定的会话。中止不显示两个表面。操作系统抑制确实
   不会丢失持久行或出现误导性应用程序错误。每检查一次
   Windows系统表面识别`PI-Desktop`；无库存 Electron 应用程序
   姓名或身份被暴露。
@@ -2337,7 +2343,8 @@ MainChat 弥补了缺口。 Maximized/fullscreen 调用保留最新的
   `08-meta/decisions-log.md` (D117/D141)
 - **验收**：C（回合完成），质量
 - **里程碑**：M5
-- **状态**：草案
+- **状态**：已覆盖源代码契约（`notification-contract.test.mjs`）；打包版
+  Windows 操作中心激活仍需运行环境验证；完整 UI 场景草案
 
 #### E2E-065a：本机交互询问通知按会话感知
 
@@ -4489,8 +4496,8 @@ IPC 请求无法关闭。
   返回尽力而为的 `granted`、`denied` 或 `unsupported` 结果；理所当然的
   插件接收 `{ shown: true, permission: "granted" }` 以进行本机交付，
   而 denied/unsupported 传递返回 `shown: false` 且不会导致
-  插件。缺少 `notify` 将失败并显示 `PERMISSION_DENIED`。原生插件
-  通知不会添加持久任务收件箱行或激活聊天会话。
+  插件。缺少 `notify` 将失败并显示 `PERMISSION_DENIED`。点击已交付的原生插件
+  通知会恢复并聚焦主窗口，但原生插件通知不会添加持久任务收件箱行或激活聊天会话。
 - **链接规格**：`07-plugins/01-plugin-system.md`，
 `07-plugins/03-plugin-api.md`、`07-plugins/13-plugin-permissions-matrix.md`、
   ADR 0074
@@ -4593,6 +4600,13 @@ IPC 请求无法关闭。
 | C — 对话和直播（输入法斜杠别名） | E2E-255 |
 | E——工具和权限（Skill 常驻） | E2E-254 |
 | 品质（Skill 常驻与输入法斜杠别名） | E2E-254、E2E-255 |
+| C — 对话和直播（导入可见性） | E2E-257 |
+| F——持久化（导入可见性） | E2E-257 |
+| G——插件（导入可见性） | E2E-257 |
+| 品质（导入可见性） | E2E-257 |
+| G——插件（Session Orchestrator） | E2E-PLUGIN-session-orchestrator-real-workers |
+| 安全性（Session Orchestrator） | E2E-PLUGIN-session-orchestrator-real-workers |
+| 品质（Session Orchestrator） | E2E-PLUGIN-session-orchestrator-real-workers |
 
 | 里程碑 | 应用场景 |
 |---|---|
@@ -4605,7 +4619,8 @@ IPC 请求无法关闭。
 | M2（输入法斜杠别名） | E2E-255 |
 | M5（Skill 常驻） | E2E-254 |
 | M6 | E2E-104、E2E-105、E2E-106、E2E-107、E2E-108、E2E-109、E2E-110、E2E-111、E2E-112、E2E-113、E2E-114、E2E-115、E2E-116、E2E-117、 E2E-118、E2E-119、E2E-120、E2E-103 |
-| M6+ | E2E-121、E2E-122、E2E-123、E2E-142、E2E-148、E2E-150、E2E-151、E2E-168、E2E-199、E2E-200、E2E-202、E2E-203、E2E-209、E2E-211、E2E-212、E2E-213、E2E-214、E2E-215、E2E-216、E2E-217 |
+| M6+ | E2E-121、E2E-122、E2E-123、E2E-142、E2E-148、E2E-150、E2E-151、E2E-168、E2E-199、E2E-200、E2E-202、E2E-203、E2E-209、E2E-211、E2E-212、E2E-213、E2E-214、E2E-215、E2E-216、E2E-217、E2E-257 |
+| M6+（Session Orchestrator） | E2E-PLUGIN-session-orchestrator-real-workers |
 | 后MVP | E2E-022A、E2E-022B、E2E-022C、E2E-024I、E2E-024J、E2E-024K、E2E-024L、E2E-024M（插件路线图 R2/R3/R6） |
 | 基线后本地自动化 | E2E-220 |
 | MVP 后远程控制 | E2E-221、E2E-222、E2E-223、E2E-224、E2E-225、E2E-226、E2E-227、E2E-228、E2E-229、E2E-230、E2E-231、E2E-232 |
@@ -6443,6 +6458,29 @@ IPC 请求无法关闭。
 - **状态**：由 `apps/desktop/test/plugin-desktop-control.test.mjs` 运行时覆盖；
   原生对话框旅程已记录，并按无本地 E2E 策略延后
 
+#### E2E-PLUGIN-session-orchestrator-real-workers：Session Orchestrator 创建并行持久化 Worker
+
+- **前提条件**：已安装并启用市场中的 `pi.session-orchestrator` 插件；父 Agent 会话已配置可认证的
+  provider/model 和项目路径，并处于 Agent 模式。
+- **步骤**：1）请求父 Agent 并行审查 Frontend、Electron 和 Rust。2）确认
+  `SessionTask.spawn` 返回三个不同的 Worker 会话 id，且每个 Worker 出现在普通会话列表中。
+  3）确认三个 Worker 都收到 prompt，不使用 `session/fork`，并可以并行运行。4）调用
+  `SessionTask.wait`，再对每个 Worker 调用 `result`。5）从 Agents 面板打开一个 Worker，
+  发送 follow-up，并停止另一个 Worker。6）重启插件，确认关系列表和持久化 Worker 会话仍然可用。
+- **预期**：每个 Worker 都是真实持久化会话，继承父会话的项目、模型、thinking 和权限上限，
+  创建时拥有独立的空 transcript。父会话只收到有界的最终 report；完整 Worker transcript
+  仍可在各自会话中查看。`send` 使用相同 Worker id，`cancel` 中止但不删除，独立会话和现有
+  Task 系列保持不变，且不发生 localhost MCP 调用或 token 访问。Worker 不能再创建 Worker，
+  并发上限超出时必须安全失败。
+- **链接规格**：`07-plugins/03-plugin-api.md`、`07-plugins/04-plugin-security.md`、
+  `07-plugins/11-plugin-storage-isolation.md`、`03-runtime/01-ipc-protocol.md`、
+  `03-runtime/06-host-rpc-protocol.md`、ADR 0237
+- **接受**：C（对话与流式）、D（插件安全性）、品质
+- **里程碑**：M6+
+- **状态**：marketplace 插件测试覆盖插件运行时；host-core 和 desktop 单元测试覆盖新增的
+  宿主原子能力。完整真实 provider/Electron 旅程仍需在具备条件的 runner 中验证，遵循无本地
+  E2E 策略
+
 #### E2E-237：插件 fetch 在每次重定向时重新检查出网
 
 - **前提条件**：一个声明 `net.domains: ["allowed.test"]` 和 `net.fetch` 的开发插件。
@@ -6604,3 +6642,46 @@ IPC 请求无法关闭。
 - **里程碑**：M5
 - **状态**：草稿。现有回归套件覆盖周边行为，尚未运行渲染界面的 steering 完整流程
   （除非明确要求，不本地运行 E2E）。
+
+#### E2E-257：导入到已归档项目后恢复其可见性
+
+- **前提条件**：一个持久项目已在渲染器侧边栏偏好中归档，并从默认侧边栏隐藏。一个核心导入候选携带该项目路径，测试插件可以使用明确的 host project id 导入会话。
+- **步骤**：
+  1. 打开设置 → 项目归档，确认已归档项目仍可用，而默认侧边栏不显示它。
+  2. 扫描并导入项目路径属于该已归档项目的核心候选。
+  3. 确认项目和导入的会话出现在默认侧边栏，然后再次归档项目。
+  4. 使用插件的 `session.importBatch` 和现有项目 id，检查 host 刷新事件后的侧边栏。
+  5. 在不导入任何内容时刷新会话，导入一个无路径会话，并重复导入已有会话。
+- **预期**：每个成功且新增的项目绑定导入都会清除对应规范化项目路径的渲染器归档状态，并使项目/会话可发现。普通刷新、无路径会话、跳过的导入，以及没有明确项目绑定的插件历史路径都保持归档状态不变；host 项目行和转录本不被删除或重建。
+- **链接规格**：`04-ux/06-settings-ia.md`、`04-ux/08-component-spec.md`、`03-runtime/04-data-storage.md`、ADR 0236、D407
+- **验收**：C（对话与流）、F（持久化）、G（插件）、品质
+- **里程碑**：M6+
+- **状态**：由源代码契约与单元测试覆盖（`sidebar-session-groups.test.mjs`、`project-import-archive.test.mjs`、`plugin-session-refresh.test.mjs`）；渲染桌面旅程为草稿（适用变更合入前需在具备条件的环境中运行 E2E）
+
+#### E2E-IMPORT-codex-scan-filters-synthetic-titles
+
+- **前提条件**：一个 Codex 归档，其中的会话以合成注入开头（`# Context from my IDE setup:`、`# In app browser:`、`# Browser comments:`、`# Files mentioned by the user:`、`# Diff comments:`、`# Selected text:`、`# Review findings:`、`# AGENTS.md`、`You are Codex`、`<environment>`），且至少一个会话的存储时间戳损坏或越界。
+- **步骤**：
+  1. 对该归档运行设置 → 会话导入 → 扫描。
+  2. 检查候选会话的标题与每条会话展示的 createdAt/updatedAt。
+  3. 导入一个首条真实用户消息位于合成注入之后的会话。
+- **预期**：候选标题取自第一条真实用户消息——合成注入绝不作为标题出现，而以 `#` 开头的真实粘贴内容（例如 `# Role: …`）予以保留。用户消息全为合成的会话不作为候选出现。损坏或越界的存储时间戳回退到源文件的 mtime，绝不回退到导入时刻。
+- **链接规格**：`03-runtime/01-ipc-protocol.md`、`04-ux/06-settings-ia.md`、D320
+- **验收**：C（对话与流）、F（持久化）、品质
+- **里程碑**：M6+
+- **状态**：由单元测试覆盖（`importer-codex-scan.test.mjs`）；UI 旅程为草稿（该表面变更时需在具备条件的环境中运行）
+
+#### E2E-LAYOUT-three-column-width-priority
+
+- **前置条件**：在非设置路由中打开一个桌面会话，存在已持久化的首选工作面板宽度，窗口足够宽以容纳三栏。
+- **步骤**：
+  1. 打开工作面板并请求用户的首选宽度。
+  2. 将内部分隔线向 MainChat 左边缘拖动，包含指针预览阶段，然后释放。
+  3. 在布局收起左栏后手动重开左栏。
+  4. 关闭工作面板并确认左栏恢复；再在手动收起左栏后重复一次。
+  5. 用 `ArrowLeft`、`ArrowRight`、`Home`、`End` 重复调整分隔线。
+- **预期**：原生窗口宽度全程不变。MainChat 永不低于 360px —— 包含拖动过程中以及 `sidebar-out` 仍占位弹性空间期间。工作面板有效上限为客户端宽度减去 360px 下限与展开的左栏宽度，且无固定像素上限。预算耗尽时展开的左栏立即收起，面板之后仍可继续增长。手动重开优先占用右栏宽度；能保住当前 MainChat 则保持，否则落在 370px 的重开目标。关闭面板只恢复由布局机制收起的左栏。分隔线的 ARIA 最小/最大值遵循同一动态预算。
+- **链接规格**：`04-ux/01-ui-ia.md`、`04-ux/07-ui-design-system.md` §10、`04-ux/08-component-spec.md` §1 与 §5、`04-ux/09-interaction-patterns.md` §8、ADR 0238
+- **验收**：F（持久化）、品质
+- **里程碑**：M6 之后的桌面外壳维护
+- **状态**：已自动化（`scripts/e2e-three-column-layout.mjs`，经 `pnpm test:e2e:layout` —— 固定窗口宽度不变、指针拖动全程 360px 下限、左栏让位/恢复、370px 重开目标）；单元覆盖见 `work-panel-resize.test.mjs`

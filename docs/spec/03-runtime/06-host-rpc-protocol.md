@@ -241,8 +241,10 @@ to later refresh and inference; the vendor picker does not collect them.
 ### Sessions
 - `session.list` — returns summaries with host-authoritative `messageCount`
   alongside the existing session metadata
-- `session.create` — accepts optional `thinkingLevel`; missing/null defaults
-  to `off`
+- `session.create` — accepts optional `thinkingLevel` and optional
+  `inheritPermissionFromSessionId`; when present, the host copies the existing
+  session's persisted permission mode atomically, while omission preserves the
+  existing `inherit` default. Missing/null thinking level defaults to `off`.
 - `session.fork` — accepts `sessionId`, an optional caller-provided display
   `title`, and optional `throughMessageId`; creates
   one independent session from the source's current active canonical

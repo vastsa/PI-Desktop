@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { estimateTokens } from "@earendil-works/pi-agent-core";
 import { buildSessionContext } from "./session-context.js";
 import {
+  COMPACTION_FALLBACK_MARKER,
   DesktopAgentRuntime,
   PATH_INSTRUCTION_RESOLUTION_TIMEOUT_MS,
   looksLikePseudoToolCall,
@@ -4639,6 +4640,122 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
     await runtime.dispose();
   });
 
+  it("keeps the summary a fallback checkpoint carries forward", async () => {
+    // A fallback checkpoint stores any carried-forward summary ahead of its
+    // recovery notice (see `createFallbackCheckpoint`). The next preparation
+    // must strip only the notice: pi's `prepareCompaction` cannot rebuild the
+    // older context from the transcript on its own, so dropping the carried
+    // summary would lose it permanently (#224).
+    const runtime = createRuntime();
+    (runtime as any).fullEntries = [
+      {
+        type: "message",
+        id: "anchor-user",
+        seq: 0,
+        parentId: null,
+        timestamp: Date.parse("2026-08-01T00:00:00Z"),
+        message: { role: "user", content: "anchor ask", timestamp: 1 },
+      },
+      {
+        type: "message",
+        id: "later-user",
+        seq: 1,
+        parentId: "anchor-user",
+        timestamp: Date.parse("2026-08-01T00:00:01Z"),
+        message: { role: "user", content: "later ask", timestamp: 2 },
+      },
+    ];
+    (runtime as any).activeCompaction = {
+      id: "fallback-1",
+      summary: [
+        "The earlier task summary.",
+        COMPACTION_FALLBACK_MARKER,
+        "The automatic summary request did not complete.",
+      ].join("\n\n"),
+      firstKeptMessageId: "anchor-user",
+      throughMessageId: "anchor-user",
+      tokensBefore: 240_000,
+      retainedTail: [{ role: "user", content: "remembered ask", timestamp: 0 }],
+      details: { generation: 1, fallback: "retained_tail" },
+      providerId: "local",
+      modelId: "local-model",
+      createdAt: "2026-08-01T00:00:00Z",
+    };
+
+    const entries = (runtime as any).entriesWithCompaction();
+    const budget = (runtime as any).contextBudget(
+      buildSessionContext(entries).messages,
+    );
+    const preparation = (runtime as any).prepareCompactionInput(
+      entries,
+      budget,
+      20_000,
+      "active_turn",
+    );
+
+    expect(preparation.value.previousSummary).toBe("The earlier task summary.");
+    await runtime.dispose();
+  });
+
+  it("keeps the carried summary when a fallback checkpoint is the terminal entry", async () => {
+    // The rebuild path (`fallbackPreparation`) carries the terminal summary
+    // into a smaller-tail checkpoint. When that terminal entry is itself a
+    // fallback, the notice must be stripped without losing the summary it
+    // carries, or the older context disappears for good (#224).
+    const host = { call: vi.fn().mockResolvedValue(undefined) };
+    const runtime = createRuntime({
+      host,
+      history: [
+        {
+          id: "old-user",
+          role: "user",
+          content: "older task context",
+          createdAt: "2026-08-01T00:00:00Z",
+          status: "complete",
+        },
+        {
+          id: "recent-user",
+          role: "user",
+          content: "recent context",
+          createdAt: "2026-08-01T00:00:01Z",
+          status: "complete",
+        },
+      ],
+      compaction: {
+        id: "fallback-1",
+        summary: [
+          "The earlier task summary.",
+          COMPACTION_FALLBACK_MARKER,
+          "The automatic summary request did not complete.",
+        ].join("\n\n"),
+        throughMessageId: "recent-user",
+        tokensBefore: 220_000,
+        retainedTail: [
+          { role: "user", content: "recent context", timestamp: 2 },
+        ],
+        details: { generation: 1, fallback: "retained_tail" },
+        createdAt: "2026-08-01T00:00:02Z",
+      },
+    });
+    const generateCompaction = vi.spyOn(runtime as any, "generateCompaction");
+
+    await expect((runtime as any).runCompaction("threshold", false)).resolves.toBe(
+      true,
+    );
+
+    expect(generateCompaction).not.toHaveBeenCalled();
+    expect(host.call).toHaveBeenCalledWith(
+      "session.appendCompaction",
+      expect.objectContaining({
+        compaction: expect.objectContaining({
+          details: expect.objectContaining({ fallback: "retained_tail" }),
+          summary: expect.stringContaining("The earlier task summary."),
+        }),
+      }),
+    );
+    await runtime.dispose();
+  });
+
   it("keeps manual compaction failures terminal instead of silently dropping context", async () => {
     const host = { call: vi.fn().mockResolvedValue(undefined) };
     const onEvent = vi.fn();
@@ -5557,6 +5674,71 @@ describe("DesktopAgentRuntime subagents", () => {
 
     await runtime.dispose();
   });
+
+  it.each([false, true])(
+    "publishes a settled Task snapshot without polling (settles early: %s)",
+    async (settlesEarly) => {
+      const onEvent = vi.fn();
+      const runtime = createRuntime({ subagents: [explorer], onEvent, turnId: "original-turn" });
+      subagentRuns.instances.length = 0;
+      subagentRuns.deferred = true;
+      const task = taskTool(runtime);
+      const args = { agent: "explorer", task: "Find it." };
+      const started = await task.execute("task-live", args);
+      const sibling = await task.execute("task-sibling", args);
+      const internals = runtime as unknown as {
+        handleAgentEvent: (event: unknown) => Promise<void>;
+        delegations: Map<string, { status: string }>;
+      };
+      const handle = internals.handleAgentEvent.bind(runtime);
+      const settle = async () => {
+        subagentRuns.resolveRun!({
+          agentName: "explorer", status: "completed", report: "Done", turns: 1, toolCalls: 0,
+        });
+        await vi.waitFor(() =>
+          expect(internals.delegations.get(started.details.delegationId)?.status).toBe("completed"),
+        );
+      };
+      try {
+        await handle({ type: "tool_execution_start", toolName: "Task", toolCallId: "task-live", args });
+        if (settlesEarly) await settle();
+        await handle({
+          type: "tool_execution_end", toolName: "Task", toolCallId: "task-live",
+          result: started, isError: false,
+        });
+        if (!settlesEarly) await settle();
+        const events = onEvent.mock.calls.map(([envelope]) => envelope);
+        const snapshots = events.filter((envelope) =>
+          envelope.event.type === "message_end" && envelope.event.message.role === "tool",
+        );
+        expect(snapshots).toHaveLength(1);
+        expect(snapshots[0]).toMatchObject({
+          turnId: "original-turn",
+          event: { message: {
+            id: "task-live", toolName: "Task", toolArgs: args, toolStatus: "success",
+            toolResult: { details: {
+              delegationId: started.details.delegationId,
+              status: "completed", completedAt: expect.any(Number),
+            } },
+          } },
+        });
+        const initialStart = events.find((envelope) => envelope.event.type === "tool_start");
+        const initialEnd = events.find((envelope) => envelope.event.type === "tool_end");
+        expect(snapshots[0].event.message).toMatchObject({
+          createdAt: new Date(initialStart.ts).toISOString(),
+          toolCompletedAt: new Date(initialEnd.ts).toISOString(),
+          toolDurationMs: initialEnd.ts - initialStart.ts,
+          toolUsage: initialEnd.event.toolUsage,
+        });
+        expect(internals.delegations.get(sibling.details.delegationId)?.status).toBe("running");
+        const types = events.map((envelope) => envelope.event.type);
+        expect(types.indexOf("tool_end")).toBeLessThan(types.indexOf("message_end"));
+      } finally {
+        await runtime.dispose();
+        subagentRuns.deferred = false;
+      }
+    },
+  );
 
   it("converges through TaskWait with reports and statuses", async () => {
     const runtime = createRuntime({ subagents: [explorer] });

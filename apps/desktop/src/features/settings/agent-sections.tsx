@@ -234,7 +234,7 @@ export function SessionImportPanel() {
     setImporting(true);
     try {
       const res = await api.runImportSessions(items);
-      await refreshSessions();
+      await refreshSessions({ revealImportedProjects: true });
       showToast(
         t("settings.importResult", {
           imported: res.imported,
@@ -406,7 +406,11 @@ export function SessionImportPanel() {
                                 <span className="import-row-main">
                                   <span className="import-row-title">{c.title}</span>
                                   <span className="import-row-meta">
-                                    {t("settings.importMessages", { count: c.messageCount })}
+                                    {c.messageCount === null
+                                      ? t("settings.importMessagesUnknown")
+                                      : t("settings.importMessages", {
+                                          count: c.messageCount,
+                                        })}
                                     {" · "}
                                     {formatImportDate(
                                       c.updatedAt,

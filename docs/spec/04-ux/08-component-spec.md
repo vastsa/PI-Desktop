@@ -30,7 +30,7 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
 ```text
 +------------------+------------------------------+------------------+
 | Sidebar          | MainChat                     | WorkPanel        |
-| (240–520px / 48px) | (flex-1)                   | (244–720px /     |
+| (240–520px / 48px) | (flex-1)                   | (≥244px / dynamic|
 |                  |                              |  hidden)         |
 +------------------+------------------------------+------------------+
 | Titlebar row: 46px, traffic lights at {x:16,y:16} (D034/D070)      |
@@ -43,7 +43,7 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
 |---|---|
 | Default | Sidebar expanded, work panel hidden |
 | Narrow (<640px) | Sidebar auto-collapses to icon rail |
-| Work panel open in a fixed client area | Work panel keeps its fixed committed width; MainChat gives up internal space only down to its reserved 515px minimum |
+| Work panel open in a fixed client area | Work panel keeps its committed width while MainChat keeps its 360px hard floor; the expanded sidebar yields first when the budget is exhausted |
 | Fullscreen | Topbar remains; sidebar toggle and artifact-driven panel stay available |
 
 ### 1.4 Interactions
@@ -440,7 +440,9 @@ visually distinct from list content.
   as Primary. The primary folder is activated and named after creation; every
   other selected folder is retained as an open project tab. The form uses a
   compact ChatGPT-like hierarchy: an explicit name label, a quiet memory hint,
-  then the folder list and one primary action.
+  then the folder list and one primary action. The surface uses two compact
+  sections with a fixed action row; on narrow windows the content remains
+  single-column while the action row stays reachable.
 - Right-click the `Projects` heading or empty project-list chrome: open a
   single-item create menu that runs the same Create project dialog action
 - Click project `+`: activate that project, then select its most recent empty
@@ -848,7 +850,7 @@ workflow while rendering entirely inside the plugin's isolated page:
 | Resizing | The inner left divider follows anchored pointer delta or keyboard input for the panel target; pointer changes are frame-coalesced and committed in the renderer. Escape, pointer cancellation, or lost capture restores the prior panel width. Native window edges resize only the fixed application window. |
 | No workspace | Each tab renders its own "open a project" empty state |
 | Open with no resource | `Cmd/Ctrl + J` reveals the panel without creating a tab, so the body renders the New launcher. Clicking `+` creates an explicit, closable New tab with the same launcher rows. Activating a row from that tab replaces it with or selects the singleton view. Closing the final tab leaves the panel open in the no-resource state. |
-| Constrained work area | The panel stays at its committed width inside the existing client area; MainChat absorbs internal width only down to its reserved 515px minimum, which side docks cannot paint over |
+| Constrained work area | The panel is capped by the shared three-column budget inside the existing client area; MainChat never drops below its 360px floor and the expanded sidebar yields at the threshold |
 | New launcher active | The body hosts concise Review and plugin-view buttons. Each row replaces the launcher tab with its destination or activates the existing singleton; the page is independently closeable. |
 | Plugin view active | The body hosts the plugin's own isolated page as a native `WebContentsView`, positioned from the measured surface rect. It remains visible at its full rect while the divider is being resized or a New launcher tab is created; creating a page never pushes the plugin body down or changes its bounds. It is hidden whenever the tab is inactive, the panel is animating, or a panel-wide blocking overlay is open — the same rule the Browser preview follows, since both composite above renderer content. A view whose plugin is disabled, uninstalled, reloaded, or crashed is destroyed; the tab stays and re-opens the page on the next lifecycle event (ADR 0104) |
 | Plugin out of scope | A view contributed by a plugin that is not active in the current project disappears from the New launcher when the project changes. Unlike contributed themes, which are one global setting and stay unfiltered, a view is scoped work |
@@ -914,10 +916,11 @@ workflow while rendering entirely inside the plugin's isolated page:
   file and Browser resources are never reinterpreted against another workspace.
 - Resize: the inner left-edge handle changes the panel's committed width in the
   renderer. Moving it left grows the panel into MainChat's internal space until
-  its 515px minimum is reached; moving it right gives that space back to
+  the shared budget is exhausted; when the 360px floor is reached the expanded
+  sidebar collapses immediately, and moving it right gives that space back to
   MainChat. `ArrowLeft` / `ArrowRight`
   adjust the panel width in 16px steps (`Shift` uses 32px), and `Home` / `End`
-  reach its `244..720px` limits. Pointer math is anchored to the press position
+  reach the current dynamic minimum and maximum. Pointer math is anchored to the press position
   and starting panel width, so grabbing the handle cannot jump the divider;
   moves are frame-coalesced. Escape, pointer cancellation, and lost capture
   restore the press-time panel width. The 10px hit area keeps a column-resize
@@ -928,7 +931,9 @@ workflow while rendering entirely inside the plugin's isolated page:
   localStorage `pi.desktop.workPanel`. Opening and collapsing never request a
   positive native reservation and never change native window bounds. The panel
   flexes inside the existing client area, so MainChat reflows beside it while
-  retaining its 515px minimum. Background session artifacts never update the
+  retaining its 360px hard minimum; the expanded sidebar is the column that
+  yields, and closing the panel restores a sidebar the layout collapsed.
+  Background session artifacts never update the
   visible panel or window geometry.
 
 ### 5.5 Accessibility
@@ -1305,7 +1310,12 @@ Single message render — either user (plaintext) or assistant (markdown streami
   chips matching the composer node (icon + ellipsized name; canonical path in
   the tooltip and accessible name). Image attachments that are not already
   inlined as `@path` chips render as bounded thumbnails (data URL from
-  `fs/readImageDataUrl`); unresolved loads keep the chip. Clicking a
+  `fs/readImageDataUrl`); unresolved loads keep the chip. Bare path tokens in
+  message text recognize Unicode letters and digits, so non-ASCII filenames
+  chip exactly like ASCII ones; absolute and `~/` tokens are matched whole,
+  and one outside the workspace (or any home path) stays plain text rather
+  than rendering a chip that could never open — containment is unchanged
+  (D322). Clicking a
   workspace HTML chip previews it in the side browser; clicking a resolved
   image thumbnail opens the host files viewer on that ref; clicking any other
   allowed file opens it with the OS default application for that suffix.
@@ -1403,9 +1413,16 @@ Single message render — either user (plaintext) or assistant (markdown streami
   generic binding seed, while a non-default per-model Advanced value remains
   explicit. Unknown models use the provider's generic default window. The
   panel is portaled to the document body as a fixed viewport overlay, flips
-  above or below the trigger, clamps to viewport margins, and repositions on
-  scroll or window resize so no clipping ancestor can hide it (D103, D184,
-  D244, D347). When the active session has an installed context checkpoint,
+  above or below the trigger, clamps its horizontal bounds to the
+  conversation pane — the work panel's native browser/plugin surfaces
+  composite above every renderer layer, so anything crossing the pane's
+  right edge would be covered regardless of z-index (D357) — and
+  repositions on scroll, window resize, or conversation-pane geometry
+  changes (sidebar and work-panel toggle, resize, and entrance animation
+  are observed through a pane `ResizeObserver`, since none of them emit
+  resize or scroll events) so no clipping ancestor or native surface can
+  hide it (D103, D184, D244, D347). When the active session has an
+  installed context checkpoint,
   the panel adds one muted summary line for the compaction count and newest
   summary's estimated token cost; the transcript still shows one row per
   compaction (D203).
@@ -1641,10 +1658,15 @@ seconds when non-zero) from one hour onward. Zero-value units are omitted, so
   not the raw function name. Running actions use the progressive form.
 - The primary argument is a clamped single-line monospace hint.
 - Result chips follow the hint: exit code (error hue), match/file counts,
-  replacement count, written or read size, `truncated`, `scratch`. A successful
-  exit earns no chip — the row status already says so. The `truncated` chip
-  follows `details.truncated` and therefore appears only when this result was
-  cut short, not when a Read window of a longer file was filled (D306).
+  replacement count, Write byte size, Read line count plus its 1-based closed
+  line range (`{lineCount},L{offset+1}-L{offset+lineCount}`), `truncated`, and
+  `scratch`. Read uses `offset` and `lineCount` from the returned window rather
+  than `fileBytes`; if those fields are unavailable, it omits the read-size
+  chip instead of presenting the whole-file size as the amount read. A
+  successful exit earns no chip — the row status already says so. The
+  `truncated` chip follows `details.truncated` and therefore appears only when
+  this result was cut short, not when a Read window of a longer file was filled
+  (D306).
 - Live activity remains in the processing group, its latest row, or the
   dedicated runtime indicator; no additional status capsule is rendered.
   Long paths remain in the row summary and are ellipsized.
@@ -1871,6 +1893,11 @@ in place:
   transparent while streaming — no whole-turn tile wrapping thinking, tools, or
   answer fragments (D323). The card keeps 16px inset from its
   tile edge so the graph and any leftover rows do not sit on the border.
+- A delegate's terminal Task snapshot updates its topology node, settled count,
+  elapsed time, and open detail dock immediately, even while siblings or the
+  parent remain active. A completed delegate is green and stops spinning.
+  Terminal Task state takes precedence over older lifecycle polling snapshots
+  that still say `running`; the same outcome survives transcript reload.
 - A topology group stays live — open once, ticking elapsed, labelled working —
   while any of *its* delegates is still running, even when the parent has
   already moved on to a later processing group in the same turn. Elapsed time
@@ -2155,10 +2182,10 @@ reasoning-level control.
   `.tool-spinner` and localized `Enhancing…` label while running, and remains
   a one-shot draft rewrite action. Inline file-reference chips, including
   pasted image chips, do not disable this action and remain in the draft.
-- MainPane and the chat surface reserve a 515px minimum so the composer toolbar
-  keeps its left and right control groups on one row. The groups do not shrink;
-  mode and permission labels stay on one line and ellipsize within their chips,
-  so a sidebar or work-panel resize cannot vertically split, squeeze, or
+- MainPane and the chat surface keep a 360px hard minimum so the composer toolbar
+  retains a usable single-row layout. The left and right control groups do not
+  shrink; mode and permission labels stay on one line and ellipsize within their
+  chips, so a sidebar or work-panel resize cannot vertically split, squeeze, or
   overlap toolbar content.
 - The combined chip opens one anchored menu above itself. The menu starts with
   only Model and Reasoning level entries, each showing its current value and a
@@ -2851,6 +2878,11 @@ groups, select candidates, and start an explicit import.
   leaves every group collapsed.
 - A successful import creates or reuses one durable Projects-index entry for
   each distinct non-empty project path and refreshes sessions/projects.
+- When a successful core or plugin import adds a project-bound session under an
+  archived project, the renderer restores that project's presentation state
+  after the refresh so the project and imported session are visible in the
+  default sidebar. This applies only to newly added bound sessions; ordinary
+  refreshes, pathless sessions, and skipped imports preserve archive state.
 - Path-less imports create no project entry and remain under Temporary
   sessions. Import never creates a physical filesystem directory.
 - Re-importing an existing source session skips it without duplicating its
@@ -2944,7 +2976,13 @@ compatibility remains owned by pi-ai.
    without native spinners, seven thinking-level chips, a constrained
    default-thinking select on the thinking label row, and one wrapping row
    for attachment and delegation checkboxes. The seven thinking controls use
-   the canonical values as-is and are not localized. The thinking label,
+   the canonical values as-is and are not localized. Each numeric limit is
+   topped by a preset ladder of five compact chips (context window
+   128k/256k/312k/500k/1M, max output 4k/8k/16k/32k/128k) in the thinking
+   chips' segmented-track language: clicking a chip writes its token count
+   into the input, the input stays hand-editable, and the chip matching the
+   current value is highlighted; the labels use the canonical values as-is
+   and are not localized. The thinking label,
    optional catalog hint, and default selector sit above one compact,
    keyboard-operable
    grouped control that spans the pane; its seven options share the width
@@ -3161,7 +3199,7 @@ Sidebar footer                                        Popover (360px max)
     and never treats a visible-current or aborted turn as a notification
 18. The work panel opens and collapses as an in-flow right column without
     changing native window bounds; its inner divider resizes the panel target
-    between 244px and 720px, and cancelled divider gestures restore the prior
+    between 244px and the live budget, and cancelled divider gestures restore the prior
     panel width (ADR 0151)
 19. Expanded sidebar session titles, project/group titles, and empty-state copy
     use the 13px compact token while primary sidebar actions remain at 14px

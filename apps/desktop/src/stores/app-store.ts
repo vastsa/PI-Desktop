@@ -125,7 +125,6 @@ import {
 } from "../lib/pending-asks";
 import {
   WORK_PANEL_DEFAULT_WIDTH,
-  WORK_PANEL_MAX_WIDTH,
   WORK_PANEL_MIN_WIDTH,
 } from "../lib/work-panel-resize";
 import {

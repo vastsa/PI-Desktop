@@ -104,3 +104,16 @@ test("the inspector clamps against the conversation pane, not the viewport", () 
   // The landmark the clamp queries has to stay declared by the shell stylesheet.
   assert.match(chatShellStyles, /\.main-pane\s*\{/);
 });
+
+test("the inspector re-places the popover when the pane geometry changes", () => {
+  // #246: sidebar toggle/resize, work-panel open/resize, and the panel's
+  // entrance animation all move the pane's right edge without emitting a
+  // window resize or a scroll event, so a stale clamp can leave part of the
+  // popover under the panel's native surfaces. A ResizeObserver on the
+  // conversation pane is the only signal that fires for those changes.
+  assert.match(
+    inspectorSource,
+    /closest\("\.main-pane"\)[\s\S]{0,200}new ResizeObserver\(updatePopoverPosition\)/,
+    "an open popover must observe the pane so geometry changes re-run placement",
+  );
+});

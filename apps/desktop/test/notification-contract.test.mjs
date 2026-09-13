@@ -32,6 +32,7 @@ const [
 
 const eventsSource = readStoreModuleSync("slices/events-slice.ts");
 const notificationIpcSource = readMainModuleSync("ipc/notification-ipc.ts");
+const desktopServicesSource = readMainModuleSync("services/desktop-services.ts");
 
 test("notification IPC stays behind the shared preload allowlist", () => {
   assert.match(protocolSource, /PROTOCOL_VERSION = 11/);
@@ -108,6 +109,19 @@ test("task and interactive native notifications keep separate visibility rules",
     storeSource,
     /await get\(\)\.selectSession\(notification\.sessionId,\s*\{\s*navigationIntent: intent/,
   );
+});
+
+test("native notifications retain live objects through OS activation", () => {
+  assert.match(notificationIpcSource, /const taskNativeNotifications = new Set<SystemNotification>\(\)/);
+  assert.match(notificationIpcSource, /taskNativeNotifications\.add\(notification\)/);
+  assert.match(notificationIpcSource, /notification\.once\("close", releaseNotification\)/);
+  assert.match(notificationIpcSource, /notification\.once\("failed", releaseNotification\)/);
+  assert.match(notificationIpcSource, /notification\.once\("click",/);
+  assert.match(notificationIpcSource, /releaseNotification\(\);/);
+  assert.match(desktopServicesSource, /getMainWindow: \(\) => BrowserWindow \| null/);
+  assert.match(desktopServicesSource, /notification\.once\("click",/);
+  assert.match(desktopServicesSource, /window\.show\(\);/);
+  assert.match(desktopServicesSource, /window\.focus\(\);/);
 });
 
 test("plugins can request and send native notifications behind notify permission", () => {

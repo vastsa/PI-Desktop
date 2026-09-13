@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
 import {
+  settledDelegationMessage,
+  taskMessageSnapshot,
+} from "./delegation-message.js";
+import {
   Agent,
   BACKGROUND_CONTEXT,
   compact,
@@ -317,6 +321,9 @@ export type DelegationStatus =
  */
 export type DelegationRecord = {
   delegationId: string;
+  /** Original Task transcript snapshot, available after its immediate result. */
+  taskMessage?: UiMessage;
+  taskTurnId?: string;
   agentName: string;
   modelId: string;
   thinkingLevel: SubagentThinkingLevel;
@@ -467,8 +474,33 @@ const COMPACTION_RETAINED_USER_MESSAGE_MAX_TOKENS = 20_000;
 const COMPACTION_FALLBACK_KEEP_RECENT_RATIO = 0.25;
 const COMPACTION_FALLBACK_MAX_SUMMARY_CHARS = 12_000;
 const COMPACTION_SUMMARY_PROMPT_SAFETY_TOKENS = 2_048;
-const COMPACTION_FALLBACK_MARKER =
+export const COMPACTION_FALLBACK_MARKER =
   "[automatic context recovery: older context was omitted after summary generation failed]";
+/** Stored in place of a carried-forward summary when a fallback had none. */
+const COMPACTION_FALLBACK_NO_SUMMARY =
+  "No previous context checkpoint is available.";
+
+/**
+ * A retained-tail fallback stores any carried-forward summary ahead of the
+ * recovery notice, separated by `COMPACTION_FALLBACK_MARKER` (see
+ * `createFallbackCheckpoint`). Only the notice is synthetic: the text before
+ * the marker is the real summary the failed compaction was carrying forward.
+ * Strip the notice — and the "no previous summary" placeholder — so the next
+ * summarization rebuilds from that real summary instead of updating a notice
+ * that never was a summary (#224), without discarding the history it carried.
+ */
+function stripCompactionFallbackNotice(
+  summary: string | undefined,
+): string | undefined {
+  if (!summary) return undefined;
+  const markerIndex = summary.indexOf(COMPACTION_FALLBACK_MARKER);
+  if (markerIndex === -1) return summary;
+  const carried = summary.slice(0, markerIndex).trim();
+  if (carried.length === 0 || carried === COMPACTION_FALLBACK_NO_SUMMARY) {
+    return undefined;
+  }
+  return carried;
+}
 /** Path-scoped rules are best-effort and must not stall a file tool turn. */
 export const PATH_INSTRUCTION_RESOLUTION_TIMEOUT_MS = 2_000;
 const PATH_SCOPED_INSTRUCTION_TOOLS = new Set([
@@ -1431,7 +1463,7 @@ export class DesktopAgentRuntime {
   private suppressProgressTurnRunEnd = false;
   private activeToolCalls = new Map<
     string,
-    { toolName: string; args: unknown }
+    { toolName: string; args: unknown; startedAt: number }
   >();
   private pendingAskTools = new Map<
     string,
@@ -3447,6 +3479,7 @@ Delegation rules:
         });
         const record: DelegationRecord = {
           delegationId,
+          taskTurnId: this.turnId,
           agentName: definition.name,
           modelId: provider.modelId,
           thinkingLevel,
@@ -3572,9 +3605,21 @@ Delegation rules:
     if (result.usage) {
       this.turnSubagentUsage = addUsage(this.turnSubagentUsage, result.usage);
     }
+    this.publishDelegationSettlement(record);
     record.resolveCompletion();
     this.refreshDelegationWait();
     this.pruneFinishedDelegations();
+  }
+
+  private publishDelegationSettlement(record: DelegationRecord): void {
+    if (!record.taskMessage || record.status === "running") return;
+    this.emit(
+      {
+        type: "message_end",
+        message: settledDelegationMessage(record.taskMessage, delegationSummary(record)),
+      },
+      record.taskTurnId,
+    );
   }
 
   /** Cap retained history so a long session cannot grow the registry forever.
@@ -4442,11 +4487,11 @@ Delegation rules:
     };
   }
 
-  private emit(event: AgentEventEnvelope["event"], turnId?: string) {
+  private emit(event: AgentEventEnvelope["event"], turnId?: string, ts = Date.now()) {
     this.onEvent({
       sessionId: this.sessionId,
       turnId: turnId ?? this.turnId,
-      ts: Date.now(),
+      ts,
       event,
     });
   }
@@ -4885,10 +4930,24 @@ Delegation rules:
       keepRecentTokens: budget.keepRecentTokens,
     } satisfies CompactionSettings);
     if (!prepared.ok || !prepared.value) return prepared;
+    // pi picks `previousSummary` straight from the previous compaction entry.
+    // A retained-tail fallback stores its carried-forward summary ahead of a
+    // recovery notice; feeding the notice to the next run makes the model
+    // *update* a summary that never existed and cements the failure. Strip the
+    // notice while keeping the carried-forward summary, so the next
+    // summarization request still sees the history it was carrying (#224).
+    const previousSummary = stripCompactionFallbackNotice(
+      prepared.value.previousSummary,
+    );
     return {
       ok: true as const,
       value: this.codexShapedPreparation(
-        prepared.value,
+        {
+          ...prepared.value,
+          ...(previousSummary === prepared.value.previousSummary
+            ? {}
+            : { previousSummary }),
+        },
         retainedUserTokens,
         retentionMode,
       ),
@@ -5200,7 +5259,7 @@ Delegation rules:
           preparation.previousSummary,
           Math.min(COMPACTION_FALLBACK_MAX_SUMMARY_CHARS, maxSummaryChars),
         )
-      : "No previous context checkpoint is available.";
+      : COMPACTION_FALLBACK_NO_SUMMARY;
     const continuation =
       retentionMode === "active_turn"
         ? "The provider is continuing the active turn. Use the one retained latest user request as the source of truth for that continuation."
@@ -5211,8 +5270,26 @@ Delegation rules:
       "The automatic summary request did not complete. Older messages before this checkpoint are omitted from the next model request.",
       `The complete transcript remains available in the session. ${continuation}`,
     ].join("\n\n");
+    // A completed-turn checkpoint normally retains no naked user messages, but
+    // an empty tail plus a carried-forward (or absent) summary leaves the next
+    // model request with nothing before the boundary: after a runtime rebuild
+    // — model switch, restart — the session restores as if it had just started.
+    // Fall back to the newest user messages under the same budget so the
+    // failure path still restores a bounded, non-empty context (#224).
+    const retainedTail =
+      preparation.retainedTail.length > 0
+        ? preparation.retainedTail
+        : selectRetainedUserMessages(
+            preparation.messagesToSummarize.filter(
+              (message): message is UserMessage => message.role === "user",
+            ),
+            preparation.settings.keepRecentTokens,
+          );
     return this.createCheckpoint(
-      preparation,
+      {
+        ...preparation,
+        retainedTail,
+      },
       throughMessageId,
       summary,
       undefined,
@@ -5353,7 +5430,12 @@ Delegation rules:
     if (!sourceInput.ok || !sourceInput.value) return preparation;
     return {
       ...sourceInput.value,
-      previousSummary: terminal.summary,
+      // Same rule as `prepareCompactionInput`: strip a fallback notice but keep
+      // the summary it carries forward, so a chained fallback cannot bake in
+      // the notice or discard the real history along with it (#224).
+      previousSummary:
+        stripCompactionFallbackNotice(terminal.summary) ??
+        sourceInput.value.previousSummary,
     };
   }
 
@@ -6038,19 +6120,22 @@ Delegation rules:
         }
         break;
       }
-      case "tool_execution_start":
+      case "tool_execution_start": {
+        const startedAt = Date.now();
         this.clearAgentActivity();
         this.activeToolCalls.set(event.toolCallId, {
           toolName: event.toolName,
           args: event.args,
+          startedAt,
         });
         this.emit({
           type: "tool_start",
           toolCallId: event.toolCallId,
           toolName: event.toolName,
           args: event.args,
-        });
+        }, undefined, startedAt);
         break;
+      }
       case "tool_execution_update":
         this.emit({
           type: "tool_update",
@@ -6091,7 +6176,24 @@ Delegation rules:
             result: event.result,
             isError: event.isError,
             ...(toolUsage ? { toolUsage } : {}),
-          });
+          }, undefined, endedAt);
+          if (activeTool?.toolName === SUBAGENT_TOOL_NAME && isRecord(event.result)) {
+            const details = event.result.details;
+            const record = isRecord(details) && typeof details.delegationId === "string"
+              ? this.delegations.get(details.delegationId)
+              : undefined;
+            if (record) {
+              record.taskMessage = taskMessageSnapshot({
+                ...activeTool,
+                toolCallId: event.toolCallId,
+                result: event.result,
+                endedAt,
+                ...(toolUsage ? { toolUsage } : {}),
+              });
+              // A fast delegate may settle before its Task tool_end arrives.
+              this.publishDelegationSettlement(record);
+            }
+          }
         }
         break;
       case "turn_end":
