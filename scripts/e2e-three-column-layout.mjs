@@ -346,9 +346,9 @@ async function main() {
       JSON.stringify(drag.after),
     );
     check(
-      drag.after.panel <= 720,
-      "the committed panel width stays inside its own cap",
-      `panel=${drag.after.panel}`,
+      drag.after.panel <= Math.max(0, drag.after.windowWidth - MAIN_PANE_MIN_WIDTH),
+      "the committed panel width stays inside the live budget",
+      `panel=${drag.after.panel} budget=${Math.max(0, drag.after.windowWidth - MAIN_PANE_MIN_WIDTH)}`,
     );
 
     // 3. Reopen spends panel width first, otherwise targeting 370px.

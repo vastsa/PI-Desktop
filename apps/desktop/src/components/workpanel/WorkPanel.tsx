@@ -39,7 +39,6 @@ import type { SubagentPanelSelection } from "../../lib/subagent-panel";
 import {
   MAIN_PANE_MIN_WIDTH,
   WORK_PANEL_COMPACT_MIN_WIDTH,
-  WORK_PANEL_MAX_WIDTH,
   WORK_PANEL_MIN_WIDTH,
   clampWorkPanelWidth,
   workPanelLayout,
@@ -440,7 +439,7 @@ export function WorkPanel({
         )}
         aria-valuemax={Math.max(
           Math.min(panelMinimum, layout.maxPanelWidth),
-          Math.min(WORK_PANEL_MAX_WIDTH, layout.maxPanelWidth),
+          layout.maxPanelWidth,
         )}
         aria-valuenow={Math.round(panelDragWidth ?? renderPanelWidth)}
         tabIndex={0}

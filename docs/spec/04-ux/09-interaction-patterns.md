@@ -943,7 +943,7 @@ Work-panel and application-window resizing are implemented in MVP:
   reaches its 360px minimum the expanded sidebar collapses immediately. Moving
   it right gives space back to MainChat.
 - The inner divider's target clamps to the shared three-column budget
-  (`min(720px, client width - 360px - expanded sidebar)`); pointer movement is
+  (`client width - 360px - expanded sidebar`, with no fixed pixel cap); pointer movement is
   frame-coalesced and release commits the preferred width. Escape, pointer
   cancellation, and lost capture restore the press-time panel width.
 - Opening and closing animate the dock's `width` and `flex-basis` together with

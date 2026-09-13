@@ -3,7 +3,6 @@
 // this only affects a new profile without a saved preference.
 export const WORK_PANEL_MIN_WIDTH = 244;
 export const WORK_PANEL_DEFAULT_WIDTH = 360;
-export const WORK_PANEL_MAX_WIDTH = 720;
 export const WORK_PANEL_CHAT_MIN_WIDTH = 1040;
 export const WORK_PANEL_CHAT_MAX_WIDTH = 10000;
 /**
@@ -26,10 +25,15 @@ export type WorkPanelChatResizeGesture = {
   startWidth: number;
 };
 
+/**
+ * Lower bound for the work-panel width. There is deliberately no matching
+ * constant upper bound: the panel's maximum is the live three-column budget, so
+ * a wide window can spend client width on the panel down to the MainChat floor
+ * instead of stopping at a fixed pixel cap.
+ */
 export function workPanelWidthLimits(min = WORK_PANEL_MIN_WIDTH) {
   return {
-    min: Math.max(WORK_PANEL_COMPACT_MIN_WIDTH, Math.min(WORK_PANEL_MAX_WIDTH, min)),
-    max: WORK_PANEL_MAX_WIDTH,
+    min: Math.max(WORK_PANEL_COMPACT_MIN_WIDTH, Math.round(min)),
   };
 }
 
@@ -37,8 +41,7 @@ export function clampWorkPanelWidth(
   width: number,
   min = WORK_PANEL_MIN_WIDTH,
 ) {
-  const limits = workPanelWidthLimits(min);
-  return Math.max(limits.min, Math.min(limits.max, width));
+  return Math.max(workPanelWidthLimits(min).min, width);
 }
 
 export type WorkPanelLayout = {
@@ -51,7 +54,8 @@ export type WorkPanelLayout = {
 /**
  * Shared three-column budget. The shell is a fixed-width client area, so the
  * only way to satisfy the MainChat floor is to cap the panel and, at the
- * threshold, collapse the sidebar.
+ * threshold, collapse the sidebar. The cap is the client width itself: a wide
+ * window lets the panel keep growing until MainChat reaches its floor.
  */
 export function workPanelLayout({
   containerWidth,
@@ -74,10 +78,7 @@ export function workPanelLayout({
   );
   const maxPanelWidth = Math.max(
     0,
-    Math.min(
-      WORK_PANEL_MAX_WIDTH,
-      width - leftWidth - MAIN_PANE_MIN_WIDTH,
-    ),
+    width - leftWidth - MAIN_PANE_MIN_WIDTH,
   );
   const panelWidth = Math.min(requested, maxPanelWidth);
   return {

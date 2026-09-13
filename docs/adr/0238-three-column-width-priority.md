@@ -2,7 +2,10 @@
 
 - Status: Accepted
 - Date: 2026-09-13
-- Amends: [ADR 0226](0226-reserve-chat-width-for-composer-controls.md)
+- Amends: [ADR 0226](0226-reserve-chat-width-for-composer-controls.md) ·
+  [ADR 0151](0151-internal-work-panel-dock.md) ·
+  [ADR 0033](0033-internal-dock-work-panel.md) — the fixed `244..720px` clamp
+  from D167/ADR 0033/ADR 0151 is replaced by the live budget below
 - Related: [ADR 0033](0033-internal-dock-work-panel.md) ·
   [ADR 0151](0151-internal-work-panel-dock.md) ·
   [01-ui-ia](../spec/04-ux/01-ui-ia.md) ·
@@ -23,10 +26,13 @@ MainChat to its floor while the expanded sidebar kept its full width.
 
 ## Decision
 
-1. MainChat has a hard `360px` minimum. The effective work-panel maximum is
-   `min(720px, clientWidth - mainChatMinimum - expandedSidebarWidth)`. The
-   shared renderer budget function is used by pointer preview, keyboard resize,
-   panel presentation, sidebar changes and shell resize observation.
+1. MainChat has a hard `360px` minimum. The work-panel maximum is the
+   remaining client width after that floor and the expanded sidebar
+   (`clientWidth - mainChatMinimum - expandedSidebarWidth`); there is no fixed
+   pixel cap, so a wide window keeps spending width on the panel until MainChat
+   reaches its floor. The shared renderer budget function is used by pointer
+   preview, keyboard resize, panel presentation, sidebar changes and shell
+   resize observation.
 2. When the expanded sidebar would make MainChat reach the 360px floor, the
    renderer immediately collapses the sidebar through the existing mounted
    `sidebar-out` animation. While that animation still occupies flex space, the

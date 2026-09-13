@@ -19,7 +19,7 @@ destination, chat as the home surface, tools and permissions inline.
 | Sidebar (240–520px) | Main pane (active destination) | Work panel       |
 |                  |  chat home / transcript        |  (optional,      |
 |                  |  or Extensions page            |   resizable      |
-|                  |                                |   244–720px)     |
+|                  |                                |   ≥244px, dynamic|
 |  Sessions     +↕ |                                | surface          |
 |   Recent rows ↕  |                                |                  |
 |  Projects      + |                                | ◫ | App.tsx  ⌄ × |

@@ -2885,7 +2885,7 @@ needed.
   launcher row replaces that New tab with the destination or activates its
   existing singleton. Closing the last tab leaves the panel open on New. Collapse
   retains runtime tabs but hides the panel until another artifact reopens it.
-  Width clamps to the fixed `244px–720px` range and
+  Width follows the shared three-column budget with no fixed pixel cap and
   previews its current/minimum/maximum values through the panel separator. The
   inner divider exposes the panel width to assistive technology and supports
   the documented keyboard steps. Pointer-down preserves the starting width,
@@ -8415,7 +8415,7 @@ This test plan spec is accepted when:
   3. With the work panel open, drag its inner divider slowly in both directions
      and confirm the panel width changes inside the existing window while the
      native bounds stay fixed. Repeat below the panel minimum and above its
-     maximum, then verify the target clamps to `244..720px`.
+     maximum, then verify the target follows the live budget (`client width - 360px - expanded sidebar`) instead of a fixed cap.
   4. Close and relaunch the app after the resize settles.
 - **Expected**: Native edge and corner hit regions remain available in frameless
   chrome, the minimum size remains 1040×700, and the recovery watchdog does not
@@ -10469,7 +10469,7 @@ sample extensions under `apps/desktop/test/fixtures/pi-extensions/`.
 - **Expected**: The native window width never changes. MainChat never measures
   below 360px — including mid-drag and while `sidebar-out` still occupies flex
   space. The effective panel maximum is the client width minus the 360px
-  MainChat floor and the expanded sidebar width, capped at 720px. When that
+  MainChat floor and the expanded sidebar width, with no fixed pixel cap. When that
   budget is exhausted the expanded sidebar collapses immediately, and the panel
   may keep growing afterwards. A manual reopen spends panel width first;
   MainChat is preserved where possible and otherwise lands on the 370px reopen

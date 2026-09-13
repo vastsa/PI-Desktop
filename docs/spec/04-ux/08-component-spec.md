@@ -30,7 +30,7 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
 ```text
 +------------------+------------------------------+------------------+
 | Sidebar          | MainChat                     | WorkPanel        |
-| (240–520px / 48px) | (flex-1)                   | (244–720px /     |
+| (240–520px / 48px) | (flex-1)                   | (≥244px / dynamic|
 |                  |                              |  hidden)         |
 +------------------+------------------------------+------------------+
 | Titlebar row: 46px, traffic lights at {x:16,y:16} (D034/D070)      |
@@ -3194,7 +3194,7 @@ Sidebar footer                                        Popover (360px max)
     and never treats a visible-current or aborted turn as a notification
 18. The work panel opens and collapses as an in-flow right column without
     changing native window bounds; its inner divider resizes the panel target
-    between 244px and 720px, and cancelled divider gestures restore the prior
+    between 244px and the live budget, and cancelled divider gestures restore the prior
     panel width (ADR 0151)
 19. Expanded sidebar session titles, project/group titles, and empty-state copy
     use the 13px compact token while primary sidebar actions remain at 14px

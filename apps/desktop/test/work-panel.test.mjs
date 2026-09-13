@@ -9,7 +9,6 @@ import { readTranscriptSource } from "./helpers/transcript-source.mjs";
 import {
   MAIN_PANE_MIN_WIDTH,
   WORK_PANEL_DEFAULT_WIDTH,
-  WORK_PANEL_MAX_WIDTH,
   WORK_PANEL_MIN_WIDTH,
 } from "../src/lib/work-panel-resize.ts";
 const appSource = await readAppSource();
@@ -284,7 +283,6 @@ test("work panel width is renderer-owned inside the fixed window", () => {
   assert.equal(MAIN_PANE_MIN_WIDTH, 360);
   assert.equal(WORK_PANEL_DEFAULT_WIDTH, 360);
   assert.equal(WORK_PANEL_MIN_WIDTH, 244);
-  assert.equal(WORK_PANEL_MAX_WIDTH, 720);
   assert.match(panelSource, /const renderPanelWidth = layout\.panelWidth/);
   assert.match(panelSource, /setWidth\(drag\.currentWidth\)/);
   assert.match(panelSource, /startWidth \+ drag\.startClientX - event\.clientX/);

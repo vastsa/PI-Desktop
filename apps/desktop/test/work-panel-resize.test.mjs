@@ -7,7 +7,6 @@ import {
   MAIN_PANE_REOPEN_TARGET_WIDTH,
   WORK_PANEL_DEFAULT_WIDTH,
   WORK_PANEL_COMPACT_MIN_WIDTH,
-  WORK_PANEL_MAX_WIDTH,
   WORK_PANEL_MIN_WIDTH,
   clampWorkPanelChatWidth,
   clampWorkPanelWidth,
@@ -111,8 +110,36 @@ test("the compact width stays representable for the reopen path", () => {
   assert.equal(clampWorkPanelWidth(0, WORK_PANEL_COMPACT_MIN_WIDTH), WORK_PANEL_COMPACT_MIN_WIDTH);
 });
 
-test("clamps the work panel to its fixed width range", () => {
-  assert.equal(clampWorkPanelWidth(900), WORK_PANEL_MAX_WIDTH);
+test("a wide window lets the panel grow past the old fixed cap", () => {
+  // Regression guard: the panel maximum is the live budget, so a 1600px shell
+  // must allow 965px (1600 - 275 sidebar - 360 floor) rather than stopping at
+  // a fixed 720px cap.
+  const wide = workPanelLayout({
+    containerWidth: 1600,
+    sidebarWidth: 275,
+    sidebarCollapsed: false,
+    requestedPanelWidth: 1200,
+  });
+  assert.equal(wide.maxPanelWidth, 965);
+  assert.equal(wide.panelWidth, 965);
+  assert.equal(wide.mainWidth, MAIN_PANE_MIN_WIDTH);
+  assert.equal(wide.shouldCollapseSidebar, true);
+
+  // The same window with the sidebar already yielded spends its width on the
+  // panel down to the floor.
+  const yielded = workPanelLayout({
+    containerWidth: 1600,
+    sidebarWidth: 275,
+    sidebarCollapsed: true,
+    requestedPanelWidth: 1500,
+  });
+  assert.equal(yielded.maxPanelWidth, 1240);
+  assert.equal(yielded.panelWidth, 1240);
+  assert.equal(yielded.mainWidth, MAIN_PANE_MIN_WIDTH);
+});
+
+test("clamps the work panel to its minimum without a fixed upper bound", () => {
+  assert.equal(clampWorkPanelWidth(900), 900);
   assert.equal(clampWorkPanelWidth(500), 500);
   assert.equal(clampWorkPanelWidth(200), WORK_PANEL_MIN_WIDTH);
 });

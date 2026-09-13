@@ -25,7 +25,10 @@ the panel is inside the existing client area.
 
 1. The work panel remains a fixed-width, right-side in-flow flex column. Opening
    and collapsing animate its flex allocation between zero and the committed
-   `244..720px` width without changing native BrowserWindow bounds.
+   `244..720px` width without changing native BrowserWindow bounds. *(Amended by
+   ADR 0238: the committed width is bounded by the live three-column budget
+   instead of a fixed `244..720px` range, and the expanded sidebar yields when
+   MainChat reaches its 360px floor; every other clause here stands.)*
 2. The renderer keeps the `window/setWorkPanelReservation` seam at zero. Main
    normalizes every valid request to `{ requested: 0, reserved: 0 }` and never
    applies panel width or x-offset geometry.
