@@ -18,7 +18,7 @@ export type SkillsIpcDependencies = {
   stripWinLongPrefix: (path: string) => string;
   sendToRenderer: (channel: string, payload?: unknown) => void;
   searchSkillMarket: (query: string, sources: { id: string; name: string; url: string }[]) => Promise<SkillMarketSearchResult>;
-  fetchSkillMarketEntryDocument: (entry: { id: string; name: string; url: string }) => Promise<SkillMarketDocument>;
+  fetchSkillMarketDocument: (entry: { id: string; name: string; url: string }) => Promise<SkillMarketDocument>;
 };
 
 /** Register user-owned skill and subagent definition channels. */
@@ -30,7 +30,7 @@ export function registerSkillsIpc({
   stripWinLongPrefix,
   sendToRenderer,
   searchSkillMarket,
-  fetchSkillMarketEntryDocument,
+  fetchSkillMarketDocument,
 }: SkillsIpcDependencies): void {
   let host: HostProcess | null = null;
   const handle = (channel: string, fn: (...args: any[]) => Promise<any>) => {
@@ -51,7 +51,7 @@ export function registerSkillsIpc({
   registrar.handle(
     IPC.invoke.skillMarketFetch,
     async ({ entry }: { entry: { id: string; name: string; url: string } }) =>
-      fetchSkillMarketEntryDocument(entry),
+      fetchSkillMarketDocument(entry),
   );
 
 // --- Skills the user owns -------------------------------------------------

@@ -75,7 +75,10 @@ describe("BUILTIN_SKILL_CATALOG", () => {
     expect(catalog.skills.length).toBeGreaterThanOrEqual(15);
     expect(new Set(catalog.skills.map((s) => s.id)).size).toBe(catalog.skills.length);
     for (const skill of catalog.skills) {
-      expect(skill.url.startsWith("https://raw.githubusercontent.com/")).toBe(true);
+      const liveHost =
+        skill.url.startsWith("https://raw.githubusercontent.com/") ||
+        skill.url.startsWith("https://cdn.jsdelivr.net/gh/");
+      expect(liveHost).toBe(true);
       expect(skill.url.endsWith("SKILL.md")).toBe(true);
     }
   });

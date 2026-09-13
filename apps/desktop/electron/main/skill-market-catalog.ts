@@ -11,6 +11,7 @@
  * CSP reason; the actual write goes through the existing `skills.create`
  * path on the renderer's side.
  */
+import { net } from "electron";
 import {
   isSafeSkillSourceUrl,
   splitSkillDocument,
@@ -23,16 +24,30 @@ import {
 const CACHE_TTL_MS = 5 * 60_000;
 const TIMEOUT_MS = 8_000;
 
+// net.fetch rides Chromium's network stack, so system/user proxy settings
+// apply — plain undici fetch would ignore them and raw.githubusercontent is
+// unreachable directly from some networks. Three attempts ride out flaps.
+async function request(url: string, kind: "json" | "text"): Promise<unknown> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const response = await net.fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
+      if (!response.ok) throw new Error(`responded ${response.status}`);
+      return kind === "json" ? ((await response.json()) as unknown) : await response.text();
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
+    }
+  }
+  throw lastError;
+}
+
 async function fetchJson<T>(url: string): Promise<T> {
-  const response = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
-  if (!response.ok) throw new Error(`source responded ${response.status}`);
-  return (await response.json()) as T;
+  return (await request(url, "json")) as T;
 }
 
 async function fetchText(url: string): Promise<string> {
-  const response = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
-  if (!response.ok) throw new Error(`document responded ${response.status}`);
-  return response.text();
+  return (await request(url, "text")) as string;
 }
 
 export type SkillMarketSearchResult = {

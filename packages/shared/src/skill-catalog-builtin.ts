@@ -8,7 +8,9 @@
  */
 import type { SkillCatalogFile } from "./skill-catalog.js";
 
-const ANTHROPIC = "https://raw.githubusercontent.com/anthropics/skills/main/skills";
+// jsDelivr CDN: raw.githubusercontent.com is TLS-flaky from some networks,
+// while jsDelivr serves the same files from an edge that reaches CN reliably.
+const ANTHROPIC = "https://cdn.jsdelivr.net/gh/anthropics/skills@main/skills";
 const homepageFor = (slug: string) => `https://github.com/anthropics/skills/tree/main/skills/${slug}`;
 
 export const BUILTIN_SKILL_CATALOG: SkillCatalogFile = {
