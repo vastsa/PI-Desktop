@@ -457,6 +457,125 @@ async function main() {
       `before=${JSON.stringify(beforeMaximize)} after=${JSON.stringify(restoredAfterMaximize)}`,
     );
 
+    // 6. Preview-mode details: inert divider, sidebar interop, persistence.
+    const storedBefore = await cdp.evaluate(
+      `localStorage.getItem("pi.desktop.workPanel")`,
+    );
+    await cdp.evaluate(
+      `document.querySelector(".work-panel-maximize")?.dispatchEvent(new MouseEvent("click", { bubbles: true }))`,
+    );
+    await delay(700);
+    const previewState = await measure();
+    const divider = await cdp.evaluate(`(() => {
+      const el = document.querySelector(".work-panel-resize");
+      if (!el) return null;
+      const rect = el.getBoundingClientRect();
+      return {
+        disabled: el.getAttribute("aria-disabled"),
+        x: Math.round(rect.left + rect.width / 2),
+        y: Math.round(rect.top + rect.height / 2),
+      };
+    })()`);
+    check(
+      divider?.disabled === "true",
+      "the divider is inert while preview mode is on",
+      JSON.stringify(divider),
+    );
+    if (divider) {
+      await cdp.send("Input.dispatchMouseEvent", {
+        type: "mousePressed",
+        x: divider.x,
+        y: divider.y,
+        button: "left",
+        clickCount: 1,
+        buttons: 1,
+      });
+      await cdp.send("Input.dispatchMouseEvent", {
+        type: "mouseMoved",
+        x: Math.max(20, divider.x - 300),
+        y: divider.y,
+        button: "left",
+        buttons: 1,
+      });
+      await cdp.send("Input.dispatchMouseEvent", {
+        type: "mouseReleased",
+        x: Math.max(20, divider.x - 300),
+        y: divider.y,
+        button: "left",
+        clickCount: 1,
+        buttons: 0,
+      });
+      await delay(500);
+    }
+    const afterDividerDrag = await measure();
+    check(
+      afterDividerDrag.main === null && afterDividerDrag.panel === previewState.panel,
+      "dragging the divider in preview mode leaves the layout untouched",
+      JSON.stringify(afterDividerDrag),
+    );
+    const storedAfterPreview = await cdp.evaluate(
+      `localStorage.getItem("pi.desktop.workPanel")`,
+    );
+    check(
+      storedBefore === storedAfterPreview,
+      "entering preview mode never rewrites the persisted preferred width",
+      `${storedBefore} -> ${storedAfterPreview}`,
+    );
+    // The sidebar toggle lives in MainChat's topbar, which preview mode does not
+    // render, so the keyboard shortcut is the path that stays available.
+    await cdp.send("Input.dispatchKeyEvent", {
+      type: "keyDown",
+      modifiers: 2,
+      key: "b",
+      code: "KeyB",
+      windowsVirtualKeyCode: 66,
+      nativeVirtualKeyCode: 66,
+    });
+    await cdp.send("Input.dispatchKeyEvent", {
+      type: "keyUp",
+      modifiers: 2,
+      key: "b",
+      code: "KeyB",
+      windowsVirtualKeyCode: 66,
+      nativeVirtualKeyCode: 66,
+    });
+    await delay(700);
+    const previewWithSidebar = await measure();
+    check(
+      previewWithSidebar.main === null &&
+        previewWithSidebar.sidebarKind === "sidebar" &&
+        previewWithSidebar.panel ===
+          previewWithSidebar.windowWidth - (previewWithSidebar.sidebar ?? 0),
+      "preview mode keeps the panel full-width when the sidebar is reopened",
+      JSON.stringify(previewWithSidebar),
+    );
+    const storedAfterReopen = await cdp.evaluate(
+      `localStorage.getItem("pi.desktop.workPanel")`,
+    );
+    // Reopening the sidebar while previewing is the documented reopen path: it
+    // spends panel width first, so the preferred width follows that gesture.
+    check(
+      storedAfterReopen ===
+        JSON.stringify({
+          width:
+            previewWithSidebar.windowWidth -
+            (previewWithSidebar.sidebar ?? 0) -
+            MAIN_PANE_REOPEN_TARGET_WIDTH,
+        }),
+      "reopening the sidebar from preview mode records the reopen width",
+      `${storedAfterPreview} -> ${storedAfterReopen}`,
+    );
+    await rig(`window.__PI_DESKTOP__.collapseWorkPanel()`);
+    await delay(900);
+    const closedFromPreview = await measure();
+    check(
+      closedFromPreview.main !== null &&
+        closedFromPreview.panel === null &&
+        closedFromPreview.windowWidth === previewState.windowWidth,
+      "closing the panel leaves preview mode and restores the shell",
+      JSON.stringify(closedFromPreview),
+    );
+
     const failed = results.filter((entry) => !entry.ok);
     console.log(
       `\nE2E-LAYOUT-three-column-width-priority: ${results.length - failed.length}/${results.length} checks passed`,
