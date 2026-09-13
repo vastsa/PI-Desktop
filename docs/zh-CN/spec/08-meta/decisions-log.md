@@ -3899,3 +3899,15 @@ D193 和 D194。
 - 手动重开左栏优先占用右栏宽度，否则以 370px 为目标。关闭右栏只恢复由布局机制收起的左栏；手动收起保持收起。
 - 原生窗口不参与：预留 seam 保持 0，不套用任何面板宽度或 x 偏移几何。
 - 决策 D408 记录 issue #267 的行为。见 ADR 0238 与 E2E-LAYOUT-three-column-width-priority。
+
+## 2026-09-12 —— 用 Alt+Enter 向当前回合补充指令
+
+- 普通 Send/Enter 仍是 Host 拥有的 follow-up；Alt+Enter 携带必填的预期回合 id，
+  将输入提交到当前持久回合。
+- 复用 pi-agent-core 在下一次模型请求边界消费的 steering，保留已启动工具及当前
+  模型、工作区和权限配置。
+- 正在停止或已结束的目标拒绝输入，不将其重定向到其他回合。已接收输入保留在历史中，
+  取消后不会独立重放。
+- 必要时将前一条回复的临时快照与已接收用户输入一并记入日志；只原位落定索引中的
+  流式助手，并保持已完成消息的幂等性。见 ADR active-turn-steering 和
+  E2E-AGENT-alt-enter-steers-active-turn。

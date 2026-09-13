@@ -1,6 +1,12 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { TFunction } from "i18next";
-import type { Mode, PermissionMode, ThinkingLevel } from "@pi-desktop/shared";
+import {
+  keybindingDisplayParts,
+  type Mode,
+  type PermissionMode,
+  type ShortcutPlatform,
+  type ThinkingLevel,
+} from "@pi-desktop/shared";
 import type { AppState } from "../../../stores/app-store";
 import { AnchoredMenu } from "../../../components/settings/AnchoredMenu";
 import { ContextUsageInspector } from "../../../components/ContextUsageInspector";
@@ -94,6 +100,8 @@ export function ComposerToolbar({
   abort,
   submit,
 }: ComposerToolbarProps) {
+  const platform = (window.piDesktop?.platform ?? "darwin") as ShortcutPlatform;
+  const steeringShortcut = keybindingDisplayParts("Alt+Enter", platform).join("+");
   return (
     <div className="composer-toolbar">
       <div className="composer-left">
@@ -286,7 +294,13 @@ export function ComposerToolbar({
             type="button"
             className="send-btn"
             ariaLabel={modelReady ? t("chat.send") : t("settings.addProvider")}
-            tooltip={modelReady ? t("chat.send") : t("settings.addProvider")}
+            tooltip={
+              runActive
+                ? t("chat.sendWhileRunning", { shortcut: steeringShortcut })
+                : modelReady
+                  ? t("chat.send")
+                  : t("settings.addProvider")
+            }
             disabled={
               !hasDraftContent ||
               sendBlocked ||

@@ -6,6 +6,7 @@ import type { RuntimeState } from "./context";
 
 export type EventPersistenceDependencies = {
   runtimeState: RuntimeState;
+  steeringReplies: Set<string>;
   activeTurns: Map<string, string>;
   activeToolCalls: Map<string, any>;
   activeToolCallKey: (sessionId: string, toolCallId: string) => string;
@@ -25,6 +26,7 @@ export type EventPersistenceDependencies = {
 
 export function createEventPersistence({
   runtimeState,
+  steeringReplies,
   activeTurns,
   activeToolCalls,
   activeToolCallKey,
@@ -191,6 +193,23 @@ function persistAgentEvent(envelope: AgentEventEnvelope): UiMessage | undefined 
   if (event.type === "turn_end" && !envelope.parentToolCallId) {
     addActiveTurnUsage(envelope.sessionId, event.subagentUsage);
   }
+  if (event.type === "message_end" && event.message.role === "user" && !envelope.parentToolCallId) {
+    // Reserve the current reply before persisting input accepted during its stream.
+    const preceding = event.precedingAssistant?.role === "assistant"
+      ? event.precedingAssistant : undefined;
+    if (preceding) steeringReplies.add(preceding.id);
+    for (const message of [preceding, event.message]) {
+      if (!message) continue;
+      void persistenceOutbox.enqueue({
+        key: `message:${envelope.sessionId}:${message.id}`,
+        sessionId: envelope.sessionId, message, turnId: envelope.turnId ?? turnId,
+      }, () => runtimeState.host).catch((error) => {
+        logger.app("persistence", "warn", "steering transcript enqueue failed", {
+          sessionId: envelope.sessionId, data: String(error),
+        });
+      });
+    }
+  }
   if (event.type === "message_end" && event.message.role === "assistant") {
     if (!envelope.parentToolCallId && event.message.usage) {
       addActiveTurnUsage(envelope.sessionId, event.message.usage);
@@ -218,7 +237,8 @@ function persistAgentEvent(envelope: AgentEventEnvelope): UiMessage | undefined 
     const empty =
       !(event.message.content || "").trim() &&
       !(event.message.thinking || "").trim();
-    if (failed && empty && !event.message.error) return;
+    const reservedForSteering = steeringReplies.delete(event.message.id);
+    if (failed && empty && !event.message.error && !reservedForSteering) return;
     void persistenceOutbox
       .enqueue(
         {

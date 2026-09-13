@@ -19,10 +19,11 @@ export type ComposerInputProps = {
   inputBlocked: boolean;
   pasting: boolean;
   enterToSend: boolean;
+  runActive: boolean;
   composerAc: AutocompleteController;
   onPaste: (event: ClipboardEvent<HTMLDivElement>) => void;
   onAcceptCompletion: (index: number) => void;
-  onSubmit: () => void;
+  onSubmit: (steering?: boolean) => void;
   onInsertNewline: () => void;
   onInput: (source: string, caret: number) => void;
   onCompositionStart: () => void;
@@ -40,6 +41,7 @@ export function ComposerInput({
   inputBlocked,
   pasting,
   enterToSend,
+  runActive,
   composerAc,
   onPaste,
   onAcceptCompletion,
@@ -95,6 +97,12 @@ export function ComposerInput({
             // An Enter that confirms an IME candidate must commit text, never
             // send it or drive autocomplete (D125).
             if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+            if (event.key === "Enter" && event.altKey && !event.shiftKey && !event.metaKey && !event.ctrlKey) {
+              event.preventDefault();
+              composerAc.close();
+              onSubmit(runActive);
+              return;
+            }
             if (composerAc.open && event.key === "Escape") {
               event.preventDefault();
               event.stopPropagation();

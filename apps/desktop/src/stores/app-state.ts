@@ -196,6 +196,7 @@ export type AppState = {
     draft?: ComposerDraftSnapshot,
     targetSessionId?: string,
   ) => Promise<boolean>;
+  steerPrompt: (content: string, draft?: ComposerDraftSnapshot) => Promise<boolean>;
   enqueuePrompt: (
     content: string,
     draft?: ComposerDraftSnapshot,

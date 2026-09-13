@@ -242,6 +242,8 @@ export const zhTW = {
     enhancementFailed: "提示詞增強失敗",
     dismissEnhancementError: "關閉增強錯誤",
     abort: "停止",
+    sendWhileRunning: "傳送後續訊息 · {{shortcut}} 立即轉向",
+    steeringUnavailable: "目前回合已無法接收轉向輸入，草稿已保留。",
     stopGenerating: "停止生成",
     running: "正在處理…",
     loadingSession: "正在載入會話…",
