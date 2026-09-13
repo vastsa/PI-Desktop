@@ -237,17 +237,31 @@ try {
   const userDocuments = await readActive(projectA);
   const merged = await loadSubagentDefinitions(projectA, { userDocuments });
   const byName = new Map(merged.definitions.map((definition) => [definition.name, definition]));
+  const builtinNames = ["explorer", "code-reviewer", "test-runner", "fixer", "ui-designer"];
   check(
     "the global registry document reaches the loader as a user definition",
     byName.get("log-reader")?.source === "user",
     `source=${byName.get("log-reader")?.source}`,
   );
   check(
-    "the four builtins remain available beside it",
-    ["explorer", "code-reviewer", "test-runner", "fixer"].every(
-      (name) => byName.get(name)?.source === "builtin",
-    ),
+    "the five builtins remain available beside it",
+    merged.definitions.filter((definition) => definition.source === "builtin").length ===
+      builtinNames.length &&
+      builtinNames.every((name) => byName.get(name)?.source === "builtin"),
     [...byName.keys()].join(", "),
+  );
+  const designer = byName.get("ui-designer");
+  check(
+    "the UI designer grants preview and editing, caps turns, and inherits permissions",
+    JSON.stringify(designer?.tools) ===
+      JSON.stringify(["Read", "Glob", "Grep", "BrowserPreview", "Bash", "Edit", "Write"]) &&
+      designer?.maxTurns === 80 &&
+      (designer?.permission ?? "inherit") === "inherit",
+    JSON.stringify({
+      tools: designer?.tools,
+      maxTurns: designer?.maxTurns,
+      permission: designer?.permission ?? "inherit",
+    }),
   );
   check(
     "the declared tools survive the round trip to the loader",
@@ -282,7 +296,11 @@ try {
   });
   check(
     "a malformed user document becomes a diagnostic without losing builtins",
-    broken.diagnostics.length === 1 && broken.definitions.length === 4,
+    broken.diagnostics.length === 1 &&
+      broken.definitions.length === builtinNames.length &&
+      builtinNames.every((name) => broken.definitions.some(
+        (definition) => definition.name === name && definition.source === "builtin",
+      )),
     `${broken.diagnostics.length} diagnostic(s), ${broken.definitions.length} definitions: ${broken.diagnostics[0]}`,
   );
 } catch (error) {
