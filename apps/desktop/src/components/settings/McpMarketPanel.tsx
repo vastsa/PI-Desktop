@@ -16,7 +16,18 @@ import {
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../stores/app-store";
-import { IconBookOpen, IconChevronLeft, IconCode, IconDatabase, IconGlobe, IconListChecks, IconServer, IconTerminal, IconX } from "../icons";
+import {
+  IconBookOpen,
+  IconChevronLeft,
+  IconChevronRight,
+  IconCode,
+  IconDatabase,
+  IconGlobe,
+  IconListChecks,
+  IconServer,
+  IconTerminal,
+  IconX,
+} from "../icons";
 import { Field, Input, TooltipButton, cx } from "../ui";
 
 const CATEGORIES: readonly McpCatalogCategory[] = [
@@ -28,6 +39,9 @@ const CATEGORIES: readonly McpCatalogCategory[] = [
 ];
 
 const { servers } = validateMcpCatalogFile(BUILTIN_MCP_CATALOG).catalog;
+
+/** Cards render in a scrolling settings pane, so the list is paginated. */
+const PAGE_SIZE = 24;
 
 /** One glyph per tool family; transport falls back for uncategorized entries. */
 const CATEGORY_ICONS: Record<McpCatalogCategory, typeof IconServer> = {
@@ -92,6 +106,7 @@ export function McpMarketPanel({
   const showToast = useAppStore((state) => state.showToast);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<"all" | McpCatalogCategory>("all");
+  const [page, setPage] = useState(1);
   const [installFor, setInstallFor] = useState<McpCatalogEntry | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -163,6 +178,13 @@ export function McpMarketPanel({
       remote.entries.filter(matches),
     ) as MarketItem[];
   }, [remote.entries, search, category]);
+
+  const totalPages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const paged = useMemo(
+    () => visible.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [visible, currentPage],
+  );
 
   const openInstall = (entry: McpCatalogEntry) => {
     const prefilled: Record<string, string> = {};
@@ -473,7 +495,10 @@ export function McpMarketPanel({
             value={search}
             placeholder={t("settings.mcpMarket.searchPlaceholder")}
             aria-label={t("settings.mcpMarket.searchPlaceholder")}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setPage(1);
+            }}
           />
         </div>
       </div>
@@ -486,7 +511,10 @@ export function McpMarketPanel({
             role="tab"
             aria-selected={category === id}
             className={cx("mcpm-chip", category === id && "is-active")}
-            onClick={() => setCategory(id)}
+            onClick={() => {
+              setCategory(id);
+              setPage(1);
+            }}
           >
             {id === "all"
               ? t("settings.mcpMarket.categoryAll")
@@ -508,10 +536,10 @@ export function McpMarketPanel({
       ) : null}
 
       <div className="mcpm-list" role="list">
-        {visible.length === 0 ? (
+        {paged.length === 0 ? (
           <p className="mcpm-empty">{t("settings.mcpMarket.empty")}</p>
         ) : (
-          visible.map((entry, index) => {
+          paged.map((entry, index) => {
             const installed = installedIds.includes(entry.id);
             return (
               <article
@@ -570,6 +598,36 @@ export function McpMarketPanel({
           })
         )}
       </div>
+
+      {totalPages > 1 ? (
+        <div className="mcpm-pager">
+          <button
+            type="button"
+            className="mcpm-page-btn"
+            disabled={currentPage <= 1}
+            aria-label={t("settings.mcpMarket.pagePrev")}
+            onClick={() => setPage(currentPage - 1)}
+          >
+            <IconChevronLeft size={14} />
+          </button>
+          <span className="mcpm-page-info">
+            {t("settings.mcpMarket.pageInfo", {
+              page: currentPage,
+              pages: totalPages,
+              total: visible.length,
+            })}
+          </span>
+          <button
+            type="button"
+            className="mcpm-page-btn"
+            disabled={currentPage >= totalPages}
+            aria-label={t("settings.mcpMarket.pageNext")}
+            onClick={() => setPage(currentPage + 1)}
+          >
+            <IconChevronRight size={14} />
+          </button>
+        </div>
+      ) : null}
 
       {/* The settings shell carries a transform, which would turn the
           overlay's `position: fixed` into shell-relative positioning — portal
