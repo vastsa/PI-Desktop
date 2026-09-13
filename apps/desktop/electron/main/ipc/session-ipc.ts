@@ -123,6 +123,14 @@ export function registerSessionIpc({
     });
   };
 
+  handle(IPC.invoke.sessionSearch, async (input) => {
+    if (!host) throw new Error("host unavailable");
+    return host.call("search.sessions", input);
+  });
+  handle(IPC.invoke.sessionSearchContext, async (input) => {
+    if (!host) throw new Error("host unavailable");
+    return host.call("search.context", input);
+  });
   handle(IPC.invoke.sessionList, async () => {
     if (!host) throw new Error("host unavailable");
     const [result, { providers, defaults }] = await Promise.all([
@@ -203,6 +211,7 @@ export function registerSessionIpc({
         | {
             id?: string;
             messageBefore?: number;
+            messageAround?: string;
             messageLimit?: number;
             contentLimit?: number;
           },
@@ -214,6 +223,9 @@ export function registerSessionIpc({
       const [result, { providers, defaults }] = await Promise.all([
         host.call<{ session?: RuntimeSession | null }>("session.get", {
           id,
+          ...(typeof request.messageAround === "string" && request.messageAround.trim()
+            ? { messageAround: request.messageAround }
+            : {}),
           ...(Number.isInteger(request.messageBefore) && request.messageBefore! >= 0
             ? { messageBefore: request.messageBefore }
             : {}),

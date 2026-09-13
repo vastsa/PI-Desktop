@@ -26,15 +26,17 @@ const [sessionRuntime, sessionSlice, sessionCoordination, events, sidebar, chatS
     loadStyles(),
   ]);
 const store = [sessionRuntime, sessionSlice, sessionCoordination, events].join("\n");
+const readingRuntime = await readStoreModule("runtime/transcript-reading-runtime.ts");
+const readingView = await read("../src/hooks/use-transcript-view.ts");
 
 test("session reads use a bounded tail and load older pages on demand", () => {
   assert.match(store, /SESSION_TRANSCRIPT_PAGE_SIZE = 100/);
   assert.match(store, /SESSION_TRANSCRIPT_CONTENT_LIMIT = 64 \* 1024/);
-  assert.match(store, /loadOlderMessages: async/);
-  assert.match(store, /messageBefore: before/);
-  assert.match(store, /const merged = mergeLiveSessionMessages\(page\.messages, cached\)/);
-  assert.match(store, /messages: mergeLiveSessionMessages\(page\.messages, state\.messages\)/);
-  assert.doesNotMatch(store, /messages: \[\.\.\.page\.messages, \.\.\.state\.messages\]/);
+  // The shared renderer reader owns history paging; canonical caches remain
+  // exclusively live/action inputs. Behavioral coverage lives in transcript-reading.
+  assert.match(readingRuntime, /loadTranscriptPage: async/);
+  assert.match(readingRuntime, /messageBefore:\s*direction === "before"\s*\? view\.messageStart/);
+  assert.doesNotMatch(readingRuntime, /sessionTranscriptCache|liveSessionTranscripts/);
   assert.match(api, /messageLimit\?: number/);
   assert.match(api, /contentLimit\?: number/);
   assert.match(main, /messageBefore\?: number/);
@@ -53,8 +55,8 @@ test("session reads use a bounded tail and load older pages on demand", () => {
   // Paging is wired per retained pane (ADR 0137), so each pane requests its own
   // older pages rather than the surface requesting them for whichever session
   // happens to be active.
-  assert.match(pane, /hasMoreBefore=\{hasMoreBefore\}/);
-  assert.match(pane, /onLoadOlder=\{\(\) => loadOlderMessages\(sessionId\)\}/);
+  assert.match(pane, /hasMoreBefore=\{transcript\.hasMoreBefore\}/);
+  assert.match(pane, /onLoadOlder=\{\(\) => loadTranscriptPage\(sessionId, "before"\)\}/);
 });
 
 test("session reads are coalesced, bounded, and never globally serialized", () => {
@@ -130,8 +132,8 @@ test("each retained session keeps its own mounted pane", () => {
   assert.match(sessionSlice, /\.\.\.retainSessionPane\(state, id, messages\)/);
   // A pane reads the live projection only while it owns the active session.
   assert.match(
-    pane,
-    /const messages = isActiveProjection \? liveMessages : snapshot \?\? \[\]/,
+    readingView,
+    /state\.activeSessionId === sessionId\s*\? state\.messages\s*:\s*\(?state\.retainedTranscripts\[sessionId\]/,
   );
   assert.doesNotMatch(chatSurface, /SessionLoadingSkeleton/);
   assert.doesNotMatch(styles, /session-loading-skeleton/);

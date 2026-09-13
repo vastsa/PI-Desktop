@@ -3933,3 +3933,13 @@ D193 和 D194。
 - Electron 投递结算不再丢弃宿主重启之前记录的结算，已经在运行的 drain 会接收在其期间排队的结算，而不是把它们推迟到无关的触发条件。持久化的投递失败保持稳定的 `CODE: message` 形式。
 - 针对编排刷新路径的审查修正把模型目录查找的工作量限制为每次读取，而不再依赖缓存淘汰；并用探针本身并不保证的观察替换那些不可能失败的 E2E 启动条件。
 - 见 ADR 0239、ADR 0240、E2E-SESSION-hover-card-model-and-links。
+
+### Tray session shortcuts (issue #293)
+
+[ADR tray-session-shortcuts](/adr/tray-session-shortcuts) amends the D216 native
+tray menu with Running, Unread, and Pinned groups, three rows each after global
+priority assignment. Host session/inbox reads and runtime events remain the
+source of truth; renderer organization is mirrored without a persistence
+change. macOS single-click opens the menu without restoring the window;
+selection is delivered after bootstrap and uses normal session navigation.
+Validation contract: E2E-TRAY-bounded-session-navigation.

@@ -23,6 +23,10 @@ export const fr = {
     "close": "Fermer"
   },
   "tray": {
+    "running": "En cours",
+    "unread": "Non lues",
+    "pinned": "Épinglées",
+    "viewMore": "Voir plus…",
     "open": "Ouvrir PI-Desktop",
     "quit": "Quitter PI-Desktop",
     "askTitle": "Garder PI-Desktop en arrière-plan ?",
@@ -281,6 +285,7 @@ export const fr = {
     "loadingSession": "Chargement de la conversation…",
     "pasteInProgress": "Toujours enregistrer le contenu collé. Réessayez dans un instant.",
     "loadingEarlierMessages": "Chargement des messages précédents…",
+    loadLaterMessages: "Charger les messages suivants",
     "showEarlierMessages": "Afficher les messages précédents",
     "copy": "Copier",
     "copied": "Copié",
@@ -1402,7 +1407,15 @@ export const fr = {
     "uncategorized": "Autre"
   },
   "search": {
-    "placeholder": "Rechercher des chats…",
+    placeholder: "Rechercher titres et messages…",
+    metadataMatch: "Titre / projet",
+    messageMatches: "{{count}} messages correspondants",
+    user: "Vous",
+    assistant: "Assistant",
+    loading: "Recherche…",
+    failed: "Échec de la recherche. Réessayez.",
+    loadMore: "Plus de résultats",
+    retry: "Réessayer",
     "empty": "Aucun chat correspondant",
     "pages": "Pages",
     "commands": "Commandes",

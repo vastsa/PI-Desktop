@@ -1,0 +1,36 @@
+.search-message-hit {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  padding-left: 36px;
+}
+
+.search-message-meta {
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs);
+}
+
+.search-message-snippet {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.search-session-details {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.search-session-meta {
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+
+.search-message-snippet .search-hit {
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklab, var(--ds-accent) 28%, var(--ds-bg-primary));
+}

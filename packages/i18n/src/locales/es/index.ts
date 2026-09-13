@@ -23,6 +23,10 @@ export const es = {
     "close": "Cerrar"
   },
   "tray": {
+    "running": "En curso",
+    "unread": "Sin leer",
+    "pinned": "Fijadas",
+    "viewMore": "Ver más…",
     "open": "Abrir PI-Desktop",
     "quit": "Salir de PI-Desktop",
     "askTitle": "¿Mantener PI-Desktop ejecutándose en segundo plano?",
@@ -281,6 +285,7 @@ export const es = {
     "loadingSession": "Cargando conversación...",
     "pasteInProgress": "Todavía guardando el contenido pegado. Inténtalo de nuevo en un momento.",
     "loadingEarlierMessages": "Cargando mensajes anteriores…",
+    loadLaterMessages: "Cargar mensajes posteriores",
     "showEarlierMessages": "Mostrar mensajes anteriores",
     "copy": "Copiar",
     "copied": "Copiado",
@@ -1402,7 +1407,15 @@ export const es = {
     "uncategorized": "Otro"
   },
   "search": {
-    "placeholder": "Buscar chats…",
+    placeholder: "Buscar títulos y mensajes…",
+    metadataMatch: "Título / proyecto",
+    messageMatches: "{{count}} mensajes coincidentes",
+    user: "Tú",
+    assistant: "Asistente",
+    loading: "Buscando…",
+    failed: "Error de búsqueda. Inténtalo de nuevo.",
+    loadMore: "Más resultados",
+    retry: "Reintentar",
     "empty": "No hay chats coincidentes",
     "pages": "Páginas",
     "commands": "Comandos",

@@ -410,7 +410,6 @@ export function createProjectSlice({
       runtime.sessionTranscriptCache.delete(id);
       runtime.sessionHistoryCache.delete(id);
       runtime.liveSessionTranscripts.delete(id);
-      runtime.sessionOlderLoads.delete(id);
       if (get().activeSessionId === id) get().resetWorkPanelContext();
       set((state) => {
         const sessionMeta = { ...state.sessionMeta };

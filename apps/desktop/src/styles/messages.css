@@ -2835,3 +2835,40 @@
     transform: rotate(360deg);
   }
 }
+
+/* Search navigation uses the original message tree and its rendered text. */
+.message-row.transcript-search-target {
+  content-visibility: visible;
+}
+
+::highlight(transcript-search) {
+  color: var(--ds-text-primary);
+  background-color: color-mix(in srgb, var(--ds-accent) 35%, transparent);
+}
+
+.transcript-search-source-match {
+  background-color: color-mix(in srgb, var(--ds-accent) 25%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--ds-accent) 65%, transparent);
+  outline-offset: 2px;
+}
+
+.transcript-load-later {
+  display: block;
+  margin: 16px auto;
+  padding: 8px 12px;
+  color: var(--ds-text-muted);
+  border-radius: var(--radius-md);
+  background: var(--ds-bg-elevated-opaque);
+}
+
+.transcript-navigation-loading {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  background: var(--ds-bg-elevated-opaque);
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs);
+}

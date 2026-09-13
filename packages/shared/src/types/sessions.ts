@@ -28,8 +28,13 @@ export type SessionSummary = {
 
 export type SessionDetail = SessionSummary & {
   messages: UiMessage[];
+  /** Owning Task for a nested search target; context only, outside page cursors. */
+  navigationParent?: UiMessage;
   /** Zero-based offset of the first message returned by a bounded history read. */
   messageStart?: number;
+  /** Exclusive physical end of a bounded read; not the deduplicated length. */
+  messageEnd?: number;
+  hasMoreAfter?: boolean;
   /** True when older messages must be requested with another bounded read. */
   hasMoreBefore?: boolean;
   /** The checkpoint that governs the next model request, i.e. the last of
@@ -151,3 +156,40 @@ export type AgentActivity =
       /** Running targets, in wait order, with the latest coarse child action. */
       agents?: AgentActivityAgent[];
     };
+
+/** Host-owned global search, grouped and paginated by session. */
+export type SessionMessageMatch = {
+  messageId: string;
+  role: "user" | "assistant";
+  createdAt: string;
+  snippet: string;
+};
+
+export type SessionSearchHit = {
+  session: SessionSummary;
+  projectName?: string | null;
+  metadataMatch: boolean;
+  messageCount: number;
+  matches: SessionMessageMatch[];
+};
+
+export type SessionSearchPage = {
+  hits: SessionSearchHit[];
+  nextOffset: number | null;
+};
+
+export type SessionSearchContext = {
+  /** Read-only canonical text projection; no mutation or model-facing fields. */
+  messages: Pick<UiMessage, "id" | "role" | "content" | "createdAt" | "toolName">[];
+  hasMoreBefore: boolean;
+  hasMoreAfter: boolean;
+  previousMatchId: string | null;
+  nextMatchId: string | null;
+};
+
+export type SessionSearchContextRequest = {
+  sessionId: string;
+  messageId: string;
+  query: string;
+  direction?: "around" | "before" | "after";
+};

@@ -4804,6 +4804,27 @@ D193, and D194.
   not fail with observations the probe does not itself guarantee.
 - See ADR 0239, ADR 0240, E2E-SESSION-hover-card-model-and-links.
 
+### Unified transcript reading and complete search navigation
+
+[ADR transcript-reading-ownership](/adr/transcript-reading-ownership) amends
+[ADR session-content-search](/adr/session-content-search) with one renderer
+reading view for ordinary history and search, shared by MainChat and the subagent
+dock. Live/model caches remain canonical. Nested targets receive capped parent
+Task context through additive `navigationParent`; parser source offsets locate
+hidden Markdown and file-chip matches. Read ownership rejects interrupted pages,
+and explicit message actions hydrate canonical input when history is partial or
+text is capped. Validation: E2E-SESSION-content-search-and-message-navigation.
+
+### Tray session shortcuts (issue #293)
+
+[ADR tray-session-shortcuts](/adr/tray-session-shortcuts) amends the D216 native
+tray menu with Running, Unread, and Pinned groups, three rows each after global
+priority assignment. Host session/inbox reads and runtime events remain the
+source of truth; renderer organization is mirrored without a persistence
+change. macOS single-click opens the menu without restoring the window;
+selection is delivered after bootstrap and uses normal session navigation.
+Validation contract: E2E-TRAY-bounded-session-navigation.
+
 ### Global sidebar conversation pins (issue #306)
 
 [ADR global-sidebar-pins](/adr/global-sidebar-pins) amends ADR 0016: conversation

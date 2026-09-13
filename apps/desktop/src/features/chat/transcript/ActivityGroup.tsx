@@ -1,6 +1,7 @@
 import {
   Fragment,
   memo,
+  useContext,
   useEffect,
   useId,
   useMemo,
@@ -51,6 +52,7 @@ import {
 } from "./shared";
 import { SubagentTopology } from "./SubagentDetail";
 import { ToolRow } from "./ToolRow";
+import { TranscriptSearchContext } from "../../../lib/transcript-search-context";
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
 
@@ -218,12 +220,15 @@ export const ActivityGroup = memo(function ActivityGroup({
   // this card is not the turn's live tail while its delegates are still running.
   const topologyLive = hasSubagentTopology && subagentSummary.running > 0;
   const live = isActive || topologyLive;
+  const searchTarget = useContext(TranscriptSearchContext);
+  const revealRequest = searchTarget && items.some((item) => item.message.id === searchTarget.messageId)
+    ? searchTarget.requestId : undefined;
   const {
     open,
     toggle: toggleDisclosure,
     collapse: collapseDisclosure,
     claim: claimDisclosure,
-  } = useAutomaticDisclosure(live);
+  } = useAutomaticDisclosure(live, revealRequest);
   const [now, setNow] = useState(Date.now);
   const [finishedAt, setFinishedAt] = useState<number | null>(null);
   const wasActiveRef = useRef(live);

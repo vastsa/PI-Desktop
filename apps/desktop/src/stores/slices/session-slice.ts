@@ -1,4 +1,5 @@
 import i18n from "i18next";
+import { prepareTranscriptAction } from "../runtime/transcript-action";
 import type {
   Mode,
   PlanProposal,
@@ -106,7 +107,6 @@ export function createSessionSlice({
   | "restorePendingPlan"
   | "refreshPlanCheckpoints"
   | "prefetchSession"
-  | "loadOlderMessages"
   | "selectSession"
   | "newSession"
   | "forkSession"
@@ -216,55 +216,6 @@ export function createSessionSlice({
         messageLimit: 100,
         contentLimit: 64 * 1024,
       });
-    },
-
-    loadOlderMessages: async (sessionId) => {
-      const window = get().sessionHistory[sessionId];
-      if (!window?.hasMoreBefore || runtime.sessionOlderLoads.has(sessionId)) return;
-      const before = window.messageStart;
-      const request = api
-        .getSession(sessionId, {
-          messageBefore: before,
-          messageLimit: 100,
-          contentLimit: 64 * 1024,
-        })
-        .then((detail) => {
-          const page = detail.session;
-          if (!page) return;
-          const nextWindow = {
-            messageStart: page.messageStart ?? Math.max(0, before - page.messages.length),
-            hasMoreBefore: page.hasMoreBefore === true,
-          };
-          const cached = runtime.sessionTranscriptCache.get(sessionId) ?? [];
-          const cachedStart =
-            runtime.sessionHistoryCache.get(sessionId)?.messageStart ?? before;
-          if (cachedStart !== before && cached.length > 0) return;
-          const merged = mergeLiveSessionMessages(page.messages, cached);
-          runtime.cacheSessionTranscript(sessionId, merged, nextWindow);
-          set((state) =>
-            state.activeSessionId === sessionId
-              ? {
-                  messages: mergeLiveSessionMessages(page.messages, state.messages),
-                  sessionHistory: {
-                    ...state.sessionHistory,
-                    [sessionId]: nextWindow,
-                  },
-                }
-              : {
-                  sessionHistory: {
-                    ...state.sessionHistory,
-                    [sessionId]: nextWindow,
-                  },
-                },
-          );
-        })
-        .finally(() => {
-          if (runtime.sessionOlderLoads.get(sessionId) === request) {
-            runtime.sessionOlderLoads.delete(sessionId);
-          }
-        });
-      runtime.sessionOlderLoads.set(sessionId, request);
-      await request;
     },
 
     selectSession: async (id, opts) => {
@@ -404,6 +355,7 @@ export function createSessionSlice({
           ? {
               messageStart: detail.session.messageStart ?? 0,
               hasMoreBefore: detail.session.hasMoreBefore === true,
+              contentLimited: true,
             }
           : { messageStart: 0, hasMoreBefore: false };
         const currentState = get();
@@ -549,7 +501,8 @@ export function createSessionSlice({
 
     forkAssistantMessage: async (messageId) => {
       const intent = runtime.beginNavigationIntent();
-      const state = get();
+      const state = await prepareTranscriptAction({ get, set }, runtime, messageId);
+      if (!state || !runtime.navigationIntentIsCurrent(intent)) return;
       const sessionId = state.activeSessionId;
       if (!sessionId || state.runningSessions[sessionId]) return;
       const message = state.messages.find((candidate) => candidate.id === messageId);

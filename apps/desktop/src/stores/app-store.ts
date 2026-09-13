@@ -64,7 +64,6 @@ import { applyOptimisticSessionConfiguration } from "../lib/session-thinking";
 import {
   RETAINED_SESSION_PANE_LIMIT,
   clearSessionPanes,
-  recordPaneTranscript,
   releaseSessionPane,
   retainSessionPane,
 } from "../lib/session-panes";
@@ -200,6 +199,7 @@ import {
   untitledTaskTitle,
 } from "./runtime/session-title-runtime";
 import { createInteractivePromptNotifier } from "./runtime/notification-runtime";
+import { createTranscriptReadingRuntime } from "./runtime/transcript-reading-runtime";
 export type {
   AgentTurnResult,
   DraftSessionConfiguration,
@@ -266,7 +266,6 @@ function viewingSessionIdForPrompt(
     : null;
 }
 
-const SESSION_TRANSCRIPT_CACHE_LIMIT = 20;
 export const SESSION_TRANSCRIPT_PAGE_SIZE = 100;
 export const SESSION_TRANSCRIPT_CONTENT_LIMIT = 64 * 1024;
 export { RETAINED_SESSION_PANE_LIMIT };
@@ -443,10 +442,13 @@ const {
   materializeDraftSession: materializeDraftSessionInternal,
 } = sessionCoordination;
 
+const transcriptReading = createTranscriptReadingRuntime(runtimeStoreAccess, api.getSession);
+
 export const useAppStore = create<AppState>((set, get) => {
   storeAccess = { get, set };
   return {
   ...createInitialState(),
+  ...transcriptReading.actions,
 
   ...createSessionSlice({
     get,
@@ -729,38 +731,10 @@ export const useAppStore = create<AppState>((set, get) => {
   };
 });
 
-/**
- * Mirror the live transcript into the active session's retained snapshot
- * (ADR 0137).
- *
- * `messages` is written from ~30 places (streaming events, edits, retries,
- * revisions, smart stop). Keeping the snapshot in step here means none of them
- * has to remember the pane, and the pane the user leaves keeps exactly what it
- * last painted instead of the transcript it had when it was opened.
- */
+/** Reconcile reading views and canonical caches at the same publication boundary. */
 useAppStore.subscribe((state, previous) => {
-  if (
-    state.messages === previous.messages &&
-    state.activeSessionId === previous.activeSessionId
-  ) {
-    return;
-  }
-  const id = state.activeSessionId;
-  if (!id) return;
-  if (state.runningSessions[id] || previous.runningSessions[id]) {
-    sessionRuntime.liveSessionTranscripts.add(id);
-  }
-  sessionRuntime.cacheSessionTranscript(
-    id,
-    state.messages,
-    state.sessionHistory[id],
-  );
-  if (state.retainedTranscripts[id] === state.messages) return;
-  useAppStore.setState((current) =>
-    current.activeSessionId === id
-      ? recordPaneTranscript(current, id, current.messages)
-      : {},
-  );
+  transcriptReading.reconcile(state, previous);
+  sessionRuntime.syncTranscriptProjection(state, previous);
 });
 
 export async function materializeDraftSession(
