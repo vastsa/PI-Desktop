@@ -21,7 +21,7 @@
 
 - 完全由UI驱动的自动化覆盖；协议和源合同自动化是
   仍在计划中，而更广泛的桌面套件仍在计划中。
-- 性能/压力测试（后 MVP）。
+- 通用性能/压力测试（后 MVP）；桌面响应性的有界回归检查由相关功能场景覆盖。
 - 原生 Windows/Linux 发布资格（已发布的工件存在；原生
   资格差距仍然记录在案）。
 - 市场发行商来源和恶意插件沙箱场景；基本的
@@ -57,7 +57,7 @@ unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E
 | **维斯特** | 单元+集成（TS侧） | 活动（`pnpm test`，共享包） |
 | **Rust #[测试]** | 主机核心单元测试 | 活跃（`cargo test -p host-core`） |
 | **协议烟雾** | 主机 RPC + 工具 + 无头插件 | 有效（`test:e2e`，20 次检查） |
-| **Electron 探针** | 启动桥+崩溃监控 | 活跃（`test:e2e:boot`、`test:e2e:supervision`） |
+| **Electron 探针** | 启动桥、会话列表响应性和崩溃监控 | 活跃（`test:e2e:boot`、`test:e2e:supervision`） |
 | **剧作家** | 完整的 UI 驱动旅程 | 计划（M5 之后） |
 
 > 决策：协议烟雾测试和 Electron 探针是活跃的验证资产；更广泛的桌面旅程按场景执行，所需平台不可用时记录为环境受限。
@@ -103,6 +103,8 @@ unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E
 
 - 跨域运行时、host 或 IPC：`pnpm test:e2e`。
 - Electron 启动、preload 或窗口生命周期：`pnpm test:e2e` 和 `pnpm test:e2e:boot`。
+- 会话列表刷新或模型能力查询：`pnpm test:e2e` 和 `pnpm test:e2e:boot`，
+  包括合成大列表的响应性检查。
 - Plan host/runtime：`pnpm test:e2e` 和 `pnpm test:e2e:plan`。
 - Plan UI：`pnpm test:e2e:plan` 和 `pnpm test:e2e:plan-ui`。
 - host/sidecar 监督、崩溃恢复或重启：`pnpm test:e2e` 和 `pnpm test:e2e:supervision`。
@@ -2366,27 +2368,30 @@ MainChat 弥补了缺口。 Maximized/fullscreen 调用保留最新的
 - **里程碑**：M5
 - **状态**：草案
 
-#### E2E-066：提供程序模型目录在重新启动和离线刷新后仍然存在
+#### E2E-066：提供商模型目录在重启和离线刷新后保持可用
 
-- **先决条件**：已保存的提供程序已从其返回至少两个模型
-  发现端点和生成的目录存储在 `models` 中。
-- **步骤**：1) 退出并重新启动应用程序。 2) 断开提供商端点的连接。
-  3) 打开 Composer 模型菜单。 4）等待后台刷新失败。
-  5) 使用一个重命名的模型和一个附加模型重新连接端点，
-  然后更新提供程序配置并重新打开选择器。
-- **预期**：第一个打开的选择器渲染先前的目录而不启动
-  来自一个空列表。离线刷新保留每个缓存的条目和
-  配置模型后备。重新连接后，实时结果更新
-  渲染器并保留到 Rust 拥有的 SQLite。保留用户定义的模型行
-  不变，新发现的模型仍然可用
-  重新启动。
+- **先决条件**：已保存的提供商匹配 models.dev 的提供商/API URL，并包含至少两个
+  目录模型；确定性测试夹具能分别让 `https://models.dev/api.json` 和提供商发现端点不可用。
+- **步骤**：1）打开提供商模型选择器，确认显示 models.dev 模型名称、限制、能力标记和来源。
+  2）检查网络夹具，确认提供商 API key 从未发送给 models.dev。3）退出并重启应用。
+  4）断开 models.dev 和提供商端点。5）打开 Composer 模型菜单并等待刷新回退。
+  6）仅恢复提供商端点，返回一个自定义模型，然后重新打开选择器。
+  7）预热一个已知模型和一个未知模型的查询，再刷新目录夹具，使其包含更新后的元数据
+  和此前未知的模型。8）让目录刷新失败后重复检查。
+- **预期**：首次打开选择器即呈现已配置的模型/提供商缓存，不从空列表开始。
+  重启时无需网络即可使用随应用提供的 models.dev 发布快照。设置页刷新失败会保留该内存
+  快照；自定义提供商仅针对 models.dev 未收录的 ID 回退到其端点，最后回退到已配置的绑定。
+  离线刷新保留所有缓存和配置条目。提供商发现成功时可将规范化 ID 持久化到 Rust 拥有的
+  SQLite，但不能替换 models.dev 元数据或用户定义的绑定。目录刷新成功会同时替换缓存中
+  命中和未命中的结果；刷新失败保留之前的结果。修改模型绑定或默认提供商/模型无需重启
+  应用即可生效。
 - **链接规格**：`03-runtime/04-data-storage.md`，
   `03-runtime/12-provider-config-schema.md`，
   `03-runtime/13-model-catalog-and-selection.md`、`04-ux/08-component-spec.md`
-- **验收**：B（模型配置）、F（持久性）、质量
+- **验收**：B（模型配置）、F（持久性）、质量、安全性
 - **里程碑**：M5
-- **状态**：单位覆盖（`providers::tests`、`model-cache.test.mjs`）；满
-  restart/offline UI 场景草案
+- **状态**：单元测试覆盖（`providers::tests`、`model-cache.test.mjs`、
+  `models-dev-catalog.test.mjs`）；完整重启/离线 UI 场景为草案
 
 #### E2E-080：Claude Opus 5 从固定的 pi-ai 目录中解析
 
@@ -2643,6 +2648,25 @@ PI-Desktop 图标；两个表面都不会暴露库存 Electron 名称或图标�
 - **里程碑**：M5
 - **状态**：单位覆盖（`sessions::tests::message_scoped_fork_stops_at_selected_assistant_response`，
   `session-fork.test.mjs`、`transcript-style.test.mjs`)；完全重启 UI 场景草稿
+
+#### E2E-SESSION-list-refresh-keeps-desktop-responsive：大规模会话列表刷新时 Electron 保持响应
+
+- **前提条件**：已构建的 Electron 桌面应用、随应用提供的 models.dev 目录，以及未配置
+  提供商的全新临时 profile。探针仅使用合成的 `authKind: none` 提供商，不启动 Agent 回合。
+- **步骤**：1）通过 Rust Host API 创建 800 个空的持久化会话，分配到最多十三个已知模型 ID。
+  2）夹具创建完成后，通过渲染器 preload 桥并发请求八次会话列表。
+  3）读取期间测量 Electron Main 定时器间隔，以及渲染器到 Main 的版本 IPC 延迟。
+  4）比较所有返回的会话 ID 和能力字段。
+- **预期**：每份列表都包含所有夹具会话，模型和能力字段保持一致。Main 保持响应：测得的
+  定时器间隔和版本 IPC 往返耗时均不得达到一秒。探针记录每次列表读取、心跳的耗时和
+  Main 的最大间隔。原有沙箱启动、平台窗口和菜单断言仍通过。完成后丢弃临时 profile，
+  现有用户 profile 和正在运行的桌面进程不受影响。
+- **链接规格**：`03-runtime/01-ipc-protocol.md`、
+  `03-runtime/13-model-catalog-and-selection.md`、ADR 0134
+- **验收**：C（会话）、质量
+- **里程碑**：M6+
+- **状态**：已自动化（通过 `pnpm test:e2e:boot` 运行 `scripts/e2e-electron-boot.mjs`，
+  使用现有的 `PI_DESKTOP_BOOT_PROBE` 入口）。
 
 #### E2E-071g：保留的会话面板有上限并逐出最旧的
 
@@ -4607,6 +4631,8 @@ IPC 请求无法关闭。
 | G——插件（Session Orchestrator） | E2E-PLUGIN-session-orchestrator-real-workers |
 | 安全性（Session Orchestrator） | E2E-PLUGIN-session-orchestrator-real-workers |
 | 品质（Session Orchestrator） | E2E-PLUGIN-session-orchestrator-real-workers |
+| C — 对话与流式（会话列表响应性） | E2E-SESSION-list-refresh-keeps-desktop-responsive |
+| 品质（会话列表响应性） | E2E-SESSION-list-refresh-keeps-desktop-responsive |
 
 | 里程碑 | 应用场景 |
 |---|---|
@@ -4621,6 +4647,7 @@ IPC 请求无法关闭。
 | M6 | E2E-104、E2E-105、E2E-106、E2E-107、E2E-108、E2E-109、E2E-110、E2E-111、E2E-112、E2E-113、E2E-114、E2E-115、E2E-116、E2E-117、 E2E-118、E2E-119、E2E-120、E2E-103 |
 | M6+ | E2E-121、E2E-122、E2E-123、E2E-142、E2E-148、E2E-150、E2E-151、E2E-168、E2E-199、E2E-200、E2E-202、E2E-203、E2E-209、E2E-211、E2E-212、E2E-213、E2E-214、E2E-215、E2E-216、E2E-217、E2E-257 |
 | M6+（Session Orchestrator） | E2E-PLUGIN-session-orchestrator-real-workers |
+| M6+（会话列表响应性） | E2E-SESSION-list-refresh-keeps-desktop-responsive |
 | 后MVP | E2E-022A、E2E-022B、E2E-022C、E2E-024I、E2E-024J、E2E-024K、E2E-024L、E2E-024M（插件路线图 R2/R3/R6） |
 | 基线后本地自动化 | E2E-220 |
 | MVP 后远程控制 | E2E-221、E2E-222、E2E-223、E2E-224、E2E-225、E2E-226、E2E-227、E2E-228、E2E-229、E2E-230、E2E-231、E2E-232 |
@@ -6463,19 +6490,26 @@ IPC 请求无法关闭。
 - **前提条件**：已安装并启用市场中的 `pi.session-orchestrator` 插件；父 Agent 会话已配置可认证的
   provider/model 和项目路径，并处于 Agent 模式。
 - **步骤**：1）请求父 Agent 并行审查 Frontend、Electron 和 Rust。2）确认
-  `SessionTask.spawn` 返回三个不同的 Worker 会话 id，且每个 Worker 出现在普通会话列表中。
-  3）确认三个 Worker 都收到 prompt，不使用 `session/fork`，并可以并行运行。4）调用
-  `SessionTask.wait`，再对每个 Worker 调用 `result`。5）从 Agents 面板打开一个 Worker，
-  发送 follow-up，并停止另一个 Worker。6）重启插件，确认关系列表和持久化 Worker 会话仍然可用。
+  `SessionTask.spawn` 返回三个不同的原始持久化 `sessionId`，且每个 Worker 出现在普通会话列表中。
+  3）确认三个 Worker 都收到 prompt，不使用 `session/fork`，并可以并行运行。
+  4）在 Worker 活动期间调用 `SessionTask.status`，确认不读取 Worker transcript。
+  5）使用默认等待上限调用 `SessionTask.wait`，再对每个 Worker 调用 `result`。
+  6）从 Agents 面板打开一个 Worker，使用返回的原始 `sessionId` 发送 follow-up，
+  并停止另一个 Worker。7）重启插件，确认关系列表和持久化 Worker 会话仍然可用。
+  在已有大量会话的情况下重复并行创建步骤，并保持父会话可见。
 - **预期**：每个 Worker 都是真实持久化会话，继承父会话的项目、模型、thinking 和权限上限，
   创建时拥有独立的空 transcript。父会话只收到有界的最终 report；完整 Worker transcript
-  仍可在各自会话中查看。`send` 使用相同 Worker id，`cancel` 中止但不删除，独立会话和现有
-  Task 系列保持不变，且不发生 localhost MCP 调用或 token 访问。Worker 不能再创建 Worker，
-  并发上限超出时必须安全失败。
+  仍可在各自会话中查看。`sessionId` 是 Worker 唯一的规范身份，后续 `send` 复用同一会话和
+  上下文，不创建替代会话。状态和面板刷新使用有界的轻量轮询；`wait` 在其等待上限内返回
+  `timedOut`，不占满宿主工具超时时间。`cancel` 中止但不删除，无关会话和现有 Task 系列
+  保持不变，且不发生 localhost MCP 调用或 token 访问。Worker 不能再创建 Worker，
+  不属于调用方的 Session ID 必须被拒绝，并发上限超出时必须安全失败。Worker 创建和
+  prompt 通知突发时，会话列表刷新串行执行并合并，同时保留最终 Worker 列表和前台会话。
+  后到达的通知等待后续读取，不会因复用 Worker 创建之前已开始的读取而丢失。
 - **链接规格**：`07-plugins/03-plugin-api.md`、`07-plugins/04-plugin-security.md`、
   `07-plugins/11-plugin-storage-isolation.md`、`03-runtime/01-ipc-protocol.md`、
   `03-runtime/06-host-rpc-protocol.md`、ADR 0237
-- **接受**：C（对话与流式）、D（插件安全性）、品质
+- **接受**：C（并行持久化会话）、D（插件安全性）、品质
 - **里程碑**：M6+
 - **状态**：marketplace 插件测试覆盖插件运行时；host-core 和 desktop 单元测试覆盖新增的
   宿主原子能力。完整真实 provider/Electron 旅程仍需在具备条件的 runner 中验证，遵循无本地

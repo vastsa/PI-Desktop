@@ -633,8 +633,9 @@ Plugin-owned session mutations additionally emit
 handles this host-owned event by calling its existing `refreshSessions()` path;
 plugins never send a sidebar event and a skipped import does not emit one.
 
-Session-list refreshes have at most one request in flight. Calls arriving while
-that request is running share one follow-up request; their promises resolve
+Calls to the renderer store's `refreshSessions()` action have at most one
+session-list request in flight per store instance. Calls arriving while that
+request is running share one follow-up request; their promises resolve
 after that later response is committed, rather than accepting the older read.
 Further calls during the follow-up form the next batch. Each batch commits
 once, and a failed batch does not prevent a queued or later refresh. An import
@@ -642,7 +643,8 @@ refresh retains its own pre-refresh session baseline and project-reveal intent,
 even if an earlier ordinary refresh already observed the imported rows.
 Ordinary refreshes do not gain import-reveal behavior or change the current
 session, project, or page. Bursts from parallel plugin workers therefore remain
-current without issuing overlapping full-list reads.
+current without issuing overlapping full-list reads within this refresh path.
+Bootstrap and provider-refresh snapshots remain independent reads.
 
 Electron owns the native surface while the renderer derives localized
 title/body text from the structured record. Electron accepts `showNative` only
