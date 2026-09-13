@@ -1105,6 +1105,20 @@ pub fn create_session(
     create_session_with_thinking(db, title, mode, provider_id, model_id, project_path, None)
 }
 
+/// Inputs for creating a durable session. Keeping the optional permission mode
+/// in this value lets the host validate and persist the full configuration in
+/// one database operation without widening the legacy constructor signature.
+#[derive(Debug, Default)]
+pub struct SessionCreateOptions {
+    pub title: Option<String>,
+    pub mode: Option<String>,
+    pub provider_id: Option<String>,
+    pub model_id: Option<String>,
+    pub project_path: Option<String>,
+    pub thinking_level: Option<String>,
+    pub permission_mode: Option<String>,
+}
+
 pub fn create_session_with_thinking(
     db: &Database,
     title: Option<String>,
@@ -1114,12 +1128,46 @@ pub fn create_session_with_thinking(
     project_path: Option<String>,
     thinking_level: Option<String>,
 ) -> Result<SessionSummary> {
+    create_session_with_options(
+        db,
+        SessionCreateOptions {
+            title,
+            mode,
+            provider_id,
+            model_id,
+            project_path,
+            thinking_level,
+            permission_mode: None,
+        },
+    )
+}
+
+/// Create a session with all optional configuration applied atomically.
+///
+/// Omitting `permission_mode` preserves the historical `inherit` default. The
+/// extra input is used by trusted desktop orchestration so a new worker can be
+/// created with its parent's permission ceiling in the same host transaction.
+pub fn create_session_with_options(
+    db: &Database,
+    options: SessionCreateOptions,
+) -> Result<SessionSummary> {
+    let SessionCreateOptions {
+        title,
+        mode,
+        provider_id,
+        model_id,
+        project_path,
+        thinking_level,
+        permission_mode,
+    } = options;
     let now = now_ms();
     let id = Uuid::new_v4().to_string();
     let title = title.unwrap_or_else(|| "New task".into());
     let mode = normalize_mode(mode.as_deref());
     let thinking_level = thinking_level.unwrap_or_else(default_thinking_level);
     validate_thinking_level(&thinking_level)?;
+    let permission_mode = permission_mode.unwrap_or_else(default_permission_mode);
+    validate_permission_mode(&permission_mode)?;
     let project_id = match project_path
         .as_deref()
         .filter(|path| !path.trim().is_empty())
@@ -1135,8 +1183,8 @@ pub fn create_session_with_thinking(
         .prepare_cached(
             "INSERT INTO sessions (
                 id, title, project_id, provider_id, model_id, mode, thinking_level,
-                created_at, updated_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)",
+                permission_mode, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)",
         )?
         .execute(params![
             id,
@@ -1146,6 +1194,7 @@ pub fn create_session_with_thinking(
             model_id,
             mode,
             thinking_level,
+            permission_mode,
             now
         ])?;
     Ok(SessionSummary {
@@ -1157,7 +1206,7 @@ pub fn create_session_with_thinking(
         provider_id,
         mode,
         thinking_level,
-        permission_mode: default_permission_mode(),
+        permission_mode,
         updated_at: ms_to_ts(now),
         created_at: ms_to_ts(now),
     })
@@ -3364,6 +3413,36 @@ mod tests {
             None,
             Some("turbo"),
             None,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn create_session_permission_mode_is_optional_and_validated() {
+        let db = test_db();
+        let default_session = create_session(&db, None, None, None, None, None).unwrap();
+        assert_eq!(default_session.permission_mode, "inherit");
+
+        let worker = create_session_with_options(
+            &db,
+            SessionCreateOptions {
+                title: Some("Worker".into()),
+                mode: Some("agent".into()),
+                thinking_level: Some("high".into()),
+                permission_mode: Some("ask".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(worker.permission_mode, "ask");
+        assert_eq!(worker.thinking_level, "high");
+
+        assert!(create_session_with_options(
+            &db,
+            SessionCreateOptions {
+                permission_mode: Some("unrestricted".into()),
+                ..Default::default()
+            },
         )
         .is_err());
     }

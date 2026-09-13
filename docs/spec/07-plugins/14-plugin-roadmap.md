@@ -18,6 +18,10 @@ Local plugins usable → developer-friendly → marketplace distribution → sig
 
 ### R2 — Agent Extension (partial ✅)
 - Full agentTools pipeline ✅
+- Official `pi.session-orchestrator` worker-session plugin ✅ — real durable
+  sessions, parent-scoped persistence, bounded polling, and report-only
+  results; it composes the reviewed `desktop.control` operations rather than
+  moving orchestration into host-core (ADR 0237)
 - Skills contribution is activated: declared skills reach the model as a `# Skills`
   catalog in the system prompt when `agent.prompt.inject` is granted, and the model
   loads a body on demand through the `Skill` tool ✅ (ADR 0039, D174)

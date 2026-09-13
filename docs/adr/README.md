@@ -254,3 +254,4 @@ Each ADR includes:
 | 0234 | Keep project memory host-owned and path-scoped | Accepted |
 | 0235 | Preserve domain facades and enforce architecture budgets | Accepted |
 | 0236 | Restore archived projects when session import adds a bound session | Accepted |
+| 0237 | Keep Session Orchestration in an Official Plugin | Accepted |

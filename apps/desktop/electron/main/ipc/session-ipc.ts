@@ -230,6 +230,24 @@ export function registerSessionIpc({
         : result;
     },
   );
+  handle(IPC.invoke.sessionOpen, async (rawSessionId: string) => {
+    if (!host) throw new Error("host unavailable");
+    const sessionId = String(rawSessionId ?? "").trim();
+    if (!sessionId) throw new Error("session id required");
+    const [result, { providers, defaults }] = await Promise.all([
+      host.call<{ session?: RuntimeSession | null }>("session.get", {
+        id: sessionId,
+        messageLimit: 1,
+      }),
+      sessionCapabilityContext(),
+    ]);
+    if (!result.session) {
+      throw Object.assign(new Error("Session not found"), {
+        errorCode: ErrorCodes.NOT_FOUND,
+      });
+    }
+    return { ...result, session: enrichSession(result.session, providers, defaults) };
+  });
   handle(IPC.invoke.sessionDelete, async (id: string) => {
     if (!host) throw new Error("host unavailable");
     const res = await host.call("session.delete", { id });
