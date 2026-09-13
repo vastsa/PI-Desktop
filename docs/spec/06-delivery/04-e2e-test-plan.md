@@ -18,7 +18,8 @@
 
 - Full UI-driven automated coverage; protocol and source-contract automation is
   active while the broader desktop suite remains planned.
-- Performance / stress testing (post-MVP).
+- General performance / stress testing (post-MVP); bounded regression checks
+  for desktop responsiveness are covered by the relevant functional scenarios.
 - Native Windows/Linux release qualification (published artifacts exist; native
   qualification gaps remain documented).
 - Hostile-plugin sandbox scenarios. Publisher provenance and the marketplace
@@ -58,7 +59,7 @@ levels does not waive the relevant E2E gate.
 | **Vitest** | Unit + integration (TS side) | Active (`pnpm test`, shared package) |
 | **Rust #[test]** | Host-core unit tests | Active (`cargo test -p host-core`) |
 | **Protocol smoke** | Host RPC + tools + plugins headless | Active (`test:e2e`, 20 checks) |
-| **Electron probes** | Boot bridge + crash supervision | Active (`test:e2e:boot`, `test:e2e:supervision`) |
+| **Electron probes** | Boot bridge, session-list responsiveness, and crash supervision | Active (`test:e2e:boot`, `test:e2e:supervision`) |
 | **Playwright** | Full UI-driven journeys | Planned (post-M5) |
 
 > Decision: protocol smoke and Electron probes are active validation assets;
@@ -114,6 +115,8 @@ The minimum selection is:
 - Cross-cutting runtime, host, or IPC: `pnpm test:e2e`.
 - Electron startup, preload, or window lifecycle: `pnpm test:e2e` and
   `pnpm test:e2e:boot`.
+- Session-list refresh or model capability lookup: `pnpm test:e2e` and
+  `pnpm test:e2e:boot`, including the synthetic large-list responsiveness check.
 - Plan host/runtime behavior: `pnpm test:e2e` and `pnpm test:e2e:plan`.
 - Plan UI behavior: `pnpm test:e2e:plan` and `pnpm test:e2e:plan-ui`.
 - Host supervision, crash recovery, or restart behavior: `pnpm test:e2e` and
@@ -3359,7 +3362,9 @@ needed.
   3) Quit and restart the app. 4) Disconnect models.dev and the provider
   endpoint. 5) Open the Composer model menu and wait for refresh fallback.
   6) Reconnect only the provider endpoint with one custom model, then reopen
-  the picker.
+  the picker. 7) Warm lookups for a known and an unknown model, then refresh
+  the catalog fixture with changed metadata and the previously unknown model.
+  8) Repeat after making that catalog refresh fail.
 - **Expected**: The first picker open renders the configured/provider cache
   without starting from an empty list. On restart, the bundled models.dev
   release snapshot is used without network access. A failed Settings refresh
@@ -3368,6 +3373,9 @@ needed.
   bindings. Offline refresh preserves every cached/configured entry. A
   successful provider discovery may persist normalized IDs to Rust-owned SQLite,
   but it cannot replace models.dev metadata or user-defined bindings.
+  A successful catalog refresh replaces both cached matches and cached misses;
+  a failed refresh keeps the previous results. Editing a model binding or
+  changing the default provider/model takes effect without restarting the app.
 - **Specs linked**: `03-runtime/04-data-storage.md`,
   `03-runtime/12-provider-config-schema.md`,
   `03-runtime/13-model-catalog-and-selection.md`, `04-ux/08-component-spec.md`
@@ -3754,6 +3762,29 @@ needed.
 - **Status**: Unit-covered (`transcripts::tests::layout_window_reads_only_the_requested_tail`,
   `sessions::tests::bounded_reads_use_physical_line_positions_not_the_dedup_counter`);
   UI scenario Draft
+
+#### E2E-SESSION-list-refresh-keeps-desktop-responsive: Large session-list refreshes keep Electron responsive
+
+- **Preconditions**: A built Electron desktop, the bundled models.dev catalog,
+  and a fresh temporary profile with no configured providers. The probe uses
+  only a synthetic `authKind: none` provider and never starts an Agent turn.
+- **Steps**: 1) Create 800 empty durable sessions through the Rust Host API,
+  distributed over up to thirteen known model IDs. 2) After fixture creation,
+  request eight session lists concurrently through the renderer preload bridge.
+  3) Measure Electron Main timer gaps and renderer-to-Main version IPC latency
+  during those reads. 4) Compare all returned session IDs and capability fields.
+- **Expected**: Every list contains all fixture sessions with stable model and
+  capability fields. Main remains responsive: no measured timer gap or version
+  IPC round trip reaches one second. The probe records individual list/heartbeat
+  durations and the largest Main gap. The ordinary sandboxed boot, platform
+  window, and menu assertions still pass. The profile is discarded afterwards;
+  existing user profiles and running desktop processes are untouched.
+- **Specs linked**: `03-runtime/01-ipc-protocol.md`,
+  `03-runtime/13-model-catalog-and-selection.md`, ADR 0134
+- **Acceptance**: C (sessions), Quality
+- **Milestone**: M6+
+- **Status**: Automated (`scripts/e2e-electron-boot.mjs` via
+  `pnpm test:e2e:boot`, using the existing `PI_DESKTOP_BOOT_PROBE` entry point).
 
 #### E2E-071e: Regenerating from a paged-back transcript replaces the right turn
 
@@ -6496,6 +6527,8 @@ needed.
 | G — Plugins (Session Orchestrator) | E2E-PLUGIN-session-orchestrator-real-workers |
 | Security (Session Orchestrator) | E2E-PLUGIN-session-orchestrator-real-workers |
 | Quality (Session Orchestrator) | E2E-PLUGIN-session-orchestrator-real-workers |
+| C — Conversation & stream (Session list responsiveness) | E2E-SESSION-list-refresh-keeps-desktop-responsive |
+| Quality (Session list responsiveness) | E2E-SESSION-list-refresh-keeps-desktop-responsive |
 
 | Milestone | Scenarios |
 |---|---|
@@ -6510,6 +6543,7 @@ needed.
 | M6 | E2E-104, E2E-105, E2E-106, E2E-107, E2E-108, E2E-109, E2E-110, E2E-111, E2E-112, E2E-113, E2E-114, E2E-115, E2E-116, E2E-117, E2E-118, E2E-119, E2E-120, E2E-103, E2E-172 |
 | M6+ | E2E-121, E2E-122, E2E-148, E2E-150, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159, E2E-160, E2E-161, E2E-162, E2E-163, E2E-166, E2E-168, E2E-173, E2E-174, E2E-176, E2E-179, E2E-196a, E2E-196b, E2E-196c, E2E-198, E2E-199, E2E-200, E2E-202, E2E-203, E2E-205, E2E-209, E2E-210, E2E-212, E2E-213, E2E-214, E2E-215, E2E-216, E2E-217, E2E-218, E2E-219, E2E-257, E2E-SUBAGENT-settlement-updates-before-parent-poll |
 | M6+ (Session Orchestrator) | E2E-PLUGIN-session-orchestrator-real-workers |
+| M6+ (Session list responsiveness) | E2E-SESSION-list-refresh-keeps-desktop-responsive |
 | Post-MVP | E2E-022A, E2E-022B, E2E-022C, E2E-024I, E2E-024J, E2E-024K, E2E-024L, E2E-024M (plugin roadmap R2/R3/R6) |
 | Post-baseline local automation | E2E-220 |
 | Post-MVP remote control | E2E-221, E2E-222, E2E-223, E2E-224, E2E-225, E2E-226, E2E-227, E2E-228, E2E-229, E2E-230, E2E-231, E2E-232 |
@@ -9669,7 +9703,8 @@ are withdrawn with ADR 0165.
   worker. 6) Open one worker from the Agents panel, send it a follow-up using
   the exact returned `sessionId`, and stop another worker. 7) Restart the
   plugin and confirm the relationship list and durable worker sessions remain
-  available.
+  available. Repeat the parallel creation step with a large existing session
+  list while keeping the parent visible.
 - **Expected**: Each worker is a real durable session with the parent's
   project/model/thinking/permission ceiling and an independent empty
   transcript at creation. The parent receives only bounded final reports;
@@ -9681,7 +9716,10 @@ are withdrawn with ADR 0165.
   deletion, unrelated sessions and the existing Task family are unchanged,
   and no localhost MCP call or token access occurs. A worker cannot create
   another worker, unowned Session IDs are rejected, and concurrency limits fail
-  closed.
+  closed. Bursts of worker create/prompt notifications serialize and coalesce
+  session-list refreshes while preserving the final worker list and the
+  foreground session. A later notification waits for a follow-up read; it is
+  not lost by reusing a read that began before the worker was created.
 - **Specs linked**: `07-plugins/03-plugin-api.md`,
   `07-plugins/04-plugin-security.md`, `07-plugins/11-plugin-storage-isolation.md`,
   `03-runtime/01-ipc-protocol.md`, `03-runtime/06-host-rpc-protocol.md`,

@@ -120,7 +120,7 @@ fn merge_active_records(
         }
     }
     result.retain(|record| record.enabled);
-    result.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    result.sort_by_key(|record| record.name.to_lowercase());
     result
 }
 
@@ -417,7 +417,7 @@ impl UserSkillRegistry {
                 enabled,
             )?;
         }
-        Ok(self.find(id, level, record.project_path.as_deref())?)
+        self.find(id, level, record.project_path.as_deref())
     }
 
     pub fn read(

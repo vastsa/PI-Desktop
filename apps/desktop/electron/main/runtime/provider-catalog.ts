@@ -280,12 +280,10 @@ export function createProviderCatalogRuntime({
       };
     }
     const { provider, modelId } = target;
+    const catalogModel = modelsDevModelFor(provider, modelId);
     const modelConfig = modelConfigWithBinding(
-      modelsDevModelFor(provider, modelId)
-        ? modelConfigFromModelsDev(
-            modelsDevModelFor(provider, modelId)!,
-            provider.baseUrl,
-          )
+      catalogModel
+        ? modelConfigFromModelsDev(catalogModel, provider.baseUrl)
         : genericModelConfig(modelId, provider.baseUrl ?? ""),
       bindingForModel(provider, modelId),
     );

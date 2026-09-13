@@ -446,20 +446,20 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
     let attachments = blocks
         .iter()
         .filter_map(|block| {
-            (block.get("type").and_then(|t| t.as_str()) == Some("attachment")).then(|| {
-                Some(MessageAttachment {
-                    kind: block.get("kind").and_then(|v| v.as_str())?.to_string(),
-                    name: block.get("name").and_then(|v| v.as_str())?.to_string(),
-                    reference: block.get("ref").and_then(|v| v.as_str())?.to_string(),
-                    mime_type: block
-                        .get("mimeType")
-                        .and_then(|v| v.as_str())
-                        .map(str::to_string),
-                    size: block.get("size").and_then(|v| v.as_i64()),
-                })
+            if block.get("type").and_then(|t| t.as_str()) != Some("attachment") {
+                return None;
+            }
+            Some(MessageAttachment {
+                kind: block.get("kind").and_then(|v| v.as_str())?.to_string(),
+                name: block.get("name").and_then(|v| v.as_str())?.to_string(),
+                reference: block.get("ref").and_then(|v| v.as_str())?.to_string(),
+                mime_type: block
+                    .get("mimeType")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string),
+                size: block.get("size").and_then(|v| v.as_i64()),
             })
         })
-        .flatten()
         .collect::<Vec<_>>();
     let attachments = (!attachments.is_empty()).then_some(attachments);
 
@@ -1572,7 +1572,7 @@ pub fn rename_session(db: &Database, id: &str, title: &str) -> Result<bool> {
 
 /// Outcome of moving a session to a different project.
 pub enum MoveSessionProjectResult {
-    Moved(SessionSummary),
+    Moved(Box<SessionSummary>),
     NotFound,
     Busy,
 }
@@ -1609,7 +1609,7 @@ pub fn move_session_project(
     let Some(moved) = get_session(db, id)? else {
         return Ok(MoveSessionProjectResult::NotFound);
     };
-    Ok(MoveSessionProjectResult::Moved(moved.summary))
+    Ok(MoveSessionProjectResult::Moved(Box::new(moved.summary)))
 }
 
 /// Per-message records plus their extracted index text, in input order.
@@ -1722,7 +1722,7 @@ pub fn save_inflight_message(
         || message
             .thinking
             .as_deref()
-            .map_or(false, |thinking| !thinking.trim().is_empty());
+            .is_some_and(|thinking| !thinking.trim().is_empty());
     if !has_text {
         return Ok(false);
     }
@@ -3029,7 +3029,7 @@ impl UsageBucketAcc {
         self.input + self.output + self.cache_read + self.cache_write
     }
 
-    fn to_json(&self, date: &str) -> Value {
+    fn to_json(self, date: &str) -> Value {
         json!({
             "date": date,
             "timestamp": self.timestamp,
