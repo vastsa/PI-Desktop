@@ -6,8 +6,7 @@
   padding-left: 36px;
 }
 
-.search-message-meta,
-.search-context-meta {
+.search-message-meta {
   color: var(--ds-text-muted);
   font-size: var(--text-xs);
 }
@@ -16,61 +15,6 @@
   white-space: normal;
   overflow-wrap: anywhere;
   text-align: left;
-}
-
-.session-search-context {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  background: var(--ds-bg-primary);
-}
-
-.search-context-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 24px;
-  border-bottom: 1px solid var(--ds-border-default);
-}
-
-.search-context-scroll {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 20px max(24px, calc((100% - 800px) / 2)) 160px;
-}
-
-.search-context-message {
-  margin: 16px 0;
-  padding: 16px;
-  border: 1px solid var(--ds-border-default);
-  border-radius: var(--radius-md);
-}
-
-.search-context-target {
-  border-color: var(--ds-accent);
-  background: var(--ds-bg-hover);
-}
-
-.search-context-meta {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 8px;
-}
-
-.search-context-text {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  line-height: var(--leading-relaxed);
-}
-
-.search-context-match-nav {
-  display: flex;
-  gap: 8px;
-  padding: 8px 24px;
 }
 
 .search-session-details {
@@ -86,7 +30,6 @@
   flex-wrap: wrap;
 }
 
-.search-context-text .search-hit,
 .search-message-snippet .search-hit {
   border-radius: var(--radius-sm);
   background: color-mix(in oklab, var(--ds-accent) 28%, var(--ds-bg-primary));

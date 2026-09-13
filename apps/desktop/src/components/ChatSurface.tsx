@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo } from "react";
+import { memo, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Composer } from "./Composer";
 import { HomeMascotLogo } from "./HomeMascotLogo";
@@ -10,8 +10,6 @@ import { SessionPane } from "./SessionPane";
 import { useAppStore } from "../stores/app-store";
 import { headPermission } from "../lib/pending-permissions";
 import { headAsk } from "../lib/pending-asks";
-import { useSessionSearchState } from "../hooks/use-session-search";
-import { SessionSearchContext } from "./SessionSearchContext";
 
 const StableComposer = memo(Composer);
 
@@ -44,16 +42,6 @@ function projectName(path?: string | null, name?: string | null) {
 export const ChatSurface = memo(function ChatSurface() {
   const { t } = useTranslation();
   const activeSessionId = useAppStore((state) => state.activeSessionId);
-  const searchFocus = useSessionSearchState((state) => state.focus);
-  const setSearchFocus = useSessionSearchState((state) => state.setFocus);
-  const showSearchContext = Boolean(
-    searchFocus && searchFocus.sessionId === activeSessionId,
-  );
-  useEffect(() => {
-    if (searchFocus && searchFocus.sessionId !== activeSessionId) {
-      setSearchFocus(undefined);
-    }
-  }, [activeSessionId, searchFocus, setSearchFocus]);
   const selectingSessionId = useAppStore((state) => state.selectingSessionId);
   const retainedSessionIds = useAppStore((state) => state.retainedSessionIds);
   const messages = useAppStore((state) => state.messages);
@@ -130,21 +118,11 @@ export const ChatSurface = memo(function ChatSurface() {
   // still resolving, the visible pane keeps its own transcript, so the hero must
   // not take over just because the destination projection is still empty.
   const showEmptyState =
-    !showSearchContext &&
     !hasTranscript && (!visibleSessionId || visibleSessionId === activeSessionId);
   return (
     <div
       className={`chat-surface route-surface${sessionSwitching ? " session-switching" : ""}`}
       aria-busy={sessionSwitching}
-      onFocusCapture={(event) => {
-        if (
-          showSearchContext &&
-          event.target instanceof HTMLElement &&
-          event.target.matches(".composer-input")
-        ) {
-          setSearchFocus(undefined);
-        }
-      }}
     >
       {sessionSwitching ? (
         <div className="session-switch-progress" aria-hidden>
@@ -197,16 +175,9 @@ export const ChatSurface = memo(function ChatSurface() {
               <SessionPane
                 key={id}
                 sessionId={id}
-                visible={id === visibleSessionId && !showSearchContext}
+                visible={id === visibleSessionId}
               />
             ))}
-            {showSearchContext && searchFocus ? (
-              <SessionSearchContext
-                key={`${searchFocus.sessionId}:${searchFocus.messageId}:${searchFocus.query}`}
-                focus={searchFocus}
-                onClose={() => setSearchFocus(undefined)}
-              />
-            ) : null}
           </div>
           <StableComposer variant="docked" />
         </>

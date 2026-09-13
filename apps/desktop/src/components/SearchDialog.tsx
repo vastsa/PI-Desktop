@@ -87,7 +87,6 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
 
   const query = useSessionSearchState((state) => state.query);
   const setQuery = useSessionSearchState((state) => state.setQuery);
-  const setSearchFocus = useSessionSearchState((state) => state.setFocus);
   const search = useSessionSearch(open, query);
   const selectionRequest = useRef(0);
   useEffect(() => {
@@ -236,12 +235,14 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
 
   if (!open) return null;
 
-  const run = async (row: SearchRow | null, messageId?: string) => {
+  const run = async (row: SearchRow | null) => {
     const request = ++selectionRequest.current;
     try {
-      setSearchFocus(undefined);
       if (row) {
-        await selectSession(row.session.id);
+        const current = useAppStore.getState();
+        if (current.activeSessionId === row.session.id && !current.selectingSessionId)
+          current.setPage("chat");
+        else await selectSession(row.session.id);
         const selected = useAppStore.getState();
         if (
           request !== selectionRequest.current ||
@@ -249,19 +250,11 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
           selected.page !== "chat"
         )
           return;
-        const target = messageId ?? row.hit?.matches[0]?.messageId;
-        if (target)
-          setSearchFocus({
-            sessionId: row.session.id,
-            messageId: target,
-            query: query.trim(),
-          });
       } else await newSession();
       onClose();
-      if (!row?.hit?.matches.length)
-        requestAnimationFrame(() => {
-          document.querySelector<HTMLTextAreaElement>(".composer-input")?.focus();
-        });
+      requestAnimationFrame(() => {
+        document.querySelector<HTMLTextAreaElement>(".composer-input")?.focus({ preventScroll: true });
+      });
     } catch (error) {
       showToast(error instanceof Error ? error.message : String(error), {
         variant: "error",
@@ -296,7 +289,7 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
     for (const row of rows) {
       if (active === row.optionIndex) return void run(row);
       const match = row.hit?.matches[active - row.optionIndex - 1];
-      if (match) return void run(row, match.messageId);
+      if (match) return void run(row);
     }
     if (active === moreIndex && search.nextOffset !== null) return search.loadMore();
     const pageIndex = active - pageBase;
@@ -390,7 +383,7 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
             active={active}
             runningSessions={runningSessions}
             onActivate={setActive}
-            onSelect={(row, messageId) => void run(row, messageId)}
+            onSelect={(row) => void run(row)}
           />
           {query.trim() && search.loading ? (
             <div className="search-empty" role="status">

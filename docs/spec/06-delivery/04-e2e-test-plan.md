@@ -10553,8 +10553,8 @@ sample extensions under `apps/desktop/test/fixtures/pi-extensions/`.
 
 #### E2E-SESSION-content-search-and-message-navigation
 
-- **Scope**: Desktop global search, host search projections, and historical
-  message navigation (issue #270, ADR session-content-search).
+- **Scope**: Desktop global search, host search projections, and original
+  conversation navigation (issue #270, ADR session-content-search).
 - **Preconditions**: At least 65 visible sessions with a shared body keyword;
   one session has 125 matching user/assistant messages. Include a body-only
   keyword, a metadata-only match, an archived session, a soft-deleted session,
@@ -10567,13 +10567,14 @@ sample extensions under `apps/desktop/test/fixtures/pi-extensions/`.
   path containing periods, and a matching sentence longer than 180 characters.
 - **Steps**: Search body-only user and assistant terms, then rename the owning
   session and repeat. Check aggregated counts and sender/time/snippet labels.
-  Load every result page. Open each of the two snippets in one session; inspect
-  the exact selected message and highlight. Use previous/next match to reach
-  hits outside the previews, and previous/next context to page surrounding
-  history. Back to conversation, reopen search, and check the retained query.
+  Load every result page. Open a session heading and each of its two snippets;
+  verify that they all close search and open the same original conversation.
+  Check the normal Markdown, message actions, and composer. Scroll within the
+  active conversation, reopen search, and select its own result; the original
+  pane and reading position must remain. Reopen search and check the retained query.
   Repeat with CJK and symbols. Change queries rapidly while delayed first-page
   and later-page requests resolve out of order. Close/reopen during loading.
-  Delete a target between search and selection; retry after a transient error.
+  Retry after a transient search error.
   Search a running conversation and return to its live stream, then switch
   conversations. Use arrows, Enter, Escape, Tab, and CJK IME confirmation, and
   exercise page/settings/plugin-command results.
@@ -10585,10 +10586,12 @@ sample extensions under `apps/desktop/test/fixtures/pi-extensions/`.
 - **Expected**: Every matching visible session is reachable; counts cover all
   125 messages, with no duplicate session rows. Archived visibility follows
   the existing explicit-search rule and deleted sessions never appear. Each
-  snippet opens its own stable message ID, including unloaded and oversized
-  history, without replacing the live transcript or losing active output.
+  snippet opens its owning conversation directly without an intermediate
+  context reader, plain-text replacement, or Back to conversation action.
+  Normal session selection preserves live output and retained reading positions;
+  selecting the active conversation does not reload or reset its history.
   Later query ownership wins over stale results/errors. IME Enter does not
-  execute an action. Missing targets and transport failures are explicit.
+  execute an action. Search transport failures are explicit.
   Existing commands, pages, settings, and keyboard navigation still work.
 - **Status**: Draft; Rust and renderer unit regressions cover the data/query
   boundaries. Full rendered E2E requires an explicitly authorized run.

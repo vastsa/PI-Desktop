@@ -6,10 +6,11 @@
 
 ## Context
 
-Global search filters the renderer's session titles and project labels, even
-though host-core already indexes message text. A remembered error or sentence
-cannot recover its conversation. Opening a title result also loses the location
-of an older matching message.
+Global search originally filtered the renderer's session titles and project
+labels, even though host-core already indexed message text. A remembered error
+or sentence could not recover its conversation. A separate historical reader
+then duplicated the transcript and required an extra Back to conversation
+action. Search results should identify and open the original conversation.
 
 ## Decision
 
@@ -44,36 +45,35 @@ sessions, while explicit searches retain the existing archived-session discovery
 behavior. Tools, thinking, attachments, and discarded revisions do not expand
 the searchable body scope.
 
-Selecting a message opens its owning session and a bounded historical reader
-inside that conversation. `search.context` resolves its stable ID against the
-physical JSONL layout and returns at most 21 nearby message text projections.
-Adjacent context pages contain at most 20 messages. The reader provides previous
-and next matching-message navigation, so two previews never cap discovery within
-one conversation. Deleted or rewritten-away targets return `NOT_FOUND`.
+Selecting a heading or message preview closes search and opens the owning
+conversation through the existing session selection path. The original
+transcript, composer, Markdown rendering, live output, and message actions stay
+available. Opening a retained conversation follows its existing scroll
+restoration; opening the active session does not reload its history. Composer
+focus uses `preventScroll`. There is no separate historical reader, extra Back
+to conversation action, or forced message-level navigation.
 
-JSONL remains authoritative for displayed context. Text is capped at 64 Ki
-characters per message, with the target excerpt centered around the query so a
-match beyond the usual display cap remains visible. Context uses literal text
-instead of executing/rendering Markdown; tool rows identify their tool without
-loading their results into this reader.
+The additive `search.context` RPC and `session/searchContext` IPC remain
+compatible for existing callers, but global search no longer uses them. They
+still resolve stable IDs against the physical JSONL layout and return bounded
+text context; removing the renderer reader does not change the protocol or
+storage schema.
 
-Historical search windows never replace, merge into, or persist through the
-live transcript cache. Existing retained panes keep their messages and scroll
-positions while hidden. The Back to conversation action, composer focus, or
-selection of another conversation exits the historical reader. Query text survives closing
-the palette in memory. Query changes, palette closure, and context navigation
-invalidate asynchronous result ownership.
+Query text survives closing the palette in memory. Query changes and palette
+closure invalidate asynchronous result ownership. Existing session navigation
+owns conversation loading, live transcript preservation, and workspace changes.
 
 ## Consequences and validation
 
 There is no migration or new index to maintain. Short queries and non-ASCII
-case mappings still require a literal scan. Resolving an old message may scan IDs in the existing physical
-layout, but only the nearby text window crosses IPC or mounts in the renderer.
+case mappings still require a literal scan. Search previews stay bounded, and
+opening a result uses ordinary session history pagination and retained panes.
 Search reads cannot rewrite conversation data or interfere with active turns.
 
 Rust regression tests cover pagination beyond 50 sessions and 100 messages,
 literal CJK/symbol queries, complete counts, soft deletion, physical positions,
 and target text beyond the display cap. Renderer unit tests cover literal
 highlight offsets, stale result/error rejection, cancellation, and pagination.
+Historical context regression tests remain as protocol compatibility coverage.
 The documented full interaction scenario is
 `E2E-SESSION-content-search-and-message-navigation`.

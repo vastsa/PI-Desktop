@@ -1258,13 +1258,15 @@ storage but compose into one assistant turn until the next user message.
   remain discoverable through their content.
 - Load more continues host session pagination; a renderer's loaded sessions or
   the old 50-session/100-message limits cannot truncate discovery.
-- Clicking either snippet opens its session and centers that message in a
-  bounded text reader with highlighting. Previous/next match reaches remaining
-  body hits; previous/next context loads neighboring history on demand. Show an
-  explicit unavailable/retry state if a target disappeared.
-- Preserve retained live transcripts and their scroll positions while the
-  reader is visible. Back to conversation or focusing the composer restores the
-  live pane; selecting another conversation exits the reader.
+- Clicking a session heading or either snippet closes global search and opens
+  the owning conversation through the normal session selection path. Show the
+  original rendered transcript and composer directly, with the same reading
+  position behavior as opening it from the sidebar. A result for the active
+  session reveals its existing pane without reloading its history. Focusing
+  the composer must not scroll the page.
+- Snippets identify which conversation to open; they do not open a separate
+  historical reader or force message-level navigation. Keep the original
+  transcript, live updates, and editing actions available immediately.
 - Preserve the query in memory when closing/reopening search. Debounce queries
   and reject stale results and errors after a new query, closure, or navigation.
   Loading and failure states must not masquerade as an empty result.
@@ -1274,9 +1276,9 @@ storage but compose into one assistant turn until the next user message.
 
 ### 7.6 MVP constraints
 
-- Global search can open a bounded historical message reader in the current
-  conversation (ADR session-content-search); an independent in-transcript find
-  bar remains outside this scope.
+- Global search opens the original conversation (ADR session-content-search).
+  Message-level navigation and an independent in-transcript find bar remain
+  outside this scope.
 - No inline message branching tree; regenerate variants remain linear per user
   root turn. Session-level Create branch produces an independent conversation
   row instead of adding tree chrome inside the transcript.
