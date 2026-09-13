@@ -34,6 +34,7 @@ import {
   McpEditorSheet,
   type McpDraft,
 } from "../extensions/McpEditorSheet";
+import { McpMarketPanel } from "./McpMarketPanel";
 import { IconPencil, IconPlay, IconPlus, IconServer, IconTerminal, IconTrash } from "../icons";
 import { TooltipButton, cx } from "../ui";
 
@@ -105,6 +106,7 @@ export function AgentMcpPage() {
   const [editor, setEditor] = useState<McpEditorState | null>(null);
   const [saving, setSaving] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
+  const [view, setView] = useState<"servers" | "market">("servers");
   const { armed, setArmed } = useArmedDelete();
 
   const rowKey = (level: AgentCapabilityLevel, id: string) => `${level}:${id}`;
@@ -396,6 +398,32 @@ export function AgentMcpPage() {
     </CapabilityButton>
   );
 
+  const marketButton = (
+    <CapabilityButton
+      title={t("settings.mcpMarket.subtitle")}
+      onClick={() => setView("market")}
+    >
+      <IconServer size={14} />
+      {t("settings.mcpMarket.browse")}
+    </CapabilityButton>
+  );
+
+  if (view === "market") {
+    return (
+      <McpMarketPanel
+        installedIds={[...globalServers, ...projectServers].map((server) => server.id)}
+        onBack={() => {
+          setView("servers");
+          void load();
+        }}
+        onInstalled={() => {
+          setView("servers");
+          void load();
+        }}
+      />
+    );
+  }
+
   return (
     <AgentCapabilityPage
       description={t("settings.mcpDescription")}
@@ -416,7 +444,12 @@ export function AgentMcpPage() {
               onChange={setSelectedProjectPath}
             />
           }
-          actions={addButton}
+          actions={
+            <>
+              {addButton}
+              {marketButton}
+            </>
+          }
         />
       }
     >

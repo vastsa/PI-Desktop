@@ -174,6 +174,7 @@ export const IPC = {
     mcpSetScope: "pi-desktop/mcp/setScope",
     mcpTest: "pi-desktop/mcp/test",
     mcpImport: "pi-desktop/mcp/import",
+    mcpMarketSearch: "pi-desktop/mcp/market/search",
     skillList: "pi-desktop/skill/list",
     skillCreate: "pi-desktop/skill/create",
     skillImport: "pi-desktop/skill/import",
