@@ -1402,9 +1402,10 @@ export const ko = {
     loadDevDone: "로컬 플러그인 불러옴",
     importExtension: "pi 확장 가져오기",
     importExtensionDone: "플러그인 {{id}}(으)로 가져왔습니다",
+    importExtensionDepsFailed: "플러그인 {{id}}(으)로 가져왔지만 의존성 설치에 실패했습니다: {{error}}",
     agentExtension: {
       title: "에이전트 확장",
-      importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이전트 자체 도구와 같은 권한으로 실행됩니다. 선언된 스킬은 에이전트에 지침을 추가할 수 있습니다. 계속할까요?",
+importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이전트 자체 도구와 같은 권한으로 실행됩니다. 선언된 스킬은 에이전트에 지침을 추가할 수 있고, 선언된 의존성은 npm으로 설치됩니다(설치 스크립트 비활성화). 계속할까요?",
       diagnostics: "진단",
       commandNeedsSession: "확장 명령을 실행하려면 먼저 채팅을 시작하세요.",
       state: {

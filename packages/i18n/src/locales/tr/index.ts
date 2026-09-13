@@ -1402,9 +1402,10 @@ export const tr = {
     loadDevDone: "Yerel eklenti yüklendi",
     importExtension: "pi uzantısını içe aktar",
     importExtensionDone: "{{id}} eklentisi olarak içe aktarıldı",
+    importExtensionDepsFailed: "{{id}} eklentisi olarak içe aktarıldı, ancak bağımlılıklar yüklenemedi: {{error}}",
     agentExtension: {
       title: "Ajan uzantısı",
-      importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araçlarıyla aynı erişimle çalışır. Bildirilen beceriler ajana talimatlar ekleyebilir. Devam edilsin mi?",
+importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araçlarıyla aynı erişimle çalışır. Bildirilen beceriler ajana talimatlar ekleyebilir ve bildirilen bağımlılıklar npm ile yüklenir (yükleme betikleri devre dışı). Devam edilsin mi?",
       diagnostics: "Tanılamalar",
       commandNeedsSession: "Uzantı komutu çalıştırmak için önce bir sohbet başlatın.",
       state: {
