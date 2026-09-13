@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { register } from "node:module";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import {
+register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
+const {
   AgentExtensionBridge,
   generateImportedExtensionPlugin,
-} from "../electron/main/agent-extensions.ts";
+} = await import("../electron/main/agent-extensions.ts");
 
 function bridge(overrides = {}) {
   const events = { changed: 0, prompts: [], toasts: [], statuses: [] };

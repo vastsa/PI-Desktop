@@ -1385,7 +1385,7 @@ export const de = {
     "importExtensionDone": "Als Plugin {{id}} importiert",
     "agentExtension": {
       "title": "Agent-Erweiterung",
-      "importConfirm": "Die importierte Erweiterung läuft im Agentenprozess mit denselben Rechten wie die Tools des Agenten. Fortfahren?",
+      "importConfirm": "Importierte Erweiterungen laufen im Agentenprozess mit denselben Rechten wie die Tools des Agenten. Deklarierte Skills können dem Agenten Anweisungen hinzufügen. Fortfahren?",
       "diagnostics": "Diagnosen",
       "commandNeedsSession": "Starte zuerst einen Chat, um einen Erweiterungsbefehl auszuführen.",
       "state": {

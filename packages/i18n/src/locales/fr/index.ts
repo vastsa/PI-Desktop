@@ -1385,7 +1385,7 @@ export const fr = {
     "importExtensionDone": "Importée comme plugin {{id}}",
     "agentExtension": {
       "title": "Extension de l'agent",
-      "importConfirm": "L'extension importée s'exécutera dans le processus de l'agent avec le même accès que ses propres outils. Continuer ?",
+      "importConfirm": "Les extensions importées s’exécutent dans le processus de l’agent avec les mêmes droits que ses outils. Les compétences déclarées peuvent ajouter des instructions à l’agent. Continuer ?",
       "diagnostics": "Diagnostics",
       "commandNeedsSession": "Démarrez d'abord une discussion pour exécuter une commande d'extension.",
       "state": {

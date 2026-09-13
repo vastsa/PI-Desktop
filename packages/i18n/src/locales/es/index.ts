@@ -1385,7 +1385,7 @@ export const es = {
     "importExtensionDone": "Importada como complemento {{id}}",
     "agentExtension": {
       "title": "Extensión del agente",
-      "importConfirm": "La extensión importada se ejecutará en el proceso del agente con el mismo acceso que sus propias herramientas. ¿Continuar?",
+      "importConfirm": "Las extensiones importadas se ejecutan en el proceso del agente con el mismo acceso que sus propias herramientas. Las habilidades declaradas pueden añadir instrucciones al agente. ¿Continuar?",
       "diagnostics": "Diagnósticos",
       "commandNeedsSession": "Inicia un chat antes de ejecutar un comando de extensión.",
       "state": {
