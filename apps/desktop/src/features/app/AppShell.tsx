@@ -65,6 +65,8 @@ export function AppShell() {
     workPanelExitGeneration,
     finishWorkPanelExit,
     togglePresentedWorkPanel,
+    workPanelMaximized,
+    toggleWorkPanelMaximize,
     backendDown,
     archMismatch,
     setArchMismatch,
@@ -104,6 +106,7 @@ export function AppShell() {
             />
           ) : null}
 
+          {!workPanelMaximized && (
           <section className="main-pane">
             <WindowControls contained />
             {page === "chat" ? (
@@ -207,6 +210,7 @@ export function AppShell() {
               )}
             </Suspense>
           </section>
+          )}
 
           {(presentedWorkPanelOpen || workPanelExiting) && (
             <WorkPanel
@@ -222,6 +226,8 @@ export function AppShell() {
               sidebarCollapsed={sidebarCollapsed}
               sidebarExiting={sidebarExiting}
               onAutoCollapseSidebar={autoCollapseSidebar}
+              maximized={workPanelMaximized}
+              onToggleMaximize={toggleWorkPanelMaximize}
             />
           )}
 

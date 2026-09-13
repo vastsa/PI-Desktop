@@ -32,8 +32,8 @@ const electronBin =
     ? join(appDir, "node_modules/electron/dist/electron.exe")
     : join(appDir, "node_modules/.bin/electron");
 const cdpPort = Number(process.env.PI_DESKTOP_LAYOUT_CDP_PORT || 9336);
-const MAIN_PANE_MIN_WIDTH = 360;
-const MAIN_PANE_REOPEN_TARGET_WIDTH = 370;
+const MAIN_PANE_MIN_WIDTH = 450;
+const MAIN_PANE_REOPEN_TARGET_WIDTH = 460;
 
 function resolveHostBinary() {
   const candidates = [
@@ -370,7 +370,7 @@ async function main() {
       reopened.sidebarKind === "sidebar" &&
         reopened.main >= MAIN_PANE_MIN_WIDTH &&
         (reopened.panel === collapsed.panel || reopened.panel === expectedPanel),
-      "manual reopen spends panel width first, otherwise landing on the 370px target",
+      "manual reopen spends panel width first, otherwise landing on the 460px target",
       `collapsed=${JSON.stringify(collapsed)} reopened=${JSON.stringify(reopened)}`,
     );
     check(
@@ -397,6 +397,64 @@ async function main() {
       restored.windowWidth === baseline.windowWidth,
       "the whole flow keeps the native window width constant",
       `window ${baseline.windowWidth} -> ${restored.windowWidth}`,
+    );
+
+    const composer = await cdp.evaluate(`(() => {
+      const bar = document.querySelector(".composer-toolbar");
+      const left = document.querySelector(".composer-left");
+      const right = document.querySelector(".composer-right");
+      if (!bar || !left || !right) return null;
+      return {
+        width: Math.round(bar.getBoundingClientRect().width),
+        clipped: bar.scrollWidth > bar.clientWidth + 1,
+        sameRow:
+          Math.round(left.getBoundingClientRect().top) ===
+          Math.round(right.getBoundingClientRect().top),
+      };
+    })()`);
+    check(
+      composer !== null && composer.clipped === false && composer.sameRow === true,
+      "the composer toolbar stays on one unfolded row at the MainChat floor",
+      JSON.stringify(composer),
+    );
+
+    // 5. Preview (maximize) mode: MainChat yields its width to the panel.
+    await rig(`window.__PI_DESKTOP__.openWorkPanel()`);
+    await waitFor(
+      () => cdp.evaluate(`!!document.querySelector('[data-testid="work-panel"]')`),
+      "work panel mounted for preview mode",
+    );
+    await rig(`window.__PI_DESKTOP__.setWorkPanelWidth(500)`);
+    const beforeMaximize = await measure();
+    await cdp.evaluate(
+      `document.querySelector(".work-panel-maximize")?.dispatchEvent(new MouseEvent("click", { bubbles: true }))`,
+    );
+    await delay(700);
+    const maximizing = await measure();
+    const expectedMaximized =
+      maximizing.windowWidth -
+      (maximizing.sidebarKind === "sidebar" ? maximizing.sidebar ?? 0 : 0);
+    check(
+      maximizing.main === null && maximizing.panel === expectedMaximized,
+      "preview mode hides MainChat and hands its width to the panel",
+      JSON.stringify(maximizing),
+    );
+    check(
+      maximizing.windowWidth === beforeMaximize.windowWidth,
+      "preview mode never resizes the native window",
+      `window ${beforeMaximize.windowWidth} -> ${maximizing.windowWidth}`,
+    );
+    await cdp.evaluate(
+      `document.querySelector(".work-panel-maximize")?.dispatchEvent(new MouseEvent("click", { bubbles: true }))`,
+    );
+    await delay(700);
+    const restoredAfterMaximize = await measure();
+    check(
+      restoredAfterMaximize.panel === beforeMaximize.panel &&
+        restoredAfterMaximize.main === beforeMaximize.main &&
+        restoredAfterMaximize.sidebarKind === beforeMaximize.sidebarKind,
+      "leaving preview mode restores the previous three-column widths",
+      `before=${JSON.stringify(beforeMaximize)} after=${JSON.stringify(restoredAfterMaximize)}`,
     );
 
     const failed = results.filter((entry) => !entry.ok);

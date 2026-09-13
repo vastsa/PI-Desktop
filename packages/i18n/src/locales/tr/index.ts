@@ -1304,6 +1304,8 @@ export const tr = {
     subagentEmpty: "Alt ajan ayrıntıları artık kullanılamıyor.",
     collapse: "Çalışma panelini gizle",
     resize: "Çalışma paneli genişliğini ayarla",
+    maximize: "Expand work panel",
+    restore: "Restore work panel",
     resizeChat: "Sohbet alanının genişliğini ayarla",
     tools: "Araçlar",
     toolsAndPanels: "Araçlar ve paneller",

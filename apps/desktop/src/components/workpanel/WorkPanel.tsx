@@ -28,6 +28,8 @@ import {
   IconClose,
   IconDiff,
   IconFileText,
+  IconPanelMaximize,
+  IconPanelRestore,
   IconPlug,
   IconPlus,
 } from "../icons";
@@ -134,6 +136,8 @@ export function WorkPanel({
   sidebarExiting = false,
   sidebarWidth = 0,
   onAutoCollapseSidebar,
+  maximized = false,
+  onToggleMaximize,
 }: {
   /**
    * Hides every native surface in the panel. Both the preview browser and a
@@ -156,6 +160,10 @@ export function WorkPanel({
   sidebarWidth?: number;
   /** Called on the first frame where the main pane would hit its hard floor. */
   onAutoCollapseSidebar?: () => void;
+  /** Preview mode: the panel takes MainChat's width as well. */
+  maximized?: boolean;
+  /** Toggles the preview mode from the panel header. */
+  onToggleMaximize?: () => void;
 }) {
   const { t } = useTranslation();
   const rawTabs = useAppStore((s) => s.workPanelTabs);
@@ -200,6 +208,7 @@ export function WorkPanel({
     sidebarWidth,
     sidebarCollapsed: !sidebarOccupiesBudget,
     requestedPanelWidth,
+    maximized,
   });
   const renderPanelWidth = layout.panelWidth;
   const isResizing = panelDragWidth !== null;
@@ -315,6 +324,8 @@ export function WorkPanel({
 
   const onPanelResizeStart = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
+      // While maximized there is no second column to trade width with.
+      if (maximized) return;
       if (event.button !== 0 || panelResizeState.current) return;
       event.preventDefault();
       event.stopPropagation();
@@ -331,7 +342,7 @@ export function WorkPanel({
       setPanelDragWidth(startWidth);
       event.currentTarget.setPointerCapture(event.pointerId);
     },
-    [panelMinimum, renderPanelWidth],
+    [maximized, panelMinimum, renderPanelWidth],
   );
 
   const onPanelResizeMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
@@ -381,6 +392,8 @@ export function WorkPanel({
         finishPanelResize(event.currentTarget, drag.pointerId, true);
         return;
       }
+      // While maximized there is no second column to trade width with.
+      if (maximized) return;
       const step = event.shiftKey ? 32 : 16;
       const minimum = Math.min(panelMinimum, layout.maxPanelWidth);
       const maximum = Math.max(minimum, layout.maxPanelWidth);
@@ -393,7 +406,7 @@ export function WorkPanel({
       event.preventDefault();
       setWidth(clampWorkPanelWidth(nextWidth, minimum));
     },
-    [finishPanelResize, layout.maxPanelWidth, panelMinimum, renderPanelWidth, setWidth],
+    [finishPanelResize, layout.maxPanelWidth, maximized, panelMinimum, renderPanelWidth, setWidth],
   );
 
   const activePluginView =
@@ -414,6 +427,7 @@ export function WorkPanel({
     <aside
       className={cx(
         "work-panel",
+        maximized && "is-maximized",
         exiting && !exitAnimationReady && "is-exit-pending",
         exitAnimationReady && "is-exiting",
       )}
@@ -442,6 +456,8 @@ export function WorkPanel({
           layout.maxPanelWidth,
         )}
         aria-valuenow={Math.round(panelDragWidth ?? renderPanelWidth)}
+        aria-disabled={maximized || undefined}
+        data-maximized={maximized ? "true" : undefined}
         tabIndex={0}
         onPointerDown={onPanelResizeStart}
         onPointerMove={onPanelResizeMove}
@@ -538,6 +554,20 @@ export function WorkPanel({
                 <IconPlus size={16} />
               </TooltipButton>
             )}
+            <TooltipButton
+              type="button"
+              className="work-panel-maximize"
+              tooltip={t(maximized ? "panel.restore" : "panel.maximize")}
+              ariaLabel={t(maximized ? "panel.restore" : "panel.maximize")}
+              aria-pressed={maximized}
+              onClick={() => onToggleMaximize?.()}
+            >
+              {maximized ? (
+                <IconPanelRestore size={15} />
+              ) : (
+                <IconPanelMaximize size={15} />
+              )}
+            </TooltipButton>
           </div>
         </header>
         <div className="work-panel-body">

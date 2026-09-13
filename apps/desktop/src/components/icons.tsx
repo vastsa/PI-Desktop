@@ -58,6 +58,8 @@ import {
   PanelLeft,
   PanelRight,
   PanelRightOpen,
+  Maximize2,
+  Minimize2,
   PawPrint,
   PencilLine,
   Pin,
@@ -167,6 +169,8 @@ export const IconSettings = icon(Settings);
 export const IconHelp = icon(CircleHelp);
 export const IconPanel = icon(PanelRight);
 export const IconPanelOpen = icon(PanelRightOpen);
+export const IconPanelMaximize = icon(Maximize2);
+export const IconPanelRestore = icon(Minimize2);
 export const IconDiff = icon(FileDiff);
 export const IconSidebar = icon(PanelLeft);
 export const IconArrowUp = icon(ArrowUp);

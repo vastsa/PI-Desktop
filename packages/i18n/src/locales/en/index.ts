@@ -1302,6 +1302,8 @@ export const en = {
     subagentEmpty: "Subagent details are no longer available.",
     collapse: "Hide work panel",
     resize: "Resize work panel",
+    maximize: "Expand work panel",
+    restore: "Restore work panel",
     resizeChat: "Resize conversation area",
     tools: "Tools",
     toolsAndPanels: "Tools & panels",

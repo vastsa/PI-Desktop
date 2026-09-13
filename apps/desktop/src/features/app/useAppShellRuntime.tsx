@@ -173,6 +173,7 @@ export function useAppShellRuntime() {
     return () => window.clearTimeout(timer);
   }, [sidebarExiting]);
   const [presentedWorkPanelOpen, setPresentedWorkPanelOpen] = useState(false);
+  const [workPanelMaximized, setWorkPanelMaximized] = useState(false);
   const [workPanelExiting, setWorkPanelExiting] = useState(false);
   const workPanelReservationRequest = useRef(0);
   const workPanelExitGeneration = useRef(0);
@@ -220,6 +221,13 @@ export function useAppShellRuntime() {
     workPanelExitingRef.current = workPanelExiting;
   }, [workPanelExiting]);
 
+  // Preview mode: MainChat is not rendered and the panel takes its width as
+  // well, so the user can read a wide plugin view or preview. Transient: it is
+  // never persisted and it ends with the panel.
+  const toggleWorkPanelMaximize = useCallback(() => {
+    setWorkPanelMaximized((current) => !current);
+  }, []);
+
   const togglePresentedWorkPanel = useCallback(() => {
     const store = useAppStore.getState();
     if (workPanelExitingRef.current) {
@@ -259,6 +267,7 @@ export function useAppShellRuntime() {
         generation === workPanelExitGeneration.current,
       commit: () => {
         setPresentedWorkPanelOpen(false);
+        setWorkPanelMaximized(false);
         setWorkPanelExiting(false);
         workPanelExitingRef.current = false;
         workPanelExitClosing.current = false;
@@ -337,6 +346,7 @@ export function useAppShellRuntime() {
       autoCollapsedSidebarRef.current = false;
       setSidebarCollapsed(false);
     }
+    if (!workPanelVisible) setWorkPanelMaximized(false);
     previousWorkPanelOpen.current = workPanelVisible;
   }, [workPanelVisible]);
 
@@ -834,6 +844,8 @@ export function useAppShellRuntime() {
     workPanelExitGeneration,
     finishWorkPanelExit,
     togglePresentedWorkPanel,
+    workPanelMaximized,
+    toggleWorkPanelMaximize,
     backendDown,
     archMismatch,
     setArchMismatch,

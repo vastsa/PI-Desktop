@@ -26,21 +26,23 @@ MainChat to its floor while the expanded sidebar kept its full width.
 
 ## Decision
 
-1. MainChat has a hard `360px` minimum. The work-panel maximum is the
+1. MainChat has a hard `450px` minimum, derived from the composer toolbar's
+   unfolded row (plus button, mode and permission chips, model/thinking chip,
+   enhance and send buttons) plus its margins. The work-panel maximum is the
    remaining client width after that floor and the expanded sidebar
    (`clientWidth - mainChatMinimum - expandedSidebarWidth`); there is no fixed
    pixel cap, so a wide window keeps spending width on the panel until MainChat
    reaches its floor. The shared renderer budget function is used by pointer
    preview, keyboard resize, panel presentation, sidebar changes and shell
    resize observation.
-2. When the expanded sidebar would make MainChat reach the 360px floor, the
+2. When the expanded sidebar would make MainChat reach the 450px floor, the
    renderer immediately collapses the sidebar through the existing mounted
    `sidebar-out` animation. While that animation still occupies flex space, the
    shared budget continues to count the sidebar so MainChat stays at or above
-   360px. The preferred work-panel width remains the user's persisted target, so
+   450px. The preferred work-panel width remains the user's persisted target, so
    the panel can continue growing after the sidebar has yielded.
 3. A manual sidebar reopen spends work-panel width first. It preserves the
-   current MainChat width where possible; if the 360px floor would be crossed,
+   current MainChat width where possible; if the 450px floor would be crossed,
    it targets `370px`. This reopen path may persist a positive compact panel
    width below the ordinary `244px` presentation minimum.
 4. Automatic sidebar collapse is remembered only until the work panel closes.
@@ -54,14 +56,21 @@ MainChat to its floor while the expanded sidebar kept its full width.
    supported window minimum stays `1040×700`, which already exceeds
    `mainChatMinimum + panelMinimum`, so the panel minimum is satisfiable at
    every supported window size.
+6. The panel header exposes a preview (maximize) toggle. While preview mode is
+   on, MainChat is not rendered at all and the panel takes the whole client
+   area beside the sidebar (`clientWidth - expandedSidebarWidth`); the 450px
+   MainChat floor is therefore suspended by design, because there is no chat
+   column to protect. Leaving preview mode restores the previous panel width
+   and keeps whatever sidebar state the user chose last; the mode is transient
+   (never persisted, ends with the panel) and never changes native bounds.
 
 ## Consequences
 
-- MainChat cannot be compressed below 360px by any supported shell width
+- MainChat cannot be compressed below 450px by any supported shell width
   change; the sidebar is the column that yields.
 - A constrained window shows a narrower work panel during the current layout,
   while the persisted preferred width remains available when space returns.
-- The composer toolbar now handles widths between 360px and its comfortable
+- The composer toolbar now handles widths between 450px and its comfortable
   layout instead of relying on a 515px reservation, so its control groups
   ellipsize or reflow below that width.
 - No host protocol, SQLite schema, plugin contract, security boundary or native
@@ -72,7 +81,7 @@ MainChat to its floor while the expanded sidebar kept its full width.
 ### Keep the 515px chat reservation of ADR 0226
 
 Rejected because it leaves side-dock priority implicit and cannot satisfy the
-360px hard floor with automatic sidebar-yield behaviour, which is what keeps
+450px hard floor with automatic sidebar-yield behaviour, which is what keeps
 MainChat usable in the fixed window.
 
 ### Let the sidebar resize continuously to preserve every column

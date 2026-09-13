@@ -7,11 +7,13 @@ export const WORK_PANEL_CHAT_MIN_WIDTH = 1040;
 export const WORK_PANEL_CHAT_MAX_WIDTH = 10000;
 /**
  * Hard MainChat floor for the in-flow three-column shell. The work panel may
- * never take width below it, and the expanded sidebar yields first. This
- * replaces the 515px composer reservation of ADR 0226; the composer keeps its
- * own single-row behavior once the chat column is this narrow.
+ * never take width below it, and the expanded sidebar yields first. The value
+ * is derived from the composer toolbar's unfolded row (plus button, mode and
+ * permission chips, model/thinking chip, enhance and send buttons) plus its
+ * margins: below this width the composer would fold, so it replaces the 515px
+ * composer reservation of ADR 0226.
  */
-export const MAIN_PANE_MIN_WIDTH = 360;
+export const MAIN_PANE_MIN_WIDTH = 450;
 export const MAIN_PANE_REOPEN_TARGET_WIDTH = MAIN_PANE_MIN_WIDTH + 10;
 /**
  * The regular panel minimum is a presentation affordance. The sidebar reopen
@@ -62,14 +64,27 @@ export function workPanelLayout({
   sidebarWidth,
   sidebarCollapsed,
   requestedPanelWidth,
+  maximized = false,
 }: {
   containerWidth: number;
   sidebarWidth: number;
   sidebarCollapsed: boolean;
   requestedPanelWidth: number;
+  maximized?: boolean;
 }): WorkPanelLayout {
   const width = Math.max(0, Math.round(containerWidth));
   const leftWidth = sidebarCollapsed ? 0 : Math.max(0, Math.round(sidebarWidth));
+  // Maximized preview: MainChat is not rendered at all, so the panel takes the
+  // whole client area beside the sidebar and the MainChat floor does not apply.
+  if (maximized) {
+    const fullWidth = Math.max(0, width - leftWidth);
+    return {
+      mainWidth: 0,
+      panelWidth: fullWidth,
+      maxPanelWidth: fullWidth,
+      shouldCollapseSidebar: false,
+    };
+  }
   const requested = clampWorkPanelWidth(
     requestedPanelWidth,
     requestedPanelWidth < WORK_PANEL_MIN_WIDTH

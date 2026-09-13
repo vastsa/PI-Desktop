@@ -308,6 +308,33 @@
     color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
+/* Preview mode: the panel takes MainChat's width as well, so the divider has no
+   second column to trade width with and the dock fills its flex row. */
+.work-panel.is-maximized {
+  flex: 1 1 auto;
+  width: auto;
+  max-width: none;
+}
+
+.work-panel.is-maximized .work-panel-resize {
+  cursor: default;
+}
+
+.work-panel-maximize {
+  display: inline-flex;
+  width: var(--ds-work-panel-toggle-size);
+  height: var(--ds-work-panel-toggle-size);
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  background: var(--ds-tile);
+  color: var(--ds-text-secondary);
+  transition:
+    background var(--motion-duration-fast) var(--motion-ease-out),
+    color var(--motion-duration-fast) var(--motion-ease-out);
+}
+
 .work-panel-new-tab:hover,
 .work-panel-new-tab:focus-visible {
   background: var(--ds-bg-active);

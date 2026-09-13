@@ -1294,6 +1294,8 @@ export const zhTW = {
     subagentEmpty: "子智慧體詳情已不可用。",
     collapse: "收起工作面板",
     resize: "調整工作面板寬度",
+    maximize: "放大",
+    restore: "縮小",
     resizeChat: "調整對話區寬度",
     tools: "工具",
     toolsAndPanels: "工具與面板",

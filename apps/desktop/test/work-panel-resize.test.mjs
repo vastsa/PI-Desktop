@@ -18,8 +18,8 @@ import {
 } from "../src/lib/work-panel-resize.ts";
 
 test("the three-column budget protects MainChat and collapses the sidebar at the threshold", () => {
-  assert.equal(MAIN_PANE_MIN_WIDTH, 360);
-  assert.equal(MAIN_PANE_REOPEN_TARGET_WIDTH, 370);
+  assert.equal(MAIN_PANE_MIN_WIDTH, 450);
+  assert.equal(MAIN_PANE_REOPEN_TARGET_WIDTH, 460);
   const layout = workPanelLayout({
     containerWidth: 1040,
     sidebarWidth: 275,
@@ -27,8 +27,8 @@ test("the three-column budget protects MainChat and collapses the sidebar at the
     requestedPanelWidth: 720,
   });
 
-  assert.equal(layout.maxPanelWidth, 405);
-  assert.equal(layout.panelWidth, 405);
+  assert.equal(layout.maxPanelWidth, 315);
+  assert.equal(layout.panelWidth, 315);
   assert.equal(layout.mainWidth, MAIN_PANE_MIN_WIDTH);
   assert.equal(layout.shouldCollapseSidebar, true);
 });
@@ -38,16 +38,16 @@ test("the expanded sidebar collapses as soon as MainChat reaches 360px", () => {
     containerWidth: 1040,
     sidebarWidth: 275,
     sidebarCollapsed: false,
-    requestedPanelWidth: 404,
+    requestedPanelWidth: 314,
   });
   const atFloor = workPanelLayout({
     containerWidth: 1040,
     sidebarWidth: 275,
     sidebarCollapsed: false,
-    requestedPanelWidth: 405,
+    requestedPanelWidth: 315,
   });
 
-  assert.equal(justAbove.mainWidth, 361);
+  assert.equal(justAbove.mainWidth, 451);
   assert.equal(justAbove.shouldCollapseSidebar, false);
   assert.equal(atFloor.mainWidth, MAIN_PANE_MIN_WIDTH);
   assert.equal(atFloor.shouldCollapseSidebar, true);
@@ -61,20 +61,20 @@ test("a collapsed sidebar exposes the full dynamic right-column budget", () => {
     requestedPanelWidth: 720,
   });
 
-  assert.equal(layout.maxPanelWidth, 680);
-  assert.equal(layout.panelWidth, 680);
+  assert.equal(layout.maxPanelWidth, 590);
+  assert.equal(layout.panelWidth, 590);
   assert.equal(layout.mainWidth, MAIN_PANE_MIN_WIDTH);
   assert.equal(layout.shouldCollapseSidebar, false);
 });
 
-test("sidebar reopen spends right-panel width before using the 370px target", () => {
+test("sidebar reopen spends right-panel width before using the 460px target", () => {
   assert.equal(
     workPanelWidthForSidebarReopen({
       containerWidth: 1040,
       sidebarWidth: 275,
       currentPanelWidth: 600,
     }),
-    395,
+    305,
   );
   assert.equal(
     workPanelWidthForSidebarReopen({
@@ -82,7 +82,7 @@ test("sidebar reopen spends right-panel width before using the 370px target", ()
       sidebarWidth: 520,
       currentPanelWidth: 360,
     }),
-    150,
+    60,
   );
   assert.equal(
     workPanelWidthForSidebarReopen({
@@ -112,7 +112,7 @@ test("the compact width stays representable for the reopen path", () => {
 
 test("a wide window lets the panel grow past the old fixed cap", () => {
   // Regression guard: the panel maximum is the live budget, so a 1600px shell
-  // must allow 965px (1600 - 275 sidebar - 360 floor) rather than stopping at
+  // must allow 875px (1600 - 275 sidebar - 450 floor) rather than stopping at
   // a fixed 720px cap.
   const wide = workPanelLayout({
     containerWidth: 1600,
@@ -120,8 +120,8 @@ test("a wide window lets the panel grow past the old fixed cap", () => {
     sidebarCollapsed: false,
     requestedPanelWidth: 1200,
   });
-  assert.equal(wide.maxPanelWidth, 965);
-  assert.equal(wide.panelWidth, 965);
+  assert.equal(wide.maxPanelWidth, 875);
+  assert.equal(wide.panelWidth, 875);
   assert.equal(wide.mainWidth, MAIN_PANE_MIN_WIDTH);
   assert.equal(wide.shouldCollapseSidebar, true);
 
@@ -133,9 +133,33 @@ test("a wide window lets the panel grow past the old fixed cap", () => {
     sidebarCollapsed: true,
     requestedPanelWidth: 1500,
   });
-  assert.equal(yielded.maxPanelWidth, 1240);
-  assert.equal(yielded.panelWidth, 1240);
+  assert.equal(yielded.maxPanelWidth, 1150);
+  assert.equal(yielded.panelWidth, 1150);
   assert.equal(yielded.mainWidth, MAIN_PANE_MIN_WIDTH);
+});
+
+test("preview mode gives the panel the whole client area beside the sidebar", () => {
+  const expanded = workPanelLayout({
+    containerWidth: 1200,
+    sidebarWidth: 275,
+    sidebarCollapsed: false,
+    requestedPanelWidth: 500,
+    maximized: true,
+  });
+  assert.equal(expanded.panelWidth, 925);
+  assert.equal(expanded.maxPanelWidth, 925);
+  assert.equal(expanded.mainWidth, 0);
+  assert.equal(expanded.shouldCollapseSidebar, false);
+
+  const collapsed = workPanelLayout({
+    containerWidth: 1200,
+    sidebarWidth: 275,
+    sidebarCollapsed: true,
+    requestedPanelWidth: 500,
+    maximized: true,
+  });
+  assert.equal(collapsed.panelWidth, 1200);
+  assert.equal(collapsed.mainWidth, 0);
 });
 
 test("clamps the work panel to its minimum without a fixed upper bound", () => {
