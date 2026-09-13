@@ -26,6 +26,7 @@ import {
   saveSidebarWidth,
 } from "../../lib/sidebar-preferences";
 import { StartupSplash } from "../../components/StartupSplash";
+import { useTraySessions } from "./useTraySessions";
 
 const MODIFIER_ONLY_KEYS = new Set([
   "Alt",
@@ -127,6 +128,7 @@ export function useAppShellRuntime() {
     autoCollapsedSidebarRef.current = false;
     setSidebarCollapsed(false);
   }, []);
+  useTraySessions({ setSearchOpen, reopenSidebar });
 
   // Stable identity: the keydown and native-menu handlers register once and
   // must never capture a stale `sidebarCollapsed`. Every invocation is a user
@@ -392,7 +394,6 @@ export function useAppShellRuntime() {
 
   useEffect(() => {
     const unsubscribe = api.onMenuCommand((command) => void runMenuCommand(command));
-    void api.menuRendererReady().catch(() => undefined);
     return unsubscribe;
   }, [runMenuCommand]);
 
@@ -499,7 +500,10 @@ export function useAppShellRuntime() {
   useEffect(() => {
     if (bootstrapStartedRef.current) return;
     bootstrapStartedRef.current = true;
-    void bootstrap();
+    // A tray activation must win over bootstrap's initial draft/plan navigation.
+    void bootstrap().finally(() => {
+      void api.menuRendererReady().catch(() => undefined);
+    });
   }, [bootstrap]);
 
   // The Host owns the prompt queue (D375); mirror it whenever the visible

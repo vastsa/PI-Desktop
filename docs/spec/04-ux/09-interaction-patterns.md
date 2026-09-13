@@ -156,15 +156,35 @@ recency only breaks ties between equally relevant matches.
   window from the taskbar/dock window list while the Electron process and
   background work remain alive. It does not persist a minimized geometry or
   dispose the host/sidecar.
-- Clicking or double-clicking the PI-Desktop tray icon, choosing Show from its
-  menu, or activating the app from the macOS dock restores and focuses the
+- Double-clicking the PI-Desktop tray icon (or single-clicking on Windows/Linux),
+  choosing Open, or activating the app from the macOS dock restores and focuses the
   existing window. If the window was closed, the same action creates a fresh
   window.
 - The tray menu is localized with the active shipped shell locale and
-  exposes Show PI-Desktop plus an explicit Quit PI-Desktop action. Quit uses
+  exposes Open, bounded session groups, and an explicit Quit action. Quit uses
   the existing ordered shutdown path. What closing the window does is the
   user's own choice on Windows/Linux (ADR 0090) and a Dock-lifecycle close on
   macOS; the tray icon itself is created once at startup either way.
+
+### 1.5.2 Tray session navigation (issue #293)
+
+- The native menu shows Running, Unread, and Pinned in that order, at most
+  three sessions in each and nine in total. Membership is assigned before
+  applying limits; higher-priority overflow never spills into a lower group.
+- Empty groups are hidden. Archived sessions/projects and deleted sessions
+  are excluded. Running/Pinned follow sidebar sorting; Unread follows the
+  latest unread result per session, newest first, including failed results.
+- Long titles use one line and an ellipsis after at most 48 Unicode code
+  points. An overflowing group offers View more to restore the window and
+  expand session navigation. A session row restores/focuses its exact conversation,
+  activating its project through the existing selection flow.
+- macOS single-click opens the menu without restoring/focusing a conversation
+  or marking it read. Entering a conversation uses normal acknowledgement.
+  Open and double-click restore the window; Quit keeps its confirmation and
+  ordered shutdown. Group/action labels follow the active shipped locale.
+- Start/finish, read, pin, rename, archive, delete, and backend restart update
+  the menu. The menu remains available when the main window is hidden or
+  closed, without creating another window until an explicit activation.
 
 ### 1.6 Sidebar project and conversation organization
 

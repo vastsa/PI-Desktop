@@ -67,6 +67,7 @@ import type {
   SessionSearchContext,
   SessionSearchContextRequest,
   SessionSummary,
+  TraySessionPreferences,
   ToolPermissionResolution,
   UserSkillInput,
   UserSkillRecord,
@@ -889,6 +890,15 @@ export const api = {
     ),
   menuRendererReady: () =>
     invoke<{ ready: boolean }>(IPC.invoke.menuRendererReady),
+  setTraySessionPreferences: (preferences: TraySessionPreferences) =>
+    invoke<{ ok: boolean }>(IPC.invoke.traySetSessionPreferences, preferences),
+  onTraySessionActivated: (listener: (sessionId: string | null) => void) => {
+    if (!window.piDesktop?.on) return () => undefined;
+    return window.piDesktop.on(IPC.event.traySessionActivated, (payload) => {
+      const sessionId = (payload as { sessionId?: unknown })?.sessionId;
+      if (sessionId === null || (typeof sessionId === "string" && sessionId)) listener(sessionId);
+    });
+  },
   nativeMenuAction: (action: NativeMenuAction) =>
     invoke<{ maximized: boolean; fullScreen: boolean }>(
       IPC.invoke.nativeMenuAction,

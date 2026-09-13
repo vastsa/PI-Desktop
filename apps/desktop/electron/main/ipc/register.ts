@@ -23,11 +23,13 @@ import { registerWindowIpc } from "./window-ipc";
 import { createComposerTemplateLoader, registerWorkspaceIpc } from "./workspace-ipc";
 import { registerComposerIpc } from "./composer-ipc";
 import type { IpcRegistrar } from "./types";
+import type { createTraySessions } from "../tray-sessions";
 
 export type RegisterIpcDependencies = {
   ipcMain: IpcMain;
   getMainWindow: () => BrowserWindow | null;
   getHost: () => HostProcess | null;
+  traySessions: ReturnType<typeof createTraySessions>;
   getSidecar: () => AgentSidecar | null;
   getAgentHostBridge: () => AgentHostBridge | null;
   getNotificationViewingSessionId: () => string | null;
@@ -86,6 +88,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     applyCloseBehavior,
     getCloseBehavior,
     markMenuRendererReady,
+    traySessions,
     executeNativeMenuAction,
     scheduledRunsBySession,
     isDevelopmentBuild,
@@ -120,8 +123,13 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
 
   const ipcHandlers = new Map<string, (...args: any[]) => Promise<any>>();
   const handle = (channel: string, fn: (...args: any[]) => Promise<any>) => {
-    ipcHandlers.set(channel, fn);
-    ipcMain.handle(channel, async (_event, ...args) => wrap(() => fn(...args)));
+    const handler = async (...args: any[]) => {
+      const result = await fn(...args);
+      traySessions.observeInvoke(channel);
+      return result;
+    };
+    ipcHandlers.set(channel, handler);
+    ipcMain.handle(channel, async (_event, ...args) => wrap(() => handler(...args)));
   };
   const handleWithEvent = (
     channel: string,
@@ -226,6 +234,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     loadComposerTemplatesCached,
   });
   registerWindowIpc({
+    setTraySessionPreferences: traySessions.setPreferences,
     registrar,
     getMainWindow,
     getWorkPanelReservationWidth,

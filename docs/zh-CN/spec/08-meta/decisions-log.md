@@ -3911,3 +3911,14 @@ D193 和 D194。
 - 手动重开左栏优先占用右栏宽度，否则以 370px 为目标。关闭右栏只恢复由布局机制收起的左栏；手动收起保持收起。
 - 原生窗口不参与：预留 seam 保持 0，不套用任何面板宽度或 x 偏移几何。
 - 决策 D408 记录 issue #267 的行为。见 ADR 0238 与 E2E-LAYOUT-three-column-width-priority。
+
+
+### Tray session shortcuts (issue #293)
+
+[ADR tray-session-shortcuts](/adr/tray-session-shortcuts) amends the D216 native
+tray menu with Running, Unread, and Pinned groups, three rows each after global
+priority assignment. Host session/inbox reads and runtime events remain the
+source of truth; renderer organization is mirrored without a persistence
+change. macOS single-click opens the menu without restoring the window;
+selection is delivered after bootstrap and uses normal session navigation.
+Validation contract: E2E-TRAY-bounded-session-navigation.

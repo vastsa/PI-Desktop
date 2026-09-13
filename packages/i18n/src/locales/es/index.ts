@@ -23,6 +23,10 @@ export const es = {
     "close": "Cerrar"
   },
   "tray": {
+    "running": "En curso",
+    "unread": "Sin leer",
+    "pinned": "Fijadas",
+    "viewMore": "Ver más…",
     "open": "Abrir PI-Desktop",
     "quit": "Salir de PI-Desktop",
     "askTitle": "¿Mantener PI-Desktop ejecutándose en segundo plano?",

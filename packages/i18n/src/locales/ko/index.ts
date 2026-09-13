@@ -24,6 +24,10 @@ export const ko = {
     close: "닫기",
   },
   tray: {
+    running: "실행 중",
+    unread: "읽지 않음",
+    pinned: "고정됨",
+    viewMore: "더 보기…",
     open: "PI-Desktop 열기",
     quit: "PI-Desktop 종료",
     askTitle: "PI-Desktop을 백그라운드에서 계속 실행할까요?",
