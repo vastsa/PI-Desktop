@@ -67,23 +67,62 @@ manifest that lists entries without the permission is invalid
 ([02-plugin-manifest-schema.md](02-plugin-manifest-schema.md) §4 and §7).
 `main` may be a no-op module when the plugin contributes nothing else.
 
-### 3.2 Importing a pi CLI extension
+### 3.2 Importing a pi CLI extension or skill package
 
 Plugins → "Import pi extension" opens a native picker (main owns the path,
-D344) for a file or a directory. Main resolves entries with the
-`pi-coding-agent` loader rules (a `package.json` `pi.extensions` field, else
-`index.ts` / `index.js`, else loose `*.ts` / `*.js` files one level deep),
-copies the source under `<dataDir>/plugins/imported/<slug>/src/`, writes the
-manifest above with id `imported.<slug>`, and registers the directory as a
-development plugin through the same path as "Load local plugin". The confirm
-before the picker is the trust decision; the row then shows the
-`agent.extension` permission like any other grant.
+D344) for an explicit local file or directory. Main copies the selected
+source under `<dataDir>/plugins/imported/<slug>/src/`, writes a generated
+no-op `main.js` and a manifest with id `imported.<slug>`, and registers the
+directory through the existing local-plugin flow. The confirmation before
+the picker remains the trust decision; the generated manifest declares the
+permissions needed by its actual contributions.
+
+For extension files and packages without `pi.skills`, entry discovery keeps
+the existing `pi-coding-agent` rules: `package.json` `pi.extensions`, otherwise
+`index.ts` / `index.js`, otherwise loose `*.ts` / `*.js` files one level deep.
+A package that explicitly declares `pi.skills` and has no `pi.extensions` (or
+an empty array) is skill-only: incidental scripts, including `index.js`, are
+copied as resources but never promoted to executable agent extensions.
 
 | Source | Becomes |
 |---|---|
-| A pi extension directory or file | A development plugin under `plugins/imported`, id `imported.<slug>` |
+| A pi extension directory or file | A local plugin under `plugins/imported`, id `imported.<slug>` |
 | A plugin package declaring `contributes.agentExtensions` | Installed like any plugin; the grant is asked for at install |
-| A `package.json` with a `pi.extensions` field | The listed entries, relative to `src/` |
+| A `package.json` with `pi.extensions` | Entries under `src/`, exposed through `contributes.agentExtensions` with `agent.extension` |
+| A `package.json` with `pi.skills` | Markdown documents under `src/`, exposed through `contributes.skills` with `agent.prompt.inject` |
+| A skill-only package | A no-op plugin holding `agent.prompt.inject`, without `agent.extension` |
+
+`pi.skills` is an array of at most 32 nonempty relative Markdown-file or
+directory paths. An explicit `.md` file contributes that document. For a
+directory, its own `SKILL.md` takes precedence; otherwise directly contained
+`.md` files are included and subdirectories are searched for `SKILL.md`.
+Nested skill directories stop at their own `SKILL.md`, so support documents
+are not turned into extra skills. Scanning skips dot-prefixed entries and
+`node_modules`, deduplicates documents, and has a budget of 256 directories.
+More than 32 discovered skills, a missing declaration, or an unsupported
+path fails the import rather than silently yielding an incomplete catalog.
+Each contribution has an explicit, stable plugin-local ID derived from its
+package-relative path; different directories named `SKILL.md` remain
+independent skills. Normal plugin skill parsing, size limits, grants, and
+unload behavior remain in force.
+
+Copying uses paths relative to the selected package. A package installed
+under an ancestor `node_modules` directory is copied normally; only its own
+`node_modules` directory segments are excluded. References, assets, helper
+scripts, and other ordinary source files remain under `src/`, preserving
+skill-relative resource paths. The selected root is resolved to its real
+path. Contribution paths must stay inside that root, cannot traverse `..`,
+and cannot point into its dependency directories. Absolute `pi.skills`
+paths and descendant symbolic links are rejected. Copying also rejects
+symbolic links among retained resources and removes a partial copy on
+failure. The generated destination must not be inside the selected source.
+
+This is an explicit local import, not a pi CLI package manager. It never
+automatically scans or imports `~/.pi`, does not read the CLI's installed
+package registry, and does not run npm installation or package lifecycle
+scripts. Full CLI package semantics and dependency installation/resolution
+remain separate work (including PR #277); importing a package does not
+promise that every third-party extension dependency can execute.
 
 ## 4. Loading and runtime
 

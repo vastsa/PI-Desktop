@@ -1402,7 +1402,7 @@ export const en = {
     importExtensionDone: "Imported as plugin {{id}}",
     agentExtension: {
       title: "Agent extension",
-      importConfirm: "The imported extension will run inside the agent process with the same access as the agent's own tools. Continue?",
+      importConfirm: "Imported extensions run inside the agent process with the same access as the agent's own tools. Declared skills can add instructions to the agent. Continue?",
       diagnostics: "Diagnostics",
       commandNeedsSession: "Start a chat first to run an extension command.",
       state: {

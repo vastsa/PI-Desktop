@@ -1404,7 +1404,7 @@ export const tr = {
     importExtensionDone: "{{id}} eklentisi olarak içe aktarıldı",
     agentExtension: {
       title: "Ajan uzantısı",
-      importConfirm: "İçe aktarılan uzantı ajan sürecinde, ajanın kendi araçlarıyla aynı erişimle çalışacak. Devam edilsin mi?",
+      importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araçlarıyla aynı erişimle çalışır. Bildirilen beceriler ajana talimatlar ekleyebilir. Devam edilsin mi?",
       diagnostics: "Tanılamalar",
       commandNeedsSession: "Uzantı komutu çalıştırmak için önce bir sohbet başlatın.",
       state: {

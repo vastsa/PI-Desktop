@@ -1394,7 +1394,7 @@ export const zhCN = {
     importExtensionDone: "已导入为插件 {{id}}",
     agentExtension: {
       title: "Agent 扩展",
-      importConfirm: "导入的扩展将在 agent 进程内运行，拥有与 agent 自身工具相同的权限。继续吗？",
+      importConfirm: "导入的扩展会在 agent 进程内运行，拥有与 agent 自身工具相同的权限；包声明的技能可向 agent 提供指令。继续吗？",
       diagnostics: "诊断",
       commandNeedsSession: "请先开始一个对话，再运行扩展命令。",
       state: {

@@ -1394,7 +1394,7 @@ export const zhTW = {
     importExtensionDone: "已匯入為外掛 {{id}}",
     agentExtension: {
       title: "Agent 擴充",
-      importConfirm: "匯入的擴充將在 agent 程序內執行，擁有與 agent 自身工具相同的權限。要繼續嗎？",
+      importConfirm: "匯入的擴充會在 agent 程序內執行，擁有與 agent 自身工具相同的權限；套件宣告的技能可向 agent 提供指令。要繼續嗎？",
       diagnostics: "診斷",
       commandNeedsSession: "請先開始一個對話，再執行擴充命令。",
       state: {
