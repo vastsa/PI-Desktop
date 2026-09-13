@@ -1800,6 +1800,8 @@ export const zhCN = {
       presetTestRunnerDesc: "运行测试或构建，并报告失败原因。",
       presetFixerName: "修复者",
       presetFixerDesc: "按规格实现跨文件改动。",
+      presetUiDesignerName: "UI 设计师",
+      presetUiDesignerDesc: "按需求稿设计并实现界面，浏览器预览验收。",
       presetBlank: "空白开始",
       presetBlankDesc: "默认工具，自行撰写指令。",
       presetApply: "套用",

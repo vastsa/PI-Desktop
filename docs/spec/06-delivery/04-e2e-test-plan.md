@@ -7986,8 +7986,8 @@ This test plan spec is accepted when:
 
 - **Preconditions**: A project-bound Agent session whose permission mode can be
   switched between `ask`, `accept-edits`, and `auto`, with a provider whose
-  stream can be driven; the four builtin subagents (`explorer`,
-  `code-reviewer`, `test-runner`, `fixer`) and a global
+  stream can be driven; the five builtin subagents (`explorer`,
+  `code-reviewer`, `test-runner`, `fixer`, `ui-designer`) and a global
   `~/.agents/subagents/readonly.md` definition. Builtins use the default
   `permission: inherit` behavior.
 - **Steps**:

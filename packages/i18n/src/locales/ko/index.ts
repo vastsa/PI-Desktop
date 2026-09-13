@@ -1826,6 +1826,8 @@ export const ko = {
       presetTestRunnerDesc: "테스트나 빌드를 실행하고 실패를 보고합니다.",
       presetFixerName: "수정자",
       presetFixerDesc: "스펙에 따라 여러 파일 변경을 구현합니다.",
+      presetUiDesignerName: "UI 디자이너",
+      presetUiDesignerDesc: "요구사항에 따라 인터페이스를 설계·구현하고 브라우저 미리보기로 검증합니다.",
       presetBlank: "빈 문서로 시작",
       presetBlankDesc: "기본 도구. 지시문은 직접 작성합니다.",
       presetApply: "적용",

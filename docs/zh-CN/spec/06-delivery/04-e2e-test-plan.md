@@ -5721,8 +5721,8 @@ IPC 请求无法关闭。
 #### E2E-142：后台委托通过 TaskWait 收敛并遵守权限作用域
 
 - **先决条件**：一个绑定项目、权限模式可以在 `ask`、`accept-edits` 和 `auto`
-  之间切换的 Agent 会话，其提供方的流可以被驱动；四个内置子代理（`explorer`、
-  `code-reviewer`、`test-runner`、`fixer`）以及一个全局 `~/.agents/subagents/readonly.md`
+  之间切换的 Agent 会话，其提供方的流可以被驱动；五个内置子代理（`explorer`、
+  `code-reviewer`、`test-runner`、`fixer`、`ui-designer`）以及一个全局 `~/.agents/subagents/readonly.md`
   定义。内置定义使用默认的 `permission: inherit` 行为。
 - **步骤**：
   1. 提示一轮，其中助手在一条消息里发出两次 `Task` 调用 —— 一个 `explorer`

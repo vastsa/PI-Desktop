@@ -1789,6 +1789,8 @@ export const de = {
       "presetTestRunnerDesc": "Führt Test oder Build aus und meldet Fehler.",
       "presetFixerName": "Fixer",
       "presetFixerDesc": "Setzt eine mehrteilige Änderung aus einer Spezifikation um.",
+      "presetUiDesignerName": "UI-Designer",
+      "presetUiDesignerDesc": "Gestaltet und implementiert eine Oberfläche nach Vorgabe, verifiziert in der Browservorschau.",
       "presetBlank": "Leer starten",
       "presetBlankDesc": "Standardwerkzeuge. Schreiben Sie die Anweisungen selbst.",
       "presetApply": "Anwenden",

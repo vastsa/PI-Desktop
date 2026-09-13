@@ -59,17 +59,22 @@ test("resetSubagentTemplate clears a selected preset without dropping model choi
 });
 
 test("preset ids and builtin document ids agree", () => {
-  // The runtime ships the same four delegates in
+  // The runtime ships the same five delegates in
   // `agent-runtime/src/subagent-definitions.ts`; the shared preset catalog
   // duplicates them as UI-ready data. A drift here would mean a user picks
   // "explorer" in the editor and the runtime loads a different prompt.
   const presetIds = [
-    ...presetSource.matchAll(/id: "(explorer|code-reviewer|test-runner|fixer)",/g),
+    ...presetSource.matchAll(
+      /id: "(explorer|code-reviewer|test-runner|fixer|ui-designer)",/g,
+    ),
   ].map((m) => m[1]);
-  assert.deepEqual(
-    presetIds,
-    ["explorer", "code-reviewer", "test-runner", "fixer"],
-  );
+  assert.deepEqual(presetIds, [
+    "explorer",
+    "code-reviewer",
+    "test-runner",
+    "fixer",
+    "ui-designer",
+  ]);
 });
 
 test("preset tools and maxTurns match the runtime builtin documents", () => {
@@ -83,6 +88,8 @@ test("preset tools and maxTurns match the runtime builtin documents", () => {
   assert.match(presetSource, /id: "test-runner"[\s\S]*?maxTurns: 40/);
   assert.match(presetSource, /id: "fixer"[\s\S]*?tools: \["Read", "Glob", "Grep", "Edit", "Write", "Bash"\]/);
   assert.match(presetSource, /id: "fixer"[\s\S]*?maxTurns: 80/);
+  assert.match(presetSource, /id: "ui-designer"[\s\S]*?tools: \["Read", "Glob", "Grep", "BrowserPreview", "Bash", "Edit", "Write"\]/);
+  assert.match(presetSource, /id: "ui-designer"[\s\S]*?maxTurns: 80/);
 });
 
 test("preset bodies mirror the runtime markdown frontmatter bodies", () => {
@@ -102,6 +109,11 @@ test("preset bodies mirror the runtime markdown frontmatter bodies", () => {
   assert.match(bodies[2], /Run the command the task names/);
   // fixer
   assert.match(bodies[3], /fast, focused implementation specialist/);
+  // ui-designer (the extraction stops at the body's first escaped backtick,
+  // so only the leading bullets are visible here; the BrowserPreview grant is
+  // asserted by the tools test above)
+  assert.match(bodies[4], /UI designer/);
+  assert.match(bodies[4], /design contract/);
 });
 
 test("presets stay within the published max-turns clamp", () => {

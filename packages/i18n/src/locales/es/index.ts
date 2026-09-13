@@ -1789,6 +1789,8 @@ export const es = {
       "presetTestRunnerDesc": "Ejecuta un test o build y reporta los fallos.",
       "presetFixerName": "Reparador",
       "presetFixerDesc": "Implementa un cambio de varios archivos a partir de una spec.",
+      "presetUiDesignerName": "Diseñador UI",
+      "presetUiDesignerDesc": "Diseña e implementa una interfaz a partir del encargo, verificada en la vista previa del navegador.",
       "presetBlank": "Empezar en blanco",
       "presetBlankDesc": "Herramientas por defecto. Escribe tus instrucciones.",
       "presetApply": "Aplicar",
