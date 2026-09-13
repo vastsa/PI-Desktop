@@ -212,7 +212,16 @@ describe("check", () => {
 
   it("rejects symlinks, which host-core refuses to copy", async () => {
     const dir = await scaffolded("panel-basic");
-    await symlink(join(dir, "main.js"), join(dir, "link.js"));
+    try {
+      await symlink(join(dir, "main.js"), join(dir, "link.js"));
+    } catch (error) {
+      if (process.platform !== "win32" || (error as NodeJS.ErrnoException).code !== "EPERM") {
+        throw error;
+      }
+      // Windows file symlinks need Developer Mode or elevation; junctions do not.
+      // Both are reported as symbolic links by the package walker's Dirent check.
+      await symlink(join(dir, "renderer"), join(dir, "link-renderer"), "junction");
+    }
     expect((await check(dir)).errors.map((e) => e.code)).toContain("package.symlink");
   });
 
