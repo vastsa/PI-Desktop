@@ -808,6 +808,12 @@ Minimal interface:
   content limit applies only to display values and never changes the lossless
   transcript or model context. `messageBefore` and `messageStart` are physical
   message-line positions in the transcript file, not deduplicated index counts.
+- `session/search({ query, offset? }) -> SessionSearchPage` forwards to
+  `search.sessions`; host-core owns discovery, counts, filtering, and pagination.
+- `session/searchContext(SessionSearchContextRequest) -> SessionSearchContext`
+  forwards to `search.context`. This read-only text window is separate from
+  `session/get` and must never enter the renderer's live transcript cache.
+  Both channels are explicitly included in the preload IPC allowlist.
 - `session/delete`
 - `session/rename({ id, title }) -> { ok: boolean }` trims the title and
   accepts 1–80 Unicode code points. Blank or overlong titles are rejected as

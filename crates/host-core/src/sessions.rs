@@ -699,7 +699,7 @@ fn record_to_ui_for_display(mut record: MessageRecord, limit: usize) -> UiMessag
     message
 }
 
-fn dedupe_records(records: Vec<MessageRecord>) -> Vec<MessageRecord> {
+pub(crate) fn dedupe_records(records: Vec<MessageRecord>) -> Vec<MessageRecord> {
     let mut ordered: Vec<MessageRecord> = Vec::with_capacity(records.len());
     let mut by_id: std::collections::HashMap<String, usize> =
         std::collections::HashMap::with_capacity(records.len());
@@ -715,7 +715,7 @@ fn dedupe_records(records: Vec<MessageRecord>) -> Vec<MessageRecord> {
     ordered
 }
 
-fn record_index_text(record: &MessageRecord) -> Option<String> {
+pub(crate) fn record_index_text(record: &MessageRecord) -> Option<String> {
     if record.role == "tool" {
         return None;
     }
@@ -1040,7 +1040,7 @@ const SUMMARY_SELECT: &str =
      FROM sessions s LEFT JOIN projects p ON p.id = s.project_id
      WHERE s.deleted_at IS NULL";
 
-fn summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SessionSummary> {
+pub(crate) fn summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SessionSummary> {
     Ok(SessionSummary {
         id: row.get(0)?,
         title: row.get(1)?,
@@ -1256,7 +1256,7 @@ fn layout_cache() -> &'static Mutex<HashMap<String, transcripts::TranscriptLayou
 
 /// Return an up-to-date layout for one session, reusing the cached offsets and
 /// scanning only what was appended since.
-fn session_layout(db: &Database, session_id: &str) -> Result<transcripts::TranscriptLayout> {
+pub(crate) fn session_layout(db: &Database, session_id: &str) -> Result<transcripts::TranscriptLayout> {
     let cached = layout_cache()
         .lock()
         .ok()

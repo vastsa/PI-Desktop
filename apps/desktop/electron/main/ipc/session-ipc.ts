@@ -122,6 +122,14 @@ export function registerSessionIpc({
     });
   };
 
+  handle(IPC.invoke.sessionSearch, async (input) => {
+    if (!host) throw new Error("host unavailable");
+    return host.call("search.sessions", input);
+  });
+  handle(IPC.invoke.sessionSearchContext, async (input) => {
+    if (!host) throw new Error("host unavailable");
+    return host.call("search.context", input);
+  });
   handle(IPC.invoke.sessionList, async () => {
     if (!host) throw new Error("host unavailable");
     const [result, { providers, defaults }] = await Promise.all([

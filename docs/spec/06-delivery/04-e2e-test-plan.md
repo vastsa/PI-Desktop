@@ -10549,3 +10549,38 @@ sample extensions under `apps/desktop/test/fixtures/pi-extensions/`.
   `pnpm test:e2e:layout` — fixed-window width invariance, the 360px floor across
   a pointer drag, sidebar yield/restore, and the 370px reopen target); unit
   coverage in `work-panel-resize.test.mjs`
+
+
+#### E2E-SESSION-content-search-and-message-navigation
+
+- **Scope**: Desktop global search, host search projections, and historical
+  message navigation (issue #270, ADR session-content-search).
+- **Preconditions**: At least 65 visible sessions with a shared body keyword;
+  one session has 125 matching user/assistant messages. Include a body-only
+  keyword, a metadata-only match, an archived session, a soft-deleted session,
+  one/two-character CJK terms, literal `%`, `_`, quotes, and a path. Include a
+  long session with a match beyond the latest 100 messages and a message whose
+  matching text follows 100,000 characters. Include an actively streaming
+  conversation and a fixture with repeated physical message lines.
+- **Steps**: Search body-only user and assistant terms, then rename the owning
+  session and repeat. Check aggregated counts and sender/time/snippet labels.
+  Load every result page. Open each of the two snippets in one session; inspect
+  the exact selected message and highlight. Use previous/next match to reach
+  hits outside the previews, and previous/next context to page surrounding
+  history. Back to conversation, reopen search, and check the retained query.
+  Repeat with CJK and symbols. Change queries rapidly while delayed first-page
+  and later-page requests resolve out of order. Close/reopen during loading.
+  Delete a target between search and selection; retry after a transient error.
+  Search a running conversation and return to its live stream, then switch
+  conversations. Use arrows, Enter, Escape, Tab, and CJK IME confirmation, and
+  exercise page/settings/plugin-command results.
+- **Expected**: Every matching visible session is reachable; counts cover all
+  125 messages, with no duplicate session rows. Archived visibility follows
+  the existing explicit-search rule and deleted sessions never appear. Each
+  snippet opens its own stable message ID, including unloaded and oversized
+  history, without replacing the live transcript or losing active output.
+  Later query ownership wins over stale results/errors. IME Enter does not
+  execute an action. Missing targets and transport failures are explicit.
+  Existing commands, pages, settings, and keyboard navigation still work.
+- **Status**: Draft; Rust and renderer unit regressions cover the data/query
+  boundaries. Full rendered E2E requires an explicitly authorized run.

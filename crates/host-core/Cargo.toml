@@ -18,7 +18,7 @@ globset = "0.4"
 hex = "0.4"
 ignore = "0.4"
 regex = "1"
-rusqlite = { version = "0.40", features = ["bundled"] }
+rusqlite = { version = "0.40", features = ["bundled", "functions"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.11"

@@ -531,8 +531,27 @@ one after the final row would be wrong.
 activation-scope filtering (`CAPABILITY_INVALID` for an unknown scope).
 
 ### Search, artifacts, keyboard
-- `search.query` — global search across sessions, projects, and settings
-  destinations (ADR 0034)
+- `search.query` — legacy indexed-message hits; existing response and limit remain compatible
+- `search.sessions({ query, offset? }) -> { hits, nextOffset }` — global session
+  discovery with title/project metadata and indexed user/assistant text. Trimmed
+  literal queries have a 500-character limit (`INVALID_ARGUMENT` above it).
+  Each 30-session page includes `session`, `projectName`, `metadataMatch`, the
+  full matching `messageCount`, and at most two `matches` containing
+  `messageId`, `role`, `createdAt`, and a match-centered `snippet`.
+  `nextOffset: null` marks the last page. Sort by updated time descending and
+  session ID ascending; exclude soft-deleted sessions. Empty queries return no
+  hits because the renderer owns its recent-session presentation.
+- `search.context({ sessionId, messageId, query, direction? })` — resolve a
+  stable message ID in the owning, non-deleted session's JSONL layout. Default
+  `direction: "around"` returns up to 21 nearby message text projections;
+  `"before"` / `"after"` returns up to 20 messages excluding the anchor. Return
+  `messages`, `hasMoreBefore`, `hasMoreAfter`, `previousMatchId`, and
+  `nextMatchId`. Adjacent matching IDs follow transcript sequence order and
+  have no 100-message cutoff. Context comes from canonical JSONL and is capped
+  at 64 Ki characters per message; the target is centered on the query. Tool
+  bodies, thinking, and attachments are omitted. Missing/deleted targets return
+  `NOT_FOUND`; invalid directions or identifiers return `INVALID_ARGUMENT`.
+  See [ADR session-content-search](../../adr/session-content-search.md).
 - `artifacts.list` — Plan/Goal checkpoint artifacts for a session
 - `keyboard.setGlobalShortcut` — host-owned native fallback for the plugin
   launcher chord where Electron cannot register it

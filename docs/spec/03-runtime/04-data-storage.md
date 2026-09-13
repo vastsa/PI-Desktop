@@ -696,9 +696,23 @@ to.
 
 ### 4.8 messages_fts — full-text search
 
-Global search across transcripts (WorkBuddy-benchmark search, command
-palette). Trigram tokenizer covers CJK and substring matches; queries shorter
-than 3 chars fall back to `LIKE` on `messages.text`.
+The legacy `search.query` message search uses a trigram tokenizer for CJK and
+substring matches; queries shorter than 3 chars fall back to `LIKE` on
+`messages.text`. The desktop session search below reuses this index with a
+Unicode-aware literal verification step.
+
+Desktop session discovery (`search.sessions`) counts every matching indexed
+user/assistant message before paginating by session. It excludes sessions with
+`deleted_at` set and treats title/project matches separately from body counts.
+FTS queries are quoted literals and all candidates are verified with a
+host-owned Unicode lowercase literal predicate. Short queries and non-ASCII
+case mappings use that predicate directly, preserving title search behavior
+and keeping message retrieval consistent with renderer highlighting. `%`, `_`, quotes, and
+backslashes are literal text. Snippets surround the match, including short CJK
+queries, rather than always taking the start of the message. Context navigation
+resolves stable IDs against physical JSONL positions, and displays canonical
+JSONL text without modifying SQLite or the live transcript cache. See
+[ADR session-content-search](../../adr/session-content-search.md).
 
 ```sql
 CREATE VIRTUAL TABLE messages_fts USING fts5(

@@ -63,6 +63,9 @@ import type {
   ProviderUpdateInput,
   Result,
   SessionDetail,
+  SessionSearchPage,
+  SessionSearchContext,
+  SessionSearchContextRequest,
   SessionSummary,
   ToolPermissionResolution,
   UserSkillInput,
@@ -334,6 +337,10 @@ export const api = {
       title,
       throughMessageId,
     }).then((result) => ({ ...result, session: normalizeSessionDetail(result.session)! })),
+  searchSessions: (query: string, offset = 0) =>
+    invoke<SessionSearchPage>(IPC.invoke.sessionSearch, { query, offset }),
+  getSearchContext: (request: SessionSearchContextRequest) =>
+    invoke<SessionSearchContext>(IPC.invoke.sessionSearchContext, request),
   getSession: (id: string, options?: SessionHistoryReadOptions) =>
     invoke<{ session: SessionDetail | null }>(IPC.invoke.sessionGet, {
       id,

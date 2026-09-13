@@ -132,6 +132,33 @@ impl TranscriptLayout {
     }
 }
 
+/// Resolve a stable ID without materializing historical message bodies. The
+/// reverse scan agrees with last-write-wins transcript deduplication.
+pub fn find_message_position(
+    data_dir: &Path,
+    session_id: &str,
+    layout: &TranscriptLayout,
+    message_id: &str,
+) -> Result<Option<usize>> {
+    #[derive(Deserialize)]
+    struct Identity {
+        id: String,
+    }
+    let mut reader = BufReader::new(File::open(transcript_path(data_dir, session_id)?)?);
+    let mut line = String::new();
+    for (position, offset) in layout.message_offsets.iter().enumerate().rev() {
+        reader.seek(SeekFrom::Start(*offset))?;
+        line.clear();
+        reader.read_line(&mut line)?;
+        if serde_json::from_str::<Identity>(&line)
+            .is_ok_and(|identity| identity.id == message_id)
+        {
+            return Ok(Some(position));
+        }
+    }
+    Ok(None)
+}
+
 /// Classify a JSONL line by reading its top-level `type` value.
 ///
 /// Deserializing a `LineTag` makes serde walk the entire line -- including a

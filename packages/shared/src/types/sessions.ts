@@ -151,3 +151,40 @@ export type AgentActivity =
       /** Running targets, in wait order, with the latest coarse child action. */
       agents?: AgentActivityAgent[];
     };
+
+/** Host-owned global search, grouped and paginated by session. */
+export type SessionMessageMatch = {
+  messageId: string;
+  role: "user" | "assistant";
+  createdAt: string;
+  snippet: string;
+};
+
+export type SessionSearchHit = {
+  session: SessionSummary;
+  projectName?: string | null;
+  metadataMatch: boolean;
+  messageCount: number;
+  matches: SessionMessageMatch[];
+};
+
+export type SessionSearchPage = {
+  hits: SessionSearchHit[];
+  nextOffset: number | null;
+};
+
+export type SessionSearchContext = {
+  /** Read-only canonical text projection; no mutation or model-facing fields. */
+  messages: Pick<UiMessage, "id" | "role" | "content" | "createdAt" | "toolName">[];
+  hasMoreBefore: boolean;
+  hasMoreAfter: boolean;
+  previousMatchId: string | null;
+  nextMatchId: string | null;
+};
+
+export type SessionSearchContextRequest = {
+  sessionId: string;
+  messageId: string;
+  query: string;
+  direction?: "around" | "before" | "after";
+};
