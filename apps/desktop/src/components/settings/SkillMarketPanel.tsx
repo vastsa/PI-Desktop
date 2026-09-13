@@ -74,10 +74,17 @@ function loadSources(): SkillMarketSource[] {
   }
 }
 
+// Curated defaults: each repo is auto-scanned, so every SKILL.md on its
+// default branch becomes an installable entry and the catalogs grow with the
+// repos. All five were verified to publish SKILL.md files at scan time.
 const DEFAULT_SKILL_SOURCES: SkillMarketSource[] = [
-  // Auto-scanned: every SKILL.md on the default branch becomes installable.
   { id: "anthropics-skills", name: "anthropics/skills", url: "https://github.com/anthropics/skills" },
+  { id: "anthropics-plugins", name: "anthropics/claude-plugins-official", url: "https://github.com/anthropics/claude-plugins-official" },
   { id: "obra-superpowers", name: "obra/superpowers", url: "https://github.com/obra/superpowers" },
+  { id: "wshobson-agents", name: "wshobson/agents", url: "https://github.com/wshobson/agents" },
+  { id: "mattpocock-skills", name: "mattpocock/skills", url: "https://github.com/mattpocock/skills" },
+  { id: "alirezarezvani-skills", name: "alirezarezvani/claude-skills", url: "https://github.com/alirezarezvani/claude-skills" },
+  { id: "composio-awesome", name: "ComposioHQ/awesome-claude-skills", url: "https://github.com/ComposioHQ/awesome-claude-skills" },
 ];
 
 function saveSources(sources: SkillMarketSource[]): void {
