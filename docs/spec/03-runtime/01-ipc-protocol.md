@@ -813,6 +813,10 @@ Minimal interface:
   no session. Only the selected user/assistant text bypasses the display cap.
   Bounded responses also include exclusive `messageEnd` and `hasMoreAfter` for
   forward paging; reading windows never replace the live transcript cache.
+  A nested target may also return `navigationParent`, the latest capped owning
+  Task `UiMessage`. It is display context outside the physical page, not an
+  extra history line. The renderer shares one reading view between ordinary
+  paging, search navigation, and subagent details.
 - `session/search({ query, offset? }) -> SessionSearchPage` forwards to
   `search.sessions`; host-core owns discovery, counts, filtering, and pagination.
 - `session/searchContext(SessionSearchContextRequest) -> SessionSearchContext`

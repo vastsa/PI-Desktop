@@ -209,6 +209,9 @@ pub struct SessionDetail {
     #[serde(flatten)]
     pub summary: SessionSummary,
     pub messages: Vec<UiMessage>,
+    /// Owning Task for a nested messageAround target, outside the page cursors.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub navigation_parent: Option<UiMessage>,
     /// Zero-based offset of the first returned message when the caller asked
     /// for a window. Omitted for the full-history form.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1263,7 +1266,10 @@ fn layout_cache() -> &'static Mutex<HashMap<String, transcripts::TranscriptLayou
 
 /// Return an up-to-date layout for one session, reusing the cached offsets and
 /// scanning only what was appended since.
-pub(crate) fn session_layout(db: &Database, session_id: &str) -> Result<transcripts::TranscriptLayout> {
+pub(crate) fn session_layout(
+    db: &Database,
+    session_id: &str,
+) -> Result<transcripts::TranscriptLayout> {
     let cached = layout_cache()
         .lock()
         .ok()
@@ -1361,7 +1367,7 @@ pub fn get_session_with_options(
     // renderer window may additionally request a display cap so a single
     // pasted or tool-produced multi-megabyte message never crosses the UI IPC
     // boundary. The uncapped path remains lossless for model reconstruction.
-    let messages = match options.content_limit {
+    let messages: Vec<UiMessage> = match options.content_limit {
         Some(limit) => records
             .into_iter()
             .map(|record| {
@@ -1380,8 +1386,26 @@ pub fn get_session_with_options(
             .collect(),
         None => records.into_iter().map(record_to_ui).collect(),
     };
+    let parent_call_id = options.message_around.as_deref().and_then(|target| {
+        messages
+            .iter()
+            .find(|message| message.id == target)
+            .and_then(|message| message.parent_tool_call_id.as_deref())
+    });
+    let navigation_parent = match parent_call_id {
+        Some(call_id) => {
+            transcripts::read_tool_call(db.data_dir(), id, &session_layout(db, id)?, call_id)?.map(
+                |record| match options.content_limit {
+                    Some(limit) => record_to_ui_for_display(record, limit),
+                    None => record_to_ui(record),
+                },
+            )
+        }
+        None => None,
+    };
     Ok(Some(SessionDetail {
         summary,
+        navigation_parent,
         message_start,
         message_end,
         has_more_after,
@@ -1507,6 +1531,7 @@ pub fn fork_session_through(
     let messages = records.into_iter().map(record_to_ui).collect();
     Ok(ForkSessionResult::Created(Box::new(SessionDetail {
         summary,
+        navigation_parent: None,
         message_start: None,
         message_end: None,
         has_more_after: None,

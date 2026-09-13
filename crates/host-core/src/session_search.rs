@@ -343,6 +343,99 @@ mod tests {
     }
 
     #[test]
+    fn nested_search_navigation_includes_the_parent_without_expanding_the_page() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::open(&dir.path().join("test.sqlite")).unwrap();
+        let session = sessions::create_session(&db, None, None, None, None, None).unwrap();
+        let mut parent = message("parent-row", "");
+        parent.role = "tool".into();
+        parent.tool_name = Some("Task".into());
+        parent.tool_call_id = Some("parent-call".into());
+        parent.tool_args = Some(json!({ "task": "large task ".repeat(20_000) }));
+        sessions::append_message(&db, &session.id, &parent, None).unwrap();
+        for n in 0..100 {
+            sessions::append_message(
+                &db,
+                &session.id,
+                &message(&format!("m{n}"), "neighbor"),
+                None,
+            )
+            .unwrap();
+        }
+        let mut child = message("child", &format!("{}needle", "prefix ".repeat(15_000)));
+        child.role = "assistant".into();
+        child.parent_tool_call_id = Some("parent-call".into());
+        child.agent_name = Some("reviewer".into());
+        sessions::append_message(&db, &session.id, &child, None).unwrap();
+        for n in 100..200 {
+            sessions::append_message(
+                &db,
+                &session.id,
+                &message(&format!("m{n}"), "neighbor"),
+                None,
+            )
+            .unwrap();
+        }
+        let hit = search(&db, "needle", 0).unwrap();
+        assert_eq!(hit.hits[0].matches[0].message_id, "child");
+        let options = sessions::SessionReadOptions {
+            message_around: Some("child".into()),
+            message_limit: Some(60),
+            content_limit: Some(64 * 1024),
+            ..Default::default()
+        };
+        let page = sessions::get_session_with_options(&db, &session.id, options.clone())
+            .unwrap()
+            .unwrap();
+        assert_eq!(page.messages.len(), 60);
+        assert_eq!(page.message_start, Some(72));
+        assert_eq!(page.message_end, Some(132));
+        assert!(!page.messages.iter().any(|message| message.id == parent.id));
+        assert_eq!(
+            page.messages
+                .iter()
+                .find(|message| message.id == "child")
+                .unwrap()
+                .content,
+            child.content
+        );
+        let owning_task = page.navigation_parent.unwrap();
+        assert_eq!(owning_task.id, "parent-row");
+        assert_eq!(owning_task.tool_call_id.as_deref(), Some("parent-call"));
+        assert!(
+            owning_task.tool_args.unwrap().to_string().len()
+                < parent.tool_args.as_ref().unwrap().to_string().len()
+        );
+        // A terminal physical copy outside the page must replace the older Task.
+        parent.content = "completed task".into();
+        crate::transcripts::append_message(
+            db.data_dir(),
+            &session.id,
+            "2026-09-13T00:00:00Z",
+            &sessions::ui_to_record(&parent).0,
+        )
+        .unwrap();
+        let updated = sessions::get_session_with_options(&db, &session.id, options.clone())
+            .unwrap()
+            .unwrap();
+        assert_eq!(updated.navigation_parent.unwrap().content, "completed task");
+        assert_eq!(updated.message_start, Some(72));
+        assert_eq!(updated.message_end, Some(132));
+        let latest = sessions::get_session(&db, &session.id).unwrap().unwrap();
+        assert!(
+            latest.navigation_parent.is_none(),
+            "canonical reads do not gain navigation-only context"
+        );
+
+        // A rewritten transcript cannot keep a cached parent after it is removed.
+        sessions::replace_messages(&db, &session.id, &[child]).unwrap();
+        let orphan = sessions::get_session_with_options(&db, &session.id, options)
+            .unwrap()
+            .unwrap();
+        assert!(orphan.navigation_parent.is_none());
+    }
+
+    #[test]
     fn transcript_navigation_reads_original_messages_by_stable_id() {
         let dir = tempfile::tempdir().unwrap();
         let db = Database::open(&dir.path().join("test.sqlite")).unwrap();

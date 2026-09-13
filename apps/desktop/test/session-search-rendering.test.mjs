@@ -12,7 +12,7 @@ test("session result rendering keeps literal snippets safe and selectable in eve
   const server = await createServer({
     root: fileURLToPath(new URL("..", import.meta.url)),
     configFile: false,
-    server: { middlewareMode: true },
+    server: { middlewareMode: true, hmr: false, ws: false },
     esbuild: { jsx: "automatic" },
     appType: "custom",
     optimizeDeps: { noDiscovery: true, include: [] },

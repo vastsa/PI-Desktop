@@ -10,7 +10,9 @@ export async function prepareTranscriptAction(
   const state = get();
   const id = state.activeSessionId;
   if (!id || state.isRunning) return null;
-  if (state.messages.some((message) => message.id === messageId)) return state;
+  const history = state.sessionHistory[id];
+  if (!history?.hasMoreBefore && !history?.contentLimited &&
+    state.messages.some((message) => message.id === messageId)) return state;
   let messages;
   try {
     // Cache ownership is checked after this asynchronous read, too: a new
@@ -22,7 +24,8 @@ export async function prepareTranscriptAction(
     return null;
   }
   const current = get();
-  if (!messages || current.activeSessionId !== id || current.isRunning || current.selectingSessionId) return null;
+  if (!messages || current.activeSessionId !== id || current.isRunning || current.selectingSessionId ||
+    current.messages !== state.messages) return null;
   if (!messages.some((message) => message.id === messageId)) return null;
   runtime.cacheSessionTranscript(id, messages, { messageStart: 0, hasMoreBefore: false });
   set({ messages, sessionHistory: {

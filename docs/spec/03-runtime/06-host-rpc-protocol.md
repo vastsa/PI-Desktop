@@ -272,6 +272,10 @@ to later refresh and inference; the vendor picker does not collect them.
   message retains its complete text; neighboring text and tool fields stay
   capped. Bounded reads also return exclusive physical `messageEnd` and
   `hasMoreAfter` to support contiguous forward pages (ADR session-content-search).
+  When the selected message has `parentToolCallId`, optional `navigationParent`
+  contains the latest matching Task tool-call projection from the same canonical
+  transcript. It is capped separately and does not widen the window or alter its
+  cursors. Ordinary and uncapped reads omit this navigation-only field.
 - `session.delete`
 - `session.getScratchPath` — the session's scratch directory (D114), created
   on demand

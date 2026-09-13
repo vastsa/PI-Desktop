@@ -251,7 +251,7 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
         )
           return;
         const targetId = messageId ?? row.hit?.matches[0]?.messageId;
-        if (targetId) useSessionSearchState.getState().navigate({
+        if (targetId) void selected.navigateTranscript({
           sessionId: row.session.id, messageId: targetId, query: query.trim(),
         });
       } else await newSession();

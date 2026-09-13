@@ -2759,6 +2759,12 @@
   background-color: color-mix(in srgb, var(--ds-accent) 35%, transparent);
 }
 
+.transcript-search-source-match {
+  background-color: color-mix(in srgb, var(--ds-accent) 25%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--ds-accent) 65%, transparent);
+  outline-offset: 2px;
+}
+
 .transcript-load-later {
   display: block;
   margin: 16px auto;

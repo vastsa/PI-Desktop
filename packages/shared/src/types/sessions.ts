@@ -28,6 +28,8 @@ export type SessionSummary = {
 
 export type SessionDetail = SessionSummary & {
   messages: UiMessage[];
+  /** Owning Task for a nested search target; context only, outside page cursors. */
+  navigationParent?: UiMessage;
   /** Zero-based offset of the first message returned by a bounded history read. */
   messageStart?: number;
   /** Exclusive physical end of a bounded read; not the deduplicated length. */

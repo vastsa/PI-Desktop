@@ -17,7 +17,8 @@ import {
 } from "./ActivityGroup";
 import { TranscriptHistory, TranscriptTail } from "./AssistantTurn";
 import { useTranscriptScroll } from "./hooks/useTranscriptScroll";
-import type { TranscriptSearchTarget } from "../../../lib/transcript-navigation";
+import type { TranscriptSearchTarget } from "../../../lib/transcript-reading";
+import { TranscriptSearchContext } from "../../../lib/transcript-search-context";
 
 export const ChatTranscript = memo(function ChatTranscript({
   sessionId,
@@ -101,7 +102,6 @@ export const ChatTranscript = memo(function ChatTranscript({
     veilPhase,
     handleScroll,
     revealEarlierHistory,
-    scrollToBottom,
     jumpToLatest,
   } = useTranscriptScroll({
     sessionId,
@@ -161,6 +161,7 @@ export const ChatTranscript = memo(function ChatTranscript({
     !hasSpecializedActivity;
 
   return (
+    <TranscriptSearchContext.Provider value={searchTarget}>
     <div
       className="thread-wrap"
       ref={wrapRef}
@@ -289,5 +290,6 @@ export const ChatTranscript = memo(function ChatTranscript({
         </TooltipButton>
       ) : null}
     </div>
+    </TranscriptSearchContext.Provider>
   );
 });

@@ -10563,6 +10563,9 @@ sample extensions under `apps/desktop/test/fixtures/pi-extensions/`.
   long session with a match beyond the latest 100 messages and a message whose
   matching text follows 100,000 characters. Include an actively streaming
   conversation and a fixture with repeated physical message lines.
+  Include a nested assistant answer whose Task is outside its 60-line page, a
+  later terminal copy of that Task, collapsed activity, hidden Markdown link
+  destinations, emphasis delimiters, and file-chip directories.
   Add short matching sentences surrounded by unrelated Chinese/English
   sentences, multiple short lines before a match, a quoted sentence, a file
   path containing periods, and a matching sentence longer than 180 characters.
@@ -10581,6 +10584,14 @@ sample extensions under `apps/desktop/test/fixtures/pi-extensions/`.
   Repeat with CJK and symbols. Change queries rapidly while delayed first-page
   and later-page requests resolve out of order. Close/reopen during loading.
   Retry after a transient search error.
+  Open the nested answer and verify that the owning Task is revealed and its
+  existing dock scrolls to the answer. Search the hidden URL, delimiters, and
+  chip directory after a long prefix; verify the corresponding visible element
+  is highlighted. Interrupt layout correction with a wheel/key gesture.
+  Page ordinary history while output streams, then interrupt a pending page with
+  search, another result, a new turn, and return to latest. Change a revision
+  without changing its message ID. Edit/retry a visible but display-capped
+  message and verify that the canonical full text becomes the action input.
   Search a running conversation and return to its live stream, then switch
   conversations. Use arrows, Enter, Escape, Tab, and CJK IME confirmation, and
   exercise page/settings/plugin-command results.
@@ -10598,6 +10609,11 @@ sample extensions under `apps/desktop/test/fixtures/pi-extensions/`.
   including old history and individual assistant fragments. Reading-window
   loads do not overwrite live output. New turns return to the live transcript.
   Actions on historical messages work normally and do not leave obsolete rows.
+  Nested answers land in the original Task dock; source-only matches land on
+  their rendered owner. Ordinary paging retains current streamed content.
+  Interrupted reads cannot reopen a dock or restore stale/loading views, and
+  same-ID edits replace obsolete displayed content. Message actions never use
+  clipped text as input.
   Rapidly selecting another result rejects stale target/page completions.
   Deleting a result before selection reports failure instead of landing at the tail.
   Later query ownership wins over stale results/errors. IME Enter does not

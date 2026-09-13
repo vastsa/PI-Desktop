@@ -33,8 +33,8 @@ import {
   isRecentScrollGesture,
   reduceTranscriptScroll,
 } from "../../../../lib/transcript-scroll";
-import type { TranscriptSearchTarget } from "../../../../lib/transcript-navigation";
-import { transcriptSearchRanges } from "../../../../lib/transcript-search-highlight";
+import type { TranscriptSearchTarget } from "../../../../lib/transcript-reading";
+import { useTranscriptSearchFocus } from "../../../../hooks/use-transcript-search-focus";
 
 const HISTORY_REVEAL_THRESHOLD_PX = 120;
 
@@ -87,8 +87,6 @@ export function useTranscriptScroll({
   // Read by `reachTop`, which must stay referentially stable for the scroll
   // listener; the projection it describes is only known later in this render.
   const historyLengthRef = useRef(0);
-  const positionedSearchRef = useRef(0);
-  const searchAlignUntilRef = useRef(0);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     const el = scrollRef.current;
@@ -113,7 +111,6 @@ export function useTranscriptScroll({
   // `handleScroll` can tell the two apart and never let a clamp between a
   // follow `scrollTo` and its native event release follow mode.
   const markScrollGesture = useCallback((event: Event) => {
-    searchAlignUntilRef.current = 0;
     if (
       event.type === "wheel" ||
       event.type === "touchstart" ||
@@ -487,53 +484,25 @@ export function useTranscriptScroll({
     [allHistoryEntries, transcriptWindow.bounded, transcriptWindow.mounted],
   );
 
-  useLayoutEffect(() => {
-    const scroller = scrollRef.current;
-    const content = contentRef.current;
-    if (!paneVisible || !searchTarget || !scroller || !content) return;
-    const message = content.querySelector<HTMLElement>(
-      `[data-message-id="${CSS.escape(searchTarget.messageId)}"]`,
-    );
-    if (!message) return;
-    const row = message.closest<HTMLElement>(".message-row") ?? message;
-    row.classList.add("transcript-search-target");
-    const fresh = positionedSearchRef.current !== searchTarget.requestId;
-    if (fresh) {
-      positionedSearchRef.current = searchTarget.requestId;
-      searchAlignUntilRef.current = performance.now() + 1500;
-      prependHeightRef.current = null;
-      cancelFollowScroll();
-      pinnedRef.current = false;
-      setShowJump(true);
-    }
-    let highlight: Highlight | undefined;
-    const locate = () => {
-      const ranges = transcriptSearchRanges(message, searchTarget.query);
-      if (typeof Highlight !== "undefined" && CSS.highlights) {
-        highlight = new Highlight(...ranges);
-        CSS.highlights.set("transcript-search", highlight);
-      }
-      if (performance.now() >= searchAlignUntilRef.current) return;
-      const rect = ranges[0]?.getBoundingClientRect() ?? message.getBoundingClientRect();
-      const viewport = scroller.getBoundingClientRect();
-      scroller.scrollTop += rect.top - viewport.top - Math.min(160, scroller.clientHeight / 3);
-      lastScrollTopRef.current = scroller.scrollTop;
-    };
-    locate();
-    // Syntax highlighting and images can settle after the first layout. Keep
-    // the target anchored briefly, stopping immediately on a reading gesture.
-    const resize = new ResizeObserver(locate);
-    resize.observe(content);
-    const mutation = new MutationObserver(locate);
-    mutation.observe(message, { childList: true, subtree: true, characterData: true });
-    return () => {
-      resize.disconnect();
-      mutation.disconnect();
-      row.classList.remove("transcript-search-target");
-      if (highlight && CSS.highlights?.get("transcript-search") === highlight)
-        CSS.highlights.delete("transcript-search");
-    };
-  }, [cancelFollowScroll, historyEntries, paneVisible, searchTarget, tailEntry]);
+  const releaseSearchFollow = useCallback((fresh: boolean) => {
+    if (fresh) prependHeightRef.current = null;
+    cancelFollowScroll();
+    pinnedRef.current = false;
+    setShowJump(true);
+  }, [cancelFollowScroll]);
+  const recordSearchPosition = useCallback((top: number) => {
+    lastScrollTopRef.current = top;
+  }, []);
+  useTranscriptSearchFocus({
+    target: searchTarget,
+    source: messages.find((message) => message.id === searchTarget?.messageId)?.content ?? "",
+    visible: paneVisible,
+    scrollRef,
+    contentRef,
+    contentVersion: historyEntries,
+    onNavigate: releaseSearchFollow,
+    onPosition: recordSearchPosition,
+  });
 
   // Runs in the same layout phase the expansion commits in, before the browser
   // paints it, so mounting the remaining history cannot move the rows the user

@@ -166,6 +166,8 @@ export const MessageRow = memo(function MessageRow({
                       // it) and is what regenerate/reseed replay (D123).
                       <code
                         className="chat-command-chip"
+                        data-source-start={0}
+                        data-source-end={message.content.length}
                         title={String(message.content || "")}
                       >
                         {message.command}

@@ -4747,3 +4747,14 @@ source of truth; renderer organization is mirrored without a persistence
 change. macOS single-click opens the menu without restoring the window;
 selection is delivered after bootstrap and uses normal session navigation.
 Validation contract: E2E-TRAY-bounded-session-navigation.
+
+
+### Unified transcript reading and complete search navigation
+
+[ADR session-content-search](/adr/session-content-search) now uses one renderer
+reading view for ordinary history and search, shared by MainChat and the subagent
+dock. Live/model caches remain canonical. Nested targets receive capped parent
+Task context through additive `navigationParent`; parser source offsets locate
+hidden Markdown and file-chip matches. Read ownership rejects interrupted pages,
+and explicit message actions hydrate canonical input when history is partial or
+text is capped. Validation: E2E-SESSION-content-search-and-message-navigation.

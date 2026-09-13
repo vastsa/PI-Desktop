@@ -27,6 +27,7 @@ import type {
   UiMessage,
 } from "@pi-desktop/shared";
 import type { SettingsTabId } from "../lib/settings-search";
+import type { TranscriptSearchTarget, TranscriptView } from "../lib/transcript-reading";
 import type {
   ProjectMeta,
   ProjectSort,
@@ -74,6 +75,8 @@ export type PendingPlanRefreshResult = "pending" | "terminal" | "unavailable";
 export type SessionHistoryWindow = {
   messageStart: number;
   hasMoreBefore: boolean;
+  /** A display-capped tail is not canonical action input, even in a short chat. */
+  contentLimited?: boolean;
 };
 
 export type NavigationOptions = {
@@ -125,6 +128,8 @@ export type AppState = {
   retainedTranscripts: Record<string, UiMessage[]>;
   /** Renderer-owned range metadata for the lazily loaded active transcript. */
   sessionHistory: Record<string, SessionHistoryWindow>;
+  /** Reading ranges are separate from the live/runtime transcript projection. */
+  transcriptViews: Record<string, TranscriptView>;
   isRunning: boolean;
   /** Run state per session id — sessions run independent agents. */
   runningSessions: Record<string, boolean>;
@@ -175,7 +180,9 @@ export type AppState = {
   bootstrap: () => Promise<void>;
   refreshSessions: (options?: RefreshSessionsOptions) => Promise<void>;
   prefetchSession: (id: string) => Promise<void>;
-  loadOlderMessages: (sessionId: string) => Promise<void>;
+  navigateTranscript: (target: Omit<TranscriptSearchTarget, "requestId">) => Promise<void>;
+  loadTranscriptPage: (sessionId: string, direction: "before" | "after") => Promise<void>;
+  returnToLatestTranscript: (sessionId: string) => void;
   selectSession: (
     id: string,
     opts?: { record?: boolean } & NavigationOptions,

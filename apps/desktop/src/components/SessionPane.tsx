@@ -1,9 +1,9 @@
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import { ChatTranscript } from "./ChatTranscript";
 import { useAppStore } from "../stores/app-store";
 import { headPermission, sessionPermissions } from "../lib/pending-permissions";
 import { headAsk } from "../lib/pending-asks";
-import { useTranscriptNavigation } from "../hooks/use-transcript-navigation";
+import { useTranscriptView } from "../hooks/use-transcript-view";
 
 /**
  * One retained conversation pane (ADR 0137).
@@ -25,16 +25,9 @@ export const SessionPane = memo(function SessionPane({
   sessionId: string;
   visible: boolean;
 }) {
-  const isActiveProjection = useAppStore(
-    (state) => state.activeSessionId === sessionId,
-  );
-  const liveMessages = useAppStore((state) => state.messages);
-  const snapshot = useAppStore((state) => state.retainedTranscripts[sessionId]);
-  const messages = isActiveProjection ? liveMessages : snapshot ?? [];
-  const hasMoreBefore = useAppStore(
-    (state) => state.sessionHistory[sessionId]?.hasMoreBefore === true,
-  );
-  const loadOlderMessages = useAppStore((state) => state.loadOlderMessages);
+  const transcript = useTranscriptView(sessionId);
+  const loadTranscriptPage = useAppStore((state) => state.loadTranscriptPage);
+  const returnToLatest = useAppStore((state) => state.returnToLatestTranscript);
   const isRunning = useAppStore(
     (state) => state.runningSessions[sessionId] ?? false,
   );
@@ -48,8 +41,9 @@ export const SessionPane = memo(function SessionPane({
     Boolean(headAsk(state.pendingAsks, sessionId)),
   );
   const planningState = useAppStore((state) => state.planningStates[sessionId]);
-  const navigation = useTranscriptNavigation(sessionId, visible, isRunning);
-  const reading = navigation.window;
+  const searchTarget = useMemo(() => transcript.focus && transcript.parentMessage
+    ? { ...transcript.focus, messageId: transcript.parentMessage.id, query: "" }
+    : transcript.focus, [transcript.focus, transcript.parentMessage]);
 
   return (
     <div
@@ -64,20 +58,20 @@ export const SessionPane = memo(function SessionPane({
     >
       <ChatTranscript
         sessionId={sessionId}
-        messages={reading?.messages ?? messages}
-        hasMoreBefore={reading ? reading.hasMoreBefore : hasMoreBefore}
-        onLoadOlder={reading ? navigation.loadBefore : () => loadOlderMessages(sessionId)}
-        searchTarget={reading ? navigation.target : null}
-        readingWindow={Boolean(reading)}
-        hasMoreAfter={reading?.hasMoreAfter}
-        onLoadNewer={navigation.loadAfter}
-        onReturnToLatest={navigation.clear}
-        navigationLoading={navigation.loading}
+        messages={transcript.messages}
+        hasMoreBefore={transcript.hasMoreBefore}
+        onLoadOlder={() => loadTranscriptPage(sessionId, "before")}
+        searchTarget={searchTarget}
+        readingWindow={transcript.historical}
+        hasMoreAfter={transcript.hasMoreAfter}
+        onLoadNewer={() => loadTranscriptPage(sessionId, "after")}
+        onReturnToLatest={() => returnToLatest(sessionId)}
+        navigationLoading={transcript.loading}
         isRunning={isRunning}
-        pendingPermission={reading ? undefined : pendingPermission}
+        pendingPermission={transcript.historical ? undefined : pendingPermission}
         queuedPermissions={queuedPermissions}
-        askPending={reading ? false : askPending}
-        planningState={reading ? undefined : planningState}
+        askPending={transcript.historical ? false : askPending}
+        planningState={transcript.historical ? undefined : planningState}
         paneVisible={visible}
       />
     </div>

@@ -1031,6 +1031,11 @@ plus exclusive physical `messageEnd` and `hasMoreAfter` for forward paging. Only
 the explicitly selected user/assistant text bypasses the display cap. The
 retained pane owns that reading window separately from live/model caches;
 missing targets never fall back to a different message (ADR session-content-search).
+A nested target additionally resolves its owning Task by tool-call ID and returns
+that latest capped projection as `navigationParent`, without adding a physical
+line to the bounded page. This is derived read-only context, not a new persisted
+relationship or index. The renderer's unified reading view is shared by ordinary
+history and search; it never becomes canonical mutation or model input.
 
 A bounded window is served through a per-session **transcript layout**: the byte
 offset of every message and compaction line, plus the file length those offsets

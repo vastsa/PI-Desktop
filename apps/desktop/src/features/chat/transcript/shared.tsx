@@ -20,6 +20,7 @@ import { useOpenChatFileRef, useOpenPreviewTarget } from "../../../hooks/use-pre
 import { messageThinking as thinkingText } from "../../../lib/assistant-turns";
 import { useReferencedImageDataUrl } from "../../../lib/use-referenced-image-data-url";
 import { isHtmlFilePath, splitChatText } from "../../../lib/chat-links";
+import type { SourcePositionProps } from "../../../lib/markdown-source";
 import { getToolAction, type ToolAction } from "../../../lib/tool-display";
 import { calculateTokenRate } from "../../../lib/context-usage";
 import { useAppStore } from "../../../stores/app-store";
@@ -48,8 +49,6 @@ import {
   IconWrench,
 } from "../../../components/icons";
 import { TooltipButton } from "../../../components/ui";
-
-type Translate = (key: string, options?: Record<string, unknown>) => string;
 
 export function CopyButton({
   text,
@@ -299,8 +298,8 @@ export function ToolActionIcon({ action }: { action: ToolAction }) {
  * Layout effects keep the automatic transition from moving the transcript for a
  * painted frame.
  */
-export function useAutomaticDisclosure(automaticOpen: boolean) {
-  const [open, setOpen] = useState(automaticOpen);
+export function useAutomaticDisclosure(automaticOpen: boolean, revealRequest?: number) {
+  const [open, setOpen] = useState(automaticOpen || revealRequest !== undefined);
   const userInteractedRef = useRef(false);
   const previousAutomaticOpenRef = useRef(automaticOpen);
 
@@ -314,6 +313,12 @@ export function useAutomaticDisclosure(automaticOpen: boolean) {
   const claim = useCallback(() => {
     userInteractedRef.current = true;
   }, []);
+
+  useLayoutEffect(() => {
+    if (revealRequest === undefined) return;
+    claim();
+    setOpen(true);
+  }, [claim, revealRequest]);
 
   const toggle = useCallback(() => {
     claim();
@@ -355,12 +360,13 @@ export function FileRefChip({
   path,
   kind,
   onOpen,
+  ...position
 }: {
   name: string;
   path: string;
   kind?: "image" | "file";
   onOpen: (path: string) => void;
-}) {
+} & SourcePositionProps) {
   const { t } = useTranslation();
   const Icon = fileChipIcon(name, kind);
   const html = isHtmlFilePath(path) || isHtmlFilePath(name);
@@ -368,6 +374,7 @@ export function FileRefChip({
     <button
       type="button"
       className="composer-chip chat-file-chip"
+      {...position}
       title={`${html ? t("chat.previewUrl") : t("chat.openFile")} — ${path}`}
       aria-label={`${name} — ${path}`}
       onClick={() => onOpen(path)}
@@ -425,31 +432,37 @@ export function LinkifiedText({ text }: { text: string }) {
   const openTarget = useOpenPreviewTarget();
   const openFileRef = useOpenChatFileRef();
   const segments = useMemo(() => splitChatText(text, root), [text, root]);
+  let offset = 0;
   return (
     <>
-      {segments.map((segment, index) =>
-        segment.kind === "text" ? (
-          <span key={index}>{segment.text}</span>
+      {segments.map((segment, index) => {
+        const start = offset;
+        offset += segment.text.length;
+        const position = { "data-source-start": start, "data-source-end": offset };
+        return segment.kind === "text" ? (
+          <span key={index} {...position}>{segment.text}</span>
         ) : segment.target.kind === "file" ? (
           <FileRefChip
             key={index}
             name={segment.label}
             path={segment.target.path}
             onOpen={openFileRef}
+            {...position}
           />
         ) : (
           <TooltipButton
             key={index}
             type="button"
             className="chat-text-link"
+            {...position}
             tooltip={t("chat.previewUrl")}
             ariaLabel={segment.text}
             onClick={() => openTarget(segment.target)}
           >
             {segment.text}
           </TooltipButton>
-        ),
-      )}
+        );
+      })}
     </>
   );
 }

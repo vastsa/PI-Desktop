@@ -19,6 +19,7 @@ export type FollowScroll = {
   handleScroll: UIEventHandler<HTMLDivElement>;
   jumpToLatest: () => void;
   scheduleFollowScroll: () => void;
+  releaseFollow: () => void;
 };
 
 /**
@@ -173,6 +174,12 @@ export function useFollowScroll(): FollowScroll {
     );
   }, [scrollToBottom]);
 
+  const releaseFollow = useCallback(() => {
+    cancelFollowScroll();
+    pinnedRef.current = false;
+    setShowJump(true);
+  }, [cancelFollowScroll]);
+
   return {
     scrollRef,
     contentRef,
@@ -180,5 +187,6 @@ export function useFollowScroll(): FollowScroll {
     handleScroll,
     jumpToLatest,
     scheduleFollowScroll,
+    releaseFollow,
   };
 }

@@ -1281,6 +1281,16 @@ storage but compose into one assistant turn until the next user message.
   Upward paging and Load later messages extend the reading window. The existing
   latest-message control and a new turn return to live output. Actions on an
   old message prepare canonical input before editing, retrying, or branching.
+- Ordinary history and search use one retained-session reading view, shared
+  with subagent details. A nested answer reveals its owning Task and opens the
+  existing details dock at the answer, even when the parent is outside the page.
+  Do not silently ignore targets that have no top-level transcript row.
+- Hidden Markdown URLs, syntax, and file-chip paths map to their visible source
+  owner. Highlight and scroll to that element when the raw query has no literal
+  rendered text. Preserve normal Markdown and file/link interactions.
+- Canonical changes with unchanged IDs must invalidate stale reading content.
+  Preparing edit/retry/branch inputs must also account for partial history and
+  display-limited text, even when the selected message is already visible.
 - Release bottom following on a search jump. Brief layout corrections may keep
   the selected text visible, but stop on a real reading gesture. Composer focus
   must not move the transcript. A missing target reports failure without jumping

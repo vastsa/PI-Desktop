@@ -51,7 +51,10 @@ text. A heading with body matches selects its first preview; metadata-only
 headings retain normal sidebar navigation. Mouse and keyboard carry the same
 stable message ID. Each assistant fragment exposes its own anchor even when
 several fragments share a single assistant-turn row. Literal text ranges are
-highlighted without rewriting the React-owned Markdown tree. Navigation releases
+highlighted without rewriting the React-owned Markdown tree. Parser-owned source
+offsets map hidden Markdown destinations or syntax to the corresponding visible
+link, image, code block, or file chip. A source-only match highlights that element
+instead of silently scrolling to the message's beginning. Navigation releases
 bottom following and briefly anchors while asynchronous layout settles; a real
 reading gesture ends that correction. Composer focus uses `preventScroll`.
 
@@ -63,17 +66,29 @@ never an unrelated tail. The renderer requests 60 lines. Neighbors and tool
 payloads retain their display caps; only the explicitly selected user/assistant
 message's text is complete, including a match beyond the usual 64 KiB cap.
 Bounded responses add exclusive `messageEnd` and `hasMoreAfter`, so forward
-paging uses physical positions rather than deduplicated array lengths.
+paging uses physical positions rather than deduplicated array lengths. For a
+nested assistant answer, optional `navigationParent` carries the latest owning
+Task projection, even outside the selected page. This capped display context
+does not change the page's messages or physical cursors. The main transcript
+reveals the Task activity group and the existing subagent dock locates the
+selected answer. A missing parent reports failure rather than an invisible hit.
 
-This reading window belongs to the retained session pane and renders through
-its original `ChatTranscript`, Markdown, message actions, and composer. It does
-not replace the live/model transcript cache. Upward paging and Load later
-messages extend it contiguously. The existing latest-message control returns to
-the live projection; starting a new turn does the same. Edits and deletions must
-not leave an obsolete reading window in front of their results. Explicit actions
-on an old message prepare canonical input through the existing full-read path
-only when needed; search navigation itself never loads the whole transcript.
-No separate historical reader or Back to conversation action is introduced.
+The renderer store owns one reading view per retained session for both ordinary
+history paging and search navigation. MainChat and subagent details consume the
+same projection; no global target handoff, effect-driven navigation controller,
+or second historical reader is needed. Ordinary history merges authoritative
+live output. An explicit search keeps its selected snapshot until returning to
+latest or starting a new turn. Neither mode writes to live/model caches.
+
+Upward paging and Load later messages extend the view contiguously. The pending
+view's identity owns each read; newer navigation, pane eviction, edits, or
+returning to latest invalidate stale completions. Starting a turn cancels both
+focused views and in-flight target reads. Idle canonical changes invalidate a
+view when message IDs disappear or the same IDs change content or revision.
+Message actions prepare canonical input if history is incomplete or text was
+display-limited, even when the target is already visible. This full read runs
+only for explicit actions, rechecks ownership before publishing, and never uses
+reading-view content as model input. Search itself stays bounded.
 
 The additive `search.context` RPC and `session/searchContext` IPC remain
 compatible for existing callers, but global search no longer uses them. They
@@ -97,7 +112,11 @@ literal CJK/symbol queries, complete counts, soft deletion, physical positions,
 and target text beyond the display cap. Renderer unit tests cover literal
 highlight offsets, stale result/error rejection, cancellation, and pagination.
 Regressions also cover stable-ID navigation past the tail/display cap, physical
-cursors, stale jump/page rejection, and explicit old-message action preparation.
+cursors, stale jump/page rejection, ordinary paging during streaming, nested
+answers whose parent is outside the page, source-only Markdown/file-chip hits,
+and explicit action preparation from incomplete or capped history. Browser-effect
+unit tests cover layout correction, gesture interruption, and replay cleanup;
+server rendering tests verify the actual Markdown and subagent markup.
 Historical context regression tests remain as protocol compatibility coverage.
 The documented full interaction scenario is
 `E2E-SESSION-content-search-and-message-navigation`.
