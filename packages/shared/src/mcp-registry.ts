@@ -9,6 +9,7 @@
  */
 import {
   catalogEntryError,
+  type McpCatalogCategory,
   type McpCatalogEntry,
   type McpCatalogRequiredEnv,
 } from "./mcp-catalog.js";
@@ -78,6 +79,29 @@ function envTemplates(pkg: RegistryPackage): Record<string, string> | undefined 
   return names.length ? Object.fromEntries(names.map((name) => [name, `\${${name}}`])) : undefined;
 }
 
+/*
+ * The registry publishes no taxonomy, but the market's category filters are
+ * useless if every remote entry lands in "all" only. This keyword pass is a
+ * deliberately cheap guess — wrong-guessing a handful of entries costs less
+ * than hiding them from every filter. Order matters: specific families first,
+ * docs last because "docker"/"docs" share a prefix.
+ */
+const CATEGORY_KEYWORDS: ReadonlyArray<readonly [McpCatalogCategory, string[]]> = [
+  ["data", ["database", "sql", "postgres", "mysql", "mongo", "redis", "sqlite", "dataset", "warehouse", "analytics", "supabase", "snowflake"]],
+  ["productivity", ["todo", "task", "calendar", "email", "mail", "remind", "schedule", "slack", "notion", "jira", "linear", "asana", "habit", "time"]],
+  ["web", ["search", "scrape", "crawl", "browser", "fetch", "playwright", "puppeteer", "seo", "web", "surf"]],
+  ["devtools", ["github", "gitlab", "git ", "docker", "kubernetes", "k8s", "deploy", "terminal", "shell", "code", "repo", "issue", "build", "lint", "test", "ci ", "ide", "api", "sentry", " observability"]],
+  ["docs", ["doc", "wiki", "knowledge", "context", "reference", "manual", "library", "framework", "changelog", "arxiv", "paper"]],
+];
+
+export function guessCategory(server: RegistryServer): McpCatalogCategory {
+  const haystack = `${server.name ?? ""} ${server.title ?? ""} ${server.description ?? ""}`.toLowerCase();
+  for (const [category, keywords] of CATEGORY_KEYWORDS) {
+    if (keywords.some((keyword) => haystack.includes(keyword))) return category;
+  }
+  return "devtools";
+}
+
 /**
  * Map one registry record to an installable template.
  * npm wins over pypi over remote; oci-only records are dropped because this
@@ -96,6 +120,7 @@ export function mapRegistryServer(record: RegistryRecord): McpCatalogEntry | nul
     name: displayName,
     description: server.description?.trim() || undefined,
     homepage,
+    categories: [guessCategory(server)],
   };
 
   const npm = server.packages?.find((pkg) => pkg.registryType === "npm" && pkg.identifier);

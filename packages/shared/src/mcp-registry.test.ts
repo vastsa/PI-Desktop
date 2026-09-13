@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { catalogEntryError } from "./mcp-catalog.js";
 import {
+  guessCategory,
   mapRegistryServer,
   mergeRegistryEntries,
   registryIdFromName,
@@ -101,6 +102,22 @@ describe("mapRegistryServer", () => {
     expect(mapRegistryServer(ociOnly)).toBeNull();
     expect(mapRegistryServer({})).toBeNull();
     expect(mapRegistryServer({ server: { name: "io.github.example/http-only", remotes: [{ url: "http://x/mcp" }] } })).toBeNull();
+  });
+});
+
+describe("guessCategory", () => {
+  it("maps keyword families to their category", () => {
+    expect(guessCategory({ name: "io.github.x/demo", description: "Structured Docker operations" })).toBe("devtools");
+    expect(guessCategory({ name: "com.x/postgres-query", description: "Run SQL" })).toBe("data");
+    expect(guessCategory({ name: "com.x/notion-todo", description: "Tasks in Notion" })).toBe("productivity");
+    expect(guessCategory({ name: "com.x/playwright-browser", description: "Drive a browser" })).toBe("web");
+    expect(guessCategory({ name: "com.x/context7", description: "Library docs and context" })).toBe("docs");
+  });
+
+  it("assigns a category to every mapped registry entry", () => {
+    // inference.sh matches no keyword family, so the devtools fallback applies.
+    const entry = mapRegistryServer(remoteRecord);
+    expect(entry!.categories).toEqual(["devtools"]);
   });
 });
 

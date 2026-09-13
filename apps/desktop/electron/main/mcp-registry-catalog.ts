@@ -19,8 +19,8 @@ import {
 } from "@pi-desktop/shared";
 
 const PAGE_SIZE = 100;
-/** Cursor pages per registry source: enough breadth, still a snappy load. */
-const MAX_PAGES = 2;
+/** Cursor pages per registry source: ≈400 servers, built-in renders meanwhile. */
+const MAX_PAGES = 4;
 const CACHE_TTL_MS = 5 * 60_000;
 const TIMEOUT_MS = 8_000;
 

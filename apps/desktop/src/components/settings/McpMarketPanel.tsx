@@ -16,7 +16,7 @@ import {
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../stores/app-store";
-import { IconChevronLeft, IconServer, IconTerminal, IconX } from "../icons";
+import { IconBookOpen, IconChevronLeft, IconCode, IconDatabase, IconGlobe, IconListChecks, IconServer, IconTerminal, IconX } from "../icons";
 import { Field, Input, TooltipButton, cx } from "../ui";
 
 const CATEGORIES: readonly McpCatalogCategory[] = [
@@ -28,6 +28,21 @@ const CATEGORIES: readonly McpCatalogCategory[] = [
 ];
 
 const { servers } = validateMcpCatalogFile(BUILTIN_MCP_CATALOG).catalog;
+
+/** One glyph per tool family; transport falls back for uncategorized entries. */
+const CATEGORY_ICONS: Record<McpCatalogCategory, typeof IconServer> = {
+  devtools: IconCode,
+  web: IconGlobe,
+  docs: IconBookOpen,
+  data: IconDatabase,
+  productivity: IconListChecks,
+};
+
+function CategoryGlyph({ entry, size }: { entry: McpCatalogEntry; size: number }) {
+  const category = entry.categories?.[0];
+  const Icon = (category && CATEGORY_ICONS[category]) || (entry.transport === "http" ? IconServer : IconTerminal);
+  return <Icon size={size} />;
+}
 
 type RemoteState = {
   status: "idle" | "loading" | "ready" | "error";
@@ -194,11 +209,7 @@ export function McpMarketPanel({
               )}
               aria-hidden
             >
-              {installFor.transport === "http" ? (
-                <IconServer size={18} />
-              ) : (
-                <IconTerminal size={18} />
-              )}
+              <CategoryGlyph entry={installFor} size={18} />
             </span>
             <div>
               <h3 id="mcpm-sheet-title" className="ext-sheet-title">
@@ -513,11 +524,7 @@ export function McpMarketPanel({
                   className={cx("mcpm-glyph", `is-${entry.categories?.[0] ?? "devtools"}`)}
                   aria-hidden
                 >
-                  {entry.transport === "http" ? (
-                    <IconServer size={17} />
-                  ) : (
-                    <IconTerminal size={17} />
-                  )}
+                  <CategoryGlyph entry={entry} size={17} />
                 </span>
                 <div className="mcpm-card-body">
                   <div className="mcpm-card-title">

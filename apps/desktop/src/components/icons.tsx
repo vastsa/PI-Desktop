@@ -25,6 +25,7 @@ import {
   Clock,
   CloudDownload,
   Code2,
+  Database,
   Download,
   Copy,
   Dot,
@@ -173,6 +174,7 @@ export const IconArrowUp = icon(ArrowUp);
 export const IconArrowDown = icon(ArrowDown);
 export const IconCopy = icon(Copy);
 export const IconCode = icon(Code2);
+export const IconDatabase = icon(Database);
 export const IconCheck = icon(Check);
 export const IconBell = icon(Bell);
 export const IconBot = icon(Bot);
