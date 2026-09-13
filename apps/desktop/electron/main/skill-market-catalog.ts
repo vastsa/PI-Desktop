@@ -14,6 +14,7 @@
 import { net } from "electron";
 import {
   isSafeSkillSourceUrl,
+  type SkillCatalogCategory,
   splitSkillDocument,
   validateSkillCatalogFile,
   type SkillCatalogEntry,
@@ -54,6 +55,31 @@ export type SkillMarketSearchResult = {
   entries: SourcedSkillEntry[];
   failedSources: string[];
 };
+
+/*
+ * Scanned repos publish no taxonomy, but category filters are useless if
+ * every scanned entry hides behind "all". This keyword pass over the repo
+ * path mirrors the MCP market's heuristic — deliberately cheap, wrong on a
+ * few, better than invisible. Docs terms last so "docker"-style prefixes
+ * don't steal matches.
+ */
+const SKILL_CATEGORY_KEYWORDS: ReadonlyArray<readonly [SkillCatalogCategory, string[]]> = [
+  ["data", ["data", "sql", "database", "postgres", "mongo", "redis", "analytics", "dataset", "spreadsheet", "excel", "xlsx", "csv", "dashboard", "chart", "visualization"]],
+  ["workflow", ["workflow", "review", "planning", "brainstorm", "checklist", "process", "sop", "handoff", "standup", "retro", "discernment", "verification", "triage", "audit", "security", "incident"]],
+  ["coding", ["code", "test", "debug", "api", "git-", "dev", "engineer", "typescript", "python", "react", "frontend", "backend", "refactor", "deploy", "lint", "mcp", "agent", "artifact", "script", "automation", "cli"]],
+  ["writing", ["writing", "write", "writer", "comms", "email", "blog", "content", "copy", "editorial", "story", "blogpost", "article", "newsletter", "social-media", "summar", "art", "design", "creative", "gif", "image", "poster", "diagram", "logo", "typography", "mentor"]],
+  ["docs", ["doc", "pdf", "pptx", "docx", "word", "slide", "presentation", "report", "wiki", "manual", "guide", "readme", "changelog", "brand", "canvas", "theme"]],
+];
+
+export function guessSkillCategories(path: string): SkillCatalogCategory[] {
+  const haystack = path.toLowerCase();
+  for (const [category, keywords] of SKILL_CATEGORY_KEYWORDS) {
+    if (keywords.some((keyword) => haystack.includes(keyword))) {
+      return [category];
+    }
+  }
+  return ["workflow"];
+}
 
 export type SkillMarketDocument = {
   name?: string;
@@ -112,6 +138,7 @@ export function createSkillMarketAggregator() {
         author: owner,
         homepage: `https://github.com/${owner}/${repo}/tree/${branch}/${dir}`,
         url: `https://cdn.jsdelivr.net/gh/${owner}/${repo}@${branch}/${path}`,
+        categories: guessSkillCategories(`${dir} ${slug}`),
         sourceId: source.id,
       });
     }
