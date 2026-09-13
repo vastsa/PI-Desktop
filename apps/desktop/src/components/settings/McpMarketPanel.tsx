@@ -2,10 +2,14 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import {
   BUILTIN_MCP_CATALOG,
+  DEFAULT_MARKET_SOURCE,
   GLOBAL_SCOPE,
+  isSafeMarketSourceUrl,
   mergeRegistryEntries,
   resolveCatalogEntry,
+  sanitizeMarketSources,
   validateMcpCatalogFile,
+  type MarketSource,
   type McpCatalogCategory,
   type McpCatalogEntry,
 } from "@pi-desktop/shared";
@@ -27,9 +31,31 @@ const { servers } = validateMcpCatalogFile(BUILTIN_MCP_CATALOG).catalog;
 type RemoteState = {
   status: "idle" | "loading" | "ready" | "error";
   entries: McpCatalogEntry[];
+  failed: string[];
 };
 
-const REMOTE_IDLE: RemoteState = { status: "idle", entries: [] };
+const REMOTE_IDLE: RemoteState = { status: "idle", entries: [], failed: [] };
+
+type MarketItem = McpCatalogEntry & { sourceId?: string };
+
+const SOURCES_STORAGE_KEY = "pi.mcp-market.sources.v1";
+
+function loadSources(): MarketSource[] {
+  try {
+    const raw = window.localStorage?.getItem(SOURCES_STORAGE_KEY);
+    return raw ? sanitizeMarketSources(JSON.parse(raw)) : [DEFAULT_MARKET_SOURCE];
+  } catch {
+    return [DEFAULT_MARKET_SOURCE];
+  }
+}
+
+function saveSources(sources: MarketSource[]): void {
+  try {
+    window.localStorage?.setItem(SOURCES_STORAGE_KEY, JSON.stringify(sources));
+  } catch {
+    // Persistence is best-effort; the list stays alive for this session.
+  }
+}
 
 /**
  * The market view of the MCP settings page: browse the builtin catalog,
@@ -54,36 +80,53 @@ export function McpMarketPanel({
   const [values, setValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [remote, setRemote] = useState<RemoteState>(REMOTE_IDLE);
+  const [sources, setSources] = useState<MarketSource[]>(loadSources);
+  const [sourcesOpen, setSourcesOpen] = useState(false);
+  const [draftSource, setDraftSource] = useState<{
+    name: string;
+    url: string;
+    kind: MarketSource["kind"];
+  }>({ name: "", url: "", kind: "registry" });
 
-  // The official registry is searched live (debounced); built-in picks render
-  // immediately and stay as the offline floor when the registry is down.
+  useEffect(() => {
+    saveSources(sources);
+  }, [sources]);
+
+  // Every configured source is queried live (debounced); built-in picks render
+  // immediately and stay as the offline floor when all sources are down.
   useEffect(() => {
     let cancelled = false;
     const timer = setTimeout(() => {
       setRemote((current) =>
         current.status === "idle" || current.status === "ready"
-          ? { status: "loading", entries: current.entries }
+          ? { status: "loading", entries: current.entries, failed: current.failed }
           : current,
       );
       api
-        .searchMcpMarketRegistry(search)
+        .searchMcpMarketRegistry(search, sources)
         .then((result) => {
           if (!cancelled) {
+            const failed = result.failedSources ?? [];
+            const entries = result.entries ?? [];
             setRemote({
-              status: result.error ? "error" : "ready",
-              entries: result.entries ?? [],
+              status: entries.length === 0 && failed.length > 0 ? "error" : "ready",
+              entries,
+              failed,
             });
           }
         })
         .catch(() => {
-          if (!cancelled) setRemote({ status: "error", entries: [] });
+          if (!cancelled) setRemote({ status: "error", entries: [], failed: [] });
         });
     }, 350);
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [search]);
+  }, [search, sources]);
+
+  const sourceName = (id?: string) =>
+    id ? sources.find((source) => source.id === id)?.name : undefined;
 
   const remoteIds = useMemo(
     () => new Set(remote.entries.map((entry) => entry.id)),
@@ -102,7 +145,7 @@ export function McpMarketPanel({
     return mergeRegistryEntries(
       servers.filter(matches),
       remote.entries.filter(matches),
-    );
+    ) as MarketItem[];
   }, [remote.entries, search, category]);
 
   const openInstall = (entry: McpCatalogEntry) => {
@@ -252,6 +295,150 @@ export function McpMarketPanel({
     </div>
   ) : null;
 
+  const removeSource = (id: string) =>
+    setSources((current) => current.filter((source) => source.id !== id));
+
+  const addSource = () => {
+    const url = draftSource.url.trim();
+    if (!isSafeMarketSourceUrl(url)) {
+      showToast(t("settings.mcpMarket.sourceUnsafe"), { variant: "error" });
+      return;
+    }
+    const fallbackName = url.replace(/^https:\/\//, "").split("/")[0] || url;
+    setSources((current) => [
+      ...current,
+      {
+        id: `custom-${Date.now().toString(36)}`,
+        name: draftSource.name.trim() || fallbackName,
+        url,
+        kind: draftSource.kind,
+      },
+    ]);
+    setDraftSource({ name: "", url: "", kind: "registry" });
+  };
+
+  const sourcesSheet = sourcesOpen ? (
+    <div
+      className="overlay ext-sheet-overlay mcpm-overlay"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) setSourcesOpen(false);
+      }}
+    >
+      <div
+        className="dialog ext-sheet mcpm-sheet"
+        role="dialog"
+        aria-modal
+        aria-labelledby="mcpm-sources-title"
+      >
+        <div className="ext-sheet-head">
+          <div>
+            <h3 id="mcpm-sources-title" className="ext-sheet-title">
+              {t("settings.mcpMarket.manageSources")}
+            </h3>
+            <p className="ext-sheet-sub">{t("settings.mcpMarket.sourcesHint")}</p>
+          </div>
+          <TooltipButton
+            type="button"
+            className="ext-sheet-close"
+            ariaLabel={t("common.close")}
+            tooltip={t("common.close")}
+            onClick={() => setSourcesOpen(false)}
+          >
+            <IconX size={14} />
+          </TooltipButton>
+        </div>
+
+        <div className="ext-sheet-body">
+          <ul className="mcpm-source-list">
+            {sources.map((source) => (
+              <li key={source.id} className="mcpm-source">
+                <span
+                  className={cx(
+                    "mcpm-glyph",
+                    source.kind === "registry" ? "is-devtools" : "is-docs",
+                  )}
+                  aria-hidden
+                >
+                  {source.kind === "registry" ? <IconServer size={16} /> : <IconTerminal size={16} />}
+                </span>
+                <div className="mcpm-source-body">
+                  <span className="mcpm-name">
+                    {source.id === DEFAULT_MARKET_SOURCE.id
+                      ? t("settings.mcpMarket.officialSource")
+                      : source.name}
+                  </span>
+                  <code className="mcpm-cmd">{source.url}</code>
+                </div>
+                <span className="mcpm-badge">
+                  {source.kind === "registry"
+                    ? t("settings.mcpMarket.kindRegistry")
+                    : t("settings.mcpMarket.kindCatalog")}
+                </span>
+                {source.builtin ? null : (
+                  <button
+                    type="button"
+                    className="mcpm-install is-ghost"
+                    onClick={() => removeSource(source.id)}
+                  >
+                    {t("extensions.mcp.remove")}
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+
+          <div className="mcpm-source-form">
+            <Input
+              value={draftSource.name}
+              placeholder={t("settings.mcpMarket.namePlaceholder")}
+              onChange={(event) =>
+                setDraftSource((current) => ({ ...current, name: event.target.value }))
+              }
+            />
+            <Input
+              value={draftSource.url}
+              placeholder={t("settings.mcpMarket.urlHint")}
+              onChange={(event) =>
+                setDraftSource((current) => ({ ...current, url: event.target.value }))
+              }
+            />
+            <div className="mcpm-cats">
+              {(["registry", "catalog"] as const).map((kind) => (
+                <button
+                  key={kind}
+                  type="button"
+                  className={cx("mcpm-chip", draftSource.kind === kind && "is-active")}
+                  onClick={() => setDraftSource((current) => ({ ...current, kind }))}
+                >
+                  {kind === "registry"
+                    ? t("settings.mcpMarket.kindRegistry")
+                    : t("settings.mcpMarket.kindCatalog")}
+                </button>
+              ))}
+            </div>
+            <button type="button" className="mcpm-install" onClick={addSource}>
+              {t("settings.mcpMarket.addSource")}
+            </button>
+          </div>
+        </div>
+
+        <div className="ext-sheet-actions">
+          <span className="ext-sheet-note">{t("settings.mcpMarket.sheetNote")}</span>
+          <div className="ext-sheet-actions-end">
+            <button
+              type="button"
+              className="mcpm-install is-ghost"
+              onClick={() => setSourcesOpen(false)}
+            >
+              {t("common.close")}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   return (
     <div className="mcpm">
       <div className="mcpm-head">
@@ -262,6 +449,11 @@ export function McpMarketPanel({
           </button>
           <h3 className="mcpm-title">{t("settings.mcpMarket.title")}</h3>
           <p className="mcpm-subtitle">{t("settings.mcpMarket.subtitle")}</p>
+        </div>
+        <div className="mcpm-head-actions">
+          <button type="button" className="mcpm-back" onClick={() => setSourcesOpen(true)}>
+            {t("settings.mcpMarket.manageSources")} · {sources.length}
+          </button>
         </div>
         <div className="mcpm-search">
           <Input
@@ -299,6 +491,7 @@ export function McpMarketPanel({
       {remote.status === "error" ? (
         <p className="mcpm-status is-error" role="status">
           {t("settings.mcpMarket.remoteError")}
+          {remote.failed.length ? ` (${remote.failed.join(", ")})` : ""}
         </p>
       ) : null}
 
@@ -335,7 +528,7 @@ export function McpMarketPanel({
                     ) : null}
                     {remoteIds.has(entry.id) ? (
                       <span className="mcpm-badge is-remote">
-                        {t("settings.mcpMarket.remoteBadge")}
+                        {sourceName(entry.sourceId) ?? t("settings.mcpMarket.remoteBadge")}
                       </span>
                     ) : null}
                     {(entry.categories ?? []).slice(0, 1).map((id) => (
@@ -371,6 +564,7 @@ export function McpMarketPanel({
       </div>
 
       {installSheet}
+      {sourcesSheet}
     </div>
   );
 }

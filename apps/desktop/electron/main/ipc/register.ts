@@ -10,7 +10,7 @@ import { registerAppIpc } from "./app-ipc";
 import { registerDiagnosticsIpc } from "./diagnostics-ipc";
 import { registerMarketIpc } from "./market-ipc";
 import { registerMcpIpc } from "./mcp-ipc";
-import { searchMcpRegistry } from "../mcp-registry-catalog";
+import { searchMcpMarket } from "../mcp-registry-catalog";
 import { registerNotificationIpc } from "./notification-ipc";
 import { registerPluginIpc } from "./plugin-ipc";
 import { registerPluginUiIpc } from "./plugin-ui-ipc";
@@ -329,7 +329,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     refreshUserMcp,
     describeError,
     sendToRenderer,
-    searchMcpRegistry,
+    searchMcpMarket,
   });
 
 

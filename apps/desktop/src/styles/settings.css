@@ -2551,3 +2551,45 @@
   background: color-mix(in oklab, var(--ds-accent) 10%, transparent);
   color: var(--ds-text-muted);
 }
+
+.mcpm-head-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.mcpm-source-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mcpm-source {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--ds-tile-deep);
+  border-radius: var(--radius-md, 10px);
+  background: var(--ds-tile);
+  padding: 10px 12px;
+}
+
+.mcpm-source-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.mcpm-source-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-top: 1px solid var(--ds-tile-deep);
+  margin-top: 4px;
+  padding-top: 14px;
+}

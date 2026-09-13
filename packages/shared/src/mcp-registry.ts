@@ -168,3 +168,89 @@ export function mergeRegistryEntries(
   }
   return merged;
 }
+
+/** One user-configurable market source. */
+export type MarketSourceKind = "registry" | "catalog";
+
+export type MarketSource = {
+  id: string;
+  name: string;
+  url: string;
+  kind: MarketSourceKind;
+  /** The shipped default; the UI does not offer a remove button for it. */
+  builtin?: boolean;
+};
+
+export const DEFAULT_MARKET_SOURCE: MarketSource = {
+  id: "official",
+  name: "Official registry",
+  url: "https://registry.modelcontextprotocol.io/v0/servers",
+  kind: "registry",
+  builtin: true,
+};
+
+/**
+ * Guard for user-entered source URLs: https only, and never a loopback or
+ * private-network host — the main process fetches whatever it is told here, so
+ * the check runs on both sides of the IPC boundary.
+ */
+export function isSafeMarketSourceUrl(url: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "https:") return false;
+  const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (!host || host === "localhost" || host.endsWith(".local") || host.endsWith(".internal")) {
+    return false;
+  }
+  if (host === "::1" || host === "0:0:0:0:0:0:0:1") return false;
+  if (/^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) return false;
+  if (/^169\.254\./.test(host)) return false;
+  const privateV4 = /^(\d+)\.(\d+)\.\d+\.\d+$/.exec(host);
+  if (privateV4) {
+    const [a, b] = [Number(privateV4[1]), Number(privateV4[2])];
+    if (a === 10 || a === 0) return false;
+    if (a === 192 && b === 168) return false;
+    if (a === 172 && b >= 16 && b <= 31) return false;
+  }
+  return true;
+}
+
+/** A catalog entry tagged with the source that produced it. */
+export type SourcedCatalogEntry = McpCatalogEntry & { sourceId: string };
+
+/** Repair whatever the renderer persisted into a usable source list. */
+export function sanitizeMarketSources(value: unknown): MarketSource[] {
+  const raw = Array.isArray(value) ? value : [];
+  const seen = new Set<string>();
+  const sources: MarketSource[] = [];
+  for (const item of raw) {
+    const candidate = item as MarketSource;
+    if (
+      !candidate ||
+      typeof candidate.id !== "string" ||
+      typeof candidate.name !== "string" ||
+      typeof candidate.url !== "string" ||
+      (candidate.kind !== "registry" && candidate.kind !== "catalog") ||
+      !isSafeMarketSourceUrl(candidate.url) ||
+      seen.has(candidate.id)
+    ) {
+      continue;
+    }
+    seen.add(candidate.id);
+    sources.push({
+      id: candidate.id.slice(0, 64),
+      name: candidate.name.slice(0, 64) || candidate.id,
+      url: candidate.url,
+      kind: candidate.kind,
+      ...(candidate.builtin ? { builtin: true } : {}),
+    });
+  }
+  if (!sources.some((source) => source.id === DEFAULT_MARKET_SOURCE.id)) {
+    sources.unshift(DEFAULT_MARKET_SOURCE);
+  }
+  return sources;
+}
