@@ -262,7 +262,7 @@ test("ignores roster entries that report no error at all", () => {
   assert.equal(failures.size, 0);
 });
 
-test("a Task row never carries its own failure, only lifecycle rows do", () => {
+test("a refreshed Task row carries its terminal failure before lifecycle polling", () => {
   const failures = collectDelegationFailures([
     {
       kind: "tool",
@@ -272,14 +272,14 @@ test("a Task row never carries its own failure, only lifecycle rows do", () => {
           details: {
             delegationId: "d1",
             status: "failed",
-            error: { code: "NOPE", message: "not a carrier" },
+            error: { code: "PROVIDER_ERROR", message: "provider failed" },
           },
         },
       },
     },
   ]);
 
-  assert.equal(failures.size, 0);
+  assert.deepEqual(failures.get("d1"), { code: "PROVIDER_ERROR", message: "provider failed" });
 });
 
 test("a finished turn treats leftover running delegates as aborted", () => {
@@ -429,4 +429,26 @@ test("topology elapsed bounds follow this card's Task ids, not a later fan-out",
     ),
     { startedAt: 1_000, completedAt: 5_000 },
   );
+});
+
+
+test("settled Task snapshots outrank stale lifecycle polling during a parallel fan-out", () => {
+  const first = task("first", "success", "completed", { startedAt: 1000, completedAt: 5000 });
+  const second = task("second", "success", "running", { startedAt: 1100 });
+  const stalePoll = lifecycle("TaskList", { delegations: [
+    { delegationId: "first", status: "running", startedAt: 1000 },
+    { delegationId: "second", status: "running", startedAt: 1100 },
+  ] });
+  const items = [first, second, stalePoll];
+  const statuses = collectDelegationStatuses(items, { turnLive: true });
+  assert.equal(subagentOutcome(first.message, statuses), "completed");
+  assert.equal(subagentOutcome(second.message, statuses), "running");
+  assert.deepEqual(summarizeSubagentActivity([first, second], statuses), {
+    total: 2, finished: 1, running: 1, issues: 0, warnings: 0,
+  });
+  assert.deepEqual(collectDelegationTimings(items).get("first"), {
+    startedAt: 1000, completedAt: 5000,
+  });
+  // History reconstruction must preserve success, rather than infer abortion.
+  assert.equal(collectDelegationStatuses(items, { turnLive: false }).get("first"), "completed");
 });

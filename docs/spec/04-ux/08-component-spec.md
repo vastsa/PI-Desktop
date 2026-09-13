@@ -1890,6 +1890,11 @@ in place:
   transparent while streaming — no whole-turn tile wrapping thinking, tools, or
   answer fragments (D323). The card keeps 16px inset from its
   tile edge so the graph and any leftover rows do not sit on the border.
+- A delegate's terminal Task snapshot updates its topology node, settled count,
+  elapsed time, and open detail dock immediately, even while siblings or the
+  parent remain active. A completed delegate is green and stops spinning.
+  Terminal Task state takes precedence over older lifecycle polling snapshots
+  that still say `running`; the same outcome survives transcript reload.
 - A topology group stays live — open once, ticking elapsed, labelled working —
   while any of *its* delegates is still running, even when the parent has
   already moved on to a later processing group in the same turn. Elapsed time
