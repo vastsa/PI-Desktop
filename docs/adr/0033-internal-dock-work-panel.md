@@ -52,6 +52,8 @@ expansion.
 4. The default committed width is **420px** (the established baseline), within
    the unchanged `364..720px` clamp. *(Superseded by decision D167: the default
    is 280px inside a `244..720px` clamp; every other clause here stands.)*
+   *(Amended by ADR 0238: the `244..720px` clamp becomes the live three-column
+   budget — 244px minimum, no fixed maximum, MainChat floor 360px.)*
 5. Native window-edge resize changes `MainChat` only, now by plain reflow
    (the panel is internal and stays at its committed width).
 

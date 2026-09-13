@@ -49,12 +49,15 @@ export function AppShell() {
     searchOpen,
     setSearchOpen,
     sidebarCollapsed,
-    setSidebarCollapsed,
     sidebarExiting,
     sidebarWidth,
     handleSidebarWidthChange,
     handleSidebarWidthCommit,
     toggleSidebar,
+    reopenSidebar,
+    autoCollapseSidebar,
+    appShellRef,
+    shellWidth,
     runMenuCommand,
     handleSidebarAnimationEnd,
     presentedWorkPanelOpen,
@@ -107,7 +110,7 @@ export function AppShell() {
               <ConversationTopbar
                 sidebarCollapsed={sidebarCollapsed}
                 workPanelOpen={presentedWorkPanelOpen}
-                onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
+                onToggleSidebar={toggleSidebar}
                 onNewTask={() => void runMenuCommand("newTask")}
                 onOpenSearch={() => setSearchOpen(true)}
               />
@@ -121,7 +124,7 @@ export function AppShell() {
                 {sidebarCollapsed && (
                   <div className="main-titlebar-left no-drag">
                     <CollapsedTitlebarActions
-                      onToggleSidebar={() => setSidebarCollapsed(false)}
+                      onToggleSidebar={reopenSidebar}
                       onNewTask={() => void runMenuCommand("newTask")}
                       sidebarToggleShortcut={sidebarToggleShortcut}
                     />
@@ -214,6 +217,11 @@ export function AppShell() {
               }
               subagentPanel={subagentPanelOpen ? subagentPanel : null}
               onCloseSubagentPanel={closeSubagentPanel}
+              containerWidth={shellWidth}
+              sidebarWidth={sidebarWidth}
+              sidebarCollapsed={sidebarCollapsed}
+              sidebarExiting={sidebarExiting}
+              onAutoCollapseSidebar={autoCollapseSidebar}
             />
           )}
 
@@ -242,6 +250,7 @@ export function AppShell() {
 
   return (
     <div
+      ref={appShellRef}
       className={cx(
         "app-shell",
         !ready && "app-shell-boot",

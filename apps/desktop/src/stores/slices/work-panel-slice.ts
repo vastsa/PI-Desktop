@@ -14,9 +14,8 @@ import {
   type WorkPanelTab,
 } from "../../lib/work-panel-tabs";
 import {
+  WORK_PANEL_COMPACT_MIN_WIDTH,
   WORK_PANEL_DEFAULT_WIDTH,
-  WORK_PANEL_MAX_WIDTH,
-  WORK_PANEL_MIN_WIDTH,
 } from "../../lib/work-panel-resize";
 import type { AppState } from "../app-state";
 import type { StoreAccess } from "./types";
@@ -31,8 +30,8 @@ export function loadWorkPanelWidth(): number {
     const width = Number(parsed.width);
     return Number.isFinite(width)
       ? Math.max(
-          WORK_PANEL_MIN_WIDTH,
-          Math.min(WORK_PANEL_MAX_WIDTH, Math.round(width)),
+          WORK_PANEL_COMPACT_MIN_WIDTH,
+          Math.round(width),
         )
       : WORK_PANEL_DEFAULT_WIDTH;
   } catch {
@@ -350,8 +349,8 @@ export function createWorkPanelSlice({
     const committedWidth = Math.round(width);
     set({
       workPanelWidth: Math.max(
-        WORK_PANEL_MIN_WIDTH,
-        Math.min(WORK_PANEL_MAX_WIDTH, committedWidth),
+        WORK_PANEL_COMPACT_MIN_WIDTH,
+        committedWidth,
       ),
     });
     saveWorkPanelWidth(get().workPanelWidth);
