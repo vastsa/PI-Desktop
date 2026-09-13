@@ -210,6 +210,8 @@
 }
 
 .sidebar-resize-handle {
+  /* The sidebar is fixed-width: collapse/open only, never dragged. */
+  display: none;
   position: absolute;
   top: 0;
   right: 0;
@@ -1098,3 +1100,57 @@
   -webkit-user-select: none;
   user-select: none;
 }
+
+/* Window-level chrome for preview mode: the topbar that normally owns the drag
+   band and the window controls lives in MainChat, which preview mode does not
+   render, so the shell reserves the same 46px band itself. */
+.app-shell.work-panel-maximized .work-panel-header {
+  -webkit-app-region: drag;
+}
+
+.app-shell.work-panel-maximized .work-panel-header button {
+  -webkit-app-region: no-drag;
+}
+
+.window-chrome-row {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 200;
+  display: flex;
+  height: var(--ds-toolbar-height);
+  align-items: center;
+  padding-left: 8px;
+  pointer-events: none;
+  -webkit-app-region: no-drag;
+}
+
+.window-chrome-row button {
+  pointer-events: auto;
+}
+
+/* The system buttons keep their ordinary titlebar seat at the top right. */
+.window-chrome-row .window-controls {
+  margin-left: auto;
+  -webkit-app-region: no-drag;
+}
+
+.window-chrome-drag {
+  flex: 1 1 auto;
+  align-self: stretch;
+}
+
+.window-chrome-row .window-controls,
+.window-chrome-row button {
+  -webkit-app-region: no-drag;
+}
+/* Preview mode: the top band replaces MainChat's titlebar, so the system
+   buttons join the band's own flow instead of floating over the panel as a
+   separate opaque block (their fixed seat is meant for the titlebar row). */
+
+
+
+
+/* Preview mode: the three shell actions sit tight at the band's left edge
+ * (new task, restore the panel, toggle the panel), then the drag region. */

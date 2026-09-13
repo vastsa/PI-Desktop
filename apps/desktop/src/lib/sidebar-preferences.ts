@@ -46,9 +46,15 @@ export const SIDEBAR_WIDTH_MIN = 240;
 export const SIDEBAR_WIDTH_DEFAULT = 275;
 export const SIDEBAR_WIDTH_MAX = 520;
 
-export function clampSidebarWidth(value: number): number {
-  if (!Number.isFinite(value)) return SIDEBAR_WIDTH_DEFAULT;
-  return Math.round(Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, value)));
+/**
+ * The sidebar is a fixed-width column: it collapses and opens, but its width is
+ * not resizable. The historical fixed value is 275px, which the design tokens
+ * already use as the preferred value of `--ds-sidebar-width`; a persisted
+ * preference from the resizable era is ignored on purpose.
+ */
+export function clampSidebarWidth(value?: number): number {
+  void value;
+  return SIDEBAR_WIDTH_DEFAULT;
 }
 
 function storage(): Storage | null {
@@ -218,12 +224,11 @@ export function saveSidebarPreferences(value: SidebarPreferences): void {
 }
 
 export function loadSidebarWidth(): number {
-  const value = read(SIDEBAR_WIDTH_KEY);
-  return typeof value === "number" ? clampSidebarWidth(value) : SIDEBAR_WIDTH_DEFAULT;
+  return SIDEBAR_WIDTH_DEFAULT;
 }
 
-export function saveSidebarWidth(value: number): void {
-  write(SIDEBAR_WIDTH_KEY, clampSidebarWidth(value));
+export function saveSidebarWidth(): void {
+  // The width is fixed; nothing to persist.
 }
 
 export function sessionIsPinned(id: string, meta: Record<string, SessionMeta>): boolean {

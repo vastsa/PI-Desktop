@@ -589,6 +589,84 @@ async function main() {
       JSON.stringify(closedFromPreview),
     );
 
+    const e2eChromeSettle = async (ms) => {
+      await new Promise((resolve) => setTimeout(resolve, ms));
+    };
+    const e2eChromeProbe = `(() => {
+      const band = document.querySelector(".window-chrome-row");
+      const controls = document.querySelector(".window-chrome-row .window-controls");
+      const sidebar = document.querySelector(".sidebar, .sidebar-rail");
+      const handle = document.querySelector(".sidebar-resize-handle");
+      const panel = document.querySelector('[data-testid="work-panel"]');
+      const controlsBox = controls ? controls.getBoundingClientRect() : null;
+      return {
+        bandZ: band ? Number(getComputedStyle(band).zIndex) : null,
+        bandHeight: band ? Math.round(band.getBoundingClientRect().height) : null,
+        bandPointerEvents: band ? getComputedStyle(band).pointerEvents : null,
+        controlsPosition: controls ? getComputedStyle(controls).position : null,
+        controlsOnScreen: controlsBox
+          ? controlsBox.width > 0 && controlsBox.right <= window.innerWidth + 1
+          : null,
+        sidebarToggle: !!document.querySelector('.window-chrome-row [data-nav="toggle-sidebar"]'),
+        panelToggle: !!document.querySelector(".app-work-panel-toggle"),
+        sidebarWidth: sidebar ? Math.round(sidebar.getBoundingClientRect().width) : null,
+        handleVisible: handle ? getComputedStyle(handle).display !== "none" : false,
+        storedWidth: window.localStorage.getItem("pi.desktop.sidebarWidth"),
+        panelWidth: panel ? Math.round(panel.getBoundingClientRect().width) : null,
+        main: !!document.querySelector(".main-pane"),
+      };
+    })()`;
+
+    const e2eChromeSidebar = await cdp.evaluate(e2eChromeProbe);
+    check(
+      e2eChromeSidebar.sidebarWidth === null || e2eChromeSidebar.sidebarWidth === 275,
+      "sidebar stays at its fixed width",
+      JSON.stringify(e2eChromeSidebar),
+    );
+    check(
+      e2eChromeSidebar.handleVisible === false,
+      "the sidebar edge is no longer a resize affordance",
+      JSON.stringify(e2eChromeSidebar),
+    );
+    check(
+      e2eChromeSidebar.storedWidth === null,
+      "sidebar width is no longer persisted",
+      JSON.stringify(e2eChromeSidebar),
+    );
+
+    await cdp.evaluate(`document.querySelector(".app-work-panel-toggle")?.click?.()`);
+    await e2eChromeSettle(900);
+    await cdp.evaluate(`document.querySelector(".work-panel-maximize")?.click?.()`);
+    await e2eChromeSettle(900);
+    const e2eChromePreview = await cdp.evaluate(e2eChromeProbe);
+    check(
+      e2eChromePreview.main === false && e2eChromePreview.panelWidth !== null,
+      "preview mode keeps the panel and drops the center column",
+      JSON.stringify(e2eChromePreview),
+    );
+    check(
+      e2eChromePreview.bandZ !== null && e2eChromePreview.bandZ > 20,
+      "the preview band outranks the work panel so its buttons stay visible",
+      JSON.stringify(e2eChromePreview),
+    );
+    check(
+      e2eChromePreview.bandHeight === 46 && e2eChromePreview.bandPointerEvents === "none",
+      "the preview band is a 46px pass-through strip",
+      JSON.stringify(e2eChromePreview),
+    );
+    check(
+      e2eChromePreview.controlsPosition === "fixed" && e2eChromePreview.controlsOnScreen === true,
+      "system buttons keep their ordinary seat while previewing",
+      JSON.stringify(e2eChromePreview),
+    );
+    check(
+      e2eChromePreview.panelToggle === true,
+      "the panel toggle stays in the top row while previewing",
+      JSON.stringify(e2eChromePreview),
+    );
+    await cdp.evaluate(`document.querySelector(".work-panel-maximize")?.click?.()`);
+    await e2eChromeSettle(900);
+
     const failed = results.filter((entry) => !entry.ok);
     console.log(
       `\nE2E-LAYOUT-three-column-width-priority: ${results.length - failed.length}/${results.length} checks passed`,
