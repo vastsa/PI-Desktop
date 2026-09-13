@@ -3,17 +3,15 @@ use std::sync::RwLock;
 
 const PROXY_URL_MAX: usize = 2048;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum ProxyMode {
+    #[default]
     System,
     Direct,
-    Custom { url: String, bypass: String },
-}
-
-impl Default for ProxyMode {
-    fn default() -> Self {
-        Self::System
-    }
+    Custom {
+        url: String,
+        bypass: String,
+    },
 }
 
 static MARKET_PROXY: RwLock<ProxyMode> = RwLock::new(ProxyMode::System);

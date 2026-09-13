@@ -674,7 +674,7 @@ pub fn read_transcript_window(
             "message" => {
                 let index = message_index;
                 message_index += 1;
-                let selected = index >= message_start && end.map_or(true, |limit| index < limit);
+                let selected = index >= message_start && end.is_none_or(|limit| index < limit);
                 if selected {
                     match serde_json::from_str::<MessageRecord>(line.trim()) {
                         Ok(record) => out.messages.push(record),

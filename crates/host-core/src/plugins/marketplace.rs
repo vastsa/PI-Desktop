@@ -310,7 +310,7 @@ impl PluginManager {
             }
             out.push(self.to_market_summary(&entry));
         }
-        out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        out.sort_by_key(|plugin| plugin.name.to_lowercase());
         Ok(out)
     }
 
@@ -597,9 +597,7 @@ pub(crate) fn has_package_metadata(version: &MarketVersion) -> bool {
 /// release must not be presented as the latest, downloaded, or applied as an
 /// update. Detail responses keep the unfiltered list so version history still
 /// shows what was withdrawn and why.
-pub(crate) fn latest_market_version<'a>(
-    versions: &'a [MarketVersion],
-) -> Option<&'a MarketVersion> {
+pub(crate) fn latest_market_version(versions: &[MarketVersion]) -> Option<&MarketVersion> {
     versions
         .iter()
         .filter(|version| !version.yanked)

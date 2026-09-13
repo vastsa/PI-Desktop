@@ -187,7 +187,7 @@ fn merge_active_records(
         }
     }
     result.retain(|record| record.enabled);
-    result.sort_by(|a, b| a.label.to_lowercase().cmp(&b.label.to_lowercase()));
+    result.sort_by_key(|record| record.label.to_lowercase());
     result
 }
 
