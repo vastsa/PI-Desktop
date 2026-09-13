@@ -213,3 +213,17 @@ Gateway 负责路由已认证客户，但不拥有工作区状态。
 6. 已批准的 queued/running 执行被中断，无需
    重播及其持久会话仍然是 Agent
 7. Bash timeout/abort 关闭完整的子进程树
+
+
+### Native tray session projection
+
+The tray service keeps Running, Unread, and Pinned groups current independently
+of renderer visibility or lifetime. Host remains authoritative for sessions and
+notifications; root agent events describe running state. Renderer mirrors only
+organization preferences through a main-window-only IPC. Read requests are
+coalesced; obsolete Host results cannot repopulate the menu, failures clear
+shortcuts, and quitting prevents further publication. A closed window retains
+only the last organization copy, which is replaced after renderer bootstrap.
+Menu command readiness is acknowledged after bootstrap's initial navigation,
+so a tray click cannot be overwritten by the startup draft or pending-plan
+selection. See [ADR tray-session-shortcuts](/adr/tray-session-shortcuts).

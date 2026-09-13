@@ -23,6 +23,10 @@ export const de = {
     "close": "Schließen"
   },
   "tray": {
+    "running": "Laufend",
+    "unread": "Ungelesen",
+    "pinned": "Angeheftet",
+    "viewMore": "Mehr anzeigen…",
     "open": "Öffnen Sie PI-Desktop",
     "quit": "Beenden Sie PI-Desktop",
     "askTitle": "Lassen Sie PI-Desktop im Hintergrund laufen?",

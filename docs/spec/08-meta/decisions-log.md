@@ -4788,3 +4788,13 @@ Task context through additive `navigationParent`; parser source offsets locate
 hidden Markdown and file-chip matches. Read ownership rejects interrupted pages,
 and explicit message actions hydrate canonical input when history is partial or
 text is capped. Validation: E2E-SESSION-content-search-and-message-navigation.
+
+### Tray session shortcuts (issue #293)
+
+[ADR tray-session-shortcuts](/adr/tray-session-shortcuts) amends the D216 native
+tray menu with Running, Unread, and Pinned groups, three rows each after global
+priority assignment. Host session/inbox reads and runtime events remain the
+source of truth; renderer organization is mirrored without a persistence
+change. macOS single-click opens the menu without restoring the window;
+selection is delivered after bootstrap and uses normal session navigation.
+Validation contract: E2E-TRAY-bounded-session-navigation.

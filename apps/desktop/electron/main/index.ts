@@ -788,6 +788,7 @@ function isHostUnavailable(error: unknown): boolean {
 
 /** Pull the user's MCP server records from host-core into the local runtime. */
 function sendToRenderer(channel: string, payload: unknown) {
+  applicationLifecycle?.traySessions.observeEvent(channel, payload);
   if (channel === IPC.event.pluginChanged) {
     applicationLifecycle?.applyNativeThemeSource({
       theme: applicationAppearanceState.appThemePreference,
@@ -872,6 +873,8 @@ const applicationAppearanceState: ApplicationAppearanceState = {
 };
 
 applicationLifecycle = createApplicationLifecycle({
+  getHost: () => host,
+  getRunningSessionIds: () => activeTurns.keys(),
   state: windowLifecycleState,
   appState: applicationLifecycleState,
   appearanceState: applicationAppearanceState,
@@ -1206,6 +1209,7 @@ const { bootHostStatus, runtimeArch, bootBackends } = runtimeLifecycle;
 
 function registerIpc() {
   return registerIpcHandlers({
+    traySessions: applicationLifecycle!.traySessions,
     ipcMain,
     getMainWindow: () => mainWindow,
     getHost: () => host,

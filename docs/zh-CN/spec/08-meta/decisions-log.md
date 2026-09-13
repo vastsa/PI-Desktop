@@ -3924,3 +3924,13 @@ D193 和 D194。
 - 必要时将前一条回复的临时快照与已接收用户输入一并记入日志；只原位落定索引中的
   流式助手，并保持已完成消息的幂等性。见 ADR active-turn-steering 和
   E2E-AGENT-alt-enter-steers-active-turn。
+
+### Tray session shortcuts (issue #293)
+
+[ADR tray-session-shortcuts](/adr/tray-session-shortcuts) amends the D216 native
+tray menu with Running, Unread, and Pinned groups, three rows each after global
+priority assignment. Host session/inbox reads and runtime events remain the
+source of truth; renderer organization is mirrored without a persistence
+change. macOS single-click opens the menu without restoring the window;
+selection is delivered after bootstrap and uses normal session navigation.
+Validation contract: E2E-TRAY-bounded-session-navigation.
