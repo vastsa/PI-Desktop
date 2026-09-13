@@ -35,6 +35,7 @@ import {
 import {
   IconBookOpen,
   IconDownload,
+  IconFileText,
   IconFolderOpen,
   IconPencil,
   IconPlus,
@@ -393,6 +394,7 @@ export function AgentSkillsPage() {
       title={t("settings.sklm.subtitle")}
       onClick={() => setView("market")}
     >
+      <IconFileText size={14} />
       {t("settings.sklm.browse")}
     </CapabilityButton>
   );

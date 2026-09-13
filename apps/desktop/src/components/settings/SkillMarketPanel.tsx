@@ -267,6 +267,16 @@ export function SkillMarketPanel({
 
         <div className="ext-sheet-body">
           <ul className="sklm-source-list">
+            <li className="sklm-source">
+              <span className="sklm-glyph is-docs" aria-hidden>
+                <IconBookOpen size={16} />
+              </span>
+              <div className="sklm-source-body">
+                <span className="sklm-name">{t("settings.sklm.builtinSource")}</span>
+                <code className="sklm-cmd">{t("settings.sklm.builtinHint")}</code>
+              </div>
+              <span className="sklm-badge is-verified">✓</span>
+            </li>
             {sources.map((source) => (
               <li key={source.id} className="sklm-source">
                 <span className="sklm-glyph is-docs" aria-hidden>
@@ -414,6 +424,11 @@ export function SkillMarketPanel({
           <h3 className="sklm-title">{t("settings.sklm.title")}</h3>
           <p className="sklm-subtitle">{t("settings.sklm.subtitle")}</p>
         </div>
+        <div className="sklm-head-actions">
+          <button type="button" className="sklm-back" onClick={() => setSourcesOpen(true)}>
+            {t("settings.sklm.manageSources")} · {sources.length}
+          </button>
+        </div>
         <div className="sklm-search">
           <Input
             className="sklm-search-input"
@@ -427,6 +442,18 @@ export function SkillMarketPanel({
           />
         </div>
       </div>
+
+      {remote.status === "loading" ? (
+        <p className="sklm-status" role="status">
+          {t("settings.sklm.remoteLoading")}
+        </p>
+      ) : null}
+      {remote.status === "error" ? (
+        <p className="sklm-status is-error" role="status">
+          {t("settings.sklm.remoteError")}
+          {remote.failed.length ? ` (${remote.failed.join(", ")})` : ""}
+        </p>
+      ) : null}
 
       <div className="sklm-cats" role="tablist" aria-label={t("settings.sklm.title")}>
         {(["all", ...CATEGORIES] as const).map((id) => (
