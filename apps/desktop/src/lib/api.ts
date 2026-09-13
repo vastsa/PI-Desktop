@@ -34,6 +34,7 @@ import type {
   FsReadResult,
   HostHealth,
   HostStatusEvent,
+  SkillCatalogEntry,
   ModelInfo,
   McpServerInput,
   McpServerRecord,
@@ -652,6 +653,19 @@ export const api = {
       imported: McpServerRecord[];
       failed: Array<{ id: string; reason: string }>;
     }>(IPC.invoke.mcpImport, { text }),
+
+  // --- Skill market ----------------------------------------------------------
+  searchSkillMarket: (query: string, sources: { id: string; name: string; url: string }[]) =>
+    invoke<{ entries: SkillCatalogEntry[]; failedSources?: string[] }>(
+      IPC.invoke.skillMarketSearch,
+      { query, sources },
+    ),
+  /** Fetch one catalog document (frontmatter split off) for preview/install. */
+  fetchSkillMarketDocument: (entry: SkillCatalogEntry) =>
+    invoke<{ name?: string; description?: string; body: string }>(
+      IPC.invoke.skillMarketFetch,
+      { entry },
+    ),
 
   // --- Skills the user owns -------------------------------------------------
   listUserSkills: (query?: AgentCapabilityQuery) =>
