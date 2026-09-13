@@ -2931,18 +2931,26 @@ mod tests {
         let data = tempfile::tempdir().unwrap();
         let scratch = data.path().join("scratch/session-spill");
         let lines = BUDGET_SHELL.max_lines + 500;
+        #[cfg(windows)]
+        let command = format!("1..{lines} | ForEach-Object {{ [Console]::Out.WriteLine($_) }}");
+        #[cfg(not(windows))]
+        let command = format!("seq 1 {lines}");
         let result = execute_tool(
             Some(ws.path()),
             Some(&scratch),
             "Bash",
-            &serde_json::json!({ "command": format!("seq 1 {lines}") }),
+            &serde_json::json!({ "command": command }),
             30_000,
         )
         .await;
         assert!(result.ok, "bash tool failed: {:?}", result.content);
         assert_eq!(result.content["truncated"].as_bool(), Some(true));
         let stdout = result.content["stdout"].as_str().unwrap();
-        assert!(stdout.starts_with("1\n2\n"), "head retained");
+        assert_eq!(
+            stdout.lines().take(2).collect::<Vec<_>>(),
+            ["1", "2"],
+            "head retained"
+        );
         assert!(stdout.contains("[truncated:"), "marker present");
 
         // The marker names a spill file that holds the whole output.
@@ -2963,17 +2971,23 @@ mod tests {
         // A failing command's actionable message is its last line.
         let ws = tempfile::tempdir().unwrap();
         let lines = BUDGET_SHELL_ERR.max_lines + 200;
+        #[cfg(windows)]
+        let command = format!(
+            "1..{lines} | ForEach-Object {{ [Console]::Error.WriteLine($_) }}; [Console]::Error.WriteLine('error: the real problem'); exit 2"
+        );
+        #[cfg(not(windows))]
+        let command = format!("seq 1 {lines} >&2; printf 'error: the real problem\\n' >&2; exit 2");
         let result = execute_tool(
             Some(ws.path()),
             None,
             "Bash",
-            &serde_json::json!({
-                "command": format!("seq 1 {lines} >&2; printf 'error: the real problem\\n' >&2; exit 2")
-            }),
+            &serde_json::json!({ "command": command }),
             30_000,
         )
         .await;
         assert!(!result.ok);
+        assert_eq!(result.content["exitCode"].as_i64(), Some(2));
+        assert_eq!(result.content["truncated"].as_bool(), Some(true));
         let stderr = result.content["stderr"].as_str().unwrap();
         assert!(
             stderr.trim_end().ends_with("error: the real problem"),
