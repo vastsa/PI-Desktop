@@ -673,17 +673,6 @@ export function McpMarketPanel({
               if (event.key === "Enter") doJump();
             }}
           />
-          <button type="button" className="mcpm-page-btn" onClick={doJump}>
-            {t("settings.mcpMarket.pageJump")}
-          </button>
-          <button
-            type="button"
-            className="mcpm-page-btn"
-            disabled={currentPage >= totalPages}
-            onClick={() => setPage(totalPages)}
-          >
-            {t("settings.mcpMarket.pageLast")}
-          </button>
 
           <button
             type="button"
