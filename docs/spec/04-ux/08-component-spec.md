@@ -196,6 +196,17 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
 
 ---
 
+### Native tray session menu
+
+The Main-owned native menu contains Open, non-empty Running/Unread/Pinned
+sections, and Quit. Each section has a disabled localized heading, at most
+three single-line session rows, and View more only when it overflows. Session
+rows are globally deduplicated before truncation. View more expands session navigation;
+session rows enter their original conversation. The menu follows active locale
+changes and never marks a result read merely by opening. macOS single-click
+opens the attached menu; Open and double-click restore/focus the window.
+See [ADR tray-session-shortcuts](/adr/tray-session-shortcuts).
+
 ## 2. Topbar
 
 ### 2.1 Purpose
@@ -303,11 +314,11 @@ combined model × reasoning selection (§11).
 ### 3.1 Purpose
 
 Scoped project and session navigation, management, and notification access. The
-expanded sidebar shows path-less conversations first under a compact `Sessions`
-heading and retained project tabs under a following `Projects` heading; the
+expanded sidebar shows a global `Pinned` section when pins exist, followed by
+path-less history under `Sessions` and retained project tabs under `Projects`; the
 collapsed state is an icon rail. Retained tabs are renderer presentation state,
 not additional host workspaces.
-The sidebar body is reserved for Sessions and Projects; the footer exposes the
+The sidebar body is reserved for Pinned, Sessions, and Projects; the footer exposes the
 Plugins destination beside Settings. Projects is managed through Settings →
 Project archive, while Pull requests and Scheduled are not rendered in the
 sidebar.
@@ -324,6 +335,8 @@ Expanded (~275px, D034/D070):
 +---------------------------+
 | [lights]             [◧] |  macOS
 | [π] PI-Desktop       [◧] |  Windows/Linux
+| PINNED                   |
+|   • Pinned task  project-A|
 | SESSIONS         [msg+][↕]|
 |   • Path-less session   ↕|
 | PROJECTS            [dir+]|
@@ -355,7 +368,7 @@ tier; weight, indentation, and disclosure icons preserve their hierarchy:
 | Footer action icons | `--text-base` (14px) | Settings, Extensions, notifications; left side of footer |
 | Session / thread titles | `--text-md` (13px) | Compact list content |
 | Project / group titles, empty copy | `--text-md` (13px) | Hierarchy comes from weight and indentation |
-| Section labels (`SESSIONS`, `PROJECTS`) | `--text-sm` (12px) | Uppercase secondary labels |
+| Section labels (`PINNED`, `SESSIONS`, `PROJECTS`) | `--text-sm` (12px) | Uppercase secondary labels; global pin project context uses the same size |
 | Footer profile name + profile menu items | `--text-base` (14px) | Identity cluster matches nav body |
 | Footer status / version | `--text-sm` (12px) | Right-aligned build/version chip |
 
@@ -377,7 +390,7 @@ visually distinct from list content.
 | Session failed | Red circled alert mark from the latest unread task notification when the row is not selected |
 | Hover session | bg-tertiary background |
 | Active project | Header carries active state; topbar follows that workspace; composer exposes no workspace identity |
-| Collapsed project | Header remains visible; child conversations are hidden |
+| Collapsed project | Header remains visible; unpinned child conversations are hidden; global pins remain visible |
 | Archived row | Hidden by default; visible in the explicit archived view |
 | No retained project | Compact Open project entry; standalone Sessions rows remain available |
 | Empty group | Muted one-line empty state; group create action remains available |
@@ -477,12 +490,26 @@ visually distinct from list content.
   developer mode is on, the menu also offers Copy conversation ID (clipboard)
   and Open session path (the session scratch directory in the system file
   manager).
+- Pinned conversations appear once in a global section above Sessions and
+  Projects, independent of date buckets, project collapse, retained tabs, and
+  each project's ten-row history limit. Each pin shows its project display
+  name (full path on hover), or Temporary space for a path-less conversation.
+  The section is omitted when empty and scrolls within `min(224px, 30vh)` when
+  needed. Its rows reuse normal selection, status, hover, and overflow actions.
+- Pinning moves the existing row into that section; unpinning returns it to
+  normal project or temporary history, subject to existing folding and closed
+  tab visibility. Keyboard focus follows the relocated row's overflow control,
+  or returns to the Sessions sort control if the row becomes hidden. Archived
+  conversations and pins in archived projects stay hidden until Show archived
+  is enabled. Closing a project does not remove its global pins.
 - The `Sessions` toolbar places the sort button before the message-plus New Chat
   control. The sort menu and every other body-level sidebar menu remain
   content-sized and open 4px to the right of their trigger or pointer. Their
   left edge never flips to the trigger's left side; the surface has a viewport
   width cap for narrow windows. The sort choices remain Recently updated,
-  Created date, Oldest first, and Name; pinned rows stay ahead of unpinned rows.
+  Created date, Oldest first, and Name; the chosen session sort orders global
+  pins internally without date headers. Pinned projects still precede unpinned
+  projects within the project sort.
   Project rows have no reorder grip. Pressing the project title and moving
   8px starts a pointer reorder and selects the persisted `manual` project order without changing the session sort.
 - When a session hover card is revealed for the active project, the renderer
@@ -1043,9 +1070,9 @@ It does not render separate Details or Output tabs.
 
 ### 6.1 Purpose
 
-List user sessions by execution context inside the sidebar. It exposes the
-sessions for every retained project tab plus persistent sessions that have no
-project. Pin/archive/collapse state is a presentation over durable host
+List user sessions inside the sidebar: global pinned shortcuts, followed by
+unpinned history for retained project tabs and path-less sessions.
+Pin/archive/collapse state is a presentation over durable host
 sessions, not a replacement persistence model.
 
 ### 6.2 Anatomy
@@ -1053,6 +1080,8 @@ sessions, not a replacement persistence model.
 Groups and session items:
 
 ```text
+PINNED
+           Pinned session title             project-name
 [folder] current-project                         [+]
            Session title
 [star] pinned-project                             [+]
@@ -1074,7 +1103,7 @@ SESSIONS                                      [msg+][↕]
 | Completed | success-green check mark |
 | Failed | error-red circled alert mark |
 | Pinned project | filled accent Star replaces the Folder glyph; ordered before unpinned projects within the selected sort |
-| Pinned conversation | ordered before unpinned rows within the selected sort |
+| Pinned conversation | shown once in the global Pinned section, with project context and the selected session sort |
 | Archived | omitted by default; shown only when archived view is enabled |
 
 ### 6.4 Interactions
@@ -1082,9 +1111,10 @@ SESSIONS                                      [msg+][↕]
 - Click: activate session
 - Project matching uses the normalized full project path, never only the folder
   basename.
-- Sessions for retained paths appear beneath their corresponding project
-  group. Sessions for closed paths remain discoverable from Settings → Project
-  archive.
+- Unpinned sessions for retained paths appear beneath their corresponding
+  project group. Global pins remain available when their project is collapsed
+  or closed; all sessions for closed paths remain discoverable from Settings →
+  Project archive.
 - Selecting a temporary session clears the active workspace so session and
   tool context do not imply project access.
 - Rename opens a modal title editor from the session overflow menu or a

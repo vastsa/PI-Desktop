@@ -23,6 +23,10 @@ export const es = {
     "close": "Cerrar"
   },
   "tray": {
+    "running": "En curso",
+    "unread": "Sin leer",
+    "pinned": "Fijadas",
+    "viewMore": "Ver más…",
     "open": "Abrir PI-Desktop",
     "quit": "Salir de PI-Desktop",
     "askTitle": "¿Mantener PI-Desktop ejecutándose en segundo plano?",
@@ -119,6 +123,7 @@ export const es = {
     "devDisabled": "Las actualizaciones están deshabilitadas en las compilaciones de desarrollo."
   },
   "nav": {
+    "pinnedSessions": "Fijadas",
     "home": "Inicio",
     "newTask": "Nueva tarea",
     "newProject": "Nuevo proyecto",

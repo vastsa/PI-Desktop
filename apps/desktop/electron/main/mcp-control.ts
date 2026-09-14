@@ -467,6 +467,7 @@ export const MCP_CONTROL_BLOCKED_CHANNEL_KEYS = [
   "composerPasteFiles",
   "clipboardRecordPaste",
   "menuRendererReady",
+  "traySetSessionPreferences",
   "providersCreate",
   "providersUpdate",
   "providersDelete",

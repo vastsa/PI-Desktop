@@ -166,6 +166,17 @@
 
 ---
 
+### Native tray session menu
+
+The Main-owned native menu contains Open, non-empty Running/Unread/Pinned
+sections, and Quit. Each section has a disabled localized heading, at most
+three single-line session rows, and View more only when it overflows. Session
+rows are globally deduplicated before truncation. View more expands session navigation;
+session rows enter their original conversation. The menu follows active locale
+changes and never marks a result read merely by opening. macOS single-click
+opens the attached menu; Open and double-click restore/focus the window.
+See [ADR tray-session-shortcuts](/adr/tray-session-shortcuts).
+
 ## 2. Topbar
 
 ### 2.1 目的
@@ -267,6 +278,8 @@ Expanded (~275px, D034/D070):
 +---------------------------+
 | [lights]             [◧] |  macOS
 | [π] PI-Desktop       [◧] |  Windows/Linux
+| PINNED                   |
+|   • Pinned task  project-A|
 | 会话 [消息+][↕] |
 | • 无路径会话 ↕ |
 | 项目 [目录+] |

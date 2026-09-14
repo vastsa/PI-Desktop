@@ -24,6 +24,10 @@ export const tr = {
     close: "Kapat",
   },
   tray: {
+    running: "Çalışan",
+    unread: "Okunmamış",
+    pinned: "Sabitlenmiş",
+    viewMore: "Daha fazla göster…",
     open: "PI-Desktop’u aç",
     quit: "PI-Desktop’tan çık",
     askTitle: "PI-Desktop arka planda çalışmaya devam etsin mi?",
@@ -128,6 +132,7 @@ export const tr = {
     devDisabled: "Geliştirme derlemelerinde güncellemeler kapalıdır.",
   },
   nav: {
+    "pinnedSessions": "Sabitlenmiş",
     home: "Ana sayfa",
     newTask: "Yeni görev",
     newProject: "Yeni proje",

@@ -23,6 +23,10 @@ export const zhCN = {
     close: "关闭",
   },
   tray: {
+    running: "运行中",
+    unread: "未读",
+    pinned: "置顶",
+    viewMore: "查看更多…",
     open: "打开 PI-Desktop",
     quit: "退出 PI-Desktop",
     askTitle: "关闭后继续在后台运行 PI-Desktop？",
@@ -121,6 +125,7 @@ export const zhCN = {
     devDisabled: "开发版本不支持自动更新。",
   },
   nav: {
+    pinnedSessions: "置顶",
     home: "首页",
     newTask: "新建任务",
     newProject: "新建项目",

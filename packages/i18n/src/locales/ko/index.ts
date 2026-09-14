@@ -24,6 +24,10 @@ export const ko = {
     close: "닫기",
   },
   tray: {
+    running: "실행 중",
+    unread: "읽지 않음",
+    pinned: "고정됨",
+    viewMore: "더 보기…",
     open: "PI-Desktop 열기",
     quit: "PI-Desktop 종료",
     askTitle: "PI-Desktop을 백그라운드에서 계속 실행할까요?",
@@ -128,6 +132,7 @@ export const ko = {
     devDisabled: "개발 빌드에서는 업데이트가 비활성화됩니다.",
   },
   nav: {
+    "pinnedSessions": "고정됨",
     home: "홈",
     newTask: "새 작업",
     newProject: "새 프로젝트",

@@ -7260,11 +7260,38 @@ This test plan spec is accepted when:
   actions with keyboard-reachable menu semantics.
 - Open the sort menu from the standalone `Sessions` heading, pin one
   project/session, and choose each user-facing sort mode (Recently updated,
-  Created date, Oldest first, Name). Pinned rows remain first.
+  Created date, Oldest first, Name). Pinned projects remain first in Projects;
+  pinned conversations appear once in the global Pinned section above Sessions
+  and Projects, with the selected session sort and no date headers.
 - Archive a row, verify it is absent by default, enable Show archived, and
   restore it. The transcript and project binding remain unchanged.
 - A legacy `manual` preference loads without presenting a drag-reorder
   affordance.
+
+### E2E-SIDEBAR-global-pinned-conversations
+
+- Seed an old pinned conversation in project A, today's unpinned conversation
+  and eleven other normal rows in A, a pinned conversation in collapsed project
+  B, one in closed project C, and a pinned Temporary conversation.
+- Expect one Pinned section above Sessions and Projects, containing all four
+  pins with their project names or Temporary space label. Pins have no date
+  headers and do not appear a second time in ordinary history. A still shows
+  ten normal rows initially, with its remaining rows behind Load more.
+- Change the date across midnight and select each session sort. Pins remain
+  above history; sorting changes only their internal order. Selecting B or C's
+  pin activates its original conversation and project; selecting the Temporary
+  pin clears workspace context. Running and unread states remain visible.
+- Pin and unpin through the keyboard menu. The row moves immediately and focus
+  follows its overflow control, or returns to the Sessions sort control if the
+  row is now folded or belongs to a closed project. Unpin the last pin and
+  expect no empty Pinned section.
+- Archive a pin and a pinned conversation's project. Both disappear by default;
+  Show archived reveals them and Restore preserves the pin. Delete a pinned
+  conversation and expect no stale row. Reload and expect saved pins to return.
+- With enough pins to overflow, scroll within Pinned and verify that Sessions,
+  Projects, and the footer remain reachable in light/dark themes at minimum
+  supported window size. Existing hover cards, context menus, drag/drop, and
+  project pinning retain their normal behavior.
 
 ### US-UI-59 Session-rooted background tools
 - Start a visible turn in project A, switch to project B while it runs, and
@@ -11140,3 +11167,41 @@ sample extensions under `apps/desktop/test/fixtures/pi-extensions/`.
 - **Acceptance**: Quality
 - **Milestone**: M6+
 - **Status**: Automated (`pnpm test:e2e:skill-market`)
+
+#### E2E-TRAY-bounded-session-navigation
+
+- **Scope**: Native tray groups, hidden/recreated window activation, and unread
+  semantics (issue #293, ADR tray-session-shortcuts).
+- **Preconditions**: At least four running, four unread, and four pinned
+  sessions across two projects; include overlaps, read-latest/older-unread
+  notifications, archived/deleted sessions, an archived project, empty titles,
+  multiline titles, long CJK/emoji titles, and literal ampersands. Use an
+  isolated profile. Repeat native activation on macOS and Windows/Linux.
+- **Steps**: Hide the main window and open the tray menu. Inspect group order,
+  counts, duplicates, titles, and unchanged unread records. Choose the third
+  row from another project, then View more from Settings with a collapsed
+  sidebar and a retained search query. Finish/abort tasks while hidden;
+  read a result, pin/unpin, rename, archive/restore, and delete a session.
+  Close the macOS window while a task runs and let it finish, then activate
+  its tray row while the new renderer bootstraps a pending plan. Delay a Host
+  read while a newer preference update, delete, or Host restart arrives.
+  Retry a transient read failure by hovering/right-clicking the tray.
+  Repeat after clearing all group memberships and changing shipped locales.
+  Choose Quit then Cancel, then Quit and confirm.
+- **Expected**: Running → Unread → Pinned; at most three rows per group and
+  nine total. Deduplicate before limits, so hidden Running overflow cannot
+  appear as Unread/Pinned. Empty groups and stale shortcuts disappear. Unread
+  uses the latest terminal result per session, newest first. Titles remain
+  one line within the cap, including literal ampersands. Opening the macOS
+  menu leaves the window hidden and records unread. A row opens exactly that
+  session/project, acknowledges it normally, and wins over startup navigation.
+  View more returns from Settings, closes search, and expands session navigation. Hidden/closed windows receive fresh groups;
+  stale reads, archived/deleted targets, and a failed backend cannot restore
+  stale shortcuts. Open, localization, quit cancellation, and shutdown work.
+- **Specs linked**: `03-runtime/01-ipc-protocol.md` §13b,
+  `03-runtime/07-process-model.md`, `04-ux/08-component-spec.md`,
+  `04-ux/09-interaction-patterns.md`, ADR tray-session-shortcuts.
+- **Acceptance**: A (app/window lifecycle), C (conversation navigation),
+  F (unread persistence), Quality (bounded localized menu).
+- **Milestone**: Post-M6 desktop shell maintenance.
+- **Status**: Draft; native E2E requires an explicitly authorized run.

@@ -23,6 +23,10 @@ export const fr = {
     "close": "Fermer"
   },
   "tray": {
+    "running": "En cours",
+    "unread": "Non lues",
+    "pinned": "Épinglées",
+    "viewMore": "Voir plus…",
     "open": "Ouvrir PI-Desktop",
     "quit": "Quitter PI-Desktop",
     "askTitle": "Garder PI-Desktop en arrière-plan ?",
@@ -119,6 +123,7 @@ export const fr = {
     "devDisabled": "Les mises à jour sont désactivées dans les versions de développement."
   },
   "nav": {
+    "pinnedSessions": "Épinglées",
     "home": "Accueil",
     "newTask": "Nouvelle tâche",
     "newProject": "Nouveau projet",

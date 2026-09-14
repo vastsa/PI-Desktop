@@ -51,3 +51,6 @@ export * from "./trusted-extensions.js";
 export * from "./provider-retry.js";
 export * from "./message-stream.js";
 export * from "./session-collaboration.js";
+export * from "./session-presentation.js";
+export * from "./session-outcomes.js";
+export * from "./tray-sessions.js";

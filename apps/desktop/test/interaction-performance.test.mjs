@@ -52,7 +52,7 @@ test("bootstrap cannot replay navigation after destination state changes", () =>
   assert.match(app, /const bootstrapStartedRef = useRef\(false\);/);
   assert.match(
     app,
-    /useEffect\(\(\) => \{\s*if \(bootstrapStartedRef\.current\) return;\s*bootstrapStartedRef\.current = true;\s*void bootstrap\(\);\s*\}, \[bootstrap\]\);/,
+    /useEffect\(\(\) => \{\s*if \(bootstrapStartedRef\.current\) return;\s*bootstrapStartedRef\.current = true;[\s\S]*?void bootstrap\(\)\.finally\(\(\) => \{\s*void api\.menuRendererReady\(\)\.catch\(\(\) => undefined\);\s*\}\);\s*\}, \[bootstrap\]\);/,
   );
   const subscriptions =
     app.match(/useEffect\(\(\) => \{\s*const offEvent = api\.onAgentEvent[\s\S]*?\n  \}, \[/)?.[0] ?? "";
