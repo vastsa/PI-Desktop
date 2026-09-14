@@ -4964,3 +4964,19 @@ Validation contract: E2E-SIDEBAR-global-pinned-conversations.
   token. A literal inside a `:root[data-theme]` override is the failure mode.
 - Same class of hole remains in `settings.css` (rail, search fields, toggle
   knob, capability search) and a few other sheets; see issue #339.
+
+## 2026-09-14 — Structured, bounded, and redacted process logs (D420)
+
+- Every app/host/agent NDJSON record has a stable dot-separated `event` and
+  top-level correlation fields. A normal tool call emits one completion or
+  failure record; an unexpected sidecar exit emits interruption records for
+  active tools. The tool protocol and transcript remain unchanged.
+- Central logging redacts credential formats, sensitive keys, and local paths;
+  bounds strings and structured values; and caps each record's `data` at 8 KiB.
+  Host-core audit payloads receive corresponding shaping and a serialized
+  payload cap.
+- Tool results retain outcome, error/code, duration, field names, content-block
+  count, and stdout/stderr sizes rather than copying raw arguments, output, or
+  plugin responses. Child stderr and main-process fallbacks use stable events;
+  development console mirrors contain the same sanitized record.
+- See ADR 0250 and E2E-034.
