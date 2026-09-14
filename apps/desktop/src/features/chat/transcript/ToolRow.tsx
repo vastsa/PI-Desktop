@@ -312,6 +312,7 @@ export const ToolRow = memo(function ToolRow({
         renderedOpen ? "open" : ""
       } status-${run === "failed" ? "error" : status || "success"}${outcome ? ` outcome-${outcome.replaceAll("_", "-")}` : ""}${creating ? " outcome-creating" : ""}`}
       role={variant === "topology" ? "listitem" : "region"}
+      data-message-id={message.id}
       aria-label={`${t("chat.toolCall")}: ${rawName}${agentName ? `, ${agentName}` : ""}${modelLabel ? `, ${modelLabel}` : ""}${statusLabel ? `, ${statusLabel}` : ""}`}
     >
       {variant === "topology" ? (
@@ -622,7 +623,7 @@ function SubagentRunFollow({
                 streaming={item.message.status === "streaming"}
               />
             ) : (
-              <div className="subagent-answer" key={`answer-${item.message.id}`}>
+              <div className="subagent-answer" data-message-id={item.message.id} key={`answer-${item.message.id}`}>
                 {item.message.content ? (
                   <div className="prose-chat">
                     <Markdown source={item.message.content} />

@@ -196,6 +196,17 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
 
 ---
 
+### Native tray session menu
+
+The Main-owned native menu contains Open, non-empty Running/Unread/Pinned
+sections, and Quit. Each section has a disabled localized heading, at most
+three single-line session rows, and View more only when it overflows. Session
+rows are globally deduplicated before truncation. View more expands session navigation;
+session rows enter their original conversation. The menu follows active locale
+changes and never marks a result read merely by opening. macOS single-click
+opens the attached menu; Open and double-click restore/focus the window.
+See [ADR tray-session-shortcuts](/adr/tray-session-shortcuts).
+
 ## 2. Topbar
 
 ### 2.1 Purpose
@@ -1271,9 +1282,63 @@ storage but compose into one assistant turn until the next user message.
 - The marker nearest the reading position exposes `aria-current="true"` and
   keyboard focus opens the same preview available on pointer hover
 
+### 7.5a Global session content search
+
+- The existing global search input matches session titles, project metadata,
+  and indexed user/assistant message text across all host-visible sessions.
+- Group matches by session, show the complete matching-message count, and
+  preview up to two snippets with localized sender labels, timestamps, and
+  literal keyword highlighting. Metadata matches have a distinct badge.
+- Each body preview shows the sentence or line containing the first match,
+  using Chinese/English sentence punctuation and line breaks as boundaries.
+  Preserve the complete sentence when it fits 180 characters; longer sentences
+  use an ellipsized window that always includes the entire query. Render the
+  whole bounded preview with normal wrapping, including on narrow windows;
+  line clamping must never hide the matching text. Matches have a clearly
+  visible background highlight in both light and dark themes.
+- Keep archived sessions hidden in empty-query recents and discoverable through
+  an explicit query. Exclude deleted sessions. Body-bearing untitled sessions
+  remain discoverable through their content.
+- Load more continues host session pagination; a renderer's loaded sessions or
+  the old 50-session/100-message limits cannot truncate discovery.
+- Clicking a message snippet closes search, opens its original conversation,
+  and scrolls to the clicked message's matching rendered text with a visible
+  literal highlight. A heading with body matches selects its first snippet;
+  metadata-only headings use ordinary session navigation. Mouse and keyboard
+  must select the same target ID, including individual assistant fragments.
+- Old targets load a bounded 60-line original `UiMessage` window centered on
+  their stable ID. The selected message keeps complete text beyond the usual
+  display cap. Render the same transcript, Markdown, message actions, and
+  composer; do not open a separate reader. Preserve the live cache separately.
+  Upward paging and Load later messages extend the reading window. The existing
+  latest-message control and a new turn return to live output. Actions on an
+  old message prepare canonical input before editing, retrying, or branching.
+- Ordinary history and search use one retained-session reading view, shared
+  with subagent details. A nested answer reveals its owning Task and opens the
+  existing details dock at the answer, even when the parent is outside the page.
+  Do not silently ignore targets that have no top-level transcript row.
+- Hidden Markdown URLs, syntax, and file-chip paths map to their visible source
+  owner. Highlight and scroll to that element when the raw query has no literal
+  rendered text. Preserve normal Markdown and file/link interactions.
+- Canonical changes with unchanged IDs must invalidate stale reading content.
+  Preparing edit/retry/branch inputs must also account for partial history and
+  display-limited text, even when the selected message is already visible.
+- Release bottom following on a search jump. Brief layout corrections may keep
+  the selected text visible, but stop on a real reading gesture. Composer focus
+  must not move the transcript. A missing target reports failure without jumping
+  to an unrelated message; stale requests must not override a newer target.
+- Preserve the query in memory when closing/reopening search. Debounce queries
+  and reject stale results and errors after a new query, closure, or navigation.
+  Loading and failure states must not masquerade as an empty result.
+- Keep page, settings, and command results available. Arrow keys and Enter
+  navigate session headings, snippets, Load more, and the existing result
+  types. IME composition Enter must not activate a result.
+
 ### 7.6 MVP constraints
 
-- No message search within transcript
+- Global search locates a matching message inside its original conversation
+  (ADR session-content-search). An independent in-transcript find bar remains
+  outside this scope.
 - No inline message branching tree; regenerate variants remain linear per user
   root turn. Session-level Create branch produces an independent conversation
   row instead of adding tree chrome inside the transcript.

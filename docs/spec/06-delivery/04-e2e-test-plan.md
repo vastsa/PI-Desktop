@@ -11095,3 +11095,113 @@ sample extensions under `apps/desktop/test/fixtures/pi-extensions/`.
 - **Acceptance**: Quality
 - **Milestone**: M6+
 - **Status**: Automated (`pnpm test:e2e:skill-market`)
+
+#### E2E-SESSION-content-search-and-message-navigation
+
+- **Scope**: Desktop global search, host search projections, and original
+  conversation navigation (issue #270, ADR session-content-search).
+- **Preconditions**: At least 65 visible sessions with a shared body keyword;
+  one session has 125 matching user/assistant messages. Include a body-only
+  keyword, a metadata-only match, an archived session, a soft-deleted session,
+  one/two-character CJK terms, literal `%`, `_`, quotes, and a path. Include a
+  long session with a match beyond the latest 100 messages and a message whose
+  matching text follows 100,000 characters. Include an actively streaming
+  conversation and a fixture with repeated physical message lines.
+  Include a nested assistant answer whose Task is outside its 60-line page, a
+  later terminal copy of that Task, collapsed activity, hidden Markdown link
+  destinations, emphasis delimiters, and file-chip directories.
+  Add short matching sentences surrounded by unrelated Chinese/English
+  sentences, multiple short lines before a match, a quoted sentence, a file
+  path containing periods, and a matching sentence longer than 180 characters.
+- **Steps**: Search body-only user and assistant terms, then rename the owning
+  session and repeat. Check aggregated counts and sender/time/snippet labels.
+  Load every result page. Open a session heading and each of its two snippets;
+  verify that each snippet closes search, opens the same original conversation,
+  and scrolls to its own matching text. The heading selects its first snippet.
+  Check normal Markdown, message actions, and composer. Repeat with two assistant
+  fragments in one turn, an old target outside the latest page, and a match after
+  100,000 characters. Verify a visible highlight and that layout settling does
+  not pull the target away. Read upward and load later messages without gaps.
+  Use the latest-message control to resume the live transcript. Scroll within
+  the active conversation, reopen search, and select its own result; locate the
+  target inside the same pane. Edit, retry, branch, and delete an old message. Reopen search and check the retained query.
+  Repeat with CJK and symbols. Verify that a contiguous Chinese phrase matches,
+  while inserting a space between its words only matches text with that space.
+  Change queries rapidly while delayed first-page
+  and later-page requests resolve out of order. Close/reopen during loading.
+  Retry after a transient search error.
+  Open the nested answer and verify that the owning Task is revealed and its
+  existing dock scrolls to the answer. Search the hidden URL, delimiters, and
+  chip directory after a long prefix; verify the corresponding visible element
+  is highlighted. Interrupt layout correction with a wheel/key gesture.
+  Page ordinary history while output streams, then interrupt a pending page with
+  search, another result, a new turn, and return to latest. Change a revision
+  without changing its message ID. Edit/retry a visible but display-capped
+  message and verify that the canonical full text becomes the action input.
+  Search a running conversation and return to its live stream, then switch
+  conversations. Use arrows, Enter, Escape, Tab, and CJK IME confirmation, and
+  exercise page/settings/plugin-command results.
+  Search a word in the middle sentence and verify that the
+  result shows that sentence with a background highlight on the literal match.
+  Repeat after multiple line breaks and at narrow window widths in light and
+  dark themes. Long-sentence truncation must keep the whole matching query
+  visible; short previews must omit unrelated adjacent sentences.
+- **Expected**: Every matching visible session is reachable; counts cover all
+  125 messages, with no duplicate session rows. Archived visibility follows
+  the existing explicit-search rule and deleted sessions never appear. Each
+  snippet opens its owning conversation directly without an intermediate
+  context reader, plain-text replacement, or Back to conversation action.
+  Each selected snippet lands at its exact message and matching rendered text,
+  including old history and individual assistant fragments. Reading-window
+  loads do not overwrite live output. New turns return to the live transcript.
+  Actions on historical messages work normally and do not leave obsolete rows.
+  Nested answers land in the original Task dock; source-only matches land on
+  their rendered owner. Ordinary paging retains current streamed content.
+  Interrupted reads cannot reopen a dock or restore stale/loading views, and
+  same-ID edits replace obsolete displayed content. Message actions never use
+  clipped text as input.
+  Rapidly selecting another result rejects stale target/page completions.
+  Deleting a result before selection reports failure instead of landing at the tail.
+  Later query ownership wins over stale results/errors. IME Enter does not
+  execute an action. Search transport failures are explicit.
+  Existing commands, pages, settings, and keyboard navigation still work.
+- **Status**: Draft; Rust and renderer unit regressions cover the data/query
+  boundaries. Full rendered E2E requires an explicitly authorized run.
+
+#### E2E-TRAY-bounded-session-navigation
+
+- **Scope**: Native tray groups, hidden/recreated window activation, and unread
+  semantics (issue #293, ADR tray-session-shortcuts).
+- **Preconditions**: At least four running, four unread, and four pinned
+  sessions across two projects; include overlaps, read-latest/older-unread
+  notifications, archived/deleted sessions, an archived project, empty titles,
+  multiline titles, long CJK/emoji titles, and literal ampersands. Use an
+  isolated profile. Repeat native activation on macOS and Windows/Linux.
+- **Steps**: Hide the main window and open the tray menu. Inspect group order,
+  counts, duplicates, titles, and unchanged unread records. Choose the third
+  row from another project, then View more from Settings with a collapsed
+  sidebar and a retained search query. Finish/abort tasks while hidden;
+  read a result, pin/unpin, rename, archive/restore, and delete a session.
+  Close the macOS window while a task runs and let it finish, then activate
+  its tray row while the new renderer bootstraps a pending plan. Delay a Host
+  read while a newer preference update, delete, or Host restart arrives.
+  Retry a transient read failure by hovering/right-clicking the tray.
+  Repeat after clearing all group memberships and changing shipped locales.
+  Choose Quit then Cancel, then Quit and confirm.
+- **Expected**: Running → Unread → Pinned; at most three rows per group and
+  nine total. Deduplicate before limits, so hidden Running overflow cannot
+  appear as Unread/Pinned. Empty groups and stale shortcuts disappear. Unread
+  uses the latest terminal result per session, newest first. Titles remain
+  one line within the cap, including literal ampersands. Opening the macOS
+  menu leaves the window hidden and records unread. A row opens exactly that
+  session/project, acknowledges it normally, and wins over startup navigation.
+  View more returns from Settings, closes search, and expands session navigation. Hidden/closed windows receive fresh groups;
+  stale reads, archived/deleted targets, and a failed backend cannot restore
+  stale shortcuts. Open, localization, quit cancellation, and shutdown work.
+- **Specs linked**: `03-runtime/01-ipc-protocol.md` §13b,
+  `03-runtime/07-process-model.md`, `04-ux/08-component-spec.md`,
+  `04-ux/09-interaction-patterns.md`, ADR tray-session-shortcuts.
+- **Acceptance**: A (app/window lifecycle), C (conversation navigation),
+  F (unread persistence), Quality (bounded localized menu).
+- **Milestone**: Post-M6 desktop shell maintenance.
+- **Status**: Draft; native E2E requires an explicitly authorized run.

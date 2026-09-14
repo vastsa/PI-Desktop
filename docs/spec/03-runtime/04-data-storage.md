@@ -769,9 +769,23 @@ to.
 
 ### 4.8 messages_fts — full-text search
 
-Global search across transcripts (WorkBuddy-benchmark search, command
-palette). Trigram tokenizer covers CJK and substring matches; queries shorter
-than 3 chars fall back to `LIKE` on `messages.text`.
+The legacy `search.query` message search uses a trigram tokenizer for CJK and
+substring matches; queries shorter than 3 chars fall back to `LIKE` on
+`messages.text`. The desktop session search below reuses this index with a
+Unicode-aware literal verification step.
+
+Desktop session discovery (`search.sessions`) counts every matching indexed
+user/assistant message before paginating by session. It excludes sessions with
+`deleted_at` set and treats title/project matches separately from body counts.
+FTS queries are quoted literals and all candidates are verified with a
+host-owned Unicode lowercase literal predicate. Short queries and non-ASCII
+case mappings use that predicate directly, preserving title search behavior
+and keeping message retrieval consistent with renderer highlighting. `%`, `_`, quotes, and
+backslashes are literal text. Snippets surround the match, including short CJK
+queries, rather than always taking the start of the message. Context navigation
+resolves stable IDs against physical JSONL positions, and displays canonical
+JSONL text without modifying SQLite or the live transcript cache. See
+[ADR session-content-search](../../adr/session-content-search.md).
 
 ```sql
 CREATE VIRTUAL TABLE messages_fts USING fts5(
@@ -1084,7 +1098,17 @@ projection. The full transcript remains lossless on disk and the sidecar's
 uncapped `session.get` path is unchanged for model context, edits, revisions,
 and other host-owned mutations. The renderer opens with the newest window and
 requests older windows on demand; the response's `messageStart` and
-`hasMoreBefore` fields are the only pagination state it needs.
+`hasMoreBefore` fields support backward paging. Search navigation additionally
+uses `messageAround` to center a bounded original-message window on a stable ID,
+plus exclusive physical `messageEnd` and `hasMoreAfter` for forward paging. Only
+the explicitly selected user/assistant text bypasses the display cap. The
+retained pane owns that reading window separately from live/model caches;
+missing targets never fall back to a different message (ADR session-content-search).
+A nested target additionally resolves its owning Task by tool-call ID and returns
+that latest capped projection as `navigationParent`, without adding a physical
+line to the bounded page. This is derived read-only context, not a new persisted
+relationship or index. The renderer's unified reading view is shared by ordinary
+history and search; it never becomes canonical mutation or model input.
 
 A bounded window is served through a per-session **transcript layout**: the byte
 offset of every message and compaction line, plus the file length those offsets

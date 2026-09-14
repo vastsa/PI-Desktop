@@ -23,6 +23,10 @@ export const de = {
     "close": "Schließen"
   },
   "tray": {
+    "running": "Laufend",
+    "unread": "Ungelesen",
+    "pinned": "Angeheftet",
+    "viewMore": "Mehr anzeigen…",
     "open": "Öffnen Sie PI-Desktop",
     "quit": "Beenden Sie PI-Desktop",
     "askTitle": "Lassen Sie PI-Desktop im Hintergrund laufen?",
@@ -281,6 +285,7 @@ export const de = {
     "loadingSession": "Konversation wird geladen…",
     "pasteInProgress": "Der eingefügte Inhalt wird weiterhin gespeichert. Versuchen Sie es gleich noch einmal.",
     "loadingEarlierMessages": "Frühere Nachrichten laden…",
+    loadLaterMessages: "Spätere Nachrichten laden",
     "showEarlierMessages": "Frühere Nachrichten anzeigen",
     "copy": "Kopieren",
     "copied": "Kopiert",
@@ -1484,7 +1489,15 @@ sklm: {
     "uncategorized": "Andere"
   },
   "search": {
-    "placeholder": "Chats durchsuchen…",
+    placeholder: "Titel und Nachrichten suchen…",
+    metadataMatch: "Titel / Projekt",
+    messageMatches: "{{count}} Nachrichtentreffer",
+    user: "Du",
+    assistant: "Assistent",
+    loading: "Suche läuft…",
+    failed: "Suche fehlgeschlagen. Erneut versuchen.",
+    loadMore: "Weitere Ergebnisse",
+    retry: "Erneut versuchen",
     "empty": "Keine passenden Chats",
     "pages": "Seiten",
     "commands": "Befehle",

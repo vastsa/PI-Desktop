@@ -73,7 +73,7 @@ test("the side panel renders the live conversation process", () => {
 test("the side panel re-finds live rows instead of storing a stale render snapshot", () => {
   assert.match(panelSource, /buildTranscriptEntries\(messages\)/);
   assert.match(panelSource, /selection\.delegationId/);
-  assert.match(panelSource, /retainedTranscripts\[selection\.sessionId\]/);
+  assert.match(panelSource, /useTranscriptView\(selection\.sessionId\)/);
   assert.match(panelSource, /collectDelegationStatuses\(selected\.turnActivityItems/);
   assert.match(panelSource, /collectDelegationTimings\(selected\.turnActivityItems\)/);
   assert.match(panelSource, /<SubagentDetail/);
@@ -107,7 +107,7 @@ test("the task dock keeps one body scroll owner while the process streams", () =
   assert.match(panelSource, /role="log"/);
   assert.match(panelSource, /aria-live="polite"/);
   assert.match(panelSource, /tabIndex=\{0\}/);
-  assert.match(panelSource, /\[jumpToLatest, selection\.delegationId\]/);
+  assert.match(panelSource, /\[jumpToLatest, selection\.delegationId, searchTarget\]/);
 });
 
 test("the subagent dock uses a grouped identity, task card, and process timeline", () => {

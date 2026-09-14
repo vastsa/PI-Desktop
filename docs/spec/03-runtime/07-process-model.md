@@ -278,3 +278,17 @@ until a post-MVP implementation milestone explicitly amends this section.
 6. A queued/running execution that was already approved is interrupted without
    replay and its durable session remains Agent
 7. Bash timeout/abort shuts down the complete child process tree
+
+
+### Native tray session projection
+
+The tray service keeps Running, Unread, and Pinned groups current independently
+of renderer visibility or lifetime. Host remains authoritative for sessions and
+notifications; root agent events describe running state. Renderer mirrors only
+organization preferences through a main-window-only IPC. Read requests are
+coalesced; obsolete Host results cannot repopulate the menu, failures clear
+shortcuts, and quitting prevents further publication. A closed window retains
+only the last organization copy, which is replaced after renderer bootstrap.
+Menu command readiness is acknowledged after bootstrap's initial navigation,
+so a tray click cannot be overwritten by the startup draft or pending-plan
+selection. See [ADR tray-session-shortcuts](/adr/tray-session-shortcuts).

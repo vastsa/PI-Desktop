@@ -66,8 +66,12 @@ import type {
   ProviderUpdateInput,
   Result,
   SessionDetail,
+  SessionSearchPage,
+  SessionSearchContext,
+  SessionSearchContextRequest,
   SessionSummary,
   SessionCollaborationSummary,
+  TraySessionPreferences,
   ToolPermissionResolution,
   UserSkillInput,
   UserSkillRecord,
@@ -179,6 +183,8 @@ function normalizeSessionDetail(detail: SessionDetail | null): SessionDetail | n
 }
 
 export type SessionHistoryReadOptions = {
+  /** Center a bounded read on this stable ID and retain its original text. */
+  messageAround?: string;
   /** Return the newest page ending before this zero-based message offset. */
   messageBefore?: number;
   /** Maximum number of messages in the returned page. */
@@ -338,6 +344,10 @@ export const api = {
       title,
       throughMessageId,
     }).then((result) => ({ ...result, session: normalizeSessionDetail(result.session)! })),
+  searchSessions: (query: string, offset = 0) =>
+    invoke<SessionSearchPage>(IPC.invoke.sessionSearch, { query, offset }),
+  getSearchContext: (request: SessionSearchContextRequest) =>
+    invoke<SessionSearchContext>(IPC.invoke.sessionSearchContext, request),
   getSession: (id: string, options?: SessionHistoryReadOptions) =>
     invoke<{ session: SessionDetail | null }>(IPC.invoke.sessionGet, {
       id,
@@ -915,6 +925,15 @@ export const api = {
     ),
   menuRendererReady: () =>
     invoke<{ ready: boolean }>(IPC.invoke.menuRendererReady),
+  setTraySessionPreferences: (preferences: TraySessionPreferences) =>
+    invoke<{ ok: boolean }>(IPC.invoke.traySetSessionPreferences, preferences),
+  onTraySessionActivated: (listener: (sessionId: string | null) => void) => {
+    if (!window.piDesktop?.on) return () => undefined;
+    return window.piDesktop.on(IPC.event.traySessionActivated, (payload) => {
+      const sessionId = (payload as { sessionId?: unknown })?.sessionId;
+      if (sessionId === null || (typeof sessionId === "string" && sessionId)) listener(sessionId);
+    });
+  },
   nativeMenuAction: (action: NativeMenuAction) =>
     invoke<{ maximized: boolean; fullScreen: boolean }>(
       IPC.invoke.nativeMenuAction,

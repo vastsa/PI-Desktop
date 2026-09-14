@@ -901,12 +901,27 @@ Minimal interface:
   through the reviewed desktop-control path; it does not create or mutate the
   session
 - `session/fork({ sessionId, title?, throughMessageId? }) -> { session: SessionDetail }`
-- `session/get({ id, messageBefore?, messageLimit?, contentLimit? })` — without
+- `session/get({ id, messageBefore?, messageAround?, messageLimit?, contentLimit? })` — without
   read-window options returns the complete UI projection; with them returns a
   bounded newest/older page plus `messageStart` and `hasMoreBefore`. The
   content limit applies only to display values and never changes the lossless
   transcript or model context. `messageBefore` and `messageStart` are physical
   message-line positions in the transcript file, not deduplicated index counts.
+  `messageAround` centers a bounded read on a stable message ID; it requires
+  `messageLimit` and cannot accompany `messageBefore`. A missing target returns
+  no session. Only the selected user/assistant text bypasses the display cap.
+  Bounded responses also include exclusive `messageEnd` and `hasMoreAfter` for
+  forward paging; reading windows never replace the live transcript cache.
+  A nested target may also return `navigationParent`, the latest capped owning
+  Task `UiMessage`. It is display context outside the physical page, not an
+  extra history line. The renderer shares one reading view between ordinary
+  paging, search navigation, and subagent details.
+- `session/search({ query, offset? }) -> SessionSearchPage` forwards to
+  `search.sessions`; host-core owns discovery, counts, filtering, and pagination.
+- `session/searchContext(SessionSearchContextRequest) -> SessionSearchContext`
+  forwards to `search.context`. This read-only text window is separate from
+  `session/get` and must never enter the renderer's live transcript cache.
+  Both channels are explicitly included in the preload IPC allowlist.
 - `session/delete`
 - `session/rename({ id, title }) -> { ok: boolean }` trims the title and
   accepts 1–80 Unicode code points. Blank or overlong titles are rejected as
@@ -1650,6 +1665,26 @@ Browser view continues to follow the renderer-measured panel rectangle.
 Window bounds persistence and display reconciliation therefore operate on the
 ordinary application bounds; there is no panel-specific width or x-offset
 reservation, and background artifacts cannot change visible window geometry.
+
+### Tray session shortcuts (ADR tray-session-shortcuts)
+
+- `pi-desktop/tray/setSessionPreferences({ sessionMeta, archivedProjectPaths, sort })`
+  returns `{ ok: true }`. `sessionMeta` maps IDs to optional boolean `pinned`
+  and `archived` flags plus a non-negative safe integer `order`. `sort` is
+  `recent`, `created`, `oldest`, `name`, or `manual`; the renderer mirrors the
+  sidebar's effective sort. Main validates the payload, strips unrelated
+  metadata, and rejects senders other than the current main window. The setter
+  is excluded from the local MCP catalog and persists nothing.
+- Main emits `pi-desktop/tray/event/sessionActivated { sessionId: string | null }`
+  after restoring/focusing the window, waiting for post-bootstrap
+  `menu/rendererReady`, and checking that the session still exists and is not
+  archived. Renderer enters normal session selection, including cross-project
+  navigation and unread acknowledgement. A null ID closes search, returns to
+  the conversation page, and expands the sidebar for View more. Merely opening
+  the menu is read-only.
+- Main reads existing Host session/inbox APIs, observes root runtime events and
+  successful session/inbox mutations, and combines them with the ephemeral
+  organization copy. No host protocol or storage schema changes.
 
 ## 13c. Composer input APIs (D123/D124/D197, ADR 0024/0059)
 

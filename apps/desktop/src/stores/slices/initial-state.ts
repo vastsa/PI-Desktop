@@ -52,6 +52,7 @@ export function createInitialState(): AppStateData {
     messages: [],
     retainedSessionIds: [],
     retainedTranscripts: {},
+    transcriptViews: {},
     sessionHistory: {},
     draftConfiguration: null,
     isRunning: false,

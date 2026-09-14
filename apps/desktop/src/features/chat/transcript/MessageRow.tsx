@@ -82,6 +82,7 @@ export const MessageRow = memo(function MessageRow({
     <div
       className={`message-row ${isSessionMessage ? "session-message" : isUser ? "user" : message.role}`}
       data-minimap-id={message.id}
+      data-message-id={message.id}
       role="article"
       aria-label={isSessionMessage ? t("sessionCollaboration.agentMessage") : isUser ? t("chat.userMessage") : t("chat.assistantMessage")}
     >
@@ -169,6 +170,8 @@ export const MessageRow = memo(function MessageRow({
                       // it) and is what regenerate/reseed replay (D123).
                       <code
                         className="chat-command-chip"
+                        data-source-start={0}
+                        data-source-end={message.content.length}
                         title={String(message.content || "")}
                       >
                         {message.command}
