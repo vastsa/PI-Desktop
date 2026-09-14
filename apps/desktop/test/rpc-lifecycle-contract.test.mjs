@@ -7,6 +7,10 @@ const sidecarSource = await readFile(
   new URL("../electron/main/agent-sidecar.ts", import.meta.url),
   "utf8",
 );
+const runtimeSidecarSource = await readFile(
+  new URL("../electron/main/runtime/sidecar.ts", import.meta.url),
+  "utf8",
+);
 const hostSource = await readFile(
   new URL("../electron/main/host-process.ts", import.meta.url),
   "utf8",
@@ -39,6 +43,15 @@ test("sidecar detaches host listeners and gates every child write", () => {
     sidecarSource.replace(/private writeToChild\([\s\S]*?\n  \}/, ""),
     /this\.child\.stdin\.write\(/,
   );
+});
+
+test("tool diagnostics emit one bounded outcome instead of start/end spam", () => {
+  assert.match(runtimeSidecarSource, /summarizeToolResult/);
+  assert.match(runtimeSidecarSource, /tool execution completed/);
+  assert.match(runtimeSidecarSource, /tool execution failed/);
+  assert.match(runtimeSidecarSource, /tool execution interrupted/);
+  assert.doesNotMatch(runtimeSidecarSource, /logger\.app\([\s\S]*?"tool start"/);
+  assert.doesNotMatch(runtimeSidecarSource, /logger\.app\([\s\S]*?"tool end"/);
 });
 
 test("host transport closes pending calls and listeners on process death", () => {

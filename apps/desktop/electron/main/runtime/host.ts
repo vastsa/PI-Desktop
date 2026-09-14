@@ -1,4 +1,4 @@
-import { ErrorCodes, IPC, type AgentEventEnvelope } from "@pi-desktop/shared";
+import { ErrorCodes, IPC, type AgentEventEnvelope, type Risk } from "@pi-desktop/shared";
 import { assertLinuxGlibcSupported } from "../linux-glibc";
 import { HostProcess } from "../host-process";
 import type { Logger } from "../logger";
@@ -62,34 +62,51 @@ export function createHostRuntime({
     // current plugin/renderer bridge after a restart.
     if (runtimeState.host !== h) return;
     if (method === "permissions.request") {
-      logger.app("permission", "info", "permission requested", {
-        sessionId: (params as any).sessionId,
-        toolCallId: (params as any).toolCallId,
-        data: { toolName: (params as any).toolName, risk: (params as any).risk },
-      });
+      const permission = params as {
+        requestId: string;
+        sessionId: string;
+        toolCallId: string;
+        toolName: string;
+        argsPreview: string;
+        risk: Risk;
+        reason: string;
+      };
       // A delegate's call is already in `activeToolCalls` by the time the host
       // asks: the sidecar forwards `tool_start` before it executes the tool.
       // Without this the dialog would attribute a delegate's write to the main
       // agent, which is the one thing the user must not be confused about.
       const asking = activeToolCalls.get(
         activeToolCallKey(
-          (params as any).sessionId,
-          (params as any).toolCallId,
+          permission.sessionId,
+          permission.toolCallId,
         ),
       );
+      logger.app("permission", "info", "permission requested", {
+        requestId: permission.requestId,
+        sessionId: permission.sessionId,
+        turnId: asking?.turnId,
+        toolCallId: permission.toolCallId,
+        parentToolCallId: asking?.parentToolCallId,
+        agentName: asking?.agentName,
+        data: {
+          toolName: permission.toolName,
+          risk: permission.risk,
+          reason: permission.reason,
+        },
+      });
       const envelope: AgentEventEnvelope = {
-        sessionId: (params as any).sessionId,
+        sessionId: permission.sessionId,
         ts: Date.now(),
         event: {
           type: "tool_permission_request",
           request: {
-            requestId: (params as any).requestId,
-            sessionId: (params as any).sessionId,
-            toolCallId: (params as any).toolCallId,
-            toolName: (params as any).toolName,
-            argsPreview: (params as any).argsPreview,
-            risk: (params as any).risk,
-            reason: (params as any).reason,
+            requestId: permission.requestId,
+            sessionId: permission.sessionId,
+            toolCallId: permission.toolCallId,
+            toolName: permission.toolName,
+            argsPreview: permission.argsPreview,
+            risk: permission.risk,
+            reason: permission.reason,
             ...(asking?.agentName ? { agentName: asking.agentName } : {}),
             ...(asking?.parentToolCallId
               ? { parentToolCallId: asking.parentToolCallId }

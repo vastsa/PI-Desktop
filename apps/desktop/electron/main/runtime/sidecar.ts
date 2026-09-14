@@ -15,7 +15,7 @@ import { OAUTH_AUTH_KIND, type VendorOAuth } from "../oauth";
 import type { AgentExtensionBridge } from "../agent-extensions";
 import type { BrowserHost } from "../browser-host";
 import type { InflightCheckpointer } from "../inflight-checkpoint";
-import type { Logger } from "../logger";
+import { summarizeToolResult, type Logger } from "../logger";
 import type { ModelsDevCatalog } from "../models-dev-catalog";
 import type { PluginRuntime } from "../plugin-runtime";
 import type { UserMcpRuntime } from "../user-mcp";
@@ -86,7 +86,19 @@ export function createSidecarRuntime({
     runtimeState.agentHostBridge?.ingest(envelope);
     sendToRenderer(IPC.event.agentMessage, envelope);
   };
-  const activeToolNames = new Map<string, string>();
+  const activeToolCalls = new Map<
+    string,
+    {
+      sessionId: string;
+      toolCallId: string;
+      toolName: string;
+      startedAt: number;
+      turnId?: string;
+      parentToolCallId?: string;
+      agentName?: string;
+    }
+  >();
+  const toolKey = (sessionId: string, toolCallId: string) => `${sessionId}:${toolCallId}`;
   const wireSidecar = (s: AgentSidecar) => {
 
   s.onNotification((method, params) => {
@@ -94,23 +106,47 @@ export function createSidecarRuntime({
       const envelope = params as AgentEventEnvelope;
       const event = envelope.event;
       if (event.type === "tool_start") {
-        activeToolNames.set(event.toolCallId, event.toolName);
-        logger.app("tool", "info", "tool start", {
+        activeToolCalls.set(toolKey(envelope.sessionId, event.toolCallId), {
           sessionId: envelope.sessionId,
           toolCallId: event.toolCallId,
-          data: { toolName: event.toolName },
+          toolName: event.toolName,
+          startedAt: envelope.ts,
+          turnId: envelope.turnId,
+          parentToolCallId: envelope.parentToolCallId,
+          agentName: envelope.agentName,
         });
       } else if (event.type === "tool_end") {
-        const toolName = activeToolNames.get(event.toolCallId);
-        activeToolNames.delete(event.toolCallId);
-        logger.app("tool", "info", "tool end", {
-          sessionId: envelope.sessionId,
-          toolCallId: event.toolCallId,
-          data: {
-            ...(toolName ? { toolName } : {}),
-            isError: event.isError === true,
+        const key = toolKey(envelope.sessionId, event.toolCallId);
+        const started = activeToolCalls.get(key);
+        activeToolCalls.delete(key);
+        const result = summarizeToolResult(event.result);
+        const resultCode =
+          typeof result.errorCode === "string"
+            ? result.errorCode
+            : typeof result.code === "string"
+              ? result.code
+              : undefined;
+        logger.app(
+          "tool",
+          event.isError ? "error" : "info",
+          event.isError ? "tool execution failed" : "tool execution completed",
+          {
+            sessionId: envelope.sessionId,
+            turnId: envelope.turnId ?? started?.turnId,
+            toolCallId: event.toolCallId,
+            parentToolCallId: started?.parentToolCallId,
+            agentName: started?.agentName,
+            ...(resultCode ? { code: resultCode } : {}),
+            data: {
+              toolName: started?.toolName ?? "unknown",
+              outcome: event.isError ? "error" : "success",
+              durationMs: started
+                ? Math.max(0, envelope.ts - started.startedAt)
+                : undefined,
+              result,
+            },
           },
-        });
+        );
       }
       emitAgentEvent(envelope);
       const persistedMessage = persistAgentEvent(envelope);
@@ -131,10 +167,28 @@ export function createSidecarRuntime({
   s.onExit(({ code, signal, intentional, stderrTail }) => {
     if (runtimeState.sidecar !== s) return;
     logger.flushChild("agent");
-    activeToolNames.clear();
+    const interruptedToolCalls = [...activeToolCalls.values()];
+    activeToolCalls.clear();
     runtimeState.sidecar = null;
     steeringReplies.clear();
     if (intentional || isQuitting()) return;
+    for (const tool of interruptedToolCalls) {
+      logger.app("tool", "error", "tool execution interrupted", {
+        sessionId: tool.sessionId,
+        turnId: tool.turnId,
+        toolCallId: tool.toolCallId,
+        parentToolCallId: tool.parentToolCallId,
+        agentName: tool.agentName,
+        data: {
+          toolName: tool.toolName,
+          outcome: "interrupted",
+          durationMs: Math.max(0, Date.now() - tool.startedAt),
+          reason: "agent_sidecar_exit",
+          exitCode: code,
+          signal,
+        },
+      });
+    }
     // A sidecar crash closes live approval waiters before the replacement
     // sidecar starts. This prevents an old renderer response from waking a
     // dead runtime and records the durable turn as interrupted.

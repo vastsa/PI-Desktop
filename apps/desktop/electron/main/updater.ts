@@ -117,10 +117,22 @@ export class AppUpdaterController {
     // lands on the next normal quit.
     autoUpdater.autoInstallOnAppQuit = true;
     autoUpdater.logger = {
-      info: (m: unknown) => this.logger.app("updater", "info", `updater: ${String(m)}`),
-      warn: (m: unknown) => this.logger.app("updater", "warn", `updater: ${String(m)}`),
-      error: (m: unknown) => this.logger.app("updater", "error", `updater: ${String(m)}`),
-      debug: (m: unknown) => this.logger.app("updater", "debug", `updater: ${String(m)}`),
+      info: (m: unknown) =>
+        this.logger.app("updater", "info", "updater diagnostic", {
+          data: { detail: String(m) },
+        }),
+      warn: (m: unknown) =>
+        this.logger.app("updater", "warn", "updater diagnostic", {
+          data: { detail: String(m) },
+        }),
+      error: (m: unknown) =>
+        this.logger.app("updater", "error", "updater diagnostic", {
+          data: { detail: String(m) },
+        }),
+      debug: (m: unknown) =>
+        this.logger.app("updater", "debug", "updater diagnostic", {
+          data: { detail: String(m) },
+        }),
     };
 
     autoUpdater.on("checking-for-update", () => {

@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
 import type { HostProcess, ProcessExitHandler, StderrHandler } from "./host-process";
+import { redactValue } from "./logger";
 import { DEFAULT_RPC_TIMEOUT_MS, rpcTimeoutMs } from "@pi-desktop/shared";
 
 // stderr lines kept per sidecar so an unexpected exit can be reported with the
@@ -151,7 +152,19 @@ export class AgentSidecar {
       if (!text) return;
       this.recordStderr(text);
       if (onStderr) onStderr(text);
-      else console.error(`[agent-sidecar] ${text.trimEnd()}`);
+      else {
+        console.error(
+          `[agent/runtime] ${JSON.stringify({
+            ts: new Date().toISOString(),
+            level: "info",
+            channel: "agent",
+            category: "runtime",
+            event: "child.process.stderr",
+            message: "child process stderr",
+            data: { output: redactValue(text.trimEnd()) },
+          })}`,
+        );
+      }
     });
 
     this.child.on("exit", (code, signal) => {

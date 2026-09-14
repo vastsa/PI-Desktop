@@ -8,6 +8,7 @@ import {
   Logger,
   ignoreBrokenStdio,
   isBrokenPipeError,
+  summarizeToolResult,
 } from "../electron/main/logger.ts";
 
 function brokenPipe(message = "write EPIPE", code = "EPIPE") {
@@ -47,9 +48,15 @@ test("logger routes records by category and keeps child stderr line-safe", async
       sessionId: "session-1",
       data: { apiKey: "must-not-be-written" },
     });
-    logger.app("tool", "info", "tool start", {
+    logger.app("tool", "info", "tool execution completed", {
       sessionId: "session-1",
       toolCallId: "tool-1",
+      data: {
+        toolName: "Read",
+        outcome: "success",
+        durationMs: 42,
+        result: summarizeToolResult({ ok: true, stdout: "file contents" }),
+      },
     });
     logger.child(
       "host",
@@ -66,14 +73,25 @@ test("logger routes records by category and keeps child stderr line-safe", async
     );
     assert.equal(sessionRecord.channel, "app");
     assert.equal(sessionRecord.category, "session");
+    assert.equal(sessionRecord.event, "prompt.accepted");
     assert.equal(sessionRecord.data.apiKey, "***REDACTED***");
+
+    const toolRecord = JSON.parse(
+      await readFile(join(dataDir, "logs", "app", "tool.log"), "utf8"),
+    );
+    assert.equal(toolRecord.event, "tool.execution.completed");
+    assert.equal(toolRecord.toolCallId, "tool-1");
+    assert.equal(toolRecord.data.outcome, "success");
+    assert.equal(toolRecord.data.result.stdoutChars, 13);
 
     const hostRecord = JSON.parse(
       await readFile(join(dataDir, "logs", "host", "tool.log"), "utf8"),
     );
     assert.equal(hostRecord.category, "tool");
-    assert.match(hostRecord.message, /tool=Read/);
-    assert.doesNotMatch(hostRecord.message, /\u001b/);
+    assert.equal(hostRecord.event, "child.process.stderr");
+    assert.equal(hostRecord.message, "child process stderr");
+    assert.match(hostRecord.data.output, /tool=Read/);
+    assert.doesNotMatch(hostRecord.data.output, /\u001b/);
     assert.equal(existsSync(join(dataDir, "logs", "host", "timing.log")), false);
     assert.equal(existsSync(join(dataDir, "logs", "agent")), false);
   } finally {
@@ -83,7 +101,7 @@ test("logger routes records by category and keeps child stderr line-safe", async
   }
 });
 
-test("logger suppresses info console mirroring in production and includes tool details in development", async () => {
+test("logger suppresses info console mirroring in production and mirrors full records in development", async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "pi-desktop-logger-console-"));
   const previousNodeEnv = process.env.NODE_ENV;
   const previousLog = console.log;
@@ -95,7 +113,7 @@ test("logger suppresses info console mirroring in production and includes tool d
 
   try {
     const productionLogger = new Logger(dataDir, "debug");
-    productionLogger.app("tool", "info", "tool start", {
+    productionLogger.app("tool", "info", "tool execution completed", {
       data: { toolName: "Read" },
     });
     assert.deepEqual(mirrored, []);
@@ -103,16 +121,25 @@ test("logger suppresses info console mirroring in production and includes tool d
     const developmentLogger = new Logger(dataDir, "debug", {
       mirrorConsole: true,
     });
-    developmentLogger.app("tool", "info", "tool start", {
-      data: { toolName: "Read" },
+    developmentLogger.app("tool", "info", "tool execution completed", {
+      toolCallId: "tool-1",
+      data: { toolName: "Read", outcome: "success" },
     });
-    developmentLogger.app("tool", "info", "tool end", {
-      data: { toolName: "Read", isError: false },
+    developmentLogger.app("tool", "error", "tool execution failed", {
+      toolCallId: "tool-2",
+      code: "TOOL_FAILED",
+      data: { toolName: "Read", outcome: "error" },
     });
-    assert.deepEqual(mirrored, [
-      "[app/tool] tool start tool=Read",
-      "[app/tool] tool end tool=Read error=false",
-    ]);
+    assert.equal(mirrored.length, 2);
+    const records = mirrored.map((line) =>
+      JSON.parse(line.slice("[app/tool] ".length)),
+    );
+    assert.equal(records[0].event, "tool.execution.completed");
+    assert.equal(records[0].toolCallId, "tool-1");
+    assert.equal(records[0].data.toolName, "Read");
+    assert.equal(records[1].event, "tool.execution.failed");
+    assert.equal(records[1].code, "TOOL_FAILED");
+    assert.equal(records[1].toolCallId, "tool-2");
   } finally {
     console.log = previousLog;
     console.error = previousError;
@@ -120,6 +147,64 @@ test("logger suppresses info console mirroring in production and includes tool d
     else process.env.NODE_ENV = previousNodeEnv;
     await rm(dataDir, { recursive: true, force: true });
   }
+});
+
+test("logger bounds and redacts messages, paths, credentials, and arbitrary data", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "pi-desktop-logger-redaction-"));
+  try {
+    const logger = new Logger(dataDir, "debug");
+    const providerSecret = "sk-proj-abcdefghijklmnopqrstuvwxyz";
+    logger.app("provider", "error", "provider request failed", {
+      sessionId: "session-1",
+      code: "PROVIDER_UNAUTHORIZED",
+      data: {
+        apiKey: providerSecret,
+        authorization: "Bearer very-long-provider-token-123456789",
+        endpoint: "https://alice:password@example.com/v1?access_token=secret-value",
+        path: join(dataDir, "workspace", "private.txt"),
+        detail: "failed while reading /Volumes/private/project/config.json",
+        password: "do-not-write",
+        huge: "x".repeat(30_000),
+      },
+    });
+
+    const record = JSON.parse(
+      await readFile(join(dataDir, "logs", "app", "provider.log"), "utf8"),
+    );
+    const serialized = JSON.stringify(record);
+    assert.equal(record.event, "provider.request.failed");
+    assert.equal(record.code, "PROVIDER_UNAUTHORIZED");
+    assert.equal(record.data.apiKey, "***REDACTED***");
+    assert.equal(record.data.authorization, "***REDACTED***");
+    assert.equal(record.data.password, "***REDACTED***");
+    assert.equal(record.data.path, "<data-dir>/workspace/private.txt");
+    assert.equal(record.data.detail, "failed while reading <local-path>");
+    assert.match(record.data.huge, /\[truncated/);
+    assert.ok(Buffer.byteLength(JSON.stringify(record.data), "utf8") <= 8 * 1024);
+    assert.doesNotMatch(serialized, /sk-proj-abcdefghijklmnopqrstuvwxyz/);
+    assert.doesNotMatch(serialized, /very-long-provider-token/);
+    assert.doesNotMatch(serialized, /do-not-write/);
+    assert.doesNotMatch(serialized, /alice:password@/);
+    assert.doesNotMatch(serialized, /access_token=secret-value/);
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("tool result summaries keep outcome metadata without copying output", () => {
+  const summary = summarizeToolResult({
+    ok: false,
+    errorCode: "COMMAND_FAILED",
+    stdout: "output that must stay out of diagnostic logs",
+    stderr: "sk-proj-never-write-this",
+    content: [{ type: "text", text: "private content" }],
+  });
+  assert.equal(summary.ok, false);
+  assert.equal(summary.errorCode, "COMMAND_FAILED");
+  assert.equal(summary.stdoutChars, 44);
+  assert.equal(summary.stderrChars, 24);
+  assert.equal(summary.contentBlocks, 1);
+  assert.doesNotMatch(JSON.stringify(summary), /must stay out|sk-proj|private content/);
 });
 
 test("logger console mirror never throws when stdout is a broken pipe", async () => {
