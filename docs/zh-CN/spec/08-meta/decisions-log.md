@@ -87,6 +87,7 @@
 | D410 | 独立会话发现与可导航协作投影 | **修订 ADR 0239：新增经审查的 `session/collaboration/list` 读取操作，限制为最多 100 个未删除 Agent 会话，并只返回 Session ID、标题、状态、更新时间、可读 provider/model 标签和有界创建关系。侧边栏投影增加可读模型标签和最多八个已创建会话引用。创建者/已创建会话引用渲染为可键盘聚焦的导航按钮；独立会话不伪造创建者链接。不改变渲染器存储归属或协作写入边界。见 ADR 0240、E2E-SESSION-independent-top-level-communication 和 E2E-SESSION-hover-card-model-and-links。** | 现有 Session ID 虽然是有效发送目标，但未由插件创建的会话可能不可发现；hover 卡片也只暴露 ID，来源信息不可交互。有界 host 目录和可导航投影让持久会话可通信、可解释，同时不暴露转录或凭据。 |
 | D413 | 技能市场公网 HTTPS 目录拉取 | **增量：设置 → 技能市场由 Electron 主进程按共享公网 HTTPS 策略发现 SKILL.md（公网主机语法 + DNS 分类 + 逐跳 redirect）。渲染层不发网。安装仍走 `skills.create`。目录 id 与 host `valid_capability_id` 对齐。展开后超过 128 KiB 拒绝写入。内置标题为英文。见 ADR 0243、E2E-SKILL-MARKET-*、issue #287。** | 社区技能发现需要主进程出网，且不能复用插件市场的主机允许列表；复制分类器会与 MCP 市场撞名。 |
 | D412 | 仅增量且合并的流式更新 | **修订本地 `message_update` 契约：追加型流式帧携带 `stream: delta` 以及 `deltaText`/`deltaThinking`（和 reset 标志），不再附带增长中的 `content`/`thinking`。运行时每 16ms 合并这些帧，并在语义边界前立即 flush。AgentHost、进行中检查点和渲染器应用增量；`message_start`/`message_end` 仍是完整快照。仅尾部 token 变化时，转录活动 part 保持对象身份。协议版本仍为 11。见 ADR 0242、E2E-STREAM-long-turn-keeps-realtime 和 issue #299。** | 每个 token 都在 sidecar、AgentHost 和 IPC 上重新序列化完整助手快照，长回合接近 O(n²) 字节并让后续短块排队变慢。 |
+| D416 | Git clone 只接受语法上的公网主机 | **修订首页 Git clone：`parseGitCloneUrl` 复用 `isPublicHostname`，在运行 `git clone` 前拒绝回环、私网、CGNAT、链路本地、ULA 以及 `.local`/`.localhost` 远程。指向公网主机的 HTTPS/HTTP/SSH/`git@host:path` 仍然有效。`file:` 和 URL 密码继续拒绝。Git 仍自己做 DNS；这不是市场那种地址固定。见 ADR 0247 与 E2E-CLONE-public-hostname-rejects-private。** | clone 曾接受 `http://127.0.0.1/...` 和 RFC1918 字面量，这是市场 HTTPS 拉取已经关掉的局域网/SSRF 缺口。 |
 | D244 | 紧凑的上下文用量摘要 | **修订 D103 / D184 / ADR 0047：保留上下文检查器的剩余容量触发器、已用/窗口计数、回合合计、已完成回合速度、精确的提供商数值、聚合的工具类型/调用数/令牌数以及检查点摘要，但把它们渲染为一段简短摘要。从默认面板中移除逐工具行、占比条、来源徽章、解释性估算段落和已用容量计量条。不改动协议、存储、运行时计费或模型元数据。** *（由 D347 修订：触发器移到输入框工具栏。）* | 之前的诊断式布局让一次例行的容量检查变得又高又密。保留聚合信号、移除下钻装饰，使默认状态界面可以快速浏览，同时不改变底层用量数据。参见 ADR 0103 与 E2E-060d / US-UI-61。 |
 | D347 | 输入框工具栏中的上下文用量检查器 | **修订 D103 / D184 / D244 / ADR 0047 / ADR 0103：紧凑上下文检查器放在输入框右侧工具栏、模型 × 推理芯片左侧，始终对应当前最新一条已报告用量的助手回合。触发器保留剩余容量圆环和百分比，去掉重复的 Context 文字。弹层标题为剩余 tokens + 百分比；下方行用同一套左标签/右数值节奏，只用留白分隔，不画内部分隔线（D297）。答案下方的助理元只保留模型徽章。仅渲染器改动。** | 挂在最新答案下方的检查器会随记录滚出视野。输入框只保留一个入口作为最新快照的权威位置；标题双线通过去掉多余说明文字解决，而不是加分隔线。参见 ADR 0184 与 E2E-060d / US-UI-61。 |
 | D355 | 上下文检查器按最后一次请求计算占用 | **修订 D103 / D184 / D244 / D347 / ADR 0047 / ADR 0103 / ADR 0184：剩余容量、已用/窗口计数、本轮合计，以及模型 input/output/cache/reasoning/命中率，都取最新一条已报告用量的助手消息（最后一次模型请求）。占用为该消息的 `input + output + reasoning + cacheRead + cacheWrite`。它们不是视觉工具循环里每一次请求的加总。已完成回合速度和聚合工具行仍描述该视觉回合。仅渲染器改动；宿主回合汇总和 Token Insights 仍做账单累加。** | 把工具循环里的缓存读取加总后，367k 缓存读取会紧挨着 55k 窗口。OpenCode 的上下文组件只用最后一条助手消息。参见 ADR 0193 与 E2E-060d。 |
@@ -3984,3 +3985,48 @@ source of truth; renderer organization is mirrored without a persistence
 change. macOS single-click opens the menu without restoring the window;
 selection is delivered after bootstrap and uses normal session navigation.
 Validation contract: E2E-TRAY-bounded-session-navigation.
+
+## 2026-09-14 —— Git clone 只接受语法上的公网主机（D416）
+
+- 首页「克隆 Git 项目」仍接受 https/http/ssh/`git@host:path`，并拒绝 URL 密码和 `file:`。
+- 主机名用与市场守卫相同的 `isPublicHostname` 分类。私网和回环字面量在解析阶段失败。
+- Git 自己的 DNS/SSH 不变；Electron Main 不固定 clone 连接。
+- 见 ADR 0247 与 E2E-CLONE-public-hostname-rejects-private。
+
+## 2026-09-14 —— 主题 CSS 校验只检查真正生效的 CSS（D417）
+
+- `ui.theme` 消毒器在 `@import`、标记和脚本关键字检查前遮蔽注释体与字符串字面量，
+  每个被遮蔽字符对应一个空格，偏移仍指向原文；每个 `url(...)` 参数按原样保留，
+  因此真实引用仍按目标判定。
+- 采用字符级三态扫描而非 `/* … */` 剥离：在 `content: "/*";` 中浏览器看到的是字符串，
+  朴素剥离会把它当成注释，从而藏掉其后的真实 `@import "x.css";`。
+- `examples/plugins/hello/themes/midnight.css` 恢复加载。只是收窄了误拒面：没有新增能力、
+  没有格式变化，对从不出现被禁关键字的样式表行为完全不变。见 issue #334 与 E2E-024J。
+
+## 2026-09-14 —— 主题包内资源与原生窗口背景（D418）
+
+- `contributes.themes[].assets` 声明插件包内的图片与字体文件（扩展名白名单、总量上限
+  4MB）。宿主在插件包内解析它们、拒绝依赖目录、把命中的 `url()` 改写为
+  `plugin-asset://<pluginId>/<path>`，并通过宿主自有的特权协议提供；该处理器只按已加载
+  插件自己声明的清单应答。未声明的引用仍被拒绝，原始路径不会到达渲染器，因此
+  `data:`-only 规则与既有全部拒绝行为不变。权限仍沿用 `ui.theme`。
+- `contributes.windowAppearance.backgroundColor.{light,dark}` 接受
+  `#rrggbb` / `#rrggbbaa`，需要新增的 `ui.window.appearance` 授予。它只在该插件的某个
+  主题被选中时、且仅在非 macOS 上生效；还原靠推导而非记忆——渲染器每次根据持久化偏好与
+  实时主题目录重新计算，所以切换、禁用、卸载都会收敛回宿主背景，没有需要回滚的存储值。
+- 内置主题改由同一张共享表提供该值（`packages/shared/src/theme.ts`）：`BUILTIN_THEMES`
+  只写一次每个调色板的 `windowBackground`，`isThemeColorScheme` 只写一次「这是内置
+  id」的判断，由渲染器、main、面板宿主、面板 preload 与主题选择器共同读取。此前
+  `#ffffff` / `#181818` 这对字面量散在四个文件里，内置路径与插件路径可能因此分叉。
+  见 ADR 0248、issue #335 与 E2E-024J。
+
+## 2026-09-14 —— 停靠列的颜色是标记而非字面量（D419）
+
+- 工作面板列及其内部条目栏的表面色改由 `--ds-bg-dock` 与 `--ds-bg-dock-raised`
+  提供。浅色下为 `#fafafa` 与 `#ffffff`；深色下为 `var(--ds-bg-secondary)` 与
+  `transparent`，与改动前基础规则解析出的值完全一致。
+- `work-panel.css` 里原有 6 处 `:root[data-theme="light"]` 字面量，既抬高特异度压过
+  基础规则、又不读变量，导致整列在任何插件主题下都保持宿主底色。这些覆写已删除。
+- 设计系统的表面层级表现在登记了这两个标记，§6.4 也写下了它们要维护的规则：外壳绘制的
+  表面色必须来自标记，而 `:root[data-theme]` 覆写里写字面量正是失效模式。
+- `settings.css`（导航轨、搜索框、开关钮、能力搜索）等文件另有同类洞，见 issue #339。

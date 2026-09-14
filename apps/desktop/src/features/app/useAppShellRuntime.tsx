@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import {
   KEYBOARD_SHORTCUTS,
   isActiveInProject,
+  isThemeColorScheme,
   keybindingDisplayParts,
   keybindingMatchesEvent,
   resolveFontScale,
@@ -461,7 +462,7 @@ export function useAppShellRuntime() {
     // `system` instead of leaving the shell on a half-applied palette.
     const base: "system" | "light" | "dark" = pluginTheme
       ? pluginTheme.base
-      : preference === "light" || preference === "dark"
+      : isThemeColorScheme(preference)
         ? preference
         : "system";
 
@@ -485,7 +486,14 @@ export function useAppShellRuntime() {
       const resolvedTheme =
         base === "system" ? (mq.matches ? "light" : "dark") : base;
       document.documentElement.dataset.theme = resolvedTheme;
-      void api.setWindowBackgroundColor(resolvedTheme).catch(() => undefined);
+      // A contributed theme may name the native window background for this
+      // palette. Deriving it here (rather than remembering an applied value) is
+      // what restores the host default on a switch, a disable, or an uninstall:
+      // the plugin theme is gone from the catalog, so there is nothing left to
+      // pass and the host colour wins.
+      void api
+        .setWindowBackgroundColor(resolvedTheme, pluginTheme?.windowBackground?.[resolvedTheme])
+        .catch(() => undefined);
     };
     apply();
     if (base !== "system") return;

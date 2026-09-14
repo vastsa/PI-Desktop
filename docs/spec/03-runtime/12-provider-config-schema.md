@@ -231,6 +231,43 @@ account isolation. Agent-runtime supplies Copilot's context-sensitive request
 headers per call; a saved custom header with the same name overrides the
 default.
 
+### Copy a provider into an independent draft
+
+Model configuration offers **Copy** on ordinary non-OAuth provider rows. The
+action normally opens a new custom-service draft with an editable API format,
+allowing the same endpoint and model bindings to be reused for another
+protocol. OpenCode Go is the exception: its copy retains the named service and
+fixed `opencode_go` format; selecting Custom service first makes the ordinary
+API formats editable. OAuth account rows do not offer this action.
+
+The draft is built from an explicit allowlist: the source name, `baseUrl`,
+`apiStyle`, and declared `models` binding fields. Model objects and nested
+`thinkingLevels` arrays are copied independently so draft edits cannot mutate
+the source. A copy label may distinguish the suggested name; the user can edit
+it before saving. No source `id`, credential or credential reference,
+`hasSecret` state, OAuth metadata, custom `headers`, or unknown fields are
+copied. All custom headers are omitted because an otherwise permitted header
+may contain a token. The dialog explains that credentials and custom headers
+must be supplied again when needed.
+
+A malformed Base URL, a non-HTTP(S) scheme, or a URL containing user info,
+query parameters, or a fragment is left blank in the draft so legacy URL
+credentials are not copied.
+
+The draft uses the normal new-provider discovery path: it must not pass the
+source provider id to model discovery or connection testing to resolve that
+provider's stored key. Any authenticated discovery uses only credentials
+explicitly supplied for the new draft. Copying does not read or duplicate
+secret-store values.
+
+Canceling the draft performs no provider/configuration persistence. Saving
+uses the existing `createProvider` / `providers.create` flow and assigns a new
+provider identity and, when a new key is entered, that provider's own secret
+reference. The source provider and global default provider/model selections
+remain unchanged. The first selected model remains the new provider's own
+default through the existing create behavior. Copying adds no IPC method,
+storage schema, or permission boundary.
+
 ## 3. Built-in vendor presets
 
 Presets only prefill form defaults; they are not a closed world.

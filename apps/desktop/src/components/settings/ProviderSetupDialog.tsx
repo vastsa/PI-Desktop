@@ -23,6 +23,7 @@ import { ProviderHeadersEditor } from "./ProviderHeadersEditor";
 import { useProviderModels } from "./useProviderModels";
 import { ModelSelectionPanes, useModelSelection } from "./ModelSelectionPanes";
 import { CUSTOM_SERVICE, ServicePicker } from "./ServicePicker";
+import type { ProviderCopyDraft } from "./provider-copy";
 
 const API_STYLE_LABEL_KEYS: Record<CatalogApiStyle, string> = {
   chat_completions: "settings.apiStyleChatCompletions",
@@ -139,28 +140,34 @@ function endpointHost(url: string): string {
 
 export type ProviderSetupDialogProps = {
   provider?: ProviderPublic | null;
+  initialDraft?: ProviderCopyDraft | null;
   onClose: () => void;
   onSaved: (provider: ProviderPublic, models: ModelBinding[]) => void;
 };
 
 export function ProviderSetupDialog({
   provider,
+  initialDraft,
   onClose,
   onSaved,
 }: ProviderSetupDialogProps) {
   const { t } = useTranslation();
   const editing = !!provider;
   const apiKeyRef = useRef<HTMLInputElement>(null);
-  const [service, setService] = useState(() => serviceIdFor(provider));
-  const [name, setName] = useState(() => initialName(provider));
-  const [baseUrl, setBaseUrl] = useState(() => initialBaseUrl(provider));
+  const [service, setService] = useState(() => initialDraft
+    ? initialDraft.apiStyle === OPENCODE_GO_API_STYLE
+      ? NAMED_ENDPOINT_PRESETS.find((preset) => preset.apiStyle === OPENCODE_GO_API_STYLE)?.id ?? CUSTOM_SERVICE
+      : CUSTOM_SERVICE
+    : serviceIdFor(provider));
+  const [name, setName] = useState(() => initialDraft?.name ?? initialName(provider));
+  const [baseUrl, setBaseUrl] = useState(() => initialDraft?.baseUrl ?? initialBaseUrl(provider));
   const [apiKey, setApiKey] = useState("");
   const [apiStyle, setApiStyle] = useState<CatalogApiStyle>(() =>
-    normalizeApiStyle(provider?.apiStyle),
+    initialDraft?.apiStyle ?? normalizeApiStyle(provider?.apiStyle),
   );
   const [headerPairs, setHeaderPairs] = useState(() => recordToPairs(provider?.headers));
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [models, setModels] = useState<ModelBinding[]>(provider?.models ?? []);
+  const [models, setModels] = useState<ModelBinding[]>(initialDraft?.models ?? provider?.models ?? []);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [error, setError] = useState("");
@@ -345,7 +352,7 @@ export function ProviderSetupDialog({
       >
         <div className="provider-setup-head">
           <h3 id="provider-setup-title" className="provider-setup-title">
-            {editing ? t("settings.editProviderTitle") : t("settings.addProviderTitle")}
+            {initialDraft ? t("settings.copyProviderTitle") : editing ? t("settings.editProviderTitle") : t("settings.addProviderTitle")}
           </h3>
           <div className="provider-setup-head-actions">
             {named || custom ? (
@@ -383,6 +390,7 @@ export function ProviderSetupDialog({
         </div>
 
         <div className="provider-setup-body">
+          {initialDraft ? <p className="settings-hint">{t("settings.copyProviderHint")}</p> : null}
           {error ? <div className="provider-setup-error">{error}</div> : null}
 
           <div className="provider-setup-credentials">

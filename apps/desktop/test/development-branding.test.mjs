@@ -19,6 +19,7 @@ const devScriptUrl = new URL(
 const mainSource = await readMainSource();
 const mainIndexSource = await readMainModule("index.ts");
 const brandingSource = await readMainModule("bootstrap/app-lifecycle.ts");
+const windowSource = await readMainModule("bootstrap/window.ts");
 const startupSource = await readMainModule("bootstrap/startup.ts");
 const iconScriptSource = await readFile(
   new URL("../../../scripts/make-icon.py", import.meta.url),
@@ -35,6 +36,9 @@ const protocolSource = await readFile(
   new URL("../../../packages/shared/src/protocol.ts", import.meta.url),
   "utf8",
 );
+const windowsIcon = await readFile(
+  new URL("../build/icon.ico", import.meta.url),
+);
 
 test("Windows runtime registers the canonical native application identity", () => {
   const appId = protocolSource.match(/APP_ID = "([^"]+)"/)?.[1];
@@ -50,6 +54,25 @@ test("Windows runtime registers the canonical native application identity", () =
 test("Windows packages pin PI-Desktop executable and shortcut names", () => {
   assert.equal(packageJson.build.win.executableName, "PI-Desktop");
   assert.equal(packageJson.build.nsis.shortcutName, "PI-Desktop");
+});
+
+test("Windows packages and windows use the canonical PI-Desktop icon", () => {
+  assert.equal(packageJson.build.win.icon, "build/icon.ico");
+  assert.deepEqual(
+    packageJson.build.win.extraResources.find((resource) => resource.to === "app-icon.ico"),
+    {
+      from: "build/icon.ico",
+      to: "app-icon.ico",
+    },
+  );
+  assert.deepEqual([...windowsIcon.subarray(0, 4)], [0, 0, 1, 0]);
+  assert.ok(windowsIcon.readUInt16LE(4) >= 4, "ICO must contain multiple sizes");
+  assert.match(iconScriptSource, /windows_icon = BUILD \/ "icon\.ico"/);
+  assert.match(iconScriptSource, /format="ICO"/);
+  assert.match(windowSource, /function windowsIconPath\(\)/);
+  assert.match(windowSource, /app\.isPackaged\s*\n?\s*\?\s*process\.resourcesPath/);
+  assert.match(windowSource, /app-icon\.ico/);
+  assert.match(windowSource, /icon: windowsIconPath\(\)/);
 });
 
 test("Linux packages align the desktop entry with the Wayland app identity", () => {

@@ -41,6 +41,13 @@
   --ds-bg-tertiary: var(--gray-750);
   --ds-bg-inset: var(--gray-1000);
   --ds-bg-under: #000000;
+  /*
+   * The dock column and its raised header/chrome strips carry their own tokens
+   * so a contributed theme can move them: before D419 the light values were
+   * literals in work-panel.css, which no theme could reach.
+   */
+  --ds-bg-dock: var(--ds-bg-secondary);
+  --ds-bg-dock-raised: transparent;
   --ds-bg-elevated: color-mix(in oklab, var(--gray-800) 96%, transparent);
   --ds-bg-elevated-opaque: var(--gray-750);
   --ds-bg-hover: color-mix(in oklab, var(--gray-0) 6%, transparent);
@@ -120,6 +127,9 @@
   --ds-work-panel-toggle-size: 28px;
   --ds-work-panel-toggle-inset: 12px;
   --ds-work-panel-toggle-gap: 20px;
+  /* Preview-mode shell actions are two 22px buttons with a 4px gap and an
+     additional 8px buffer before the panel's first tab. */
+  --ds-preview-action-lane-width: 56px;
   /* Keep an 8px visual buffer between work-panel actions and window chrome. */
   --ds-window-controls-width: 120px;
   --ds-composer-radius: var(--radius-xl);
@@ -145,6 +155,9 @@
   --ds-bg-tertiary: #f3f3f3;
   --ds-bg-inset: #ededed;
   --ds-bg-under: #f9f9f9;
+  /* Dock column reads as quiet inset paper on the white chat pane (D419). */
+  --ds-bg-dock: #fafafa;
+  --ds-bg-dock-raised: #ffffff;
   --ds-bg-elevated: color-mix(in oklab, #ffffff 70%, transparent);
   --ds-bg-elevated-opaque: #ffffff;
   --ds-bg-hover: color-mix(in oklab, #1a1c1f 5%, transparent);

@@ -75,6 +75,7 @@ type PluginContributes = {
  agentExtensions?: string[]; // ExtensionAPI modules run in the agent sidecar; needs `agent.extension` (spec 16)
  settings?: PluginSettingContrib[];
  themes?: PluginThemeContrib[];
+ windowAppearance?: PluginWindowAppearanceContrib; // native window background; needs `ui.window.appearance`
  mcpServers?: PluginMcpServerContrib[];
   services?: PluginServiceContrib[];
   bus?: PluginBusContrib;
@@ -132,6 +133,12 @@ type PluginThemeContrib = {
  label: string;
  path: string; // relative `.css` file
  base?: "light" | "dark"; // palette the overrides layer on, default `dark`
+ assets?: string[]; // relative png/jpg/jpeg/webp/avif/svg/woff2, 4 MB summed;
+                    // each matching `url()` is rewritten to `plugin-asset://`
+};
+
+type PluginWindowAppearanceContrib = {
+ backgroundColor?: { light?: string; dark?: string }; // #rrggbb | #rrggbbaa
 };
 
 type PluginSkillContrib = {
@@ -173,6 +180,7 @@ type PluginPermission =
  | "ui.panel"
  | "ui.view"
  | "ui.theme"
+ | "ui.window.appearance"
  | "clipboard.read"
  | "clipboard.write"
  | "notify"

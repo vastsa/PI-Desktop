@@ -17,6 +17,7 @@ pub const NOTIFICATION_KEEP: i64 = 200;
 
 mod migrations;
 mod model;
+mod project_groups;
 mod repositories;
 mod schema;
 mod session_collaboration_migration;
@@ -29,6 +30,7 @@ pub(crate) use migrations::{
 };
 pub(crate) use model::PlanWorkRow;
 pub use model::{Database, ProjectMemoryEntryRecord, ProjectMemoryRecord, ProjectRecord};
+pub use project_groups::{ProjectGroupContextRecord, ProjectGroupRecord, ProjectGroupRoot};
 pub(crate) use repositories::{
     canonical_project_path, normalize_project_path, project_display_name,
     strip_obsolete_plan_approval_permission_mode, upsert_project_row, MAX_PROJECT_MEMORY_BYTES,

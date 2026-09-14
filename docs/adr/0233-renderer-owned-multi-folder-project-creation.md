@@ -1,6 +1,6 @@
 # ADR 0233: Renderer-Owned Multi-Folder Project Creation
 
-- Status: Accepted
+- Status: Accepted; behavior superseded in part by ADR 0249
 - Date: 2026-09-12
 - Deciders: PI-Desktop desktop UI maintainers
 - Amends: ADR 0011, ADR 0016
@@ -26,10 +26,11 @@ would also lose the user's explicit project choices.
 2. The main process exposes `project/pickFolders` as a narrow native capability.
    It may open a multi-selection directory picker and returns absolute paths;
    it does not change the active host workspace.
-3. The first selected folder is the Primary project. Creation activates it,
-   applies the entered display name to it, and retains every other selected
-   folder as an open project tab. The host still owns only the one currently
-   active workspace, as required by ADR 0011.
+3. The first selected folder is the primary root of one logical project group.
+   Creation activates it and applies the entered display name to the group;
+   every other selected folder is retained as a group root, not as an
+   independent project tab. The host still exposes only the primary root as the
+   currently active workspace.
 4. The sidebar and Settings project entry points use the same dialog and
    creation action.
 
@@ -37,8 +38,7 @@ would also lose the user's explicit project choices.
 
 - Users can name a project and add multiple folders without repeating the
   project-entry flow.
-- Additional folders remain available as durable project tabs instead of being
-  discarded.
+- Additional folders remain available as durable roots of the same named project group.
 - The host RPC and security boundary remain unchanged apart from the additive
   directory-picker capability; switching tabs still changes the one active
   host workspace through the existing project activation path.
@@ -47,9 +47,10 @@ would also lose the user's explicit project choices.
 
 ## Alternatives considered
 
-- **Add multi-folder ownership to host-core:** rejected because it changes the
-  frozen one-visible-workspace model and requires new ownership, session, and
-  permission semantics.
+- **Add multi-root execution to the host workspace:** rejected because it changes
+  the frozen one-visible-workspace model and requires a separate containment and
+  permission design. ADR 0249 adds logical group ownership without broadening
+  builtin tool roots.
 - **Keep the native picker as the entire UI:** rejected because it cannot
   collect a project name, expose selected-folder removal, or provide a
   consistent ChatGPT-like creation surface.

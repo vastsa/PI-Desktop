@@ -33,18 +33,23 @@ test("create project dialog supports named multi-folder setup", () => {
   assert.match(dialog, /querySelectorAll<HTMLElement>\(/);
 });
 
-test("project creation keeps one primary workspace and retains additional folders", () => {
+test("project creation creates one logical group with a primary workspace", () => {
   assert.match(store, /createProjectDialogOpen: boolean/);
   assert.match(store, /openProject: async \(\) => \{\s*set\(\{ createProjectDialogOpen: true \}\)/);
   assert.match(store, /createProjectFromFolders: async \(\{ name, folders, primaryPath \}\)/);
   assert.match(store, /const orderedFolders = \[/);
-  assert.match(store, /for \(const path of orderedFolders\)/);
-  assert.match(store, /get\(\)\.renameProject\(primary, normalizedName\)/);
+  assert.match(store, /api\.createProjectGroup\(normalizedName, orderedFolders\)/);
+  assert.match(store, /created\.group\.primaryPath/);
+  assert.doesNotMatch(store, /for \(const path of orderedFolders\)/);
+  assert.match(store, /get\(\)\.renameProject\(groupPrimary, normalizedName\)/);
   assert.match(store, /set\(\{ createProjectDialogOpen: false, onboarding, page: "chat" \}\)/);
 });
 
 test("folder picker is a renderer-only multi-directory selection", () => {
   assert.match(protocol, /projectPickFolders:\s*"pi-desktop\/project\/pickFolders"/);
+  assert.match(protocol, /projectGroupCreate:\s*"pi-desktop\/project-group\/create"/);
+  assert.match(api, /createProjectGroup: \(name: string, folders: string\[\]\)/);
+  assert.match(main, /project\.group\.create/);
   assert.match(api, /pickProjectFolders: \(\) =>[\s\S]*?projectPickFolders/);
   const start = main.indexOf("IPC.invoke.projectPickFolders");
   const end = main.indexOf("IPC.invoke.projectClone", start);

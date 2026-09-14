@@ -83,6 +83,45 @@ test("logger routes records by category and keeps child stderr line-safe", async
   }
 });
 
+test("logger suppresses info console mirroring in production and includes tool details in development", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "pi-desktop-logger-console-"));
+  const previousNodeEnv = process.env.NODE_ENV;
+  const previousLog = console.log;
+  const previousError = console.error;
+  const mirrored = [];
+  process.env.NODE_ENV = "production";
+  console.log = (message) => mirrored.push(message);
+  console.error = (message) => mirrored.push(message);
+
+  try {
+    const productionLogger = new Logger(dataDir, "debug");
+    productionLogger.app("tool", "info", "tool start", {
+      data: { toolName: "Read" },
+    });
+    assert.deepEqual(mirrored, []);
+
+    const developmentLogger = new Logger(dataDir, "debug", {
+      mirrorConsole: true,
+    });
+    developmentLogger.app("tool", "info", "tool start", {
+      data: { toolName: "Read" },
+    });
+    developmentLogger.app("tool", "info", "tool end", {
+      data: { toolName: "Read", isError: false },
+    });
+    assert.deepEqual(mirrored, [
+      "[app/tool] tool start tool=Read",
+      "[app/tool] tool end tool=Read error=false",
+    ]);
+  } finally {
+    console.log = previousLog;
+    console.error = previousError;
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousNodeEnv;
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
 test("logger console mirror never throws when stdout is a broken pipe", async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "pi-desktop-logger-epipe-"));
   const previousLog = console.log;

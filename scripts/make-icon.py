@@ -6,6 +6,7 @@ truth. This script preserves that file and emits:
 
   apps/desktop/build/icon.iconset/  - all macOS iconset sizes
   apps/desktop/build/icon.icns      - via `iconutil` (macOS only)
+  apps/desktop/build/icon.ico       - multi-size Windows application icon
   apps/desktop/build/icon.png       - 512px Windows/Linux package icon
   apps/desktop/build/tray-icon-mac.png - transparent macOS template icon
 
@@ -39,6 +40,19 @@ def main() -> None:
         )
 
     BUILD.mkdir(parents=True, exist_ok=True)
+    windows_icon = BUILD / "icon.ico"
+    master.save(
+        windows_icon,
+        format="ICO",
+        sizes=[
+            (16, 16),
+            (32, 32),
+            (48, 48),
+            (64, 64),
+            (128, 128),
+            (256, 256),
+        ],
+    )
     package_icon = BUILD / "icon.png"
     master.resize((512, 512), Image.LANCZOS).save(package_icon)
 
@@ -86,6 +100,7 @@ def main() -> None:
     iconutil = shutil.which("iconutil")
     if iconutil is None:
         print(f"used {SOURCE}")
+        print(f"wrote {windows_icon}")
         print(f"wrote {package_icon}")
         print(f"wrote {tray_icon_mac_path}")
         print("skipped icon.icns (iconutil is unavailable)")
@@ -96,6 +111,7 @@ def main() -> None:
         [iconutil, "-c", "icns", str(iconset), "-o", str(icns)], check=True
     )
     print(f"used {SOURCE}")
+    print(f"wrote {windows_icon}")
     print(f"wrote {package_icon}")
     print(f"wrote {tray_icon_mac_path}")
     print(f"wrote {icns}")

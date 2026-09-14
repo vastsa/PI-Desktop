@@ -170,6 +170,126 @@ export function registerWorkspaceIpc({
     if (!host) throw new Error("host unavailable");
     return host.call("projects.list");
   });
+  handle(IPC.invoke.projectGroupList, async () => {
+    if (!host) throw new Error("host unavailable");
+    return host.call("project.groups.list");
+  });
+  handle(
+    IPC.invoke.projectGroupCreate,
+    async (input: { name?: unknown; folders?: unknown } = {}) => {
+      if (!host) throw new Error("host unavailable");
+      const name = typeof input.name === "string" ? input.name.trim() : "";
+      const folders = Array.isArray(input.folders)
+        ? input.folders.filter((path): path is string => typeof path === "string")
+        : [];
+      if (!name || folders.length === 0) {
+        throw Object.assign(new Error("project group name and folders required"), {
+          errorCode: ErrorCodes.INVALID_ARGUMENT,
+        });
+      }
+      const safeFolders = [
+        ...new Set(
+          folders
+            .map((path) => path.trim())
+            .filter((path) => path.length > 0)
+            .map((path) => resolve(path)),
+        ),
+      ];
+      if (safeFolders.some((path) => !existsSync(path) || !statSync(path).isDirectory())) {
+        throw Object.assign(new Error("project group folders must be directories"), {
+          errorCode: ErrorCodes.INVALID_ARGUMENT,
+        });
+      }
+      return host.call("project.group.create", { name, folders: safeFolders });
+    },
+  );
+  handle(
+    IPC.invoke.projectGroupUpdate,
+    async (input: { groupId?: unknown; name?: unknown; folders?: unknown } = {}) => {
+      if (!host) throw new Error("host unavailable");
+      const groupId = typeof input.groupId === "string" ? input.groupId.trim() : "";
+      const name = typeof input.name === "string" ? input.name.trim() : "";
+      const folders = Array.isArray(input.folders)
+        ? input.folders.filter((path): path is string => typeof path === "string")
+        : [];
+      if (!groupId || !name || folders.length === 0) {
+        throw Object.assign(new Error("project group id, name and folders required"), {
+          errorCode: ErrorCodes.INVALID_ARGUMENT,
+        });
+      }
+      const safeFolders = [
+        ...new Set(
+          folders
+            .map((path) => path.trim())
+            .filter((path) => path.length > 0)
+            .map((path) => resolve(path)),
+        ),
+      ];
+      if (safeFolders.some((path) => !existsSync(path) || !statSync(path).isDirectory())) {
+        throw Object.assign(new Error("project group folders must be directories"), {
+          errorCode: ErrorCodes.INVALID_ARGUMENT,
+        });
+      }
+      return host.call("project.group.update", {
+        groupId,
+        name,
+        folders: safeFolders,
+      });
+    },
+  );
+  handle(
+    IPC.invoke.projectGroupRename,
+    async (input: { groupId?: unknown; name?: unknown } = {}) => {
+      if (!host) throw new Error("host unavailable");
+      const groupId = typeof input.groupId === "string" ? input.groupId.trim() : "";
+      const name = typeof input.name === "string" ? input.name.trim() : "";
+      if (!groupId || !name) {
+        throw Object.assign(new Error("project group id and name required"), {
+          errorCode: ErrorCodes.INVALID_ARGUMENT,
+        });
+      }
+      return host.call("project.group.rename", { groupId, name });
+    },
+  );
+  handle(IPC.invoke.projectGroupMemoryGet, async (input: { groupId?: unknown } = {}) => {
+    if (!host) throw new Error("host unavailable");
+    const groupId = typeof input.groupId === "string" ? input.groupId.trim() : "";
+    if (!groupId) throw new Error("project group id required");
+    return host.call("project.group.memory.get", { groupId });
+  });
+  handle(
+    IPC.invoke.projectGroupMemorySave,
+    async (input: { groupId?: unknown; entries?: unknown } = {}) => {
+      if (!host) throw new Error("host unavailable");
+      const groupId = typeof input.groupId === "string" ? input.groupId.trim() : "";
+      if (!groupId || !Array.isArray(input.entries)) {
+        throw new Error("project group id and entries required");
+      }
+      return host.call("project.group.memory.set", {
+        groupId,
+        entries: input.entries,
+      });
+    },
+  );
+  handle(
+    IPC.invoke.projectGroupInstructionsGet,
+    async (input: { groupId?: unknown } = {}) => {
+      if (!host) throw new Error("host unavailable");
+      const groupId = typeof input.groupId === "string" ? input.groupId.trim() : "";
+      if (!groupId) throw new Error("project group id required");
+      return host.call("project.group.instructions.get", { groupId });
+    },
+  );
+  handle(
+    IPC.invoke.projectGroupInstructionsSave,
+    async (input: { groupId?: unknown; content?: unknown } = {}) => {
+      if (!host) throw new Error("host unavailable");
+      const groupId = typeof input.groupId === "string" ? input.groupId.trim() : "";
+      const content = typeof input.content === "string" ? input.content : "";
+      if (!groupId) throw new Error("project group id required");
+      return host.call("project.group.instructions.set", { groupId, content });
+    },
+  );
   handle(IPC.invoke.projectOpenFolder, async (path: string) => {
     if (!host) throw new Error("host unavailable");
     const requestedPath = String(path ?? "").trim();

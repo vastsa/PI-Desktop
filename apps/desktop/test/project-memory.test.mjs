@@ -5,7 +5,7 @@ import { readMainSource } from "./helpers/main-source.mjs";
 
 const read = (relativePath) => readFile(new URL(relativePath, import.meta.url), "utf8");
 
-const [dialog, page, api, protocol, main, runtime, sidecar, db, rpc] = await Promise.all([
+const [dialog, page, api, protocol, main, runtime, sidecar, db, groups, rpc] = await Promise.all([
   read("../src/components/ProjectMemoryDialog.tsx"),
   read("../src/pages/ProjectsPage.tsx"),
   read("../src/lib/api.ts"),
@@ -14,11 +14,14 @@ const [dialog, page, api, protocol, main, runtime, sidecar, db, rpc] = await Pro
   read("../../../packages/agent-runtime/src/runtime.ts"),
   read("../../../packages/agent-runtime/src/sidecar.ts"),
   read("../../../crates/host-core/src/db/repositories.rs"),
+  read("../../../crates/host-core/src/db/project_groups.rs"),
   read("../../../crates/host-core/src/rpc/mod.rs"),
 ]);
 
 test("project memory has a host-backed editor and project menu entry", () => {
   assert.match(dialog, /api\.getProjectMemory\(project\.path\)/);
+  assert.match(dialog, /api\.getProjectGroupMemory\(project\.groupId\)/);
+  assert.match(dialog, /project\.legacy/);
   assert.match(dialog, /api\.saveProjectMemory\(project\.path, normalized\)/);
   assert.match(dialog, /project\.memoryAdd/);
   assert.match(dialog, /project\.memoryRemove/);
@@ -31,6 +34,12 @@ test("project memory has a host-backed editor and project menu entry", () => {
 test("project memory crosses the IPC and runtime boundary", () => {
   assert.match(protocol, /projectMemoryGet/);
   assert.match(protocol, /projectMemorySave/);
+  assert.match(protocol, /projectGroupMemorySave/);
+  assert.match(api, /getProjectGroupMemory/);
+  assert.match(api, /saveProjectGroupMemory/);
+  assert.match(main, /project\.group\.memory\.get/);
+  assert.match(main, /project\.group\.memory\.set/);
+  assert.match(rpc, /project\.group\.context/);
   assert.match(api, /getProjectMemory/);
   assert.match(api, /saveProjectMemory/);
   assert.match(main, /project\.memory\.get/);
@@ -41,6 +50,9 @@ test("project memory crosses the IPC and runtime boundary", () => {
   assert.match(runtime, /config\.projectMemory/);
   assert.match(db, /PROJECT_MEMORY_NAMESPACE/);
   assert.match(db, /MAX_PROJECT_MEMORY_BYTES/);
+  assert.match(groups, /GROUP_NAMESPACE/);
+  assert.match(groups, /project_group_context_for_path/);
+  assert.match(rpc, /resolve_tool_workspace_for_call/);
   assert.match(rpc, /"project\.memory\.get"/);
   assert.match(rpc, /"project\.memory\.set"/);
 });

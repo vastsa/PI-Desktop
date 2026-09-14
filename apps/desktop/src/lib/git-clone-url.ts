@@ -1,3 +1,5 @@
+import { isPublicHostname } from "@pi-desktop/shared";
+
 export type GitCloneTarget = {
   url: string;
   name: string;
@@ -20,9 +22,15 @@ function repoNameFromPath(path: string): string | null {
   return name;
 }
 
+function isAllowedGitHost(host: string): boolean {
+  return isPublicHostname(host);
+}
+
 /**
  * Accept https/http/ssh/git URLs and `git@host:path` remotes. Reject
- * credentials-in-URL, file URLs, and names that cannot be a folder.
+ * credentials-in-URL, file URLs, private/loopback/link-local hosts, and
+ * names that cannot be a folder. Host checks are syntactic (ADR 0247);
+ * git still performs its own DNS/SSH.
  */
 export function parseGitCloneUrl(raw: string | null | undefined): GitCloneTarget | null {
   const url = raw?.trim() ?? "";
@@ -30,6 +38,7 @@ export function parseGitCloneUrl(raw: string | null | undefined): GitCloneTarget
 
   const scp = url.match(SCP_GIT);
   if (scp) {
+    if (!isAllowedGitHost(scp[1])) return null;
     const name = repoNameFromPath(scp[2]);
     return name ? { url, name } : null;
   }
@@ -44,6 +53,7 @@ export function parseGitCloneUrl(raw: string | null | undefined): GitCloneTarget
     return null;
   }
   if (parsed.password) return null;
+  if (!isAllowedGitHost(parsed.hostname)) return null;
   const name = repoNameFromPath(parsed.pathname);
   return name ? { url, name } : null;
 }

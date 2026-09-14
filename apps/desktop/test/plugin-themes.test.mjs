@@ -1,4 +1,5 @@
 import { readAppSourceSync, readSettingsSourceSync, readStoreSourceSync, readMainSourceSync } from "./helpers/source-contracts.mjs";
+import { sanitizeThemeCss } from "@pi-desktop/plugin-sdk";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
@@ -19,7 +20,7 @@ const protocolSrc = readFileSync(join(repoRoot, "packages/shared/src/protocol.ts
 
 test("contributed css is sanitized in the main process, not the renderer", () => {
   const register = runtimeSrc.slice(runtimeSrc.indexOf("private registerThemes"));
-  assert.match(register, /sanitizeThemeCss\(raw\)/);
+  assert.match(register, /sanitizeThemeCss\(raw,\s*THEME_CSS_MAX_BYTES,/);
   assert.match(register, /resolveInsidePlugin/);
   assert.match(register, /INVALID_CSS/);
   assert.match(runtimeSrc, /MAX_THEMES_PER_PLUGIN = 8/);
@@ -69,4 +70,59 @@ test("settings offers plugin themes in the searchable picker", () => {
   assert.match(themeRowSrc, /kind: "plugin"/);
   assert.doesNotMatch(settingsSrc, /settings-theme-grid/);
   assert.doesNotMatch(settingsSrc, /settings-theme-card/);
+});
+
+test("declared theme assets are served over a host-owned scheme", () => {
+  const protocolSrc = readFileSync(
+    join(desktopRoot, "electron/main/plugin-asset-protocol.ts"),
+    "utf8",
+  );
+  const startupSrc = readFileSync(
+    join(desktopRoot, "electron/main/bootstrap/startup.ts"),
+    "utf8",
+  );
+  const htmlSrc = readFileSync(join(desktopRoot, "index.html"), "utf8");
+
+  // The scheme is reserved before the app is ready, then handled by a resolver
+  // that only answers for paths the loaded plugin actually declared.
+  assert.match(startupSrc, /registerPluginAssetScheme\(\);/);
+  assert.match(startupSrc, /installPluginAssetProtocol\(/);
+  assert.match(protocolSrc, /registerSchemesAsPrivileged/);
+  assert.match(protocolSrc, /protocol\.handle\(THEME_ASSET_SCHEME/);
+  assert.match(protocolSrc, /resolve\(pluginId, assetPath\)/);
+  assert.match(protocolSrc, /x-content-type-options/);
+  // The renderer must be allowed to load the scheme it is handed.
+  assert.match(htmlSrc, /img-src[^;]*plugin-asset:/);
+  assert.match(htmlSrc, /font-src[^;]*plugin-asset:/);
+});
+
+test("theme css only reaches package bytes through the declared list", () => {
+  const register = runtimeSrc.slice(runtimeSrc.indexOf("private registerThemes"));
+  assert.match(register, /resolveThemeAssets\(/);
+  assert.match(register, /themeAssetUrl\(pluginId, normalized\)/);
+  assert.match(register, /assets\.files\.has\(normalized\)/);
+  assert.match(runtimeSrc, /sanitizeThemeCss\(raw, THEME_CSS_MAX_BYTES/);
+  // A disabled plugin stops serving its assets.
+  const clear = runtimeSrc.slice(
+    runtimeSrc.indexOf("private clearContributions"),
+    runtimeSrc.indexOf("private registerSkills"),
+  );
+  assert.match(clear, /this\.themeAssets\.delete\(pluginId\)/);
+});
+
+test("a contributed window background needs its own grant", () => {
+  const register = runtimeSrc.slice(runtimeSrc.indexOf("private registerThemes"));
+  assert.match(register, /permissions\.has\("ui\.window\.appearance"\)/);
+  assert.match(register, /resolveWindowBackground\(/);
+  assert.match(runtimeSrc, /windowBackground\?: \{ light\?: string; dark\?: string \}/);
+});
+
+test("the shipped example theme survives sanitation", () => {
+  const css = readFileSync(
+    join(repoRoot, "examples/plugins/hello/themes/midnight.css"),
+    "utf8",
+  );
+  // The file only *names* the banned token, inside its header comment.
+  assert.match(css, /@import/);
+  assert.equal(sanitizeThemeCss(css).ok, true);
 });

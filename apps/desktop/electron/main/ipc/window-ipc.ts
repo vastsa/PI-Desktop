@@ -1,7 +1,10 @@
 import { BrowserWindow } from "electron";
+import { isWindowBackgroundColor } from "@pi-desktop/plugin-sdk";
 import {
+  builtinWindowBackground,
   ErrorCodes,
   IPC,
+  isThemeColorScheme,
   NATIVE_MENU_ACTIONS,
   WINDOW_CONTROL_ACTIONS,
   parseTraySessionPreferences,
@@ -93,8 +96,20 @@ export function registerWindowIpc({
 
   handle(IPC.invoke.windowSetBackgroundColor, async (input: unknown = {}) => {
     const theme = (input as { theme?: unknown })?.theme;
-    if (theme !== "light" && theme !== "dark") {
+    if (!isThemeColorScheme(theme)) {
       throw Object.assign(new Error("invalid window background theme"), {
+        errorCode: ErrorCodes.INVALID_ARGUMENT,
+      });
+    }
+    // A plugin theme may name its own background; anything else, including an
+    // omitted value, falls back to the host palette for the resolved theme. The
+    // renderer recomputes this from the persisted preference and the live theme
+    // catalog on every theme, plugin, and OS-appearance change, so switching
+    // away, disabling, or uninstalling the provider restores the default by
+    // derivation rather than by remembering what to undo.
+    const requested = (input as { color?: unknown })?.color;
+    if (requested !== undefined && requested !== null && !isWindowBackgroundColor(requested)) {
+      throw Object.assign(new Error("invalid window background color"), {
         errorCode: ErrorCodes.INVALID_ARGUMENT,
       });
     }
@@ -103,8 +118,11 @@ export function registerWindowIpc({
     if (!mainWindow || mainWindow.isDestroyed()) {
       throw new Error("main window unavailable");
     }
-    mainWindow.setBackgroundColor(theme === "light" ? "#ffffff" : "#181818");
-    return { applied: true, theme };
+    const color = isWindowBackgroundColor(requested)
+      ? requested
+      : builtinWindowBackground(theme);
+    mainWindow.setBackgroundColor(color);
+    return { applied: true, theme, color };
   });
 
   handle(IPC.invoke.windowControl, async (input: { action?: string } = {}) => {

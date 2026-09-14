@@ -14,7 +14,7 @@ const mainWindowBlock =
   createWindowSource.match(/mainWindow = new BrowserWindow\(\{[\s\S]*?\n  \}\);/)?.[0] ?? "";
 const macOptions =
   mainWindowBlock.match(
-    /\.\.\.\(process\.platform === "darwin"[\s\S]*?\n      : \{\n          frame: false,\n          backgroundColor: nativeTheme\.shouldUseDarkColors \? "#181818" : "#ffffff",\n        \}\),/,
+    /\.\.\.\(process\.platform === "darwin"[\s\S]*?\n      : \{[\s\S]*?\n        \}\),/,
   )?.[0] ?? "";
 
 function styleBlock(selector) {
@@ -41,10 +41,11 @@ test("macOS main window enables native sidebar vibrancy only in its platform bra
     "non-mac branch must not set under-window vibrancy",
   );
 
-  // The shared opaque fallback remains in place for Windows/Linux.
+  // The shared opaque fallback remains in place for Windows/Linux, and comes
+  // from the built-in theme table rather than a local literal.
   assert.match(
     mainWindowBlock,
-    /backgroundColor:\s*nativeTheme\.shouldUseDarkColors \? "#181818" : "#ffffff"/,
+    /backgroundColor:\s*builtinWindowBackground\(\s*nativeTheme\.shouldUseDarkColors \? "dark" : "light",?\s*\)/,
   );
   assert.match(mainWindowBlock, /frame: false/);
   assert.doesNotMatch(
@@ -62,7 +63,7 @@ test("native theme source maps preferences and only resets vibrancy on change", 
   assert.match(applyNative, /let next: "system" \| "light" \| "dark" = "system"/);
   assert.match(
     applyNative,
-    /if \(preference === "light" \|\| preference === "dark"\) \{\s*next = preference;/,
+    /if \(isThemeColorScheme\(preference\)\) \{\s*next = preference;/,
   );
   assert.match(applyNative, /preference\.startsWith\("plugin:"\)/);
   assert.match(

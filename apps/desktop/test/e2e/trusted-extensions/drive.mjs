@@ -173,3 +173,4 @@ check("queued user message ran as a turn with the extension tool", queuedSeen);
 
 console.log("RESULTS " + JSON.stringify(results));
 console.log(`SUMMARY ${results.filter((r) => r.ok).length}/${results.length} passed`);
+if (results.some((r) => !r.ok)) process.exitCode = 1;

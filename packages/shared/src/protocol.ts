@@ -2,7 +2,7 @@ export const PROTOCOL_VERSION = 11 as const;
 export const SCHEMA_VERSION = 16 as const;
 export const APP_ID = "com.pi-desktop.app";
 export const APP_NAME = "PI-Desktop";
-export const APP_VERSION = "0.14.7-beta.2";
+export const APP_VERSION = "0.14.8";
 
 export const APP_MENU_COMMANDS = [
   "newTask",
@@ -116,6 +116,14 @@ export const IPC = {
     projectPickFolders: "pi-desktop/project/pickFolders",
     projectMemoryGet: "pi-desktop/project/memory/get",
     projectMemorySave: "pi-desktop/project/memory/save",
+    projectGroupList: "pi-desktop/project-group/list",
+    projectGroupCreate: "pi-desktop/project-group/create",
+    projectGroupRename: "pi-desktop/project-group/rename",
+    projectGroupUpdate: "pi-desktop/project-group/update",
+    projectGroupMemoryGet: "pi-desktop/project-group/memory/get",
+    projectGroupMemorySave: "pi-desktop/project-group/memory/save",
+    projectGroupInstructionsGet: "pi-desktop/project-group/instructions/get",
+    projectGroupInstructionsSave: "pi-desktop/project-group/instructions/save",
     projectClone: "pi-desktop/project/clone",
     projectGet: "pi-desktop/project/get",
     projectList: "pi-desktop/project/list",

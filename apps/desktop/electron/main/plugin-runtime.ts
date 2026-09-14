@@ -30,8 +30,13 @@ import {
   pluginToolName,
   resolveFsAccess,
   resolveMcpRefs,
+  normalizeThemeAssetPath,
   sanitizeThemeCss,
   skillIdFromPath,
+  themeAssetUrl,
+  THEME_ASSET_MAX_BYTES,
+  THEME_CSS_MAX_BYTES,
+  WINDOW_BACKGROUND_COLOR_PATTERN,
   resolvePluginLocalizedString,
   validateManifest,
   validateMcpServer,
@@ -149,6 +154,12 @@ export type RegisteredPluginTheme = {
   /** Palette the overrides layer on; drives `data-theme` in the renderer. */
   base: "light" | "dark";
   css: string;
+  /**
+   * Native window background while this theme is selected, per resolved
+   * palette. Absent unless the plugin declared it and holds
+   * `ui.window.appearance` (ADR 0248).
+   */
+  windowBackground?: { light?: string; dark?: string };
 };
 
 export type PluginPanelRequest = {
@@ -816,6 +827,68 @@ export function resolveInsidePlugin(pluginPath: string, relative: string): strin
 }
 
 /**
+ * Resolve one theme's declared assets to files inside the plugin package.
+ *
+ * The manifest validator already checked the shape; here each entry has to
+ * exist, stay out of the dependency directory, and fit the declared total. A
+ * theme that asks for more than the budget gets none of its assets, so a sheet
+ * referencing one is refused instead of served from a half-honoured list.
+ */
+function resolveThemeAssets(
+  pluginPath: string,
+  declared: readonly string[],
+): { files: Map<string, string>; dropped: number } {
+  const files = new Map<string, string>();
+  if (!declared.length) return { files, dropped: 0 };
+  let total = 0;
+  let dropped = 0;
+  for (const asset of declared) {
+    const normalized = normalizeThemeAssetPath(asset);
+    if (!normalized || normalized.split("/").includes("node_modules")) {
+      dropped += 1;
+      continue;
+    }
+    const absolute = resolveInsidePlugin(pluginPath, normalized);
+    if (!absolute || !existsSync(absolute)) {
+      dropped += 1;
+      continue;
+    }
+    try {
+      total += statSync(absolute).size;
+    } catch {
+      dropped += 1;
+      continue;
+    }
+    files.set(normalized, absolute);
+  }
+  if (total > THEME_ASSET_MAX_BYTES) return { files: new Map(), dropped: declared.length };
+  return { files, dropped };
+}
+
+/**
+ * Read `contributes.windowAppearance`.
+ *
+ * Only the two palette slots the host honours survive; the shape is the
+ * manifest validator's job, and anything that slips past it is dropped here
+ * rather than handed to `setBackgroundColor`.
+ */
+function resolveWindowBackground(
+  value: unknown,
+): { light?: string; dark?: string } | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const backgroundColor = (value as { backgroundColor?: unknown }).backgroundColor;
+  if (!backgroundColor || typeof backgroundColor !== "object") return undefined;
+  const result: { light?: string; dark?: string } = {};
+  for (const key of ["light", "dark"] as const) {
+    const color = (backgroundColor as Record<string, unknown>)[key];
+    if (typeof color === "string" && WINDOW_BACKGROUND_COLOR_PATTERN.test(color)) {
+      result[key] = color;
+    }
+  }
+  return result.light || result.dark ? result : undefined;
+}
+
+/**
  * Minimal environment for a plugin process: the host's own env may carry
  * provider keys and shell secrets, and plugins have no business seeing them.
  */
@@ -859,6 +932,12 @@ export class PluginRuntime {
   private skills = new Map<string, RegisteredPluginSkill>();
   private agentExtensions = new Map<string, RegisteredAgentExtension>();
   private themes = new Map<string, RegisteredPluginTheme>();
+  /**
+   * Declared theme assets, keyed by plugin id and then by the package-relative
+   * path the sheet writes. The `plugin-asset:` handler answers only from here,
+   * so a path nobody declared has no URL at all (ADR 0248).
+   */
+  private themeAssets = new Map<string, Map<string, string>>();
   private mcpClients = new Map<string, McpServerClient[]>();
   private serviceStates = new Map<string, PluginServiceStatus>();
   private restarts = new Map<string, RestartRecord>();
@@ -966,6 +1045,19 @@ export class PluginRuntime {
   /** Themes contributed by loaded plugins, ordered by id for a stable list. */
   getThemes(): RegisteredPluginTheme[] {
     return [...this.themes.values()].sort((a, b) => a.id.localeCompare(b.id));
+  }
+
+  /**
+   * Absolute path of one declared theme asset, or null.
+   *
+   * The `plugin-asset:` handler calls this for every request, so a disabled
+   * plugin, an undeclared path, and a path outside the package all answer null
+   * for the same reason.
+   */
+  resolveThemeAsset(pluginId: string, assetPath: string): string | null {
+    const normalized = normalizeThemeAssetPath(assetPath);
+    if (!normalized) return null;
+    return this.themeAssets.get(pluginId)?.get(normalized) ?? null;
   }
 
   /** Supervision state of every resident service, ordered for a stable list. */
@@ -2091,6 +2183,9 @@ export class PluginRuntime {
     for (const [id, theme] of this.themes) {
       if (theme.pluginId === pluginId) this.themes.delete(id);
     }
+    // A gone plugin must stop serving its assets; the handler resolves through
+    // this map only, so clearing it revokes every `plugin-asset:` URL at once.
+    this.themeAssets.delete(pluginId);
     // Closing the client kills the stdio child / drops the HTTP session, so a
     // disabled plugin leaves no process behind.
     for (const client of this.mcpClients.get(pluginId) ?? []) {
@@ -2288,6 +2383,25 @@ export class PluginRuntime {
       return;
     }
 
+    // The native window background is a separate grant: a plugin may contribute
+    // themes and ask for neither, and a plugin that asked without the grant is
+    // audited rather than silently ignored.
+    const windowAppearanceDeclared =
+      loaded.manifest.contributes?.windowAppearance !== undefined;
+    const windowBackground = loaded.permissions.has("ui.window.appearance")
+      ? resolveWindowBackground(loaded.manifest.contributes?.windowAppearance)
+      : undefined;
+    if (windowAppearanceDeclared && !loaded.permissions.has("ui.window.appearance")) {
+      this.services.audit?.({
+        pluginId,
+        api: "plugin.themes.skipped",
+        ok: false,
+        errorCode: "PERMISSION_DENIED",
+        message: "contributes.windowAppearance requires ui.window.appearance",
+        ts: Date.now(),
+      });
+    }
+
     let accepted = 0;
     for (const contrib of declared) {
       if (accepted >= MAX_THEMES_PER_PLUGIN) {
@@ -2316,7 +2430,23 @@ export class PluginRuntime {
         this.skipTheme(pluginId, themeId, "READ_FAILED");
         continue;
       }
-      const sanitized = sanitizeThemeCss(raw);
+      // Declared assets are the only relative references this theme may make;
+      // each one is rewritten to the host scheme so the sheet never carries a
+      // path the renderer would resolve itself.
+      const assets = resolveThemeAssets(loaded.path, contrib.assets ?? []);
+      if (assets.dropped) {
+        this.skipTheme(
+          pluginId,
+          themeId,
+          "INVALID_ASSET",
+          `${assets.dropped} declared asset(s) ignored`,
+        );
+      }
+      const sanitized = sanitizeThemeCss(raw, THEME_CSS_MAX_BYTES, (target) => {
+        const normalized = normalizeThemeAssetPath(target);
+        if (!normalized || !assets.files.has(normalized)) return null;
+        return themeAssetUrl(pluginId, normalized);
+      });
       if (!sanitized.ok) {
         this.skipTheme(pluginId, themeId, "INVALID_CSS", sanitized.error);
         continue;
@@ -2326,6 +2456,15 @@ export class PluginRuntime {
         this.skipTheme(pluginId, themeId, "DUPLICATE");
         continue;
       }
+      // The registry is per plugin and the resolver above is per theme: a sheet
+      // only reaches its own declarations, while the handler can serve any
+      // asset this plugin is allowed to have.
+      let registry = this.themeAssets.get(pluginId);
+      if (!registry) {
+        registry = new Map();
+        this.themeAssets.set(pluginId, registry);
+      }
+      for (const [assetPath, absolute] of assets.files) registry.set(assetPath, absolute);
       this.themes.set(id, {
         id,
         pluginId,
@@ -2333,6 +2472,7 @@ export class PluginRuntime {
         label: String(contrib.label ?? "").trim() || themeId,
         base: contrib.base === "light" ? "light" : "dark",
         css: sanitized.css,
+        ...(windowBackground ? { windowBackground } : {}),
       });
       accepted += 1;
     }

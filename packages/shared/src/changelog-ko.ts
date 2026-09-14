@@ -2,7 +2,7 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const koEntries: ChangelogEntry[] = [
   {
-    version: "0.14.7",
+    version: "0.14.8",
     date: "2026-09-14",
     highlights: [
       "MCP 마켓에서 공식 레지스트리와 사용자 구성 소스의 MCP 서버를 찾아 설치합니다.",

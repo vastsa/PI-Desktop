@@ -4,7 +4,6 @@ import { useTranslation } from "react-i18next";
 import { MAX_SESSION_TITLE_LENGTH } from "@pi-desktop/shared";
 import type { SessionSummary } from "@pi-desktop/shared";
 import { TooltipButton } from "./ui";
-import { MAX_PROJECT_NAME_CHARS } from "../lib/sidebar-preferences";
 import { Button } from "./ui";
 import { IconClose, IconPencil } from "./icons";
 
@@ -208,38 +207,6 @@ export function SessionRenameDialog({
       maxLength={MAX_SESSION_TITLE_LENGTH}
       inputId="session-rename-input"
       dialogId="session-rename-dialog"
-      onClose={onClose}
-      onSave={onSave}
-      onError={onError}
-    />
-  );
-}
-
-export function ProjectRenameDialog({
-  project,
-  onClose,
-  onSave,
-  onError,
-}: {
-  project: { path: string; name: string };
-  onClose: () => void;
-  onSave: (name: string) => Promise<void>;
-  onError: (error: unknown) => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <RenameDialog
-      value={project.name}
-      title={t("project.renameTitle")}
-      description={t("project.renameDescription")}
-      label={t("project.renameLabel")}
-      hint={t("project.renameHint")}
-      cancelLabel={t("project.renameCancel")}
-      saveLabel={t("project.renameSave")}
-      savingLabel={t("project.renameSaving")}
-      maxLength={MAX_PROJECT_NAME_CHARS}
-      inputId="project-rename-input"
-      dialogId="project-rename-dialog"
       onClose={onClose}
       onSave={onSave}
       onError={onError}

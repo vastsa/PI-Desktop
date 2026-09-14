@@ -21,6 +21,7 @@ import {
   IconCheck,
   IconChevronDown,
   IconConfig,
+  IconCopy,
   IconPencil,
   IconPlug,
   IconPlus,
@@ -34,6 +35,7 @@ import {
   defaultModelOptions,
   displayedDefaultModelId,
 } from "./default-model";
+import { copyProviderConfiguration, type ProviderCopyDraft } from "./provider-copy";
 import { ProviderSetupDialog } from "./ProviderSetupDialog";
 import { VendorAccountsSection } from "./VendorAccountsSection";
 
@@ -67,6 +69,7 @@ export function ModelConfigPage() {
   const showToast = useAppStore((s) => s.showToast);
 
   // null = closed, "" = add flow, provider id = edit flow.
+  const [copyDraft, setCopyDraft] = useState<ProviderCopyDraft | null>(null);
   const [setupFor, setSetupFor] = useState<string | null>(null);
   const [pickingDefault, setPickingDefault] = useState(false);
   const [defaultModelQuery, setDefaultModelQuery] = useState("");
@@ -152,7 +155,9 @@ export function ModelConfigPage() {
   const afterSaved = async (saved: ProviderPublic, models: ModelBinding[]) => {
     const firstModelId = models[0]?.id;
     try {
-      if (!editingProvider) {
+      if (copyDraft) {
+        showToast(t("settings.providerSaved"), { variant: "success" });
+      } else if (!editingProvider) {
         await api.setSettings({
           ...settings,
           defaultProviderId: saved.id,
@@ -166,6 +171,7 @@ export function ModelConfigPage() {
         showToast(t("settings.providerUpdated"), { variant: "success" });
       }
       setSetupFor(null);
+      setCopyDraft(null);
       await refreshProviders();
     } catch (error) {
       showToast(error instanceof Error ? error.message : String(error), {
@@ -464,6 +470,19 @@ export function ModelConfigPage() {
                       <TooltipButton
                         type="button"
                         className="icon-btn model-provider-icon-btn"
+                        tooltip={t("settings.copyProvider")}
+                        ariaLabel={t("settings.copyProvider")}
+                        disabled={rowBusy}
+                        onClick={() => {
+                          setCopyDraft(copyProviderConfiguration(provider, t("settings.copyProviderName", { name: provider.name })));
+                          setSetupFor("");
+                        }}
+                      >
+                        <IconCopy size={14} />
+                      </TooltipButton>
+                      <TooltipButton
+                        type="button"
+                        className="icon-btn model-provider-icon-btn"
                         tooltip={t("settings.editProvider")}
                         ariaLabel={t("settings.editProvider")}
                         disabled={rowBusy}
@@ -563,7 +582,8 @@ export function ModelConfigPage() {
       {setupFor !== null ? (
         <ProviderSetupDialog
           provider={editingProvider}
-          onClose={() => setSetupFor(null)}
+          initialDraft={copyDraft}
+          onClose={() => { setSetupFor(null); setCopyDraft(null); }}
           onSaved={(saved, models) => void afterSaved(saved, models)}
         />
       ) : null}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { PluginSummary } from "@pi-desktop/shared";
+import { isThemeColorScheme, type PluginSummary } from "@pi-desktop/shared";
 import { api } from "../lib/api";
 import { searchLaunchablePlugins } from "../lib/plugin-launcher-search";
 import {
@@ -33,19 +33,18 @@ export function PluginLauncher() {
     let onSystemThemeChange: (() => void) | undefined;
     const applyTheme = (preference: string) => {
       if (disposed) return;
-      document.documentElement.dataset.theme =
-        preference === "light" || preference === "dark"
-          ? preference
-          : window.matchMedia("(prefers-color-scheme: light)").matches
-            ? "light"
-            : "dark";
+      document.documentElement.dataset.theme = isThemeColorScheme(preference)
+        ? preference
+        : window.matchMedia("(prefers-color-scheme: light)").matches
+          ? "light"
+          : "dark";
     };
 
     void api
       .getSettings()
       .then((settings) => {
         applyTheme(settings.theme);
-        if (settings.theme === "light" || settings.theme === "dark") return;
+        if (isThemeColorScheme(settings.theme)) return;
         mediaQuery = window.matchMedia("(prefers-color-scheme: light)");
         onSystemThemeChange = () => applyTheme(settings.theme);
         mediaQuery.addEventListener("change", onSystemThemeChange);
@@ -101,12 +100,11 @@ export function PluginLauncher() {
     void api
       .getSettings()
       .then((settings) => {
-        document.documentElement.dataset.theme =
-          settings.theme === "light" || settings.theme === "dark"
-            ? settings.theme
-            : window.matchMedia("(prefers-color-scheme: light)").matches
-              ? "light"
-              : "dark";
+        document.documentElement.dataset.theme = isThemeColorScheme(settings.theme)
+          ? settings.theme
+          : window.matchMedia("(prefers-color-scheme: light)").matches
+            ? "light"
+            : "dark";
       })
       .catch(() => undefined);
     inputRef.current?.focus();

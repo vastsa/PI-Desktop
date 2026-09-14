@@ -35,6 +35,7 @@ test("sidebar renders global pins once, outside project folding and history limi
       session("collapsed-pin", "/collapsed"),
       session("closed-pin", "/closed"),
       session("temporary-pin", null),
+      session("blank-path-pin", "   "),
       session("archived-pin", "/open"),
       session("archived-project-pin", "/archived"),
     ];
@@ -81,10 +82,21 @@ test("sidebar renders global pins once, outside project folding and history limi
       html.match(/<section[^>]*data-sidebar-session-section="pinned"[\s\S]*?<\/section>/)?.[0] ??
       "";
     const html = render();
-    const expectedPins = ["closed-pin", "collapsed-pin", "open-pin", "temporary-pin"];
+    const expectedPins = [
+      "blank-path-pin",
+      "closed-pin",
+      "collapsed-pin",
+      "open-pin",
+      "temporary-pin",
+    ];
     assert.deepEqual(rows(pinnedSection(html)), expectedPins);
     assert.match(pinnedSection(html), />Closed project<\/span>/);
     assert.ok(pinnedSection(html).includes(catalogs.en.nav.hoverCardTemporarySpace));
+    const pinnedHtml = pinnedSection(html);
+    const blankPathStart = pinnedHtml.indexOf('data-sidebar-session-row="blank-path-pin"');
+    const nextRow = pinnedHtml.indexOf("data-sidebar-session-row=", blankPathStart + 1);
+    const blankPathRow = pinnedHtml.slice(blankPathStart, nextRow === -1 ? undefined : nextRow);
+    assert.ok(blankPathRow.includes(catalogs.en.nav.hoverCardTemporarySpace));
     assert.doesNotMatch(pinnedSection(html), /sidebar-time-group/);
     assert.ok(
       html.indexOf('data-sidebar-session-section="pinned"') <

@@ -260,17 +260,17 @@ export function createProjectSlice({
         ),
       ];
       const intent = runtime.beginNavigationIntent();
-      for (const path of orderedFolders) {
-        await get().activateProject(path, { navigationIntent: intent });
-        if (!runtime.navigationIntentIsCurrent(intent)) return;
-      }
-      get().renameProject(primary, normalizedName);
-      if (
-        normalizeProjectPath(get().activeProjectPath) !==
-        normalizeProjectPath(primary)
-      ) {
-        await get().activateProject(primary, { navigationIntent: intent });
-      }
+      const created = await api.createProjectGroup(normalizedName, orderedFolders);
+      if (!runtime.navigationIntentIsCurrent(intent)) return;
+      const groupPrimary = created.group.primaryPath || primary;
+      const workspace = await get().activateProject(groupPrimary, {
+        navigationIntent: intent,
+      });
+      if (!workspace || !runtime.navigationIntentIsCurrent(intent)) return;
+      // Keep the existing renderer-local metadata in sync so the sidebar can
+      // render the group name immediately; the host group is authoritative on
+      // the next archive refresh and for agent context.
+      get().renameProject(groupPrimary, normalizedName);
       const onboarding = await api.getOnboarding();
       if (!runtime.navigationIntentIsCurrent(intent)) return;
       set({ createProjectDialogOpen: false, onboarding, page: "chat" });

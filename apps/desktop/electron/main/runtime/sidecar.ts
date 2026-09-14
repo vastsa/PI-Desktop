@@ -86,6 +86,7 @@ export function createSidecarRuntime({
     runtimeState.agentHostBridge?.ingest(envelope);
     sendToRenderer(IPC.event.agentMessage, envelope);
   };
+  const activeToolNames = new Map<string, string>();
   const wireSidecar = (s: AgentSidecar) => {
 
   s.onNotification((method, params) => {
@@ -93,16 +94,22 @@ export function createSidecarRuntime({
       const envelope = params as AgentEventEnvelope;
       const event = envelope.event;
       if (event.type === "tool_start") {
+        activeToolNames.set(event.toolCallId, event.toolName);
         logger.app("tool", "info", "tool start", {
           sessionId: envelope.sessionId,
-          toolCallId: (event as any).toolCallId,
-          data: { toolName: (event as any).toolName },
+          toolCallId: event.toolCallId,
+          data: { toolName: event.toolName },
         });
       } else if (event.type === "tool_end") {
+        const toolName = activeToolNames.get(event.toolCallId);
+        activeToolNames.delete(event.toolCallId);
         logger.app("tool", "info", "tool end", {
           sessionId: envelope.sessionId,
-          toolCallId: (event as any).toolCallId,
-          data: { isError: (event as any).isError === true },
+          toolCallId: event.toolCallId,
+          data: {
+            ...(toolName ? { toolName } : {}),
+            isError: event.isError === true,
+          },
         });
       }
       emitAgentEvent(envelope);
@@ -124,6 +131,7 @@ export function createSidecarRuntime({
   s.onExit(({ code, signal, intentional, stderrTail }) => {
     if (runtimeState.sidecar !== s) return;
     logger.flushChild("agent");
+    activeToolNames.clear();
     runtimeState.sidecar = null;
     steeringReplies.clear();
     if (intentional || isQuitting()) return;
@@ -177,7 +185,39 @@ export function createSidecarRuntime({
   s.setProjectInstructionResolver(async ({ projectPath, path }) => {
     // The root is registered by Electron main from the host-owned session
     // record. The sidecar can provide a target path, never an arbitrary root.
-    return loadInstructionChain(projectPath, path);
+    const instructions = await loadInstructionChain(projectPath, path);
+    if (!projectPath || !runtimeState.host) return instructions;
+    try {
+      const result = await runtimeState.host.call<{
+        context?: {
+          roots?: Array<{ path?: string }>;
+          instructions?: string;
+        } | null;
+      }>("project.group.context", { path: projectPath });
+      const roots = result.context?.roots ?? [];
+      const rootGuide = roots.length > 1
+        ? [
+            `Primary root: ${roots[0]?.path ?? projectPath}`,
+            ...roots.slice(1).map((root) => `Additional root: ${root.path ?? ""}`),
+            "Use an absolute path when reading or editing an additional root.",
+          ].join("\n")
+        : "";
+      const groupInstructions = result.context?.instructions?.trim();
+      if (!rootGuide && !groupInstructions) return instructions;
+      return {
+        entries: [
+          ...(instructions?.entries ?? []),
+          ...(rootGuide
+            ? [{ source: "ChatGPT Project folders", content: rootGuide }]
+            : []),
+          ...(groupInstructions
+            ? [{ source: "ChatGPT Project instructions", content: groupInstructions }]
+            : []),
+        ],
+      };
+    } catch {
+      return instructions;
+    }
   });
     // Request auth for a vendor account (ADR 0098). The sidecar names a provider
   // row it was launched with; main resolves that row's account and returns a

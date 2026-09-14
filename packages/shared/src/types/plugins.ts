@@ -173,6 +173,12 @@ export type PluginTheme = {
   /** Palette the overrides layer on; drives the `data-theme` attribute. */
   base: "light" | "dark";
   css: string;
+  /**
+   * Native window background for this theme, per resolved palette, as
+   * `#rrggbb` or `#rrggbbaa`. Absent unless the providing plugin declared it
+   * and holds `ui.window.appearance` (ADR 0248).
+   */
+  windowBackground?: { light?: string; dark?: string };
 };
 
 export type PluginServiceState = "starting" | "running" | "stopped" | "failed";

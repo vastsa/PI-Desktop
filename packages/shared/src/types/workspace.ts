@@ -1,3 +1,5 @@
+import type { ProjectMemory } from "./filesystem.js";
+
 /** Shared public types grouped by the owning application domain. */
 export type AppNotificationKind = "task.completed" | "task.failed";
 
@@ -31,6 +33,34 @@ export type ProjectRecord = {
   pinned: boolean;
   createdAt: number;
   lastOpenedAt: number;
+};
+
+export type ProjectGroupRoot = {
+  path: string;
+  name: string;
+  position: number;
+};
+
+export type ProjectGroupRecord = {
+  id: string;
+  name: string;
+  primaryPath: string;
+  roots: ProjectGroupRoot[];
+  createdAt: number;
+  updatedAt: number;
+  pinned: boolean;
+  lastOpenedAt: number;
+  /** True for a compatibility projection of an old single-folder project. */
+  legacy?: boolean;
+  /** Previously removed roots remain suppressed from legacy projections. */
+  detachedPaths?: string[];
+};
+
+export type ProjectGroupContext = {
+  groupId: string;
+  roots: ProjectGroupRoot[];
+  instructions: string;
+  memory: ProjectMemory;
 };
 
 export type PullRequestSummary = {

@@ -8,6 +8,7 @@ import {
   APP_MENU_COMMANDS,
   APP_NAME,
   IPC,
+  isThemeColorScheme,
   traySessionTitle,
   type AppMenuCommand,
   type CloseBehavior,
@@ -459,7 +460,7 @@ export function createApplicationLifecycle({
   function applyNativeThemeSource(settings?: { theme?: unknown } | null) {
     const preference = settings?.theme;
     let next: "system" | "light" | "dark" = "system";
-    if (preference === "light" || preference === "dark") {
+    if (isThemeColorScheme(preference)) {
       next = preference;
     } else if (typeof preference === "string" && preference.startsWith("plugin:")) {
       const pluginTheme = plugins.getThemes().find((theme) => theme.id === preference);
@@ -492,14 +493,13 @@ export function createApplicationLifecycle({
       refreshReleaseNotes();
     }
     const preference = settings?.theme;
-    appearanceState.appThemePreference =
-      preference === "light" || preference === "dark"
+    appearanceState.appThemePreference = isThemeColorScheme(preference)
+      ? preference
+      : typeof preference === "string" && preference.startsWith("plugin:")
         ? preference
-        : typeof preference === "string" && preference.startsWith("plugin:")
-          ? preference
-          : "system";
+        : "system";
     applyNativeThemeSource(settings);
-    if (preference === "light" || preference === "dark") {
+    if (isThemeColorScheme(preference)) {
       appearanceState.pluginPanelTheme = preference;
     } else if (typeof preference === "string" && preference.startsWith("plugin:")) {
       const pluginTheme = plugins.getThemes().find((theme) => theme.id === preference);

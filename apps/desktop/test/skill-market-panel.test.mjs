@@ -63,3 +63,15 @@ test("builtin catalog keeps the offline promise in English", () => {
     assert.equal(/[^\u0000-\u007f]/.test(skill.name), false, skill.name);
   }
 });
+
+test("preview race gate tokens guard in-flight responses and close invalidates them", () => {
+  // Review round 2 (#290): a slow preview A must never land after a faster B,
+  // and closing the sheet must invalidate whatever is still in flight.
+  assert.match(panel, /previewGate = useRef\(new LatestWinsGate\(\)\)/);
+  assert.match(panel, /const token = previewGate\.current\.begin\(\)/);
+  assert.match(panel, /previewGate\.current\.isCurrent\(token\)/);
+  assert.match(panel, /if \(!installFor\) previewGate\.current\.invalidate\(\)/);
+  // A fresh open resets the previous document before the fetch resolves.
+  assert.match(panel, /setDocumentBody\(null\)/);
+  assert.match(panel, /setDocumentTooLarge\(false\)/);
+});

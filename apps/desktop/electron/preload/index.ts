@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
-import { IPC, IPC_WHITELIST } from "@pi-desktop/shared";
+import { IPC, IPC_WHITELIST } from "@pi-desktop/shared/protocol";
 
 const LOCALE_ARGUMENT_PREFIX = "--pi-desktop-locale=";
 

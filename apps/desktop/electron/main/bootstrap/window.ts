@@ -2,7 +2,7 @@ import { app, BrowserWindow, nativeTheme, screen, type Tray } from "electron";
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { APP_NAME, IPC, type CloseBehavior } from "@pi-desktop/shared";
+import { APP_NAME, builtinWindowBackground, IPC, type CloseBehavior } from "@pi-desktop/shared";
 import type { BrowserPane } from "../browser-view";
 import type { HostProcess } from "../host-process";
 import type { Logger } from "../logger";
@@ -27,6 +27,16 @@ import {
   type WorkPanelReservationState,
 } from "../work-panel-window";
 import { readWindowState, writeWindowState } from "../window-preferences";
+
+function windowsIconPath(): string | undefined {
+  if (process.platform !== "win32") return undefined;
+
+  const resourceRoot = app.isPackaged
+    ? process.resourcesPath
+    : join(app.getAppPath(), "build");
+  const iconPath = join(resourceRoot, app.isPackaged ? "app-icon.ico" : "icon.ico");
+  return existsSync(iconPath) ? iconPath : undefined;
+}
 
 export type WindowLifecycleState = {
   mainWindow: BrowserWindow | null;
@@ -156,8 +166,15 @@ export async function createWindow({
         }
       : {
           frame: false,
-          backgroundColor: nativeTheme.shouldUseDarkColors ? "#181818" : "#ffffff",
+          backgroundColor: builtinWindowBackground(
+            nativeTheme.shouldUseDarkColors ? "dark" : "light",
+          ),
         }),
+    ...(process.platform === "win32"
+      ? {
+          icon: windowsIconPath(),
+        }
+      : {}),
     webPreferences: {
       preload: join(__dirname, "../preload/index.cjs"),
       contextIsolation: true,

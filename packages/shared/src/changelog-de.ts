@@ -2,7 +2,7 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const deEntries: ChangelogEntry[] = [
   {
-    "version": "0.14.7",
+    "version": "0.14.8",
     "date": "2026-09-14",
     "highlights": [
       "Durchsuchen und installieren Sie MCP-Server aus der offiziellen Registry und benutzerdefinierten Quellen im MCP-Markt.",

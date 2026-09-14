@@ -732,6 +732,118 @@ fn theme_contributions_require_permission_and_css() {
 }
 
 #[test]
+fn theme_assets_must_exist_and_stay_on_the_whitelist() {
+    let dir = tempdir().unwrap();
+
+    for (name, asset) in [
+        ("outside", "../bg.png"),
+        ("absolute", "/bg.png"),
+        ("wrong-ext", "art/bg.gif"),
+        ("nested", "art/../bg.png"),
+    ] {
+        let root = dir.path().join(name);
+        write_plugin(
+            &root,
+            capability_manifest(
+                json!({ "themes": [{ "id": "a", "label": "A", "path": "themes/a.css", "assets": [asset] }] }),
+                json!(["ui.theme"]),
+            ),
+            &[("themes/a.css", ":root {}")],
+        );
+        assert!(
+            read_manifest_err(&root).contains("relative image or font path"),
+            "{name} was accepted"
+        );
+    }
+
+    let deps = dir.path().join("deps");
+    write_plugin(
+        &deps,
+        capability_manifest(
+            json!({ "themes": [{ "id": "a", "label": "A", "path": "themes/a.css", "assets": ["node_modules/x/bg.png"] }] }),
+            json!(["ui.theme"]),
+        ),
+        &[("themes/a.css", ":root {}")],
+    );
+    assert!(read_manifest_err(&deps).contains("dependency directory"));
+
+    let missing = dir.path().join("missing");
+    write_plugin(
+        &missing,
+        capability_manifest(
+            json!({ "themes": [{ "id": "a", "label": "A", "path": "themes/a.css", "assets": ["art/bg.png"] }] }),
+            json!(["ui.theme"]),
+        ),
+        &[("themes/a.css", ":root {}")],
+    );
+    assert!(read_manifest_err(&missing).contains("asset missing"));
+
+    let duplicated = dir.path().join("duplicated");
+    write_plugin(
+        &duplicated,
+        capability_manifest(
+            json!({ "themes": [{ "id": "a", "label": "A", "path": "themes/a.css", "assets": ["art/bg.png", "./art/bg.png"] }] }),
+            json!(["ui.theme"]),
+        ),
+        &[("themes/a.css", ":root {}"), ("art/bg.png", "png")],
+    );
+    assert!(read_manifest_err(&duplicated).contains("twice"));
+
+    let ok = dir.path().join("ok");
+    write_plugin(
+        &ok,
+        capability_manifest(
+            json!({ "themes": [{ "id": "a", "label": "A", "path": "themes/a.css", "assets": ["./art/bg.png", "font/ui.woff2"] }] }),
+            json!(["ui.theme"]),
+        ),
+        &[
+            ("themes/a.css", ":root {}"),
+            ("art/bg.png", "png"),
+            ("font/ui.woff2", "woff"),
+        ],
+    );
+    assert!(PluginManager::read_manifest(&ok).is_ok());
+}
+
+#[test]
+fn window_appearance_requires_permission_and_a_hex_colour() {
+    let dir = tempdir().unwrap();
+
+    let no_perm = dir.path().join("no-perm");
+    write_plugin(
+        &no_perm,
+        capability_manifest(
+            json!({ "windowAppearance": { "backgroundColor": { "dark": "#0d1424" } } }),
+            json!([]),
+        ),
+        &[],
+    );
+    assert!(read_manifest_err(&no_perm).contains("ui.window.appearance permission"));
+
+    let bad_colour = dir.path().join("bad-colour");
+    write_plugin(
+        &bad_colour,
+        capability_manifest(
+            json!({ "windowAppearance": { "backgroundColor": { "dark": "#0d1424ccc" } } }),
+            json!(["ui.window.appearance"]),
+        ),
+        &[],
+    );
+    assert!(read_manifest_err(&bad_colour).contains("#rrggbb or #rrggbbaa"));
+
+    let ok = dir.path().join("ok");
+    write_plugin(
+        &ok,
+        capability_manifest(
+            json!({ "windowAppearance": { "backgroundColor": { "light": "#f5f5f5", "dark": "#0d1424cc" } } }),
+            json!(["ui.window.appearance"]),
+        ),
+        &[],
+    );
+    assert!(PluginManager::read_manifest(&ok).is_ok());
+}
+
+#[test]
 fn view_contributions_require_permission_and_an_existing_entry() {
     let dir = tempdir().unwrap();
     let view = |extra: Value| json!({ "views": [extra] });

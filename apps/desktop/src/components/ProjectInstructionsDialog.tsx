@@ -12,7 +12,7 @@ export function ProjectInstructionsDialog({
   onSaved,
   onError,
 }: {
-  project: { name: string; path: string };
+  project: { name: string; path: string; groupId?: string; legacy?: boolean };
   onClose: () => void;
   onSaved: () => void;
   onError: (error: unknown) => void;
@@ -24,7 +24,17 @@ export function ProjectInstructionsDialog({
 
   useEffect(() => {
     let cancelled = false;
-    void api.getAgentInstructions(project.path).then((result) => {
+    const load = project.groupId && !project.legacy
+      ? api.getProjectGroupInstructions(project.groupId).then((result) => ({
+          project: {
+            scope: "project" as const,
+            path: "ChatGPT Project instructions",
+            content: result.content,
+            exists: true,
+          },
+        }))
+      : api.getAgentInstructions(project.path);
+    void load.then((result) => {
       if (cancelled || !result.project) return;
       setFile(result.project);
       setDraft(result.project.content);
@@ -34,7 +44,7 @@ export function ProjectInstructionsDialog({
     return () => {
       cancelled = true;
     };
-  }, [project.path]);
+  }, [project.groupId, project.legacy, project.path]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -47,8 +57,13 @@ export function ProjectInstructionsDialog({
   const save = async () => {
     setSaving(true);
     try {
-      const result = await api.saveAgentInstructions("project", draft, project.path);
-      setFile(result.file);
+      if (project.groupId && !project.legacy) {
+        const result = await api.saveProjectGroupInstructions(project.groupId, draft);
+        setFile((current) => current ? { ...current, content: result.content, exists: true } : current);
+      } else {
+        const result = await api.saveAgentInstructions("project", draft, project.path);
+        setFile(result.file);
+      }
       onSaved();
     } catch (error) {
       onError(error);

@@ -305,10 +305,77 @@ describe("planSafeActions contract (ADR 0211)", () => {
   });
 });
 
+describe("contributed theme assets and window appearance", () => {
+  it("accepts a whitelisted relative asset list", () => {
+    expect(
+      validateContributions({
+        themes: [
+          {
+            id: "midnight",
+            label: "Midnight",
+            path: "a.css",
+            assets: ["./art/bg.png", "font/ui.woff2"],
+          },
+        ],
+      }),
+    ).toBeUndefined();
+  });
+
+  it("rejects an asset outside the package or off the whitelist", () => {
+    for (const asset of ["../bg.png", "/bg.png", "art/bg.gif", "art/../bg.png", "C:/bg.png"]) {
+      expect(
+        validateContributions({
+          themes: [{ id: "midnight", label: "Midnight", path: "a.css", assets: [asset] }],
+        }),
+      ).toMatch(/asset/);
+    }
+  });
+
+  it("rejects the same asset declared twice", () => {
+    expect(
+      validateContributions({
+        themes: [{ id: "m", label: "M", path: "a.css", assets: ["bg.png", "./bg.png"] }],
+      }),
+    ).toMatch(/twice/);
+  });
+
+  it("accepts #rrggbb and #rrggbbaa window backgrounds", () => {
+    expect(
+      validateContributions({
+        windowAppearance: { backgroundColor: { light: "#ffffff", dark: "#0d1424cc" } },
+      }),
+    ).toBeUndefined();
+    expect(validateContributions({ windowAppearance: {} })).toBeUndefined();
+  });
+
+  it("rejects a window background that is not #rrggbb or #rrggbbaa", () => {
+    for (const color of ["#fff", "0d1424", "#0d1424z", "#0d1424ccc"]) {
+      expect(
+        validateContributions({ windowAppearance: { backgroundColor: { dark: color } } }),
+      ).toMatch(/backgroundColor/);
+    }
+    expect(
+      validateContributions({ windowAppearance: { backgroundColor: "dark" } } as never),
+    ).toMatch(/backgroundColor/);
+    expect(validateContributions({ windowAppearance: [] } as never)).toMatch(/windowAppearance/);
+  });
+
+  it("requires ui.window.appearance for a declared window background", () => {
+    const contributes = { windowAppearance: { backgroundColor: { dark: "#0d1424" } } };
+    expect(validateManifest({ ...base, contributes }).error).toMatch(
+      /ui\.window\.appearance permission/,
+    );
+    expect(
+      validateManifest({ ...base, permissions: ["ui.window.appearance"], contributes }).ok,
+    ).toBe(true);
+  });
+});
+
 describe("PLUGIN_PERMISSIONS", () => {
   it("declares the capability permissions and stays unique", () => {
     for (const permission of [
       "ui.theme",
+      "ui.window.appearance",
       "ui.view",
       "mcp.server.local",
       "mcp.server.remote",

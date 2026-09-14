@@ -40,7 +40,7 @@ export function ProjectMemoryDialog({
   onSaved,
   onError,
 }: {
-  project: { name: string; path: string };
+  project: { name: string; path: string; groupId?: string; legacy?: boolean };
   onClose: () => void;
   onSaved: () => void;
   onError: (error: unknown) => void;
@@ -53,7 +53,10 @@ export function ProjectMemoryDialog({
 
   useEffect(() => {
     let cancelled = false;
-    void api.getProjectMemory(project.path).then((result) => {
+    const load = project.groupId && !project.legacy
+      ? api.getProjectGroupMemory(project.groupId)
+      : api.getProjectMemory(project.path);
+    void load.then((result) => {
       if (cancelled) return;
       const loadedEntries = entriesFromMemory(result.memory);
       setMemory(result.memory);
@@ -65,7 +68,7 @@ export function ProjectMemoryDialog({
     return () => {
       cancelled = true;
     };
-  }, [project.path]);
+  }, [project.groupId, project.legacy, project.path]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -85,7 +88,9 @@ export function ProjectMemoryDialog({
     const normalized = normalizeEntries(entries);
     setSaving(true);
     try {
-      const result = await api.saveProjectMemory(project.path, normalized);
+      const result = project.groupId && !project.legacy
+        ? await api.saveProjectGroupMemory(project.groupId, normalized)
+        : await api.saveProjectMemory(project.path, normalized);
       const saved = entriesFromMemory(result.memory);
       setMemory(result.memory);
       setEntries(saved);

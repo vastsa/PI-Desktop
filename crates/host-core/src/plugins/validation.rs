@@ -203,6 +203,79 @@ pub(crate) fn validate_contributions(root: &Path, manifest: &PluginManifest) -> 
                 None | Some("light") | Some("dark") => {}
                 Some(other) => bail!("PLUGIN_INVALID: theme {id} base {other} is not supported"),
             }
+            if let Some(assets) = obj.get("assets") {
+                let entries = array_of(assets, "contributes.themes.assets")?;
+                let mut seen_assets: Vec<String> = Vec::new();
+                let mut asset_total: u64 = 0;
+                for asset in entries {
+                    let raw = asset.as_str().ok_or_else(|| {
+                        anyhow!("PLUGIN_INVALID: theme {id} assets entries must be paths")
+                    })?;
+                    let normalized = normalize_theme_asset_path(raw).ok_or_else(|| {
+                        anyhow!(
+                            "PLUGIN_INVALID: theme {id} asset {raw} must be a relative image or font path"
+                        )
+                    })?;
+                    if seen_assets.contains(&normalized) {
+                        bail!("PLUGIN_INVALID: theme {id} declares asset {raw} twice");
+                    }
+                    if normalized
+                        .split('/')
+                        .any(|segment| segment == "node_modules")
+                    {
+                        bail!(
+                            "PLUGIN_INVALID: theme {id} asset {raw} may not come from a dependency directory"
+                        );
+                    }
+                    let resolved = safe_join(root, &normalized)?;
+                    let metadata = resolved
+                        .metadata()
+                        .map_err(|_| anyhow!("PLUGIN_INVALID: theme {id} asset missing: {raw}"))?;
+                    if !metadata.is_file() {
+                        bail!("PLUGIN_INVALID: theme {id} asset missing: {raw}");
+                    }
+                    asset_total += metadata.len();
+                    if asset_total > THEME_ASSET_MAX_BYTES {
+                        bail!(
+                            "PLUGIN_INVALID: theme {id} assets exceed {THEME_ASSET_MAX_BYTES} bytes"
+                        );
+                    }
+                    seen_assets.push(normalized);
+                }
+            }
+        }
+    }
+
+    if let Some(appearance) = map.get("windowAppearance") {
+        let obj = appearance.as_object().ok_or_else(|| {
+            anyhow!("PLUGIN_INVALID: contributes.windowAppearance must be an object")
+        })?;
+        require_permission(
+            manifest,
+            "ui.window.appearance",
+            "contributes.windowAppearance",
+        )?;
+        if let Some(background) = obj.get("backgroundColor") {
+            let colors = background.as_object().ok_or_else(|| {
+                anyhow!(
+                    "PLUGIN_INVALID: contributes.windowAppearance.backgroundColor must be an object"
+                )
+            })?;
+            for key in ["light", "dark"] {
+                let Some(value) = colors.get(key) else {
+                    continue;
+                };
+                let color = value.as_str().ok_or_else(|| {
+                    anyhow!(
+                        "PLUGIN_INVALID: windowAppearance.backgroundColor.{key} must be a string"
+                    )
+                })?;
+                if !is_window_background_color(color) {
+                    bail!(
+                        "PLUGIN_INVALID: windowAppearance.backgroundColor.{key} must be #rrggbb or #rrggbbaa"
+                    );
+                }
+            }
         }
     }
 
@@ -459,6 +532,44 @@ fn require_permission(manifest: &PluginManifest, permission: &str, what: &str) -
         return Ok(());
     }
     bail!("PLUGIN_INVALID: {what} require the {permission} permission")
+}
+
+/// Extensions a theme may reference out of its own package (ADR 0247).
+const THEME_ASSET_EXTENSIONS: [&str; 7] = ["png", "jpg", "jpeg", "webp", "avif", "svg", "woff2"];
+
+/// Declared assets of one theme, summed.
+const THEME_ASSET_MAX_BYTES: u64 = 4 * 1024 * 1024;
+
+/// Mirrors `normalizeThemeAssetPath` in the plugin SDK: a package-relative,
+/// forward-slash path on the extension whitelist, or `None`.
+fn normalize_theme_asset_path(value: &str) -> Option<String> {
+    let trimmed = value.trim().replace('\\', "/");
+    let path = trimmed.strip_prefix("./").unwrap_or(&trimmed).to_string();
+    if path.is_empty() || path.starts_with('/') || path.contains(':') {
+        return None;
+    }
+    if path
+        .split('/')
+        .any(|segment| segment.is_empty() || segment == "." || segment == "..")
+    {
+        return None;
+    }
+    let extension = path.rsplit('.').next()?.to_ascii_lowercase();
+    if !THEME_ASSET_EXTENSIONS.contains(&extension.as_str()) {
+        return None;
+    }
+    Some(path)
+}
+
+/// Mirrors `WINDOW_BACKGROUND_COLOR_PATTERN` in the plugin SDK.
+fn is_window_background_color(value: &str) -> bool {
+    let digits = value.strip_prefix('#').unwrap_or("");
+    if digits.len() != 6 && digits.len() != 8 {
+        return false;
+    }
+    digits
+        .chars()
+        .all(|character| character.is_ascii_hexdigit())
 }
 
 fn is_contrib_id(value: &str) -> bool {

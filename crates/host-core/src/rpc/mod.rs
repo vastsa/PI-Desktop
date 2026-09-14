@@ -822,6 +822,47 @@ fn resolve_tool_workspace(
     }
 }
 
+/// Select a registered logical-project root for an absolute tool path.
+///
+/// The active workspace remains the session's primary root by default. A path
+/// inside another root of the same host-owned project group may use that root
+/// as its containment base; arbitrary external paths still follow the normal
+/// permission flow and never become group roots implicitly.
+fn resolve_tool_workspace_for_call(
+    state: &AppState,
+    session_id: &str,
+    args: &Value,
+) -> Result<Option<String>, JsonRpcError> {
+    let primary = resolve_tool_workspace(state, session_id)?;
+    let Some(primary_path) = primary.as_deref() else {
+        return Ok(primary);
+    };
+    let Some(raw_path) = args.get("path").and_then(Value::as_str) else {
+        return Ok(primary);
+    };
+    if !Path::new(raw_path).is_absolute() {
+        return Ok(primary);
+    }
+    let group = state
+        .db
+        .project_group_for_path(primary_path)
+        .map_err(|error| rpc_err(1000, error.to_string(), "INTERNAL"))?;
+    // Resolve the spelling before containment. macOS can expose the same
+    // directory as `/var` and `/private/var`, while the database stores the
+    // canonical spelling. Non-existent leaves are still supported by the
+    // workspace resolver's existing-ancestor behavior.
+    let comparable_path = workspace::resolve_external_path(Path::new(primary_path), raw_path)
+        .unwrap_or_else(|_| PathBuf::from(raw_path));
+    if let Some(group) = group {
+        if let Some(root) = group.roots.iter().find(|root| {
+            workspace::lexically_inside(Path::new(&root.path), &comparable_path.to_string_lossy())
+        }) {
+            return Ok(Some(root.path.clone()));
+        }
+    }
+    Ok(primary)
+}
+
 /// Read/search tools are low risk inside their normal roots, but an explicit
 /// path outside both roots is a separate capability. The check is deliberately
 /// based on the same resolver used for execution so `..` and symlink escapes
@@ -1226,6 +1267,141 @@ async fn handle_request(
                 .list_projects()
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             Ok(json!({ "projects": projects }))
+        }
+        "project.groups.list" => {
+            let st = state.lock().await;
+            let groups = st
+                .db
+                .list_project_groups()
+                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            Ok(json!({ "groups": groups }))
+        }
+        "project.group.create" => {
+            let name = params
+                .get("name")
+                .and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "name required", "INVALID_PARAMS"))?;
+            let folders = params
+                .get("folders")
+                .and_then(Value::as_array)
+                .ok_or_else(|| rpc_err(1002, "folders required", "INVALID_PARAMS"))?
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect::<Vec<_>>();
+            let st = state.lock().await;
+            let group = st
+                .db
+                .create_project_group(name, &folders)
+                .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
+            Ok(json!({ "group": group }))
+        }
+        "project.group.update" => {
+            let group_id = params
+                .get("groupId")
+                .and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "groupId required", "INVALID_PARAMS"))?;
+            let name = params
+                .get("name")
+                .and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "name required", "INVALID_PARAMS"))?;
+            let folders = params
+                .get("folders")
+                .and_then(Value::as_array)
+                .ok_or_else(|| rpc_err(1002, "folders required", "INVALID_PARAMS"))?
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect::<Vec<_>>();
+            let st = state.lock().await;
+            let group = st
+                .db
+                .update_project_group(group_id, name, &folders)
+                .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
+            Ok(json!({ "group": group }))
+        }
+        "project.group.rename" => {
+            let id = params
+                .get("groupId")
+                .and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "groupId required", "INVALID_PARAMS"))?;
+            let name = params
+                .get("name")
+                .and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "name required", "INVALID_PARAMS"))?;
+            let st = state.lock().await;
+            let group = st
+                .db
+                .rename_project_group(id, name)
+                .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
+            Ok(json!({ "group": group }))
+        }
+        "project.group.memory.get" => {
+            let id = params
+                .get("groupId")
+                .and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "groupId required", "INVALID_PARAMS"))?;
+            let st = state.lock().await;
+            let memory = st
+                .db
+                .get_project_group_memory(id)
+                .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
+            Ok(json!({ "memory": memory }))
+        }
+        "project.group.memory.set" => {
+            let id = params
+                .get("groupId")
+                .and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "groupId required", "INVALID_PARAMS"))?;
+            let entries = params
+                .get("entries")
+                .ok_or_else(|| rpc_err(1002, "entries required", "INVALID_PARAMS"))?;
+            let st = state.lock().await;
+            let memory = st
+                .db
+                .set_project_group_memory(id, entries)
+                .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
+            Ok(json!({ "memory": memory }))
+        }
+        "project.group.instructions.get" => {
+            let id = params
+                .get("groupId")
+                .and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "groupId required", "INVALID_PARAMS"))?;
+            let st = state.lock().await;
+            let content = st
+                .db
+                .get_project_group_instructions(id)
+                .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
+            Ok(json!({ "content": content }))
+        }
+        "project.group.instructions.set" => {
+            let id = params
+                .get("groupId")
+                .and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "groupId required", "INVALID_PARAMS"))?;
+            let content = params
+                .get("content")
+                .and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "content required", "INVALID_PARAMS"))?;
+            let st = state.lock().await;
+            let content = st
+                .db
+                .set_project_group_instructions(id, content)
+                .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
+            Ok(json!({ "content": content }))
+        }
+        "project.group.context" => {
+            let path = params
+                .get("path")
+                .and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "path required", "INVALID_PARAMS"))?;
+            let st = state.lock().await;
+            let context = st
+                .db
+                .project_group_context_for_path(path)
+                .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
+            Ok(json!({ "context": context }))
         }
         "projects.create" => {
             let path = params
@@ -2862,7 +3038,7 @@ async fn handle_request(
                     // isolated when the renderer switches between project tabs.
                     // The session's project remains the containment root for all
                     // known sessions.
-                    let ws = resolve_tool_workspace(&st, &p.session_id)?;
+                    let ws = resolve_tool_workspace_for_call(&st, &p.session_id, &p.args)?;
                     let scratch = scratch::session_dir(&st.data_dir, &p.session_id);
                     let external_path_permission = requires_external_path_permission(
                         ws.as_deref(),
@@ -3389,9 +3565,9 @@ async fn handle_request(
                         })
                 })
                 .unwrap_or_else(|| "ask".into());
-            let workspace_path = resolve_tool_workspace(&st, session_id)?;
-            let scratch_path = scratch::session_dir(&st.data_dir, session_id);
             let args = params.get("args").cloned().unwrap_or_else(|| json!({}));
+            let workspace_path = resolve_tool_workspace_for_call(&st, session_id, &args)?;
+            let scratch_path = scratch::session_dir(&st.data_dir, session_id);
             let external_path_permission = requires_external_path_permission(
                 workspace_path.as_deref(),
                 scratch_path.as_deref(),
@@ -4036,7 +4212,8 @@ mod tests {
 
     use super::{
         capability_err, handle_request, parse_capability_query, peek_jsonrpc_id, provider_rpc_err,
-        resolve_plan_workspace, resolve_tool_workspace, scope_err, skill_err,
+        resolve_plan_workspace, resolve_tool_workspace, resolve_tool_workspace_for_call, scope_err,
+        skill_err,
     };
     use crate::plans::{PlanResolveParams, PlanSubmitParams};
     use crate::scheduled;
@@ -4142,6 +4319,77 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(workspace["workspace"], Value::Null);
+    }
+
+    #[tokio::test]
+    async fn project_group_update_rpc_adjusts_folders() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let primary = data_dir.path().join("primary");
+        let extra = data_dir.path().join("extra");
+        fs::create_dir_all(&primary).unwrap();
+        fs::create_dir_all(&extra).unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let state = Arc::new(Mutex::new(app_state));
+        let created = handle_request(
+            state.clone(),
+            "project.group.create",
+            json!({ "name": "Editable", "folders": [primary] }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        let group_id = created["group"]["id"].as_str().unwrap();
+        let updated = handle_request(
+            state,
+            "project.group.update",
+            json!({
+                "groupId": group_id,
+                "name": "Adjusted",
+                "folders": [created["group"]["primaryPath"], extra]
+            }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        assert_eq!(updated["group"]["name"], "Adjusted");
+        assert_eq!(updated["group"]["roots"].as_array().unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn project_group_rpc_roundtrips_context_and_roots() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let primary = data_dir.path().join("primary");
+        let member = data_dir.path().join("member");
+        fs::create_dir_all(&primary).unwrap();
+        fs::create_dir_all(&member).unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let state = Arc::new(Mutex::new(app_state));
+        let created = handle_request(
+            state.clone(),
+            "project.group.create",
+            json!({
+                "name": "A named project",
+                "folders": [primary, member]
+            }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        let group_id = created["group"]["id"].as_str().unwrap();
+        assert_eq!(created["group"]["roots"].as_array().unwrap().len(), 2);
+
+        let context = handle_request(
+            state,
+            "project.group.context",
+            json!({ "path": created["group"]["primaryPath"] }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        assert_eq!(context["context"]["groupId"], group_id);
+        assert_eq!(context["context"]["roots"].as_array().unwrap().len(), 2);
     }
 
     #[tokio::test]
@@ -4543,6 +4791,64 @@ mod tests {
         assert_eq!(
             crate::workspace::simple_canonicalize(&resolved).unwrap(),
             crate::workspace::simple_canonicalize(&project_a).unwrap()
+        );
+    }
+
+    #[test]
+    fn group_member_absolute_paths_use_only_registered_group_roots() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let primary = data_dir.path().join("primary");
+        let member = data_dir.path().join("member");
+        fs::create_dir_all(&primary).unwrap();
+        fs::create_dir_all(&member).unwrap();
+        let state = AppState::open(data_dir.path()).unwrap();
+        let group = state
+            .db
+            .create_project_group(
+                "Grouped project",
+                &[
+                    primary.to_string_lossy().into(),
+                    member.to_string_lossy().into(),
+                ],
+            )
+            .unwrap();
+        let session = sessions::create_session(
+            &state.db,
+            Some("Grouped task".into()),
+            Some("agent".into()),
+            None,
+            None,
+            Some(primary.to_string_lossy().into_owned()),
+        )
+        .unwrap();
+
+        let member_file = member.join("README.md");
+        let resolved =
+            resolve_tool_workspace_for_call(&state, &session.id, &json!({ "path": member_file }))
+                .unwrap()
+                .unwrap();
+        assert_eq!(
+            crate::workspace::simple_canonicalize(Path::new(&resolved)).unwrap(),
+            crate::workspace::simple_canonicalize(&member).unwrap()
+        );
+        assert_eq!(
+            state
+                .db
+                .project_group_for_path(&resolved)
+                .unwrap()
+                .unwrap()
+                .id,
+            group.id
+        );
+
+        let outside = data_dir.path().join("outside").join("file.txt");
+        let fallback =
+            resolve_tool_workspace_for_call(&state, &session.id, &json!({ "path": outside }))
+                .unwrap()
+                .unwrap();
+        assert_eq!(
+            crate::workspace::simple_canonicalize(Path::new(&fallback)).unwrap(),
+            crate::workspace::simple_canonicalize(&primary).unwrap()
         );
     }
 

@@ -1,56 +1,50 @@
 # Trusted extensions E2E harness (E2E-241 to E2E-245)
 
-Drives the real desktop app end to end through the local MCP control plane
-against a deterministic OpenAI-compatible stub. Not part of `pnpm test`;
-run it by hand (or from a release checklist) on a machine with a built
-`host-core` binary and a built desktop bundle.
+The harness drives the real desktop app and renderer through the local MCP
+control plane against a deterministic OpenAI-compatible stub. The CI entry
+point owns all process startup, temporary data isolation, readiness checks, and
+cleanup:
 
-What it proves, per run:
+```bash
+pnpm test:e2e:trusted-extensions
+```
 
-- six fixture plugins contributing `agentExtensions` under `agent.extension`,
-  one limited to the fixture project, and the plugin rows' `agentExtension`
-  state / diagnostics (E2E-241);
+The command expects the JavaScript packages, desktop bundle, Electron, and a
+`target/debug` or `target/release` host-core binary to already be built. The
+optional `PI_DESKTOP_HOST_BIN` environment variable selects a host binary.
+Use `E2E_KEEP_ARTIFACTS=1` to retain the generated run directory for debugging;
+use `DEBUG_E2E=1` to stream child-process output.
+
+The seed creates six plugin-form fixtures in an isolated temporary directory;
+it does not read or write the user's `~/.pi` profile. The driver prints one
+`PASS` / `FAIL` line per assertion and a `SUMMARY` before the runner reports
+its final exit status.
+
+What the automated run proves:
+
+- plugin registration/discovery, capability and permission projection, project
+  scope, loaded/error state, and diagnostics (the runtime portion of
+  E2E-241/E2E-244);
 - `registerTool` through ToolSearch activation, `tool_call` blocking,
-  `tool_result` replacement, `before_agent_start`, provider header and
-  request hooks, lifecycle hooks (E2E-242);
+  `tool_result` replacement, `before_agent_start`, provider header and request
+  hooks, and lifecycle hooks (E2E-242);
 - slash commands in the composer menu and global search, a command with
   `ui.input` / `ui.select` / `ui.confirm` answered through the broker,
   `exec`, `setSessionName`, abort dismissing an open prompt, and
   `sendUserMessage` through the Host-owned queue (E2E-243);
-- a throwing module, an unsupported terminal-UI import, and inert API
-  members degrading to diagnostics (E2E-244).
+- a throwing module and unsupported terminal-UI imports degrading to
+  diagnostics while the remaining extensions continue to run (E2E-244).
 
-E2E-245 (the bundled loader) is covered by
+The native picker/import journey and explicit enable/disable UI flow in
+E2E-241 are not faked by this headless driver. The 30-second stalled-handler
+fixture in E2E-244 and the packaged sidecar/jiti journey in E2E-245 remain
+outside this command; E2E-245 has contract coverage in
 `packages/agent-runtime/src/extensions/bundle.test.ts`.
 
-## Run
+For manual inspection, the lower-level steps remain available:
 
 ```bash
-# 0. once: build everything the app loads at runtime
-pnpm -C packages/shared build && pnpm -C packages/i18n build
-pnpm -C packages/agent-runtime build
-pnpm --filter @pi-desktop/desktop build
-cargo build -p host-core
-
-# 1. seed a throwaway data dir (fixture plugins registered through host-core, stub provider)
-export E2E_ROOT=/tmp/pi-ext-e2e STUB_PORT=47123
-mkdir -p "$E2E_ROOT"
-HOST_BIN="$PWD/target/debug/pi-desktop-host-core" node apps/desktop/test/e2e/trusted-extensions/seed.mjs
-
-# 2. stub provider
-REQUEST_LOG="$E2E_ROOT/requests.jsonl" node apps/desktop/test/e2e/trusted-extensions/stub-server.mjs &
-
-# 3. the app, with the MCP control plane on
-(cd apps/desktop && PI_DESKTOP_DATA_DIR="$E2E_ROOT/data" PI_CODING_AGENT_DIR="$E2E_ROOT/agent" \
-  PI_DESKTOP_MCP_CONTROL=1 PI_DESKTOP_MCP_PORT=47130 ELECTRON_RENDERER_URL= ./node_modules/.bin/electron . &)
-until [ -f "$E2E_ROOT/data/mcp-control.json" ]; do sleep 1; done
-
-# 4. drive it; run twice to cover a second session on the cached modules
-E2E_PROJECT="$(node -e 'console.log(require("fs").realpathSync(process.env.E2E_ROOT + "/project"))')" \
-  node apps/desktop/test/e2e/trusted-extensions/drive.mjs
+E2E_ROOT=/tmp/pi-ext-e2e STUB_PORT=47123 \
+  HOST_BIN="$PWD/target/debug/pi-desktop-host-core" \
+  node apps/desktop/test/e2e/trusted-extensions/seed.mjs
 ```
-
-The driver prints one `PASS` / `FAIL` line per check and a `SUMMARY`.
-Prompts raised by the `greet` command also appear as real dialogs in the
-window; the driver answers them through `extensions/ui/respond` using the
-prompt ids main writes to `logs/app/plugin.log`.

@@ -10,6 +10,10 @@ import {
   type NativeMenuAction,
 } from "@pi-desktop/shared";
 import { installApplicationMenu } from "../application-menu";
+import {
+  installPluginAssetProtocol,
+  registerPluginAssetScheme,
+} from "../plugin-asset-protocol";
 import { applyNetworkProxyFromAppSettings } from "../network-proxy";
 import { readCloseBehavior } from "../window-preferences";
 import { createAgentHostBridge, type AgentHostBridge } from "../agent-host-bridge";
@@ -84,6 +88,9 @@ export type StartupDependencies = {
  * composition root through `StartupState` and dependency callbacks.
  */
 export function registerApplicationStartup(deps: StartupDependencies): void {
+  // Electron only accepts scheme privileges before the app is ready, and this
+  // runs from the composition root, before the `whenReady` promise can settle.
+  registerPluginAssetScheme();
   void app.whenReady().then(async () => {
     const {
       hasSingleInstanceLock,
@@ -119,6 +126,11 @@ export function registerApplicationStartup(deps: StartupDependencies): void {
     // create a window, a tray, or a child process on top of the running app.
     if (!hasSingleInstanceLock) return;
     applyDevelopmentBranding();
+    // Serve declared theme assets before the renderer can ask for one; the
+    // scheme itself was reserved in `registerApplicationStartup`.
+    installPluginAssetProtocol((pluginId, assetPath) =>
+      plugins.resolveThemeAsset(pluginId, assetPath),
+    );
     // Load the close-behavior preference before the first window exists: the
     // close handler reads `closeBehavior` synchronously, and a window created
     // while it still held the "ask" default would prompt a user who already

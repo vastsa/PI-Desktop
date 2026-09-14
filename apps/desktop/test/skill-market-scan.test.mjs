@@ -85,3 +85,19 @@ test("unsafe source URLs fail closed without a request", async () => {
   assert.deepEqual(result.entries, []);
   assert.deepEqual(result.failedSources, ["local"]);
 });
+
+test("main-process aggregator routes through the public-network client", async () => {
+  // Review round 2 (#290): the containment lives in the main-process wiring —
+  // the aggregator must consume the injected policy client, and the module
+  // must build that client over Electron's net.fetch with no direct renderer
+  // egress.
+  const { readFile } = await import("node:fs/promises");
+  const src = await readFile(
+    new URL("../electron/main/skill-market-catalog.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(src, /import \{ createPublicHttpsClient \} from "\.\/public-https-fetch"/);
+  assert.match(src, /createPublicHttpsClient\(\{ fetchImpl: \(url, init\) => net\.fetch\(url, init\) \}\)/);
+  assert.match(src, /createSkillMarketAggregator\(client\.request\)/);
+  assert.doesNotMatch(src, /node:https|node:http|axios|got\(/);
+});

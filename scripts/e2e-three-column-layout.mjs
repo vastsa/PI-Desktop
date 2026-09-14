@@ -446,6 +446,17 @@ async function main() {
       "work panel mounted for preview mode",
     );
     await rig(`window.__PI_DESKTOP__.setWorkPanelWidth(500)`);
+    await waitFor(
+      () => cdp.evaluate(`!!document.querySelector(".work-panel-new-tab")`),
+      "work panel new-tab action",
+    );
+    await cdp.evaluate(
+      `document.querySelector(".work-panel-new-tab")?.click?.()`,
+    );
+    await waitFor(
+      () => cdp.evaluate(`!!document.querySelector(".work-panel-tab")`),
+      "work panel tab mounted before preview mode",
+    );
     const beforeMaximize = await measure();
     await cdp.evaluate(
       `document.querySelector(".work-panel-maximize")?.dispatchEvent(new MouseEvent("click", { bubbles: true }))`,
@@ -466,6 +477,35 @@ async function main() {
       `window ${beforeMaximize.windowWidth} -> ${maximizing.windowWidth}`,
     );
 
+    const openedTabPreview = await cdp.evaluate(`(() => {
+      const actionGroup = document.querySelector(
+        ".window-chrome-row .titlebar-nav",
+      );
+      const firstTab = document.querySelector(".work-panel-tab");
+      const header = document.querySelector(".work-panel-header");
+      const actionGroupBox = actionGroup?.getBoundingClientRect();
+      const firstTabBox = firstTab?.getBoundingClientRect();
+      return {
+        platform: window.piDesktop?.platform ?? "unknown",
+        fullscreen: document.documentElement.dataset.fullscreen === "true",
+        actionGroupRight: actionGroupBox
+          ? Math.round(actionGroupBox.right)
+          : null,
+        firstTabLeft: firstTabBox ? Math.round(firstTabBox.left) : null,
+        headerPaddingLeft: header
+          ? Math.round(parseFloat(getComputedStyle(header).paddingLeft))
+          : null,
+      };
+    })()`);
+    check(
+      openedTabPreview.firstTabLeft !== null &&
+        (openedTabPreview.platform !== "darwin" ||
+          openedTabPreview.actionGroupRight === null ||
+          openedTabPreview.firstTabLeft >=
+            openedTabPreview.actionGroupRight + 8),
+      "opened work-panel tabs clear the preview action group",
+      JSON.stringify(openedTabPreview),
+    );
     const previewActions = await cdp.evaluate(`(() => {
       const firstAction =
         document.querySelector('.window-chrome-row [data-nav="toggle-sidebar"]') ??
@@ -663,11 +703,18 @@ async function main() {
       const sidebar = document.querySelector(".sidebar, .sidebar-rail");
       const handle = document.querySelector(".sidebar-resize-handle");
       const panel = document.querySelector('[data-testid="work-panel"]');
+      const panelHeader = document.querySelector(".work-panel-header");
+      const panelTabStrip = document.querySelector(".work-panel-tab-strip");
+      const firstPanelTab = document.querySelector(".work-panel-tab");
       const controlsBox = controls ? controls.getBoundingClientRect() : null;
       const firstAction =
         document.querySelector('.window-chrome-row [data-nav="toggle-sidebar"]') ??
         document.querySelector('.window-chrome-row [data-nav="new-task"]');
       const firstActionBox = firstAction?.getBoundingClientRect();
+      const previewActionGroup = document.querySelector(
+        ".window-chrome-row .titlebar-nav",
+      );
+      const previewActionGroupBox = previewActionGroup?.getBoundingClientRect();
       return {
         bandZ: band ? Number(getComputedStyle(band).zIndex) : null,
         bandHeight: band ? Math.round(band.getBoundingClientRect().height) : null,
@@ -687,6 +734,18 @@ async function main() {
         sidebarWidth: sidebar ? Math.round(sidebar.getBoundingClientRect().width) : null,
         handleVisible: handle ? getComputedStyle(handle).display !== "none" : false,
         storedWidth: window.localStorage.getItem("pi.desktop.sidebarWidth"),
+        previewActionGroupRight: previewActionGroupBox
+          ? Math.round(previewActionGroupBox.right)
+          : null,
+        panelHeaderPaddingLeft: panelHeader
+          ? Math.round(parseFloat(getComputedStyle(panelHeader).paddingLeft))
+          : null,
+        panelTabStripLeft: panelTabStrip
+          ? Math.round(panelTabStrip.getBoundingClientRect().left)
+          : null,
+        panelFirstTabLeft: firstPanelTab
+          ? Math.round(firstPanelTab.getBoundingClientRect().left)
+          : null,
         panelWidth: panel ? Math.round(panel.getBoundingClientRect().width) : null,
         main: !!document.querySelector(".main-pane"),
       };
@@ -735,6 +794,19 @@ async function main() {
         (e2eChromePreview.firstActionLeft !== null &&
           e2eChromePreview.firstActionLeft >= 76),
       "preview actions clear the macOS traffic-light hit area",
+      JSON.stringify(e2eChromePreview),
+    );
+    check(
+      e2eChromePreview.platform !== "darwin" ||
+        e2eChromePreview.sidebarWidth !== null ||
+        (e2eChromePreview.panelHeaderPaddingLeft !== null &&
+          e2eChromePreview.previewActionGroupRight !== null &&
+          e2eChromePreview.panelHeaderPaddingLeft >=
+            e2eChromePreview.previewActionGroupRight + 8 &&
+          e2eChromePreview.panelTabStripLeft !== null &&
+          e2eChromePreview.panelTabStripLeft >=
+            e2eChromePreview.previewActionGroupRight + 8),
+      "maximized panel header clears the macOS preview action lane",
       JSON.stringify(e2eChromePreview),
     );
     check(

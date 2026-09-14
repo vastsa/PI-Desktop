@@ -2,7 +2,7 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const trEntries: ChangelogEntry[] = [
   {
-    "version": "0.14.7",
+    "version": "0.14.8",
     "date": "2026-09-14",
     "highlights": [
       "MCP pazarında resmi kayıttan ve kullanıcı tanımlı kaynaklardan MCP sunucularını tarayıp yükleyin.",

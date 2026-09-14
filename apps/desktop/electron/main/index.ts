@@ -536,7 +536,8 @@ const agentExtensions = new AgentExtensionBridge({
 
 const logger = new Logger(
   dataDir,
-  process.env.NODE_ENV === "production" ? "info" : "debug",
+  isDevelopmentBuild ? "debug" : "info",
+  { mirrorConsole: isDevelopmentBuild },
 );
 installMainProcessErrorHandlers({
   emit: (record) => {

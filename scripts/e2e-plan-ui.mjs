@@ -69,10 +69,20 @@ const LIVE_PROMPT = [
   LIVE_CHECKPOINT.markdown,
   "---END MARKDOWN---",
   `question: ${LIVE_CHECKPOINT.question}`,
+  "The BEGIN/END marker lines are prompt delimiters only; do not include them in the markdown value.",
+  "The markdown value ends at the final period; do not add a trailing newline.",
   "Do not call Read, Bash, Write, Edit, or any other tool.",
   `After approval, report exactly ${LIVE_MARKER} and do not call any tool.`,
 ].join("\n");
 
+function extractLiveMarkdown(markdown) {
+  const begin = "---BEGIN MARKDOWN---\n";
+  const end = "\n---END MARKDOWN---";
+  if (typeof markdown !== "string" || !markdown.startsWith(begin) || !markdown.endsWith(end)) {
+    return markdown;
+  }
+  return markdown.slice(begin.length, -end.length);
+}
 const results = new Map();
 
 function shortText(value, max = 700) {
@@ -1299,9 +1309,11 @@ async function runLiveAcceptance(state) {
   );
   assert(pending.snapshot.bar.title === LIVE_CHECKPOINT.title, `live title mismatch: ${jsonText(pending.snapshot.bar)}`);
   assert(pending.snapshot.bar.question === "", `live approval surface rendered the submitted question: ${jsonText(pending.snapshot.bar)}`);
+  const submittedMarkdown = pending.proposal.markdown;
+  const comparableMarkdown = extractLiveMarkdown(submittedMarkdown);
   assert(
     pending.proposal.title === LIVE_CHECKPOINT.title &&
-      pending.proposal.markdown === LIVE_CHECKPOINT.markdown &&
+      comparableMarkdown === LIVE_CHECKPOINT.markdown &&
       pending.proposal.question === LIVE_CHECKPOINT.question,
     `live proposal metadata is not exact: ${jsonText(pending.proposal)}`,
   );
@@ -1311,7 +1323,10 @@ async function runLiveAcceptance(state) {
     `live approval did not default to Ask: ${jsonText(pending.snapshot.bar)}`,
   );
   await clickApprovalMenuAndCheckAsk(state);
-  const artifact = await verifyArtifact(state, pending.proposal, LIVE_CHECKPOINT);
+  const artifact = await verifyArtifact(state, pending.proposal, {
+    ...LIVE_CHECKPOINT,
+    markdown: submittedMarkdown,
+  });
   const transcript = await waitFor(
     async () => {
       const session = await getSession(state, state.liveSessionId);

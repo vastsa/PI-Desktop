@@ -31,6 +31,17 @@ test("parseGitCloneUrl rejects unsafe or incomplete remotes", () => {
   assert.equal(parseGitCloneUrl("git@github.com:org/."), null);
 });
 
+test("parseGitCloneUrl rejects private, loopback, and link-local hosts", () => {
+  assert.equal(parseGitCloneUrl("https://127.0.0.1/org/repo.git"), null);
+  assert.equal(parseGitCloneUrl("http://localhost/org/repo.git"), null);
+  assert.equal(parseGitCloneUrl("https://10.0.0.5/org/repo.git"), null);
+  assert.equal(parseGitCloneUrl("https://192.168.1.2/org/repo.git"), null);
+  assert.equal(parseGitCloneUrl("https://169.254.1.1/org/repo.git"), null);
+  assert.equal(parseGitCloneUrl("git@127.0.0.1:org/repo.git"), null);
+  assert.equal(parseGitCloneUrl("ssh://git@192.168.0.10/org/repo.git"), null);
+  assert.equal(parseGitCloneUrl("https://[::1]/org/repo.git"), null);
+});
+
 test("cloneGitRepository refuses an existing destination and path escape", async () => {
   const root = mkdtempSync(join(tmpdir(), "pi-clone-"));
   try {

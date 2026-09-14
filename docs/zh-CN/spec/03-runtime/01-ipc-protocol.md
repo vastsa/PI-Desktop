@@ -25,7 +25,7 @@
 | `session collaboration` | 侧边栏投影使用的有界只读协作状态；变更仍通过已审查的插件网关完成 |
 | `settings` | 配置 read/write |
 | `secrets` | 秘密 write/delete/exists（绝不将明文返回到 UI 日志） |
-| `project` | 工作空间选择与查询 |
+| `project` | 工作空间选择、逻辑项目组与查询 |
 | `tool` | 权限确认回调 |
 | `shell` | 主机 shell 目录和持久默认 shell |
 | `log` | 前端可以显示的诊断信息 |
@@ -57,7 +57,39 @@ event: pi-desktop/<domain>/event/<name>
 - `pi-desktop/project/open`
 - `pi-desktop/project/clone`
 - `pi-desktop/project/openFolder`
+- `pi-desktop/project-group/list`
+- `pi-desktop/project-group/create`
+- `pi-desktop/project-group/rename`
+- `pi-desktop/project-group/update`
+- `pi-desktop/project-group/memory/get` / `save`
+- `pi-desktop/project-group/instructions/get` / `save`
 - `pi-desktop/session/collaboration`
+
+## 3.1 逻辑项目组
+
+逻辑项目组是渲染器使用的 ChatGPT 风格项目容器。宿主拥有其 id、显示名称、
+有序根目录、Primary 根目录、共享记忆和共享指令。首次选择的根目录是 Primary。
+
+```ts
+type ProjectGroupRoot = { path: string; name: string; position: number };
+type ProjectGroupRecord = {
+  id: string;
+  name: string;
+  primaryPath: string;
+  roots: ProjectGroupRoot[];
+  createdAt: number;
+  updatedAt: number;
+  pinned: boolean;
+  lastOpenedAt: number;
+  legacy?: boolean;
+};
+```
+
+`project-group/create` 是新增能力，不会改变当前工作区。`project-group/list` 每个逻辑
+项目组返回一行；旧的仅路径项目会作为 `legacy` 单根项目组返回。项目组记忆和指令
+由所有 Primary 路径属于该组的会话共享。Primary 路径是内置工具的默认工作区；运行时
+会公开所有已登记根目录，访问附加根目录必须使用绝对路径并经过规范化校验，其他
+外部路径仍遵循普通权限流程。
 
 ## 4. 通用响应包络
 
@@ -1166,7 +1198,7 @@ ASCII slug：frontmatter `name` 能 slugify 时用它，否则 `SKILL.md` 用技
 - `pi-desktop/skill/market/search` — `{ query, sources[] }` → `{ entries, failedSources }`。
   主进程聚合目录 JSON 与 GitHub 仓库 SKILL.md 扫描。源 URL 必须通过公网 HTTPS 策略（ADR 0243）。单源失败只丢掉该源。
 - `pi-desktop/skill/market/fetch` — `{ entry }` → `{ name?, description?, body, resources? }`。
-  主进程按同一策略拉取文档、拆 frontmatter，并可能附上 jsDelivr 目录中的兄弟 `.md`。渲染层通过现有 `skills.create` 安装。目录 id 会净化为 host `valid_capability_id`。
+  主进程按同一策略拉取文档、拆 frontmatter，并可能附上 jsDelivr 目录中的兄弟 `.md`。渲染层通过现有 `skills.create` 安装。该策略即主进程公网网络客户端：语法 URL 防护、DNS 分类、逐跳重定向复核与响应上限——渲染层绝不直接触网。目录 id 会净化为 host `valid_capability_id`。
 
 
 桌面专用 MCP 市场通道（不是 host RPC）走 Electron IPC：

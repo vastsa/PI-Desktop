@@ -30,6 +30,13 @@
   flex: 1;
 }
 
+.project-edit-dialog-description {
+  margin: 4px 0 0;
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs-plus);
+  line-height: var(--leading-compact);
+}
+
 .project-create-dialog-title {
   margin: 0;
   color: var(--ds-text-primary);

@@ -78,9 +78,10 @@ destination, chat as the home surface, tools and permissions inline.
   notification action; the durable local inbox opens from the sidebar footer
   bell instead (D130/D117). In work-panel preview mode, MainChat is unmounted
   and a window-level 46px chrome row keeps New Task, sidebar, and native window
-  controls available. On macOS, collapsed-sidebar preview reserves the
-  leftmost 76px in windowed mode (8px in fullscreen) so these actions do not
-  overlap the traffic lights.
+  controls available. In macOS collapsed-sidebar preview, the panel header
+  reserves the 76px windowed (8px fullscreen) traffic-light inset plus the
+  preview action lane and an 8px gap, so its first tab never overlaps either
+  the traffic lights or the preview controls.
 - **Work panel**: docked right column (not an overlay) opened by an artifact,
   the viewport-fixed toggle, or `Cmd/Ctrl + J`. File, URL, browser-preview, and
   successful workspace-edit artifacts create their resources atomically. The
@@ -152,7 +153,7 @@ destination, chat as the home surface, tools and permissions inline.
 - Empty state: a restrained hero title ("What can I help you build?" — a
   project-bound session turns the project name into a dotted-underline
   switcher that lists the sidebar's open projects, can search them, can
-  clone a git repository, and can open another local folder), an optional first-run
+  clone a git repository from a syntactically public remote (ADR 0247 / D416), and can open another local folder), an optional first-run
   checklist, and a bottom-reserved composer. Task entry starts directly in the composer; no
   redundant supporting paragraph, developer starter cards, or contextual
   quick-action row is rendered (D204/D206).
@@ -178,21 +179,22 @@ destination, chat as the home surface, tools and permissions inline.
   project navigation. The following `Projects` heading exposes the
   folder-picker action; retained project groups use the remaining height and
   scroll independently.
-- **Identity**: each group is keyed by the normalized full project path, never
-  by a potentially ambiguous folder basename.
+- **Identity**: each project group is keyed by a host-owned logical group id;
+  each root path remains canonical and is never inferred from an ambiguous
+  folder basename. Legacy single-folder projects are compatibility groups.
 - **Header**: project name, active state, disclosure, new-task action, and an
   overflow menu. The directory title is one full-row disclosure target;
   collapse/expand affects only child visibility, and adjacent groups form one
   dense tree rather than detached cards. Hovering or focusing the project title
   reveals the full project path. Pressing the title and moving 8px reorders
   the group.
-- **Project actions**: open folder reveals the project directory; rename edits
-  the renderer-local display name while the normalized path remains the
-  project identity; pin/unpin changes presentation priority; archive/restore
-  hides or restores the group in the default view; close removes the retained
-  tab without deleting or archiving project/session data. Custom display names
-  are stored with sidebar preferences and are used by both the sidebar and
-  Project archive after restart.
+- **Project actions**: open folder reveals the primary project directory; Edit
+  project changes the host-owned logical group name and adjusts eligible
+  non-primary roots (keeping renderer metadata in sync); pin/unpin changes
+  presentation priority; archive/restore hides or restores the group in the
+  default view; close removes the retained primary tab without deleting or
+  archiving group roots, sessions, or memory. Expanded Project archive details
+  list every group root.
 - **Conversation actions**: rename, pin/unpin, archive/restore, fork, and
   delete remain separate actions. Rename edits the task label only; archive
   never removes the transcript. Open folder is a project action, not a

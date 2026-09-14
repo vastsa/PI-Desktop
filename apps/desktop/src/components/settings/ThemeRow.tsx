@@ -7,13 +7,15 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { AppSettings, ThemePreference } from "@pi-desktop/shared";
+import {
+  BUILTIN_THEME_PREFERENCES,
+  type AppSettings,
+  type ThemePreference,
+} from "@pi-desktop/shared";
 import { cx } from "../ui";
 import { IconCheck, IconChevronDown, IconSearch } from "../icons";
 import { AnchoredMenu } from "./AnchoredMenu";
 import { useAppStore } from "../../stores/app-store";
-
-const BUILTIN_THEMES = ["system", "light", "dark"] as const;
 
 type ThemeOption = {
   id: ThemePreference;
@@ -40,7 +42,7 @@ export function ThemeRow({
   const selectedId: ThemePreference = settings.theme ?? "system";
 
   const options = useMemo<ThemeOption[]>(() => {
-    const builtins: ThemeOption[] = BUILTIN_THEMES.map((id) => {
+    const builtins: ThemeOption[] = BUILTIN_THEME_PREFERENCES.map((id) => {
       const title = t(
         id === "light"
           ? "settings.themeLight"

@@ -83,6 +83,7 @@ function rendererApi(invoke) {
       webUtils: {},
     },
     "@pi-desktop/shared": shared,
+    "@pi-desktop/shared/protocol": shared,
   });
   const { api } = load("../src/lib/api.ts", { "@pi-desktop/shared": shared }, {
     window: { piDesktop: bridge },

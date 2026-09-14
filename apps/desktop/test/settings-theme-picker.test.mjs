@@ -24,7 +24,10 @@ test("theme picker uses an anchored menu so the settings card cannot clip it", (
 });
 
 test("theme is a searchable picker row, not a card grid", () => {
-  assert.match(rowSource, /BUILTIN_THEMES = \["system", "light", "dark"\]/);
+  // The built-in order comes from the shared theme table, so the picker cannot
+  // drift from the ids main and the panel host resolve.
+  assert.match(rowSource, /BUILTIN_THEME_PREFERENCES\.map\(/);
+  assert.doesNotMatch(rowSource, /BUILTIN_THEMES = \[/);
   assert.match(rowSource, /saveSettings\(\{ theme: id \}\)/);
   assert.match(settingsPageSource, /<ThemeRow /);
   assert.doesNotMatch(settingsPageSource, /settings-theme-grid/);

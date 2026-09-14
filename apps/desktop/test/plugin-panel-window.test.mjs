@@ -29,7 +29,7 @@ const bundledPanelSources = [
 test("plugin panels match the cross-platform main-window chrome contract", () => {
   assert.match(hostSource, /frame: false/);
   assert.doesNotMatch(hostSource, /titleBarStyle|trafficLightPosition/);
-  assert.match(hostSource, /request\.theme === "light"/);
+  assert.match(hostSource, /backgroundColor: builtinWindowBackground\(request\.theme\)/);
   assert.match(hostSource, /win\.setMenu\(null\)/);
   assert.match(hostSource, /pi-plugin-panel-development=1/);
   assert.match(chromeSource, /PLUGIN_PANEL_TITLEBAR_HEIGHT = 46/);

@@ -39,6 +39,10 @@ export type LogFields = {
   data?: unknown;
 };
 
+export type LoggerOptions = {
+  mirrorConsole?: boolean;
+};
+
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const KEEP_ROTATED = 2;
 const CONSOLE_METHODS = ["debug", "info", "log", "warn", "error"] as const;
@@ -106,12 +110,19 @@ export function stripAnsi(value: string): string {
 export class Logger {
   private dir: string;
   private minLevel: LogLevel;
+  private mirrorConsole: boolean;
   private sizes = new Map<string, number>();
   private childBuffers = new Map<LogChannel, string>();
 
-  constructor(dataDir: string, minLevel: LogLevel = "info") {
+  constructor(
+    dataDir: string,
+    minLevel: LogLevel = "info",
+    options: LoggerOptions = {},
+  ) {
     this.dir = join(dataDir, "logs");
     this.minLevel = minLevel;
+    this.mirrorConsole =
+      options.mirrorConsole ?? process.env.NODE_ENV !== "production";
     mkdirSync(this.dir, { recursive: true });
   }
 
@@ -193,15 +204,32 @@ export class Logger {
     } catch {
       // Disk trouble must never crash the app.
     }
-    if (process.env.NODE_ENV !== "production" || level === "error") {
+    if (this.mirrorConsole || level === "error") {
       try {
         const mirror = level === "error" ? console.error : console.log;
-        mirror(`[${channel}/${category}] ${safeMessage}`);
+        const consoleFields = this.consoleFields(category, fields);
+        mirror(`[${channel}/${category}] ${safeMessage}${consoleFields}`);
       } catch {
         // Console mirroring is best-effort. A closed stdout (EPIPE on Linux
         // AppImage) must never become an uncaught main-process exception.
       }
     }
+  }
+
+  private consoleFields(category: LogCategory, fields: LogFields): string {
+    const safeFields = redactValue(fields) as LogFields;
+    const data =
+      safeFields.data && typeof safeFields.data === "object"
+        ? (safeFields.data as Record<string, unknown>)
+        : undefined;
+    const parts: string[] = [];
+    if (category === "tool" && typeof data?.toolName === "string") {
+      parts.push(`tool=${data.toolName}`);
+    }
+    if (category === "tool" && typeof data?.isError === "boolean") {
+      parts.push(`error=${data.isError}`);
+    }
+    return parts.length > 0 ? ` ${parts.join(" ")}` : "";
   }
 
   app(

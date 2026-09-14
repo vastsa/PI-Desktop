@@ -29,7 +29,7 @@ export type ChangelogEntry = {
 
 const enEntries: ChangelogEntry[] = [
   {
-    version: "0.14.7",
+    version: "0.14.8",
     date: "2026-09-14",
     highlights: [
       "Browse and install MCP servers from the official registry and user-configured sources in the MCP market.",
@@ -759,7 +759,7 @@ const enEntries: ChangelogEntry[] = [
 
 const zhCNEntries: ChangelogEntry[] = [
   {
-    version: "0.14.7",
+    version: "0.14.8",
     date: "2026-09-14",
     highlights: [
       "在 MCP 市场中浏览并安装官方注册表和自定义来源的 MCP 服务器。",
@@ -1488,7 +1488,7 @@ const zhCNEntries: ChangelogEntry[] = [
 
 const zhTWEntries: ChangelogEntry[] = [
   {
-    version: "0.14.7",
+    version: "0.14.8",
     date: "2026-09-14",
     highlights: [
       "在 MCP 市場中瀏覽並安裝官方登錄檔和自訂來源的 MCP 伺服器。",

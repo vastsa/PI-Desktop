@@ -1,7 +1,7 @@
 {
   "name": "pi-desktop",
   "private": true,
-  "version": "0.14.7-beta.2",
+  "version": "0.14.8",
   "description": "Local-first AI coding agent desktop client",
   "packageManager": "pnpm@11.18.0",
   "engines": {
@@ -40,7 +40,10 @@
     "clean": "pnpm -r --if-present clean && cargo clean",
     "lint:biome": "biome lint",
     "test:e2e:mcp-market": "node scripts/e2e-mcp-market.mjs",
-    "test:e2e:skill-market": "node scripts/e2e-skill-market.mjs"
+    "test:e2e:skill-market": "node scripts/e2e-skill-market.mjs",
+    "test:e2e:plugin-import-deps": "node scripts/e2e-plugin-import-deps.mjs",
+    "test:e2e:trusted-extensions": "node scripts/e2e-trusted-extensions.mjs",
+    "test:e2e:collaboration": "node scripts/e2e-session-collaboration.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.13",

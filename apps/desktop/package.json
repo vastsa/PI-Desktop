@@ -1,6 +1,6 @@
 {
   "name": "@pi-desktop/desktop",
-  "version": "0.14.7-beta.2",
+  "version": "0.14.8",
   "desktopName": "pi-desktop.desktop",
   "private": true,
   "description": "PI-Desktop Electron application",
@@ -203,11 +203,15 @@
           ]
         }
       ],
-      "icon": "build/icon.png",
+      "icon": "build/icon.ico",
       "extraResources": [
         {
           "from": "../../target/release/pi-desktop-host-core.exe",
           "to": "bin/pi-desktop-host-core.exe"
+        },
+        {
+          "from": "build/icon.ico",
+          "to": "app-icon.ico"
         }
       ]
     },

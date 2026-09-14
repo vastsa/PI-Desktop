@@ -250,6 +250,10 @@ combined model × reasoning selection (§11).
   while the panel is closed. While the panel is open, that 120px band plus the
   toggle overlay the panel header instead, and the header ends its box before
   the band so the panel tab strip and `+` stay clear of the native control band.
+  In macOS windowed preview mode, a collapsed sidebar also adds the 76px
+  traffic-light reserve and the preview action lane plus an 8px gap to the
+  panel header itself, keeping its first tab clear; fullscreen uses the 8px
+  native reserve but retains the preview action lane.
   Resource close actions stay in their tabs so a second header `×` does not echo
   the native Windows close control (D357).
 - Title cluster (task title) flexes and shows at most the first 10 Unicode
@@ -449,8 +453,11 @@ visually distinct from list content.
 - Click the `Projects` heading folder-plus action: open the Create project
   dialog. The dialog accepts a project name and one or more local folders,
   lists every selected folder with a remove action, and marks the first folder
-  as Primary. The primary folder is activated and named after creation; every
-  other selected folder is retained as an open project tab. The dialog follows
+  as Primary. Creation makes one logical project group: the primary folder is
+  activated and names the group, while every other selected folder is retained
+  as a group root and is shown in Project archive details, not as an open
+  project tab. Group chats, instructions, and memory use the same group
+  identity. The dialog follows
   the shell's neutral gray surfaces, with a 480px maximum width,
   `--radius-lg-plus` (18px) corners, and the shared `--ds-shadow-dialog`
   elevation. Its compact type hierarchy uses `--text-lg` for the title,
@@ -459,7 +466,10 @@ visually distinct from list content.
   while distinct sections use a 16px gap and shared button/input metrics. One
   Create project title leads into an explicitly labeled filled name field and
   the workspace list with a softly filled Add folder action; the field does not
-  repeat its label as placeholder text. The folder section exposes the current
+  repeat its label as placeholder text. Edit project reuses the same surface,
+  loads the host-owned group, allows the name and non-primary folders to be
+  adjusted, keeps Primary first and non-removable, and rejects removal of a
+  folder that still owns chats. The folder section exposes the current
   local source as a compact source chip; a future remote source can replace
   that slot without changing the project name or workspace list contract. The
   dialog does not add explanatory copy for durable memory or multi-selection.

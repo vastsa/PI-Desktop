@@ -323,17 +323,59 @@ export function createSessionLaunchRuntime({
       typeof session.projectPath === "string" && session.projectPath.trim()
         ? session.projectPath.trim()
         : undefined;
-    const projectInstructions = await loadInstructionChain(projectPath);
+    let projectInstructions = await loadInstructionChain(projectPath);
     let projectMemory: string | undefined;
     if (projectPath) {
       try {
         const result = await runtimeState.host!.call<{
-          memory?: { content?: string };
-        }>("project.memory.get", { path: projectPath });
-        const content = result.memory?.content?.trim();
-        if (content) projectMemory = content;
+          context?: {
+            roots?: Array<{ path?: string }>;
+            instructions?: string;
+            memory?: { content?: string };
+          } | null;
+        }>("project.group.context", { path: projectPath });
+        const groupRoots = result.context?.roots ?? [];
+        const groupRootGuide = groupRoots.length > 1
+          ? [
+              `Primary root: ${groupRoots[0]?.path ?? projectPath}`,
+              ...groupRoots.slice(1).map((root) => `Additional root: ${root.path}`),
+              "Use an absolute path when reading or editing an additional root.",
+            ].join("\n")
+          : "";
+        const groupInstructions = result.context?.instructions?.trim();
+        if (groupRootGuide || groupInstructions) {
+          projectInstructions = {
+            entries: [
+              ...(projectInstructions?.entries ?? []),
+              ...(groupRootGuide
+                ? [{ source: "ChatGPT Project folders", content: groupRootGuide }]
+                : []),
+              ...(groupInstructions
+                ? [{ source: "ChatGPT Project instructions", content: groupInstructions }]
+                : []),
+            ],
+          };
+        }
+        const groupMemory = result.context?.memory?.content?.trim();
+        if (groupMemory) projectMemory = groupMemory;
+        if (!result.context) {
+          const legacy = await runtimeState.host!.call<{
+            memory?: { content?: string };
+          }>("project.memory.get", { path: projectPath });
+          const content = legacy.memory?.content?.trim();
+          if (content) projectMemory = content;
+        }
       } catch {
-        // Project memory is best effort; it must never prevent a session launch.
+        // Project context is best effort; it must never prevent a session launch.
+        try {
+          const legacy = await runtimeState.host!.call<{
+            memory?: { content?: string };
+          }>("project.memory.get", { path: projectPath });
+          const content = legacy.memory?.content?.trim();
+          if (content) projectMemory = content;
+        } catch {
+          // Legacy memory is also best effort.
+        }
       }
     }
     sessionProjects.set(sessionId, projectPath ?? null);

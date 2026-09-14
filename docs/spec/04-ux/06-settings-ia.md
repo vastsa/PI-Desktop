@@ -336,7 +336,6 @@ system while preserving their different data ownership:
   **Copy as mine** (opens the create sheet pre-filled from that definition, with
   the matching template chip selected); they have no enablement switch, reveal,
   or delete because they are not files.
-  are not files.
 - The level filter narrows which groups the panel renders; it never hides the
   toolbar or moves the actions. New capabilities are created at the level the
   filter points at — Global under All or Global, Project under Project — and
@@ -475,8 +474,9 @@ system while preserving their different data ownership:
   skipped imports preserve the archive choice.
 - Add project opens the Create project dialog. The user supplies a display name
   and can select multiple local folders in one native picker; the first folder
-  is the Primary workspace and the remaining folders are retained as open
-  project tabs after creation.
+  is the primary root of one logical project, and the remaining folders are
+  retained as roots of that same project rather than separate project tabs.
+  Chats, project instructions, and project memory are shared by the group.
 - The destination is one workbench, not a stack of bands (D267, revising D168):
   a quiet intro line above a single toolbar above a single elevated panel. It
   reuses the same composition, control height, and row rhythm as the agent

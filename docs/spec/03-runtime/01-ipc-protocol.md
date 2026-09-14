@@ -22,7 +22,7 @@ Principles:
 | `session collaboration` | Read-only bounded collaboration status for sidebar projections; mutation stays in the reviewed plugin gateway |
 | `settings` | Config read/write |
 | `secrets` | Secret write/delete/exists (never return plaintext to UI logs) |
-| `project` | Workspace selection and query |
+| `project` | Workspace selection, logical project groups, and query |
 | `tool` | Permission confirmation callback |
 | `shell` | Host shell catalog and persisted default shell |
 | `log` | Diagnostics that the frontend can display |
@@ -57,9 +57,45 @@ Examples:
 - `pi-desktop/project/pickFolders`
 - `pi-desktop/project/clone`
 - `pi-desktop/project/openFolder`
+- `pi-desktop/project-group/list`
+- `pi-desktop/project-group/create`
+- `pi-desktop/project-group/rename`
+- `pi-desktop/project-group/update`
+- `pi-desktop/project-group/memory/get` / `save`
+- `pi-desktop/project-group/instructions/get` / `save`
 - `pi-desktop/session/getScratchPath`
 - `pi-desktop/session/openScratchPath`
 - `pi-desktop/session/collaboration`
+
+## 3.1 Logical project groups
+
+A project group is the ChatGPT-style project container used by the renderer.
+The host owns its id, display name, ordered roots, primary root, shared memory,
+and shared instructions. The first selected root is primary.
+
+```ts
+type ProjectGroupRoot = { path: string; name: string; position: number };
+type ProjectGroupRecord = {
+  id: string;
+  name: string;
+  primaryPath: string;
+  roots: ProjectGroupRoot[];
+  createdAt: number;
+  updatedAt: number;
+  pinned: boolean;
+  lastOpenedAt: number;
+  legacy?: boolean;
+};
+```
+
+`project-group/create` is additive and does not change the active workspace.
+`project-group/list` returns one row per logical group; old path projects are
+returned as `legacy` single-root groups. Group memory and instructions are
+shared by all sessions whose primary path belongs to the group. The primary
+path is the default builtin-tool workspace. The runtime advertises all registered
+roots; an absolute path under an additional root is canonicalized and executed
+against that root, while arbitrary external paths still require the ordinary
+permission flow.
 
 ## 4. Common Response Envelope
 
@@ -1398,7 +1434,10 @@ Desktop-only skill market channels (not host RPC) live on Electron IPC:
 - `pi-desktop/skill/market/fetch` — `{ entry }` → `{ name?, description?, body, resources? }`.
   Main fetches the document over the same policy, splits frontmatter, and may
   attach sibling `.md` files from a jsDelivr listing. The renderer installs
-  through existing `skills.create`. Catalog ids are sanitized to host
+  through existing `skills.create`. That policy is the main-process
+  public-network client: syntactic URL guard, DNS classification, per-hop
+  redirect revalidation, and bounded responses — the renderer never reaches
+  the network directly. Catalog ids are sanitized to host
   `valid_capability_id` (`[a-z0-9][a-z0-9-]{0,63}`).
 
 Desktop-only MCP market channels (not host RPC) live on Electron IPC:

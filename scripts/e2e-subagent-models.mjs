@@ -44,9 +44,54 @@ const model = (modelId) => ({
   apiStyle: "openai-chat", supportsReasoning: false, supportedThinkingLevels: ["off"],
 });
 const bindings = { "fixture/private": model("private"), "fixture/allowed": model("allowed") };
-const definition = (name, pin) => ({
-  name, description: "Read-only fixture", tools: ["Read"], prompt: "Return Fixture finished without using tools.",
-  source: "user", ...(pin ? { model: { providerId: "fixture", modelId: pin } } : {}),
+const INHERIT_DENY_TOOLS = [
+  "Task",
+  "TaskWait",
+  "TaskList",
+  "TaskStop",
+  "EnterPlanMode",
+  "EnterGoalMode",
+  "asktool",
+  "new_context",
+  "ToolSearch",
+];
+const fixturePluginTools = [
+  { name: "plugin_fixture_echo", description: "Deterministic fixture plugin tool." },
+];
+const fixtureSkills = [
+  {
+    id: "fixture.skills/release-notes",
+    name: "Fixture release notes",
+    description: "Use the fixture release-note workflow.",
+  },
+];
+const EXPECTED_INHERITED_PARENT_TOOLS = [
+  "Read",
+  "Bash",
+  "Edit",
+  "Write",
+  "Glob",
+  "Grep",
+  "BrowserPreview",
+  "PluginCheck",
+  "PluginScaffold",
+  "PluginPack",
+  "plugin_fixture_echo",
+  "Skill",
+];
+const builtinExplorerDefinition = {
+  name: "explorer",
+  description: "Built-in codebase explorer.",
+  tools: ["Read", "Glob", "Grep", "Bash"],
+  prompt: "Search the requested files and report exact paths.",
+  source: "builtin",
+  maxTurns: 60,
+};
+const definition = (name, pin, options = {}) => ({
+  name, description: "Read-only fixture", tools: options.tools ?? ["Read"], prompt: "Return Fixture finished without using tools.",
+  source: "user",
+  ...(options.inheritTools ? { inheritTools: true } : {}),
+  ...(pin ? { model: { providerId: "fixture", modelId: pin } } : {}),
 });
 const child = spawn(process.execPath, [fileURLToPath(new URL("../packages/agent-runtime/dist/sidecar.js", import.meta.url))], {
   stdio: ["pipe", "pipe", "pipe"],
@@ -92,14 +137,22 @@ async function until(predicate) {
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
 }
-async function run(id, args, expectedModel, keys = ["fixture/allowed"], sessionId = id) {
+async function run(id, args, expectedModel, keys = ["fixture/allowed"], sessionId = id, options = {}) {
+  const inheritCatalog = options.inheritCatalog === true;
+  const subagents = [
+    definition("reviewer", "private"),
+    inheritCatalog ? builtinExplorerDefinition : definition("explorer"),
+    ...(inheritCatalog ? [definition("worker", undefined, { inheritTools: true, tools: [] })] : []),
+  ];
   const marker = `scenario-${id}`;
   const before = requests.length;
   scenarios.set(id, { marker, args: { ...args, task: `Complete fixture ${id}.` } });
   await rpc("agent.prompt", {
     sessionId, turnId: id, content: marker, mode: "agent", provider: model("parent"), thinkingLevel: "off",
     commandShell: { id: "bash", label: "Bash", dialect: "posix", available: true, isDefault: true },
-    subagents: [definition("reviewer", "private"), definition("explorer")],
+    subagents,
+    pluginTools: inheritCatalog ? fixturePluginTools : undefined,
+    pluginSkills: inheritCatalog ? fixtureSkills : undefined,
     subagentProviders: bindings, subagentModelKeys: keys,
   });
   await until(() => events.some((e) => e.sessionId === sessionId && e.turnId === id && e.event.type === "agent_end" && !e.parentToolCallId));
@@ -114,6 +167,48 @@ async function run(id, args, expectedModel, keys = ["fixture/allowed"], sessionI
   else {
     assert.equal(delegates.length, 0, "forbidden override must not issue a provider request");
     assert.ok(captured.some((p) => p.messages.some((m) => m.role === "tool" && JSON.stringify(m.content).includes("not available for delegation"))));
+  }
+  if (inheritCatalog) {
+    const delegated = delegates.find((request) =>
+      request.messages.some((message) =>
+        message.role === "system" && String(message.content).includes(`\"${args.agent}\" subagent`),
+      ),
+    );
+    assert.ok(delegated, `${args.agent} delegate provider request reached local transport`);
+    const delegatedToolNames = delegated.tools.map((tool) => tool.function?.name);
+    const delegatedSystem = delegated.messages
+      .filter((message) => message.role === "system")
+      .map((message) => String(message.content))
+      .join("\n");
+    if (args.agent === "worker") {
+      assert.match(
+        parent.tools.find((tool) => tool.function?.name === "Task").function.description,
+        /worker \(tools: inherit\)/,
+      );
+      assert.match(system, /# Skills/);
+      assert.match(system, /fixture\.skills\/release-notes/);
+      assert.ok(delegatedToolNames.includes("Skill"), "inherit worker receives Skill");
+      assert.ok(
+        delegatedToolNames.includes("plugin_fixture_echo"),
+        "inherit worker receives the fixture plugin tool",
+      );
+      assert.match(delegatedSystem, /# Skills/);
+      assert.match(delegatedSystem, /fixture\.skills\/release-notes/);
+      assert.match(delegatedSystem, /You may change files/);
+      for (const inherited of EXPECTED_INHERITED_PARENT_TOOLS) {
+        assert.ok(
+          delegatedToolNames.includes(inherited),
+          `inherit worker receives parent catalog tool ${inherited}`,
+        );
+      }
+      for (const denied of INHERIT_DENY_TOOLS) {
+        assert.ok(!delegatedToolNames.includes(denied), `${denied} must not be inherited`);
+      }
+    } else {
+      assert.deepEqual(delegatedToolNames, ["Read", "Glob", "Grep", "Bash"]);
+      assert.ok(!delegatedToolNames.includes("Skill"), "builtin explorer must not inherit Skill");
+      assert.ok(!delegatedSystem.includes("# Skills"), "builtin explorer must not receive Skill guidance");
+    }
   }
   console.log(`PASS E2E-166 ${id}`);
   return rpc("agent.testRuntimeIdentity", { sessionId });
@@ -132,6 +227,22 @@ try {
   const first = await run("before-revocation", { agent: "explorer", model: "fixture/allowed" }, "allowed", ["fixture/allowed"], "reload");
   const second = await run("after-revocation", { agent: "explorer", model: "fixture/allowed" }, undefined, [], "reload");
   assert.notEqual(first.runtimeId, second.runtimeId, "changed opt-in must retire an idle runtime");
+  await run(
+    "inherit-parent-tools",
+    { agent: "worker" },
+    "parent",
+    ["fixture/allowed"],
+    "inherit-tools",
+    { inheritCatalog: true },
+  );
+  await run(
+    "builtin-explorer-no-inherit",
+    { agent: "explorer" },
+    "parent",
+    ["fixture/allowed"],
+    "inherit-tools",
+    { inheritCatalog: true },
+  );
   console.log("PASS E2E-166 changed opt-in rebuilds the sidecar runtime");
 } finally {
   child.kill();

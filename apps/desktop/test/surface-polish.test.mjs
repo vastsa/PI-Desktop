@@ -6,14 +6,17 @@ import { loadStyles } from "./helpers/styles.mjs";
 const styles = await loadStyles();
 
 test("work panel uses a quiet light-theme inset surface", () => {
+  // The light inset and its raised strips are tokens, not literals pinned by a
+  // `:root[data-theme="light"]` override, so a contributed theme can move them
+  // (D418). A literal here would put the dock out of every theme's reach.
+  assert.match(styles, /--ds-bg-dock:\s*#fafafa/);
+  assert.match(styles, /--ds-bg-dock-raised:\s*#ffffff/);
+  assert.match(styles, /\.work-panel\s*\{[\s\S]*?background:\s*var\(--ds-bg-dock\)/);
   assert.match(
     styles,
-    /:root\[data-theme="light"\]\s+\.work-panel\s*\{[\s\S]*?background:\s*#fafafa/,
+    /\.work-panel-header\s*\{[\s\S]*?background:\s*var\(--ds-bg-dock-raised\)/,
   );
-  assert.match(
-    styles,
-    /:root\[data-theme="light"\]\s+\.work-panel-header\s*\{[\s\S]*?background:\s*#ffffff/,
-  );
+  assert.doesNotMatch(styles, /:root\[data-theme="light"\]\s+\.work-panel\s*\{/);
   assert.match(
     styles,
     /\.work-panel-tab-strip\s*\{[\s\S]*?display:\s*flex/,

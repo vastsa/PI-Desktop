@@ -6,7 +6,7 @@
  * configure a provider, call a provider, or require network access.
  */
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
@@ -39,6 +39,11 @@ import {
   verifyArtifact,
 } from "./e2e/plan.mjs";
 
+import {
+  loadDevelopmentPlugin,
+  resolvePluginExecution,
+  waitForPluginExecution,
+} from "./e2e/plugin.mjs";
 const PROTOCOL_VERSION = 11;
 const PLAN_APPROVAL_TIMEOUT_MS = 30 * 60 * 1000;
 const LONG_TIMEOUT_ENABLED = process.env.PI_DESKTOP_E2E_LONG_TIMEOUT === "1";
@@ -321,6 +326,123 @@ async function scenario106(binary, tempRoot) {
     });
     await endTurn(ctx.host, secondTurn);
     return `first=${proposal1.id.slice(0, 8)} second=${proposal2.id.slice(0, 8)} missingMode=${missingModeCode} approval=ask`;
+  }, binary, tempRoot);
+}
+
+async function scenarioPlanSafePlugin(binary, tempRoot) {
+  return withScenario("E2E-PLAN-005", async (ctx) => {
+    const pluginId = "e2e.plan-safe";
+    const toolName = "plugin_e2e_plan_safe_inspect";
+    const planSafeActions = ["snapshot"];
+    const pluginRoot = join(ctx.scenarioRoot, "plan-safe-plugin");
+    await mkdir(pluginRoot, { recursive: true });
+    await writeFile(join(pluginRoot, "main.js"), "module.exports = { onLoad() {} };", "utf8");
+    await writeFile(
+      join(pluginRoot, "manifest.json"),
+      JSON.stringify(
+        {
+          schemaVersion: 1,
+          id: pluginId,
+          name: "E2E Plan Safe",
+          version: "0.1.0",
+          main: "main.js",
+          contributes: {
+            agentTools: [
+              {
+                name: "inspect",
+                description: "Inspect a page without mutating it",
+                risk: "low",
+                planSafeActions,
+                schema: {
+                  type: "object",
+                  properties: {
+                    action: { type: "string", enum: ["snapshot", "click"] },
+                    url: { type: "string" },
+                  },
+                  required: ["action"],
+                },
+              },
+            ],
+          },
+          permissions: ["agent.tool.register"],
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+    const loaded = await loadDevelopmentPlugin(ctx.host, pluginRoot);
+    assert(loaded.id === pluginId && loaded.enabled === true, shortJson(loaded));
+
+    const session = await createSession(ctx.host, ctx.workspace, "Plan-safe plugin", "plan");
+    await configureSession(ctx.host, session, "plan", "auto");
+    const turnId = await beginTurn(ctx.host, session.id);
+
+    async function executeFixture(args, toolCallId) {
+      const dispatch = ctx.host.call("tools.execute", {
+        sessionId: session.id,
+        turnId,
+        toolCallId,
+        toolName,
+        declaredRisk: "low",
+        planSafeActions,
+        args,
+        // A forged sidecar mode cannot widen the durable Plan mode.
+        mode: "agent",
+      });
+      const notification = await waitForPluginExecution(ctx.host, toolName);
+      assert(notification, "Plan-safe plugin call was not dispatched");
+      assert(notification.params?.mode === "plan", shortJson(notification));
+      assert(
+        JSON.stringify(notification.params?.planSafeActions) === JSON.stringify(planSafeActions),
+        shortJson(notification),
+      );
+      const action = notification.params?.args?.action;
+      if (planSafeActions.includes(action)) {
+        await resolvePluginExecution(ctx.host, notification, {
+          ok: true,
+          content: { action, source: "plan-safe-fixture" },
+        });
+      } else {
+        await resolvePluginExecution(ctx.host, notification, {
+          ok: false,
+          errorCode: "PERMISSION_DENIED",
+          content: { error: `action ${String(action)} is not plan-safe` },
+        });
+      }
+      return dispatch;
+    }
+
+    const safe = await executeFixture(
+      { action: "snapshot", url: "https://example.com" },
+      "e2e-plan-safe-snapshot",
+    );
+    assertToolSuccess(safe, "e2e-plan-safe-snapshot");
+    assert(safe.content?.action === "snapshot", shortJson(safe));
+
+    ctx.host.clearNotifications();
+    const mutation = await executeFixture(
+      { action: "click", selector: "#sign-in" },
+      "e2e-plan-safe-click",
+    );
+    assertToolFailure(mutation, "PERMISSION_DENIED");
+
+    ctx.host.clearNotifications();
+    const undeclared = await ctx.host.call("tools.execute", {
+      sessionId: session.id,
+      turnId,
+      toolCallId: "e2e-plan-safe-undeclared",
+      toolName,
+      args: { action: "snapshot", url: "https://example.com" },
+      mode: "agent",
+    });
+    assertToolFailure(undeclared, "PLUGIN_DISABLED_IN_PLAN");
+    assert(
+      ctx.host.matchingNotifications("plugins.execute").length === 0,
+      "host dispatched a plugin call without planSafeActions",
+    );
+    await endTurn(ctx.host, turnId);
+    return "safe=snapshot mutation=PERMISSION_DENIED undeclared=PLUGIN_DISABLED_IN_PLAN";
   }, binary, tempRoot);
 }
 
@@ -853,6 +975,7 @@ async function main() {
   try {
     await runScenario("E2E-105", () => scenario105(binary, tempRoot));
     await runScenario("E2E-106", () => scenario106(binary, tempRoot));
+    await runScenario("E2E-PLAN-005", () => scenarioPlanSafePlugin(binary, tempRoot));
     await runScenario("E2E-107", () => scenario107(binary, tempRoot));
     await runScenario("E2E-108", () => scenario108(binary, tempRoot));
     await runScenario("E2E-109", () => scenario109(binary, tempRoot));

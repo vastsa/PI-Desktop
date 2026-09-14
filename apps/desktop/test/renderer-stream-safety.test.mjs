@@ -15,6 +15,8 @@ test("streaming content does not add a renderer-side state update loop", () => {
 });
 
 test("renderer CSP permits only local and bundled data fonts", () => {
-  assert.match(rendererHtml, /font-src 'self' data:;/);
+  // `plugin-asset:` is host-owned and package-scoped — it serves only files a
+  // loaded plugin declared — so a contributed theme font is still a local load.
+  assert.match(rendererHtml, /font-src 'self' data: plugin-asset:;/);
   assert.doesNotMatch(rendererHtml, /font-src[^;]*https?:/);
 });

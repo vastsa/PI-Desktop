@@ -1131,6 +1131,191 @@ fn goal_is_a_valid_persisted_session_mode() {
 }
 
 #[test]
+fn project_group_roundtrips_roots_and_shared_context() {
+    let dir = tempfile::tempdir().unwrap();
+    let first = dir.path().join("app");
+    let second = dir.path().join("docs");
+    std::fs::create_dir_all(&first).unwrap();
+    std::fs::create_dir_all(&second).unwrap();
+    let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+
+    let group = db
+        .create_project_group(
+            "Acme workspace",
+            &[
+                first.to_string_lossy().into(),
+                second.to_string_lossy().into(),
+            ],
+        )
+        .unwrap();
+    assert!(!group.legacy);
+    assert_eq!(group.name, "Acme workspace");
+    let canonical_first = crate::db::canonical_project_path(&first.to_string_lossy()).unwrap();
+    assert_eq!(group.primary_path, canonical_first);
+    assert_eq!(group.roots.len(), 2);
+    assert_eq!(db.list_project_groups().unwrap().len(), 1);
+
+    let memory = db
+        .set_project_group_memory(
+            &group.id,
+            &serde_json::json!([{
+                "id": "stack",
+                "title": "Stack",
+                "content": "Use Rust for services."
+            }]),
+        )
+        .unwrap();
+    assert_eq!(memory.content, "## Stack\n\nUse Rust for services.");
+    assert_eq!(
+        db.set_project_group_instructions(&group.id, "Keep changes backwards compatible.")
+            .unwrap(),
+        "Keep changes backwards compatible."
+    );
+    let context = db
+        .project_group_context_for_path(&second.to_string_lossy())
+        .unwrap()
+        .unwrap();
+    assert_eq!(context.group_id, group.id);
+    assert_eq!(context.instructions, "Keep changes backwards compatible.");
+    assert_eq!(context.memory.content, "## Stack\n\nUse Rust for services.");
+
+    let renamed = db
+        .rename_project_group(&group.id, "Renamed workspace")
+        .unwrap();
+    assert_eq!(renamed.name, "Renamed workspace");
+    assert!(db
+        .create_project_group("Duplicate", &[first.to_string_lossy().into()])
+        .is_err());
+}
+
+#[test]
+fn project_group_update_adjusts_roots_without_orphaning_chats() {
+    let dir = tempfile::tempdir().unwrap();
+    let primary = dir.path().join("primary");
+    let first = dir.path().join("first");
+    let second = dir.path().join("second");
+    std::fs::create_dir_all(&primary).unwrap();
+    std::fs::create_dir_all(&first).unwrap();
+    std::fs::create_dir_all(&second).unwrap();
+    let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+    let group = db
+        .create_project_group(
+            "Editable",
+            &[
+                primary.to_string_lossy().into(),
+                first.to_string_lossy().into(),
+            ],
+        )
+        .unwrap();
+
+    let updated = db
+        .update_project_group(
+            &group.id,
+            "Adjusted",
+            &[
+                primary.to_string_lossy().into(),
+                second.to_string_lossy().into(),
+            ],
+        )
+        .unwrap();
+    assert_eq!(updated.name, "Adjusted");
+    assert_eq!(updated.roots.len(), 2);
+    assert_eq!(updated.roots[0].path, group.primary_path);
+    assert_eq!(
+        updated.roots[1].path,
+        crate::db::canonical_project_path(&second.to_string_lossy()).unwrap()
+    );
+    assert_eq!(updated.detached_paths.len(), 1);
+    assert_eq!(db.list_project_groups().unwrap().len(), 1);
+
+    let session = crate::sessions::create_session(
+        &db,
+        Some("Existing chat".into()),
+        Some("agent".into()),
+        None,
+        None,
+        Some(second.to_string_lossy().into_owned()),
+    )
+    .unwrap();
+    assert!(db
+        .update_project_group(
+            &updated.id,
+            "Adjusted again",
+            &[second.to_string_lossy().into()],
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("primary folder"));
+    let canonical_second = crate::db::canonical_project_path(&second.to_string_lossy()).unwrap();
+    assert_eq!(
+        session.project_path.as_deref(),
+        Some(canonical_second.as_str())
+    );
+
+    assert!(db
+        .update_project_group(
+            &updated.id,
+            "Adjusted again",
+            &[primary.to_string_lossy().into()],
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("still has chats"));
+}
+
+#[test]
+fn editing_a_legacy_project_with_an_extra_folder_upgrades_it_to_a_group() {
+    let dir = tempfile::tempdir().unwrap();
+    let primary = dir.path().join("primary");
+    let extra = dir.path().join("extra");
+    std::fs::create_dir_all(&primary).unwrap();
+    std::fs::create_dir_all(&extra).unwrap();
+    let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+    db.ensure_project(&primary.to_string_lossy(), false)
+        .unwrap();
+    db.set_project_memory(&primary.to_string_lossy(), "Remember this.")
+        .unwrap();
+    let legacy = db.list_project_groups().unwrap().pop().unwrap();
+    db.set_project_memory(&extra.to_string_lossy(), "Remember the extra root too.")
+        .unwrap();
+    assert!(legacy.legacy);
+
+    let upgraded = db
+        .update_project_group(
+            &legacy.id,
+            "Upgraded",
+            &[
+                primary.to_string_lossy().into(),
+                extra.to_string_lossy().into(),
+            ],
+        )
+        .unwrap();
+    assert!(!upgraded.legacy);
+    let memory = db.get_project_group_memory(&upgraded.id).unwrap();
+    assert!(memory.content.contains("Remember this."));
+    assert!(memory.content.contains("Remember the extra root too."));
+    assert_eq!(db.list_project_groups().unwrap().len(), 1);
+}
+
+#[test]
+fn old_path_projects_are_legacy_single_root_groups() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("legacy");
+    std::fs::create_dir_all(&root).unwrap();
+    let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+    db.ensure_project(&root.to_string_lossy(), false).unwrap();
+
+    let groups = db.list_project_groups().unwrap();
+    assert_eq!(groups.len(), 1);
+    assert!(groups[0].legacy);
+    assert_eq!(groups[0].roots.len(), 1);
+    assert!(db
+        .project_group_context_for_path(&root.to_string_lossy())
+        .unwrap()
+        .is_none());
+}
+
+#[test]
 fn ensure_project_upserts_by_path() {
     let dir = tempfile::tempdir().unwrap();
     let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();

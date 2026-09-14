@@ -527,6 +527,28 @@
   padding: 0 14px 14px 85px;
 }
 
+.projects-detail-roots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-bottom: 8px;
+}
+
+.projects-detail-root {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 5px;
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs);
+}
+
+.projects-detail-root span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .projects-detail-header {
   display: flex;
   align-items: center;

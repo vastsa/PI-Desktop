@@ -5,6 +5,9 @@ import test from "node:test";
 const packageJson = JSON.parse(
   await readFile(new URL("../package.json", import.meta.url), "utf8"),
 );
+const sharedPackageJson = JSON.parse(
+  await readFile(new URL("../../../packages/shared/package.json", import.meta.url), "utf8"),
+);
 const macOpenFixNote = await readFile(
   new URL("../PI-Desktop-macOS-opening-help.txt", import.meta.url),
   "utf8",
@@ -24,6 +27,14 @@ const dmgBackgroundRetina = await readFile(
 );
 const viteConfigSource = await readFile(
   new URL("../electron.vite.config.ts", import.meta.url),
+  "utf8",
+);
+const preloadSource = await readFile(
+  new URL("../electron/preload/index.ts", import.meta.url),
+  "utf8",
+);
+const pluginPanelPreloadSource = await readFile(
+  new URL("../electron/preload/plugin-panel.ts", import.meta.url),
   "utf8",
 );
 
@@ -115,6 +126,17 @@ test("main bundles JavaScript dependencies and externalizes only runtime modules
   assert.match(viteConfigSource, /external:\s*\["electron-updater", "jiti", "jiti\/static"\]/);
   assert.doesNotMatch(viteConfigSource, /node-pty/);
   assert.doesNotMatch(JSON.stringify(packageJson.dependencies), /node-pty/);
+});
+
+test("sandbox preload entries use standalone shared subpath bundles", () => {
+  const sharedExports = sharedPackageJson.exports ?? {};
+
+  assert.match(preloadSource, /from "@pi-desktop\/shared\/protocol"/);
+  assert.match(pluginPanelPreloadSource, /from "@pi-desktop\/shared\/theme"/);
+  assert.ok(sharedExports["./protocol"], "protocol must be available as a shared subpath");
+  assert.ok(sharedExports["./theme"], "theme must be available as a shared subpath");
+  assert.doesNotMatch(preloadSource, /from "@pi-desktop\/shared"/);
+  assert.doesNotMatch(pluginPanelPreloadSource, /from "@pi-desktop\/shared"/);
 });
 
 test("packaging keeps only shipped locales and excludes non-runtime artifacts", () => {

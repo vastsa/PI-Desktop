@@ -38,6 +38,6 @@ application does not implement.
 - Project memory cannot override runtime safety, tool, or collaboration rules.
 - No schema migration is needed because `kv` is the existing extensibility
   boundary for new configuration domains.
-- A future logical project that groups several roots will need an explicit
-  project identity and root-membership model; this decision does not infer that
-  relationship from the current multi-folder creation flow.
+- ADR 0249 adds an explicit host-owned logical project-group identity and root
+  membership model. Path-scoped records remain the compatibility behavior for
+  legacy single-root projects.

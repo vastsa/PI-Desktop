@@ -35,12 +35,11 @@ Electron 准备就绪，防止库存主机身份拥有本机
 并保留开发人员工作区默认值，尽管有品牌可执行文件名称。
 Electron 43+ 上的首次 `pnpm dev` 会按需下载 Electron 二进制文件
 （该包不再在 `pnpm install` 期间安装它）。
-打包车道使用
-`build/icon.icns`通过电子构建器，渲染器导入相同的
-PNG 通过 `BrandLogo`。 PNG 是规范的；
-`scripts/make-icon.py` 在每个上派生出 512px Windows/Linux 包 PNG
-平台和 iconset/ICNS（当 macOS `iconutil` 可用时），无需
-覆盖规范来源。
+打包通道在 macOS 上通过 electron-builder 使用 `build/icon.icns`，并在
+Windows 可执行文件和原生窗口图标中使用 `build/icon.ico`。渲染器通过
+`BrandLogo` 导入相同的 PNG。PNG 是规范来源；`scripts/make-icon.py` 派生
+多尺寸 Windows ICO、512px Windows/Linux 包 PNG，以及 iconset/ICNS（当 macOS
+`iconutil` 可用时），无需覆盖规范来源。
 
 ## 2. 先决条件（发布通道）
 
@@ -70,8 +69,8 @@ PNG 通过 `BrandLogo`。 PNG 是规范的；
   在 Vite 输出中，并且不会再次复制为原始包树。
 - Chromium 语言环境包适用于英语、简体中文、繁体中文和土耳其语。产品目录
   保持捆绑状态，独立于 Chromium 区域设置。
-- 应用程序图标 `build/icon.icns`（源自规范 `build/icon_1024.png`，作者：
-  `scripts/make-icon.py`）。
+- 应用程序图标 `build/icon.icns` 和 `build/icon.ico`（源自规范
+  `build/icon_1024.png`，由 `scripts/make-icon.py` 生成）。
 
 ## 4. 发布步骤
 

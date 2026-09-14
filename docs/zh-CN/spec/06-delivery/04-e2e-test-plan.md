@@ -110,6 +110,9 @@ unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E
 - Plan UI：`pnpm test:e2e:plan` 和 `pnpm test:e2e:plan-ui`。
 - host/sidecar 监督、崩溃恢复或重启：`pnpm test:e2e` 和 `pnpm test:e2e:supervision`。
 - 子代理生命周期：`pnpm test:e2e` 和 `pnpm test:e2e:subagents`。
+- 导入扩展依赖安装或 registry 边界改动：`pnpm test:e2e:plugin-import-deps`。
+- 受信任扩展或插件扩展改动：`pnpm test:e2e:trusted-extensions`。
+- 会话通信 / Session Orchestrator：`pnpm test:e2e:collaboration`。
 - 同时涉及多个面的改动使用适用套件的并集。
 
 `pnpm test:e2e` 是 host RPC、IPC、Agent 执行、插件、持久化集成和共享运行时合约的默认跨系统烟雾测试。由于显示、平台、凭据、硬件或其他环境能力缺失而无法运行的必需套件，必须记录为 `NOT RUN`，并说明原因、替代验证和剩余风险。在具备条件且可信的环境中通过前，该 pull request 不具备合入条件。
@@ -1242,9 +1245,9 @@ unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E
 
 #### E2E-024J：插件主题适用并在撤回时回退
 
-- **先决条件**：在授予 `ui.theme` 的情况下启用 `examples/plugins/hello`； CSS 使用 `@import` 或远程 `url()` 可用于拒绝情况的插件。
-- **步骤**： 1) 打开设置 → 常规 → 主题并选择 `Hello Midnight`。 2）重新启动应用程序。 3) 禁用提供的插件。 4）重新启用它，然后卸载它。 5) 使用不安全的 CSS 加载插件。
-- **预期**：插件主题与内置插件一起出现在选择器中并立即应用；该选择在重新启动后仍保留为 `plugin:demo.hello:midnight`；禁用或卸载提供程序会退回到 `system` 而不是无样式的 shell；不安全的 CSS 在加载时被拒绝，并记录了原因，并且没有注入 `<style>` 元素。
+- **先决条件**：在授予 `ui.theme` 的情况下启用 `examples/plugins/hello`； CSS 使用 `@import` 或远程 `url()` 可用于拒绝情况的插件，以及只在注释里提到这些关键字的同一插件变体；第三个变体的主题声明了图片资源与 `windowAppearance` 背景，并提供有/无 `ui.window.appearance` 两种版本。
+- **步骤**： 1) 打开设置 → 常规 → 主题并选择 `Hello Midnight`。 2）重新启动应用程序。 3) 禁用提供的插件。 4）重新启用它，然后卸载它。 5) 使用不安全的 CSS 加载插件。 6) 加载只在注释里提到关键字的变体。 7) 在 Windows/Linux 与 macOS 上分别选中资源变体的主题，并检查该插件打开的面板。 8) 去掉 `ui.window.appearance` 后取消选中该主题。
+- **预期**：插件主题与内置插件一起出现在选择器中并立即应用；该选择在重新启动后仍保留为 `plugin:demo.hello:midnight`；禁用或卸载提供程序会退回到 `system` 而不是无样式的 shell；不安全的 CSS 在加载时被拒绝，并记录了原因，并且没有注入 `<style>` 元素；只在注释里提到关键字的样式表正常加载并提供其主题，因为消毒器只检查浏览器实际生效的 CSS；声明的资源在宿主外壳与该插件自己的面板中都经 `plugin-asset:` 渲染，未声明的引用被拒绝并记录原因，声明的背景在 Windows/Linux 上给原生窗口着色、在 macOS 上不下发，取消选中该主题或收回该权限后窗口回到宿主背景；整个外壳都跟随主题，包括工作面板列、其标题栏以及浏览器/文件查看器条目栏 —— 它们的表面色读 `--ds-bg-dock` / `--ds-bg-dock-raised`，而不是字面量。
 - **链接规格**：`07-plugins/04-plugin-security.md` §3.1、`04-ux/07-ui-design-system.md`、D175
 - **接受**：G（主题贡献）+安全
 - **状态**：单位覆盖（`plugin-themes.test.mjs`、`theme-css` SDK 测试）；视觉场景草稿
@@ -1699,22 +1702,23 @@ hover/focus 不带移位标签，项目标题 hover/focus 路径显示
 - **状态**：单位覆盖（元数据为 `sidebar-preferences.test.mjs`，
   过滤和排序行为）；完整的 UI 场景草稿
 
-#### E2E-048b：重命名项目显示名称并在重启后保留
+#### E2E-048b：编辑逻辑项目名称和文件夹根目录
 
-- **前提**：一个保留项目同时出现在侧边栏和设置 → 项目存档中，目录名
-  与计划使用的显示名称不同。
-- **步骤**：1) 打开侧边栏项目溢出菜单并选择“重命名项目”。2) 输入非空
-  名称并保存。3) 检查侧边栏行和设置 → 项目存档。4) 重启应用并再次检查
-  两处。5) 打开项目文件夹并核对文件系统路径。
-- **预期**：两个项目菜单都提供重命名操作；弹窗保持焦点，去除首尾空格，
-  并将输入限制为 80 个 Unicode 字符。自定义显示名称替代侧边栏和项目存档
-  中的目录基名，在重启后仍保留；规范化项目路径、工作区身份、会话和磁盘
-  文件夹均不改变。
+- **前提**：一个逻辑项目同时出现在侧边栏和设置 → 项目存档中，包含一个
+  Primary 文件夹和一个附加文件夹。
+- **步骤**：1) 打开侧边栏项目溢出菜单并选择“编辑项目”。2) 修改名称，移除
+  附加文件夹，再通过原生文件夹选择器将其添加回来。3) 确认 Primary 行不能移除。
+  4) 保存并检查侧边栏、项目存档中的根目录和当前工作区。5) 重启应用并再次检查项目组。
+- **预期**：两个项目菜单都提供编辑项目；编辑器保持焦点、去除首尾空格并限制为
+  80 个 Unicode 字符，Primary 文件夹始终是第一行，根目录数量更新且不会误删其他行。
+  保存后仍是一个逻辑项目组，调整后的根目录会持久化；名称在重启后保留，规范化
+  路径、工作区身份、会话和磁盘文件夹均不改变。已有聊天的根目录会被拒绝移除，
+  不会产生孤立会话。
 - **链接规格**：`04-ux/01-ui-ia.md`、`04-ux/08-component-spec.md`、
   `04-ux/09-interaction-patterns.md`
 - **验收**：D（工作区身份）、F（本地演示持久性）
 - **里程碑**：M5
-- **状态**：单位覆盖（`project-rename.test.mjs`、
+- **状态**：单位覆盖（`project-edit.test.mjs`、
   `sidebar-preferences.test.mjs`）；完整的 UI 场景草稿
 
 #### E2E-048A：项目会话在最近十行之后列出折叠
@@ -2489,7 +2493,8 @@ MainChat 弥补了缺口。 Maximized/fullscreen 调用保留最新的
   当其本机窗口已经最大化时渲染器并检查
   初始查询glyph/state。 6) 尝试未知的 menu/window IPC 操作
   当窗口存在时以及窗口关闭后。 7) 在其基础上构建每个目标
-  来自干净的发布主机目录的本机运行器。
+  来自干净的发布主机目录的本机运行器。在 Windows 上检查已安装应用的
+  任务栏按钮和“开始”菜单快捷方式图标。
 - **预期**：macOS 开发和打包发布显示 PI-Desktop 作为
   本机应用程序标识，并且“关于”面板使用规范
 PI-Desktop 图标；两个表面都不会暴露库存 Electron 名称或图标。
@@ -2508,9 +2513,10 @@ PI-Desktop 图标；两个表面都不会暴露库存 Electron 名称或图标�
   可在其完整的 46 像素高的命中目标上单击，匹配本机状态，并且
   有易于理解的名称；第一个用户或助理成绩单行从不
   在它们下面绘制，扩展页面标题操作或
-  插件详细信息表关闭按钮。未知操作失败关闭。每个包装包含
-  目标本机主机二进制文件（`.exe` 仅在 Windows 上）。通过这个场景
-  Windows/Linux 证明 shell 已准备就绪，而不是首次发布资格。
+  插件详细信息表关闭按钮。未知操作失败关闭。已安装 Windows 应用的任务栏按钮
+  和“开始”菜单快捷方式使用 PI-Desktop 图标，而不是 Electron 默认图标。每个包装
+  包含目标本机主机二进制文件（`.exe` 仅在 Windows 上）。通过这个场景 Windows/Linux
+  证明 shell 已准备就绪，而不是首次发布资格。
 - **链接规格**：`03-runtime/01-ipc-protocol.md`，
   `04-ux/01-ui-ia.md`、`04-ux/02-i18n-english-first.md`、
   `04-ux/07-ui-design-system.md`、`04-ux/08-component-spec.md`、
@@ -4663,6 +4669,37 @@ IPC 请求无法关闭。
 - **里程碑**：M6+
 - **状态**：host-core 的 `a_bundled_plugin_keeps_the_update_the_user_installed`、`a_newer_shipped_version_replaces_an_older_user_install`、`a_plugin_a_build_stops_shipping_is_no_longer_bundled`、`market_entry_offers_an_update_only_when_the_catalog_is_newer` 已覆盖；完整打包旅程为草稿
 
+#### E2E-PROVIDER-copy-config-without-credentials：复制配置为独立提供商
+
+- **先决条件**：设置页有一个普通提供商，已保存 API 密钥、自定义请求头和两个
+  模型绑定，绑定含不同别名、限制、思考级别及模态覆盖；另有一个 OAuth
+  账户。记录来源配置和全局默认提供商、模型。使用可捕获发现请求的确定性
+  端点，不使用真实密钥。
+- **步骤**：1) 复制普通提供商。2) 确认自定义服务草稿保留名称、地址、API
+  格式与模型绑定，密钥及自定义请求头为空，并显示未复制凭据和请求头的说明。
+  3) 修改 API 格式、某个模型的别名/限制及思考级别，然后取消。4) 确认
+  提供商数量、来源数据及全局默认值未变。5) 再次复制，在未填新密钥时触发
+  发现，再填写不同的测试密钥触发发现。6) 使用不同名称和修改后的 API
+  格式保存。7) 重新打开两份配置并编辑副本。8) 检查 OAuth 账户行没有
+  复制操作。9) 在草稿构建测试中为来源及模型加入未知字段，确认未被复制。
+  10) 复制 OpenCode Go，确认保留命名服务及固定格式，再切换到自定义服务
+  并选择其他普通 API 格式。
+- **预期**：取消不创建提供商或密钥。草稿模型对象、思考级别数组与来源不
+  共享引用。模型发现和连接测试不使用来源 provider id 或其已存凭据；需要
+  认证时只使用新草稿密钥。复制不读取秘密存储。保存经现有创建流程生成
+  独立提供商、模型绑定和凭据，来源与全局默认值保持不变。自定义请求头
+  和未知字段即使含类似凭据的值也不复制。OAuth 账户不能通过此操作复制。
+- **链接规格**：`03-runtime/12-provider-config-schema.md`、
+  `03-runtime/14-secrets-storage.md`
+- **验收**：B（模型配置）、F（独立持久化）、Security
+- **里程碑**：M2
+- **状态**：真实 Host/helper 测试已验证独立创建、编辑、删除、来源凭据及
+  默认值保持，以及重启后的持久化。隔离无密钥配置中的实际 UI 验证确认：
+  取消后仍只有一个提供商；复制后把 Responses 改为 Anthropic Messages，
+  并修改名称、别名，保存后有两个提供商且全局默认值不变。重新打开两行
+  确认来源仍为 Responses 和原别名，副本保存了 Anthropic Messages 与新
+  别名。未测试携带凭据的网络发现、外部模型请求及 OpenCode Go UI 分支。
+
 ## 8. 可追溯性矩阵
 
 
@@ -4671,6 +4708,7 @@ IPC 请求无法关闭。
 
 | 验收 | 应用场景 |
 |---|---|
+| B / F / Security — 提供商复制 | E2E-PROVIDER-copy-config-without-credentials |
 | A — 应用程序启动 | E2E-001、E2E-002、E2E-003、E2E-004、E2E-067、E2E-076、E2E-079、E2E-092、E2E-097、E2E-143、E2E-150、E2E-168、E2E-204、E2E-217 |
 | B——模型配置 | E2E-005、E2E-005G、E2E-006、E2E-007、E2E-038、E2E-050、E2E-052、E2E-055、E2E-066、E2E-080、E2E-082、E2E-151、E2E-005J、E2E-199、E2E-201、E2E-202、E2E-203、E2E-209、E2E-166 |
 | C — 对话和直播 | E2E-008、E2E-008d、E2E-008a、E2E-009、E2E-010、E2E-011、E2E-011a、E2E-011b、E2E-031、E2E-040、E2E-047、E2E-048、E2E-048A、E2E-049、E2E-052、 E2E-053、E2E-054、E2E-055、E2E-059、E2E-059a、E2E-060c、E2E-060d、E2E-061、E2E-061a、E2E-062、E2E-064、E2E-065、E2E-068、E2E-071、 E2E-073、E2E-074、E2E-075、E2E-081、E2E-083、E2E-084、E2E-086、E2E-087、E2E-088、E2E-088b、E2E-089、E2E-090、E2E-094、E2E-095、E2E-096、 E2E-097、E2E-098、E2E-099、E2E-102、E2E-102a、E2E-102b、E2E-106、E2E-109、E2E-111、E2E-114、E2E-116、E2E-117、E2E-118、E2E-119、 E2E-120、E2E-121、E2E-代理-001、E2E-142、E2E-144、E2E-145、E2E-146、E2E-147、E2E-151、E2E-199、E2E-250、E2E-166 |
@@ -6437,8 +6475,8 @@ IPC 请求无法关闭。
 
 ## 受信任扩展场景（R7 v1）
 
-以下场景是 D387 / ADR 0214 与 `07-plugins/16-trusted-extensions.md` 的验收目标，
-使用 `apps/desktop/test/fixtures/pi-extensions/` 下的样例扩展夹具目录。
+以下场景是 D387 / ADR 0214 与 `07-plugins/16-trusted-extensions.md` 的验收目标；无头
+runner 会在运行时的隔离临时目录中生成六个插件形态 fixture。
 
 #### E2E-241：发现列出受信任扩展，启用是显式的
 
@@ -6456,7 +6494,7 @@ IPC 请求无法关闭。
 - **链接规格**：`07-plugins/16-trusted-extensions.md` §2、§3、§11；D007；D387
 - **验收**：安全、质量
 - **里程碑**：MVP 后（R7 v1）
-- **状态**：由手动 MCP 驱动的夹具 `apps/desktop/test/e2e/trusted-extensions` 执行（2026-09-10，两个会话，全部检查通过；D388 后于 2026-09-11 在插件形态夹具上重新执行）；无 CI 旅程
+- **状态**：部分自动化（`pnpm test:e2e:trusted-extensions`）；无头旅程覆盖插件发现/投影、项目范围、加载状态和诊断；原生选择器导入与显式启用仍需渲染器/平台验证
 
 #### E2E-PLUGIN-imported-pi-package-skills：显式导入包后按插件权限提供技能
 
@@ -6511,7 +6549,7 @@ IPC 请求无法关闭。
 - **链接规格**：`07-plugins/16-trusted-extensions.md` §6、§7；ADR 0214
 - **验收**：B（agent）、安全、质量
 - **里程碑**：MVP 后（R7 v1）
-- **状态**：由手动 MCP 驱动的夹具 `apps/desktop/test/e2e/trusted-extensions` 执行（2026-09-10，两个会话，全部检查通过；D388 后于 2026-09-11 在插件形态夹具上重新执行）；无 CI 旅程
+- **状态**：部分自动化（`pnpm test:e2e:trusted-extensions`）；Agent 模式工具调度、ToolSearch 延迟、hooks、阻止和结果替换已覆盖；Plan 模式门控与核心工具冲突仍需额外验证
 
 #### E2E-243：扩展命令与 UI 提示经渲染层往返
 
@@ -6528,7 +6566,7 @@ IPC 请求无法关闭。
   `07-plugins/09-plugin-command-palette.md`
 - **验收**：A（应用控制）、质量
 - **里程碑**：MVP 后（R7 v1）
-- **状态**：由手动 MCP 驱动的夹具 `apps/desktop/test/e2e/trusted-extensions` 执行（2026-09-10，两个会话，全部检查通过；D388 后于 2026-09-11 在插件形态夹具上重新执行）；无 CI 旅程
+- **状态**：部分自动化（`pnpm test:e2e:trusted-extensions`）；全局/Composer 命令发现、提示 broker 往返、中止、会话重命名、exec 和 Host 队列已覆盖；无会话与远程控制仍需额外验证
 
 #### E2E-244：不支持的 API、加载错误与处理器超时降级为诊断
 
@@ -6543,7 +6581,7 @@ IPC 请求无法关闭。
 - **链接规格**：`07-plugins/16-trusted-extensions.md` §4.2、§4.4、§5、§6
 - **验收**：质量
 - **里程碑**：MVP 后（R7 v1）
-- **状态**：由手动 MCP 驱动的夹具 `apps/desktop/test/e2e/trusted-extensions` 执行（2026-09-10，两个会话，全部检查通过；D388 后于 2026-09-11 在插件形态夹具上重新执行）；无 CI 旅程
+- **状态**：部分自动化（`pnpm test:e2e:trusted-extensions`）；加载错误与惰性 terminal-UI API 会降级为诊断；停滞处理器超时和边界禁用旅程仍需额外验证
 
 #### E2E-245：打包后的 sidecar 经 jiti 加载 TypeScript 扩展
 
@@ -6557,39 +6595,34 @@ IPC 请求无法关闭。
 - **链接规格**：`07-plugins/16-trusted-extensions.md` §4.2、§13；ADR 0214
 - **验收**：质量、发布
 - **里程碑**：MVP 后（R7 v1，作为打包 spike 首先交付）
-- **状态**：由 `packages/agent-runtime/src/extensions/bundle.test.ts` 单元覆盖
-  （esbuild 打包产物在临时目录运行）；打包应用旅程为草稿
+- **状态**：由 `packages/agent-runtime/src/extensions/bundle.test.ts` 提供单元覆盖（临时目录中运行 esbuild bundle）；打包应用 jiti 旅程仍为草稿，无头 runner 不会伪造该覆盖。
 #### E2E-PLUGIN-import-extension-installs-dependencies：导入带 npm 依赖的扩展会在首次加载前安装依赖
 
-- **前置条件**：一个自带 `package.json` 且声明了 `dependencies`（纯 JavaScript 包即可）、
-  无 `node_modules` 的 pi 扩展目录；npm 可达；导入确认已接受。
-- **步骤**：1）插件页 → 导入 pi 扩展，选择该目录。2）检查 `plugins/imported/<slug>/`。
-  3）发送一个会用到该扩展的提示。
-- **预期**：插件根有复制来的 `package.json`（`workspaces` 字段已被剥离）。依赖解析先运行
-  `npm install --package-lock-only --omit=dev --legacy-peer-deps --no-audit --no-fund
-  --ignore-scripts`，校验 registry-only 来源，再通过 `npm ci --omit=dev --legacy-peer-deps
-  --no-audit --no-fund --ignore-scripts` 创建 `node_modules`（没有运行任何安装脚本）；
-  扩展行达到 `loaded`，工具、命令与 hooks 均已注册，并在回合中生效。
+- **前置条件**：本地 pi 扩展包包含 `package.json`、`pi.extensions`、固定版本的纯 JavaScript 依赖
+  `is-number@7.0.0` 和 `workspaces` 字段，且没有 `node_modules`；workspace 构建产物和 npm 可用。
+- **步骤**：1）从本地目录生成导入插件。2）运行真实的有界安装器。3）检查复制后的 package、lockfile、
+  已安装模块、生命周期标记和受信任扩展加载报告。
+- **预期**：插件根目录复制了去除 `workspaces` 字段的 `package.json`。安装器运行两个 registry-only、
+  `--ignore-scripts` 的 npm 步骤；所有 lockfile 的 `resolved` URL 都只指向 registry，
+  `node_modules/is-number` 存在，没有写入生命周期标记，受信任扩展 runner 报告 `loaded` 并注册依赖驱动的命令。
 - **链接规格**：`07-plugins/16-trusted-extensions.md` §3.2、§10.2；ADR 0244
 - **验收**：安全、质量
 - **里程碑**：MVP 后（R7 v1）
-- **状态**：由 `apps/desktop/test/agent-extensions.test.mjs` 单元覆盖，并已用
-  `pi-hermes-memory` 经 sidecar 打包产物人工验证（工具、命令与 hooks 注册成功，零
-  诊断）；暂无 CI 旅程
+- **状态**：由 `pnpm test:e2e:plugin-import-deps` 自动化覆盖确定性的安装边界；完整的 picker/renderer/回合旅程
+  保留为独立验证面。
 
 #### E2E-PLUGIN-import-extension-reports-missing-dependency：依赖安装失败或依赖无法加载会被呈现，绝不静默
 
-- **前置条件**：一个 `package.json` 声明了无法安装依赖（npm 离线或无法解析）的 pi 扩展
-  目录；以及一个依赖可安装但无法加载（例如需要构建脚本的原生模块）的扩展目录。
-- **步骤**：1）在 npm 失败的情况下导入第一个目录。2）检查 toast 与插件行。3）导入
-  第二个目录并开始回合。
-- **预期**：渲染层出现携带 npm stderr 尾部的警告 toast；插件仍然注册；该行显示扩展
-  `error` 状态与 `load_error` 诊断；会话与其他扩展均不受影响。
+- **前置条件**：三个本地 pi 扩展包的 `package.json` 分别使用不支持的 `file:`、git 和 HTTP tarball
+  依赖源；都没有 `node_modules` 或 lockfile。
+- **步骤**：1）生成每个导入插件。2）调用真实依赖安装器。3）检查返回的错误和生成的插件目录。
+- **预期**：每次失败都被明确报告并发生在 npm 启动前；导入插件和 manifest 仍保留，但不会留下可加载的
+  `node_modules` 或生成的 lockfile。renderer toast/加载错误旅程单独覆盖。
 - **链接规格**：`07-plugins/16-trusted-extensions.md` §3.2、§4.4、§10.2；ADR 0244
 - **验收**：安全、质量
 - **里程碑**：MVP 后（R7 v1）
-- **状态**：由 `apps/desktop/test/agent-extensions.test.mjs`（跳过、失败与无效 manifest
-  路径）单元覆盖；暂无 CI 旅程
+- **状态**：由 `pnpm test:e2e:plugin-import-deps` 自动化覆盖确定性的 registry 源拒绝边界；renderer 警告 toast
+  和 `load_error` 行为保留为独立验证面。
 
 
 #### E2E-234：工作区安全拒绝名单与忽略层
@@ -6679,9 +6712,7 @@ IPC 请求无法关闭。
   `03-runtime/06-host-rpc-protocol.md`、ADR 0237
 - **接受**：C（并行持久化会话）、D（插件安全性）、品质
 - **里程碑**：M6+
-- **状态**：marketplace 插件测试覆盖插件运行时；host-core 和 desktop 单元测试覆盖新增的
-  宿主原子能力。完整真实 provider/Electron 旅程仍需在具备条件的 runner 中验证，遵循无本地
-  E2E 策略
+- **状态**：host ledger 覆盖由 `pnpm test:e2e:collaboration` 自动化；marketplace 插件测试覆盖插件运行时，host-core 和 desktop 单元测试覆盖新增的宿主原子能力。完整真实 provider/Electron 旅程仍需在具备条件的 runner 中验证，遵循无本地 E2E 策略
 
 #### E2E-SESSION-independent-top-level-communication：SessionTask 发现并与现有会话通信
 
@@ -6691,7 +6722,7 @@ IPC 请求无法关闭。
 - **链接规格**：`07-plugins/03-plugin-api.md`、`07-plugins/04-plugin-security.md`、`03-runtime/01-ipc-protocol.md`、`03-runtime/04-data-storage.md`、ADR 0239、ADR 0240
 - **验收**：C（对话与流式）、D（插件安全）、G（插件）、品质
 - **里程碑**：M6+
-- **状态**：插件和 host-core 回归覆盖已自动化；真实 provider/Electron 多会话旅程仍需在具备条件的 runner 中验证，遵循无本地 E2E 策略
+- **状态**：host 发现和双向投递由 `pnpm test:e2e:collaboration` 自动化；插件和 host-core 回归覆盖已自动化。真实 provider/Electron 多会话旅程仍需在具备条件的 runner 中验证，遵循无本地 E2E 策略
 
 #### E2E-SESSION-hover-card-model-and-links：会话 hover 卡片展示可读模型并支持创建关系导航
 
@@ -6838,6 +6869,16 @@ IPC 请求无法关闭。
 - **验收**：C（对话与流）、本地化、品质
 - **里程碑**：M2
 - **状态**：单元覆盖（`packages/shared/src/composer-trigger.test.ts`、`apps/desktop/test/composer-ime.test.mjs`）；渲染桌面旅程为草稿（除非明确要求，不本地运行 E2E）
+
+#### E2E-CLONE-public-hostname-rejects-private
+
+- **前提条件**：首页项目切换菜单的「克隆 Git 项目」可用。
+- **步骤**：1）输入 `https://127.0.0.1/org/repo.git`、`http://localhost/org/repo.git`、`https://10.0.0.5/org/repo.git` 和 `git@127.0.0.1:org/repo.git`。2）输入 `https://github.com/org/repo.git` 和 `git@github.com:org/repo.git`。
+- **预期**：私网、回环和链路本地远程在 `git clone` 运行前被拒绝。公网 GitHub HTTPS 与 SSH 仍解析出文件夹名。`file:` 和带密码的 URL 继续被拒绝。
+- **链接规格**：`04-ux/01-ui-ia.md`、ADR 0247、D416
+- **验收**：安全、D（工作区）
+- **里程碑**：M5
+- **状态**：单元覆盖（`apps/desktop/test/git-clone.test.mjs`）
 
 #### E2E-257：导入到已归档项目后恢复其可见性
 

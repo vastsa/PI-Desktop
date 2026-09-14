@@ -74,6 +74,7 @@ type PluginContributes = {
  agentExtensions?: string[]; // 在 agent sidecar 内运行的 ExtensionAPI 模块；需要 `agent.extension`（规格 16）
  settings?: PluginSettingContrib[];
  themes?: PluginThemeContrib[];
+ windowAppearance?: PluginWindowAppearanceContrib; // 原生窗口背景；需要 `ui.window.appearance`
  mcpServers?: PluginMcpServerContrib[];
  services?: PluginServiceContrib[];
   bus?: PluginBusContrib;
@@ -129,6 +130,12 @@ type PluginThemeContrib = {
  label: string;
  path: string; // relative `.css` file
  base?: "light" | "dark"; // palette the overrides layer on, default `dark`
+ assets?: string[]; // 相对于插件包的 png/jpg/jpeg/webp/avif/svg/woff2，总和上限 4 MB；
+                    // 命中的 `url()` 会被改写为 `plugin-asset://`
+};
+
+type PluginWindowAppearanceContrib = {
+ backgroundColor?: { light?: string; dark?: string }; // #rrggbb | #rrggbbaa
 };
 
 type PluginSkillContrib = {
@@ -170,6 +177,7 @@ type PluginPermission =
  | "ui.panel"
  | "ui.view"
  | "ui.theme"
+ | "ui.window.appearance"
  | "clipboard.read"
  | "clipboard.write"
  | "notify"
