@@ -4790,6 +4790,16 @@ D193, and D194.
   finalize only an indexed streaming assistant in place and retain completed
   message idempotency. See ADR active-turn-steering and E2E-AGENT-alt-enter-steers-active-turn.
 
+### Unified transcript reading and complete search navigation
+
+[ADR transcript-reading-ownership](/adr/transcript-reading-ownership) amends
+[ADR session-content-search](/adr/session-content-search) with one renderer
+reading view for ordinary history and search, shared by MainChat and the subagent
+dock. Live/model caches remain canonical. Nested targets receive capped parent
+Task context through additive `navigationParent`; parser source offsets locate
+hidden Markdown and file-chip matches. Read ownership rejects interrupted pages,
+and explicit message actions hydrate canonical input when history is partial or
+text is capped. Validation: E2E-SESSION-content-search-and-message-navigation.
 ## 2026-09-13 — Harden session collaboration navigation and delivery
 
 - Collaboration references now carry `available`. A reference to a session that was
@@ -4815,36 +4825,6 @@ D193, and D194.
   read instead of relying on cache eviction, and replace E2E boot conditions that could
   not fail with observations the probe does not itself guarantee.
 - See ADR 0239, ADR 0240, E2E-SESSION-hover-card-model-and-links.
-
-### Unified transcript reading and complete search navigation
-
-[ADR transcript-reading-ownership](/adr/transcript-reading-ownership) amends
-[ADR session-content-search](/adr/session-content-search) with one renderer
-reading view for ordinary history and search, shared by MainChat and the subagent
-dock. Live/model caches remain canonical. Nested targets receive capped parent
-Task context through additive `navigationParent`; parser source offsets locate
-hidden Markdown and file-chip matches. Read ownership rejects interrupted pages,
-and explicit message actions hydrate canonical input when history is partial or
-text is capped. Validation: E2E-SESSION-content-search-and-message-navigation.
-
-### Tray session shortcuts (issue #293)
-
-[ADR tray-session-shortcuts](/adr/tray-session-shortcuts) amends the D216 native
-tray menu with Running, Unread, and Pinned groups, three rows each after global
-priority assignment. Host session/inbox reads and runtime events remain the
-source of truth; renderer organization is mirrored without a persistence
-change. macOS single-click opens the menu without restoring the window;
-selection is delivered after bootstrap and uses normal session navigation.
-Validation contract: E2E-TRAY-bounded-session-navigation.
-
-### Global sidebar conversation pins (issue #306)
-
-[ADR global-sidebar-pins](/adr/global-sidebar-pins) amends ADR 0016: conversation
-pins occupy one global section above standalone and project history, including
-closed or collapsed projects. Archive visibility and session sorting still
-apply. Pins carry project context and are removed from normal history before
-date grouping and row limits. Persisted metadata and host ownership stay intact.
-Validation contract: E2E-SIDEBAR-global-pinned-conversations.
 
 ## 2026-09-13 — Vendor the file view as an updatable plugin (issue #304)
 
@@ -4922,3 +4902,22 @@ Validation contract: E2E-SIDEBAR-global-pinned-conversations.
 - host-core keeps the `inherit` token so inherit-only documents load and
   Settings round-trips them. See ADR 0246, issue #215, PR #319, and
   E2E-SUBAGENT-inherit-parent-tools.
+
+### Tray session shortcuts (issue #293)
+
+[ADR tray-session-shortcuts](/adr/tray-session-shortcuts) amends the D216 native
+tray menu with Running, Unread, and Pinned groups, three rows each after global
+priority assignment. Host session/inbox reads and runtime events remain the
+source of truth; renderer organization is mirrored without a persistence
+change. macOS single-click opens the menu without restoring the window;
+selection is delivered after bootstrap and uses normal session navigation.
+Validation contract: E2E-TRAY-bounded-session-navigation.
+
+### Global sidebar conversation pins (issue #306)
+
+[ADR global-sidebar-pins](/adr/global-sidebar-pins) amends ADR 0016: conversation
+pins occupy one global section above standalone and project history, including
+closed or collapsed projects. Archive visibility and session sorting still
+apply. Pins carry project context and are removed from normal history before
+date grouping and row limits. Persisted metadata and host ownership stay intact.
+Validation contract: E2E-SIDEBAR-global-pinned-conversations.
