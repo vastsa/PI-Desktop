@@ -227,8 +227,11 @@ codes, budget size, and precedence.
 When the retry budget is exhausted, the final assistant error and lifecycle
 `error` are emitted once. Provider failures carry bounded diagnostics in
 `AppError.details` when available: `phase` (`request` or `stream`),
-`providerStatus`, `providerCode`, `providerWaitMs`, `streamMs`, and
-`retryAttempt`. For a persistent 429 or non-429 transient failure,
+`providerStatus`, `providerCode`, `providerWaitMs`, `streamMs`,
+`retryAttempt`, the network diagnosis (`networkCategory`, `networkCode`,
+`networkSyscall`, `networkHost`) and the request correlation fields
+(`requestMessages`, `requestBytes`, `compactionGeneration`). For a persistent
+429 or non-429 transient failure,
 `retryAttempt` is `10`. Credentials and unrestricted response bodies never
 enter the event or log. The active-turn status shows the remaining backoff and
 the retry budget as `Retrying in 0s · attempt 9/10` in English.

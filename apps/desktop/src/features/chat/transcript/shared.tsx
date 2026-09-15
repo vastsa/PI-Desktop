@@ -149,6 +149,15 @@ export function AssistantErrorMessage({ message }: { message: UiMessage }) {
     "PROVIDER_SECRET_MISSING",
     "PROVIDER_UNAUTHORIZED",
   ].includes(error.code);
+  // The transport errno is what separates "DNS did not resolve" from "TLS was
+  // rejected" from "the socket died" for the user; the localized summary can
+  // only say "can't reach the provider" (issue #234).
+  const networkCode = (() => {
+    const details = error.details;
+    if (!details || typeof details !== "object") return undefined;
+    const value = (details as { networkCode?: unknown }).networkCode;
+    return typeof value === "string" ? value : undefined;
+  })();
 
   return (
     <section className="message-error" aria-label={t("chat.responseError")}>
@@ -158,7 +167,10 @@ export function AssistantErrorMessage({ message }: { message: UiMessage }) {
         </span>
         <div className="message-error-copy">
           <strong>{summary}</strong>
-          <code>{error.code}</code>
+          <code>
+            {error.code}
+            {networkCode ? ` · ${networkCode}` : ""}
+          </code>
         </div>
         <div className="message-error-actions">
           <button

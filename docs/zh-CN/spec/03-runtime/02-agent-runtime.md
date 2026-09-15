@@ -186,7 +186,10 @@ HTTP 429 处理是一个逻辑回合策略。此路径禁用了 pi-ai 的嵌套
 当 429 预算耗尽时，最终的助手错误和生命周期 `error` 只发出一次。
 提供程序故障在可用时于 `AppError.details` 中携带有界诊断：
 `phase`（`request` 或 `stream`）、`providerStatus`、`providerCode`、
-`providerWaitMs`、`streamMs` 和 `retryAttempt`。对于持续的 429，
+`providerWaitMs`、`streamMs`、`retryAttempt`、网络诊断
+（`networkCategory`、`networkCode`、`networkSyscall`、`networkHost`）以及
+请求关联字段（`requestMessages`、`requestBytes`、`compactionGeneration`）。
+对于持续的 429，
 `retryAttempt` 为 `5`；对于持续的非 429 瞬时故障，它为 `4`。凭据与不受限制的
 响应正文永远不会进入事件或日志。
 

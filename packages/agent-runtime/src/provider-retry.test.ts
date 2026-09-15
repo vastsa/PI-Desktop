@@ -251,6 +251,54 @@ describe("provider rate-limit retry", () => {
     expect(snapshot).toBeUndefined();
   });
 
+  it("reports the request body size even when the request dies first", async () => {
+    const seen: Array<[number | undefined, number | undefined]> = [];
+    const body = JSON.stringify({ model: "gpt-5.6-sol", input: "hello" });
+    const wrapped = captureProviderResponse(
+      async () => {
+        throw new Error("fetch failed");
+      },
+      (response, requestBytes) => {
+        seen.push([response?.status, requestBytes]);
+      },
+    );
+
+    await expect(
+      wrapped("https://provider.invalid", { method: "POST", body }),
+    ).rejects.toThrow("fetch failed");
+
+    // The clearing call, then the failure: only the size survives, never the
+    // body content, and a request that never got headers still reports it.
+    expect(seen).toEqual([
+      [undefined, undefined],
+      [undefined, Buffer.byteLength(body, "utf8")],
+    ]);
+  });
+
+  it("reports no request size when the body cannot be measured unread", async () => {
+    const sizes: Array<number | undefined> = [];
+    const wrapped = captureProviderResponse(
+      async () => new Response("ok", { status: 200 }),
+      (_response, requestBytes) => {
+        sizes.push(requestBytes);
+      },
+    );
+
+    // A body the transport does not expose as a string/buffer/blob reports no
+    // size instead of throwing or being read.
+    await wrapped("https://provider.invalid", {
+      method: "POST",
+      body: new FormData(),
+    });
+    expect(sizes.at(-1)).toBeUndefined();
+
+    await wrapped("https://provider.invalid", {
+      method: "POST",
+      body: new Uint8Array([1, 2, 3, 4]),
+    });
+    expect(sizes.at(-1)).toBe(4);
+  });
+
   it("rejects an abortable retry delay without waiting for the timer", async () => {
     vi.useFakeTimers();
     const controller = new AbortController();

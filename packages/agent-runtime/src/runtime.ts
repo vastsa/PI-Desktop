@@ -1459,6 +1459,13 @@ export class DesktopAgentRuntime {
   private delegationWaitTargets?: DelegationRecord[];
   private providerResponseStatus?: number;
   private providerRetryHeaders?: Record<string, string>;
+  /**
+   * Size and message count of the provider attempt in flight. A failed request
+   * has to be correlatable with how much context it carried, and on a network
+   * failure the request never returns a response to read it from (issue #234).
+   */
+  private providerRequestBytes?: number;
+  private providerRequestMessages?: number;
   private pendingProviderRetry?: ReturnType<typeof classifyAgentError>;
   /**
    * Shared bounded retry count for non-rate-limit transient failures, counted
@@ -1653,6 +1660,8 @@ Delegation rules:
         this.setAgentActivity({ phase: "waiting-model", since: Date.now() });
         this.providerResponseStatus = undefined;
         this.providerRetryHeaders = undefined;
+        this.providerRequestBytes = undefined;
+        this.providerRequestMessages = context.messages?.length;
         const requestOptions: SimpleStreamOptions = withProviderHeaders(
           withOpenCodeSessionHeaders(
             {
@@ -1661,8 +1670,9 @@ Delegation rules:
               sessionId: this.sessionId,
               // pi-ai only exposes onResponse after a request succeeds. Capture the
               // failed response separately so a 429 can honor Retry-After headers.
-              fetch: captureProviderResponse(options?.fetch, (response) => {
+              fetch: captureProviderResponse(options?.fetch, (response, requestBytes) => {
                 this.providerResponseStatus = response?.status;
+                this.providerRequestBytes = requestBytes;
                 // A gateway 502/503 can also state Retry-After, so keep headers for
                 // every status whose delay is usable instead of only for 429.
                 this.providerRetryHeaders = carriesRetryDelayHeaders(
@@ -4730,6 +4740,9 @@ Delegation rules:
     const detailStatus = isRecord(error.details)
       ? error.details.providerStatus
       : undefined;
+    const detailNetworkCode = isRecord(error.details)
+      ? error.details.networkCode
+      : undefined;
     const providerStatus =
       typeof detailStatus === "number"
         ? detailStatus
@@ -4738,6 +4751,12 @@ Delegation rules:
       code: error.code,
       message: error.message,
       ...(typeof providerStatus === "number" ? { providerStatus } : {}),
+      // While the turn is still retrying, the transport errno is the only thing
+      // that tells a DNS failure from a TLS failure from a dropped socket; the
+      // localized summary cannot (issue #234).
+      ...(typeof detailNetworkCode === "string"
+        ? { networkCode: detailNetworkCode }
+        : {}),
     };
   }
 
@@ -4797,6 +4816,23 @@ Delegation rules:
       details: {
         ...existingDetails,
         phase,
+        // Correlation for a failure that produced no response to inspect: how
+        // much context and how many bytes the attempt carried, and which
+        // compaction generation the session was on (issue #234). Counts, flags
+        // and sizes only — never message content.
+        ...(this.providerRequestMessages !== undefined
+          ? { requestMessages: this.providerRequestMessages }
+          : {}),
+        ...(this.providerRequestBytes !== undefined
+          ? { requestBytes: this.providerRequestBytes }
+          : {}),
+        ...(this.activeCompaction
+          ? {
+              compactionGeneration: checkpointGeneration(
+                this.activeCompaction.details,
+              ),
+            }
+          : {}),
         ...(providerWaitMs !== undefined ? { providerWaitMs } : {}),
         ...(streamMs !== undefined ? { streamMs } : {}),
         ...(this.providerResponseStatus !== undefined &&

@@ -304,24 +304,48 @@ export function delayWithAbort(
   });
 }
 
+/**
+ * Serialized request body size, without ever inspecting the body: only the byte
+ * length is retained, never the content. Request size is the one correlation
+ * signal from the reporter of issue #234 that is safe to keep on every attempt.
+ */
+function requestBodyBytes(body: unknown): number | undefined {
+  if (typeof body === "string") return Buffer.byteLength(body, "utf8");
+  if (body instanceof ArrayBuffer) return body.byteLength;
+  if (ArrayBuffer.isView(body)) return body.byteLength;
+  if (typeof Blob !== "undefined" && body instanceof Blob) return body.size;
+  return undefined;
+}
+
 /** Capture HTTP status/headers, including failed 429 responses that pi-ai's
- * onResponse callback intentionally does not expose. */
+ * onResponse callback intentionally does not expose. The second argument is the
+ * outgoing request size, reported even when the request dies before headers —
+ * exactly the case worth correlating with a network failure (issue #234). */
 export function captureProviderResponse(
   fetchFn: FetchFunction | undefined,
-  onResponse: (response?: ProviderResponseSnapshot) => void,
+  onResponse: (
+    response?: ProviderResponseSnapshot,
+    requestBytes?: number,
+  ) => void,
 ): FetchFunction {
   const baseFetch = fetchFn ?? globalThis.fetch;
   return async (input, init) => {
     // Clear the previous response before a new fetch. If this request fails
     // before receiving headers, a prior 429 must not classify the new failure.
     onResponse();
-    const response = await baseFetch(input, init);
-    const headers: Record<string, string> = {};
-    response.headers.forEach((value, key) => {
-      headers[key.toLowerCase()] = value;
-    });
-    onResponse({ status: response.status, headers });
-    return response;
+    const requestBytes = requestBodyBytes(init?.body);
+    try {
+      const response = await baseFetch(input, init);
+      const headers: Record<string, string> = {};
+      response.headers.forEach((value, key) => {
+        headers[key.toLowerCase()] = value;
+      });
+      onResponse({ status: response.status, headers }, requestBytes);
+      return response;
+    } catch (error) {
+      onResponse(undefined, requestBytes);
+      throw error;
+    }
   };
 }
 

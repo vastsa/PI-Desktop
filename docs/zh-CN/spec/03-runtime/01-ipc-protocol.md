@@ -616,9 +616,11 @@ type AgentEvent =
 
 提供程序 `error` 事件可能包括以下中的有限诊断字段：
 `AppError.details`：`phase`（`request` 或 `stream`）、`providerStatus`、
-`providerCode`、`providerWaitMs`、`streamMs` 和 `retryAttempt`。这些领域
-是添加和编辑的；他们从不携带凭证或不受限制的
-提供商响应。瞬时流故障可能会在内部重播
+`providerCode`、`providerWaitMs`、`streamMs`、`retryAttempt`，以及网络故障
+时的 `networkCategory`、`networkCode`、`networkSyscall`、`networkHost` 和请求
+关联字段 `requestMessages`、`requestBytes`、`compactionGeneration`。这些字段
+都是新增且经过编辑的；它们从不携带凭据或不受限制的提供商响应，请求字段
+只有计数与字节大小。瞬时流故障可能会在内部重播
 同一回合，没有终端 `error` 事件或重复的辅助消息。
 第二次失败会发出终端标准化 `STREAM_FAILED` 错误。
 
