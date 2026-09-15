@@ -5350,3 +5350,43 @@ its menu instead of the conversation.
   dropped. See ADR 0265, `03-runtime/01-ipc-protocol.md` (§5.6),
   `03-runtime/04-data-storage.md`, `04-ux/08-component-spec.md` (§11), and
   E2E-QUEUE-promote-orders-delivery-by-click.
+
+## 2026-09-16 — A manual disclosure keeps the reader's place (D430)
+
+- **A manual disclosure hands its own title to the scroller that owns it,
+  synchronously, before the expansion state changes.** The content
+  `ResizeObserver` still re-pins a pinned transcript on every content resize
+  (D287) and cannot tell a stream from a reader expanding a row, so the reader
+  states their intent first: the transcript leaves follow mode and the scroller
+  restores that title's viewport offset from inside the same observer, for as
+  many frames as the height keeps changing (an activity group animates its
+  `grid-template-rows`). `overflow-anchor: none` on `.thread-scroll` means this
+  has to be explicit.
+- **The anchor is the title element's offset from the scroller's top edge, not a
+  `scrollTop`, and the browser's own boundary clamping is adopted as the new
+  anchor.** A correction the content cannot reach, and a height change above the
+  title, are both handled without fighting the browser frame after frame. There
+  is no delayed "take the bottom back" compensation: the hold ends on real scroll
+  input, the jump-to-latest control, a new turn, or a navigation.
+- **Every scroll owner holds its own position and passes the hold outward.** The
+  transcript scroller and the nested delegate dock (`useFollowScroll`, D302) share
+  one controller; growing the dock grows the transcript's content, so an outer
+  scroller still in follow mode would drag the same title away.
+- **Input is attributed to the scroller that can consume it.** Only input that
+  really moves a container may release follow or a held position: a press on a
+  row, a control or an editable field is an ordinary click, a keystroke in a text
+  field belongs to the field, and input a nested scroller consumes is not the
+  outer scroller's gesture. Arrow keys still scroll and Space still activates a
+  focused title.
+- **Programmatic immediate scrolling records the `scrollTop` the scroller
+  actually reached**, and a sub-pixel tolerance is applied only to scroll events
+  no gesture produced. At DPR 1.1 follow asked for 841 and got 840.909; compared
+  strictly that fraction read as the reader scrolling up and dropped follow mode.
+  Real gestures are still compared exactly, so a one-pixel scroll unpins.
+- Renderer only: no protocol, storage, host, permission, or migration change.
+  See `04-ux/09-interaction-patterns.md` §9.1 and
+  E2E-CHAT-disclosure-toggle-keeps-reading-position.
+
+Readers reported that clicking a tool, thinking or activity title to expand it
+dragged the whole transcript up by the height of the opened detail, in a session
+that was sitting at the bottom — including after the turn had finished.

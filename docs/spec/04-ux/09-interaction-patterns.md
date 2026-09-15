@@ -1305,6 +1305,24 @@ Project drag/drop follows these patterns:
   a multi-line draft: the bottom reserve is padding on the transcript content, so
   the content is observed on its border box and the newest turn moves up with
   the composer instead of sliding behind it (D287).
+- A manual disclosure — a tool, thinking or activity title, a delegate's brief
+  toggle, or an error-detail toggle — holds the reading position of the scroller
+  that owns it (issue #324). The title is handed to that scroller before the
+  expansion state changes, follow mode is left, and the scroller restores the
+  title's viewport offset from its own resize observer for every frame of the
+  height change, so an animated activity group cannot drag the clicked title out
+  of view. A scroller nested inside another one (the delegate run dock, D302)
+  holds its own position and passes the hold outward, because growing it grows
+  the outer content too.
+- Leaving follow for a disclosure is not a re-pin: after a toggle the transcript
+  stays where the reader put it, with the jump-to-latest control visible, until
+  real scroll input, that control, a new turn or a navigation releases the hold.
+  There is no delayed "take the bottom back" correction (D430).
+- Scroll input is attributed to the scroller that can consume it. A press on a
+  row, a control or an editable field is an ordinary click rather than the start
+  of a scroll; a keystroke inside a text field belongs to that field; and input a
+  nested scroller consumes is not the outer scroller's gesture. Arrow keys still
+  scroll and Space still activates a focused title.
 - User send / retry / regenerate: re-pins, hides the jump control, and positions the latest content in the layout phase so the new turn is visible without a top-of-history flash; subsequent persisted and streamed rows continue to follow the bottom
 - Scroll-to-bottom button: position fixed at bottom-right of transcript area, offset 12px
 - Button appears as soon as upward scrolling releases follow mode

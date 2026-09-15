@@ -4934,6 +4934,8 @@ IPC 请求无法关闭。
 | F — 持久化（删除项目） | E2E-PROJECT-delete-removes-project-and-owned-sessions |
 | 品质（删除项目） | E2E-PROJECT-delete-removes-project-and-owned-sessions |
 | Security (plugin real-time capabilities) | E2E-PLUGIN-global-shortcut-owns-only-its-own-command、E2E-PLUGIN-permission-gate-for-real-time-capabilities、E2E-PLUGIN-background-audio-and-realtime-connection |
+| C — 对话与流式（展开详情保持阅读位置） | E2E-CHAT-disclosure-toggle-keeps-reading-position |
+| E — 工具与权限（展开详情保持阅读位置） | E2E-CHAT-disclosure-toggle-keeps-reading-position |
 
 | 里程碑 | 应用场景 |
 |---|---|
@@ -4962,6 +4964,7 @@ IPC 请求无法关闭。
 | 品质（模型回退隔离） | E2E-SUBAGENT-ordered-model-fallback-preserves-work |
 | C — 对话和直播（旧版子代理回合上限） | E2E-SUBAGENT-legacy-turn-limit-frontmatter-is-ignored |
 | 品质（旧版子代理回合上限） | E2E-SUBAGENT-legacy-turn-limit-frontmatter-is-ignored |
+| M6+（展开详情保持阅读位置） | E2E-CHAT-disclosure-toggle-keeps-reading-position |
 
 `US-UI-*` 视觉场景（§UI shell 视觉场景）追踪到
 [决策日志 §D](/zh-CN/spec/08-meta/decisions-log) 中的法典平价决策
@@ -7283,11 +7286,11 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 
 - **前提条件**：共享 public-network helper，以及可注入 fetch/DNS 的主进程公网 HTTPS 客户端。
 - **步骤**：1）分类 trailing-dot localhost、IPv4 回环、IPv4-mapped IPv6、ULA、link-local、RFC1918 与 `http://`。2）将公网主机名解析到私网 A 记录。3）跟随 Location 为 `https://127.0.0.1/` 的 302。
-- **预期**：上述绕过形态全部拒绝；公共 CDN 放行。解析到私网地址或 redirect 到回环会抛出策略错误，且不会请求私网目标。策略失败不重试。
+- **预期**：上述绕过形态全部拒绝；公共 CDN 放行。解析到私网地址或 redirect 到回环会抛出策略错误，且不会请求私网目标。策略失败不重试。每次拒绝都带上 `NETWORK_POLICY_BLOCKED`（spec 08 §3.1），使安装面板能给出原因并提供重试,而不是让安装按钮无解释地保持禁用；市场列表也能把被拒绝的源与单纯不可达的源区分开。
 - **链接规格**：`05-security/01-security.md`、ADR 0243、`03-runtime/01-ipc-protocol.md` §12b
 - **验收**：Security、Quality
 - **里程碑**：M6+
-- **状态**：已自动化（`pnpm test:e2e:skill-market`、`apps/desktop/test/public-https-fetch.test.mjs`、`packages/shared/src/public-network.test.ts`）
+- **状态**：已自动化（`pnpm test:e2e:skill-market`、`apps/desktop/test/public-https-fetch.test.mjs`、`apps/desktop/test/skill-market-scan.test.mjs`、`apps/desktop/test/skill-market-failure.test.mjs`、`packages/shared/src/public-network.test.ts`）
 
 #### E2E-SKILL-MARKET-EXPANSION：相邻 markdown 资源在安装前内联
 
@@ -7332,3 +7335,14 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 - **验收**：品质（协议与插件契约）
 - **里程碑**：M6+
 - **状态**：由模块测试覆盖（`apps/desktop/test/session-turn-ended.test.mjs`、`apps/desktop/test/queued-turn-finalization.test.mjs`）；桌面旅程为草稿（该表面变更时需在具备条件的环境中运行）
+
+#### E2E-CHAT-disclosure-toggle-keeps-reading-position
+
+- **范围**：滚动器已固定在底部时，手动展开转录或委派运行停靠区里的工具、思考或活动组标题（issue #324）。
+- **先决条件**：一个超过一屏的会话，停在底部并开启跟随模式；其中包含一行工具、一行思考和一个活动组，它们的展开详情都高于自身的标题栏；另有一个已展开、拥有嵌套滚动器的委派运行。分别在一轮已结束（`isRunning` 为 false）和一轮正在流式输出时各做一遍。
+- **步骤**：在固定于底部时，依次点击工具行、思考行和活动组的标题，并在该轮结束后再点一次。把视口停在转录中部再重复一次；用键盘激活一次（先 Enter，再在获得焦点的标题上按 Space），以及从收起栏操作一次。在已展开的委派停靠区内展开一行工具。然后用滚轮滚动、在标题获得焦点时按 ArrowUp、点击“跳到最新”控件，并发送一条新提示。
+- **预期**：详情动画展开与收起期间，被点击的标题保持它在屏幕上的位置，转录不会在它下方重新触底；跟随模式被退出，并出现“回到最新消息”控件。保持的位置在活动组动画的每一帧都成立，也覆盖标题上方同时发生的高度变化。嵌套停靠区保持自己的位置，其背后的转录同样不会重新触底。真实的滚动输入、跳转控件、新一轮以及任何导航都会释放保持并重新跟随实时尾部，而已经向上滚动的阅读者保持原来的位置。Space 仍能激活获得焦点的标题，方向键仍能滚动。
+- **链接规格**：`04-ux/09-interaction-patterns.md` §9.1；ADR transcript-reading-ownership；D287、D302、D430
+- **验收**：C（对话与流式）、E（工具与权限）、品质
+- **里程碑**：M6+
+- **状态**：部分自动化。`pnpm test:e2e:transcript-disclosure` 在真实的 600 CSS px Electron 视口中挂载真实的转录滚动 hook 与真实的工具行，用真实 DOM 点击标题，并对转录以及嵌套跟随滚动器断言标题相对滚动器顶边的偏移与滚动偏移；没有该修复时，同一个夹具会报告标题移动了整个展开详情的高度。夹具未链接应用样式表，因此高度来自内联填充与组件自身的固有尺寸。`disclosure-anchor.test.mjs` 覆盖纯锚点与输入归属数学，`transcript-disclosure-reading.test.mjs` 覆盖接线。键盘、滚轮与活动组动画路径仍属补充验证。

@@ -7645,6 +7645,8 @@ identify the platform validation still needed.
 | F — Persistence (project delete) | E2E-PROJECT-delete-removes-project-and-owned-sessions |
 | Quality (project delete) | E2E-PROJECT-delete-removes-project-and-owned-sessions |
 | Security (plugin real-time capabilities) | E2E-PLUGIN-global-shortcut-owns-only-its-own-command, E2E-PLUGIN-permission-gate-for-real-time-capabilities, E2E-PLUGIN-background-audio-and-realtime-connection |
+| C — Conversation & stream (disclosure reading position) | E2E-CHAT-disclosure-toggle-keeps-reading-position |
+| E — Tools & permissions (disclosure reading position) | E2E-CHAT-disclosure-toggle-keeps-reading-position |
 
 | Milestone | Scenarios |
 |---|---|
@@ -7673,6 +7675,7 @@ identify the platform validation still needed.
 | Quality (model fallback isolation) | E2E-SUBAGENT-ordered-model-fallback-preserves-work |
 | C — Conversation & stream (legacy subagent turn limit) | E2E-SUBAGENT-legacy-turn-limit-frontmatter-is-ignored |
 | Quality (legacy subagent turn limit) | E2E-SUBAGENT-legacy-turn-limit-frontmatter-is-ignored |
+| M6+ (disclosure reading position) | E2E-CHAT-disclosure-toggle-keeps-reading-position |
 
 The `US-UI-*` visual scenarios (§UI shell visual scenarios) trace to the
 Codex parity decisions in [decisions-log §D](../08-meta/decisions-log.md)
@@ -12550,3 +12553,44 @@ session or model request. Restore availability and send; exactly one child
 is created. A child returning read-only from an in-flight fork must not be
 prompted. `test:e2e:native-side-chat` covers the rendered parent gate and its
 recovery; `side-chat-draft.test.mjs` covers action-level guards and child drift.
+
+#### E2E-CHAT-disclosure-toggle-keeps-reading-position
+
+- **Scope**: Manual disclosure of a tool, thinking or activity title in a
+  transcript or a delegate run dock while the scroller is pinned to the bottom
+  (issue #324).
+- **Preconditions**: A session longer than one screen, sitting at the bottom with
+  follow mode on, holding a tool row, a thinking row and an activity group whose
+  expanded detail is taller than its header, plus one expanded delegate run that
+  owns a nested scroller. Repeat with a finished turn (`isRunning` false) and
+  while the turn streams.
+- **Steps**: Click the title of a tool row, a thinking row and an activity group
+  while pinned at the bottom, and again after the turn has finished. Repeat with
+  the viewport parked in the middle of the transcript, with a keyboard activation
+  (Enter, then Space, on a focused title), and from the collapse rail. Expand a
+  tool row inside an expanded delegate dock. Then scroll with the wheel, press
+  ArrowUp with a title focused, click the jump-to-latest control, and send a new
+  prompt.
+- **Expected**: The clicked title keeps its on-screen position while the detail
+  animates open and closed, and the transcript never re-bottoms underneath it;
+  follow mode is left and the newest-message control appears. The held position
+  survives every frame of an animated activity group and also covers a
+  simultaneous height change above the title. A nested dock holds its own
+  position and the transcript behind it does not re-bottom either. Real scroll
+  input, the jump control, a new turn and every navigation release the hold and
+  follow the live tail again, while a reader who scrolled up keeps their place.
+  Space still activates a focused title and arrow keys still scroll.
+- **Specs linked**: `04-ux/09-interaction-patterns.md` §9.1;
+  ADR transcript-reading-ownership; D287, D302, D430
+- **Acceptance**: C (conversation & stream), E (tools & permissions), Quality
+- **Milestone**: M6+
+- **Status**: Partially automated. `pnpm test:e2e:transcript-disclosure` mounts
+  the real transcript scroll hook and a real tool row in a real 600 CSS px
+  Electron viewport and clicks the title with a real DOM click, asserting the
+  title's offset from the scroller top and the scroll offset for the transcript
+  and for a nested follow scroller; without the fix the same fixture reports the
+  title moving by the full height of the opened detail. The app stylesheet is not
+  linked, so the heights come from inline filler and the components' own
+  intrinsic size. `disclosure-anchor.test.mjs` covers the pure anchor and input
+  math, and `transcript-disclosure-reading.test.mjs` covers the wiring. Keyboard,
+  wheel and animated-activity-group paths remain additional validation.

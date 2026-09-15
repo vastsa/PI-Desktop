@@ -18,6 +18,7 @@ import {
   type ThinkingLevel,
 } from "@pi-desktop/shared";
 import { useOpenChatFileRef, useOpenPreviewTarget } from "../../../hooks/use-preview-target";
+import { useDisclosureAnchorNotifier } from "../../../lib/disclosure-anchor-context";
 import { messageThinking as thinkingText } from "../../../lib/assistant-turns";
 import { useReferencedImageDataUrl } from "../../../lib/use-referenced-image-data-url";
 import { isHtmlFilePath, splitChatText } from "../../../lib/chat-links";
@@ -138,6 +139,8 @@ export function MessageMeta({
 export function AssistantErrorMessage({ message }: { message: UiMessage }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(true);
+  const detailsToggleRef = useRef<HTMLButtonElement | null>(null);
+  const notifyDisclosureAnchor = useDisclosureAnchorNotifier();
   const detailsId = useId();
   const error = message.error;
   if (!error) return null;
@@ -163,10 +166,17 @@ export function AssistantErrorMessage({ message }: { message: UiMessage }) {
         <div className="message-error-actions">
           <button
             type="button"
+            ref={detailsToggleRef}
             className="message-error-toggle"
             aria-expanded={open}
             aria-controls={detailsId}
-            onClick={() => setOpen((value) => !value)}
+            onClick={() => {
+              // The raw detail block changes the row's height, so this manual
+              // disclosure holds its own reading position like the others
+              // (#324).
+              notifyDisclosureAnchor?.(detailsToggleRef.current);
+              setOpen((value) => !value);
+            }}
           >
             <IconChevronRight size={12} aria-hidden />
             {open ? t("chat.hideErrorDetails") : t("chat.showErrorDetails")}
@@ -298,9 +308,17 @@ export function ToolActionIcon({ action }: { action: ToolAction }) {
  * but one user click takes ownership for the rest of that component's lifetime.
  * Layout effects keep the automatic transition from moving the transcript for a
  * painted frame.
+ *
+ * A *manual* toggle also hands its own title to the scroller that owns it,
+ * before the state changes (#324): the height under the click may keep changing
+ * for several frames, and the reader's place in the transcript is the one thing
+ * that must not move while it does. The automatic transition below goes through
+ * `setOpen` directly and never claims a reading position.
  */
 export function useAutomaticDisclosure(automaticOpen: boolean, revealRequest?: number) {
   const [open, setOpen] = useState(automaticOpen || revealRequest !== undefined);
+  const notifyAnchor = useDisclosureAnchorNotifier();
+  const titleRef = useRef<HTMLButtonElement | null>(null);
   const userInteractedRef = useRef(false);
   const previousAutomaticOpenRef = useRef(automaticOpen);
 
@@ -323,15 +341,17 @@ export function useAutomaticDisclosure(automaticOpen: boolean, revealRequest?: n
 
   const toggle = useCallback(() => {
     claim();
+    notifyAnchor?.(titleRef.current);
     setOpen((value) => !value);
-  }, [claim]);
+  }, [claim, notifyAnchor]);
 
   const collapse = useCallback(() => {
     claim();
+    notifyAnchor?.(titleRef.current);
     setOpen(false);
-  }, [claim]);
+  }, [claim, notifyAnchor]);
 
-  return { open, toggle, collapse, claim };
+  return { open, toggle, collapse, claim, titleRef };
 }
 
 /** Actions whose path/url argument makes sense to preview in the panel. */
@@ -517,8 +537,9 @@ export const ThinkingRow = memo(function ThinkingRow({
 }) {
   const { t } = useTranslation();
   const detailsId = useId();
-  const { open, toggle: toggleDisclosure, collapse: collapseDisclosure } =
-    useAutomaticDisclosure(autoOpen);
+  const disclosure = useAutomaticDisclosure(autoOpen);
+  const { open, toggle: toggleDisclosure, collapse: collapseDisclosure } = disclosure;
+  const titleRef = disclosure.titleRef;
   const toggleRow = useCallback(() => {
     onUserInteraction?.();
     toggleDisclosure();
@@ -532,6 +553,7 @@ export const ThinkingRow = memo(function ThinkingRow({
   return (
     <div className={`tool-row thinking ${open ? "open" : ""}`}>
       <button
+        ref={titleRef}
         className="tool-row-header"
         aria-expanded={open}
         aria-controls={detailsId}

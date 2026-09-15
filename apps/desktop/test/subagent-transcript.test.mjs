@@ -398,7 +398,7 @@ test("an expanded delegate run follows the latest output while pinned (D302)", (
   assert.match(followScrollSource, /isRecentScrollGesture\(/);
   assert.match(
     followScrollSource,
-    /const followScrollNow = useCallback\(\(\) => \{\s*if \(!pinnedRef\.current\) return;\s*cancelFollowScroll\(\);\s*scrollToBottom\(\);/,
+    /const followScrollNow = useCallback\(\(\) => \{[\s\S]{0,400}?if \(!pinnedRef\.current\) return;\s*cancelFollowScroll\(\);\s*scrollToBottom\(\);/,
   );
   assert.match(followScrollSource, /new ResizeObserver\(followScrollNow\)/);
   assert.doesNotMatch(

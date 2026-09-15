@@ -152,22 +152,23 @@ test("send re-pins before paint instead of flashing the old transcript position"
 test("layout clamps after send cannot release transcript follow as a gesture", () => {
   assert.match(transcript, /const lastScrollGestureAtRef = useRef\(-Infinity\)/);
   assert.match(transcript, /markScrollGesture = useCallback/);
+  // Input classification lives in the shared scroll helper (#324); the rules
+  // themselves are unit-tested against `isScrollGestureInput`, so the
+  // transcript only has to route real DOM events through it.
+  assert.match(transcript, /readScrollInputContext\(/);
   assert.match(
     transcript,
-    /event\.type === "wheel" \|\|\s*event\.type === "touchstart" \|\|\s*event\.type === "touchmove"/,
+    /isScrollGestureInput\(event\.type as ScrollInputType, input\)/,
   );
-  assert.match(transcript, /event\.type === "pointerdown"/);
   assert.match(transcript, /el\.addEventListener\("wheel", markScrollGesture/);
   assert.match(transcript, /className="thread-wrap"\s+ref=\{wrapRef\}/);
-  assert.match(
-    transcript,
-    /const released =\s*transition\.releasedFollow &&\s*isRecentScrollGesture\(/,
-  );
+  assert.match(transcript, /const gesturing = isRecentScrollGesture\(/);
   assert.match(
     transcript,
     /isRecentScrollGesture\(\s*performance\.now\(\),\s*lastScrollGestureAtRef\.current,\s*\)/,
   );
   assert.match(transcript, /if \(transition\.releasedFollow\) cancelFollowScroll\(\)/);
+  assert.match(transcript, /if \(gesturing && transition\.releasedFollow\) \{/);
 });
 
 test("session activation pins the latest record before the first paint", () => {
@@ -183,7 +184,7 @@ test("session activation pins the latest record before the first paint", () => {
   // first layout: settle at the newest turn with no cross-session state to
   // unwind, before the first paint.
   const activationEffect = transcript.match(
-    /useLayoutEffect\(\(\) => \{([\s\S]*?)\n  \}, \[cancelFollowScroll, scrollToBottom\]\);/,
+    /useLayoutEffect\(\(\) => \{([\s\S]*?)\n  \}, \[cancelFollowScroll, releaseDisclosureAnchor, scrollToBottom\]\);/,
   )?.[1];
   assert.ok(activationEffect);
   assert.match(activationEffect, /cancelFollowScroll\(\)/);
@@ -198,7 +199,7 @@ test("a revealed pane restores its own scroll position in the layout phase", () 
   // scroller can be clamped while its content grows off screen, and a passive
   // effect would leave one visible frame at the wrong offset (ADR 0137).
   const revealEffect = transcript.match(
-    /useLayoutEffect\(\(\) => \{([\s\S]*?)\n  \}, \[cancelFollowScroll, paneVisible, scrollToBottom\]\);/,
+    /useLayoutEffect\(\(\) => \{([\s\S]*?)\n  \}, \[cancelFollowScroll, paneVisible, releaseDisclosureAnchor, scrollToBottom\]\);/,
   )?.[1];
   assert.ok(revealEffect, "the reveal must restore position in a layout effect");
   assert.match(revealEffect, /retainedScrollTopRef\.current = el\.scrollTop/);

@@ -54,6 +54,7 @@ import {
   IconStop,
 } from "../../../components/icons";
 import { TooltipButton } from "../../../components/ui";
+import { DisclosureAnchorContext } from "../../../lib/disclosure-anchor-context";
 import {
   AssistantErrorMessage,
   DisclosureCollapseRail,
@@ -153,6 +154,7 @@ export const ToolRow = memo(function ToolRow({
   // through its status icon/label without expanding the payload automatically.
   const disclosure = useAutomaticDisclosure(false);
   const { open, toggle: toggleDisclosure, collapse: collapseDisclosure } = disclosure;
+  const titleRef = disclosure.titleRef;
   const toggleRow = useCallback(() => {
     onUserInteraction?.();
     toggleDisclosure();
@@ -377,6 +379,7 @@ export const ToolRow = memo(function ToolRow({
       ) : (
         <div className={`tool-row-head${runHead ? " is-run" : ""}`}>
           <button
+            ref={titleRef}
             className="tool-row-header"
             aria-expanded={open}
             aria-controls={hasDetails ? detailsId : undefined}
@@ -588,6 +591,7 @@ function SubagentRunFollow({
     handleScroll,
     jumpToLatest,
     scheduleFollowScroll,
+    disclosureAnchorNotifier,
   } = useFollowScroll();
 
   useLayoutEffect(() => {
@@ -596,59 +600,66 @@ function SubagentRunFollow({
   }, [items, scheduleFollowScroll, scrollable]);
 
   return (
-    <div className="subagent-run-follow">
-      {/* The rows scroll inside the run rather than growing the transcript
-        * (D271). Follow sticks to the latest output while pinned (D302).
-        * Labelled and focusable so a keyboard reader can reach the scroll
-        * area the pointer can already use. */}
-      <div
-        ref={scrollRef}
-        className={`subagent-run-rows${scrollable ? "" : " is-panel-flow"}`}
-        role="group"
-        tabIndex={scrollable ? 0 : undefined}
-        aria-labelledby={headingId}
-        onScroll={scrollable ? handleScroll : undefined}
-      >
-        <div ref={contentRef}>
-          {items.map((item) =>
-            item.kind === "tool" ? (
-              <Fragment key={item.message.id}>
-                <ToolRow message={item.message} />
-                <ReviewChangeCard message={item.message} />
-              </Fragment>
-            ) : item.kind === "thinking" ? (
-              <ThinkingRow
-                key={`thinking-${item.message.id}`}
-                message={item.message}
-                streaming={item.message.status === "streaming"}
-              />
-            ) : (
-              <div className="subagent-answer" data-message-id={item.message.id} key={`answer-${item.message.id}`}>
-                {item.message.content ? (
-                  <div className="prose-chat">
-                    <Markdown source={item.message.content} />
-                  </div>
-                ) : null}
-                {item.message.error ? (
-                  <AssistantErrorMessage message={item.message} />
-                ) : null}
-              </div>
-            ),
-          )}
-        </div>
-      </div>
-      {scrollable && showJump ? (
-        <TooltipButton
-          type="button"
-          className="jump-latest-btn"
-          ariaLabel={t("chat.scrollToBottom")}
-          tooltip={t("chat.scrollToBottom")}
-          onClick={jumpToLatest}
+    <DisclosureAnchorContext.Provider value={disclosureAnchorNotifier}>
+      <div className="subagent-run-follow">
+        {/* The rows scroll inside the run rather than growing the transcript
+          * (D271). Follow sticks to the latest output while pinned (D302).
+          * Labelled and focusable so a keyboard reader can reach the scroll
+          * area the pointer can already use. */}
+        <div
+          ref={scrollRef}
+          data-scroll-owner="follow"
+          className={`subagent-run-rows${scrollable ? "" : " is-panel-flow"}`}
+          role="group"
+          tabIndex={scrollable ? 0 : undefined}
+          aria-labelledby={headingId}
+          onScroll={scrollable ? handleScroll : undefined}
         >
-          <IconArrowDown size={14} />
-        </TooltipButton>
-      ) : null}
-    </div>
+          <div ref={contentRef}>
+            {items.map((item) =>
+              item.kind === "tool" ? (
+                <Fragment key={item.message.id}>
+                  <ToolRow message={item.message} />
+                  <ReviewChangeCard message={item.message} />
+                </Fragment>
+              ) : item.kind === "thinking" ? (
+                <ThinkingRow
+                  key={`thinking-${item.message.id}`}
+                  message={item.message}
+                  streaming={item.message.status === "streaming"}
+                />
+              ) : (
+                <div
+                  className="subagent-answer"
+                  data-message-id={item.message.id}
+                  key={`answer-${item.message.id}`}
+                >
+                  {item.message.content ? (
+                    <div className="prose-chat">
+                      <Markdown source={item.message.content} />
+                    </div>
+                  ) : null}
+                  {item.message.error ? (
+                    <AssistantErrorMessage message={item.message} />
+                  ) : null}
+                </div>
+              ),
+            )}
+          </div>
+        </div>
+        {scrollable && showJump ? (
+          <TooltipButton
+            type="button"
+            className="jump-latest-btn"
+            ariaLabel={t("chat.scrollToBottom")}
+            tooltip={t("chat.scrollToBottom")}
+            onClick={jumpToLatest}
+          >
+            <IconArrowDown size={14} />
+          </TooltipButton>
+        ) : null}
+      </div>
+    </DisclosureAnchorContext.Provider>
   );
 }
 
