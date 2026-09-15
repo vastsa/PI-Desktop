@@ -4941,6 +4941,8 @@ IPC 请求无法关闭。
 | MVP 后远程控制 | E2E-221、E2E-222、E2E-223、E2E-224、E2E-225、E2E-226、E2E-227、E2E-228、E2E-229、E2E-230、E2E-231、E2E-232 |
 | 受信任扩展（R7 v1） | E2E-241、E2E-242、E2E-243、E2E-244、E2E-245、E2E-PLUGIN-imported-pi-package-skills、E2E-PLUGIN-import-extension-installs-dependencies、E2E-PLUGIN-import-extension-reports-missing-dependency |
 | M6+（删除项目） | E2E-PROJECT-delete-removes-project-and-owned-sessions |
+| C — 对话和直播（模型回退） | E2E-SUBAGENT-ordered-model-fallback-preserves-work |
+| 品质（模型回退隔离） | E2E-SUBAGENT-ordered-model-fallback-preserves-work |
 | C — 对话和直播（旧版子代理回合上限） | E2E-SUBAGENT-legacy-turn-limit-frontmatter-is-ignored |
 | 品质（旧版子代理回合上限） | E2E-SUBAGENT-legacy-turn-limit-frontmatter-is-ignored |
 
