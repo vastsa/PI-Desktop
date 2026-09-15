@@ -18,6 +18,7 @@ import {
   type ThinkingLevel,
 } from "@pi-desktop/shared";
 import { useOpenChatFileRef, useOpenPreviewTarget } from "../../../hooks/use-preview-target";
+import { useLiveThroughput } from "./use-live-throughput";
 import { messageThinking as thinkingText } from "../../../lib/assistant-turns";
 import { useReferencedImageDataUrl } from "../../../lib/use-referenced-image-data-url";
 import { isHtmlFilePath, splitChatText } from "../../../lib/chat-links";
@@ -131,6 +132,49 @@ export function MessageMeta({
           })}
         </span>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * Meta row for the turn that is still streaming.
+ *
+ * Mounted only for the active tail turn, which keeps the sampler and its
+ * interval off every history row and keeps per-token work out of the store.
+ * The figure is always an estimate — the provider reports usage once, at
+ * `message_end` — so it carries the "≈" copy (ADR 0073 §4), and `MessageMeta`
+ * takes over with the exact value once the turn completes.
+ */
+export function LiveMessageMeta({
+  modelId,
+  message,
+}: {
+  modelId?: string;
+  message?: Pick<UiMessage, "content" | "thinking">;
+}) {
+  const { t } = useTranslation();
+  const { rate, stale } = useLiveThroughput(message);
+  if (!modelId && rate === undefined) {
+    return null;
+  }
+  return (
+    <div className="message-meta">
+      {modelId ? (
+        <span className="message-meta-chip model" title={modelId}>
+          {modelId}
+        </span>
+      ) : null}
+      {rate === undefined ? null : (
+        <span
+          className="message-meta-chip throughput"
+          data-stale={stale ? "true" : undefined}
+          title={t("chat.usageThroughputLabel")}
+        >
+          {t("chat.usageThroughputEstimated", {
+            count: formatTokenCount(rate),
+          })}
+        </span>
+      )}
     </div>
   );
 }

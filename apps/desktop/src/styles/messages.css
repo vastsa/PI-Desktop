@@ -1347,6 +1347,18 @@
   text-overflow: ellipsis;
 }
 
+/* The live figure changes while streaming, so proportional digits would make
+   the chip's width twitch on every update. */
+.message-meta-chip.throughput {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Tool execution generates no tokens. The last measured rate is kept and dimmed
+   rather than blanked, so a long tool call does not read as a stalled model. */
+.message-meta-chip.throughput[data-stale="true"] {
+  color: var(--ds-text-muted);
+}
+
 .context-inspector {
   position: relative;
   display: inline-flex;

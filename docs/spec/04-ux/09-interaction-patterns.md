@@ -656,8 +656,10 @@ may be retained while exactly one workspace supplies the visible shell context.
    with aborted status and restore no draft. Preserve the measured stream
    duration and use provider output usage when available; otherwise store a
    visibly estimated output count so the conversation still shows throughput
-6. Composer re-activates (unblocked)
-7. Abort is idempotent — pressing abort when already aborting does nothing
+6. The live generation-speed chip stops at abort and the settled turn's own
+   values take over; no live figure survives into history (ADR 0258)
+7. Composer re-activates (unblocked)
+8. Abort is idempotent — pressing abort when already aborting does nothing
 
 ### 3.3 Abort UX
 

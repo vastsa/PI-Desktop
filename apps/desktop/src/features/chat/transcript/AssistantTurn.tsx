@@ -36,6 +36,7 @@ import {
   AssistantErrorMessage,
   CopyButton,
   MessageMeta,
+  LiveMessageMeta,
   formatTokenCount,
 } from "./shared";
 import { activityItemsEqual, ActivityGroup } from "./ActivityGroup";
@@ -250,6 +251,9 @@ export const AssistantTurn = memo(function AssistantTurn({
   const responseDurationMs = assistantTurnResponseDuration(entry);
   const responseOutputTokens = assistantTurnResponseOutputTokens(entry);
   const modelId = metaMessage?.modelId ?? latestUsageMessage?.modelId;
+  // The tail message is the one still growing; the live rate is estimated from
+  // it because the provider only reports usage at message_end.
+  const streamingMessage = isActive ? messages.at(-1) : undefined;
   const hasError = messages.some((message) => Boolean(message.error));
   const complete =
     !isActive && !hasError && Boolean(content) && Boolean(actionMessage);
@@ -341,6 +345,9 @@ export const AssistantTurn = memo(function AssistantTurn({
             responseDurationMs={responseDurationMs}
             responseOutputTokens={responseOutputTokens}
           />
+        ) : null}
+        {isActive ? (
+          <LiveMessageMeta modelId={modelId} message={streamingMessage} />
         ) : null}
         {(content || hasError) && actionMessage && !transcriptReadOnly ? (
           <div className="message-actions">

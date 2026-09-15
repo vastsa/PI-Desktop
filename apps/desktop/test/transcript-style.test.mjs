@@ -351,11 +351,37 @@ test("assistant context inspector keeps a compact summary and retry action wired
   assert.match(stylesSource, /\.context-inspector-popover\.is-open/);
 });
 
-test("context inspector keeps generation speed completion-only", () => {
-  assert.doesNotMatch(inspectorSource, /useLiveElapsedMs|usageThroughputLive/);
+test("the composer inspector keeps generation speed completion-only", () => {
+  // The popover reports the provider's exact figure, so it stays a
+  // completed-turn surface; only the transcript meta row estimates live.
+  assert.doesNotMatch(inspectorSource, /useLiveElapsedMs|useLiveThroughput/);
+  assert.doesNotMatch(inspectorSource, /usageThroughputLive/);
+  // The reverted runtime-stamped attempt must not come back (ADR 0258).
   assert.doesNotMatch(transcriptSource, /useLiveElapsedMs|usageThroughputLive/);
-  assert.doesNotMatch(transcriptSource, /assistantTurnStreamingMessage/);
   assert.doesNotMatch(stylesSource, /message-meta-live-rate|live-rate-pulse/);
+});
+
+test("the transcript meta row estimates throughput while streaming (#93)", () => {
+  // Mounted only for the active tail turn, so the sampler and its interval stay
+  // off history rows and no per-token state reaches the store (ADR 0242).
+  assert.match(transcriptSource, /export function LiveMessageMeta\(/);
+  assert.match(transcriptSource, /useLiveThroughput\(message\)/);
+  assert.match(
+    transcriptSource,
+    /isActive \? \(\s*<LiveMessageMeta modelId=\{modelId\} message=\{streamingMessage\}/,
+  );
+  // The live figure is an estimate, so it carries the "≈" copy (ADR 0073 §4).
+  assert.match(transcriptSource, /chat\.usageThroughputEstimated/);
+  assert.match(transcriptSource, /data-stale=\{stale \? "true" : undefined\}/);
+  // Tabular digits keep the chip from twitching as the number updates.
+  assert.match(
+    stylesSource,
+    /\.message-meta-chip\.throughput\s*\{[\s\S]*?font-variant-numeric:\s*tabular-nums;/,
+  );
+  assert.match(
+    stylesSource,
+    /\.message-meta-chip\.throughput\[data-stale="true"\]\s*\{[\s\S]*?color:\s*var\(--ds-text-muted\);/,
+  );
 });
 
 test("context inspector panel opens on click, not hover (D225)", () => {
