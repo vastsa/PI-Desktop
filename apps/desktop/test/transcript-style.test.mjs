@@ -371,7 +371,7 @@ test("the transcript meta row estimates throughput while streaming (#93)", () =>
   assert.match(transcriptSource, /advanceThroughput\(\s*trackerRef\.current,/);
   assert.match(
     transcriptSource,
-    /isActive \? \(\s*<LiveMessageMeta\s+key=\{entry.id\}\s+modelId=\{modelId\}\s+message=\{streamingMessage\}/,
+    /isActive \? \(\s*<LiveMessageMeta\s+key=\{entry.id\}\s+modelId=\{modelId\}\s+message=\{latestMessage\}/,
   );
   // The live figure is an estimate, so it carries the "≈" copy (ADR 0073 §4).
   assert.match(transcriptSource, /chat\.usageThroughputEstimated/);
