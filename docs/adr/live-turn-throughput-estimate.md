@@ -1,4 +1,4 @@
-# ADR 0258: Live turn throughput is a renderer-side windowed estimate
+# ADR `live-turn-throughput-estimate`: Live turn throughput is a renderer-side windowed estimate
 
 - Status: Accepted
 - Date: 2026-09-15

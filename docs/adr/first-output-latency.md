@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-09-15
-- Related: ADR 0073, ADR 0242, ADR 0258
+- Related: ADR 0073, ADR 0242, ADR `live-turn-throughput-estimate`
 
 ## Decision
 

@@ -1310,7 +1310,7 @@ storage but compose into one assistant turn until the next user message.
   toolbar; Copy joins all contentful fragments in order, while Fork and
   Regenerate use the last contentful assistant message as the durable boundary.
 - While the turn is still streaming, that meta row shows the model chip beside
-  a live generation-speed chip in tokens per second (ADR 0258). The figure is
+  a live generation-speed chip in tokens per second (ADR `live-turn-throughput-estimate`). The figure is
   always the estimate form, because the provider reports usage only when the
   message ends, and it is measured over a recent window rather than from the
   start of the turn. Tool execution produces no tokens, so the last measured
@@ -1622,7 +1622,7 @@ Single message render — either user (plaintext) or assistant (markdown streami
   spacing; the popover keeps its floating-layer edge and draws no inner
   section rules (D297). The popover's generation speed is a completed-turn
   value in tokens per second and is not updated while a response is streaming;
-  the transcript meta row carries the live estimate instead (ADR 0258). The
+  the transcript meta row carries the live estimate instead (ADR `live-turn-throughput-estimate`). The
   context-window total uses the same effective model window as the agent
   sidecar: a published models.dev `limit.context` replaces a legacy 128k
   generic binding seed, while a non-default per-model Advanced value remains

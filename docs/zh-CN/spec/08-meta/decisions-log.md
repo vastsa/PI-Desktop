@@ -4175,7 +4175,7 @@ the retained upstream work-panel lifecycle. See
 
 ### Live generation throughput (issue #93)
 
-[ADR 0258](/adr/0258-live-turn-throughput-estimate) 修订 ADR 0073：进行中回合的
+[ADR `live-turn-throughput-estimate`](/adr/live-turn-throughput-estimate) 修订 ADR 0073：进行中回合的
 元信息行在模型芯片旁显示实时 tokens/s 估算。运行时只在 `message_end` 上报供应商
 用量，因此该数值由渲染层按「可见思考 + 回答文本，每 4 个 Unicode 码位算 1 token」
 计算 —— 即 ADR 0073 §3 的口径 —— 并恒用估算文案。它按最近的时间窗口测量而非累计，

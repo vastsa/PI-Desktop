@@ -12233,7 +12233,7 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   metrics. History rows show no live chip. The sidebar does not re-render while
   tokens arrive.
 - **Specs linked**: `04-ux/08-component-spec.md`,
-  `04-ux/09-interaction-patterns.md` §3.2, ADR 0258, ADR 0073, ADR 0242
+  `04-ux/09-interaction-patterns.md` §3.2, ADR `live-turn-throughput-estimate`, ADR 0073, ADR 0242
 - **Acceptance**: C (conversation and stream), Quality (glanceable telemetry)
 - **Milestone**: M6+
 - **Status**: Renderer automation in `pnpm test:e2e:transcript` covers phase

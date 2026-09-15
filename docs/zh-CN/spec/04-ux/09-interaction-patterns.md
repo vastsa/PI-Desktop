@@ -551,12 +551,12 @@
    持续时间和使用提供商输出使用情况（如果可用）；否则存储一个
    明显估计的输出计数，因此对话仍然显示吞吐量
 6. 实时生成速度芯片在中止时停止，由落定回合自身的数值接管；没有任何实时数值
-   会留存进历史记录（ADR 0258）
+   会留存进历史记录（ADR `live-turn-throughput-estimate`）
 7. Composer重新激活（解锁）
 8. 中止是幂等的——当已经中止时按中止不会执行任何操作
 
 Live phase labels and retained-rate behavior follow the transcript meta row
-contract in `08-component-spec.md` (ADR 0258).
+contract in `08-component-spec.md` (ADR `live-turn-throughput-estimate`).
 
 ### 3. 3 中止用户体验
 

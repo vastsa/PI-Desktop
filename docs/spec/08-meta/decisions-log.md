@@ -5275,7 +5275,7 @@ OAuth login, token refresh, or account label today.
 
 ### Live generation throughput (issue #93)
 
-[ADR 0258](/adr/0258-live-turn-throughput-estimate) amends ADR 0073: the active
+[ADR `live-turn-throughput-estimate`](/adr/live-turn-throughput-estimate) amends ADR 0073: the active
 turn's meta row shows a live tokens-per-second estimate beside the model chip.
 The runtime reports provider usage only at `message_end`, so the figure is
 computed in the renderer from visible thinking plus answer text at four Unicode
@@ -5290,7 +5290,7 @@ unchanged. Validation contract: E2E-CHAT-live-generation-throughput.
 
 ### Live generation feedback refinement
 
-ADR 0258 now specifies explicit generation phases, historical-rate labels,
+ADR `live-turn-throughput-estimate` now specifies explicit generation phases, historical-rate labels,
 time-based smoothing, and per-message sampling baselines. All eight locales
 carry the new labels. E2E-CHAT-live-generation-throughput covers the rendered
 phase transitions; no IPC, persistence, or plugin contract changes.

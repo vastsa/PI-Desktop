@@ -657,12 +657,12 @@ may be retained while exactly one workspace supplies the visible shell context.
    duration and use provider output usage when available; otherwise store a
    visibly estimated output count so the conversation still shows throughput
 6. The live generation-speed chip stops at abort and the settled turn's own
-   values take over; no live figure survives into history (ADR 0258)
+   values take over; no live figure survives into history (ADR `live-turn-throughput-estimate`)
 7. Composer re-activates (unblocked)
 8. Abort is idempotent — pressing abort when already aborting does nothing
 
 Live phase labels and retained-rate behavior follow the transcript meta row
-contract in `08-component-spec.md` (ADR 0258).
+contract in `08-component-spec.md` (ADR `live-turn-throughput-estimate`).
 
 ### 3.3 Abort UX
 

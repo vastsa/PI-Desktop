@@ -7275,7 +7275,7 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
   5. 再发一条提示，并在流式过程中用 `Cmd/Ctrl + .` 停止。
   6. 在同一会话中向上滚动查看更早的回合。
 - **预期**：输出累积到足够量后芯片出现，恒为估算形式，并在推理与回答文本到达期间持续更新。数字变化时芯片宽度不变。工具调用期间保留上次速率并置灰，而非清空或移除；生成恢复后重新变亮。回合落定后元信息行显示已完成回合的数值、不再有实时芯片，弹层里的生成速度仍是已完成回合的数值。被停止的回合保留其停止时的指标。历史行不显示实时芯片。token 到达期间侧边栏不重渲染。
-- **链接规格**：`04-ux/08-component-spec.md`、`04-ux/09-interaction-patterns.md` §3.2、ADR 0258、ADR 0073、ADR 0242
+- **链接规格**：`04-ux/08-component-spec.md`、`04-ux/09-interaction-patterns.md` §3.2、ADR `live-turn-throughput-estimate`、ADR 0073、ADR 0242
 - **验收**：C（对话与流式）、品质（一眼可读的遥测）
 - **里程碑**：M6+
 - **状态**：由模块测试覆盖（`apps/desktop/test/live-throughput.test.mjs`、`apps/desktop/test/transcript-style.test.mjs`）；原生旅程为草稿
