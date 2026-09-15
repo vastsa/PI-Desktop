@@ -4879,6 +4879,9 @@ IPC 请求无法关闭。
 | A — 应用程序启动 | E2E-001、E2E-002、E2E-003、E2E-004、E2E-067、E2E-076、E2E-079、E2E-092、E2E-097、E2E-143、E2E-150、E2E-168、E2E-204、E2E-217 |
 | B——模型配置 | E2E-005、E2E-005G、E2E-006、E2E-007、E2E-038、E2E-050、E2E-052、E2E-055、E2E-066、E2E-080、E2E-082、E2E-151、E2E-005J、E2E-199、E2E-201、E2E-202、E2E-203、E2E-209、E2E-166 |
 | C — 对话和直播 | E2E-008、E2E-008d、E2E-008a、E2E-009、E2E-010、E2E-011、E2E-011a、E2E-011b、E2E-031、E2E-040、E2E-047、E2E-048、E2E-048A、E2E-049、E2E-052、 E2E-053、E2E-054、E2E-055、E2E-059、E2E-059a、E2E-060c、E2E-060d、E2E-061、E2E-061a、E2E-062、E2E-064、E2E-065、E2E-068、E2E-071、 E2E-073、E2E-074、E2E-075、E2E-081、E2E-083、E2E-084、E2E-086、E2E-087、E2E-088、E2E-088b、E2E-089、E2E-090、E2E-094、E2E-095、E2E-096、 E2E-097、E2E-098、E2E-099、E2E-102、E2E-102a、E2E-102b、E2E-106、E2E-109、E2E-111、E2E-114、E2E-116、E2E-117、E2E-118、E2E-119、 E2E-120、E2E-121、E2E-代理-001、E2E-142、E2E-144、E2E-145、E2E-146、E2E-147、E2E-151、E2E-199、E2E-250、E2E-166 |
+| A / C / F / Quality — Tray session navigation | E2E-TRAY-bounded-session-navigation |
+| B——模型配置 | E2E-005、E2E-005G、E2E-006、E2E-007、E2E-038、E2E-050、E2E-052、E2E-055、E2E-066、E2E-080、E2E-082、E2E-151、E2E-005J、E2E-199、E2E-201、E2E-202、E2E-203、E2E-209 |
+| C — 对话和直播 | E2E-008、E2E-008d、E2E-008a、E2E-009、E2E-010、E2E-011、E2E-011a、E2E-011b、E2E-031、E2E-040、E2E-047、E2E-048、E2E-048A、E2E-049、E2E-052、 E2E-053、E2E-054、E2E-055、E2E-059、E2E-059a、E2E-060c、E2E-060d、E2E-061、E2E-061a、E2E-062、E2E-064、E2E-065、E2E-068、E2E-071、 E2E-073、E2E-074、E2E-075、E2E-081、E2E-083、E2E-084、E2E-086、E2E-087、E2E-088、E2E-088b、E2E-089、E2E-090、E2E-094、E2E-095、E2E-096、 E2E-097、E2E-098、E2E-099、E2E-102、E2E-102a、E2E-102b、E2E-106、E2E-109、E2E-111、E2E-114、E2E-116、E2E-117、E2E-118、E2E-119、 E2E-120、E2E-121、E2E-代理-001、E2E-142、E2E-144、E2E-145、E2E-146、E2E-147、E2E-151、E2E-199、E2E-250 |
 | D——工作区 | E2E-012、E2E-013、E2E-022B、E2E-024I、E2E-047、E2E-049、E2E-057、E2E-058、E2E-060、E2E-068、E2E-075、E2E-078、E2E-153 |
 | D——工作区（项目排序） | E2E-253 |
 | E——工具和权限 | E2E-008a、E2E-014、E2E-015、E2E-016、E2E-017、E2E-018、E2E-019、E2E-024I、E2E-024K、E2E-040、E2E-049、E2E-074、E2E-093、E2E-097、 E2E-099、E2E-100、E2E-101、E2E-102、E2E-103、E2E-105、E2E-106、E2E-107、E2E-111、E2E-112、E2E-113、E2E-114、E2E-115、E2E-116、 E2E-119、E2E-121、E2E-122、E2E-123、E2E-142、E2E-145、E2E-147、E2E-PLUGIN-imported-pi-package-skills、E2E-166 |
@@ -7260,3 +7263,47 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 - **验收**：品质（协议与插件契约）
 - **里程碑**：M6+
 - **状态**：由模块测试覆盖（`apps/desktop/test/session-turn-ended.test.mjs`、`apps/desktop/test/queued-turn-finalization.test.mjs`）；桌面旅程为草稿（该表面变更时需在具备条件的环境中运行）
+
+#### E2E-TRAY-bounded-session-navigation
+
+- **Scope**: Native tray groups, hidden/recreated window activation, and unread
+  semantics (issue #293, ADR tray-session-shortcuts).
+- **Preconditions**: At least four running, four unread, and four pinned
+  sessions across two projects; include overlaps, read-latest/older-unread
+  notifications, archived/deleted sessions, an archived project, empty titles,
+  multiline titles, long CJK/emoji titles, and literal ampersands. Also cover
+  a single populated group of seven and one of more than nine, with the other
+  two groups empty, to exercise reclaimed share. Use an
+  isolated profile. Repeat native activation on macOS and Windows/Linux.
+- **Steps**: Hide the main window and open the tray menu. Inspect group order,
+  counts, duplicates, titles, and unchanged unread records. Choose the third
+  row from another project, then View more from Settings with a collapsed
+  sidebar and a retained search query. Finish/abort tasks while hidden;
+  read a result, pin/unpin, rename, archive/restore, and delete a session.
+  Close the macOS window while a task runs and let it finish, then activate
+  its tray row while the new renderer bootstraps a pending plan. Delay a Host
+  read while a newer preference update, delete, or Host restart arrives.
+  Retry a transient read failure by hovering/right-clicking the tray.
+  Repeat after clearing all group memberships and changing shipped locales.
+  Choose Quit then Cancel, then Quit and confirm.
+- **Expected**: Running → Unread → Pinned; at most nine rows in total. Each
+  non-empty group keeps up to three rows and overflowing groups reclaim the
+  share smaller groups leave unused, in priority order: seven running sessions
+  with no unread or pinned show all seven, and a single group holding more than
+  nine shows nine behind View more. Deduplicate before limits, so hidden
+  Running overflow cannot
+  appear as Unread/Pinned. Empty groups and stale shortcuts disappear. Unread
+  uses the latest terminal result per session, newest first. Titles remain
+  one line within the cap, including literal ampersands. Opening the macOS
+  menu leaves the window hidden and records unread. A row opens exactly that
+  session/project, acknowledges it normally, and wins over startup navigation.
+  View more returns from Settings, closes search, and expands session navigation. Hidden/closed windows receive fresh groups;
+  stale reads, archived/deleted targets, and a failed backend cannot restore
+  stale shortcuts. Open, localization, quit cancellation, and shutdown work.
+- **Specs linked**: `03-runtime/01-ipc-protocol.md` §13b,
+  `03-runtime/07-process-model.md`, `04-ux/08-component-spec.md`,
+  `04-ux/09-interaction-patterns.md`, ADR tray-session-shortcuts.
+- **Acceptance**: A (app/window lifecycle), C (conversation navigation),
+  F (unread persistence), Quality (bounded localized menu).
+- **Milestone**: Post-M6 desktop shell maintenance.
+- **Status**: Draft; native E2E requires an explicitly authorized run.

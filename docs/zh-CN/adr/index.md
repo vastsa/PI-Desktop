@@ -291,3 +291,7 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 - 决策日志记录更细的冻结条款和后续修订。
 
 前往 [英文 ADR 索引](/adr/README) 查看完整记录，或打开 [中文决策日志](/zh-CN/spec/08-meta/decisions-log) 按编号检索。
+
+## Tray session shortcuts
+
+[ADR tray-session-shortcuts](/adr/tray-session-shortcuts) defines bounded native session groups and the renderer/Main ownership boundary.

@@ -4040,6 +4040,17 @@ D193 和 D194。
 - Registry 的 npm/PyPI 版本以及 runtime/package 参数会保留到安装模板。只映射 `streamable-http` 公网 HTTPS remote；远程 header 占位符变成明确的安装表单值。跨 origin 的 MCP 重定向不会转发调用方 header。
 - 手动配置的用户 MCP 仍保留 ADR 0142 的显式本地/LAN 端点策略。见 ADR 0245 和 E2E-MCP-MARKET-*。
 
+### Tray session shortcuts (issue #293)
+
+[ADR tray-session-shortcuts](/adr/tray-session-shortcuts) amends the D216 native
+tray menu with Running, Unread, and Pinned groups after global priority
+assignment: each non-empty group keeps up to three rows, then overflowing groups
+reclaim the share smaller groups leave unused, in priority order, up to nine rows
+in total. Host session/inbox reads and runtime events remain the
+source of truth; renderer organization is mirrored without a persistence
+change. macOS single-click opens the menu without restoring the window;
+selection is delivered after bootstrap and uses normal session navigation.
+Validation contract: E2E-TRAY-bounded-session-navigation.
 
 ## 2026-09-14 — Upstream integration compatibility
 

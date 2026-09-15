@@ -127,15 +127,35 @@
 - 隐藏将从 taskbar/dock 窗口列表中删除主窗口，而
   Electron 进程和后台工作仍然有效。它不坚持
   最小化几何形状或处置 host/sidecar。
-- 单击或双击 PI-Desktop 托盘图标，从其中选择“显示”
-  菜单，或从 macOS 扩展坞激活应用程序可恢复并聚焦
-  现有的窗口。如果窗口关闭，相同的操作会创建一个新的窗口
-  窗口。
-- 托盘菜单使用当前已发布的 shell 语言进行本地化，并且
-  公开 Show PI-Desktop 以及显式退出 PI-Desktop 操作。退出走现有的有序
-  关闭路径。关闭窗口做什么，在 Windows/Linux 上由用户自己选择
-  （ADR 0090），在 macOS 上是一次 Dock 生命周期的关闭；无论哪种情况，
-  托盘图标本身都只在启动时创建一次。
+- Double-clicking the tray icon (or single-clicking on Windows/Linux), choosing
+  Open, or activating the macOS Dock restores/focuses the existing window or
+  creates a new one if it was closed. macOS single-click opens the menu.
+- The localized tray includes Open, bounded session groups, and Quit. Quit
+  keeps confirmation and ordered shutdown. Close behavior remains user-owned
+  on Windows/Linux (ADR 0090), and macOS retains its Dock lifecycle.
+
+### 1.5.2 Tray session navigation (issue #293)
+
+- The native menu shows Running, Unread, and Pinned in that order, at most
+  nine sessions in total. Every non-empty group keeps up to three rows; the
+  share smaller groups leave unused goes to the groups that still overflow,
+  in priority order, so one busy group can fill all nine while the others are
+  empty. Membership is assigned before applying limits; higher-priority
+  overflow never spills into a lower group.
+- Empty groups are hidden. Archived sessions/projects and deleted sessions
+  are excluded. Running/Pinned follow sidebar sorting; Unread follows the
+  latest unread result per session, newest first, including failed results.
+- Long titles use one line and an ellipsis after at most 48 Unicode code
+  points. An overflowing group offers View more to restore the window and
+  expand session navigation. A session row restores/focuses its exact conversation,
+  activating its project through the existing selection flow.
+- macOS single-click opens the menu without restoring/focusing a conversation
+  or marking it read. Entering a conversation uses normal acknowledgement.
+  Open and double-click restore the window; Quit keeps its confirmation and
+  ordered shutdown. Group/action labels follow the active shipped locale.
+- Start/finish, read, pin, rename, archive, delete, and backend restart update
+  the menu. The menu remains available when the main window is hidden or
+  closed, without creating another window until an explicit activation.
 
 ### 1. 6 侧边栏项目和对话组织
 

@@ -23,6 +23,10 @@ export const zhTW = {
     close: "關閉",
   },
   tray: {
+    running: "執行中",
+    unread: "未讀",
+    pinned: "釘選",
+    viewMore: "查看更多…",
     open: "開啟 PI-Desktop",
     quit: "退出 PI-Desktop",
     askTitle: "關閉後繼續在後臺執行 PI-Desktop？",
