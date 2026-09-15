@@ -13,6 +13,8 @@ import type { AppUpdaterController } from "../updater";
 import type { UserMcpRuntime } from "../user-mcp";
 import type { McpControlServer } from "../mcp-control";
 
+import { createQuitConfirmation, hasRunningQuitTasks } from "./quit-confirmation";
+
 const QUIT_TURN_SETTLE_BUDGET_MS = 2_000;
 
 export type ShutdownState = {
@@ -66,6 +68,31 @@ export function registerShutdownHandlers({
   logger,
   confirmQuitDialog,
 }: ShutdownDependencies): void {
+  const requestQuit = createQuitConfirmation({
+    hasRunningTasks: async () => {
+      try {
+        return await hasRunningQuitTasks(activeTurns, () => {
+          const sidecar = getSidecar();
+          return sidecar
+            ? sidecar.call("native.session.list", {})
+            : Promise.resolve({ sessions: [] });
+        });
+      } catch (error) {
+        // Unknown runtime state must not silently interrupt a possible task.
+        logger.app("lifecycle", "warn", "quit status unavailable", { data: String(error) });
+        return true;
+      }
+    },
+    confirm: confirmQuitDialog,
+    accept: () => {
+      state.quitConfirmed = true;
+      app.quit();
+    },
+    onError: (error) => {
+      logger.app("lifecycle", "warn", "quit confirmation failed", { data: String(error) });
+    },
+  });
+
   app.on("window-all-closed", () => {
     // The D216 tray is resident on every platform, so its presence says nothing
     // about whether the app should survive a closed window — the user's close
@@ -86,8 +113,8 @@ export function registerShutdownHandlers({
     event.preventDefault();
     if (state.shutdownPromise) return;
 
-    // Show a confirmation dialog on the first explicit quit (Cmd+Q, tray quit,
-    // application-menu Quit). The data-saving shutdown runs after confirmation.
+    // Confirm explicit quit only while tasks are running across the app.
+    // Idle quits still pass through the same data-saving shutdown.
     // Skip confirmation in automated probe/capture modes where no human is
     // present to interact with the dialog.
     const isAutomatedMode =
@@ -101,15 +128,7 @@ export function registerShutdownHandlers({
     // user chose "restart to update" to get here.
     const isUpdateRestart = updater.isInstallingUpdate();
     if (!state.quitConfirmed && !isAutomatedMode && !isUpdateRestart) {
-      state.quitConfirmed = true;
-      void confirmQuitDialog().then((confirmed) => {
-        if (confirmed) {
-          app.quit();
-        } else {
-          // User cancelled: allow future quit requests to prompt again.
-          state.quitConfirmed = false;
-        }
-      });
+      void requestQuit();
       return;
     }
 

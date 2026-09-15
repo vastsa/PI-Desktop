@@ -56,6 +56,7 @@ import { BrandLogo } from "./BrandLogo";
 import { NotificationCenter } from "./NotificationCenter";
 import { ProjectEditDialog } from "./ProjectEditDialog";
 import { ProjectDeleteDialog } from "./ProjectDeleteDialog";
+import { SessionDeleteDialog } from "./SessionDeleteDialog";
 import { SessionRenameDialog } from "./SessionRenameDialog";
 import { useUpdateState } from "../hooks/use-update-state";
 import {
@@ -262,6 +263,8 @@ export function Sidebar({
 
   const [sortOpen, setSortOpen] = useState(false);
   const [sessionMenu, setSessionMenu] = useState<string | null>(null);
+  const [deleteFor, setDeleteFor] = useState<SessionSummary | null>(null);
+  const closeDeleteDialog = useCallback(() => setDeleteFor(null), []);
   const [renameFor, setRenameFor] = useState<SessionSummary | null>(null);
   const [editProjectFor, setEditProjectFor] = useState<ProjectEntry | null>(null);
   const [deleteProjectFor, setDeleteProjectFor] = useState<ProjectEntry | null>(null);
@@ -1110,7 +1113,7 @@ export function Sidebar({
 
   const deleteSession = async (session: SessionSummary) => {
     closeMenus();
-    const wasActive = activeSessionId === session.id;
+    const wasActive = useAppStore.getState().activeSessionId === session.id;
     const sameScope = session.projectPath
       ? projectEntries.find(
           (entry) => entry.key === normalizeProjectPath(session.projectPath),
@@ -1129,14 +1132,11 @@ export function Sidebar({
               !sessionArchived(item, sessionMeta[item.id]),
           )
       : undefined;
-    try {
-      await deleteSessionAction(session.id);
-      if (wasActive) {
-        if (next) await selectProjectSession(next);
-        else await newSession({ projectPath: session.projectPath ?? null });
-      }
-    } catch (error) {
-      reportError(error);
+    await deleteSessionAction(session.id);
+    setDeleteFor(null);
+    if (wasActive && !useAppStore.getState().activeSessionId) {
+      if (next) await selectProjectSession(next);
+      else await newSession({ projectPath: session.projectPath ?? null });
     }
   };
 
@@ -1875,7 +1875,10 @@ export function Sidebar({
                 role="menuitem"
                 className="danger"
                 data-action="delete-session"
-                onClick={() => void deleteSession(session)}
+                onClick={() => {
+                  closeMenus();
+                  setDeleteFor(session);
+                }}
               >
                 <IconX size={14} />
                 {t("nav.deleteTask", { defaultValue: "Delete" })}
@@ -2225,6 +2228,14 @@ export function Sidebar({
           onOpenSession={openSessionFromHover}
           keepVisible={keepSessionHoverCardVisible}
           scheduleHide={scheduleSessionHoverCardHide}
+        />
+      ) : null}
+      {deleteFor ? (
+        <SessionDeleteDialog
+          session={deleteFor}
+          onClose={closeDeleteDialog}
+          onDelete={() => deleteSession(deleteFor)}
+          onError={reportError}
         />
       ) : null}
       {renameFor ? (

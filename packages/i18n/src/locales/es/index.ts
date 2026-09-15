@@ -29,8 +29,8 @@ export const es = {
     "askBody": "Cuando cierra la ventana, PI-Desktop puede seguir ejecutándose en la bandeja del sistema para que no se pierda nada. Puedes cambiar esto en cualquier momento en Configuración.",
     "closeToTray": "Cerca de la bandeja",
     "confirmQuitTitle": "¿Salir de PI-Desktop?",
-    "confirmQuitBody": "¿Está seguro de que desea salir? Se detendrán todas las sesiones en ejecución y es posible que se pierdan los cambios no guardados.",
-    "confirmQuit": "Salir"
+    "confirmQuitBody": "Al salir se interrumpirán las tareas en curso, incluidas las sesiones en segundo plano y los subagentes.",
+    "confirmQuit": "Salir e interrumpir"
   },
   "pluginDesktopConsent": {
     "message": "{name} quiere ejecutar {operation}",
@@ -523,6 +523,12 @@ export const es = {
     "openAsSession": "Abrir como conversación"
   },
   "session": {
+    deleteTitle: "¿Eliminar permanentemente esta sesión?",
+    deleteDescription: "La sesión «{{name}}» y su historial se eliminarán permanentemente. Esta acción no se puede deshacer.",
+    deleteCancel: "Cancelar",
+    deleteConfirm: "Eliminar permanentemente",
+    deleting: "Eliminando…",
+
     "renameTitle": "Cambiar nombre de tarea",
     "renameAction": "Cambiar nombre de tarea {{title}}",
     "renameDescription": "Asigne a esta tarea un nombre que pueda reconocer más adelante.",

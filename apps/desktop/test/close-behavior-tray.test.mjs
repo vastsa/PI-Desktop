@@ -79,7 +79,7 @@ test("a stored quit preference still quits while the tray is resident", () => {
   // The close path itself quits directly rather than relying on that handler.
   assert.match(
     mainSource,
-    /windowsAllowedToClose\.add\(window\);\s*\n\s*app\.quit\(\);/,
+    /before-quit owns that confirmation\.\s*\n\s*app\.quit\(\);/,
   );
 });
 
@@ -115,7 +115,7 @@ test("close behavior is not settable on macOS", () => {
   assert.match(body, /behavior !== "tray" && behavior !== "quit"/);
 });
 
-test("explicit quit asks for confirmation except probes and update restarts", () => {
+test("explicit quit checks running tasks except probes and update restarts", () => {
   assert.match(closeBehaviorSource, /const confirmQuitDialog = async/);
   assert.match(closeBehaviorSource, /labels\.tray\.confirmQuitTitle/);
   const quitHandler = shutdownSource.slice(
@@ -126,7 +126,7 @@ test("explicit quit asks for confirmation except probes and update restarts", ()
   assert.match(
     body,
     /!state\.quitConfirmed && !isAutomatedMode && !isUpdateRestart/,
-    "automated probes and update restarts are the only confirmation exemptions",
+    "automated probes and update restarts bypass the task check",
   );
   assert.match(
     body,
@@ -136,13 +136,10 @@ test("explicit quit asks for confirmation except probes and update restarts", ()
   // The installer for an in-app update is spawned before app.quit(); a dialog
   // in front of that quit makes the installer time out and the update fail.
   assert.ok(
-    body.indexOf("isUpdateRestart") < body.indexOf("confirmQuitDialog()"),
+    body.indexOf("isUpdateRestart") < body.indexOf("requestQuit()"),
     "the update-restart exemption must gate the dialog, not follow it",
   );
-  assert.match(body, /confirmQuitDialog\(\)/);
-  // Window-close Quit already chose to exit in the close-behavior dialog.
-  assert.match(
-    windowSource,
-    /already chose to quit in the close-behavior dialog[\s\S]*?windowState\.quitConfirmed = true/,
-  );
+  assert.match(body, /requestQuit\(\)/);
+  // A saved close preference must not authorize interruption of running work.
+  assert.doesNotMatch(windowSource, /windowState\.quitConfirmed = true/);
 });

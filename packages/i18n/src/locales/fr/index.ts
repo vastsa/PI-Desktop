@@ -29,8 +29,8 @@ export const fr = {
     "askBody": "Lorsque vous fermez la fenêtre, PI-Desktop peut continuer à s'exécuter dans la barre d'état système afin que rien ne soit perdu. Vous pouvez modifier cela à tout moment dans les paramètres.",
     "closeToTray": "Près du bac",
     "confirmQuitTitle": "Quitter PI-Desktop ?",
-    "confirmQuitBody": "Êtes-vous sûr de vouloir arrêter ? Toutes les sessions en cours seront arrêtées et les modifications non enregistrées risquent d'être perdues.",
-    "confirmQuit": "Quitter"
+    "confirmQuitBody": "Quitter interrompra les tâches en cours, y compris les sessions en arrière-plan et les sous-agents.",
+    "confirmQuit": "Quitter et interrompre"
   },
   "pluginDesktopConsent": {
     "message": "{name} veut exécuter {operation}",
@@ -523,6 +523,12 @@ export const fr = {
     "openAsSession": "Ouvrir comme conversation"
   },
   "session": {
+    deleteTitle: "Supprimer définitivement cette session ?",
+    deleteDescription: "La session « {{name}} » et son historique seront définitivement supprimés. Cette action est irréversible.",
+    deleteCancel: "Annuler",
+    deleteConfirm: "Supprimer définitivement",
+    deleting: "Suppression…",
+
     "renameTitle": "Renommer la tâche",
     "renameAction": "Renommer la tâche {{title}}",
     "renameDescription": "Donnez à cette tâche un nom que vous pourrez reconnaître plus tard.",

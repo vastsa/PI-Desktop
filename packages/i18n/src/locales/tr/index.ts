@@ -32,8 +32,8 @@ export const tr = {
     closeToTray: "Tepsiye kapat",
     confirmQuitTitle: "PI-Desktop'tan çıkılsın mı?",
     confirmQuitBody:
-      "Çıkmak istediğinizden emin misiniz? Tüm çalışan oturumlar durdurulur ve kaydedilmemiş değişiklikler kaybolabilir.",
-    confirmQuit: "Çık",
+      "Çıkış, arka plan oturumları ve alt ajanlar dahil çalışan görevleri kesintiye uğratır.",
+    confirmQuit: "Çık ve durdur",
   },
   /**
    * Native consent dialog for a file access a plugin's manifest did not
@@ -532,6 +532,12 @@ export const tr = {
     openAsSession: "Sohbet olarak aç",
   },
   session: {
+    deleteTitle: "Bu oturum kalıcı olarak silinsin mi?",
+    deleteDescription: "“{{name}}” oturumu ve konuşma geçmişi kalıcı olarak silinecek. Bu işlem geri alınamaz.",
+    deleteCancel: "İptal",
+    deleteConfirm: "Kalıcı olarak sil",
+    deleting: "Siliniyor…",
+
     renameTitle: "Görevi yeniden adlandır",
     renameAction: "{{title}} görevini yeniden adlandır",
     renameDescription: "Bu göreve sonra tanıyabileceğiniz bir ad verin.",

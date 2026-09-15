@@ -31,8 +31,8 @@ export const zhCN = {
     closeToTray: "关闭到托盘",
     confirmQuitTitle: "确定退出 PI-Desktop？",
     confirmQuitBody:
-      "退出将停止所有正在进行的会话，未保存的内容可能会丢失。你确定要退出吗？",
-    confirmQuit: "退出",
+      "退出将中断正在运行的任务，包括后台会话和子代理。",
+    confirmQuit: "退出并中断",
   },
   pluginDesktopConsent: {
     message: "{name} 想要执行 {operation}",
@@ -528,6 +528,12 @@ export const zhCN = {
     openAsSession: "作为对话打开",
   },
   session: {
+    deleteTitle: "永久删除此会话？",
+    deleteDescription: "会话「{{name}}」及其对话记录将被永久删除，无法恢复。",
+    deleteCancel: "取消",
+    deleteConfirm: "永久删除",
+    deleting: "正在删除…",
+
     renameTitle: "重命名任务",
     renameAction: "重命名任务“{{title}}”",
     renameDescription: "为这个任务设置一个便于之后识别的名称。",

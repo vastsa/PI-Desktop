@@ -4916,6 +4916,7 @@ IPC 请求无法关闭。
 | C — 对话与流式（hover 卡片模型和链接） | E2E-SESSION-hover-card-model-and-links |
 | D — 工作区（删除项目） | E2E-PROJECT-delete-removes-project-and-owned-sessions |
 | F — 持久化（删除项目） | E2E-PROJECT-delete-removes-project-and-owned-sessions |
+| 品质 / C / F（操作确认） | E2E-SESSION-permanent-delete-requires-confirmation, E2E-APP-idle-quit-skips-confirmation |
 | 品质（删除项目） | E2E-PROJECT-delete-removes-project-and-owned-sessions |
 | Security (plugin real-time capabilities) | E2E-PLUGIN-global-shortcut-owns-only-its-own-command、E2E-PLUGIN-permission-gate-for-real-time-capabilities、E2E-PLUGIN-background-audio-and-realtime-connection |
 
@@ -7263,3 +7264,23 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 - **验收**：品质（协议与插件契约）
 - **里程碑**：M6+
 - **状态**：由模块测试覆盖（`apps/desktop/test/session-turn-ended.test.mjs`、`apps/desktop/test/queued-turn-finalization.test.mjs`）；桌面旅程为草稿（该表面变更时需在具备条件的环境中运行）
+
+### E2E-SESSION-permanent-delete-requires-confirmation
+
+- **前置条件**：侧边栏存在一个已保存且包含对话记录的会话。
+- **步骤**：点击删除，检查标题、警告和默认焦点；分别使用取消按钮、Escape 和遮罩取消。再次打开并确认。模拟删除失败，以及请求等待期间重复点击。
+- **预期**：取消保留会话，只有确认才会删除。默认聚焦取消，永久删除按钮为红色；等待期间不会重复提交，失败时显示错误且不移除会话。
+- **关联规格**：`04-ux/08-component-spec.md`、issue #424。
+- **验收**：C（会话交互）、F（持久化安全）。
+- **里程碑**：M6+。
+- **状态**：`pnpm test:e2e:confirmations` 在 Electron 中运行真实弹窗组件和受控删除回调；完整的侧边栏到存储删除流程仍由既有存储契约测试和手工验收覆盖。
+
+### E2E-APP-idle-quit-skips-confirmation
+
+- **前置条件**：正常桌面模式，包含已保存的原生 Pi 会话。
+- **步骤**：空闲时退出；重新启动，在其他会话运行任务后退出。先取消，再重试并确认。对运行中的子代理、原生 Pi 会话重复操作；弹窗打开时连续请求退出。覆盖菜单、托盘、Cmd+Q 和 Windows/Linux 的关闭即退出，并单独检查更新重启。
+- **预期**：空闲时正常保存并直接退出。有运行任务时需要确认；取消不打断执行，重复请求不能绕过确认。历史会话和尚未触发的定时任务不算运行任务。更新保留既有例外；退出仍保存数据并释放资源。
+- **关联规格**：`04-ux/08-component-spec.md`、ADR 0090、issue #424。
+- **验收**：品质（窗口生命周期）、F（持久化）。
+- **里程碑**：M6+。
+- **状态**：控制器回归测试已覆盖；跨平台原生退出弹窗仍需手工验收。必需自动化套件为 `test:e2e`、`test:e2e:boot` 和 `test:e2e:confirmations`。
