@@ -82,3 +82,50 @@ export type TokenUsageHistoryResult = {
     turnCount: number;
   };
 };
+
+/**
+ * One folder of the project a chat reference may resolve into. A project can be
+ * a logical group of several folders (ADR 0249), and only the primary one is
+ * the workspace that relative paths are expressed against.
+ */
+export type FsChatRefProjectRoot = {
+  path: string;
+  name: string;
+  primary: boolean;
+};
+
+/**
+ * A file referenced from chat text, resolved to a real file (D320 follow-up).
+ *
+ * `root` names which store answered, because the caller routes on it: a project
+ * file is expressed to the work panel as a path relative to the project's
+ * **primary** folder, while any other project folder — and every scratch or
+ * attachment file — can only be addressed by its absolute path.
+ */
+export type FsChatRefRoot = "workspace" | "scratch" | "attachments";
+
+/** Which rule produced the match; the shallow tiers are informational. */
+export type FsChatRefMatchKind =
+  | "exact-relative"
+  | "exact-absolute"
+  | "path-suffix"
+  | "basename";
+
+export type FsChatRefMatch = {
+  root: FsChatRefRoot;
+  /** POSIX path relative to the matched root. */
+  relativePath: string;
+  /** Native absolute path of the matched regular file. */
+  absolutePath: string;
+  matchedBy: FsChatRefMatchKind;
+  /**
+   * Which folder of the project answered, for `root: "workspace"`. The caller
+   * needs it to decide how to address the file: relative for the primary
+   * folder, absolute for any other.
+   */
+  projectRoot?: FsChatRefProjectRoot;
+};
+
+export type FsChatRefResolveResult = {
+  match: FsChatRefMatch | null;
+};

@@ -142,7 +142,12 @@ pi.project.create(input: { path: string }): Promise<{
 
 ### 工作区/fs
 ```ts
-pi.workspace.get(): Promise<{ path: string; name: string } | null>
+pi.workspace.get(): Promise<{
+  path: string;
+  name: string;
+  projectId?: string;
+  roots?: Array<{ path: string; name: string; primary: boolean }>;
+} | null>
 
 pi.fs.readText(pathFromRoot: string): Promise<string>
 pi.fs.readPreview(pathFromRoot: string): Promise<{
@@ -165,16 +170,26 @@ pi.fs.remove(pathFromRoot: string): Promise<void>
 pi.fs.requestDirectory(): Promise<{ path: string; name: string } | null>
 ```
 
+`workspace.get` 回答主根——`path` 与其叶子 `name` 都保持不变——并在该文件夹属于某个项目组
+（ADR 0249）时额外给出 `projectId` 与 `roots`：项目组按自身顺序登记的全部文件夹，主文件夹在前，
+每项为 `{ path, name, primary }`（ADR 0252）。`workspace:changed` 携带同一对象，两者都由主机持有
+的项目组记录回答，因此事件与主动拉取不会互相矛盾。无法解析项目组的主机会省略 `projectId` 与
+`roots`，也就是插件本来就会处理的 `{ path, name }`；读取这些元数据不需要新权限，也不新增 SDK 方法。
+
 `fs.readPreview` 为一份已存在且可读取的文件做应用内预览分类。它与 `fs.readText`
 使用相同的 `fs.read` 检查，拒绝目录，并返回 `text`（上限 512 KiB）、`image`
 （上限 5 MiB，data URL）、`binary` 或 `tooLarge`。插件不会收到绝对路径。
 
 `fs.openDefault` 使用操作系统默认关联应用打开一个已存在的文件。它与
 `fs.readText` 使用相同的 `fs.read` 根目录、符号链接、受保护路径、拒绝列表和范围检查；
-目录会被拒绝。主机会记录这次操作，并且不会接受插件传入的绝对路径。
+目录会被拒绝。主机会记录这次操作。路径默认相对根目录；只有「本项目已注册的另一个文件夹根」
+之内的绝对路径才会被接受，而且**只有这个动作与 `fs.reveal` 接受**（其他模式一律不接受
+绝对路径），该根随即成为这次请求的包含基点（ADR 0249 §5、ADR 0253）——这正是视图用来指
+名「非主文件夹里的文件」的形状。
 
 `fs.reveal` 在操作系统文件管理器中显示一个已存在且可读取的文件，并在平台支持时选中它。
-它使用相同的 `fs.read` 检查，拒绝目录，并记录成功和失败。插件只提供和接收相对根目录的路径。
+它使用相同的 `fs.read` 检查，拒绝目录，并记录成功和失败。路径的接受方式与 `fs.openDefault`
+完全一致：默认相对根目录，落在本项目另一个已注册文件夹根之内时可以是绝对路径（ADR 0253）。
 
 路径相对于该模式的 root —— 工作区，或者当该模式声明
 `root: "userSelected"` 时，用户通过 `requestDirectory()` 选中的目录。
@@ -574,8 +589,10 @@ pi.events.off(event, handler)
 - `bus.message` — 公交车交付，以 `PluginBusMessage` 作为单一
   论点。 `pi.bus.subscribe` 是接收这些信息的正常方式； `events.on`
 查看插件持有的每个订阅的原始流。
-- `workspace:changed` — 载荷为 `{ path: string; name: string } | null`，
-  与 `workspace.get()` 一致，在缓存的工作区路径变化时发送。
+- `workspace:changed` —— 载荷是 `workspace.get()` 的对象或 `null`，在缓存的工作区路径变化时发送：
+  主文件夹的 `path` 与 `name`，以及在该文件夹属于某个项目组时的 `projectId` 与 `roots`（ADR 0252）。
+  一次运行中的第一个工作区可能先不带文件夹发送一次、再带文件夹重发一次，因为项目组记录是在那次推送
+  之后才读取的。
 - `plugin:settingsChanged`（由插件设置页面编辑触发）
 - `session:modelChanged` — `{ sessionId, modelKey, thinkingLevel }`，在成功的
   `session.configure` 改变 provider、模型或 thinking level 之后发送
@@ -611,9 +628,17 @@ window.pluginBridge.on(event, handler)
 
 同一个桥同时服务插件的两种表面：独立的 `ui.panel` 窗口，以及停靠在工作面板中的
 `contributes.views` 表面（ADR 0104）。通道列表、权限门与 preload 完全相同，
-因此同一份 HTML 入口在两种放置方式下都能工作。唯一的差别在于 chrome：停靠视图
-没有窗口控制胶囊、没有拖拽带，其 `--pi-plugin-titlebar-height` 为 `0px` 而非
-`46px`。
+因此同一份 HTML 入口在两种放置方式下都能工作。差别只在于 chrome 与下面这个
+视图 `location`：停靠视图没有窗口控制胶囊、没有拖拽带，其
+`--pi-plugin-titlebar-height` 为 `0px` 而非 `46px`。
+
+停靠视图还可以被指定一个要展示的对象。工作面板选项卡本来就携带的 `location`
+会投递给任何贡献视图——不再只限 `pi.browser`（它的地址栏保留自己的导航通道）：
+创建时它作为视图入口 URL 的 `piViewOpen` 查询参数传递，文档加载完成后则通过
+`view:open` 事件送达。在首次加载之前到达的 location 改为重启这次加载；已加载的
+视图永远不会被导航，因此插件里未保存的改动不会被丢弃，重复打开同一个 location
+什么也不做。该载荷对主机是不透明的——每个插件自行决定 `location` 的含义——它
+不需要新权限，也不新增 SDK 方法。
 
 主机拥有的 preload 仅将固定通道转发到插件运行时：
 
@@ -646,8 +671,11 @@ window.pluginBridge.on(event, handler)
 
 - `appearance:changed` —— 载荷是上面的 `PluginAppearance`，在应用的配色或
   语言发生变化时发送，因此面板可以实时重新着色和重新标注文案。
-- `workspace:changed` —— 载荷为 `{ path: string; name: string } | null`，
-  与 `workspace.get()` 一致，在打开的项目变化时发送。
+- `workspace:changed` —— 载荷是 `workspace.get()` 的对象或 `null`，在打开的项目变化时发送：
+  主文件夹的 `path` 与 `name`，以及在该文件夹属于某个项目组时的 `projectId` 与 `roots`（ADR 0252）。
+- `view:open`（仅限停靠的工作面板视图；独立 `ui.panel` 窗口不会收到）——载荷为
+  `{ path: string }`，即主机要求该视图展示的 location。创建时就带 location 的视图
+  已经从入口 URL 拿到它；这个事件投递的是之后的 location。
 - `session:turnEnded` —— 与 §5 的插件进程事件同一载荷，在宿主回合到达终止状态
   时发送。
 

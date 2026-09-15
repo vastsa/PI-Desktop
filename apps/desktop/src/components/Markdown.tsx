@@ -46,6 +46,7 @@ import {
 } from "../lib/markdown-source";
 import { useAppStore } from "../stores/app-store";
 import { useReferencedImageDataUrl } from "../lib/use-referenced-image-data-url";
+import { useOpenChatFileRef } from "../hooks/use-preview-target";
 import {
   remarkChatFileLinks,
   resolvePreviewTarget,
@@ -450,8 +451,8 @@ function InlineCode({
 }: ComponentProps<"code"> & { node?: unknown }) {
   const root = useAppStore((s) => s.workspace?.path);
   const baseDir = useContext(MarkdownBaseDirContext);
-  const openFile = useAppStore((s) => s.openFileInWorkPanel);
   const openUrl = useAppStore((s) => s.openUrlInWorkPanel);
+  const openFileRef = useOpenChatFileRef();
   const text = typeof children === "string" ? children : null;
   const target =
     text && !className && !text.includes("\n")
@@ -472,7 +473,9 @@ function InlineCode({
       className="chat-code-link"
       title={target.kind === "file" ? fileTitle : urlTitle}
       onClick={() =>
-        target.kind === "file" ? openFile(target.path) : openUrl(target.url)
+        target.kind === "file"
+          ? openFileRef(text ?? target.path, baseDir)
+          : openUrl(target.url)
       }
     >
       <code className={className} {...rest}>
@@ -526,7 +529,7 @@ function Anchor({
   const { t } = useTranslation();
   const root = useAppStore((s) => s.workspace?.path);
   const baseDir = useContext(MarkdownBaseDirContext);
-  const openFile = useAppStore((s) => s.openFileInWorkPanel);
+  const openFileRef = useOpenChatFileRef();
   const openUrl = useAppStore((s) => s.openUrlInWorkPanel);
   const showToast = useAppStore((s) => s.showToast);
   const linkOpenTarget = useAppStore((s) => s.settings?.linkOpenTarget ?? "workpanel");
@@ -634,7 +637,7 @@ function Anchor({
     const rel = toWorkspaceRel(safeDecodeUri(href), root, baseDir);
     if (rel) {
       e.preventDefault();
-      openFile(rel);
+      openFileRef(rel, baseDir);
     }
   };
   return (
@@ -714,7 +717,7 @@ function MarkdownImage({
 }: ComponentProps<"img"> & SourcePositionProps & { node?: unknown }) {
   const root = useAppStore((s) => s.workspace?.path);
   const baseDir = useContext(MarkdownBaseDirContext);
-  const openFile = useAppStore((s) => s.openFileInWorkPanel);
+  const openFileRef = useOpenChatFileRef();
   const openUrl = useAppStore((s) => s.openUrlInWorkPanel);
   const fileTitle = usePreviewTitle("file");
   const urlTitle = usePreviewTitle("url");
@@ -750,7 +753,7 @@ function MarkdownImage({
         alt={alt ?? ""}
         className="chat-image-local"
         title={rel ? fileTitle : source}
-        onClick={localRef ? () => openFile(localRef) : undefined}
+        onClick={localRef ? () => openFileRef(localRef, baseDir) : undefined}
       />
     );
   }
@@ -761,7 +764,7 @@ function MarkdownImage({
         className="chat-image-chip"
         {...sourcePositionProps(rest)}
         title={fileTitle}
-        onClick={() => openFile(localRef)}
+        onClick={() => openFileRef(localRef, baseDir)}
       >
         <IconImage size={14} aria-hidden />
         <span>{alt || localRef.split("/").pop()}</span>

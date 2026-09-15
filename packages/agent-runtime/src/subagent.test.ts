@@ -336,7 +336,7 @@ describe("SubagentRun provider rate-limit recovery", () => {
       }),
       errorMessage: "upstream unavailable",
     };
-    run.providerResponseStatus = 429;
+    run.retryState.status = 429;
     const state = {
       messages: [] as Array<Record<string, unknown>>,
     };
@@ -533,5 +533,46 @@ describe("SubagentRun watchdogs", () => {
     ).resolves.toBeUndefined();
     // No `cappedTurns` flag exists to record a termination that cannot happen.
     expect("cappedTurns" in run).toBe(false);
+  });
+});
+
+
+describe("SubagentRun retries before fallback", () => {
+  it.each([429, 503])("exhausts the shared retry budget before switching after HTTP %s", async (status) => {
+    const fallback = { ...provider, id: "backup", modelId: "backup-model" };
+    const { run } = createRun({ fallbackModels: [{ key: "backup/backup-model", provider: fallback }] });
+    const state = run.agent.state;
+    const attempts: string[] = [];
+    const attempt = async () => {
+      const primary = state.model.id === provider.modelId;
+      attempts.push(state.model.id);
+      run.retryState.status = primary ? status : 200;
+      const message = {
+        ...assistantMessage({ content: [{ type: "text", text: primary ? "partial" : "Done" }], stopReason: primary ? "error" : "stop" }),
+        ...(primary ? { errorMessage: `${status}: upstream unavailable` } : {}),
+      };
+      state.messages = [...state.messages, message];
+      run.handleEvent({ type: "message_start", message });
+      run.handleEvent({ type: "message_end", message });
+    };
+    run.agent = {
+      state,
+      prompt: async () => { state.messages = [{ role: "user", content: "task" }]; await attempt(); },
+      continue: attempt,
+      waitForIdle: async () => {},
+      abort: () => {},
+    };
+    vi.useFakeTimers();
+    try {
+      const resultPromise = run.run();
+      await vi.runAllTimersAsync();
+      const result = await resultPromise;
+      expect(result.status).toBe("completed");
+      expect(attempts).toEqual([...Array(PROVIDER_TRANSIENT_MAX_RETRIES + 1).fill(provider.modelId), "backup-model"]);
+      expect(result.modelFailures).toHaveLength(1);
+      expect(result.modelId).toBe("backup-model");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

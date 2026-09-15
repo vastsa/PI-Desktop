@@ -47,26 +47,14 @@ import {
   nowIso,
   usageFromPi,
 } from "./agent-messages.js";
+import type { RuntimeProviderConfig } from "./provider-binding.js";
+import { clampThinkingLevel } from "./thinking-level.js";
+import { subagentModelBinding, type SubagentProviderRetryState } from "./subagent-model-binding.js";
 import {
-  buildProviderModel,
-  copilotRequestHeaders,
-  createProviderModels,
-  providerRequestKey,
-  type RuntimeProviderConfig,
-} from "./provider-binding.js";
-import {
-  openCodeEndpointFromProvider,
-  withOpenCodeSessionHeaders,
-} from "./opencode-session-headers.js";
-import { mergeProviderHeaders, withProviderHeaders } from "./provider-headers.js";
-import {
-  captureProviderResponse,
   classifyProviderError,
-  createProviderRetryStream,
   delayWithAbort,
   PROVIDER_RATE_LIMIT_MAX_RETRIES,
   PROVIDER_TRANSIENT_MAX_RETRIES,
-  carriesRetryDelayHeaders,
   isTransientProviderRetryCode,
   providerRateLimitDelayMs,
   providerSetupRetryDelayMs,
@@ -80,7 +68,6 @@ export const SUBAGENT_LIST_TOOL_NAME = "TaskList";
 /** Stop running delegations (ADR 0089). */
 export const SUBAGENT_STOP_TOOL_NAME = "TaskStop";
 
-const PROVIDER_REQUEST_MAX_RETRIES = 0;
 /** The report is the only thing that enters the parent's context; keep it
  * from becoming the context problem delegation was supposed to avoid. */
 export const MAX_SUBAGENT_REPORT_CHARS = 12_000;
@@ -100,6 +87,7 @@ export type SubagentRunResult = {
   turns: number;
   toolCalls: number;
   usage?: MessageUsage;
+  modelFailures?: Array<{ model: string; code: string; message: string }>;
   error?: { code: string; message: string };
 };
 
@@ -121,6 +109,11 @@ export type SubagentRunOptions = {
    * session's provider when the definition pins nothing). */
   provider: RuntimeProviderConfig;
   thinkingLevel: SubagentThinkingLevel;
+  /** User-owned definition pins only, in configured order. Missing bindings fail visibly. */
+  fallbackModels?: Array<{ key: string; provider?: RuntimeProviderConfig }>;
+  /** Original parent thinking selection, before primary-model clamping. */
+  inheritedThinkingLevel?: SubagentThinkingLevel;
+  onModelChange?: (provider: RuntimeProviderConfig, thinkingLevel: SubagentThinkingLevel) => void;
   /** Fully composed child system prompt (see `composeSubagentSystemPrompt`). */
   systemPrompt: string;
   /** Host-backed tools, built by the session runtime so a delegate's calls
@@ -200,93 +193,34 @@ export class SubagentRun {
   private providerRetryInProgress = false;
   private providerTransientRetryAttempt = 0;
   private providerRateLimitRetryAttempt = 0;
-  private providerRetryHeaders?: Record<string, string>;
-  private providerResponseStatus?: number;
+  private provider: RuntimeProviderConfig;
+  private thinkingLevel: SubagentThinkingLevel;
+  private fallbackIndex = 0;
+  private readonly attemptedModels = new Set<string>();
+  private readonly modelFailures: NonNullable<SubagentRunResult["modelFailures"]> = [];
+  private readonly retryState: SubagentProviderRetryState = {
+    claim: (error, phase) => this.claimProviderRetry(error, phase),
+  };
   private readonly runAbortController = new AbortController();
 
   constructor(opts: SubagentRunOptions) {
     this.opts = opts;
-    // A definition may cap the delegate's own output (issue #171). The
-    // catalog's published limit keeps applying otherwise, so this is an
-    // override on the built model, never a substituted default. The adapters
-    // derive max_tokens / max_completion_tokens / max_output_tokens from this
-    // field, which is why the sibling `thinkingLevelMap` override below can
-    // share the same object.
-    const builtModel = buildProviderModel(opts.provider);
-    const model =
-      opts.definition.maxTokens !== undefined
-        ? { ...builtModel, maxTokens: opts.definition.maxTokens }
-        : builtModel;
-    const models = createProviderModels(opts.provider, model);
-    const omitThinking = opts.thinkingLevel === "omit";
-    const agentThinkingLevel =
-      opts.thinkingLevel === "omit" ? "off" : opts.thinkingLevel;
-    // The Responses adapter's low-level stream still uses a model-level
-    // `off` mapping as its fallback. Null it only for the omit path so the
-    // provider receives no synthesized reasoning setting at all.
-    const omitThinkingModel = omitThinking
-      ? {
-          ...model,
-          thinkingLevelMap: { ...model.thinkingLevelMap, off: null },
-        }
-      : model;
-    const requestKey = providerRequestKey(opts.provider);
+    this.provider = opts.provider;
+    this.thinkingLevel = opts.thinkingLevel;
+    this.attemptedModels.add(`${opts.provider.id}/${opts.provider.modelId}`);
+    const binding = this.modelBinding();
     this.agent = new Agent({
-      streamFn: (m, context, options) => {
-        this.providerRetryHeaders = undefined;
-        this.providerResponseStatus = undefined;
-        const requestOptions = withProviderHeaders(
-          withOpenCodeSessionHeaders(
-            {
-              ...options,
-              maxRetries: PROVIDER_REQUEST_MAX_RETRIES,
-              sessionId: opts.sessionId,
-              fetch: captureProviderResponse(options?.fetch, (response) => {
-                this.providerResponseStatus = response?.status;
-                this.providerRetryHeaders = carriesRetryDelayHeaders(
-                  response?.status,
-                )
-                  ? response?.headers
-                  : undefined;
-              }),
-            },
-            {
-              ...openCodeEndpointFromProvider(opts.provider, m),
-              sessionId: opts.sessionId,
-            },
-          ),
-          mergeProviderHeaders(
-            copilotRequestHeaders(opts.provider, context),
-            opts.provider.headers,
-          ),
-        );
-        return createProviderRetryStream(
-          m,
-          context,
-          requestOptions,
-          (retryOptions) =>
-            omitThinking
-              ? models.stream(omitThinkingModel, context, retryOptions)
-              : models.streamSimple(m, context, retryOptions),
-          {
-            claim: (error, phase) => this.claimProviderRetry(error, phase),
-            headers: () => this.providerRetryHeaders,
-            status: () => this.providerResponseStatus,
-          },
-        );
-      },
-      getApiKey: async () => requestKey || undefined,
+      streamFn: binding.streamFn,
+      getApiKey: binding.getApiKey,
       convertToLlm,
       afterToolCall: async (context) => this.afterToolCall(context),
       initialState: {
         systemPrompt: opts.systemPrompt,
-        model,
+        model: binding.model,
         tools: opts.tools,
-        thinkingLevel: agentThinkingLevel,
+        thinkingLevel: binding.agentThinkingLevel,
         messages: [],
       },
-      // A delegate is a worker, not a fan-out point: its own tool calls run
-      // one at a time, and it has no `Task` tool to nest further.
       toolExecution: "sequential",
     });
     this.agent.subscribe((event) => this.handleEvent(event));
@@ -306,8 +240,15 @@ export class SubagentRun {
     try {
       await this.agent.prompt(this.opts.task);
       await this.agent.waitForIdle();
-      while (this.pendingProviderRetry && !signal?.aborted) {
-        await this.retryPendingProviderFailure();
+      while (!signal?.aborted) {
+        if (this.pendingProviderRetry) {
+          await this.retryPendingProviderFailure();
+        } else if (this.streamError && this.useNextModel()) {
+          await this.agent.continue();
+          await this.agent.waitForIdle();
+        } else {
+          break;
+        }
       }
     } catch (error) {
       caughtError = classifyAgentError(error);
@@ -338,6 +279,68 @@ export class SubagentRun {
       });
     }
     return this.result("completed", this.lastReportText);
+  }
+
+  private modelBinding() {
+    return subagentModelBinding({
+      provider: this.provider,
+      thinkingLevel: this.thinkingLevel,
+      sessionId: this.opts.sessionId,
+      maxTokens: this.opts.definition.maxTokens,
+    }, this.retryState);
+  }
+
+  /** Continue the same agent at the failed request; never replay completed tools. */
+  private useNextModel(): boolean {
+    if (this.runSignal().aborted || !this.streamError || this.streamError.code === "TURN_ABORTED") return false;
+    if (!this.opts.fallbackModels?.length) return false;
+    const failed = this.agent.state.messages.at(-1);
+    // Only a provider's terminal assistant error permits fallback. Host/tool
+    // failures, cancellation, and unexpected internal exceptions do not.
+    if (failed?.role !== "assistant" || failed.stopReason !== "error") return false;
+    this.recordModelFailure(`${this.provider.id}/${this.provider.modelId}`, this.streamError);
+    while (this.fallbackIndex < this.opts.fallbackModels.length) {
+      const next = this.opts.fallbackModels[this.fallbackIndex++];
+      if (!next.provider) {
+        this.recordModelFailure(next.key, {
+          code: "MODEL_NOT_CONFIGURED",
+          message: "The configured fallback model could not be resolved.",
+        });
+        continue;
+      }
+      const identity = `${next.provider.id}/${next.provider.modelId}`;
+      if (this.attemptedModels.has(identity)) continue;
+      this.attemptedModels.add(identity);
+      this.provider = next.provider;
+      const requested = this.opts.definition.thinkingLevel ?? this.opts.inheritedThinkingLevel ?? this.opts.thinkingLevel;
+      this.thinkingLevel = requested === "omit" ? "omit" : clampThinkingLevel(this.provider, requested);
+      const binding = this.modelBinding();
+      this.agent.state.model = binding.model;
+      this.agent.state.thinkingLevel = binding.agentThinkingLevel;
+      this.agent.streamFunction = binding.streamFn;
+      this.agent.getApiKey = binding.getApiKey;
+      this.agent.state.messages = this.agent.state.messages.slice(0, -1);
+      this.streamError = undefined;
+      this.providerTransientRetryAttempt = 0;
+      this.providerRateLimitRetryAttempt = 0;
+      this.lastReportText = "";
+      this.opts.onModelChange?.(this.provider, this.thinkingLevel);
+      return !this.runSignal().aborted;
+    }
+    return false;
+  }
+
+  private recordModelFailure(model: string, error: { code: string; message: string }): void {
+    this.modelFailures.push({ model, ...error });
+    this.emit({
+      type: "message_end",
+      message: {
+        ...this.newAssistantRow(),
+        content: `Model ${model} failed (${error.code}): ${error.message}`,
+        status: "error",
+        isError: true,
+      },
+    });
   }
 
   private claimProviderRetry(
@@ -377,12 +380,12 @@ export class SubagentRun {
         retryError.code === "PROVIDER_RATE_LIMITED"
           ? providerRateLimitDelayMs(
               this.providerRateLimitRetryAttempt,
-              this.providerRetryHeaders,
+              this.retryState.headers,
             )
           : providerSetupRetryDelayMs(
               this.providerTransientRetryAttempt,
               undefined,
-              this.providerRetryHeaders,
+              this.retryState.headers,
             );
       await delayWithAbort(delayMs, this.runSignal());
       if (this.opts.signal?.aborted) return;
@@ -411,13 +414,17 @@ export class SubagentRun {
             ].join("\n\n");
     return {
       agentName: name,
-      modelId: this.opts.provider.modelId,
-      thinkingLevel: this.opts.thinkingLevel,
+      modelId: this.provider.modelId,
+      thinkingLevel: this.thinkingLevel,
       status,
-      report: boundedReport(text),
+      report: boundedReport([
+        ...this.modelFailures.map((failure) => `Model ${failure.model} failed (${failure.code}): ${failure.message}`),
+        text,
+      ].join("\n\n")),
       turns: this.turns,
       toolCalls: this.toolCalls,
       ...(this.usage ? { usage: this.usage } : {}),
+      ...(this.modelFailures.length ? { modelFailures: [...this.modelFailures] } : {}),
       ...(error ? { error } : {}),
     };
   }
@@ -466,8 +473,8 @@ export class SubagentRun {
       content: "",
       createdAt: nowIso(),
       status: "streaming",
-      modelId: this.opts.provider.modelId,
-      providerId: this.opts.provider.id,
+      modelId: this.provider.modelId,
+      providerId: this.provider.id,
       parentToolCallId: this.opts.parentToolCallId,
       agentName: this.opts.definition.name,
     };
@@ -558,7 +565,7 @@ export class SubagentRun {
             typeof (message as { errorMessage?: unknown }).errorMessage === "string"
               ? ((message as { errorMessage?: string }).errorMessage as string)
               : "provider stream failed";
-          classifiedError = classifyProviderError(raw, this.providerResponseStatus);
+          classifiedError = classifyProviderError(raw, this.retryState.status);
           retryAttempt = this.claimProviderRetry(classifiedError, "stream");
           if (retryAttempt !== undefined) {
             this.pendingProviderRetry = classifiedError;

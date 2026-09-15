@@ -276,6 +276,9 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 | 0242 | [仅增量且合并的流式更新](/adr/0242-delta-only-streaming-updates) | 已接受（修订 0127 / 0130 / 0149 / 0153；issue #299） |
 | 0243 | [技能市场公网 HTTPS 目录拉取](/adr/0243-skill-market-public-https-catalog) | 已接受（修订 ADR 0009；issue #287 / PR #290） |
 | 0245 | [加固 MCP 市场公网网络边界](/adr/0245-mcp-market-public-network-boundary) | 已接受 |
+| 0251 | [聊天里的文件引用在主进程补全，并在文件视图中打开](/adr/0251-chat-file-refs-open-in-the-file-view) | 已接受（修订 ADR 0163 / ADR 0241） |
+| 0252 | [向插件视图暴露项目的文件夹根，并跨根补全引用](/adr/0252-project-folder-roots-for-plugin-views) | 已接受（修订 ADR 0251；ADR 0249 §5） |
+| 0253 | [交给宿主执行的文件动作跟随视图正在浏览的文件夹](/adr/0253-host-mediated-actions-follow-the-browsed-folder) | 已接受（修订 ADR 0252；ADR 0249 §5） |
 | global-sidebar-pins | [在侧边栏全局显示置顶会话](/adr/global-sidebar-pins) | 已接受（修订 ADR 0016；issue #306） |
 | active-turn-steering | [用 Alt+Enter 向当前回合补充指令](/adr/active-turn-steering) | 已接受 |
 | 0251 | [删除项目会一并删除其拥有的会话](/adr/0251-project-delete-with-owned-sessions) | 已接受 |

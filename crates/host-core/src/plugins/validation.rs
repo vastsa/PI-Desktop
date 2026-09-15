@@ -213,21 +213,15 @@ pub(crate) fn validate_contributions(root: &Path, manifest: &PluginManifest) -> 
                     })?;
                     let normalized = normalize_theme_asset_path(raw).ok_or_else(|| {
                         anyhow!(
-                            "PLUGIN_INVALID: theme {id} asset {raw} must be a relative image or font path"
+                            "PLUGIN_INVALID: theme {id} asset {raw} must be an absolute image or font path"
                         )
                     })?;
                     if seen_assets.contains(&normalized) {
                         bail!("PLUGIN_INVALID: theme {id} declares asset {raw} twice");
                     }
-                    if normalized
-                        .split('/')
-                        .any(|segment| segment == "node_modules")
-                    {
-                        bail!(
-                            "PLUGIN_INVALID: theme {id} asset {raw} may not come from a dependency directory"
-                        );
-                    }
-                    let resolved = safe_join(root, &normalized)?;
+                    // A theme asset is an absolute path: the plugin names the file and the
+                    // host serves it, so there is nothing to resolve against the package root.
+                    let resolved = std::path::Path::new(&normalized);
                     let metadata = resolved
                         .metadata()
                         .map_err(|_| anyhow!("PLUGIN_INVALID: theme {id} asset missing: {raw}"))?;
@@ -540,17 +534,31 @@ const THEME_ASSET_EXTENSIONS: [&str; 7] = ["png", "jpg", "jpeg", "webp", "avif",
 /// Declared assets of one theme, summed.
 const THEME_ASSET_MAX_BYTES: u64 = 4 * 1024 * 1024;
 
-/// Mirrors `normalizeThemeAssetPath` in the plugin SDK: a package-relative,
-/// forward-slash path on the extension whitelist, or `None`.
+/// Mirrors `normalizeThemeAssetPath` in the plugin SDK: a forward-slash
+/// **absolute** path on the extension whitelist, or `None`.
+///
+/// A theme asset always names a file by absolute path (`C:/art/bg.png`,
+/// `/art/bg.png`, or either spelled as a `file:` URL). Relative references are
+/// rejected: the host serves theme bytes straight from the filesystem.
 fn normalize_theme_asset_path(value: &str) -> Option<String> {
-    let trimmed = value.trim().replace('\\', "/");
-    let path = trimmed.strip_prefix("./").unwrap_or(&trimmed).to_string();
-    if path.is_empty() || path.starts_with('/') || path.contains(':') {
+    let raw = value.trim();
+    let without_scheme = match raw.strip_prefix("file://") {
+        Some(rest) => rest,
+        None => raw.strip_prefix("file:").unwrap_or(raw),
+    };
+    let normalized = without_scheme.replace('\\', "/");
+    // `file:///C:/art/bg.png` and `file:///art/bg.png` both lose the extra slash
+    // the authority marker leaves behind; a drive letter is written without it.
+    let path = match normalized.strip_prefix('/') {
+        Some(rest) if is_windows_drive_path(rest) => rest.to_string(),
+        _ => normalized,
+    };
+    if !is_absolute_theme_asset_path(&path) {
         return None;
     }
     if path
         .split('/')
-        .any(|segment| segment.is_empty() || segment == "." || segment == "..")
+        .any(|segment| segment == "." || segment == "..")
     {
         return None;
     }
@@ -559,6 +567,17 @@ fn normalize_theme_asset_path(value: &str) -> Option<String> {
         return None;
     }
     Some(path)
+}
+
+/// `C:/…` — a Windows drive path after forward-slash normalization.
+fn is_windows_drive_path(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    bytes.len() >= 3 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' && bytes[2] == b'/'
+}
+
+/// A POSIX absolute path or a Windows drive path.
+fn is_absolute_theme_asset_path(value: &str) -> bool {
+    value.starts_with('/') || is_windows_drive_path(value)
 }
 
 /// Mirrors `WINDOW_BACKGROUND_COLOR_PATTERN` in the plugin SDK.

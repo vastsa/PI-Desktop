@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** E2E-166: real sidecar + deterministic local model transport; no external credentials. */
+/** E2E-166 and E2E-SUBAGENT-ordered-model-fallback-preserves-work: real sidecar + local transport. */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
@@ -22,6 +22,11 @@ const server = createServer(async (req, res) => {
     const userText = typeof user?.content === "string" ? user.content : JSON.stringify(user?.content);
     const scenario = [...scenarios.values()].find((s) => userText.includes(s.marker));
     const isParent = payload.tools?.some((t) => t.function?.name === "Task");
+    if (!isParent && payload.model.startsWith("unavailable-")) {
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: { message: "model not found" } }));
+      return;
+    }
     const first = scenario && isParent && !scenario.called;
     if (first) scenario.called = true;
     const delta = first
@@ -138,8 +143,12 @@ async function until(predicate) {
 }
 async function run(id, args, expectedModel, keys = ["fixture/allowed"], sessionId = id, options = {}) {
   const inheritCatalog = options.inheritCatalog === true;
+  const fallbackModels = options.fallbackModels;
+  const primaryModel = options.primaryModel ?? (fallbackModels ? "unavailable-primary" : "private");
   const subagents = [
-    definition("reviewer", "private"),
+    { ...definition("reviewer", primaryModel),
+      ...(fallbackModels ? { fallbackModels: fallbackModels.map((modelId) => ({ providerId: "fixture", modelId })) } : {}),
+    },
     inheritCatalog ? builtinExplorerDefinition : definition("explorer"),
     ...(inheritCatalog ? [definition("worker", undefined, { inheritTools: true, tools: [] })] : []),
   ];
@@ -152,7 +161,7 @@ async function run(id, args, expectedModel, keys = ["fixture/allowed"], sessionI
     subagents,
     pluginTools: inheritCatalog ? fixturePluginTools : undefined,
     pluginSkills: inheritCatalog ? fixtureSkills : undefined,
-    subagentProviders: bindings, subagentModelKeys: keys,
+    subagentProviders: { ...bindings, ...options.bindings }, subagentModelKeys: keys,
   });
   await until(() => events.some((e) => e.sessionId === sessionId && e.turnId === id && e.event.type === "agent_end" && !e.parentToolCallId));
   const captured = requests.slice(before);
@@ -160,12 +169,44 @@ async function run(id, args, expectedModel, keys = ["fixture/allowed"], sessionI
   assert.ok(parent, "parent provider request reached local transport");
   const system = parent.messages.filter((m) => m.role === "system").map((m) => m.content).join("\n");
   assert.ok(!system.includes("`fixture/private`"), "private pin must not enter override catalog");
-  assert.match(parent.tools.find((t) => t.function?.name === "Task").function.description, /Default model: fixture\/private/);
+  assert.ok(parent.tools.find((t) => t.function?.name === "Task").function.description.includes(`Default model: fixture/${primaryModel}`));
   const delegates = captured.filter((p) => !p.tools?.some((t) => t.function?.name === "Task"));
-  if (expectedModel) assert.deepEqual(delegates.map((p) => p.model), [expectedModel]);
+  if (expectedModel) assert.deepEqual(delegates.map((p) => p.model), options.expectedAttempts ?? [expectedModel]);
   else {
     assert.equal(delegates.length, 0, "forbidden override must not issue a provider request");
     assert.ok(captured.some((p) => p.messages.some((m) => m.role === "tool" && JSON.stringify(m.content).includes("not available for delegation"))));
+  }
+  if (fallbackModels) {
+    for (const pin of fallbackModels) {
+      assert.ok(!system.includes(`\`fixture/${pin}\``), "fallback pin stays out of the override catalog");
+    }
+    const taskMessages = events.filter((e) => e.sessionId === sessionId && e.turnId === id && e.event.type === "message_end")
+      .map((e) => e.event.message).filter((m) => m.role === "tool" && m.toolName === "Task");
+    const settled = taskMessages.at(-1)?.toolResult?.details;
+    const expectedStatus = options.expectedStatus ?? "completed";
+    const failures = options.expectedAttempts.filter((name) => name.startsWith("unavailable-"));
+    assert.equal(settled?.modelId, expectedModel, "settlement keeps the effective model");
+    assert.equal(settled?.status, expectedStatus, "the child must settle, not remain running or report false success");
+    assert.deepEqual((settled.modelFailures ?? []).map((failure) => ({ model: failure.model, code: failure.code })),
+      failures.map((name) => ({ model: `fixture/${name}`, code: "MODEL_NOT_CONFIGURED" })),
+      "settlement preserves every failed model in order");
+    if (expectedStatus === "failed") assert.equal(settled.error?.code, "MODEL_NOT_CONFIGURED");
+    else assert.equal(settled.error, undefined);
+    const reports = events.filter((e) => e.sessionId === sessionId && e.turnId === id && e.parentToolCallId &&
+      e.event.type === "message_end" && e.event.message.role === "assistant" &&
+      e.event.message.status === "complete" && e.event.message.content === "Fixture finished.");
+    assert.deepEqual(reports.map((e) => e.event.message.modelId), expectedStatus === "completed" ? [expectedModel] : [],
+      "only the successful child model writes the final report");
+    for (const attempted of options.expectedAttempts.slice(1)) {
+      assert.ok(taskMessages.some((message) => message.toolResult?.details?.modelId === attempted &&
+        message.toolResult?.details?.status === "running"), "live Task metadata changes at every fallback");
+    }
+    for (const request of delegates) {
+      const users = request.messages.filter((message) => message.role === "user");
+      assert.equal(users.length, 1, "fallback retains the original task once");
+      assert.ok(JSON.stringify(users[0].content).includes(`Complete fixture ${id}.`));
+    }
+    console.log(`PASS E2E-SUBAGENT-ordered-model-fallback-preserves-work ${id}: ${delegates.map((p) => p.model).join(" -> ")} => ${settled.status}`);
   }
   if (inheritCatalog) {
     const delegated = delegates.find((request) =>
@@ -209,7 +250,7 @@ async function run(id, args, expectedModel, keys = ["fixture/allowed"], sessionI
       assert.ok(!delegatedSystem.includes("# Skills"), "builtin explorer must not receive Skill guidance");
     }
   }
-  console.log(`PASS E2E-166 ${id}`);
+  if (!fallbackModels) console.log(`PASS E2E-166 ${id}`);
   return rpc("agent.testRuntimeIdentity", { sessionId });
 }
 try {
@@ -242,6 +283,25 @@ try {
     "inherit-tools",
     { inheritCatalog: true },
   );
+  for (const failedCount of [0, 1, 2, 3]) {
+    const unavailable = ["unavailable-primary", "unavailable-secondary", "unavailable-third"].slice(0, failedCount);
+    const expectedAttempts = [...unavailable, "fallback-private"];
+    const chain = [...expectedAttempts, "unused-tail"];
+    const id = `model-fallback-${failedCount}-unavailable`;
+    await run(id, { agent: "reviewer" }, "fallback-private", [], id, {
+      primaryModel: chain[0],
+      fallbackModels: chain.slice(1),
+      bindings: Object.fromEntries(chain.map((name) => [`fixture/${name}`, model(name)])),
+      expectedAttempts,
+    });
+  }
+  const unavailable = ["unavailable-primary", "unavailable-secondary", "unavailable-third", "unavailable-fourth"];
+  await run("model-fallback-all-unavailable", { agent: "reviewer" }, "unavailable-fourth", [], "fallback-exhausted", {
+    fallbackModels: unavailable.slice(1),
+    bindings: Object.fromEntries(unavailable.map((name) => [`fixture/${name}`, model(name)])),
+    expectedAttempts: unavailable,
+    expectedStatus: "failed",
+  });
   console.log("PASS E2E-166 changed opt-in rebuilds the sidecar runtime");
 } finally {
   child.kill();

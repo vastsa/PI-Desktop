@@ -38,6 +38,9 @@ export function SubagentModelPicker({
   groups,
   orphanPin,
   disabled = false,
+  emptyLabel,
+  label,
+  allowInherit = true,
   onChange,
 }: {
   /** Current pin, or the empty string for inherit-session. */
@@ -46,6 +49,9 @@ export function SubagentModelPicker({
   /** A pin that is no longer configured, kept selectable so an edit cannot drop it. */
   orphanPin: string | null;
   disabled?: boolean;
+  emptyLabel?: string;
+  label?: string;
+  allowInherit?: boolean;
   onChange: (next: string) => void;
 }) {
   const { t } = useTranslation();
@@ -55,7 +61,7 @@ export function SubagentModelPicker({
   const optionRefs = useRef(new Map<string, HTMLButtonElement>());
 
   const rows = useMemo<ModelMenuRow[]>(() => {
-    const list: ModelMenuRow[] = [
+    const list: ModelMenuRow[] = allowInherit ? [
       {
         id: "",
         label: t("extensions.subagents.modelInherit"),
@@ -63,7 +69,7 @@ export function SubagentModelPicker({
         startsGroup: false,
         divided: false,
       },
-    ];
+    ] : [];
     groups.forEach((group, groupIndex) => {
       group.choices.forEach((choice, index) => {
         list.push({
@@ -85,7 +91,7 @@ export function SubagentModelPicker({
       });
     }
     return list;
-  }, [groups, orphanPin, t]);
+  }, [groups, orphanPin, t, allowInherit]);
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -133,7 +139,7 @@ export function SubagentModelPicker({
   };
 
   const selected = rows.find((row) => row.id === value) ?? null;
-  const triggerLabel = selected?.label ?? value;
+  const triggerLabel = selected?.label ?? (value || emptyLabel);
 
   return (
     <AnchoredMenu
@@ -141,7 +147,7 @@ export function SubagentModelPicker({
       open={open}
       onClose={close}
       menuClassName="provider-service-menu"
-      label={t("extensions.subagents.model")}
+      label={label ?? t("extensions.subagents.model")}
       initialFocus="input"
       trigger={(ref) => (
         <button
@@ -151,7 +157,7 @@ export function SubagentModelPicker({
           disabled={disabled}
           aria-haspopup="listbox"
           aria-expanded={open}
-          aria-label={t("extensions.subagents.model")}
+          aria-label={label ?? t("extensions.subagents.model")}
           onClick={() => {
             setQuery("");
             setActiveId(value);

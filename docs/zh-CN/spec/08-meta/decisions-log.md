@@ -4159,3 +4159,21 @@ the retained upstream work-panel lifecycle. See
 - `truncated` 子智能体状态从共享运行状态联合类型、渲染器结果联合类型、各语言的 `chat.subagentStatus` 目录项以及委托拓扑的警告计数中一并移除。尽管 D328 已撤掉产生它的看门狗，`timed_out` 仍保留在类型中。
 - 不改协议版本、schema 版本或存储：host-core 的子智能体输入结构仍然忽略未知字段，注册表解析的是 Markdown frontmatter 而不是表列。
 - 见 ADR 0253、`03-runtime/02-agent-runtime.md` §5f、`04-ux/06-settings-ia.md` §7、E2E-155 与 E2E-SUBAGENT-legacy-turn-limit-frontmatter-is-ignored。
+
+## 2026-09-15 — 主题资源改为绝对路径（D422）
+
+- ADR 0248 要求主题资源是包内相对路径，于是插件必须把用户选的图片复制进自己的包。
+  开发插件是递归监听的，每次复制都会重载插件并关掉该插件的面板窗口；而插件自己的
+  数据目录根本无法被引用。
+- `normalizeThemeAssetPath`（SDK）与 `normalize_theme_asset_path`（host-core）现在
+  只接受绝对路径（`C:/art/bg.png`、`/art/bg.png`，或两者的 `file:` 写法）。包内相对
+  路径不再被当作资源；受影响面仅限声明过 assets 的主题。
+- `pi.themes.upsert` 会解析主题 CSS 里的资源引用，并登记进该插件的资源表（插件加载
+  期间有效），因此换图不需要在插件包内写任何文件。
+- 保持不变：扩展名白名单、声明资源的总量 4MB 上限、`.`/`..` 拒绝、`url()` →
+  `plugin-asset://` 改写、`nosniff`、`no-store`、卸载即撤销。绝对路径在 URL 里做
+  percent-encoding，由处理器解码。
+- 代价：插件现在可以把它能读到的任意本地文件交给渲染器。manifest 声明的资源仍可
+  静态审查；运行时登记的随插件消失。
+- 见 ADR 0255、`07-plugins/02-plugin-manifest-schema.md`、
+  `07-plugins/04-plugin-security.md`，以及 ADR 0248 §1（路径解析部分已被取代）。

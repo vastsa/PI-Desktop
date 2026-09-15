@@ -773,6 +773,35 @@ it. Only the slash is structural — the provider half is matched by a normalize
 alias, so a display name containing spaces is valid.
 
 
+**Ordered model fallback.** A definition may declare `fallbackModels` as an
+inline list (`fallbackModels: [provider/model, other/model]`) or a block list.
+The managed host `agents.create` / `agents.update` inputs and records expose
+`fallbackModels?: string[]`; omission preserves a list on update and `[]`
+clears it. Existing `model` pins and Task override priority remain unchanged.
+A missing primary pin still fails before launch. Alternatives are resolved in
+Electron with the definition pins and count toward the existing eight-provider
+ceiling. They authorize only that definition, including when Task overrides
+its primary, and do not enter the independent `Task.model` opt-in catalog.
+
+After a provider failure exhausts that model's retries, or is non-retryable,
+the same child Agent advances through these alternatives in order. Actual
+provider-id/model-id duplicates are skipped; an unresolved alternative is
+reported and skipped. The runtime removes only the terminal failed assistant
+from model context, preserving the original user task and completed tools,
+then continues with the next provider's adapter, credentials, request headers,
+output cap, and re-clamped original thinking selection. `omit` stays omitted.
+The completed tool history is never replayed by the fallback controller.
+Host/tool failures, unexpected thrown errors, no-report outcomes, and Stop do
+not trigger fallback. The run's original owner and abort signal govern every
+attempt, and usage/counters include all attempts. No configured alternatives
+means the existing single-model behavior.
+
+Failure diagnostics remain in the child transcript, bounded parent report,
+and additive `modelFailures` lifecycle detail. Lifecycle model/thinking fields
+track the effective alternative, including after settlement and reload. If all
+alternatives fail, the result remains `failed` with the final provider error.
+See [ADR subagent-model-fallback](../../adr/subagent-model-fallback.md).
+
 **Events and context.** Every event a delegate emits carries
 `parentToolCallId` and `agentName` on its envelope, and Electron main copies both
 onto the persisted row. When the runtime rebuilds model context it skips every

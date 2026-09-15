@@ -1,5 +1,13 @@
 # 03. Plugin API
 
+## Theme variables
+
+`pi.themes.setVariables(themeId, values)` requires `ui.theme`. The host accepts
+only values for declared variables on one of the caller's themes, persists them
+in private plugin settings, and refreshes an active theme without selecting a
+new theme or reloading the renderer. It never accepts stylesheet text, URLs,
+selectors, images, fonts, or arbitrary property names.
+
 ## 1. Design principles
 
 1. Small and stable
@@ -154,7 +162,12 @@ and never creates a project by itself.
 
 ### workspace / fs
 ```ts
-pi.workspace.get(): Promise<{ path: string; name: string } | null>
+pi.workspace.get(): Promise<{
+  path: string;
+  name: string;
+  projectId?: string;
+  roots?: Array<{ path: string; name: string; primary: boolean }>;
+} | null>
 
 pi.fs.readText(pathFromRoot: string): Promise<string>
 pi.fs.stat(pathFromRoot: string, grantId?: string): Promise<{
@@ -188,6 +201,16 @@ pi.fs.remove(pathFromRoot: string): Promise<void>
 pi.fs.requestDirectory(): Promise<{ path: string; name: string } | null>
 ```
 
+`workspace.get` answers with the primary root — `path` and its leaf `name`,
+both unchanged — plus, when that folder belongs to a project group (ADR 0249),
+`projectId` and `roots`: every registered folder of the group in its own order,
+primary first, each `{ path, name, primary }` (ADR 0252). `workspace:changed`
+carries the same object, and main answers both from the host-owned group
+records, so the event and the pull cannot disagree. A host that cannot resolve
+the group omits `projectId` and `roots` — the same `{ path, name }` a plugin
+already handles — and reading this metadata needs no new permission and adds no
+SDK method.
+
 `fs.readPreview` classifies one existing readable file for in-app display. It
 uses the same `fs.read` checks as `fs.readText`, rejects directories, and
 returns `text` (capped at 512 KiB), `image` (capped at 5 MiB, as a data URL),
@@ -195,13 +218,19 @@ returns `text` (capped at 512 KiB), `image` (capped at 5 MiB, as a data URL),
 
 `fs.openDefault` opens one existing file with the operating system's default
 associated application. It uses the same `fs.read` root, symlink, protected-path,
-deny-list, and scope checks as `fs.readText`; directories are rejected. The
-host audits the operation and never accepts an absolute path from the plugin.
+deny-list, and scope checks as `fs.readText`; directories are rejected. The host
+audits the operation. A path is root-relative by default, and an absolute path is
+accepted only by this action and `fs.reveal` (no other mode takes one) when it lies
+inside a registered folder root of the open project — which then becomes the
+containment base for the request (ADR 0249 §5, ADR 0253). That is the shape a view
+uses to name a file in a project folder other than the primary one.
 
 `fs.reveal` reveals one existing readable file in the operating system's file
 manager and selects it when the platform supports that behavior. It uses the
 same `fs.read` checks, rejects directories, and audits both success and failure.
-The plugin receives and supplies only the root-relative path.
+It takes a path exactly as `fs.openDefault` does: root-relative by default, and
+absolute when the file lies inside another registered folder root of the open
+project (ADR 0253).
 
 `fs.stat` returns the size and modification time of one existing readable file
 without loading its contents. `fs.readRange` returns at most 8 MiB of bytes and
@@ -685,8 +714,12 @@ Delivered today:
 - `bus.message` — a bus delivery, with the `PluginBusMessage` as the single
   argument. `pi.bus.subscribe` is the normal way to receive these; `events.on`
   sees the raw stream of every subscription the plugin holds.
-- `workspace:changed` — payload is `{ path: string; name: string } | null`,
-  matching `workspace.get()`, sent when the cached workspace path changes.
+- `workspace:changed` — payload is the `workspace.get()` object or `null`,
+  sent when the cached workspace path changes: the primary `path` and `name`,
+  plus `projectId` and `roots` when the folder belongs to a project group
+  (ADR 0252). The first workspace of a run may arrive once without the folders
+  and repeat once with them, because the group records are read after that
+  first push.
 - `plugin:settingsChanged` is delivered after edits from the generated Plugins
   settings UI.
 - `session:modelChanged` — `{ sessionId, modelKey, thinkingLevel }`, sent after
@@ -730,14 +763,25 @@ window.pluginBridge.on(event, handler)
 The same bridge serves both plugin surfaces: a detached `ui.panel` window and a
 `contributes.views` surface docked in the work panel (ADR 0104). The channel
 list, the permission gate, and the preload are identical, so one HTML entry
-works in either placement. The only difference is chrome: a docked view has no
-window-control capsule and no drag band, and its
-`--pi-plugin-titlebar-height` is `0px` rather than `46px`.
+works in either placement. The only differences are chrome and the view
+`location` below: a docked view has no window-control capsule and no drag band,
+and its `--pi-plugin-titlebar-height` is `0px` rather than `46px`.
 
 Detached panel pages using the current chrome contract declare
 `<meta name="pi-plugin-chrome" content="v2">` and use the published variable
 for normal-flow top spacing. The host preserves that page-owned spacing. A
 page without the marker remains supported through the legacy additive offset.
+
+A docked view may also be given one subject to show. The `location` a work-panel
+tab already carries is delivered to any contributed view — not only
+`pi.browser`, whose address bar keeps its own navigation channel: on creation it
+travels as the view entry URL's `piViewOpen` query parameter, and once the
+document has finished loading it arrives as the `view:open` event. A location
+that reaches the host before the first load restarts the load instead, and a
+view that is already loaded is never navigated, so unsaved work inside a plugin
+is not discarded; re-opening the same location does nothing. The payload is
+opaque to the host — each plugin decides what its `location` means — and it
+needs no permission and adds no SDK method.
 
 The host-owned preload forwards only fixed channels to the plugin runtime:
 
@@ -771,8 +815,14 @@ Delivered today:
 
 - `appearance:changed` — payload is the `PluginAppearance` above, sent whenever
   the app's palette or language changes, so a panel can restyle and relabel live.
-- `workspace:changed` — payload is `{ path: string; name: string } | null`,
-  matching `workspace.get()`, sent when the open project changes.
+- `workspace:changed` — payload is the `workspace.get()` object or `null`,
+  sent when the open project changes: the primary `path` and `name`, plus
+  `projectId` and `roots` when the folder belongs to a project group
+  (ADR 0252).
+- `view:open` (docked work-panel views only; a detached `ui.panel` window never
+  receives it) — payload is `{ path: string }`, the location the host asked this
+  view to show. A view created with a location already carried it in its entry
+  URL; this event delivers a later one.
 - `session:turnEnded` — the same payload as the plugin-process event in §5,
   sent when a host turn reaches a terminal state.
 

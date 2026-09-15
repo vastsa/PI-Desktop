@@ -41,6 +41,13 @@ if (!hostBin) {
   process.exit(1);
 }
 
+// dirs::home_dir uses the Windows known-folder API, not HOME/USERPROFILE.
+// Fail before any registry write; changing these variables does not isolate
+// the host from real user documents on Windows.
+if (process.platform === "win32") {
+  throw new Error("Subagent registry E2E requires Linux/macOS HOME isolation; Windows known-folder lookup ignores the fixture HOME. No registry writes were attempted.");
+}
+
 const dataDir = mkdtempSync(join(tmpdir(), "pi-subagent-data-"));
 const homeDir = mkdtempSync(join(tmpdir(), "pi-subagent-home-"));
 const projectA = mkdtempSync(join(tmpdir(), "pi-project-a-"));
@@ -158,6 +165,14 @@ try {
       /tools: \[Read, Grep, Bash\]/.test(document),
     JSON.stringify(document.split("\n").slice(0, 6).join(" | ")),
   );
+
+  const fallbackPins = ["primary/first", "Other Gateway/vendor/second"];
+  const updatedFallback = await call("agents.update", { id: "log-reader", fallbackModels: fallbackPins });
+  check("fallback pins persist in configured order", JSON.stringify(updatedFallback.result?.subagent?.fallbackModels) === JSON.stringify(fallbackPins));
+  const retainedFallback = await call("agents.update", { id: "log-reader", description: "Read logs." });
+  check("omitting fallbackModels preserves the list", JSON.stringify(retainedFallback.result?.subagent?.fallbackModels) === JSON.stringify(fallbackPins));
+  const invalidFallback = await call("agents.update", { id: "log-reader", fallbackModels: ["bare-model"] });
+  check("malformed fallback is rejected", invalidFallback.error?.data?.errorCode === "SUBAGENT_INVALID");
 
   const dup = await call("agents.create", {
     name: "log-reader",
@@ -282,6 +297,12 @@ try {
       builtinNames.every((name) => byName.get(name)?.source === "builtin"),
     [...byName.keys()].join(", "),
   );
+  check("fallback pins reach the runtime loader", JSON.stringify(byName.get("log-reader")?.fallbackModels) === JSON.stringify([
+    { providerId: "primary", modelId: "first" }, { providerId: "Other Gateway", modelId: "vendor/second" },
+  ]));
+  const clearedFallback = await call("agents.update", { id: "log-reader", fallbackModels: [] });
+  check("an empty fallback list clears the document field", !clearedFallback.result?.subagent?.fallbackModels?.length &&
+    !readFileSync(join(agentsDir, "log-reader.md"), "utf8").includes("fallbackModels:"));
   const loadedWorker = byName.get("worker");
   check(
     "the loader preserves inheritTools for the inherit-only document",

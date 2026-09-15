@@ -168,34 +168,35 @@ describe("maskNonCodeCss", () => {
 });
 
 describe("theme assets", () => {
+  const ASSET = "C:/art/bg.png";
   const resolveAsset: ThemeCssAssetResolver = (target) => {
     const normalized = normalizeThemeAssetPath(target);
-    return normalized === "art/bg.png" ? themeAssetUrl("demo.hello", normalized) : null;
+    return normalized === ASSET ? themeAssetUrl("demo.hello", normalized) : null;
   };
 
-  it("rewrites a declared reference to the host scheme", () => {
+  it("rewrites an absolute reference to the host scheme", () => {
     const result = sanitizeThemeCss(
-      ".a { background: url(./art/bg.png) no-repeat; }",
+      `.a { background: url("${ASSET}") no-repeat; }`,
       undefined,
       resolveAsset,
     );
     expect(result).toEqual({
       ok: true,
-      css: '.a { background: url("plugin-asset://demo.hello/art/bg.png") no-repeat; }',
+      css: `.a { background: url("plugin-asset://demo.hello/${encodeURIComponent(ASSET)}") no-repeat; }`,
     });
   });
 
-  it("rewrites a quoted reference written without the ./ prefix", () => {
-    const result = sanitizeThemeCss('.a { background: url("art/bg.png"); }', undefined, resolveAsset);
+  it("accepts the file: URL spelling of the same absolute path", () => {
+    const result = sanitizeThemeCss(".a { background: url(file:///C:/art/bg.png); }", undefined, resolveAsset);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.css).toBe('.a { background: url("plugin-asset://demo.hello/art/bg.png"); }');
+      expect(result.css).toContain(`plugin-asset://demo.hello/${encodeURIComponent(ASSET)}`);
     }
   });
 
-  it("refuses an undeclared reference even when a resolver is supplied", () => {
+  it("refuses a reference the resolver does not own", () => {
     const result = sanitizeThemeCss(
-      '.a { background: url("./art/other.png"); }',
+      '.a { background: url("C:/art/other.png"); }',
       undefined,
       resolveAsset,
     );
@@ -214,21 +215,26 @@ describe("theme assets", () => {
   });
 
   it("does not rewrite a reference inside a comment", () => {
-    const css = "/* url(./art/bg.png) */\n.a { color: red; }";
+    const css = `/* url(${ASSET}) */\n.a { color: red; }`;
     expect(sanitizeThemeCss(css, undefined, resolveAsset)).toEqual({ ok: true, css });
   });
 
-  it("keeps offering assets to a caller that did not opt in", () => {
-    expect(isThemeAssetPath("art/bg.png")).toBe(true);
-    expect(normalizeThemeAssetPath("./art/bg.png")).toBe("art/bg.png");
-    expect(normalizeThemeAssetPath("art\\bg.png")).toBe("art/bg.png");
+  it("accepts absolute paths only — package-relative ones are no longer assets", () => {
+    expect(isThemeAssetPath(ASSET)).toBe(true);
+    expect(normalizeThemeAssetPath("C:\\art\\bg.png")).toBe(ASSET);
+    expect(normalizeThemeAssetPath("file:///C:/art/bg.png")).toBe(ASSET);
+    expect(normalizeThemeAssetPath("/art/bg.png")).toBe("/art/bg.png");
+    expect(normalizeThemeAssetPath("file:///art/bg.png")).toBe("/art/bg.png");
     for (const refused of [
+      "art/bg.png",
+      "./art/bg.png",
+      "art\\bg.png",
       "../escape.png",
-      "/etc/passwd",
       "art/../../x.png",
       "art//bg.png",
-      "art/bg.gif",
-      "C:/x.png",
+      "C:/art/bg.gif",
+      "C:/art/../bg.png",
+      "https://x/y.png",
       "",
     ]) {
       expect(normalizeThemeAssetPath(refused)).toBe("");
@@ -236,13 +242,12 @@ describe("theme assets", () => {
     }
   });
 
-  it("builds the host url", () => {
-    expect(themeAssetUrl("demo.hello", "./art/bg.png")).toBe(
-      "plugin-asset://demo.hello/art/bg.png",
+  it("builds the host url with the absolute path percent-encoded", () => {
+    expect(themeAssetUrl("demo.hello", ASSET)).toBe(
+      `plugin-asset://demo.hello/${encodeURIComponent(ASSET)}`,
     );
   });
 });
-
 describe("the example theme shape", () => {
   it("loads a sheet whose header comment explains the @import ban", () => {
     // The wording `examples/plugins/hello/themes/midnight.css` ships with;

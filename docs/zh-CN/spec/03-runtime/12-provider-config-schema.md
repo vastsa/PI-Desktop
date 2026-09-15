@@ -123,10 +123,16 @@ JSON 保持隐藏状态。
 
 `authKind: "oauth"` 标记厂商账户行（ADR 0095、D237）：其凭据是保存在
 `secret:provider:<id>:oauth` 下的 OAuth 授权，而不是粘贴的密钥，因此该行
-不为它保存 `secretRef`，并以空密钥启动。最后两个 apiStyle 是厂商账户专用的
+不为它保存 `secretRef`，并以空密钥启动。两种账户专用 apiStyle 是厂商账户专用的
 线路 API —— `openai_codex_responses`（Codex 会话封装）与 `pi_messages`
 （radius 网关）—— 自定义提供商对话框不提供它们，因为二者都无法配合手输的
-base URL 与粘贴的密钥工作。厂商行的样式不由厂商固定：GitHub Copilot 同时
+base URL 与粘贴的密钥工作。新建自定义服务只提供 Chat Completions、Responses、Anthropic
+Messages 和 Google Generative AI；OpenCode Go 仍通过具名服务配置。
+历史非 OAuth 行若保存了上述账户专用格式，编辑时会显示禁选的当前格式和
+说明，并允许原样保存。仅打开编辑器不会根据匹配的端点预设修改协议、名称
+或 URL；选择其他格式才是明确变更。复制此类行时保留草稿中的原格式供
+确认，但在主动选择支持的格式前禁止保存和模型发现，并显示原因。
+不迁移已有认证类型或凭据。厂商行的样式不由厂商固定：GitHub Copilot 同时
 提供 Anthropic、Chat Completions 与 Responses 模型，因此样式跟随所选模型，
 并在每次切换模型时重写。`config_json.oauth.accountLabel` 保存已登录账户的
 非敏感展示标签。

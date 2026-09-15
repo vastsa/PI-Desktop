@@ -1,5 +1,19 @@
 # 02. Plugin Manifest Schema
 
+## Appearance extensions
+
+`contributes.themes[].variables` declares typed custom properties that the same
+plugin may change at runtime. A declaration has a safe custom-property name and
+exactly one type: `length` (`unit: "px"`, numeric `min`, `max`, and `default`),
+`number` (finite default and optional range), `color` (hex default), or `select`
+(fixed safe `values` and default). Host-reserved prefixes are refused. Values
+are not CSS fragments.
+
+`contributes.settingsDestinations` declares sandboxed Settings entries with a
+stable `id`, localized `label`, closed icon token, optional localized keywords,
+and a plugin-relative `.html` `entry`. An entry requires `ui.settings`; it is
+rendered only in the host-owned Extensions group.
+
 ## 1. Purpose
 
 Freeze the plugin manifest fields to guarantee:
@@ -133,7 +147,7 @@ type PluginThemeContrib = {
  label: string;
  path: string; // relative `.css` file
  base?: "light" | "dark"; // palette the overrides layer on, default `dark`
- assets?: string[]; // relative png/jpg/jpeg/webp/avif/svg/woff2, 4 MB summed;
+ assets?: string[]; // absolute png/jpg/jpeg/webp/avif/svg/woff2, 4 MB summed;
                     // each matching `url()` is rewritten to `plugin-asset://`
 };
 

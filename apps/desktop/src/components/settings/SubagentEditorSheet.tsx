@@ -29,6 +29,7 @@ import {
   subagentModelSelectValue,
 } from "./subagent-models";
 import { SubagentModelPicker } from "./SubagentModelPicker";
+import { SubagentFallbackModels } from "./SubagentFallbackModels";
 
 /** Hard cap host-core enforces on a definition document. */
 export const MAX_SUBAGENT_BYTES = 32 * 1024;
@@ -43,6 +44,7 @@ export type SubagentDraft = {
   inheritTools: boolean;
   /** `<provider>/<model>`, or empty for "same model as this session". */
   model: string;
+  fallbackModels: string[];
   /** Empty means "whatever the session uses". */
   thinkingLevel: SubagentThinkingLevel | "";
   /**
@@ -135,6 +137,7 @@ export function emptySubagentDraft(): SubagentDraft {
     tools: [...DEFAULT_SUBAGENT_TOOLS],
     inheritTools: false,
     model: "",
+    fallbackModels: [],
     thinkingLevel: "",
     maxTokens: 0,
     body: "",
@@ -152,6 +155,7 @@ export function draftFromRecord(record: UserSubagentRecord, body: string): Subag
     tools: grant.tools,
     inheritTools: grant.inheritTools,
     model: record.model ?? "",
+    fallbackModels: [...(record.fallbackModels ?? [])],
     thinkingLevel: record.thinkingLevel ?? "",
     maxTokens: record.maxTokens ?? 0,
     body,
@@ -177,6 +181,7 @@ export function draftFromDefinition(definition: SubagentDefinition): SubagentDra
     model: definition.model
       ? `${definition.model.providerId}/${definition.model.modelId}`
       : "",
+    fallbackModels: (definition.fallbackModels ?? []).map((pin) => `${pin.providerId}/${pin.modelId}`),
     thinkingLevel: definition.thinkingLevel ?? "",
     maxTokens: definition.maxTokens ?? 0,
     body: definition.prompt,
@@ -244,7 +249,7 @@ export function subagentDraftError(draft: SubagentDraft): string | null {
   // the picker offers those, so rejecting them here would make a selectable
   // option impossible to save. This shares the picker's own splitter so the two
   // can never disagree.
-  if (draft.model.trim() && !subagentModelPinParts(draft.model.trim())) {
+  if ([draft.model, ...draft.fallbackModels].some((pin) => pin.trim() && !subagentModelPinParts(pin.trim()))) {
     return "extensions.subagents.errorModel";
   }
   // Cleared (`0`) is a valid state that means "no cap of our own", so only a
@@ -461,6 +466,12 @@ function ModelField({
           </Select>
         </Field>
       </div>
+      <SubagentFallbackModels
+        primary={draft.model}
+        values={draft.fallbackModels}
+        choices={modelChoices}
+        onChange={(fallbackModels) => setDraft({ ...draft, fallbackModels })}
+      />
     </>
   );
 }

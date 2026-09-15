@@ -624,3 +624,26 @@ describe("subagentPinnedProviders", () => {
     expect(providers).toEqual(["p1", "p2"]);
   });
 });
+
+
+describe("definition fallback models", () => {
+  it("keeps primary pins compatible and reads ordered inline and block alternatives", () => {
+    for (const list of ["fallbackModels: [vendor/first, Other Gateway/org/second, vendor/first]", "fallback-models:\n  - vendor/first\n  - Other Gateway/org/second\n  - vendor/first"]) {
+      const result = parse(`---\nmodel: primary/model\n${list}\ndescription: Fallback fixture.\n---\nFinish.`);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.definition.model).toEqual({ providerId: "primary", modelId: "model" });
+      expect(result.definition.fallbackModels).toEqual([
+        { providerId: "vendor", modelId: "first" },
+        { providerId: "Other Gateway", modelId: "org/second" },
+      ]);
+    }
+    const legacy = parse("---\ndescription: Old document.\n---\nFinish.");
+    expect(legacy.ok && legacy.definition.fallbackModels).toBeUndefined();
+  });
+
+  it("rejects a malformed fallback rather than silently changing the requested chain", () => {
+    const result = parse("---\ndescription: Bad fallback.\nfallbackModels: [vendor/valid, bare-model]\n---\nFinish.");
+    expect(result.ok).toBe(false);
+  });
+});

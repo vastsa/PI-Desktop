@@ -94,6 +94,17 @@ export type PluginViewMeta = {
   order: number;
 };
 
+/** A host-resolved, sandboxed plugin Settings destination. */
+export type PluginSettingsDestinationMeta = {
+  pluginId: string;
+  destinationId: string;
+  ref: string;
+  label: string;
+  pluginName: string;
+  icon: "sliders" | "sparkles" | "palette" | "plug" | "settings";
+  keywords: string[];
+};
+
 /**
  * Which files one file mode may touch, straight from `manifest.fs`. Declared
  * here rather than imported from the plugin SDK because this package sits under
@@ -173,6 +184,8 @@ export type PluginTheme = {
   /** Palette the overrides layer on; drives the `data-theme` attribute. */
   base: "light" | "dark";
   css: string;
+  /** Host-generated, manifest-validated variable layer for this theme only. */
+  variablesCss?: string;
   /**
    * Native window background for this theme, per resolved palette, as
    * `#rrggbb` or `#rrggbbaa`. Absent unless the providing plugin declared it
@@ -245,4 +258,33 @@ export type PluginAgentExtensionStatus = {
   toolNames: string[];
   commandNames: string[];
   diagnostics: TrustedExtensionDiagnostic[];
+};
+
+/**
+ * One folder root of the active project, as a plugin sees it (ADR 0252).
+ *
+ * A project may be a logical group of several local folders (ADR 0249), and
+ * only the primary root is the workspace the agent's tools default to. The flag
+ * is what tells a plugin which root the relative paths it is handed belong to.
+ */
+export type PluginWorkspaceRoot = {
+  path: string;
+  name: string;
+  /** The group's primary root — the one the visible workspace resolves to. */
+  primary: boolean;
+};
+
+/**
+ * The workspace a plugin is told about: the primary root plus the other folders
+ * of the same project group. Additive over the original `{ path, name }`, so a
+ * plugin that ignores `projectId` and `roots` behaves exactly as before, and a
+ * host that cannot resolve a group simply omits both.
+ */
+export type PluginWorkspaceInfo = {
+  path: string;
+  name: string;
+  /** Stable id of the project group this workspace belongs to. */
+  projectId?: string;
+  /** Every registered folder of that group, primary first. */
+  roots?: PluginWorkspaceRoot[];
 };

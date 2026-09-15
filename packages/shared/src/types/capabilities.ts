@@ -144,6 +144,8 @@ export type UserSubagentRecord = {
   tools: string[];
   /** `<provider>/<model>` pin, resolved against providers at launch. */
   model?: string;
+  /** Ordered fallback pins; empty clears the list, absent preserves it on update. */
+  fallbackModels?: string[];
   thinkingLevel?: SubagentThinkingLevel;
   /** Output-token cap for one delegate response; omitted follows the model. */
   maxTokens?: number;
@@ -162,6 +164,8 @@ export type UserSubagentInput = {
   tools?: string[];
   /** Empty string clears the pin; absent leaves it unchanged. */
   model?: string;
+  /** Ordered fallback pins; empty clears the list, absent preserves it on update. */
+  fallbackModels?: string[];
   thinkingLevel?: SubagentThinkingLevel | "";
   /** `0` clears the override; absent leaves it unchanged. */
   /** `0` clears the cap; absent leaves it unchanged. */

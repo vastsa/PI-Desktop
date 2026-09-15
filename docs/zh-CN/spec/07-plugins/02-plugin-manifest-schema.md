@@ -130,7 +130,7 @@ type PluginThemeContrib = {
  label: string;
  path: string; // relative `.css` file
  base?: "light" | "dark"; // palette the overrides layer on, default `dark`
- assets?: string[]; // 相对于插件包的 png/jpg/jpeg/webp/avif/svg/woff2，总和上限 4 MB；
+ assets?: string[]; // 绝对路径的 png/jpg/jpeg/webp/avif/svg/woff2，总和上限 4 MB；
                     // 命中的 `url()` 会被改写为 `plugin-asset://`
 };
 

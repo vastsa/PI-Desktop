@@ -5207,3 +5207,27 @@ Validation contract: E2E-TRAY-bounded-session-navigation.
 - See ADR 0253, `03-runtime/02-agent-runtime.md` §5f,
   `04-ux/06-settings-ia.md` §7, E2E-155, and
   E2E-SUBAGENT-legacy-turn-limit-frontmatter-is-ignored.
+
+## 2026-09-15 — Theme assets are absolute paths (D422)
+
+- ADR 0248 required theme assets to be package-relative, which forced a plugin to
+  copy a user-chosen image into its own package. A development plugin is watched
+  recursively, so every copy reloaded the plugin and closed that plugin's panel
+  window; the plugin's own data directory could not be referenced at all.
+- `normalizeThemeAssetPath` (SDK) and `normalize_theme_asset_path` (host-core) now
+  accept absolute paths only (`C:/art/bg.png`, `/art/bg.png`, or either spelled as
+  a `file:` URL). Package-relative asset references stop resolving; themes that
+  declared them are the only affected surface.
+- `pi.themes.upsert` resolves asset references in the sheet and registers them in
+  that plugin's asset map for as long as the plugin stays loaded, so a theme can
+  pick up a new image without any file write inside the package.
+- Unchanged: the extension whitelist, the summed 4 MB budget for declared assets,
+  `.`/`..` rejection, the `url()` → `plugin-asset://` rewrite, `nosniff`,
+  `no-store`, and revocation on unload. Absolute keys are percent-encoded in the
+  URL and decoded by the handler.
+- A plugin can now hand the renderer any local file it can read. Manifest-declared
+  assets stay auditable in a static file; runtime-registered ones do not survive
+  the plugin.
+- See ADR 0255, `07-plugins/02-plugin-manifest-schema.md`,
+  `07-plugins/04-plugin-security.md`, and ADR 0248 §1 (superseded for path
+  resolution).

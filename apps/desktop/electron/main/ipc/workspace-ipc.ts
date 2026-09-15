@@ -8,6 +8,9 @@ import {
   IPC,
   type ComposerCommand,
   type ComposerPasteFile,
+  type FsChatRefProjectRoot,
+  type FsChatRefResolveResult,
+  type ProjectGroupRecord,
 } from "@pi-desktop/shared";
 import {
   loadComposerTemplates,
@@ -32,7 +35,14 @@ import {
   resolveOpenablePath,
   resolveRealOpenablePath,
 } from "../fs-panel";
+import { resolveChatFileRef } from "../chat-ref-resolve";
 import { getWorkspaceFileIndex } from "../fs-index";
+import {
+  projectFolderPaths,
+  refreshProjectGroups,
+  rememberProjectGroups,
+  workspaceRootsFor,
+} from "../workspace-roots";
 import { BROWSER_PLUGIN_ID, type BrowserHost } from "../browser-host";
 import type { AgentSidecar } from "../agent-sidecar";
 import type { HostProcess } from "../host-process";
@@ -172,7 +182,13 @@ export function registerWorkspaceIpc({
   });
   handle(IPC.invoke.projectGroupList, async () => {
     if (!host) throw new Error("host unavailable");
-    return host.call("project.groups.list");
+    const result = (await host.call("project.groups.list")) as {
+      groups?: ProjectGroupRecord[];
+    };
+    // Main answers the plugin-facing workspace payload from this snapshot, so
+    // the one authoritative list call is what keeps it warm.
+    rememberProjectGroups(result?.groups ?? null);
+    return result;
   });
   handle(
     IPC.invoke.projectGroupCreate,
@@ -200,7 +216,12 @@ export function registerWorkspaceIpc({
           errorCode: ErrorCodes.INVALID_ARGUMENT,
         });
       }
-      return host.call("project.group.create", { name, folders: safeFolders });
+      const created = await host.call("project.group.create", {
+        name,
+        folders: safeFolders,
+      });
+      void refreshProjectGroups(host);
+      return created;
     },
   );
   handle(
@@ -230,11 +251,13 @@ export function registerWorkspaceIpc({
           errorCode: ErrorCodes.INVALID_ARGUMENT,
         });
       }
-      return host.call("project.group.update", {
+      const updated = await host.call("project.group.update", {
         groupId,
         name,
         folders: safeFolders,
       });
+      void refreshProjectGroups(host);
+      return updated;
     },
   );
   handle(
@@ -248,7 +271,9 @@ export function registerWorkspaceIpc({
           errorCode: ErrorCodes.INVALID_ARGUMENT,
         });
       }
-      return host.call("project.group.rename", { groupId, name });
+      const renamed = await host.call("project.group.rename", { groupId, name });
+      void refreshProjectGroups(host);
+      return renamed;
     },
   );
   handle(IPC.invoke.projectGroupMemoryGet, async (input: { groupId?: unknown } = {}) => {
@@ -656,10 +681,55 @@ export function registerWorkspaceIpc({
     return { entries: await listDir(root, String(input.path ?? "")) };
   });
 
-  const fsExtraRoots = () => [
+  /**
+   * Roots the host file tab may read besides the workspace: the session stores,
+   * plus every *other* folder of the project group. ADR 0249 §5 makes a
+   * registered group root a valid containment base, so a chat reference that
+   * resolves in a sibling folder still opens instead of failing containment —
+   * which is what a user without the file view would otherwise see.
+   */
+  const fsExtraRoots = async (workspaceRoot: string | null): Promise<string[]> => [
     join(dataDir, "scratch"),
     join(dataDir, "attachments"),
+    ...projectFolderPaths(workspaceRoot).filter((path) => path !== workspaceRoot),
   ];
+
+  /**
+   * The session's own scratch directory (ADR 0124), or null when the session
+   * is not known. host-core owns that layout, so it is asked rather than
+   * re-derived here.
+   */
+  const sessionScratchRoot = async (
+    sessionId: string | undefined,
+  ): Promise<string | null> => {
+    const id = String(sessionId ?? "").trim();
+    if (!id || !host) return null;
+    try {
+      const result = await host.call<{ path: string }>("session.getScratchPath", {
+        sessionId: id,
+      });
+      const path = String(result?.path ?? "").trim();
+      return path || null;
+    } catch {
+      return null;
+    }
+  };
+
+  /**
+   * The open project as a whole, for completion and containment: its group's
+   * folders primary-first, or just the workspace when no group resolves. A
+   * single-folder project is a one-element list, so callers never special-case.
+   */
+  const projectRootsFor = (
+    workspaceRoot: string | null,
+  ): FsChatRefProjectRoot[] => {
+    const { roots } = workspaceRootsFor(workspaceRoot);
+    if (roots && roots.length > 0) return roots;
+    if (!workspaceRoot) return [];
+    const name =
+      workspaceRoot.split(/[\\/]/).filter(Boolean).at(-1) ?? workspaceRoot;
+    return [{ path: workspaceRoot, name, primary: true }];
+  };
 
   const optionalWorkspaceRoot = async (): Promise<string | null> => {
     try {
@@ -684,7 +754,7 @@ export function registerWorkspaceIpc({
       return readOpenableFile(
         requested,
         workspaceRoot,
-        fsExtraRoots(),
+        await fsExtraRoots(workspaceRoot),
         input.mimeType,
       );
     },
@@ -693,11 +763,12 @@ export function registerWorkspaceIpc({
   handle(
     IPC.invoke.fsReadImageDataUrl,
     async (input: { ref?: string; mimeType?: string } = {}) => {
+      const workspaceRoot = await optionalWorkspaceRoot();
       const requested = String(input.ref ?? "").trim();
       return readOpenableImage(
         requested,
-        await optionalWorkspaceRoot(),
-        fsExtraRoots(),
+        workspaceRoot,
+        await fsExtraRoots(workspaceRoot),
         input.mimeType,
       );
     },
@@ -716,7 +787,7 @@ export function registerWorkspaceIpc({
     const target = await resolveRealOpenablePath(
       requested,
       workspaceRoot,
-      fsExtraRoots(),
+      await fsExtraRoots(workspaceRoot),
     );
     if (!target) {
       throw Object.assign(new Error("path outside allowed roots"), {
@@ -729,7 +800,11 @@ export function registerWorkspaceIpc({
 
   handle(IPC.invoke.fsOpen, async (input: { path?: string } = {}) => {
     const workspaceRoot = await optionalWorkspaceRoot();
-    const target = resolveOpenablePath(String(input.path ?? ""), workspaceRoot, fsExtraRoots());
+    const target = resolveOpenablePath(
+      String(input.path ?? ""),
+      workspaceRoot,
+      await fsExtraRoots(workspaceRoot),
+    );
     if (!target) {
       throw Object.assign(new Error("path is not openable"), {
         errorCode: ErrorCodes.INVALID_ARGUMENT,
@@ -745,5 +820,31 @@ export function registerWorkspaceIpc({
     if (!root) return { entries: [], truncated: false };
     return getWorkspaceFileIndex(root);
   });
+
+  /**
+   * Resolve a file reference from chat to a real file (D320 follow-up).
+   * The renderer knows the workspace but not where a session keeps its scratch
+   * files, and completion needs a filesystem walk, so every root is resolved
+   * here. Root order is the product contract inside `resolveChatFileRef`: the
+   * whole project first — its group's folders, primary first — session scratch
+   * second, attachments last.
+   */
+  handle(
+    IPC.invoke.fsResolveRef,
+    async (
+      input: { ref?: string; sessionId?: string } = {},
+    ): Promise<FsChatRefResolveResult> => {
+      const ref = String(input.ref ?? "").trim();
+      if (!ref) return { match: null };
+      const workspaceRoot = await optionalWorkspaceRoot();
+      return {
+        match: await resolveChatFileRef(ref, {
+          project: projectRootsFor(workspaceRoot),
+          scratch: await sessionScratchRoot(input.sessionId),
+          attachments: join(dataDir, "attachments"),
+        }),
+      };
+    },
+  );
 
 }

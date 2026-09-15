@@ -1,7 +1,13 @@
 import { session, shell, WebContentsView, type BrowserWindow } from "electron";
-import { pathToFileURL } from "node:url";
 import { join } from "node:path";
 import { parseAllowedExternalUrl } from "./safe-open-external";
+import {
+  PLUGIN_VIEW_LOCATION_EVENT,
+  PLUGIN_VIEW_LOCATION_PARAM,
+  normalizeLocation,
+  planLocationDelivery,
+  viewEntryUrl,
+} from "./plugin-view-location";
 import {
   applyPluginEgressPolicy,
   pluginSessionPartition,
@@ -12,6 +18,13 @@ import {
   PLUGIN_PANEL_LOCALE_ARGUMENT_PREFIX,
   type PluginPanelTheme,
 } from "../shared/plugin-panel-chrome";
+
+/**
+ * Re-exported so the location contract stays addressable through the module
+ * that owns the view lifecycle. The rules themselves live in
+ * `plugin-view-location.ts`, free of Electron, so they stay unit-testable.
+ */
+export { PLUGIN_VIEW_LOCATION_EVENT, PLUGIN_VIEW_LOCATION_PARAM, viewEntryUrl };
 
 /**
  * Plugin-contributed work panel views (ADR 0104).
@@ -41,6 +54,17 @@ export type PluginViewOpenRequest = {
   htmlPath: string;
   /** Egress allowlist from `manifest.net.domains`. */
   netDomains?: readonly string[];
+  /**
+   * What this view should show, when the opener knows (D320 follow-up).
+   *
+   * A work-panel view is opened either from the tool launcher, which has no
+   * specific subject, or from a chat file reference, which does. The value is
+   * opaque to the host: it travels as the entry URL's `piViewOpen` query
+   * parameter on creation and as the `view:open` event afterwards, and the
+   * plugin decides what it means. `pi.browser` uses its own chrome channel
+   * instead and never receives this.
+   */
+  location?: string;
 };
 
 export type PluginViewBounds = {
@@ -54,8 +78,18 @@ type LiveView = {
   key: string;
   pluginId: string;
   view: WebContentsView;
+  /** Absolute path to this view's HTML entry; its URL is rebuilt from it. */
+  htmlPath: string;
   /** Monotonic counter; lowest value is the least recently shown. */
   usedAt: number;
+  /**
+   * What this view should show, or null when nothing specific was requested.
+   * The page reads it from its own URL, so this is also the value a later
+   * request is re-delivered against.
+   */
+  location: string | null;
+  /** False until the first document finished loading. */
+  loaded: boolean;
 };
 
 export function pluginViewKey(pluginId: string, viewId: string): string {
@@ -133,28 +167,71 @@ export class PluginViewHost {
    * Create the view if needed and mark it as the most recently used. Nothing is
    * attached here: the renderer follows with `setBounds` / `setVisible` once it
    * has measured the panel surface.
+   *
+   * Re-opening an already live view re-delivers its location — a second click
+   * on the same chat reference is a request to show that file, not a cache
+   * hit — and never tears the view down, so unsaved work inside a plugin is
+   * not discarded by navigation.
    */
   open(request: PluginViewOpenRequest): void {
     const key = pluginViewKey(request.pluginId, request.viewId);
+    const location = normalizeLocation(request.location);
     const existing = this.views.get(key);
     if (existing) {
       existing.usedAt = ++this.clock;
+      this.deliverLocation(existing, location);
       return;
     }
     const view = this.createView(request);
-    this.views.set(key, {
+    const entry: LiveView = {
       key,
       pluginId: request.pluginId,
       view,
+      htmlPath: request.htmlPath,
       usedAt: ++this.clock,
+      location,
+      loaded: false,
+    };
+    this.views.set(key, entry);
+    view.webContents.once("did-finish-load", () => {
+      entry.loaded = true;
     });
-    void view.webContents
-      .loadURL(pathToFileURL(request.htmlPath).toString())
+    this.load(entry);
+    this.evictBeyondLimit();
+  }
+
+  /**
+   * Hand a view the subject it should show.
+   *
+   * A document that has not finished loading cannot have subscribed to the
+   * event yet, so the location is written into its URL and the load restarted;
+   * nothing has run, so nothing is lost. Once loaded, the view subscribes and
+   * is told through the same preload event channel as every other panel event.
+   */
+  private deliverLocation(entry: LiveView, location: string | null): void {
+    const delivery = planLocationDelivery(entry.location, location, entry.loaded);
+    if (delivery.kind === "none") return;
+    // The page reads its subject from the URL it was loaded with, so the
+    // remembered value has to follow every accepted request.
+    entry.location = delivery.location;
+    if (delivery.kind === "reload") {
+      this.load(entry);
+      return;
+    }
+    const wc = entry.view.webContents;
+    if (wc.isDestroyed()) return;
+    wc.send(`pi-plugin-panel-event:${PLUGIN_VIEW_LOCATION_EVENT}`, {
+      path: delivery.location,
+    });
+  }
+
+  private load(entry: LiveView): void {
+    void entry.view.webContents
+      .loadURL(viewEntryUrl(entry.htmlPath, entry.location))
       .catch(() => {
         // Load failures surface to the user as the tab's empty state; the view
         // stays cached so a plugin reload can retry into the same slot.
       });
-    this.evictBeyondLimit();
   }
 
   setBounds(bounds: PluginViewBounds): void {

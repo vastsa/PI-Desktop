@@ -47,18 +47,10 @@
   width: var(--ds-settings-nav-width);
   flex: 0 0 var(--ds-settings-nav-width);
   /* D297: no right rule; the rail's own tone separates it from the content. */
-  background: var(--ds-bg-sidebar);
+  background: var(--ds-settings-rail-bg);
   padding: 0;
   gap: 0;
   overflow: hidden;
-}
-
-:root[data-theme="light"] .settings-shell-full .settings-nav {
-  background: #f4f4f4;
-}
-
-:root[data-theme="dark"] .settings-shell-full .settings-nav {
-  background: #000000;
 }
 
 /*
@@ -128,20 +120,11 @@
   height: 32px;
   border: 0;
   border-radius: var(--radius-full);
-  background: var(--ds-bg-primary);
+  background: var(--ds-settings-field-bg);
   color: var(--ds-text-primary);
   padding: 0 12px 0 30px;
   font-size: var(--text-md);
   outline: none;
-}
-
-/* D297: the field is a raised fill on the rail, not a ringed box. */
-:root[data-theme="light"] .settings-search {
-  background: #ffffff;
-}
-
-:root[data-theme="dark"] .settings-search {
-  background: #212121;
 }
 
 .settings-search::placeholder {
@@ -202,17 +185,8 @@
 }
 
 .settings-nav-item.active {
-  background: color-mix(in oklab, var(--ds-text-primary) 8%, transparent);
+  background: var(--ds-settings-nav-active);
   color: var(--ds-text-primary);
-}
-
-:root[data-theme="light"] .settings-nav-item.active {
-  /* Gold active pill ~#d4d4d4 on #f4f4f4 rail */
-  background: color-mix(in oklab, #1a1c1f 12%, #ffffff);
-}
-
-:root[data-theme="dark"] .settings-nav-item.active {
-  background: color-mix(in oklab, var(--gray-0) 10%, transparent);
 }
 
 .settings-nav-icon {
@@ -245,6 +219,13 @@
 .settings-content-inner {
   width: 100%;
   margin: 0;
+}
+
+/* The renderer owns this measured hole; the sandboxed WebContentsView paints
+   only here, never over the rail, titlebar, or native window controls. */
+.plugin-settings-destination {
+  min-height: min(720px, calc(100vh - 150px));
+  width: 100%;
 }
 
 .settings-section-title {
@@ -728,8 +709,7 @@
 }
 
 :root[data-theme="light"] .settings-toggle.on .settings-toggle-thumb {
-  /* On-state track is near-black in light; force a white knob. */
-  background: #ffffff;
+  /* Preserve the light on-state shadow; its fill comes from the knob token. */
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
 }
 
@@ -1250,7 +1230,7 @@
   align-items: center;
   gap: 6px;
   border-radius: var(--radius-full);
-  background: color-mix(in oklab, var(--ds-text-primary) 5%, transparent);
+  background: var(--ds-field-inset-bg);
   padding: 0 11px;
   color: var(--ds-text-muted);
   transition:
@@ -1259,17 +1239,15 @@
 }
 
 .agent-capability-search-wrap:focus-within {
-  background: color-mix(in oklab, var(--ds-text-primary) 7%, transparent);
+  background: var(--ds-field-inset-focus-bg);
   box-shadow: 0 0 0 1px color-mix(in oklab, var(--ds-accent) 45%, transparent);
 }
 
 :root[data-theme="light"] .agent-capability-search-wrap {
-  background: #f3f3f3;
   box-shadow: none;
 }
 
 :root[data-theme="light"] .agent-capability-search-wrap:focus-within {
-  background: #ffffff;
   box-shadow: 0 0 0 1px color-mix(in oklab, var(--ds-accent) 35%, transparent);
 }
 

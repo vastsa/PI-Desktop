@@ -489,7 +489,7 @@ export function useAppShellRuntime() {
         // Appended last so plugin overrides win over the base token sheet.
         document.head.append(style);
       }
-      style.textContent = pluginTheme.css;
+      style.textContent = `${pluginTheme.css}\n${pluginTheme.variablesCss ?? ""}`;
       document.documentElement.dataset.pluginTheme = pluginTheme.id;
     } else {
       style?.remove();

@@ -63,7 +63,7 @@ test("the file view is a sandboxed page over the public bridge", () => {
 
 test("the vendored copy stays traceable to its upstream release", () => {
   assert.match(upstream, /github\.com\/Tioit-Wang\/pi-desktop-plugin-file-manager/);
-  assert.match(upstream, /f5f264803f626334d56a812e3b50ce41edcb8537/);
+  assert.match(upstream, /d36ebe9f7fb82ee71e87670b0a65403660b18a00/);
   // The version the manifest carries and the tag the record names are the same
   // release: a bump that skips the other one is a sync mistake.
   const tag = upstream.match(/`v(\d+\.\d+\.\d+)`/);

@@ -75,7 +75,7 @@ test("custom API format sits beside the key, not in a disclosure", () => {
     setupSource.indexOf("<ModelSelectionPanes"),
   );
   assert.match(fieldsBlock, /settings\.apiStyle"/);
-  assert.match(fieldsBlock, /API_STYLES\.filter/);
+  assert.match(fieldsBlock, /CUSTOM_PROVIDER_API_STYLES\.map/);
   assert.doesNotMatch(fieldsBlock, /settings\.apiStyleDerived/);
   assert.match(fieldsBlock, /<ServicePicker/);
   assert.match(pickerSource, /provider-chosen-advanced-toggle/);

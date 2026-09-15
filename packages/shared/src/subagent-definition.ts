@@ -49,6 +49,8 @@ export type SubagentDefinition = {
   inheritTools?: boolean;
   /** Provider/model this definition pins, when it pins one. */
   model?: SubagentModelPin;
+  /** Ordered, definition-scoped alternatives after a provider failure. */
+  fallbackModels?: SubagentModelPin[];
   /**
    * Reasoning level for the delegate, clamped against the model in main.
    * omit leaves the provider's own default untouched.
@@ -403,6 +405,13 @@ export function parseSubagentDefinition(
   }
 
   const model = parseModelPin(frontmatter, errors);
+  const fallbackModels: SubagentModelPin[] = [];
+  for (const value of asList(frontmatter.get("fallbackmodels"))) {
+    const pin = parseModelPin(new Map([["model", value]]), errors);
+    if (pin && !fallbackModels.some((entry) => subagentModelKey(entry) === subagentModelKey(pin))) {
+      fallbackModels.push(pin);
+    }
+  }
 
   const declaredThinking = asScalar(frontmatter.get("thinkinglevel"));
   let thinkingLevel: SubagentThinkingLevel | undefined;
@@ -466,6 +475,7 @@ export function parseSubagentDefinition(
       tools,
       ...(inheritTools ? { inheritTools: true } : {}),
       ...(model ? { model } : {}),
+      ...(fallbackModels.length ? { fallbackModels } : {}),
       ...(thinkingLevel ? { thinkingLevel } : {}),
       ...(permission ? { permission } : {}),
       ...(maxTokens !== undefined ? { maxTokens } : {}),
@@ -611,10 +621,12 @@ export function subagentPinnedProviders(
 ): string[] {
   const providers: string[] = [];
   for (const definition of definitions) {
-    const providerId = definition.model?.providerId;
-    if (!providerId || providers.includes(providerId)) continue;
-    if (providers.length >= MAX_SUBAGENT_PROVIDERS) break;
-    providers.push(providerId);
+    for (const pin of [definition.model, ...(definition.fallbackModels ?? [])]) {
+      const providerId = pin?.providerId;
+      if (!providerId || providers.includes(providerId)) continue;
+      if (providers.length >= MAX_SUBAGENT_PROVIDERS) return providers;
+      providers.push(providerId);
+    }
   }
   return providers;
 }

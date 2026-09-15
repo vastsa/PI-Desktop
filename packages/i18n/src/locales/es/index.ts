@@ -305,6 +305,7 @@ export const es = {
     "errorProvider": "Proveedor de IA",
     "errorModel": "Modelo",
     "previewFile": "Vista previa en el panel lateral",
+    "fileRefMissing": "Ningún archivo coincide con {{name}}",
     "previewUrl": "Abrir en el navegador lateral",
     "openFile": "Abrir con aplicación predeterminada",
     "retry": "Regenerar",
@@ -663,6 +664,7 @@ sklm: {
     "groupAgent": "Agente",
     "groupWorkspace": "Espacio de trabajo",
     "groupSystem": "Sistema",
+    "groupExtensions": "Extensiones",
     "nav": {
       "general": "General",
       "ai": "AI",
@@ -1031,6 +1033,8 @@ sklm: {
     "apiStyleAnthropic": "Mensajes antrópicos",
     "apiStyleGoogle": "IA generativa de Google",
     "apiStyleCodexResponses": "OpenAI Codex (ChatGPT)",
+    apiStyleLegacyAccount: "Este formato guardado requiere una cuenta del proveedor. No cambia hasta que elijas otro formato.",
+    apiStyleChooseCustom: "Este formato requiere una cuenta del proveedor. Elige un formato de API compatible para guardar este servicio.",
     "apiStylePiMessages": "Mensajes Pi (Radius)",
     "close": "Cerrar",
     "vendorAccounts": "Cuentas de proveedores",
@@ -1961,6 +1965,12 @@ sklm: {
       "errorTooBig": "El documento supera el límite de tamaño."
     },
     "subagents": {
+      fallbackModels: "Modelos de respaldo",
+      fallbackModelsHint: "Se prueban en orden cuando fallan los reintentos. Se conservan los resultados de herramientas; Detener cancela toda la tarea.",
+      fallbackAdd: "Añadir modelo de respaldo",
+      fallbackMoveUp: "Subir {{model}}",
+      fallbackMoveDown: "Bajar {{model}}",
+      fallbackRemove: "Eliminar {{model}}",
       "title": "Subagentes",
       "add": "Nuevo subagente",
       "addTitle": "Nuevo subagente",

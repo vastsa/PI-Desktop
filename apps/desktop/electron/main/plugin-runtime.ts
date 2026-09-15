@@ -8,6 +8,7 @@ import {
   statSync,
   rmSync,
 } from "node:fs";
+import type { Stats } from "node:fs";
 import { open as openFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -30,10 +31,14 @@ import {
   pluginToolName,
   resolveFsAccess,
   resolveMcpRefs,
+  isExternalThemeAssetPath,
   normalizeThemeAssetPath,
   sanitizeThemeCss,
   skillIdFromPath,
   themeAssetUrl,
+  formatPluginThemeVariables,
+  normalizePluginThemeVariableValues,
+  validatePluginThemeVariables,
   THEME_ASSET_MAX_BYTES,
   THEME_CSS_MAX_BYTES,
   WINDOW_BACKGROUND_COLOR_PATTERN,
@@ -55,6 +60,7 @@ import {
   type PluginServiceContrib,
   type PluginSettingContrib,
   type PluginSkillContrib,
+  type PluginThemeVariableContrib,
 } from "@pi-desktop/plugin-sdk";
 import {
   isAllowedKeybinding,
@@ -62,6 +68,7 @@ import {
   normalizeKeybinding,
   type PluginServiceStatus,
   type PluginSettingDefinition,
+  type PluginWorkspaceInfo,
 } from "@pi-desktop/shared";
 import {
   previewFile,
@@ -159,6 +166,8 @@ export type RegisteredPluginTheme = {
   /** Palette the overrides layer on; drives `data-theme` in the renderer. */
   base: "light" | "dark";
   css: string;
+  /** Host-generated declarations from manifest-validated variable values. */
+  variablesCss?: string;
   /**
    * Native window background while this theme is selected, per resolved
    * palette. Absent unless the plugin declared it and holds
@@ -236,6 +245,11 @@ export type PluginDesktopConsentRequest = {
 
 export type PluginHostServices = {
   getWorkspacePath: () => string | null;
+  /**
+   * The workspace plus the project group behind it, when the caller can supply
+   * it. Additive: `workspace.get` falls back to `getWorkspacePath` alone.
+   */
+  getWorkspaceInfo?: () => PluginWorkspaceInfo | null;
   /** The set of `contributes.agentExtensions` modules changed (load/unload). */
   agentExtensionsChanged?: () => void;
   getLocale?: () => string;
@@ -390,6 +404,7 @@ const HOST_API_ALLOWLIST = new Set([
   "themes.upsert",
   "themes.remove",
   "themes.list",
+  "themes.setVariables",
   "plugin.getSettings",
   "plugin.setSettings",
   "plugin.getDataPath",
@@ -488,6 +503,7 @@ const MAX_SKILL_DESCRIPTION_CHARS = 240;
  * Namespaced form `plugin:<pluginId>:<themeId>` is built by `pluginThemeId`.
  */
 const THEME_LOCAL_ID_PATTERN = /^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/;
+const THEME_VARIABLES_SETTINGS_KEY = "__pi_themeVariables";
 /** A plugin may bring at most this many MCP servers. */
 const MAX_MCP_SERVERS_PER_PLUGIN = 8;
 /** A plugin may keep at most this many resident services alive. */
@@ -857,7 +873,7 @@ export function resolveInsidePlugin(pluginPath: string, relative: string): strin
  * referencing one is refused instead of served from a half-honoured list.
  */
 function resolveThemeAssets(
-  pluginPath: string,
+  _pluginPath: string,
   declared: readonly string[],
 ): { files: Map<string, string>; dropped: number } {
   const files = new Map<string, string>();
@@ -865,13 +881,16 @@ function resolveThemeAssets(
   let total = 0;
   let dropped = 0;
   for (const asset of declared) {
+    // A theme asset is an absolute path; `normalizeThemeAssetPath` rejects
+    // package-relative references, so nothing is resolved against the package
+    // root any more. The plugin is the one naming the file.
     const normalized = normalizeThemeAssetPath(asset);
-    if (!normalized || normalized.split("/").includes("node_modules")) {
+    if (!normalized) {
       dropped += 1;
       continue;
     }
-    const absolute = resolveInsidePlugin(pluginPath, normalized);
-    if (!absolute || !existsSync(absolute)) {
+    const absolute = normalized;
+    if (!existsSync(absolute)) {
       dropped += 1;
       continue;
     }
@@ -1076,6 +1095,36 @@ export class PluginRuntime {
    * plugin, an undeclared path, and a path outside the package all answer null
    * for the same reason.
    */
+  /**
+   * Serve an absolute local file to a theme that referenced it by path.
+   *
+   * A runtime-registered theme has no manifest entry to declare assets in, so the
+   * reference itself is the authorization: an absolute path on the extension
+   * whitelist that exists on disk is added to this plugin's asset map for as long
+   * as the plugin stays loaded (unloading a plugin clears the whole map).
+   *
+   * The upsert is a message, not a file write, so a theme can pick up a new image
+   * without the plugin reloading.
+   */
+  private externalThemeAsset(loaded: LoadedPlugin, target: string): string | null {
+    const key = normalizeThemeAssetPath(target);
+    if (!key || !isExternalThemeAssetPath(key)) return null;
+    let stats: Stats;
+    try {
+      stats = statSync(key);
+    } catch {
+      return null;
+    }
+    if (!stats.isFile() || stats.size > THEME_ASSET_MAX_BYTES) return null;
+    let registry = this.themeAssets.get(loaded.manifest.id);
+    if (!registry) {
+      registry = new Map();
+      this.themeAssets.set(loaded.manifest.id, registry);
+    }
+    registry.set(key, key);
+    return themeAssetUrl(loaded.manifest.id, key);
+  }
+
   resolveThemeAsset(pluginId: string, assetPath: string): string | null {
     const normalized = normalizeThemeAssetPath(assetPath);
     if (!normalized) return null;
@@ -1695,6 +1744,12 @@ export class PluginRuntime {
         return { ok: true };
       case "themes.list":
         return api.themes.list();
+      case "themes.setVariables":
+        await api.themes.setVariables(
+          String(payload?.themeId ?? ""),
+          (payload?.values as Record<string, number | string> | undefined) ?? {},
+        );
+        return { ok: true };
       case "workspace.get":
         return api.workspace.get();
       case "models.list":
@@ -2516,6 +2571,9 @@ export class PluginRuntime {
         label: String(contrib.label ?? "").trim() || themeId,
         base: contrib.base === "light" ? "light" : "dark",
         css: sanitized.css,
+        ...(contrib.variables?.length
+          ? { variablesCss: this.themeVariablesCss(loaded, id, contrib.variables) }
+          : {}),
         ...(windowBackground ? { windowBackground } : {}),
       });
       accepted += 1;
@@ -2528,6 +2586,41 @@ export class PluginRuntime {
         count: accepted,
         ts: Date.now(),
       });
+    }
+  }
+
+  private themeVariablesCss(
+    loaded: LoadedPlugin,
+    themeId: string,
+    declarations: readonly PluginThemeVariableContrib[],
+  ): string {
+    const values = this.readThemeVariableValues(loaded, themeId);
+    try {
+      return formatPluginThemeVariables(
+        themeId,
+        declarations,
+        normalizePluginThemeVariableValues(declarations, values),
+      );
+    } catch {
+      // An old/corrupt private record cannot make a declared theme unavailable.
+      return formatPluginThemeVariables(
+        themeId,
+        declarations,
+        normalizePluginThemeVariableValues(declarations, {}),
+      );
+    }
+  }
+
+  private readThemeVariableValues(loaded: LoadedPlugin, themeId: string): Record<string, unknown> {
+    try {
+      const file = join(this.pluginDataDir(loaded.manifest.id), "settings.json");
+      const settings = existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : {};
+      const all = settings?.[THEME_VARIABLES_SETTINGS_KEY];
+      return all && typeof all === "object" && !Array.isArray(all) && all[themeId] && typeof all[themeId] === "object"
+        ? all[themeId] as Record<string, unknown>
+        : {};
+    } catch {
+      return {};
     }
   }
 
@@ -3402,6 +3495,67 @@ export class PluginRuntime {
   }
 
   /**
+   * Resolve a request that names a file in another folder of the open project
+   * (ADR 0249, ADR 0252, ADR 0253). A view browsing a sibling folder can only
+   * address that folder's entries absolutely, and the two host-mediated actions
+   * it offers for them (fs.openDefault, fs.reveal) are the only requests that
+   * arrive that way. The widening is narrow: only for a plugin whose declared
+   * root is the workspace, only for an absolute path already inside one of the
+   * project's registered folder roots (resolved through links, so a symlink
+   * cannot carry it out of the folder that contains it), with the declared scope
+   * matched against the path relative to the folder that answered, and with the
+   * same protected-path and credential guards every other request passes. No
+   * file content travels back through this route: it asks the OS to show a file
+   * the user right-clicked. Null means it is not such a request, and the caller
+   * falls back to the ordinary rooted resolution and its refusal.
+   */
+  private async resolveRegisteredFolderRequest(
+    loaded: LoadedPlugin,
+    requestPath: string,
+  ): Promise<{ full: string; rel: string; root: string } | null> {
+    if (!isAbsolute(String(requestPath ?? ""))) return null;
+    const rule: PluginFsRule = loaded.fsPolicy.read ?? { root: "workspace", scope: [] };
+    if (rule.root !== "workspace") return null;
+    const roots = (this.services.getWorkspaceInfo?.()?.roots ?? [])
+      .map((entry) => entry?.path)
+      .filter((path): path is string => Boolean(path));
+    if (roots.length === 0) return null;
+    this.assertPermission(loaded, "fs.read");
+
+    const wanted = resolve(String(requestPath));
+    const matches: Array<{ full: string; rel: string; root: string }> = [];
+    for (const candidate of roots) {
+      const base = resolve(candidate);
+      const lexical = relative(base, wanted);
+      if (!lexical || lexical.startsWith("..") || isAbsolute(lexical)) continue;
+      const resolved = await resolveRealPathWithinRoot(base, lexical);
+      if (!resolved) continue;
+      const rootReal = realpathOrSelf(base);
+      matches.push({
+        full: resolved,
+        rel: normalizeFsPath(relative(rootReal, resolved)),
+        root: rootReal,
+      });
+    }
+    if (matches.length === 0) return null;
+    // Folders may be nested in one another; the innermost is the one the user is
+    // actually looking at.
+    const hit = matches.reduce((best, current) => (current.rel.length < best.rel.length ? current : best));
+    if (this.isProtectedPath(hit.full) || isDeniedFsPath(hit.rel)) {
+      this.auditFs(loaded, "read", requestPath, "PERMISSION_DENIED");
+      throw apiError(
+        "PERMISSION_DENIED",
+        `credentials and repository internals are never readable by plugins: ${hit.rel}`,
+      );
+    }
+    if (!isFsPathInScope(hit.rel, rule.scope)) {
+      this.auditFs(loaded, "read", requestPath, "PERMISSION_DENIED");
+      throw apiError("PERMISSION_DENIED", `outside manifest.fs.read.scope: ${hit.rel}`);
+    }
+    return hit;
+  }
+
+  /**
    * Whether the path lies under something the host keeps for itself. Both
    * sides are resolved through links, or a barrier reached the other way
    * around simply would not match.
@@ -3618,7 +3772,9 @@ export class PluginRuntime {
           const base = input?.base === "light" ? "light" : "dark";
           const label = String(input?.label ?? "").trim() || themeId;
           const rawCss = String(input?.css ?? "");
-          const sanitized = sanitizeThemeCss(rawCss, THEME_CSS_MAX_BYTES);
+          const sanitized = sanitizeThemeCss(rawCss, THEME_CSS_MAX_BYTES, (target) =>
+            this.externalThemeAsset(loaded, target),
+          );
           if (!sanitized.ok) {
             throw apiError("INVALID_ARGUMENT", sanitized.error);
           }
@@ -3671,6 +3827,48 @@ export class PluginRuntime {
               base: theme.base,
             }));
         },
+        setVariables: async (themeId: string, values: Record<string, number | string>) => {
+          this.assertPermission(loaded, "ui.theme");
+          const localThemeId = String(themeId ?? "").replace(`plugin:${pluginId}:`, "");
+          const contribution = (loaded.manifest.contributes?.themes ?? []).find(
+            (theme) => theme.id === localThemeId,
+          );
+          if (!contribution) throw apiError("NOT_FOUND", `theme not found: ${themeId}`);
+          const declarations = contribution.variables ?? [];
+          if (!declarations.length) throw apiError("INVALID_ARGUMENT", "theme declares no runtime variables");
+          let patch: Record<string, number | string>;
+          try {
+            patch = validatePluginThemeVariables(declarations, values);
+          } catch (error) {
+            throw apiError("INVALID_ARGUMENT", error instanceof Error ? error.message : "invalid theme variables");
+          }
+          const id = pluginThemeId(pluginId, localThemeId);
+          // Read the raw private record here. `plugin.getSettings()` intentionally
+          // removes host-reserved state before exposing it to plugin code.
+          const settingsFile = join(this.pluginDataDir(pluginId), "settings.json");
+          let current: Record<string, unknown> = {};
+          try {
+            if (existsSync(settingsFile)) current = JSON.parse(readFileSync(settingsFile, "utf8"));
+          } catch {
+            current = {};
+          }
+          const existing = current[THEME_VARIABLES_SETTINGS_KEY];
+          const stored = existing && typeof existing === "object" && !Array.isArray(existing) ? existing as Record<string, unknown> : {};
+          const previous = stored[id] && typeof stored[id] === "object" && !Array.isArray(stored[id]) ? stored[id] as Record<string, unknown> : {};
+          const next = {
+            ...current,
+            [THEME_VARIABLES_SETTINGS_KEY]: { ...stored, [id]: { ...previous, ...patch } },
+          };
+          const dir = this.pluginDataDir(pluginId);
+          mkdirSync(dir, { recursive: true });
+          writeFileSync(settingsFile, JSON.stringify(next, null, 2), "utf8");
+          const registered = this.themes.get(id);
+          if (registered) {
+            registered.variablesCss = this.themeVariablesCss(loaded, id, declarations);
+            this.services.onPluginThemesChanged?.(pluginId);
+          }
+          this.services.audit?.({ pluginId, api: "themes.setVariables", ok: true, themeId: localThemeId, ts: Date.now() });
+        },
       },
       plugin: {
         getId: () => pluginId,
@@ -3683,7 +3881,9 @@ export class PluginRuntime {
           const file = join(dataPath(), "settings.json");
           if (!existsSync(file)) return defaults;
           try {
-            return { ...defaults, ...JSON.parse(readFileSync(file, "utf8")) };
+            const stored = JSON.parse(readFileSync(file, "utf8"));
+            if (stored && typeof stored === "object") delete stored[THEME_VARIABLES_SETTINGS_KEY];
+            return { ...defaults, ...stored };
           } catch {
             return defaults;
           }
@@ -3755,6 +3955,11 @@ export class PluginRuntime {
       },
       workspace: {
         get: async () => {
+          // The enriched payload carries the project group behind the visible
+          // workspace (ADR 0252); the path-only fallback keeps `get` working for
+          // any caller whose services never bound the richer provider.
+          const info = this.services.getWorkspaceInfo?.();
+          if (info !== undefined) return info;
           const path = this.services.getWorkspacePath();
           if (!path) return null;
           return { path, name: path.split(/[\\/]/).filter(Boolean).at(-1) || path };
@@ -4012,11 +4217,9 @@ export class PluginRuntime {
           return preview;
         },
         openDefault: async (pathFromRoot: string) => {
-          const { full, rel } = await this.resolveFsRequest(
-            loaded,
-            "read",
-            pathFromRoot,
-          );
+          const { full, rel } =
+            (await this.resolveRegisteredFolderRequest(loaded, pathFromRoot)) ??
+            (await this.resolveFsRequest(loaded, "read", pathFromRoot));
           if (!statSync(full).isFile()) {
             this.services.audit?.({
               pluginId,
@@ -4050,11 +4253,9 @@ export class PluginRuntime {
           });
         },
         reveal: async (pathFromRoot: string) => {
-          const { full, rel } = await this.resolveFsRequest(
-            loaded,
-            "read",
-            pathFromRoot,
-          );
+          const { full, rel } =
+            (await this.resolveRegisteredFolderRequest(loaded, pathFromRoot)) ??
+            (await this.resolveFsRequest(loaded, "read", pathFromRoot));
           if (!statSync(full).isFile()) {
             this.services.audit?.({
               pluginId,

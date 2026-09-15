@@ -732,14 +732,29 @@ fn theme_contributions_require_permission_and_css() {
 }
 
 #[test]
-fn theme_assets_must_exist_and_stay_on_the_whitelist() {
+fn theme_assets_are_absolute_paths_on_the_whitelist() {
     let dir = tempdir().unwrap();
 
+    // A theme asset is an absolute path, so the files live outside the plugin package.
+    let art = dir.path().join("shared/art");
+    std::fs::create_dir_all(&art).unwrap();
+    std::fs::write(art.join("bg.png"), "png").unwrap();
+    let font_dir = dir.path().join("shared/font");
+    std::fs::create_dir_all(&font_dir).unwrap();
+    std::fs::write(font_dir.join("ui.woff2"), "woff").unwrap();
+    let bg = art.join("bg.png").to_string_lossy().replace('\\', "/");
+    let font = font_dir
+        .join("ui.woff2")
+        .to_string_lossy()
+        .replace('\\', "/");
+
+    // No longer assets: package-relative spellings, escapes, a wrong extension.
     for (name, asset) in [
-        ("outside", "../bg.png"),
-        ("absolute", "/bg.png"),
-        ("wrong-ext", "art/bg.gif"),
-        ("nested", "art/../bg.png"),
+        ("relative", "art/bg.png".to_string()),
+        ("dot-relative", "./art/bg.png".to_string()),
+        ("escape", "../bg.png".to_string()),
+        ("traversal", format!("{bg}/../bg.png")),
+        ("wrong-ext", bg.replace(".png", ".gif")),
     ] {
         let root = dir.path().join(name);
         write_plugin(
@@ -751,56 +766,44 @@ fn theme_assets_must_exist_and_stay_on_the_whitelist() {
             &[("themes/a.css", ":root {}")],
         );
         assert!(
-            read_manifest_err(&root).contains("relative image or font path"),
+            read_manifest_err(&root).contains("absolute image or font path"),
             "{name} was accepted"
         );
     }
 
-    let deps = dir.path().join("deps");
-    write_plugin(
-        &deps,
-        capability_manifest(
-            json!({ "themes": [{ "id": "a", "label": "A", "path": "themes/a.css", "assets": ["node_modules/x/bg.png"] }] }),
-            json!(["ui.theme"]),
-        ),
-        &[("themes/a.css", ":root {}")],
-    );
-    assert!(read_manifest_err(&deps).contains("dependency directory"));
-
+    // An absolute path that is simply not there.
     let missing = dir.path().join("missing");
     write_plugin(
         &missing,
         capability_manifest(
-            json!({ "themes": [{ "id": "a", "label": "A", "path": "themes/a.css", "assets": ["art/bg.png"] }] }),
+            json!({ "themes": [{ "id": "a", "label": "A", "path": "themes/a.css", "assets": [format!("{bg}.gone.png")] }] }),
             json!(["ui.theme"]),
         ),
         &[("themes/a.css", ":root {}")],
     );
     assert!(read_manifest_err(&missing).contains("asset missing"));
 
+    // Two spellings of one file are one asset.
     let duplicated = dir.path().join("duplicated");
     write_plugin(
         &duplicated,
         capability_manifest(
-            json!({ "themes": [{ "id": "a", "label": "A", "path": "themes/a.css", "assets": ["art/bg.png", "./art/bg.png"] }] }),
+            json!({ "themes": [{ "id": "a", "label": "A", "path": "themes/a.css", "assets": [bg.clone(), format!("file://{bg}")] }] }),
             json!(["ui.theme"]),
         ),
-        &[("themes/a.css", ":root {}"), ("art/bg.png", "png")],
+        &[("themes/a.css", ":root {}")],
     );
     assert!(read_manifest_err(&duplicated).contains("twice"));
 
+    // Absolute paths, including the file: spelling, are accepted.
     let ok = dir.path().join("ok");
     write_plugin(
         &ok,
         capability_manifest(
-            json!({ "themes": [{ "id": "a", "label": "A", "path": "themes/a.css", "assets": ["./art/bg.png", "font/ui.woff2"] }] }),
+            json!({ "themes": [{ "id": "a", "label": "A", "path": "themes/a.css", "assets": [bg.clone(), format!("file://{font}")] }] }),
             json!(["ui.theme"]),
         ),
-        &[
-            ("themes/a.css", ":root {}"),
-            ("art/bg.png", "png"),
-            ("font/ui.woff2", "woff"),
-        ],
+        &[("themes/a.css", ":root {}")],
     );
     assert!(PluginManager::read_manifest(&ok).is_ok());
 }

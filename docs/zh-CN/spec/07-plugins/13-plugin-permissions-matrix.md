@@ -125,6 +125,7 @@ Agent，在 Plan 中不可见。主机返回 `PLUGIN_DISABLED_IN_PLAN`
 | `net.fetch` | 访问网络 | 访问网络 |
 | `shell.openExternal` | 打开外部链接 | 打开外部链接 |
 | `ui.theme` | 提供一个主题 | 提供主题 |
+| `ui.settings` | Add a sandboxed Settings entry in Extensions | 在“扩展”中添加沙盒设置项 |
 | `ui.window.appearance` | 设置窗口背景 | 设置窗口背景 |
 | `mcp.server.local` | 运行本地 MCP 服务器 | 运行本地 MCP 服务 |
 | `mcp.server.remote` | 到达远程 MCP 服务器 | 连接远端 MCP 服务 |

@@ -114,6 +114,15 @@ vendor key would be ambiguous, the option uses a unique provider display name;
 if the names also collide, it uses the stored provider id so no configured
 provider disappears from the picker.
 
+The sheet also offers an ordered **Fallback models** list using that same
+configured-model picker. Users can add, move up/down, or remove alternatives.
+Already-selected models are excluded from the add menu. Saved pins that become
+unavailable stay visible and removable; reopening or editing another field
+must not drop them. Clearing the list saves `fallbackModels: []`. Inherit-session
+remains a primary-only choice. The hint explains that alternatives run after
+model retries fail, completed tool results are kept, and Stop cancels the whole
+task. See runtime §5f and ADR subagent-model-fallback.
+
 ### Advanced
 - “Use custom model ID”
 - “Refresh catalog”

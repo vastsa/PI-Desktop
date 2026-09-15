@@ -1,3 +1,5 @@
+mod model_fallbacks;
+
 use crate::activation::ActivationScope;
 use crate::agent_capabilities::{
     capability_dir, file_timestamp, parse_front_matter, slugify, sorted_files, CapabilityLevel,
@@ -47,6 +49,8 @@ pub struct UserSubagentRecord {
     pub tools: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fallback_models: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thinking_level: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -67,6 +71,7 @@ pub struct UserSubagentInput {
     pub body: Option<String>,
     pub tools: Option<Vec<String>>,
     pub model: Option<String>,
+    pub fallback_models: Option<Vec<String>>,
     pub thinking_level: Option<String>,
     pub max_tokens: Option<u32>,
     pub enabled: Option<bool>,
@@ -200,6 +205,7 @@ fn parse_record(path: &Path, state: &CapabilityState) -> Option<UserSubagentReco
             .get("model")
             .cloned()
             .filter(|value| !value.is_empty()),
+        fallback_models: model_fallbacks::parse(&raw).ok()?,
         thinking_level: normalize_thinking(front.get("thinkinglevel").map(String::as_str)),
         max_tokens,
         path: path.to_string_lossy().to_string(),
@@ -223,6 +229,12 @@ fn render_document(record: &UserSubagentRecord, body: &str) -> String {
     }
     if let Some(model) = &record.model {
         output.push_str(&format!("model: {model}\n"));
+    }
+    if !record.fallback_models.is_empty() {
+        output.push_str(&format!(
+            "fallbackModels: [{}]\n",
+            record.fallback_models.join(", ")
+        ));
     }
     if let Some(level) = &record.thinking_level {
         output.push_str(&format!("thinkingLevel: {level}\n"));
@@ -324,6 +336,9 @@ impl UserSubagentRegistry {
             scope: ActivationScope::default(),
             tools,
             model: normalize_model(input.model.as_deref())?,
+            fallback_models: model_fallbacks::normalize(
+                input.fallback_models.as_deref().unwrap_or(&[]),
+            )?,
             thinking_level: normalize_thinking(input.thinking_level.as_deref()),
             max_tokens: input
                 .max_tokens
@@ -399,6 +414,9 @@ impl UserSubagentRegistry {
             Some(value) => normalize_model(Some(value.as_str()))?,
             None => current.model,
         };
+        if let Some(values) = input.fallback_models {
+            next.fallback_models = model_fallbacks::normalize(&values)?;
+        }
         next.thinking_level = match input.thinking_level {
             Some(value) if value.trim().is_empty() => None,
             Some(value) => normalize_thinking(Some(value.as_str())),
@@ -534,6 +552,41 @@ mod tests {
     }
 
     #[test]
+    fn fallback_pins_survive_record_document_round_trips() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("worker.md");
+        fs::write(&path, "---\nname: worker\ndescription: Fixture.\nmodel: primary/model\nfallbackModels: [backup/one, Other Gateway/vendor/two]\n---\n\nKeep the body.\n").unwrap();
+        let state = CapabilityState::new(dir.path(), SUBAGENT_KIND);
+        let mut record = parse_record(&path, &state).unwrap();
+        assert_eq!(
+            record.fallback_models,
+            vec!["backup/one", "Other Gateway/vendor/two"]
+        );
+        let wire = serde_json::to_value(&record).unwrap();
+        assert_eq!(
+            wire["fallbackModels"],
+            serde_json::json!(["backup/one", "Other Gateway/vendor/two"])
+        );
+        fs::write(&path, render_document(&record, "Keep the body.")).unwrap();
+        assert_eq!(
+            parse_record(&path, &state).unwrap().fallback_models,
+            record.fallback_models
+        );
+        record.fallback_models.clear();
+        let cleared = render_document(&record, "Keep the body.");
+        assert!(!cleared.contains("fallbackModels"));
+        fs::write(&path, cleared).unwrap();
+        assert!(parse_record(&path, &state)
+            .unwrap()
+            .fallback_models
+            .is_empty());
+        let old: UserSubagentInput = serde_json::from_str("{}").unwrap();
+        assert!(old.fallback_models.is_none());
+        let clear: UserSubagentInput = serde_json::from_str(r#"{"fallbackModels":[]}"#).unwrap();
+        assert_eq!(clear.fallback_models, Some(vec![]));
+    }
+
+    #[test]
     fn omit_is_a_valid_thinking_override() {
         assert_eq!(normalize_thinking(Some("omit")), Some("omit".into()));
         assert_eq!(normalize_thinking(Some(" OMIT ")), Some("omit".into()));
@@ -550,6 +603,7 @@ mod tests {
             scope: ActivationScope::default(),
             tools: vec!["Read".into()],
             model: None,
+            fallback_models: Vec::new(),
             thinking_level: None,
             max_tokens: None,
             path: "/tmp/review.md".into(),
@@ -571,6 +625,7 @@ mod tests {
             scope: ActivationScope::default(),
             tools: vec!["Read".into()],
             model: None,
+            fallback_models: Vec::new(),
             thinking_level: None,
             max_tokens: Some(16_000),
             path: "/tmp/review.md".into(),

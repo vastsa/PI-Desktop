@@ -41,6 +41,11 @@ import { isTemplateName, scaffold } from "@pi-desktop/plugin-devkit";
 
 import { HostProcess } from "./host-process";
 import {
+  knownProjectGroups,
+  pluginWorkspaceInfo,
+  refreshProjectGroups,
+} from "./workspace-roots";
+import {
   shouldCreateTaskNotification as shouldCreateTaskNotificationPolicy,
   shouldShowNativeNotification,
 } from "./notification-policy";
@@ -115,6 +120,7 @@ import { registerIpcHandlers } from "./ipc/register";
 import {
   type WindowLifecycleState,
 } from "./bootstrap/window";
+import { registerApplicationActivation } from "./bootstrap/app-activation";
 import type { RuntimeState } from "./runtime/context";
 import { createHostRuntime } from "./runtime/host";
 import { createSidecarRuntime } from "./runtime/sidecar";
@@ -664,6 +670,7 @@ const {
   emitBrowserState,
   pluginPanels,
   pluginViews,
+  pluginSettingsViews,
   browserHost,
   browserPane,
   announceTurnEnded,
@@ -751,13 +758,6 @@ function currentWorkspacePath(): string | null {
   return (globalThis as { __piWorkspacePath?: string | null }).__piWorkspacePath ?? null;
 }
 
-function workspaceInfo(
-  path: string | null,
-): { path: string; name: string } | null {
-  if (!path) return null;
-  return { path, name: path.split(/[\\/]/).filter(Boolean).at(-1) || path };
-}
-
 /** Push a panel event to detached windows and docked views. */
 function broadcastPluginPanelEvent(event: string, payload: unknown): void {
   pluginPanels.broadcast(event, payload);
@@ -768,9 +768,21 @@ function setCurrentWorkspacePath(path: string | null): void {
   const previous = currentWorkspacePath();
   (globalThis as { __piWorkspacePath?: string | null }).__piWorkspacePath = path;
   if (previous === path) return;
-  const payload = workspaceInfo(path);
+  const payload = pluginWorkspaceInfo(path);
   broadcastPluginPanelEvent("workspace:changed", payload);
   plugins.broadcastEvent("workspace:changed", [payload]);
+  // The group snapshot starts cold, so this first push can only carry the bare
+  // workspace. Fetch the project's folders once and repeat it, so a plugin that
+  // was already open sees them without waiting for the next switch; every later
+  // switch finds the snapshot warm and broadcasts exactly once (ADR 0252).
+  if (knownProjectGroups() === null) {
+    void refreshProjectGroups(host).then((changed) => {
+      if (!changed) return;
+      const enriched = pluginWorkspaceInfo(currentWorkspacePath());
+      broadcastPluginPanelEvent("workspace:changed", enriched);
+      plugins.broadcastEvent("workspace:changed", [enriched]);
+    });
+  }
 }
 
 /** Pull the user's MCP server records from host-core into the local runtime. */
@@ -884,6 +896,7 @@ applicationLifecycle = createApplicationLifecycle({
   applyCloseBehavior: applyCloseBehaviorForLifecycle,
   browserPane,
   pluginViews,
+  pluginSettingsViews,
   plugins,
   logger,
   refreshReleaseNotes: () => updater.refreshReleaseNotes(),
@@ -1283,6 +1296,7 @@ function registerIpc() {
     describeError,
     activeUserSubagentDocuments,
     pluginViews,
+    pluginSettingsViews,
     pluginScopes,
     rememberPluginScopes,
     pluginPanels,
@@ -1438,38 +1452,15 @@ registerShutdownHandlers({
   userMcp,
   browserPane,
   pluginViews,
+  pluginSettingsViews,
   updater,
   logger,
   confirmQuitDialog,
 });
 
-app.on("activate", () => {
-  restoreMainWindow();
+registerApplicationActivation({
+  restoreMainWindow,
+  isQuitting: () => quitting,
+  isApplicationBooted: () => applicationLifecycleState.applicationBooted,
+  hasVisibleWindow,
 });
-
-// Launching PI-Desktop again is a request to see the app that is already
-// running, not to start another one. The duplicate process quits before it
-// boots anything, and Electron hands its launch to the lock holder here, so the
-// visible result is the same as the tray's Show action — including a window
-// that was closed or hidden into the tray, which `restoreMainWindow` recreates.
-app.on("second-instance", () => {
-  restoreMainWindow();
-});
-
-// macOS only emits `activate` from `applicationShouldHandleReopen:` — a Dock
-// click or a relaunch. Cmd+Tab, App Exposé, and Spotlight activation do not
-// reach it, and macOS traffic-light minimize hides the window into the tray
-// (ADR 0078), so the app could be focused with nothing on screen and no way
-// back except the tray.
-// Restore only when no window is visible: activating the plugin launcher or a
-// plugin panel must not drag the main window up with it (ADR 0086).
-if (process.platform === "darwin") {
-  app.on("did-become-active", () => {
-    if (
-      quitting ||
-      !applicationLifecycleState.applicationBooted ||
-      hasVisibleWindow()
-    ) return;
-    restoreMainWindow();
-  });
-}

@@ -142,6 +142,7 @@ export function AgentSubagentsPage() {
       tools: mergeSubagentToolGrant(draft.inheritTools, draft.tools),
       // An empty string clears a pinned model; omitting it would keep the old one.
       model: draft.model.trim(),
+      fallbackModels: draft.fallbackModels.map((pin) => pin.trim()),
       thinkingLevel: draft.thinkingLevel,
       // `0` clears the output cap, so the delegate follows the model again.
       maxTokens: draft.maxTokens,

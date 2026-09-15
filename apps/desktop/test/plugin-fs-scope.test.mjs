@@ -124,7 +124,10 @@ function writePlugin({ id, permissions, fs: fsPolicy }) {
  * @param options.consent answers the native dialog would return, in order; the
  *   last one repeats. Omit it entirely to test a host that cannot ask.
  */
-async function harness(t, { id, permissions, fs: fsPolicy, workspace, granted, consent, protectedPaths }) {
+async function harness(
+  t,
+  { id, permissions, fs: fsPolicy, workspace, granted, consent, protectedPaths, folders },
+) {
   const ws = workspace ?? makeWorkspace();
   const audits = [];
   const consents = [];
@@ -136,6 +139,23 @@ async function harness(t, { id, permissions, fs: fsPolicy, workspace, granted, c
     hostEntry: hostProcessEntry,
     spawnProcess: forkPluginProcess,
     getWorkspacePath: () => ws,
+    ...(folders
+      ? {
+          getWorkspaceInfo: () => ({
+            path: ws,
+            name: "ws",
+            projectId: "grp-1",
+            roots: [
+              { path: ws, name: "ws", primary: true },
+              ...folders.map((path, index) => ({
+                path,
+                name: `folder-${index}`,
+                primary: false,
+              })),
+            ],
+          }),
+        }
+      : {}),
     audit: (entry) => audits.push(entry),
     trashItem: async (fullPath) => trashed.push(fullPath),
     openPath: async (fullPath) => opened.push(fullPath),
@@ -504,6 +524,106 @@ test("file reveal reuses the readable file scope", async (t) => {
     runtime.invokePanelBridge("fs.reveal.scoped", "fs.reveal", { path: "notes.txt" }),
     "PERMISSION_DENIED",
     /outside manifest\.fs\.read\.scope/,
+  );
+});
+
+test("a host action reaches a file in another folder of the open project", async (t) => {
+  const other = makeWorkspace({ "notes.txt": "second folder" });
+  const { runtime, ws, opened, revealed } = await harness(t, {
+    id: "fs.folders.open",
+    permissions: ["fs.read"],
+    fs: { read: { root: "workspace", scope: ["**"] } },
+    folders: [other],
+  });
+
+  // A relative path still means the workspace root: the primary folder is
+  // addressed exactly as it always was.
+  await runtime.invokePanelBridge("fs.folders.open", "fs.openDefault", { path: "notes.txt" });
+  assert.deepEqual(opened, [realpathSync(join(ws, "notes.txt"))]);
+
+  // A sibling folder's own file can only be named absolutely, and it opens that
+  // file rather than a same-named one in the workspace (ADR 0253).
+  await runtime.invokePanelBridge("fs.folders.open", "fs.openDefault", {
+    path: join(other, "notes.txt"),
+  });
+  assert.deepEqual(opened, [
+    realpathSync(join(ws, "notes.txt")),
+    realpathSync(join(other, "notes.txt")),
+  ]);
+
+  await runtime.invokePanelBridge("fs.folders.open", "fs.reveal", {
+    path: join(other, "notes.txt"),
+  });
+  assert.deepEqual(revealed, [realpathSync(join(other, "notes.txt"))]);
+});
+
+test("the project's other folders are not an escape hatch", async (t) => {
+  const other = makeWorkspace({
+    ".env": "PI_TOKEN=secret",
+    "docs/a.md": "a",
+    "notes.txt": "notes",
+  });
+  const stranger = makeWorkspace({ "notes.txt": "not a project folder" });
+  const { runtime, audits } = await harness(t, {
+    id: "fs.folders.guards",
+    permissions: ["fs.read"],
+    fs: { read: { root: "workspace", scope: ["docs/**", "docs"] } },
+    folders: [other],
+  });
+
+  // Inside the declared scope, the sibling folder answers.
+  await runtime.invokePanelBridge("fs.folders.guards", "fs.openDefault", {
+    path: join(other, "docs/a.md"),
+  });
+  // A path in the sibling folder the scope does not cover is refused, with the
+  // message the workspace root already uses.
+  await refused(
+    t,
+    runtime.invokePanelBridge("fs.folders.guards", "fs.openDefault", {
+      path: join(other, "notes.txt"),
+    }),
+    "PERMISSION_DENIED",
+    /outside manifest\.fs\.read\.scope/,
+  );
+  // Credentials stay unreadable there too.
+  await refused(
+    t,
+    runtime.invokePanelBridge("fs.folders.guards", "fs.openDefault", {
+      path: join(other, ".env"),
+    }),
+    "PERMISSION_DENIED",
+    /never readable by plugins/,
+  );
+  // A folder this project did not register is not a group folder.
+  await refused(
+    t,
+    runtime.invokePanelBridge("fs.folders.guards", "fs.openDefault", {
+      path: join(stranger, "notes.txt"),
+    }),
+    "NOT_FOUND",
+    /path not found/,
+  );
+  assert.ok(
+    audits.some((entry) => entry.api === "fs.read" && entry.ok === false),
+    "a refused action is audited",
+  );
+});
+
+test("a plugin rooted at a user-picked directory gains no project folders", async (t) => {
+  const other = makeWorkspace({ "notes.txt": "second folder" });
+  const { runtime } = await harness(t, {
+    id: "fs.folders.user-selected",
+    permissions: ["fs.read"],
+    fs: { read: { root: "userSelected" } },
+    folders: [other],
+  });
+
+  await refused(
+    t,
+    runtime.invokePanelBridge("fs.folders.user-selected", "fs.openDefault", {
+      path: join(other, "notes.txt"),
+    }),
+    "NOT_FOUND",
   );
 });
 

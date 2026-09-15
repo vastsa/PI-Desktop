@@ -380,3 +380,33 @@ describe("resolveSubagentProviders", () => {
     expect(diagnostics[0]).toContain("has no API key");
   });
 });
+
+
+it("resolves definition-scoped fallback pins with their own credentials", async () => {
+  const { providers, diagnostics } = await resolveSubagentProviders({
+    definitions: [{ name: "worker", description: "Fixture", tools: ["Read"], prompt: "Finish", source: "user",
+      model: { providerId: "primary", modelId: "one" },
+      fallbackModels: [{ providerId: "other", modelId: "two" }, { providerId: "missing", modelId: "three" }],
+    }],
+    providers: [{ id: "primary", name: "Primary" }, { id: "other", name: "Other", headers: { "x-fixture": "backup" } }],
+    getSecret: async (id) => `fixture-${id}`,
+  });
+  expect(providers["primary/one"].apiKey).toBe("fixture-primary");
+  expect(providers["other/two"].apiKey).toBe("fixture-other");
+  expect(providers["other/two"].headers).toEqual({ "x-fixture": "backup" });
+  expect(providers["missing/three"]).toBeUndefined();
+  expect(diagnostics).toEqual(['worker: no enabled provider matches "missing"']);
+});
+
+
+it("never resolves a disabled fallback provider", async () => {
+  const resolved = await resolveSubagentProviders({
+    definitions: [{ name: "worker", description: "Fixture", tools: ["Read"], prompt: "Finish", source: "user",
+      fallbackModels: [{ providerId: "disabled", modelId: "private" }],
+    }],
+    providers: [{ id: "disabled", name: "Disabled", enabled: false, authKind: "none" }],
+    getSecret: async () => { throw new Error("disabled credentials must not be read"); },
+  });
+  expect(resolved.providers).toEqual({});
+  expect(resolved.diagnostics).toHaveLength(1);
+});

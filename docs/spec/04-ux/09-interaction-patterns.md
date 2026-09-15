@@ -1251,9 +1251,19 @@ Project drag/drop follows these patterns:
 - After a successful send, the user bubble parses those serialized `@path`
   tokens back into composer-matching leaf-name chips for display only. The
   persisted message and model context stay canonical `@path` text. Clicking a
-  workspace HTML chip previews it in the side browser; clicking any other
-  allowed file opens it with the OS default application (`pi-desktop/fs/open`,
-  contained to the workspace, session scratch, and attachments roots).
+  chip completes the reference through `pi-desktop/fs/resolveRef`, which
+  searches the whole open project — its group's folders, primary first
+  (ADR 0252) — and then opens where it resolved: a project file in the bundled
+  `pi.file-manager` work-panel view (the host `file:` tab when that view is not
+  available), a session-scratch or attachment file in the host `file:` tab, and
+  a `.html`/`.htm` page of the project's primary folder in the side browser,
+  because the side browser is rooted at that folder. The address handed to
+  the work panel follows the folder that answered: a file of the primary folder
+  travels as a project-relative path, a file of a sibling folder of the same
+  project as an absolute one, exactly as a scratch or attachment file does. A
+  chip whose reference matches nothing opens nothing and reports itself; the OS
+  default application is no longer what this click does, though that action
+  stays reachable from the file view's own context menu.
 
 ### 8a.3 Keyboard while open
 

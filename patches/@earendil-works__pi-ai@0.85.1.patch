@@ -40,3 +40,147 @@ index 43e463dbfd1e6cc437ebc680468036f47678de26..364c8c0426d12543c1b64daa8e6eaa22
          }
          else if (event.type === "error") {
              throw new Error(`Error Code ${event.code}: ${event.message}` || "Unknown error");
+diff --git a/dist/auth/oauth/anthropic.js b/dist/auth/oauth/anthropic.js
+--- a/dist/auth/oauth/anthropic.js
++++ b/dist/auth/oauth/anthropic.js
+@@ -140,21 +140,90 @@
+         });
+     });
+ }
++class AnthropicOAuthTokenError extends Error {
++    constructor(status, code, grantType) {
++        const recovery = grantType === "authorization_code"
++            ? "Wait, close this dialog, and start a new sign-in attempt."
++            : "Wait before retrying. If the problem continues, sign in again.";
++        const reason = code === "invalid_grant"
++            ? "Anthropic rejected the authorization grant. Please sign in again."
++            : code === "invalid_response"
++                ? `Anthropic returned an invalid token response. ${recovery}`
++                : status === 429
++                    ? `Anthropic token requests are rate limited. ${recovery}`
++                    : `Anthropic token request failed (HTTP ${status}). ${recovery}`;
++        super(reason);
++        this.name = "AnthropicOAuthTokenError";
++        this.status = status;
++        this.code = code;
++    }
++}
++function tokenRetryDelay(header, attempt) {
++    const fallback = 1000 * 2 ** attempt;
++    const value = header?.trim();
++    if (!value || value.length > 128)
++        return fallback;
++    const serverDelay = /^\d+$/.test(value)
++        ? Number(value) * 1000
++        : /^[A-Za-z]{3}, /.test(value)
++            ? Date.parse(value) - Date.now()
++            : NaN;
++    return Number.isNaN(serverDelay) ? fallback : Math.max(fallback, serverDelay);
++}
++function waitForTokenRetry(delay, signal) {
++    signal.throwIfAborted();
++    return new Promise((resolve, reject) => {
++        const timer = setTimeout(() => {
++            signal.removeEventListener("abort", abort);
++            resolve();
++        }, delay);
++        const abort = () => {
++            clearTimeout(timer);
++            signal.removeEventListener("abort", abort);
++            reject(signal.reason);
++        };
++        signal.addEventListener("abort", abort, { once: true });
++    });
++}
+ async function postJson(url, body, signal) {
+-    const response = await fetch(url, {
+-        method: "POST",
+-        headers: {
+-            "Content-Type": "application/json",
+-            Accept: "application/json",
+-        },
+-        body: JSON.stringify(body),
+-        signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
+-    });
+-    const responseBody = await response.text();
+-    if (!response.ok) {
+-        throw new Error(`HTTP request failed. status=${response.status}; url=${url}; body=${responseBody}`);
+-    }
+-    return responseBody;
++    // Keep one deadline for all attempts, including response bodies and waits.
++    // The caller's signal can impose an earlier refresh deadline or cancellation.
++    const requestSignal = AbortSignal.any([signal, AbortSignal.timeout(30_000)]);
++    const deadline = performance.now() + 30_000;
++    const serialized = JSON.stringify(body);
++    for (let attempt = 0; ; attempt++) {
++        requestSignal.throwIfAborted();
++        const response = await fetch(url, {
++            method: "POST",
++            headers: {
++                "Content-Type": "application/json",
++                Accept: "application/json",
++            },
++            body: serialized,
++            signal: requestSignal,
++        });
++        const responseBody = await response.text();
++        if (response.ok)
++            return responseBody;
++        // Never put a token endpoint's response body in an error or log.
++        let invalidGrant = false;
++        try {
++            const data = JSON.parse(responseBody);
++            invalidGrant = data?.error === "invalid_grant" || data?.error?.type === "invalid_grant";
++        }
++        catch { /* Non-JSON errors are reported by status only. */ }
++        const failure = new AnthropicOAuthTokenError(response.status,
++            invalidGrant ? "invalid_grant" : response.status === 429 ? "rate_limited" : "http_error",
++            body.grant_type);
++        // Only an explicit rate-limit rejection is replayed. Network errors,
++        // 5xx and invalid_grant may follow a consumed/rotated grant: do not retry.
++        if (response.status !== 429 || invalidGrant || attempt >= 2)
++            throw failure;
++        const delay = tokenRetryDelay(response.headers.get("Retry-After"), attempt);
++        if (delay >= deadline - performance.now())
++            throw failure; // Never shorten the server's requested wait.
++        await waitForTokenRetry(delay, requestSignal);
++    }
+ }
+ async function exchangeAuthorizationCode(code, state, verifier, redirectUri, signal) {
+     let responseBody;
+@@ -169,6 +238,8 @@
+         }, signal);
+     }
+     catch (error) {
++        if (error instanceof AnthropicOAuthTokenError || error?.name === "AbortError" || error?.name === "TimeoutError")
++            throw error;
+         throw new Error(`Token exchange request failed. url=${TOKEN_URL}; redirect_uri=${redirectUri}; response_type=authorization_code; details=${formatErrorDetails(error)}`);
+     }
+     let tokenData;
+@@ -176,7 +247,7 @@
+         tokenData = JSON.parse(responseBody);
+     }
+     catch (error) {
+-        throw new Error(`Token exchange returned invalid JSON. url=${TOKEN_URL}; body=${responseBody}; details=${formatErrorDetails(error)}`);
++        throw new AnthropicOAuthTokenError(0, "invalid_response", "authorization_code");
+     }
+     return {
+         type: "oauth",
+@@ -280,6 +351,8 @@
+         }, signal);
+     }
+     catch (error) {
++        if (error instanceof AnthropicOAuthTokenError || error?.name === "AbortError" || error?.name === "TimeoutError")
++            throw error;
+         throw new Error(`Anthropic token refresh request failed. url=${TOKEN_URL}; details=${formatErrorDetails(error)}`);
+     }
+     let data;
+@@ -287,7 +360,7 @@
+         data = JSON.parse(responseBody);
+     }
+     catch (error) {
+-        throw new Error(`Anthropic token refresh returned invalid JSON. url=${TOKEN_URL}; body=${responseBody}; details=${formatErrorDetails(error)}`);
++        throw new AnthropicOAuthTokenError(0, "invalid_response", "refresh_token");
+     }
+     return {
+         type: "oauth",

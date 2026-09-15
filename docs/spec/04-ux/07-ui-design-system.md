@@ -52,6 +52,9 @@ selection is suppressed for chrome by default. The selection contract is:
   users can edit drafts, search, and use native `Cmd/Ctrl+A/C/V` behavior.
 - Transcript message bodies, rendered Markdown, code blocks, and tool
   input/output remain selectable for copy and inspection.
+- Transient surfaces whose text a user may need to keep — toast messages in
+  particular — remain selectable; a toast's icon and dismiss control stay
+  non-selectable chrome.
 - New document-like surfaces must opt into the shared `.selectable` class (or
   an equivalent explicit `user-select: text` rule).
 - The Electron renderer sets both `user-select` and `-webkit-user-select`;
@@ -565,11 +568,29 @@ floating layers where an edge is an elevation cue rather than a partition.
 | Tile | `--ds-tile` (3.5% text mix); hover `--ds-tile-hover` (6%); deep `--ds-tile-deep` (8%) | Panels, list rows, cards, form fields, chips, code blocks, empty states |
 | Raised | `--ds-raised` + `--ds-raised-shadow` | The active pill of a segmented control, a disclosed detail block, a recorder keycap |
 | Dock | `--ds-bg-dock` (the column), `--ds-bg-dock-raised` (its header and viewer strips) | The work-panel column and the bars inside it. Both are tokens, not literals, so a contributed theme can move them (D419) |
+| Settings rail | `--ds-settings-rail-bg` (light `#f4f4f4`, dark `#000000`) | Full-window settings navigation column |
+| Settings search | `--ds-settings-field-bg` (light `#ffffff`, dark `#212121`) | Search pill on the settings rail |
+| Active settings item | `--ds-settings-nav-active` (light 12% `#1a1c1f` mixed over white; dark 10% `--gray-0` over transparent) | Selected navigation pill |
+| Inset search | `--ds-field-inset-bg`, `--ds-field-inset-focus-bg` (light `#f3f3f3` / white; dark 5% / 7% primary-text mix over transparent) | Plugin search and Agent capability search, including focus |
+
+The dark composer shell consumes `--ds-bg-elevated-primary` directly; light
+continues to use `--ds-bg-composer`. Switch on-state knobs consume
+`--ds-switch-knob-on` in both palettes. These fills keep their built-in paint,
+focus rings, and shadows while allowing a contributed stylesheet to override
+the variables. Theme-specific component rules may retain their existing shadow
+or layout differences, but must not replace a token-driven fill with a literal.
 
 Every surface colour the shell paints must come from a token. A
 `:root[data-theme="light"]` override that writes a literal raises specificity
 above the base token rule and does not read a variable, so it silently pins that
 surface out of every theme's reach — see D419.
+
+`pnpm lint` also guards `background` / `background-color` on the migrated
+settings rail, search, navigation item, switch thumb, capability search, plugin
+search, and composer-shell families against bare hex, CSS color functions,
+`white`, and `black`. The guard is intentionally scoped; it does not establish
+full color-token coverage of prose, scrims, other chrome, or plugin CSS. Real
+rendered theme checks remain necessary to verify cascade and focus behavior.
 
 | Context | Treatment |
 |---|---|

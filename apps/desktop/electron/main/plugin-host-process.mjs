@@ -160,6 +160,7 @@ function buildApi() {
       upsert: (input) => call("themes.upsert", [input]),
       remove: (themeId) => call("themes.remove", [themeId]),
       list: () => call("themes.list"),
+      setVariables: (themeId, values) => call("themes.setVariables", [themeId, values]),
     },
     plugin: {
       getId: () => pluginId,

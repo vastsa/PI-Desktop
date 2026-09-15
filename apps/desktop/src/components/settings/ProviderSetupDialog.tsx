@@ -7,10 +7,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  API_STYLES,
   NAMED_ENDPOINT_PRESETS,
   OPENCODE_GO_API_STYLE,
-  matchNamedPreset,
   normalizeApiStyle,
   type CatalogApiStyle,
   type ModelBinding,
@@ -24,6 +22,7 @@ import { useProviderModels } from "./useProviderModels";
 import { ModelSelectionPanes, useModelSelection } from "./ModelSelectionPanes";
 import { CUSTOM_SERVICE, ServicePicker } from "./ServicePicker";
 import type { ProviderCopyDraft } from "./provider-copy";
+import { CUSTOM_PROVIDER_API_STYLES, isAccountOnlyApiStyle, needsCustomApiStyleChoice, providerSetupPreset } from "./provider-api-style";
 
 const API_STYLE_LABEL_KEYS: Record<CatalogApiStyle, string> = {
   chat_completions: "settings.apiStyleChatCompletions",
@@ -96,37 +95,15 @@ function normalizeBaseUrlInput(value: string, apiStyle: CatalogApiStyle): string
 
 function serviceIdFor(provider?: ProviderPublic | null): string {
   if (!provider) return "";
-  return (
-    matchNamedPreset({
-      vendorKey: provider.vendorKey,
-      baseUrl: provider.baseUrl,
-      apiStyle: provider.apiStyle,
-    })?.id ?? CUSTOM_SERVICE
-  );
+  return providerSetupPreset(provider)?.id ?? CUSTOM_SERVICE;
 }
 
 function initialName(provider?: ProviderPublic | null): string {
-  return (
-    matchNamedPreset({
-      vendorKey: provider?.vendorKey,
-      baseUrl: provider?.baseUrl,
-      apiStyle: provider?.apiStyle,
-    })?.name ??
-    provider?.name ??
-    ""
-  );
+  return providerSetupPreset(provider)?.name ?? provider?.name ?? "";
 }
 
 function initialBaseUrl(provider?: ProviderPublic | null): string {
-  return (
-    matchNamedPreset({
-      vendorKey: provider?.vendorKey,
-      baseUrl: provider?.baseUrl,
-      apiStyle: provider?.apiStyle,
-    })?.baseUrl ??
-    provider?.baseUrl ??
-    ""
-  );
+  return providerSetupPreset(provider)?.baseUrl ?? provider?.baseUrl ?? "";
 }
 
 function endpointHost(url: string): string {
@@ -183,11 +160,14 @@ export function ProviderSetupDialog({
   const baseUrlIssue = getBaseUrlIssue(resolvedBaseUrl);
   const baseUrlError =
     baseUrlTouched && baseUrlIssue ? t("settings.baseUrlInvalid") : undefined;
+  const requiresApiStyleChoice = custom && needsCustomApiStyleChoice(apiStyle, provider?.apiStyle);
+  const accountOnlyApiStyle = isAccountOnlyApiStyle(apiStyle);
   const requestBaseUrl = normalizeBaseUrlInput(resolvedBaseUrl, resolvedApiStyle);
   // Named add-path waits for a key so picking a vendor does not 401-probe.
   // Editing reuses the stored secret. Custom still probes a valid URL alone.
   const discoveryActive =
     Boolean(service) &&
+    !requiresApiStyleChoice &&
     !baseUrlIssue &&
     (custom || Boolean(apiKey.trim()) || Boolean(provider));
   const headers = pairsToRecord(headerPairs);
@@ -278,6 +258,7 @@ export function ProviderSetupDialog({
     const providerName = resolvedName.trim();
     const providerBaseUrl = normalizeBaseUrlInput(resolvedBaseUrl, resolvedApiStyle);
     if (
+      requiresApiStyleChoice ||
       !providerName ||
       !providerBaseUrl ||
       getBaseUrlIssue(providerBaseUrl) ||
@@ -328,6 +309,7 @@ export function ProviderSetupDialog({
 
   const canSave =
     !saving &&
+    !requiresApiStyleChoice &&
     !!service &&
     !!resolvedName.trim() &&
     !!resolvedBaseUrl.trim() &&
@@ -499,7 +481,12 @@ export function ProviderSetupDialog({
                         onChange={(event) => setApiKey(event.target.value)}
                       />
                     </Field>
-                    <Field label={t("settings.apiStyle")}>
+                    <Field
+                      label={t("settings.apiStyle")}
+                      hint={accountOnlyApiStyle ? t(requiresApiStyleChoice
+                        ? "settings.apiStyleChooseCustom"
+                        : "settings.apiStyleLegacyAccount") : undefined}
+                    >
                       <Select
                         value={apiStyle}
                         disabled={saving}
@@ -507,7 +494,12 @@ export function ProviderSetupDialog({
                           setApiStyle(event.target.value as CatalogApiStyle)
                         }
                       >
-                        {API_STYLES.filter((style) => style !== OPENCODE_GO_API_STYLE).map(
+                        {accountOnlyApiStyle ? (
+                          <option value={apiStyle} disabled>
+                            {t(API_STYLE_LABEL_KEYS[apiStyle])}
+                          </option>
+                        ) : null}
+                        {CUSTOM_PROVIDER_API_STYLES.map(
                           (style) => (
                             <option key={style} value={style}>
                               {t(API_STYLE_LABEL_KEYS[style])}

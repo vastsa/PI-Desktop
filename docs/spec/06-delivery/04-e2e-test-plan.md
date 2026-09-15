@@ -8,6 +8,22 @@
 
 ## 1. Goals
 
+### E2E-PLUGIN-appearance-extension-lifecycle
+
+- **Preconditions:** A fixture plugin declares `ui.theme`, `ui.settings`, one
+  asset-backed theme with a typed `--fixture-backdrop-blur` `0..20px` variable,
+  and one Settings HTML entry.
+- **Steps:** Open Settings, find the final Extensions group by search and
+  keyboard navigation, open the entry, change the variable, select/reselect the
+  theme, restart, then disable, reload and uninstall the plugin while its entry
+  is active.
+- **Expected:** Only the declared variable rule changes; static
+  `plugin-asset://` URLs remain valid; the value restores after restart; no
+  plugin page covers native controls or core Settings. Invalid/cross-plugin
+  values are refused. Every lifecycle transition removes the entry and returns
+  the app to General.
+- **Status:** Documented; run after integration into main.
+
 - Document every user-visible and protocol-visible behavior that MVP must verify.
 - Provide a scenario catalog that maps to acceptance criteria (A–H) and milestones (M1–M6).
 - Serve as the traceability backbone: scenario ID ↔ acceptance criterion ↔ spec.
@@ -122,7 +138,11 @@ The minimum selection is:
   `pnpm test:e2e:boot`.
 - Session-list refresh or model capability lookup: `pnpm test:e2e` and
   `pnpm test:e2e:boot`, including the synthetic large-list responsiveness check.
+- Settings/composer/plugin search theme surfaces: `pnpm build:js` followed by
+  `pnpm test:e2e:theme-surfaces`.
 - Composer clipboard representation and text insertion: `pnpm test:e2e:composer-paste`.
+- Composer slash-menu name/description layout: `pnpm build:js` followed by
+  `pnpm test:e2e:composer-autocomplete`.
 - Transcript render boundaries and cross-part delegation display: `pnpm test:e2e:transcript`.
 - Plan host/runtime behavior: `pnpm test:e2e` and `pnpm test:e2e:plan`.
 - Plan UI behavior: `pnpm test:e2e:plan` and `pnpm test:e2e:plan-ui`.
@@ -1633,7 +1653,11 @@ and identify the platform validation still needed.
   confirm the copy is unchanged. 3) Switch to conversation B and then back to
   A, recording each guidance change. 4) Switch between home and a conversation
   and inspect the command/file and keyboard hints. 5) Type `/` and inspect the
-  slash menu. 6) Switch to zh-CN and repeat the context-switch checks.
+  slash menu. Include Skills with long English/CJK descriptions, short/no
+  descriptions, a separate title/argument hint, and an exceptionally long slash
+  name; also inspect a long filename in `@` mode. Repeat at 1040px and 1680px
+  viewport widths with 320px and 640px composer widths. 6) Switch to zh-CN and
+  repeat the context-switch checks.
 - **Expected**: The initially rendered context starts with its welcome copy and stays stable until
   the page/session context changes. Each context switch advances to the next
   localized command/file or keyboard hint with an opacity fade; no timer-driven
@@ -1644,12 +1668,20 @@ and identify the platform validation still needed.
   it keeps the typed command chip visible and the model calls `Skill` with that
   id before answering. zh-CN shows the matching localized copy, including
   `Shift+Enter for newline · Use Send to submit`.
+  Long descriptions use only the space remaining after command names and
+  hints, so short names stay fully visible. Descriptions and oversized names
+  ellipsize within the row without horizontal overflow; file names retain the
+  available row width. Name highlights and click acceptance with input focus
+  retained remain intact.
 - **Specs linked**: `04-ux/08-component-spec.md` (§11),
   `04-ux/04-builtin-commands.md` (§7–8)
 - **Acceptance**: C (send/UI), Localization, Quality
 - **Milestone**: M2
 - **Status**: Source-covered (`composer-placeholder-context.test.mjs`);
-  full UI scenario Draft
+  slash-menu layout covered by `pnpm test:e2e:composer-autocomplete` after
+  `pnpm build:js` (real React/Chromium and production CSS, deterministic command
+  fixtures; no provider required). Full provider/session scenario Draft;
+  branch runs do not replace post-integration E2E
 
 #### E2E-089: Composer model menu opens upward and switches model
 
@@ -4640,16 +4672,27 @@ and identify the platform validation still needed.
   3. Open the work panel (Review / Files / Browser) beside a chat session.
   4. Hover file-tree rows or diff headers; focus the browser URL field.
   5. Open a confirmation/provider dialog and inspect the scrim.
+  6. In both light and dark palettes, inspect the settings rail, search, selected
+     item, on-state knob, composer shell, and plugin/capability searches. Apply
+     custom surface variables, keyboard-focus both searches, then remove the
+     custom theme.
 - **Expected**:
   - Work panel body reads as quiet `#fafafa` inset paper with a white header band.
   - Settings fields, browser URL, segment tracks, and shortcut keycaps use light inset fills; focused fields lift with a neutral ring.
   - Toggle on-state keeps a white knob on the near-black track.
   - Hover fills on file-tree/diff/resize ease with shared motion tokens.
   - Light dialog scrim is softer than the dark 45% veil (~28% ink).
+  - Custom variables repaint the corresponding fills and search focus states;
+    removing them restores the built-in 8-bit RGBA paint and existing shadows/
+    focus rings. This batch does not migrate prose or scrims or change plugin APIs.
 - **Specs linked**: `04-ux/07-ui-design-system.md`, `04-ux/08-component-spec.md`
 - **Acceptance**: D148
 - **Milestone**: M5
-- **Status detail**: Source-level coverage for CSS contracts; visual surface checks remain manual.
+- **Status detail**: `pnpm test:e2e:theme-surfaces` exercises these ordinary fills,
+  focus states, and built-in restoration with real Chromium, production CSS,
+  and deterministic DOM fixtures; plugin installation/lifecycle is not covered.
+  Branch runs do not replace post-integration E2E. Other surfaces in this
+  scenario retain manual visual checks.
 
 #### E2E-079: User-facing catalog copy in English and Chinese
 
@@ -6759,6 +6802,31 @@ and identify the platform validation still needed.
 - **Status**: Source-contract and focused integration coverage; full desktop
   journey Draft (run only in a capable environment when this surface changes)
 
+#### E2E-OAUTH-anthropic-rate-limit-retry: Bounded token retries preserve the account
+
+- **Preconditions**: A local HTTP fixture intercepts only Anthropic's token URL;
+  the production pi-ai flow and Desktop `VendorOAuth` run with an in-memory Host
+  RPC fixture. No real account, browser authorization or remote endpoint is used.
+- **Steps**: Run `pnpm test:e2e:oauth-retry`. Exercise exchange and refresh
+  429 → success, repeated 429, seconds/date/malformed/over-budget `Retry-After`,
+  invalid grants (including after 429), 5xx, socket disconnect, invalid success
+  JSON, cancellation during request/body/wait, and an earlier caller deadline.
+  Resolve the same account concurrently and retry after a failed refresh.
+- **Expected**: At most three requests share one deadline and original signal;
+  no retry precedes a server hint. Only explicit 429 is retried; grant rejection
+  and ambiguous failures stop. Request grant fields and custom headers remain
+  unchanged. Failed refresh retains the old credential and releases its lock;
+  concurrent resolves rotate/write once. Failed/cancelled login removes only
+  its newly created row. HTTP/token-JSON errors contain no token-body canary, URL
+  or embedded stack and provide recovery guidance without claiming every 429
+  consumes code. Existing network-error diagnostics are unchanged.
+- **Specs linked**: `03-runtime/11-provider-model-system.md` §8a; ADR 0095.
+- **Acceptance**: B (vendor accounts), Security, Quality.
+- **Status**: All 20 local HTTP scenarios passed against the installed patch;
+  the existing 20 login/session regressions also passed. This is a pre-merge
+  transport and orchestration integration test, not live OAuth, visual UI or
+  Host persistence validation. Post-integration main E2E is NOT RUN.
+
 #### E2E-151: Multiple vendor accounts stay isolated through login, use, and removal
 
 - **Preconditions**: A build with `registerBunOAuthFlows()` running at startup
@@ -6905,7 +6973,8 @@ and identify the platform validation still needed.
 
 - **Preconditions**: A packaged build (so `resources/plugins` is copied outside
   the asar) and a project with nested directories, a `node_modules`, a `.env`,
-  a binary file, an image, a CSV, and a Markdown file.
+  a binary file, an image, a CSV, and a Markdown file. The project is a group
+  whose second folder is registered as another root (ADR 0249).
 - **Steps**:
   1. Open the Plugins page. Confirm **File Manager** is listed as a bundled
      plugin, enabled, showing a work-panel-views capability, and that it offers
@@ -6915,7 +6984,10 @@ and identify the platform validation still needed.
      views. Trigger an agent edit and confirm Review opens itself under Open
      resources — it is an artifact surface, not a launcher entry.
   3. Open the File Manager view. Confirm the tree lists the project, expands
-     directories lazily, and omits `node_modules`, `.git`, and `.env`.
+     directories lazily, and omits `node_modules`, `.git`, and `.env`. Switch
+     the view's top-left folder control to the project's second folder and
+     confirm the tree follows it while the app's visible workspace does not,
+     then switch back to the project's primary folder.
   4. Right-click a file and confirm **Open with default app** and **Show in
      folder** are offered and work; right-click a directory and confirm they are
      not offered, because the host refuses the action for directories.
@@ -6928,21 +7000,23 @@ and identify the platform validation still needed.
      viewer. Switch the app to Simplified Chinese and confirm the tree, viewer,
      and context menu are localized. Switch projects and confirm the tree
      updates without waiting on a poll.
-  6. Click a file path in the conversation. Confirm it still opens a host
-     `file:<path>` tab under Open resources — transcript artifacts did not move
-     to the plugin.
+  6. Click a project file path in the conversation. Confirm it opens in this
+     view on that file — a chat click now prefers the file view over the host
+     `file:` tab.
   7. Disable the File Manager plugin. Confirm the view disappears from the menu
-     and the panel, and that transcript file links still work.
+     and the panel, and that a clicked conversation file path falls back to the
+     host `file:<path>` tab under Open resources.
   8. Re-enable it, then restart the app. Confirm the enabled state and the tree
      return, and that the registry did not gain a duplicate row.
 - **Expected**: A panel surface runs entirely on the public plugin contribution
   channel, is user-disableable, cannot be uninstalled, and survives restart. Its
   host-mediated actions obey the declared `fs.read` scope, and its own reads and
-  writes stay inside the plugin's workspace jail (ADR 0241).
+  writes stay inside the jail of the one project folder it is browsing
+  (ADR 0241, ADR 0252).
 - **Specs linked**: `07-plugins/03-plugin-api.md` §3,
   `07-plugins/13-plugin-permissions-matrix.md` §2,
   `04-ux/08-component-spec.md` §5, ADR 0104, ADR 0109, ADR 0111,
-  ADR 0169, ADR 0241
+  ADR 0169, ADR 0241, ADR 0249, ADR 0252
 - **Acceptance**: G (plugins), D (workspace), Security, Quality
 - **Milestone**: M6+
 - **Status**: Unit coverage in `apps/desktop/test/bundled-plugins.test.mjs`
@@ -6951,6 +7025,89 @@ and identify the platform validation still needed.
   guards), `apps/desktop/test/plugin-work-panel-views.test.mjs` (docked-view
   event broadcast), and host-core
   `bundled_plugins_refresh_from_disk_but_keep_user_state`; the packaged journey
+  is Draft (run only in a capable environment when this surface changes)
+
+#### E2E-PLUGIN-file-view-collapse-persists
+
+- **Preconditions**: The bundled File Manager view is open on a project with
+  nested folders and a text file, and the work panel is wide enough for the
+  two-pane layout.
+- **Steps**:
+  1. Drag the divider between the file list and the content pane to a
+     non-default width, then activate the toolbar's left-most toggle from the
+     keyboard alone (Tab to it, then Enter or Space).
+  2. Click a file reference in the conversation.
+  3. Activate the same toggle again.
+  4. Collapse the file list, then close and reopen the view, and finally
+     restart the app.
+  5. Expand the file list by hand and click another chat file reference.
+- **Expected**: The toggle hides the view's own left file list and gives the
+  content pane the full width, and it stays keyboard-reachable with an
+  accessible name that swaps between `Hide file list` and `Show file list`.
+  The open request that follows a chat click shows the requested file with its
+  ancestor folders expanded and the file list collapsed, whether the view was
+  already open or was opened by that click. Expanding again restores the
+  previously dragged split width together with the expanded folders and the
+  selected file, not the default split or the project root. The collapsed state
+  is persisted: it survives closing and reopening the view and a full app
+  restart, and a manual expansion holds until the next host open request
+  collapses it again.
+- **Specs linked**: `07-plugins/02-plugin-manifest-schema.md` §4/§5,
+  `04-ux/08-component-spec.md` §5.2.2, ADR 0104, ADR 0241, ADR 0251
+- **Acceptance**: G (plugins), Quality
+- **Milestone**: M6+
+- **Status**: The bundle's manifest, entry page, and upstream checksum are
+  unit-covered (`apps/desktop/test/bundled-plugins.test.mjs`); the plugin-side
+  journey is Draft (run only in a capable environment when this surface changes)
+
+#### E2E-PLUGIN-file-view-switches-folder-per-project
+
+- **Preconditions**: A project group whose two folders each hold a text file the
+  other folder does not, and a second, single-folder project. The work panel is
+  open on the bundled File Manager view, browsing the first project's primary
+  folder.
+- **Steps**:
+  1. Switch the view's top-left folder control to the project's second folder.
+     Confirm the tree, the filename search, and open/save all follow it.
+  2. Save an edit in the text file only that second folder holds.
+  3. Close and reopen the view, then restart the app. Confirm the second folder
+     is still the one being browsed.
+  4. Switch to the other project and back. Confirm each project remembers its
+     own folder.
+  5. Click a chat reference that resolves in the project's second folder, then
+     one that resolves in its primary folder.
+  6. With the second folder selected, search the tree for the primary folder's
+     own file name, and try to open a `.env` and a symlink or junction inside
+     the second folder that points outside it. 7) With the second folder
+     selected, right-click the text file only that folder holds and use **Open
+     with default app**, then **Show in folder**; switch to the primary folder
+     and do the same for a file only *it* holds. 8) Back in the second folder,
+     use the same two actions on a file whose name both folders contain.
+- **Expected**:
+  - The control lists the project's folders in group order, primary first, and
+    names the one being browsed; the tree, search, and editing all work inside
+    that one folder, and a single-folder project offers just its one folder.
+  - Switching folders changes only what this view browses: the app's visible
+    workspace, the agent's tool roots, the session's primary path, project
+    instructions, and project memory are all unchanged (ADR 0252).
+  - The choice is remembered per project: it survives closing and reopening the
+    view and a full app restart, and the other project keeps its own folder.
+  - Both chat references open in this view on the file they name — the one from
+    the second folder included, in that folder — with no host `file:` tab.
+  - The selected folder is the jail, not the group: the filename search does not
+    reach a file that only another project folder holds, and the credential path
+    and the symlink/junction escape are still refused (ADR 0241).
+  - The two system actions reach the file that was clicked, in the folder being
+    browsed: a file only the second folder holds opens or reveals its real self
+    instead of reporting "not found", and the file whose name both folders share
+    opens the second folder's copy, not the primary folder's (ADR 0253).
+- **Specs linked**: `07-plugins/03-plugin-api.md` §3,
+  `04-ux/08-component-spec.md` §5.2.2, ADR 0241, ADR 0249, ADR 0252, ADR 0253
+- **Acceptance**: G (plugins), Security, Quality
+- **Milestone**: M6+
+- **Status**: The host-side resolution and addressing are unit-covered
+  (`apps/desktop/test/chat-ref-resolve.test.mjs`,
+  `apps/desktop/test/transcript-file-chips.test.mjs`); the plugin-side journey
   is Draft (run only in a capable environment when this surface changes)
 
 #### E2E-PLUGIN-bundled-plugin-keeps-a-marketplace-update
@@ -7036,6 +7193,34 @@ and identify the platform validation still needed.
   also activates the footer button a second time and asserts the previous
   destination; it passed 37/37 checks from integrated main `d6ffaa3b`. No
   external marketplace or live model was required.
+
+#### E2E-PROVIDER-custom-form-excludes-account-formats: Keep account APIs out of new custom services
+
+- **Preconditions**: Isolated profile, English and Simplified Chinese. Seed
+  non-OAuth legacy rows using Codex and Pi account formats, including an OpenAI
+  preset URL; use synthetic models and no real credentials.
+- **Steps**: 1) Add a Custom service and inspect its format choices. 2) Edit each
+  legacy row and save unchanged, then explicitly select Responses and save.
+  3) Copy each original legacy row, inspect the current format and explanatory
+  hint, wait past discovery debounce, and cancel. 4) Copy again, choose Anthropic
+  Messages and save. 5) Check saved payloads and the unchanged source row.
+- **Expected**: New custom choices are the four general protocols; Codex and Pi
+  are available through vendor accounts, not as new API-key choices. Legacy
+  editing preserves format, name, URL and authentication unless explicitly
+  changed. A copied account format is visible but cannot be newly selected;
+  saving and discovery are blocked until an explicit supported choice. The
+  explanation is localized. Cancel performs no create; a valid copy never uses
+  the source id or credentials. Named OpenCode Go and OAuth account flows remain
+  unchanged.
+- **Automation**: `pnpm test:e2e:provider-api-style` renders the production React
+  form in Electron/Chromium with a stubbed API boundary and checks exact create,
+  update and discovery payloads. This does not verify Host storage or live OAuth.
+- **Specs linked**: `03-runtime/12-provider-config-schema.md`, ADR 0095.
+- **Acceptance**: B (model configuration), Security.
+- **Status**: Helper/copy regressions passed. The branch Electron/React scenario
+  passed in English and Simplified Chinese: six scenario groups, four creates
+  and eight updates through the stubbed API. Host persistence, live OAuth/model
+  calls and visual layout were not exercised. Post-integration main E2E is NOT RUN.
 
 #### E2E-PROVIDER-copy-config-without-credentials: Copy configuration into an independent provider
 
@@ -7191,6 +7376,12 @@ and identify the platform validation still needed.
 | G — Plugins (Independent session communication) | E2E-SESSION-independent-top-level-communication |
 | Quality (Independent session communication) | E2E-SESSION-independent-top-level-communication, E2E-SESSION-hover-card-model-and-links |
 | C — Conversation & stream (Hover card model and links) | E2E-SESSION-hover-card-model-and-links |
+| C — Conversation & stream (Chat file references) | E2E-CHAT-shorthand-file-ref-opens-the-matching-file, E2E-CHAT-file-ref-opens-the-surface-that-owns-it |
+| G — Plugins (Chat file references) | E2E-CHAT-file-ref-opens-the-surface-that-owns-it, E2E-PLUGIN-file-view-collapse-persists |
+| Quality (Chat file references) | E2E-CHAT-shorthand-file-ref-opens-the-matching-file, E2E-CHAT-file-ref-opens-the-surface-that-owns-it, E2E-PLUGIN-file-view-collapse-persists |
+| G — Plugins (project folder roots) | E2E-PLUGIN-file-view-switches-folder-per-project |
+| Security (project folder roots) | E2E-PLUGIN-file-view-switches-folder-per-project |
+| Quality (project folder roots) | E2E-PLUGIN-file-view-switches-folder-per-project |
 | D — Workspace (project delete) | E2E-PROJECT-delete-removes-project-and-owned-sessions |
 | F — Persistence (project delete) | E2E-PROJECT-delete-removes-project-and-owned-sessions |
 | Quality (project delete) | E2E-PROJECT-delete-removes-project-and-owned-sessions |
@@ -7210,11 +7401,16 @@ and identify the platform validation still needed.
 | M6+ (Session Orchestrator) | E2E-PLUGIN-session-orchestrator-real-workers |
 | M6+ (Session list responsiveness) | E2E-SESSION-list-refresh-keeps-desktop-responsive |
 | M6+ (Independent session communication) | E2E-SESSION-independent-top-level-communication, E2E-SESSION-hover-card-model-and-links |
+| M5 (Chat file references) | E2E-CHAT-shorthand-file-ref-opens-the-matching-file, E2E-CHAT-file-ref-opens-the-surface-that-owns-it |
+| M6+ (Chat file references) | E2E-PLUGIN-file-view-collapse-persists |
+| M6+ (project folder roots) | E2E-PLUGIN-file-view-switches-folder-per-project |
 | Post-MVP | E2E-022A, E2E-022B, E2E-022C, E2E-024I, E2E-024J, E2E-024K, E2E-024L, E2E-024M (plugin roadmap R2/R3/R6) |
 | Post-baseline local automation | E2E-220 |
 | Post-MVP remote control | E2E-221, E2E-222, E2E-223, E2E-224, E2E-225, E2E-226, E2E-227, E2E-228, E2E-229, E2E-230, E2E-231, E2E-232 |
 | Trusted extensions (R7 v1) | E2E-241, E2E-242, E2E-243, E2E-244, E2E-245, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-import-extension-installs-dependencies, E2E-PLUGIN-import-extension-reports-missing-dependency |
 | M6+ (Project delete) | E2E-PROJECT-delete-removes-project-and-owned-sessions |
+| C — Conversation & stream (model fallback) | E2E-SUBAGENT-ordered-model-fallback-preserves-work |
+| Quality (model fallback isolation) | E2E-SUBAGENT-ordered-model-fallback-preserves-work |
 | C — Conversation & stream (legacy subagent turn limit) | E2E-SUBAGENT-legacy-turn-limit-frontmatter-is-ignored |
 | Quality (legacy subagent turn limit) | E2E-SUBAGENT-legacy-turn-limit-frontmatter-is-ignored |
 
@@ -7697,6 +7893,9 @@ This test plan spec is accepted when:
 - With the stack overlapping the frameless titlebar band, hover still pauses
   the countdown and every X remains clickable instead of dragging the window.
 - Repeating the same action restarts the existing toast instead of stacking a duplicate; stack never exceeds 4.
+- Toast message text is selectable: dragging across a card highlights only
+  its message text and `Cmd/Ctrl+C` copies it, while the card icon and its X
+  dismiss control expose no selection.
 - Capture rig scenes `pi-toasts-light` / `pi-toasts-dark` show the stack in both themes.
 
 ### US-UI-55 Composer textarea growth (D089)
@@ -9741,12 +9940,15 @@ are withdrawn with ADR 0165.
 #### E2E-180: Sent file references stay chips and open on click
 
 - **Preconditions**: An Agent session in a workspace that contains a nested
-  source file, an HTML file, and a file whose name contains whitespace. The
-  composer can also paste an OS file into session scratch.
+  source file, an HTML file, and a file whose name contains whitespace, and a
+  project group whose second folder holds a source file of its own. The
+  composer can also paste an OS file into session scratch. The bundled File
+  Manager plugin is loaded.
 - **Steps**: 1) Attach a workspace source file, a workspace HTML file, a
   whitespace-named file, and a pasted scratch file via composer chips, then
-  send. 2) Inspect the user bubble. 3) Click the HTML chip, then click a
-  non-HTML chip.
+  send. 2) Inspect the user bubble. 3) Click the HTML chip, then the workspace
+  source chip, then the scratch chip. 4) Attach the file that lives in the
+  project's second folder and click its chip.
 - **Expected**:
   - Each sent reference renders as a compact leaf-name chip (icon + name),
     not as a full `@path`. The tooltip and accessible name keep the
@@ -9754,16 +9956,118 @@ are withdrawn with ADR 0165.
   - A chip plus a short prompt keeps the user plate content-sized; it does
     not stretch to the `min(82%, 600px)` ceiling.
   - Clicking the HTML chip opens the work-panel browser on that file.
-  - Clicking any other allowed file opens it with the OS default application.
+  - Clicking the workspace source chip opens it in the File Manager work-panel
+    view on that file; the host `file:` tab and the OS default application are
+    no longer what a chip click opens.
+  - Clicking the scratch chip opens the host `file:` tab on that file's
+    absolute path, because it lives outside the File Manager's project root.
+  - Clicking the chip of the file in the project's second folder opens it in
+    the File Manager view on that file: completion searches the whole project
+    group, primary folder first, and a sibling-folder file is addressed by
+    absolute path because a relative path always means the primary folder
+    (ADR 0252).
   - The persisted user message still contains the canonical `@path` text for
     the agent.
 - **Specs linked**: `04-ux/08-component-spec.md` §8.3 / §11.8,
   `04-ux/09-interaction-patterns.md` §8a.2, `03-runtime/01-ipc-protocol.md`,
-  ADR 0163, `08-meta/decisions-log.md` (D320)
+  ADR 0163, ADR 0241, ADR 0251, ADR 0252, `08-meta/decisions-log.md` (D320)
 - **Acceptance**: C (conversation & stream), Quality
 - **Milestone**: M5
 - **Status**: Unit-covered (`chat-links.test.mjs`, `transcript-file-chips.test.mjs`,
   `fs-panel-guard.test.mjs`, `transcript-style.test.mjs`); full UI journey Draft (run only in a capable environment when this surface changes)
+
+#### E2E-CHAT-shorthand-file-ref-opens-the-matching-file
+
+- **Preconditions**: A project group whose primary folder holds
+  `img/openimage.js`, `src/dir/a.ts`, and a deeper second `dir/a.ts` such as
+  `packages/app/dir/a.ts`, and whose second folder holds `lib/only-here.ts`.
+  The open session's scratch store holds a file with the same leaf name
+  `openimage.js` and one file no project folder has; the attachment store holds
+  an `attachments/<sha256>` blob. The transcript renders assistant markdown.
+- **Steps**: 1) Prompt a turn whose reply names `openimage.js` as inline code
+  and click it. 2) Prompt a turn that names `dir/a.ts` and click it. 3) Prompt
+  a turn that names the scratch-only file, click it, then do the same for the
+  `attachments/<sha256>` ref. 4) Prompt a turn that names an absolute path to a
+  project file whose leaf name also exists in scratch, and click it. 5) Prompt
+  a turn that names `missing-helper.js` and click it. 6) Prompt a turn that
+  names `only-here.ts` and click it.
+- **Expected**:
+  - Clicking `openimage.js` opens the project's `img/openimage.js`, although the
+    scratch store holds a file with that same leaf name: the project is
+    searched to exhaustion before the scratch store is considered at all.
+  - `dir/a.ts` opens `src/dir/a.ts`: an exact path beats a shorthand, a longer
+    matching tail beats a bare leaf name, and the shallowest candidate wins a
+    tail-length tie, so the deeper `packages/app/dir/a.ts` is never the one
+    that opens.
+  - A reference the project cannot answer resolves in the session scratch
+    store; one that neither answers resolves in the attachment store, and an
+    `attachments/<sha256>` ref opens that stored blob.
+  - An absolute reference that names a real file inside a known root wins
+    outright, whichever shorthand would otherwise have matched.
+  - `only-here.ts` opens the second folder's `lib/only-here.ts`: the primary
+    folder is searched first and to exhaustion, then the project group's other
+    folders in the group's own order, and the match names the folder that
+    answered (ADR 0252).
+  - A file that answered from a sibling folder is addressed to the work panel by
+    its absolute path, while a primary-folder file stays project-relative
+    (ADR 0252).
+  - A reference that matches nothing raises an error toast reading
+    `No file matches missing-helper.js` and opens nothing: no new work-panel
+    tab, no empty panel, no blank side-browser page, and the work panel and
+    transcript keep the content they already had.
+- **Specs linked**: `03-runtime/01-ipc-protocol.md` § fs,
+  `04-ux/09-interaction-patterns.md` §8a.2, ADR 0124, ADR 0163, ADR 0249,
+  ADR 0251, ADR 0252
+- **Acceptance**: C (conversation & stream), D (workspace), Quality
+- **Milestone**: M5
+- **Status**: Unit-covered
+  (`apps/desktop/test/chat-ref-resolve.test.mjs`); full UI journey Draft (run
+  only in a capable environment when this surface changes)
+
+#### E2E-CHAT-file-ref-opens-the-surface-that-owns-it
+
+- **Preconditions**: The bundled File Manager plugin is loaded and enabled and
+  the work panel is closed. The open session's scratch store holds one file and
+  the attachment store one blob. The project is a group whose primary folder
+  contains an `.html` page and a text file, and whose second folder holds a text
+  file of its own.
+- **Steps**: 1) Click a project file reference in an assistant reply. 2) Type an
+  unsaved edit into that view and click the same reference again. 3) Click a
+  reference that resolves into the session scratch store, then the
+  `attachments/<sha256>` reference. 4) Click a workspace `.html` reference in an
+  assistant reply and the same reference as a sent user chip. 5) Disable the
+  File Manager plugin, click a project file reference again, then re-enable it
+  and click that reference once more. 6) Click a reference that resolves in the
+  project's second folder, then one that resolves in its primary folder.
+- **Expected**:
+  - A project file opens in the File Manager work-panel view on that file, with
+    its ancestor folders expanded and the file selected; no host `file:` tab is
+    added for it.
+  - Clicking the same reference again does not reload the view: the unsaved edit
+    is still in the editor and no second tab appears.
+  - A scratch or attachment file opens in the host `file:` tab under Open
+    resources, addressed by its absolute path, never in the File Manager view.
+  - A `.html` / `.htm` page of the project's primary folder opens in the
+    work-panel side browser, from the assistant reply and the user chip alike; a
+    page in a sibling folder is a project file like any other and opens in the
+    File Manager view, because the side browser is rooted at the primary folder
+    (ADR 0252).
+  - A reference that resolved in the project's second folder opens in the File
+    Manager view on that file, reached by its absolute path, with no host
+    `file:` tab; the reference from the primary folder opens in that same view
+    addressed project-relative (ADR 0252).
+  - With the plugin disabled, a project file reference falls back to the host
+    `file:` tab — the surface the click used before, which now also reaches the
+    project's other folders — instead of opening nothing; re-enabling the plugin
+    restores the File Manager destination.
+- **Specs linked**: `04-ux/08-component-spec.md` §8.3,
+  `04-ux/09-interaction-patterns.md` §8a.2, ADR 0104, ADR 0163, ADR 0241,
+  ADR 0249, ADR 0251, ADR 0252
+- **Acceptance**: C (conversation & stream), G (plugins), Quality
+- **Milestone**: M5
+- **Status**: Unit-covered
+  (`apps/desktop/test/transcript-file-chips.test.mjs`); full UI journey Draft
+  (run only in a capable environment when this surface changes)
 
 #### E2E-181: An imported skill is listed in the next session catalog
 
@@ -9810,8 +10114,9 @@ are withdrawn with ADR 0165.
   and a `~/` path in chat; confirm only the under-root path becomes a target.
 - **Expected**:
   - Opening the session paints the transcript without throwing.
-  - Each chat path opens the work-panel files viewer on
-    `apps/desktop/src/App.tsx`.
+  - Each chat path opens `apps/desktop/src/App.tsx` in the File Manager
+    work-panel view — the file view a chat click prefers — not a host `file:`
+    tab.
   - Unicode filenames and multi-segment paths inside the workspace become
     targets, while an outside absolute path and a `~/` path stay plain text.
   - An absolute path under the workspace resolves to its workspace-relative
@@ -11884,3 +12189,44 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   unchanged.
 - **Specs:** IPC native routing; runtime §12; storage §12; security §12.
 - **Status:** Documented; run after integration into main.
+
+
+### E2E-SUBAGENT-ordered-model-fallback-preserves-work
+
+- **Preconditions**: A configured primary and at least three alternatives use
+  deterministic local transports; one definition declares the ordered
+  alternatives. A second definition has no alternatives, and none are opted
+  in for Task overrides.
+- **Steps**: Add two alternatives in Settings, reorder them, save and reopen;
+  change another field without changing the list. Run the child, complete one
+  tool call, then fail the primary request. Fail the first alternative and
+  complete the second. Run a matrix with zero, one, two, and three unavailable
+  models before a successful model, leaving an unused model after success.
+  Repeat with all four models unavailable, mixed 401/403/404 failures,
+  exhausted transient/429 retries on two consecutive models,
+  unavailable/duplicate pins, an explicit authorized Task primary,
+  and Stop during recovery. Remove all alternatives, save, and reopen.
+- **Expected**: List order and clear/preserve semantics round-trip. Provider
+  retry budgets precede fallback; each distinct configured binding is used
+  once. The original task and completed tool results reach the next model;
+  completed tools are not replayed. Adapter/auth/headers and thinking match
+  each selected model. Failure diagnostics and total usage survive settlement;
+  effective model/thinking survive reload. Stop cancels the chain; host/tool
+  errors do not switch models. Exhaustion fails explicitly. Alternatives never
+  authorize a Task override for the second definition. No alternatives retains
+  the existing single-model behavior.
+- **Specs linked**: `03-runtime/02-agent-runtime.md` §5f,
+  `03-runtime/13-model-catalog-and-selection.md` §Subagent editor,
+  ADR subagent-model-fallback.
+- **Acceptance criterion**: C — Conversation & stream; Quality (compatibility
+  and permission isolation).
+- **Milestone**: M6+.
+- **Status**: Automated registry and runtime coverage through shared/runtime
+  regression tests and `test:e2e:subagents` / `test:e2e:subagent-models`. The
+  sidecar suite checks the zero-to-three failure matrix and four-model
+  exhaustion against actual HTTP request order, live/settled Task metadata,
+  ordered failure diagnostics, and the successful child report. Completed-tool
+  preservation and independent retry budgets use real-transport runtime tests.
+  The configuration-editor journey passed under WSL; task-transcript reload
+  acceptance remains outstanding. Required post-integration suites: `test:e2e`,
+  `test:e2e:subagents`, `test:e2e:subagent-models`.

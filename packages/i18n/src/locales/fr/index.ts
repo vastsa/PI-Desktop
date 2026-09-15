@@ -305,6 +305,7 @@ export const fr = {
     "errorProvider": "Fournisseur d'IA",
     "errorModel": "Modèle",
     "previewFile": "Aperçu dans le panneau latéral",
+    "fileRefMissing": "Aucun fichier ne correspond à {{name}}",
     "previewUrl": "Ouvrir dans le navigateur latéral",
     "openFile": "Ouvrir avec l'application par défaut",
     "retry": "Régénérer la branche",
@@ -663,6 +664,7 @@ sklm: {
     "groupAgent": "Agent",
     "groupWorkspace": "Espace de travail",
     "groupSystem": "Système",
+    "groupExtensions": "Extensions",
     "nav": {
       "general": "Général",
       "ai": "IA",
@@ -1031,6 +1033,8 @@ sklm: {
     "apiStyleAnthropic": "Messages anthropiques",
     "apiStyleGoogle": "Google Generative AI",
     "apiStyleCodexResponses": "OpenAI Codex (ChatGPT)",
+    apiStyleLegacyAccount: "Ce format enregistré nécessite un compte fournisseur. Il reste inchangé tant que vous ne choisissez pas un autre format.",
+    apiStyleChooseCustom: "Ce format nécessite un compte fournisseur. Choisissez un format API pris en charge pour enregistrer ce service.",
     "apiStylePiMessages": "Pi Messages (Radius)",
     "close": "Fermer",
     "vendorAccounts": "Comptes fournisseurs",
@@ -1961,6 +1965,12 @@ sklm: {
       "errorTooBig": "Le document dépasse la taille limite."
     },
     "subagents": {
+      fallbackModels: "Modèles de secours",
+      fallbackModelsHint: "Essayés dans cet ordre après échec des tentatives. Les résultats des outils sont conservés ; Arrêter annule toute la tâche.",
+      fallbackAdd: "Ajouter un modèle de secours",
+      fallbackMoveUp: "Monter {{model}}",
+      fallbackMoveDown: "Descendre {{model}}",
+      fallbackRemove: "Retirer {{model}}",
       "title": "Sous-agents",
       "add": "Nouveau sous-agent",
       "addTitle": "Nouveau sous-agent",

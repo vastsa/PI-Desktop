@@ -8,7 +8,6 @@
 :root[data-theme="dark"] .composer-shell {
   /* Codex elevated-primary: #212121f5 / gray-800 96% (not flat solid) */
   background: var(--ds-bg-elevated-primary);
-  background-color: #212121f5;
   box-shadow: var(--ds-shadow-composer);
   border: 0;
   outline: 0;

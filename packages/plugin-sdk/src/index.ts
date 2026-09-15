@@ -8,10 +8,15 @@ import {
 import { validateMcpServer } from "./mcp-config.js";
 import { parseNetDomains, type PluginNetDomain } from "./net-policy.js";
 import {
+  isExternalThemeAssetPath,
   isThemeAssetPath,
   normalizeThemeAssetPath,
   THEME_ASSET_EXTENSIONS,
 } from "./theme-css.js";
+import {
+  validatePluginThemeVariableDeclaration,
+  type PluginThemeVariableContrib,
+} from "./theme-variables.js";
 
 /**
  * Manifest id shape frozen by docs/spec/07-plugins/02-plugin-manifest-schema.md:
@@ -79,6 +84,8 @@ export type PluginManifest = {
     agentExtensions?: string[];
     settings?: PluginSettingContrib[];
     themes?: PluginThemeContrib[];
+    /** Sandboxed pages placed exclusively in Settings' host-owned Extensions group. */
+    settingsDestinations?: PluginSettingsDestinationContrib[];
     /** Native window background for this plugin's themes (ADR 0248). */
     windowAppearance?: PluginWindowAppearanceContrib;
     mcpServers?: PluginMcpServerContrib[];
@@ -315,6 +322,16 @@ export type PluginThemeContrib = {
    * `plugin-asset://` scheme; anything not declared here is still refused.
    */
   assets?: string[];
+  /** Values accepted by the typed `pi.themes.setVariables` API. */
+  variables?: PluginThemeVariableContrib[];
+};
+
+export type PluginSettingsDestinationContrib = {
+  id: string;
+  label: PluginLocalizedString | string;
+  icon: "sliders" | "sparkles" | "palette" | "plug" | "settings";
+  keywords?: Array<PluginLocalizedString | string>;
+  entry: string;
 };
 
 /**
@@ -655,6 +672,7 @@ export type PluginHostApi = {
     upsert: (input: PluginThemeUpsertInput) => Promise<void>;
     remove: (themeId: string) => Promise<void>;
     list: () => Promise<PluginThemeSummary[]>;
+    setVariables: (themeId: string, values: Record<string, number | string>) => Promise<void>;
   };
   plugin: {
     getId: () => string;
@@ -838,6 +856,7 @@ export const PLUGIN_PERMISSIONS = [
   "ui.view",
   "ui.microphone",
   "ui.theme",
+  "ui.settings",
   "ui.window.appearance",
   "clipboard.read",
   "clipboard.write",
@@ -1112,7 +1131,7 @@ export function validateContributions(
       const assetPaths = new Set<string>();
       for (const asset of theme.assets) {
         if (typeof asset !== "string" || !isThemeAssetPath(asset)) {
-          return `theme "${theme.id}" asset must be a relative ${THEME_ASSET_EXTENSIONS.join(
+          return `theme "${theme.id}" asset must be an absolute ${THEME_ASSET_EXTENSIONS.join(
             "/",
           )} path`;
         }
@@ -1124,6 +1143,30 @@ export function validateContributions(
         assetPaths.add(normalized);
       }
     }
+    if (theme.variables !== undefined) {
+      if (!Array.isArray(theme.variables)) return `theme "${theme.id}" variables must be an array`;
+      const variables = new Set<string>();
+      for (const variable of theme.variables) {
+        if (!validatePluginThemeVariableDeclaration(variable)) {
+          return `theme "${theme.id}" has an invalid variable declaration`;
+        }
+        if (variables.has(variable.name)) return `theme "${theme.id}" declares variable "${variable.name}" twice`;
+        variables.add(variable.name);
+      }
+    }
+  }
+
+  const settingsDestinationIds = new Set<string>();
+  for (const destination of contributes.settingsDestinations ?? []) {
+    if (!destination || typeof destination !== "object") return "contributes.settingsDestinations entries must be objects";
+    if (typeof destination.id !== "string" || !/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/.test(destination.id)) return "contributes.settingsDestinations id must match [a-zA-Z][a-zA-Z0-9_-]{0,63}";
+    if (settingsDestinationIds.has(destination.id)) return `duplicate settings destination id "${destination.id}"`;
+    settingsDestinationIds.add(destination.id);
+    if (typeof destination.entry !== "string" || !destination.entry.endsWith(".html")) return `settings destination "${destination.id}" entry must be an .html file`;
+    const pathError = relativePathError(destination.entry, `settings destination "${destination.id}" entry`);
+    if (pathError) return pathError;
+    if (!destination.label || (typeof destination.label !== "string" && typeof destination.label !== "object")) return `settings destination "${destination.id}" requires a label`;
+    if (!["sliders", "sparkles", "palette", "plug", "settings"].includes(destination.icon)) return `settings destination "${destination.id}" has an unsupported icon`;
   }
 
   const windowAppearance = contributes.windowAppearance;
@@ -1346,6 +1389,7 @@ export {
 export {
   decodeCssEscapes,
   findThemeCssUrlReferences,
+  isExternalThemeAssetPath,
   isThemeAssetPath,
   maskNonCodeCss,
   normalizeThemeAssetPath,
@@ -1359,6 +1403,15 @@ export {
   type ThemeCssResult,
   type ThemeCssUrlReference,
 } from "./theme-css.js";
+export {
+  formatPluginThemeVariables,
+  isPluginThemeVariableName,
+  normalizePluginThemeVariableValues,
+  validatePluginThemeVariableDeclaration,
+  validatePluginThemeVariables,
+  type PluginThemeVariableContrib,
+  type PluginThemeVariableValues,
+} from "./theme-variables.js";
 export {
   busTopicAllowed,
   isValidBusTopic,

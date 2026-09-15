@@ -36,6 +36,10 @@ const runtimeSource = await readFile(
   new URL("../../../packages/agent-runtime/src/subagent.ts", import.meta.url),
   "utf8",
 );
+const bindingSource = await readFile(
+  new URL("../../../packages/agent-runtime/src/subagent-model-binding.ts", import.meta.url),
+  "utf8",
+);
 const hostSource = await readFile(
   new URL("../../../crates/host-core/src/user_subagents.rs", import.meta.url),
   "utf8",
@@ -114,17 +118,18 @@ test("the cap is edited in the existing Advanced area, ahead of the scope field"
 });
 
 test("the runtime overrides the built model instead of replacing it", () => {
+  assert.match(runtimeSource, /maxTokens: this\.opts\.definition\.maxTokens/);
   assert.match(
-    runtimeSource,
+    bindingSource,
     /const builtModel = buildProviderModel\(opts\.provider\);/,
   );
   assert.match(
-    runtimeSource,
-    /opts\.definition\.maxTokens !== undefined[\s\S]*?\{ \.\.\.builtModel, maxTokens: opts\.definition\.maxTokens \}[\s\S]*?: builtModel;/,
+    bindingSource,
+    /opts\.maxTokens !== undefined[\s\S]*?\{ \.\.\.builtModel, maxTokens: opts\.maxTokens \}[\s\S]*?: builtModel;/,
   );
   // The provider registry and the omit-thinking path both read `model`, so a
   // cap that bypassed it would silently not apply to the request.
-  assert.match(runtimeSource, /createProviderModels\(opts\.provider, model\)/);
+  assert.match(bindingSource, /createProviderModels\(opts\.provider, model\)/);
 });
 
 test("every locale ships the output-cap copy", async () => {

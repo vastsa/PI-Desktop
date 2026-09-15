@@ -370,6 +370,7 @@ function delegationSummary(record: DelegationRecord): Record<string, unknown> {
     toolCalls: record.result?.toolCalls ?? record.toolCalls,
     ...(record.lastToolName ? { lastToolName: record.lastToolName } : {}),
     ...(record.completedAt ? { completedAt: record.completedAt } : {}),
+    ...(record.result?.modelFailures ? { modelFailures: record.result.modelFailures } : {}),
     ...(record.result?.error ? { error: record.result.error } : {}),
   };
 }
@@ -3594,6 +3595,16 @@ Delegation rules:
           task,
           provider,
           thinkingLevel,
+          fallbackModels: (definition.fallbackModels ?? []).map((pin) => ({
+            key: subagentModelKey(pin),
+            provider: this.subagentProviders[subagentModelKey(pin)],
+          })),
+          inheritedThinkingLevel: this.thinkingLevel,
+          onModelChange: (next, level) => {
+            record.modelId = next.modelId;
+            record.thinkingLevel = level;
+            this.publishDelegationSettlement(record);
+          },
           systemPrompt: composeSubagentSystemPrompt({
             definition,
             guidance: this.subagentGuidance(definition),
@@ -3701,7 +3712,10 @@ Delegation rules:
   }
 
   private publishDelegationSettlement(record: DelegationRecord): void {
-    if (!record.taskMessage || record.status === "running") return;
+    if (!record.taskMessage) return;
+    const original = record.taskMessage.toolResult;
+    const details = isRecord(original) && isRecord(original.details) ? original.details : undefined;
+    if (record.status === "running" && details?.modelId === record.modelId && details?.thinkingLevel === record.thinkingLevel) return;
     this.emit(
       {
         type: "message_end",

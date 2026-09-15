@@ -45,6 +45,8 @@ PI-Desktop 的行为类似于桌面应用程序 shell，因此意外拖动
   用户可以编辑草稿、搜索和使用本机 `Cmd/Ctrl+A/C/V` 行为。
 - 转录消息正文、渲染的 Markdown、代码块和工具
   input/output 仍然可以选择进行复制和检查。
+- 携带用户可能需要留存文本的瞬时表面——尤其是 toast 消息——仍然可以选择；
+  其图标与关闭控件属于不可选择的镶边。
 - 新的类文档表面必须选择共享 `.selectable` 类（或
   等效的显式 `user-select: text` 规则）。
 - Electron 渲染器设置 `user-select` 和 `-webkit-user-select`；
@@ -505,6 +507,21 @@ shadow-lg:  0 8px 24px rgba(0,0,0,0.12)
 | 色块 | `--ds-tile`（文字色 3.5% 混合）；悬停 `--ds-tile-hover`（6%）；加深 `--ds-tile-deep`（8%） | 面板、列表行、卡片、表单字段、芯片、代码块、空状态 |
 | 抬起 | `--ds-raised` + `--ds-raised-shadow` | 分段控件的当前项、展开的详情块、录制键帽 |
 | 停靠列 | `--ds-bg-dock`（列本身）、`--ds-bg-dock-raised`（其标题栏与查看器条目栏） | 工作面板列及其内部条目栏。两者都是标记而非字面量，插件主题可以覆盖（D419） |
+| 设置导航轨 | `--ds-settings-rail-bg`（浅色 `#f4f4f4`、深色 `#000000`） | 全窗口设置导航列 |
+| 设置搜索 | `--ds-settings-field-bg`（浅色 `#ffffff`、深色 `#212121`） | 导航轨搜索框 |
+| 设置选中项 | `--ds-settings-nav-active`（浅色为 12% `#1a1c1f` 混合白底；深色为 10% `--gray-0` 混合透明底） | 选中导航胶囊 |
+| 内嵌搜索 | `--ds-field-inset-bg`、`--ds-field-inset-focus-bg`（浅色 `#f3f3f3` / 白色；深色为 5% / 7% 主文本色混合透明底） | 插件搜索和 Agent 能力搜索，包含焦点状态 |
+
+深色输入框壳直接使用 `--ds-bg-elevated-primary`，浅色继续使用
+`--ds-bg-composer`。开启状态的开关旋钮在两套调色板中均使用
+`--ds-switch-knob-on`。这些表面保留内置配色、焦点环和阴影，插件样式可通过变量
+覆盖填充色。组件的主题专属规则可以保留既有阴影或布局差异，但不得用字面量
+覆盖原本读取变量的填充色。
+
+`pnpm lint` 会检查本批设置导航轨、搜索、导航项、开关旋钮、能力搜索、插件搜索
+与输入框壳的 `background` / `background-color`，拒绝裸 hex、CSS 颜色函数、
+`white` 和 `black`。此检查范围有限，不代表正文、遮罩、其他外壳或插件 CSS 已全部
+完成颜色标记迁移；级联和焦点行为仍需真实渲染验证。
 
 外壳绘制的任何表面色都必须来自标记。`:root[data-theme="light"]` 覆写里写字面量
 会抬高特异度、压过读标记的基础规则，等于把该表面钉死在所有主题之外 —— 见 D419。

@@ -63,6 +63,7 @@ export type ApplicationLifecycleDependencies = {
   applyCloseBehavior: (behavior: CloseBehavior) => void;
   browserPane: BrowserPane;
   pluginViews: PluginViewHost;
+  pluginSettingsViews: PluginViewHost;
   plugins: PluginRuntime;
   logger: Pick<Logger, "app">;
   refreshReleaseNotes: () => void;
@@ -96,6 +97,7 @@ export function createApplicationLifecycle({
   applyCloseBehavior,
   browserPane,
   pluginViews,
+  pluginSettingsViews,
   plugins,
   logger,
   refreshReleaseNotes,
@@ -317,6 +319,7 @@ export function createApplicationLifecycle({
       createTray,
       browserPane,
       pluginViews,
+      pluginSettingsViews,
       plugins,
       logger,
     });

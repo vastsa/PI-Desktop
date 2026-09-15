@@ -143,10 +143,19 @@ model record may explicitly set it to `true` for an upstream that accepts
 `authKind: "oauth"` marks a vendor-account row (ADR 0095, D237, D240): the credential
 is an OAuth grant under `secret:provider:<id>:oauth` rather than a pasted key,
 so the row carries no `secretRef` for it and launches with an empty key. The
-last two apiStyle values are vendor-account wire APIs — `openai_codex_responses`
+two account-only apiStyle values are vendor-account wire APIs — `openai_codex_responses`
 (the Codex conversation envelope) and `pi_messages` (the radius gateway) — and
 are not offered in the custom-provider dialog because neither works against a
-hand-typed base URL with a pasted key. A vendor row's style is not fixed by the
+hand-typed base URL with a pasted key. New custom services offer only
+Chat Completions, Responses, Anthropic Messages, and Google Generative AI;
+OpenCode Go remains a named service. Existing non-OAuth rows with either
+account-only style remain editable: their current format is shown as a disabled
+legacy option with an explanation and can be saved unchanged. Merely opening
+the editor does not derive another protocol, name, or URL from a matching
+endpoint preset. Selecting another format is an explicit change. Copying such
+a row preserves its draft format for review, but saving and discovery remain
+disabled with a visible explanation until a supported format is explicitly
+chosen. No existing authentication kind or credential is migrated. A vendor row's style is not fixed by the
 vendor: GitHub Copilot serves Anthropic, Chat Completions, and Responses
 models, so the style follows the selected model and is rewritten on each model
 change. The vendor account editor uses the same multi-model binding controls as

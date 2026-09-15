@@ -60,10 +60,11 @@
   解析器无法解析 `javascript:`、`expression(` 和标记序列
   （`<style`、`</style`、`<!--`）；空纸也会被拒绝
 - 每个文件上限为 256KB，每个插件 8 个主题
-- 主题可声明 `assets`（包内相对路径、扩展名白名单、总量上限 4MB）。命中的
-  `url()` 会被改写为 `plugin-asset://<pluginId>/<path>`，由宿主的处理器提供；
-  该处理器只按已加载插件自己声明的清单解析，只读、限定在插件包内、带 `nosniff`，
-  并在插件卸载时一并撤销。未命中的引用仍被拒绝，原始路径不会到达渲染器
+- 主题可声明 `assets`（绝对路径、扩展名白名单、总量上限 4MB）。命中的 `url()`
+  会被改写为 `plugin-asset://<pluginId>/<path>`，由宿主的处理器提供；该处理器
+  只按已加载插件自己登记的清单解析，只读、带 `nosniff`，并在插件卸载时一并撤销。
+  `pi.themes.upsert` 也能在运行时登记同样的路径。未登记的引用仍被拒绝，
+  原始路径不会到达渲染器
 - `contributes.windowAppearance`（`#rrggbb` / `#rrggbbaa`）需要
   `ui.window.appearance`，且只在该插件的某个主题被选中时生效；离开该主题即恢复
   宿主背景，因为颜色由实时主题目录推导而非记忆。macOS 保持 `vibrancy`，

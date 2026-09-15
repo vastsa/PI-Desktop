@@ -22,6 +22,13 @@
  *   ⑤ 写入审计：追加到插件数据目录 write-audit.jsonl（宿主审计不到这条路径）
  *   ⑥ 上限：文本预览 2 MiB / 图片 8 MiB / 音视频 24 MiB / 写入 8 MiB /
  *      单目录 3000 条 / 搜索分页（后两类要走 base64，所以单独设限）
+ *   ⑦ 宿主请求打开：宿主可以要求视图打开项目之外的文件（会话临时目录 / 附件，
+ *      路径由宿主自己选定）。视图带 external: true 时才放行绝对路径，这条路径
+ *      不做根内包含校验（它本来就在根外），黑名单与 realpath 检查照旧全量生效。
+ *   ⑧ 项目组（0.5.0）：宿主可以把一个项目注册成多个本地文件夹（roots）。本插件
+ *      同一时刻**只认一个** root 作为包含基点——当前选中的那个（记忆在
+ *      prefs.projectRoots，按 projectId 记忆、缺 projectId 时按主根路径）。基点
+ *      绝不放大成「整个组的并集」：换基点只是换一扇门，门后的规则一条不变。
  *
  * 通道：视图 window.pluginBridge.invoke("fm.*", payload) → onPanelInvoke。
  *   宿主对自定义通道的转发超时是 30s（plugin-runtime.ts PLUGIN_PANEL_TIMEOUT_MS），
@@ -38,6 +45,8 @@ const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_MEDIA_BYTES = 24 * 1024 * 1024;
 const MAX_WRITE_BYTES = 8 * 1024 * 1024;
 const MAX_LIST_ENTRIES = 3000;
+/** prefs.projectRoots 最多记多少个项目；超出按最久没用过的淘汰。 */
+const MAX_PROJECT_ROOTS = 20;
 const MAX_SEARCH_MATCHES = 60;
 const MAX_SEARCH_SCANNED = 200000;
 const SEARCH_BUDGET_MS = 3000;
@@ -116,11 +125,20 @@ const IGNORE_FILE_NAMES = [".gitignore", ".ignore"];
 let dataPath = null;
 let prefs = {
   splitRatio: 0.32,
+  /** 左侧文件列表是否收起；宿主请求打开文件时视图会强制收起并持久化。 */
+  treeCollapsed: false,
   showIgnored: false,
   mdPreview: false,
   csvTable: true,
   jsonTree: false,
   tablePageSize: 1000,
+  /**
+   * 项目组里「当前在看哪个 folder root」的记忆：projectKey → 绝对路径。
+   * projectKey = `p:<projectId>`（宿主给了 projectId）或 `r:<主根路径>`；
+   * 值必须命中宿主当前给的 roots 才被信任（否则退回主根），最多
+   * MAX_PROJECT_ROOTS 条，按最近写入做 LRU 淘汰。见下面「项目组与基点」。
+   */
+  projectRoots: {},
 };
 const searchSessions = new Map();
 
@@ -180,9 +198,42 @@ async function exists(target) {
   }
 }
 
+/**
+ * 当前基点：宿主给的组里**被选中**的那个 folder root。所有按相对路径解析的通道
+ * （列表 / 读 / 写 / 新建 / 重命名 / 移动 / 搜索 / sqlite）都以它为包含基点。
+ *
+ * path / name 在 0.5.0 之前就是 workspace.path/name——那时只有一个根，也就是
+ * 主根；现在多根时它是「当前选中的那个」。视图需要的组身份不在这里，见下面
+ * projectGroup()：两者刻意分开，免得视图把「基点」当成「组的身份」来记忆。
+ */
 async function currentRoot() {
   const workspace = await pi.workspace.get();
-  return workspace?.path ? workspace : null;
+  if (!workspace?.path) return null;
+  return rootPayload(workspace, selectedRootOf(workspace));
+}
+
+/**
+ * 组形状：path / name 是组的**主根**（与 pi.workspace.get 完全一致），projectId
+ * 与 roots 原样透传给视图（宿主没给就一个都不带）。视图只从这里认「这是哪个组、
+ * 一共有哪些 folder」，当前看的是哪个由 prefs.projectRoots 推导。
+ */
+async function projectGroup() {
+  const workspace = await pi.workspace.get();
+  if (!workspace?.path) return null;
+  return rootPayload(workspace, primaryRootOf(rootsOf(workspace)));
+}
+
+/** 把一个 root 包成发给视图的形状（基点路径 + 名字 + 组信息）。 */
+function rootPayload(workspace, root) {
+  const group = groupRoots(workspace);
+  return {
+    path: root.path,
+    name: root.name,
+    ...(typeof workspace.projectId === "string" && workspace.projectId
+      ? { projectId: workspace.projectId }
+      : {}),
+    ...(group ? { roots: group } : {}),
+  };
 }
 
 /** 把相对根目录的正斜杠路径规范化；拒绝绝对路径与 `..` 段。 */
@@ -246,6 +297,253 @@ async function resolveInsideRoot(relPath, { mode = "read", allowRoot = false } =
   }
 
   return { root, rootPath, abs, rel, isRoot: false };
+}
+
+/** 绝对路径判定：POSIX 根、Windows 盘符、UNC（`\\server\share`）。 */
+function isAbsolutePath(target) {
+  return /^\//.test(target) || /^[A-Za-z]:[\\/]/.test(target) || target.startsWith("\\\\");
+}
+
+/** 黑名单按 POSIX 段切分，所以外部路径里的 `\` 先统一成 `/`。 */
+function denyPathOf(target) {
+  return String(target).replace(/\\/g, "/");
+}
+
+/**
+ * 项目之外的绝对路径——宿主请求视图打开的文件（会话临时目录 / 附件），路径由
+ * 宿主自己选定，本来就在项目根外。
+ *
+ * 与 resolveInsideRoot 的唯一区别是不做根内包含校验：对这条路径做包含校验没有
+ * 意义。黑名单照旧全量生效，而且「原始字符串 / 规范化后 / realpath 之后」各查
+ * 一遍，免得 `..` 折叠或符号链接把 .ssh 这类段藏起来。
+ */
+async function resolveExternal(rawPath, mode) {
+  if (typeof rawPath !== "string" || !rawPath.trim()) {
+    throw fail("INVALID_PATH", "path must be a non-empty string");
+  }
+  if (!isAbsolutePath(rawPath)) {
+    throw fail("INVALID_PATH", "external mode requires an absolute path");
+  }
+
+  const abs = path.resolve(rawPath);
+  if (isDenied(denyPathOf(rawPath), mode) || isDenied(denyPathOf(abs), mode)) {
+    throw fail("DENIED_PATH", `refused path: ${abs}`);
+  }
+
+  // 父目录必须真实存在（写新文件也一样），且真实路径不在黑名单里。
+  let realParent;
+  try {
+    realParent = await fs.realpath(path.dirname(abs));
+  } catch {
+    throw fail("NOT_FOUND", "parent directory does not exist");
+  }
+  if (isDenied(denyPathOf(realParent), mode)) {
+    throw fail("DENIED_PATH", `refused path: ${realParent}`);
+  }
+
+  if (await exists(abs)) {
+    let realAbs;
+    try {
+      realAbs = await fs.realpath(abs);
+    } catch {
+      realAbs = abs;
+    }
+    if (isDenied(denyPathOf(realAbs), mode)) {
+      throw fail("DENIED_PATH", `refused path: ${realAbs}`);
+    }
+  }
+
+  // rel 直接取绝对路径：外部路径没有「相对根」的形态，响应里的 path 就是它，
+  // 视图把这个字符串原样带回来读写。
+  return { abs, rel: abs };
+}
+
+/**
+ * 读 / 写共用的目标解析。三种形态：
+ *   payload 带 `external: true` → 项目外绝对路径（宿主请求打开它自己选定的文件）
+ *   绝对路径                    → 组内某个 root 下的绝对路径（0.5.0，可跨 folder）
+ *   其余                        → 相对「当前选中的 root」的路径
+ */
+async function resolveTarget(payload, mode) {
+  const rawPath = payload?.path ?? "";
+  if (payload?.external === true) return resolveExternal(rawPath, mode);
+  if (isAbsolutePath(rawPath)) return resolveGroupAbsolute(rawPath, mode);
+  return resolveInsideRoot(rawPath, { mode });
+}
+
+/**
+ * 绝对路径的「组内」形态：宿主给的绝对路径可能落在同一个项目的另一个 folder
+ * root 里。找到包含它的 root 就切过去，再按「相对那个 root」的路径走原有守卫——
+ * 绝对路径本身绝不当基点用，包含基仍然是单独一个 root。
+ *
+ * 落在组外的一律拒绝。组外只有一条合法入口：视图显式带 `external: true` 的
+ * 项目外路径，那条路仍归 resolveExternal 管。
+ */
+async function resolveGroupAbsolute(rawPath, mode) {
+  const workspace = await pi.workspace.get();
+  if (!workspace?.path) throw fail("NO_WORKSPACE", "no project is open");
+
+  const abs = path.resolve(rawPath);
+  const roots = rootsOf(workspace);
+  const exact = matchRoot(roots, abs);
+  const hit = exact ?? roots.find((entry) => isInside(entry.path, abs)) ?? null;
+  if (!hit) {
+    throw fail("ABSOLUTE_PATH", "absolute paths are only accepted under a registered folder root");
+  }
+
+  await selectRoot(workspace, hit.path);
+  if (exact) return resolveInsideRoot("", { mode, allowRoot: true });
+  return resolveInsideRoot(relativeToRoot(hit.path, abs), { mode });
+}
+
+// ── 项目组与基点（0.5.0） ────────────────────────────────────────────────────
+//
+// 宿主可以把一个项目注册成多个本地文件夹（roots）。本插件同一时刻只以「当前
+// 选中的那个 root」为包含基点：.. / 符号链接 / 凭据黑名单这些规则一条都没放松，
+// 只是换了扇门（绝不放大成「整个组的并集」）。
+//
+// 选中的是哪个：prefs.projectRoots 是**唯一**真相 —— projectKey → 绝对路径。
+// projectKey 是 `p:<projectId>`（宿主给了 projectId 时）或 `r:<主根路径>`。视图
+// 与主进程都按它推导基点，所以切基点必须先把这份记忆落盘，再发下一个通道请求。
+//
+/**
+ * 去尾部分隔符、把反斜杠统一成正斜杠后的比较形态。
+ *
+ * 宿主给的目录是正斜杠（`C:/Users/me/Docs`），而这里（`sanitizePrefs`）会用 Node 的
+ * `path.resolve()` 把记忆里的值写成反斜杠（`C:\Users\me\Docs`）。同一个目录的这两种
+ * 写法必须算同一个目录，否则「切到 B 之后记住」在写盘那一刻就自己失效了：视图用原样
+ * 字符串还能匹配（头部名字会换），这里匹配不上就退回主目录（列表不换）。
+ */
+function canonicalPath(target) {
+  const trimmed = String(target).replace(/[\\/]+$/, "");
+  return (trimmed || String(target)).replace(/\\/g, "/");
+}
+
+/** 同一个目录的两种写法（Windows 盘符 / 路径大小写、末尾斜杠）。 */
+function samePath(left, right) {
+  const a = canonicalPath(left);
+  const b = canonicalPath(right);
+  return a === b || a.toLowerCase() === b.toLowerCase();
+}
+
+/** roots 里按路径命中一个 root：先精确比，再忽略大小写比一次。 */
+function matchRoot(roots, target) {
+  return (
+    roots.find((entry) => entry.path === target) ??
+    roots.find((entry) => samePath(entry.path, target)) ??
+    null
+  );
+}
+
+/** 相对某个 root 的 POSIX 相对路径（调用前必须已确认落在该 root 内）。 */
+function relativeToRoot(rootPath, abs) {
+  return path.relative(rootPath, abs).split(path.sep).join("/");
+}
+
+/**
+ * 宿主给的 roots 规整结果；宿主没送（或送来的全是垃圾）时返回 null —— 绝不自己
+ * 造一个假的 roots 去骗视图。名字缺失时退回目录名。
+ */
+function groupRoots(workspace) {
+  const raw = workspace?.roots;
+  if (!Array.isArray(raw)) return null;
+  const roots = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry.path !== "string" || !entry.path) continue;
+    roots.push({
+      path: entry.path,
+      name:
+        typeof entry.name === "string" && entry.name
+          ? entry.name
+          : path.posix.basename(entry.path.replace(/\\/g, "/")),
+      primary: entry.primary === true,
+    });
+  }
+  return roots.length > 0 ? roots : null;
+}
+
+/** 内部的 root 列表：宿主没给 roots 时退化成一个根（主根 = workspace.path）。 */
+function rootsOf(workspace) {
+  const roots = groupRoots(workspace);
+  if (roots) return roots;
+  return [
+    {
+      path: workspace.path,
+      name:
+        typeof workspace.name === "string" && workspace.name
+          ? workspace.name
+          : path.posix.basename(workspace.path.replace(/\\/g, "/")),
+      primary: true,
+    },
+  ];
+}
+
+function primaryRootOf(roots) {
+  return roots.find((entry) => entry.primary === true) ?? roots[0];
+}
+
+/** 记忆键：优先 projectId；宿主没给就退回主根路径（前缀让两种键不会互相撞上）。 */
+function projectKeyOf(workspace) {
+  return typeof workspace.projectId === "string" && workspace.projectId
+    ? `p:${workspace.projectId}`
+    : `r:${workspace.path}`;
+}
+
+/**
+ * 记忆一条「这个项目在看哪个 root」：重写一次就把这条挪到末尾，超过
+ * MAX_PROJECT_ROOTS 条时丢最旧的。JS 对象保持字符串键的插入顺序，所以插入顺序
+ * 本身就是最近使用顺序。
+ */
+function rememberProjectRoot(map, key, value) {
+  const next = {};
+  for (const [entryKey, entryValue] of Object.entries(map ?? {})) {
+    if (entryKey === key || typeof entryValue !== "string") continue;
+    next[entryKey] = entryValue;
+  }
+  next[key] = value;
+
+  const keys = Object.keys(next);
+  if (keys.length <= MAX_PROJECT_ROOTS) return next;
+  const bounded = {};
+  for (const entryKey of keys.slice(keys.length - MAX_PROJECT_ROOTS)) {
+    bounded[entryKey] = next[entryKey];
+  }
+  return bounded;
+}
+
+/** 记忆里的 root 必须命中宿主当前给的 roots 才被信任，否则退回主根。 */
+function selectedRootOf(workspace) {
+  const roots = rootsOf(workspace);
+  const remembered = (prefs.projectRoots ?? {})[projectKeyOf(workspace)];
+  return (
+    (typeof remembered === "string" ? matchRoot(roots, remembered) : null) ?? primaryRootOf(roots)
+  );
+}
+
+/**
+ * 换基点（绝对路径落在组里另一个 root 时用）。落盘是必须的：视图那边也按这份
+ * 记忆推导基点，不写就会各说各话。返回基点是否真的变了。
+ */
+async function selectRoot(workspace, rootPath) {
+  const key = projectKeyOf(workspace);
+  const changed = !samePath((prefs.projectRoots ?? {})[key] ?? "", rootPath);
+  prefs = { ...prefs, projectRoots: rememberProjectRoot(prefs.projectRoots, key, rootPath) };
+  if (changed) dropRootScopedCaches();
+  try {
+    await pi.plugin.setSettings({ fmPrefs: prefs });
+  } catch {
+    /* 设置写不进去不影响本次请求：内存里的基点已经换了 */
+  }
+  return changed;
+}
+
+/**
+ * 换基点后必须丢掉的两样按「相对路径」缓存的东西：SQLite 句柄与搜索会话——
+ * 两个 root 下的同名相对路径根本不是同一个文件。
+ */
+function dropRootScopedCaches() {
+  searchSessions.clear();
+  for (const key of [...sqliteHandles.keys()]) closeSqliteHandle(key);
 }
 
 // ── 忽略规则（.gitignore / .ignore 语义子集） ────────────────────────────────
@@ -468,7 +766,7 @@ function asDataUri(mime, buffer) {
 }
 
 async function handleRead(payload) {
-  const { abs, rel } = await resolveInsideRoot(payload?.path ?? "", { mode: "read" });
+  const { abs, rel } = await resolveTarget(payload, "read");
 
   const stat = await fs.stat(abs).catch(() => null);
   if (!stat) throw fail("NOT_FOUND", "file not found");
@@ -574,7 +872,7 @@ async function atomicWrite(abs, serialized, mode) {
 }
 
 async function handleWrite(payload) {
-  const { abs, rel } = await resolveInsideRoot(payload?.path ?? "", { mode: "write" });
+  const { abs, rel } = await resolveTarget(payload, "write");
 
   const text = typeof payload?.text === "string" ? payload.text : "";
   if (Buffer.byteLength(text, "utf8") > MAX_WRITE_BYTES) {
@@ -1323,6 +1621,7 @@ function sanitizePrefs(partial) {
     if (typeof partial.splitRatio === "number" && Number.isFinite(partial.splitRatio)) {
       next.splitRatio = Math.min(Math.max(partial.splitRatio, 0.15), 0.7);
     }
+    if (typeof partial.treeCollapsed === "boolean") next.treeCollapsed = partial.treeCollapsed;
     if (typeof partial.showIgnored === "boolean") next.showIgnored = partial.showIgnored;
     if (typeof partial.mdPreview === "boolean") next.mdPreview = partial.mdPreview;
     if (typeof partial.csvTable === "boolean") next.csvTable = partial.csvTable;
@@ -1333,21 +1632,53 @@ function sanitizePrefs(partial) {
       const rounded = Math.round(partial.tablePageSize / 100) * 100;
       next.tablePageSize = Math.min(Math.max(rounded, 100), 5000);
     }
+    // 项目组里「当前在看哪个 folder root」的记忆：projectKey → 绝对路径。
+    // 只收字符串值（不做真值转换）、只收绝对路径，并保持有界（LRU，见上）。
+    // 值是不是「宿主当前给的某个 root」不在这里判——那是推导基点时的事
+    // （selectedRootOf），这里只保证形状。
+    if (
+      partial.projectRoots &&
+      typeof partial.projectRoots === "object" &&
+      !Array.isArray(partial.projectRoots)
+    ) {
+      for (const [key, value] of Object.entries(partial.projectRoots)) {
+        if (!key || typeof value !== "string" || !isAbsolutePath(value)) continue;
+        next.projectRoots = rememberProjectRoot(next.projectRoots, key, path.resolve(value));
+      }
+    }
   }
   return next;
 }
 
 async function handlePrefsSet(payload) {
-  prefs = sanitizePrefs(payload?.partial);
+  const partial = payload?.partial;
+  // 只有动了 root 记忆才需要知道当前项目是谁（并顺手丢掉按相对路径缓存的
+  // 搜索会话与 SQLite 句柄——两个 root 下的同名相对路径不是同一个文件）。
+  const touchesRoots = Boolean(partial && typeof partial === "object" && "projectRoots" in partial);
+  let key = null;
+  let previous;
+  if (touchesRoots) {
+    const workspace = await pi.workspace.get().catch(() => null);
+    key = workspace?.path ? projectKeyOf(workspace) : null;
+    if (key) previous = (prefs.projectRoots ?? {})[key];
+  }
+
+  prefs = sanitizePrefs(partial);
+
+  if (key && (prefs.projectRoots ?? {})[key] !== previous) dropRootScopedCaches();
+
   await pi.plugin.setSettings({ fmPrefs: prefs });
   return { ok: true, prefs };
 }
 
 async function handleHello() {
-  const root = await currentRoot();
+  // 组形状（主根）+ 偏好。这里**不是**当前基点：视图按 workspace.get 的同一形状
+  // 认这个字段，基点由 prefs.projectRoots 推导（两条投递路径形状一致，
+  // 「r:<主根路径>」这个记忆键才是稳的）。
+  const root = await projectGroup();
   return {
     ok: true,
-    root: root ? { path: root.path, name: root.name ?? path.posix.basename(root.path) } : null,
+    root,
     limits: {
       maxReadBytes: MAX_READ_BYTES,
       maxWriteBytes: MAX_WRITE_BYTES,

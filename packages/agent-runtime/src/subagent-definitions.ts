@@ -335,6 +335,8 @@ export async function loadSubagentDefinitions(
 /** The stored-provider fields a pin can be resolved against. */
 export type SubagentProviderSource = {
   id: string;
+  enabled?: boolean;
+  headers?: Record<string, string>;
   name: string;
   vendorKey?: string;
   baseUrl?: string;
@@ -423,21 +425,23 @@ export async function resolveSubagentProviders(input: {
   const allowed = subagentPinnedProviders(input.definitions);
   const secrets = new Map<string, string | undefined>();
 
-  for (const definition of input.definitions) {
-    const pin = definition.model;
-    if (!pin) continue;
+  const pins = input.definitions.flatMap((definition) =>
+    [definition.model, ...(definition.fallbackModels ?? [])]
+      .flatMap((pin) => pin ? [{ name: definition.name, pin }] : []),
+  );
+  for (const { name, pin } of pins) {
     const key = subagentModelKey(pin);
     if (resolved[key]) continue;
     if (!allowed.includes(pin.providerId)) {
       diagnostics.push(
-        `${definition.name}: too many pinned providers, ignoring "${key}"`,
+        `${name}: too many pinned providers, ignoring "${key}"`,
       );
       continue;
     }
     const provider = findSubagentProviderSource(pin.providerId, input.providers);
-    if (!provider) {
+    if (!provider || provider.enabled === false) {
       diagnostics.push(
-        `${definition.name}: no enabled provider matches "${pin.providerId}"`,
+        `${name}: no enabled provider matches "${pin.providerId}"`,
       );
       continue;
     }
@@ -451,7 +455,7 @@ export async function resolveSubagentProviders(input: {
     }
     const apiKey = secrets.get(provider.id) ?? "";
     if (!apiKey && !isVendorAccount && provider.authKind !== "none") {
-      diagnostics.push(`${definition.name}: provider "${provider.name}" has no API key`);
+      diagnostics.push(`${name}: provider "${provider.name}" has no API key`);
       continue;
     }
     // A vendor account resolves the pinned model against the signed-in
@@ -466,7 +470,7 @@ export async function resolveSubagentProviders(input: {
       }
       if (!binding) {
         diagnostics.push(
-          `${definition.name}: vendor account "${provider.name}" does not offer "${pin.modelId}"`,
+          `${name}: vendor account "${provider.name}" does not offer "${pin.modelId}"`,
         );
         continue;
       }
@@ -485,6 +489,8 @@ export async function resolveSubagentProviders(input: {
     resolved[key] = {
       id: provider.id,
       name: provider.name,
+      ...(provider.vendorKey ? { vendorKey: provider.vendorKey } : {}),
+      ...(provider.headers ? { headers: { ...provider.headers } } : {}),
       ...(binding?.baseUrl ?? provider.baseUrl
         ? { baseUrl: binding?.baseUrl ?? provider.baseUrl }
         : {}),

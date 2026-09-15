@@ -62,7 +62,7 @@ function ToastCard({ item }: { item: ToastItem }) {
       <span className="toast-icon" aria-hidden>
         <Icon size={16} />
       </span>
-      <span className="toast-message">{item.message}</span>
+      <span className="toast-message selectable">{item.message}</span>
       <TooltipButton
         type="button"
         className="toast-dismiss"

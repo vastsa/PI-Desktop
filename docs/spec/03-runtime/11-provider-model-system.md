@@ -411,6 +411,34 @@ Deleting a row calls the normal host `providers.delete` path, which removes its
 OAuth secret and metadata; it never logs out or deletes another row with the
 same vendor key.
 
+### Anthropic token endpoint rate limits
+
+The pinned pi-ai 0.85.1 patch gives Anthropic authorization-code exchange and
+refresh a shared, bounded token-request policy: retry only an explicit HTTP
+429, at most three total requests. Wait at least 1 s then 2 s, or longer when
+`Retry-After` gives delta seconds or an HTTP date. A server delay beyond the
+remaining budget ends the attempt; it is never shortened to fit. Malformed or
+missing hints use the bounded exponential fallback.
+
+One 30 s helper deadline covers requests, response-body reads and waits, and
+all use the original caller signal. An earlier caller deadline wins; pi-ai's
+existing refresh operation has a 15 s limit inside the credential-store lock.
+Cancellation also stops pending waits. The patch does not move refresh outside
+that lock: failed attempts leave the stored credential unchanged, and a
+successful rotated grant is written once.
+
+Network failures, interrupted bodies, 5xx and `invalid_grant` are not replayed:
+the result of a non-idempotent token request may be ambiguous. An explicit
+`invalid_grant` stops even if a response is labelled 429. HTTP/token-JSON
+failures expose a bounded recovery message rather than raw response bodies,
+URLs or embedded stacks. Login guidance tells the user to wait, close the
+failed dialog and start sign-in again; refresh guidance suggests waiting before
+retrying and signing in again if the problem continues. HTTP 429 alone does
+not prove whether a code was consumed, so no expiry claim is made.
+
+This uses the existing repository dependency-patch mechanism; OAuth endpoints,
+PKCE, credential ownership, IPC and storage schemas are unchanged.
+
 ## 9. Model catalog service
 
 ```ts

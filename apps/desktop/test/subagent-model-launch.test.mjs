@@ -12,7 +12,7 @@ test("launch resolves definition-only pins without granting Task.model selection
   const root = mkdtempSync(join(tmpdir(), "pi-model-launch-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const path = join(root, "reviewer.md");
-  writeFileSync(path, "---\nname: private-reviewer\ndescription: Fixture reviewer\nmodel: fixture/private\n---\nInspect the fixture.\n");
+  writeFileSync(path, "---\nname: private-reviewer\ndescription: Fixture reviewer\nmodel: fixture/private\nfallbackModels: [fixture/backup]\n---\nInspect the fixture.\n");
   const provider = {
     id: "fixture-provider", vendorKey: "fixture", name: "Fixture", enabled: true,
     authKind: "none", baseUrl: "http://127.0.0.1:1/v1", apiStyle: "openai-chat",
@@ -55,6 +55,8 @@ test("launch resolves definition-only pins without granting Task.model selection
   }, {});
   const initial = (await launch()).sidecarParams;
   assert.ok(initial.subagentProviders["fixture/private"]);
+  assert.ok(initial.subagentProviders["fixture/backup"]);
+  assert.deepEqual(initial.subagents.find((d) => d.name === "private-reviewer").fallbackModels, [{ providerId: "fixture", modelId: "backup" }]);
   assert.deepEqual(initial.subagentModelKeys, ["fixture/allowed"]);
   assert.equal(initial.subagents.find((d) => d.name === "private-reviewer").model.modelId, "private");
 
