@@ -1309,6 +1309,27 @@ storage but compose into one assistant turn until the next user message.
   `role="article"` turn. The turn exposes one trailing meta row and one action
   toolbar; Copy joins all contentful fragments in order, while Fork and
   Regenerate use the last contentful assistant message as the durable boundary.
+- While the turn is still streaming, that meta row shows the model chip beside
+  a live generation-speed chip in tokens per second (ADR `live-turn-throughput-estimate`). The figure is
+  always the estimate form, because the provider reports usage only when the
+  message ends, and it is measured over a recent window rather than from the
+  start of the turn. Tool execution produces no tokens, so the last measured
+  rate is retained and dimmed instead of blanked; a chip appears only once the
+  samples span enough time to be meaningful. When the turn settles, the meta
+  row switches to the completed-turn values.
+- The live meta row labels waiting, thinking, generating, and tool execution.
+  A retained rate is labelled "Last" immediately during tools or waiting, and
+  after 1.5 seconds without output. Rates are approximate whole tokens/s.
+  Sampling runs every 250 ms on a monotonic clock over a three-second window,
+  with a 750 ms exponential smoothing time constant. Each new message resets
+  the window and smoothing baseline while retaining the prior rate for display;
+  thinking-to-answer transitions share one baseline. TPS is renderer-only.
+- First-output latency shows optional runtime-measured `timeToFirstTokenMs` in
+  seconds to one decimal place. It includes request waiting and transport
+  retries, excludes preceding tool time, and survives completion and reload.
+  Stopped thinking-only responses retain this value. During tools and waiting
+  for the next request, the live row hides prior latency. Old messages show no
+  guessed value (ADR `first-output-latency.md`).
 - Toggle Thinking disclosure: expand/collapse reasoning independently from the
   final answer. The latest reasoning row opens while it streams and closes when
   the turn settles only if the user has not interacted with it. The expanded
@@ -1599,8 +1620,9 @@ Single message render — either user (plaintext) or assistant (markdown streami
   estimate note are intentionally omitted from the default view. Rows below
   the heading share one muted-label / tabular-value rhythm separated by
   spacing; the popover keeps its floating-layer edge and draws no inner
-  section rules (D297). Generation speed is a completed-turn value in tokens
-  per second and is not updated while a response is streaming. The
+  section rules (D297). The popover's generation speed is a completed-turn
+  value in tokens per second and is not updated while a response is streaming;
+  the transcript meta row carries the live estimate instead (ADR `live-turn-throughput-estimate`). The
   context-window total uses the same effective model window as the agent
   sidecar: a published models.dev `limit.context` replaces a legacy 128k
   generic binding seed, while a non-default per-model Advanced value remains

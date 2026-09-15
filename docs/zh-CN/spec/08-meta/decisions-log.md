@@ -4172,3 +4172,14 @@ the retained upstream work-panel lifecycle. See
 
 - OpenCode / 第三方 DeepSeek 中转在上下文压缩丢掉助手思考后，会拒绝空的 `reasoning_*` 回传（#296）。官方 `deepseek.com` 仍接受 `""`（#223 / D389）。
 - 决策 D424 修订 D389 / ADR 0136：历史重建时恢复 `thinkingSignature`；把最近思考暂存在检查点 `details.retainedReasoning` 并在摘要后回放；对非官方 DeepSeek Completions 行设置 `requiresNonEmptyReasoningReplay`，使 pi-ai 补丁填入文档化占位符而非 `""`。见 ADR 0256 与 E2E-005E。
+
+### Live generation throughput (issue #93)
+
+[ADR `live-turn-throughput-estimate`](/adr/live-turn-throughput-estimate) 修订 ADR 0073：进行中回合的
+元信息行在模型芯片旁显示实时 tokens/s 估算。运行时只在 `message_end` 上报供应商
+用量，因此该数值由渲染层按「可见思考 + 回答文本，每 4 个 Unicode 码位算 1 token」
+计算 —— 即 ADR 0073 §3 的口径 —— 并恒用估算文案。它按最近的时间窗口测量而非累计，
+使长时间的工具调用不会让正常运行的模型显得很慢；静默期保留并置灰上次速率，而不是
+报零。采样窗口是进行中回合组件内部的 ref，因此没有任何逐 token 状态进入 store，
+ADR 0242 的记忆化边界得以保持。TPS remains renderer-only; protocol stays at 11. Phase labels are localized in all eight locales.
+已完成回合的数值与 composer 弹层行为不变。验证契约：E2E-CHAT-live-generation-throughput。

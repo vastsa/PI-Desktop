@@ -286,3 +286,6 @@ Each ADR includes:
 | 0257 | [Host-mediated real-time capabilities for plugins](0257-plugin-real-time-capabilities.md) | Accepted for implementation |
 | 0258 | [Trusted extension custom agents](0258-trusted-extension-custom-agents.md) | Accepted for implementation (D426; issue #401) |
 | 0259 | [Plugin-declared providers are Host-owned rows](0259-plugin-declared-providers.md) | Accepted for implementation (D427) |
+
+- [Live turn throughput is a renderer-side windowed estimate](live-turn-throughput-estimate.md) (Accepted; amends 0073; issue #93).
+- [Runtime-owned first-output latency](first-output-latency.md) (Accepted; additive message metadata).

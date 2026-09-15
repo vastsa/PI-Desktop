@@ -4,6 +4,7 @@ import { createInstance } from "i18next";
 import { I18nextProvider } from "react-i18next";
 import { en } from "@pi-desktop/i18n";
 import type { UiMessage } from "@pi-desktop/shared";
+import { MessageMeta, LiveMessageMeta } from "../../apps/desktop/src/features/chat/transcript/shared";
 import { AssistantTurn } from "../../apps/desktop/src/features/chat/transcript/AssistantTurn";
 import { buildTranscriptEntries } from "../../apps/desktop/src/lib/assistant-turns";
 
@@ -40,7 +41,7 @@ globalThis.transcriptRenderProbe = async () => {
       renderErrors.push(error);
     },
   });
-  const render = (messages: UiMessage[]) => {
+  const render = (messages: UiMessage[], isActive = true) => {
     const entry = buildTranscriptEntries(messages).entries.find(
       (item) => item.kind === "assistant-turn",
     );
@@ -48,7 +49,7 @@ globalThis.transcriptRenderProbe = async () => {
     flushSync(() =>
       root.render(
         <I18nextProvider i18n={i18n}>
-          <AssistantTurn entry={entry} isActive />
+          <AssistantTurn entry={entry} isActive={isActive} />
         </I18nextProvider>,
       ),
     );
@@ -214,6 +215,64 @@ globalThis.transcriptRenderProbe = async () => {
       "Task completion timing did not update to 4s",
     );
 
+    // E2E-CHAT-live-generation-throughput: real timers, hook and DOM.
+    const showLive = (content: string, thinking = "", toolRunning = false, id = "live") => {
+      flushSync(() => root.render(<I18nextProvider i18n={i18n}><LiveMessageMeta
+        message={message(id, "assistant", content, { thinking, status: "streaming" })}
+        toolRunning={toolRunning}
+      /></I18nextProvider>));
+    };
+    const pause = () => new Promise((resolve) => setTimeout(resolve, 300));
+    showLive("");
+    assert(container.textContent?.includes("Waiting for output"), "missing waiting phase");
+    for (let i = 1; i <= 5; i++) {
+      showLive("", "x".repeat(i * 80));
+      await pause();
+    }
+    assert(container.textContent?.includes("Thinking"), "missing thinking phase");
+    assert(container.querySelector(".throughput")?.textContent?.includes("≈"), "live estimate missing");
+    assert(/^≈ \d+ tokens\/s$/.test(container.querySelector(".throughput")?.textContent ?? ""), "live rate must display whole tokens per second");
+    showLive("answer", "x".repeat(400));
+    assert(container.textContent?.includes("Generating"), "missing generation phase");
+    showLive("answer", "x".repeat(400), true);
+    assert(container.textContent?.includes("Running tools"), "missing tool phase");
+    assert(container.querySelector(".throughput")?.textContent?.includes("Last:"), "retained rate presented as current");
+    assert(container.querySelector('.throughput[data-stale="true"]'), "tool rate not dimmed");
+    await pause();
+    showLive("", "", false, "next");
+    assert(container.textContent?.includes("Waiting for output"), "next request reuses old phase");
+    render([message("real-thinking", "assistant", "", { thinking: "Reasoning only", status: "streaming" })]);
+    assert(container.querySelector('[data-generation-phase="thinking"]'), "thinking activity did not reach live meta row");
+    render([
+      message("real-thinking", "assistant", "", { thinking: "Reasoning only", status: "complete" }),
+      message("real-tool", "tool", "", { toolName: "Bash", toolStatus: "running" }),
+    ]);
+    assert(container.querySelector('[data-generation-phase="tool"]'), "tool lifecycle did not reach live meta row");
+
+
+    flushSync(() => root.render(<I18nextProvider i18n={i18n}><LiveMessageMeta
+      message={message("ttft", "assistant", "answer", { status: "streaming", timeToFirstTokenMs: 1250 })}
+    /></I18nextProvider>));
+    assert(container.querySelector(".first-output-latency")?.textContent === "First output 1.3s", "live TTFT format missing");
+    flushSync(() => root.render(<I18nextProvider i18n={i18n}><MessageMeta
+      modelId="fixture" timeToFirstTokenMs={1250}
+    /></I18nextProvider>));
+    assert(container.querySelector(".first-output-latency")?.textContent === "First output 1.3s", "completed TTFT missing");
+    flushSync(() => root.render(<I18nextProvider i18n={i18n}><MessageMeta modelId="legacy" /></I18nextProvider>));
+    assert(!container.querySelector(".first-output-latency"), "legacy message invented a TTFT");
+
+    render([message("stopped-thinking", "assistant", "", {
+      thinking: "Partial reasoning", status: "aborted", timeToFirstTokenMs: 0,
+    })], false);
+    assert(container.querySelector(".first-output-latency")?.textContent === "First output 0.0s", "stopped thinking lost its TTFT");
+    render([
+      message("previous-response", "assistant", "Calling tool", { status: "complete", timeToFirstTokenMs: 1250 }),
+      message("completed-tool", "tool", "done", { toolName: "Bash", toolStatus: "success" }),
+      message("next-response", "assistant", "", { status: "streaming" }),
+    ]);
+    assert(container.querySelector('[data-generation-phase="waiting"]'), "tool continuation is not waiting");
+    assert(!container.querySelector(".first-output-latency"), "waiting request reused previous TTFT");
+
     return {
       ok: true,
       groups,
@@ -222,6 +281,8 @@ globalThis.transcriptRenderProbe = async () => {
       changedToolRenders: 1,
       taskLifecycleUpdated: true,
       taskTimingUpdated: true,
+      liveThroughputPhases: true,
+      firstOutputLatency: true,
       textUpdateDurationMs,
     };
   } finally {

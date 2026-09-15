@@ -1,3 +1,4 @@
+import { FirstOutputLatency } from "./FirstOutputLatency";
 import {
   memo,
   useCallback,
@@ -18,6 +19,8 @@ import {
   type ThinkingLevel,
 } from "@pi-desktop/shared";
 import { useOpenChatFileRef, useOpenPreviewTarget } from "../../../hooks/use-preview-target";
+import { generationPhase, type ThroughputMessage } from "../../../lib/live-throughput";
+import { useLiveThroughput } from "./use-live-throughput";
 import { messageThinking as thinkingText } from "../../../lib/assistant-turns";
 import { useReferencedImageDataUrl } from "../../../lib/use-referenced-image-data-url";
 import { isHtmlFilePath, splitChatText } from "../../../lib/chat-links";
@@ -102,11 +105,13 @@ export function MessageMeta({
   usage,
   responseDurationMs,
   responseOutputTokens,
+  timeToFirstTokenMs,
 }: {
   modelId?: string;
   usage?: MessageUsage;
   responseDurationMs?: number;
   responseOutputTokens?: number;
+  timeToFirstTokenMs?: number;
 }) {
   const { t } = useTranslation();
   const throughput = calculateTokenRate(
@@ -114,7 +119,7 @@ export function MessageMeta({
     responseDurationMs,
   );
   const showThroughput = !usage && throughput !== undefined;
-  if (!modelId && !showThroughput) {
+  if (!modelId && !showThroughput && timeToFirstTokenMs === undefined) {
     return null;
   }
   return (
@@ -124,6 +129,7 @@ export function MessageMeta({
           {modelId}
         </span>
       ) : null}
+      <FirstOutputLatency milliseconds={timeToFirstTokenMs} />
       {showThroughput ? (
         <span className="message-meta-chip throughput">
           {t("chat.usageThroughputEstimated", {
@@ -131,6 +137,61 @@ export function MessageMeta({
           })}
         </span>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * Meta row for the turn that is still streaming.
+ *
+ * Mounted only for the active tail turn, which keeps the sampler and its
+ * interval off every history row and keeps per-token work out of the store.
+ * The figure is always an estimate — the provider reports usage once, at
+ * `message_end` — so it carries the "≈" copy (ADR 0073 §4), and `MessageMeta`
+ * takes over with the exact value once the turn completes.
+ */
+export function LiveMessageMeta({
+  modelId,
+  message,
+  toolRunning = false,
+}: {
+  modelId?: string;
+  message?: ThroughputMessage;
+  toolRunning?: boolean;
+}) {
+  const { t } = useTranslation();
+  const phase = generationPhase(message, toolRunning);
+  const generating = phase === "thinking" || phase === "generating";
+  const { rate, stale } = useLiveThroughput(message, generating);
+  const phaseLabel = t({
+    waiting: "chat.liveWaiting",
+    thinking: "chat.thinking",
+    generating: "chat.liveGenerating",
+    tool: "chat.liveToolRunning",
+  }[phase]);
+  const rateLabel = rate === undefined ? undefined : t("chat.usageThroughputEstimated", {
+    count: Math.round(rate),
+  });
+  return (
+    <div className="message-meta">
+      {modelId ? (
+        <span className="message-meta-chip model" title={modelId}>
+          {modelId}
+        </span>
+      ) : null}
+      <FirstOutputLatency milliseconds={generating ? message?.timeToFirstTokenMs : undefined} />
+      <span className="message-meta-chip generation-phase" data-generation-phase={phase}>
+        {phaseLabel}
+      </span>
+      {rate === undefined ? null : (
+        <span
+          className="message-meta-chip throughput"
+          data-stale={stale ? "true" : undefined}
+          title={t("chat.usageThroughputLabel")}
+        >
+          {stale ? t("chat.liveLastRate", { rate: rateLabel }) : rateLabel}
+        </span>
+      )}
     </div>
   );
 }

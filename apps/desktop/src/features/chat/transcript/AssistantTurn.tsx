@@ -29,6 +29,7 @@ import { TranscriptReadOnlyContext } from "./context";
 import { selectionMarkdownWithinRow } from "../../../lib/selection-quote";
 import { selectionAnnotationAnchorWithinRow } from "../../../lib/response-annotation-anchor";
 import { IconQuote, IconChat } from "../../../components/icons";
+import { latestGenerationMessage } from "../../../lib/live-throughput";
 import { Markdown } from "../../../components/Markdown";
 import { IconBranch, IconReview } from "../../../components/icons";
 import { TooltipButton } from "../../../components/ui";
@@ -36,6 +37,7 @@ import {
   AssistantErrorMessage,
   CopyButton,
   MessageMeta,
+  LiveMessageMeta,
   formatTokenCount,
 } from "./shared";
 import { activityItemsEqual, ActivityGroup } from "./ActivityGroup";
@@ -250,6 +252,9 @@ export const AssistantTurn = memo(function AssistantTurn({
   const responseDurationMs = assistantTurnResponseDuration(entry);
   const responseOutputTokens = assistantTurnResponseOutputTokens(entry);
   const modelId = metaMessage?.modelId ?? latestUsageMessage?.modelId;
+  // The tail message is the one still growing; the live rate is estimated from
+  // it because the provider only reports usage at message_end.
+  const latestMessage = latestGenerationMessage(entry);
   const hasError = messages.some((message) => Boolean(message.error));
   const complete =
     !isActive && !hasError && Boolean(content) && Boolean(actionMessage);
@@ -334,12 +339,23 @@ export const AssistantTurn = memo(function AssistantTurn({
             </div>
           ),
         )}
-        {!isActive && metaMessage ? (
+        {!isActive && (metaMessage || latestMessage?.timeToFirstTokenMs !== undefined) ? (
           <MessageMeta
             modelId={modelId}
             usage={usage}
             responseDurationMs={responseDurationMs}
             responseOutputTokens={responseOutputTokens}
+            timeToFirstTokenMs={latestMessage?.timeToFirstTokenMs}
+          />
+        ) : null}
+        {isActive ? (
+          <LiveMessageMeta
+            key={entry.id}
+            modelId={modelId}
+            message={latestMessage}
+            toolRunning={turnAllActivityItems.some(
+              (item) => item.kind === "tool" && item.message.toolStatus === "running",
+            )}
           />
         ) : null}
         {(content || hasError) && actionMessage && !transcriptReadOnly ? (

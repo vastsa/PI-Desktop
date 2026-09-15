@@ -205,3 +205,25 @@ describe("deltaStreamPayloadFits", () => {
     ).toBe(false);
   });
 });
+
+
+it("carries measured TTFT through coalescing and delta application, including zero", () => {
+  for (const latency of [0, 1250]) {
+    const first = toWireMessageUpdate({
+      type: "message_update",
+      message: assistant({ id: "timed", content: "a", timeToFirstTokenMs: latency }),
+      deltaText: "a",
+    });
+    const second = toWireMessageUpdate({
+      type: "message_update",
+      message: assistant({ id: "timed", content: "ab", timeToFirstTokenMs: latency }),
+      deltaText: "b",
+    });
+    const restored = applyMessageUpdate(undefined, mergeMessageUpdates(first, second));
+    expect(restored.content).toBe("ab");
+    expect(restored.timeToFirstTokenMs).toBe(latency);
+    expect(applyMessageUpdate(restored, {
+      type: "message_update", message: assistant({ id: "timed", content: "" }),
+    }).timeToFirstTokenMs).toBeUndefined();
+  }
+});

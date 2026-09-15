@@ -6727,3 +6727,36 @@ describe("DesktopAgentRuntime deferred tool restore (#225)", () => {
     await runtime.dispose();
   });
 });
+
+
+describe("DesktopAgentRuntime first-output timing", () => {
+  it("publishes the first thinking latency on deltas and the completed message", async () => {
+    const onEvent = vi.fn();
+    const runtime = createRuntime({ onEvent });
+    const internal = runtime as unknown as {
+      firstOutputTiming: import("./response-timing.js").FirstOutputTiming;
+      handleAgentEvent: (event: unknown) => Promise<void>;
+    };
+    const clock = vi.spyOn(performance, "now");
+    try {
+      clock.mockReturnValue(100);
+      internal.firstOutputTiming.start();
+      clock.mockReturnValue(200);
+      await internal.handleAgentEvent({ type: "message_start", message: { role: "assistant", content: [] } });
+      clock.mockReturnValue(1350);
+      await internal.handleAgentEvent({ type: "message_update", message: { role: "assistant", content: [{ type: "thinking", thinking: "plan" }] } });
+      clock.mockReturnValue(3000);
+      await internal.handleAgentEvent({ type: "message_end", message: { role: "assistant", content: [{ type: "thinking", thinking: "plan" }, { type: "text", text: "answer" }] } });
+      const events = onEvent.mock.calls.map(([value]) => value as import("@pi-desktop/shared").AgentEventEnvelope);
+      const start = events.find(({ event }) => event.type === "message_start")?.event;
+      const update = events.find(({ event }) => event.type === "message_update")?.event;
+      const end = events.find(({ event }) => event.type === "message_end")?.event;
+      expect(start && "message" in start && start.message.timeToFirstTokenMs).toBeUndefined();
+      expect(update && "message" in update && update.message.timeToFirstTokenMs).toBe(1250);
+      expect(end && "message" in end && end.message.timeToFirstTokenMs).toBe(1250);
+    } finally {
+      clock.mockRestore();
+      await runtime.dispose();
+    }
+  });
+});
