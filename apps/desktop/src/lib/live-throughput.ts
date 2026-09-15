@@ -75,23 +75,58 @@ export function pushThroughputSample(
 }
 
 /**
- * Tokens per second across the retained window, plus whether it has gone quiet.
+ * Whether the newest sample added output relative to the one before it.
  *
- * The rate uses the window's endpoints rather than summing per-interval deltas,
- * so irregular sample spacing — React can coalesce or skip renders — cannot
- * bias it.
+ * This is the "is the model generating right now" signal. It has to gate both
+ * the displayed figure and the remembered one, because a window that straddles
+ * the moment generation stopped still yields truthful — but steadily shrinking
+ * — measurements. Letting those through makes the figure sag from 40 to 3 over
+ * a long tool call, which reads as a crawling model rather than an idle one.
  */
-export function liveTokenRate(
+export function sampleDidGrow(samples: readonly ThroughputSample[]): boolean {
+  if (samples.length < 2) return false;
+  const newest = samples[samples.length - 1];
+  const previous = samples[samples.length - 2];
+  return newest.tokens > previous.tokens;
+}
+
+/**
+ * Tokens per second measured across the retained window, or `undefined` when
+ * the window shows no growth to divide.
+ *
+ * Endpoints rather than summed per-interval deltas, so irregular sample spacing
+ * — React can coalesce or skip renders — cannot bias the result.
+ */
+export function windowedTokenRate(
   samples: readonly ThroughputSample[],
-  now: number,
-): LiveTokenRate {
+): number | undefined {
   const newest = samples.at(-1);
-  if (!newest) return { stale: false };
-  const stale = now - newest.ts > LIVE_THROUGHPUT_STALE_MS;
+  if (!newest) return undefined;
   const cutoff = newest.ts - LIVE_THROUGHPUT_WINDOW_MS;
   const oldest = samples.find((entry) => entry.ts >= cutoff) ?? samples[0];
   const spanMs = newest.ts - oldest.ts;
-  if (spanMs < LIVE_THROUGHPUT_MIN_SPAN_MS) return { stale };
-  const rate = calculateTokenRate(newest.tokens - oldest.tokens, spanMs);
-  return rate === undefined ? { stale } : { rate, stale };
+  if (spanMs < LIVE_THROUGHPUT_MIN_SPAN_MS) return undefined;
+  return calculateTokenRate(newest.tokens - oldest.tokens, spanMs);
+}
+
+/**
+ * What to display, given this tick's live measurement and the last one taken
+ * while output was still arriving.
+ *
+ * Blanking the chip whenever generation pauses is the "hung model" reading this
+ * feature exists to prevent, so the last real figure is held: unchanged through
+ * a short gap, dimmed once the silence passes the stale threshold. The chip is
+ * absent only before the turn has produced any measurement at all.
+ */
+export function retainLiveRate(
+  fresh: number | undefined,
+  remembered: { rate: number; at: number } | undefined,
+  now: number,
+): LiveTokenRate {
+  if (fresh !== undefined) return { rate: fresh, stale: false };
+  if (!remembered) return { stale: false };
+  return {
+    rate: remembered.rate,
+    stale: now - remembered.at > LIVE_THROUGHPUT_STALE_MS,
+  };
 }

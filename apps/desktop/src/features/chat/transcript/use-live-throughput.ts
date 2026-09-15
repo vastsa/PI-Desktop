@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import type { UiMessage } from "@pi-desktop/shared";
 import {
   LIVE_THROUGHPUT_SAMPLE_MS,
-  liveTokenRate,
   pushThroughputSample,
+  retainLiveRate,
+  sampleDidGrow,
   sampleTokensForMessage,
+  windowedTokenRate,
   type LiveTokenRate,
   type ThroughputSample,
 } from "../../../lib/live-throughput";
@@ -28,17 +30,26 @@ export function useLiveThroughput(
 ): LiveTokenRate {
   const samplesRef = useRef<ThroughputSample[]>([]);
   const lastSampleAtRef = useRef(0);
+  const rememberedRef = useRef<{ rate: number; at: number } | undefined>(undefined);
+  const liveRef = useRef<number | undefined>(undefined);
   const [tick, setTick] = useState(() => Date.now());
 
   // Sampling walks the whole message to count code points, so it is throttled
   // rather than run on every 16ms flush.
-  const now = Date.now();
+  const now = Math.max(Date.now(), tick);
   if (now - lastSampleAtRef.current >= LIVE_THROUGHPUT_SAMPLE_MS) {
     lastSampleAtRef.current = now;
     samplesRef.current = pushThroughputSample(samplesRef.current, {
       ts: now,
       tokens: sampleTokensForMessage(message),
     });
+    // Only a growing sample counts as generation; see `sampleDidGrow`.
+    liveRef.current = sampleDidGrow(samplesRef.current)
+      ? windowedTokenRate(samplesRef.current)
+      : undefined;
+    if (liveRef.current !== undefined) {
+      rememberedRef.current = { rate: liveRef.current, at: now };
+    }
   }
 
   useEffect(() => {
@@ -46,7 +57,7 @@ export function useLiveThroughput(
     return () => window.clearInterval(timer);
   }, []);
 
-  // Streaming flushes re-render this component far faster than the interval;
-  // the tick only matters once the stream goes quiet.
-  return liveTokenRate(samplesRef.current, Math.max(now, tick));
+  // Streaming flushes re-render far faster than the interval; the tick only
+  // matters once the stream goes quiet and the figure has to dim.
+  return retainLiveRate(liveRef.current, rememberedRef.current, now);
 }

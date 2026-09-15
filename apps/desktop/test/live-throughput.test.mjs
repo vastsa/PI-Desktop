@@ -8,12 +8,32 @@ const here = dirname(fileURLToPath(import.meta.url));
 register(pathToFileURL(join(here, "helpers/ts-import-hooks.mjs")));
 const {
   LIVE_THROUGHPUT_MIN_SPAN_MS,
+  LIVE_THROUGHPUT_SAMPLE_MS,
   LIVE_THROUGHPUT_STALE_MS,
   LIVE_THROUGHPUT_WINDOW_MS,
-  liveTokenRate,
   pushThroughputSample,
+  retainLiveRate,
+  sampleDidGrow,
   sampleTokensForMessage,
+  windowedTokenRate,
 } = await import("../src/lib/live-throughput.ts");
+
+/**
+ * Drive the module the way the hook does: a fixed-cadence sampler that keeps
+ * appending whether or not the message grew, and only remembers a figure
+ * measured while output was actually arriving.
+ */
+function runSampler({ from, to, tokensAt, samples = [], remembered }) {
+  let current = samples;
+  let memory = remembered;
+  let live;
+  for (let ts = from; ts <= to; ts += LIVE_THROUGHPUT_SAMPLE_MS) {
+    current = pushThroughputSample(current, { ts, tokens: tokensAt(ts) });
+    live = sampleDidGrow(current) ? windowedTokenRate(current) : undefined;
+    if (live !== undefined) memory = { rate: live, at: ts };
+  }
+  return { view: retainLiveRate(live, memory, to), samples: current, remembered: memory };
+}
 
 test("samples count visible thinking plus answer text in code points", () => {
   // ADR 0073 §3 fixes the estimate at four Unicode code points per token, so a
@@ -30,12 +50,8 @@ test("pushing prunes samples outside the window and never mutates the input", ()
   const first = pushThroughputSample([], { ts: 1_000, tokens: 10 });
   const second = pushThroughputSample(first, { ts: 2_000, tokens: 40 });
   assert.deepEqual(first, [{ ts: 1_000, tokens: 10 }]);
-  assert.deepEqual(second, [
-    { ts: 1_000, tokens: 10 },
-    { ts: 2_000, tokens: 40 },
-  ]);
 
-  // The 1_000 sample falls outside a 3s window that ends at 4_500.
+  // The 1_000 sample falls outside a window that ends at 4_500.
   const pruned = pushThroughputSample(second, {
     ts: 1_000 + LIVE_THROUGHPUT_WINDOW_MS + 500,
     tokens: 90,
@@ -57,58 +73,132 @@ test("pushing keeps one sample already older than the window as the baseline", (
   assert.equal(samples[0].ts, 0);
 });
 
-test("a rate needs a span and a positive token delta", () => {
-  assert.deepEqual(liveTokenRate([], 5_000), { stale: false });
-  assert.deepEqual(liveTokenRate([{ ts: 1_000, tokens: 10 }], 1_000), {
-    stale: false,
-  });
+test("a measurement needs a span and a positive token delta", () => {
+  assert.equal(windowedTokenRate([]), undefined);
+  assert.equal(windowedTokenRate([{ ts: 1_000, tokens: 10 }]), undefined);
 
-  // Span shorter than the minimum: too little data to show a number yet.
   const tooShort = [
     { ts: 1_000, tokens: 10 },
     { ts: 1_000 + LIVE_THROUGHPUT_MIN_SPAN_MS - 100, tokens: 60 },
   ];
-  assert.equal(liveTokenRate(tooShort, tooShort[1].ts).rate, undefined);
+  assert.equal(windowedTokenRate(tooShort), undefined);
 
-  // A stalled stream reports no rate for the window rather than zero.
-  const flat = [
-    { ts: 1_000, tokens: 40 },
-    { ts: 3_000, tokens: 40 },
-  ];
-  assert.equal(liveTokenRate(flat, 3_000).rate, undefined);
+  // A stalled window reports nothing rather than dividing a zero delta.
+  assert.equal(
+    windowedTokenRate([
+      { ts: 1_000, tokens: 40 },
+      { ts: 3_000, tokens: 40 },
+    ]),
+    undefined,
+  );
 });
 
-test("the rate divides the windowed token delta by the windowed span", () => {
-  const samples = [
-    { ts: 1_000, tokens: 100 },
-    { ts: 3_000, tokens: 260 },
-  ];
-  // 160 tokens over 2s.
-  assert.equal(liveTokenRate(samples, 3_000).rate, 80);
+test("the measurement divides the windowed delta by the windowed span", () => {
+  assert.equal(
+    windowedTokenRate([
+      { ts: 1_000, tokens: 100 },
+      { ts: 3_000, tokens: 260 },
+    ]),
+    80,
+  );
 });
 
-test("the rate ignores growth before the window and stays integral", () => {
-  // Only the last two samples are inside a 3s window ending at 10_000, so the
-  // early burst must not inflate the live figure.
-  const samples = [
+test("the measurement ignores growth before the window and stays integral", () => {
+  // Only the last two samples sit inside the window, so the early burst must
+  // not inflate the live figure.
+  const rate = windowedTokenRate([
     { ts: 1_000, tokens: 0 },
     { ts: 7_500, tokens: 5_000 },
     { ts: 10_000, tokens: 5_050 },
-  ];
-  const rate = liveTokenRate(samples, 10_000).rate;
+  ]);
   assert.equal(rate, 20);
   assert.equal(Number.isInteger(rate), true);
 });
 
-test("silence past the stale threshold dims without discarding the rate", () => {
-  const samples = [
-    { ts: 1_000, tokens: 100 },
-    { ts: 3_000, tokens: 260 },
-  ];
-  const fresh = liveTokenRate(samples, 3_000 + LIVE_THROUGHPUT_STALE_MS - 100);
-  assert.deepEqual(fresh, { rate: 80, stale: false });
+test("a fresh measurement wins; nothing shows before the first one", () => {
+  assert.deepEqual(retainLiveRate(80, undefined, 5_000), {
+    rate: 80,
+    stale: false,
+  });
+  assert.deepEqual(retainLiveRate(80, { rate: 20, at: 0 }, 5_000), {
+    rate: 80,
+    stale: false,
+  });
+  assert.deepEqual(retainLiveRate(undefined, undefined, 5_000), {
+    stale: false,
+  });
+});
 
-  const stale = liveTokenRate(samples, 3_000 + LIVE_THROUGHPUT_STALE_MS + 100);
-  assert.equal(stale.stale, true);
-  assert.equal(stale.rate, 80);
+test("a brief gap holds the figure steady before dimming it", () => {
+  const remembered = { rate: 80, at: 1_000 };
+  assert.deepEqual(
+    retainLiveRate(undefined, remembered, 1_000 + LIVE_THROUGHPUT_STALE_MS - 100),
+    { rate: 80, stale: false },
+  );
+  assert.deepEqual(
+    retainLiveRate(undefined, remembered, 1_000 + LIVE_THROUGHPUT_STALE_MS + 100),
+    { rate: 80, stale: true },
+  );
+});
+
+test("only a growing sample counts as generation", () => {
+  assert.equal(sampleDidGrow([]), false);
+  assert.equal(sampleDidGrow([{ ts: 0, tokens: 10 }]), false);
+  assert.equal(
+    sampleDidGrow([
+      { ts: 0, tokens: 10 },
+      { ts: 250, tokens: 10 },
+    ]),
+    false,
+  );
+  assert.equal(
+    sampleDidGrow([
+      { ts: 0, tokens: 10 },
+      { ts: 250, tokens: 11 },
+    ]),
+    true,
+  );
+});
+
+test("a long tool call holds the streaming rate, dims it, then recovers", () => {
+  // The sampler ticks on a timer, so a stalled stream keeps appending samples
+  // with identical token counts. A window straddling the moment output stopped
+  // still yields truthful but shrinking numbers, so the displayed figure has to
+  // be gated on growth — otherwise it sags from 40 toward 0 across the tool
+  // call and reads as a crawling model.
+  const streaming = runSampler({ from: 0, to: 2_000, tokensAt: (ts) => ts / 25 });
+  assert.deepEqual(streaming.view, { rate: 40, stale: false });
+
+  // Ten seconds of tool execution: samples arrive, tokens do not move.
+  const stalled = runSampler({
+    from: 2_250,
+    to: 12_000,
+    tokensAt: () => 80,
+    samples: streaming.samples,
+    remembered: streaming.remembered,
+  });
+  assert.equal(stalled.view.rate, 40, "the streaming rate survives unchanged");
+  assert.equal(stalled.view.stale, true, "and is marked stale so the chip dims");
+
+  // Generation resumes. The figure goes live immediately but ramps rather than
+  // jumping: the window still holds part of the idle stretch, so it reports the
+  // honest "tokens in the last few seconds" until that stretch scrolls out.
+  const resumed = runSampler({
+    from: 12_250,
+    to: 14_000,
+    tokensAt: (ts) => 80 + (ts - 12_000) / 10,
+    samples: stalled.samples,
+    remembered: stalled.remembered,
+  });
+  assert.equal(resumed.view.stale, false, "live again as soon as output returns");
+  assert.equal(resumed.view.rate, 67);
+
+  const settled = runSampler({
+    from: 14_250,
+    to: 15_500,
+    tokensAt: (ts) => 80 + (ts - 12_000) / 10,
+    samples: resumed.samples,
+    remembered: resumed.remembered,
+  });
+  assert.deepEqual(settled.view, { rate: 100, stale: false });
 });

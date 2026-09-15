@@ -366,6 +366,9 @@ test("the transcript meta row estimates throughput while streaming (#93)", () =>
   // off history rows and no per-token state reaches the store (ADR 0242).
   assert.match(transcriptSource, /export function LiveMessageMeta\(/);
   assert.match(transcriptSource, /useLiveThroughput\(message\)/);
+  // The displayed figure is gated on growth, so a window straddling the moment
+  // output stopped cannot make the number sag across a long tool call.
+  assert.match(transcriptSource, /sampleDidGrow\(samplesRef\.current\)/);
   assert.match(
     transcriptSource,
     /isActive \? \(\s*<LiveMessageMeta modelId=\{modelId\} message=\{streamingMessage\}/,
