@@ -1317,6 +1317,17 @@ storage but compose into one assistant turn until the next user message.
   rate is retained and dimmed instead of blanked; a chip appears only once the
   samples span enough time to be meaningful. When the turn settles, the meta
   row switches to the completed-turn values.
+- The live meta row labels waiting, thinking, generating, and tool execution.
+  A retained rate is labelled "Last" immediately during tools or waiting, and
+  after 1.5 seconds without output. Rates are approximate whole tokens/s.
+  Sampling runs every 250 ms on a monotonic clock over a three-second window,
+  with a 750 ms exponential smoothing time constant. Each new message resets
+  the window and smoothing baseline while retaining the prior rate for display;
+  thinking-to-answer transitions share one baseline. TPS is renderer-only.
+- First-output latency shows optional runtime-measured `timeToFirstTokenMs` in
+  seconds to one decimal place. It includes request waiting and transport
+  retries, excludes preceding tool time, and survives completion and reload.
+  Old messages show no guessed value (ADR `first-output-latency.md`).
 - Toggle Thinking disclosure: expand/collapse reasoning independently from the
   final answer. The latest reasoning row opens while it streams and closes when
   the turn settles only if the user has not interacted with it. The expanded
@@ -3598,31 +3609,3 @@ Sidebar footer                                        Popover (360px max)
     panel width (ADR 0151)
 19. Expanded sidebar session titles, project/group titles, and empty-state copy
     use the 13px compact token while primary sidebar actions remain at 14px
-
-
-### Live generation feedback refinement
-
-The active turn labels waiting for output, thinking, generating, and running
-tools using existing message and tool lifecycle state. A retained rate is
-labelled "Last" immediately during tool execution or waiting, and after a
-stream becomes stale. The recent-window estimate uses time-based exponential
-smoothing (750 ms time constant), sampled every 250 ms with a monotonic clock.
-Each new assistant message resets the sampling and smoothing baseline, retaining
-only the prior displayed rate until a new estimate is available. Thinking to
-answer transitions retain a common token/time baseline. This is approximate
-visible-output throughput, not provider-measured inference speed. No new
-protocol, persistence, or plugin contract is introduced. Waiting is a phase
-label, not a measured provider TTFT.
-
-Live and retained TPS values are rounded to whole tokens/s for display; the
-sampling and smoothing calculations retain full precision.
-
-
-### First-output latency
-
-`UiMessage.timeToFirstTokenMs` is optional, runtime-measured milliseconds from
-logical model request start to first visible text/thinking output. It survives
-stream coalescing and existing Rust message metadata storage; old rows omit it.
-The latest response's meta row shows seconds to one decimal place. It includes
-transport retries and waiting, excludes preceding tool time, and is not inferred
-from renderer timing. See ADR `first-output-latency.md`.

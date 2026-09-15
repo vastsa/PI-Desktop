@@ -4181,5 +4181,5 @@ the retained upstream work-panel lifecycle. See
 计算 —— 即 ADR 0073 §3 的口径 —— 并恒用估算文案。它按最近的时间窗口测量而非累计，
 使长时间的工具调用不会让正常运行的模型显得很慢；静默期保留并置灰上次速率，而不是
 报零。采样窗口是进行中回合组件内部的 ref，因此没有任何逐 token 状态进入 store，
-ADR 0242 的记忆化边界得以保持。纯渲染层改动：协议保持 11，且未新增 i18n 键。
+ADR 0242 的记忆化边界得以保持。TPS remains renderer-only; protocol stays at 11. Phase labels are localized in all eight locales.
 已完成回合的数值与 composer 弹层行为不变。验证契约：E2E-CHAT-live-generation-throughput。

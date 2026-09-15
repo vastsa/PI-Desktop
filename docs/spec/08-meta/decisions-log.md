@@ -5284,8 +5284,7 @@ estimated copy. It is measured across a recent window rather than cumulatively,
 so a long tool call cannot make a running model look slow; silence retains and
 dims the last rate instead of reporting zero. The sample window is a ref inside
 the active turn, so no per-token state reaches the store and ADR 0242's
-memoization boundaries hold. Renderer-only: protocol stays at 11 and no i18n
-key is added. The completed-turn values and the composer inspector are
+memoization boundaries hold. Renderer-only: protocol stays at 11. The completed-turn values and the composer inspector are
 unchanged. Validation contract: E2E-CHAT-live-generation-throughput.
 
 

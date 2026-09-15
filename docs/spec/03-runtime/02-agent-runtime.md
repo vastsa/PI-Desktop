@@ -1255,12 +1255,10 @@ format, repair-needing newline, unavailable provider/auth, active lease, or
 external byte change makes continuation fail closed while detail remains
 browseable.
 
-
 ### First-output latency
 
-`UiMessage.timeToFirstTokenMs` is optional, runtime-measured milliseconds from
-logical model request start to first visible text/thinking output. It survives
-stream coalescing and existing Rust message metadata storage; old rows omit it.
-The latest response's meta row shows seconds to one decimal place. It includes
-transport retries and waiting, excludes preceding tool time, and is not inferred
-from renderer timing. See ADR `first-output-latency.md`.
+The runtime measures `UiMessage.timeToFirstTokenMs` from logical model request
+start to the first visible text/thinking output using a monotonic clock. The
+value latches once per request, includes transport retries and waiting, and
+excludes preceding tool execution. Tool-only output leaves it absent.
+See ADR `first-output-latency.md`.

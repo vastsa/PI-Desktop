@@ -555,6 +555,9 @@
 7. Composer重新激活（解锁）
 8. 中止是幂等的——当已经中止时按中止不会执行任何操作
 
+Live phase labels and retained-rate behavior follow the transcript meta row
+contract in `08-component-spec.md` (ADR 0258).
+
 ### 3. 3 中止用户体验
 
 - 中止按钮短暂更改为“正在中止...”（100 毫秒），然后消失
@@ -1113,12 +1116,3 @@ Mode/provider/model/permission/shell 配置和新提示仍然存在
 21. 本机窗口边缘调整大小通过回流更改 MainChat，而不压缩
     固定工作面板；分隔符提交更新提交的首选宽度，
 而分隔线取消恢复之前的宽度（ADR 0033）
-
-
-### Live generation feedback refinement
-
-The live meta row distinguishes waiting, thinking, generating, and tool execution.
-A held speed is labelled as the last generation rate. Sampling uses a monotonic
-250 ms timer, a recent window, and a 750 ms time-based smoothing constant. New
-messages reset the window; thinking-to-text transitions preserve the baseline.
-This estimate does not claim provider TTFT or measured inference speed.

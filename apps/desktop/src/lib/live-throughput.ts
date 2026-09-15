@@ -2,21 +2,7 @@ import { calculateTokenRate, estimateResponseOutputTokens } from "./context-usag
 import type { AssistantTurnEntry } from "./assistant-turns";
 import type { UiMessage } from "@pi-desktop/shared";
 
-/**
- * Live generation throughput for the turn that is still streaming.
- *
- * The runtime has no incremental token source: provider usage is read once at
- * `message_end`, so a figure shown *during* the turn can only be an estimate.
- * This module owns that estimate and nothing else — sampling, windowing, and
- * staleness are pure functions so the React layer stays a thin shell.
- *
- * The window is deliberate. A cumulative average taken from the start of the
- * stream folds tool-execution wall clock into the denominator, so it sags after
- * every long `Bash` and reads as "the model got slow" when the model was simply
- * not running. Measuring only the recent window keeps the number about
- * generation speed, and silence is reported as staleness instead.
- */
-
+/** Renderer estimate of visible output; provider usage arrives at message_end. */
 /** Span the rate is measured over. */
 export const LIVE_THROUGHPUT_WINDOW_MS = 3_000;
 /** Minimum spacing between samples; the estimate walks the whole message. */
@@ -37,17 +23,11 @@ export type ThroughputSample = {
 export type LiveTokenRate = {
   /** Absent until the samples span `LIVE_THROUGHPUT_MIN_SPAN_MS` and grow. */
   rate?: number;
-  /** True once the newest sample is older than `LIVE_THROUGHPUT_STALE_MS`. */
+  /** True during tool/waiting phases or after output stops for the stale interval. */
   stale: boolean;
 };
 
-/**
- * Estimated cumulative output tokens for a streaming assistant message.
- *
- * Delegates to the shared estimator so the live figure and the durable
- * stopped-turn figure use one convention: visible thinking plus answer text at
- * four Unicode code points per token (ADR 0073 §3).
- */
+/** Uses ADR 0073’s visible thinking/text estimate, shared with stopped turns. */
 export function sampleTokensForMessage(
   message: Pick<UiMessage, "content" | "thinking"> | undefined,
 ): number {
@@ -55,12 +35,7 @@ export function sampleTokensForMessage(
   return estimateResponseOutputTokens(message) ?? 0;
 }
 
-/**
- * Append a sample and drop the ones the window no longer needs.
- *
- * One sample older than the window is kept as the baseline: a slow stream would
- * otherwise never span enough time to produce a rate at all.
- */
+/** Prunes the window, retaining one baseline when every prior sample is older. */
 export function pushThroughputSample(
   samples: readonly ThroughputSample[],
   sample: ThroughputSample,
@@ -75,15 +50,7 @@ export function pushThroughputSample(
     : next;
 }
 
-/**
- * Whether the newest sample added output relative to the one before it.
- *
- * This is the "is the model generating right now" signal. It has to gate both
- * the displayed figure and the remembered one, because a window that straddles
- * the moment generation stopped still yields truthful — but steadily shrinking
- * — measurements. Letting those through makes the figure sag from 40 to 3 over
- * a long tool call, which reads as a crawling model rather than an idle one.
- */
+/** Only growth updates the rate; idle ticks must not dilute the retained value. */
 export function sampleDidGrow(samples: readonly ThroughputSample[]): boolean {
   if (samples.length < 2) return false;
   const newest = samples[samples.length - 1];
@@ -91,13 +58,7 @@ export function sampleDidGrow(samples: readonly ThroughputSample[]): boolean {
   return newest.tokens > previous.tokens;
 }
 
-/**
- * Tokens per second measured across the retained window, or `undefined` when
- * the window shows no growth to divide.
- *
- * Endpoints rather than summed per-interval deltas, so irregular sample spacing
- * — React can coalesce or skip renders — cannot bias the result.
- */
+/** Endpoint deltas keep irregular sample spacing from biasing the window rate. */
 export function windowedTokenRate(
   samples: readonly ThroughputSample[],
 ): number | undefined {
@@ -110,15 +71,7 @@ export function windowedTokenRate(
   return calculateTokenRate(newest.tokens - oldest.tokens, spanMs);
 }
 
-/**
- * What to display, given this tick's live measurement and the last one taken
- * while output was still arriving.
- *
- * Blanking the chip whenever generation pauses is the "hung model" reading this
- * feature exists to prevent, so the last real figure is held: unchanged through
- * a short gap, dimmed once the silence passes the stale threshold. The chip is
- * absent only before the turn has produced any measurement at all.
- */
+/** Retains the last measured rate through silence and dims it after the threshold. */
 export function retainLiveRate(
   fresh: number | undefined,
   remembered: { rate: number; at: number } | undefined,

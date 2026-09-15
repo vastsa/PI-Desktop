@@ -968,6 +968,17 @@ SESSIONS                                      [msg+][↕]
   它按最近的时间窗口测量，而非从回合起点累计。工具执行不产生 token，因此保留
   上次测得的速率并置灰，而不是清空；只有样本跨度足够长才会出现芯片。回合落定后，
   元信息行切换为已完成回合的数值。
+- The live meta row labels waiting, thinking, generating, and tool execution.
+  A retained rate is labelled "Last" immediately during tools or waiting, and
+  after 1.5 seconds without output. Rates are approximate whole tokens/s.
+  Sampling runs every 250 ms on a monotonic clock over a three-second window,
+  with a 750 ms exponential smoothing time constant. Each new message resets
+  the window and smoothing baseline while retaining the prior rate for display;
+  thinking-to-answer transitions share one baseline. TPS is renderer-only.
+- First-output latency shows optional runtime-measured `timeToFirstTokenMs` in
+  seconds to one decimal place. It includes request waiting and transport
+  retries, excludes preceding tool time, and survives completion and reload.
+  Old messages show no guessed value (ADR `first-output-latency.md`).
 - 切换思维披露：expand/collapse 独立于
   最终答案；当推理到达时，流式传输会重新打开它。扩展后的
 内容的左侧规则本身就是一个指针和键盘可聚焦的折叠
@@ -2538,25 +2549,3 @@ Sidebar footer                                        Popover (360px max)
     取消的分隔符手势恢复之前的宽度 (ADR 0033)
 19. 扩展侧边栏会话标题、project/group 标题和空状态文案
     使用 13px 紧凑令牌，同时主要侧边栏操作保持在 14px
-
-
-### Live generation feedback refinement
-
-The live meta row distinguishes waiting, thinking, generating, and tool execution.
-A held speed is labelled as the last generation rate. Sampling uses a monotonic
-250 ms timer, a recent window, and a 750 ms time-based smoothing constant. New
-messages reset the window; thinking-to-text transitions preserve the baseline.
-This estimate does not claim provider TTFT or measured inference speed.
-
-Live and retained TPS values are rounded to whole tokens/s for display; the
-sampling and smoothing calculations retain full precision.
-
-
-### First-output latency
-
-`UiMessage.timeToFirstTokenMs` is optional, runtime-measured milliseconds from
-logical model request start to first visible text/thinking output. It survives
-stream coalescing and existing Rust message metadata storage; old rows omit it.
-The latest response's meta row shows seconds to one decimal place. It includes
-transport retries and waiting, excludes preceding tool time, and is not inferred
-from renderer timing. See ADR `first-output-latency.md`.

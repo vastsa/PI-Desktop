@@ -21,23 +21,6 @@ const {
   windowedTokenRate,
 } = await import("../src/lib/live-throughput.ts");
 
-/**
- * Drive the module the way the hook does: a fixed-cadence sampler that keeps
- * appending whether or not the message grew, and only remembers a figure
- * measured while output was actually arriving.
- */
-function runSampler({ from, to, tokensAt, samples = [], remembered }) {
-  let current = samples;
-  let memory = remembered;
-  let live;
-  for (let ts = from; ts <= to; ts += LIVE_THROUGHPUT_SAMPLE_MS) {
-    current = pushThroughputSample(current, { ts, tokens: tokensAt(ts) });
-    live = sampleDidGrow(current) ? windowedTokenRate(current) : undefined;
-    if (live !== undefined) memory = { rate: live, at: ts };
-  }
-  return { view: retainLiveRate(live, memory, to), samples: current, remembered: memory };
-}
-
 test("samples count visible thinking plus answer text in code points", () => {
   // ADR 0073 §3 fixes the estimate at four Unicode code points per token, so a
   // surrogate pair counts once rather than twice.
@@ -163,49 +146,27 @@ test("only a growing sample counts as generation", () => {
   );
 });
 
-test("a long tool call holds the streaming rate, dims it, then recovers", () => {
-  // The sampler ticks on a timer, so a stalled stream keeps appending samples
-  // with identical token counts. A window straddling the moment output stopped
-  // still yields truthful but shrinking numbers, so the displayed figure has to
-  // be gated on growth — otherwise it sags from 40 toward 0 across the tool
-  // call and reads as a crawling model.
-  const streaming = runSampler({ from: 0, to: 2_000, tokensAt: (ts) => ts / 25 });
-  assert.deepEqual(streaming.view, { rate: 40, stale: false });
-
-  // Ten seconds of tool execution: samples arrive, tokens do not move.
-  const stalled = runSampler({
-    from: 2_250,
-    to: 12_000,
-    tokensAt: () => 80,
-    samples: streaming.samples,
-    remembered: streaming.remembered,
-  });
-  assert.equal(stalled.view.rate, 40, "the streaming rate survives unchanged");
-  assert.equal(stalled.view.stale, true, "and is marked stale so the chip dims");
-
-  // Generation resumes. The figure goes live immediately but ramps rather than
-  // jumping: the window still holds part of the idle stretch, so it reports the
-  // honest "tokens in the last few seconds" until that stretch scrolls out.
-  const resumed = runSampler({
-    from: 12_250,
-    to: 14_000,
-    tokensAt: (ts) => 80 + (ts - 12_000) / 10,
-    samples: stalled.samples,
-    remembered: stalled.remembered,
-  });
-  assert.equal(resumed.view.stale, false, "live again as soon as output returns");
-  assert.equal(resumed.view.rate, 67);
-
-  const settled = runSampler({
-    from: 14_250,
-    to: 15_500,
-    tokensAt: (ts) => 80 + (ts - 12_000) / 10,
-    samples: resumed.samples,
-    remembered: resumed.remembered,
-  });
-  assert.deepEqual(settled.view, { rate: 100, stale: false });
+test("a long tool call retains the rate and resumed generation gets a fresh baseline", () => {
+  let tracker = { samples: [] };
+  let view;
+  const tick = (now, tokens, generating) => {
+    ({ tracker, view } = advanceThroughput(tracker, {
+      id: "a", content: "x".repeat(tokens * 4), status: "streaming",
+    }, generating, now));
+  };
+  for (let now = 0; now <= 2000; now += LIVE_THROUGHPUT_SAMPLE_MS) tick(now, now / 25, true);
+  assert.deepEqual(view, { rate: 40, stale: false });
+  for (let now = 2250; now <= 12000; now += LIVE_THROUGHPUT_SAMPLE_MS) {
+    tick(now, 80, false);
+    assert.deepEqual(view, { rate: 40, stale: true });
+  }
+  tick(12250, 80, true);
+  assert.deepEqual(view, { rate: 40, stale: true });
+  for (let now = 12500; now <= 14000; now += LIVE_THROUGHPUT_SAMPLE_MS) {
+    tick(now, 80 + (now - 12250) / 10, true);
+  }
+  assert.deepEqual(view, { rate: 100, stale: false });
 });
-
 
 test("smoothing is cadence-independent and damps a speed jump", () => {
   const once = smoothTokenRate(40, 100, 500);

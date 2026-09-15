@@ -1,4 +1,4 @@
-import { FirstOutputTiming, completedResponseTiming } from "./response-timing.js";
+import { FirstOutputTiming } from "./response-timing.js";
 import { randomUUID } from "node:crypto";
 import {
   settledDelegationMessage,
@@ -6207,9 +6207,13 @@ Delegation rules:
           }
           const usage = usageFromPi((event.message as any).usage as Usage | undefined);
           const endedAt = Date.now();
-          const { providerWaitMs, streamMs } = completedResponseTiming(
-            this.requestStartedAt, this.streamStartedAt, endedAt,
-          );
+          const providerWaitMs =
+            this.requestStartedAt !== undefined && this.streamStartedAt !== undefined
+              ? this.streamStartedAt - this.requestStartedAt
+              : undefined;
+          const streamMs = this.streamStartedAt !== undefined
+            ? Math.max(0, endedAt - this.streamStartedAt)
+            : undefined;
           if (classifiedError) {
             classifiedError = this.providerErrorWithDiagnostics(
               classifiedError,
@@ -6328,10 +6332,6 @@ Delegation rules:
             this.streamStartedAt = undefined;
             break;
           }
-          const responseDurationMs =
-            this.streamStartedAt !== undefined
-              ? Math.max(0, endedAt - this.streamStartedAt)
-              : undefined;
           const responseOutputTokens =
             aborted && (!usage || usage.outputTokens <= 0)
               ? estimateVisibleResponseOutputTokens({
@@ -6355,7 +6355,7 @@ Delegation rules:
             modelId: this.provider.modelId,
             providerId: this.provider.id,
             ...(usage ? { usage } : {}),
-            ...(responseDurationMs !== undefined ? { responseDurationMs } : {}),
+            ...(streamMs !== undefined ? { responseDurationMs: streamMs } : {}),
             ...(responseOutputTokens !== undefined
               ? { responseOutputTokens }
               : {}),

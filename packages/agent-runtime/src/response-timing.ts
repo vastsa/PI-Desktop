@@ -21,17 +21,3 @@ export class FirstOutputTiming {
     return { ...message, timeToFirstTokenMs: this.firstOutputMs };
   }
 }
-
-/** Preserve the existing diagnostic anchors; these are distinct from TTFT. */
-export function completedResponseTiming(
-  requestStartedAt: number | undefined,
-  streamStartedAt: number | undefined,
-  endedAt: number,
-): { providerWaitMs?: number; streamMs?: number } {
-  return {
-    providerWaitMs: requestStartedAt !== undefined && streamStartedAt !== undefined
-      ? streamStartedAt - requestStartedAt : undefined,
-    streamMs: streamStartedAt !== undefined
-      ? Math.max(0, endedAt - streamStartedAt) : undefined,
-  };
-}

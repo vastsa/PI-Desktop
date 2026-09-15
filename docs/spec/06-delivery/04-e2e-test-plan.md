@@ -12218,7 +12218,8 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   4. Let the turn settle, then open the composer context-usage popover.
   5. Submit another prompt and stop it mid-stream with `Cmd/Ctrl + .`.
   6. Scroll back through earlier turns in the same session.
-- **Additional checks**: Waiting, thinking, generating, and running-tool labels
+- **Additional checks**: TPS displays whole tokens/s without fractional digits.
+  Waiting, thinking, generating, and running-tool labels
   follow lifecycle state. Tool execution immediately marks the retained speed
   as "Last". A new message resets the window and filter; thinking-to-text
   transitions do not reset the denominator. Repeat with Chinese localization.
@@ -12395,8 +12396,7 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 - **Milestone**: Post-MVP (R7 v1)
 - **Status**: Documented; automation pending
 
-E2E-CHAT-live-generation-throughput also asserts that the live speed displays
-whole tokens/s, with no fractional digits.
+
 
 
 ### E2E-CHAT-first-output-latency: Measured first output survives completion

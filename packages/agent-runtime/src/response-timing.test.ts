@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { UiMessage } from "@pi-desktop/shared";
-import { FirstOutputTiming, completedResponseTiming } from "./response-timing.js";
+import { FirstOutputTiming } from "./response-timing.js";
 
 const message: UiMessage = { id: "a", role: "assistant", content: "", createdAt: "2026-09-15" };
 
@@ -37,10 +37,5 @@ describe("first model output timing", () => {
     timing.start();
     expect(timing.observe(message, false).timeToFirstTokenMs).toBeUndefined();
     expect(timing.observe({ ...message, content: "instant" }, true).timeToFirstTokenMs).toBe(0);
-  });
-
-  it("preserves existing diagnostic stream timing", () => {
-    expect(completedResponseTiming(100, 300, 2300)).toEqual({ providerWaitMs: 200, streamMs: 2000 });
-    expect(completedResponseTiming(undefined, undefined, 200)).toEqual({ providerWaitMs: undefined, streamMs: undefined });
   });
 });
