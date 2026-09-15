@@ -171,8 +171,11 @@ recency only breaks ties between equally relevant matches.
 ### 1.5.2 Tray session navigation (issue #293)
 
 - The native menu shows Running, Unread, and Pinned in that order, at most
-  three sessions in each and nine in total. Membership is assigned before
-  applying limits; higher-priority overflow never spills into a lower group.
+  nine sessions in total. Every non-empty group keeps up to three rows; the
+  share smaller groups leave unused goes to the groups that still overflow,
+  in priority order, so one busy group can fill all nine while the others are
+  empty. Membership is assigned before applying limits; higher-priority
+  overflow never spills into a lower group.
 - Empty groups are hidden. Archived sessions/projects and deleted sessions
   are excluded. Running/Pinned follow sidebar sorting; Unread follows the
   latest unread result per session, newest first, including failed results.

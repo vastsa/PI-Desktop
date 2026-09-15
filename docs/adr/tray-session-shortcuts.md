@@ -15,7 +15,11 @@ or closed, so a renderer-only menu snapshot would become stale.
 
 1. Extend the existing native menu with Running, Unread, and Pinned groups in
    that order. Assign each eligible session to its highest-priority group
-   before taking at most three rows per group (nine total). Hide empty groups.
+   before allocating rows: every non-empty group keeps up to three rows, then
+   the share smaller groups leave unused goes to the groups that still
+   overflow, in the same priority order, up to nine rows in total. A single
+   busy group can therefore fill the whole menu when the others are empty,
+   while no group is ever crowded out below its own share. Hide empty groups.
    Follow the existing session sort preference; unread results use newest-first
    inbox order and the same latest-result/read rule as sidebar outcome badges.
 2. Renderer mirrors its session pin/archive/order metadata, archived project

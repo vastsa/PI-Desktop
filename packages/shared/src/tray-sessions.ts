@@ -8,7 +8,10 @@ import {
 import type { SessionSummary } from "./types/sessions.js";
 import type { AppNotification } from "./types/workspace.js";
 
-export const TRAY_SESSION_LIMIT = 3;
+/** Rows every non-empty group keeps for itself before spare capacity is shared. */
+export const TRAY_SESSION_GROUP_SHARE = 3;
+/** Rows the menu may show across all groups once unused shares are reclaimed. */
+export const TRAY_SESSION_TOTAL_LIMIT = 9;
 export const TRAY_SESSION_TITLE_LIMIT = 48;
 export const TRAY_SESSION_GROUPS = ["running", "unread", "pinned"] as const;
 export type TraySessionGroupKind = (typeof TRAY_SESSION_GROUPS)[number];
@@ -62,6 +65,31 @@ export function traySessionTitle(title: string, fallback: string): string {
     : characters.join("");
 }
 
+/**
+ * Every non-empty group keeps its own share first, so a busy higher-priority
+ * group can never crowd a lower one out of the menu entirely. Whatever share
+ * the smaller groups leave unused is handed to the groups that still overflow,
+ * in priority order, until the total row budget runs out.
+ *
+ * Both passes draw from the same budget, so the result stays within
+ * `TRAY_SESSION_TOTAL_LIMIT` even if the group list outgrows what the
+ * per-group share would divide into.
+ */
+export function allocateTraySessionRows(counts: readonly number[]): number[] {
+  let budget = TRAY_SESSION_TOTAL_LIMIT;
+  const limits = counts.map((count) => {
+    const share = Math.min(count, TRAY_SESSION_GROUP_SHARE, budget);
+    budget -= share;
+    return share;
+  });
+  for (let index = 0; index < limits.length && budget > 0; index += 1) {
+    const extra = Math.min(counts[index] - limits[index], budget);
+    limits[index] += extra;
+    budget -= extra;
+  }
+  return limits;
+}
+
 export function buildTraySessionGroups(
   sessions: SessionSummary[],
   running: ReadonlySet<string>,
@@ -87,9 +115,17 @@ export function buildTraySessionGroups(
     else if (preferences.sessionMeta[session.id]?.pinned) groups.pinned.push(session);
   }
   groups.unread.sort((a, b) => unreadOrder.get(a.id)! - unreadOrder.get(b.id)!);
-  return TRAY_SESSION_GROUPS.filter((kind) => groups[kind].length > 0).map((kind) => ({
-    kind,
-    sessions: groups[kind].slice(0, TRAY_SESSION_LIMIT).map(({ id, title }) => ({ id, title })),
-    hasMore: groups[kind].length > TRAY_SESSION_LIMIT,
-  }));
+  const limits = allocateTraySessionRows(TRAY_SESSION_GROUPS.map((kind) => groups[kind].length));
+  return TRAY_SESSION_GROUPS.flatMap((kind, index) => {
+    const rows = groups[kind];
+    const limit = limits[index];
+    // Hide a group with no rows to show, whether it is empty or the budget ran
+    // out before it: a heading whose only entry is View more is not a group.
+    if (limit === 0) return [];
+    return [{
+      kind,
+      sessions: rows.slice(0, limit).map(({ id, title }) => ({ id, title })),
+      hasMore: rows.length > limit,
+    }];
+  });
 }

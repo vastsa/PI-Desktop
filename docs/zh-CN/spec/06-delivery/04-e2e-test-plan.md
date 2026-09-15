@@ -7110,7 +7110,9 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 - **Preconditions**: At least four running, four unread, and four pinned
   sessions across two projects; include overlaps, read-latest/older-unread
   notifications, archived/deleted sessions, an archived project, empty titles,
-  multiline titles, long CJK/emoji titles, and literal ampersands. Use an
+  multiline titles, long CJK/emoji titles, and literal ampersands. Also cover
+  a single populated group of seven and one of more than nine, with the other
+  two groups empty, to exercise reclaimed share. Use an
   isolated profile. Repeat native activation on macOS and Windows/Linux.
 - **Steps**: Hide the main window and open the tray menu. Inspect group order,
   counts, duplicates, titles, and unchanged unread records. Choose the third
@@ -7123,8 +7125,12 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
   Retry a transient read failure by hovering/right-clicking the tray.
   Repeat after clearing all group memberships and changing shipped locales.
   Choose Quit then Cancel, then Quit and confirm.
-- **Expected**: Running → Unread → Pinned; at most three rows per group and
-  nine total. Deduplicate before limits, so hidden Running overflow cannot
+- **Expected**: Running → Unread → Pinned; at most nine rows in total. Each
+  non-empty group keeps up to three rows and overflowing groups reclaim the
+  share smaller groups leave unused, in priority order: seven running sessions
+  with no unread or pinned show all seven, and a single group holding more than
+  nine shows nine behind View more. Deduplicate before limits, so hidden
+  Running overflow cannot
   appear as Unread/Pinned. Empty groups and stale shortcuts disappear. Unread
   uses the latest terminal result per session, newest first. Titles remain
   one line within the cap, including literal ampersands. Opening the macOS
