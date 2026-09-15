@@ -1492,3 +1492,18 @@ This does not prevent state changes — it makes them instant.
     the expanded sidebar yields at the threshold and returns when the panel
     closes, and divider cancellation restores the prior panel width
     (ADR 0033 / ADR 0151 / ADR 0238)
+
+
+### Live generation feedback refinement
+
+The active turn labels waiting for output, thinking, generating, and running
+tools using existing message and tool lifecycle state. A retained rate is
+labelled "Last" immediately during tool execution or waiting, and after a
+stream becomes stale. The recent-window estimate uses time-based exponential
+smoothing (750 ms time constant), sampled every 250 ms with a monotonic clock.
+Each new assistant message resets the sampling and smoothing baseline, retaining
+only the prior displayed rate until a new estimate is available. Thinking to
+answer transitions retain a common token/time baseline. This is approximate
+visible-output throughput, not provider-measured inference speed. No new
+protocol, persistence, or plugin contract is introduced. Waiting is a phase
+label, not a measured provider TTFT.

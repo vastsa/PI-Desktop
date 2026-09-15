@@ -12218,6 +12218,10 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   4. Let the turn settle, then open the composer context-usage popover.
   5. Submit another prompt and stop it mid-stream with `Cmd/Ctrl + .`.
   6. Scroll back through earlier turns in the same session.
+- **Additional checks**: Waiting, thinking, generating, and running-tool labels
+  follow lifecycle state. Tool execution immediately marks the retained speed
+  as "Last". A new message resets the window and filter; thinking-to-text
+  transitions do not reset the denominator. Repeat with Chinese localization.
 - **Expected**: The chip appears once enough output has streamed, always in the
   estimated form, and updates while reasoning and answer text arrive. Its width
   does not change as digits change. During the tool call the last rate is
@@ -12231,7 +12235,8 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   `04-ux/09-interaction-patterns.md` §3.2, ADR 0258, ADR 0073, ADR 0242
 - **Acceptance**: C (conversation and stream), Quality (glanceable telemetry)
 - **Milestone**: M6+
-- **Status**: Module-covered
+- **Status**: Renderer automation in `pnpm test:e2e:transcript` covers phase
+  transitions and historical-rate labels. Module-covered
   (`apps/desktop/test/live-throughput.test.mjs`,
   `apps/desktop/test/transcript-style.test.mjs`); native journey Draft
 

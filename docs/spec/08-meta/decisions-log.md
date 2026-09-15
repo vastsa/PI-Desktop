@@ -5287,3 +5287,11 @@ the active turn, so no per-token state reaches the store and ADR 0242's
 memoization boundaries hold. Renderer-only: protocol stays at 11 and no i18n
 key is added. The completed-turn values and the composer inspector are
 unchanged. Validation contract: E2E-CHAT-live-generation-throughput.
+
+
+### Live generation feedback refinement
+
+ADR 0258 now specifies explicit generation phases, historical-rate labels,
+time-based smoothing, and per-message sampling baselines. All eight locales
+carry the new labels. E2E-CHAT-live-generation-throughput covers the rendered
+phase transitions; no IPC, persistence, or plugin contract changes.

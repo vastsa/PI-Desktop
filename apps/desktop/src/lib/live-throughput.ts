@@ -1,4 +1,5 @@
 import { calculateTokenRate, estimateResponseOutputTokens } from "./context-usage";
+import type { AssistantTurnEntry } from "./assistant-turns";
 import type { UiMessage } from "@pi-desktop/shared";
 
 /**
@@ -129,4 +130,84 @@ export function retainLiveRate(
     rate: remembered.rate,
     stale: now - remembered.at > LIVE_THROUGHPUT_STALE_MS,
   };
+}
+
+export type GenerationPhase = "waiting" | "thinking" | "generating" | "tool";
+export type ThroughputMessage = Pick<UiMessage, "id" | "content" | "thinking" | "status">;
+
+export function generationPhase(
+  message: ThroughputMessage | undefined,
+  toolRunning: boolean,
+): GenerationPhase {
+  if (toolRunning) return "tool";
+  if (message?.status !== "streaming") return "waiting";
+  if (message.content) return "generating";
+  if (message.thinking) return "thinking";
+  return "waiting";
+}
+
+/** Time-based smoothing gives the same response at different sampling cadences. */
+export function smoothTokenRate(
+  previous: number | undefined,
+  next: number,
+  elapsedMs: number,
+): number {
+  if (previous === undefined) return next;
+  const weight = 1 - Math.exp(-Math.max(0, elapsedMs) / 750);
+  return previous + weight * (next - previous);
+}
+
+export type ThroughputTracker = {
+  messageId?: string;
+  samples: ThroughputSample[];
+  remembered?: { rate: number; at: number };
+  smoothed?: { rate: number; at: number };
+};
+
+/** A new message or resumed generation starts a new window; history is display-only. */
+export function advanceThroughput(
+  previous: ThroughputTracker,
+  message: ThroughputMessage | undefined,
+  generating: boolean,
+  now: number,
+): { tracker: ThroughputTracker; view: LiveTokenRate } {
+  let tracker = { ...previous };
+  if (message?.id !== tracker.messageId || !generating) {
+    tracker = { messageId: message?.id, samples: [], remembered: tracker.remembered };
+  }
+  let fresh: number | undefined;
+  if (generating) {
+    const tokens = sampleTokensForMessage(message);
+    const last = tracker.samples.at(-1);
+    // A replaced/truncated message cannot share a baseline with the old text.
+    if (last && (tokens < last.tokens || now < last.ts)) {
+      tracker.samples = [];
+      tracker.smoothed = undefined;
+    }
+    tracker.samples = pushThroughputSample(tracker.samples, { ts: now, tokens });
+    const raw = sampleDidGrow(tracker.samples) ? windowedTokenRate(tracker.samples) : undefined;
+    if (raw !== undefined) {
+      fresh = smoothTokenRate(
+        tracker.smoothed?.rate, raw, now - (tracker.smoothed?.at ?? now),
+      );
+      tracker.smoothed = { rate: fresh, at: now };
+      tracker.remembered = { rate: fresh, at: now };
+    }
+  }
+  const view = retainLiveRate(fresh, tracker.remembered, now);
+  // Outside generation the remembered number is explicitly historical immediately.
+  if ((!generating || !tracker.smoothed) && view.rate !== undefined) view.stale = true;
+  return { tracker, view };
+}
+
+/** Thinking-only messages live in activity parts, before an answer row exists. */
+export function latestGenerationMessage(entry: AssistantTurnEntry): UiMessage | undefined {
+  for (let index = entry.parts.length - 1; index >= 0; index--) {
+    const part = entry.parts[index];
+    if (part.kind === "message") return part.message;
+    for (let item = part.items.length - 1; item >= 0; item--) {
+      if (part.items[item].kind === "thinking") return part.items[item].message;
+    }
+  }
+  return undefined;
 }

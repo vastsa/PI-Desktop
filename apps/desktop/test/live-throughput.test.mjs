@@ -7,6 +7,9 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 register(pathToFileURL(join(here, "helpers/ts-import-hooks.mjs")));
 const {
+  advanceThroughput,
+  generationPhase,
+  smoothTokenRate,
   LIVE_THROUGHPUT_MIN_SPAN_MS,
   LIVE_THROUGHPUT_SAMPLE_MS,
   LIVE_THROUGHPUT_STALE_MS,
@@ -201,4 +204,49 @@ test("a long tool call holds the streaming rate, dims it, then recovers", () => 
     remembered: resumed.remembered,
   });
   assert.deepEqual(settled.view, { rate: 100, stale: false });
+});
+
+
+test("smoothing is cadence-independent and damps a speed jump", () => {
+  const once = smoothTokenRate(40, 100, 500);
+  const twice = smoothTokenRate(smoothTokenRate(40, 100, 250), 100, 250);
+  assert.ok(Math.abs(once - twice) < 1e-9);
+  assert.ok(once > 40 && once < 100);
+});
+
+test("tool gaps and message replacement never enter the next generation window", () => {
+  let tracker = { samples: [] };
+  const msg = (id, tokens) => ({ id, content: "x".repeat(tokens * 4), status: "streaming" });
+  for (let now = 0; now <= 1000; now += 250) {
+    tracker = advanceThroughput(tracker, msg("a", now / 25), true, now).tracker;
+  }
+  assert.equal(tracker.remembered.rate, 40);
+  const tools = advanceThroughput(tracker, msg("a", 40), false, 1250);
+  assert.deepEqual(tools.view, { rate: 40, stale: true });
+  const restart = advanceThroughput(tools.tracker, msg("b", 400), true, 20000);
+  assert.equal(restart.tracker.samples.length, 1);
+  assert.equal(restart.tracker.smoothed, undefined);
+  tracker = restart.tracker;
+  for (let now = 20250; now <= 21000; now += 250) {
+    tracker = advanceThroughput(tracker, msg("b", 400 + (now - 20000) / 50), true, now).tracker;
+  }
+  assert.equal(tracker.remembered.rate, 20);
+});
+
+test("thinking to text keeps the same token and time baseline", () => {
+  let tracker = { samples: [] };
+  for (let now = 0; now <= 1000; now += 250) {
+    const message = { id: "a", thinking: "x".repeat(Math.min(now, 500) / 25 * 4), content: "x".repeat(Math.max(now - 500, 0) / 25 * 4), status: "streaming" };
+    tracker = advanceThroughput(tracker, message, true, now).tracker;
+  }
+  assert.equal(tracker.remembered.rate, 40);
+});
+
+test("generation labels distinguish empty, thinking, text and running tools", () => {
+  const message = { id: "a", content: "", status: "streaming" };
+  assert.equal(generationPhase(message, false), "waiting");
+  assert.equal(generationPhase({ ...message, thinking: "reason" }, false), "thinking");
+  assert.equal(generationPhase({ ...message, content: "answer" }, false), "generating");
+  assert.equal(generationPhase({ ...message, content: "answer", status: "complete" }, false), "waiting");
+  assert.equal(generationPhase(message, true), "tool");
 });

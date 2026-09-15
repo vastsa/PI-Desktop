@@ -7279,3 +7279,11 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 - **验收**：C（对话与流式）、品质（一眼可读的遥测）
 - **里程碑**：M6+
 - **状态**：由模块测试覆盖（`apps/desktop/test/live-throughput.test.mjs`、`apps/desktop/test/transcript-style.test.mjs`）；原生旅程为草稿
+
+
+### Live throughput phase acceptance supplement
+
+E2E-CHAT-live-generation-throughput additionally checks waiting, thinking,
+generating, and tool labels; historical rates marked as last; and per-message
+baseline reset. `pnpm test:e2e:transcript` exercises the real React components
+and timer in Chromium; provider/native journey acceptance remains separate.

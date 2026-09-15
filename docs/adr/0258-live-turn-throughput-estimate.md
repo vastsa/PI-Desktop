@@ -65,7 +65,7 @@ must not reach store subscribers.
   history rows.
 - Mount and unmount coincide with turn start and end, so the window needs no
   explicit lifecycle and cannot leak across turns or sessions.
-- No new i18n keys, so all eight shipped catalogs stay in parity.
+- Phase and historical-rate labels are localized in all eight shipped catalogs.
 - Native rendering of the chip is a visual behaviour that unit tests cannot
   prove; E2E-CHAT-live-generation-throughput owns that acceptance.
 
@@ -94,3 +94,15 @@ model that slowed down from a turn that spent a minute inside `Bash`.
 Rejected. A chip that disappears and returns changes the row height and moves
 the content the user is reading, which is the class of jitter issue #323 tracks.
 Dimming keeps the layout stable and still signals that nothing is generating.
+
+
+## Refinement: phase-aware display and smoothing
+
+Sampling runs in a component-owned effect at 250 ms intervals using
+`performance.now()`. Committed message props feed the timer; render no longer
+mutates the sampler. The pure tracker resets on message identity changes and
+non-generation phases. A 750 ms time-based exponential filter damps window-rate
+jitter without depending on delta arrival frequency. Thinking and text share
+the same baseline. Existing tool lifecycle state makes the retained rate
+historical immediately; waiting, thinking, generating, and tool labels explain
+the current phase. No provider TTFT is claimed from renderer timing.

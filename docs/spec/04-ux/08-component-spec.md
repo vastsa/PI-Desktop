@@ -3598,3 +3598,18 @@ Sidebar footer                                        Popover (360px max)
     panel width (ADR 0151)
 19. Expanded sidebar session titles, project/group titles, and empty-state copy
     use the 13px compact token while primary sidebar actions remain at 14px
+
+
+### Live generation feedback refinement
+
+The active turn labels waiting for output, thinking, generating, and running
+tools using existing message and tool lifecycle state. A retained rate is
+labelled "Last" immediately during tool execution or waiting, and after a
+stream becomes stale. The recent-window estimate uses time-based exponential
+smoothing (750 ms time constant), sampled every 250 ms with a monotonic clock.
+Each new assistant message resets the sampling and smoothing baseline, retaining
+only the prior displayed rate until a new estimate is available. Thinking to
+answer transitions retain a common token/time baseline. This is approximate
+visible-output throughput, not provider-measured inference speed. No new
+protocol, persistence, or plugin contract is introduced. Waiting is a phase
+label, not a measured provider TTFT.

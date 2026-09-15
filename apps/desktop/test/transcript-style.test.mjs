@@ -365,13 +365,13 @@ test("the transcript meta row estimates throughput while streaming (#93)", () =>
   // Mounted only for the active tail turn, so the sampler and its interval stay
   // off history rows and no per-token state reaches the store (ADR 0242).
   assert.match(transcriptSource, /export function LiveMessageMeta\(/);
-  assert.match(transcriptSource, /useLiveThroughput\(message\)/);
+  assert.match(transcriptSource, /useLiveThroughput\(message, generating\)/);
   // The displayed figure is gated on growth, so a window straddling the moment
   // output stopped cannot make the number sag across a long tool call.
-  assert.match(transcriptSource, /sampleDidGrow\(samplesRef\.current\)/);
+  assert.match(transcriptSource, /advanceThroughput\(\s*trackerRef\.current,/);
   assert.match(
     transcriptSource,
-    /isActive \? \(\s*<LiveMessageMeta modelId=\{modelId\} message=\{streamingMessage\}/,
+    /isActive \? \(\s*<LiveMessageMeta\s+key=\{entry.id\}\s+modelId=\{modelId\}\s+message=\{streamingMessage\}/,
   );
   // The live figure is an estimate, so it carries the "≈" copy (ADR 0073 §4).
   assert.match(transcriptSource, /chat\.usageThroughputEstimated/);

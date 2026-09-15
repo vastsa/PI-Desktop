@@ -18,6 +18,7 @@ import {
   type ThinkingLevel,
 } from "@pi-desktop/shared";
 import { useOpenChatFileRef, useOpenPreviewTarget } from "../../../hooks/use-preview-target";
+import { generationPhase, type ThroughputMessage } from "../../../lib/live-throughput";
 import { useLiveThroughput } from "./use-live-throughput";
 import { messageThinking as thinkingText } from "../../../lib/assistant-turns";
 import { useReferencedImageDataUrl } from "../../../lib/use-referenced-image-data-url";
@@ -148,15 +149,25 @@ export function MessageMeta({
 export function LiveMessageMeta({
   modelId,
   message,
+  toolRunning = false,
 }: {
   modelId?: string;
-  message?: Pick<UiMessage, "content" | "thinking">;
+  message?: ThroughputMessage;
+  toolRunning?: boolean;
 }) {
   const { t } = useTranslation();
-  const { rate, stale } = useLiveThroughput(message);
-  if (!modelId && rate === undefined) {
-    return null;
-  }
+  const phase = generationPhase(message, toolRunning);
+  const generating = phase === "thinking" || phase === "generating";
+  const { rate, stale } = useLiveThroughput(message, generating);
+  const phaseLabel = t({
+    waiting: "chat.liveWaiting",
+    thinking: "chat.thinking",
+    generating: "chat.liveGenerating",
+    tool: "chat.liveToolRunning",
+  }[phase]);
+  const rateLabel = rate === undefined ? undefined : t("chat.usageThroughputEstimated", {
+    count: formatTokenCount(rate),
+  });
   return (
     <div className="message-meta">
       {modelId ? (
@@ -164,15 +175,16 @@ export function LiveMessageMeta({
           {modelId}
         </span>
       ) : null}
+      <span className="message-meta-chip generation-phase" data-generation-phase={phase}>
+        {phaseLabel}
+      </span>
       {rate === undefined ? null : (
         <span
           className="message-meta-chip throughput"
           data-stale={stale ? "true" : undefined}
           title={t("chat.usageThroughputLabel")}
         >
-          {t("chat.usageThroughputEstimated", {
-            count: formatTokenCount(rate),
-          })}
+          {stale ? t("chat.liveLastRate", { rate: rateLabel }) : rateLabel}
         </span>
       )}
     </div>

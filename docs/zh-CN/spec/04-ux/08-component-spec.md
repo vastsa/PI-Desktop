@@ -2538,3 +2538,12 @@ Sidebar footer                                        Popover (360px max)
     取消的分隔符手势恢复之前的宽度 (ADR 0033)
 19. 扩展侧边栏会话标题、project/group 标题和空状态文案
     使用 13px 紧凑令牌，同时主要侧边栏操作保持在 14px
+
+
+### Live generation feedback refinement
+
+The live meta row distinguishes waiting, thinking, generating, and tool execution.
+A held speed is labelled as the last generation rate. Sampling uses a monotonic
+250 ms timer, a recent window, and a 750 ms time-based smoothing constant. New
+messages reset the window; thinking-to-text transitions preserve the baseline.
+This estimate does not claim provider TTFT or measured inference speed.

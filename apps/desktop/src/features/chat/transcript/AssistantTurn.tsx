@@ -29,6 +29,7 @@ import { TranscriptReadOnlyContext } from "./context";
 import { selectionMarkdownWithinRow } from "../../../lib/selection-quote";
 import { selectionAnnotationAnchorWithinRow } from "../../../lib/response-annotation-anchor";
 import { IconQuote, IconChat } from "../../../components/icons";
+import { latestGenerationMessage } from "../../../lib/live-throughput";
 import { Markdown } from "../../../components/Markdown";
 import { IconBranch, IconReview } from "../../../components/icons";
 import { TooltipButton } from "../../../components/ui";
@@ -253,7 +254,7 @@ export const AssistantTurn = memo(function AssistantTurn({
   const modelId = metaMessage?.modelId ?? latestUsageMessage?.modelId;
   // The tail message is the one still growing; the live rate is estimated from
   // it because the provider only reports usage at message_end.
-  const streamingMessage = isActive ? messages.at(-1) : undefined;
+  const streamingMessage = isActive ? latestGenerationMessage(entry) : undefined;
   const hasError = messages.some((message) => Boolean(message.error));
   const complete =
     !isActive && !hasError && Boolean(content) && Boolean(actionMessage);
@@ -347,7 +348,14 @@ export const AssistantTurn = memo(function AssistantTurn({
           />
         ) : null}
         {isActive ? (
-          <LiveMessageMeta modelId={modelId} message={streamingMessage} />
+          <LiveMessageMeta
+            key={entry.id}
+            modelId={modelId}
+            message={streamingMessage}
+            toolRunning={turnAllActivityItems.some(
+              (item) => item.kind === "tool" && item.message.toolStatus === "running",
+            )}
+          />
         ) : null}
         {(content || hasError) && actionMessage && !transcriptReadOnly ? (
           <div className="message-actions">

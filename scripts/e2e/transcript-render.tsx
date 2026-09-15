@@ -4,6 +4,7 @@ import { createInstance } from "i18next";
 import { I18nextProvider } from "react-i18next";
 import { en } from "@pi-desktop/i18n";
 import type { UiMessage } from "@pi-desktop/shared";
+import { LiveMessageMeta } from "../../apps/desktop/src/features/chat/transcript/shared";
 import { AssistantTurn } from "../../apps/desktop/src/features/chat/transcript/AssistantTurn";
 import { buildTranscriptEntries } from "../../apps/desktop/src/lib/assistant-turns";
 
@@ -214,6 +215,40 @@ globalThis.transcriptRenderProbe = async () => {
       "Task completion timing did not update to 4s",
     );
 
+    // E2E-CHAT-live-generation-throughput: real timers, hook and DOM.
+    const showLive = (content: string, thinking = "", toolRunning = false, id = "live") => {
+      flushSync(() => root.render(<I18nextProvider i18n={i18n}><LiveMessageMeta
+        message={message(id, "assistant", content, { thinking, status: "streaming" })}
+        toolRunning={toolRunning}
+      /></I18nextProvider>));
+    };
+    const pause = () => new Promise((resolve) => setTimeout(resolve, 300));
+    showLive("");
+    assert(container.textContent?.includes("Waiting for output"), "missing waiting phase");
+    for (let i = 1; i <= 5; i++) {
+      showLive("", "x".repeat(i * 80));
+      await pause();
+    }
+    assert(container.textContent?.includes("Thinking"), "missing thinking phase");
+    assert(container.querySelector(".throughput")?.textContent?.includes("≈"), "live estimate missing");
+    showLive("answer", "x".repeat(400));
+    assert(container.textContent?.includes("Generating"), "missing generation phase");
+    showLive("answer", "x".repeat(400), true);
+    assert(container.textContent?.includes("Running tools"), "missing tool phase");
+    assert(container.querySelector(".throughput")?.textContent?.includes("Last:"), "retained rate presented as current");
+    assert(container.querySelector('.throughput[data-stale="true"]'), "tool rate not dimmed");
+    await pause();
+    showLive("", "", false, "next");
+    assert(container.textContent?.includes("Waiting for output"), "next request reuses old phase");
+    render([message("real-thinking", "assistant", "", { thinking: "Reasoning only", status: "streaming" })]);
+    assert(container.querySelector('[data-generation-phase="thinking"]'), "thinking activity did not reach live meta row");
+    render([
+      message("real-thinking", "assistant", "", { thinking: "Reasoning only", status: "complete" }),
+      message("real-tool", "tool", "", { toolName: "Bash", toolStatus: "running" }),
+    ]);
+    assert(container.querySelector('[data-generation-phase="tool"]'), "tool lifecycle did not reach live meta row");
+
+
     return {
       ok: true,
       groups,
@@ -222,6 +257,7 @@ globalThis.transcriptRenderProbe = async () => {
       changedToolRenders: 1,
       taskLifecycleUpdated: true,
       taskTimingUpdated: true,
+      liveThroughputPhases: true,
       textUpdateDurationMs,
     };
   } finally {
