@@ -1,6 +1,5 @@
 import { join } from "node:path";
 import {
-  ErrorCodes as SharedErrorCodes,
   isActiveInProject,
   isCommandShellCatalog,
   normalizeMode,
@@ -26,6 +25,7 @@ import {
   type UserSubagentDocument,
 } from "@pi-desktop/agent-runtime";
 import { builtinSkills } from "../builtin-skills";
+import { ErrorCodes, isHostUnavailable } from "../error-codes";
 import { OAUTH_AUTH_KIND, type VendorOAuth } from "../oauth";
 import {
   modelConfigFromModelsDev,
@@ -37,14 +37,6 @@ import type { PluginRuntime } from "../plugin-runtime";
 import type { UserMcpRuntime } from "../user-mcp";
 import type { RuntimeState } from "./context";
 import type { RuntimeProvider } from "./provider-catalog";
-
-const ErrorCodes = {
-  ...SharedErrorCodes,
-  COMMAND_SHELL_INVALID: "COMMAND_SHELL_INVALID",
-  SHELL_NOT_FOUND: "SHELL_NOT_FOUND",
-  PLAN_EXECUTION_INTERRUPTED: "PLAN_EXECUTION_INTERRUPTED",
-  PLAN_PERMISSION_MODE_REQUIRED: "PLAN_PERMISSION_MODE_REQUIRED",
-} as const;
 
 export type SessionLaunchRuntimeDependencies = {
   runtimeState: RuntimeState;
@@ -95,9 +87,6 @@ export function createSessionLaunchRuntime({
   effectiveSubagentModelConfig,
   normalizeThinkingLevel,
 }: SessionLaunchRuntimeDependencies) {
-  const isHostUnavailable = (error: unknown): boolean =>
-    (error as { errorCode?: string } | null | undefined)?.errorCode ===
-    ErrorCodes.HOST_UNAVAILABLE;
   async function refreshUserMcp(
     projectPath: string | null | undefined = getWorkspacePath(),
   ): Promise<McpServerRecord[]> {

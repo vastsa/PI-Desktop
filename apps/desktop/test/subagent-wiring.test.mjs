@@ -8,6 +8,7 @@ const providerCatalogSource = await readMainModule("runtime/provider-catalog.ts"
 const desktopSidecarSource = await readMainModule("runtime/sidecar.ts");
 const eventPersistenceSource = await readMainModule("runtime/event-persistence.ts");
 const hostRuntimeSource = await readMainModule("runtime/host.ts");
+const errorCodesSource = await readMainModule("error-codes.ts");
 const sidecarSource = await readFile(
   new URL("../../../packages/agent-runtime/src/sidecar.ts", import.meta.url),
   "utf8",
@@ -125,9 +126,15 @@ test("a dead host transport degrades quietly instead of warning", () => {
   }
   // The bare guard only covers a host that was never constructed.
   assert.doesNotMatch(sessionLaunchSource, /^\s+if \(!host\) return \[\];$/m);
+  // One classifier, shared: it lives beside the error-code union rather than
+  // being re-declared in each module that has to tell teardown from a fault.
   assert.match(
     sessionLaunchSource,
-    /const isHostUnavailable = \(error: unknown\): boolean =>[\s\S]*?ErrorCodes\.HOST_UNAVAILABLE/,
+    /import \{[^}]*\bisHostUnavailable\b[^}]*\} from "\.\.\/error-codes";/,
+  );
+  assert.match(
+    errorCodesSource,
+    /export function isHostUnavailable\(error: unknown\): boolean \{[\s\S]*?ErrorCodes\.HOST_UNAVAILABLE/,
   );
   // Classification works only because both teardown rejections are tagged.
   assert.match(

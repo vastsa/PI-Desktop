@@ -8,6 +8,7 @@ import {
 } from "electron";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { describeError, isHostUnavailable } from "./error-codes";
 import {
   applyNetworkProxyFromAppSettings,
   currentNetworkProxy,
@@ -17,7 +18,6 @@ import {
   APP_ID,
   APP_NAME,
   APP_VERSION,
-  ErrorCodes as SharedErrorCodes,
   IPC,
   IPC_WHITELIST,
   KEYBOARD_SHORTCUTS,
@@ -154,16 +154,6 @@ import { registerPluginIpc } from "./ipc/plugin-ipc";
 import { registerPluginUiIpc } from "./ipc/plugin-ui-ipc";
 import { registerSkillsIpc } from "./ipc/skills-ipc";
 import { stripWinLongPrefix } from "./path-utils";
-
-// The shared error-code union is reconciled in the shared lane. Keep desktop
-// source type-safe while that lane is temporarily staged at main.
-const ErrorCodes = {
-  ...SharedErrorCodes,
-  COMMAND_SHELL_INVALID: "COMMAND_SHELL_INVALID",
-  SHELL_NOT_FOUND: "SHELL_NOT_FOUND",
-  PLAN_EXECUTION_INTERRUPTED: "PLAN_EXECUTION_INTERRUPTED",
-  PLAN_PERMISSION_MODE_REQUIRED: "PLAN_PERMISSION_MODE_REQUIRED",
-} as const;
 
 // A closed stdout/stderr (Linux AppImage, GUI launch without a TTY) must not
 // surface as Electron's "Uncaught Exception: write EPIPE" dialog. The same
@@ -781,25 +771,6 @@ function setCurrentWorkspacePath(path: string | null): void {
   const payload = workspaceInfo(path);
   broadcastPluginPanelEvent("workspace:changed", payload);
   plugins.broadcastEvent("workspace:changed", [payload]);
-}
-
-/** One-line message for an error of unknown shape, for user-facing lists. */
-function describeError(error: unknown): string {
-  if (error instanceof Error) return error.message.slice(0, 300);
-  return String(error).slice(0, 300);
-}
-
-/**
- * True when a rejection only says the host transport is gone (D080): the call
- * lost a race with shutdown, a crash, or a supervised restart. Every such
- * rejection carries `HOST_UNAVAILABLE`, whether it was refused before it was
- * sent or was in flight when the transport closed.
- */
-function isHostUnavailable(error: unknown): boolean {
-  return (
-    (error as { errorCode?: string } | null | undefined)?.errorCode ===
-    ErrorCodes.HOST_UNAVAILABLE
-  );
 }
 
 /** Pull the user's MCP server records from host-core into the local runtime. */
