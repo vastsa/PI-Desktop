@@ -148,7 +148,10 @@ Rules:
   for an active turn; a completed-turn checkpoint has an empty tail. The
   `details.retainedTailMode` value (`active_turn` or `completed_turn`) preserves
   that boundary, while legacy records are normalized to their latest user
-  message. If the active message crossed the retention limit it is stored in
+  message. When the bound model requires DeepSeek-style reasoning replay,
+  `details.retainedReasoning` may hold a bounded list of prior thinking turns
+  (text + thinking only) so post-compaction Completions requests can echo
+  usable reasoning without restoring tool-call pairs (ADR 0256 / #296). If the active message crossed the retention limit it is stored in
   marked, truncated form; the original message lines stay complete and
   authoritative for UI/diagnostics. An automatic compaction failure may store
   `details.fallback = "retained_tail"` and a short recovery summary instead of

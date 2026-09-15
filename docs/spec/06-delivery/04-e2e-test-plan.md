@@ -789,17 +789,21 @@ and identify the platform validation still needed.
 - **Steps**: 1) Start a session in thinking mode. 2) Complete several turns
   including at least one assistant reply that produces no thinking text.
   3) Send another prompt so the history is replayed to the provider.
-- **Expected**: The later Completions request includes `reasoning_content` on
-  every assistant message, using `""` for turns that had no thinking. The
-  request does not switch `thinkingFormat` to `"deepseek"` solely because the
-  model id contains `"deepseek"`. Official `api.deepseek.com` rows keep
+- **Expected**: The later Completions request includes a reasoning field on
+  every assistant message. Official `api.deepseek.com` rows may use `""` for
+  turns that had no thinking. Non-official DeepSeek-family relays use real
+  retained thinking when available, otherwise the documented non-empty
+  placeholder from ADR 0256 — never a silent empty string after compaction.
+  The request does not switch `thinkingFormat` to `"deepseek"` solely because
+  the model id contains `"deepseek"`. Official `api.deepseek.com` rows keep
   URL-based DeepSeek `thinkingFormat` from pi-ai.
 - **Specs linked**: `03-runtime/11-provider-model-system.md`,
   `03-runtime/12-provider-config-schema.md`
 - **Acceptance**: B (provider Completions compatibility)
 - **Milestone**: M2
-- **Status**: Unit-covered (compat inject + convertMessages empty fill);
-  rendered UI scenario pending
+- **Status**: Unit-covered (compat inject + convertMessages empty/non-empty fill +
+  compaction retained-reasoning wire proof); live OpenCode / aggregator
+  verification deferred; rendered UI scenario pending
 
 #### E2E-006: Key survives restart
 

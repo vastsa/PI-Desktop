@@ -143,6 +143,11 @@ import {
   DEFAULT_RUNTIME_SYSTEM_PROMPT,
 } from "./mode-prompts.js";
 import { clampThinkingLevel } from "./thinking-level.js";
+import {
+  alignRetainedReasoningIdentity,
+  harvestRetainedReasoning,
+  type ReasoningReplayIdentity,
+} from "./reasoning-replay.js";
 import { visionFromModelConfig } from "./model-capabilities.js";
 import type { ProjectInstructions } from "./project-instructions.js";
 import { projectInstructionsPrompt } from "./project-instructions-prompt.js";
@@ -1703,7 +1708,11 @@ Delegation rules:
       // A vendor account has no long-lived key. Leaving it unset keeps pi-ai
       // from overriding the auth the provider just resolved for this request.
       getApiKey: async () => runtimeApiKey || undefined,
-      convertToLlm,
+      convertToLlm: (messages) =>
+        alignRetainedReasoningIdentity(
+          convertToLlm(messages),
+          this.reasoningReplayIdentity(),
+        ),
       prepareNextTurnWithContext: (context, signal) =>
         this.prepareNextTurn(context, signal),
       afterToolCall: async (context) => this.afterToolCall(context),
@@ -1712,7 +1721,7 @@ Delegation rules:
         model,
         tools,
         thinkingLevel: this.thinkingLevel,
-        messages: buildSessionContext(this.entriesWithCompaction()).messages,
+        messages: this.liveSessionContext().messages,
       },
       // Plan transitions must be the only tool call in an assistant batch.
       // Sequential execution also makes the host-confirmed mode change visible
@@ -2192,6 +2201,13 @@ Delegation rules:
    * Failed assistant turns stay transcript-only. */
   private historyToEntries(history: UiMessage[]): MessageEntry[] {
     const api = apiBindingForProviderModel(this.provider).api;
+    const deepSeekCompletionsReplay =
+      api === "openai-completions" &&
+      (
+        this.model.compat as
+          | { requiresReasoningContentOnAssistantMessages?: boolean }
+          | undefined
+      )?.requiresReasoningContentOnAssistantMessages === true;
     const entries: MessageEntry[] = [];
     const append = (id: string, message: AgentMessage): MessageEntry => {
       const entry: MessageEntry = {
@@ -2242,7 +2258,15 @@ Delegation rules:
         if (m.status === "error" || m.isError || m.error) continue;
         const content: AssistantMessage["content"] = [];
         if (m.thinking?.trim()) {
-          content.push({ type: "thinking" as const, thinking: m.thinking });
+          // Completions DeepSeek replay needs thinkingSignature so convertMessages
+          // maps the block to reasoning_content instead of dropping it (#296).
+          content.push({
+            type: "thinking" as const,
+            thinking: m.thinking,
+            ...(deepSeekCompletionsReplay
+              ? { thinkingSignature: "reasoning_content" as const }
+              : {}),
+          });
         }
         if (m.content?.trim()) {
           content.push({ type: "text" as const, text: m.content });
@@ -4270,7 +4294,7 @@ Delegation rules:
    */
   private restoreDeferredToolsFromContext(): void {
     if (this.deferredToolNames.size === 0) return;
-    const { messages } = buildSessionContext(this.entriesWithCompaction());
+    const { messages } = this.liveSessionContext();
     for (const message of messages) {
       if (message.role !== "toolResult" || message.isError) continue;
       if (isMissingToolResultPlaceholder(message.content)) continue;
@@ -4988,7 +5012,7 @@ Delegation rules:
   private automaticCompactionNeeded(
     additionalMessages: AgentMessage[] = [],
   ): boolean {
-    const context = buildSessionContext(this.entriesWithCompaction());
+    const context = this.liveSessionContext();
     const messages = [...context.messages, ...additionalMessages];
     const budget = this.contextBudget(messages);
     return this.compactionEnabled && budget.tokens >= budget.hardLimit;
@@ -5106,7 +5130,7 @@ Delegation rules:
   }
 
   private rebuiltAgentContext(): AgentContext {
-    const messages = buildSessionContext(this.entriesWithCompaction()).messages;
+    const messages = this.liveSessionContext().messages;
     const tools = this.activeTools();
     this.agent.state.messages = messages;
     this.agent.state.tools = tools;
@@ -5297,6 +5321,50 @@ Delegation rules:
     });
   }
 
+
+  private reasoningReplayIdentity(): ReasoningReplayIdentity {
+    const requiresCompletionsReasoningReplay =
+      this.model.api === "openai-completions" &&
+      (
+        this.model.compat as
+          | { requiresReasoningContentOnAssistantMessages?: boolean }
+          | undefined
+      )?.requiresReasoningContentOnAssistantMessages === true;
+    return {
+      api: this.model.api,
+      provider: this.model.provider,
+      model: this.model.id,
+      requiresCompletionsReasoningReplay,
+    };
+  }
+
+  private liveSessionContext(
+    checkpoint: ContextCompactionRecord | undefined = this.activeCompaction,
+  ): { messages: AgentMessage[] } {
+    return buildSessionContext(
+      this.entriesWithCompaction(checkpoint),
+      this.reasoningReplayIdentity(),
+    );
+  }
+
+  /**
+   * When the bound model requires DeepSeek-style reasoning replay, keep the
+   * last few thinking turns inside opaque checkpoint details so post-compaction
+   * context can echo real reasoning without restoring tool-call pairs (#296).
+   */
+  private retainedReasoningForCheckpoint(preparation: ShapedPreparation): {
+    retainedReasoning?: ReturnType<typeof harvestRetainedReasoning>;
+  } {
+    const compat = this.model.compat as
+      | { requiresReasoningContentOnAssistantMessages?: boolean }
+      | undefined;
+    if (!compat?.requiresReasoningContentOnAssistantMessages) return {};
+    const retainedReasoning = harvestRetainedReasoning(
+      preparation.messagesToSummarize,
+    );
+    return retainedReasoning.length > 0 ? { retainedReasoning } : {};
+  }
+
   private checkpointDetails(preparation: ShapedPreparation) {
     return {
       readFiles: [...preparation.fileOps.read].sort(),
@@ -5401,6 +5469,7 @@ Delegation rules:
         fallback: "retained_tail" satisfies ContextCompactionFallback,
         failureCode: "CONTEXT_COMPACTION_FAILED",
         retainedTailMode: retentionMode,
+        ...this.retainedReasoningForCheckpoint(preparation),
       },
     );
   }
@@ -5466,7 +5535,7 @@ Delegation rules:
     fallback?: ContextCompactionFallback,
   ): Promise<CheckpointPersistResult> {
     const compactedBudget = this.contextBudget(
-      buildSessionContext(this.entriesWithCompaction(checkpoint)).messages,
+      this.liveSessionContext(checkpoint).messages,
     );
     if (
       mustFitSafeBudget &&
@@ -5490,9 +5559,7 @@ Delegation rules:
     // resetting its `claim_*` flags when the context window turns over.
     this.contextReminderClaimed = false;
     this.contextFallbackReminderClaimed = false;
-    this.agent.state.messages = buildSessionContext(
-      this.entriesWithCompaction(),
-    ).messages;
+    this.agent.state.messages = this.liveSessionContext().messages;
     this.emit({
       type: "compaction_end",
       reason,
@@ -5637,7 +5704,7 @@ Delegation rules:
     retentionMode: CompactionRetentionMode,
   ): Promise<CheckpointBuild> {
     const entries = this.entriesWithCompaction();
-    const context = buildSessionContext(entries);
+    const context = buildSessionContext(entries, this.reasoningReplayIdentity());
     const budget = this.contextBudget(context.messages);
     const preparation = this.prepareCompactionInput(
       entries,
@@ -5725,6 +5792,7 @@ Delegation rules:
           ...(isRecord(result.value.details) ? result.value.details : {}),
           strategy: "summary" satisfies CompactionStrategy,
           retainedTailMode: retentionMode,
+          ...this.retainedReasoningForCheckpoint(preparation.value),
         },
       ),
     };
@@ -6438,9 +6506,7 @@ Delegation rules:
     const userMessageId = this.pendingUserMessageId || randomUUID();
     this.pendingUserMessageId = undefined;
     this.appendLiveEntry(userMessageId, incomingUserMessage);
-    this.agent.state.messages = buildSessionContext(
-      this.entriesWithCompaction(),
-    ).messages;
+    this.agent.state.messages = this.liveSessionContext().messages;
   }
 
   private failBeforeProviderRequest(
@@ -6532,9 +6598,7 @@ Delegation rules:
       timestamp: Date.now(),
     };
     this.appendLiveEntry(internalId, internalMessage);
-    this.agent.state.messages = buildSessionContext(
-      this.entriesWithCompaction(),
-    ).messages;
+    this.agent.state.messages = this.liveSessionContext().messages;
     this.setAgentActivity({ phase: "starting", since: Date.now() });
     await this.agent.continue();
     await this.waitForIdleAndSteering();

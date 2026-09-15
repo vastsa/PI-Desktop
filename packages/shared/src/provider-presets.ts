@@ -318,8 +318,10 @@ function mentionsDeepSeek(value: string | undefined): boolean {
 }
 
 /**
- * DeepSeek thinking mode requires every replayed assistant message to carry
- * `reasoning_content` (empty string when that turn produced no thinking).
+ * DeepSeek thinking mode requires every replayed assistant message to carry a
+ * reasoning field. Official `deepseek.com` endpoints accept `""` for turns that
+ * produced no thinking (#223 / D389). OpenCode and third-party relays for the
+ * same model family reject empty echoes and require a non-empty value (#296).
  * pi-ai auto-detects only `provider === "deepseek"` or a `deepseek.com` URL;
  * PI-Desktop stores a UUID as `model.provider`, so aggregators and custom
  * gateways never match. Detect the family from vendorKey, URL, model id, or
@@ -337,14 +339,39 @@ export function isDeepSeekReasoningReplay(input: {
   return mentionsDeepSeek(input.modelId) || mentionsDeepSeek(input.family);
 }
 
-/** pi-ai Completions flag that fills missing `reasoning_content` with "". */
+/** Official DeepSeek Completions hosts that still accept empty-string replay. */
+export function isOfficialDeepSeekEndpoint(input: { baseUrl?: string }): boolean {
+  return (input.baseUrl ?? "").toLowerCase().includes("deepseek.com");
+}
+
+/**
+ * Documented non-empty stand-in when a strict DeepSeek-compatible relay requires
+ * reasoning replay but the turn's real thinking was never retained (compaction
+ * summary, synthetic bridge assistants, or thinking-less turns). Must match the
+ * literal embedded in patches/@earendil-works__pi-ai@0.85.1.patch.
+ */
+export const DEEPSEEK_REASONING_REPLAY_PLACEHOLDER =
+  "[reasoning not retained for this turn]";
+
+export type DeepSeekRequestCompat = {
+  requiresReasoningContentOnAssistantMessages: true;
+  /** When set, missing reasoning is filled with {@link DEEPSEEK_REASONING_REPLAY_PLACEHOLDER}. */
+  requiresNonEmptyReasoningReplay?: true;
+};
+
+/** pi-ai Completions flags for DeepSeek-family reasoning replay. */
 export function deepseekRequestCompat(input: {
   vendorKey?: string;
   baseUrl?: string;
   modelId?: string;
   family?: string;
-}): { requiresReasoningContentOnAssistantMessages: true } | undefined {
-  return isDeepSeekReasoningReplay(input)
-    ? { requiresReasoningContentOnAssistantMessages: true }
-    : undefined;
+}): DeepSeekRequestCompat | undefined {
+  if (!isDeepSeekReasoningReplay(input)) return undefined;
+  if (isOfficialDeepSeekEndpoint(input)) {
+    return { requiresReasoningContentOnAssistantMessages: true };
+  }
+  return {
+    requiresReasoningContentOnAssistantMessages: true,
+    requiresNonEmptyReasoningReplay: true,
+  };
 }

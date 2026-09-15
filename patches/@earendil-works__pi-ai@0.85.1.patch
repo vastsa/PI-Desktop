@@ -1,24 +1,77 @@
 diff --git a/dist/api/openai-completions.js b/dist/api/openai-completions.js
-index 48464f2bf56b9369d5c202e4f02fc4f13d35b412..fd36bd0f3daab13023c0220bb44c475503ec0c28 100644
+index 48464f2bf56b9369d5c202e4f02fc4f13d35b412..4d7105cd6441115804517156c8c8584e02dde238 100644
 --- a/dist/api/openai-completions.js
 +++ b/dist/api/openai-completions.js
-@@ -1141,6 +1141,22 @@ export function convertMessages(model, context, compat, options) {
+@@ -1042,21 +1042,27 @@ export function convertMessages(model, context, compat, options) {
+             if (preservedReasoningDetails) {
+                 assistantMsg.reasoning_details = preservedReasoningDetails;
+             }
+-            if (compat.requiresReasoningContentOnAssistantMessages &&
+-                model.reasoning &&
+-                assistantMsg.reasoning_content === undefined) {
+-                assistantMsg.reasoning_content = "";
+-            }
++            // Catalogue-model empty fill moved to the history-wide pass below so
++            // empty-string (#223) and non-empty placeholder (strict relays) share one path.
++
+             // Skip assistant messages that have no content and no tool calls.
+             // Some providers require "either content or tool_calls, but not none".
+             // Other providers also don't accept empty assistant messages.
+             // This handles aborted assistant responses that got no content.
++            // Keep reasoning-only assistants (#296 retained thinking): map a
++            // minimal content stand-in so the already-set reasoning_* field
++            // still reaches the wire.
+             const content = assistantMsg.content;
+             const hasContent = content !== null &&
+                 content !== undefined &&
+                 (typeof content === "string" ? content.length > 0 : content.length > 0);
++            const hasReasoningReplay = OPENAI_COMPLETIONS_REASONING_FIELDS.some((field) => typeof assistantMsg[field] === "string" &&
++                assistantMsg[field].length > 0);
+             if (!hasContent && !assistantMsg.tool_calls) {
+-                continue;
++                if (!hasReasoningReplay) {
++                    continue;
++                }
++                assistantMsg.content = ".";
+             }
+             params.push(assistantMsg);
+         }
+@@ -1141,6 +1147,41 @@ export function convertMessages(model, context, compat, options) {
          }
          lastRole = msg.role;
      }
 +    // DeepSeek-style endpoints reject a history in which only some assistant
-+    // messages carry reasoning_content, while all-or-none is accepted. The
-+    // per-message backfill above only runs for models flagged `reasoning`,
-+    // which a relayed model outside the catalogue is not, even though its
-+    // persisted turns still carry thinking. Whenever any assistant message
-+    // ends up with reasoning_content, give the rest an empty one.
-+    if (compat.requiresReasoningContentOnAssistantMessages &&
-+        params.some((m) => m.role === "assistant" &&
-+            typeof m.reasoning_content === "string" &&
-+            m.reasoning_content.length > 0)) {
-+        for (const m of params) {
-+            if (m.role === "assistant" && m.reasoning_content === undefined) {
-+                m.reasoning_content = "";
++    // messages carry a reasoning field, while all-or-none is accepted. Prefer
++    // the field already present on the history (reasoning_content,
++    // reasoning_text, or reasoning). Relayed models outside the catalogue are
++    // often not flagged `reasoning`, so this pass also covers them (#223).
++    // Official DeepSeek accepts ""; OpenCode/third-party relays that require a
++    // real echo set requiresNonEmptyReasoningReplay and receive a documented
++    // placeholder instead of a silent empty string (#296).
++    // Placeholder text must match DEEPSEEK_REASONING_REPLAY_PLACEHOLDER in
++    // @pi-desktop/shared provider-presets.
++    const reasoningFields = ["reasoning_content", "reasoning_text", "reasoning"];
++    if (compat.requiresReasoningContentOnAssistantMessages) {
++        let activeField;
++        for (const field of reasoningFields) {
++            if (params.some((m) => m.role === "assistant" &&
++                typeof m[field] === "string" &&
++                m[field].length > 0)) {
++                activeField = field;
++                break;
++            }
++        }
++        if (!activeField && model.reasoning) {
++            activeField = "reasoning_content";
++        }
++        if (activeField) {
++            const fill = compat.requiresNonEmptyReasoningReplay
++                ? "[reasoning not retained for this turn]"
++                : "";
++            for (const m of params) {
++                if (m.role === "assistant" && m[activeField] === undefined) {
++                    m[activeField] = fill;
++                }
 +            }
 +        }
 +    }
@@ -41,12 +94,22 @@ index 43e463dbfd1e6cc437ebc680468036f47678de26..364c8c0426d12543c1b64daa8e6eaa22
          else if (event.type === "error") {
              throw new Error(`Error Code ${event.code}: ${event.message}` || "Unknown error");
 diff --git a/dist/auth/oauth/anthropic.js b/dist/auth/oauth/anthropic.js
+index 8692e906caa2609396bdccae98d4d593e024ecf6..029138715f58dbb2e5825f9a2d0c182ed7e81f2a 100644
 --- a/dist/auth/oauth/anthropic.js
 +++ b/dist/auth/oauth/anthropic.js
-@@ -140,21 +140,90 @@
+@@ -140,21 +140,90 @@ async function startCallbackServer(expectedState) {
          });
      });
  }
+-async function postJson(url, body, signal) {
+-    const response = await fetch(url, {
+-        method: "POST",
+-        headers: {
+-            "Content-Type": "application/json",
+-            Accept: "application/json",
+-        },
+-        body: JSON.stringify(body),
+-        signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
 +class AnthropicOAuthTokenError extends Error {
 +    constructor(status, code, grantType) {
 +        const recovery = grantType === "authorization_code"
@@ -90,23 +153,12 @@ diff --git a/dist/auth/oauth/anthropic.js b/dist/auth/oauth/anthropic.js
 +            reject(signal.reason);
 +        };
 +        signal.addEventListener("abort", abort, { once: true });
-+    });
-+}
- async function postJson(url, body, signal) {
--    const response = await fetch(url, {
--        method: "POST",
--        headers: {
--            "Content-Type": "application/json",
--            Accept: "application/json",
--        },
--        body: JSON.stringify(body),
--        signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
--    });
+     });
 -    const responseBody = await response.text();
 -    if (!response.ok) {
 -        throw new Error(`HTTP request failed. status=${response.status}; url=${url}; body=${responseBody}`);
--    }
--    return responseBody;
++}
++async function postJson(url, body, signal) {
 +    // Keep one deadline for all attempts, including response bodies and waits.
 +    // The caller's signal can impose an earlier refresh deadline or cancellation.
 +    const requestSignal = AbortSignal.any([signal, AbortSignal.timeout(30_000)]);
@@ -144,11 +196,12 @@ diff --git a/dist/auth/oauth/anthropic.js b/dist/auth/oauth/anthropic.js
 +        if (delay >= deadline - performance.now())
 +            throw failure; // Never shorten the server's requested wait.
 +        await waitForTokenRetry(delay, requestSignal);
-+    }
+     }
+-    return responseBody;
  }
  async function exchangeAuthorizationCode(code, state, verifier, redirectUri, signal) {
      let responseBody;
-@@ -169,6 +238,8 @@
+@@ -169,6 +238,8 @@ async function exchangeAuthorizationCode(code, state, verifier, redirectUri, sig
          }, signal);
      }
      catch (error) {
@@ -157,7 +210,7 @@ diff --git a/dist/auth/oauth/anthropic.js b/dist/auth/oauth/anthropic.js
          throw new Error(`Token exchange request failed. url=${TOKEN_URL}; redirect_uri=${redirectUri}; response_type=authorization_code; details=${formatErrorDetails(error)}`);
      }
      let tokenData;
-@@ -176,7 +247,7 @@
+@@ -176,7 +247,7 @@ async function exchangeAuthorizationCode(code, state, verifier, redirectUri, sig
          tokenData = JSON.parse(responseBody);
      }
      catch (error) {
@@ -166,7 +219,7 @@ diff --git a/dist/auth/oauth/anthropic.js b/dist/auth/oauth/anthropic.js
      }
      return {
          type: "oauth",
-@@ -280,6 +351,8 @@
+@@ -280,6 +351,8 @@ async function refreshAnthropicToken(refreshToken, signal) {
          }, signal);
      }
      catch (error) {
@@ -175,7 +228,7 @@ diff --git a/dist/auth/oauth/anthropic.js b/dist/auth/oauth/anthropic.js
          throw new Error(`Anthropic token refresh request failed. url=${TOKEN_URL}; details=${formatErrorDetails(error)}`);
      }
      let data;
-@@ -287,7 +360,7 @@
+@@ -287,7 +360,7 @@ async function refreshAnthropicToken(refreshToken, signal) {
          data = JSON.parse(responseBody);
      }
      catch (error) {

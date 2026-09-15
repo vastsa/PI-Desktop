@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   NAMED_ENDPOINT_PRESETS,
   deepseekRequestCompat,
+  DEEPSEEK_REASONING_REPLAY_PLACEHOLDER,
   isDeepSeekReasoningReplay,
+  isOfficialDeepSeekEndpoint,
   isZhipuEndpoint,
   matchNamedPreset,
   matchZhipuPreset,
@@ -83,6 +85,9 @@ describe("Zhipu endpoint presets", () => {
 describe("DeepSeek reasoning replay", () => {
   it("matches official DeepSeek by vendor key or URL", () => {
     expect(isDeepSeekReasoningReplay({ vendorKey: "deepseek" })).toBe(true);
+    expect(isOfficialDeepSeekEndpoint({ baseUrl: "https://api.deepseek.com" })).toBe(
+      true,
+    );
     expect(
       deepseekRequestCompat({ baseUrl: "https://api.deepseek.com" }),
     ).toEqual({ requiresReasoningContentOnAssistantMessages: true });
@@ -95,7 +100,11 @@ describe("DeepSeek reasoning replay", () => {
         baseUrl: "https://api.siliconflow.cn/v1",
         modelId: "deepseek-ai/DeepSeek-V3.2",
       }),
-    ).toEqual({ requiresReasoningContentOnAssistantMessages: true });
+    ).toEqual({
+      requiresReasoningContentOnAssistantMessages: true,
+      requiresNonEmptyReasoningReplay: true,
+    });
+    expect(DEEPSEEK_REASONING_REPLAY_PLACEHOLDER.length).toBeGreaterThan(0);
     expect(
       isDeepSeekReasoningReplay({
         vendorKey: "custom",

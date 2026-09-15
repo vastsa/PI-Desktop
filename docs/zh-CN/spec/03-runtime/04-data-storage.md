@@ -132,6 +132,9 @@ commit 不会删除历史审查证据。
   重启后的上下文。活动回合的 `retainedTail` 最多保存最新的用户消息；
   已完成回合的检查点尾部为空。`details.retainedTailMode`（`active_turn` 或
   `completed_turn`）持久化该边界；没有该字段的旧记录归一化为最新的用户消息。
+  当绑定模型需要 DeepSeek 风格推理回放时，`details.retainedReasoning` 可保存有界的
+  先前思考回合（仅 text + thinking），以便压缩后的 Completions 请求能回传可用推理
+  而不恢复 tool-call 对（ADR 0256 / #296）。
   活动消息超过保留限制时，将以标记、截断的形式存储；UI/diagnostics 的原始消息行
   保持完整和权威。
   自动压缩失败可能会存储 `details.fallback = "retained_tail"`

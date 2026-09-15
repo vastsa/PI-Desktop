@@ -97,7 +97,10 @@ pi-ai 去发出 `x-opencode-session`。每个提供商行（AI 服务或 OAuth �
 `requiresReasoningContentOnAssistantMessages: true`。pi-ai 只根据
 `provider === "deepseek"` 或 `deepseek.com` URL 自动检测，而 PI-Desktop 把 UUID
 存成 `model.provider`，因此聚合网关与自定义端点会在无思考内容的助手回合漏掉
-`reasoning_content`。该覆盖不改 `thinkingFormat`。
+`reasoning_content`。非官方 DeepSeek 端点还会设置 `requiresNonEmptyReasoningReplay`，
+用文档化的非空占位符而不是 `""` 填补缺失推理（OpenCode / 第三方中转在压缩后拒绝空回传；
+见 ADR 0256 / #296）。官方 `deepseek.com` 行仍使用空串回填（#223）。该覆盖不改
+`thinkingFormat`。
 
 ## 5. 内置供应商矩阵（发货意图）
 

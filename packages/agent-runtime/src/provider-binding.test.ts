@@ -202,10 +202,14 @@ describe("buildProviderModel OpenAI-compatible role compatibility", () => {
     expect(model.provider).toBe("row-uuid");
     expect(model.compat).toMatchObject({
       requiresReasoningContentOnAssistantMessages: true,
+      requiresNonEmptyReasoningReplay: true,
       supportsDeveloperRole: false,
     });
     expect(model.compat.thinkingFormat).toBeUndefined();
 
+    // Empty-string path (#223): this convertMessages call uses a compat WITHOUT
+    // requiresNonEmptyReasoningReplay, so official-style "" fill still works.
+    // The SiliconFlow model itself sets requiresNonEmptyReasoningReplay (above).
     const messages = convertMessages(
       model,
       {
@@ -266,7 +270,24 @@ describe("buildProviderModel OpenAI-compatible role compatibility", () => {
 
     expect(model.compat).toMatchObject({
       requiresReasoningContentOnAssistantMessages: true,
+      requiresNonEmptyReasoningReplay: true,
     });
+  });
+
+  it("keeps empty-string replay for official deepseek.com endpoints", () => {
+    const model = buildProviderModel({
+      ...reasoningProvider,
+      id: "row-uuid",
+      vendorKey: "deepseek",
+      baseUrl: "https://api.deepseek.com",
+      modelId: "deepseek-chat",
+      apiStyle: "chat_completions",
+    }) as any;
+
+    expect(model.compat).toMatchObject({
+      requiresReasoningContentOnAssistantMessages: true,
+    });
+    expect(model.compat.requiresNonEmptyReasoningReplay).toBeUndefined();
   });
 
   it("does not mark unrelated OpenAI-compatible models as DeepSeek reasoning replay", () => {

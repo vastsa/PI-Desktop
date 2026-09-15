@@ -2626,6 +2626,80 @@ describe("DesktopAgentRuntime thinking configuration", () => {
 
     await runtime.dispose();
   });
+
+  it("stamps reasoning_content only for DeepSeek-compatible Completions history", async () => {
+    const runtime = createRuntime({
+      provider: {
+        ...provider,
+        vendorKey: "deepseek",
+        baseUrl: "https://relay.example/v1",
+        modelId: "deepseek-v4",
+        modelConfig: {
+          ...provider.modelConfig!,
+          baseUrl: "https://relay.example/v1",
+        },
+      },
+      history: [
+        {
+          id: "assistant-deepseek-1",
+          role: "assistant",
+          content: "answer",
+          thinking: "private plan",
+          createdAt: new Date().toISOString(),
+          status: "complete",
+        },
+      ],
+    });
+    const assistant = (runtime as any).agent.state.messages.find(
+      (message: any) => message.role === "assistant",
+    );
+
+    expect(assistant.content).toEqual([
+      {
+        type: "thinking",
+        thinking: "private plan",
+        thinkingSignature: "reasoning_content",
+      },
+      { type: "text", text: "answer" },
+    ]);
+
+    await runtime.dispose();
+  });
+
+  it("keeps provider-native thinking unsigned for Anthropic history", async () => {
+    const runtime = createRuntime({
+      provider: {
+        ...provider,
+        apiStyle: "anthropic_messages",
+        modelId: "claude-opus-4-6",
+        modelConfig: {
+          ...provider.modelConfig!,
+          baseUrl: "https://api.anthropic.com",
+          compat: { forceAdaptiveThinking: true },
+        },
+      },
+      history: [
+        {
+          id: "assistant-anthropic-1",
+          role: "assistant",
+          content: "answer",
+          thinking: "private plan",
+          createdAt: new Date().toISOString(),
+          status: "complete",
+        },
+      ],
+    });
+    const assistant = (runtime as any).agent.state.messages.find(
+      (message: any) => message.role === "assistant",
+    );
+
+    expect(assistant.content).toEqual([
+      { type: "thinking", thinking: "private plan" },
+      { type: "text", text: "answer" },
+    ]);
+
+    await runtime.dispose();
+  });
 });
 
 describe("DesktopAgentRuntime session collaboration provenance", () => {

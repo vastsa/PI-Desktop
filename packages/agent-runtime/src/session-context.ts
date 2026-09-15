@@ -7,7 +7,9 @@
  * synchronous and keeps the `{ messages }` shape the runtime already uses.
  *
  * The slice-from-latest-compaction and compactionSummary-before-retainedTail
- * order are copied from pi-agent-core; D203 depends on that order.
+ * order are copied from pi-agent-core; D203 depends on that order. Retained
+ * reasoning turns (#296) sit between the summary and the user tail so strict
+ * DeepSeek relays still see real thinking without replaying tool-call pairs.
  */
 
 import {
@@ -16,6 +18,11 @@ import {
   type AgentMessage,
   type Entry,
 } from "@earendil-works/pi-agent-core";
+import {
+  retainedReasoningFromDetails,
+  retainedReasoningToMessages,
+  type ReasoningReplayIdentity,
+} from "./reasoning-replay.js";
 
 function isContextMessage(message: AgentMessage): boolean {
   return (
@@ -36,7 +43,10 @@ export function buildContextEntries(pathEntries: readonly Entry[]): Entry[] {
   return [...pathEntries];
 }
 
-export function sessionEntryToContextMessages(entry: Entry): AgentMessage[] {
+export function sessionEntryToContextMessages(
+  entry: Entry,
+  identity?: ReasoningReplayIdentity,
+): AgentMessage[] {
   switch (entry.type) {
     case "message":
       return isContextMessage(entry.message) ? [entry.message] : [];
@@ -47,6 +57,13 @@ export function sessionEntryToContextMessages(entry: Entry): AgentMessage[] {
           entry.tokensBefore,
           entry.timestamp,
         ),
+        ...(identity?.requiresCompletionsReasoningReplay === false
+          ? []
+          : retainedReasoningToMessages(
+              retainedReasoningFromDetails(entry.details),
+              entry.timestamp,
+              identity,
+            )),
         ...entry.retainedTail.filter(isContextMessage),
       ];
     case "branch_summary":
@@ -64,12 +81,15 @@ export function sessionEntryToContextMessages(entry: Entry): AgentMessage[] {
   }
 }
 
-export function buildSessionContext(pathEntries: readonly Entry[]): {
+export function buildSessionContext(
+  pathEntries: readonly Entry[],
+  identity?: ReasoningReplayIdentity,
+): {
   messages: AgentMessage[];
 } {
   return {
-    messages: buildContextEntries(pathEntries).flatMap(
-      sessionEntryToContextMessages,
+    messages: buildContextEntries(pathEntries).flatMap((entry) =>
+      sessionEntryToContextMessages(entry, identity),
     ),
   };
 }

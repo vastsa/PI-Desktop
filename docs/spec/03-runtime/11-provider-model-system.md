@@ -101,6 +101,10 @@ base URL, model id, or catalog `family` identifies DeepSeek. pi-ai only
 auto-detects `provider === "deepseek"` or a `deepseek.com` URL, and PI-Desktop
 stores a UUID as `model.provider`, so aggregators and custom gateways would
 otherwise omit `reasoning_content` on assistant turns that produced no thinking.
+Non-official DeepSeek endpoints also set `requiresNonEmptyReasoningReplay` so
+missing reasoning is filled with a documented placeholder instead of `""`
+(OpenCode / third-party relays reject empty echoes after compaction; see
+ADR 0256 / #296). Official `deepseek.com` rows keep empty-string fill (#223).
 The overlay does not change `thinkingFormat`.
 
 ## 5. Built-in vendor matrix (ship intent)

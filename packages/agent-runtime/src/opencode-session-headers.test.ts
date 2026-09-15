@@ -277,7 +277,7 @@ describe("OpenCode header call-site wiring", () => {
   it("is applied on session, subagent, and one-shot streams", () => {
     const sources = [
       readFileSync(new URL("./runtime.ts", import.meta.url), "utf8"),
-      readFileSync(new URL("./subagent.ts", import.meta.url), "utf8"),
+      readFileSync(new URL("./subagent-model-binding.ts", import.meta.url), "utf8"),
       readFileSync(new URL("./one-shot-complete.ts", import.meta.url), "utf8"),
     ];
     for (const source of sources) {
