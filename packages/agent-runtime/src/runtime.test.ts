@@ -2476,6 +2476,36 @@ describe("DesktopAgentRuntime plan transitions", () => {
 });
 
 describe("DesktopAgentRuntime thinking configuration", () => {
+  it("applies trusted-extension overrides for one turn and persists a baseline", async () => {
+    const hostCall = vi.fn().mockResolvedValue({});
+    const runtime = createRuntime({
+      host: { call: hostCall, onNotification: vi.fn(() => () => {}) },
+      thinkingLevel: "medium",
+    });
+    const bridge = (runtime as any).createExtensionBridge();
+
+    expect(bridge.getThinkingLevels()).toEqual(["off", "low", "medium", "high"]);
+    expect(bridge.setThinkingLevel("invalid")).toBe(false);
+    expect(bridge.setThinkingLevel("high")).toBe(true);
+    expect(bridge.getThinkingLevel()).toBe("high");
+    expect((runtime as any).agent.state.thinkingLevel).toBe("high");
+    expect((runtime as any).thinkingLevel).toBe("medium");
+
+    await (runtime as any).handleAgentEvent({ type: "agent_end", messages: [] });
+    expect(bridge.getThinkingLevel()).toBe("medium");
+
+    expect(bridge.setThinkingLevel("high", { persist: true })).toBe(true);
+    expect(bridge.getThinkingLevel()).toBe("high");
+    expect((runtime as any).thinkingLevel).toBe("high");
+    expect(hostCall).toHaveBeenCalledWith("session.configure", {
+      id: "session-1",
+      mode: "agent",
+      thinkingLevel: "high",
+    });
+
+    await runtime.dispose();
+  });
+
   it("clamps the requested level and exposes model reasoning capability", async () => {
     const runtime = createRuntime({ thinkingLevel: "minimal" });
     const agent = (runtime as any).agent;

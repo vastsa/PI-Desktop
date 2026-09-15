@@ -3,8 +3,10 @@ import type {
   Mode,
   ProviderPublic,
   ThinkingLevel,
+  ThinkingLevelMode,
 } from "@pi-desktop/shared";
 import {
+  AUTO_THINKING_BASELINE,
   initialThinkingLevelForBinding,
   modelIdsMatch,
 } from "@pi-desktop/shared";
@@ -20,6 +22,7 @@ import {
   thinkingLevelForProvider,
   thinkingProviderForModel,
   type ComposerMenuView,
+  type ComposerThinkingMenuLevel,
 } from "../model";
 
 type UseComposerModelMenuOptions = {
@@ -29,6 +32,7 @@ type UseComposerModelMenuOptions = {
   modelId: string | undefined;
   thinkingProvider: ProviderPublic | null | undefined;
   thinkingLevel: ThinkingLevel;
+  thinkingLevelMode: ThinkingLevelMode;
   controlsBlocked: boolean;
 };
 
@@ -39,6 +43,7 @@ export function useComposerModelMenu({
   modelId,
   thinkingProvider: resolvedThinkingProvider,
   thinkingLevel,
+  thinkingLevelMode,
   controlsBlocked,
 }: UseComposerModelMenuOptions) {
   const providers = useAppStore((s) => s.providers);
@@ -64,9 +69,16 @@ export function useComposerModelMenu({
       provider ? providerModels[provider.id] : undefined,
     );
   const availableThinkingLevels = providerThinkingLevels(thinkingProvider);
-  const thinkingMenuLevels: ThinkingLevel[] = availableThinkingLevels.length
-    ? availableThinkingLevels
-    : ["off"];
+  // ADR 0257: reasoning models get the virtual `auto` entry ahead of the
+  // canonical ladder; non-reasoning models keep the `off`-only menu.
+  const thinkingMenuLevels: ComposerThinkingMenuLevel[] =
+    availableThinkingLevels.length
+      ? ["auto", ...availableThinkingLevels]
+      : ["off"];
+  const selectedThinkingMenuLevel: ComposerThinkingMenuLevel =
+    thinkingLevelMode === "auto" && availableThinkingLevels.length > 0
+      ? "auto"
+      : thinkingLevel;
   const modelGroups = useMemo(
     () =>
       providers
@@ -129,18 +141,16 @@ export function useComposerModelMenu({
       ),
     [flatModels, provider?.id, modelId],
   );
-
   useEffect(() => {
     if (!open || view !== "model") return;
     setModelHighlight(queryNeedle ? (flatModels.length ? 0 : -1) : activeFlatIndex);
   }, [activeFlatIndex, flatModels.length, flatModelsKey, open, queryNeedle, view]);
-
   useEffect(() => {
     if (!open || view !== "thinking") return;
     setThinkingHighlight(
-      thinkingLevel ? thinkingMenuLevels.indexOf(thinkingLevel) : -1,
+      thinkingMenuLevels.indexOf(selectedThinkingMenuLevel),
     );
-  }, [open, thinkingLevel, thinkingMenuLevels, view]);
+  }, [open, selectedThinkingMenuLevel, thinkingMenuLevels, view]);
 
   useEffect(() => {
     if (!open) return;
@@ -219,11 +229,19 @@ export function useComposerModelMenu({
             nextBinding,
             nextModelProvider?.supportedThinkingLevels,
           );
+      const nextThinkingLevelMode: ThinkingLevelMode =
+        thinkingLevelMode === "auto" &&
+        providerThinkingLevels(nextModelProvider).length > 0
+          ? "auto"
+          : "manual";
       await configureActiveSession({
         mode,
         providerId: candidate.id,
         modelId: nextModelId,
         thinkingLevel: nextThinkingLevel,
+        // Non-reasoning models cannot use the session-layer auto mode.
+        // Reasoning-capable model switches preserve it (ADR 0257).
+        thinkingLevelMode: nextThinkingLevelMode,
       });
       setQuery("");
       setView("root");
@@ -236,13 +254,14 @@ export function useComposerModelMenu({
     }
   };
 
-  const selectThinkingLevel = async (level: ThinkingLevel) => {
+  const selectThinkingLevel = async (level: ComposerThinkingMenuLevel) => {
     try {
       await configureActiveSession({
         mode,
         providerId: provider?.id,
         modelId,
-        thinkingLevel: level,
+        thinkingLevel: level === "auto" ? AUTO_THINKING_BASELINE : level,
+        thinkingLevelMode: level === "auto" ? "auto" : "manual",
       });
       setView("root");
       setModelHighlight(-1);
@@ -319,6 +338,7 @@ export function useComposerModelMenu({
     modelGroups: filteredModelGroups,
     flatModels,
     thinkingMenuLevels,
+    selectedThinkingMenuLevel,
     showView,
     selectModel,
     selectThinkingLevel,

@@ -38,7 +38,7 @@ export type SubmittedComposerDraft = {
 
 export type SessionConfiguration = Pick<
   SessionSummary,
-  "mode" | "providerId" | "modelId" | "thinkingLevel"
+  "mode" | "providerId" | "modelId" | "thinkingLevel" | "thinkingLevelMode"
 > &
   Partial<Pick<SessionSummary, "permissionMode">>;
 

@@ -89,11 +89,12 @@ fn declaration_manifest(providers: Value, permissions: Value) -> Value {
 }
 
 #[test]
-fn a_new_database_carries_the_owner_column_at_the_current_schema_version() {
+fn a_new_database_carries_current_schema_columns() {
     let (_dir, db, _secrets) = test_context();
-    // v17 added the owner column and v18 the turn-queue priority column; a fresh
+    // v17 added the owner column, v18 the turn-queue priority column, and v19
+    // the adaptive thinking mode; a fresh
     // database is stamped with the newest, so the column set is the current one.
-    assert_eq!(SCHEMA_VERSION, 18);
+    assert_eq!(SCHEMA_VERSION, 19);
     let version: i64 = db
         .conn()
         .query_row("PRAGMA user_version", [], |row| row.get(0))
@@ -108,6 +109,24 @@ fn a_new_database_carries_the_owner_column_at_the_current_schema_version() {
         )
         .unwrap();
     assert!(has_owner);
+    let has_priority: bool = db
+        .conn()
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('turn_queue') WHERE name = 'priority')",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(has_priority);
+    let has_thinking_mode: bool = db
+        .conn()
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('sessions') WHERE name = 'thinking_level_mode')",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(has_thinking_mode);
 }
 
 #[test]

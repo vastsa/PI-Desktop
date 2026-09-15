@@ -5,6 +5,15 @@ import type { PermissionMode } from "./permissions.js";
 import type { UiMessage } from "./messages.js";
 import type { PlanningState } from "./plans.js";
 
+/** Session-layer thinking-level modes. `auto` never enters wire or storage enums (ADR 0257). */
+export const THINKING_LEVEL_MODES = ["manual", "auto"] as const;
+
+export type ThinkingLevelMode = (typeof THINKING_LEVEL_MODES)[number];
+
+export function isThinkingLevelMode(value: unknown): value is ThinkingLevelMode {
+  return (THINKING_LEVEL_MODES as readonly unknown[]).includes(value);
+}
+
 export type SessionSource = "desktop" | "pi-native";
 
 export type SessionCapabilities = {
@@ -29,6 +38,11 @@ export type SessionSummary = {
   providerId?: string;
   mode: Mode;
   thinkingLevel: ThinkingLevel;
+  /**
+   * Additive session-layer field (ADR 0257). Absent or `"manual"` is classic
+   * behavior; `"auto"` resolves `thinkingLevel` as a per-turn auto baseline.
+   */
+  thinkingLevelMode?: ThinkingLevelMode;
   /** Per-session permission mode; `inherit` follows the global default (D115). */
   permissionMode: PermissionMode;
   /** Effective capability for this session's exact provider/model pair. */

@@ -28,7 +28,7 @@ test("model and reasoning selection return to the root without closing", () => {
   assert.match(composerSource, /setQuery\(""\);[\s\S]*?setView\("root"\)/);
   assert.match(composerSource, /const selectThinkingLevel = async/);
   assert.match(composerSource, /setView\("root"\);[\s\S]*?setThinkingHighlight\(-1\)/);
-  assert.match(composerSource, /const thinkingMenuLevels: ThinkingLevel\[\] = availableThinkingLevels\.length/);
+  assert.match(composerSource, /const thinkingMenuLevels: ComposerThinkingMenuLevel\[\]\s*=\s*availableThinkingLevels\.length/);
 });
 
 test("opening the combined menu preloads model metadata before its submenu", () => {
@@ -45,13 +45,13 @@ test("the combined chip and menu meet the compact accessible visual contract", (
   assert.match(composerSource, /aria-expanded=\{open\}/);
   assert.match(composerSource, /role="menuitemradio"/);
   assert.match(composerSource, /aria-checked=\{active\}/);
-  assert.match(composerSource, /aria-checked=\{thinkingLevel === level\}/);
+  assert.match(composerSource, /aria-checked=\{selectedThinkingMenuLevel === level\}/);
   assert.match(composerSource, /event\.key === "ArrowLeft"/);
   assert.match(composerSource, /event\.key === "Escape"/);
   assert.match(stylesSource, /\.composer-model-thinking-menu\s*\{[\s\S]*?position:\s*fixed;/);
   assert.match(stylesSource, /\.composer-model-thinking-menu\s*\{[\s\S]*?top:\s*0;/);
   assert.match(stylesSource, /\.composer-model-thinking-menu\s*\{[\s\S]*?width:\s*min\(300px,\s*calc\(100vw - 24px\)\)/);
-  assert.match(composerSource, /className="composer-model-thinking-icon"[\s\S]*?<IconBot size=\{14\} \/>/);
+  assert.match(composerSource, /className="composer-model-thinking-icon"[\s\S]*?<ModelIcon /);
   assert.doesNotMatch(stylesSource, /\.composer-model-thinking-icon\.is-off/);
   assert.match(stylesSource, /@media \(prefers-reduced-motion: reduce\)/);
 });

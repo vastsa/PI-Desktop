@@ -935,6 +935,8 @@ sklm: {
     "largePasteThresholdDesc": "Los pegados de solo texto de más de esta cantidad de caracteres se convierten en un archivo de sesión temporal.",
     "largePasteThresholdSaveError": "No se pudo guardar el umbral de pegado.",
     "modeDesc": "Modo para nuevas sesiones.",
+    "defaultAutoThinkingLevel": "Pensamiento adaptativo predeterminado",
+    "defaultAutoThinkingLevelDesc": "Cuando está activado, las nuevas sesiones comienzan en modo de pensamiento automático y el agente puede subir el nivel cuando la tarea requiera un razonamiento más profundo.",
     "modeAgent": "Agente",
     "modePlan": "Plan",
     "modeGoal": "Meta",

@@ -194,7 +194,8 @@ export interface TrustedExtensionBridge {
   getModel(): unknown;
   setModel(model: unknown): Promise<boolean>;
   getThinkingLevel(): string;
-  setThinkingLevel(level: string): void;
+  getThinkingLevels(): string[];
+  setThinkingLevel(level: string, opts?: { persist?: boolean }): boolean;
   isIdle(): boolean;
   abort(): void;
   hasPendingMessages(): boolean;
@@ -934,7 +935,9 @@ export class TrustedExtensionRunner {
         })),
       setModel: (model: unknown) => bridge.setModel(model),
       getThinkingLevel: () => bridge.getThinkingLevel(),
-      setThinkingLevel: (level: string) => bridge.setThinkingLevel(String(level)),
+      getThinkingLevels: () => bridge.getThinkingLevels(),
+      setThinkingLevel: (level: string, opts?: { persist?: boolean }) =>
+        bridge.setThinkingLevel(String(level), opts),
       setSessionName: (name: string) => {
         void bridge.setSessionName(String(name));
       },

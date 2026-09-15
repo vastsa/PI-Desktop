@@ -393,6 +393,28 @@ export function SettingsPage() {
                     ))}
                   </div>
                 </SettingsRow>
+                <SettingsRow
+                  title={t("settings.defaultAutoThinkingLevel")}
+                  description={t("settings.defaultAutoThinkingLevelDesc")}
+                >
+                  <button
+                    type="button"
+                    className={cx(
+                      "settings-toggle",
+                      (settings.defaultAutoThinkingLevel ?? true) && "on",
+                    )}
+                    role="switch"
+                    aria-checked={settings.defaultAutoThinkingLevel ?? true}
+                    aria-label={t("settings.defaultAutoThinkingLevel")}
+                    onClick={() =>
+                      void saveSettings({
+                        defaultAutoThinkingLevel: !(settings.defaultAutoThinkingLevel ?? true),
+                      })
+                    }
+                  >
+                    <span className="settings-toggle-thumb" />
+                  </button>
+                </SettingsRow>
                 <CommandShellRow settings={settings} saveSettings={saveSettings} />
                 <LinkOpenTargetRow settings={settings} saveSettings={saveSettings} />
                 <ContextUsageDisplayRow

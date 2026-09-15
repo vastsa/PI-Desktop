@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "pi.thinking",
+  "name": "自动思考档位",
+  "version": "0.1.0",
+  "description": "为 agent 提供 get_thinking_level 与 set_thinking_level 两个工具：按任务形态主动调整思考等级——歧义、调试、高风险改动、多步综合时升档，例行琐碎操作保持低档（ADR 0257）。",
+  "i18n": {
+    "en": {
+      "name": "Adaptive Thinking",
+      "description": "Gives the agent get_thinking_level and set_thinking_level tools so it can adapt the thinking level to the task shape: raise it for ambiguity, debugging, risky changes, or multi-step synthesis; keep it low for routine trivial operations (ADR 0257)."
+    },
+    "zh-CN": {
+      "name": "自动思考档位",
+      "description": "为 agent 提供 get_thinking_level 与 set_thinking_level 两个工具：按任务形态主动调整思考等级——歧义、调试、高风险改动、多步综合时升档，例行琐碎操作保持低档（ADR 0257）。"
+    }
+  },
+  "author": "PI-Desktop core",
+  "license": "MIT",
+  "main": "main.cjs",
+  "contributes": {
+    "agentExtensions": ["extension.js"]
+  },
+  "permissions": ["agent.extension"],
+  "engines": { "piDesktop": ">=0.9.0" },
+  "activationEvents": ["onStartup"]
+}

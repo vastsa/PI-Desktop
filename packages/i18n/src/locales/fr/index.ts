@@ -935,6 +935,8 @@ sklm: {
     "largePasteThresholdDesc": "Les collages de texte uniquement dépassant ce nombre de caractères deviennent un fichier de session temporaire.",
     "largePasteThresholdSaveError": "Impossible d'enregistrer le seuil de collage.",
     "modeDesc": "Mode pour les nouvelles sessions.",
+    "defaultAutoThinkingLevel": "Réflexion adaptative par défaut",
+    "defaultAutoThinkingLevelDesc": "Lorsqu'elle est activée, toute nouvelle session démarre en mode de réflexion automatique et l'agent peut augmenter le niveau si la tâche demande un raisonnement plus approfondi.",
     "modeAgent": "Agent",
     "modePlan": "Plan",
     "modeGoal": "Objectif",

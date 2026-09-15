@@ -521,6 +521,7 @@ export function ProviderSetupDialog({
           </div>
 
           <ModelSelectionPanes
+            providerId={provider?.vendorKey ?? provider?.name ?? service}
             discovery={discovery}
             selection={selection}
             listTitle={t("settings.serviceModels")}

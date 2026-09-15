@@ -166,6 +166,7 @@ fn spawn(db: &Database, input: &Value) -> Result<Value> {
                 .map(str::to_owned),
             project_path: parent.summary.project_path,
             thinking_level: Some(parent.summary.thinking_level),
+            thinking_level_mode: Some(parent.summary.thinking_level_mode),
             permission_mode: Some(parent.summary.permission_mode),
         },
     )?;

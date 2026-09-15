@@ -941,6 +941,8 @@ sklm: {
       "純文本貼上超過此字元數後，會轉換為當前會話的臨時檔案。",
     largePasteThresholdSaveError: "無法儲存貼上閾值。",
     modeDesc: "新會話模式。",
+    defaultAutoThinkingLevel: "預設自動思考",
+    defaultAutoThinkingLevelDesc: "開啟後，新工作階段預設使用自動思考檔位；工作需要更深入推理時，智慧體可以主動升檔。",
     modeAgent: "智慧體",
     modePlan: "規劃",
     modeGoal: "目標",

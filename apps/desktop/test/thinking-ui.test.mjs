@@ -70,7 +70,8 @@ test("composer exposes the runtime thinking level order and provider filtering",
 });
 
 test("thinking levels use their canonical English values without i18n", () => {
-  assert.match(composerSource, /const thinkingLabel = thinkingLevel;/);
+  assert.match(composerSource, /const thinkingLabel = thinkingAuto \? "auto" : thinkingLevel;/);
+  assert.doesNotMatch(composerSource, /auto · \$\{thinkingLevel\}/);
   assert.match(composerSource, /<span className="flex-1">\s*\{level\}/);
   assert.doesNotMatch(composerSource, /THINKING_LEVEL_(LABELS|I18N_KEYS)/);
   assert.doesNotMatch(composerSource, /chat\.effort(?:Off|Minimal|Low|Mid|High|Xhigh|Max)/);
@@ -83,8 +84,8 @@ test("Composer owns the mode and model controls", () => {
     composerSource.indexOf('<div className="composer-left">'),
     composerSource.indexOf('<div className="composer-right">'),
   );
-  const modeControl = leftToolbar.indexOf(
-    'className="icon-btn mode-chip composer-mode-chip"',
+  const modeControl = leftToolbar.search(
+    /className=\{`icon-btn mode-chip composer-mode-chip/,
   );
   const permissionControl = leftToolbar.indexOf('className="composer-permission"');
   const rightToolbar = composerToolbarSource.slice(
@@ -180,6 +181,17 @@ test("new sessions default to the selected model binding's thinking level", () =
     /thinkingLevel:[\s\S]*?defaultThinkingLevel/,
   );
   assert.doesNotMatch(materializeSource, /highestSupportedThinkingLevel\(/);
+});
+
+test("new sessions default to auto while manual user choices remain explicit", () => {
+  const materializeSource =
+    sessionCoordinationSource.match(
+      /async function persistSessionAndSelect[\s\S]*?\n  }\n\n  async function materializeDraftSession/,
+    )?.[0] ?? "";
+  assert.match(materializeSource, /settings\?\.defaultAutoThinkingLevel \?\? true \? "auto" : "manual"/);
+  assert.match(materializeSource, /thinkingLevelMode === "auto"/);
+  assert.match(composerSource, /activeSession\.thinkingLevelMode \?\? "manual"/);
+  assert.match(composerModelPickerSource, /selectedThinkingMenuLevel/);
 });
 
 test("main resolves reasoning from each session's exact selected model", () => {

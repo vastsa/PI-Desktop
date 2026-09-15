@@ -7,6 +7,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import type {
+  ThinkingLevelMode,
   Mode,
   PermissionMode,
 } from "@pi-desktop/shared";
@@ -366,11 +367,28 @@ export function Composer({
     ? sessionThinkingLevel
     : "off";
   const availableThinkingLevels = providerThinkingLevels(thinkingProvider);
+  // ADR 0257: `auto` is a session-layer mode. A pinned session carries its
+  // own mode; a draft inherits the `defaultAutoThinkingLevel` setting. The
+  // raw lowercase "auto" renders canonically like every other level.
+  // Existing sessions without the additive field (including native/imported
+  // sessions) remain manual. Only a new draft inherits the global default.
+  const thinkingLevelMode: ThinkingLevelMode = activeSession
+    ? activeSession.thinkingLevelMode ?? "manual"
+    : draftConfiguration?.thinkingLevelMode ??
+      (settings?.defaultAutoThinkingLevel ?? true ? "auto" : "manual");
+  const thinkingAuto =
+    thinkingLevelMode === "auto" && availableThinkingLevels.length > 0;
+  const effectiveThinkingLevelMode: ThinkingLevelMode = thinkingAuto
+    ? "auto"
+    : "manual";
   const thinkingLevel = thinkingLevelForProvider(
     thinkingProvider,
     configuredThinkingLevel,
   );
-  const thinkingLabel = thinkingLevel;
+  // `auto` is the user-facing mode. Its concrete baseline may change during
+  // the turn, but that implementation detail must not replace the selected
+  // mode in the Composer chip.
+  const thinkingLabel = thinkingAuto ? "auto" : thinkingLevel;
   const selectedModel = provider?.id
     ? composerModelsForProvider(provider, providerModels[provider.id]).find(
         (model) => modelIdsMatch(model.modelId, modelId ?? ""),
@@ -386,6 +404,7 @@ export function Composer({
     modelId,
     thinkingProvider,
     thinkingLevel,
+    thinkingLevelMode: effectiveThinkingLevelMode,
     controlsBlocked,
   });
   const modelReady = nativeSession
@@ -598,6 +617,7 @@ export function Composer({
             modelMenu={modelMenu}
             modelLabel={modelLabel}
             thinkingLabel={thinkingLabel}
+            thinkingLevelMode={effectiveThinkingLevelMode}
             contextUsage={composerContextUsage ?? null}
             enhancementDraft={enhancementDraft}
             value={value}

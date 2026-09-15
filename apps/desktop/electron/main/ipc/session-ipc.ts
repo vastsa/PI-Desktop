@@ -11,8 +11,10 @@ import {
   isModelConfigImportSource,
   type ActivationScope,
   type ModelConfigImportDraft,
+  isThinkingLevelMode,
   type Mode,
   type ThinkingLevel,
+  type ThinkingLevelMode,
 } from "@pi-desktop/shared";
 import {
   convertSession,
@@ -36,6 +38,8 @@ type RuntimeSession = {
   providerId?: string;
   modelId?: string;
   thinkingLevel?: ThinkingLevel;
+  /** ADR 0257: additive session-layer mode; see sessionConfigure below. */
+  thinkingLevelMode?: ThinkingLevelMode;
   [key: string]: unknown;
 };
 
@@ -163,9 +167,15 @@ export function registerSessionIpc({
   handle(IPC.invoke.sessionCreate, async (input = {}) => {
     if (!host) throw new Error("host unavailable");
     const capabilityPromise = sessionCapabilityContext();
+    // ADR 0257: `thinkingLevelMode` rides through to host-core inside `input`;
+    // drop values that are not a valid mode instead of forwarding them.
+    const payload: Record<string, unknown> = { ...input };
+    if (!isThinkingLevelMode(payload.thinkingLevelMode)) {
+      delete payload.thinkingLevelMode;
+    }
     const res = await host.call<{ session?: (RuntimeSession & { id?: string }) | null }>(
       "session.create",
-      input,
+      payload,
     );
     logger.app("session", "info", "session created", { sessionId: res.session?.id });
     if (!res.session) return res;
@@ -533,14 +543,22 @@ export function registerSessionIpc({
         providerId?: string;
         modelId?: string;
         thinkingLevel?: ThinkingLevel;
+        thinkingLevelMode?: ThinkingLevelMode;
         permissionMode?: "inherit" | "ask" | "accept-edits" | "auto";
       },
     ) => {
       rejectNativeMutation(id, "configuration");
       if (!host) throw new Error("host unavailable");
+      // ADR 0257: `thinkingLevelMode` is an additive optional field; an
+      // invalid value is ignored (dropped) rather than rejected so existing
+      // callers keep working. host-core validates the payload as well.
+      const { thinkingLevelMode: requestedMode, ...restConfig } = config;
+      const thinkingLevelMode = isThinkingLevelMode(requestedMode)
+        ? requestedMode
+        : undefined;
       const result = await host.call<{ session?: RuntimeSession | null }>(
         "session.configure",
-        { id, ...config },
+        { id, ...restConfig, ...(thinkingLevelMode ? { thinkingLevelMode } : {}) },
       );
       if (!result.session) return result;
       const { providers, defaults } = await sessionCapabilityContext();
@@ -548,7 +566,8 @@ export function registerSessionIpc({
       if (
         config.providerId !== undefined ||
         config.modelId !== undefined ||
-        config.thinkingLevel !== undefined
+        config.thinkingLevel !== undefined ||
+        config.thinkingLevelMode !== undefined
       ) {
         const modelKey =
           session.providerId && session.modelId
@@ -559,6 +578,7 @@ export function registerSessionIpc({
             sessionId: id,
             modelKey,
             thinkingLevel: session.thinkingLevel,
+            thinkingLevelMode: session.thinkingLevelMode,
           },
         ]);
       }

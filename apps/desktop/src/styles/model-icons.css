@@ -1,0 +1,12 @@
+:root {
+  --model-icon-color: #475467;
+}
+
+:root[data-theme="dark"] {
+  --model-icon-color: #d0d5dd;
+}
+
+.model-icon-sprite {
+  flex-shrink: 0;
+  color: var(--model-icon-color);
+}

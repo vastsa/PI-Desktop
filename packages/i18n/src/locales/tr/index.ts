@@ -947,6 +947,8 @@ sklm: {
       "Bu karakter sayısından uzun salt metin yapıştırmalar geçici bir oturum dosyası olur.",
     largePasteThresholdSaveError: "Yapıştırma eşiği kaydedilemedi.",
     modeDesc: "Yeni oturumların kipi.",
+    defaultAutoThinkingLevel: "Varsayılan uyarlanabilir düşünme",
+    defaultAutoThinkingLevelDesc: "Etkinleştirildiğinde yeni oturumlar Otomatik düşünme modunda başlar; görev daha derin akıl yürütme gerektirdiğinde aracı seviye yükseltebilir.",
     modeAgent: "Ajan",
     modePlan: "Plan",
     modeGoal: "Hedef",

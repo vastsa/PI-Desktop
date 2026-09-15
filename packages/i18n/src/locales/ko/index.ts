@@ -947,6 +947,9 @@ sklm: {
       "이 글자 수보다 긴 텍스트만 붙여넣으면 임시 세션 파일이 됩니다.",
     largePasteThresholdSaveError: "붙여넣기 기준을 저장할 수 없습니다.",
     modeDesc: "새 세션의 모드입니다.",
+    defaultAutoThinkingLevel: "기본 자동 사고",
+    defaultAutoThinkingLevelDesc:
+      "켜면 새 세션이 자동 사고 모드로 시작하며, 작업에 더 깊은 추론이 필요할 때 에이전트가 수준을 높일 수 있습니다.",
     modeAgent: "에이전트",
     modePlan: "계획",
     modeGoal: "목표",

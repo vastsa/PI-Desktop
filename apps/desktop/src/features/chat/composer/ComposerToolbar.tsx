@@ -1,4 +1,4 @@
-import type { Dispatch, SetStateAction } from "react";
+import { useState, type Dispatch, type SetStateAction } from "react";
 import type { TFunction } from "i18next";
 import {
   keybindingDisplayParts,
@@ -6,6 +6,7 @@ import {
   type PermissionMode,
   type ShortcutPlatform,
   type ThinkingLevel,
+  type ThinkingLevelMode,
 } from "@pi-desktop/shared";
 import type { AppState } from "../../../stores/app-store";
 import { AnchoredMenu } from "../../../components/settings/AnchoredMenu";
@@ -25,7 +26,7 @@ import { ComposerModelPicker } from "./ComposerModelPicker";
 import {
   MODE_LABEL_KEYS,
   PERMISSION_MODE_I18N_KEYS,
-  nextMode,
+  MODE_CYCLE,
 } from "./model";
 import type { useComposerModelMenu } from "./hooks/useComposerModelMenu";
 
@@ -40,6 +41,7 @@ export type ComposerToolbarProps = {
   modelId?: string;
   thinkingLevel: ThinkingLevel;
   composerPermissionMode: Exclude<PermissionMode, "inherit">;
+  thinkingLevelMode: ThinkingLevelMode;
   permissionOpen: boolean;
   setPermissionOpen: Dispatch<SetStateAction<boolean>>;
   controlsBlocked: boolean;
@@ -74,6 +76,7 @@ export function ComposerToolbar({
   providerId,
   modelId,
   thinkingLevel,
+  thinkingLevelMode,
   composerPermissionMode,
   permissionOpen,
   setPermissionOpen,
@@ -100,6 +103,7 @@ export function ComposerToolbar({
   abort,
   submit,
 }: ComposerToolbarProps) {
+  const [modeOpen, setModeOpen] = useState(false);
   const platform = (window.piDesktop?.platform ?? "darwin") as ShortcutPlatform;
   const steeringShortcut = keybindingDisplayParts("Alt+Enter", platform).join("+");
   return (
@@ -113,6 +117,7 @@ export function ComposerToolbar({
             ariaLabel={t("chat.addFiles")}
             disabled={controlsBlocked || pasting}
             onClick={() => {
+              setModeOpen(false);
               setPermissionOpen(false);
               void pickAndAttach();
             }}
@@ -120,39 +125,78 @@ export function ComposerToolbar({
             <IconPlus size={15} aria-hidden="true" />
           </TooltipButton>
         </div>
-        <TooltipButton
-          type="button"
-          className="icon-btn mode-chip composer-mode-chip"
-          data-mode={mode}
-          data-planning={planningLive ? "true" : undefined}
-          tooltip={planningLive ? t(`${mode}.planning`) : t("settings.mode")}
-          ariaLabel={planningLive ? t(`${mode}.planning`) : t("settings.mode")}
-          disabled={controlsBlocked}
-          onClick={async () => {
-            modelMenu.setOpen(false);
-            setPermissionOpen(false);
-            const next: Mode = nextMode(mode);
-            try {
-              await configureActiveSession({
-                mode: next,
-                providerId,
-                modelId,
-                thinkingLevel,
-              });
-            } catch (error) {
-              showToast(error instanceof Error ? error.message : String(error), {
-                variant: "error",
-              });
-            }
-          }}
+        <AnchoredMenu
+          className="composer-mode"
+          open={modeOpen}
+          onClose={() => setModeOpen(false)}
+          menuClassName="composer-mode-menu"
+          label={t("settings.mode")}
+          role="menu"
+          align="start"
+          side="top"
+          trigger={(ref) => (
+            <TooltipButton
+              ref={ref}
+              type="button"
+              className={`icon-btn mode-chip composer-mode-chip ${modeOpen ? "active" : ""}`}
+              data-mode={mode}
+              data-planning={planningLive ? "true" : undefined}
+              tooltip={planningLive ? t(`${mode}.planning`) : t("settings.mode")}
+              ariaLabel={planningLive ? t(`${mode}.planning`) : t("settings.mode")}
+              aria-haspopup="menu"
+              aria-expanded={modeOpen}
+              disabled={controlsBlocked}
+              onClick={() => {
+                modelMenu.setOpen(false);
+                setPermissionOpen(false);
+                setModeOpen((open) => !open);
+              }}
+            >
+              <span className="composer-mode-chip-face" key={mode}>
+                <ModeIcon mode={mode} />
+                <span className="composer-mode-chip-label text-sm">
+                  {t(MODE_LABEL_KEYS[mode])}
+                </span>
+              </span>
+            </TooltipButton>
+          )}
         >
-          <span className="composer-mode-chip-face" key={mode}>
-            <ModeIcon mode={mode} />
-            <span className="composer-mode-chip-label text-sm">
-              {t(MODE_LABEL_KEYS[mode])}
-            </span>
-          </span>
-        </TooltipButton>
+          {MODE_CYCLE.map((candidate) => (
+            <button
+              key={candidate}
+              type="button"
+              role="menuitemradio"
+              aria-checked={mode === candidate}
+              disabled={controlsBlocked}
+              className={`composer-plus-item ${mode === candidate ? "active" : ""}`}
+              onClick={async () => {
+                setModeOpen(false);
+                try {
+                  await configureActiveSession({
+                    mode: candidate,
+                    providerId,
+                    modelId,
+                    thinkingLevel,
+                    // Preserve the session-layer auto mode (ADR 0257).
+                    ...(thinkingLevelMode === "auto"
+                      ? { thinkingLevelMode: "auto" as const }
+                      : {}),
+                  });
+                } catch (error) {
+                  showToast(error instanceof Error ? error.message : String(error), {
+                    variant: "error",
+                  });
+                }
+              }}
+            >
+              <ModeIcon mode={candidate} />
+              <span className="flex-1 text-left">
+                {t(MODE_LABEL_KEYS[candidate])}
+              </span>
+              {mode === candidate ? <IconCheck size={13} /> : null}
+            </button>
+          ))}
+        </AnchoredMenu>
         <AnchoredMenu
           className="composer-permission"
           open={permissionOpen && mode !== "goal"}
@@ -185,6 +229,7 @@ export function ComposerToolbar({
               aria-expanded={mode === "goal" ? false : permissionOpen}
               disabled={controlsBlocked || mode === "goal"}
               onClick={() => {
+                setModeOpen(false);
                 modelMenu.setOpen(false);
                 setPermissionOpen((open) => !open);
               }}
@@ -213,6 +258,10 @@ export function ComposerToolbar({
                     modelId,
                     thinkingLevel,
                     permissionMode: candidate,
+                    // Preserve the session-layer auto mode (ADR 0257).
+                    ...(thinkingLevelMode === "auto"
+                      ? { thinkingLevelMode: "auto" as const }
+                      : {}),
                   });
                 } catch (error) {
                   showToast(error instanceof Error ? error.message : String(error), {
@@ -240,8 +289,12 @@ export function ComposerToolbar({
           thinkingLevel={thinkingLevel}
           selectedProviderId={providerId}
           selectedModelId={modelId}
+          thinkingLevelMode={thinkingLevelMode}
           controlsBlocked={controlsBlocked}
-          onCloseOtherMenus={() => setPermissionOpen(false)}
+          onCloseOtherMenus={() => {
+            setModeOpen(false);
+            setPermissionOpen(false);
+          }}
         />
         <TooltipButton
           type="button"

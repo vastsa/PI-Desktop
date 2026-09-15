@@ -1,4 +1,5 @@
-/** Canonical ladder; keep in lockstep with `@pi-desktop/shared` THINKING_LEVELS. */
+import type { ThinkingLevelMode } from "@pi-desktop/shared";
+
 const THINKING_LEVELS = [
   "off",
   "minimal",
@@ -23,6 +24,7 @@ export type OptimisticSessionConfiguration = {
   providerId?: string;
   modelId?: string;
   thinkingLevel?: ThinkingLevel;
+  thinkingLevelMode?: ThinkingLevelMode;
   mode?: unknown;
   permissionMode?: unknown;
 };

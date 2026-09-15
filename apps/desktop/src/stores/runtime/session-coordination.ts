@@ -5,11 +5,13 @@ import type {
   UiMessage,
 } from "@pi-desktop/shared";
 import {
+  AUTO_THINKING_BASELINE,
   contextCompactionMark,
   initialThinkingLevelForBinding,
   modelIdsMatch,
   normalizeMode,
 } from "@pi-desktop/shared";
+import type { ThinkingLevelMode } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { scheduleHomeDraftAdopt } from "../../lib/composer-draft-cache";
 import {
@@ -290,10 +292,19 @@ export function createSessionCoordination({
     const inheritedBinding = defaultProvider?.models.find((candidate) =>
       modelIdsMatch(candidate.id, inheritedModelId ?? ""),
     );
-    const defaultThinkingLevel = initialThinkingLevelForBinding(
-      inheritedBinding,
-      defaultProvider?.supportedThinkingLevels,
-    );
+    // ADR 0257: new sessions start in `auto` thinking-level mode with the
+    // `medium` baseline unless the setting (or the draft) opts out. The
+    // highest-level binding fallback only applies to manual sessions.
+    const thinkingLevelMode: ThinkingLevelMode =
+      draftConfig?.thinkingLevelMode ??
+      (settings?.defaultAutoThinkingLevel ?? true ? "auto" : "manual");
+    const defaultThinkingLevel =
+      thinkingLevelMode === "auto"
+        ? AUTO_THINKING_BASELINE
+        : initialThinkingLevelForBinding(
+            inheritedBinding,
+            defaultProvider?.supportedThinkingLevels,
+          );
     const previousSessionId = state.activeSessionId;
     revealEmptyCreatingSession(active);
     let created: Awaited<ReturnType<typeof api.createSession>>;
@@ -302,6 +313,7 @@ export function createSessionCoordination({
         title: untitledTaskTitle(),
         mode: draftConfig?.mode ?? normalizeMode(settings?.defaultMode),
         thinkingLevel: draftConfig?.thinkingLevel ?? defaultThinkingLevel,
+        thinkingLevelMode,
         permissionMode: draftConfig?.permissionMode,
         providerId: draftConfig?.providerId,
         modelId: draftConfig?.modelId,

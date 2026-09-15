@@ -84,6 +84,31 @@ fn validate_thinking_level(level: &str) -> Result<()> {
     }
 }
 
+/// Session-level thinking mode (ADR 0257). `manual` keeps the persisted
+/// thinking level exactly as selected; `auto` lets the session layer resolve
+/// the effective level per turn. The wire thinking-level enum itself is
+/// unchanged — this only records which selector owns the level.
+pub const THINKING_LEVEL_MODES: [&str; 2] = ["manual", "auto"];
+
+pub fn is_valid_thinking_level_mode(mode: &str) -> bool {
+    THINKING_LEVEL_MODES.contains(&mode)
+}
+
+fn default_thinking_level_mode() -> String {
+    "manual".to_string()
+}
+
+fn validate_thinking_level_mode(mode: &str) -> Result<()> {
+    if is_valid_thinking_level_mode(mode) {
+        Ok(())
+    } else {
+        Err(anyhow!(
+            "thinkingLevelMode must be one of {}",
+            THINKING_LEVEL_MODES.join(", ")
+        ))
+    }
+}
+
 /// Wire format is unchanged from v1: RFC3339 timestamps, `projectPath`
 /// resolved from the projects table, flat tool fields on messages. Storage is
 /// schema v7 (D119): transcript content lives in per-session JSONL files and
@@ -104,6 +129,8 @@ pub struct SessionSummary {
     pub mode: String,
     #[serde(default = "default_thinking_level")]
     pub thinking_level: String,
+    #[serde(default = "default_thinking_level_mode")]
+    pub thinking_level_mode: String,
     #[serde(default = "default_permission_mode")]
     pub permission_mode: String,
     pub updated_at: String,
@@ -1055,7 +1082,7 @@ fn session_created_at(db: &Database, session_id: &str) -> Result<String> {
 
 const SUMMARY_SELECT: &str =
     "SELECT s.id, s.title, s.last_seq, p.path, s.model_id, s.provider_id, s.mode,
-            s.thinking_level, s.permission_mode, s.updated_at, s.created_at
+            s.thinking_level, s.thinking_level_mode, s.permission_mode, s.updated_at, s.created_at
      FROM sessions s LEFT JOIN projects p ON p.id = s.project_id
      WHERE s.deleted_at IS NULL";
 
@@ -1069,9 +1096,10 @@ pub(crate) fn summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Sess
         provider_id: row.get(5)?,
         mode: row.get(6)?,
         thinking_level: row.get(7)?,
-        permission_mode: row.get(8)?,
-        updated_at: ms_to_ts(row.get(9)?),
-        created_at: ms_to_ts(row.get(10)?),
+        thinking_level_mode: row.get(8)?,
+        permission_mode: row.get(9)?,
+        updated_at: ms_to_ts(row.get(10)?),
+        created_at: ms_to_ts(row.get(11)?),
     })
 }
 
@@ -1144,6 +1172,7 @@ pub struct SessionCreateOptions {
     pub model_id: Option<String>,
     pub project_path: Option<String>,
     pub thinking_level: Option<String>,
+    pub thinking_level_mode: Option<String>,
     pub permission_mode: Option<String>,
 }
 
@@ -1165,6 +1194,7 @@ pub fn create_session_with_thinking(
             model_id,
             project_path,
             thinking_level,
+            thinking_level_mode: None,
             permission_mode: None,
         },
     )
@@ -1186,6 +1216,7 @@ pub fn create_session_with_options(
         model_id,
         project_path,
         thinking_level,
+        thinking_level_mode,
         permission_mode,
     } = options;
     let now = now_ms();
@@ -1194,6 +1225,8 @@ pub fn create_session_with_options(
     let mode = normalize_mode(mode.as_deref());
     let thinking_level = thinking_level.unwrap_or_else(default_thinking_level);
     validate_thinking_level(&thinking_level)?;
+    let thinking_level_mode = thinking_level_mode.unwrap_or_else(default_thinking_level_mode);
+    validate_thinking_level_mode(&thinking_level_mode)?;
     let permission_mode = permission_mode.unwrap_or_else(default_permission_mode);
     validate_permission_mode(&permission_mode)?;
     let project_id = match project_path
@@ -1211,8 +1244,8 @@ pub fn create_session_with_options(
         .prepare_cached(
             "INSERT INTO sessions (
                 id, title, project_id, provider_id, model_id, mode, thinking_level,
-                permission_mode, created_at, updated_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)",
+                thinking_level_mode, permission_mode, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10)",
         )?
         .execute(params![
             id,
@@ -1222,6 +1255,7 @@ pub fn create_session_with_options(
             model_id,
             mode,
             thinking_level,
+            thinking_level_mode,
             permission_mode,
             now
         ])?;
@@ -1234,6 +1268,7 @@ pub fn create_session_with_options(
         provider_id,
         mode,
         thinking_level,
+        thinking_level_mode,
         permission_mode,
         updated_at: ms_to_ts(now),
         created_at: ms_to_ts(now),
@@ -1511,10 +1546,11 @@ pub fn fork_session_through(
             .prepare_cached(
                 "INSERT INTO sessions (
                     id, title, project_id, provider_id, model_id, mode, thinking_level,
-                    permission_mode, source, pinned, last_seq, created_at, updated_at
+                    thinking_level_mode, permission_mode, source, pinned, last_seq,
+                    created_at, updated_at
                  )
                  SELECT ?1, ?2, project_id, provider_id, model_id, mode, thinking_level,
-                        permission_mode, NULL, 0, ?3, ?4, ?4
+                        thinking_level_mode, permission_mode, NULL, 0, ?3, ?4, ?4
                  FROM sessions WHERE id = ?5",
             )?
             .execute(params![id, title, records.len() as i64, now, source_id])?;
@@ -1542,6 +1578,7 @@ pub fn fork_session_through(
         provider_id: source.summary.provider_id,
         mode: source.summary.mode,
         thinking_level: source.summary.thinking_level,
+        thinking_level_mode: source.summary.thinking_level_mode,
         permission_mode: source.summary.permission_mode,
         updated_at: created_at.clone(),
         created_at,
@@ -1570,7 +1607,7 @@ pub fn configure_session(
     provider_id: Option<&str>,
     model_id: Option<&str>,
 ) -> Result<Option<SessionSummary>> {
-    configure_session_with_thinking(db, id, mode, provider_id, model_id, None, None)
+    configure_session_with_thinking(db, id, mode, provider_id, model_id, None, None, None)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1581,6 +1618,7 @@ pub fn configure_session_with_thinking(
     provider_id: Option<&str>,
     model_id: Option<&str>,
     thinking_level: Option<&str>,
+    thinking_level_mode: Option<&str>,
     permission_mode: Option<&str>,
 ) -> Result<Option<SessionSummary>> {
     if !(is_valid_mode(mode) || mode == "chat") {
@@ -1589,6 +1627,9 @@ pub fn configure_session_with_thinking(
     let mode = normalize_mode(Some(mode));
     if let Some(level) = thinking_level {
         validate_thinking_level(level)?;
+    }
+    if let Some(mode) = thinking_level_mode {
+        validate_thinking_level_mode(mode)?;
     }
     if let Some(mode) = permission_mode {
         validate_permission_mode(mode)?;
@@ -1609,7 +1650,8 @@ pub fn configure_session_with_thinking(
              SET mode = ?2, provider_id = COALESCE(?3, provider_id),
                  model_id = COALESCE(?4, model_id),
                  thinking_level = COALESCE(?5, thinking_level),
-                 permission_mode = COALESCE(?6, permission_mode), updated_at = ?7
+                 permission_mode = COALESCE(?6, permission_mode),
+                 thinking_level_mode = COALESCE(?7, thinking_level_mode), updated_at = ?8
              WHERE id = ?1",
         )?
         .execute(params![
@@ -1619,6 +1661,7 @@ pub fn configure_session_with_thinking(
             model_id,
             thinking_level,
             permission_mode,
+            thinking_level_mode,
             now_ms()
         ])?;
     if changed == 0 {
@@ -2772,6 +2815,7 @@ pub fn import_session(
     messages: &[UiMessage],
 ) -> Result<bool> {
     validate_thinking_level(&summary.thinking_level)?;
+    validate_thinking_level_mode(&summary.thinking_level_mode)?;
     let mode = normalize_mode(Some(&summary.mode));
     let conn = db.conn();
     let exists: i64 = conn.query_row(
@@ -2805,9 +2849,9 @@ pub fn import_session(
         });
         tx.prepare_cached(
             "INSERT INTO sessions (
-                id, title, project_id, provider_id, model_id, mode, thinking_level, source,
-                last_seq, created_at, updated_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                id, title, project_id, provider_id, model_id, mode, thinking_level,
+                thinking_level_mode, source, last_seq, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
         )?
         .execute(params![
             summary.id,
@@ -2817,6 +2861,7 @@ pub fn import_session(
             summary.model_id,
             mode,
             summary.thinking_level,
+            summary.thinking_level_mode,
             source,
             records.len() as i64,
             ts_to_ms(&summary.created_at),
@@ -3573,6 +3618,7 @@ mod tests {
             Some("model-1"),
             Some("high"),
             None,
+            None,
         )
         .unwrap()
         .unwrap();
@@ -3581,12 +3627,14 @@ mod tests {
         assert_eq!(configured.provider_id.as_deref(), Some("provider-1"));
         assert_eq!(configured.model_id.as_deref(), Some("model-1"));
         assert_eq!(configured.thinking_level, "high");
+        assert_eq!(configured.thinking_level_mode, "manual");
         // Omitting the new field is backwards-compatible and preserves the
         // configured value rather than resetting it to off.
         let preserved = configure_session(&db, &session.id, "chat", None, None)
             .unwrap()
             .unwrap();
         assert_eq!(preserved.thinking_level, "high");
+        assert_eq!(preserved.thinking_level_mode, "manual");
         assert!(configure_session(&db, &session.id, "invalid", None, None).is_err());
         assert!(configure_session_with_thinking(
             &db,
@@ -3595,6 +3643,7 @@ mod tests {
             None,
             None,
             Some("turbo"),
+            None,
             None,
         )
         .is_err());
@@ -3710,6 +3759,7 @@ mod tests {
             provider_id: None,
             mode: "agent".into(),
             thinking_level: "off".into(),
+            thinking_level_mode: "manual".into(),
             permission_mode: "inherit".into(),
             created_at: "2025-01-01T00:00:00Z".into(),
             updated_at: "2025-01-02T00:00:00Z".into(),
@@ -3760,6 +3810,7 @@ mod tests {
             provider_id: None,
             mode: "agent".into(),
             thinking_level: "off".into(),
+            thinking_level_mode: "manual".into(),
             permission_mode: "inherit".into(),
             created_at: "2025-01-01T00:00:00Z".into(),
             updated_at: "2025-01-01T00:00:00Z".into(),
@@ -4291,6 +4342,7 @@ mod tests {
             provider_id: None,
             mode: "agent".into(),
             thinking_level: "medium".into(),
+            thinking_level_mode: "manual".into(),
             permission_mode: "inherit".into(),
             created_at: "2025-01-01T00:00:00Z".into(),
             updated_at: "2025-01-01T00:00:00Z".into(),
@@ -4528,9 +4580,9 @@ mod tests {
             Some("model-1"),
             Some("high"),
             Some("auto"),
+            None,
         )
         .unwrap();
-
         let mut user = user_msg("user-1", "fork this", "2025-05-01T00:00:00Z");
         user.revision_root_id = Some("user-1".into());
         user.revision_count = Some(2);
@@ -4558,7 +4610,7 @@ mod tests {
         assert_eq!(fork.summary.model_id.as_deref(), Some("model-1"));
         assert_eq!(fork.summary.mode, "plan");
         assert_eq!(fork.summary.thinking_level, "high");
-        assert_eq!(fork.summary.permission_mode, "auto");
+        assert_eq!(fork.summary.thinking_level_mode, "auto");
         assert_eq!(fork.messages.len(), 2);
         assert_eq!(source_after.messages[0].id, "user-1");
         assert_eq!(
@@ -4602,6 +4654,7 @@ mod tests {
             Some("provider-2"),
             Some("model-2"),
             Some("off"),
+            None,
             Some("ask"),
         )
         .unwrap();

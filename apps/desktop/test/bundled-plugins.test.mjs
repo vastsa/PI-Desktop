@@ -151,6 +151,20 @@ test("Browser declares plan-safe actions for Plan-mode URL inspection (ADR 0211)
 });
 
 
+test("pi.thinking ships the adaptive thinking agent extension (ADR 0257)", () => {
+  const manifest = JSON.parse(read("resources/plugins/pi.thinking/manifest.json"));
+  assert.equal(manifest.id, "pi.thinking");
+  assert.deepEqual(manifest.permissions, ["agent.extension"]);
+  assert.deepEqual(manifest.contributes.agentExtensions, ["extension.js"]);
+  const extension = read("resources/plugins/pi.thinking/extension.js");
+  assert.match(extension, /name:\s*"get_thinking_level"/);
+  assert.match(extension, /name:\s*"set_thinking_level"/);
+  assert.match(extension, /pi\.setThinkingLevel\(/);
+  assert.match(extension, /pi\.getThinkingLevel\(/);
+  assert.match(extension, /pi\.getThinkingLevels\(/);
+  assert.match(extension, /persist/);
+});
+
 test("Advisor is temporarily not bundled", () => {
   assert.equal(existsSync(resolve("resources/plugins/pi.advisor")), false);
 });

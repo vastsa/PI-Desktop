@@ -935,6 +935,8 @@ sklm: {
     "largePasteThresholdDesc": "Nur-Text-Einfügungen, die länger als diese Anzahl von Zeichen sind, werden zu einer temporären Sitzungsdatei.",
     "largePasteThresholdSaveError": "Der Einfügeschwellenwert konnte nicht gespeichert werden.",
     "modeDesc": "Modus für neue Sitzungen.",
+    "defaultAutoThinkingLevel": "Adaptives Denken als Standard",
+    "defaultAutoThinkingLevelDesc": "Wenn aktiviert, beginnen neue Sitzungen im automatischen Denkmodus; der Agent kann die Stufe bei Bedarf für anspruchsvollere Aufgaben erhöhen.",
     "modeAgent": "Agent",
     "modePlan": "Plan",
     "modeGoal": "Ziel",

@@ -146,6 +146,10 @@ describe("main-supplied model capabilities", () => {
       supportsReasoning: true,
       supportedThinkingLevels: ["off", "low", "high"] as ThinkingLevel[],
     };
+    expect(clampThinkingLevel({
+      supportsReasoning: true,
+      supportedThinkingLevels: ["low", "medium", "high"],
+    }, "off")).toBe("off");
     expect(clampThinkingLevel(capabilities, "minimal")).toBe("low");
     expect(clampThinkingLevel(capabilities, "max")).toBe("high");
   });

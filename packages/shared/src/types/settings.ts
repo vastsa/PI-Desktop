@@ -27,6 +27,12 @@ export type AppSettings = {
   defaultCommandShell?: CommandShellId;
   /** Global permission mode default; sessions with `inherit` follow this. */
   defaultPermissionMode?: GlobalPermissionMode;
+  /**
+   * ADR 0257: new sessions and drafts start in `auto` thinking-level mode
+   * (baseline `medium`) when enabled; a persisted `false` falls back to the
+   * classic manual default. Absent means enabled.
+   */
+  defaultAutoThinkingLevel?: boolean;
   theme: ThemePreference;
   /** UI language; `auto` (and absent) follows the OS locale. */
   language?: "auto" | "en" | "zh-CN" | "zh-TW" | "tr" | "de" | "es" | "fr" | "ko";

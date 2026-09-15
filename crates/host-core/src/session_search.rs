@@ -82,10 +82,11 @@ pub fn search(db: &Database, query: &str, offset: i64) -> Result<SearchPage> {
            GROUP BY m.session_id
          )
          SELECT s.id, s.title, s.last_seq, p.path, s.model_id, s.provider_id, s.mode,
-                s.thinking_level, s.permission_mode, s.updated_at, s.created_at,
+                s.thinking_level, s.thinking_level_mode, s.permission_mode, s.updated_at,
+                s.created_at,
                 p.name, COALESCE(matched.count, 0),
                 (pi_search_contains(s.title, ?1) OR pi_search_contains(p.name, ?1)
-                 OR pi_search_contains(p.path, ?1)) AS metadata_match
+                  OR pi_search_contains(p.path, ?1)) AS metadata_match
          FROM sessions s LEFT JOIN projects p ON p.id = s.project_id
          LEFT JOIN matched ON matched.session_id = s.id
          WHERE s.deleted_at IS NULL AND (matched.count > 0 OR metadata_match)
@@ -97,9 +98,9 @@ pub fn search(db: &Database, query: &str, offset: i64) -> Result<SearchPage> {
         .query_map(params![query, quoted, offset], |row| {
             Ok(SessionMatch {
                 session: sessions::summary_from_row(row)?,
-                project_name: row.get(11)?,
-                message_count: row.get(12)?,
-                metadata_match: row.get(13)?,
+                project_name: row.get(12)?,
+                message_count: row.get(13)?,
+                metadata_match: row.get(14)?,
                 matches: vec![],
             })
         })?

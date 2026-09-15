@@ -63,6 +63,8 @@ CREATE TABLE sessions (
   thinking_level TEXT NOT NULL DEFAULT 'off'
                 CHECK (thinking_level IN ('off', 'minimal', 'low', 'medium',
                                           'high', 'xhigh', 'max')),
+  thinking_level_mode TEXT NOT NULL DEFAULT 'manual'
+                CHECK (thinking_level_mode IN ('manual', 'auto')),
   permission_mode TEXT NOT NULL DEFAULT 'inherit'
                 CHECK (permission_mode IN ('inherit', 'ask', 'accept-edits', 'auto')),
   source      TEXT,

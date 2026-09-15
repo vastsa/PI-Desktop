@@ -304,6 +304,8 @@ export const AssistantTurn = memo(function AssistantTurn({
               key={`activity-${part.items[0].message.id}`}
               items={part.items}
               endedAt={part.endedAt}
+              providerId={metaMessage?.providerId}
+              modelId={modelId}
               isActive={isActive && index === entry.parts.length - 1}
               runtimeActivity={
                 isActive && index === entry.parts.length - 1

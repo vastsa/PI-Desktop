@@ -177,6 +177,9 @@ impl Database {
             17 => {
                 migrate_v17_to_v18(&conn, path)?;
             }
+            18 => {
+                migrate_v18_to_v19(&conn, path)?;
+            }
             legacy @ 1..=6 => {
                 let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
                 drop(conn);
@@ -203,6 +206,10 @@ impl Database {
         }
         if migrated_version == 17 {
             migrate_v17_to_v18(&conn, path)?;
+            migrated_version = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+        }
+        if migrated_version == 18 {
+            migrate_v18_to_v19(&conn, path)?;
         }
         let db = Self { conn, data_dir };
         db.boot_maintenance()?;

@@ -1,10 +1,11 @@
-import { readComposerSource } from "./helpers/source-contracts.mjs";
+import { readComposerModule, readComposerSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { loadStyles } from "./helpers/styles.mjs";
 
 const composerSource = await readComposerSource();
+const toolbarSource = await readComposerModule("ComposerToolbar.tsx");
 const styles = await loadStyles();
 
 function ruleBlock(source, selector) {
@@ -60,8 +61,8 @@ test("composer runtime chips keep compact line-height for descenders", () => {
 
 test("mode selector reserves the longest localized label width", () => {
   assert.match(
-    composerSource,
-    /className="icon-btn mode-chip composer-mode-chip"/,
+    toolbarSource,
+    /className=\{`icon-btn mode-chip composer-mode-chip/,
   );
 
   const block = styles.match(/\.composer-mode-chip\s*\{[^}]+\}/)?.[0] ?? "";
@@ -91,4 +92,19 @@ test("mode chip cross-fades on switch and pulses while planning is live", () => 
     styles,
     /prefers-reduced-motion:\s*reduce[\s\S]*?\.composer-mode-chip-face,/,
   );
+});
+
+test("mode chip opens an anchored Agent/Plan/Goal selection menu", () => {
+  assert.match(toolbarSource, /useState\(false\)/);
+  assert.match(toolbarSource, /menuClassName="composer-mode-menu"/);
+  assert.match(toolbarSource, /aria-haspopup="menu"/);
+  assert.match(toolbarSource, /MODE_CYCLE\.map\(\(candidate\)/);
+  assert.match(toolbarSource, /role="menuitemradio"/);
+  assert.match(toolbarSource, /aria-checked=\{mode === candidate\}/);
+  const modeTrigger = toolbarSource.match(
+    /className=\{`icon-btn mode-chip composer-mode-chip[\s\S]*?<\/button>/,
+  )?.[0] ?? "";
+  assert.doesNotMatch(modeTrigger, /IconChevronDown/);
+  assert.match(styles, /\.composer-mode-menu,\s*\.composer-permission-menu\s*\{[\s\S]*?position:\s*fixed;/);
+  assert.doesNotMatch(toolbarSource, /nextMode/);
 });

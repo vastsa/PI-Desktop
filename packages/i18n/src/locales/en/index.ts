@@ -946,6 +946,9 @@ sklm: {
       "Text-only pastes longer than this many characters become a temporary session file.",
     largePasteThresholdSaveError: "Couldn't save the paste threshold.",
     modeDesc: "Mode for new sessions.",
+    defaultAutoThinkingLevel: "Default adaptive thinking",
+    defaultAutoThinkingLevelDesc:
+      "When enabled, new sessions start in Auto thinking mode and the agent can raise the level when a task needs deeper reasoning.",
     modeAgent: "Agent",
     modePlan: "Plan",
     modeGoal: "Goal",

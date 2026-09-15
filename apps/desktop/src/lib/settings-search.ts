@@ -80,6 +80,7 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.permissionModeAuto",
       "settings.defaultsTitle",
       "settings.mode",
+      "settings.defaultAutoThinkingLevel",
       "settings.commandShell",
       "settings.linkOpenTarget",
       "settings.enterToSend",

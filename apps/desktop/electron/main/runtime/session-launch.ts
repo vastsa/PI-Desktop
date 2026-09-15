@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import {
+  AUTO_THINKING_BASELINE,
   ErrorCodes as SharedErrorCodes,
   isActiveInProject,
   isCommandShellCatalog,
@@ -328,7 +329,13 @@ export function createSessionLaunchRuntime({
       normalizeThinkingLevel(
         overrides.thinkingLevel ??
           (provider.id === requestedProviderId ? session.thinkingLevel : undefined) ??
-          storedModel?.defaultThinkingLevel,
+          // ADR 0257: in `auto` mode the session's `thinkingLevel` is a
+          // per-turn baseline (initially medium; the agent's persist:true raise
+          // updates it through session.configure), so the binding's stored
+          // default must not override it. Manual mode is unchanged.
+          (session.thinkingLevelMode === "auto"
+            ? AUTO_THINKING_BASELINE
+            : storedModel?.defaultThinkingLevel),
       ),
     );
     const projectPath =

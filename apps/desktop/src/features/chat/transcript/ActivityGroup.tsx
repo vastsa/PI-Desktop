@@ -43,7 +43,8 @@ import {
   getToolSummary,
 } from "../../../lib/tool-display";
 import { ReviewChangeCard } from "../../../components/ReviewChangeCard";
-import { IconChevronRight, IconCircleAlert, IconSparkles, IconWorkflow } from "../../../components/icons";
+import { IconChevronRight, IconCircleAlert, IconWorkflow } from "../../../components/icons";
+import { ModelIcon } from "../../../lib/model-icons";
 import {
   DisclosureCollapseRail,
   TOOL_RUNNING_KEYS,
@@ -147,6 +148,9 @@ type ActivityGroupProps = {
   items: ActivityItem[];
   isActive: boolean;
   endedAt?: string;
+  /** Provider/model metadata for the assistant turn owning this activity. */
+  providerId?: string;
+  modelId?: string;
   /** Current runtime wait phase, when the group owns the live turn tail. */
   runtimeActivity?: AgentActivity;
   /** Delegation statuses from the entire assistant turn (cross-activity-part). */
@@ -174,6 +178,8 @@ function activityGroupPropsEqual(
   next: ActivityGroupProps,
 ) {
   if (
+    previous.providerId !== next.providerId ||
+    previous.modelId !== next.modelId ||
     previous.isActive !== next.isActive ||
     previous.endedAt !== next.endedAt ||
     previous.runtimeActivity !== next.runtimeActivity ||
@@ -201,6 +207,8 @@ export const ActivityGroup = memo(function ActivityGroup({
   items,
   isActive,
   endedAt,
+  providerId,
+  modelId,
   runtimeActivity,
   turnDelegationStatuses,
   turnDelegationTimings,
@@ -368,7 +376,7 @@ export const ActivityGroup = memo(function ActivityGroup({
           {hasSubagentTopology ? (
             <IconWorkflow size={15} />
           ) : (
-            <IconSparkles size={14} />
+            <ModelIcon provider={providerId ?? ""} modelId={modelId ?? ""} size={14} />
           )}
         </span>
         <span className={`tool-activity-label ${live ? "running" : ""}`}>

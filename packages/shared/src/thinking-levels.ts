@@ -1,4 +1,5 @@
 import { THINKING_LEVELS, type ThinkingLevel } from "./types.js";
+import type { ThinkingLevelMode } from "./types/sessions.js";
 
 export function highestSupportedThinkingLevel(
   levels: readonly ThinkingLevel[] | undefined,
@@ -9,6 +10,50 @@ export function highestSupportedThinkingLevel(
     if (supported.has(level)) return level;
   }
   return "off";
+}
+
+/** Baseline `thinkingLevel` a session starts from while in `auto` mode (ADR 0257). */
+export const AUTO_THINKING_BASELINE: ThinkingLevel = "medium";
+
+/**
+ * Default session-layer thinking-level mode (ADR 0257): new sessions and new
+ * bindings start in `auto`; persisted sessions without the field stay `manual`.
+ */
+export const DEFAULT_THINKING_LEVEL_MODE: ThinkingLevelMode = "auto";
+
+/**
+ * Clamp the `auto`-mode baseline onto a model's published ladder.
+ *
+ * Uses the canonical nearest-supported rule (`nearestSupportedThinkingLevel`).
+ * With no published levels (non-reasoning model, or an empty list) the result
+ * is `off`; non-reasoning models cannot spend thinking tokens.
+ */
+export function resolveAutoThinkingLevel(
+  baseline: ThinkingLevel,
+  levels: readonly ThinkingLevel[] | undefined,
+): ThinkingLevel {
+  if (baseline === "off" || !levels?.length) return "off";
+  return nearestSupportedThinkingLevel(baseline, levels);
+}
+
+/**
+ * Effective thinking level for a session before a turn is dispatched.
+ *
+ * `thinkingLevelMode: "auto"` treats `thinkingLevel` as a per-turn baseline and
+ * resolves it through `resolveAutoThinkingLevel`; any other value (absent,
+ * `null`, or `"manual"`) is classic behavior — the stored `thinkingLevel`
+ * clamped via `nearestSupportedThinkingLevel`. Callers pass the model's
+ * published/enabled levels (`publishedThinkingLevels` output or the binding's
+ * enabled list).
+ */
+export function effectiveThinkingLevelForSession(
+  source: { thinkingLevel: ThinkingLevel; thinkingLevelMode?: ThinkingLevelMode | null },
+  levels?: readonly ThinkingLevel[],
+): ThinkingLevel {
+  if (source.thinkingLevelMode === "auto") {
+    return resolveAutoThinkingLevel(source.thinkingLevel || AUTO_THINKING_BASELINE, levels);
+  }
+  return nearestSupportedThinkingLevel(source.thinkingLevel, levels);
 }
 
 /** Binding fields that seed a new draft or session thinking level. */

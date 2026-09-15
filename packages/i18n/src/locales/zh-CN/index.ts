@@ -941,6 +941,9 @@ sklm: {
       "纯文本粘贴超过此字符数后，会转换为当前会话的临时文件。",
     largePasteThresholdSaveError: "无法保存粘贴阈值。",
     modeDesc: "新会话模式。",
+    defaultAutoThinkingLevel: "默认自动思考",
+    defaultAutoThinkingLevelDesc:
+      "开启后，新会话默认使用自动思考档位；任务需要更深入推理时，智能体可以主动升档。",
     modeAgent: "智能体",
     modePlan: "规划",
     modeGoal: "目标",

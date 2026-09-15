@@ -1,10 +1,113 @@
 import { describe, expect, it } from "vitest";
 import {
+  AUTO_THINKING_BASELINE,
+  effectiveThinkingLevelForSession,
   highestSupportedThinkingLevel,
   initialThinkingLevelForBinding,
   nearestSupportedThinkingLevel,
   publishedThinkingLevels,
+  resolveAutoThinkingLevel,
 } from "./thinking-levels.js";
+import { isThinkingLevelMode } from "./types/sessions.js";
+
+describe("resolveAutoThinkingLevel", () => {
+  it("uses medium as the default auto baseline", () => {
+    expect(AUTO_THINKING_BASELINE).toBe("medium");
+  });
+
+  it("resolves to off when no level is published", () => {
+    expect(resolveAutoThinkingLevel("off", undefined)).toBe("off");
+    expect(resolveAutoThinkingLevel("off", [])).toBe("off");
+    expect(resolveAutoThinkingLevel("medium", undefined)).toBe("off");
+  });
+
+  it("keeps the baseline when it is supported", () => {
+    expect(resolveAutoThinkingLevel("off", ["off", "low", "high"])).toBe("off");
+    expect(resolveAutoThinkingLevel("medium", ["low", "medium", "high"])).toBe("medium");
+  });
+
+  it("clamps the baseline onto the nearest supported level", () => {
+    expect(resolveAutoThinkingLevel("medium", ["low", "high", "max"])).toBe("high");
+    expect(resolveAutoThinkingLevel("max", ["off", "low"])).toBe("low");
+  });
+});
+
+describe("effectiveThinkingLevelForSession", () => {
+  it("resolves the baseline per turn in auto mode", () => {
+    expect(
+      effectiveThinkingLevelForSession(
+        { thinkingLevel: "off", thinkingLevelMode: "auto" },
+        ["off", "low", "high"],
+      ),
+    ).toBe("off");
+    expect(
+      effectiveThinkingLevelForSession(
+        { thinkingLevel: "high", thinkingLevelMode: "auto" },
+        ["off", "low", "high"],
+      ),
+    ).toBe("high");
+  });
+
+  it("keeps the auto off baseline even when off is omitted from the catalog", () => {
+    expect(
+      effectiveThinkingLevelForSession(
+        { thinkingLevel: "off", thinkingLevelMode: "auto" },
+        ["low", "medium", "high"],
+      ),
+    ).toBe("off");
+  });
+
+  it("resolves to off in auto mode when no level is published", () => {
+    expect(
+      effectiveThinkingLevelForSession(
+        { thinkingLevel: "high", thinkingLevelMode: "auto" },
+        [],
+      ),
+    ).toBe("off");
+    expect(
+      effectiveThinkingLevelForSession(
+        { thinkingLevel: "high", thinkingLevelMode: "auto" },
+        undefined,
+      ),
+    ).toBe("off");
+  });
+
+  it("falls back to the classic clamp without auto mode", () => {
+    expect(
+      effectiveThinkingLevelForSession(
+        { thinkingLevel: "medium", thinkingLevelMode: "manual" },
+        ["low", "high", "max"],
+      ),
+    ).toBe("high");
+    expect(
+      effectiveThinkingLevelForSession(
+        { thinkingLevel: "medium", thinkingLevelMode: null },
+        ["low", "high", "max"],
+      ),
+    ).toBe("high");
+    expect(
+      effectiveThinkingLevelForSession(
+        { thinkingLevel: "medium" },
+        ["low", "high", "max"],
+      ),
+    ).toBe("high");
+  });
+});
+
+describe("isThinkingLevelMode", () => {
+  it("accepts the two session-layer modes", () => {
+    expect(isThinkingLevelMode("auto")).toBe(true);
+    expect(isThinkingLevelMode("manual")).toBe(true);
+  });
+
+  it("rejects anything that is not a mode", () => {
+    expect(isThinkingLevelMode("high")).toBe(false);
+    expect(isThinkingLevelMode("Auto")).toBe(false);
+    expect(isThinkingLevelMode(null)).toBe(false);
+    expect(isThinkingLevelMode(undefined)).toBe(false);
+    expect(isThinkingLevelMode(1)).toBe(false);
+  });
+});
 
 describe("highestSupportedThinkingLevel", () => {
   it("returns the highest canonical level regardless of provider ordering", () => {

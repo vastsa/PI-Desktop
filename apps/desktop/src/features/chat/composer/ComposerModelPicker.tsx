@@ -1,8 +1,7 @@
-import type { TFunction } from "i18next";
 import { formatTokenCount, modelIdsMatch } from "@pi-desktop/shared";
-import { AnchoredMenu } from "../../../components/settings/AnchoredMenu";
+import type { TFunction } from "i18next";
+import type { ThinkingLevelMode } from "@pi-desktop/shared";
 import {
-  IconBot,
   IconCheck,
   IconChevronDown,
   IconChevronLeft,
@@ -10,8 +9,10 @@ import {
   IconSearch,
   IconSparkles,
 } from "../../../components/icons";
+import { AnchoredMenu } from "../../../components/settings/AnchoredMenu";
 import { TooltipButton } from "../../../components/ui";
 import { composerModelBadges } from "../../../lib/composer-models";
+import { ModelIcon } from "../../../lib/model-icons";
 import type { useComposerModelMenu } from "./hooks/useComposerModelMenu";
 
 type ModelMenuController = ReturnType<typeof useComposerModelMenu>;
@@ -25,6 +26,7 @@ export type ComposerModelPickerProps = {
   selectedProviderId?: string;
   selectedModelId?: string;
   controlsBlocked: boolean;
+  thinkingLevelMode: ThinkingLevelMode;
   onCloseOtherMenus: () => void;
 };
 
@@ -38,6 +40,7 @@ export function ComposerModelPicker({
   selectedProviderId,
   selectedModelId,
   controlsBlocked,
+  thinkingLevelMode,
   onCloseOtherMenus,
 }: ComposerModelPickerProps) {
   const {
@@ -57,6 +60,7 @@ export function ComposerModelPicker({
     modelGroups,
     flatModels,
     thinkingMenuLevels,
+    selectedThinkingMenuLevel,
     showView,
     selectModel,
     selectThinkingLevel,
@@ -97,10 +101,10 @@ export function ComposerModelPicker({
           }}
         >
           <span className="composer-model-thinking-icon" aria-hidden="true">
-            <IconBot size={14} />
+            <ModelIcon provider={selectedProviderId ?? ""} modelId={selectedModelId ?? modelLabel} modelName={modelLabel} size={14} />
           </span>
           <span className="composer-model-thinking-model">{modelLabel}</span>
-          {thinkingLevel !== "off" ? (
+          {thinkingLevelMode === "auto" || thinkingLevel !== "off" ? (
             <>
               <span className="composer-model-thinking-dot" aria-hidden="true">·</span>
               <span className="composer-model-thinking-level">{thinkingLabel}</span>
@@ -119,7 +123,7 @@ export function ComposerModelPicker({
             aria-haspopup="menu"
             onClick={() => showView("model")}
           >
-            <IconBot size={14} aria-hidden="true" />
+            <ModelIcon provider={selectedProviderId ?? ""} modelId={selectedModelId ?? modelLabel} modelName={modelLabel} size={14} />
             <span className="composer-menu-entry-label">{t("chat.model")}</span>
             <span className="composer-menu-entry-value" title={modelLabel}>{modelLabel}</span>
             <IconChevronRight size={14} aria-hidden="true" />
@@ -196,6 +200,7 @@ export function ComposerModelPicker({
                             onClick={() => void selectModel(group.provider, model.modelId)}
                           >
                             <span className="composer-model-option-main">
+                              <ModelIcon provider={group.provider.id} modelId={model.modelId} modelName={optionTitle} size={14} />
                               <span className="truncate">{optionTitle}</span>
                               <span className="composer-model-option-meta">
                                 {composerModelBadges(model, group.provider).map((badge) => (
@@ -237,14 +242,14 @@ export function ComposerModelPicker({
                     key={level}
                     type="button"
                     data-thinking-index={index}
-                    className={`composer-plus-item ${thinkingLevel === level ? "active" : ""} ${thinkingHighlight === index ? "kb-active" : ""}`}
+                    className={`composer-plus-item ${selectedThinkingMenuLevel === level ? "active" : ""} ${thinkingHighlight === index ? "kb-active" : ""}`}
                     role="menuitemradio"
-                    aria-checked={thinkingLevel === level}
+                    aria-checked={selectedThinkingMenuLevel === level}
                     onMouseMove={() => setThinkingHighlight(index)}
                     onClick={() => void selectThinkingLevel(level)}
                   >
                     <span className="flex-1">{level}</span>
-                    {thinkingLevel === level ? <IconCheck size={14} className="composer-model-check" aria-hidden="true" /> : null}
+                    {selectedThinkingMenuLevel === level ? <IconCheck size={14} className="composer-model-check" aria-hidden="true" /> : null}
                   </button>
                 ))}
               </div>

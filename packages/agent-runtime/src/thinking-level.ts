@@ -80,6 +80,9 @@ export function clampThinkingLevel(
   requested: ThinkingLevel,
 ): ThinkingLevel {
   if (!capabilities.supportsReasoning) return "off";
+  // `off` disables reasoning and is valid even when a catalog only lists the
+  // model's enableable reasoning levels (for example, low/medium/high).
+  if (requested === "off") return "off";
   const supported = new Set(capabilities.supportedThinkingLevels ?? ["off"]);
   if (supported.has(requested)) return requested;
 

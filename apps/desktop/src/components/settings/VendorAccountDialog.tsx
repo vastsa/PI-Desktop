@@ -133,6 +133,7 @@ export function VendorAccountDialog({
           </Field>
 
           <ModelSelectionPanes
+            providerId={provider.vendorKey ?? provider.name}
             discovery={discovery}
             selection={selection}
             listTitle={t("settings.accountModels")}

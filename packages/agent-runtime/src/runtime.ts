@@ -87,6 +87,7 @@ import type {
   ToolTokenUsage,
   UiMessage,
 } from "@pi-desktop/shared";
+import { THINKING_LEVELS } from "@pi-desktop/shared";
 import {
   addUsage,
   checkpointGeneration,
@@ -1393,6 +1394,13 @@ export class DesktopAgentRuntime {
   readonly sessionId: string;
   private mode: Mode;
   private provider: RuntimeProviderConfig;
+  /**
+   * Turn-scoped thinking-level override set by a trusted extension through
+   * `setThinkingLevel` with `persist: false` (ADR 0257 decision 3). It takes
+   * effect on the next provider request within the current run and reverts
+   * to the baseline when the run ends.
+   */
+  private turnThinkingLevelOverride: ThinkingLevel | null = null;
   private thinkingLevel: ThinkingLevel;
   private host: RuntimeHost;
   private onEvent: (envelope: AgentEventEnvelope) => void;
@@ -2167,9 +2175,40 @@ Delegation rules:
       getModel: () => runtime.model,
       setModel: (model) => runtime.setExtensionModel(model),
       modelRegistry: runtime.extensionModelRegistry(),
-      getThinkingLevel: () => runtime.thinkingLevel,
-      setThinkingLevel: (level) => {
-        runtime.thinkingLevel = clampThinkingLevel(runtime.provider, level as ThinkingLevel);
+      getThinkingLevel: () => runtime.turnThinkingLevelOverride ?? runtime.thinkingLevel,
+      getThinkingLevels: () => [...(runtime.provider.supportedThinkingLevels ?? [])],
+      setThinkingLevel: (level, opts) => {
+        const requested = String(level);
+        if (!(THINKING_LEVELS as readonly string[]).includes(requested)) {
+          console.warn(
+            `[agent-runtime] extension rejected setThinkingLevel("${requested}"): not a canonical thinking level`,
+          );
+          return false;
+        }
+        const next = clampThinkingLevel(runtime.provider, requested as ThinkingLevel);
+        // ADR 0257 decision 3: `persist: true` raises the session baseline
+        // (host + renderer stay in sync through session.configure);
+        // `persist: false` is a turn-scoped override that reverts at run end.
+        runtime.agent.state.thinkingLevel = next;
+        if (opts?.persist === true) {
+          runtime.turnThinkingLevelOverride = null;
+          runtime.thinkingLevel = next;
+          void runtime.host
+            .call("session.configure", {
+              id: runtime.sessionId,
+              mode: runtime.mode,
+              thinkingLevel: next,
+            })
+            .catch((error: unknown) => {
+              console.warn(
+                "[agent-runtime] extension setThinkingLevel persist failed:",
+                error instanceof Error ? error.message : error,
+              );
+            });
+        } else {
+          runtime.turnThinkingLevelOverride = next;
+        }
+        return true;
       },
       isIdle: () => !runtime.agent.state.isStreaming,
       abort: () => {
@@ -5248,7 +5287,11 @@ Delegation rules:
     turn: PrepareNextTurnContext,
     signal?: AbortSignal,
   ): Promise<AgentLoopTurnUpdate> {
-    return this.extensionContext(await this.prepareNextTurnWithoutExtensions(turn, signal));
+    const update = await this.prepareNextTurnWithoutExtensions(turn, signal);
+    return this.extensionContext({
+      ...update,
+      thinkingLevel: this.turnThinkingLevelOverride ?? this.thinkingLevel,
+    });
   }
 
   private async prepareNextTurnWithoutExtensions(
@@ -6503,6 +6546,12 @@ Delegation rules:
         this.autonomousExecution = false;
         this.clearAgentActivity();
         this.reportMutationTermination();
+        // ADR 0257 decision 3: a turn-scoped thinking override reverts to
+        // the baseline when the run ends.
+        if (this.turnThinkingLevelOverride !== null) {
+          this.turnThinkingLevelOverride = null;
+          this.agent.state.thinkingLevel = this.thinkingLevel;
+        }
         this.emit({
           type: "agent_end",
           messageIds: [],

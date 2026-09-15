@@ -52,6 +52,12 @@ export const THINKING_LEVELS: readonly ThinkingLevel[] = [
   "max",
 ];
 
+/**
+ * Composer thinking-menu entries (ADR 0257): the session-layer virtual `auto`
+ * level plus the concrete wire ladder. `auto` never enters wire/storage types.
+ */
+export type ComposerThinkingMenuLevel = "auto" | ThinkingLevel;
+
 export type ComposerPrefill = {
   text: string;
   token: number;
@@ -100,6 +106,9 @@ export function thinkingLevelForProvider(
 ): ThinkingLevel {
   const available = providerThinkingLevels(provider);
   if (!provider?.supportsReasoning) return "off";
+  // `off` is the universal no-reasoning state, even when a catalog only
+  // publishes the model's enableable reasoning levels.
+  if (current === "off") return "off";
   if (available.includes(current)) return current;
   const requestedIndex = THINKING_LEVELS.indexOf(current);
   for (let index = requestedIndex; index < THINKING_LEVELS.length; index += 1) {

@@ -535,6 +535,8 @@ export function createSessionSlice({
           draftConfiguration: {
             mode: config.mode,
             thinkingLevel: config.thinkingLevel,
+            thinkingLevelMode:
+              config.thinkingLevelMode ?? state.draftConfiguration?.thinkingLevelMode,
             providerId:
               config.providerId ?? state.draftConfiguration?.providerId,
             modelId: config.modelId ?? state.draftConfiguration?.modelId,

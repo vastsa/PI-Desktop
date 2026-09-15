@@ -40,10 +40,12 @@
 }
 
 /* Permission-mode chip menu (D115): anchored left above the mode chips. */
+.composer-mode,
 .composer-permission {
   position: relative;
 }
 
+.composer-mode-menu,
 .composer-permission-menu {
   position: fixed;
   top: 0;
@@ -63,6 +65,10 @@
   opacity: 0;
   pointer-events: none;
   visibility: hidden;
+}
+
+.composer-mode-menu {
+  width: min(140px, calc(100vw - 24px));
 }
 
 .composer-model-menu {
@@ -86,6 +92,7 @@
   visibility: hidden;
 }
 
+.composer-mode-menu.is-open,
 .composer-permission-menu.is-open,
 .composer-model-menu.is-open {
   opacity: 1;

@@ -29,6 +29,7 @@ import {
 } from "../../lib/model-limit-presets";
 import { Button, Field, Input, Tooltip, TooltipButton, cx } from "../ui";
 import { IconClose, IconHelp, IconPlus, IconRefresh, IconSearch } from "../icons";
+import { ModelIcon } from "../../lib/model-icons";
 import { filterChosenModels, hidesAddedBinding } from "./model-chosen-filter";
 import { describeModelsFetchError } from "./model-fetch-error";
 import type { ProviderModelsState } from "./useProviderModels";
@@ -175,6 +176,8 @@ export function applyVisibleModelSelection(
 export type ModelSelectionPanesProps = {
   discovery: ProviderModelsState & { canReload?: boolean };
   selection: ModelSelection;
+  /** Provider vendor key/name used to resolve the model icon. */
+  providerId?: string;
   /** Heading of the discovered list: a service's models, or an account's. */
   listTitle: string;
   /** True while the caller saves, so the picker stops accepting input. */
@@ -191,6 +194,7 @@ export type ModelSelectionPanesProps = {
 export function ModelSelectionPanes({
   discovery,
   selection,
+  providerId,
   listTitle,
   busy = false,
   onReload,
@@ -374,6 +378,7 @@ export function ModelSelectionPanes({
                 onChange={() => toggleModel(row)}
               />
               <span className="provider-models-row-copy selectable">
+                <ModelIcon provider={providerId ?? ""} modelId={row.id} modelName={row.displayName} size={14} />
                 <span className="provider-models-row-id font-mono">{row.id}</span>
                 {row.displayName && row.displayName !== row.id ? (
                   <span className="provider-models-row-name">{row.displayName}</span>

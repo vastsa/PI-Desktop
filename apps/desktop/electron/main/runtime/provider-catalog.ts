@@ -8,6 +8,7 @@ import {
   type CommandShellId,
   type ModelBinding,
   type ThinkingLevel,
+  type ThinkingLevelMode,
 } from "@pi-desktop/shared";
 import {
   capabilitiesFromModelConfig,
@@ -52,6 +53,8 @@ export type RuntimeSession = {
   providerId?: string;
   modelId?: string;
   thinkingLevel?: ThinkingLevel;
+  /** ADR 0257: additive session-layer mode copied through to the renderer. */
+  thinkingLevelMode?: ThinkingLevelMode;
 };
 
 export type SessionCapabilityDefaults = {
@@ -154,16 +157,31 @@ export function createProviderCatalogRuntime({
 
   const normalizeSettings = <T>(
     settings: T,
-  ): T & { defaultCommandShell: CommandShellId } => {
+  ): T & {
+    defaultCommandShell: CommandShellId;
+    defaultAutoThinkingLevel: boolean;
+  } => {
     const value = (
       settings && typeof settings === "object" ? settings : {}
-    ) as T & { defaultCommandShell?: unknown };
+    ) as T & {
+      defaultCommandShell?: unknown;
+      defaultAutoThinkingLevel?: unknown;
+    };
     return {
       ...(value as T),
       defaultCommandShell: isCommandShellId(value.defaultCommandShell)
         ? value.defaultCommandShell
         : defaultCommandShellForPlatform(process.platform),
-    } as T & { defaultCommandShell: CommandShellId };
+      // ADR 0257: new sessions default to auto thinking level; the setting is
+      // absent (or not a boolean) on untouched installs, which means enabled.
+      defaultAutoThinkingLevel:
+        typeof value.defaultAutoThinkingLevel === "boolean"
+          ? value.defaultAutoThinkingLevel
+          : true,
+    } as T & {
+      defaultCommandShell: CommandShellId;
+      defaultAutoThinkingLevel: boolean;
+    };
   };
 
   const validateSettingsWrite = <T>(settings: T): T => {
@@ -172,6 +190,7 @@ export function createProviderCatalogRuntime({
     }
     const value = settings as T & {
       defaultCommandShell?: unknown;
+      defaultAutoThinkingLevel?: unknown;
       networkProxy?: unknown;
     };
     if (
@@ -180,6 +199,16 @@ export function createProviderCatalogRuntime({
     ) {
       throw Object.assign(new Error("defaultCommandShell is invalid"), {
         errorCode: ErrorCodes.COMMAND_SHELL_INVALID,
+      });
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(value, "defaultAutoThinkingLevel") &&
+      typeof value.defaultAutoThinkingLevel !== "boolean"
+    ) {
+      // ADR 0257: the switch that disables default auto thinking for new
+      // sessions must be a boolean when it is present at all.
+      throw Object.assign(new Error("defaultAutoThinkingLevel is invalid"), {
+        errorCode: ErrorCodes.INVALID_ARGUMENT,
       });
     }
     if (Object.prototype.hasOwnProperty.call(value, "networkProxy")) {
