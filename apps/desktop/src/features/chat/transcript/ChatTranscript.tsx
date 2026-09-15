@@ -166,6 +166,13 @@ export const ChatTranscript = memo(function ChatTranscript({
     !assistantIsAnswering &&
     !hasSpecializedActivity;
 
+  // The tail status lane is part of the layout for the whole running turn: the
+  // indicators below mount and clear with the turn's phase, and a lane that
+  // came and went with them would resize `.thread-content` and push the rows
+  // the user is already reading (issue #323). An idle transcript renders no
+  // lane at all, so a finished transcript keeps its exact layout.
+  const runtimeStatusLane = transcriptRunning;
+
   return (
     <TranscriptSearchContext.Provider value={searchTarget}>
     <div
@@ -252,11 +259,15 @@ export const ChatTranscript = memo(function ChatTranscript({
               queued={queuedPermissions}
             />
           ) : null}
-          {showRunActivity && specializedActivity ? (
-            <RunActivityIndicator activity={specializedActivity} />
+          {runtimeStatusLane ? (
+            <div className="transcript-runtime-status">
+              {showRunActivity && specializedActivity ? (
+                <RunActivityIndicator activity={specializedActivity} />
+              ) : null}
+              {showPlanning ? <PlanningIndicator kind={planningKind} /> : null}
+              {showWorking ? <WorkingIndicator /> : null}
+            </div>
           ) : null}
-          {showPlanning ? <PlanningIndicator kind={planningKind} /> : null}
-          {showWorking ? <WorkingIndicator /> : null}
         </div>
       </div>
       {veilPhase !== "off" ? (

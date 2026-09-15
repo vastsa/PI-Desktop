@@ -7332,3 +7332,22 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 - **验收**：品质（协议与插件契约）
 - **里程碑**：M6+
 - **状态**：由模块测试覆盖（`apps/desktop/test/session-turn-ended.test.mjs`、`apps/desktop/test/queued-turn-finalization.test.mjs`）；桌面旅程为草稿（该表面变更时需在具备条件的环境中运行）
+
+#### E2E-CHAT-runtime-status-keeps-row-position
+
+- **先决条件**：一个活动会话，其转录高于对话视口，且尾部由一行已完成的工具占用；窗格已构建（`pnpm build:js`）并已安装 Electron。
+- **步骤**：
+  1. 用固定消息挂载生产环境的 `ChatTranscript`，尾部由已完成的活动组占用，并让会话处于运行中。
+  2. 在没有任何运行时活动上报的情况下，记录内容高度、滚动器的滚动高度/偏移，以及首行与末行的渲染位置。
+  3. 只把该会话的运行时活动切换到等待模型阶段，让布局稳定下来。
+  4. 再次清空运行时活动，让布局稳定下来。
+  5. 结束该轮（`isRunning` 为 false），检查尾部。
+- **预期**：
+  - 等待行占用预留的状态通道：在状态出现期间以及清空之后，内容高度、滚动高度、滚动偏移，以及每一个已渲染行的位置都保持不变（误差在 0.01px 以内）。
+  - 空通道在深色与浅色两种主题下都保持已预留且不可见 —— 没有背景、边框或阴影。
+  - 状态行保持其活动区域语义（`role="status"`、`aria-live="polite"`），而空通道不携带任何可供播报的文本。
+  - 已结束的空闲转录完全不渲染状态通道，因此其布局不变。
+- **链接规格**：`04-ux/08-component-spec.md`
+- **验收**：C（对话与流式）、品质
+- **里程碑**：M5
+- **状态**：由单测覆盖（`active-turn-surface.test.mjs`），并有通过 `pnpm test:e2e:transcript`（`scripts/e2e/transcript-render.tsx`，无需供应商凭据，需要已安装的 Electron 与图形会话，Linux 上可用 Xvfb）自动化的 React/Chromium 几何回归。当预留通道被移除时，该场景会以 40.125px 的内容高度误差与 40px 的行位移失败（issue #323）。

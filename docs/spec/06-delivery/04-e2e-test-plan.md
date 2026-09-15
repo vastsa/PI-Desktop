@@ -4974,8 +4974,44 @@ identify the platform validation still needed.
   credentials; requires installed Electron and a graphical session, or Xvfb on
   Linux). It mounts production transcript components, counts ActivityGroup
   renders across 20 text updates with 100 completed groups, checks changed tool
-  content, and checks cross-part Task terminal status/timing updates. Styles
-  are omitted; full provider streaming and shell responsiveness remain Draft.
+  content, and checks cross-part Task terminal status/timing updates. The page
+  links the app's built stylesheet, which the runtime-status scenario below
+  measures real geometry against; full provider streaming and shell
+  responsiveness remain Draft.
+
+#### E2E-CHAT-runtime-status-keeps-row-position
+
+- **Preconditions**: An active session whose transcript is taller than the
+  conversation viewport, with a completed tool row owning the tail; the pane is
+  built (`pnpm build:js`) and Electron is installed.
+- **Steps**:
+  1. Mount the production `ChatTranscript` with fixed messages, the tail owned
+     by a completed activity group, and the session running.
+  2. Record the content height, scroller scroll height/offset, and the first and
+     last rendered row positions with no runtime activity reported.
+  3. Switch the session's runtime activity to the waiting-for-model phase only;
+     let the layout settle.
+  4. Clear the runtime activity again and let the layout settle.
+  5. Finish the turn (`isRunning` false) and inspect the tail.
+- **Expected**:
+  - The waiting row occupies the reserved status lane: the content height,
+    scroll height, scroll offset, and the position of every already-rendered row
+    are unchanged (within 0.01px) while the status appears and after it clears.
+  - The empty lane stays reserved and invisible — no background, border, or
+    shadow — in both the dark and light themes.
+  - The status row keeps its live-region semantics (`role="status"`,
+    `aria-live="polite"`), while the empty lane carries no text to announce.
+  - An idle finished transcript renders no status lane at all, so its layout is
+    unchanged.
+- **Specs linked**: `04-ux/08-component-spec.md`
+- **Acceptance**: C (chat stream), Quality
+- **Milestone**: M5
+- **Status**: Unit-covered (`active-turn-surface.test.mjs`) and automated
+  React/Chromium geometry regression via `pnpm test:e2e:transcript`
+  (`scripts/e2e/transcript-render.tsx`, no provider credentials; requires an
+  installed Electron and a graphical session, or Xvfb on Linux). The scenario
+  fails by 40.125px of content height and 40px of row movement when the reserved
+  lane is removed (issue #323).
 
 #### E2E-STREAM-long-turn-keeps-realtime
 

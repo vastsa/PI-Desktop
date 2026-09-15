@@ -5,11 +5,12 @@ import test from "node:test";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-const [store, transcript, messagesStyles, proseStyles, en, zh] =
+const [store, transcript, messagesStyles, chatShellStyles, proseStyles, en, zh] =
   await Promise.all([
     readStoreSource(),
     readTranscriptSource(),
     read("../src/styles/messages.css"),
+    read("../src/styles/chat-shell.css"),
     read("../src/styles/prose.css"),
     read("../../../packages/i18n/src/locales/en/index.ts"),
     read("../../../packages/i18n/src/locales/zh-CN/index.ts"),
@@ -107,4 +108,29 @@ test("active turns show immediate and phase-specific feedback without a progress
   }
   assert.match(store, /agentStatuses: Record<string, AgentStatus>/);
   assert.match(store, /event\.type === "status"/);
+  // The tail status lane is part of the layout for the whole running turn, so
+  // the indicators coming and going cannot resize the transcript (issue #323).
+  assert.match(transcript, /const runtimeStatusLane = transcriptRunning;/);
+  assert.match(transcript, /\{runtimeStatusLane \? \(/);
+  assert.match(transcript, /className="transcript-runtime-status"/);
+  assert.match(
+    chatShellStyles,
+    /\.transcript-runtime-status \{[\s\S]*?display: flow-root;[\s\S]*?min-height: calc\(var\(--text-sm-plus\) \* var\(--leading-body\) \+ 22px\);/,
+  );
+  // An empty lane must read as nothing at all: the reserve is geometry only,
+  // so the rule may not paint a surface of its own.
+  const laneRule =
+    chatShellStyles.match(/\.transcript-runtime-status \{[\s\S]*?\n\}/)?.[0] ?? "";
+  assert.match(laneRule, /min-height:/);
+  assert.doesNotMatch(laneRule, /background|box-shadow|border-style|border-width|border:/);
+  // The reserve is sized from the indicator's own box, so the two must be
+  // changed together or the row starts moving again.
+  assert.match(
+    messagesStyles,
+    /\.working-indicator \{[\s\S]*?margin: 2px 0 8px;[\s\S]*?padding: 8px 0 4px 16px;/,
+  );
+  assert.match(
+    messagesStyles,
+    /\.planning-state-indicator \{[\s\S]*?margin: 2px 0 8px;[\s\S]*?padding: 8px 0 4px 16px;/,
+  );
 });

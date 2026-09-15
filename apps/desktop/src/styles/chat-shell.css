@@ -354,6 +354,26 @@
   padding: 2px 0 12px;
 }
 
+/* The tail runtime status (working / planning / run activity) mounts and clears
+ * with the turn's phase, and each of those rows is its own box: without a
+ * reserve, an indicator appearing between two tool rows grows `.thread-content`
+ * and pushes the rows the user is already reading off the top of the viewport
+ * while pinned follow re-baselines to the new bottom. The lane reserves that
+ * row for the whole running turn, so the status can come and go without moving
+ * anything, and it stays reserved - empty and invisible - while a concrete row,
+ * a permission card, or the answer itself owns the tail. The height is exactly
+ * the indicator's own box: 8px padding-top, 4px padding-bottom, the 2px/8px
+ * vertical margins and one line of its `--text-sm-plus` copy, the metrics both
+ * `.working-indicator` and `.planning-state-indicator` build. `flow-root` keeps
+ * those margins inside the reserve instead of letting them collapse out of a
+ * lane that is empty at rest. An idle transcript does not render the lane at
+ * all, so a finished transcript keeps its exact layout. */
+.transcript-runtime-status {
+  box-sizing: border-box;
+  display: flow-root;
+  min-height: calc(var(--text-sm-plus) * var(--leading-body) + 22px);
+}
+
 /* Frameless Windows/Linux controls occupy the 46px titlebar band. macOS keeps
  * the absolute conversation top bar there too, so all three platforms reserve
  * the band so the first transcript row never paints under it. */
