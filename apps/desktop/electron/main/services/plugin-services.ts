@@ -557,6 +557,13 @@ export function createPluginServices({
      * (ADR 0263) instead of the bare primary path.
      */
     getWorkspaceInfo: () => pluginWorkspaceInfo(getWorkspacePath()),
+    /**
+     * The project each live session belongs to, so an fs call made by one
+     * session's tool follows that session instead of whichever project the
+     * window happens to be showing (ADR 0016, D093). Cold for a session whose
+     * runtime has not launched yet, which falls back to the visible workspace.
+     */
+    getWorkspacePathForSession: (sessionId) => sessionProjects.get(sessionId) ?? null,
     agentExtensionsChanged: () =>
       sendToRenderer(IPC.event.pluginChanged, { reason: "agentExtensions" }),
     browser: {

@@ -197,6 +197,8 @@ pi.fs.requestDirectory(): Promise<{ path: string; name: string } | null>
 而凭证 deny-list 压过两者（参见
 [04-plugin-security.md](/zh-CN/spec/07-plugins/04-plugin-security) §6）。
 `remove` 不递归，并且把路径移进系统回收站。
+在 `workspace` 根下，路径相对于调用该调用的工具会话所属的项目，面板调用没有工具会话时
+回退到可见工作区（ADR 0265）。
 
 `list` 返回单个目录的条目（按名称排序），使插件可以惰性遍历目录树，
 而不必拉取整个仓库的 `glob` 再自行重组。它施加与 `glob` 完全相同的守卫，

@@ -291,3 +291,4 @@ Each ADR includes:
 | 0260 | [Plugin runtime theme APIs and sidebar image token](0260-plugin-runtime-theme-apis.md) | Accepted for implementation |
 | session-content-search | [Discover sessions by indexed message text](session-content-search.md) | Accepted |
 | transcript-reading-ownership | [Share renderer history and search views](transcript-reading-ownership.md) | Accepted |
+| 0265 | [Plugin fs roots follow the calling session](0265-plugin-fs-root-follows-the-calling-session.md) | Accepted (D093) |

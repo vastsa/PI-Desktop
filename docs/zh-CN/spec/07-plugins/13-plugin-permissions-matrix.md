@@ -170,14 +170,15 @@ assertPermission(pluginId, perm) {
 顺序固定 —— 后面的门只能拒绝，永远不能放宽：
 
 ```ts
-assertFsAccess(pluginId, mode, requestedPath) {
+assertFsAccess(pluginId, mode, requestedPath, sessionId) {
  assertPermission(pluginId, `fs.${mode}`)              // 已声明且已授予
- full = realpathWithinRoot(root(pluginId, mode), requestedPath)
+ full = realpathWithinRoot(root(pluginId, mode, sessionId), requestedPath)
  if (!full) throw NOT_FOUND | INVALID_ARGUMENT         // 先解析软链
  if (isDenied(full) || isHostReserved(full)) throw ERROR_PERMISSION_DENIED
  if (!inScope(full, declaredScope(pluginId, mode))) await confirmWithUser(...)
 }
 ```
+`workspace` 根是调用该调用的工具会话所属的项目，面板调用没有工具会话，回退到可见工作区（ADR 0265）。
 
 ## 7. 验收
 

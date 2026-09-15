@@ -5288,3 +5288,30 @@ submissions deduplicated and failed drafts retained. Closing unsent drafts
 creates no history; existing children remain. See the
 [message quotes and side chats ADR](../../adr/message-quotes-and-side-chats.md)
 and E2E-CHAT-side-chat-fork.
+
+## 2026-09-16 — Plugin `workspace` fs roots follow the calling session (D428)
+
+- Every plugin `pi.fs.*` call whose mode root is `workspace` resolved the one
+  window-global visible workspace, so a plugin agent tool invoked from session B
+  (project B) read project A's root as soon as the user switched tabs, and failed
+  `NOT_FOUND` for every session at once when no workspace was visible (D093 fixed
+  the same rule for built-in tool execution; it never reached a plugin).
+- `plugin-runtime.ts` now resolves that root with a new private `fsRoot(loaded, rule)`
+  helper: the project of the tool session that invoked the call, asked for through
+  the additive host service `getWorkspacePathForSession`. `plugin-services.ts` wires
+  it from the session-to-project map it already keeps, so no new source of truth is
+  introduced.
+- Unchanged: the visible workspace stays the root for a panel-bridge call, which has
+  no tool session, and for a session the host does not track; a `userSelected` mode
+  still keeps the directory the user picked through `requestDirectory()`.
+- A session root now resolves when no workspace is visible at all, so a temporary
+  chat keeps working per session instead of failing for every session at once. A
+  panel call in that state still fails closed. `NOT_FOUND` for a `workspace` root is
+  therefore narrower: neither the invoking session's project nor a visible workspace
+  resolved.
+- No permission, realpath-containment, deny-list, or declared-scope/consent gate
+  changes, and the plugin API surface does not change: `pi.workspace.get` still
+  answers with the visible workspace and its project group.
+- See ADR 0265, `07-plugins/03-plugin-api.md` §3,
+  `07-plugins/13-plugin-permissions-matrix.md` §6, and
+  E2E-PLUGIN-fs-root-follows-the-calling-session.
