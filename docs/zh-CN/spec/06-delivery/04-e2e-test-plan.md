@@ -7294,6 +7294,8 @@ and timer in Chromium; provider/native journey acceptance remains separate.
 
 The runtime records first visible text/thinking latency per logical request.
 Verify the live and completed chip, new-request reset, reload persistence,
-and no invented timing for legacy or tool-only messages. The deterministic
+and no invented timing for legacy or tool-only messages. Stopped thinking-only
+output retains latency, including zero; a waiting tool-loop continuation hides
+prior response latency. The deterministic
 renderer probe is `test:e2e:transcript`; runtime and Rust tests cover timing and
 metadata round trips. See ADR `first-output-latency.md`.

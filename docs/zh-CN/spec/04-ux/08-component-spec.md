@@ -978,7 +978,9 @@ SESSIONS                                      [msg+][↕]
 - First-output latency shows optional runtime-measured `timeToFirstTokenMs` in
   seconds to one decimal place. It includes request waiting and transport
   retries, excludes preceding tool time, and survives completion and reload.
-  Old messages show no guessed value (ADR `first-output-latency.md`).
+  Stopped thinking-only responses retain this value. During tools and waiting
+  for the next request, the live row hides prior latency. Old messages show no
+  guessed value (ADR `first-output-latency.md`).
 - 切换思维披露：expand/collapse 独立于
   最终答案；当推理到达时，流式传输会重新打开它。扩展后的
 内容的左侧规则本身就是一个指针和键盘可聚焦的折叠

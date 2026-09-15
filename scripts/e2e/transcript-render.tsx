@@ -41,7 +41,7 @@ globalThis.transcriptRenderProbe = async () => {
       renderErrors.push(error);
     },
   });
-  const render = (messages: UiMessage[]) => {
+  const render = (messages: UiMessage[], isActive = true) => {
     const entry = buildTranscriptEntries(messages).entries.find(
       (item) => item.kind === "assistant-turn",
     );
@@ -49,7 +49,7 @@ globalThis.transcriptRenderProbe = async () => {
     flushSync(() =>
       root.render(
         <I18nextProvider i18n={i18n}>
-          <AssistantTurn entry={entry} isActive />
+          <AssistantTurn entry={entry} isActive={isActive} />
         </I18nextProvider>,
       ),
     );
@@ -260,6 +260,18 @@ globalThis.transcriptRenderProbe = async () => {
     assert(container.querySelector(".first-output-latency")?.textContent === "First output 1.3s", "completed TTFT missing");
     flushSync(() => root.render(<I18nextProvider i18n={i18n}><MessageMeta modelId="legacy" /></I18nextProvider>));
     assert(!container.querySelector(".first-output-latency"), "legacy message invented a TTFT");
+
+    render([message("stopped-thinking", "assistant", "", {
+      thinking: "Partial reasoning", status: "aborted", timeToFirstTokenMs: 0,
+    })], false);
+    assert(container.querySelector(".first-output-latency")?.textContent === "First output 0.0s", "stopped thinking lost its TTFT");
+    render([
+      message("previous-response", "assistant", "Calling tool", { status: "complete", timeToFirstTokenMs: 1250 }),
+      message("completed-tool", "tool", "done", { toolName: "Bash", toolStatus: "success" }),
+      message("next-response", "assistant", "", { status: "streaming" }),
+    ]);
+    assert(container.querySelector('[data-generation-phase="waiting"]'), "tool continuation is not waiting");
+    assert(!container.querySelector(".first-output-latency"), "waiting request reused previous TTFT");
 
     return {
       ok: true,

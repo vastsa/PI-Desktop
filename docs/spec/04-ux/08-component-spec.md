@@ -1327,7 +1327,9 @@ storage but compose into one assistant turn until the next user message.
 - First-output latency shows optional runtime-measured `timeToFirstTokenMs` in
   seconds to one decimal place. It includes request waiting and transport
   retries, excludes preceding tool time, and survives completion and reload.
-  Old messages show no guessed value (ADR `first-output-latency.md`).
+  Stopped thinking-only responses retain this value. During tools and waiting
+  for the next request, the live row hides prior latency. Old messages show no
+  guessed value (ADR `first-output-latency.md`).
 - Toggle Thinking disclosure: expand/collapse reasoning independently from the
   final answer. The latest reasoning row opens while it streams and closes when
   the turn settles only if the user has not interacted with it. The expanded

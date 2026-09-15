@@ -12408,7 +12408,9 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 - **Expected:** No number before first output. The first thinking/text event
   fixes the latency; later text cannot overwrite it. The next request measures
   its own delay. Completed/reloaded messages retain the recorded value and old
-  messages show no guessed value. Display uses seconds with one decimal place.
+  messages show no guessed value. Stopped thinking-only output retains latency,
+  including zero. A waiting tool-loop continuation hides prior response latency.
+  Display uses seconds with one decimal place.
 - **Specs:** 03-runtime/01-ipc-protocol, 03-runtime/04-data-storage,
   04-ux/08-component-spec, ADR first-output-latency.
 - **Acceptance:** C (conversation), data compatibility.

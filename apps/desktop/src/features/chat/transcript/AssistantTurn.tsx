@@ -254,7 +254,7 @@ export const AssistantTurn = memo(function AssistantTurn({
   const modelId = metaMessage?.modelId ?? latestUsageMessage?.modelId;
   // The tail message is the one still growing; the live rate is estimated from
   // it because the provider only reports usage at message_end.
-  const streamingMessage = isActive ? latestGenerationMessage(entry) : undefined;
+  const latestMessage = latestGenerationMessage(entry);
   const hasError = messages.some((message) => Boolean(message.error));
   const complete =
     !isActive && !hasError && Boolean(content) && Boolean(actionMessage);
@@ -339,20 +339,20 @@ export const AssistantTurn = memo(function AssistantTurn({
             </div>
           ),
         )}
-        {!isActive && metaMessage ? (
+        {!isActive && (metaMessage || latestMessage?.timeToFirstTokenMs !== undefined) ? (
           <MessageMeta
             modelId={modelId}
             usage={usage}
             responseDurationMs={responseDurationMs}
             responseOutputTokens={responseOutputTokens}
-            timeToFirstTokenMs={latestGenerationMessage(entry)?.timeToFirstTokenMs}
+            timeToFirstTokenMs={latestMessage?.timeToFirstTokenMs}
           />
         ) : null}
         {isActive ? (
           <LiveMessageMeta
             key={entry.id}
             modelId={modelId}
-            message={streamingMessage}
+            message={latestMessage}
             toolRunning={turnAllActivityItems.some(
               (item) => item.kind === "tool" && item.message.toolStatus === "running",
             )}

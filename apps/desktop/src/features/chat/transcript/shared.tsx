@@ -179,7 +179,7 @@ export function LiveMessageMeta({
           {modelId}
         </span>
       ) : null}
-      <FirstOutputLatency milliseconds={message?.timeToFirstTokenMs} />
+      <FirstOutputLatency milliseconds={generating ? message?.timeToFirstTokenMs : undefined} />
       <span className="message-meta-chip generation-phase" data-generation-phase={phase}>
         {phaseLabel}
       </span>
