@@ -1140,6 +1140,7 @@ sklm: {
     "builtInCatalog": "models.dev",
     "modelsDevCatalog": "models.dev",
     "removeModel": "Supprimer le modèle",
+    "reorderModel": "Réordonner {{name}}. Faites glisser ou utilisez les flèches haut et bas.",
     "modelAlias": "Alias",
     "modelAliasHint": "Affiché partout où le modèle est nommé ; l'id reste l'identité de la requête.",
     "modelAliasPlaceholder": "ex. rapide",

@@ -1140,6 +1140,7 @@ sklm: {
     "builtInCatalog": "models.dev",
     "modelsDevCatalog": "models.dev",
     "removeModel": "Modell entfernen",
+    "reorderModel": "Reihenfolge von {{name}} ändern. Ziehen oder die Pfeiltasten nach oben und unten verwenden.",
     "modelAlias": "Alias",
     "modelAliasHint": "Wird überall angezeigt, wo das Modell benannt wird; die ID bleibt die Identität der Anfrage.",
     "modelAliasPlaceholder": "z. B. schnell",

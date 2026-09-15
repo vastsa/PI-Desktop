@@ -1147,6 +1147,7 @@ sklm: {
     builtInCatalog: "models.dev",
     modelsDevCatalog: "models.dev",
     removeModel: "移除模型",
+    reorderModel: "調整 {{name}} 的順序。拖曳或使用上下方向鍵。",
     modelAlias: "別名",
     modelAliasHint: "在顯示模型名稱的地方生效；請求仍使用模型 ID。",
     modelAliasPlaceholder: "例如 fast",

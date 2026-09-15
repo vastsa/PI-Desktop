@@ -1159,6 +1159,7 @@ sklm: {
     builtInCatalog: "models.dev",
     modelsDevCatalog: "models.dev",
     removeModel: "Modeli kaldır",
+    reorderModel: "{{name}} sırasını değiştir. Sürükleyin veya Yukarı ve Aşağı ok tuşlarını kullanın.",
     modelAlias: "Takma ad",
     modelAliasHint: "Modelin adlandırıldığı her yerde gösterilir; istek kimliği model ID olarak kalır.",
     modelAliasPlaceholder: "örn. hızlı",

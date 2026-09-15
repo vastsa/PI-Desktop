@@ -7344,6 +7344,7 @@ and identify the platform validation still needed.
 |---|---|
 | C / G / Quality — Plugins navigation | E2E-NAV-plugins-button-goes-back |
 | B / F / Security — Provider copy | E2E-PROVIDER-copy-config-without-credentials |
+| B / F / Quality — Selected model order | E2E-MODEL-selected-order-persists |
 | A — App startup | E2E-001, E2E-002, E2E-003, E2E-004, E2E-067, E2E-076, E2E-079, E2E-092, E2E-097, E2E-143, E2E-150, E2E-168, E2E-204 |
 | B — Model config | E2E-005, E2E-006, E2E-007, E2E-038, E2E-050, E2E-052, E2E-055, E2E-066, E2E-080, E2E-082, E2E-102c, E2E-102d, E2E-102e, E2E-151, E2E-154, E2E-163, E2E-166, E2E-172, E2E-174, E2E-197, E2E-005G, E2E-005J, E2E-199, E2E-201, E2E-202, E2E-203, E2E-205, E2E-206, E2E-209 |
 | C — Conversation & stream | E2E-008, E2E-008d, E2E-008a, E2E-009, E2E-010, E2E-011, E2E-011a, E2E-011b, E2E-011d, E2E-011e, E2E-011g, E2E-031, E2E-040, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-052, E2E-053, E2E-054, E2E-055, E2E-059, E2E-059a, E2E-060c, E2E-060d, E2E-061, E2E-061a, E2E-062, E2E-064, E2E-065, E2E-068, E2E-071, E2E-073, E2E-074, E2E-075, E2E-081, E2E-083, E2E-084, E2E-086, E2E-087, E2E-088, E2E-088b, E2E-089, E2E-090, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102g, E2E-106, E2E-109, E2E-111, E2E-114, E2E-116, E2E-117, E2E-118, E2E-119, E2E-120, E2E-121, E2E-218, E2E-219, E2E-AGENTS-001, E2E-142, E2E-144, E2E-145, E2E-146, E2E-146a, E2E-147, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159, E2E-161, E2E-162, E2E-166, E2E-172, E2E-173, E2E-174, E2E-177, E2E-178, E2E-179, E2E-180, E2E-182, E2E-183, E2E-187, E2E-198, E2E-199, E2E-202, E2E-203, E2E-207, E2E-208, E2E-250, E2E-102i, E2E-PLUGIN-session-orchestrator-real-workers, E2E-SUBAGENT-settlement-updates-before-parent-poll, E2E-CHAT-quote-prefill, E2E-CHAT-side-chat-fork, E2E-CHAT-side-chat-stream, E2E-CHAT-side-chat-add-to-main, E2E-CHAT-side-chat-promote, E2E-CHAT-side-chat-close, E2E-CHAT-selection-markdown, E2E-CHAT-selection-side-chat, E2E-CHAT-annotation-attachments, E2E-CHAT-annotation-session-state, E2E-CHAT-annotation-source-index, E2E-CHAT-annotation-ack-and-steering |
@@ -7399,6 +7400,7 @@ and identify the platform validation still needed.
 | M6 | E2E-104, E2E-105, E2E-106, E2E-107, E2E-108, E2E-109, E2E-110, E2E-111, E2E-112, E2E-113, E2E-114, E2E-115, E2E-116, E2E-117, E2E-118, E2E-119, E2E-120, E2E-103, E2E-172 |
 | M6+ | E2E-121, E2E-122, E2E-148, E2E-150, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159, E2E-160, E2E-161, E2E-162, E2E-163, E2E-166, E2E-168, E2E-173, E2E-174, E2E-176, E2E-179, E2E-196a, E2E-196b, E2E-196c, E2E-198, E2E-199, E2E-200, E2E-202, E2E-203, E2E-205, E2E-209, E2E-210, E2E-212, E2E-213, E2E-214, E2E-215, E2E-216, E2E-217, E2E-218, E2E-219, E2E-257, E2E-SUBAGENT-settlement-updates-before-parent-poll, E2E-CHAT-quote-prefill, E2E-CHAT-side-chat-fork, E2E-CHAT-side-chat-stream, E2E-CHAT-side-chat-add-to-main, E2E-CHAT-side-chat-promote, E2E-CHAT-side-chat-close, E2E-CHAT-selection-markdown, E2E-CHAT-selection-side-chat, E2E-CHAT-annotation-attachments, E2E-CHAT-annotation-session-state, E2E-CHAT-annotation-source-index, E2E-CHAT-annotation-ack-and-steering |
 | M6+ (Session Orchestrator) | E2E-PLUGIN-session-orchestrator-real-workers |
+| M6+ (Selected model order) | E2E-MODEL-selected-order-persists |
 | M6+ (Session list responsiveness) | E2E-SESSION-list-refresh-keeps-desktop-responsive |
 | M6+ (Independent session communication) | E2E-SESSION-independent-top-level-communication, E2E-SESSION-hover-card-model-and-links |
 | M5 (Chat file references) | E2E-CHAT-shorthand-file-ref-opens-the-matching-file, E2E-CHAT-file-ref-opens-the-surface-that-owns-it |
@@ -10441,6 +10443,58 @@ are withdrawn with ADR 0165.
 - **Milestone**: M2
 - **Status**: Unit-covered (`composer-models.test.mjs`,
   `provider-model-config.test.mjs`); rendered UI journey Draft (run only in a capable environment when this surface changes)
+
+#### E2E-MODEL-selected-order-persists: Selected model order survives saving
+
+- **Preconditions**: An AI service and an OAuth vendor account each have at
+  least three selected models. Include a model with an alias and non-default
+  Advanced settings. Record their binding values, the app-level default
+  provider/model, and an explicitly bound session's model choice. A controllable
+  save response is available to hold either editor busy.
+- **Steps**:
+  1. Open Settings → Model configuration and edit the AI service. Drag the
+     last selected model by its handle before the first row, then drag it
+     after the last row. Confirm the insertion location and resulting order.
+  2. Configure the selected IDs in this order: `shown-a`, `hidden-a`,
+     `shown-b`, `hidden-b`, `shown-c`. Filter by `shown-`, then drag `shown-c`
+     before `shown-a`. Clear the filter and inspect all five bindings.
+  3. Apply the filter again. Focus `shown-c`'s reorder handle and press Down,
+     then Up. Confirm it moves past the neighboring visible row each time
+     and focus remains on the moved model's handle. Try Up on the first
+     visible model and Down on the last; neither changes the order.
+  4. Start a drag and cancel it, then start another and drop outside the
+     selected rows. Neither action changes the draft order.
+  5. Drag-select and copy a model ID in the discovery list and in the selected
+     pane. Confirm no reorder or checkbox toggle occurs. Click a discovery
+     checkbox, toggle Advanced, edit an alias, and remove a selected model;
+     each action retains its existing behavior without starting a drag.
+  6. Save the reordered bindings, reopen the editor, then restart the app and
+     reopen it again. Check order, aliases, model IDs, and Advanced settings.
+     Check the provider default and existing session. Repeat with the service
+     set as the app's default provider and with a different default provider.
+  7. Change the order again, cancel the editor, and reopen it. The last saved
+     order remains.
+  8. Repeat the drag, keyboard, save/reopen, and cancel checks in the vendor
+     account editor, including a filtered list with hidden selected bindings.
+  9. Hold a save in flight and try drag and keyboard reordering. Release the
+     save, then filter down to one visible selected row and try again.
+- **Expected**: Both editors persist the complete ordered binding array. In
+  step 2 the full order becomes `shown-c`, `shown-a`, `hidden-a`, `shown-b`,
+  `hidden-b`; the hidden bindings remain present and retain their relative
+  order. Moving a binding never resets its ID, alias, or Advanced overrides.
+  Saving keeps the provider's compatibility default at the head binding. When
+  that service or account is the app's default provider, saving also updates
+  the app's default model to the head, preserving E2E-005A's existing behavior.
+  Editing another provider leaves the app default unchanged. An explicitly
+  bound session keeps its stored model choice.
+  Canceled/outside drags leave the draft unchanged, editor cancellation
+  discards unsaved moves, and busy or single-visible-row forms disable the
+  reorder handles. Text copying and existing row actions remain independent.
+- **Specs linked**: `03-runtime/13-model-catalog-and-selection.md` §2,
+  `03-runtime/12-provider-config-schema.md`; ADR 0114, ADR 0192
+- **Acceptance**: B (model configuration), F (persistence), Quality
+- **Milestone**: M6+
+- **Status**: Documented; full desktop journey has not been run.
 
 #### E2E-202: Subagent thinking follows its exact model binding
 

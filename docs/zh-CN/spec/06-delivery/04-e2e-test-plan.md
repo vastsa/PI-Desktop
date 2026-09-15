@@ -4876,6 +4876,7 @@ IPC 请求无法关闭。
 |---|---|
 | C / G / Quality — Plugins navigation | E2E-NAV-plugins-button-goes-back |
 | B / F / Security — 提供商复制 | E2E-PROVIDER-copy-config-without-credentials |
+| B / F / Quality — 已选模型顺序 | E2E-MODEL-selected-order-persists |
 | A — 应用程序启动 | E2E-001、E2E-002、E2E-003、E2E-004、E2E-067、E2E-076、E2E-079、E2E-092、E2E-097、E2E-143、E2E-150、E2E-168、E2E-204、E2E-217 |
 | B——模型配置 | E2E-005、E2E-005G、E2E-006、E2E-007、E2E-038、E2E-050、E2E-052、E2E-055、E2E-066、E2E-080、E2E-082、E2E-151、E2E-005J、E2E-199、E2E-201、E2E-202、E2E-203、E2E-209、E2E-166 |
 | C — 对话和直播 | E2E-008、E2E-008d、E2E-008a、E2E-009、E2E-010、E2E-011、E2E-011a、E2E-011b、E2E-031、E2E-040、E2E-047、E2E-048、E2E-048A、E2E-049、E2E-052、 E2E-053、E2E-054、E2E-055、E2E-059、E2E-059a、E2E-060c、E2E-060d、E2E-061、E2E-061a、E2E-062、E2E-064、E2E-065、E2E-068、E2E-071、 E2E-073、E2E-074、E2E-075、E2E-081、E2E-083、E2E-084、E2E-086、E2E-087、E2E-088、E2E-088b、E2E-089、E2E-090、E2E-094、E2E-095、E2E-096、 E2E-097、E2E-098、E2E-099、E2E-102、E2E-102a、E2E-102b、E2E-106、E2E-109、E2E-111、E2E-114、E2E-116、E2E-117、E2E-118、E2E-119、 E2E-120、E2E-121、E2E-代理-001、E2E-142、E2E-144、E2E-145、E2E-146、E2E-147、E2E-151、E2E-199、E2E-250、E2E-166 |
@@ -4931,6 +4932,7 @@ IPC 请求无法关闭。
 | M6 | E2E-104、E2E-105、E2E-106、E2E-107、E2E-108、E2E-109、E2E-110、E2E-111、E2E-112、E2E-113、E2E-114、E2E-115、E2E-116、E2E-117、 E2E-118、E2E-119、E2E-120、E2E-103 |
 | M6+ | E2E-121、E2E-122、E2E-123、E2E-142、E2E-148、E2E-150、E2E-151、E2E-168、E2E-199、E2E-200、E2E-202、E2E-203、E2E-209、E2E-211、E2E-212、E2E-213、E2E-214、E2E-215、E2E-216、E2E-217、E2E-257、E2E-166 |
 | M6+（Session Orchestrator） | E2E-PLUGIN-session-orchestrator-real-workers |
+| M6+（已选模型顺序） | E2E-MODEL-selected-order-persists |
 | M6+（会话列表响应性） | E2E-SESSION-list-refresh-keeps-desktop-responsive |
 | M6+（独立会话通信） | E2E-SESSION-independent-top-level-communication、E2E-SESSION-hover-card-model-and-links |
 | M5（聊天文件引用） | E2E-CHAT-shorthand-file-ref-opens-the-matching-file、E2E-CHAT-file-ref-opens-the-surface-that-owns-it |
@@ -4941,6 +4943,8 @@ IPC 请求无法关闭。
 | MVP 后远程控制 | E2E-221、E2E-222、E2E-223、E2E-224、E2E-225、E2E-226、E2E-227、E2E-228、E2E-229、E2E-230、E2E-231、E2E-232 |
 | 受信任扩展（R7 v1） | E2E-241、E2E-242、E2E-243、E2E-244、E2E-245、E2E-PLUGIN-imported-pi-package-skills、E2E-PLUGIN-import-extension-installs-dependencies、E2E-PLUGIN-import-extension-reports-missing-dependency |
 | M6+（删除项目） | E2E-PROJECT-delete-removes-project-and-owned-sessions |
+| C — 对话和流式输出（模型回退） | E2E-SUBAGENT-ordered-model-fallback-preserves-work |
+| 品质（模型回退隔离） | E2E-SUBAGENT-ordered-model-fallback-preserves-work |
 | C — 对话和直播（旧版子代理回合上限） | E2E-SUBAGENT-legacy-turn-limit-frontmatter-is-ignored |
 | 品质（旧版子代理回合上限） | E2E-SUBAGENT-legacy-turn-limit-frontmatter-is-ignored |
 
@@ -6648,6 +6652,45 @@ IPC 请求无法关闭。
 - **里程碑**：M2
 - **状态**：单元已覆盖（`composer-models.test.mjs`、`provider-model-config.test.mjs`）；完整 UI 旅程为草稿
 
+#### E2E-MODEL-selected-order-persists：保存后保留已选模型顺序
+
+- **前提条件**：一个 AI 服务和一个 OAuth 厂商账户各有至少三个已选模型。其中一个模型
+  具有别名和非默认的高级设置。记录绑定值、应用级默认提供商和模型，以及一个明确绑定
+  模型的会话的模型选择。保存响应可控，能够让任一编辑器保持忙碌状态。
+- **步骤**：
+  1. 打开设置 → 模型配置并编辑 AI 服务。通过手柄将最后一个已选模型拖到首行之前，
+     再将其拖到末行之后。确认插入位置和最终顺序。
+  2. 将已选 ID 配置为以下顺序：`shown-a`、`hidden-a`、`shown-b`、`hidden-b`、
+     `shown-c`。按 `shown-` 过滤，再将 `shown-c` 拖到 `shown-a` 之前。清除过滤并
+     检查全部五个绑定。
+  3. 再次应用过滤。让 `shown-c` 的排序手柄获得焦点，先按下方向键，再按上方向键。
+     确认每次都会越过相邻的可见行，且焦点始终保留在已移动模型的手柄上。对首个可见
+     模型按上方向键，对最后一个可见模型按下方向键；顺序均不改变。
+  4. 开始拖动后取消，再次开始拖动并在已选行之外释放。两种操作都不改变草稿顺序。
+  5. 在发现列表和已选面板中拖选并复制模型 ID。确认没有排序或复选框切换。点击发现
+     列表复选框、展开或收起高级设置、编辑别名、移除已选模型；每种操作均保持原有
+     行为，不会开始拖动。
+  6. 保存重新排序后的绑定并重新打开编辑器，再重启应用并重新打开。检查顺序、别名、
+     模型 ID 和高级设置。检查提供商默认值和现有会话。分别在该服务是应用默认提供商
+     以及另一个提供商是默认提供商时重复验证。
+  7. 再次更改顺序，取消编辑器并重新打开。上次保存的顺序保持不变。
+  8. 在厂商账户编辑器中重复拖动、键盘、保存后重新打开和取消检查，包括过滤后隐藏
+     部分已选绑定的列表。
+  9. 暂停保存响应，尝试拖动和键盘排序。恢复保存响应，再过滤到只剩一个可见已选行
+     并再次尝试。
+- **预期**：两个编辑器都持久化完整的有序绑定数组。步骤 2 后完整顺序变为 `shown-c`、
+  `shown-a`、`hidden-a`、`shown-b`、`hidden-b`；隐藏绑定仍然存在，并保留其相对
+  顺序。移动绑定不会重置其 ID、别名或高级覆盖设置。保存后提供商的兼容默认值仍为
+  首个绑定。该服务或账户是应用默认提供商时，保存也会将应用默认模型更新为首个绑定，
+  保留 E2E-005A 的既有行为。编辑其他提供商不会改变应用默认值。明确绑定模型的会话
+  保留其已存储的模型选择。取消拖动或在行外释放不会改变草稿；取消编辑器会丢弃未保存
+  的移动；表单忙碌或只有一个可见行时禁用排序手柄。文本复制和现有行操作保持独立。
+- **链接规格**：`03-runtime/13-model-catalog-and-selection.md` §2、
+  `03-runtime/12-provider-config-schema.md`；ADR 0114、ADR 0192
+- **验收**：B（模型配置）、F（持久化）、质量
+- **里程碑**：M6+
+- **状态**：已记录；完整桌面旅程尚未运行。
+
 #### E2E-202：子智能体思考跟随其精确模型绑定
 
 - **前提条件**：已配置提供商有标记 `availableForSubagents` 的模型绑定。目录将该模型标为非推理，或未发布绑定显式启用的某一档。用户子智能体定义和内置 `Task` 目录可用。
@@ -7260,3 +7303,33 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 - **验收**：品质（协议与插件契约）
 - **里程碑**：M6+
 - **状态**：由模块测试覆盖（`apps/desktop/test/session-turn-ended.test.mjs`、`apps/desktop/test/queued-turn-finalization.test.mjs`）；桌面旅程为草稿（该表面变更时需在具备条件的环境中运行）
+
+### E2E-SUBAGENT-ordered-model-fallback-preserves-work
+
+- **前提条件**：已配置的主模型和至少三个备选模型使用确定性的本地传输；一个定义声明
+  有序备选列表。第二个定义没有备选模型，所有备选模型均未允许用于 Task 覆盖。
+- **步骤**：在设置中添加两个备选模型、调整顺序、保存并重新打开；修改其他字段而保持
+  列表不变。运行子任务，完成一次工具调用后使主模型请求失败。使第一个备选模型失败，
+  再由第二个备选模型完成任务。分别验证成功模型之前有零、一、二、三个不可用模型的
+  情况，并在成功模型之后保留一个未使用的模型。再验证四个模型均不可用、混合
+  401/403/404 错误、连续两个模型耗尽暂时性错误或 429 的重试预算、不可用或重复的
+  显式绑定、明确授权的 Task 主模型，以及恢复过程中执行停止。移除所有备选模型，
+  保存并重新打开。
+- **预期**：列表顺序以及清空、保留语义可往返保存。提供商重试预算先于模型回退耗尽；
+  每个不同的已配置绑定只使用一次。原始任务和已完成的工具结果传递给下一个模型，
+  已完成的工具不会重复执行。适配器、认证、请求头和思考等级与每个选中的模型匹配。
+  失败诊断和总用量在任务结束后保留；实际使用的模型和思考等级在重新加载后保留。
+  停止会取消整个回退链；宿主或工具错误不会切换模型。备选耗尽时明确失败。备选模型
+  不会授权对第二个定义进行 Task 覆盖。没有备选模型时保留现有的单模型行为。
+- **链接规格**：`03-runtime/02-agent-runtime.md` §5f、
+  `03-runtime/13-model-catalog-and-selection.md` §Subagent editor、
+  ADR subagent-model-fallback。
+- **验收标准**：C — 对话和流式输出；品质（兼容性和权限隔离）。
+- **里程碑**：M6+。
+- **状态**：共享包和运行时回归测试，以及 `test:e2e:subagents` /
+  `test:e2e:subagent-models` 已自动覆盖注册与运行时行为。sidecar 套件根据实际 HTTP
+  请求顺序、运行中与结束后的 Task 元数据、有序失败诊断和成功的子任务报告，验证
+  零到三次失败矩阵及四个模型全部耗尽的情况。已完成工具结果的保留和独立重试预算
+  由真实传输的运行时测试覆盖。配置编辑器旅程已在 WSL 下通过；任务记录重新加载的
+  验收仍待完成。合并后必须运行：`test:e2e`、`test:e2e:subagents`、
+  `test:e2e:subagent-models`。
