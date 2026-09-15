@@ -30,8 +30,8 @@ export const en = {
     closeToTray: "Close to tray",
     confirmQuitTitle: "Quit PI-Desktop?",
     confirmQuitBody:
-      "Are you sure you want to quit? All running sessions will be stopped and unsaved changes may be lost.",
-    confirmQuit: "Quit",
+      "Quitting will interrupt running tasks, including background sessions and subagents.",
+    confirmQuit: "Quit and interrupt",
   },
   /**
    * Native consent dialog for a file access a plugin's manifest did not
@@ -530,6 +530,12 @@ export const en = {
     openAsSession: "Open as a conversation",
   },
   session: {
+    deleteTitle: "Permanently delete this session?",
+    deleteDescription: "Session “{{name}}” and its conversation history will be permanently deleted. This cannot be undone.",
+    deleteCancel: "Cancel",
+    deleteConfirm: "Permanently delete",
+    deleting: "Deleting…",
+
     renameTitle: "Rename task",
     renameAction: "Rename task {{title}}",
     renameDescription: "Give this task a name you can recognize later.",

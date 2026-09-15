@@ -858,10 +858,8 @@ export async function createWindow({
       }
       // "quit" means quit: go through the ordered `before-quit` shutdown
       // rather than relying on `window-all-closed`, which stays silent while
-      // the D216 tray is resident. Mark `quitConfirmed` because the user
-      // already chose to quit in the close-behavior dialog above.
-      windowState.quitConfirmed = true;
-      windowsAllowedToClose.add(window);
+      // the D216 tray is resident. The close preference is not consent to
+      // interrupt running tasks; before-quit owns that confirmation.
       app.quit();
     })();
   });

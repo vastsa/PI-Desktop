@@ -3589,3 +3589,19 @@ Sidebar footer                                        Popover (360px max)
     panel width (ADR 0151)
 19. Expanded sidebar session titles, project/group titles, and empty-state copy
     use the 13px compact token while primary sidebar actions remain at 14px
+
+### Session deletion and app exit confirmation (issue #424)
+
+- Sidebar session deletion opens a modal naming the session and explaining that
+  its conversation history is permanently deleted and cannot be restored in-app.
+  Cancel is focused initially; Escape and backdrop dismiss before submission.
+  The destructive button is red. Submission is serialized, and errors are shown
+  without pretending deletion succeeded. Only a successful delete removes the row.
+- Explicit app quit checks app-wide activity, including background Desktop turns
+  (parents remain active while delegates run) and native Pi runtime sessions.
+  Idle apps save and exit without a confirmation. Running work requires consent
+  to interruption. Failed runtime status checks conservatively require consent.
+  Repeated quit requests cannot bypass a pending dialog; cancellation preserves
+  execution and allows later requests. Window close preferences are not consent
+  to interrupt tasks. Existing automated-probe and update-restart exemptions remain.
+- No persistence, IPC, plugin permission, or process ownership contract changes.

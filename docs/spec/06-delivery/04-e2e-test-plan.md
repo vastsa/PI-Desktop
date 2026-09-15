@@ -7499,6 +7499,7 @@ identify the platform validation still needed.
 | Quality (project folder roots) | E2E-PLUGIN-file-view-switches-folder-per-project |
 | D — Workspace (project delete) | E2E-PROJECT-delete-removes-project-and-owned-sessions |
 | F — Persistence (project delete) | E2E-PROJECT-delete-removes-project-and-owned-sessions |
+| Quality / C / F (confirmation) | E2E-SESSION-permanent-delete-requires-confirmation, E2E-APP-idle-quit-skips-confirmation |
 | Quality (project delete) | E2E-PROJECT-delete-removes-project-and-owned-sessions |
 | Security (plugin real-time capabilities) | E2E-PLUGIN-global-shortcut-owns-only-its-own-command, E2E-PLUGIN-permission-gate-for-real-time-capabilities, E2E-PLUGIN-background-audio-and-realtime-connection |
 
@@ -12370,3 +12371,37 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   disable/enable, undeclare and uninstall cleanup, and the manifest refusals are
   covered by host-core unit tests; the renderer's read-only row presentation
   remains additional validation.
+
+### E2E-SESSION-permanent-delete-requires-confirmation
+
+- **Preconditions**: A saved session with a transcript is visible in the sidebar.
+- **Steps**: Open Delete; inspect the title, warning and default focus. Cancel
+  with the button, Escape and backdrop. Reopen and confirm. Repeat with a
+  failing delete response and repeated clicks while the response is pending.
+- **Expected**: Cancel preserves the session; only confirmation deletes it.
+  Cancel has initial focus, the destructive button is red, pending requests are
+  not duplicated, and failure is shown without removing the session.
+- **Specs linked**: `04-ux/08-component-spec.md`, issue #424.
+- **Acceptance**: C (session interaction), F (persistence safety).
+- **Milestone**: M6+.
+- **Status**: `pnpm test:e2e:confirmations` exercises the real modal in Electron
+  with a controlled deletion callback; full sidebar-to-storage deletion remains
+  covered by the existing storage contract tests and manual acceptance.
+
+### E2E-APP-idle-quit-skips-confirmation
+
+- **Preconditions**: Normal desktop mode, including saved native Pi sessions.
+- **Steps**: Quit while idle. Relaunch, start a task in another session and quit.
+  Cancel, then retry and accept. Repeat with a running subagent and a native Pi
+  session. Press quit repeatedly while the dialog is open. Test menu/tray/Cmd+Q
+  and Windows/Linux close-to-quit; exercise update restart separately.
+- **Expected**: Idle exit saves without prompting. Running tasks require consent;
+  cancel preserves execution and repeated requests cannot bypass consent. Saved
+  sessions and future schedules do not count as running. Updates retain their
+  existing bypass; shutdown still saves data and disposes owned resources.
+- **Specs linked**: `04-ux/08-component-spec.md`, ADR 0090, issue #424.
+- **Acceptance**: Quality (window lifecycle), F (persistence).
+- **Milestone**: M6+.
+- **Status**: Controller regression tests; native quit-dialog interaction across
+  platforms remains manual acceptance. Required automated suites: `test:e2e`,
+  `test:e2e:boot`, and `test:e2e:confirmations`.

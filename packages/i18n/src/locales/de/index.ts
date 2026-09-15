@@ -29,8 +29,8 @@ export const de = {
     "askBody": "Wenn Sie das Fenster schließen, kann PI-Desktop in der Taskleiste weiterlaufen, sodass nichts verloren geht. Sie können dies jederzeit in den Einstellungen ändern.",
     "closeToTray": "In der Taskleiste",
     "confirmQuitTitle": "PI-Desktop beenden?",
-    "confirmQuitBody": "Sind Sie sicher, dass Sie beenden möchten? Alle laufenden Sitzungen werden gestoppt und nicht gespeicherte Änderungen gehen möglicherweise verloren.",
-    "confirmQuit": "Beenden"
+    "confirmQuitBody": "Beim Beenden werden laufende Aufgaben unterbrochen, einschließlich Hintergrundsitzungen und Unteragenten.",
+    "confirmQuit": "Beenden und unterbrechen"
   },
   "pluginDesktopConsent": {
     "message": "{name} möchte {operation} ausführen",
@@ -523,6 +523,12 @@ export const de = {
     "openAsSession": "Als Konversation öffnen"
   },
   "session": {
+    deleteTitle: "Sitzung endgültig löschen?",
+    deleteDescription: "Die Sitzung „{{name}}“ und ihr Gesprächsverlauf werden endgültig gelöscht. Dies kann nicht rückgängig gemacht werden.",
+    deleteCancel: "Abbrechen",
+    deleteConfirm: "Endgültig löschen",
+    deleting: "Wird gelöscht…",
+
     "renameTitle": "Aufgabe umbenennen",
     "renameAction": "Aufgabe umbenennen {{title}}",
     "renameDescription": "Geben Sie dieser Aufgabe einen Namen, den Sie später wiedererkennen können.",

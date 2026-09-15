@@ -32,8 +32,8 @@ export const ko = {
     closeToTray: "트레이로 닫기",
     confirmQuitTitle: "PI-Desktop을 종료할까요?",
     confirmQuitBody:
-      "정말 종료할까요? 실행 중인 모든 세션이 중지되며 저장하지 않은 변경 사항을 잃을 수 있습니다.",
-    confirmQuit: "종료",
+      "종료하면 백그라운드 세션과 하위 에이전트를 포함한 실행 중인 작업이 중단됩니다.",
+    confirmQuit: "종료 및 중단",
   },
   /**
    * Native consent dialog for a file access a plugin's manifest did not
@@ -532,6 +532,12 @@ export const ko = {
     openAsSession: "대화로 열기",
   },
   session: {
+    deleteTitle: "이 세션을 영구 삭제할까요?",
+    deleteDescription: "세션 “{{name}}” 및 대화 기록이 영구 삭제됩니다. 이 작업은 되돌릴 수 없습니다.",
+    deleteCancel: "취소",
+    deleteConfirm: "영구 삭제",
+    deleting: "삭제 중…",
+
     renameTitle: "작업 이름 바꾸기",
     renameAction: "작업 이름 바꾸기 {{title}}",
     renameDescription: "나중에 알아볼 수 있는 작업 이름을 지정하세요.",
