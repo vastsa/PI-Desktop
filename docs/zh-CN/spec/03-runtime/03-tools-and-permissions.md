@@ -382,8 +382,12 @@ tool/protocol 名称，请求中单独携带固定的 shell ID。
 | `accept-edits` | 自动允许 | 确认 |
 | `auto` | 自动允许 | 自动允许 |
 
+这三种模式不变（D420 / ADR 0249）。始终拒绝是叠加规则，不是第四种模式：
+命中 `permissionDeny` 时即使处于 `auto` 也是 `deny`。
+
 显式外部工作空间路径是低风险行的一个例外：它是
-仅在 `auto` 中允许自动； `ask` 和 `accept-edits` 都证实了这一点。
+仅在 `auto` 中允许自动； `ask` 和 `accept-edits` 都证实了这一点。Deny-first
+匹配仍优先于该例外。
 
 每个工具调用的解析顺序 (host-core `tools.execute`)：
 
@@ -398,6 +402,9 @@ tool/protocol 名称，请求中单独携带固定的 shell ID。
   通过 `session.configure` `permissionMode` 设置。
 - Plan 的硬拒绝胜过 Write/Edit 以及缺少 `planSafeActions` 的插件
   工具的所有权限模式。 `auto` 无法重新启用隐藏或拒绝的工具。
+- Deny-first 叠加（D420 / ADR 0249）胜过 `auto`、会话授权、低风险自动放行、
+  `accept-edits` 以及工作区外路径的自动例外。命中为 `PermissionDecision::Deny`，
+  执行返回既有 `TOOL_DENIED`。合同模式硬拒绝仍排在它前面。
 - 会话根目录内的低风险工具（`allow-once`/`allow-session`/`deny`）自动允许
   每种模式都和以前一样。
 - `BrowserPreview` 是显式只读 UI 检查功能，并且是
@@ -416,6 +423,46 @@ tool/protocol 名称，请求中单独携带固定的 shell ID。
   全局设置，直到用户选择一种模式。
 - 强制执行仅适用于 host-core； sidecar/model 从未被告知
   模式并且不能影响它。
+
+每次调用的宿主求值顺序（冻结，D115 / D198 / D420）：
+
+1. 解析权限模式（会话覆盖 → 全局默认 → `ask`）
+2. Plan/Goal 硬拒绝（Write/Edit、没有 `planSafeActions` 的插件工具、未知工具）
+3. Deny-first 叠加命中 → `deny` / `TOOL_DENIED`
+4. 显式工作区外路径（`auto` 放行；否则询问）
+5. 低风险自动放行
+6. `accept-edits` 下 Write/Edit 自动放行；`auto` 自动放行
+7. 会话授权
+8. 确认卡片（120 秒超时 → 拒绝）
+
+暂存目录写入 (D114) 在**此求值之后**仍保持无提示，因此 deny-first 命中仍然优先。
+
+### Deny-first 叠加（D420 / ADR 0249）
+
+`AppSettings.permissionDeny` 与 `contributes.permissionDeny` 共用同一对象：
+
+```ts
+type PermissionDenyRules = {
+  tools?: string[];
+  paths?: string[];
+  commands?: string[];
+};
+```
+
+未知键拒绝。`null` 或 `{}` 表示空叠加。每个列表最多 256 条；每条为非空字符串且最多 512 字符。
+设置写入由 host-core 校验；求值时跳过损坏的持久化对象。浅合并会整键覆盖 `permissionDeny`。
+
+叠加是用户设置与每个**已启用**、已授予 `agent.permission.deny`、且 `ActivationScope` 命中会话工作区的插件
+`contributes.permissionDeny` 的并集（`global` 始终生效；project-scoped 仅当会话有项目且范围命中）。
+scratch 不视为项目。插件只能 deny：没有 `allow` 键，也不能删除用户规则。
+
+匹配（host-core `globset` 0.4；SDK 与设置 UI 只检查形状）：
+
+- **tools** — 对工具名做 glob（`literal_separator`）。`Bash` 拒绝每一次 Bash；`plugin_*` 拒绝每一个插件工具。
+- **paths** — 对 `path` / `file_path` 做 glob。`~` 展开为用户主目录；`\\` 视为 `/`；只匹配文件名的模式仍然命中
+  （`**/.env` 与 `.env` 都会拒绝 `.env`）。Windows 上大小写不敏感。
+- **commands** — 仅 Bash 的 `command`。带 glob 元字符（`*`、`?`、`[`）走 glob；否则做前缀匹配，且必须是整条命令或后接空白。
+  Windows 上前缀匹配大小写不敏感。
 
 ## 7. 权限流程
 
@@ -563,6 +610,6 @@ sidecar 不附加覆盖，委托使用会话的有效权限模式；因此父会
 
 - MCP 工具
 - 工具组切换
-- 命令允许列表/拒绝列表
+- 命令允许列表（命令拒绝列表已作为 `permissionDeny.commands` 落地，D420）
 - 空运行模式
 - 预览后应用补丁

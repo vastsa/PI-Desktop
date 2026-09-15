@@ -81,6 +81,13 @@ export type PluginManifest = {
     themes?: PluginThemeContrib[];
     /** Native window background for this plugin's themes (ADR 0248). */
     windowAppearance?: PluginWindowAppearanceContrib;
+    /**
+     * Deny-first globs the host unions with the user's settings. Plugins can
+     * only add rules; they cannot remove user rules or introduce an allow
+     * list. Requires `agent.permission.deny` even when the object is empty
+     * (ADR 0249).
+     */
+    permissionDeny?: PluginPermissionDenyContrib;
     mcpServers?: PluginMcpServerContrib[];
     services?: PluginServiceContrib[];
     bus?: PluginBusContrib;
@@ -325,6 +332,17 @@ export type PluginThemeContrib = {
 export type PluginWindowAppearanceContrib = {
   /** `#rrggbb` or `#rrggbbaa`, applied per resolved palette. */
   backgroundColor?: { light?: string; dark?: string };
+};
+
+/**
+ * Deny-only globs. Unknown keys are rejected. Each list is at most 256
+ * entries, each at most 512 characters. The host compiles globs; this
+ * validator only checks shape.
+ */
+export type PluginPermissionDenyContrib = {
+  tools?: string[];
+  paths?: string[];
+  commands?: string[];
 };
 
 /** The only colour form a contributed window background may take. */
@@ -817,6 +835,7 @@ export const PLUGIN_PERMISSIONS = [
   "agent.prompt.inject",
   "agent.complete",
   "agent.extension",
+  "agent.permission.deny",
   "desktop.control",
   "models.list",
   "project.create",
@@ -908,6 +927,16 @@ export function validateManifest(raw: unknown): {
     return {
       ok: false,
       error: "contributes.windowAppearance requires the ui.window.appearance permission",
+    };
+  }
+  if (
+    !contributesError &&
+    m.contributes?.permissionDeny !== undefined &&
+    !(m.permissions ?? []).includes("agent.permission.deny")
+  ) {
+    return {
+      ok: false,
+      error: "contributes.permissionDeny requires the agent.permission.deny permission",
     };
   }
   if (contributesError) {
@@ -1207,6 +1236,51 @@ export function validateContributions(
     }
   }
 
+  const permissionDeny = contributes.permissionDeny;
+  if (permissionDeny !== undefined) {
+    if (
+      typeof permissionDeny !== "object" ||
+      permissionDeny === null ||
+      Array.isArray(permissionDeny)
+    ) {
+      return "contributes.permissionDeny must be an object";
+    }
+    const deny = permissionDeny as Record<string, unknown>;
+    for (const key of Object.keys(deny)) {
+      if (key !== "tools" && key !== "paths" && key !== "commands") {
+        return `permissionDeny.${key} is not supported`;
+      }
+    }
+    for (const field of ["tools", "paths", "commands"] as const) {
+      if (deny[field] === undefined) continue;
+      const error = permissionDenyListError(field, deny[field]);
+      if (error) return error;
+    }
+  }
+
+  return undefined;
+}
+
+const MAX_PERMISSION_DENY_ENTRIES = 256;
+const MAX_PERMISSION_DENY_PATTERN_CHARS = 512;
+
+function permissionDenyListError(field: string, value: unknown): string | undefined {
+  if (!Array.isArray(value)) return `permissionDeny.${field} must be an array`;
+  if (value.length > MAX_PERMISSION_DENY_ENTRIES) {
+    return `permissionDeny.${field} allows at most ${MAX_PERMISSION_DENY_ENTRIES} entries`;
+  }
+  for (const item of value) {
+    if (typeof item !== "string") {
+      return `permissionDeny.${field} entries must be strings`;
+    }
+    const pattern = item.trim();
+    if (!pattern) {
+      return `permissionDeny.${field} entries must be non-empty strings`;
+    }
+    if ([...pattern].length > MAX_PERMISSION_DENY_PATTERN_CHARS) {
+      return `permissionDeny.${field} entries must be at most ${MAX_PERMISSION_DENY_PATTERN_CHARS} characters`;
+    }
+  }
   return undefined;
 }
 

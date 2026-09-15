@@ -4,7 +4,7 @@ import type { KeybindingOverrides } from "../keyboard-shortcuts.js";
 import type { NetworkProxySettings } from "../network-proxy.js";
 import type { ContextCompactionSettings } from "./sessions.js";
 import type { Mode } from "./common.js";
-import type { GlobalPermissionMode } from "./permissions.js";
+import type { GlobalPermissionMode, PermissionDenyRules } from "./permissions.js";
 import type { PluginMarketSource } from "./plugins.js";
 
 export type ThemePreference = "system" | "light" | "dark" | `plugin:${string}`;
@@ -27,6 +27,11 @@ export type AppSettings = {
   defaultCommandShell?: CommandShellId;
   /** Global permission mode default; sessions with `inherit` follow this. */
   defaultPermissionMode?: GlobalPermissionMode;
+  /**
+   * Deny-first globs that always deny, even in full auto. Plugins may only
+   * add more rules; they cannot remove these (ADR 0249 / D420).
+   */
+  permissionDeny?: PermissionDenyRules | null;
   theme: ThemePreference;
   /** UI language; `auto` (and absent) follows the OS locale. */
   language?: "auto" | "en" | "zh-CN" | "zh-TW" | "tr" | "de" | "es" | "fr" | "ko";

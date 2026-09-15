@@ -275,6 +275,8 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 | 0242 | [仅增量且合并的流式更新](/adr/0242-delta-only-streaming-updates) | 已接受（修订 0127 / 0130 / 0149 / 0153；issue #299） |
 | 0243 | [技能市场公网 HTTPS 目录拉取](/adr/0243-skill-market-public-https-catalog) | 已接受（修订 ADR 0009；issue #287 / PR #290） |
 | 0245 | [加固 MCP 市场公网网络边界](/adr/0245-mcp-market-public-network-boundary) | 已接受 |
+| 0248 | [打包主题资源与贡献的窗口背景](/adr/0248-plugin-theme-assets-and-window-background) | 已接受（issue #335） |
+| 0249 | [Deny-first 权限规则](/adr/0249-deny-first-permission-rules) | 已接受（修订 D115；D420） |
 | active-turn-steering | [用 Alt+Enter 向当前回合补充指令](/adr/active-turn-steering) | 已接受 |
 
 ## 什么时候看 ADR

@@ -43,6 +43,7 @@ import {
   ContextUsageDisplayRow,
   LargePasteThresholdRow,
   LinkOpenTargetRow,
+  PermissionDenyRow,
   SettingsCard,
   SettingsRow,
 } from "./primitives";
@@ -319,6 +320,7 @@ export function SettingsPage() {
                     <option value="auto">{t("settings.permissionModeAuto")}</option>
                   </select>
                 </SettingsRow>
+                <PermissionDenyRow settings={settings} saveSettings={saveSettings} />
               </SettingsCard>
 
               <SettingsCard title={t("settings.defaultsTitle")}>

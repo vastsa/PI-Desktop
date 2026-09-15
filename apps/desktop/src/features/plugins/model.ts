@@ -46,6 +46,7 @@ export const PERMISSION_RISK: Record<string, RiskTier> = {
   "agent.tool.register": "high",
   "agent.complete": "high",
   "agent.extension": "high",
+  "agent.permission.deny": "medium",
   "desktop.control": "high",
   "session.read": "high",
   "browser.cdp": "high",
@@ -80,6 +81,7 @@ export const CAPABILITY_ORDER: PluginCapability[] = [
   "mcp",
   "services",
   "bus",
+  "permissionDeny",
 ];
 
 /** File modes in escalating order, so a row reads read → write → delete. */

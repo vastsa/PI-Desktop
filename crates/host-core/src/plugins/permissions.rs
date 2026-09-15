@@ -106,7 +106,70 @@ pub(crate) fn derive_capabilities(manifest: &PluginManifest) -> Vec<String> {
     if bus_declared {
         out.push("bus".into());
     }
+    let deny_declared = map
+        .and_then(|m| m.get("permissionDeny"))
+        .and_then(Value::as_object)
+        .map(|deny| {
+            ["tools", "paths", "commands"].iter().any(|key| {
+                deny.get(*key)
+                    .and_then(Value::as_array)
+                    .map(|a| !a.is_empty())
+                    .unwrap_or(false)
+            })
+        })
+        .unwrap_or(false);
+    if deny_declared {
+        out.push("permissionDeny".into());
+    }
     out
+}
+
+impl PluginManager {
+    /// Deny globs from enabled plugins whose activation scope matches the
+    /// session workspace. Invalid manifests are skipped so a broken plugin
+    /// cannot stall tool evaluation.
+    pub fn contributed_deny_rules(
+        &self,
+        project_path: Option<&str>,
+    ) -> Vec<crate::permission_deny::PermissionDenyRules> {
+        let mut out = Vec::new();
+        for plugin in &self.runtime {
+            if !plugin.enabled {
+                continue;
+            }
+            if !plugin
+                .permissions
+                .iter()
+                .any(|permission| permission == "agent.permission.deny")
+            {
+                continue;
+            }
+            if !plugin.scope.matches(project_path) {
+                continue;
+            }
+            let Some(path) = plugin.path.as_deref() else {
+                continue;
+            };
+            let Ok(raw) = fs::read_to_string(Path::new(path).join("manifest.json")) else {
+                continue;
+            };
+            let Ok(value) = serde_json::from_str::<Value>(&raw) else {
+                continue;
+            };
+            let Some(deny) = value
+                .get("contributes")
+                .and_then(|contributes| contributes.get("permissionDeny"))
+            else {
+                continue;
+            };
+            if let Ok(rules) = crate::permission_deny::parse_rules(deny) {
+                if !rules.is_empty() {
+                    out.push(rules);
+                }
+            }
+        }
+        out
+    }
 }
 
 pub(crate) fn permission_diff(old: &[String], new: &[String]) -> Vec<String> {

@@ -910,6 +910,10 @@ sklm: {
     "permissionModeAsk": "Immer nachfragen",
     "permissionModeAcceptEdits": "Änderungen automatisch akzeptieren",
     "permissionModeAuto": "Vollautomatisch",
+    "permissionDeny": "Deny-Regeln",
+    "permissionDenyDesc": "JSON-Globs, die immer verweigern — auch im Vollautomatikmodus. Plugins dürfen nur weitere Regeln hinzufügen, niemals deine entfernen.",
+    "permissionDenyPlaceholder": "{ \"tools\": [\"Bash\"], \"paths\": [\"**/.env\", \"~/.ssh/**\"], \"commands\": [\"rm -rf\"] }",
+    "permissionDenySaveError": "Deny-Regeln konnten nicht gespeichert werden. JSON prüfen.",
     "autoReview": "Automatische Überprüfung",
     "autoReviewDesc": "PI-Desktop kann Dateien in Ihrem Projekt lesen und bearbeiten und entscheidet automatisch über zusätzliche Zugriffsanfragen. Bei der automatischen Überprüfung können Fehler passieren.",
     "learnMore": "Erfahren Sie mehr",
@@ -1670,7 +1674,8 @@ sklm: {
       "themes": "Thema",
       "mcp": "MCP-Server",
       "services": "Hintergrunddienst",
-      "bus": "Plugin-Nachrichten"
+      "bus": "Plugin-Nachrichten",
+      "permissionDeny": "Berechtigungs-Deny-Regeln"
     },
     "serviceState": {
       "starting": "Wird gestartet",
@@ -1705,6 +1710,7 @@ sklm: {
       "agent.prompt.inject": "Agentenanweisungen anpassen",
       "agent.complete": "One-Shot-Vervollständigung mit Ihren Modellen durchführen",
       "agent.extension": "Code im Agenten ausführen",
+      "agent.permission.deny": "Immer-verweigern-Regeln hinzufügen",
       "desktop.control": "Desktop steuern",
       "models.list": "Authentifizierte Modelle auflisten",
       "session.read": "Aktuelle an das Modell gesendete Konversation lesen",
@@ -1735,6 +1741,7 @@ sklm: {
       "agent.prompt.inject": "Kann Anweisungen ändern, die an den KI-Agenten gesendet werden.",
       "agent.complete": "Kann Ihr Modellkontingent für eine einmalige Fertigstellung ausgeben. Das Plugin erhält niemals Ihre API-Schlüssel.",
       "agent.extension": "Führt ExtensionAPI-Module im Agentenprozess mit denselben Rechten wie die Tools des Agenten aus. Aktiviere nur Code, dem du vertraust.",
+      "agent.permission.deny": "Erlaubt dem Plugin, Tool-, Pfad- und Befehls-Globs hinzuzufügen, die immer verweigern. Es kann deine Einstellungen nicht lockern.",
       "desktop.control": "Erlaubt den Aufruf des geprüften PI-Desktop-Katalogs; destruktive Vorgänge benötigen weiterhin confirm=true, und das MCP-Bearer-Token wird nicht offengelegt.",
       "models.list": "Kann sehen, für welche Modelle Sie sich angemeldet haben. Es erhält keine Schlüssel.",
       "session.read": "Kann die Konversation lesen, an der der aktuelle Tool-Aufruf arbeitet, einschließlich der Tool-Ergebnisse.",

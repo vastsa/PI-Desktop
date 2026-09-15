@@ -18,6 +18,7 @@ A plugin can contribute one or more of these capabilities:
 | One-shot completion | A host-owned completion against the user's models | `pi.models.list`, `pi.session.getLlmContext`, `pi.agent.complete` |
 | Skill | Instructions loaded by the Agent on demand | `contributes.skills`, `agent.prompt.inject` permission |
 | Theme | Design-token overrides | `contributes.themes`, `ui.theme` permission |
+| Deny-first rules | Always-deny tool, path, and command globs | `contributes.permissionDeny`, `agent.permission.deny` permission |
 | MCP server | Tools discovered from a local or remote MCP server | `contributes.mcpServers`, an MCP permission |
 | Service | Resident work supervised by the host | `contributes.services`, `background.service` permission |
 | Message bus | Typed-by-convention events between plugins | `contributes.bus`, bus permissions |
@@ -738,6 +739,39 @@ What to know before you use it:
   warning toast without blocking the import; the row shows a load error only if
   the extension actually fails to load.
 
+### 6.12 Deny-first permission rules
+
+A plugin can tighten the host's always-deny overlay. It cannot add an allow
+list or remove the user's settings. Declare the object and the medium-risk
+`agent.permission.deny` permission — including when the object is empty:
+
+```json
+{
+  "contributes": {
+    "permissionDeny": {
+      "tools": ["Bash"],
+      "paths": ["**/.env", "~/.ssh/**"],
+      "commands": ["rm -rf"]
+    }
+  },
+  "permissions": ["agent.permission.deny"]
+}
+```
+
+What to know:
+
+- **Deny-only.** The host unions this with `AppSettings.permissionDeny`. Your
+  rules can only shrink what the agent may do.
+- **Host compiles globs.** The SDK checks shape (unknown keys rejected; each
+  list ≤ 256 entries; each string ≤ 512 characters). Matching lives in
+  host-core (`globset`).
+- **Scope.** `global` always applies; project-scoped plugins apply only when
+  the session has a workspace that matches. Scratch is not a project.
+- **Live.** Disable the plugin or revoke the permission and the contribution
+  is gone on the next tool call. The host re-reads `manifest.json`; it does
+  not cache the lists on the plugin summary.
+- **A hit is `TOOL_DENIED`.** The model is not told which glob fired.
+
 ## 7. Permission design
 
 Permissions are both declared in `manifest.json` and granted by the user.
@@ -746,7 +780,7 @@ Undeclared or ungranted API calls fail with `PERMISSION_DENIED`.
 | Risk | Permissions |
 |---|---|
 | Low | `ui.panel`, `ui.view`, `ui.theme`, `notify` |
-| Medium | `clipboard.read`, `clipboard.write`, `fs.read`, `shell.openExternal`, `background.service`, `bus.publish`, `bus.subscribe` |
+| Medium | `clipboard.read`, `clipboard.write`, `fs.read`, `shell.openExternal`, `background.service`, `bus.publish`, `bus.subscribe`, `agent.permission.deny` |
 | High | `fs.write`, `fs.delete`, `agent.tool.register`, `agent.prompt.inject`, `net.fetch`, `mcp.server.local`, `mcp.server.remote` |
 
 Two permissions carry a declared range as well as a name, and the user is shown

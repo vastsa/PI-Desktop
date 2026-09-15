@@ -267,5 +267,6 @@ Each ADR includes:
 | 0246 | Opt-in subagent inheritance of the parent tool catalog | Accepted (amends 0062; issue #215 / PR #319) |
 | 0247 | Git clone accepts only syntactically public hosts | Accepted (amends home git clone; D416) |
 | 0248 | [Package theme assets and contributed window backgrounds](0248-plugin-theme-assets-and-window-background.md) | Accepted (issue #335) |
+| 0249 | [Deny-first permission rules](0249-deny-first-permission-rules.md) | Accepted (amends D115; D420) |
 | active-turn-steering | Bind Composer steering to the active durable turn | Accepted (active-turn-steering; issue #164) |
 | active-turn-steering | Bind Composer steering to the active durable turn | Accepted (active-turn-steering; issue #164) |

@@ -921,6 +921,10 @@ sklm: {
     permissionModeAsk: "Ask every time",
     permissionModeAcceptEdits: "Auto-accept edits",
     permissionModeAuto: "Full auto",
+    permissionDeny: "Deny rules",
+    permissionDenyDesc: "JSON globs that always deny even in full auto. Plugins can only add more rules, never remove yours.",
+    permissionDenyPlaceholder: "{ \"tools\": [\"Bash\"], \"paths\": [\"**/.env\", \"~/.ssh/**\"], \"commands\": [\"rm -rf\"] }",
+    permissionDenySaveError: "Couldn't save deny rules. Check the JSON.",
     autoReview: "Auto-review",
     autoReviewDesc: "PI-Desktop can read and edit files in your project, and will automatically decide on extra access requests. Auto-review can make mistakes.",
     learnMore: "Learn more",
@@ -1689,6 +1693,7 @@ importConfirm: "Imported extensions run inside the agent process with the same a
       mcp: "MCP server",
       services: "Background service",
       bus: "Plugin messages",
+      permissionDeny: "Permission deny rules",
     },
     serviceState: {
       starting: "Starting",
@@ -1723,6 +1728,7 @@ importConfirm: "Imported extensions run inside the agent process with the same a
       "agent.prompt.inject": "Adjust agent instructions",
       "agent.complete": "Run a one-shot completion with your models",
       "agent.extension": "Run code inside the agent",
+      "agent.permission.deny": "Add always-deny permission rules",
       "desktop.control": "Control the desktop",
       "models.list": "List authenticated models",
       "session.read": "Read the current conversation sent to the model",
@@ -1761,6 +1767,7 @@ importConfirm: "Imported extensions run inside the agent process with the same a
       "agent.complete":
         "Can spend your model quota on a one-shot completion. The plugin never receives your API keys.",
       "agent.extension": "Runs ExtensionAPI modules inside the agent process with the same access as the agent's own tools. Enable only code you trust.",
+      "agent.permission.deny": "Lets the plugin add tool, path, and command globs that always deny. It cannot loosen your settings.",
       "desktop.control":
         "Lets the plugin invoke the reviewed PI-Desktop control catalog. Destructive operations still require confirm=true; the MCP bearer token is never exposed.",
       "models.list": "Can see which models you have signed in for. It does not receive keys.",

@@ -910,6 +910,10 @@ sklm: {
     "permissionModeAsk": "Demander à chaque fois",
     "permissionModeAcceptEdits": "Accepter automatiquement les modifications",
     "permissionModeAuto": "Entièrement automatique",
+    "permissionDeny": "Règles de refus",
+    "permissionDenyDesc": "Globs JSON qui refusent toujours, même en mode automatique. Les plugins ne peuvent qu'ajouter des règles, jamais retirer les vôtres.",
+    "permissionDenyPlaceholder": "{ \"tools\": [\"Bash\"], \"paths\": [\"**/.env\", \"~/.ssh/**\"], \"commands\": [\"rm -rf\"] }",
+    "permissionDenySaveError": "Impossible d'enregistrer les règles de refus. Vérifiez le JSON.",
     "autoReview": "Révision automatique",
     "autoReviewDesc": "PI-Desktop peut lire et modifier les fichiers de votre projet et décidera automatiquement des demandes d'accès supplémentaires. La révision automatique peut commettre des erreurs.",
     "learnMore": "Apprenez-en davantage",
@@ -1670,7 +1674,8 @@ sklm: {
       "themes": "Thème",
       "mcp": "Serveur MCP",
       "services": "Service en arrière-plan",
-      "bus": "Messages du plug-in"
+      "bus": "Messages du plug-in",
+      "permissionDeny": "Règles de refus d'autorisation"
     },
     "serviceState": {
       "starting": "Démarrage",
@@ -1705,6 +1710,7 @@ sklm: {
       "agent.prompt.inject": "Ajuster les instructions de l'agent",
       "agent.complete": "Exécuter une complétion unique avec vos modèles",
       "agent.extension": "Exécuter du code dans l'agent",
+      "agent.permission.deny": "Ajouter des règles de refus permanent",
       "desktop.control": "Contrôler le bureau",
       "models.list": "Liste des modèles authentifiés",
       "session.read": "Lire la conversation en cours envoyée au modèle",
@@ -1735,6 +1741,7 @@ sklm: {
       "agent.prompt.inject": "Peut modifier les instructions envoyées à l'agent IA.",
       "agent.complete": "Peut dépenser votre quota de modèle pour une réalisation unique. Le plugin ne reçoit jamais vos clés API.",
       "agent.extension": "Exécute des modules ExtensionAPI dans le processus de l'agent avec le même accès que ses propres outils. N'activez que du code auquel vous faites confiance.",
+      "agent.permission.deny": "Permet au plugin d'ajouter des globs d'outils, de chemins et de commandes qui refusent toujours. Il ne peut pas assouplir vos réglages.",
       "desktop.control": "Permet d'appeler le catalogue PI-Desktop contrôlé ; les opérations destructrices exigent toujours confirm=true et le bearer token MCP n'est pas exposé.",
       "models.list": "Peut voir pour quels modèles vous vous êtes connecté. Il ne reçoit pas de clés.",
       "session.read": "Peut lire la conversation sur laquelle l'appel d'outil actuel fonctionne, y compris les résultats de l'outil.",

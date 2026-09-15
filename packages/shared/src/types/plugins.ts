@@ -132,7 +132,9 @@ export type PluginCapability =
   | "services"
   | "bus"
   /** `contributes.agentExtensions`: ExtensionAPI modules in the agent process. */
-  | "agentExtension";
+  | "agentExtension"
+  /** `contributes.permissionDeny`: deny-first globs (ADR 0249). */
+  | "permissionDeny";
 
 export type PluginSettingType =
   | "string"

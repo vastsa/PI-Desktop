@@ -75,6 +75,7 @@ type PluginContributes = {
  settings?: PluginSettingContrib[];
  themes?: PluginThemeContrib[];
  windowAppearance?: PluginWindowAppearanceContrib; // 原生窗口背景；需要 `ui.window.appearance`
+ permissionDeny?: PluginPermissionDenyContrib; // deny-first 叠加；需要 `agent.permission.deny`
  mcpServers?: PluginMcpServerContrib[];
  services?: PluginServiceContrib[];
   bus?: PluginBusContrib;
@@ -138,6 +139,12 @@ type PluginWindowAppearanceContrib = {
  backgroundColor?: { light?: string; dark?: string }; // #rrggbb | #rrggbbaa
 };
 
+type PluginPermissionDenyContrib = {
+ tools?: string[]; // 对工具名的 glob
+ paths?: string[]; // 对 path / file_path 的 glob；~ 会展开
+ commands?: string[]; // 仅 Bash：glob 或前缀
+};
+
 type PluginSkillContrib = {
  id?: string; // defaults to the file name without its extension
  path: string; // relative path to the skill document
@@ -186,6 +193,7 @@ type PluginPermission =
  | "fs.delete"
  | "agent.tool.register"
  | "agent.prompt.inject"
+ | "agent.permission.deny"
  | "net.fetch"
  | "shell.openExternal"
  | "mcp.server.local"
@@ -310,7 +318,8 @@ MVP 只能实现：
    缺少：`themes` → `ui.theme`，`views` → `ui.view`，stdio 服务器 →
    `mcp.server.local`，远程
    服务器 → `mcp.server.remote`、`services` → `background.service`、
-   `bus.publish` → `bus.publish`，`bus.subscribe` → `bus.subscribe`。
+   `bus.publish` → `bus.publish`，`bus.subscribe` → `bus.subscribe`，
+   `permissionDeny` → `agent.permission.deny`（包括空 `{}`）。
 `skills` 是一个例外 - 它早于权限门，因此清单
    没有 `agent.prompt.inject` 仍然有效并且运行时只是跳过
    技能

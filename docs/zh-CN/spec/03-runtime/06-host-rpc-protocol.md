@@ -554,7 +554,7 @@ type ToolsExecuteParams = {
    只有已确认的丢失会话才可以使用旧后备。
 
 对于`Read`/`Glob`/`Grep`/`Write`/`Edit`，主机分类显式路径
-在工作区之外并在低风险自动允许规则之前从头开始。
+在工作区之外并在低风险自动允许规则之前、deny-first 匹配之后从头开始。
 `auto` 执行它，而 `ask` 和 `accept-edits` 发出
 `permissions.request`；拒绝、超时或取消返回 `TOOL_DENIED`
 而不执行该操作。相对 `..` 和符号链接转义使用
@@ -580,6 +580,13 @@ type ToolsExecuteParams = {
   创建转销之前的 shell，但执行不会改变 shell
   在引脚之后。
 - Agent 应用正常的注册工具和权限策略。
+- 合同模式矩阵之后，host-core 匹配 deny-first 叠加（D420 / ADR 0249）：
+  用户设置 `AppSettings.permissionDeny` 与已启用、已授予 `agent.permission.deny`、
+  且激活范围命中会话工作区的插件 `contributes.permissionDeny` 的并集。命中为
+  `PermissionDecision::Deny`；`tools.execute` 与 `permissions.evaluate` 返回既有
+  `TOOL_DENIED` / `"deny"`。该叠加压过 `auto`、会话授权、低风险自动放行、
+  `accept-edits` 以及工作区外路径的自动例外。scratch 自动放行仍在此检查之后。
+  合同模式硬拒绝仍排在它前面，因此 Plan 下的 `Write` 仍是 `*_IN_PLAN`。
 
 可见的工具列表不是安全边界；伪造的 RPC 调用是
 由该主机端矩阵授权。

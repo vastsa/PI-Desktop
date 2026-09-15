@@ -27,6 +27,7 @@
 | `agent.tool.register` | 高 | 注册代理工具 | 安装时确认 | 工具执行情况单独审核 |
 | `agent.prompt.inject` | 高 | 注入系统提示符；激活 `contributes.skills` | 默认拒绝/强确认 | 容易导致行为劫持 |
 | `agent.extension` | 高 | 在 agent 进程内运行 `contributes.agentExtensions` 模块 | 显式确认；v1.1 仅限本地导入和开发插件 | 与 agent 自身工具同等权限；插件沙箱不适用（规格 16） |
+| `agent.permission.deny` | 中等 | `contributes.permissionDeny` 并入宿主 deny-first 叠加 | 安装时确认 | 只能 deny；不能删除用户规则或增加 allow。空 `{}` 仍需要该权限。不在 `HIGH_RISK_PERMISSIONS` 中（D420 / ADR 0249） |
 | `net.fetch` | 高 | `net.fetch` | 默认拒绝 | 限定在 `manifest.net.domains` 之内；列表为空或非法即完全不放行出网（§2A） |
 | `shell.openExternal` | 中等 | 打开外部链接 | 首次使用时确认 | 防止网络钓鱼链接 |
 | `mcp.server.local` | 高 | 生成清单中声明的 `transport: "stdio"` MCP 服务器 | 默认拒绝 | 运行本地可执行文件；其工具到达代理 |
@@ -85,13 +86,14 @@ manifest 里的字段负责回答「能做到多远」。两个字段都由主�
 - 贡献工作面板视图需要 `ui.view`；它与 `ui.panel` 相互独立，
   因此插件可以只提供停靠视图而没有独立窗口
 - 需要`agent.tool.register`来贡献agent工具
+- 贡献 `permissionDeny`（包括空对象）需要 `agent.permission.deny`
 - 当 `fs.write` 存在时，建议同时声明 `fs.read`
 - `manifest.fs.<mode>` 需要对应的 `fs.<mode>` 权限；没人能用的范围会导致校验失败，
   而不是被悄悄忽略
 - `fs.requestDirectory`（`userSelected` root）由 `fs.read` 把关；在用户选中的目录里
   写入或删除仍然需要 `fs.write` / `fs.delete`
 - 缺少权限的贡献未通过清单验证
-  （`themes`、`mcpServers`、`services`、`bus`）； `skills` 是例外，并且是
+  （`themes`、`mcpServers`、`services`、`bus`、`permissionDeny`）； `skills` 是例外，并且是
   相反，在加载时跳过（参见
   [02-plugin-manifest-schema.md](/zh-CN/spec/07-plugins/02-plugin-manifest-schema) §7)
 
@@ -119,6 +121,7 @@ Agent，在 Plan 中不可见。主机返回 `PLUGIN_DISABLED_IN_PLAN`
 | `agent.tool.register` | 为AI Agent提供可执行工具 | 向AI Agent提供可执行工具 |
 | `agent.prompt.inject` | 调整代理指令 | 调整智能体指令 |
 | `agent.extension` | 在 agent 内运行代码 | 在 agent 内运行代码 |
+| `agent.permission.deny` | Add always-deny permission rules | 添加始终拒绝的权限规则 |
 | `net.fetch` | 访问网络 | 访问网络 |
 | `shell.openExternal` | 打开外部链接 | 打开外部链接 |
 | `ui.theme` | 提供一个主题 | 提供主题 |

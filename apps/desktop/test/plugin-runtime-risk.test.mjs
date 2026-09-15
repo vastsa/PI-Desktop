@@ -115,7 +115,11 @@ test("the plugins page shows the file scope behind a file permission", () => {
     assert.equal(typeof catalog.plugins.permissionHelp["ui.microphone"], "string");
     assert.equal(typeof catalog.plugins.permissions["desktop.control"], "string");
     assert.equal(typeof catalog.plugins.permissionHelp["desktop.control"], "string");
+    assert.equal(typeof catalog.plugins.permissions["agent.permission.deny"], "string");
+    assert.equal(typeof catalog.plugins.permissionHelp["agent.permission.deny"], "string");
+    assert.equal(typeof catalog.plugins.capabilities.permissionDeny, "string");
   }
+  assert.match(pageSrc, /"agent\.permission\.deny": "medium"/);
 });
 
 test("plugin panels use sandboxed isolated host windows", () => {

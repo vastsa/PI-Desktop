@@ -7,6 +7,7 @@ mod keyboard;
 mod mcp_servers;
 mod network_proxy;
 mod notifications;
+mod permission_deny;
 mod permissions;
 mod plans;
 mod plugin_sessions;

@@ -87,6 +87,12 @@ pub struct PermissionEvaluationParams<'a> {
     pub declared_risk: Option<&'a str>,
     pub requires_external_path_permission: bool,
     pub plan_safe_actions: Option<&'a [String]>,
+    /// Union of user settings and enabled-plugin deny rules. Absent or empty
+    /// keeps the historical evaluation order unchanged.
+    pub deny_rules: Option<&'a crate::permission_deny::PermissionDenyRules>,
+    /// Tool arguments used by path/command deny matching. Tool-name rules
+    /// still apply when this is `None`.
+    pub tool_args: Option<&'a serde_json::Value>,
 }
 
 #[derive(Debug)]
@@ -152,13 +158,36 @@ impl PermissionManager {
         )
     }
 
+    /// True when Plan/Goal must reject the tool before deny-first, grants,
+    /// and auto. Plugin tools with a non-empty `planSafeActions` list are
+    /// the ADR 0211 carve-out and return false here so overlay denials can
+    /// still be labeled `TOOL_DENIED` instead of `*_DISABLED_IN_PLAN`.
+    pub fn contract_mode_hard_denies(
+        tool_name: &str,
+        plan_safe_actions: Option<&[String]>,
+    ) -> bool {
+        if Self::plan_mode_allows(tool_name) {
+            return false;
+        }
+        if tool_name.starts_with("plugin_") {
+            if let Some(actions) = plan_safe_actions {
+                if !actions.is_empty() {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
     /// Auto-decision with an effective permission mode (D115).
     ///
     /// `permission_mode` is the already-resolved effective mode — the
     /// caller collapses `inherit` against the global default before calling.
     /// The contract modes' hard deny for unavailable tools stays above every
-    /// permission mode: `auto` cannot re-enable Write/Edit/plugins in Plan or
-    /// Goal.
+    /// permission mode and above deny-first rules: `auto` cannot re-enable
+    /// Write/Edit/plugins in Plan or Goal. User and plugin deny rules then
+    /// outrank external-path auto-allow, low-risk allow, auto, session
+    /// grants, and accept-edits (ADR 0249 / D420).
     #[cfg(test)]
     pub fn evaluate_auto_with_permission_mode(
         &self,
@@ -177,6 +206,8 @@ impl PermissionManager {
             declared_risk: None,
             requires_external_path_permission: false,
             plan_safe_actions: None,
+            deny_rules: None,
+            tool_args: None,
         })
     }
 
@@ -205,30 +236,24 @@ impl PermissionManager {
             declared_risk,
             requires_external_path_permission,
             plan_safe_actions,
+            deny_rules,
+            tool_args,
         } = params;
         // The contract modes' tool allowlist is authoritative. This check
-        // intentionally precedes low-risk classification, auto, grants, and
-        // scratch paths, and covers Goal as well as Plan (D198).
-        //
-        // Plugin tools get a narrow carve-out: a plugin may declare a
-        // non-empty `planSafeActions` list (ADR 0211). When the runtime
-        // forwards that list, host-core admits the plugin tool in
-        // contract modes and the plugin-runtime enforces the per-action
-        // restriction at execute time. Without the list the plugin tool
-        // stays Plan-denied, exactly as ADR 0052 / ADR 0053 require.
-        if crate::sessions::is_contract_mode(mode) && !Self::plan_mode_allows(tool_name) {
-            if tool_name.starts_with("plugin_") {
-                if let Some(actions) = plan_safe_actions {
-                    if !actions.is_empty() {
-                        // Fall through; plugin-runtime will gate the
-                        // actual action.
-                    } else {
-                        return Some(PermissionDecision::Deny);
-                    }
-                } else {
-                    return Some(PermissionDecision::Deny);
-                }
-            } else {
+        // intentionally precedes low-risk classification, auto, grants,
+        // deny-first overlay, and scratch paths, and covers Goal as well
+        // as Plan (D198). Plugin tools get a narrow carve-out when the
+        // runtime forwards a non-empty `planSafeActions` list (ADR 0211);
+        // without it the plugin tool stays Plan-denied (ADR 0052 / 0053).
+        if crate::sessions::is_contract_mode(mode)
+            && Self::contract_mode_hard_denies(tool_name, plan_safe_actions)
+        {
+            return Some(PermissionDecision::Deny);
+        }
+
+        if let Some(rules) = deny_rules {
+            let args = tool_args.unwrap_or(&serde_json::Value::Null);
+            if crate::permission_deny::matches_deny(rules, tool_name, args).is_some() {
                 return Some(PermissionDecision::Deny);
             }
         }
@@ -623,6 +648,8 @@ mod tests {
                     declared_risk: None,
                     requires_external_path_permission: true,
                     plan_safe_actions: None,
+                    deny_rules: None,
+                    tool_args: None,
                 },
             );
             assert_eq!(
@@ -640,6 +667,8 @@ mod tests {
                 declared_risk: None,
                 requires_external_path_permission: true,
                 plan_safe_actions: None,
+                deny_rules: None,
+                tool_args: None,
             });
         assert_eq!(auto, Some(PermissionDecision::AllowOnce));
     }
@@ -659,6 +688,8 @@ mod tests {
                 declared_risk: None,
                 requires_external_path_permission: true,
                 plan_safe_actions: None,
+                deny_rules: None,
+                tool_args: None,
             });
         assert_eq!(decision, Some(PermissionDecision::AllowSession));
     }
@@ -685,6 +716,8 @@ mod tests {
                 declared_risk: None,
                 requires_external_path_permission: false,
                 plan_safe_actions: None,
+                deny_rules: None,
+                tool_args: None,
             });
         assert_eq!(denied, Some(PermissionDecision::Deny));
 
@@ -699,6 +732,8 @@ mod tests {
                 declared_risk: None,
                 requires_external_path_permission: false,
                 plan_safe_actions: Some(&empty),
+                deny_rules: None,
+                tool_args: None,
             });
         assert_eq!(empty_denied, Some(PermissionDecision::Deny));
 
@@ -713,6 +748,8 @@ mod tests {
                 declared_risk: None,
                 requires_external_path_permission: false,
                 plan_safe_actions: Some(&actions),
+                deny_rules: None,
+                tool_args: None,
             });
         assert_eq!(admitted, Some(PermissionDecision::AllowOnce));
     }
@@ -733,6 +770,219 @@ mod tests {
         assert_eq!(
             req.args_preview.get("path").unwrap().as_str().unwrap(),
             "a.txt"
+        );
+    }
+
+    fn deny_rules(
+        tools: &[&str],
+        paths: &[&str],
+        commands: &[&str],
+    ) -> crate::permission_deny::PermissionDenyRules {
+        crate::permission_deny::PermissionDenyRules {
+            tools: tools.iter().map(|s| (*s).to_string()).collect(),
+            paths: paths.iter().map(|s| (*s).to_string()).collect(),
+            commands: commands.iter().map(|s| (*s).to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn deny_rules_outrank_auto_grants_low_risk_and_accept_edits() {
+        let pm = PermissionManager::default();
+        let mut grants = HashMap::new();
+        grants.insert("s".to_string(), vec!["Bash".to_string(), "Write".to_string()]);
+        let tool_deny = deny_rules(&["Bash"], &[], &[]);
+        assert_eq!(
+            pm.evaluate_auto_with_permission_mode_and_risk_and_path(PermissionEvaluationParams {
+                session_id: "s",
+                tool_name: "Bash",
+                mode: "agent",
+                permission_mode: "auto",
+                session_grants: &grants,
+                declared_risk: None,
+                requires_external_path_permission: false,
+                plan_safe_actions: None,
+                deny_rules: Some(&tool_deny),
+                tool_args: Some(&serde_json::json!({ "command": "git status" })),
+            }),
+            Some(PermissionDecision::Deny)
+        );
+
+        let path_deny = deny_rules(&[], &["**/.env"], &[]);
+        let env_args = serde_json::json!({ "path": "C:/repo/.env" });
+        assert_eq!(
+            pm.evaluate_auto_with_permission_mode_and_risk_and_path(PermissionEvaluationParams {
+                session_id: "s",
+                tool_name: "Read",
+                mode: "agent",
+                permission_mode: "ask",
+                session_grants: &no_grants(),
+                declared_risk: None,
+                requires_external_path_permission: false,
+                plan_safe_actions: None,
+                deny_rules: Some(&path_deny),
+                tool_args: Some(&env_args),
+            }),
+            Some(PermissionDecision::Deny)
+        );
+
+        let command_deny = deny_rules(&[], &[], &["rm -rf *"]);
+        assert_eq!(
+            pm.evaluate_auto_with_permission_mode_and_risk_and_path(PermissionEvaluationParams {
+                session_id: "s",
+                tool_name: "Bash",
+                mode: "agent",
+                permission_mode: "auto",
+                session_grants: &no_grants(),
+                declared_risk: None,
+                requires_external_path_permission: false,
+                plan_safe_actions: None,
+                deny_rules: Some(&command_deny),
+                tool_args: Some(&serde_json::json!({ "command": "rm -rf /tmp/foo" })),
+            }),
+            Some(PermissionDecision::Deny)
+        );
+
+        let write_deny = deny_rules(&["Write"], &[], &[]);
+        assert_eq!(
+            pm.evaluate_auto_with_permission_mode_and_risk_and_path(PermissionEvaluationParams {
+                session_id: "s",
+                tool_name: "Write",
+                mode: "agent",
+                permission_mode: "accept-edits",
+                session_grants: &grants,
+                declared_risk: None,
+                requires_external_path_permission: false,
+                plan_safe_actions: None,
+                deny_rules: Some(&write_deny),
+                tool_args: Some(&serde_json::json!({ "path": "notes.md" })),
+            }),
+            Some(PermissionDecision::Deny)
+        );
+    }
+
+    #[test]
+    fn deny_rules_outrank_external_path_auto_allow() {
+        let pm = PermissionManager::default();
+        let deny = deny_rules(&[], &["**/.ssh/**"], &[]);
+        let args = serde_json::json!({ "path": "/home/user/.ssh/id_rsa" });
+        assert_eq!(
+            pm.evaluate_auto_with_permission_mode_and_risk_and_path(PermissionEvaluationParams {
+                session_id: "s",
+                tool_name: "Read",
+                mode: "agent",
+                permission_mode: "auto",
+                session_grants: &no_grants(),
+                declared_risk: None,
+                requires_external_path_permission: true,
+                plan_safe_actions: None,
+                deny_rules: Some(&deny),
+                tool_args: Some(&args),
+            }),
+            Some(PermissionDecision::Deny)
+        );
+    }
+
+    #[test]
+    fn contract_mode_hard_deny_still_precedes_deny_rules() {
+        let pm = PermissionManager::default();
+        let deny = deny_rules(&["Read"], &[], &[]);
+        assert_eq!(
+            pm.evaluate_auto_with_permission_mode_and_risk_and_path(PermissionEvaluationParams {
+                session_id: "s",
+                tool_name: "Write",
+                mode: "plan",
+                permission_mode: "auto",
+                session_grants: &no_grants(),
+                declared_risk: None,
+                requires_external_path_permission: false,
+                plan_safe_actions: None,
+                deny_rules: Some(&deny),
+                tool_args: None,
+            }),
+            Some(PermissionDecision::Deny)
+        );
+        assert_eq!(
+            pm.evaluate_auto_with_permission_mode_and_risk_and_path(PermissionEvaluationParams {
+                session_id: "s",
+                tool_name: "Read",
+                mode: "plan",
+                permission_mode: "auto",
+                session_grants: &no_grants(),
+                declared_risk: None,
+                requires_external_path_permission: false,
+                plan_safe_actions: None,
+                deny_rules: Some(&deny),
+                tool_args: None,
+            }),
+            Some(PermissionDecision::Deny)
+        );
+    }
+
+    #[test]
+    fn deny_rules_outrank_plan_safe_plugin_tools() {
+        let pm = PermissionManager::default();
+        let deny = deny_rules(&["plugin_*"], &[], &[]);
+        let actions = ["navigate".to_string()];
+        assert_eq!(
+            pm.evaluate_auto_with_permission_mode_and_risk_and_path(PermissionEvaluationParams {
+                session_id: "s",
+                tool_name: "plugin_x_run",
+                mode: "plan",
+                permission_mode: "auto",
+                session_grants: &no_grants(),
+                declared_risk: None,
+                requires_external_path_permission: false,
+                plan_safe_actions: Some(&actions),
+                deny_rules: Some(&deny),
+                tool_args: None,
+            }),
+            Some(PermissionDecision::Deny)
+        );
+        assert!(!PermissionManager::contract_mode_hard_denies(
+            "plugin_x_run",
+            Some(&actions)
+        ));
+        assert!(PermissionManager::contract_mode_hard_denies(
+            "plugin_x_run",
+            None
+        ));
+        assert!(PermissionManager::contract_mode_hard_denies("Write", None));
+        assert!(!PermissionManager::contract_mode_hard_denies("Read", None));
+    }
+
+    #[test]
+    fn empty_deny_rules_leave_historical_order() {
+        let pm = PermissionManager::default();
+        let empty = crate::permission_deny::PermissionDenyRules::default();
+        assert_eq!(
+            pm.evaluate_auto_with_permission_mode_and_risk_and_path(PermissionEvaluationParams {
+                session_id: "s",
+                tool_name: "Read",
+                mode: "agent",
+                permission_mode: "ask",
+                session_grants: &no_grants(),
+                declared_risk: None,
+                requires_external_path_permission: false,
+                plan_safe_actions: None,
+                deny_rules: Some(&empty),
+                tool_args: None,
+            }),
+            Some(PermissionDecision::AllowOnce)
+        );
+        assert_eq!(
+            pm.evaluate_auto_with_permission_mode_and_risk_and_path(PermissionEvaluationParams {
+                session_id: "s",
+                tool_name: "Bash",
+                mode: "agent",
+                permission_mode: "auto",
+                session_grants: &no_grants(),
+                declared_risk: None,
+                requires_external_path_permission: false,
+                plan_safe_actions: None,
+                deny_rules: Some(&empty),
+                tool_args: Some(&serde_json::json!({ "command": "git status" })),
+            }),
+            Some(PermissionDecision::AllowOnce)
         );
     }
 }

@@ -20,3 +20,10 @@ export function normalizeGlobalPermissionMode(
 ): GlobalPermissionMode {
   return isGlobalPermissionMode(value) ? value : fallback;
 }
+
+/** Deny-first globs stored in `AppSettings.permissionDeny` (ADR 0249 / D420). */
+export type PermissionDenyRules = {
+  tools?: string[];
+  paths?: string[];
+  commands?: string[];
+};

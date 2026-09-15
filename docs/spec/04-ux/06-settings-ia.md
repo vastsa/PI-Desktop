@@ -107,7 +107,10 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
 
 ### 全局 AI (`ai` tab)
 - **Permissions** card: the global permission-mode control
-  (ask / accept-edits / auto) that governs how autonomously the agent acts.
+  (ask / accept-edits / auto) that governs how autonomously the agent acts,
+  plus a JSON textarea for `AppSettings.permissionDeny` (tool / path / command
+  globs that always deny, even in `auto`). Empty / `{}` clears the overlay;
+  invalid JSON is not written. Plugins may only add rules (D420 / ADR 0249).
 - **Defaults** card: the host-backed default operating mode (Agent / Plan / Goal),
   command shell selection, Link open destination, context usage display
   (remaining or used), Enter-to-send control, and the large text paste

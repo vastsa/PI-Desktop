@@ -449,6 +449,12 @@ pub(crate) fn validate_contributions(root: &Path, manifest: &PluginManifest) -> 
         }
     }
 
+    if let Some(deny) = map.get("permissionDeny") {
+        require_permission(manifest, "agent.permission.deny", "permission deny rules")?;
+        crate::permission_deny::parse_rules(deny)
+            .map_err(|error| anyhow!("PLUGIN_INVALID: contributes.{error}"))?;
+    }
+
     Ok(())
 }
 
