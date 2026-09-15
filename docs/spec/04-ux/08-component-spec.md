@@ -3613,3 +3613,6 @@ answer transitions retain a common token/time baseline. This is approximate
 visible-output throughput, not provider-measured inference speed. No new
 protocol, persistence, or plugin contract is introduced. Waiting is a phase
 label, not a measured provider TTFT.
+
+Live and retained TPS values are rounded to whole tokens/s for display; the
+sampling and smoothing calculations retain full precision.

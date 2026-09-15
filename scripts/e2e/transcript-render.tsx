@@ -231,6 +231,7 @@ globalThis.transcriptRenderProbe = async () => {
     }
     assert(container.textContent?.includes("Thinking"), "missing thinking phase");
     assert(container.querySelector(".throughput")?.textContent?.includes("≈"), "live estimate missing");
+    assert(/^≈ \d+ tokens\/s$/.test(container.querySelector(".throughput")?.textContent ?? ""), "live rate must display whole tokens per second");
     showLive("answer", "x".repeat(400));
     assert(container.textContent?.includes("Generating"), "missing generation phase");
     showLive("answer", "x".repeat(400), true);

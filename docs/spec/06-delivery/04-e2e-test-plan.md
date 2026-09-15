@@ -12394,3 +12394,6 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   G (plugins), Security, Quality
 - **Milestone**: Post-MVP (R7 v1)
 - **Status**: Documented; automation pending
+
+E2E-CHAT-live-generation-throughput also asserts that the live speed displays
+whole tokens/s, with no fractional digits.

@@ -166,7 +166,7 @@ export function LiveMessageMeta({
     tool: "chat.liveToolRunning",
   }[phase]);
   const rateLabel = rate === undefined ? undefined : t("chat.usageThroughputEstimated", {
-    count: formatTokenCount(rate),
+    count: Math.round(rate),
   });
   return (
     <div className="message-meta">

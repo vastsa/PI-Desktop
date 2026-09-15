@@ -2547,3 +2547,6 @@ A held speed is labelled as the last generation rate. Sampling uses a monotonic
 250 ms timer, a recent window, and a 750 ms time-based smoothing constant. New
 messages reset the window; thinking-to-text transitions preserve the baseline.
 This estimate does not claim provider TTFT or measured inference speed.
+
+Live and retained TPS values are rounded to whole tokens/s for display; the
+sampling and smoothing calculations retain full precision.
