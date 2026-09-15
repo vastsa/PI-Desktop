@@ -55,6 +55,7 @@ import {
 import { BrandLogo } from "./BrandLogo";
 import { NotificationCenter } from "./NotificationCenter";
 import { ProjectEditDialog } from "./ProjectEditDialog";
+import { ProjectDeleteDialog } from "./ProjectDeleteDialog";
 import { SessionRenameDialog } from "./SessionRenameDialog";
 import { useUpdateState } from "../hooks/use-update-state";
 import {
@@ -76,6 +77,7 @@ import {
   IconSidebar,
   IconSettings,
   IconStar,
+  IconTrash,
   IconX,
 } from "./icons";
 
@@ -224,6 +226,8 @@ export function Sidebar({
   const sessionOutcomes = useAppStore((s) => s.sessionOutcomes);
   const pendingPermissions = useAppStore((s) => s.pendingPermissions);
   const setPage = useAppStore((s) => s.setPage);
+  const navBack = useAppStore((s) => s.navBack);
+  const canNavBack = useAppStore((s) => s.canNavBack);
   const page = useAppStore((s) => s.page);
   const settings = useAppStore((s) => s.settings);
   const prefetchSession = useAppStore((s) => s.prefetchSession);
@@ -260,6 +264,7 @@ export function Sidebar({
   const [sessionMenu, setSessionMenu] = useState<string | null>(null);
   const [renameFor, setRenameFor] = useState<SessionSummary | null>(null);
   const [editProjectFor, setEditProjectFor] = useState<ProjectEntry | null>(null);
+  const [deleteProjectFor, setDeleteProjectFor] = useState<ProjectEntry | null>(null);
   const [projectMenu, setProjectMenu] = useState<string | null>(null);
   const [sectionMenu, setSectionMenu] = useState<"sessions" | "projects" | null>(null);
   const [menuPosition, setMenuPosition] = useState<{
@@ -1480,6 +1485,9 @@ export function Sidebar({
           {sessionPinned(session, meta) ? (
             <IconPin size={11} className="thread-item-pin" aria-hidden />
           ) : null}
+          {session.source === "pi-native" ? (
+            <span className="thread-item-source" title="Native Pi session">Pi</span>
+          ) : null}
           <span className="thread-item-title">{taskTitle(session.title)}</span>
           {options?.global ? (
             <span className="thread-item-project">
@@ -1786,19 +1794,21 @@ export function Sidebar({
       >
         {session ? (
           <>
-            <button
-              ref={menuFirstItemRef}
-              type="button"
-              role="menuitem"
-              data-action="rename-session"
-              onClick={() => {
-                closeMenus(false);
-                setRenameFor(session);
-              }}
-            >
-              <IconPencil size={14} />
-              {t("nav.renameTask", { defaultValue: "Rename task" })}
-            </button>
+            {session.source !== "pi-native" ? (
+              <button
+                ref={menuFirstItemRef}
+                type="button"
+                role="menuitem"
+                data-action="rename-session"
+                onClick={() => {
+                  closeMenus(false);
+                  setRenameFor(session);
+                }}
+              >
+                <IconPencil size={14} />
+                {t("nav.renameTask", { defaultValue: "Rename task" })}
+              </button>
+            ) : null}
             <button
               type="button"
               role="menuitem"
@@ -1825,16 +1835,18 @@ export function Sidebar({
                 ? t("nav.restoreTask", { defaultValue: "Restore" })
                 : t("nav.archiveTask", { defaultValue: "Archive" })}
             </button>
-            <button
-              type="button"
-              role="menuitem"
-              data-action="fork-session"
-              disabled={Boolean(runningSessions[session.id])}
-              onClick={() => void forkSession(session)}
-            >
-              <IconBranch size={14} />
-              {t("nav.createBranch")}
-            </button>
+            {session.source !== "pi-native" ? (
+              <button
+                type="button"
+                role="menuitem"
+                data-action="fork-session"
+                disabled={Boolean(runningSessions[session.id])}
+                onClick={() => void forkSession(session)}
+              >
+                <IconBranch size={14} />
+                {t("nav.createBranch")}
+              </button>
+            ) : null}
             {settings?.developerMode === true ? (
               <>
                 <button
@@ -1857,16 +1869,18 @@ export function Sidebar({
                 </button>
               </>
             ) : null}
-            <button
-              type="button"
-              role="menuitem"
-              className="danger"
-              data-action="delete-session"
-              onClick={() => void deleteSession(session)}
-            >
-              <IconX size={14} />
-              {t("nav.deleteTask", { defaultValue: "Delete" })}
-            </button>
+            {session.source !== "pi-native" ? (
+              <button
+                type="button"
+                role="menuitem"
+                className="danger"
+                data-action="delete-session"
+                onClick={() => void deleteSession(session)}
+              >
+                <IconX size={14} />
+                {t("nav.deleteTask", { defaultValue: "Delete" })}
+              </button>
+            ) : null}
           </>
         ) : null}
         {entry ? (
@@ -1916,6 +1930,26 @@ export function Sidebar({
               {entry.meta.archived
                 ? t("project.restore", { defaultValue: "Restore project" })
                 : t("project.archive", { defaultValue: "Archive project" })}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="danger"
+              data-action="delete-project"
+              onClick={() => {
+                closeMenus(false);
+                const runningCount = entry.sessions.filter(
+                  (session) => runningSessions[session.id] === true,
+                ).length;
+                if (runningCount > 0) {
+                  showToast(t("project.deleteRunningBlocked"), { variant: "warning" });
+                  return;
+                }
+                setDeleteProjectFor(entry);
+              }}
+            >
+              <IconTrash size={14} />
+              {t("project.delete", { defaultValue: "Delete project" })}
             </button>
             {entry.open ? (
               <button
@@ -2138,6 +2172,7 @@ export function Sidebar({
               tooltip={t("nav.settings")}
               ariaLabel={t("nav.settings")}
               onClick={() => setPage("settings")}
+              aria-pressed={page === "settings"}
             >
               <IconSettings size={14} aria-hidden />
             </TooltipButton>
@@ -2147,7 +2182,10 @@ export function Sidebar({
               data-nav="plugins"
               tooltip={t("nav.plugins")}
               ariaLabel={t("nav.plugins")}
-              onClick={() => setPage("plugins")}
+              onClick={() => page === "plugins"
+                ? (canNavBack() ? navBack() : setPage("chat"))
+                : setPage("plugins")}
+              aria-pressed={page === "plugins"}
             >
               <IconPlug size={14} aria-hidden />
             </TooltipButton>
@@ -2202,6 +2240,23 @@ export function Sidebar({
           project={editProjectFor}
           onClose={() => setEditProjectFor(null)}
           onSaved={(group) => editProjectEntry(editProjectFor, group.name)}
+          onError={reportError}
+        />
+      ) : null}
+      {deleteProjectFor ? (
+        <ProjectDeleteDialog
+          project={{
+            name: deleteProjectFor.name,
+            path: deleteProjectFor.path,
+            sessionCount: deleteProjectFor.sessions.length,
+          }}
+          onClose={() => setDeleteProjectFor(null)}
+          onDeleted={() => {
+            setDeleteProjectFor(null);
+            showToast(t("project.deleted", { name: deleteProjectFor.name }), {
+              variant: "success",
+            });
+          }}
           onError={reportError}
         />
       ) : null}

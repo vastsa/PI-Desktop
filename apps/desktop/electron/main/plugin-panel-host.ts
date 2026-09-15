@@ -421,7 +421,11 @@ export class PluginPanelHost {
     const channel = `pi-plugin-panel-event:${event}`;
     for (const win of this.windows.values()) {
       if (win.isDestroyed() || win.webContents.isDestroyed()) continue;
-      win.webContents.send(channel, payload);
+      try {
+        win.webContents.send(channel, payload);
+      } catch {
+        // One panel that cannot receive must not starve the others.
+      }
     }
   }
 }

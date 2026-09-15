@@ -40,6 +40,9 @@
 }
 
 .settings-shell-full .settings-nav {
+  /* Column rail: search band, scrolling directory, pinned back-to-app footer. */
+  display: flex;
+  flex-direction: column;
   /* Gold coding-shell settings rail ~275px at 1200-wide captures */
   width: var(--ds-settings-nav-width);
   flex: 0 0 var(--ds-settings-nav-width);
@@ -58,21 +61,44 @@
   background: #000000;
 }
 
+/*
+ * The rail's top band keeps only the search pill: traffic-light clearance plus
+ * the rail's control grid.
+ */
 .settings-nav-top {
   display: flex;
+  flex: 0 0 auto;
   flex-direction: column;
   gap: 8px;
   /* traffic-light / titlebar clearance */
   padding: 48px 12px 6px;
 }
 
+/*
+ * Back to app is pinned to the foot of the rail, on the same horizontal line as
+ * the main shell's sidebar footer icon row. That row centres its 32px controls
+ * 24px above the window bottom (.sidebar-body's 6px inset + .sidebar-footer's
+ * own 2px + half of the 32px control). The rail has no body inset of its own,
+ * so the footer carries the whole 8px and the same 32px control lands on the
+ * same centre line. Band height and top padding mirror .sidebar-footer.
+ */
+.settings-nav-footer {
+  display: flex;
+  min-height: 40px;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 7px 12px 8px;
+}
+
+/* 32px, like the footer icon buttons it lines up with. */
 .settings-back {
   display: inline-flex;
+  height: 32px;
   align-items: center;
   gap: 2px;
   width: fit-content;
   border-radius: var(--radius-sm);
-  padding: 3px 6px 3px 2px;
+  padding: 0 8px 0 4px;
   color: var(--ds-text-secondary);
   font-size: var(--text-md);
   line-height: var(--leading-tighter);
@@ -2103,7 +2129,7 @@
 
 .extension-prompt-message {
   margin: 0 0 12px;
-  color: var(--ds-text);
+  color: var(--ds-text-primary);
   font-size: var(--text-sm);
   line-height: var(--leading-normal);
 }

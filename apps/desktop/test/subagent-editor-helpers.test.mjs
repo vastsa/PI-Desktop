@@ -26,12 +26,11 @@ test("applySubagentPreset replaces only the template-owned fields", () => {
   );
   assert.ok(m, "applySubagentPreset not found");
   const fn = m[0];
-  // The preset overwrites: name, description, tools (cloned), maxTurns, body.
+  // The preset overwrites: name, description, tools (cloned) and body.
   assert.match(fn, /name: preset\.name/);
   assert.match(fn, /description: preset\.description/);
   assert.match(fn, /tools: \[\.\.\.preset\.tools\]/);
   assert.match(fn, /inheritTools: false/);
-  assert.match(fn, /maxTurns: preset\.maxTurns/);
   // The preset does NOT overwrite: id (slug), model, thinkingLevel, scope,
   // enabled — these survive a reroll.
   assert.doesNotMatch(fn, /id: preset/);
@@ -50,7 +49,6 @@ test("resetSubagentTemplate clears a selected preset without dropping model choi
   assert.match(fn, /name: ""/);
   assert.match(fn, /description: ""/);
   assert.match(fn, /tools: \[\.\.\.DEFAULT_SUBAGENT_TOOLS\]/);
-  assert.match(fn, /maxTurns: 0/);
   assert.match(fn, /body: ""/);
   assert.doesNotMatch(fn, /model:/);
   assert.doesNotMatch(fn, /thinkingLevel:/);
@@ -77,19 +75,14 @@ test("preset ids and builtin document ids agree", () => {
   ]);
 });
 
-test("preset tools and maxTurns match the runtime builtin documents", () => {
+test("preset tools match the runtime builtin documents", () => {
   // Spot-check explorer and fixer — they cover the read-only and
   // write-capable extremes.
   assert.match(presetSource, /id: "explorer"[\s\S]*?tools: \["Read", "Glob", "Grep", "Bash"\]/);
-  assert.match(presetSource, /id: "explorer"[\s\S]*?maxTurns: 60/);
   assert.match(presetSource, /id: "code-reviewer"[\s\S]*?tools: \["Read", "Glob", "Grep"\]/);
-  assert.match(presetSource, /id: "code-reviewer"[\s\S]*?maxTurns: 50/);
   assert.match(presetSource, /id: "test-runner"[\s\S]*?tools: \["Read", "Glob", "Grep", "Bash"\]/);
-  assert.match(presetSource, /id: "test-runner"[\s\S]*?maxTurns: 40/);
   assert.match(presetSource, /id: "fixer"[\s\S]*?tools: \["Read", "Glob", "Grep", "Edit", "Write", "Bash"\]/);
-  assert.match(presetSource, /id: "fixer"[\s\S]*?maxTurns: 80/);
   assert.match(presetSource, /id: "ui-designer"[\s\S]*?tools: \["Read", "Glob", "Grep", "BrowserPreview", "Bash", "Edit", "Write"\]/);
-  assert.match(presetSource, /id: "ui-designer"[\s\S]*?maxTurns: 80/);
 });
 
 test("preset bodies mirror the runtime markdown frontmatter bodies", () => {
@@ -116,13 +109,11 @@ test("preset bodies mirror the runtime markdown frontmatter bodies", () => {
   assert.match(bodies[4], /design contract/);
 });
 
-test("presets stay within the published max-turns clamp", () => {
-  const maxTurns = [...presetSource.matchAll(/maxTurns: (\d+)/g)].map((m) =>
-    Number(m[1]),
-  );
-  for (const n of maxTurns) {
-    assert.ok(n >= 1 && n <= 80, `unexpected maxTurns ${n}`);
-  }
+test("the removed turn cap leaves no trace in the editor or the presets", () => {
+  // ADR 0253 removed the delegate turn limit: neither the editor helpers nor
+  // the preset catalog may still declare one.
+  assert.doesNotMatch(presetSource, /maxTurns/);
+  assert.doesNotMatch(editorSource, /maxTurns/);
 });
 
 test("inherit grant helpers keep the inherit token out of the checkbox list", () => {

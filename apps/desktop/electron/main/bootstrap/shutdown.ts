@@ -40,7 +40,7 @@ export type ShutdownDependencies = {
   userMcp: Pick<UserMcpRuntime, "disposeAll">;
   browserPane: Pick<BrowserPane, "dispose">;
   pluginViews: Pick<PluginViewHost, "dispose">;
-  updater: Pick<AppUpdaterController, "dispose">;
+  updater: Pick<AppUpdaterController, "dispose" | "isInstallingUpdate">;
   logger: Pick<Logger, "app">;
   confirmQuitDialog: () => Promise<boolean>;
 };
@@ -92,7 +92,13 @@ export function registerShutdownHandlers({
       process.env.PI_DESKTOP_BOOT_PROBE === "1" ||
       process.env.PI_DESKTOP_SUPERVISION_PROBE === "1" ||
       process.env.PI_DESKTOP_CAPTURE === "1";
-    if (!state.quitConfirmed && !isAutomatedMode) {
+    // Skip confirmation for the quit that an in-app update performs. The
+    // installer for that update was already spawned before app.quit(), and it
+    // aborts once the app stays alive for a few seconds, so deferring this quit
+    // behind a dialog fails the update. There is no decision left either: the
+    // user chose "restart to update" to get here.
+    const isUpdateRestart = updater.isInstallingUpdate();
+    if (!state.quitConfirmed && !isAutomatedMode && !isUpdateRestart) {
       state.quitConfirmed = true;
       void confirmQuitDialog().then((confirmed) => {
         if (confirmed) {

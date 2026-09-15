@@ -4,6 +4,8 @@
  * a Chromium header conversion or a closed TTY is not a reason to lose them.
  */
 
+import { redactValue } from "./logger.ts";
+
 /** Matches `isBrokenPipeError` in logger.ts without importing that module. */
 function isBrokenPipeError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
@@ -75,7 +77,21 @@ export function classifyMainProcessError(
 
 function defaultEmit(record: MainProcessErrorRecord): void {
   try {
-    console.error(`[app/runtime] ${record.message}`, record.detail);
+    const payload = {
+      ts: new Date().toISOString(),
+      level: "error",
+      channel: "app",
+      category: "runtime",
+      event: "main.process.error",
+      message: redactValue(record.message),
+      code: redactValue(record.code),
+      data: redactValue({
+        kind: record.kind,
+        recoverable: record.recoverable,
+        detail: record.detail,
+      }),
+    };
+    console.error(`[app/runtime] ${JSON.stringify(payload)}`);
   } catch {
     // Console may already be a closed pipe; never throw from this path.
   }

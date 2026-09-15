@@ -2,7 +2,7 @@ export const PROTOCOL_VERSION = 11 as const;
 export const SCHEMA_VERSION = 16 as const;
 export const APP_ID = "com.pi-desktop.app";
 export const APP_NAME = "PI-Desktop";
-export const APP_VERSION = "0.14.8";
+export const APP_VERSION = "0.14.8-native.1";
 
 export const APP_MENU_COMMANDS = [
   "newTask",
@@ -129,6 +129,7 @@ export const IPC = {
     projectList: "pi-desktop/project/list",
     projectSet: "pi-desktop/project/set",
     projectClear: "pi-desktop/project/clear",
+    projectRemove: "pi-desktop/project/remove",
     pullsList: "pi-desktop/pulls/list",
     scheduledList: "pi-desktop/scheduled/list",
     scheduledCreate: "pi-desktop/scheduled/create",
@@ -251,6 +252,8 @@ export const IPC = {
   },
   event: {
     pluginChanged: "pi-desktop/event/pluginChanged",
+    /** Host-originated app settings mutation (e.g. plugin `app.setTheme`). */
+    settingsChanged: "pi-desktop/app/event/settingsChanged",
     extensionsUiPrompt: "pi-desktop/extensions/event/uiPrompt",
     extensionsStatus: "pi-desktop/extensions/event/status",
     pluginLauncherShown: "pi-desktop/pluginLauncher/event/shown",

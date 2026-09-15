@@ -379,6 +379,33 @@ export function registerWorkspaceIpc({
     if (!host) throw new Error("host unavailable");
     return host.call("workspace.clear");
   });
+  handle(IPC.invoke.projectRemove, async (input: { path?: unknown } = {}) => {
+    const requestedPath =
+      typeof input.path === "string" ? input.path.trim() : "";
+    if (!requestedPath) {
+      throw Object.assign(new Error("project path required"), {
+        errorCode: ErrorCodes.INVALID_ARGUMENT,
+      });
+    }
+    if (!host) throw new Error("host unavailable");
+    // Deletion only touches host records, so a project whose folder was moved
+    // or deleted on disk stays deletable: deliberately no existence check.
+    const projectPath = resolve(requestedPath);
+    const result = (await host.call("projects.remove", {
+      path: projectPath,
+    })) as { removed?: boolean; sessionsRemoved?: number };
+    const removed = Boolean(result?.removed);
+    const workspacePath = currentWorkspacePath();
+    if (removed && workspacePath && resolve(workspacePath) === projectPath) {
+      // Leaving the host bound to a deleted project would re-create it on boot.
+      setCurrentWorkspacePath(null);
+      await host.call("workspace.clear");
+    }
+    return {
+      removed,
+      sessionsRemoved: Number(result?.sessionsRemoved ?? 0),
+    };
+  });
 
   handle(
     IPC.invoke.projectMemoryGet,

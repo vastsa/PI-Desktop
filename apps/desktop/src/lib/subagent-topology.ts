@@ -16,7 +16,6 @@ export type DelegationActivityItem = Extract<
 export type SubagentOutcome =
   | "running"
   | "completed"
-  | "truncated"
   | "timed_out"
   | "aborted"
   | "failed"
@@ -44,7 +43,6 @@ export function isDelegationActivityItem(
 const DELEGATION_STATUSES = new Set<SubagentOutcome>([
   "running",
   "completed",
-  "truncated",
   "timed_out",
   "aborted",
   "failed",
@@ -437,7 +435,6 @@ export function summarizeSubagentActivity(
     ).length,
     warnings: outcomes.filter(
       (outcome) =>
-        outcome === "truncated" ||
         outcome === "timed_out" ||
         outcome === "aborted" ||
         outcome === "stopped",

@@ -126,6 +126,7 @@ MVP passes when:
 - [x] Plugin can register and serve at least one agent tool — auto:`test:e2e` (E2E-024 dispatch roundtrip)
 - [x] Disabling removes commands and tools — auto:`test:e2e` (plugin disable)
 - [x] A plugin exception does not crash the app — manual:M4
+- [ ] A plugin observes exactly one turn-end event per host turn — draft:E2E-PLUGIN-turn-ended-once-per-host-turn (not run locally; requires `test:e2e`)
 
 ### H. Diagnostics
 - [x] Errors expose stable codes — auto:`test:e2e` (fatal-path assertions)

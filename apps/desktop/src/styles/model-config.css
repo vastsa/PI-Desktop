@@ -600,7 +600,13 @@
   }
 }
 
-.provider-models-search-wrap {
+/*
+  One search field, two panes: the discovered list and the chosen list filter
+  with the same control, so the pair reads as one picker rather than as two
+  unrelated boxes. Both sit in their pane header, pushed to the trailing edge.
+*/
+.provider-models-search-wrap,
+.provider-chosen-search-wrap {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -614,12 +620,14 @@
   transition: background 120ms ease, box-shadow 120ms ease;
 }
 
-.provider-models-search-wrap:focus-within {
+.provider-models-search-wrap:focus-within,
+.provider-chosen-search-wrap:focus-within {
   background: var(--ds-raised);
   box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 24%, transparent);
 }
 
-.provider-models-search {
+.provider-models-search,
+.provider-chosen-search {
   flex: 1;
   min-width: 0;
   border: 0;
@@ -630,7 +638,8 @@
   line-height: var(--leading-normal);
 }
 
-.provider-models-search::placeholder {
+.provider-models-search::placeholder,
+.provider-chosen-search::placeholder {
   color: var(--ds-text-faint);
 }
 
@@ -782,6 +791,8 @@
   align-items: center;
   gap: 6px;
   flex: none;
+  /* The trailing search field drops below the title on a narrow pane. */
+  flex-wrap: wrap;
   padding: 9px 8px 4px;
 }
 
@@ -1602,7 +1613,9 @@
 }
 
 @media (max-width: 720px) {
-  .provider-models-search-wrap {
+  /* Both searches take their own row instead of squeezing their header. */
+  .provider-models-search-wrap,
+  .provider-chosen-search-wrap {
     margin-left: 0;
     width: 100%;
   }

@@ -1,6 +1,34 @@
 import { ErrorCodes, IPC, type AgentEventEnvelope, type AppNotification, type PlanExecution, type PlanExecutionFinishStatus, type UiMessage } from "@pi-desktop/shared";
 import { executionFromResponse, executionListFromResponse, planExecutionFromUnknown } from "../plan-execution";
 import type { RuntimeState } from "./context";
+import type {
+  SessionCoordination,
+  TurnEndedPayload,
+  TurnEndReason,
+} from "./session-coordination";
+
+/**
+ * Identity and per-call switches of one turn finalization. `turnId` is
+ * required: a terminal event, an abort, a crash or a failed start must name the
+ * turn it belongs to, and the finalizer never infers it from whichever turn
+ * happens to be active.
+ */
+export type FinishTurnOptions = {
+  turnId: string;
+  createNotification?: boolean;
+  recoverInflight?: boolean;
+};
+
+/**
+ * The single entry point every terminal path funnels through, so exactly one
+ * announcement is made per host turn and the turn's state is released once.
+ */
+export type FinishTurn = (
+  sessionId: string,
+  status: TurnEndReason,
+  errorCode: string | undefined,
+  options: FinishTurnOptions,
+) => Promise<void>;
 
 export type PlanRuntimeState = {
   approvedExecutionDrain: Promise<void> | null;
@@ -11,12 +39,14 @@ export type PlanRuntimeDependencies = {
   planState: PlanRuntimeState;
   logger: { app: (...args: any[]) => void };
   sendToRenderer: (channel: string, payload: unknown) => void;
-  activeTurns: Map<string, string>;
-  activeTurnUsages: Map<string, any>;
+  /**
+   * The single turn coordination instance: active turns, their usage, the
+   * finalization records, the abort locks and the identity queries all come
+   * from here, so this module never keeps a second copy of that state.
+   */
+  coordination: SessionCoordination;
   scheduledRunsBySession: Map<string, string>;
   activeToolCalls: Map<string, any>;
-  turnFinalizations: Map<string, Promise<void>>;
-  turnSettlements: Map<string, Set<() => void>>;
   planSubmissionTurnIds: Set<string>;
   approvedExecutionIdsBySession: Map<string, string>;
   claimedExecutionSessions: Map<string, string>;
@@ -26,9 +56,11 @@ export type PlanRuntimeDependencies = {
   dispatchingApprovedExecutions: Set<string>;
   inFlightExecutionFinishes: Set<string>;
   pendingExecutionFinishes: Map<string, any>;
-  waitForTurnSettlement: (sessionId: string, turnId: string) => Promise<void>;
-  planSubmissionTurnKey: (sessionId: string, turnId: string) => string;
-  shouldCreateTaskNotification: (sessionId: string) => boolean;
+  /**
+   * Announce a finished turn to the plugin surfaces. Composed by the plugin
+   * services factory; this module never reaches a global plugin instance.
+   */
+  announceTurnEnded: (payload: TurnEndedPayload) => void;
   emitAgentEvent: (envelope: AgentEventEnvelope) => void;
   acquireSessionOperation: (sessionId: string) => Promise<() => void>;
   resolveAgentRuntimeLaunch: (...args: any[]) => Promise<any>;
@@ -41,12 +73,9 @@ export function createPlanRuntime({
   planState,
   logger,
   sendToRenderer,
-  activeTurns,
-  activeTurnUsages,
+  coordination,
   scheduledRunsBySession,
   activeToolCalls,
-  turnFinalizations,
-  turnSettlements,
   planSubmissionTurnIds,
   approvedExecutionIdsBySession,
   claimedExecutionSessions,
@@ -56,47 +85,96 @@ export function createPlanRuntime({
   dispatchingApprovedExecutions,
   inFlightExecutionFinishes,
   pendingExecutionFinishes,
-  waitForTurnSettlement,
-  planSubmissionTurnKey,
-  shouldCreateTaskNotification,
+  announceTurnEnded,
   emitAgentEvent,
   acquireSessionOperation,
   resolveAgentRuntimeLaunch,
   isQuitting,
   onTurnSettled,
 }: PlanRuntimeDependencies): {
-  finishTurn: PlanRuntimeDependencies["activeTurns"] extends any ? (...args: any[]) => Promise<void> : never;
-  finishApprovedExecution: (...args: any[]) => Promise<void>;
+  finishTurn: FinishTurn;
+  finishApprovedExecution: (executionId: string, status: PlanExecutionFinishStatus, errorCode?: string) => Promise<void>;
   dispatchApprovedPlan: (rawExecution: unknown) => Promise<void>;
   drainApprovedPlanExecutions: () => Promise<void>;
   dispatchExecutionForProposal: (proposalId: string) => Promise<void>;
 } {
+// Read the shared turn state once, by the names the finalizer below uses. The
+// instance is owned by the coordination factory; this module only reads it.
+const {
+  activeTurns,
+  activeTurnUsages,
+  turnFinalizations,
+  turnSettlements,
+  waitForTurnSettlement,
+  planSubmissionTurnKey,
+  shouldCreateTaskNotification,
+  isActiveTurn,
+  peekAbortReason,
+  clearAbortReason,
+  releaseTurnClaims,
+} = coordination;
+/**
+ * Settle one host turn: attempt its durable end, release its local state,
+ * announce it to the plugin surfaces, then release the claim.
+ *
+ * The order is part of the contract. Ownership is claimed and the terminal
+ * reason frozen synchronously, before any await, so that a concurrent terminal
+ * event joins this finalization instead of starting a second one, and so that a
+ * cancellation recorded earlier cannot be restated as a completion later.
+ */
 function finishTurn(
   sessionId: string,
-  status: "completed" | "aborted" | "error",
-  errorCode?: string,
-  options: { createNotification?: boolean; recoverInflight?: boolean } = {},
+  status: TurnEndReason,
+  errorCode: string | undefined,
+  options: FinishTurnOptions,
 ): Promise<void> {
-  const existing = turnFinalizations.get(sessionId);
+  const id = sessionId.trim();
+  // A missing identity cannot be attributed to any turn, so it settles nothing:
+  // inferring it from whichever turn is active would let a late event close a
+  // turn it does not own. Callers still persist the event as history.
+  const turnId = String(options?.turnId ?? "").trim();
+  if (!id || !turnId) return Promise.resolve();
+
+  const finalizationKey = planSubmissionTurnKey(id, turnId);
+  // A second call joins the first claim. That is what stops a late abort from
+  // restating a completion, and what makes the announcement fire once per turn
+  // when both agent_end and error arrive.
+  const existing = turnFinalizations.get(finalizationKey);
   if (existing) return existing;
+  // A turn that no longer owns its session was already settled by whoever took
+  // it over. Recreating a record here would release the newer turn's queue, so
+  // the settlement is refused — but this turn can no longer finalize itself
+  // either, so its records are dropped rather than left behind: its settlement
+  // waiters would never resolve, and a later turn on this session would inherit
+  // its cancellation lock.
+  if (!isActiveTurn(id, turnId)) {
+    planSubmissionTurnIds.delete(finalizationKey);
+    releaseTurnClaims(id, turnId);
+    return Promise.resolve();
+  }
+
+  // Set once the durable end settled, so the collaboration hook below only runs
+  // for a turn whose durable row really was closed.
   let settledTurnId: string | undefined;
 
-  const finalization = (async () => {
-    const turnId = activeTurns.get(sessionId);
-    const turnKey = turnId
-      ? planSubmissionTurnKey(sessionId, turnId)
-      : undefined;
-    const wasPlanSubmission = turnKey
-      ? planSubmissionTurnIds.has(turnKey)
-      : false;
+  // Freeze the reason and snapshot the session-keyed data synchronously.
+  // Nothing below may read or delete state by session id again: a newer turn can
+  // start while this one unwinds, and everything keyed by the session alone is
+  // then its data.
+  const reason = peekAbortReason(id, turnId) ?? status;
+  const turnUsage = activeTurnUsages.get(id);
+  activeTurnUsages.delete(id);
+  const runId = scheduledRunsBySession.get(id);
+  if (runId) scheduledRunsBySession.delete(id);
+  const wasPlanSubmission = planSubmissionTurnIds.has(finalizationKey);
+  const createNotification =
+    options.createNotification ??
+    (!wasPlanSubmission && shouldCreateTaskNotification(id));
+  const recoverInflight = options.recoverInflight === true;
 
+  const runFinalization = async (): Promise<void> => {
     try {
-      if (runtimeState.host && turnId) {
-        const createNotification =
-          options.createNotification ??
-          (!wasPlanSubmission && shouldCreateTaskNotification(sessionId));
-        const turnUsage = activeTurnUsages.get(sessionId);
-        activeTurnUsages.delete(sessionId);
+      if (runtimeState.host) {
         try {
           const result = await runtimeState.host.call<{
             ok: boolean;
@@ -104,13 +182,13 @@ function finishTurn(
             recovered?: UiMessage;
           }>("session.endTurn", {
             turnId,
-            status,
+            status: reason,
             errorCode,
             createNotification,
             ...(turnUsage ? { usage: turnUsage } : {}),
             // The reply can no longer finish on its own: promote its last
             // checkpoint instead of waiting for a final row that never comes.
-            ...(options.recoverInflight ? { recoverInflight: true } : {}),
+            ...(recoverInflight ? { recoverInflight: true } : {}),
           });
           settledTurnId = turnId;
           if (result.notification) {
@@ -122,7 +200,7 @@ function finishTurn(
             // Settle the renderer's streaming row the same way a final
             // message_end would have, so it does not stay "streaming" forever.
             emitAgentEvent({
-              sessionId,
+              sessionId: id,
               turnId,
               ts: Date.now(),
               event: { type: "message_end", message: result.recovered },
@@ -130,48 +208,33 @@ function finishTurn(
           }
         } catch (e) {
           logger.app("persistence", "warn", "endTurn failed", {
-            sessionId,
+            sessionId: id,
             data: String(e),
           });
         }
       }
 
-      const runId = scheduledRunsBySession.get(sessionId);
-      if (runId) {
-        scheduledRunsBySession.delete(sessionId);
-        if (runtimeState.host) {
-          await runtimeState.host
-            .call("scheduled.finishRun", { runId, status, errorCode })
-            .catch((e) =>
-              logger.app("persistence", "warn", "finishRun failed", {
-                sessionId,
-                data: String(e),
-              }),
-            );
-        }
+      if (runId && runtimeState.host) {
+        await runtimeState.host
+          .call("scheduled.finishRun", { runId, status: reason, errorCode })
+          .catch((e) =>
+            logger.app("persistence", "warn", "finishRun failed", {
+              sessionId: id,
+              data: String(e),
+            }),
+          );
       }
     } finally {
-      // Do not release local ownership or wake a queued approved execution
-      // until the durable endTurn request has settled above.
-      if (turnId && activeTurns.get(sessionId) === turnId) {
-        activeTurns.delete(sessionId);
-      }
-      if (turnKey) {
-        planSubmissionTurnIds.delete(turnKey);
-        const waiters = turnSettlements.get(turnKey);
-        if (waiters) {
-          turnSettlements.delete(turnKey);
-          for (const resolve of waiters) resolve();
-        }
-      }
-    }
-
-    if (turnId) {
-      const toolPrefix = `${sessionId}:`;
+      // Do not release local ownership until the durable endTurn request above
+      // has settled. Ownership is checked by identity, so this teardown can
+      // never release a newer turn.
+      if (activeTurns.get(id) === turnId) activeTurns.delete(id);
+      planSubmissionTurnIds.delete(finalizationKey);
       // A host tool can finish shortly after the turn is aborted. Keep metadata
       // long enough for a late tool_end to persist a readable historical row,
       // but never clear a newer turn's long-running tools (TaskWait may span
       // this window).
+      const toolPrefix = `${id}:`;
       setTimeout(() => {
         for (const [key, call] of activeToolCalls) {
           if (key.startsWith(toolPrefix) && call.turnId === turnId) {
@@ -180,26 +243,54 @@ function finishTurn(
         }
       }, 5 * 60 * 1000).unref();
     }
-  })();
 
-  turnFinalizations.set(sessionId, finalization);
-  const releaseFinalization = () => {
-    if (turnFinalizations.get(sessionId) === finalization) {
-      turnFinalizations.delete(sessionId);
-      // The terminal event reaches Agent Host while activeTurns still owns
-      // this session. Retry its deferred queue drain once settlement releases
-      // both busy guards, unless the application is shutting down.
-      if (!isQuitting()) runtimeState.agentHostBridge?.agentHost.kick(sessionId);
-      if (!isQuitting() && settledTurnId && typeof onTurnSettled === "function") {
-        void onTurnSettled(sessionId, settledTurnId).catch((error: unknown) => {
-          logger.app("persistence", "warn", "session collaboration settlement failed", {
-            sessionId, data: String(error),
-          });
+    // The turn can no longer start a plugin tool, and its finalization record
+    // still holds the queue, so the announcement observes a settled turn. Every
+    // delivery failure is isolated inside the announcement itself.
+    announceTurnEnded({ sessionId: id, turnId, reason });
+  };
+
+  let record: Promise<void> | undefined;
+  /**
+   * Release the claim last, so that a failed persistence attempt or a throwing
+   * announcement cannot leave the queue held forever. Only the record this call
+   * registered may be removed.
+   */
+  const releaseFinalization = (): void => {
+    if (!record || turnFinalizations.get(finalizationKey) !== record) return;
+    turnFinalizations.delete(finalizationKey);
+    // The turn is over: its cancellation lock must not outlive it, or a later
+    // turn on this session would inherit a stale cancellation.
+    clearAbortReason(id, turnId);
+    const waiters = turnSettlements.get(finalizationKey);
+    if (waiters) {
+      turnSettlements.delete(finalizationKey);
+      for (const resolve of waiters) resolve();
+    }
+    // The terminal event reaches Agent Host while activeTurns still owns this
+    // session. Retry its deferred queue drain once settlement releases both busy
+    // guards, unless the application is shutting down.
+    if (!isQuitting()) runtimeState.agentHostBridge?.agentHost.kick(id);
+    // Settlement of the durable turn is the trigger for the collaborators that
+    // follow it; a turn with no durable end has nothing to settle.
+    if (!isQuitting() && settledTurnId && typeof onTurnSettled === "function") {
+      void onTurnSettled(id, settledTurnId).catch((error: unknown) => {
+        logger.app("persistence", "warn", "session collaboration settlement failed", {
+          sessionId: id,
+          data: String(error),
         });
-      }
+      });
     }
   };
-  void finalization.then(releaseFinalization, releaseFinalization);
+  // Register the record before the body runs, so a concurrent caller observes
+  // the same promise even when this turn had no persistence step to await.
+  // `finally` releases the claim after the body settles without swallowing a
+  // rejected body: a caller that awaits this promise still sees the failure.
+  const finalization = Promise.resolve()
+    .then(runFinalization)
+    .finally(releaseFinalization);
+  record = finalization;
+  turnFinalizations.set(finalizationKey, finalization);
   return finalization;
 }
 
@@ -355,8 +446,10 @@ async function dispatchApprovedPlan(rawExecution: unknown): Promise<void> {
   } catch (error: any) {
     const errorCode =
       error?.data?.errorCode || error?.errorCode || ErrorCodes.PLAN_EXECUTION_INTERRUPTED;
-    if (turnId && activeTurns.get(initial.sessionId) === turnId) {
-      await finishTurn(initial.sessionId, "error", errorCode);
+    // The identity captured before the awaits is the one this turn owns; the
+    // finalizer refuses it when the session has moved on.
+    if (turnId) {
+      await finishTurn(initial.sessionId, "error", errorCode, { turnId });
     }
     if (claimed) {
       await finishApprovedExecution(initial.id, "interrupted", errorCode);

@@ -37,6 +37,13 @@
 
   --ds-bg-primary: var(--gray-900);
   --ds-bg-sidebar: var(--ds-bg-under); /* Codex surface-under / sideBar */
+  /*
+   * Optional paint layer for the sidebar surface (gradients / images).
+   * `--ds-bg-sidebar` stays a color so color-mix, borders, and macOS glass
+   * tint keep working; themes set this to a CSS <image> value when they want
+   * a gradient or picture plate.
+   */
+  --ds-bg-sidebar-image: none;
   --ds-bg-secondary: var(--gray-800);
   --ds-bg-tertiary: var(--gray-750);
   --ds-bg-inset: var(--gray-1000);
@@ -95,6 +102,8 @@
   --ds-accent: var(--gray-0);
   --ds-accent-hover: var(--gray-100);
   --ds-accent-soft: var(--gray-300);
+  /* Focus rings / resize affordances. Tied to the accent so themes stay monochrome. */
+  --ds-focus: var(--ds-accent);
   /*
     Switch track/knob. Off keeps a dim fill plus a hairline ring so the empty
     slot still reads as a control; on inverts to the solid accent, so the knob
@@ -183,6 +192,7 @@
   --ds-accent: #1a1c1f;
   --ds-accent-hover: #303030;
   --ds-accent-soft: #5d5d5d;
+  --ds-focus: var(--ds-accent);
   /* Off knob stays white on the pale track; on knob keeps white on near-black. */
   --ds-switch-track-off: color-mix(in oklab, #1a1c1f 10%, transparent);
   --ds-switch-track-off-hover: color-mix(in oklab, #1a1c1f 18%, transparent);

@@ -249,6 +249,11 @@ workspace, or approved execution. Slash text is literal input on this channel.
 Accepted input is echoed as ordinary user message events with the current
 `turnId`, main-prepared attachment refs, and `UiMessage.steering: true`. This
 persisted marker protects accepted input from Smart Stop after renderer reload.
+A native Pi `message_end` may additionally carry the optional additive
+`replacesMessageId`: the provisional streaming row id whose durable SDK entry
+this event publishes. The renderer re-keys exactly that row (active, cache,
+retained, side chat) and a generic event without the field leaves every other
+row untouched. The field adds no event kind, RACP kind, or storage change.
 A user `message_end` can additionally
 carry `precedingAssistant`, a streaming snapshot that reserves the reply's
 position before the input is persisted. Main writes both through its replayable
@@ -625,7 +630,7 @@ type AgentEvent =
  | { type: "message_update"; message: UiMessage;
      deltaText?: string; deltaThinking?: string;
      stream?: "delta"; resetText?: boolean; resetThinking?: boolean }
- | { type: "message_end"; message: UiMessage }
+ | { type: "message_end"; message: UiMessage; replacesMessageId?: string }
  | { type: "tool_start"; toolCallId: string; toolName: string; args: unknown }
  | { type: "tool_update"; toolCallId: string; partialResult?: unknown }
   | { type: "tool_end"; toolCallId: string; result: unknown; isError?: boolean;
@@ -2012,3 +2017,42 @@ startup failure is logged and does not prevent the desktop from launching.
 | `WORKSPACE_REQUIRED` | Project directory required |
 | `PATH_OUTSIDE_WORKSPACE` | Path out of bounds before an explicit outside-path permission decision |
 | `INTERNAL` | Uncategorized internal error |
+
+## Native Pi session routing (ADR 0254)
+
+`pi-desktop/session/list` returns both Desktop and native summaries. Each summary
+may carry `source: "desktop" | "pi-native"`, capability flags, and a stable
+`readOnlyReason`; clients normalize omitted source to `desktop` for backward
+compatibility. `session/get`, `session/open`, `session/fork`, `agent/prompt`,
+`agent/stop`, and `agent/abort` route opaque `native-pi:` ids to the Node
+sidecar. Native file paths never enter renderer payloads.
+
+Native rename/delete/move/revision/configuration/scratch/Plan/Goal/queue/
+collaboration operations return an explicit unsupported/invalid-argument error.
+`session/fork` for a native id returns `{ session: SessionDetail }` for one new
+child JSONL and never mutates the parent; an anchor id that is not a message on
+the active branch is `INVALID_ARGUMENT`. The fork response carries the child's
+whole projected transcript (`messageStart: 0`, `hasMoreBefore: false`) at full
+fork parity, independent of general detail paging. Forking reuses the same
+source ownership state list/detail report: an owned idle runtime keeps its
+lease, while a live/remote/malformed foreign lease rejects with
+`NATIVE_PI_SESSION_BUSY` and a changed owned source with
+`NATIVE_PI_SESSION_CHANGED`. Unexpected filesystem failures surface as a
+path-free `NATIVE_PI_FORK_IO_ERROR`.
+Native continuation refusal codes include `NATIVE_PI_SESSION_BUSY`,
+`NATIVE_PI_SESSION_CHANGED`, `NATIVE_PI_PROVIDER_UNAVAILABLE`, and
+`NATIVE_PI_PROJECT_UNTRUSTED` plus format/newline/cwd-specific codes.
+
+Native compact and queue push/list reject with `NATIVE_PI_UNSUPPORTED` before
+Desktop host/queue access. Queue remove/prioritize continue to take an opaque
+host `turnId`, not a session id: native paths never create host queue entries.
+Supporting a native queue later requires an explicit source/session contract;
+a turn-id prefix is not source authentication.
+
+Native events include `user_message_persisted` with `optimisticMessageId` and a
+projected durable `message`. The renderer replaces that submission identity in
+live/cache/retained state before normal completion refresh. Identical-text
+submissions remain distinct; SDK entry IDs are never rewritten. Desktop event
+semantics are unchanged. Native terminal completion follows SDK settlement,
+not intermediate retry/compaction loop ends. Native abort never invokes
+`replaceSessionMessages` and reloads durable detail after abort returns.

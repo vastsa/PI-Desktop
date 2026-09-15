@@ -173,6 +173,8 @@ import type {
   ToastOptions,
   ToastVariant,
 } from "./app-state";
+import { createAnnotationSlice } from "./slices/annotation-slice";
+import { createSideChatSlice } from "./slices/side-chat-slice";
 import { createSessionSlice } from "./slices/session-slice";
 import { createQueueSlice } from "./slices/queue-slice";
 import { createTranscriptSlice } from "./slices/transcript-slice";
@@ -719,6 +721,8 @@ export const useAppStore = create<AppState>((set, get) => {
     }
   },
 
+  ...createAnnotationSlice({ get, set }),
+  ...createSideChatSlice({ get, set, commitForkedSession, withoutRecordKey }),
   ...createWorkPanelSlice({
     get,
     set,

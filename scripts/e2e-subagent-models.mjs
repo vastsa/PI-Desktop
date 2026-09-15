@@ -85,7 +85,6 @@ const builtinExplorerDefinition = {
   tools: ["Read", "Glob", "Grep", "Bash"],
   prompt: "Search the requested files and report exact paths.",
   source: "builtin",
-  maxTurns: 60,
 };
 const definition = (name, pin, options = {}) => ({
   name, description: "Read-only fixture", tools: options.tools ?? ["Read"], prompt: "Return Fixture finished without using tools.",

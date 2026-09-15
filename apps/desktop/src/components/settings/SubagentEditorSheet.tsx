@@ -4,7 +4,6 @@ import {
   DEFAULT_SUBAGENT_TOOLS,
   GLOBAL_SCOPE,
   MAX_SUBAGENT_MAX_TOKENS,
-  MAX_SUBAGENT_MAX_TURNS,
   SUBAGENT_ASSIGNABLE_TOOLS,
   SUBAGENT_INHERIT_TOKEN,
   SUBAGENT_PRESETS,
@@ -46,8 +45,6 @@ export type SubagentDraft = {
   model: string;
   /** Empty means "whatever the session uses". */
   thinkingLevel: SubagentThinkingLevel | "";
-  /** `0` means no limit, which is what a definition without `maxTurns` gets. */
-  maxTurns: number;
   /**
    * Output-token cap for one delegate response. `0` means "follow the model's
    * published limit", which is what a definition without `maxTokens` gets.
@@ -139,7 +136,6 @@ export function emptySubagentDraft(): SubagentDraft {
     inheritTools: false,
     model: "",
     thinkingLevel: "",
-    maxTurns: 0,
     maxTokens: 0,
     body: "",
     enabled: true,
@@ -157,7 +153,6 @@ export function draftFromRecord(record: UserSubagentRecord, body: string): Subag
     inheritTools: grant.inheritTools,
     model: record.model ?? "",
     thinkingLevel: record.thinkingLevel ?? "",
-    maxTurns: record.maxTurns ?? 0,
     maxTokens: record.maxTokens ?? 0,
     body,
     enabled: record.enabled,
@@ -183,7 +178,6 @@ export function draftFromDefinition(definition: SubagentDefinition): SubagentDra
       ? `${definition.model.providerId}/${definition.model.modelId}`
       : "",
     thinkingLevel: definition.thinkingLevel ?? "",
-    maxTurns: definition.maxTurns ?? 0,
     maxTokens: definition.maxTokens ?? 0,
     body: definition.prompt,
   };
@@ -207,10 +201,10 @@ export function subagentSlug(value: string): string {
 
 /**
  * Apply a built-in preset to a draft. Tool grants are replaced wholesale so a
- * preset that drops `Bash` truly drops it; `maxTurns` keeps its "0 means
- * unlimited" convention. Body and description are overwritten — these are the
- * values that make the preset worth picking. Inherit is cleared: presets are
- * the bounded builtins, not parent-catalog workers.
+ * preset that drops `Bash` truly drops it. Body and description are
+ * overwritten — these are the values that make the preset worth picking.
+ * Inherit is cleared: presets are the built-in delegates, not parent-catalog
+ * workers.
  */
 export function applySubagentPreset(draft: SubagentDraft, preset: SubagentPreset): SubagentDraft {
   return {
@@ -219,7 +213,6 @@ export function applySubagentPreset(draft: SubagentDraft, preset: SubagentPreset
     description: preset.description,
     tools: [...preset.tools],
     inheritTools: false,
-    maxTurns: preset.maxTurns,
     body: preset.body,
   };
 }
@@ -232,7 +225,6 @@ export function resetSubagentTemplate(draft: SubagentDraft): SubagentDraft {
     description: "",
     tools: [...DEFAULT_SUBAGENT_TOOLS],
     inheritTools: false,
-    maxTurns: 0,
     body: "",
   };
 }
@@ -255,19 +247,10 @@ export function subagentDraftError(draft: SubagentDraft): string | null {
   if (draft.model.trim() && !subagentModelPinParts(draft.model.trim())) {
     return "extensions.subagents.errorModel";
   }
-  // 0 is the cleared state, not an invalid one: a definition may leave the turn
-  // limit out entirely, and Settings must be able to express that too.
-  if (
-    !Number.isInteger(draft.maxTurns) ||
-    draft.maxTurns < 0 ||
-    draft.maxTurns > MAX_SUBAGENT_MAX_TURNS
-  ) {
-    return "extensions.subagents.errorMaxTurns";
-  }
-  // Same convention as the turn limit: cleared (`0`) is a valid state that
-  // means "no cap of our own", so only a value outside the accepted range is
-  // an error. The field only produces integers, so a fraction cannot reach
-  // here from the UI — the check keeps the draft honest anyway.
+  // Cleared (`0`) is a valid state that means "no cap of our own", so only a
+  // value outside the accepted range is an error. The field only produces
+  // integers, so a fraction cannot reach here from the UI — the check keeps
+  // the draft honest anyway.
   if (
     !Number.isInteger(draft.maxTokens) ||
     draft.maxTokens < 0 ||
@@ -284,7 +267,7 @@ export function subagentDraftError(draft: SubagentDraft): string | null {
 
 /**
  * One subagent preset shown as a compact name chip. Selecting it replaces the
- * draft's name, description, tools, body and maxTurns; the model and scope
+ * draft's name, description, tools and body; the model and scope
  * are left alone so the user's other choices survive a reroll.
  */
 function PresetChip({
@@ -482,7 +465,7 @@ function ModelField({
   );
 }
 
-/** Model, thinking, turn limit and scope — secondary on create, open on edit. */
+/** Model, thinking and scope — secondary on create, open on edit. */
 function AdvancedFields({
   open,
   onToggle,
@@ -521,24 +504,6 @@ function AdvancedFields({
           modelGroups={modelGroups}
           orphanModel={orphanModel}
         />
-        <Field
-          label={t("extensions.subagents.maxTurns")}
-          hint={t("extensions.subagents.maxTurnsHint", { max: MAX_SUBAGENT_MAX_TURNS })}
-        >
-          <Input
-            type="number"
-            min={1}
-            max={MAX_SUBAGENT_MAX_TURNS}
-            placeholder={t("extensions.subagents.maxTurnsUnlimited")}
-            value={draft.maxTurns > 0 ? String(draft.maxTurns) : ""}
-            onChange={(event) =>
-              setDraft({
-                ...draft,
-                maxTurns: Number.parseInt(event.target.value, 10) || 0,
-              })
-            }
-          />
-        </Field>
         <Field
           label={t("extensions.subagents.maxTokens")}
           hint={t("extensions.subagents.maxTokensHint", {

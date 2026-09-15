@@ -317,6 +317,32 @@ impl Database {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
+    /// Session ids attached to a project row, including sessions already
+    /// marked deleted. Callers delete each session so its transcript files follow.
+    pub fn project_session_ids(&self, path: &str) -> Result<Vec<String>> {
+        let path = canonical_project_path(path)
+            .ok_or_else(|| anyhow!("project path must not be blank"))?;
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT s.id FROM sessions s
+             JOIN projects p ON p.id = s.project_id
+             WHERE p.path = ?1",
+        )?;
+        let rows = stmt.query_map(params![path], |row| row.get::<_, String>(0))?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    /// Delete a project row by canonical path. Returns whether a row existed so
+    /// callers can report an idempotent removal.
+    pub fn delete_project(&self, path: &str) -> Result<bool> {
+        let path = canonical_project_path(path)
+            .ok_or_else(|| anyhow!("project path must not be blank"))?;
+        let deleted = self
+            .conn
+            .prepare_cached("DELETE FROM projects WHERE path = ?1")?
+            .execute(params![path])?;
+        Ok(deleted > 0)
+    }
+
     pub fn get_project_memory(&self, path: &str) -> Result<ProjectMemoryRecord> {
         let key = canonical_project_path(path)
             .ok_or_else(|| anyhow!("project path must not be blank"))?;
@@ -338,6 +364,14 @@ impl Database {
             entries,
             updated_at,
         })
+    }
+
+    /// Drop the durable memory entry for a project path. A missing entry is
+    /// ignored so removing a project stays idempotent.
+    pub fn delete_project_memory(&self, path: &str) -> Result<()> {
+        let path = canonical_project_path(path)
+            .ok_or_else(|| anyhow!("project path must not be blank"))?;
+        self.kv_delete(PROJECT_MEMORY_NAMESPACE, &path)
     }
 
     pub fn set_project_memory(&self, path: &str, content: &str) -> Result<ProjectMemoryRecord> {

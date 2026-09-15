@@ -210,6 +210,31 @@ Plugins can extend PI-Desktop with:
 
 Install plugins locally or through the marketplace using the `.piplug` package workflow.
 
+### Session Orchestrator
+
+The official `pi.session-orchestrator` plugin lets an Agent coordinate durable worker sessions in parallel. Install `pi.session-orchestrator` from the Plugins marketplace, then use its `SessionTask` tool to spawn, send, supervise, inspect status, wait for bounded results, accept reports, cancel work, and list workers.
+
+Workers inherit the parent project's provider, model, thinking level, and permission mode. They remain ordinary PI-Desktop sessions, so you can open and inspect their transcripts at any time. Work is parent-scoped and bounded to four active workers per parent and sixteen across the plugin.
+
+<table>
+<tr>
+<td width="50%">
+
+<img src="docs/image/readme/session-orchestrator-overview.png" alt="PI-Desktop Session Orchestrator coordinating worker sessions" />
+
+<p align="center"><sub>Coordinate multiple durable worker sessions from one conversation</sub></p>
+
+</td>
+<td width="50%">
+
+<img src="docs/image/readme/session-orchestrator-worker.png" alt="PI-Desktop Session Orchestrator worker session" />
+
+<p align="center"><sub>Open a worker session and inspect its progress independently</sub></p>
+
+</td>
+</tr>
+</table>
+
 **[Build your first plugin →](docs/plugin-development.md)**
 
 > [!NOTE]

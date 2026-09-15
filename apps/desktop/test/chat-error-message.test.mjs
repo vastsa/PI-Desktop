@@ -8,16 +8,21 @@ const read = (path) =>
 const readRoot = (path) =>
   readFile(new URL(`../../../${path}`, import.meta.url), "utf8");
 
+// The message_end projection (including the !event.message.error guard) lives
+// in src/lib/session-transcript.ts since the native side-chat re-keying.
+const readSessionTranscript = () => read("src/lib/session-transcript.ts");
+
 test("provider failures stay in the transcript as structured assistant messages", async () => {
-  const [runtime, store, main] = await Promise.all([
+  const [runtime, store, main, sessionTranscript] = await Promise.all([
     readRoot("packages/agent-runtime/src/runtime.ts"),
     readStoreSource(),
     readMainSource(),
+    readSessionTranscript(),
   ]);
 
   assert.match(runtime, /error:\s*classifiedError,\s*isError:\s*true/);
   assert.match(runtime, /m\.status === "error" \|\| m\.isError \|\| m\.error/);
-  assert.match(store, /!event\.message\.error/);
+  assert.match(sessionTranscript, /!event\.message\.error/);
   assert.match(store, /assistantErrorMessage\(event\.error\)/);
   assert.match(main, /failed && empty && !event\.message\.error/);
 });

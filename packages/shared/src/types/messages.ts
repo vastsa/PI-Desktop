@@ -127,7 +127,6 @@ export type UiMessage = {
  * `stopped` projection at the delegation registry layer. */
 export type SubagentRunStatus =
   | "completed"
-  | "truncated"
   | "failed"
   | "aborted"
   | "timed_out";

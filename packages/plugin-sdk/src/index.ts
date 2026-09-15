@@ -618,11 +618,43 @@ export type PluginAppearance = {
   pluginTheme: { id: string; base: "light" | "dark"; css: string } | null;
 };
 
+/** Built-in theme preference, or a registered `plugin:<pluginId>:<themeId>` id. */
+export type AppThemePreferenceId = "system" | "light" | "dark" | `plugin:${string}`;
+
+/** Runtime theme payload for `pi.themes.upsert`. Sanitized with the load-time rules. */
+export type PluginThemeUpsertInput = {
+  /** Local theme id (same rules as `contributes.themes[].id`). */
+  id: string;
+  label: string;
+  base: "light" | "dark";
+  css: string;
+};
+
+/** Lightweight theme row returned by `pi.themes.list`. */
+export type PluginThemeSummary = {
+  /** Full namespaced id: `plugin:<pluginId>:<themeId>`. */
+  id: string;
+  themeId: string;
+  label: string;
+  base: "light" | "dark";
+};
+
 export type PluginHostApi = {
   app: {
     getVersion: () => Promise<string>;
     getLocale: () => Promise<string>;
     getAppearance: () => Promise<PluginAppearance>;
+    /**
+     * Apply the host's app theme preference (`ui.theme`). Accepts a built-in
+     * preference or a currently registered plugin theme id.
+     */
+    setTheme: (themeId: AppThemePreferenceId) => Promise<void>;
+  };
+  /** Runtime theme registry for the calling plugin only (`ui.theme`). */
+  themes: {
+    upsert: (input: PluginThemeUpsertInput) => Promise<void>;
+    remove: (themeId: string) => Promise<void>;
+    list: () => Promise<PluginThemeSummary[]>;
   };
   plugin: {
     getId: () => string;

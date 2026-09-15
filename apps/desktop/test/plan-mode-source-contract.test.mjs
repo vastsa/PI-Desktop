@@ -106,7 +106,8 @@ test("reject or interruption returns editable planning without changing durable 
     queueSource.slice(queueSource.indexOf("sendPrompt: async"));
   assert.match(sendPromptBlock, /get\(\)\.pendingPlans\[sessionId\]\?\.status === "pending"/);
   assert.match(sendPromptBlock, /await api\.prompt\(\{/);
-  assert.match(sendPromptBlock, /sessionId,\s*content,/);
+  // The send ships the composed prompt so annotations travel with it (D-LOCAL-response-annotations).
+  assert.match(sendPromptBlock, /sessionId,\s*content: outgoing,/);
   assert.match(
     sendPromptBlock,
     /attachments: draft[\s\S]*promptAttachmentsFromDraft\(draft\.fileReferences\)/,
@@ -199,8 +200,8 @@ test("pending approval keeps the draft while gating every composer control", () 
   assert.match(composerSource, /aria-readonly=\{inputBlocked\}/);
   assert.match(composerSource, /enabled: !inputBlocked/);
   assert.match(composerSource, /disabled=\{controlsBlocked\}/);
-  assert.match(composerSource, /const controlsBlocked = approvalPending;/);
-  assert.match(composerSource, /const sendBlocked = approvalPending \|\| pasting;/);
+  assert.match(composerSource, /const controlsBlocked = approvalPending \|\| nativeSession;/);
+  assert.match(composerSource, /const sendBlocked = approvalPending \|\| pasting \|\| nativeInputBlocked;/);
   assert.match(storeSource, /if \(get\(\)\.pendingPlans\[sessionId\]\?\.status === "pending"\) return/);
 });
 

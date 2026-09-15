@@ -99,8 +99,8 @@ test("prefers the structured delegate outcome over the transport status", () => 
     "completed",
   );
   assert.equal(
-    subagentOutcome(task("cap", "success", "truncated").message),
-    "truncated",
+    subagentOutcome(task("timeout", "success", "timed_out").message),
+    "timed_out",
   );
   assert.equal(
     subagentOutcome(task("stop", "success", "aborted").message),
@@ -115,6 +115,29 @@ test("prefers the structured delegate outcome over the transport status", () => 
     "failed",
   );
   assert.equal(subagentOutcome(task("denied", "denied").message), "denied");
+});
+
+// ADR 0253 removed the turn limit and the `truncated` status with it. A row
+// persisted by an older build still carries the string, so it must not be read
+// as an outcome: the mapper ignores the unknown status and falls back to the
+// transport status of the Task row.
+test("rejects the legacy `truncated` status instead of mapping it to an outcome", () => {
+  assert.equal(
+    subagentOutcome(task("legacy", "success", "truncated").message),
+    "completed",
+  );
+  const statuses = collectDelegationStatuses([
+    lifecycle("TaskWait", {
+      delegations: [
+        { delegationId: "legacy", agent: "reviewer", status: "truncated" },
+      ],
+    }),
+  ]);
+  assert.equal(statuses.get("legacy"), undefined);
+  assert.deepEqual(
+    summarizeSubagentActivity([task("legacy", "success", "truncated")]),
+    { total: 1, finished: 1, running: 0, issues: 0, warnings: 0 },
+  );
 });
 
 test("running Task without a result handle is still being created", () => {
@@ -327,7 +350,7 @@ test("summarizes partial fan-out without deduplicating repeated agent names", ()
     summarizeSubagentActivity([
       task("one", "running"),
       task("two", "success", "completed"),
-      task("three", "success", "truncated"),
+      task("three", "success", "timed_out"),
       task("four", "success", "aborted"),
       task("five", "success", "stopped"),
       task("six", "error", "failed"),

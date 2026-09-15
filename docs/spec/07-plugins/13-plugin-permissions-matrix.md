@@ -10,7 +10,7 @@ Provide a permission–capability–risk–default-policy reference table for re
 |---|---|---|---|---|
 | `ui.panel` | low | Open the plugin panel | Granted at install | Needed by almost all UI plugins |
 | `ui.view` | low | `contributes.views` are listed in the work panel and may be opened | Granted at install | Same isolation as a panel window: sandboxed page, per-plugin partition, `net.domains` egress. Filtered by activation scope |
-| `ui.theme` | low | `contributes.themes` CSS is loaded and offered in Settings | Granted at install | CSS is sanitized by the host; it cannot script. Declared `assets` are served over the host's read-only `plugin-asset:` scheme |
+| `ui.theme` | low | `contributes.themes` CSS is loaded and offered in Settings; runtime `pi.themes.upsert` / `remove` / `list` and `pi.app.setTheme` (ADR 0249) | Granted at install | CSS is sanitized by the host; it cannot script. Declared `assets` are served over the host's read-only `plugin-asset:` scheme. `setTheme` may only select a built-in preference or a currently registered plugin theme. There is no per-plugin theme count cap |
 | `ui.window.appearance` | low | `contributes.windowAppearance` sets the native window background while one of the plugin's themes is selected | Granted at install | `#rrggbb` / `#rrggbbaa` only; applied per resolved palette and back to the host default once the theme is gone. macOS keeps vibrancy |
 | `clipboard.read` | medium | `clipboard.readText`, `clipboard.getHistory` | Confirm on first use | May read sensitive information and retained clipboard history |
 | `clipboard.write` | medium | `clipboard.writeText` | Confirm on first use | Prevents clipboard pollution |
@@ -96,6 +96,10 @@ plugin, so it carries three bounds the other modes do not:
   (`themes`, `mcpServers`, `services`, `bus`); `skills` is the exception and is
   skipped at load time instead (see
   [02-plugin-manifest-schema.md](02-plugin-manifest-schema.md) §7)
+- Lifecycle and state events need no permission: `workspace:changed`,
+  `session:modelChanged`, `session:turnEnded`, and `plugin:settingsChanged`
+  arrive on the existing plugin event channel, and subscribing to an unknown
+  event name does not error
 
 ## 3A. Plan operating-state rule
 

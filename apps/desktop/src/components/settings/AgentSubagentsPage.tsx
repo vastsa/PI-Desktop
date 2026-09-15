@@ -143,7 +143,6 @@ export function AgentSubagentsPage() {
       // An empty string clears a pinned model; omitting it would keep the old one.
       model: draft.model.trim(),
       thinkingLevel: draft.thinkingLevel,
-      maxTurns: draft.maxTurns,
       // `0` clears the output cap, so the delegate follows the model again.
       maxTokens: draft.maxTokens,
       enabled: draft.enabled,

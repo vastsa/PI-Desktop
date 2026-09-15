@@ -5,8 +5,22 @@ import type { PermissionMode } from "./permissions.js";
 import type { UiMessage } from "./messages.js";
 import type { PlanningState } from "./plans.js";
 
+export type SessionSource = "desktop" | "pi-native";
+
+export type SessionCapabilities = {
+  canPrompt: boolean;
+  canStop: boolean;
+  canRefresh: boolean;
+};
+
 export type SessionSummary = {
   id: string;
+  /** Transcript authority. Omitted by older hosts and normalized to `desktop`. */
+  source?: SessionSource;
+  /** Native sessions expose only safe actions in the first continuation slice. */
+  capabilities?: SessionCapabilities;
+  /** Stable machine-readable reason why a native session cannot be continued. */
+  readOnlyReason?: string;
   title: string;
   /** Number of messages in the current canonical transcript. */
   messageCount: number;

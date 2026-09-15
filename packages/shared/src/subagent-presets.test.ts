@@ -43,10 +43,10 @@ describe("SUBAGENT_PRESETS", () => {
     }
   });
 
-  it("keeps maxTurns inside the published clamp", () => {
+  it("exposes no turn cap on any preset", () => {
+    // ADR 0253 removed the delegate turn limit, so no preset may carry one.
     for (const preset of SUBAGENT_PRESETS) {
-      expect(preset.maxTurns).toBeGreaterThanOrEqual(0);
-      expect(preset.maxTurns).toBeLessThanOrEqual(80);
+      expect("maxTurns" in preset).toBe(false);
     }
   });
 
@@ -94,6 +94,8 @@ describe("fallbackBuiltinDefinitions", () => {
       expect(definition.source).toBe("builtin");
       expect(definition.prompt.trim().length).toBeGreaterThan(0);
       expect(definition.tools.length).toBeGreaterThan(0);
+      // A preset never exposes a turn cap (ADR 0253).
+      expect("maxTurns" in definition).toBe(false);
     }
   });
 });

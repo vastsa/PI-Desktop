@@ -210,14 +210,6 @@ export function SettingsPage() {
       <div className="settings-titlebar" aria-hidden="true" />
       <aside className="settings-nav" aria-label={t("settings.title")}>
         <div className="settings-nav-top drag">
-          <button
-            type="button"
-            className="settings-back no-drag"
-            onClick={() => setPage("chat")}
-          >
-            <IconChevronLeft size={15} />
-            <span>{t("settings.backToApp")}</span>
-          </button>
           <div className="settings-search-wrap no-drag">
             <IconSearch size={14} />
             <input
@@ -255,6 +247,21 @@ export function SettingsPage() {
               </div>
             ))
           )}
+        </div>
+
+        {/* Pinned to the rail's bottom so it lands on the same line as the
+            main shell's sidebar footer icon row. Both the band and the control
+            stay explicitly non-draggable, like the rail's other controls. */}
+        <div className="settings-nav-footer no-drag">
+          <button
+            type="button"
+            className="settings-back no-drag"
+            data-nav="back-to-app"
+            onClick={() => setPage("chat")}
+          >
+            <IconChevronLeft size={15} />
+            <span>{t("settings.backToApp")}</span>
+          </button>
         </div>
       </aside>
 

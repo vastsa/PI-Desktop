@@ -1076,6 +1076,7 @@ is the source of truth, the index is derived and self-healing.
 | revision switch | append a refresh line for the live branch's own variant, read the target branch, atomic transcript rewrite keeping checkpoints whose anchors survive | flip `is_active`, rebuild index rows carrying each surviving message's owning `turn_id`, reset `last_seq` |
 | import | write transcript file | one tx per session: session row + index rows; on failure the file is removed |
 | session delete | remove both session files after row delete | `DELETE FROM sessions` (cascades); Electron main drops that session's outbox entries (D318) |
+| project delete (`projects.remove`) | remove each owned session's files after its row delete | one tx per session (`DELETE FROM sessions`, cascades) plus the project row and its `projectMemory` kv entry; the project folder on disk is never touched |
 | orphaned session restore (boot / `session.appendMessage`, D318) | leave the live JSONL in place | reinsert the missing `sessions` row and rebuild index rows from the file; if the file is also gone, append inserts a stub row under the existing id so the outbox can drain |
 
 Rules: user message durable (fsync'd file line) before the turn starts;
@@ -1390,3 +1391,46 @@ Late partial snapshots and duplicate terminal snapshots cannot overwrite the
 settled result. Recovery promotes the latest checkpoint in that same position.
 The outbox likewise keeps a newer snapshot that replaces an append while its
 host call is still pending. No schema migration is required.
+
+## 12. Native Pi session authority (ADR 0254)
+
+Native Pi v3 sessions under the Pi agent session root are a second, explicitly
+source-discriminated transcript authority owned by the Node agent sidecar. They
+are never inserted into SQLite and never copied to the Desktop transcript
+directory. `session.list` merges their projections with Rust-owned
+Desktop summaries, and `session.get` routes by the opaque `native-pi:` id.
+
+Detail reads take an immutable byte snapshot, parse it into an in-memory
+`SessionManager`, and follow the current native branch. They must not call
+persistent `SessionManager.open`, because that API may repair a missing newline
+or rewrite an older format. Unknown/custom entries and unknown fields remain in
+the source bytes; context-bearing custom messages and native compaction/tree
+semantics are resolved by the pinned coding-agent SDK.
+
+A native prompt opens the original file only after exact-v3, newline, cwd,
+trust, saved-provider/auth, canonical-path, identity, and lease checks pass.
+`AgentSession` and `SessionManager` append the native entries. Desktop host turn
+and transcript append APIs are not invoked. Rename, delete, project move,
+revision, Plan/Goal, collaboration, and queue operations remain unsupported
+for native sessions in this slice. Forking and ordinary text-only side-chat
+send/stop are supported as described here and in the runtime spec.
+
+A native fork writes exactly one new v3 JSONL child in the parent's session
+directory. Branch extraction runs against an in-memory manager over the parent
+snapshot, then child title/parent saved model/thinking fallbacks are appended in
+memory. Publication is a full write to an exclusive non-jsonl temporary file in
+the same directory, followed by a same-directory hardlink to the final
+`<timestamp>_<session-id>.jsonl` name. The staged file must still match the
+captured device/inode/size/hash before the link, and the published child must
+match that same identity and hash before the child detail is projected or
+registered; a mismatch fails closed without returning a child. Cleanup removes
+only files whose device/inode and content still match what this fork wrote
+(complete files by size+hash, partial staging writes by byte prefix); foreign
+files after a failed no-clobber link are never removed. The
+parent file, its leaf, and any live runtime are never modified. The child header
+carries `parentSession` with the canonical source path; that path stays inside
+the sidecar.
+
+The first slice has no projection cache or async scan bound; every list still
+reads/parses complete files. Caching by canonical path/file identity/size/mtime
+and bounded asynchronous scanning remain deferred performance work.

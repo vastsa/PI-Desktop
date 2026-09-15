@@ -435,8 +435,23 @@ export function useAppShellRuntime() {
     if (!ready) return;
     void refreshPluginThemes();
     // Enabling, disabling or uninstalling a plugin changes which themes exist.
+    // Runtime `themes.upsert` / `themes.remove` also emit this event.
     return api.onPluginChanged(() => void refreshPluginThemes());
   }, [ready, refreshPluginThemes]);
+
+  useEffect(() => {
+    if (!ready) return;
+    // Host-originated settings writes (plugin `app.setTheme`) must reach the
+    // renderer store or the shell keeps painting the previous preference.
+    return api.onSettingsChanged((patch) => {
+      if (patch.theme === undefined) return;
+      const current = useAppStore.getState().settings;
+      if (!current) return;
+      useAppStore.setState({
+        settings: { ...current, theme: String(patch.theme) as typeof current.theme },
+      });
+    });
+  }, [ready]);
 
   useEffect(() => {
     if (!ready) return;

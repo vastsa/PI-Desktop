@@ -559,19 +559,18 @@ Frontmatter 新增 `permission: inherit | ask | accept-edits | auto`（默认
 **委托循环。** `SubagentRun` 是同一 sidecar 进程中的第二个 pi `Agent`，
 使用该定义的系统提示、其（可能已固定的）provider/model、其声明的工具，
 以及与父级相同的主机连接，并遵循与父级相同的有界提供程序重试策略。
-`maxTurns` 是可选的按定义兜底（最大 80）；省略、`none` 或 `0` 表示不限轮数。
+委托没有轮次上限：它会在自己结束时、父级调用 `TaskStop` 时、用户 Stop 时结束，
+或因父级终态错误而被中止（ADR 0253）。仍声明 `maxTurns` 的文档会正常加载，该键
+会像其他任何无法识别的 frontmatter 键一样被忽略。
 `maxTokens` 是可选的按定义输出上限（最大 200000）；省略、`none` 或 `0` 表示跟随模型
 已发布的上限。它会覆盖为该委托构建的模型上的 `maxTokens`，因此适配器派生出的
 `max_tokens` / `max_completion_tokens` / `max_output_tokens` 都会带上它；它只约束该
 委托自身的响应 —— 会话自己的请求仍沿用模型绑定。超过天花板的值属于笔误，会被钳制
 而不会转发给 provider。
-内置委托各自声明与其工作量相称的值 —— `explorer` 60、`code-reviewer` 50、
-`test-runner` 40、`fixer` 80、`ui-designer` 80 —— 因此始终无法收敛的委托会以 `truncated`
-连同其部分报告结束，而不是一直跑到时长上限。内置的 `explorer` 声明 `Read`、
+内置的 `explorer` 声明 `Read`、
 `Glob`、`Grep` 和 `Bash`，而 `code-reviewer` 保持只读；`fixer` 与 `ui-designer`
 会在工作区内写入，`ui-designer` 另外声明 `BrowserPreview`，以便在报告前检查渲染结果。
-其状态为 `completed`、
-`truncated`、`failed`、`aborted`、`timed_out` 以及仅存在于注册表的
+其状态为 `completed`、`failed`、`aborted`、`timed_out` 以及仅存在于注册表的
 `stopped`；终态通过 `TaskWait` 呈现，其文本是报告（上限为
 `MAX_SUBAGENT_REPORT_CHARS`，12k），其 details 携带 `delegationId`、`agent`、
 `status`、`startedAt`、结算后的 `completedAt`、`turns`、`toolCalls`，以及失败或
@@ -581,15 +580,15 @@ Frontmatter 新增 `permission: inherit | ask | accept-edits | auto`（默认
 
 **委托生命周期（D328）。** 运行时不再用空闲或总时长掐死委托。
 `idle-timeout` / `max-duration` 仍会解析以便旧文档能加载，但不会被武装。
-委托一直跑到自己结束、碰到显式 `maxTurns`、失败、被 `TaskStop`，或用户
+委托一直跑到自己结束、失败、被 `TaskStop`，或用户
 Stop / 运行时销毁。主 Agent 用 `TaskStop` 判断要不要取消；运行中只能看到
 一行心跳（谁、状态、已用时、轮数、最后工具）。
 
 当父级在委托仍在跑时停止调用工具，运行时吞掉这次 `agent_end`，保持持久
 回合打开，等委托完成后再把报告塞回父级。父级收工不会中止它们。
 
-致命的 provider/stream 错误（包括耗尽的 HTTP 429）、父级中止以及显式的
-`maxTurns`，仍分别保留它们既有的 `failed`、`aborted` 和 `truncated` 结果。
+致命的 provider/stream 错误（包括耗尽的 HTTP 429）、父级中止，仍分别保留它们既有的
+`failed` 和 `aborted` 结果。
 父级终态错误还会中止残留委托、跳过续跑提示，并把会话恢复为空闲，这样
 “继续”不会变成 `AGENT_BUSY`（D352）。
 

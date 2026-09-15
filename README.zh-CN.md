@@ -254,6 +254,31 @@ PI-Desktop 提供多层扩展能力，从简单的 Agent 指令，到完整的�
 
 插件可以本地安装，也可以通过插件市场使用 `.piplug` 包分发。
 
+### 对话编排：Session Orchestrator
+
+官方 `pi.session-orchestrator` 插件让 Agent 可以并行协调多个持久 Worker 会话。在 Plugins 插件市场安装 `pi.session-orchestrator` 后，即可使用 `SessionTask` 工具创建、派发、监督、查询状态、等待有界结果、接收报告、取消和列出 Worker。
+
+Worker 会继承父会话的项目、Provider、模型、Thinking 等级和权限模式；它们仍是普通的 PI-Desktop 会话，可以随时打开并查看完整上下文。工作关系按父会话隔离，单个父会话最多同时运行 4 个 Worker，插件总计最多 16 个。
+
+<table>
+<tr>
+<td width="50%">
+
+<img src="docs/image/readme/session-orchestrator-overview.png" alt="PI-Desktop 对话编排插件协调多个 Worker 会话" />
+
+<p align="center"><sub>在一个会话中协调多个持久 Worker</sub></p>
+
+</td>
+<td width="50%">
+
+<img src="docs/image/readme/session-orchestrator-worker.png" alt="PI-Desktop 对话编排插件的 Worker 会话" />
+
+<p align="center"><sub>打开 Worker 会话，独立查看执行进度</sub></p>
+
+</td>
+</tr>
+</table>
+
 **[开发你的第一个 PI-Desktop 插件 →](docs/plugin-development.md)**
 
 > [!NOTE]

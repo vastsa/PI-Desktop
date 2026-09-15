@@ -264,6 +264,14 @@ export class AgentHost {
         this.emit(state, mapping.kind, { itemType: mapping.itemType, itemId, event }, meta2);
         return;
       }
+      case "user_message_persisted": {
+        const optimistic = state.activeItems.get(event.optimisticMessageId);
+        if (!optimistic || optimistic.turnId !== turnId ||
+            (optimistic.content as UiMessage)?.role !== "user" || event.message.role !== "user") return;
+        state.activeItems.delete(event.optimisticMessageId);
+        this.emit(state, mapping.kind, { itemType: "message", itemId: event.message.id, event }, meta2);
+        return;
+      }
       case "message_end":
       case "tool_end":
       case "compaction_end": {

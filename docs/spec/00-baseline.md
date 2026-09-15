@@ -128,7 +128,9 @@
 16. Agent tools: **Read / Glob / Grep / Write / Edit / Bash**
 17. Permission timeout: **120s → deny**
 18. Session grant scope: **by toolName**
-19. `~/.pi` auto-import: **not in MVP**
+19. `~/.pi` one-shot auto-import: **not in MVP**. ADR 0254 adds read-only
+    native-session discovery and explicit continuation against the canonical Pi
+    v3 JSONL; it does not silently import or copy sessions into Desktop storage.
 20. Not in MVP: **Gateway / remote WebUI control**; local loopback MCP control
     is the post-baseline, opt-in exception recorded by D370
 21. Extension model: **user-installable plugin system**

@@ -563,6 +563,15 @@ fn permission_parent_param(params: &Value) -> Result<Option<String>, JsonRpcErro
     Ok(Some(parent_id.to_string()))
 }
 
+/// Drop the per-session files and caches that live outside SQLite. Shared by
+/// `session.delete` and `projects.remove` so removing a project cleans up
+/// exactly the same side data as deleting one session.
+fn drop_session_side_data(st: &AppState, id: &str) {
+    scratch::remove_session_dir(&st.data_dir, id);
+    review::remove_session(&st.data_dir, id);
+    st.hashline.drop_session(id);
+}
+
 const DEFAULT_LARGE_PASTE_THRESHOLD: i64 = 600;
 const MIN_LARGE_PASTE_THRESHOLD: i64 = 1;
 const MAX_LARGE_PASTE_THRESHOLD: i64 = 1_000_000;
@@ -1420,6 +1429,58 @@ async fn handle_request(
                 .ok_or_else(|| rpc_err(1000, "project disappeared after creation", "INTERNAL"))?;
             Ok(json!({ "project": project }))
         }
+
+        "projects.remove" => {
+            let path = params
+                .get("path")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| rpc_err(1002, "path required", "INVALID_PARAMS"))?;
+            let path = crate::db::canonical_project_path(path)
+                .ok_or_else(|| rpc_err(1002, "path required", "INVALID_PARAMS"))?;
+            let st = state.lock().await;
+            if st
+                .db
+                .path_is_in_stored_project_group(&path)
+                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
+            {
+                return Err(rpc_err(
+                    1002,
+                    "project belongs to a multi-folder project group; remove the folder from the group first",
+                    "INVALID_PARAMS",
+                ));
+            }
+            let session_ids = st
+                .db
+                .project_session_ids(&path)
+                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            // A running turn still owns its session's tools and working
+            // directory and is still writing to that session's transcript, so
+            // the bulk delete waits until every attached session is idle.
+            for id in &session_ids {
+                if sessions::session_has_running_turn(&st.db, id)
+                    .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
+                {
+                    return Err(rpc_err(1008, "project has running sessions", "CONFLICT"));
+                }
+            }
+            let mut sessions_removed = 0;
+            for id in &session_ids {
+                if sessions::delete_session(&st.db, id)
+                    .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
+                {
+                    drop_session_side_data(&st, id);
+                    sessions_removed += 1;
+                }
+            }
+            let removed = st
+                .db
+                .delete_project(&path)
+                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            st.db
+                .delete_project_memory(&path)
+                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            Ok(json!({ "removed": removed, "sessionsRemoved": sessions_removed }))
+        }
         "project.memory.get" => {
             let path = params
                 .get("path")
@@ -1900,9 +1961,7 @@ async fn handle_request(
             let ok = sessions::delete_session(&st.db, id)
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             if ok {
-                scratch::remove_session_dir(&st.data_dir, id);
-                review::remove_session(&st.data_dir, id);
-                st.hashline.drop_session(id);
+                drop_session_side_data(&st, id);
             }
             Ok(json!({ "ok": ok }))
         }
@@ -4440,6 +4499,402 @@ mod tests {
             "## Deployment\n\nUse the staging database."
         );
         assert_eq!(structured["memory"]["entries"][0]["id"], "deployment");
+    }
+
+    /// Append a user message through the RPC so the session's transcript file
+    /// exists on disk, mirroring a renderer outbox append.
+    async fn append_test_message(state: Arc<Mutex<AppState>>, session_id: &str, message_id: &str) {
+        handle_request(
+            state,
+            "session.appendMessage",
+            json!({
+                "sessionId": session_id,
+                "message": {
+                    "id": message_id,
+                    "role": "user",
+                    "content": "hello",
+                    "createdAt": "2025-05-01T00:00:00Z"
+                }
+            }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn projects_remove_deletes_project_sessions_and_transcripts() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let project_dir = data_dir.path().join("project");
+        fs::create_dir_all(&project_dir).unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let project_path = project_dir.to_string_lossy().to_string();
+        let first = sessions::create_session_with_options(
+            &app_state.db,
+            sessions::SessionCreateOptions {
+                project_path: Some(project_path.clone()),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .id;
+        let second = sessions::create_session_with_options(
+            &app_state.db,
+            sessions::SessionCreateOptions {
+                project_path: Some(project_path.clone()),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .id;
+        let state = Arc::new(Mutex::new(app_state));
+
+        let mut transcripts = Vec::new();
+        for (index, id) in [&first, &second].into_iter().enumerate() {
+            append_test_message(state.clone(), id, &format!("message-{index}")).await;
+            let transcript = crate::transcripts::transcript_path(data_dir.path(), id).unwrap();
+            assert!(transcript.exists());
+            transcripts.push(transcript);
+        }
+
+        let saved_memory = handle_request(
+            state.clone(),
+            "project.memory.set",
+            json!({ "path": project_path, "content": "Use the staging database." }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            saved_memory["memory"]["content"],
+            "Use the staging database."
+        );
+
+        let result = handle_request(
+            state.clone(),
+            "projects.remove",
+            json!({ "path": project_path }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        assert_eq!(result["removed"], json!(true));
+        assert_eq!(result["sessionsRemoved"], json!(2));
+
+        let canonical =
+            crate::db::canonical_project_path(&project_path).expect("canonical project path");
+        let projects = handle_request(
+            state.clone(),
+            "projects.list",
+            json!({}),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        assert!(projects["projects"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|project| project["path"].as_str() != Some(canonical.as_str())));
+
+        let listed = handle_request(
+            state.clone(),
+            "session.list",
+            json!({}),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        for id in [&first, &second] {
+            assert!(listed["sessions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|session| session["id"].as_str() != Some(id.as_str())));
+        }
+
+        let memory = handle_request(
+            state,
+            "project.memory.get",
+            json!({ "path": project_path }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        assert_eq!(memory["memory"]["content"], "");
+
+        for transcript in transcripts {
+            assert!(!transcript.exists());
+        }
+        assert!(project_dir.exists());
+    }
+
+    #[tokio::test]
+    async fn projects_remove_keeps_sessions_of_other_projects() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let removed_dir = data_dir.path().join("removed-project");
+        let kept_dir = data_dir.path().join("kept-project");
+        fs::create_dir_all(&removed_dir).unwrap();
+        fs::create_dir_all(&kept_dir).unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let removed_path = removed_dir.to_string_lossy().to_string();
+        let kept_path = kept_dir.to_string_lossy().to_string();
+        let removed_session = sessions::create_session_with_options(
+            &app_state.db,
+            sessions::SessionCreateOptions {
+                project_path: Some(removed_path.clone()),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .id;
+        let kept_session = sessions::create_session_with_options(
+            &app_state.db,
+            sessions::SessionCreateOptions {
+                project_path: Some(kept_path.clone()),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .id;
+        let state = Arc::new(Mutex::new(app_state));
+
+        append_test_message(state.clone(), &removed_session, "removed-message").await;
+        append_test_message(state.clone(), &kept_session, "kept-message").await;
+        let kept_transcript =
+            crate::transcripts::transcript_path(data_dir.path(), &kept_session).unwrap();
+        assert!(kept_transcript.exists());
+
+        let result = handle_request(
+            state.clone(),
+            "projects.remove",
+            json!({ "path": removed_path }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        assert_eq!(result["removed"], json!(true));
+        assert_eq!(result["sessionsRemoved"], json!(1));
+
+        let listed = handle_request(
+            state.clone(),
+            "session.list",
+            json!({}),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        let listed_sessions = listed["sessions"].as_array().unwrap();
+        assert!(listed_sessions
+            .iter()
+            .any(|session| session["id"].as_str() == Some(kept_session.as_str())));
+        assert!(!listed_sessions
+            .iter()
+            .any(|session| session["id"].as_str() == Some(removed_session.as_str())));
+        assert!(kept_transcript.exists());
+
+        let canonical_kept =
+            crate::db::canonical_project_path(&kept_path).expect("canonical project path");
+        let projects = handle_request(
+            state,
+            "projects.list",
+            json!({}),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        assert!(projects["projects"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|project| project["path"].as_str() == Some(canonical_kept.as_str())));
+    }
+
+    #[tokio::test]
+    async fn projects_remove_unknown_path_is_idempotent() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let state = Arc::new(Mutex::new(app_state));
+
+        let blank = handle_request(
+            state.clone(),
+            "projects.remove",
+            json!({ "path": "   " }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .expect_err("a blank project path is invalid");
+        assert_eq!(blank.code, 1002);
+        assert_eq!(
+            blank.data.as_ref().and_then(|data| data.get("errorCode")),
+            Some(&json!("INVALID_PARAMS"))
+        );
+
+        let missing = data_dir
+            .path()
+            .join("missing")
+            .to_string_lossy()
+            .to_string();
+        let result = handle_request(
+            state,
+            "projects.remove",
+            json!({ "path": missing }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        assert_eq!(result["removed"], json!(false));
+        assert_eq!(result["sessionsRemoved"], json!(0));
+    }
+
+    #[tokio::test]
+    async fn projects_remove_refuses_stored_group_root() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let grouped_dir = data_dir.path().join("grouped");
+        let extra_dir = data_dir.path().join("extra");
+        fs::create_dir_all(&grouped_dir).unwrap();
+        fs::create_dir_all(&extra_dir).unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let grouped_path = grouped_dir.to_string_lossy().to_string();
+        app_state
+            .db
+            .create_project_group(
+                "Grouped",
+                &[
+                    grouped_path.clone(),
+                    extra_dir.to_string_lossy().to_string(),
+                ],
+            )
+            .unwrap();
+        let state = Arc::new(Mutex::new(app_state));
+
+        let error = handle_request(
+            state.clone(),
+            "projects.remove",
+            json!({ "path": grouped_path }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .expect_err("a stored project group root must not be removed");
+        assert_eq!(error.code, 1002);
+        assert_eq!(
+            error.data.as_ref().and_then(|data| data.get("errorCode")),
+            Some(&json!("INVALID_PARAMS"))
+        );
+
+        let canonical =
+            crate::db::canonical_project_path(&grouped_path).expect("canonical project path");
+        let projects = handle_request(
+            state,
+            "projects.list",
+            json!({}),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        assert!(projects["projects"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|project| project["path"].as_str() == Some(canonical.as_str())));
+    }
+
+    /// A running turn owns its session's tools, working directory, and
+    /// transcript writes, so the bulk delete waits until the project is idle.
+    #[tokio::test]
+    async fn projects_remove_refuses_while_a_session_is_running() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let project_dir = data_dir.path().join("busy-project");
+        fs::create_dir_all(&project_dir).unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let project_path = project_dir.to_string_lossy().to_string();
+        let session_id = sessions::create_session_with_options(
+            &app_state.db,
+            sessions::SessionCreateOptions {
+                project_path: Some(project_path.clone()),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .id;
+        let state = Arc::new(Mutex::new(app_state));
+
+        let started = handle_request(
+            state.clone(),
+            "session.beginTurn",
+            json!({ "sessionId": session_id }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        let turn_id = started["turnId"].as_str().unwrap().to_string();
+
+        let error = handle_request(
+            state.clone(),
+            "projects.remove",
+            json!({ "path": project_path }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .expect_err("a running turn blocks the project delete");
+        assert_eq!(error.code, 1008);
+        assert_eq!(
+            error.data.as_ref().and_then(|data| data.get("errorCode")),
+            Some(&json!("CONFLICT"))
+        );
+
+        let canonical =
+            crate::db::canonical_project_path(&project_path).expect("canonical project path");
+        let projects = handle_request(
+            state.clone(),
+            "projects.list",
+            json!({}),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        assert!(projects["projects"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|project| project["path"].as_str() == Some(canonical.as_str())));
+        let listed = handle_request(
+            state.clone(),
+            "session.list",
+            json!({}),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        assert!(listed["sessions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|session| session["id"].as_str() == Some(session_id.as_str())));
+
+        handle_request(
+            state.clone(),
+            "session.endTurn",
+            json!({ "turnId": turn_id, "status": "completed" }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        let removed = handle_request(
+            state,
+            "projects.remove",
+            json!({ "path": project_path }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        assert_eq!(removed["removed"], json!(true));
+        assert_eq!(removed["sessionsRemoved"], json!(1));
     }
 
     #[tokio::test]

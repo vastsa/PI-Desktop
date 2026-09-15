@@ -64,3 +64,11 @@ existing `@path` file semantics.
 - **Send the token as a basename or append a second path:** rejected because
   scratch files require their canonical path and either option can be
   ambiguous or duplicate the same input.
+
+## Amendment (2026-09-14): text representation selected beside generated image copies
+
+ADR 0059's #138 amendment can select a text representation for a paste that also
+carries `image/*` copies, which is what Word supplies for a copied selection.
+That selected text uses this decision's `largePasteThreshold`, so short text
+stays editable inline and larger text spills into session scratch as before. The
+clipboard-file and image flows of decision 5 are unchanged.

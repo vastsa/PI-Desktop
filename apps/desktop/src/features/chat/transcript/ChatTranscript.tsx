@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useContext } from "react";
 import { useTranslation } from "react-i18next";
 import type { PlanningState, UiMessage } from "@pi-desktop/shared";
 import { proposalKindForMode } from "@pi-desktop/shared";
@@ -16,6 +16,9 @@ import {
   WorkingIndicator,
 } from "./ActivityGroup";
 import { TranscriptHistory, TranscriptTail } from "./AssistantTurn";
+import { TranscriptReadOnlyContext, useActiveSessionTitle } from "./context";
+import { SelectionQuoteButton } from "../../../components/SelectionQuoteButton";
+import { ResponseAnnotationOverlay } from "../../../components/ResponseAnnotationOverlay";
 import { useTranscriptScroll } from "./hooks/useTranscriptScroll";
 import type { TranscriptSearchTarget } from "../../../lib/transcript-reading";
 import { TranscriptSearchContext } from "../../../lib/transcript-search-context";
@@ -63,6 +66,8 @@ export const ChatTranscript = memo(function ChatTranscript({
 }) {
   const { t } = useTranslation();
   const transcriptRunning = isRunning && !readingWindow;
+  const transcriptReadOnly = useContext(TranscriptReadOnlyContext);
+  const sessionTitle = useActiveSessionTitle();
   const latestTurnResult = useAppStore((state) =>
     sessionId ? state.latestTurnResults[sessionId] : undefined,
   );
@@ -103,6 +108,7 @@ export const ChatTranscript = memo(function ChatTranscript({
     handleScroll,
     revealEarlierHistory,
     jumpToLatest,
+    navigateAnnotation,
   } = useTranscriptScroll({
     sessionId,
     messages,
@@ -182,6 +188,14 @@ export const ChatTranscript = memo(function ChatTranscript({
           onRevealEarlier={revealEarlierHistory}
         />
       ) : null}
+      {/* Quoting follows the selection: the row action at the end of a long
+        * answer is the wrong end of the message to reach for (ADR message-quotes-and-side-chats / D-LOCAL-selection-overlay). */}
+      {transcriptReadOnly || !paneVisible ? null : (
+        <SelectionQuoteButton scrollRef={scrollRef} title={sessionTitle} />
+      )}
+      {!transcriptReadOnly && paneVisible && !veilCovering && sessionId ? (
+        <ResponseAnnotationOverlay sessionId={sessionId} scrollRef={scrollRef} onNavigate={navigateAnnotation} />
+      ) : null}
       <div
         className="thread-scroll"
         ref={scrollRef}
@@ -225,11 +239,13 @@ export const ChatTranscript = memo(function ChatTranscript({
               {t("chat.loadLaterMessages")}
             </button>
           ) : null}
-          {!readingWindow ? <TurnOutcomeCard
-            messages={messages}
-            result={latestTurnResult}
-          /> : null}
-          {pendingPermission ? (
+          {!readingWindow ? (
+            <TurnOutcomeCard
+              messages={messages}
+              result={latestTurnResult}
+            />
+          ) : null}
+          {pendingPermission && !transcriptReadOnly ? (
             <PermissionCard
               key={pendingPermission.requestId}
               permission={pendingPermission}

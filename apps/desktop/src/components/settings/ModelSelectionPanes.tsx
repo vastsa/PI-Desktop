@@ -8,7 +8,7 @@
  * guarantee lives here once instead of in a convention two files had to
  * remember.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   THINKING_LEVELS,
@@ -29,6 +29,7 @@ import {
 } from "../../lib/model-limit-presets";
 import { Button, Field, Input, Tooltip, TooltipButton, cx } from "../ui";
 import { IconClose, IconHelp, IconPlus, IconRefresh, IconSearch } from "../icons";
+import { filterChosenModels, hidesAddedBinding } from "./model-chosen-filter";
 import { describeModelsFetchError } from "./model-fetch-error";
 import type { ProviderModelsState } from "./useProviderModels";
 
@@ -197,6 +198,7 @@ export function ModelSelectionPanes({
   const { t } = useTranslation();
   const { rows, models, publishedLevelsById, setModels } = selection;
   const [modelQuery, setModelQuery] = useState("");
+  const [chosenQuery, setChosenQuery] = useState("");
   const [customModelId, setCustomModelId] = useState("");
   const [customModelError, setCustomModelError] = useState("");
   const [expandedModelId, setExpandedModelId] = useState<string | null>(
@@ -236,27 +238,62 @@ export function ModelSelectionPanes({
     return byId;
   }, [rows]);
 
+  // An emptied list disables the field, so a filter still sitting in it could
+  // no longer be cleared by the user. Drop it with the last configured model.
+  useEffect(() => {
+    if (models.length === 0) setChosenQuery("");
+  }, [models.length]);
+
+  /**
+   * The chosen list narrows with the discovered list's rule plus the binding's
+   * alias: a case-insensitive substring match over the id, the alias, and the
+   * catalog display name, so a friendly name finds the id it stands for. The
+   * rule lives in `model-chosen-filter`, so the pane, the add paths below, and
+   * the tests execute one implementation instead of three copies of it.
+   */
+  const visibleChosen = useMemo(
+    () => filterChosenModels(models, chosenQuery, rows),
+    [chosenQuery, models, rows],
+  );
+
+  /** A discovered row arrives enriched; a hand-typed id gets generic limits. */
+  const bindingForRow = (row: ModelRow): ModelBinding =>
+    row.info ? bindingFromModelInfo(row.info) : bindingForCustomModel(row.id);
+
+  /**
+   * The rule for a model that is being added: a filter is kept while it still
+   * shows the new row and dropped when the row would land out of view, so
+   * nothing the user just added hides behind a search typed earlier.
+   */
+  const keepAddedModelVisible = (added: ModelBinding[]) => {
+    if (hidesAddedBinding(added, chosenQuery, rows)) setChosenQuery("");
+  };
+
   const toggleModel = (row: ModelRow) => {
     const wanted = row.id.toLowerCase();
     const alreadyChosen = models.some(
       (binding) => binding.id.toLowerCase() === wanted,
     );
-    if (!alreadyChosen) setExpandedModelId((open) => open ?? row.id);
+    if (!alreadyChosen) {
+      setExpandedModelId((open) => open ?? row.id);
+      keepAddedModelVisible([bindingForRow(row)]);
+    }
     setModels((current) => {
       if (current.some((binding) => binding.id.toLowerCase() === wanted)) {
         return current.filter((binding) => binding.id.toLowerCase() !== wanted);
       }
-      // A discovered row arrives already enriched, so its published limits and
-      // thinking levels are adopted as-is.
-      return [
-        ...current,
-        row.info ? bindingFromModelInfo(row.info) : bindingForCustomModel(row.id),
-      ];
+      return [...current, bindingForRow(row)];
     });
   };
 
   const toggleVisibleModels = (select: boolean) => {
-    if (select) setExpandedModelId((open) => open ?? visibleRows[0]?.id ?? null);
+    if (select) {
+      setExpandedModelId((open) => open ?? visibleRows[0]?.id ?? null);
+      const added = visibleRows
+        .filter((row) => !selected.has(row.id.toLowerCase()))
+        .map((row) => bindingForRow(row));
+      keepAddedModelVisible(added);
+    }
     setModels((current) => applyVisibleModelSelection(current, visibleRows, select));
   };
 
@@ -275,10 +312,12 @@ export function ModelSelectionPanes({
       setCustomModelError(t("settings.modelAlreadyAdded"));
       return;
     }
-    setModels((current) => [...current, bindingForCustomModel(id)]);
+    const binding = bindingForCustomModel(id);
+    setModels((current) => [...current, binding]);
     setExpandedModelId(id);
     setCustomModelId("");
     setCustomModelError("");
+    keepAddedModelVisible([binding]);
   };
 
   const fetchFailed = discovery.status === "error";
@@ -427,12 +466,29 @@ export function ModelSelectionPanes({
         <div className="provider-chosen-head">
           <h4 className="provider-chosen-title">{t("settings.modelConfigurations")}</h4>
           <span className="provider-chosen-count">{models.length}</span>
+          <div className="provider-chosen-search-wrap">
+            <IconSearch size={13} aria-hidden />
+            <input
+              className="provider-chosen-search"
+              value={chosenQuery}
+              placeholder={t("settings.searchChosenModels")}
+              aria-label={t("settings.searchChosenModels")}
+              disabled={busy || models.length === 0}
+              spellCheck={false}
+              autoCorrect="off"
+              autoCapitalize="off"
+              autoComplete="off"
+              onChange={(event) => setChosenQuery(event.target.value)}
+            />
+          </div>
         </div>
         {models.length === 0 ? (
           <div className="provider-chosen-empty">{t("settings.noModelsChosen")}</div>
+        ) : visibleChosen.length === 0 ? (
+          <div className="provider-chosen-empty">{t("settings.noChosenModelMatches")}</div>
         ) : (
           <ul className="provider-chosen-list">
-            {models.map((binding) => {
+            {visibleChosen.map((binding) => {
               // The catalog is a baseline, not a capability gate. Always show
               // the canonical ladder so a proxy or newly released model can be
               // configured before models.dev catches up.

@@ -22,7 +22,10 @@ import {
   createFileReference,
   editorSelectionRange,
   formatDroppedDirectoryPath,
+  insertClipboardText,
   nextChipToken,
+  normalizeClipboardLineEndings,
+  preferClipboardText,
   readEditorValue,
   type ComposerFileReference,
 } from "../editor";
@@ -152,8 +155,11 @@ export function useComposerAttachments({
 
   const pasteClipboardFiles = async (event: ClipboardEvent<HTMLDivElement>) => {
     if (isInputBlocked) return;
-    const files = clipboardFiles(event.clipboardData);
     const text = event.clipboardData.getData("text/plain");
+    const pastedFiles = clipboardFiles(event.clipboardData);
+    const files = preferClipboardText(text, pastedFiles, api.getDroppedFilePath)
+      ? []
+      : pastedFiles;
     const textLength = Array.from(text).length;
     const isLargeTextPaste = !files.length && textLength > largePasteThreshold;
     if (isLargeTextPaste || files.length) {
@@ -248,12 +254,14 @@ export function useComposerAttachments({
     event.preventDefault();
     if (!text) return;
     void api.recordClipboardPaste(text).catch(() => undefined);
-    if (!document.execCommand("insertText", false, text)) {
+    if (!insertClipboardText(event.currentTarget, text)) {
       const selection = window.getSelection();
       if (!selection || selection.rangeCount === 0) return;
       const range = selection.getRangeAt(0);
       range.deleteContents();
-      range.insertNode(document.createTextNode(text));
+      range.insertNode(
+        document.createTextNode(normalizeClipboardLineEndings(text)),
+      );
       range.collapse(false);
       selection.removeAllRanges();
       selection.addRange(range);

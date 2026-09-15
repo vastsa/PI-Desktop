@@ -475,6 +475,36 @@ export function createApplicationLifecycle({
     }
   }
 
+  /**
+   * Apply only the `AppSettings.theme` preference to the host's appearance
+   * state. Reused by `applyApplicationMenuSettings` so the full-settings path
+   * and the narrow plugin `app.setTheme` path (ADR 0249) agree.
+   *
+   * Deliberately narrower than `applyApplicationMenuSettings`: theme changes
+   * never touch the locale, keybindings, or developer-mode menu state, so a
+   * caller that only knows the theme cannot reset those fields by passing a
+   * partial settings object.
+   */
+  function applyAppThemePreference(preference: unknown) {
+    appearanceState.appThemePreference = isThemeColorScheme(preference)
+      ? preference
+      : typeof preference === "string" && preference.startsWith("plugin:")
+        ? preference
+        : "system";
+    applyNativeThemeSource({ theme: preference });
+    if (isThemeColorScheme(preference)) {
+      appearanceState.pluginPanelTheme = preference;
+    } else if (typeof preference === "string" && preference.startsWith("plugin:")) {
+      const pluginTheme = plugins.getThemes().find((theme) => theme.id === preference);
+      appearanceState.pluginPanelTheme =
+        pluginTheme?.base ?? (nativeTheme.shouldUseDarkColors ? "dark" : "light");
+    } else {
+      appearanceState.pluginPanelTheme = nativeTheme.shouldUseDarkColors ? "dark" : "light";
+    }
+    // Panels mirror the app's palette/language live; push any change now.
+    broadcastAppearance();
+  }
+
   /** Keep native labels and accelerators aligned with persisted app settings. */
   function applyApplicationMenuSettings(settings?: {
     language?: unknown;
@@ -492,24 +522,7 @@ export function createApplicationLifecycle({
       appearanceState.updaterLocale = locale;
       refreshReleaseNotes();
     }
-    const preference = settings?.theme;
-    appearanceState.appThemePreference = isThemeColorScheme(preference)
-      ? preference
-      : typeof preference === "string" && preference.startsWith("plugin:")
-        ? preference
-        : "system";
-    applyNativeThemeSource(settings);
-    if (isThemeColorScheme(preference)) {
-      appearanceState.pluginPanelTheme = preference;
-    } else if (typeof preference === "string" && preference.startsWith("plugin:")) {
-      const pluginTheme = plugins.getThemes().find((theme) => theme.id === preference);
-      appearanceState.pluginPanelTheme =
-        pluginTheme?.base ?? (nativeTheme.shouldUseDarkColors ? "dark" : "light");
-    } else {
-      appearanceState.pluginPanelTheme = nativeTheme.shouldUseDarkColors ? "dark" : "light";
-    }
-    // Panels mirror the app's palette/language live; push any change now.
-    broadcastAppearance();
+    applyAppThemePreference(settings?.theme);
     const keybindings =
       settings?.keybindings && typeof settings.keybindings === "object"
         ? (settings.keybindings as KeybindingOverrides)
@@ -594,6 +607,7 @@ export function createApplicationLifecycle({
     dispatchNativeMenuAction,
     applyDeveloperMode,
     applyNativeThemeSource,
+    applyAppThemePreference,
     applyApplicationMenuSettings,
     resolveAppearance,
     broadcastAppearance,

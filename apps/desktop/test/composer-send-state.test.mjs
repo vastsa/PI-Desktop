@@ -87,8 +87,8 @@ test("composer send/stop button follows draft content and the visible session's 
     /className="stop-btn"[\s\S]*?\) : null\}[\s\S]*?className="send-btn"/,
     "Stop must not render beside an always-present Send button",
   );
-  assert.match(composer, /const inputBlocked = approvalPending \|\| pasting;/);
-  assert.match(composer, /const controlsBlocked = approvalPending;/);
+  assert.match(composer, /const inputBlocked = approvalPending \|\| pasting \|\| nativeInputBlocked;/);
+  assert.match(composer, /const controlsBlocked = approvalPending \|\| nativeSession;/);
   assert.match(composer, /contentEditable=\{!inputBlocked\}/);
   assert.match(composer, /disabled=\{controlsBlocked\}/);
   assert.match(composer, /sendBlocked[\s\S]*\(!modelReady/);
@@ -222,7 +222,9 @@ test("mode slash prefixes send the trailing prompt and retain failed drafts", ()
   assert.match(sendPrompt, /return false;/);
   assert.match(
     sendPrompt,
-    /await api\.prompt\(\{[\s\S]*?sessionId,[\s\S]*?content,[\s\S]*?attachments:[\s\S]*?promptAttachmentsFromDraft\(draft\.fileReferences\)[\s\S]*?\}\);[\s\S]*?return true;/,
+    // An annotated send ships the block the model reads, not the bare draft
+    // text, so the prompt call carries the composed prompt (D-LOCAL-response-annotations).
+    /await api\.prompt\(\{[\s\S]*?sessionId,[\s\S]*?content: outgoing,[\s\S]*?attachments:[\s\S]*?promptAttachmentsFromDraft\(draft\.fileReferences\)[\s\S]*?\}\);[\s\S]*?return true;/,
   );
 });
 

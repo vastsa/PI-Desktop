@@ -29,6 +29,7 @@ declare const pi: PiPluginHostApi;
 pi.app.getVersion(): Promise<string>
 pi.app.getLocale(): Promise<string>
 pi.app.getAppearance(): Promise<PluginAppearance>
+pi.app.setTheme(themeId: "system" | "light" | "dark" | `plugin:${string}`): Promise<void>
 ```
 
 `app.getAppearance` returns the appearance the host is currently showing so a
@@ -47,6 +48,35 @@ Panels read the same value through the bridge channel `app.getAppearance` and
 receive live updates on the `appearance:changed` event (below). On hosts older
 than the channel, the call rejects with `UNSUPPORTED`; panels should fall back
 to the OS preference and their own in-panel choice.
+
+`app.setTheme` (requires `ui.theme`, ADR 0249) applies the app theme
+preference the Settings picker writes. It accepts a built-in preference or a
+currently registered plugin theme id; unknown ids reject with
+`INVALID_ARGUMENT`. The host persists `AppSettings.theme`, refreshes native
+chrome / panel appearance, and emits `settingsChanged` to the renderer.
+
+### themes (requires `ui.theme`)
+
+Runtime registry for the calling plugin's own themes. Works in production
+without unload/reload (ADR 0249).
+
+```ts
+pi.themes.upsert(input: {
+  id: string;           // local id, same rules as contributes.themes[].id
+  label: string;
+  base: "light" | "dark";
+  css: string;          // sanitized with sanitizeThemeCss
+}): Promise<void>
+
+pi.themes.remove(themeId: string): Promise<void>
+pi.themes.list(): Promise<Array<{ id: string; themeId: string; label: string; base: "light" | "dark" }>>
+```
+
+- Full ids are namespaced `plugin:<pluginId>:<themeId>`.
+- `upsert` of an existing id replaces label / base / css.
+- There is no per-plugin theme count cap; the CSS size cap and sanitizer still apply.
+- After upsert/remove the host emits `pluginChanged` (`reason: "themes"`) and
+  refreshes panel appearance, so an updated **active** theme restyles immediately.
 
 ### plugin
 ```ts
@@ -227,6 +257,9 @@ type ToolExecContext = {
  log: (msg: string) => void
 }
 ```
+
+`turnId` is populated for host-driven turns and matches the `turnId` of the
+corresponding `session:turnEnded` event (§5).
 
 ### models (requires `models.list`)
 ```ts
@@ -659,6 +692,24 @@ Delivered today:
 - `session:modelChanged` — `{ sessionId, modelKey, thinkingLevel }`, sent after
   a successful `session.configure` that changes provider, model, or thinking
   level.
+- `session:turnEnded` — payload is
+  `{ sessionId: string; turnId: string; reason: "completed" | "aborted" | "error" }`,
+  sent once per host turn at the end of its teardown, after the durable
+  `session.endTurn` attempt. A turn is the one `session.beginTurn` created: a
+  user submission, an approved plan execution, or a scheduled run, and a queued
+  item that never started produces no event. `completed`, `aborted`, and
+  `error` are the three terminal reasons. The event carries the `turnId` the
+  terminal runtime event identified, not whichever turn happens to be active,
+  so a late event from an earlier turn cannot settle a newer one. Delivery is
+  fire-and-forget: there is no ack and no replay, so a plugin that is alive and
+  subscribed receives it once, and a delivery that races a plugin crash,
+  reload, or host quit is not guaranteed. Receiving it does **not** mean every
+  in-flight tool of that turn has exited — late results can still arrive — so a
+  plugin must serialise or otherwise scope its cleanup by `turnId`. The event
+  also needs no new permission: it travels on the existing event channel, and
+  subscribing to an unknown event name does not error. No published host emits it
+  yet — 0.14.8 does not include it — so a plugin that depends on it must require
+  the release that actually ships it rather than assume 0.14.7 or 0.14.8.
 
 A throwing handler is logged and does not affect other listeners or the plugin.
 
@@ -696,6 +747,7 @@ The host-owned preload forwards only fixed channels to the plugin runtime:
 | `ui.notify` | `notify` |
 | `ui.getNotificationPermission`, `ui.requestNotificationPermission`, `ui.showNativeNotification` | `notify` |
 | `plugin.getSettings`, `workspace.get`, `app.getAppearance` | None |
+| `app.setTheme`, `themes.upsert`, `themes.remove`, `themes.list` | `ui.theme` |
 | `models.list` | `models.list` |
 | `fs.readText`, `fs.stat`, `fs.readRange`, `fs.readPreview`, `fs.openDefault`, `fs.reveal`, `fs.glob`, `fs.list` | `fs.read` |
 | `fs.writeText` | `fs.write` |
@@ -721,6 +773,8 @@ Delivered today:
   the app's palette or language changes, so a panel can restyle and relabel live.
 - `workspace:changed` — payload is `{ path: string; name: string } | null`,
   matching `workspace.get()`, sent when the open project changes.
+- `session:turnEnded` — the same payload as the plugin-process event in §5,
+  sent when a host turn reaches a terminal state.
 
 ## 7. Call auditing
 

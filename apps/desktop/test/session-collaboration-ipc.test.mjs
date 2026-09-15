@@ -34,6 +34,7 @@ const { registerSessionIpc } = load("../electron/main/ipc/session-ipc.ts", {
   "@pi-desktop/shared": shared,
   "../importers": {},
   "../services/session-collaboration": collaboration,
+  "../services/session-search": { searchSessionsAcrossSources: async () => ({ hits: [], nextOffset: null }) },
 });
 const summary = {
   sessionId: "worker-session-id",

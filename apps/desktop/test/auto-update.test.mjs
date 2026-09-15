@@ -106,6 +106,21 @@ test("updater gates delivery mode by platform and delivery policy", () => {
   assert.match(updaterSource, /quitAndInstall/);
   assert.match(
     updaterSource,
+    /private installRequested = false/,
+    "the install request is latched so the shutdown path can see it",
+  );
+  assert.match(
+    updaterSource,
+    /isInstallingUpdate\(\): boolean/,
+    "the shutdown path must be able to ask whether this quit is an update restart",
+  );
+  assert.match(
+    updaterSource,
+    /this\.installRequested = true;[\s\S]*?autoUpdater\.quitAndInstall\(/,
+    "the latch must be set before quitAndInstall spawns the installer",
+  );
+  assert.match(
+    updaterSource,
     /state\.status === "downloaded"[\s\S]*return this\.state/,
   );
   assert.match(updaterSource, /autoUpdater\.on\("error"/);

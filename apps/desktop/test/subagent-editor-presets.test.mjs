@@ -58,7 +58,7 @@ test("the preset catalog covers the four builtin roles", () => {
 
 test("the preset catalog has unit-test coverage", () => {
   // The tests under `subagent-presets.test.ts` lock down the public surface
-  // (preset ids, non-empty tools/body, maxTurns within clamp). Asserting the
+  // (preset ids, non-empty tools/body, and no invented turn cap). Asserting the
   // file exists here guards against accidental deletion of those tests when
   // the catalog grows.
   assert.match(sharedPresetsTest, /describe\("SUBAGENT_PRESETS"/);
@@ -77,10 +77,9 @@ test("the editor applies a preset by overwriting the draft body and tools", () =
     editorSource,
     /export function applySubagentPreset\(draft: SubagentDraft, preset: SubagentPreset\)/,
   );
-  // The replacement is wholesale: tools / maxTurns / body / description must
-  // all be overwritten so the runtime sees the preset the user picked.
+  // The replacement is wholesale: tools / body / description must all be
+  // overwritten so the runtime sees the preset the user picked.
   assert.match(editorSource, /tools: \[\.\.\.preset\.tools\]/);
-  assert.match(editorSource, /maxTurns: preset\.maxTurns/);
   assert.match(editorSource, /body: preset\.body/);
   assert.match(editorSource, /description: preset\.description/);
 });
@@ -89,7 +88,6 @@ test("the editor can prefill a create draft from a catalog definition", () => {
   assert.match(editorSource, /export function draftFromDefinition\(/);
   assert.match(editorSource, /findSubagentPreset\(definition\.name\)/);
   assert.match(editorSource, /body: definition\.prompt/);
-  assert.match(editorSource, /maxTurns: definition\.maxTurns \?\? 0/);
   assert.match(editorSource, /initialPresetId\?: string/);
   assert.match(editorSource, /copiedPreset && initialPresetId \? initialPresetId/);
 });
@@ -184,4 +182,10 @@ test("the create sheet is a compact chip row with an Advanced disclosure", () =>
   assert.doesNotMatch(editorSource, /extensions\.subagents\.presetApply/);
   assert.doesNotMatch(editorSource, /extensions\.subagents\.sheetSubtitle/);
   assert.match(editorSource, /id="subagent-sheet-error" className="ext-sheet-error" role="alert"/);
+});
+
+test("the removed turn cap leaves no trace in the editor or the preset catalog", () => {
+  // ADR 0253 removed the delegate turn limit: neither source may still name it.
+  assert.doesNotMatch(editorSource, /maxTurns/);
+  assert.doesNotMatch(sharedPresets, /maxTurns/);
 });

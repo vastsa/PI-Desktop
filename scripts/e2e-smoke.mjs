@@ -12,7 +12,7 @@
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdtempSync, rmSync, writeFileSync, readFileSync, mkdirSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync, readFileSync, mkdirSync, readdirSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -378,6 +378,204 @@ async function main() {
       "E2E-004-onboarding",
       Array.isArray(onboarding.steps) && onboarding.steps.length >= 4,
     );
+
+    // Project removal coverage (E2E-PROJECT-delete-*). The on-disk layout is
+    // derived from host-core instead of guessed: per-session transcripts are
+    // `<data>/sessions/<id>.jsonl` (crates/host-core/src/transcripts.rs
+    // `base_dir` + `path_for`), scratch dirs are `<data>/scratch/<id>`
+    // (crates/host-core/src/scratch.rs `session_dir`), and review dirs are
+    // `<data>/review-changes/<id>` (crates/host-core/src/review.rs `REVIEW_DIR`
+    // + `session_review_dir`).
+    const transcriptPathFor = (sessionId) =>
+      join(dataDir, "sessions", `${sessionId}.jsonl`);
+    const scratchDirFor = (sessionId) => join(dataDir, "scratch", sessionId);
+    const reviewDirFor = (sessionId) =>
+      join(dataDir, "review-changes", sessionId);
+    const walkDataDir = (dir) =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+        const path = join(dir, entry.name);
+        return entry.isDirectory() ? [path, ...walkDataDir(path)] : [path];
+      });
+    // Layout-agnostic safety net: every path under the data dir whose own name
+    // carries a session id is per-session state the delete path must own.
+    const sessionArtifacts = (sessionIds) =>
+      walkDataDir(dataDir).filter((path) =>
+        sessionIds.some((id) => path.includes(id)),
+      );
+
+    // E2E-PROJECT-delete-removes-project-and-owned-sessions — removing a
+    // project drops its durable row plus every session attached to it, their
+    // per-session files, and its durable memory; the folder stays on disk.
+    // Projects are registered with `projects.create` (the file's `workspace.set`
+    // style would also rebind the active workspace used by earlier scenarios).
+    {
+      const removedProjectDir = join(dataDir, "e2e-project-removed");
+      const keptProjectDir = join(dataDir, "e2e-project-kept");
+      mkdirSync(removedProjectDir, { recursive: true });
+      mkdirSync(keptProjectDir, { recursive: true });
+      await host.call("projects.create", { path: removedProjectDir });
+      await host.call("projects.create", { path: keptProjectDir });
+      // projects.list stores the canonical spelling (db.rs canonical_project_path).
+      const removedProjectPath = realpathSync(removedProjectDir);
+      const keptProjectPath = realpathSync(keptProjectDir);
+
+      const deletedSessionIds = [];
+      for (const title of ["E2E removed session 1", "E2E removed session 2"]) {
+        const bound = await host.call("session.create", {
+          title,
+          mode: "agent",
+          projectPath: removedProjectPath,
+        });
+        deletedSessionIds.push(bound.session.id);
+        await host.call("session.appendMessage", {
+          sessionId: bound.session.id,
+          message: {
+            id: randomUUID(),
+            role: "user",
+            content: "hello",
+            createdAt: new Date().toISOString(),
+            status: "complete",
+          },
+        });
+      }
+      const keptSession = await host.call("session.create", {
+        title: "E2E kept session",
+        mode: "agent",
+        projectPath: keptProjectPath,
+      });
+      const savedMemory = await host.call("project.memory.set", {
+        path: removedProjectPath,
+        content: "Use the staging database.",
+      });
+
+      // Create the per-session side data the delete path owns, so the absence
+      // checks below cannot pass vacuously.
+      for (const id of deletedSessionIds) {
+        const scratch = scratchDirFor(id);
+        mkdirSync(scratch, { recursive: true });
+        writeFileSync(join(scratch, "draft.txt"), "scratch");
+        const review = reviewDirFor(id);
+        mkdirSync(review, { recursive: true });
+        writeFileSync(join(review, "artifact.txt"), "review");
+      }
+      const transcriptsBefore = deletedSessionIds.map(transcriptPathFor);
+      // Captured now: the record() condition below runs after the removal.
+      const transcriptsExistedBefore = transcriptsBefore.every((path) =>
+        existsSync(path),
+      );
+      const artifactsBefore = sessionArtifacts(deletedSessionIds);
+
+      const removal = await host.call("projects.remove", {
+        path: removedProjectPath,
+      });
+      const projectsAfter = await host.call("projects.list");
+      const sessionsAfter = await host.call("session.list");
+      const memoryAfter = await host.call("project.memory.get", {
+        path: removedProjectPath,
+      });
+      const artifactsAfter = sessionArtifacts(deletedSessionIds);
+      record(
+        "E2E-PROJECT-delete-removes-project-and-owned-sessions",
+        transcriptsExistedBefore &&
+          savedMemory.memory?.content === "Use the staging database." &&
+          artifactsBefore.length >= deletedSessionIds.length * 3 &&
+          removal.removed === true &&
+          removal.sessionsRemoved === 2 &&
+          projectsAfter.projects.every(
+            (project) => project.path !== removedProjectPath,
+          ) &&
+          projectsAfter.projects.some(
+            (project) => project.path === keptProjectPath,
+          ) &&
+          sessionsAfter.sessions.every(
+            (session) => !deletedSessionIds.includes(session.id),
+          ) &&
+          sessionsAfter.sessions.some(
+            (session) => session.id === keptSession.session.id,
+          ) &&
+          String(memoryAfter.memory?.content ?? "") === "" &&
+          transcriptsBefore.every((path) => !existsSync(path)) &&
+          artifactsAfter.length === 0 &&
+          existsSync(removedProjectDir),
+        `removed=${removal.removed} sessionsRemoved=${removal.sessionsRemoved} artifacts=${artifactsBefore.length}->${artifactsAfter.length}`,
+      );
+    }
+
+    // E2E-PROJECT-delete-removes-project-and-owned-sessions (running refusal) —
+    // a project with a
+    // running turn is refused with CONFLICT and nothing is deleted; the same
+    // call succeeds once that turn ends.
+    {
+      const busyProjectDir = join(dataDir, "e2e-project-busy");
+      mkdirSync(busyProjectDir, { recursive: true });
+      await host.call("projects.create", { path: busyProjectDir });
+      const busyProjectPath = realpathSync(busyProjectDir);
+      const busySession = await host.call("session.create", {
+        title: "E2E busy session",
+        mode: "agent",
+        projectPath: busyProjectPath,
+      });
+      const turn = await host.call("session.beginTurn", {
+        sessionId: busySession.session.id,
+      });
+
+      let refusal = null;
+      try {
+        await host.call("projects.remove", { path: busyProjectPath });
+      } catch (error) {
+        refusal = error;
+      }
+      const projectsWhileBusy = await host.call("projects.list");
+      const sessionsWhileBusy = await host.call("session.list");
+      const refusedWhileBusy =
+        refusal?.code === 1008 && refusal?.data?.errorCode === "CONFLICT";
+      const nothingDeleted =
+        projectsWhileBusy.projects.some(
+          (project) => project.path === busyProjectPath,
+        ) &&
+        sessionsWhileBusy.sessions.some(
+          (session) => session.id === busySession.session.id,
+        );
+
+      await host.call("session.endTurn", {
+        turnId: turn.turnId,
+        status: "completed",
+      });
+      const idleRemoval = await host.call("projects.remove", {
+        path: busyProjectPath,
+      });
+      record(
+        "E2E-PROJECT-delete-removes-project-and-owned-sessions-refuses-while-running",
+        refusedWhileBusy &&
+          nothingDeleted &&
+          idleRemoval.removed === true &&
+          idleRemoval.sessionsRemoved === 1,
+        `refused=${refusal?.code}/${refusal?.data?.errorCode ?? "none"} then removed=${idleRemoval.removed} sessionsRemoved=${idleRemoval.sessionsRemoved}`,
+      );
+    }
+
+    // E2E-PROJECT-delete-removes-project-and-owned-sessions (unknown path) — a
+    // blank path is invalid,
+    // a path with no durable row is a no-op.
+    {
+      let blankError = null;
+      try {
+        await host.call("projects.remove", { path: "   " });
+      } catch (error) {
+        blankError = error;
+      }
+      const missing = await host.call("projects.remove", {
+        path: join(dataDir, "e2e-project-missing"),
+      });
+      record(
+        "E2E-PROJECT-delete-removes-project-and-owned-sessions-unknown-path",
+        blankError?.code === 1002 &&
+          blankError?.data?.errorCode === "INVALID_PARAMS" &&
+          missing.removed === false &&
+          missing.sessionsRemoved === 0,
+        `blank=${blankError?.code}/${blankError?.data?.errorCode ?? "none"} missing=${missing.removed}/${missing.sessionsRemoved}`,
+      );
+    }
 
     // live model test (optional if key present)
     if (API_KEY) {

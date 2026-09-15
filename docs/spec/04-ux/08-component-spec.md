@@ -436,7 +436,21 @@ visually distinct from list content.
   chat home while preserving the active conversation and workspace; macOS
   intentionally omits this brand control from the sidebar header
 - Click the footer Plugins icon immediately right of Settings to open the
-  Extensions destination; the icon exposes the localized label on hover/focus
+  Extensions destination; while Plugins is active, click it again to go back
+  one entry in the existing navigation history. If no previous entry exists,
+  open chat instead. The pressed state reflects the current page and the
+  localized label remains available on hover/focus.
+- This shortcut reuses the existing Back action (also bound to `Cmd/Ctrl+[`),
+  including its session selection and loading behavior. It does not skip
+  Settings entries or track a separate return destination. Settings navigation
+  is unchanged; its existing Back to app control opens chat. Both footer
+  destination buttons report their active state to assistive technology.
+- Reopening Plugins retains its Installed/Marketplace tab, both search inputs,
+  and category filter in renderer memory. Detail/settings/permission dialogs,
+  transient menus, and pending-operation UI are not retained. The page still
+  unmounts normally, releasing listeners, and an operation already in flight
+  still completes and reports through the normal toast channel; this is not a
+  hidden live workbench or durable preference across application restart.
 - The footer action group stays on the left and the build/version chip stays
   right-aligned; clicking the chip checks for updates or opens the available
   release in Settings
@@ -634,6 +648,7 @@ controls.
 | Project reorder | press-and-move on the title (8px), or ArrowUp/ArrowDown on that title, writes contiguous normalized-path order to sidebar preferences; accent insertion line; no visible grip |
 | Project archive | omitted from default view; restorable from archived view |
 | Project close | removes retained tab only; durable project/sessions remain |
+| Project delete | row-menu danger action behind a second confirmation that names the project and the number of its sessions; refused with a message while any of those sessions is running; removes the durable project row, those sessions, their transcripts, and its project memory; never deletes the folder on disk; a path owned by a multi-folder project group is refused with a message, and a path the host no longer knows is still removed from the list |
 | Project memory | row-menu editor reads and saves a compact list of titled or untitled memory cards for the exact project path; cards can be added, edited, and removed, the context is available in later chats, and it is never a higher-priority instruction |
 | Session list | exact-path matches only; no basename grouping |
 | Active group | exactly one group reflects the selected host workspace |
@@ -1074,6 +1089,63 @@ It does not render separate Details or Output tabs.
   deleted delegation shows a localized unavailable state and never displays
   another session's rows.
 
+### 5.8 Side chat (D-LOCAL-message-quotes)
+
+A side chat is one more work-panel resource: a live view of another session's
+transcript beside the main conversation, not a second panel and not a new kind
+of session.
+
+- Entry: **Open side chat** on an assistant turn (fork anchored at that assistant
+  message) and on a user message (fork anchored at that user message), with the
+  tooltip and accessible name `chat.startSideChat`. Opening calls the existing
+  `session.fork` with the anchor and does not activate the child, so the main
+  conversation keeps its visible session. The child is durable on the host
+  exactly as an ordinary branch. For a native Pi parent the same channel is
+  source-discriminated: the sidecar returns the child's whole anchored
+  transcript, the panel streams its reply under a provisional row that is
+  re-keyed to the durable SDK entry, and a native child that is read-only
+  (provider/trust/external change) disables Send with the `sideChat.readOnly`
+  hint, while a send during a running native turn is rejected before the
+  Desktop queue with a visible toast and the draft kept. Stop always stays
+  available for a running child.
+- Registration: the child is registered as a side chat of the parent session in
+  renderer-owned state, and the panel opens one `sidechat` tab whose identity is
+  `sidechat:<childSessionId>`. The tab reuses the upstream docked panel, its
+  three-column width budget, resize lifecycle, tab strip/launcher, and the
+  existing per-session panel-context rule (D128): changing the visible session
+  swaps that session's retained context atomically.
+- Live content: while a side chat is registered, the child's message and tool
+  start / update / end events are projected into a renderer-owned per-session
+  transcript map from the same event stream the active transcript consumes,
+  reusing the existing background-transcript reducer. The panel streams live
+  although the child is never the active session.
+- Body: a compact header with the side-chat title (the tab label reuses
+  `sideChat.title`), **Add to main chat** (`sideChat.addToMain`), **Open as a
+  conversation** (`sideChat.openAsSession`), and the shared tab-close control;
+  the child's transcript rendered with the existing transcript component; the
+  existing permission card and ask card, each resolving by the request's own
+  session id, so a child that needs approval or an answer never stalls behind an
+  invisible prompt; and a compact input (placeholder
+  `sideChat.placeholder`, empty-state line `sideChat.empty`) with Send reusing
+  `chat.send` and Stop reusing `chat.stopGenerating`. Send targets the child
+  through the existing prompt path; Stop aborts that child session.
+- Add to main chat copies the side chat's newest assistant answer into the main
+  conversation's composer as a quote of that answer, under the Composer's quoted
+  draft contract (§11.9) and its 2000-character cap, attributed to the side
+  chat's title. It never sends.
+- Open as a conversation activates the child through the normal
+  session-selection path, so the full composer, prompt queue, and stop controls
+  apply, and releases the side-chat registration and its tab.
+- Close: closing the tab removes the registration and its transcript projection.
+  The child session is not deleted and keeps appearing in the sidebar, session
+  lists, and search. Entries are removed when the tab closes, when the child is
+  opened as a conversation, and when the parent or child session is deleted.
+- Boundaries: side-chat state is renderer-owned and is not persisted across
+  restart (the durable child is). Native fork adds sidecar file creation but no
+  host protocol, storage schema, permission change, or native queue: the child
+  remains an ordinary Pi session in the sidebar, session lists, and title/
+  project search, and it reopens as a normal conversation.
+
 ---
 
 ## 6. SessionList
@@ -1230,7 +1302,9 @@ storage but compose into one assistant turn until the next user message.
   cancels pending follow work, and shows the "scroll to bottom" floating button;
   stream or resize updates cannot pull the viewport back down; send / retry /
   regenerate re-pins and jumps to bottom
-- Hover message: copy action appears
+- Hover message: its action row appears — Copy, Quote, and the row's other
+  per-turn actions. Quote prefills the composer per §11.9 and Open side chat
+  opens §5.8; neither sends or leaves the visible session.
 - Assistant fragments emitted before and after tool calls compose into one
   `role="article"` turn. The turn exposes one trailing meta row and one action
   toolbar; Copy joins all contentful fragments in order, while Fork and
@@ -1708,6 +1782,54 @@ Renderer: `apps/desktop/src/components/Markdown.tsx` + `apps/desktop/src/lib/shi
   when the marker set changes and whenever the rail's own box resizes: the rail's
   height derives from `--composer-dock-height`, which the composer republishes as
   its draft grows, so dashes move without a marker change or a window resize.
+
+### 8.8 Quote and side-chat actions (D-LOCAL-message-quotes, D-LOCAL-selection-overlay)
+
+- Every user message exposes **Quote** in its hover action row beside Copy,
+  Edit, and Delete; an assistant turn's row exposes the annotate action instead
+  (§11.10, D-LOCAL-response-annotations). Activating Quote inserts a
+  blockquote of the message into the active session's composer draft through the
+  existing prefill contract and focuses the composer; it never sends, never
+  creates a session, and writes nothing to the transcript.
+- **Open side chat** uses the same row with the `chat.startSideChat` label. It
+  forks at that message and opens §5.8 without activating the child.
+- The excerpt is the live text selection when that selection is inside the
+  clicked message row; otherwise it is the message's own text (for an assistant
+  turn, its answer text). The inserted text follows the Composer contract in
+  §11.9.
+- A non-empty selection inside a transcript row also floats **one** overlay
+  above it, so the common case — quoting the sentence, formula, or table just
+  read — needs no scroll to the end of the message. It is an action row of text
+  buttons with hairline separators and the icon action last: **Add to chat**
+  (`chat.addToChat`), **Ask in side chat** (`chat.askInSideChat`, disabled while
+  the visible session runs), and **Copy** (`chat.copy`). It is centered on the
+  selection, sits 8 px above it, is clamped into its bounds, and is portaled
+  above the transcript in the body-portaled popover layer.
+- The overlay's bounds are the clipping ancestors' rects (the transcript
+  scroller is one) intersected with the viewport, capped by the docked
+  composer's top edge, which floats over the transcript. Scrolling the thread
+  recomputes and follows the selection; scrolling something unrelated leaves the
+  overlay alone. It also recomputes on selection change, double click, key up,
+  pointer up, pointer cancel, and resize (at most once per frame), and it hides
+  on a press outside it, on selection collapse, and after any action clears the
+  native selection.
+- The selection must live in one message row: a drag that crosses rows raises no
+  overlay, and a range that leaves the row is clamped back to it. The overlay is
+  a transcript affordance, not a message one: a read-only projection (§5.8)
+  never renders it, and never renders the row toolbars either.
+- The excerpt is recovered from the rendered DOM (D-LOCAL-selection-overlay), not from
+  `Selection.toString()`: a formula quotes as `$…$` / `$$…$$` TeX from KaTeX's
+  `application/x-tex` annotation (a partial formula selection is expanded to the
+  whole formula), a code block quotes as a fence whose delimiter outgrows any
+  backtick run inside it, a table quotes as one `a | b` line per row, and both
+  Quote paths — row action and floating affordance — share that one recovery.
+- **Add to chat** opens the annotation comment editor instead of quoting when
+  the row is an assistant turn (§11.10, D-LOCAL-response-annotations): the excerpt is snapshotted into
+  the editor before the selection collapses, and the attachment is created when
+  the editor saves — the editor itself sends nothing. The assistant turn's
+  action row does the same for its selection (or the whole answer when there is
+  no selection). Quoting into the draft remains the path for a user message and
+  for the side chat's **Add to main chat**.
 
 ---
 
@@ -2348,11 +2470,11 @@ reasoning-level control.
 | State | Appearance | Actions |
 |---|---|---|
 | Idle (no model) | textarea active, send button disabled + tooltip "Configure a model first" | Agent link remains available in model menu |
-| Idle (ready) | textarea active, send button enabled | Send active |
+| Idle (ready) | textarea active; Send requires draft content or saved annotations | Send active when content exists |
 | Home/new-session initialization | textarea and mode/model × reasoning/permission triggers remain available while the durable empty session is loading; the session row is already present and the first configuration selection applies to that session | Configure the session, then send |
 | New session (reasoning model) | Combined model × reasoning chip shows the model and its binding default thinking level | User may select any level enabled in the model binding, including Off when enabled |
 | New session / switch while another session is running | textarea active, send button enabled for the destination session's own run state | Send active, Stop hidden unless the destination session itself is running with an empty draft |
-| Running | textarea and mode/model × reasoning/permission controls remain editable for the next turn; the single submit slot shows Stop for an empty draft and Send for a non-empty draft | Stop active when empty; Send active when non-empty; submitted prompts become queued |
+| Running | textarea and mode/model × reasoning/permission controls remain editable for the next turn; the single submit slot shows Stop only with an empty draft and no saved annotations | Send queues text, attachments, or saved annotations alone; Stop when all are empty |
 | Context checkpoint | Same as Running until durable checkpoint completion; intermediate `turn_end` does not reactivate controls. A retained-tail fallback remains Running and shows a warning toast | Same single-slot Stop/Send behavior as Running |
 | Permission pending | textarea disabled (per [03-permission-ux.md](03-permission-ux.md) §7) | Send disabled; Stop remains active whenever the running empty-draft condition is met |
 | Plan / Goal / planning | textarea active while idle; contract badge and permission chip visible; mode chip pulses while the live turn projects `planning` | inspect, send, or submit a contract |
@@ -2397,16 +2519,17 @@ reasoning-level control.
   timer, and clearing or sending a draft never changes the guidance.
 - Escape: when textarea focused, clears input or blurs (not abort)
 - Send while running: clears the current draft and appends one FIFO row to the
-  active session's in-memory queue when the draft has content. The row is sent
+  active session's in-memory queue when the draft has content or saved annotations. The row is sent
   as a new normal prompt only after the current run reaches `agent_end`; a
   different session's queue is not affected by switching sessions. Running
-  with an empty draft changes this same submit slot to Stop, so clearing the
-  draft is the way to expose the immediate-stop action.
+  with an empty draft and no saved annotations changes this same submit slot to
+  Stop. Clear both draft and annotations to expose the immediate-stop action.
 - Send now: moves the selected row to the head, requests `agent/stop`, and
   releases it after the current reply/tool batch completes normally. It then
   starts before the remaining FIFO rows. When idle, Send now sends immediately.
 - Stop: the single submit slot is shown only while a turn is running and the
-  draft is empty. It stops the running turn and cancels pending permission.
+  draft is empty and there are no saved annotations. It stops the running turn
+  and cancels pending permission.
   Before any
   assistant text, thinking, or tool row begins, it also removes the just-sent
   user row and restores the pre-serialization composer draft. Ordinary text
@@ -2545,6 +2668,11 @@ reasoning-level control.
 
 ### 11.7 MVP constraints
 
+- Clipboard representation selection precedes the rules below: non-whitespace
+  `text/plain` takes precedence over accompanying `image/*` copies only when
+  all files lack native paths. This keeps Word text editable. Native files,
+  any non-image file, and image-only/whitespace-plus-image pastes remain
+  attachments. Selected text uses the same large-paste threshold (ADR 0059).
 - Pasting one or more OS clipboard files or images saves their bytes into the
   originating session's scratch directory and adds a compact leaf-name
   reference above the textarea. A text-only paste at or below the configured
@@ -2571,7 +2699,7 @@ reasoning-level control.
   There are no visual previews in MVP.
 - No voice input
 
-### 11.8 Slash commands, @ file references, and clipboard files (D123–D125, D197, D209, D262, D362, D395, D397, ADR 0024, ADR 0059, ADR 0070, ADR 0131, ADR 0221, ADR 0222)
+### 11.8 Slash commands, @ file references, and clipboard files (D123–D125, D197, D209, D262, D362, D-LOCAL-message-quotes, D397, ADR 0024, ADR 0059, ADR 0070, ADR 0131, ADR 0221, ADR 0222)
 
 The composer owns an inline autocomplete menu — one component serving two
 modes. Focus never leaves the textarea (D125).
@@ -2635,8 +2763,8 @@ Anatomy:
   restores that snapshot in its original reference order instead of copying
   serialized message paths back into the textarea. Stop after reply start does
   not restore or duplicate the submitted draft.
-- A paste containing files is intercepted only when the clipboard exposes at
-  least one `File`. The renderer transfers bounded file bytes, name, and MIME
+- After the representation selection in §11.7, a file paste requires at least
+  one `File`. The renderer transfers bounded file bytes, name, and MIME
   metadata to Electron main with the durable session id. Main validates the
   session, writes unique sanitized files under
   `<data_dir>/scratch/<sessionId>/pasted/`, and returns each UUID-backed
@@ -2686,6 +2814,111 @@ Anatomy:
   query lists everything (slash) / recently indexed order (file); zero
   matches renders the localized empty row and the menu counts as closed for
   key handling.
+
+### 11.9 Quoted message drafts (D-LOCAL-message-quotes, D-LOCAL-selection-overlay)
+
+- Quote in the transcript action row (§8.8), Add to chat in the floating
+  selection overlay (§8.8), and Add to main chat in the side chat (§5.8) prefill
+  the composer draft with ordinary Markdown text: each
+  excerpt line prefixed with `> `, then one blank line, then the attribution
+  line rendered from `chat.quoteSource` ("Quoted from {{title}}"; Chinese
+  "引用自 {{title}}"), where the title is the source session's title.
+- A selection is serialized back to Markdown before it becomes an excerpt
+  (D-LOCAL-selection-overlay): `$…$` / `$$…$$` TeX from the KaTeX annotation, fenced code with a
+  language and a delimiter that outgrows its content, backticked inline code,
+  one `a | b` line per table row, `[x] `/`[ ] ` for task checkboxes, and no
+  transcript chrome. Excerpt whitespace is collapsed to source-like text, so a
+  rendered block boundary never becomes a stray blank line.
+
+---
+
+## 11.10 Response annotations (D-LOCAL-response-annotations)
+
+- Selecting text inside an assistant turn and activating **Add to chat** — or the
+  turn's annotate action — opens a compact comment editor over the conversation
+  instead of attaching the excerpt immediately. The editor shows the excerpt
+  snapshot (the Markdown serialized when the selection was taken, before focus
+  moves into the editor and collapses the selection) above a multiline, optional
+  comment. **Save** attaches the annotation with the comment in its `annotation`
+  field. In the comment textarea, **Enter** saves the live value and **Shift+Enter**
+  inserts a newline, independent of the main composer's Enter-to-send preference.
+  IME confirmation Enter never saves; key-repeat is ignored by the editor. Saving
+  by keyboard only attaches/updates the annotation, never sends a prompt.
+  **Cancel**, **Escape** outside IME composition, and a press starting on
+  the backdrop discard it. Dragging a selection out of the editor never dismisses
+  it. The dialog owns Escape before application shortcuts and restores focus to
+  its trigger, or the rich composer when the floating trigger is gone. Opening
+  or saving the editor never sends. The answer body is not decorated: an
+  annotation appears in the answer only where the model cites it, as a small
+  accent-colored numbered reference (`:codex-annotation{index="N"}` in the
+  answer's source) whose tooltip is the excerpt and any comment. A marker takes
+  no part in a selection, quote, or copy.
+- Re-annotating an excerpt that is already attached reopens that annotation's
+  editor with its stored comment instead of adding a second attachment, so
+  editing keeps the annotation's id, position, and excerpt and changes only
+  `annotation`. The editor belongs to the session it was opened in: a session
+  switch closes it, a save for an annotation that was already sent or removed
+  changes nothing, and a save for a duplicate excerpt is a no-op.
+- ADR floating-annotation-index replaces the composer popover with a floating index above the composer
+  in the visible writable transcript. Its count header expands/collapses the list
+  without deleting annotations. Each numbered excerpt/comment has locate, edit,
+  and remove controls; clear-all remains available. Controls include the ordinal
+  in accessible names. No attachment text enters the editable draft.
+- All saved, resolvable selections remain highlighted whenever visible, including
+  before any locate click and while the floating index is collapsed. Selecting one
+  item never hides the other highlights. Removal/clear/send clears the corresponding
+  highlights; unresolved row fallbacks do not highlight an entire answer.
+- Matching numbered source badges sit outside the answer DOM and follow scroll,
+  resize, and content layout. Clicking a badge or list entry releases follow mode,
+  reveals the source (expanding/loading history if necessary), and highlights the
+  selected range without changing Markdown or selection. Unresolvable ranges
+  explicitly fall back to the source row, not a guessed repeated phrase. Crowded
+  badges stack within the visible band; all items remain available in the index.
+- Renderer-only text offsets distinguish repeated occurrences. Deduplication uses
+  source row, excerpt, and offsets; the same phrase elsewhere gets its own number.
+  If either entry lacks offsets, the same row/excerpt reopens the existing item
+  rather than assuming another occurrence. History reveal grows by at most 40 rows
+  per frame. Anchors never enter the prompt payload. Hidden/read-only panes show no overlay.
+  Array order remains the numbering for list, badges, and next-send payload.
+- Saved annotations alone enable Send (or queue while running), even when the
+  composer is empty/whitespace-only. Click and Enter share the same live-state
+  check. Unsaved comments and annotations in another session do not count; an
+  entirely empty submission stays disabled. Model/paste/approval gates remain.
+  No filler request is inserted: `## My request:` may have an empty body, and the
+  existing annotation instruction tells the model to address each comment.
+  Host trimming of that empty body must not expose the internal block on display.
+- A send while annotations exist composes the prompt the model receives as the
+  block `# Response annotations:` + the instruction sentence +
+  `<response-annotations>` with `[{"text", "annotation", "source": {"messageId"}}]`
+  in numbering order + `## My request:` + the user's text, and consumes the
+  annotations. Numbering is the attachment order, so "annotation 2" always names
+  the second chip in the list.
+- Send and queue snapshot annotations for their originating session. Only a host
+  acknowledgement consumes the submitted, unchanged annotations; new items and
+  comments edited while awaiting acknowledgement remain pending. A rejected send
+  retains annotations and restores the submitted draft only if no newer draft
+  occupies its session slot. Queue acknowledgement is exposed as the internal
+  renderer action `enqueuePrompt: Promise<boolean>`; the host protocol is unchanged.
+  A per-session submission guard rejects repeat submissions while acknowledgement
+  is pending, without consuming attachments. Other sessions and steering remain
+  independent; the guard is released on success/failure, not at turn completion.
+- Active-turn steering (the upstream **Alt+Enter** shortcut or steer button) sends
+  text only and leaves annotations pending for the next ordinary send/queue.
+  Annotation-only steering is a no-op. **Shift+Enter** remains a newline in the
+  main composer and in the comment editor; the editor's **Enter** only saves,
+  and IME confirmation never saves or submits.
+- Queue previews and a stored user message's edit seed show only the request,
+  including ordinary Markdown headings. Editing regenerates from those edited
+  words; it does not reconstruct already-consumed annotation attachments. Retry
+  without editing still uses the stored prompt, including its original block.
+- Nothing the user sees carries the block: the draft, the optimistic row, the
+  sidebar title, and the composer's edit seed keep the user's own text, and a
+  stored prompt that carries the block is displayed through its request text
+  only.
+- The excerpt is capped at 2000 characters with a trailing ellipsis, and the
+  editor's excerpt snapshot is the same excerpt the annotation carries. Quoting
+  inserts the draft and focuses the composer; it never sends, never creates a
+  session, and adds no chip kind and no file reference.
 
 ---
 
@@ -3135,6 +3368,15 @@ compatibility remains owned by pi-ai.
   a probe is in flight, or while saving. Idle-with-a-valid-URL (the edit
   debounce) stays enabled so the action can skip that window. Current rows
   stay on screen until the live answer replaces them.
+- The right-pane header carries its own search field that filters the
+  configured models as the user types. It matches the model id, its alias, and
+  the catalog display name case-insensitively, so a friendly name finds the id
+  it stands for. The count beside the title still reports every configured
+  model; a filter that matches nothing shows its own message rather than the
+  "nothing chosen yet" one. A model that is added — by checkbox, select-all, or
+  hand-typed id — keeps that field only while the filter still shows it; an
+  emptied list drops the filter, so a new row never arrives out of view and no
+  query is stranded in a field the user can no longer clear.
 - Adding a custom model validates non-empty and duplicate IDs, adds it to the
   top-level option list, selects it, and applies 128,000 context / 8,192 max
   output / no thinking defaults. Removing its selection does not delete the
@@ -3174,6 +3416,8 @@ compatibility remains owned by pi-ai.
 - Model configuration rows expose `aria-expanded` and reference their details
   with `aria-controls`; collapsed details are removed from the tab order
 - Card actions keep visible text labels; thinking select has an accessible name
+- Both model-list search fields carry a localized accessible name, and the
+  chosen-list one is disabled while saving or when nothing is configured
 - Empty regions and account actions expose localized labels
 
 ### 19.6 MVP constraints

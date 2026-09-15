@@ -114,6 +114,11 @@ child.on("close", (code) => {
     Array.isArray(sessions.heartbeatDurationsMs) &&
     sessions.heartbeatDurationsMs.length > 0 &&
     sessions.heartbeatDurationsMs.every((duration) => duration < 1000);
+  const projectRemove = probe?.projectRemove;
+  const projectRemoveOk =
+    projectRemove?.ok === true &&
+    projectRemove.removed === false &&
+    projectRemove.sessionsRemoved === 0;
   if (
     code === 0 &&
     probe?.ok &&
@@ -121,7 +126,8 @@ child.on("close", (code) => {
     probe.platform === process.platform &&
     (process.platform === "darwin" || probe.maximized === true) &&
     menuContractOk &&
-    sessionListOk
+    sessionListOk &&
+    projectRemoveOk
   ) {
     const menuDetail =
       process.platform === "darwin"
@@ -133,6 +139,11 @@ child.on("close", (code) => {
     );
     console.log(
       "PASS E2E-SESSION-list-refresh-keeps-desktop-responsive — " + JSON.stringify(sessions),
+    );
+    console.log(
+      "PASS E2E-PROJECT-delete-removes-project-and-owned-sessions — " +
+        "projectRemove IPC round-trip through the sandboxed preload " +
+        `{removed:${probe.projectRemove.removed}, sessionsRemoved:${probe.projectRemove.sessionsRemoved}}`,
     );
     cleanup(0);
   } else {

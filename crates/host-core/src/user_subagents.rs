@@ -14,7 +14,6 @@ const MAX_USER_SUBAGENTS: usize = 64;
 pub const MAX_SUBAGENT_BYTES: usize = 32 * 1024;
 const MAX_NAME_CHARS: usize = 40;
 const MAX_DESCRIPTION_CHARS: usize = 400;
-const MAX_TURNS_CEILING: u32 = 80;
 /// Mirrors `MAX_SUBAGENT_MAX_TOKENS` in `packages/shared`. No published model
 /// accepts an output limit above 128k, so a larger declared value is a typo.
 const MAX_TOKENS_CEILING: u32 = 200_000;
@@ -51,8 +50,6 @@ pub struct UserSubagentRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thinking_level: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub max_turns: Option<u32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<u32>,
     pub path: String,
     #[serde(default)]
@@ -71,7 +68,6 @@ pub struct UserSubagentInput {
     pub tools: Option<Vec<String>>,
     pub model: Option<String>,
     pub thinking_level: Option<String>,
-    pub max_turns: Option<u32>,
     pub max_tokens: Option<u32>,
     pub enabled: Option<bool>,
     /// Kept for protocol compatibility; subagents are global-only now.
@@ -187,11 +183,6 @@ fn parse_record(path: &Path, state: &CapabilityState) -> Option<UserSubagentReco
     }
     let enabled = state.enabled(SUBAGENT_KIND, CapabilityLevel::Global, &name, None);
     let updated_at = file_timestamp(path);
-    let max_turns = front
-        .get("maxturns")
-        .and_then(|value| value.parse::<u32>().ok())
-        .filter(|value| *value > 0)
-        .map(|value| value.min(MAX_TURNS_CEILING));
     let max_tokens = front
         .get("maxtokens")
         .and_then(|value| value.parse::<u32>().ok())
@@ -210,7 +201,6 @@ fn parse_record(path: &Path, state: &CapabilityState) -> Option<UserSubagentReco
             .cloned()
             .filter(|value| !value.is_empty()),
         thinking_level: normalize_thinking(front.get("thinkinglevel").map(String::as_str)),
-        max_turns,
         max_tokens,
         path: path.to_string_lossy().to_string(),
         size_bytes: raw.len() as u64,
@@ -236,9 +226,6 @@ fn render_document(record: &UserSubagentRecord, body: &str) -> String {
     }
     if let Some(level) = &record.thinking_level {
         output.push_str(&format!("thinkingLevel: {level}\n"));
-    }
-    if let Some(max_turns) = record.max_turns {
-        output.push_str(&format!("maxTurns: {max_turns}\n"));
     }
     if let Some(max_tokens) = record.max_tokens {
         output.push_str(&format!("maxTokens: {max_tokens}\n"));
@@ -338,10 +325,6 @@ impl UserSubagentRegistry {
             tools,
             model: normalize_model(input.model.as_deref())?,
             thinking_level: normalize_thinking(input.thinking_level.as_deref()),
-            max_turns: input
-                .max_turns
-                .filter(|value| *value > 0)
-                .map(|value| value.min(MAX_TURNS_CEILING)),
             max_tokens: input
                 .max_tokens
                 .filter(|value| *value > 0)
@@ -420,11 +403,6 @@ impl UserSubagentRegistry {
             Some(value) if value.trim().is_empty() => None,
             Some(value) => normalize_thinking(Some(value.as_str())),
             None => current.thinking_level,
-        };
-        next.max_turns = match input.max_turns {
-            Some(0) => None,
-            Some(value) => Some(value.min(MAX_TURNS_CEILING)),
-            None => current.max_turns,
         };
         next.max_tokens = match input.max_tokens {
             Some(0) => None,
@@ -573,7 +551,6 @@ mod tests {
             tools: vec!["Read".into()],
             model: None,
             thinking_level: None,
-            max_turns: None,
             max_tokens: None,
             path: "/tmp/review.md".into(),
             size_bytes: 0,
@@ -595,7 +572,6 @@ mod tests {
             tools: vec!["Read".into()],
             model: None,
             thinking_level: None,
-            max_turns: Some(20),
             max_tokens: Some(16_000),
             path: "/tmp/review.md".into(),
             size_bytes: 0,
@@ -603,13 +579,32 @@ mod tests {
             updated_at: String::new(),
         };
         let document = render_document(&record, "Review it");
-        assert!(document.contains("maxTurns: 20\n"));
         assert!(document.contains("maxTokens: 16000\n"));
 
         // Absent means "follow the model", so the key must not appear at all —
         // a written `maxTokens: 0` would read back as an explicit empty cap.
         record.max_tokens = None;
         assert!(!render_document(&record, "Review it").contains("maxTokens"));
+    }
+
+    #[test]
+    fn legacy_max_turns_frontmatter_is_ignored() {
+        // The turn limit is gone (ADR 0253). A document that still declares the
+        // key must load like any other unknown frontmatter key: keys are only
+        // lowercased, so `maxTurns` used to normalize to `maxturns`, while
+        // `max-turns` was never read in the first place.
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("worker.md");
+        fs::write(
+            &path,
+            "---\nname: worker\ndescription: Uses the parent tools.\ntools: [Read]\nmaxTurns: 20\nmax-turns: 20\n---\n\nDo the job.\n",
+        )
+        .unwrap();
+        let state = CapabilityState::new(dir.path(), SUBAGENT_KIND);
+        let record =
+            parse_record(&path, &state).expect("a legacy maxTurns key must not fail the load");
+        assert_eq!(record.description, "Uses the parent tools.");
+        assert!(!render_document(&record, "Do the job.").contains("maxTurns"));
     }
 
     #[test]

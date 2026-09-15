@@ -28,7 +28,13 @@ test("session project move is a durable host command, not a renderer-only regrou
   const moveBlock = sessions.match(
     /pub fn move_session_project\([\s\S]*?\n\}\n/,
   )?.[0] ?? "";
-  assert.match(moveBlock, /SELECT EXISTS\([\s\S]*?status = 'running'/);
+  // The running-turn check lives in one shared helper so fork, move, and the
+  // bulk project delete cannot drift apart; the move path still has to use it,
+  // and the helper still has to ask the database for a running turn.
+  assert.match(moveBlock, /if session_has_running_turn\(db, id\)\?/);
+  const runningTurnHelper =
+    sessions.match(/pub fn session_has_running_turn\([\s\S]*?\n\}\n/)?.[0] ?? "";
+  assert.match(runningTurnHelper, /SELECT EXISTS\([\s\S]*?status = 'running'/);
   assert.match(moveBlock, /db\.ensure_project\(project_path, false\)/);
   assert.match(
     moveBlock,

@@ -5,7 +5,7 @@
  * The runtime ships the same definitions as inline markdown documents
  * (`BUILTIN_SUBAGENT_DOCUMENTS` in `agent-runtime/src/subagent-definitions.ts`)
  * so the sidecar can load them without filesystem fallback. The two lists
- * must agree on `name`, `description`, `tools` and `maxTurns` because they
+ * must agree on `name`, `description` and `tools` because they
  * describe the same delegate; this module is the source of truth for the UI's
  * starter values and is exercised by `subagent-presets.test.ts`.
  */
@@ -29,8 +29,6 @@ export type SubagentPreset = {
   tools: readonly string[];
   /** Body written into the editor when the preset is picked. */
   body: string;
-  /** Hard turn cap from the definition, or 0 for "inherit / unlimited". */
-  maxTurns: number;
 };
 
 /**
@@ -45,7 +43,6 @@ export const SUBAGENT_PRESETS: readonly SubagentPreset[] = [
     description:
       "Fast codebase search and pattern matching — find files, locate implementations and answer \"where is X?\" / \"how does Y work?\". Use when answering needs a sweep over many files and you only want the conclusion.",
     tools: ["Read", "Glob", "Grep", "Bash"],
-    maxTurns: 60,
     body:
       `You are Explorer — a fast codebase navigation specialist.\n` +
       `\n` +
@@ -73,7 +70,6 @@ export const SUBAGENT_PRESETS: readonly SubagentPreset[] = [
     description:
       "Review specific code or a specific change for defects. Use for a second opinion on correctness, edge cases and missing tests before you commit.",
     tools: ["Read", "Glob", "Grep"],
-    maxTurns: 50,
     body:
       `Review only what the task names, and read enough surrounding code to judge it.\n` +
       `\n` +
@@ -93,7 +89,6 @@ export const SUBAGENT_PRESETS: readonly SubagentPreset[] = [
     description:
       "Run a specific test or build command and report what failed and why. Use when a command's output is long and only the failures matter.",
     tools: ["Read", "Glob", "Grep", "Bash"],
-    maxTurns: 40,
     body:
       `Run the command the task names. Do not invent a different one, and do not fix\n` +
       `anything: diagnosis is the deliverable.\n` +
@@ -113,7 +108,6 @@ export const SUBAGENT_PRESETS: readonly SubagentPreset[] = [
     description:
       "Implement a complete multi-file change from a spec. Use when a feature or fix spans several files and the work is separable — it can write files inside the workspace while you keep working.",
     tools: ["Read", "Glob", "Grep", "Edit", "Write", "Bash"],
-    maxTurns: 80,
     body:
       `You are Fixer — a fast, focused implementation specialist. The main agent\n` +
       `delegates a complete, self-contained spec; implement it. Do not re-plan and do\n` +
@@ -148,7 +142,6 @@ export const SUBAGENT_PRESETS: readonly SubagentPreset[] = [
     description:
       "Design and implement a web interface from a brief — visual system, motion and complete interaction states, inspected in the browser preview or project browser tests. Use for building or restyling a UI when the visual work should run in its own context.",
     tools: ["Read", "Glob", "Grep", "BrowserPreview", "Bash", "Edit", "Write"],
-    maxTurns: 80,
     body: `You are UI designer — a senior UI/UX designer and frontend engineer. The main
 agent hands you one interface task with its brief; deliver a working,
 browser-checked implementation, not a static mock and not a generic hero,
@@ -221,7 +214,6 @@ export function fallbackBuiltinDefinitions(): SubagentDefinition[] {
     description: preset.description,
     prompt: preset.body,
     tools: [...preset.tools],
-    maxTurns: preset.maxTurns,
     source: "builtin",
   }));
 }

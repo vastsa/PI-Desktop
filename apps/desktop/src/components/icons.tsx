@@ -84,6 +84,7 @@ import {
   Sun,
   Target,
   Terminal,
+  TextQuote,
   Trash2,
   TriangleAlert,
   UserRound,
@@ -151,6 +152,8 @@ export const IconArrowUpDown = icon(ArrowUpDown);
 export const IconSearch = icon(Search);
 export const IconRefresh = icon(RefreshCcw);
 export const IconChat = icon(MessageSquare);
+/** Message reference: quote part of a message into the composer (D-LOCAL-message-quotes). */
+export const IconQuote = icon(TextQuote);
 /** Session creation affordance. Keep it distinct from generic add actions. */
 export const IconNewSession = icon(MessageSquarePlus);
 export const IconFolder = icon(Folder);

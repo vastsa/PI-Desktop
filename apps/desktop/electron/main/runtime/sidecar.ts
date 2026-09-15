@@ -15,11 +15,12 @@ import { OAUTH_AUTH_KIND, type VendorOAuth } from "../oauth";
 import type { AgentExtensionBridge } from "../agent-extensions";
 import type { BrowserHost } from "../browser-host";
 import type { InflightCheckpointer } from "../inflight-checkpoint";
-import type { Logger } from "../logger";
+import { summarizeToolResult, type Logger } from "../logger";
 import type { ModelsDevCatalog } from "../models-dev-catalog";
 import type { PluginRuntime } from "../plugin-runtime";
 import type { UserMcpRuntime } from "../user-mcp";
 import type { RuntimeState } from "./context";
+import type { FinishTurn } from "./plans";
 
 export type SidecarRuntimeDependencies = {
   runtimeState: RuntimeState;
@@ -31,9 +32,15 @@ export type SidecarRuntimeDependencies = {
   approvedExecutionIdsBySession: Map<string, string>;
   claimedExecutionSessions: Map<string, string>;
   inflightCheckpointer: InflightCheckpointer;
-  finishTurn: (...args: any[]) => Promise<void>;
+  finishTurn: FinishTurn;
   finishApprovedExecution: (...args: any[]) => Promise<void>;
   superviseRestart: (kind: "host" | "sidecar") => Promise<void>;
+  /**
+   * Terminal identity, shared with the persistence pass. A terminal event for a
+   * turn that no longer owns its session must not clear the current turn's state
+   * in Agent Host or the renderer.
+   */
+  isStaleTerminalEvent: (envelope: AgentEventEnvelope) => boolean;
   isQuitting: () => boolean;
   dataDir: string;
   agentExtensions: AgentExtensionBridge;
@@ -61,6 +68,7 @@ export function createSidecarRuntime({
   claimedExecutionSessions,
   inflightCheckpointer,
   finishTurn,
+  isStaleTerminalEvent,
   finishApprovedExecution,
   superviseRestart,
   isQuitting,
@@ -83,34 +91,134 @@ export function createSidecarRuntime({
   startSidecar: () => Promise<void>;
 } {
   const emitAgentEvent = (envelope: AgentEventEnvelope) => {
+    // A terminal event for a turn that no longer owns its session must not clear
+    // the current turn's state in Agent Host or the renderer. Persistence is a
+    // separate call, so dropping it here still archives it as history.
+    if (isStaleTerminalEvent(envelope)) return;
     runtimeState.agentHostBridge?.ingest(envelope);
     sendToRenderer(IPC.event.agentMessage, envelope);
   };
-  const activeToolNames = new Map<string, string>();
+  const activeToolCalls = new Map<
+    string,
+    {
+      sessionId: string;
+      toolCallId: string;
+      toolName: string;
+      startedAt: number;
+      turnId?: string;
+      parentToolCallId?: string;
+      agentName?: string;
+    }
+  >();
+  const toolKey = (sessionId: string, toolCallId: string) => `${sessionId}:${toolCallId}`;
+  /**
+   * A crashed turn whose session moved on can never finalize: the newer turn's
+   * teardown is not this cleanup's to run, and the crashed turn's records must
+   * not be left behind. The finalizer refuses the settlement for a turn that no
+   * longer owns the session and drops exactly those records.
+   */
+  const releaseCrashedTurn = (sessionId: string, crashedTurnId: string) =>
+    finishTurn(sessionId, "aborted", "PLAN_APPROVAL_INTERRUPTED", {
+      turnId: crashedTurnId,
+    });
+
+  /**
+   * Unwind one session after the agent sidecar exited unexpectedly. Its own
+   * function so the ownership re-check after each await is explicit: the session
+   * can start a newer turn while this cleanup is suspended.
+   */
+  const settleCrashedSession = async (
+    sessionId: string,
+    crashedTurnId: string,
+  ): Promise<void> => {
+    const executionId = approvedExecutionIdsBySession.get(sessionId);
+    if (runtimeState.host) {
+      await runtimeState.host.call("plans.abort", { sessionId }).catch(() => undefined);
+    }
+    // A newer turn may own the session by now; this cleanup is the old one's.
+    // It must still not leave the crashed turn's records behind.
+    if (activeTurns.get(sessionId) !== crashedTurnId) {
+      await releaseCrashedTurn(sessionId, crashedTurnId);
+      return;
+    }
+    // No final row is coming from a dead sidecar: keep whatever the reply had
+    // streamed so far as an aborted transcript row (D299).
+    await inflightCheckpointer.flush(sessionId);
+    // The flush awaits too, so a newer turn can have started and checkpointed
+    // while it ran. `settle` discards the session's pending checkpoint outright,
+    // so it is reached only for the turn that still owns the session, and it is
+    // called synchronously right after this check: no await in between.
+    if (activeTurns.get(sessionId) !== crashedTurnId) {
+      await releaseCrashedTurn(sessionId, crashedTurnId);
+      return;
+    }
+    inflightCheckpointer.settle(sessionId);
+    await finishTurn(sessionId, "aborted", "PLAN_APPROVAL_INTERRUPTED", {
+      recoverInflight: true,
+      turnId: crashedTurnId,
+    });
+    if (executionId) {
+      await finishApprovedExecution(
+        executionId,
+        "interrupted",
+        "PLAN_EXECUTION_INTERRUPTED",
+      );
+    }
+  };
   const wireSidecar = (s: AgentSidecar) => {
 
   s.onNotification((method, params) => {
+    if (method === "native.agent.event") {
+      // Native AgentSession already persisted the event to its canonical Pi
+      // JSONL. It owns neither the Desktop outbox nor Host queue/turn state.
+      sendToRenderer(IPC.event.agentMessage, params as AgentEventEnvelope);
+      return;
+    }
     if (method === "agent.event") {
       const envelope = params as AgentEventEnvelope;
       const event = envelope.event;
       if (event.type === "tool_start") {
-        activeToolNames.set(event.toolCallId, event.toolName);
-        logger.app("tool", "info", "tool start", {
+        activeToolCalls.set(toolKey(envelope.sessionId, event.toolCallId), {
           sessionId: envelope.sessionId,
           toolCallId: event.toolCallId,
-          data: { toolName: event.toolName },
+          toolName: event.toolName,
+          startedAt: envelope.ts,
+          turnId: envelope.turnId,
+          parentToolCallId: envelope.parentToolCallId,
+          agentName: envelope.agentName,
         });
       } else if (event.type === "tool_end") {
-        const toolName = activeToolNames.get(event.toolCallId);
-        activeToolNames.delete(event.toolCallId);
-        logger.app("tool", "info", "tool end", {
-          sessionId: envelope.sessionId,
-          toolCallId: event.toolCallId,
-          data: {
-            ...(toolName ? { toolName } : {}),
-            isError: event.isError === true,
+        const key = toolKey(envelope.sessionId, event.toolCallId);
+        const started = activeToolCalls.get(key);
+        activeToolCalls.delete(key);
+        const result = summarizeToolResult(event.result);
+        const resultCode =
+          typeof result.errorCode === "string"
+            ? result.errorCode
+            : typeof result.code === "string"
+              ? result.code
+              : undefined;
+        logger.app(
+          "tool",
+          event.isError ? "error" : "info",
+          event.isError ? "tool execution failed" : "tool execution completed",
+          {
+            sessionId: envelope.sessionId,
+            turnId: envelope.turnId ?? started?.turnId,
+            toolCallId: event.toolCallId,
+            parentToolCallId: started?.parentToolCallId,
+            agentName: started?.agentName,
+            ...(resultCode ? { code: resultCode } : {}),
+            data: {
+              toolName: started?.toolName ?? "unknown",
+              outcome: event.isError ? "error" : "success",
+              durationMs: started
+                ? Math.max(0, envelope.ts - started.startedAt)
+                : undefined,
+              result,
+            },
           },
-        });
+        );
       }
       emitAgentEvent(envelope);
       const persistedMessage = persistAgentEvent(envelope);
@@ -131,34 +239,45 @@ export function createSidecarRuntime({
   s.onExit(({ code, signal, intentional, stderrTail }) => {
     if (runtimeState.sidecar !== s) return;
     logger.flushChild("agent");
-    activeToolNames.clear();
+    const interruptedToolCalls = [...activeToolCalls.values()];
+    activeToolCalls.clear();
     runtimeState.sidecar = null;
     steeringReplies.clear();
     if (intentional || isQuitting()) return;
+    for (const tool of interruptedToolCalls) {
+      logger.app("tool", "error", "tool execution interrupted", {
+        sessionId: tool.sessionId,
+        turnId: tool.turnId,
+        toolCallId: tool.toolCallId,
+        parentToolCallId: tool.parentToolCallId,
+        agentName: tool.agentName,
+        data: {
+          toolName: tool.toolName,
+          outcome: "interrupted",
+          durationMs: Math.max(0, Date.now() - tool.startedAt),
+          reason: "agent_sidecar_exit",
+          exitCode: code,
+          signal,
+        },
+      });
+    }
     // A sidecar crash closes live approval waiters before the replacement
     // sidecar starts. This prevents an old renderer response from waking a
     // dead runtime and records the durable turn as interrupted.
     for (const sessionId of [...activeTurns.keys()]) {
-      void (async () => {
-        const executionId = approvedExecutionIdsBySession.get(sessionId);
-        if (runtimeState.host) {
-          await runtimeState.host.call("plans.abort", { sessionId }).catch(() => undefined);
-        }
-        // No final row is coming from a dead sidecar: keep whatever the reply
-        // had streamed so far as an aborted transcript row (D299).
-        await inflightCheckpointer.flush(sessionId);
-        inflightCheckpointer.settle(sessionId);
-        await finishTurn(sessionId, "aborted", "PLAN_APPROVAL_INTERRUPTED", {
-          recoverInflight: true,
+      // Snapshot the turn this cleanup belongs to before the awaits below: the
+      // session can start a new turn while this one is still unwinding, and a
+      // late cleanup must not settle or abort that newer turn.
+      const crashedTurnId = activeTurns.get(sessionId);
+      if (!crashedTurnId) continue;
+      void settleCrashedSession(sessionId, crashedTurnId).catch((error: unknown) => {
+        // The crash handler cannot await this and the sidecar is already gone:
+        // log the failure instead of leaving the rejection unhandled.
+        logger.app("runtime", "warn", "crashed-turn settlement failed", {
+          sessionId,
+          data: String(error),
         });
-        if (executionId) {
-          await finishApprovedExecution(
-            executionId,
-            "interrupted",
-            "PLAN_EXECUTION_INTERRUPTED",
-          );
-        }
-      })();
+      });
     }
     for (const [executionId] of claimedExecutionSessions) {
       void finishApprovedExecution(

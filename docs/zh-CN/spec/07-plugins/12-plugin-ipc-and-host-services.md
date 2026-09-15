@@ -172,7 +172,9 @@ toast 加上 `pluginChanged` 到渲染器。
 2. host-core 首先解析持久操作模式。在 Agent 中，它运行
    正常权限流程（风险、会话授予、120 秒超时），然后发出
    通知 `plugins.execute`
-   `{ executionId, sessionId, toolCallId, toolName, args }`。
+   `{ executionId, sessionId, toolCallId, toolName, args, turnId }`。`turnId` 是
+   运行时回合身份，原样转发，以便插件工具上下文能与
+   `session:turnEnded` 事件对应。
 3. Plan 调用在主机策略步骤失败并显示 `PLUGIN_DISABLED_IN_PLAN`；他们
    永远不会达到 Electron 或插件运行时。 Agent 呼叫继续
    Electron主要执行注册的插件工具JS并通过RPC应答

@@ -348,7 +348,7 @@
 .transcript-history-loading {
   min-height: 26px;
   box-sizing: border-box;
-  color: var(--ds-text-tertiary);
+  color: var(--ds-text-muted);
   font-size: var(--text-sm);
   text-align: center;
   padding: 2px 0 12px;

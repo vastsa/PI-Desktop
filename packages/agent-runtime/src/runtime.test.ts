@@ -5395,7 +5395,6 @@ describe("DesktopAgentRuntime subagents", () => {
     name: "explorer",
     description: "Search the workspace and report findings.",
     tools: ["Read", "Glob", "Grep"],
-    maxTurns: 6,
     prompt: "Report file paths and line numbers.",
     source: "builtin",
   };
@@ -5404,7 +5403,6 @@ describe("DesktopAgentRuntime subagents", () => {
     description: "Review a diff.",
     tools: ["Read", "Bash"],
     model: { providerId: "remote", modelId: "remote-model" },
-    maxTurns: 4,
     prompt: "Review the change.",
     source: "user",
     filePath: "/home/.agents/subagents/reviewer.md",
@@ -5617,9 +5615,10 @@ describe("DesktopAgentRuntime subagents", () => {
 
     expect(runtimeMatches(runtime)).toBe(true);
     expect(runtimeMatches(runtime, { subagents: [] })).toBe(false);
+    // Definitions are compared by value, body included.
     expect(
       runtimeMatches(runtime, {
-        subagents: [{ ...explorer, maxTurns: 12 }],
+        subagents: [{ ...explorer, description: "Search other things." }],
       }),
     ).toBe(false);
     expect(
@@ -5967,8 +5966,8 @@ describe("DesktopAgentRuntime subagents", () => {
 
     subagentRuns.result = {
       agentName: "explorer",
-      status: "truncated",
-      report: "Hit the turn limit. Checked 4 of 9 files.",
+      status: "aborted",
+      report: "The explorer subagent was aborted after 6 turn(s).",
       turns: 6,
       toolCalls: 6,
     };
@@ -5977,11 +5976,14 @@ describe("DesktopAgentRuntime subagents", () => {
       task: "Find it.",
     });
     const secondId = (second.details as any).delegationId as string;
-    const truncated = await wait.execute("wait-2", {
+    const aborted = await wait.execute("wait-2", {
       delegationIds: [secondId],
     });
-    expect(truncated.details).toMatchObject({
-      delegations: [{ delegationId: secondId, status: "truncated" }],
+    // A settled run's own status reaches TaskWait unchanged; `truncated` went
+    // with the turn limit (ADR 0253), so the partial-report status a stopped
+    // delegate reports is `aborted`.
+    expect(aborted.details).toMatchObject({
+      delegations: [{ delegationId: secondId, status: "aborted" }],
     });
 
     subagentRuns.result = {
@@ -6465,7 +6467,6 @@ describe("DesktopAgentRuntime subagents", () => {
       description: "Implement a multi-file change.",
       tools: ["Read", "Edit", "Write"],
       permission: "accept-edits",
-      maxTurns: 6,
       prompt: "Implement it.",
       source: "builtin",
     };

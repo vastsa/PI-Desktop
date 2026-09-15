@@ -43,6 +43,7 @@ import { BrowserHost, BROWSER_PLUGIN_ID } from "../browser-host";
 import { OAUTH_AUTH_KIND, type VendorOAuth } from "../oauth";
 import type { AgentExtensionBridge } from "../agent-extensions";
 import type { ClipboardHistory } from "../clipboard-history";
+import type { TurnEndedPayload } from "../runtime/session-coordination";
 import type { HostProcess } from "../host-process";
 import type { Logger } from "../logger";
 import type { PluginAppearance } from "../../shared/plugin-panel-chrome";
@@ -418,6 +419,41 @@ export function createPluginServices({
     pluginPanels.broadcast("browser:state", state);
     pluginViews.broadcast("browser:state", state);
   };
+  /**
+   * Tell the plugin surfaces that a host turn reached a terminal state. The
+   * three surfaces are independent: a failure to reach one of them must not
+   * suppress the other two, and inside each one an unreachable recipient is
+   * skipped by the host that owns the fan-out.
+   *
+   * Delivery is best-effort by contract — no acknowledgement, no replay, and no
+   * guarantee for a plugin that is loading, crashed or unloaded right now.
+   */
+  const announceTurnEnded = (payload: TurnEndedPayload): void => {
+    try {
+      plugins.broadcastEvent("session:turnEnded", [payload]);
+    } catch (error) {
+      logger.app("plugin", "warn", "turnEnded plugin broadcast failed", {
+        sessionId: payload.sessionId,
+        data: String(error),
+      });
+    }
+    try {
+      pluginPanels.broadcast("session:turnEnded", payload);
+    } catch (error) {
+      logger.app("plugin", "warn", "turnEnded panel broadcast failed", {
+        sessionId: payload.sessionId,
+        data: String(error),
+      });
+    }
+    try {
+      pluginViews.broadcast("session:turnEnded", payload);
+    } catch (error) {
+      logger.app("plugin", "warn", "turnEnded view broadcast failed", {
+        sessionId: payload.sessionId,
+        data: String(error),
+      });
+    }
+  };
   const browserPane = new BrowserPane(emitBrowserState);
   const pluginViews = new PluginViewHost(({ pluginId, url }) => {
     logger.app("plugin", "warn", "plugin.api", {
@@ -484,6 +520,7 @@ export function createPluginServices({
     pluginScopes,
     sessionProjects,
     emitBrowserState,
+    announceTurnEnded,
     pluginPanels,
     pluginViews,
     browserHost,

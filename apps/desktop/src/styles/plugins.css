@@ -1630,7 +1630,7 @@
 /* A version the distribution side withdrew. It stays selectable so its reason
    can be read, but it reads as removed rather than merely unavailable. */
 .plugins-version-withdrawn {
-  color: var(--ds-danger);
+  color: var(--ds-error);
 }
 
 .plugins-version.withdrawn .plugins-version-top strong {

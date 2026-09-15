@@ -1,3 +1,5 @@
+import { redactValue } from "../logger";
+
 export type ExternalSource = "claude-code" | "opencode" | "codex" | "pi";
 
 export interface ExternalSessionSummary {
@@ -65,9 +67,18 @@ export function toIso(value: string | number | undefined | null, fallback?: stri
     // session's history to the import moment (#265). Absent values stay
     // silent — those are normal in optional fields.
     console.warn(
-      `[importers] unparsable timestamp ${JSON.stringify(value)}; using ${
-        fallback ? "the provided fallback" : "the import time"
-      }`,
+      `[app/persistence] ${JSON.stringify({
+        ts: new Date().toISOString(),
+        level: "warn",
+        channel: "app",
+        category: "persistence",
+        event: "session.import.invalid_timestamp",
+        message: "session import timestamp invalid",
+        data: redactValue({
+          fallback: fallback ? "provided" : "import-time",
+          value: String(value),
+        }),
+      })}`,
     );
   }
   return fallback ?? new Date().toISOString();

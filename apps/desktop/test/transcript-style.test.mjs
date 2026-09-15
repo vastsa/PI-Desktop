@@ -236,7 +236,7 @@ test("editing a user prompt regenerates it and keeps the old branch reachable", 
   assert.doesNotMatch(transcriptSource, /editAssistantMessage/);
   assert.doesNotMatch(storeSource, /editAssistantMessage/);
   // Slash prompts edit their typed form so the resend re-expands the template.
-  assert.match(transcriptSource, /const editSeed = \(editableUserMessage && message\.command\) \|\| message\.content/);
+  assert.match(transcriptSource, /const editSeed = \(editableUserMessage && message\.command\) \|\| requestTextWithoutAnnotations\(message\.content/);
   // Same branch mechanics as regenerate, so main archives the replaced turn
   // as a revision the pager can walk back to.
   assert.match(storeSource, /editUserMessage:\s*async \(messageId, content, attachments\)/);

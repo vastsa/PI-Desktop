@@ -1,0 +1,82 @@
+/*
+  Side chat: a follow-up conversation docked in the work panel (D-LOCAL-message-quotes).
+
+  The panel owns the tab chrome and the width; this partial owns the three rows
+  inside it — actions, the child session's transcript, and the compact composer.
+  A side chat is a full conversation, so the transcript keeps the chat surface's
+  own styles and only its container is sized here.
+*/
+
+.side-chat {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.side-chat-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--ds-border-subtle);
+}
+
+.side-chat-action {
+  white-space: nowrap;
+}
+
+/* The transcript keeps its own scroll container; this cell only bounds it. */
+.side-chat-thread {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.side-chat-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px 10px;
+  border-top: 1px solid var(--ds-border-subtle);
+  background: var(--ds-bg-secondary);
+}
+
+.side-chat-input {
+  width: 100%;
+  min-height: 46px;
+  max-height: 140px;
+  padding: 8px 10px;
+  color: var(--ds-text-primary);
+  background: var(--ds-bg-primary);
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  line-height: var(--leading-row);
+  resize: none;
+}
+
+.side-chat-input::placeholder {
+  color: var(--ds-text-muted);
+}
+
+.side-chat-input:focus-visible {
+  outline: 2px solid var(--ds-accent);
+  outline-offset: -1px;
+}
+
+.side-chat-composer-row {
+  display: flex;
+  min-height: 24px;
+  align-items: center;
+  gap: 8px;
+}
+
+.side-chat-hint {
+  flex: 1;
+  min-width: 0;
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs);
+}

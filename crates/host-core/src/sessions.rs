@@ -1434,6 +1434,22 @@ pub enum ForkSessionResult {
     Busy,
 }
 
+/// Whether the session currently owns a running turn.
+///
+/// A running turn owns its project's instructions, tools, and working
+/// directory, so an operation that crosses that boundary (fork, move, or the
+/// bulk delete of a project) is refused for as long as the turn lasts.
+pub fn session_has_running_turn(db: &Database, id: &str) -> Result<bool> {
+    let running: bool = db.conn().query_row(
+        "SELECT EXISTS(
+            SELECT 1 FROM turns WHERE session_id = ?1 AND status = 'running'
+         )",
+        params![id],
+        |row| row.get(0),
+    )?;
+    Ok(running)
+}
+
 /// Create an independent session from the source transcript, optionally
 /// stopping after one message. Message-scoped forks use this to keep later
 /// turns out of the child while preserving the same cache/runtime isolation as
@@ -1447,14 +1463,7 @@ pub fn fork_session_through(
     let Some(source) = get_session(db, source_id)? else {
         return Ok(ForkSessionResult::NotFound);
     };
-    let has_running_turn: bool = db.conn().query_row(
-        "SELECT EXISTS(
-            SELECT 1 FROM turns WHERE session_id = ?1 AND status = 'running'
-         )",
-        params![source_id],
-        |row| row.get(0),
-    )?;
-    if has_running_turn {
+    if session_has_running_turn(db, source_id)? {
         return Ok(ForkSessionResult::Busy);
     }
     let mut source_records =
@@ -1676,14 +1685,7 @@ pub fn move_session_project(
     if get_session(db, id)?.is_none() {
         return Ok(MoveSessionProjectResult::NotFound);
     }
-    let has_running_turn: bool = db.conn().query_row(
-        "SELECT EXISTS(
-            SELECT 1 FROM turns WHERE session_id = ?1 AND status = 'running'
-         )",
-        params![id],
-        |row| row.get(0),
-    )?;
-    if has_running_turn {
+    if session_has_running_turn(db, id)? {
         return Ok(MoveSessionProjectResult::Busy);
     }
     let project_id = db.ensure_project(project_path, false)?;

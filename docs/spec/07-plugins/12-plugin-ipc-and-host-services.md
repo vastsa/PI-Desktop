@@ -74,9 +74,18 @@ PluginManager
 
 The shipped `pluginChanged` event carries a `reason` so the renderer can decide
 what to refetch: `install`, `loadDev`, `enable`, `disable`, `uninstall`, `crash`,
-`service`, `market.install`, `market.applyUpdates`. `service` fires on every
+`service`, `market.install`, `market.applyUpdates`, `themes` (runtime
+`themes.upsert` / `themes.remove`). `service` fires on every
 supervision transition and is the cheapest of them — only the service list needs
 a reload.
+
+`settingsChanged` (`pi-desktop/app/event/settingsChanged`) carries a settings
+patch when the **host** writes app settings outside the renderer path — today
+only plugin `app.setTheme` (`{ theme }`). The renderer merges the patch into
+its store so the shell paints the new preference.
+
+Panel bridge fixed channels also include `app.setTheme`, `themes.upsert`,
+`themes.remove`, and `themes.list` (all require `ui.theme`).
 
 ## 4.1 Events (host → plugin process)
 
@@ -175,7 +184,9 @@ permission gate and result envelope stay in host-core:
 2. host-core resolves the durable operating mode first. In Agent it runs the
    normal permission flow (risk, session grants, 120s timeout), then emits
    notification `plugins.execute`
-   `{ executionId, sessionId, toolCallId, toolName, args }`.
+   `{ executionId, sessionId, toolCallId, toolName, args, turnId }`. `turnId` is
+   the runtime turn identity, forwarded unchanged so the plugin tool context can
+   be matched against the `session:turnEnded` event.
 3. Plan calls fail at the host policy step with `PLUGIN_DISABLED_IN_PLAN`; they
    never reach Electron or the plugin runtime. Agent calls continue with
    Electron main executing the registered plugin tool JS and answering via RPC

@@ -216,6 +216,7 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "project.searchPlaceholder",
       "project.archive",
       "project.restore",
+      "project.delete",
     ],
   },
   {

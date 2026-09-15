@@ -1,3 +1,4 @@
+import { removeSideChat, sideChatTabSessionId } from "../../lib/side-chat";
 import { api } from "../../lib/api";
 import {
   activateWorkPanelTabState,
@@ -294,6 +295,7 @@ export function createWorkPanelSlice({
     set((state) => {
       const sessionId = state.activeSessionId;
       if (!sessionId) return {};
+      const closedTab = state.workPanelTabs.find((tab) => tab.id === tabId);
       const next = closeWorkPanelTabState(
         {
           tabs: state.workPanelTabs,
@@ -302,6 +304,17 @@ export function createWorkPanelSlice({
         tabId,
       );
       const activeTab = next.tabs.find((tab) => tab.id === next.activeTabId);
+      // A side chat's tab is its only panel surface, so closing the tab releases
+      // the side chat. Its child session is durable and stays in the sidebar,
+      // where it can be opened as an ordinary conversation (D-LOCAL-message-quotes).
+      const releasedSessionId = sideChatTabSessionId(closedTab);
+      const sideChats = releasedSessionId
+        ? removeSideChat(state.sideChats, releasedSessionId)
+        : state.sideChats;
+      const sideChatTranscripts =
+        releasedSessionId && sideChats !== state.sideChats
+          ? Object.fromEntries(Object.entries(state.sideChatTranscripts).filter(([id]) => id !== releasedSessionId))
+          : state.sideChatTranscripts;
       const fileRequest =
         activeTab?.kind === "file" && activeTab.resource
           ? {
@@ -319,6 +332,8 @@ export function createWorkPanelSlice({
         fileRequest,
       };
       return {
+        sideChats,
+        sideChatTranscripts,
         workPanelTabs: next.tabs,
         activeWorkPanelTabId: next.activeTabId,
         workPanelOpen: state.workPanelOpen,

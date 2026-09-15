@@ -1,4 +1,4 @@
-import type { MessageAttachment, UiMessage } from "@pi-desktop/shared";
+import type { AgentEvent, MessageAttachment, UiMessage } from "@pi-desktop/shared";
 
 type OptimisticFileReference = {
   path: string;
@@ -44,6 +44,40 @@ export function optimisticUserMessage(
 }
 
 /**
+ * Terminal projection for one `message_end` event.
+ *
+ * Native Pi sessions mint SDK entry ids when the message is appended, so the
+ * live row streams under a provisional id and the terminal event names that id
+ * in `replacesMessageId`. Only that exact row is re-keyed; a generic Desktop
+ * terminal event carries no metadata and must leave every other row alone
+ * (parallel delegate streams, replayed historical completions).
+ */
+export function projectMessageEnd(
+  messages: UiMessage[],
+  event: Extract<AgentEvent, { type: "message_end" }>,
+): UiMessage[] {
+  let next = messages;
+  const replacesMessageId = event.replacesMessageId;
+  if (replacesMessageId && replacesMessageId !== event.message.id) {
+    const index = messages.findIndex(
+      (message) =>
+        message.id === replacesMessageId && message.role === "assistant",
+    );
+    if (index >= 0) {
+      next = [...messages.slice(0, index), ...messages.slice(index + 1)];
+    }
+  }
+  const failed =
+    event.message.status === "error" || event.message.status === "aborted";
+  const empty =
+    !(event.message.content || "").trim() &&
+    !(event.message.thinking || "").trim();
+  return failed && empty && !event.message.error
+    ? removeLiveSessionMessage(next, event.message.id)
+    : upsertLiveSessionMessage(next, event.message);
+}
+
+/**
  * Collapse repeated transcript rows by their canonical message id.
  *
  * A retry or a stale page response can briefly put the same durable row in
@@ -85,6 +119,22 @@ export function upsertLiveSessionMessage(
   const next = normalized.slice();
   next[index] = message;
   return next;
+}
+
+/** Replace only the acknowledged submission identity, never an equal-text row. */
+export function reconcilePersistedUserMessage(
+  messages: UiMessage[],
+  optimisticMessageId: string,
+  message: UiMessage,
+): UiMessage[] {
+  if (
+    message.role !== "user" ||
+    !messages.some((row) => row.id === optimisticMessageId && row.role === "user")
+  ) return messages;
+  return upsertLiveSessionMessage(
+    messages.map((row) => row.id === optimisticMessageId ? message : row),
+    message,
+  );
 }
 
 /**

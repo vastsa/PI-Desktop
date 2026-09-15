@@ -36,6 +36,10 @@ describe("builtin subagent documents", () => {
       "ui-designer",
     ]);
     expect(definitions).toHaveLength(BUILTIN_SUBAGENT_DOCUMENTS.length);
+    // The turn cap is gone (ADR 0253): no builtin document declares one.
+    for (const document of BUILTIN_SUBAGENT_DOCUMENTS) {
+      expect(document).not.toMatch(/max[_-]?turns/i);
+    }
     for (const definition of definitions) {
       expect(definition.source).toBe("builtin");
       expect(definition.description.length).toBeGreaterThan(20);
@@ -55,7 +59,7 @@ describe("builtin subagent documents", () => {
     const explorer = definitions.find((definition) => definition.name === "explorer")!;
     expect(explorer.tools).toEqual(["Read", "Glob", "Grep", "Bash"]);
     expect(subagentCanMutate(explorer)).toBe(true);
-    expect(explorer.maxTurns).toBe(60);
+    expect("maxTurns" in explorer).toBe(false);
     expect(explorer.idleTimeoutSeconds).toBe(
       DEFAULT_SUBAGENT_IDLE_TIMEOUT_SECONDS,
     );
@@ -63,7 +67,7 @@ describe("builtin subagent documents", () => {
     expect(definitions[2].tools).toContain("Bash");
     const designer = definitions.find((definition) => definition.name === "ui-designer")!;
     expect(designer.tools).toContain("BrowserPreview");
-    expect(designer.maxTurns).toBe(80);
+    expect("maxTurns" in designer).toBe(false);
     expect(designer.description).toBe(findSubagentPreset("ui-designer")?.description);
     expect(designer.prompt).toBe(findSubagentPreset("ui-designer")?.body.trim());
   });
@@ -219,7 +223,6 @@ describe("resolveSubagentProviders", () => {
       description: `Delegate ${name}.`,
       tools: ["Read"],
       ...(pin ? { model: pin } : {}),
-      maxTurns: 4,
       prompt: "Do the thing.",
       source: "user",
     };

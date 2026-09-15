@@ -669,6 +669,7 @@ export function racpKindForAgentEvent(
     case "message_update":
       return { kind: "item.delta", durable: false, itemType: "message" };
     case "message_end":
+    case "user_message_persisted":
       return { kind: "item.completed", durable: true, itemType: "message" };
     case "tool_start":
       return { kind: "item.started", durable: true, itemType: "tool" };
@@ -702,6 +703,7 @@ export const LOCAL_AGENT_EVENT_TYPES: readonly AgentEvent["type"][] = [
   "message_start",
   "message_update",
   "message_end",
+  "user_message_persisted",
   "tool_start",
   "tool_update",
   "tool_end",

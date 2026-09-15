@@ -153,6 +153,13 @@ function buildApi() {
     app: {
       getVersion: () => call("app.getVersion"),
       getLocale: () => call("app.getLocale"),
+      getAppearance: () => call("app.getAppearance"),
+      setTheme: (themeId) => call("app.setTheme", [themeId]),
+    },
+    themes: {
+      upsert: (input) => call("themes.upsert", [input]),
+      remove: (themeId) => call("themes.remove", [themeId]),
+      list: () => call("themes.list"),
     },
     plugin: {
       getId: () => pluginId,

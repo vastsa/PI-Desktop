@@ -196,6 +196,10 @@ describe("event envelopes", () => {
       itemType: "compaction",
     });
     expect(racpKindForAgentEvent("message_update").durable).toBe(false);
+    expect(LOCAL_AGENT_EVENT_TYPES).toContain("user_message_persisted");
+    expect(racpKindForAgentEvent("user_message_persisted")).toEqual({
+      kind: "item.completed", durable: true, itemType: "message",
+    });
   });
 
   it("round-trips the SSE cursor form", () => {

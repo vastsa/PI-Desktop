@@ -15,6 +15,7 @@ import {
   glibcMissingSymbol,
 } from "./linux-glibc";
 import { DbSchemaTooNewError, parseSchemaTooNew } from "./host-boot-diagnostics";
+import { redactValue } from "./logger";
 
 const HOST_DISPOSE_GRACE_MS = 3_000;
 const HOST_FORCE_KILL_GRACE_MS = 1_000;
@@ -128,7 +129,19 @@ export class HostProcess {
       if (!text) return;
       this.lastStderr = `${this.lastStderr}${text}`.slice(-4_000);
       if (onStderr) onStderr(text);
-      else console.error(`[host-core] ${text.trimEnd()}`);
+      else {
+        console.error(
+          `[host/runtime] ${JSON.stringify({
+            ts: new Date().toISOString(),
+            level: "info",
+            channel: "host",
+            category: "runtime",
+            event: "child.process.stderr",
+            message: "child process stderr",
+            data: { output: redactValue(text.trimEnd()) },
+          })}`,
+        );
+      }
     });
 
     this.child.on("exit", (code, signal) => {

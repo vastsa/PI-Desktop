@@ -740,3 +740,49 @@
     margin-left: 0;
   }
 }
+
+/*
+  Destructive project deletion reuses the project-instructions dialog shell;
+  only the width, the warning line, and the confirm button are specific here.
+  The width rule is compound because providers.css imports later.
+*/
+.dialog.project-delete-dialog {
+  width: min(100%, 480px);
+}
+
+.project-delete-dialog .project-instructions-dialog-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.project-delete-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.project-delete-dialog-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  color: var(--ds-error);
+  font-size: var(--text-sm);
+  line-height: var(--leading-body);
+}
+
+.project-delete-dialog-warning svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.project-delete-dialog-confirm {
+  background: var(--ds-error);
+  border-color: var(--ds-error);
+  color: var(--ds-bg-primary);
+}
+
+.project-delete-dialog-confirm:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--ds-error) 85%, #000);
+}

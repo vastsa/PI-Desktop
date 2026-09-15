@@ -137,6 +137,29 @@ function build(options: { permissionMode?: SessionSummary["permissionMode"]; que
 }
 
 describe("AgentHost ingest", () => {
+  it("reconciles only a matching optimistic user item and ignores duplicate, unknown and wrong-turn acknowledgements", async () => {
+    const { host, received, sessions } = build();
+    sessions.summaries.set("s2", summary("s2"));
+    const optimistic = { ...message("optimistic", "same", "streaming"), role: "user" as const };
+    const durable = { ...optimistic, id: "durable", status: "complete" as const };
+    host.ingest(envelope("s1", "rt_1", { type: "agent_start" }));
+    host.ingest(envelope("s1", "rt_1", { type: "message_start", message: optimistic }));
+    host.ingest(envelope("s2", "rt_2", { type: "message_start", message: optimistic }));
+    const ack: AgentEvent = { type: "user_message_persisted", optimisticMessageId: "optimistic", message: durable };
+    host.ingest(envelope("s1", "other-turn", ack));
+    host.ingest(envelope("s1", "rt_1", { ...ack, optimisticMessageId: "unknown" }));
+    expect((await host.snapshot("s1")).activeItems).toHaveLength(1);
+    host.ingest(envelope("s1", "rt_1", ack));
+    host.ingest(envelope("s1", "rt_1", ack));
+    expect((await host.snapshot("s1")).activeItems).toEqual([]);
+    const completed = received.filter((event) => event.kind === "item.completed");
+    expect(completed).toHaveLength(1);
+    expect(completed[0]).toMatchObject({ sessionId: "s1", turnId: "rt_1", payload: { itemType: "message", itemId: "durable", event: ack } });
+    expect(JSON.stringify(completed)).not.toContain("path");
+    expect((await host.snapshot("s2")).activeItems.map((item) => item.id)).toEqual(["optimistic"]);
+    expect(host.getTurn("rt_1").status).toBe("running");
+  });
+
   it("maps a full turn to durable and ephemeral RACP events", () => {
     const { host, received } = build();
     host.ingest(envelope("s1", "rt_1", { type: "agent_start" }));

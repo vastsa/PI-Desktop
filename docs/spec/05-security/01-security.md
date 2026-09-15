@@ -278,3 +278,37 @@ host-core. They do not change the loopback-only rule above.
 10. Local MCP control is loopback-only, bearer-authenticated, opt-in, bounded,
     excludes secret writes and native pickers, and requires confirmation for
     session permission-mode changes
+
+## 12. Native Pi session boundary (ADR 0254)
+
+Native session paths remain sidecar-private. Renderer-visible ids are opaque
+hashes of canonical path plus verified header id. Every discovery/open resolves
+the real path below the configured Pi session root and revalidates header id and
+cwd; path traversal and symlink escape are rejected.
+
+Writable continuation requires a mode-0600 cooperative PI-Desktop lease beside
+the session and full-byte identity checks before each SDK append. After an
+append, the adapter accepts only the unchanged prior prefix plus exactly one
+entry whose id and parent match the SDK operation. Any foreign/interleaved
+change disposes the runtime and requires reload. A stale lease is reclaimed only
+for a provably dead process on the same host when the target is unchanged or is a
+complete same-file append-only extension with the original byte prefix and a
+continuous parent chain. This lease is not treated as proof that Pi Web/CLI is absent because those
+clients do not yet share its protocol.
+
+Native continuation passes `noTools: "all"` to the SDK: no built-in or extension
+model tools are exposed, including filesystem/shell tools. `permissionMode:
+"inherit"` is not a permission bridge. Enabling native tools requires an
+explicit Desktop permission integration and updated security decision. Native
+Pi extensions still execute as trusted local code with the native resource
+lifecycle; they are not Desktop plugins and this is not a sandbox claim.
+Capability checks recognize this service's owned lease and reclaimable dead
+local owners without stealing live, remote, malformed, or uncertain leases.
+Native fork reuses the same source ownership gate: an owned idle runtime keeps
+its lease, an unowned source is held under a short-lived lease for the snapshot
+window, and a live/remote/malformed foreign lease or a changed source refuses
+the fork. The child is written as a private mode-0600 non-jsonl staging file in
+the parent's session directory (fsync, then a no-clobber hardlink to the final
+name); cleanup removes only files whose device/inode and content still match
+what this operation created, and unexpected filesystem failures cross the
+preload boundary only as a path-free classified error.

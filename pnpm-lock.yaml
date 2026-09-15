@@ -170,6 +170,9 @@ importers:
       '@earendil-works/pi-ai':
         specifier: 0.85.1
         version: 0.85.1(patch_hash=67163dbaed7f644c6f55f54b068361a26e6c5abc319f97817aba0703d7b0da75)(supports-color@7.2.0)(ws@8.21.1)(zod@4.4.3)
+      '@earendil-works/pi-coding-agent':
+        specifier: 0.85.1
+        version: 0.85.1(supports-color@7.2.0)(ws@8.21.1)(zod@4.4.3)
       '@pi-desktop/shared':
         specifier: workspace:*
         version: link:../shared
@@ -183,9 +186,6 @@ importers:
         specifier: ^7.16.0
         version: 7.29.0
     devDependencies:
-      '@earendil-works/pi-coding-agent':
-        specifier: 0.85.1
-        version: 0.85.1(supports-color@7.2.0)(ws@8.21.1)(zod@4.4.3)
       '@types/node':
         specifier: ^24.13.3
         version: 24.13.3

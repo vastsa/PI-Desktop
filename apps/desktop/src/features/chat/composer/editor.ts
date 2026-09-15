@@ -369,3 +369,45 @@ export function clipboardFiles(data: DataTransfer): File[] {
   }
   return files;
 }
+
+/** Word may copy text plus a synthesized image of the same selection. Keep
+ * that text editable, but preserve explicit native files and image-only paste. */
+export function preferClipboardText(
+  text: string,
+  files: readonly File[],
+  resolveNativePath: (file: File) => string | null,
+): boolean {
+  return (
+    text.trim().length > 0 &&
+    files.length > 0 &&
+    files.every((file) =>
+      file.type.toLowerCase().startsWith("image/") && !resolveNativePath(file),
+    )
+  );
+}
+
+/** Clipboard text arrives with CRLF/CR; the draft model stores LF only. */
+export function normalizeClipboardLineEndings(text: string): string {
+  return text.replace(/\r\n?/g, "\n");
+}
+
+/** Keep native undo while inserting multiline text into the editor's Text/BR
+ * model. insertText creates block wrappers whose offsets differ from the draft. */
+export function insertClipboardText(editor: HTMLElement, text: string): boolean {
+  if (!/[\r\n]/.test(text)) return document.execCommand("insertText", false, text);
+  const { start } = editorSelectionRange(editor);
+  const normalized = normalizeClipboardLineEndings(text);
+  const escaped = document.createElement("div");
+  escaped.textContent = normalized;
+  // Only escaped plain text and our own line breaks enter insertHTML; clipboard
+  // HTML, attributes, links, and scripts are never accepted.
+  const inserted = document.execCommand(
+    "insertHTML",
+    false,
+    escaped.innerHTML.replace(/\n/g, "<br>"),
+  );
+  // Chromium can leave the caret before a final BR in an otherwise empty
+  // editor. Use the same draft offsets as chip insertion without changing undo.
+  if (inserted) setEditorCaret(editor, start + normalized.length);
+  return inserted;
+}

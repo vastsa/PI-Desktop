@@ -26,6 +26,7 @@ declare const pi: PiPluginHostApi;
 pi.app.getVersion(): Promise<string>
 pi.app.getLocale(): Promise<string>
 pi.app.getAppearance(): Promise<PluginAppearance>
+pi.app.setTheme(themeId: "system" | "light" | "dark" | `plugin:${string}`): Promise<void>
 ```
 
 `app.getAppearance` 返回宿主当前正在呈现的外观，让插件（或它的面板）可以
@@ -43,6 +44,33 @@ type PluginAppearance = {
 面板通过桥通道 `app.getAppearance` 读取同一个值，并在 `appearance:changed`
 事件（见下文）上收到实时更新。在没有该通道的旧宿主上，调用以
 `UNSUPPORTED` 拒绝；面板应回退到操作系统偏好和它自己的面板内选择。
+
+`app.setTheme`（需要 `ui.theme`，ADR 0249）应用与设置选择器相同的
+`AppSettings.theme`。接受内置偏好或当前已注册的插件主题 id；未知 id 以
+`INVALID_ARGUMENT` 拒绝。宿主会持久化设置、刷新原生 chrome / 面板外观，
+并向渲染进程发出 `settingsChanged`。
+
+### 主题（需要 `ui.theme`）
+
+调用方插件自有主题的运行时注册表。生产模式可用，无需卸载/重载（ADR 0249）。
+
+```ts
+pi.themes.upsert(input: {
+  id: string;           // 本地 id，规则同 contributes.themes[].id
+  label: string;
+  base: "light" | "dark";
+  css: string;          // 使用 sanitizeThemeCss 消毒
+}): Promise<void>
+
+pi.themes.remove(themeId: string): Promise<void>
+pi.themes.list(): Promise<Array<{ id: string; themeId: string; label: string; base: "light" | "dark" }>>
+```
+
+- 完整 id 命名空间为 `plugin:<pluginId>:<themeId>`。
+- 对已有 id 的 `upsert` 覆盖 label / base / css。
+- 不再有单插件主题数量上限；CSS 体积上限与消毒器仍然生效。
+- upsert/remove 后宿主发出 `pluginChanged`（`reason: "themes"`）并刷新面板外观，
+  使**当前激活**主题立即重新着色。
 
 ### 插件
 ```ts
@@ -192,6 +220,9 @@ type ToolExecContext = {
  log: (msg: string) => void
 }
 ```
+
+`turnId` 对宿主驱动的回合会被填充，并与对应的 `session:turnEnded` 事件（§5）的
+`turnId` 一致。
 
 ### models（需要 `models.list`）
 ```ts
@@ -548,6 +579,19 @@ pi.events.off(event, handler)
 - `plugin:settingsChanged`（由插件设置页面编辑触发）
 - `session:modelChanged` — `{ sessionId, modelKey, thinkingLevel }`，在成功的
   `session.configure` 改变 provider、模型或 thinking level 之后发送
+- `session:turnEnded` —— 载荷为
+  `{ sessionId: string; turnId: string; reason: "completed" | "aborted" | "error" }`，
+  在每个宿主回合的拆除结束时发送一次，位于持久化的 `session.endTurn` 尝试之后。
+  “回合”指 `session.beginTurn` 创建的那个回合：一次用户提交、一次已批准的计划执行、
+  或一次定时运行；排队但从未开始的项目不会产生事件。`completed`、`aborted`、`error`
+  是三种终止原因。事件携带终止运行时事件本身标识的 `turnId`，而不是恰好处于活动
+  状态的那个回合，因此来自更早回合的迟到事件不会结算更新的回合。投递是
+  即发即忘：没有 ack，也没有重放，因此存活的已订阅插件只收到一次；与插件崩溃、
+  重载或宿主退出竞态的投递不作保证。收到该事件**并不**意味着该回合的所有在途
+  工具都已退出——迟到结果仍可能到达——因此插件必须按 `turnId` 串行化或以其他方式
+  限定清理范围。该事件同样不需要新权限：它走既有的插件事件通道，订阅未知的事件名
+  也不会报错。目前尚无任何已发布宿主会发出该事件（0.14.8 也尚未包含），因此依赖它
+  的插件必须按真正包含该事件的发布版本要求，而不能假定 0.14.7 或 0.14.8。
 
 抛出的处理程序会被记录下来，并且不会影响其他侦听器或插件。
 
@@ -579,6 +623,7 @@ window.pluginBridge.on(event, handler)
 | `ui.notify` | `notify` |
 | `ui.getNotificationPermission`、`ui.requestNotificationPermission`、`ui.showNativeNotification` | `notify` |
 | `plugin.getSettings`、`workspace.get`、`app.getAppearance` | 无 |
+| `app.setTheme`、`themes.upsert`、`themes.remove`、`themes.list` | `ui.theme` |
 | `models.list` | `models.list` |
 | `fs.readText`、`fs.readPreview`、`fs.openDefault`、`fs.reveal`、`fs.glob`、`fs.list` | `fs.read` |
 | `fs.writeText` | `fs.write` |
@@ -603,6 +648,8 @@ window.pluginBridge.on(event, handler)
   语言发生变化时发送，因此面板可以实时重新着色和重新标注文案。
 - `workspace:changed` —— 载荷为 `{ path: string; name: string } | null`，
   与 `workspace.get()` 一致，在打开的项目变化时发送。
+- `session:turnEnded` —— 与 §5 的插件进程事件同一载荷，在宿主回合到达终止状态
+  时发送。
 
 ## 7. 通话审计
 

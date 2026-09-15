@@ -61,8 +61,6 @@ export type SubagentDefinition = {
    * (a delegate never unlocks paths outside the workspace and scratch roots).
    */
   permission?: SubagentPermission;
-  /** Optional hard cap on delegate turns; omitted means unlimited turns. */
-  maxTurns?: number;
   /**
    * Output-token cap for one delegate response. Omitted follows the model's
    * own published limit, which is what every definition did before this field
@@ -155,7 +153,6 @@ export const DEFAULT_SUBAGENT_TOOLS: readonly SubagentAssignableTool[] = [
   "Grep",
 ];
 
-export const MAX_SUBAGENT_MAX_TURNS = 80;
 /**
  * Defensive ceiling for a declared output cap. No published model accepts an
  * output limit above 128k, so a value past this is a typo rather than an
@@ -266,8 +263,8 @@ export type SubagentParseResult =
 
 type Frontmatter = Map<string, string | string[]>;
 
-/** Frontmatter keys are matched loosely so `max-turns`, `max_turns` and
- * `maxTurns` all land on the same field. */
+/** Frontmatter keys are matched loosely, so `max-tokens` and `maxTokens` land
+ * on the same field. */
 function normalizeKey(key: string): string {
   return key.trim().toLowerCase().replace(/[-_\s]/g, "");
 }
@@ -434,7 +431,6 @@ export function parseSubagentDefinition(
     }
   }
 
-  const maxTurns = parseMaxTurns(asScalar(frontmatter.get("maxturns")), warnings);
   const maxTokens = parseMaxTokens(
     asScalar(frontmatter.get("maxtokens")),
     warnings,
@@ -472,7 +468,6 @@ export function parseSubagentDefinition(
       ...(model ? { model } : {}),
       ...(thinkingLevel ? { thinkingLevel } : {}),
       ...(permission ? { permission } : {}),
-      ...(maxTurns !== undefined ? { maxTurns } : {}),
       ...(maxTokens !== undefined ? { maxTokens } : {}),
       idleTimeoutSeconds,
       maxDurationSeconds,
@@ -514,28 +509,6 @@ function parseModelPin(
     providerId: declaredModel.slice(0, slash),
     modelId: declaredModel.slice(slash + 1),
   };
-}
-
-function parseMaxTurns(
-  value: string | undefined,
-  warnings: string[],
-): number | undefined {
-  if (!value || value.trim().toLowerCase() === "none") {
-    return undefined;
-  }
-  const parsed = Number(value);
-  if (parsed === 0) return undefined;
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    warnings.push(`ignoring invalid \`maxTurns\` "${value}" (unlimited)`);
-    return undefined;
-  }
-  if (parsed > MAX_SUBAGENT_MAX_TURNS) {
-    warnings.push(
-      `clamping \`maxTurns\` ${parsed} to ${MAX_SUBAGENT_MAX_TURNS}`,
-    );
-    return MAX_SUBAGENT_MAX_TURNS;
-  }
-  return parsed;
 }
 
 /**

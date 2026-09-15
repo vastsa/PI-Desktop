@@ -10,6 +10,7 @@ import {
   dedupeSessionMessages,
   durableCoversLiveSessionMessages,
   mergeLiveSessionMessages,
+  projectMessageEnd,
   removeLiveSessionMessage,
   upsertLiveSessionMessage,
 } from "../../lib/session-transcript";
@@ -81,6 +82,7 @@ export type SessionRuntime = {
   insertOptimisticUserMessage: (sessionId: string, message: UiMessage) => void;
   retractOptimisticUserMessage: (sessionId: string, message: UiMessage) => void;
   cacheBackgroundTranscriptEvent: (envelope: AgentEventEnvelope) => void;
+  projectSideChatEvent: (envelope: AgentEventEnvelope) => void;
   mergeSessionConfiguration: (
     current: SessionConfiguration | undefined,
     next: SessionConfiguration,
@@ -215,6 +217,14 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
 
   function insertOptimisticUserMessage(sessionId: string, message: UiMessage): void {
     const state = get();
+    if (state.sideChatTranscripts[sessionId]) {
+      set((current) => ({
+        sideChatTranscripts: {
+          ...current.sideChatTranscripts,
+          [sessionId]: upsertLiveSessionMessage(current.sideChatTranscripts[sessionId] ?? [], message),
+        },
+      }));
+    }
     if (state.activeSessionId === sessionId) {
       set((current) => ({
         messages: upsertLiveSessionMessage(current.messages, message),
@@ -232,6 +242,14 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
 
   function retractOptimisticUserMessage(sessionId: string, message: UiMessage): void {
     const state = get();
+    if (state.sideChatTranscripts[sessionId]?.includes(message)) {
+      set((current) => ({
+        sideChatTranscripts: {
+          ...current.sideChatTranscripts,
+          [sessionId]: removeLiveSessionMessage(current.sideChatTranscripts[sessionId] ?? [], message.id),
+        },
+      }));
+    }
     if (state.activeSessionId === sessionId) {
       set((current) =>
         current.messages.includes(message)
@@ -249,13 +267,8 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
     }
   }
 
-  function cacheBackgroundTranscriptEvent(envelope: AgentEventEnvelope): void {
-    const { sessionId, event } = envelope;
-    const state = get();
-    const current =
-      sessionTranscriptCache.get(sessionId) ?? state.retainedTranscripts[sessionId];
-    if (!current) return;
-
+  function projectTranscriptEvent(current: UiMessage[], envelope: AgentEventEnvelope): UiMessage[] {
+    const { event } = envelope;
     let next = current;
     switch (event.type) {
       case "message_start":
@@ -268,15 +281,7 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
       }
         break;
       case "message_end": {
-        const failed =
-          event.message.status === "error" || event.message.status === "aborted";
-        const empty =
-          !(event.message.content || "").trim() &&
-          !(event.message.thinking || "").trim();
-        next =
-          failed && empty && !event.message.error
-            ? removeLiveSessionMessage(current, event.message.id)
-            : upsertLiveSessionMessage(current, event.message);
+        next = projectMessageEnd(current, event);
         break;
       }
       case "tool_start":
@@ -297,13 +302,13 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
         });
         break;
       case "tool_update": {
-        if (event.partialResult === undefined) return;
+        if (event.partialResult === undefined) return current;
         const existing = current.find(
           (message) =>
             message.toolCallId === event.toolCallId &&
             message.toolStatus === "running",
         );
-        if (!existing) return;
+        if (!existing) return current;
         next = upsertLiveSessionMessage(current, {
           ...existing,
           content:
@@ -353,9 +358,31 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
         break;
       }
       default:
-        return;
+        return current;
     }
 
+    return next;
+  }
+
+  function projectSideChatEvent(envelope: AgentEventEnvelope): void {
+    const state = get();
+    if (!state.sideChats[envelope.sessionId]) return;
+    const current = state.sideChatTranscripts[envelope.sessionId] ?? [];
+    const next = projectTranscriptEvent(current, envelope);
+    if (next === current) return;
+    set((state) => ({
+      sideChatTranscripts: { ...state.sideChatTranscripts, [envelope.sessionId]: next },
+    }));
+  }
+
+  function cacheBackgroundTranscriptEvent(envelope: AgentEventEnvelope): void {
+    const { sessionId } = envelope;
+    const state = get();
+    const current =
+      sessionTranscriptCache.get(sessionId) ?? state.retainedTranscripts[sessionId];
+    if (!current) return;
+
+    const next = projectTranscriptEvent(current, envelope);
     if (next === current) return;
     liveSessionTranscripts.add(sessionId);
     cacheSessionTranscript(
@@ -418,6 +445,7 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
     insertOptimisticUserMessage,
     retractOptimisticUserMessage,
     cacheBackgroundTranscriptEvent,
+    projectSideChatEvent,
     mergeSessionConfiguration: (current, next) => {
       if (!current) return next;
       const merged: Record<string, unknown> = { ...current };

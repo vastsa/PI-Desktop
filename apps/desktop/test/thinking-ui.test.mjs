@@ -187,7 +187,8 @@ test("main resolves reasoning from each session's exact selected model", () => {
   assert.match(providerCatalogSource, /const resolveSessionCapabilityTarget/);
   assert.match(providerCatalogSource, /defaults\?\.defaultProviderId/);
   assert.match(providerCatalogSource, /modelsDevModelFor\(provider, modelId\)/);
-  assert.match(sessionIpcSource, /sessions:\s*result\.sessions\.map/);
+  assert.match(sessionIpcSource, /result\.sessions\.map\(\(session\) =>/);
+  assert.match(sessionIpcSource, /enrichSession\(session, providers, defaults\)/);
   assert.match(providerCatalogSource, /modelConfigFromModelsDev\(\s*modelsDevModel,\s*provider\.baseUrl\s*\)/);
   // models.dev records stamp reasoning capability per exact model id.
   assert.match(providerCatalogSource, /capabilitiesFromModelConfig\(modelConfig\)/);

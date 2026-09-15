@@ -1,7 +1,7 @@
 {
   "name": "pi-desktop",
   "private": true,
-  "version": "0.14.8",
+  "version": "0.14.8-native.1",
   "description": "Local-first AI coding agent desktop client",
   "packageManager": "pnpm@11.18.0",
   "engines": {
@@ -23,7 +23,9 @@
     "test:e2e": "node scripts/e2e-smoke.mjs",
     "test:e2e:plan": "node scripts/e2e-plan.mjs",
     "test:e2e:plan-ui": "node scripts/e2e-plan-ui.mjs",
+    "test:e2e:composer-paste": "node scripts/e2e-composer-paste.mjs",
     "test:e2e:transcript": "node scripts/e2e-transcript-render.mjs",
+    "test:e2e:native-side-chat": "node scripts/e2e-native-side-chat.mjs",
     "test:e2e:boot": "node scripts/e2e-electron-boot.mjs",
     "test:e2e:layout": "node scripts/e2e-three-column-layout.mjs",
     "test:e2e:supervision": "node scripts/e2e-supervision.mjs",

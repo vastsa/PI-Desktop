@@ -299,14 +299,12 @@ try {
   );
   const designer = byName.get("ui-designer");
   check(
-    "the UI designer grants preview and editing, caps turns, and inherits permissions",
+    "the UI designer grants preview and editing and inherits permissions",
     JSON.stringify(designer?.tools) ===
       JSON.stringify(["Read", "Glob", "Grep", "BrowserPreview", "Bash", "Edit", "Write"]) &&
-      designer?.maxTurns === 80 &&
       (designer?.permission ?? "inherit") === "inherit",
     JSON.stringify({
       tools: designer?.tools,
-      maxTurns: designer?.maxTurns,
       permission: designer?.permission ?? "inherit",
     }),
   );
@@ -350,6 +348,34 @@ try {
       )),
     `${broken.diagnostics.length} diagnostic(s), ${broken.definitions.length} definitions: ${broken.diagnostics[0]}`,
   );
+  const legacyDir = mkdtempSync(join(tmpdir(), "pi-subagent-legacy-"));
+  writeFileSync(
+    join(legacyDir, "legacy-capped.md"),
+    [
+      "---",
+      "name: legacy-capped",
+      "description: A document written before the turn limit was removed.",
+      "tools: [Read, Glob]",
+      "maxTurns: 2",
+      "max-turns: 2",
+      "---",
+      "",
+      "Read the file the task names and report what you found.",
+      "",
+    ].join("\n"),
+  );
+  const legacy = await loadSubagentDefinitions(null, { overrideDir: legacyDir });
+  const legacyDefinition = legacy.definitions.find(
+    (definition) => definition.name === "legacy-capped",
+  );
+  check(
+    "a legacy maxTurns frontmatter key is ignored without failing or warning",
+    legacyDefinition?.source === "user" &&
+      !("maxTurns" in (legacyDefinition ?? {})) &&
+      legacy.diagnostics.length === 0,
+    `${legacy.diagnostics.length} diagnostic(s): ${legacy.diagnostics.join(" / ") || "none"}`,
+  );
+  rmSync(legacyDir, { recursive: true, force: true });
 } catch (error) {
   check("the run completed", false, String(error));
 } finally {

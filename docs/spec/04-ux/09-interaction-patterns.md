@@ -137,7 +137,9 @@ recency only breaks ties between equally relevant matches.
   (Cmd+Q, application-menu Quit, tray Quit) is a separate confirm step
   (D363): Cancel leaves the app running; Confirm runs the ordered shutdown.
   A D230 window-close Quit does not ask again. Automated boot, supervision,
-  and capture probes skip the dialog. macOS keeps the
+  and capture probes skip the dialog, as does the restart that installs an
+  already-downloaded update — its installer is already running and gives up
+  when the app stays alive. macOS keeps the
   native Dock lifecycle (close keeps the app in the Dock; activating recreates
   the window). The bounds watchdog never restores a minimized or tray-hidden
   window.
@@ -493,6 +495,20 @@ may be retained while exactly one workspace supplies the visible shell context.
   switching back restores it; selecting a workspace without an active
   conversation hides the panel. Session/workspace identity remains attached to
   every relative resource, preventing cross-context reinterpretation.
+- A side chat (D-LOCAL-message-quotes) is one more resource in the same context: the message
+  action forks the child through `session.fork` without activating it and opens
+  one `sidechat:<childSessionId>` tab in the origin session's retained context.
+  The tab label reuses `sideChat.title`, the body renders the child's transcript
+  from the same event stream through the background-transcript reducer, and the
+  compact input sends to and stops the child session, never the visible one.
+- Closing the `sidechat` tab, opening the child as a conversation, or deleting
+  the parent or child session removes the registration; the child stays an
+  ordinary session in the sidebar, lists, and search. Like every other resource
+  it does not survive relaunch, while the durable child session does.
+- Closing the final side-chat tab keeps the upstream panel launcher visible.
+  Closing it beside other tabs leaves those resources and other sessions intact.
+  Registered child transcripts survive tab switches, but the compact side-chat
+  draft and scroll position belong to the mounted tab and may reset on remount.
 - Relaunch discards every session context, including Browser resources; only
   the committed preferred panel width persists. Native window state is stored
   independently from normal bounds, including when the app closes while
@@ -984,8 +1000,76 @@ Running turns and pending approvals continue to gate the controls.
   remain text-selectable for inspection and copying.
 - Interactive controls nested inside selectable content remain
   non-selectable and must keep their click and keyboard behavior.
+- A non-empty selection inside a transcript row raises one floating overlay
+  above it (D-LOCAL-selection-overlay): Add to chat, Ask in side chat, and Copy. It is centered on the
+  selection, clamped into the clipping ancestors' rects (capped above the docked
+  composer), portaled above the transcript, and it follows the selection while
+  the thread scrolls instead of disappearing. It recomputes on selection change,
+  double click, key up, pointer up, pointer cancel, and resize, and hides when a
+  press lands outside it, when the selection collapses, and after any action
+  (each action clears the native selection). A selection that spans two rows
+  raises no overlay, and a range that leaves its row is clamped back to it. It
+  never renders in a read-only projection, and it does not steal the selection:
+  the pointer press is prevented so the excerpt is whatever was selected,
+  including a whole formula. Add to chat writes a composer draft and focuses the
+  composer; Ask in side chat sends the excerpt to the side chat anchored at that
+  row; neither sends into the conversation being read. On an assistant turn, Add
+  to chat opens the annotation comment editor instead of writing draft text
+  (D-LOCAL-response-annotations): the editor snapshots the excerpt, Save attaches one annotation to the
+  session's floating index, and the next send carries the excerpts as numbered prompt
+  data (see §7.5a).
 - Selection rules must not disable `focus-visible` feedback or native window
   drag regions.
+
+### 7.5a Annotations
+
+- An annotation belongs to an **assistant turn**, never to the user's own
+  message: annotating is a response concept (D-LOCAL-response-annotations). Selecting text inside a
+  response, or activating the turn's annotate action, opens a compact comment
+  editor on a snapshot of the excerpt; **Save** attaches one numbered annotation
+  with the optional comment; **Enter** in the comment textarea does the same,
+  while **Shift+Enter** keeps native multiline input and IME confirmation Enter
+  never saves. **Cancel** and **Escape** discard it. Saving
+  the editor sends nothing, and an excerpt that is already attached reopens its
+  own annotation for editing instead of adding a second one (same row and selected
+  offsets; repeated phrases elsewhere remain separate under ADR floating-annotation-index). The annotation does
+  not edit the response: the answer gains a numbered reference only where the
+  model cites the annotation (`:codex-annotation{index="N"}`), and that reference
+  is a tooltip target, not selectable text.
+- Annotations are session state that lives exactly as long as the send that
+  carries them. They are numbered in attachment order, listed in a collapsible
+  floating index above the composer with matching out-of-flow source badges
+  (ADR floating-annotation-index). Locate releases follow mode and reveals/highlights the source;
+  edit opens the existing comment editor. All saved exact ranges stay highlighted
+  without selecting an item; collapsing or selecting another item retains every
+  highlight. Remove/clear/send removes them with their annotations, and unresolved
+  ranges never shade the whole answer. All are consumed
+  by the send. They are not persisted and do not survive
+  relaunch. The editor is owned by the session it was opened in: a session switch
+  closes it, and a save for an annotation that was already sent or removed is
+  dropped.
+- Saved annotations make an empty composer sendable: click Send or press Enter
+  to send only the annotations, or queue them while a turn runs. Unconfigured
+  models, pending approval, and unfinished paste still block sending. Unsaved
+  comments and other sessions' annotations do not enable Send; clearing the last
+  annotation restores the empty-draft disabled/Stop behavior. No request text is
+  fabricated, and a rejected send keeps the annotations.
+- A send with annotations attaches them to the prompt as numbered data before the
+  user's own request, so the model can address `Annotation 1`, `Annotation 2`, …
+  The user's prompt text stays what the user typed: no excerpt is copied into the
+  draft, the optimistic row, or the session title.
+- Because the stored prompt carries the block, every read surface shows the
+  request only: the transcript's user row, the composer's edit seed, and the
+  minimap all reduce a stored prompt to its request text.
+
+- Host acknowledgement, not an optimistic queue row, consumes annotations. The
+  originating session retains any attachments added or edited during the wait;
+  host rejection or an unexpected pre-host exception leaves them pending, returns
+  a rejected submission, and does not overwrite a newer composer draft.
+- **Alt+Enter**/steer sends only text and leaves pending annotations untouched;
+  no text means no steering turn. **Shift+Enter** inserts a newline. The comment
+  editor owns its own **Enter** (save only), **Shift+Enter** (newline), and IME
+  confirmation, independently of the main composer's shortcuts.
 
 ## 8. Drag / drop
 
@@ -1097,11 +1181,16 @@ Project drag/drop follows these patterns:
 
 ### 8a.2 Reference chips and clipboard files
 
-- A paste containing one or more OS `File` objects is intercepted in the
-  textarea. Text-only paste stays native when its character count is at or
-  below the persisted `largePasteThreshold` (default 600); text-only paste
-  above the threshold is intercepted and converted into a temporary session
-  file reference.
+- Select non-whitespace `text/plain` over accompanying generated `image/*`
+  copies only when every file lacks a native path (Word text selection).
+  Native files, any non-image file, and image-only/whitespace-plus-image paste
+  retain their attachment flow. This uses the existing preload file-path
+  resolver and does not reread the system clipboard.
+- Selected text stays editable when its character count is at or below the
+  persisted `largePasteThreshold` (default 600); larger text becomes a temporary
+  session file reference. Small multiline paste preserves blank/trailing lines,
+  surrounding text, caret, and native undo; CRLF/CR becomes editor LF. Literal
+  HTML remains text: only escaped text and generated line breaks are inserted.
 - While bytes are being transferred, the textarea is read-only and exposes
   `aria-busy="true"`; the send and autocomplete controls are disabled.
 - Electron main saves bounded bytes under the originating session's scratch

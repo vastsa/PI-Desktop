@@ -5,6 +5,7 @@ import {
   MAX_SUBAGENT_REPORT_CHARS,
   SubagentRun,
   type SubagentRunOptions,
+  type SubagentRunStatus,
 } from "./subagent.js";
 import type { RuntimeProviderConfig } from "./provider-binding.js";
 import { classifyAgentError } from "./agent-errors.js";
@@ -12,6 +13,14 @@ import {
   PROVIDER_RATE_LIMIT_MAX_RETRIES,
   PROVIDER_TRANSIENT_MAX_RETRIES,
 } from "./provider-retry.js";
+
+/** Terminal statuses a run can report (ADR 0253 removed `truncated`). */
+const RUN_STATUSES: SubagentRunStatus[] = [
+  "completed",
+  "aborted",
+  "failed",
+  "timed_out",
+];
 
 const provider: RuntimeProviderConfig = {
   id: "local",
@@ -31,7 +40,6 @@ function definition(
     name: "explorer",
     description: "Search the workspace and report findings.",
     tools: ["Read", "Glob", "Grep"],
-    maxTurns: 3,
     prompt: "Find the answer and report it.",
     source: "builtin",
     ...overrides,
@@ -273,17 +281,17 @@ describe("SubagentRun reporting", () => {
     });
   });
 
-  it("explains a truncated, aborted, or failed run in the parent's text", () => {
+  it("explains an aborted or failed run in the parent's text", () => {
     const { run } = createRun();
     run.turns = 3;
 
-    expect(run.result("truncated", "Half of the files checked.").report).toContain(
-      "hit its 3-turn limit",
-    );
-    expect(run.result("truncated", "Half of the files checked.").report).toContain(
-      "Half of the files checked.",
-    );
     expect(run.result("aborted", "").report).toContain("was aborted after 3 turn");
+    expect(
+      run.result("failed", "Half of the files checked.", {
+        code: "NETWORK_ERROR",
+        message: "no route",
+      }).report,
+    ).toContain("Half of the files checked.");
     expect(
       run.result("failed", "", { code: "NETWORK_ERROR", message: "no route" })
         .report,
@@ -377,19 +385,50 @@ describe("SubagentRun provider rate-limit recovery", () => {
   });
 });
 
-describe("SubagentRun turn cap", () => {
-  it("terminates the delegate once it reaches maxTurns", async () => {
-    const { run } = createRun({ definition: definition({ maxTurns: 2 }) });
-    const context = { toolCall: { id: "child-1" } };
+describe("SubagentRun turn accounting", () => {
+  it("runs past the old turn ceiling and still completes", async () => {
+    const { run } = createRun();
+    // The removed cap topped out at 80 turns; a delegate that keeps calling
+    // tools for longer than that is no longer killed mid-task (ADR 0253).
+    const turns = 120;
+    run.agent = {
+      prompt: vi.fn(async () => {
+        for (let turn = 0; turn < turns; turn += 1) {
+          run.handleEvent({ type: "turn_start" });
+          run.handleEvent({
+            type: "tool_execution_start",
+            toolCallId: `child-${turn}`,
+            toolName: "Read",
+            args: { path: "a.ts" },
+          });
+          run.handleEvent({
+            type: "tool_execution_end",
+            toolCallId: `child-${turn}`,
+            result: { content: [{ type: "text", text: "ok" }] },
+            isError: false,
+          });
+        }
+        run.handleEvent({
+          type: "message_end",
+          message: assistantMessage({
+            content: [{ type: "text", text: "Checked every file." }],
+          }),
+        });
+      }),
+      waitForIdle: vi.fn(async () => undefined),
+      abort: vi.fn(),
+    };
 
-    run.turns = 1;
-    await expect(run.afterToolCall(context)).resolves.toBeUndefined();
+    const result = await run.run();
 
-    run.turns = 2;
-    await expect(run.afterToolCall(context)).resolves.toEqual({
-      terminate: true,
-    });
-    expect(run.cappedTurns).toBe(true);
+    // A delegate ends by finishing, by aborting or by failing; there is no
+    // turn-count termination and `truncated` is not a status any more.
+    expect(RUN_STATUSES).toContain(result.status);
+    expect(result.status).toBe("completed");
+    expect(result.report).toBe("Checked every file.");
+    expect(result.turns).toBe(turns);
+    expect(result.toolCalls).toBe(turns);
+    expect("cappedTurns" in run).toBe(false);
   });
 
   it("passes a parent tool failure through to the delegate", async () => {
@@ -484,11 +523,15 @@ describe("SubagentRun watchdogs", () => {
     expect(freshClaim(classifyAgentError("401: invalid api key"), "request")).toBeUndefined();
   });
 
-  it("does not impose a turn cap when maxTurns is omitted", async () => {
-    const { run } = createRun({ definition: definition({ maxTurns: undefined }) });
-    run.turns = 21;
+  it("never terminates the delegate on a turn count", async () => {
+    const { run } = createRun();
+    // 80 was the highest value the removed clamp ever allowed.
+    run.turns = 80;
 
-    await expect(run.afterToolCall({ toolCall: { id: "child-1" } })).resolves.toBeUndefined();
-    expect(run.cappedTurns).toBe(false);
+    await expect(
+      run.afterToolCall({ toolCall: { id: "child-1" } }),
+    ).resolves.toBeUndefined();
+    // No `cappedTurns` flag exists to record a termination that cannot happen.
+    expect("cappedTurns" in run).toBe(false);
   });
 });

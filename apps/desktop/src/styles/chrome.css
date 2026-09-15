@@ -198,7 +198,10 @@
   flex-direction: column;
   overflow: hidden;
   position: relative;
-  background: var(--ds-bg-sidebar, var(--ds-bg-primary));
+  background-color: var(--ds-bg-sidebar, var(--ds-bg-primary));
+  background-image: var(--ds-bg-sidebar-image, none);
+  background-repeat: no-repeat;
+  background-size: cover;
   /* No seam against the main pane (D297): the sidebar's own surface tone is
      the only edge cue on every platform, as it already was on macOS glass. */
   /*
@@ -336,7 +339,10 @@
   flex: 0 0 56px;
   display: flex;
   flex-direction: column;
-  background: var(--ds-bg-sidebar, var(--ds-bg-primary));
+  background-color: var(--ds-bg-sidebar, var(--ds-bg-primary));
+  background-image: var(--ds-bg-sidebar-image, none);
+  background-repeat: no-repeat;
+  background-size: cover;
 }
 
 /*
@@ -350,7 +356,8 @@
 :root[data-platform="darwin"] .sidebar,
 :root[data-platform="darwin"] .sidebar-rail {
   background-color: var(--ds-sidebar-glass-tint);
-  background-image: linear-gradient(
+  background-image: var(--ds-bg-sidebar-image, none),
+    linear-gradient(
       180deg,
       var(--ds-sidebar-glass-sheen-top),
       transparent 220px

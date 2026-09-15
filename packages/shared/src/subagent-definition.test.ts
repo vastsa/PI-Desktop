@@ -5,7 +5,6 @@ import {
   DEFAULT_SUBAGENT_TOOLS,
   MAX_SUBAGENT_DEFINITIONS,
   MAX_SUBAGENT_MAX_TOKENS,
-  MAX_SUBAGENT_MAX_TURNS,
   SUBAGENT_ASSIGNABLE_TOOLS,
   SUBAGENT_INHERIT_DENY_TOOLS,
   mergeSubagentDefinitions,
@@ -43,7 +42,6 @@ description: Reviews changed files for correctness bugs.
 tools: Read, Grep, Glob
 model: anthropic/claude-opus-5
 thinkingLevel: high
-maxTurns: 12
 ---
 
 Review the diff and report only defects you can point at a line for.
@@ -57,7 +55,6 @@ Review the diff and report only defects you can point at a line for.
       tools: ["Read", "Grep", "Glob"],
       model: { providerId: "anthropic", modelId: "claude-opus-5" },
       thinkingLevel: "high",
-      maxTurns: 12,
       idleTimeoutSeconds: DEFAULT_SUBAGENT_IDLE_TIMEOUT_SECONDS,
       maxDurationSeconds: DEFAULT_SUBAGENT_MAX_DURATION_SECONDS,
       prompt:
@@ -91,7 +88,6 @@ Explain it.`);
     expect(result.definition.tools).toEqual([...DEFAULT_SUBAGENT_TOOLS]);
     expect(subagentCanMutate(result.definition)).toBe(false);
     expect(result.definition.name).toBe("reviewer");
-    expect(result.definition.maxTurns).toBeUndefined();
     expect(result.definition.idleTimeoutSeconds).toBe(
       DEFAULT_SUBAGENT_IDLE_TIMEOUT_SECONDS,
     );
@@ -300,33 +296,7 @@ description: Reviews a diff.
     }
   });
 
-  it("clamps timeout overrides and keeps maxTurns optional", () => {
-    const tooMany = parse(`---
-description: Reads code.
-max-turns: 500
----
-Read it.`);
-    expect(tooMany.ok).toBe(true);
-    if (tooMany.ok) {
-      expect(tooMany.definition.maxTurns).toBe(MAX_SUBAGENT_MAX_TURNS);
-      expect(tooMany.warnings).toEqual([
-        `clamping \`maxTurns\` 500 to ${MAX_SUBAGENT_MAX_TURNS}`,
-      ]);
-    }
-
-    const nonsense = parse(`---
-description: Reads code.
-max_turns: soon
----
-Read it.`);
-    expect(nonsense.ok).toBe(true);
-    if (nonsense.ok) {
-      expect(nonsense.definition.maxTurns).toBeUndefined();
-      expect(nonsense.warnings).toContain(
-        'ignoring invalid `maxTurns` "soon" (unlimited)',
-      );
-    }
-
+  it("clamps timeout overrides", () => {
     const timeouts = parse(`---
 description: Reads code.
 idle-timeout: 5
@@ -364,15 +334,23 @@ Read it.`);
     }
   });
 
-  it("accepts none and zero as an unlimited turn cap", () => {
-    for (const value of ["none", "0", "0.0"]) {
+  it("ignores legacy maxTurns frontmatter without failing or warning", () => {
+    // ADR 0253: the turn cap is gone, so `maxTurns` is an unrecognized key
+    // like any other. A document that still declares one keeps loading.
+    for (const key of ["maxTurns", "max-turns", "max_turns"]) {
       const result = parse(`---
 description: Reads code.
-maxTurns: ${value}
+${key}: 12
 ---
 Read it.`);
+
       expect(result.ok).toBe(true);
-      if (result.ok) expect(result.definition.maxTurns).toBeUndefined();
+      if (!result.ok) continue;
+      expect("maxTurns" in result.definition).toBe(false);
+      // An unknown key is ignored silently: no warning may mention it.
+      expect(
+        result.warnings.filter((warning) => /maxTurns|turn/i.test(warning)),
+      ).toEqual([]);
     }
   });
 

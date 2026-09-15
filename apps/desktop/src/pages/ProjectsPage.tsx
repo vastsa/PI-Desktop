@@ -19,6 +19,7 @@ import {
   IconSearch,
   IconStar,
   IconSparkles,
+  IconTrash,
   IconX,
 } from "../components/icons";
 import {
@@ -33,6 +34,7 @@ import {
 import { ProjectInstructionsDialog } from "../components/ProjectInstructionsDialog";
 import { ProjectMemoryDialog } from "../components/ProjectMemoryDialog";
 import { ProjectEditDialog } from "../components/ProjectEditDialog";
+import { ProjectDeleteDialog } from "../components/ProjectDeleteDialog";
 import { SessionRenameDialog } from "../components/SessionRenameDialog";
 import { AnchoredMenu } from "../components/settings/AnchoredMenu";
 
@@ -133,6 +135,7 @@ export function ProjectsPage() {
   const renameSession = useAppStore((s) => s.renameSession);
   const showToast = useAppStore((s) => s.showToast);
   const sessions = useAppStore((s) => s.sessions);
+  const runningSessions = useAppStore((s) => s.runningSessions);
   const [recents, setRecents] = useState<RecentProject[]>(() => loadRecentProjects());
   const [durableProjects, setDurableProjects] = useState<ProjectGroupRecord[]>([]);
   const [query, setQuery] = useState("");
@@ -147,6 +150,11 @@ export function ProjectsPage() {
     groupId?: string;
     roots?: ProjectGroupRecord["roots"];
     legacy?: boolean;
+  } | null>(null);
+  const [deleteFor, setDeleteFor] = useState<{
+    name: string;
+    path: string;
+    sessionCount: number;
   } | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const [instructionsFor, setInstructionsFor] = useState<{
@@ -799,6 +807,34 @@ export function ProjectsPage() {
                                 )}
                                 {archived ? t("project.restore") : t("project.archive")}
                               </button>
+                              <button
+                                type="button"
+                                role="menuitem"
+                                className="danger"
+                                data-action="delete-project"
+                                onClick={() => {
+                                  setMenuFor(null);
+                                  const runningCount = sessions.filter(
+                                    (session) =>
+                                      sessionMatchesIndexProject(session, project) &&
+                                      runningSessions[session.id] === true,
+                                  ).length;
+                                  if (runningCount > 0) {
+                                    showToast(t("project.deleteRunningBlocked"), {
+                                      variant: "warning",
+                                    });
+                                    return;
+                                  }
+                                  setDeleteFor({
+                                    name: project.name,
+                                    path: project.path,
+                                    sessionCount: totalSessions,
+                                  });
+                                }}
+                              >
+                                <IconTrash size={14} />
+                                {t("project.delete")}
+                              </button>
                               {retained ? (
                                 <button
                                   type="button"
@@ -974,6 +1010,22 @@ export function ProjectsPage() {
                 item.id === group.id || item.id === editProjectFor.groupId ? group : item,
               ),
             );
+          }}
+          onError={(error) =>
+            showToast(error instanceof Error ? error.message : String(error), {
+              variant: "error",
+            })
+          }
+        />
+      ) : null}
+      {deleteFor ? (
+        <ProjectDeleteDialog
+          project={deleteFor}
+          onClose={() => setDeleteFor(null)}
+          onDeleted={() => {
+            setDeleteFor(null);
+            setRecents(loadRecentProjects());
+            showToast(t("project.deleted", { name: deleteFor.name }), { variant: "success" });
           }}
           onError={(error) =>
             showToast(error instanceof Error ? error.message : String(error), {

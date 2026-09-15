@@ -82,7 +82,12 @@ test("native theme source maps preferences and only resets vibrancy on change", 
     /nativeTheme\.themeSource = next;\s*if \(process\.platform === "darwin" && state\.mainWindow && !state\.mainWindow\.isDestroyed\(\)\) \{\s*state\.mainWindow\.setVibrancy\("sidebar"\);/,
   );
 
-  assert.match(applyMenu, /applyNativeThemeSource\(settings\)/);
+  // The theme mapping lives in `applyAppThemePreference` so the narrow plugin
+  // `setTheme` path can never re-derive locale, keybindings, or dev-mode menu
+  // state (ADR 0249). The full-settings path delegates to the same function.
+  const applyTheme = functionSource(lifecycleSource, "applyAppThemePreference");
+  assert.match(applyTheme, /applyNativeThemeSource\(\{\s*theme: preference \}\)/);
+  assert.match(applyMenu, /applyAppThemePreference\(settings\?\.theme\)/);
   assert.match(
     send,
     /if \(channel === IPC\.event\.pluginChanged\) \{\s*applicationLifecycle\?\.applyNativeThemeSource\(\{\s*theme: applicationAppearanceState\.appThemePreference,/,

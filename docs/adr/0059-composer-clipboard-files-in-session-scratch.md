@@ -77,3 +77,24 @@ ownership rules.
   behavior handles the materialized files.
 - Large or malformed clipboard payloads fail visibly in the composer and do
   not partially write because bytes are validated before the first write.
+
+## Amendment (2026-09-14): clipboard text representation for mixed Word pastes
+
+Issue #138: Microsoft Word can place non-whitespace `text/plain` together with an
+`image/*` copy of the same selection on the clipboard, so the `File`-only rule of
+decision 1 discarded editable text and materialized the image instead. This
+amendment replaces that selection rule; the remaining decisions are unchanged.
+
+- The renderer selects the clipboard representation before the attachment flow.
+  It prefers the editable text when the text is not whitespace-only and every
+  accompanying clipboard file is `image/*` and resolves to no native filesystem
+  path.
+- Any native file path, any non-image file, absent or whitespace-only text, and
+  image-only pastes keep the file and image attachment flow of decision 1.
+- Selected text follows ADR 0131's existing `largePasteThreshold`: text at or
+  below the threshold stays editable inline, and larger text becomes a session
+  scratch `text/plain` reference.
+- Short multiline text is escaped and inserted as text plus generated line
+  breaks, so paragraphs, blank and trailing lines, the replaced selection, the
+  surrounding text, the caret, and native undo all survive. Clipboard HTML is
+  still never read, and CRLF/CR line endings become editor LF line breaks.

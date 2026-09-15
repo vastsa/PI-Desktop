@@ -191,6 +191,11 @@ type ToolBudgetHealth = {
   按上次开放时间；包括通过会话导入具体化的记录
 - `projects.create({ path })` — 创建或复用持久项目记录，不切换当前工作区，
   并返回宿主生成的项目 id
+- `projects.remove({ path })` — 删除一条持久项目行，并连同附加到它的每个会话一起删除，
+  移除这些会话的转录本、scratch 和 review 文件以及该项目的持久记忆，且从不触碰磁盘上的
+  项目文件夹。幂等：未知路径返回 `{ removed: false, sessionsRemoved: 0 }`。作为已存储
+  多文件夹项目组根目录的路径会被拒绝，以便该组保留有效的 Primary 根目录；而只要其中仍有会话
+  在运行，调用就会被拒绝（1008 / `CONFLICT`），因此运行中的轮次绝不会丢失它正在写入的转录本。
 
 ### 秘密
 - `secrets.set`

@@ -98,7 +98,11 @@ export class PluginViewHost {
     for (const entry of this.views.values()) {
       const wc = entry.view.webContents;
       if (wc.isDestroyed()) continue;
-      wc.send(channel, payload);
+      try {
+        wc.send(channel, payload);
+      } catch {
+        // One view that cannot receive must not starve the others.
+      }
     }
   }
 

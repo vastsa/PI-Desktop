@@ -73,8 +73,10 @@ destination, chat as the home surface, tools and permissions inline.
   left and accessible minimize / maximize-or-restore / close controls at the
   right edge of the conversation pane when the panel is closed (D129). When
   the work panel is open, those controls stay viewport-fixed over the panel
-  header rather than travelling with MainPane. Destination history is shortcut-only (`Cmd/Ctrl+[` and
-  `Cmd/Ctrl+]`); no back/forward buttons are rendered. The main titlebar has no
+  header rather than travelling with MainPane. Destination history is
+  shortcut-first (`Cmd/Ctrl+[` and `Cmd/Ctrl+]`) with no dedicated back/forward
+  chrome; while Extensions is active, the footer Plugins button performs one
+  Back step as the only pointer affordance. The main titlebar has no
   notification action; the durable local inbox opens from the sidebar footer
   bell instead (D130/D117). In work-panel preview mode, MainChat is unmounted
   and a window-level 46px chrome row keeps New Task, sidebar, and native window
@@ -308,7 +310,9 @@ shared capability contract:
   conversation-surface route, not an operating mode. The project
   archive is the `projects` settings tab rather than a standalone page.
 - Destination history is linear; `Cmd/Ctrl+[` and `Cmd/Ctrl+]` traverse it
-  without persistent back/forward chrome.
+  without persistent back/forward chrome. While Extensions is active, the
+  footer Plugins button reuses one Back step (§2 shell regions); no separate
+  back or forward control is added.
 - Selecting a project tab reuses `project.set` when its path differs from the
   selected host workspace and keeps the other tabs retained.
 - Selecting a project-scoped thread activates its project before switching to

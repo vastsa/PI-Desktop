@@ -581,6 +581,17 @@ async function main() {
         ),
       "plugin route remains visible after preview mode",
     );
+    // Once Extensions is active the footer Plugins button reuses the existing
+    // Back action, so a second activation returns to the previous destination
+    // (E2E-NAV-plugins-button-goes-back).
+    await cdp.evaluate(`document.querySelector('[data-nav="plugins"]')?.click?.()`);
+    await waitFor(
+      () =>
+        cdp.evaluate(
+          `!document.querySelector(".plugins-page") && !!document.querySelector(".conversation-topbar")`,
+        ),
+      "second Plugins activation returns to the previous destination",
+    );
     await cdp.evaluate(`document.querySelector('[data-nav="home"]')?.click?.()`);
     await waitFor(
       () =>

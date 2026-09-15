@@ -1,4 +1,4 @@
-import { ErrorCodes, IPC, type AgentEventEnvelope } from "@pi-desktop/shared";
+import { ErrorCodes, IPC, type AgentEventEnvelope, type PlanExecutionFinishStatus, type Risk } from "@pi-desktop/shared";
 import { assertLinuxGlibcSupported } from "../linux-glibc";
 import { HostProcess } from "../host-process";
 import type { Logger } from "../logger";
@@ -6,6 +6,7 @@ import type { PersistenceOutbox } from "../persistence-outbox";
 import type { PluginRuntime } from "../plugin-runtime";
 import type { UserMcpRuntime } from "../user-mcp";
 import type { RuntimeState } from "./context";
+import type { FinishTurn } from "./plans";
 
 export type HostRuntimeDependencies = {
   runtimeState: RuntimeState;
@@ -21,8 +22,20 @@ export type HostRuntimeDependencies = {
   sendToRenderer: (channel: string, payload: unknown) => void;
   emitAgentEvent: (envelope: AgentEventEnvelope) => void;
   togglePluginLauncher: () => Promise<void>;
-  finishTurn: (...args: any[]) => Promise<void>;
-  finishApprovedExecution: (...args: any[]) => Promise<void>;
+  finishTurn: FinishTurn;
+  finishApprovedExecution: (
+    executionId: string,
+    status: PlanExecutionFinishStatus,
+    errorCode?: string,
+  ) => Promise<void>;
+  /**
+   * Last synchronous gate before a plugin side effect. A turn that was cancelled
+   * or started finalizing while this handler awaited the session read must not
+   * dispatch.
+   */
+  isTurnDispatchable: (sessionId: string, turnId: string | null | undefined) => boolean;
+  /** Identity of the turn a host crash interrupted, captured before teardown. */
+  activeTurns: Map<string, string>;
   approvedExecutionIdsBySession: Map<string, string>;
   claimedExecutionSessions: Map<string, string>;
   importLegacyScheduled: () => Promise<unknown>;
@@ -45,7 +58,9 @@ export function createHostRuntime({
   emitAgentEvent,
   togglePluginLauncher,
   finishTurn,
+  isTurnDispatchable,
   finishApprovedExecution,
+  activeTurns,
   approvedExecutionIdsBySession,
   claimedExecutionSessions,
   importLegacyScheduled,
@@ -62,34 +77,51 @@ export function createHostRuntime({
     // current plugin/renderer bridge after a restart.
     if (runtimeState.host !== h) return;
     if (method === "permissions.request") {
-      logger.app("permission", "info", "permission requested", {
-        sessionId: (params as any).sessionId,
-        toolCallId: (params as any).toolCallId,
-        data: { toolName: (params as any).toolName, risk: (params as any).risk },
-      });
+      const permission = params as {
+        requestId: string;
+        sessionId: string;
+        toolCallId: string;
+        toolName: string;
+        argsPreview: string;
+        risk: Risk;
+        reason: string;
+      };
       // A delegate's call is already in `activeToolCalls` by the time the host
       // asks: the sidecar forwards `tool_start` before it executes the tool.
       // Without this the dialog would attribute a delegate's write to the main
       // agent, which is the one thing the user must not be confused about.
       const asking = activeToolCalls.get(
         activeToolCallKey(
-          (params as any).sessionId,
-          (params as any).toolCallId,
+          permission.sessionId,
+          permission.toolCallId,
         ),
       );
+      logger.app("permission", "info", "permission requested", {
+        requestId: permission.requestId,
+        sessionId: permission.sessionId,
+        turnId: asking?.turnId,
+        toolCallId: permission.toolCallId,
+        parentToolCallId: asking?.parentToolCallId,
+        agentName: asking?.agentName,
+        data: {
+          toolName: permission.toolName,
+          risk: permission.risk,
+          reason: permission.reason,
+        },
+      });
       const envelope: AgentEventEnvelope = {
-        sessionId: (params as any).sessionId,
+        sessionId: permission.sessionId,
         ts: Date.now(),
         event: {
           type: "tool_permission_request",
           request: {
-            requestId: (params as any).requestId,
-            sessionId: (params as any).sessionId,
-            toolCallId: (params as any).toolCallId,
-            toolName: (params as any).toolName,
-            argsPreview: (params as any).argsPreview,
-            risk: (params as any).risk,
-            reason: (params as any).reason,
+            requestId: permission.requestId,
+            sessionId: permission.sessionId,
+            toolCallId: permission.toolCallId,
+            toolName: permission.toolName,
+            argsPreview: permission.argsPreview,
+            risk: permission.risk,
+            reason: permission.reason,
             ...(asking?.agentName ? { agentName: asking.agentName } : {}),
             ...(asking?.parentToolCallId
               ? { parentToolCallId: asking.parentToolCallId }
@@ -99,11 +131,15 @@ export function createHostRuntime({
       };
       emitAgentEvent(envelope);
     } else if (method === "plugins.execute") {
-      // Host dispatches plugin_* and mcp_* tools to us; run them and answer.
       void (async () => {
         const q = params as {
           executionId: string;
           sessionId?: string;
+          /**
+           * Runtime turn identity of the tool call, forwarded unchanged from the
+           * host so a plugin receives the same identity `session:turnEnded`
+           * carries. Absent for callers that predate turn tracking.
+           */
           turnId?: string;
           toolCallId?: string;
           toolName: string;
@@ -180,18 +216,44 @@ export function createHostRuntime({
                 // Executor identity is best-effort; the tool can still run.
               }
             }
-            const result = await tool.execute(q.args, {
-              sessionId: q.sessionId,
-              turnId: q.turnId,
-              mode: sessionMode,
-              modelKey,
-              thinkingLevel,
-            });
-            payload = {
-              executionId: q.executionId,
-              ok: true,
-              content: result ?? null,
-            };
+            // Last synchronous gate before dispatch: a turn that was cancelled or
+            // began finalizing while the session read above was awaited must not
+            // start a plugin side effect. No await may sit between this check and
+            // the dispatch, and the rejection is answered on the original
+            // execution id rather than dropped.
+            //
+            // The gate is closed rather than best-effort: a payload that names no
+            // turn cannot be attributed to one this process knows about, so it is
+            // indistinguishable from a call belonging to a turn that already ended
+            // (its cancel lock may be gone, its `session:turnEnded` already sent)
+            // and any resource it started could never be related to that event.
+            // The runtime always stamps both halves of the identity on
+            // `tools.execute`, so a call without one is not a supported shape; a
+            // standalone caller that ever needs the channel must be distinguished
+            // by an explicit origin instead of by an absent identity.
+            if (!isTurnDispatchable(q.sessionId ?? "", q.turnId)) {
+              payload = {
+                executionId: q.executionId,
+                ok: false,
+                errorCode: "TOOL_TURN_CANCELLED",
+                content: {
+                  error: `turn ${q.turnId ?? "(none)"} is no longer dispatchable`,
+                },
+              };
+            } else {
+              const result = await tool.execute(q.args, {
+                sessionId: q.sessionId,
+                turnId: q.turnId,
+                mode: sessionMode,
+                modelKey,
+                thinkingLevel,
+              });
+              payload = {
+                executionId: q.executionId,
+                ok: true,
+                content: result ?? null,
+              };
+            }
           } catch (e) {
             const code =
               e && typeof e === "object" && "code" in e && typeof e.code === "string"
@@ -242,7 +304,21 @@ export function createHostRuntime({
     if (intentional || isQuitting()) return;
     for (const [executionId, sessionId] of claimedExecutionSessions) {
       if (approvedExecutionIdsBySession.get(sessionId) === executionId) {
-        void finishTurn(sessionId, "aborted", "PLAN_EXECUTION_INTERRUPTED");
+        // Captured before the teardown awaits: the turn this interrupted is the
+        // one running now, and it must not be inferred later.
+        const interruptedTurnId = activeTurns.get(sessionId);
+        if (interruptedTurnId) {
+          void finishTurn(sessionId, "aborted", "PLAN_EXECUTION_INTERRUPTED", {
+            turnId: interruptedTurnId,
+          }).catch((error: unknown) => {
+            // Nothing above can await this: the host is already gone. Log it
+            // rather than let the rejection surface as an unhandled one.
+            logger.app("runtime", "warn", "turn finalization failed after host exit", {
+              sessionId,
+              data: String(error),
+            });
+          });
+        }
       }
       void finishApprovedExecution(
         executionId,

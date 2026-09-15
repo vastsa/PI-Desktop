@@ -195,7 +195,6 @@ export class SubagentRun {
   private turns = 0;
   private toolCalls = 0;
   private usage?: MessageUsage;
-  private cappedTurns = false;
   private streamError?: { code: string; message: string };
   private pendingProviderRetry?: ReturnType<typeof classifyAgentError>;
   private providerRetryInProgress = false;
@@ -332,9 +331,6 @@ export class SubagentRun {
     if (this.streamError) {
       return this.result("failed", "", this.streamError);
     }
-    if (this.cappedTurns) {
-      return this.result("truncated", this.lastReportText);
-    }
     if (!this.lastReportText.trim()) {
       return this.result("failed", "", {
         code: "SUBAGENT_NO_REPORT",
@@ -407,17 +403,12 @@ export class SubagentRun {
     const text =
       status === "completed"
         ? body
-        : status === "truncated"
-          ? [
-              `The ${name} subagent hit its ${this.opts.definition.maxTurns ?? "configured"}-turn limit before finishing.`,
-              ...(body ? ["Its last report was:", body] : []),
-            ].join("\n\n")
-          : status === "aborted"
-            ? `The ${name} subagent was aborted after ${this.turns} turn(s).`
-            : [
-                `The ${name} subagent failed after ${this.turns} turn(s): ${error?.message ?? "unknown error"}.`,
-                ...(body ? ["Its last output was:", body] : []),
-              ].join("\n\n");
+        : status === "aborted"
+          ? `The ${name} subagent was aborted after ${this.turns} turn(s).`
+          : [
+              `The ${name} subagent failed after ${this.turns} turn(s): ${error?.message ?? "unknown error"}.`,
+              ...(body ? ["Its last output was:", body] : []),
+            ].join("\n\n");
     return {
       agentName: name,
       modelId: this.opts.provider.modelId,
@@ -431,17 +422,12 @@ export class SubagentRun {
     };
   }
 
-  /** Parent bookkeeping first (host failures, mutation-failure terminate),
-   * then the delegate's own turn cap. */
+  /** Parent bookkeeping: host failures and a mutation-failure terminate. */
   private async afterToolCall(
     context: AfterToolCallContext,
   ): Promise<AfterToolCallResult | undefined> {
     const parent = this.opts.resolveToolOutcome?.(context);
-    const capped =
-      this.opts.definition.maxTurns !== undefined &&
-      this.turns >= this.opts.definition.maxTurns;
-    if (capped) this.cappedTurns = true;
-    const terminate = parent?.terminate === true || capped;
+    const terminate = parent?.terminate === true;
     if (!parent?.isError && !terminate) return undefined;
     return {
       ...(parent?.isError ? { isError: true } : {}),

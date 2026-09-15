@@ -431,6 +431,20 @@ export function createTranscriptSlice({
       const stateBeforeAbort = get();
       const sessionId = stateBeforeAbort.activeSessionId;
       if (!sessionId) return;
+      if (stateBeforeAbort.sessions.find((session) => session.id === sessionId)?.source === "pi-native") {
+        await api.abort(sessionId);
+        runtime.submittedComposerDrafts.delete(sessionId);
+        // Bypass in-flight pre-abort detail reads; request settled source state.
+        const detail = await api.getSession(sessionId);
+        const messages = detail.session?.messages;
+        if (messages) runtime.cacheSessionTranscript(sessionId, messages);
+        set((current) => ({
+          runningSessions: { ...current.runningSessions, [sessionId]: false },
+          ...(messages ? { retainedTranscripts: { ...current.retainedTranscripts, [sessionId]: messages } } : {}),
+          ...(current.activeSessionId === sessionId ? { isRunning: false, ...(messages ? { messages } : {}) } : {}),
+        }));
+        return;
+      }
       const submittedDraft = runtime.submittedComposerDrafts.get(sessionId);
       const preserveSteering = stateBeforeAbort.messages
         .slice(submittedDraft?.messageCountBeforeSend ?? 0)

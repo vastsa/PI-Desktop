@@ -1,6 +1,8 @@
 {
   "typescript": {
-    "apps/desktop/electron/main/bootstrap/window.ts": "Existing window lifecycle extraction from the main-process facade; further decomposition is outside this follow-up scope."
+    "apps/desktop/electron/main/bootstrap/window.ts": "Existing window lifecycle extraction from the main-process facade; further decomposition is outside this follow-up scope.",
+    "packages/agent-runtime/src/native-pi-session.test.ts": "Native Pi continuation regression coverage is kept with the source boundary while the protocol and fixture contract stabilise; split by lifecycle once the native adapter surface settles.",
+    "packages/agent-runtime/src/native-pi-session.ts": "Native Pi discovery, immutable projection, guarded continuation, and fork publication share one sidecar-private source boundary; split by lifecycle once the native adapter contract stabilises without widening path ownership."
   },
   "rust": {
     "crates/host-core/src/rpc/mod.rs": "Legacy RPC dispatch module; its extraction is outside this refactor scope.",

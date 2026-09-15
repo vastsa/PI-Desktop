@@ -3,6 +3,7 @@ import { TooltipButton } from "../../../components/ui";
 import { IconFolder, IconX } from "../../../components/icons";
 import type { ComposerDropItem } from "../../../lib/composer-drop";
 import type { QueuedPrompt } from "../../../lib/queued-prompts";
+import { requestTextWithoutAnnotations } from "../../../lib/response-annotations";
 
 export type ComposerStatusProps = {
   t: TFunction;
@@ -44,7 +45,7 @@ export function ComposerStatus({
         >
           {queuedPrompts.map((item) => {
             const label =
-              item.content.trim() ||
+              requestTextWithoutAnnotations(item.content).trim() ||
               item.draft.fileReferences.map((reference) => reference.name).join(", ") ||
               t("chat.queuedPromptEmpty");
             return (

@@ -7,6 +7,10 @@ const sidecarSource = await readFile(
   new URL("../electron/main/agent-sidecar.ts", import.meta.url),
   "utf8",
 );
+const runtimeSidecarSource = await readFile(
+  new URL("../electron/main/runtime/sidecar.ts", import.meta.url),
+  "utf8",
+);
 const hostSource = await readFile(
   new URL("../electron/main/host-process.ts", import.meta.url),
   "utf8",
@@ -39,6 +43,15 @@ test("sidecar detaches host listeners and gates every child write", () => {
     sidecarSource.replace(/private writeToChild\([\s\S]*?\n  \}/, ""),
     /this\.child\.stdin\.write\(/,
   );
+});
+
+test("tool diagnostics emit one bounded outcome instead of start/end spam", () => {
+  assert.match(runtimeSidecarSource, /summarizeToolResult/);
+  assert.match(runtimeSidecarSource, /tool execution completed/);
+  assert.match(runtimeSidecarSource, /tool execution failed/);
+  assert.match(runtimeSidecarSource, /tool execution interrupted/);
+  assert.doesNotMatch(runtimeSidecarSource, /logger\.app\([\s\S]*?"tool start"/);
+  assert.doesNotMatch(runtimeSidecarSource, /logger\.app\([\s\S]*?"tool end"/);
 });
 
 test("host transport closes pending calls and listeners on process death", () => {
@@ -116,7 +129,12 @@ test("turn ownership and execution queue wake only after durable turn settlement
   const finishEnd = plansSource.indexOf("async function finishApprovedExecution(", finishStart);
   const finishSource = plansSource.slice(finishStart, finishEnd);
 
-  assert.match(plansSource, /turnFinalizations\.get\(sessionId\)/);
+  // The claim is addressed by the turn, not by the session alone: a late
+  // terminal event for an older turn must not join or release a newer turn's
+  // record, and the busy check can still find a session's records by prefix.
+  assert.match(plansSource, /const finalizationKey = planSubmissionTurnKey\(id, turnId\)/);
+  assert.match(plansSource, /turnFinalizations\.get\(finalizationKey\)/);
+  assert.match(plansSource, /turnFinalizations\.set\(finalizationKey, finalization\)/);
   assert.match(finishSource, /await runtimeState\.host\.call<[\s\S]*?\("session\.endTurn"/);
   assert.ok(
     finishSource.indexOf('"session.endTurn"') <

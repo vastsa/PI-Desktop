@@ -98,6 +98,9 @@ export type DraftSessionConfiguration = {
   permissionMode?: PermissionMode;
 };
 
+import type { SideChatMap } from "../lib/side-chat";
+import type { ResponseAnnotationEditor, ResponseAnnotationMap } from "../lib/response-annotations";
+
 export type AppState = {
   ready: boolean;
   version?: AppVersionInfo;
@@ -208,7 +211,7 @@ export type AppState = {
     content: string,
     draft?: ComposerDraftSnapshot,
     sessionId?: string,
-  ) => void;
+  ) => Promise<boolean>;
   removeQueuedPrompt: (promptId: string) => void;
   sendQueuedNow: (promptId: string) => Promise<void>;
   refreshQueuedPrompts: (sessionId: string) => Promise<void>;
@@ -248,6 +251,14 @@ export type AppState = {
   switchProjectPath: (path: string) => Promise<ProjectWorkspace | null>;
   closeProjectPath: (path: string) => Promise<void>;
   clearProject: (opts?: NavigationOptions) => Promise<void>;
+  /**
+   * Delete a project and its stored sessions on the host, then drop every
+   * renderer-local record of it. A path the host has no durable row for is
+   * still removed locally instead of being reported as missing. Host errors
+   * (such as a path that belongs to a multi-folder project group) propagate to
+   * the caller.
+   */
+  deleteProject: (path: string) => Promise<void>;
   toggleSessionPinned: (id: string) => void;
   toggleSessionArchived: (id: string) => void;
   archiveSession: (id: string) => void;
@@ -330,6 +341,62 @@ export type AppState = {
   /** Toggle the selected subagent detail. */
   toggleSubagentPanel: (delegationId: string) => void;
   closeSubagentPanel: () => void;
+  /**
+   * Side chats opened from messages, keyed by their child session id. The child
+   * is a real forked session on the host; this map is what keeps it out of the
+   * visible conversation and inside the docked panel (D-LOCAL-message-quotes).
+   */
+  sideChats: SideChatMap;
+  /** Live transcript of each registered side chat, fed by the agent event stream. */
+  sideChatTranscripts: Record<string, UiMessage[]>;
+  /**
+   * Numbered annotations the user attached to assistant turns, keyed by the
+   * session that owns them. They are prompt attachments, not draft text: the
+   * next prompt carries them as a block and the send consumes them
+   * (ADR response-annotations / D-LOCAL-response-annotations).
+   */
+  responseAnnotations: ResponseAnnotationMap;
+  /**
+   * The comment editor's state (D-LOCAL-response-annotations); null while it is closed. It is owned by
+   * the session it was opened in and holds the excerpt snapshot the selection
+   * collapsed into.
+   */
+  responseAnnotationEditor: ResponseAnnotationEditor | null;
+  /** Append text to the visible conversation's draft without sending it. */
+  appendComposerDraftText: (text: string) => void;
+  /** Open the comment editor for one assistant turn's excerpt. */
+  openResponseAnnotationEditor: (input: {
+    messageId: string;
+    text: string;
+    /** Existing annotation to edit; omitted while the excerpt is unattached. */
+    annotationId?: string;
+    anchor?: ResponseAnnotationEditor["anchor"];
+  }) => void;
+  /** Save the editor's comment and close it; a stale target is dropped. */
+  saveResponseAnnotationEditor: (comment: string) => void;
+  /** Close the editor without saving its comment. */
+  closeResponseAnnotationEditor: () => void;
+  /** Drop one annotation from the visible session. */
+  removeResponseAnnotation: (id: string) => void;
+  /** Drop every annotation of the visible session. */
+  clearResponseAnnotations: () => void;
+  /** Quote one message, or a selection inside it, into the composer draft. */
+  quoteMessageIntoComposer: (input: {
+    /** Source title used by the attribution line. */
+    title: string;
+    /** Full message text; a non-blank selection wins over it. */
+    text: string;
+    /** Text the user selected inside the message, when there is one. */
+    selection?: string;
+  }) => void;
+  /** Open a side chat from a message; resolves to the child session id. */
+  openSideChat: (messageId: string) => Promise<string | null>;
+  /** Release a side chat, keeping its durable child session. */
+  closeSideChat: (sessionId: string) => void;
+  /** Quote a side chat's newest answer into the main conversation's draft. */
+  addSideChatReplyToMain: (sessionId: string) => void;
+  /** Abort one session's running turn, visible or not. */
+  abortSession: (sessionId: string) => Promise<void>;
   openWorkPanel: () => void;
   toggleWorkPanel: () => void;
   openWorkPanelTab: (tab: WorkPanelTab) => void;

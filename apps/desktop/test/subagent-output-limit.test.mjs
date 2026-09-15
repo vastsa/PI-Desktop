@@ -1,8 +1,8 @@
 /**
  * Coverage for the subagent output cap (issue #171).
  *
- * A delegate is a bounded worker, so its response length belongs beside its
- * turn limit in the editor's Advanced area rather than in the model binding:
+ * A delegate is a bounded worker, so its response length belongs in the
+ * editor's Advanced area rather than in the model binding:
  * the binding caps the session's model for every caller, while this caps one
  * delegate's own responses. The cap has to survive the whole path — editor
  * draft, host record, document frontmatter, parsed definition, built model —
@@ -82,14 +82,20 @@ test("the editor draft round-trips the cap through create, edit and save", () =>
   assert.match(pageSource, /maxTokens: draft\.maxTokens,/);
 });
 
-test("the cap is edited in the existing Advanced area, next to the turn limit", () => {
+test("the cap is edited in the existing Advanced area, ahead of the scope field", () => {
   assert.match(
     editorSource,
     /function AdvancedFields\(/,
   );
+  // The Advanced disclosure owns the output limit: the field must sit after
+  // the disclosure body opens and before the scope group that follows it.
   assert.match(
     editorSource,
-    /extensions\.subagents\.maxTurnsUnlimited"\)\}[\s\S]*?extensions\.subagents\.maxTokens"\)/,
+    /id="subagent-sheet-advanced"[\s\S]*?extensions\.subagents\.maxTokens"\)/,
+  );
+  assert.match(
+    editorSource,
+    /extensions\.subagents\.maxTokens"\)[\s\S]*?t\("settings\.scope"\)/,
   );
   assert.match(
     editorSource,

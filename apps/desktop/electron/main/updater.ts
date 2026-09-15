@@ -78,6 +78,14 @@ export class AppUpdaterController {
   private initialTimer: NodeJS.Timeout | null = null;
   private intervalTimer: NodeJS.Timeout | null = null;
   private listenersAttached = false;
+  /**
+   * Set before a downloaded update is handed to the platform installer.
+   *
+   * electron-updater spawns that installer synchronously and only asks the app
+   * to quit afterwards, so the shutdown path must already know that the quit it
+   * is about to see is the update restart.
+   */
+  private installRequested = false;
 
   constructor(options: UpdaterOptions) {
     this.logger = options.logger;
@@ -117,10 +125,22 @@ export class AppUpdaterController {
     // lands on the next normal quit.
     autoUpdater.autoInstallOnAppQuit = true;
     autoUpdater.logger = {
-      info: (m: unknown) => this.logger.app("updater", "info", `updater: ${String(m)}`),
-      warn: (m: unknown) => this.logger.app("updater", "warn", `updater: ${String(m)}`),
-      error: (m: unknown) => this.logger.app("updater", "error", `updater: ${String(m)}`),
-      debug: (m: unknown) => this.logger.app("updater", "debug", `updater: ${String(m)}`),
+      info: (m: unknown) =>
+        this.logger.app("updater", "info", "updater diagnostic", {
+          data: { detail: String(m) },
+        }),
+      warn: (m: unknown) =>
+        this.logger.app("updater", "warn", "updater diagnostic", {
+          data: { detail: String(m) },
+        }),
+      error: (m: unknown) =>
+        this.logger.app("updater", "error", "updater diagnostic", {
+          data: { detail: String(m) },
+        }),
+      debug: (m: unknown) =>
+        this.logger.app("updater", "debug", "updater diagnostic", {
+          data: { detail: String(m) },
+        }),
     };
 
     autoUpdater.on("checking-for-update", () => {
@@ -250,11 +270,25 @@ export class AppUpdaterController {
     return this.state;
   }
 
+  /**
+   * True once a downloaded update was handed to the platform installer.
+   *
+   * The NSIS/AppImage installer is spawned before `app.quit()` and gives up
+   * after a few seconds when the app is still running, so the quit that follows
+   * must not be deferred — including by the explicit-quit confirmation.
+   */
+  isInstallingUpdate(): boolean {
+    return this.installRequested;
+  }
+
   /** Quit and install a downloaded update (in-app mode). */
   install(): void {
     if (this.state.status !== "downloaded") {
       throw new Error("no downloaded update to install");
     }
+    // Marked before the call: quitAndInstall spawns the installer itself, so
+    // the shutdown handler must already know this quit is the update restart.
+    this.installRequested = true;
     // Fires 'before-quit' first, so host/sidecar shutdown still runs.
     autoUpdater.quitAndInstall(false, true);
   }

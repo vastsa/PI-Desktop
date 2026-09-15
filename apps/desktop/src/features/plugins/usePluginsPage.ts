@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "../../stores/app-store";
 import { api } from "../../lib/api";
+import { usePluginBrowseState } from "./browse-state";
 import type {
   ActivationScope,
   MarketPluginDetail,
@@ -14,7 +15,6 @@ import type {
 import {
   GROUP_ORDER,
   type GroupId,
-  type TabId,
   TEMPLATE_IDS,
   type TemplateId,
   groupOf,
@@ -40,11 +40,8 @@ export function usePluginsPage() {
    */
   const currentProjectPath = useAppStore((s) => s.workspace?.path ?? null);
 
-  const [tab, setTab] = useState<TabId>("installed");
-  const [installedQuery, setInstalledQuery] = useState("");
+  const { tab, setTab, installedQuery, setInstalledQuery, query, setQuery, category, setCategory } = usePluginBrowseState();
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
-  const [query, setQuery] = useState("");
-  const [category, setCategory] = useState("");
   const [market, setMarket] = useState<MarketPluginSummary[]>([]);
   const [marketLoading, setMarketLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);

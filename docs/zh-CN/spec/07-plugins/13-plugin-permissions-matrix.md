@@ -94,6 +94,9 @@ manifest 里的字段负责回答「能做到多远」。两个字段都由主�
   （`themes`、`mcpServers`、`services`、`bus`）； `skills` 是例外，并且是
   相反，在加载时跳过（参见
   [02-plugin-manifest-schema.md](/zh-CN/spec/07-plugins/02-plugin-manifest-schema) §7)
+- 生命周期与状态事件不需要权限：`workspace:changed`、`session:modelChanged`、
+  `session:turnEnded` 和 `plugin:settingsChanged` 走既有的插件事件通道，
+  订阅未知的事件名也不会报错
 
 ## 3A。 Plan 操作状态规则
 

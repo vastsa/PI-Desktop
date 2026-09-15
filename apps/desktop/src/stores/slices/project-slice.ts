@@ -1,3 +1,5 @@
+import { removeSideChatsForSessions, sideChatSessionIds, sideChatWorkPanelTab } from "../../lib/side-chat";
+import type { WorkPanelTab } from "../../lib/work-panel-tabs";
 import i18n from "i18next";
 import type {
   ProjectWorkspace,
@@ -6,6 +8,7 @@ import type {
 import { api } from "../../lib/api";
 import {
   rememberProject,
+  removeRecentProject,
   renameRecentProject,
   setProjectPinned,
 } from "../../lib/recent-projects";
@@ -58,6 +61,87 @@ export type ProjectSliceDependencies = StoreAccess & {
   persistCurrentSidebar: (getState: () => AppState) => void;
 };
 
+/**
+ * Purge renderer-local state for one session whose durable row is already gone
+ * (deleted directly, or removed together with its project). This never talks to
+ * the host: records and transcripts are deleted before it runs.
+ */
+function clearLocalSessionState(
+  {
+    get,
+    set,
+    runtime,
+    manualSessionTitles,
+    withoutRecordKey,
+  }: Pick<
+    ProjectSliceDependencies,
+    "get" | "set" | "runtime" | "manualSessionTitles" | "withoutRecordKey"
+  >,
+  id: string,
+): void {
+  manualSessionTitles.delete(id);
+  runtime.pendingSessionConfigurations.delete(id);
+  runtime.sessionTranscriptCache.delete(id);
+  runtime.sessionHistoryCache.delete(id);
+  runtime.liveSessionTranscripts.delete(id);
+  if (get().activeSessionId === id) get().resetWorkPanelContext();
+  set((state) => {
+    const sessionMeta = { ...state.sessionMeta };
+    delete sessionMeta[id];
+    const sessions = state.sessions.filter((session) => session.id !== id);
+    const runningSessions = { ...state.runningSessions };
+    delete runningSessions[id];
+    const agentStatuses = { ...state.agentStatuses };
+    delete agentStatuses[id];
+    const sessionOutcomes = { ...state.sessionOutcomes };
+    delete sessionOutcomes[id];
+    const queuedPrompts = withoutRecordKey(state.queuedPrompts, id);
+    const workPanelContexts = withoutRecordKey(state.workPanelContexts, id);
+    const pendingPermissions = clearSessionPermissions(
+      state.pendingPermissions,
+      id,
+    );
+    const pendingAsks = clearSessionAsks(state.pendingAsks, id);
+    const latestTurnResults = withoutRecordKey(state.latestTurnResults, id);
+    const planningStates = withoutRecordKey(state.planningStates, id);
+    const pendingPlans = withoutRecordKey(state.pendingPlans, id);
+    const planCheckpoints = withoutRecordKey(state.planCheckpoints, id);
+    const sessionCompactions = withoutRecordKey(state.sessionCompactions, id);
+    const sessionHistory = withoutRecordKey(state.sessionHistory, id);
+    const retainedNav = state.navStack.filter(
+      (entry) => entry.sessionId !== id,
+    );
+    const navStack =
+      retainedNav.length > 0 ? retainedNav : [{ page: "chat" as const }];
+    return {
+      ...releaseSessionPane(state, id),
+      sessionMeta,
+      sessions,
+      runningSessions,
+      agentStatuses,
+      sessionOutcomes,
+      queuedPrompts,
+      workPanelContexts,
+      activeSessionId:
+        state.activeSessionId === id ? undefined : state.activeSessionId,
+      selectingSessionId:
+        state.selectingSessionId === id ? undefined : state.selectingSessionId,
+      messages: state.activeSessionId === id ? [] : state.messages,
+      isRunning: state.activeSessionId === id ? false : state.isRunning,
+      pendingPermissions,
+      pendingAsks,
+      latestTurnResults,
+      planningStates,
+      pendingPlans,
+      planCheckpoints,
+      sessionCompactions,
+      sessionHistory,
+      navStack,
+      navIndex: Math.min(state.navIndex, navStack.length - 1),
+    };
+  });
+}
+
 export function createProjectSlice({
   get,
   set,
@@ -82,6 +166,7 @@ export function createProjectSlice({
   | "closeProjectDialog"
   | "createProjectFromFolders"
   | "clearProject"
+  | "deleteProject"
   | "toggleSessionPinned"
   | "toggleSessionArchived"
   | "archiveSession"
@@ -300,6 +385,44 @@ export function createProjectSlice({
       set({ onboarding });
     },
 
+    deleteProject: async (path) => {
+      const key = normalizeProjectPath(path);
+      if (!key) return;
+      const removedSessionIds = get()
+        .sessions.filter(
+          (session) => normalizeProjectPath(session.projectPath) === key,
+        )
+        .map((session) => session.id);
+      // A path the host has no durable row for is not a failure: the local
+      // records cleared below are the only thing that can keep such a row
+      // visible, so an already-removed project still leaves the desktop.
+      await api.removeProject(path);
+      for (const id of removedSessionIds) {
+        clearLocalSessionState(
+          { get, set, runtime, manualSessionTitles, withoutRecordKey },
+          id,
+        );
+      }
+      set((state) => {
+        const projectMeta = { ...state.projectMeta };
+        delete projectMeta[key];
+        return { projectMeta };
+      });
+      try {
+        removeRecentProject(path);
+      } catch {
+        // Recent projects are a best-effort renderer cache.
+      }
+      const isOpen =
+        normalizeProjectPath(get().activeProjectPath) === key ||
+        get().openProjectPaths.some(
+          (openPath) => normalizeProjectPath(openPath) === key,
+        );
+      if (isOpen) await get().closeProjectPath(path);
+      persistCurrentSidebar(get);
+      await get().refreshSessions();
+    },
+
     toggleSessionPinned: (id) => {
       if (!id) return;
       set((state) => {
@@ -405,65 +528,65 @@ export function createProjectSlice({
     deleteSession: async (id) => {
       if (!id) return;
       await api.deleteSession(id);
-      manualSessionTitles.delete(id);
-      runtime.pendingSessionConfigurations.delete(id);
-      runtime.sessionTranscriptCache.delete(id);
-      runtime.sessionHistoryCache.delete(id);
-      runtime.liveSessionTranscripts.delete(id);
-      if (get().activeSessionId === id) get().resetWorkPanelContext();
+      clearLocalSessionState(
+        { get, set, runtime, manualSessionTitles, withoutRecordKey },
+        id,
+      );
+      // A side chat is renderer-owned state spanning two sessions: deleting either
+      // the child or the parent releases it, together with every side chat opened
+      // from it. The child session itself is deleted through its own sidebar row,
+      // so this only drops the panel projection (D-LOCAL-message-quotes).
       set((state) => {
-        const sessionMeta = { ...state.sessionMeta };
-        delete sessionMeta[id];
-        const sessions = state.sessions.filter((session) => session.id !== id);
-        const runningSessions = { ...state.runningSessions };
-        delete runningSessions[id];
-        const agentStatuses = { ...state.agentStatuses };
-        delete agentStatuses[id];
-        const sessionOutcomes = { ...state.sessionOutcomes };
-        delete sessionOutcomes[id];
-        const queuedPrompts = withoutRecordKey(state.queuedPrompts, id);
-        const workPanelContexts = withoutRecordKey(state.workPanelContexts, id);
-        const pendingPermissions = clearSessionPermissions(
-          state.pendingPermissions,
-          id,
+        const sideChats = removeSideChatsForSessions(state.sideChats, [id]);
+        if (sideChats === state.sideChats) return {};
+        const released = sideChatSessionIds(state.sideChats).filter(
+          (sessionId) => !sideChats[sessionId],
         );
-        const pendingAsks = clearSessionAsks(state.pendingAsks, id);
-        const latestTurnResults = withoutRecordKey(state.latestTurnResults, id);
-        const planningStates = withoutRecordKey(state.planningStates, id);
-        const pendingPlans = withoutRecordKey(state.pendingPlans, id);
-        const planCheckpoints = withoutRecordKey(state.planCheckpoints, id);
-        const sessionCompactions = withoutRecordKey(state.sessionCompactions, id);
-        const sessionHistory = withoutRecordKey(state.sessionHistory, id);
-        const retainedNav = state.navStack.filter(
-          (entry) => entry.sessionId !== id,
+        const sideChatTranscripts = { ...state.sideChatTranscripts };
+        for (const sessionId of released) delete sideChatTranscripts[sessionId];
+        // A released side chat's tab outlives its session in every panel context
+        // that still lists it, and a dead tab would offer a live composer for a
+        // deleted session, so the tabs are stripped with the registration.
+        const releasedTabIds = new Set(
+          released.map((sessionId) => sideChatWorkPanelTab(sessionId).id),
         );
-        const navStack =
-          retainedNav.length > 0 ? retainedNav : [{ page: "chat" as const }];
+        const stripTabs = (tabs: WorkPanelTab[]) =>
+          tabs.filter((tab) => !releasedTabIds.has(tab.id));
+        const workPanelTabs = stripTabs(state.workPanelTabs);
+        const activeTabReleased = Boolean(
+          state.activeWorkPanelTabId &&
+            releasedTabIds.has(state.activeWorkPanelTabId),
+        );
+        const workPanelContexts = Object.fromEntries(
+          Object.entries(state.workPanelContexts).map(
+            ([contextSessionId, context]) => {
+              const tabs = stripTabs(context.tabs);
+              if (tabs.length === context.tabs.length) {
+                return [contextSessionId, context];
+              }
+              const activeTabId =
+                context.activeTabId && releasedTabIds.has(context.activeTabId)
+                  ? tabs.at(-1)?.id ?? null
+                  : context.activeTabId;
+              return [
+                contextSessionId,
+                { ...context, tabs, activeTabId, open: activeTabId ? context.open : false },
+              ];
+            },
+          ),
+        );
         return {
-          ...releaseSessionPane(state, id),
-          sessionMeta,
-          sessions,
-          runningSessions,
-          agentStatuses,
-          sessionOutcomes,
-          queuedPrompts,
+          sideChats,
+          sideChatTranscripts,
+          workPanelTabs,
           workPanelContexts,
-          activeSessionId:
-            state.activeSessionId === id ? undefined : state.activeSessionId,
-          selectingSessionId:
-            state.selectingSessionId === id ? undefined : state.selectingSessionId,
-          messages: state.activeSessionId === id ? [] : state.messages,
-          isRunning: state.activeSessionId === id ? false : state.isRunning,
-          pendingPermissions,
-          pendingAsks,
-          latestTurnResults,
-          planningStates,
-          pendingPlans,
-          planCheckpoints,
-          sessionCompactions,
-          sessionHistory,
-          navStack,
-          navIndex: Math.min(state.navIndex, navStack.length - 1),
+          activeWorkPanelTabId: activeTabReleased
+            ? workPanelTabs.at(-1)?.id ?? null
+            : state.activeWorkPanelTabId,
+          workPanelOpen:
+            activeTabReleased && workPanelTabs.length === 0
+              ? false
+              : state.workPanelOpen,
         };
       });
       persistCurrentSidebar(get);

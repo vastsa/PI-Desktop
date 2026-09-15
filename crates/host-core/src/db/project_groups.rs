@@ -142,6 +142,15 @@ impl Database {
             .find(|group| group.roots.iter().any(|root| root.path == canonical)))
     }
 
+    /// Whether the path is a root of a stored (non-legacy) project group. A
+    /// legacy group is only the projection of the project row itself, so it
+    /// must not block removing that project.
+    pub fn path_is_in_stored_project_group(&self, path: &str) -> Result<bool> {
+        Ok(self
+            .project_group_for_path(path)?
+            .is_some_and(|group| !group.legacy))
+    }
+
     pub fn create_project_group(&self, name: &str, paths: &[String]) -> Result<ProjectGroupRecord> {
         let name = name.trim();
         if name.is_empty() {
