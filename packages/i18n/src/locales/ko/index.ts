@@ -357,6 +357,8 @@ export const ko = {
     usageThroughput: "{{count}} tokens/s",
     usageThroughputEstimated: "≈ {{count}} tokens/s",
     usageThroughputUnavailable: "—",
+    usageLiveThroughput: "{{count}} tok/s",
+    usageLiveThroughputEstimated: "≈ {{count}} tok/s",
     usageProviderUsage: "프로바이더 사용량",
     usageExact: "보고됨",
     usageInput: "입력",

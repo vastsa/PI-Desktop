@@ -422,6 +422,17 @@
   font-variant-numeric: tabular-nums;
 }
 
+.working-token-rate {
+  color: var(--ds-text-secondary);
+  font-size: var(--text-xs-plus);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.streaming-rate-indicator {
+  gap: 8px;
+}
+
 .planning-state-indicator {
   box-sizing: border-box;
   display: flex;

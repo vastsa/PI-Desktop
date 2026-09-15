@@ -659,6 +659,16 @@ may be retained while exactly one workspace supplies the visible shell context.
 6. Composer re-activates (unblocked)
 7. Abort is idempotent — pressing abort when already aborting does nothing
 
+### 3.2a Live token rate during a run
+
+While a turn is running, the transcript status strip shows a live
+sliding-window token rate (`tok/s`) next to the working / run-activity
+indicator (and a compact rate chip while answer tokens stream). Prefer
+provider output usage when present; otherwise estimate from visible
+thinking+answer text and label as approximate. The rate clears when the
+turn becomes idle; the context inspector keeps the completed-turn
+generation speed (D428).
+
 ### 3.3 Abort UX
 
 - Abort button changes to "Aborting..." briefly (100ms), then disappears

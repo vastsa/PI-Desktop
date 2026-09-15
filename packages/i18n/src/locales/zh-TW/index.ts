@@ -350,6 +350,8 @@ export const zhTW = {
     usageThroughput: "{{count}} tokens/s",
     usageThroughputEstimated: "約 {{count}} tokens/s",
     usageThroughputUnavailable: "—",
+    usageLiveThroughput: "{{count}} tok/s",
+    usageLiveThroughputEstimated: "約 {{count}} tok/s",
     usageProviderUsage: "模型用量",
     usageExact: "已上報",
     usageInput: "輸入",

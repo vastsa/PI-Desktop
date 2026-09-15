@@ -96,6 +96,7 @@ This log freezes previously open questions into concrete decisions.
 
 
 | D244 | Compact context usage summary | **Amend D103 / D184 / ADR 0047: keep the context inspector's remaining-capacity trigger, used/window counts, turn total, completed-turn speed, exact provider values, aggregate tool types/calls/tokens, and checkpoint summary, but render them as a short summary. Remove the per-tool rows, share bars, source badges, explanatory estimate paragraph, and used-capacity meter from the default panel. No protocol, storage, runtime accounting, or model metadata changes.** *(Amended by D347: the trigger moves to the composer toolbar.)* | The prior diagnostic layout made a routine capacity check tall and visually dense. Keeping the aggregate signal while removing drill-down chrome makes the default status surface scannable without changing the underlying usage data. See ADR 0103 and E2E-060d / US-UI-61. |
+| D428 | Live conversation token rate | **Amend D212 / D244: while a turn is running, the transcript stream-health strip shows a live sliding-window output rate in `tok/s` (working / run-activity indicators, and a compact chip while answer tokens stream). Prefer provider `outputTokens` when available; otherwise estimate from visible thinking+answer text and label as approximate. Clear when idle. The context inspector's Generation speed remains the completed-turn snapshot. Renderer only; no protocol or persistence change.** | Users could not tell whether a stream was healthy or stalled/reconnecting from the completed-turn-only speed. |
 | D347 | Composer-docked context usage inspector | **Amend D103 / D184 / D244 / ADR 0047 / ADR 0103: the compact context inspector lives in the composer right toolbar, immediately left of the model × reasoning chip, and always mirrors the newest assistant turn that reported usage. The trigger keeps the remaining-capacity ring and percentage and drops the redundant Context label. The popover heading is remaining tokens plus percentage; rows below share one label/value rhythm separated by spacing, with no inner section rules (D297). Assistant meta keeps the model badge. Renderer only.** | The inspector under the newest answer scrolled out of reach. One composer entry is the single authority for the latest snapshot, and the doubled heading rule is fixed by dropping the extra caption rather than adding hairlines. See ADR 0184 and E2E-060d / US-UI-61. |
 | D355 | Last-request occupancy in the context inspector | **Amend D103 / D184 / D244 / D347 / ADR 0047 / ADR 0103 / ADR 0184: remaining capacity, used/window counts, turn total, and provider input/output/cache/reasoning/hit-rate are the newest usage-bearing assistant message (the last model request). Occupancy is `input + output + reasoning + cacheRead + cacheWrite` on that message. They are not the sum of every model call in the visual tool-loop. Completed-turn speed and the aggregate tool row still describe that visual turn. Renderer only; host turn rollups and Token Insights stay additive billing.** | Summing cache reads across a tool loop put 367k cache read next to a 55k window. OpenCode's context widget uses only the last assistant message. See ADR 0193 and E2E-060d. |
 | D356 | Optional subagent thinking override | **Amend ADR 0062 / ADR 0144: subagent frontmatter accepts `thinkingLevel: omit` in addition to inherit and the seven canonical levels. `omit` keeps the agent bookkeeping state at `off` but uses the low-level provider stream so no thinking override is synthesized. Explicit `off` still disables thinking. Model-configuration thinking chips use an accent/inverted-text selected state in both themes. No storage schema or protocol version change. See ADR 0194 and E2E-203.** | Users need inherit, explicit off, and leave-the-provider-default as three distinct choices, and selected thinking chips were unreadable in dark mode. |
@@ -1178,9 +1179,10 @@ section mirrors only marketplace/catalog items still blocking nothing.
   duration. Runtime estimates use pi-agent-core's existing four-characters-
   per-token heuristic; provider-reported usage remains the authoritative total
   and the UI labels tool rows as estimates.
-- Generation speed is a completed-turn snapshot from provider output and final
-  stream duration; active assistant streams do not show a live token-rate
-  counter.
+- Generation speed inside the inspector is a completed-turn snapshot from
+  provider output and final stream duration *(amended by D428: while a turn is
+  running, the transcript stream-health strip shows a live sliding-window
+  `tok/s` reading)*.
 - The context-window total comes from the matching `pi-ai` model metadata used
   by the agent sidecar; provider metadata and the 128K default remain fallbacks
   for unknown models.
@@ -5272,3 +5274,17 @@ not an unreviewed upstream registry passthrough.
 It deliberately does not include plugin OAuth: the `provider.oauth` permission
 and a Host-owned plugin login flow are future work, so a declared provider has no
 OAuth login, token refresh, or account label today.
+
+## 2026-09-15 — Live conversation token rate (D428)
+
+**Amend D212 / D244: while a turn is running, the transcript stream-health
+strip shows a live sliding-window output rate in `tok/s` next to the working
+/ run-activity indicator (and a compact rate chip while answer tokens are
+streaming). Prefer provider output usage when present; otherwise estimate
+from visible thinking+answer text and mark the reading as approximate. The
+rate clears when the turn becomes idle. The context inspector's Generation
+speed remains the completed-turn snapshot. Renderer only.**
+
+See `04-ux/08-component-spec.md` §8.3, `04-ux/09-interaction-patterns.md`
+§3.2a, and E2E-CHAT-live-token-rate-shows-during-stream.
+

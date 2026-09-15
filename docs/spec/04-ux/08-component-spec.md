@@ -1599,8 +1599,13 @@ Single message render — either user (plaintext) or assistant (markdown streami
   estimate note are intentionally omitted from the default view. Rows below
   the heading share one muted-label / tabular-value rhythm separated by
   spacing; the popover keeps its floating-layer edge and draws no inner
-  section rules (D297). Generation speed is a completed-turn value in tokens
-  per second and is not updated while a response is streaming. The
+  section rules (D297). Generation speed inside the inspector remains a
+  completed-turn snapshot in tokens per second. While a turn is running, the
+  transcript stream-health strip (working / run-activity indicator, or a
+  compact rate chip while answer tokens are streaming) shows a live
+  sliding-window `tok/s` reading so reconnects and stalls are visible (D428).
+  Live rate prefers provider output usage when present and otherwise estimates
+  from visible thinking+answer text, marked as approximate. The
   context-window total uses the same effective model window as the agent
   sidecar: a published models.dev `limit.context` replaces a legacy 128k
   generic binding seed, while a non-default per-model Advanced value remains

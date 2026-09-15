@@ -355,6 +355,8 @@ export const en = {
     usageThroughput: "{{count}} tokens/s",
     usageThroughputEstimated: "≈ {{count}} tokens/s",
     usageThroughputUnavailable: "—",
+    usageLiveThroughput: "{{count}} tok/s",
+    usageLiveThroughputEstimated: "≈ {{count}} tok/s",
     usageProviderUsage: "Provider usage",
     usageExact: "reported",
     usageInput: "Input",

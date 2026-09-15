@@ -348,6 +348,8 @@ export const de = {
     "usageThroughput": "{{count}} Tokens/s",
     "usageThroughputEstimated": "≈ {{count}} Tokens/s",
     "usageThroughputUnavailable": "–",
+    "usageLiveThroughput": "{{count}} Tok/s",
+    "usageLiveThroughputEstimated": "≈ {{count}} Tok/s",
     "usageProviderUsage": "Anbieternutzung",
     "usageExact": "gemeldet",
     "usageInput": "Eingabe",

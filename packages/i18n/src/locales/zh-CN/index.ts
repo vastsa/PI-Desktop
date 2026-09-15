@@ -350,6 +350,8 @@ export const zhCN = {
     usageThroughput: "{{count}} tokens/s",
     usageThroughputEstimated: "约 {{count}} tokens/s",
     usageThroughputUnavailable: "—",
+    usageLiveThroughput: "{{count}} tok/s",
+    usageLiveThroughputEstimated: "约 {{count}} tok/s",
     usageProviderUsage: "模型用量",
     usageExact: "已上报",
     usageInput: "输入",

@@ -1,4 +1,4 @@
-import { memo, useContext } from "react";
+import { memo, useContext, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import type { PlanningState, UiMessage } from "@pi-desktop/shared";
 import { proposalKindForMode } from "@pi-desktop/shared";
@@ -13,8 +13,11 @@ import { TRANSCRIPT_SKELETON_ROWS } from "../../../lib/transcript-settle";
 import {
   PlanningIndicator,
   RunActivityIndicator,
+  StreamingTokenRateIndicator,
   WorkingIndicator,
 } from "./ActivityGroup";
+import { useLiveTokenRate } from "./hooks/useLiveTokenRate";
+import { assistantTurnMessages } from "../../../lib/assistant-turns";
 import { TranscriptHistory, TranscriptTail } from "./AssistantTurn";
 import { TranscriptReadOnlyContext, useActiveSessionTitle } from "./context";
 import { SelectionQuoteButton } from "../../../components/SelectionQuoteButton";
@@ -166,6 +169,29 @@ export const ChatTranscript = memo(function ChatTranscript({
     !assistantIsAnswering &&
     !hasSpecializedActivity;
 
+  const streamingAssistant = useMemo(() => {
+    if (!transcriptRunning || lastEntry?.kind !== "assistant-turn") {
+      return undefined;
+    }
+    return [...assistantTurnMessages(lastEntry)]
+      .reverse()
+      .find((message) => message.status === "streaming");
+  }, [transcriptRunning, lastEntry]);
+
+  const liveTokenRateActive =
+    transcriptRunning &&
+    !pendingPermission &&
+    !askPending &&
+    !approvalPending;
+  const liveTokenRate = useLiveTokenRate({
+    active: liveTokenRateActive,
+    content: streamingAssistant?.content,
+    thinking: streamingAssistant?.thinking,
+    outputTokens:
+      streamingAssistant?.usage?.outputTokens ??
+      streamingAssistant?.responseOutputTokens,
+  });
+
   return (
     <TranscriptSearchContext.Provider value={searchTarget}>
     <div
@@ -253,10 +279,18 @@ export const ChatTranscript = memo(function ChatTranscript({
             />
           ) : null}
           {showRunActivity && specializedActivity ? (
-            <RunActivityIndicator activity={specializedActivity} />
+            <RunActivityIndicator
+              activity={specializedActivity}
+              tokenRate={liveTokenRate}
+            />
           ) : null}
           {showPlanning ? <PlanningIndicator kind={planningKind} /> : null}
-          {showWorking ? <WorkingIndicator /> : null}
+          {showWorking ? (
+            <WorkingIndicator tokenRate={liveTokenRate} />
+          ) : null}
+          {assistantIsAnswering ? (
+            <StreamingTokenRateIndicator tokenRate={liveTokenRate} />
+          ) : null}
         </div>
       </div>
       {veilPhase !== "off" ? (

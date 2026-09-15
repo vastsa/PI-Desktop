@@ -42,6 +42,7 @@ import {
   getToolAction,
   getToolSummary,
 } from "../../../lib/tool-display";
+import type { LiveTokenRate } from "./hooks/useLiveTokenRate";
 import { ReviewChangeCard } from "../../../components/ReviewChangeCard";
 import { IconChevronRight, IconCircleAlert, IconSparkles, IconWorkflow } from "../../../components/icons";
 import {
@@ -418,8 +419,39 @@ export const ActivityGroup = memo(function ActivityGroup({
   );
 }, activityGroupPropsEqual);
 
+function formatLiveTokenCount(value: number): string {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(value >= 10_000_000 ? 0 : 1)}M`;
+  if (value >= 10_000) return `${Math.round(value / 1000)}k`;
+  if (value >= 1000) return `${(value / 1000).toFixed(1)}k`;
+  return String(value);
+}
+
+/** Compact tok/s chip for the run-activity / streaming status strip. */
+export function LiveTokenRateLabel({ rate }: { rate: LiveTokenRate }) {
+  const { t } = useTranslation();
+  if (rate.tokensPerSecond === undefined) return null;
+  return (
+    <span
+      className="working-token-rate"
+      data-testid="live-token-rate"
+      title={t("chat.usageThroughputLabel")}
+      aria-hidden="true"
+    >
+      {t(
+        rate.estimated
+          ? "chat.usageLiveThroughputEstimated"
+          : "chat.usageLiveThroughput",
+        { count: formatLiveTokenCount(rate.tokensPerSecond) },
+      )}
+    </span>
+  );
+}
+
 /** Keep the transcript responsive while the model waits for its first event. */
-export function WorkingIndicator({ startedAt }: { startedAt?: number } = {}) {
+export function WorkingIndicator({
+  startedAt,
+  tokenRate,
+}: { startedAt?: number; tokenRate?: LiveTokenRate } = {}) {
   const { t } = useTranslation();
   const [elapsed, setElapsed] = useState(0);
   const startedAtRef = useRef(startedAt ?? Date.now());
@@ -447,6 +479,9 @@ export function WorkingIndicator({ startedAt }: { startedAt?: number } = {}) {
         <span />
       </span>
       <span className="working-indicator-label">{t("chat.running")}</span>
+      {tokenRate != null && tokenRate.tokensPerSecond !== undefined ? (
+        <LiveTokenRateLabel rate={tokenRate} />
+      ) : null}
       {elapsed > 0 ? (
         <span className="working-elapsed" aria-hidden="true">
           {formatToolDuration(elapsed)}
@@ -456,7 +491,13 @@ export function WorkingIndicator({ startedAt }: { startedAt?: number } = {}) {
   );
 }
 
-export function RunActivityIndicator({ activity }: { activity: AgentActivity }) {
+export function RunActivityIndicator({
+  activity,
+  tokenRate,
+}: {
+  activity: AgentActivity;
+  tokenRate?: LiveTokenRate;
+}) {
   const { t } = useTranslation();
   const [now, setNow] = useState(Date.now);
   const retryErrorDetailsId = useId();
@@ -532,9 +573,30 @@ export function RunActivityIndicator({ activity }: { activity: AgentActivity }) 
         <span />
       </span>
       {labelContent}
+      {tokenRate != null && tokenRate.tokensPerSecond !== undefined ? (
+        <LiveTokenRateLabel rate={tokenRate} />
+      ) : null}
       <span className="working-elapsed" aria-hidden="true">
         {elapsed}
       </span>
+    </div>
+  );
+}
+
+/** Rate-only strip while answer tokens are streaming (activity rows stay hidden). */
+export function StreamingTokenRateIndicator({
+  tokenRate,
+}: {
+  tokenRate: LiveTokenRate;
+}) {
+  if (tokenRate.tokensPerSecond === undefined) return null;
+  return (
+    <div
+      className="working-indicator streaming-rate-indicator"
+      data-testid="streaming-rate-indicator"
+      aria-hidden="true"
+    >
+      <LiveTokenRateLabel rate={tokenRate} />
     </div>
   );
 }

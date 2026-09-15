@@ -41,7 +41,26 @@ test("active turns show immediate and phase-specific feedback without a progress
   assert.match(transcript, /const specializedActivity = agentActivity/);
   assert.match(transcript, /!hasSpecializedActivity/);
   assert.match(transcript, /const showWorking =/);
-  assert.match(transcript, /\{showWorking \? <WorkingIndicator \/> : null\}/);
+  assert.match(
+    transcript,
+    /\{showWorking \? \(\s*<WorkingIndicator tokenRate=\{liveTokenRate\} \/>\s*\) : null\}/,
+  );
+  assert.match(transcript, /useLiveTokenRate\(/);
+  assert.match(transcript, /function LiveTokenRateLabel\(/);
+  assert.match(transcript, /data-testid="live-token-rate"/);
+  assert.match(transcript, /data-testid="live-token-rate"[\s\S]*?aria-hidden="true"/);
+  assert.match(
+    transcript,
+    /tokenRate != null && tokenRate\.tokensPerSecond !== undefined/,
+  );
+  assert.match(transcript, /function StreamingTokenRateIndicator\(/);
+  assert.match(transcript, /data-testid="streaming-rate-indicator"/);
+  assert.match(
+    transcript,
+    /\{assistantIsAnswering \? \(\s*<StreamingTokenRateIndicator tokenRate=\{liveTokenRate\} \/>\s*\) : null\}/,
+  );
+  assert.match(transcript, /usageLiveThroughput/);
+  assert.match(messagesStyles, /\.working-token-rate\s*\{/);
   assert.match(transcript, /function PlanningIndicator\(/);
   assert.match(transcript, /data-testid="planning-indicator"/);
   assert.match(transcript, /const showPlanning =/);
