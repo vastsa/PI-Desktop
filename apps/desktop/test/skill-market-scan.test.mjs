@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createSkillMarketAggregator } from "../electron/main/skill-market-scan.ts";
+import { PublicNetworkPolicyError } from "../electron/main/public-https-fetch.ts";
 
 const source = {
   id: "anthropics-skills",
@@ -100,4 +101,48 @@ test("main-process aggregator routes through the public-network client", async (
   assert.match(src, /createPublicHttpsClient\(\{ fetchImpl: \(url, init\) => net\.fetch\(url, init\) \}\)/);
   assert.match(src, /createSkillMarketAggregator\(client\.request\)/);
   assert.doesNotMatch(src, /node:https|node:http|axios|got\(/);
+});
+
+test("a failed source reports whether the policy or the transport refused it", async () => {
+  const aggregator = createSkillMarketAggregator(async (url) => {
+    if (url.includes("blocked.example")) {
+      throw new PublicNetworkPolicyError(
+        "hostname resolves to a private address: blocked.example -> 198.18.0.4",
+      );
+    }
+    throw new Error("responded 502");
+  });
+  const result = await aggregator.search("", [
+    { id: "blocked", name: "blocked/repo", url: "https://blocked.example/catalog.json" },
+    { id: "down", name: "down/repo", url: "https://down.example/catalog.json" },
+    { id: "local", name: "local", url: "https://127.0.0.1/catalog.json" },
+  ]);
+  assert.deepEqual(result.entries, []);
+  assert.deepEqual([...result.failedSources].sort(), ["blocked/repo", "down/repo", "local"]);
+  // Issue #419: a policy refusal must not be indistinguishable from a dead host
+  // or from a source that never left the syntactic guard.
+  assert.deepEqual(result.failureKinds, {
+    "blocked/repo": "policy",
+    "down/repo": "network",
+    local: "policy",
+  });
+});
+
+test("a repeated display name keeps the refusal, and a hostile name stays own", async () => {
+  const aggregator = createSkillMarketAggregator(async () => {
+    throw new Error("responded 502");
+  });
+  const result = await aggregator.search("", [
+    { id: "a", name: "same", url: "https://127.0.0.1/catalog.json" },
+    { id: "b", name: "same", url: "https://down.example/catalog.json" },
+    { id: "c", name: "__proto__", url: "https://127.0.0.1/catalog.json" },
+  ]);
+  // `failedSources` cannot tell the two "same" sources apart, so the kind that
+  // is worth surfacing (the refusal) must survive the merge.
+  assert.equal(result.failureKinds.same, "policy");
+  // A source named `__proto__` must land as an own property, not vanish into
+  // the prototype where `Object.values` would never see it.
+  assert.equal(Object.hasOwn(result.failureKinds, "__proto__"), true);
+  assert.equal(result.failureKinds.__proto__, "policy");
+  assert.deepEqual(Object.values(result.failureKinds), ["policy", "policy"]);
 });

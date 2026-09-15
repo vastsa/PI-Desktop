@@ -719,10 +719,15 @@ export const api = {
 
   // --- Skill market ----------------------------------------------------------
   searchSkillMarket: (query: string, sources: { id: string; name: string; url: string }[]) =>
-    invoke<{ entries: SkillCatalogEntry[]; failedSources?: string[] }>(
-      IPC.invoke.skillMarketSearch,
-      { query, sources },
-    ),
+    invoke<{
+      entries: SkillCatalogEntry[];
+      failedSources?: string[];
+      /**
+       * Why each named source failed, so the market can explain a policy/DNS
+       * refusal instead of reporting every source as merely unreachable.
+       */
+      failureKinds?: Record<string, "policy" | "network">;
+    }>(IPC.invoke.skillMarketSearch, { query, sources }),
   /** Fetch one catalog document (frontmatter split off) for preview/install. */
   fetchSkillMarketDocument: (entry: SkillCatalogEntry) =>
     invoke<{ name?: string; description?: string; body: string; resources?: Array<{ path: string; body: string }> }>(

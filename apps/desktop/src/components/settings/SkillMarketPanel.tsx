@@ -27,6 +27,12 @@ import {
 } from "../icons";
 import { Field, Input, TooltipButton, cx } from "../ui";
 import { LatestWinsGate } from "../../lib/latest-wins";
+import {
+  classifySkillMarketFailure,
+  hasPolicyFailure,
+  skillMarketFailureDetail,
+  type SkillMarketFailureKind,
+} from "../../lib/skill-market-failure";
 
 const CATEGORIES: readonly SkillCatalogCategory[] = [
   "workflow",
@@ -61,9 +67,22 @@ type RemoteState = {
   status: "idle" | "loading" | "ready" | "error";
   entries: MarketItem[];
   failed: string[];
+  /** Why each named source failed, so a policy/DNS refusal can be explained. */
+  failureKinds: Record<string, SkillMarketFailureKind>;
+  /**
+   * Query-level failure reason (bridge or preload unavailable). Such a rejection
+   * carries no per-source detail, and it used to be discarded with no trace.
+   */
+  queryError: string;
 };
 
-const REMOTE_IDLE: RemoteState = { status: "idle", entries: [], failed: [] };
+const REMOTE_IDLE: RemoteState = {
+  status: "idle",
+  entries: [],
+  failed: [],
+  failureKinds: {},
+  queryError: "",
+};
 
 const SOURCES_STORAGE_KEY = "pi.skill-market.sources.v1";
 
@@ -121,6 +140,10 @@ export function SkillMarketPanel({
   const [installFor, setInstallFor] = useState<MarketItem | null>(null);
   const [documentBody, setDocumentBody] = useState<string | null>(null);
   const [documentTooLarge, setDocumentTooLarge] = useState(false);
+  const [previewFailure, setPreviewFailure] = useState<{
+    kind: SkillMarketFailureKind;
+    detail: string;
+  } | null>(null);
   const [installing, setInstalling] = useState(false);
   const previewGate = useRef(new LatestWinsGate());
   const [sources, setSources] = useState<SkillMarketSource[]>(loadSources);
@@ -148,7 +171,13 @@ export function SkillMarketPanel({
     const timer = setTimeout(() => {
       setRemote((current) =>
         current.status === "idle" || current.status === "ready"
-          ? { status: "loading", entries: current.entries, failed: current.failed }
+          ? {
+              status: "loading",
+              entries: current.entries,
+              failed: current.failed,
+              failureKinds: current.failureKinds,
+              queryError: current.queryError,
+            }
           : current,
       );
       api
@@ -161,11 +190,21 @@ export function SkillMarketPanel({
               status: entries.length === 0 && failed.length > 0 ? "error" : "ready",
               entries,
               failed,
+              failureKinds: result.failureKinds ?? {},
+              queryError: "",
             });
           }
         })
-        .catch(() => {
-          if (!cancelled) setRemote({ status: "error", entries: [], failed: [] });
+        .catch((error: unknown) => {
+          if (!cancelled) {
+            setRemote({
+              status: "error",
+              entries: [],
+              failed: [],
+              failureKinds: {},
+              queryError: skillMarketFailureDetail(error),
+            });
+          }
         });
     }, 350);
     return () => {
@@ -201,11 +240,11 @@ export function SkillMarketPanel({
     [visible, currentPage],
   );
 
-  const openInstall = (entry: MarketItem) => {
+  const loadDocument = (entry: MarketItem) => {
     const token = previewGate.current.begin();
-    setInstallFor(entry);
     setDocumentBody(null);
     setDocumentTooLarge(false);
+    setPreviewFailure(null);
     api
       .fetchSkillMarketDocument(entry)
       .then((document) => {
@@ -214,12 +253,25 @@ export function SkillMarketPanel({
         setDocumentBody(assembled.body);
         setDocumentTooLarge(assembled.tooLarge);
       })
-      .catch(() => {
-        if (previewGate.current.isCurrent(token)) {
-          setDocumentBody(null);
-          setDocumentTooLarge(false);
-        }
+      .catch((error: unknown) => {
+        if (!previewGate.current.isCurrent(token)) return;
+        // Swallowing this left the sheet on a null body, so the install button
+        // sat disabled behind the word "Loading…" with no reason and no way to
+        // try again — the dead end issue #419 reports.
+        setPreviewFailure({
+          kind: classifySkillMarketFailure(error),
+          detail: skillMarketFailureDetail(error),
+        });
       });
+  };
+
+  const openInstall = (entry: MarketItem) => {
+    setInstallFor(entry);
+    loadDocument(entry);
+  };
+
+  const retryPreview = () => {
+    if (installFor) loadDocument(installFor);
   };
 
   const install = async () => {
@@ -270,6 +322,14 @@ export function SkillMarketPanel({
       { id: `custom-${Date.now().toString(36)}`, name: draftSource.name.trim() || fallbackName, url },
     ]);
     setDraftSource({ name: "", url: "" });
+  };
+
+  // A bare `remoteError` could not tell a policy refusal from a dead host, so
+  // the two now carry different copy and the policy case gets the proxy hint.
+  const remoteErrorText = () => {
+    if (remote.queryError) return t("settings.sklm.remoteErrorQuery");
+    if (hasPolicyFailure(remote.failureKinds)) return t("settings.sklm.remoteErrorPolicy");
+    return t("settings.sklm.remoteError");
   };
 
   const sourcesSheet = sourcesOpen ? (
@@ -418,7 +478,36 @@ export function SkillMarketPanel({
 
           <div className="ext-field-group">
             <div className="ext-field-label">{t("settings.sklm.preview")}</div>
-            <pre className="sklm-preview">{documentBody ?? t("common.loading")}</pre>
+            {previewFailure ? (
+              <p className="sklm-note is-error" role="alert">
+                {t(
+                  previewFailure.kind === "policy"
+                    ? "settings.sklm.previewPolicyError"
+                    : "settings.sklm.previewError",
+                )}
+              </p>
+            ) : (
+              <pre className="sklm-preview">{documentBody ?? t("common.loading")}</pre>
+            )}
+            {previewFailure?.kind === "policy" ? (
+              <p className="sklm-note">{t("settings.sklm.proxyHint")}</p>
+            ) : null}
+            {previewFailure?.detail ? (
+              <p className="sklm-note">
+                <span className="sklm-note-label">{t("settings.sklm.failureDetail")}</span>
+                {previewFailure.detail}
+              </p>
+            ) : null}
+            {previewFailure ? (
+              <button
+                type="button"
+                className="sklm-install is-ghost"
+                onClick={retryPreview}
+                disabled={installing}
+              >
+                {t("settings.sklm.retryPreview")}
+              </button>
+            ) : null}
             {documentTooLarge ? <p className="sklm-note">{t("settings.sklm.documentTooLarge")}</p> : null}
           </div>
 
@@ -492,10 +581,31 @@ export function SkillMarketPanel({
         </p>
       ) : null}
       {remote.status === "error" ? (
-        <p className="sklm-status is-error" role="status">
-          {t("settings.sklm.remoteError")}
-          {remote.failed.length ? ` (${remote.failed.join(", ")})` : ""}
-        </p>
+        <>
+          <p className="sklm-status is-error" role="status">
+            {remoteErrorText()}
+            {remote.failed.length ? ` (${remote.failed.join(", ")})` : ""}
+          </p>
+          {remote.queryError ? (
+            <p className="sklm-status">
+              <span className="sklm-note-label">{t("settings.sklm.failureDetail")}</span>
+              {remote.queryError}
+            </p>
+          ) : null}
+          {hasPolicyFailure(remote.failureKinds) ? (
+            <p className="sklm-status">{t("settings.sklm.proxyHint")}</p>
+          ) : null}
+        </>
+      ) : null}
+      {remote.status === "ready" && remote.failed.length ? (
+        <>
+          <p className="sklm-status">
+            {t("settings.sklm.remotePartial", { names: remote.failed.join(", ") })}
+          </p>
+          {hasPolicyFailure(remote.failureKinds) ? (
+            <p className="sklm-status">{t("settings.sklm.proxyHint")}</p>
+          ) : null}
+        </>
       ) : null}
 
       <div className="sklm-cats" role="tablist" aria-label={t("settings.sklm.title")}>

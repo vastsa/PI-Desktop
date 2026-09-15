@@ -41,6 +41,15 @@ export const ErrorCodes = {
   CONFLICT: "CONFLICT",
   TIMEOUT: "TIMEOUT",
   NETWORK_ERROR: "NETWORK_ERROR",
+  /**
+   * The main-process public-network guard refused a fetch: the URL failed the
+   * syntactic public-HTTPS check, or a local DNS lookup could not classify the
+   * host as public. Users behind a proxy that answers DNS itself (Clash
+   * fake-IP, a TUN resolver, a corporate split resolver) hit this even though
+   * the same URL opens in a browser, because the guard resolves locally while
+   * `net.fetch` goes through the proxy (ADR 0177, ADR 0243).
+   */
+  NETWORK_POLICY_BLOCKED: "NETWORK_POLICY_BLOCKED",
   AGENT_BUSY: "AGENT_BUSY",
   AGENT_NOT_FOUND: "AGENT_NOT_FOUND",
   TURN_NOT_FOUND: "TURN_NOT_FOUND",

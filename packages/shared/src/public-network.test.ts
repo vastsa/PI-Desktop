@@ -4,7 +4,9 @@ import {
   classifyIpLiteral,
   isPublicHttpsUrl,
   isPublicIpLiteral,
+  PUBLIC_NETWORK_POLICY_ERROR,
   isPublicHostname,
+  isPublicNetworkPolicyFailure,
 } from "./public-network.js";
 
 describe("public network address policy", () => {
@@ -81,5 +83,18 @@ describe("public network address policy", () => {
     expect(isPublicHostname("localhost.")).toBe(false);
     expect(isPublicHostname("registry.example.")).toBe(true);
     expect(isPublicHostname("0x7f000001")).toBe(false);
+  });
+
+  it("recognizes a policy refusal without importing the client", () => {
+    // The skill market aggregator classifies failures with this structural
+    // check so it can stay free of the client's `node:dns` import (issue #419).
+    const refusal = Object.assign(new Error("hostname does not resolve: x"), {
+      name: PUBLIC_NETWORK_POLICY_ERROR,
+    });
+    expect(isPublicNetworkPolicyFailure(refusal)).toBe(true);
+    expect(isPublicNetworkPolicyFailure(new Error("responded 502"))).toBe(false);
+    expect(isPublicNetworkPolicyFailure(null)).toBe(false);
+    expect(isPublicNetworkPolicyFailure("PublicNetworkPolicyError")).toBe(false);
+    expect(PUBLIC_NETWORK_POLICY_ERROR).toBe("PublicNetworkPolicyError");
   });
 });

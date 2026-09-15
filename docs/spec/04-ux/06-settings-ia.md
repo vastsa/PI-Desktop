@@ -395,7 +395,12 @@ system while preserving their different data ownership:
   English-titled offline fallback. Default GitHub sources are queried with
   user-added sources; a remote badge uses `sourceId`, not id collision with
   builtin rows. Documents that would exceed the 128 KiB host cap cannot be
-  installed. Back reloads the skill list.
+  installed. A preview that fails is reported in the sheet with its reason and
+  a Retry action — the install button may sit disabled, but never without an
+  explanation — and a market whose sources were refused by the public-network
+  guard says so instead of calling every source unreachable, because a proxied
+  user sees that refusal while the same URL opens in their browser (ADR 0177).
+  Back reloads the skill list.
 - The Subagents create/edit sheet pins a model with a searchable, provider-
   grouped anchored menu — the same option-menu control the service picker uses
   — over the configured, runnable models the Composer offers, plus an

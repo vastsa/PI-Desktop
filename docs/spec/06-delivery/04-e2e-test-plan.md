@@ -12297,13 +12297,18 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 - **Expected**: Every bypass form is rejected. A public CDN URL is accepted.
   DNS that yields a private address and a redirect onto loopback both throw a
   policy error without fetching the private target. Policy failures are not
-  retried.
+  retried. Each refusal carries `NETWORK_POLICY_BLOCKED` (spec 08 §3.1) so the
+  install sheet can name the reason and offer a retry instead of leaving the
+  install button disabled with no explanation, and the market list can tell a
+  refused source apart from a merely unreachable one.
 - **Specs linked**: `05-security/01-security.md`, ADR 0243,
   `03-runtime/01-ipc-protocol.md` §12b
 - **Acceptance**: Security, Quality
 - **Milestone**: M6+
 - **Status**: Automated (`pnpm test:e2e:skill-market`,
   `apps/desktop/test/public-https-fetch.test.mjs`,
+  `apps/desktop/test/skill-market-scan.test.mjs`,
+  `apps/desktop/test/skill-market-failure.test.mjs`,
   `packages/shared/src/public-network.test.ts`)
 
 #### E2E-SKILL-MARKET-EXPANSION: Adjacent markdown resources inline before install

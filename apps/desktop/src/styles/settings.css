@@ -3044,6 +3044,11 @@
   font-size: var(--text-xs);
 }
 
+/* A failed preview must read as an error, not as a muted side note. */
+.sklm-note.is-error {
+  color: var(--ds-error);
+}
+
 .sklm-note-label {
   flex: 0 0 auto;
   color: var(--ds-text-primary);

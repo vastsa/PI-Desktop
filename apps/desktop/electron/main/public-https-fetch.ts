@@ -1,5 +1,11 @@
 import { lookup as dnsLookup } from "node:dns/promises";
-import { isPublicIpLiteral, isSafePublicHttpsUrl } from "@pi-desktop/shared";
+import {
+  ErrorCodes,
+  PUBLIC_NETWORK_POLICY_ERROR,
+  isPublicIpLiteral,
+  isPublicNetworkPolicyFailure,
+  isSafePublicHttpsUrl,
+} from "@pi-desktop/shared";
 
 const DEFAULT_TIMEOUT_MS = 8_000;
 const MAX_HOPS = 5;
@@ -14,14 +20,19 @@ export type PublicHttpsLookup = (host: string) => Promise<Array<{ address: strin
 
 export class PublicNetworkPolicyError extends Error {
   readonly code = "PUBLIC_NETWORK_POLICY";
+  /**
+   * Stable code the IPC wrapper forwards to the renderer, so a policy refusal
+   * can be told apart from an ordinary network failure (spec 08 §3.1).
+   */
+  readonly errorCode = ErrorCodes.NETWORK_POLICY_BLOCKED;
   constructor(message: string) {
     super(message);
-    this.name = "PublicNetworkPolicyError";
+    this.name = PUBLIC_NETWORK_POLICY_ERROR;
   }
 }
 
 export function isPublicNetworkPolicyError(error: unknown): boolean {
-  return error instanceof PublicNetworkPolicyError || (error instanceof Error && error.name === "PublicNetworkPolicyError");
+  return error instanceof PublicNetworkPolicyError || isPublicNetworkPolicyFailure(error);
 }
 
 export type PublicHttpsClient = {

@@ -136,6 +136,23 @@ export function isPublicHttpsUrl(value: string): boolean {
 /** Backward-compatible descriptive alias for the generic public URL guard. */
 export const isSafePublicHttpsUrl = isPublicHttpsUrl;
 
+/**
+ * Name the public-network client stamps on its refusals. A caller that must
+ * stay free of that client's `node:dns` dependency — the skill market
+ * aggregator, which is exercised as a pure module — classifies with this
+ * instead of importing the client.
+ */
+export const PUBLIC_NETWORK_POLICY_ERROR = "PublicNetworkPolicyError";
+
+/** Structural check for a public-network refusal, without importing the client. */
+export function isPublicNetworkPolicyFailure(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { name?: unknown }).name === PUBLIC_NETWORK_POLICY_ERROR
+  );
+}
+
 function parseIpv4(value: string): number | null {
   const parts = value.split(".");
   if (

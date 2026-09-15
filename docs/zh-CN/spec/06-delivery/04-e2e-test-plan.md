@@ -7283,11 +7283,11 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 
 - **前提条件**：共享 public-network helper，以及可注入 fetch/DNS 的主进程公网 HTTPS 客户端。
 - **步骤**：1）分类 trailing-dot localhost、IPv4 回环、IPv4-mapped IPv6、ULA、link-local、RFC1918 与 `http://`。2）将公网主机名解析到私网 A 记录。3）跟随 Location 为 `https://127.0.0.1/` 的 302。
-- **预期**：上述绕过形态全部拒绝；公共 CDN 放行。解析到私网地址或 redirect 到回环会抛出策略错误，且不会请求私网目标。策略失败不重试。
+- **预期**：上述绕过形态全部拒绝；公共 CDN 放行。解析到私网地址或 redirect 到回环会抛出策略错误，且不会请求私网目标。策略失败不重试。每次拒绝都带上 `NETWORK_POLICY_BLOCKED`（spec 08 §3.1），使安装面板能给出原因并提供重试,而不是让安装按钮无解释地保持禁用；市场列表也能把被拒绝的源与单纯不可达的源区分开。
 - **链接规格**：`05-security/01-security.md`、ADR 0243、`03-runtime/01-ipc-protocol.md` §12b
 - **验收**：Security、Quality
 - **里程碑**：M6+
-- **状态**：已自动化（`pnpm test:e2e:skill-market`、`apps/desktop/test/public-https-fetch.test.mjs`、`packages/shared/src/public-network.test.ts`）
+- **状态**：已自动化（`pnpm test:e2e:skill-market`、`apps/desktop/test/public-https-fetch.test.mjs`、`apps/desktop/test/skill-market-scan.test.mjs`、`apps/desktop/test/skill-market-failure.test.mjs`、`packages/shared/src/public-network.test.ts`）
 
 #### E2E-SKILL-MARKET-EXPANSION：相邻 markdown 资源在安装前内联
 

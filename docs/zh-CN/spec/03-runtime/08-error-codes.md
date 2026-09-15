@@ -68,6 +68,7 @@ type AppError = {
 | `APPROVAL_STALE` | 不 | RACP：审批已被处理或属于更早的回合 |
 | `PAYLOAD_TOO_LARGE` | 不 | RACP：帧超过协商的大小上限 |
 | `TIMEOUT` | 是的 | 通用超时 |
+| `NETWORK_POLICY_BLOCKED` | 不 | 主进程公网策略守卫拒绝了一次抓取：URL 未通过公网 HTTPS 语法检查,或本地 DNS 解析无法把该主机判定为公网地址（ADR 0243）。仅桌面端使用；在地址或解析器改变前,重试不会成功。 |
 | `HOST_SHUTTING_DOWN` | 是的 | 主机收到 EOF 正在排空；调用被拒绝而不是被启动 |
 | `RATE_LIMITED` | 是的 | 某个按调用方计的主机预算（插件会话导入、批量操作）在其窗口内被超出 |
 | `LIMIT_EXCEEDED` | 不 | 载荷超过了固定的主机上限（条目数、字节数）并被拒绝 |

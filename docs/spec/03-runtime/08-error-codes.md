@@ -66,6 +66,7 @@ registered; reserved codes in §3.7 remain intentionally absent from
 | `APPROVAL_STALE` | no | RACP: the approval was already settled or belongs to an older turn |
 | `PAYLOAD_TOO_LARGE` | no | RACP: a frame exceeded the negotiated size bound |
 | `TIMEOUT` | yes | generic timeout |
+| `NETWORK_POLICY_BLOCKED` | no | the main-process public-network guard refused a fetch: the URL failed the syntactic public-HTTPS check, or the local DNS lookup could not classify the host as public (ADR 0243). A desktop-only code; retrying cannot succeed until the address or the resolver changes. |
 | `HOST_SHUTTING_DOWN` | yes | the host received EOF and is draining; the call was refused rather than started |
 | `RATE_LIMITED` | yes | a per-caller host budget (plugin session import, batch operations) was exceeded inside its window |
 | `LIMIT_EXCEEDED` | no | a payload exceeded a fixed host bound (item count, byte size, or a 64 MiB NDJSON request line) and was refused |
