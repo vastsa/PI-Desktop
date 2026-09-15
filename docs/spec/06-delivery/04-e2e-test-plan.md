@@ -8293,9 +8293,11 @@ This test plan spec is accepted when:
   was moved or deleted on disk is still removable. Deleting C is refused with a
   message and the group is unchanged; a path the host has no durable row for is
   removed from the archive and the sidebar anyway, without a missing-project
-  error. Deleting D while its task runs is refused with a message and removes
-  nothing — the project row, its session, and the running turn all survive —
-  and the same delete succeeds once that task has stopped.
+  error. Deleting D while its task runs opens the confirmation dialog instead
+  of a warning that disappears with its toast; the dialog names the running
+  sessions and its confirm button reads as stopping them, cancelling removes
+  nothing, and confirming stops exactly those turns and then deletes D (see
+  E2E-PROJECT-delete-running-sessions-are-named-and-stopped).
 - **Specs linked**: `03-runtime/06-host-rpc-protocol.md` §Projects,
   `03-runtime/04-data-storage.md`, `04-ux/08-component-spec.md` §3.9, ADR 0251
 - **Acceptance criterion**: D (workspace), F (persistence), Quality
@@ -8308,6 +8310,36 @@ This test plan spec is accepted when:
   sandboxed preload; the Settings archive → dialog → sidebar journey remains
   Draft
 
+
+### E2E-PROJECT-delete-running-sessions-are-named-and-stopped
+
+- **Preconditions**: a durable project D with one session whose turn is still
+  streaming, reachable both from the sidebar project menu and from Settings →
+  Project archive.
+- **Steps**: from each surface, open D's row menu and choose Delete project
+  without stopping the turn. Expect the confirmation dialog with a
+  running-session line and a stop-and-delete confirm label; press Cancel and
+  expect nothing to change. Open the dialog again and confirm.
+- **Expected**: the menu never replaces the dialog with a bare warning, so the
+  action stays reachable while a task runs. The dialog keeps naming the
+  project, its session count, and the untouched folder; while a turn is live it
+  also names how many sessions are still running, its confirm button reads as
+  stopping them, and that line joins the dialog's `aria-describedby` only while
+  it is rendered. Cancelling deletes nothing and leaves the turn streaming.
+  Confirming stops exactly the listed sessions and only then removes the
+  project, its sessions, their transcripts, and its durable memory, leaving the
+  folder on disk. A turn that starts between the dialog opening and the
+  confirmation is still refused by the host, and the dialog reports that
+  refusal with `project.deleteRunningBlocked` while removing nothing.
+- **Specs linked**: `03-runtime/06-host-rpc-protocol.md` §Projects,
+  `04-ux/08-component-spec.md` §3.9, ADR 0251, D421, D431
+- **Acceptance criterion**: D (workspace), Quality
+- **Milestone**: M6+
+- **Status**: Partially automated — `apps/desktop/test/project-delete.test.mjs`
+  pins both menus reaching the dialog with the project's live running session
+  ids, the dialog's running-session line and stop-and-delete label, the abort
+  loop running before `deleteProject`, the `CONFLICT` fallback, and the new
+  copy in every shipped catalog; the end-to-end journey remains Draft
 ### US-UI-59 Session-rooted background tools
 - Start a visible turn in project A, switch to project B while it runs, and
   inspect both sidebar status indicators.

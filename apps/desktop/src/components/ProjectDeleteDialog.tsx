@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { ErrorCodes } from "@pi-desktop/shared";
 import { useAppStore } from "../stores/app-store";
 import { Button, TooltipButton } from "./ui";
-import { IconCircleAlert, IconClose, IconTrash } from "./icons";
+import { IconCircleAlert, IconClose, IconStop, IconTrash } from "./icons";
 
 /**
  * Second confirmation for deleting a project. The store action removes the
@@ -12,20 +12,32 @@ import { IconCircleAlert, IconClose, IconTrash } from "./icons";
  */
 export function ProjectDeleteDialog({
   project,
+  runningSessionIds,
   onClose,
   onDeleted,
   onError,
 }: {
   project: { name: string; path: string; sessionCount: number };
+  /**
+   * Sessions of this project whose turn is still live. The host refuses the
+   * bulk delete (and the single session delete) while one exists, so the dialog
+   * names them and stops them as the explicit step its confirm label promises.
+   */
+  runningSessionIds: string[];
   onClose: () => void;
   onDeleted: () => void | Promise<void>;
   onError: (error: unknown) => void;
 }) {
   const { t } = useTranslation();
   const deleteProject = useAppStore((s) => s.deleteProject);
+  const abortSession = useAppStore((s) => s.abortSession);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  // The surfaces that own this dialog subscribe to `runningSessions`, so a turn
+  // that starts or finishes while the dialog is open is reflected here before
+  // the user confirms.
+  const runningCount = runningSessionIds.length;
 
   useEffect(() => {
     const previouslyFocused = document.activeElement as HTMLElement | null;
@@ -68,11 +80,19 @@ export function ProjectDeleteDialog({
     busyRef.current = true;
     setBusy(true);
     try {
+      // A live turn still owns its session's tools and transcript, so the host
+      // refuses the bulk delete until every attached session is idle. Stopping
+      // the listed sessions is the step the confirm button names; a turn that
+      // starts after this loop still makes the host refuse with CONFLICT below,
+      // which is why the refusal path stays reachable.
+      for (const sessionId of runningSessionIds) {
+        await abortSession(sessionId);
+      }
       await deleteProject(project.path);
       await onDeleted();
     } catch (error) {
       // The host refuses the delete while a task of this project is running;
-      // show the same localized explanation the menu guard uses.
+      // show the same localized explanation the menu guard used to show.
       if ((error as { errorCode?: unknown } | null)?.errorCode === ErrorCodes.CONFLICT) {
         onError(new Error(t("project.deleteRunningBlocked")));
         return;
@@ -98,7 +118,9 @@ export function ProjectDeleteDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="project-delete-dialog-title"
-        aria-describedby="project-delete-dialog-description project-delete-dialog-sessions project-delete-dialog-folder-kept"
+        aria-describedby={`project-delete-dialog-description project-delete-dialog-sessions project-delete-dialog-folder-kept${
+          runningCount > 0 ? " project-delete-dialog-running" : ""
+        }`}
         tabIndex={-1}
         onClick={(event) => event.stopPropagation()}
       >
@@ -129,6 +151,12 @@ export function ProjectDeleteDialog({
             <IconTrash size={14} aria-hidden />
             <span>{t("project.deleteSessions", { count: project.sessionCount })}</span>
           </p>
+          {runningCount > 0 ? (
+            <p id="project-delete-dialog-running" className="project-delete-dialog-running">
+              <IconStop size={14} aria-hidden />
+              <span>{t("project.deleteRunning", { count: runningCount })}</span>
+            </p>
+          ) : null}
           <p id="project-delete-dialog-folder-kept" className="project-memory-dialog-hint">
             {t("project.deleteFolderKept")}
           </p>
@@ -144,7 +172,11 @@ export function ProjectDeleteDialog({
             disabled={busy}
             onClick={() => void confirm()}
           >
-            {busy ? t("project.deleting") : t("project.deleteConfirm")}
+            {busy
+              ? t("project.deleting")
+              : runningCount > 0
+                ? t("project.deleteRunningConfirm")
+                : t("project.deleteConfirm")}
           </Button>
         </div>
       </div>

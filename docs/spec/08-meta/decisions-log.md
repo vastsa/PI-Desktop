@@ -5350,3 +5350,31 @@ its menu instead of the conversation.
   dropped. See ADR 0265, `03-runtime/01-ipc-protocol.md` (§5.6),
   `03-runtime/04-data-storage.md`, `04-ux/08-component-spec.md` (§11), and
   E2E-QUEUE-promote-orders-delivery-by-click.
+
+## 2026-09-16 — The delete dialog, not the menu, owns the running-task refusal (#360, D431)
+
+- Amends the renderer half of D421. The sidebar menu and the Projects index menu
+  refused Delete project with a transient `project.deleteRunningBlocked` warning
+  whenever any of the project's sessions was running, and returned before
+  `ProjectDeleteDialog` was ever mounted. The refusal vanished with the toast
+  and left no path forward, so a project with one live task could not be deleted
+  at all — which is how #360 ("项目管理中无法真正删除项目") reads.
+- Both menus now always open the dialog. Each surface passes the project's live
+  running session ids (`runningSessions[session.id]`, over the rows it already
+  matches: `entry.sessions` in the sidebar, `sessionMatchesIndexProject` in the
+  index), and the dialog derives its copy from that prop on every render, so a
+  turn that starts or finishes while the dialog is open is reflected before the
+  user confirms.
+- The dialog adds a warning line naming `{{count}}` running sessions and swaps
+  its confirm label to `project.deleteRunningConfirm` ("Stop tasks and delete").
+  Confirming aborts exactly those sessions and only then calls `deleteProject`,
+  so removing a running turn stays a second, explicit confirmation of a stated
+  consequence. Cancelling removes nothing.
+- The host guard is unchanged: `projects.remove` still refuses with 1008 /
+  `CONFLICT` while an attached session has a running turn, and the dialog still
+  maps that refusal to `project.deleteRunningBlocked`. A turn that starts after
+  the abort loop is what that fallback covers.
+- Renderer only: no protocol, storage, host, permission, or migration change,
+  and no new default. `project.deleteRunningBlocked` keeps its meaning, copy,
+  and every translation. See ADR 0251, D421, and
+  E2E-PROJECT-delete-running-sessions-are-named-and-stopped.

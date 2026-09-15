@@ -1976,14 +1976,9 @@ export function Sidebar({
               className="danger"
               data-action="delete-project"
               onClick={() => {
+                // Never refuse silently: the dialog names the running sessions
+                // and asks for an explicit confirmation before it stops them.
                 closeMenus(false);
-                const runningCount = entry.sessions.filter(
-                  (session) => runningSessions[session.id] === true,
-                ).length;
-                if (runningCount > 0) {
-                  showToast(t("project.deleteRunningBlocked"), { variant: "warning" });
-                  return;
-                }
                 setDeleteProjectFor(entry);
               }}
             >
@@ -2290,6 +2285,9 @@ export function Sidebar({
             path: deleteProjectFor.path,
             sessionCount: deleteProjectFor.sessions.length,
           }}
+          runningSessionIds={deleteProjectFor.sessions
+            .filter((session) => runningSessions[session.id] === true)
+            .map((session) => session.id)}
           onClose={() => setDeleteProjectFor(null)}
           onDeleted={() => {
             setDeleteProjectFor(null);

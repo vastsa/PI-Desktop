@@ -4185,3 +4185,11 @@ the retained upstream work-panel lifecycle. See
 - 被提升的行在 Host 投递之前保持锁定：上移/下移、编辑与删除均被禁用，“立即发送”显示为已决定。
 - 优先区块以**相邻的用户消息**投递：第一个已优先条目在边界处启动回合，其余条目通过引导通道注入同一回合，因此整块只被回复一次，而不是每行各回一次。被注入条目自己的回合被标记为已取消；运行时拒绝接收的条目仍留在队列中，在下一个边界作为自己的回合启动。
 - 已结算的回合对队列具有权威性：终态事件可能被丢弃（Main 不会转发点名它已不再拥有的回合的终态事件），也可能根本没发出，而留在 Host 中处于活动状态的回合会永久占住该会话的队列——“点立即发送再暂停”导致的卡住正源于此。现在结算会在模块内关闭该回合，且在 drain 进行中到达的请求会被重试而不是丢弃。见 ADR 0265、`03-runtime/01-ipc-protocol.md`（§5.6）、`03-runtime/04-data-storage.md`、`04-ux/08-component-spec.md`（§11）与 E2E-QUEUE-promote-orders-delivery-by-click。
+
+## 2026-09-16 —— 运行中任务的拒绝归属删除对话框，而不是菜单（#360，D431）
+
+- 修订 D421 的渲染层一半。侧边栏菜单与项目索引菜单一旦发现该项目有任何会话在运行，就用一条转瞬即逝的 `project.deleteRunningBlocked` 警告拒绝「删除项目」，并在 `ProjectDeleteDialog` 挂载之前就返回。这条拒绝随 toast 一起消失，没有留下任何可继续的路径，于是带有一个在跑任务的项目根本无法删除 —— 这正是 #360（「项目管理中无法真正删除项目」）所描述的体感。
+- 现在两个菜单都始终打开该对话框。每个入口都会传入该项目当前在运行的会话 id（`runningSessions[session.id]`，作用于它本来就已匹配的行：侧边栏的 `entry.sessions`、索引的 `sessionMatchesIndexProject`），对话框在每次渲染时从该 prop 推导文案，因此对话框打开期间新开始或已结束的回合都会在用户确认之前被反映出来。
+- 对话框新增一行警告，点名有 `{{count}}` 个会话正在运行，并把确认按钮文案换成 `project.deleteRunningConfirm`（「停止任务并删除」）。确认会精确中止这些会话，然后才调用 `deleteProject`，所以删除一个正在运行的回合仍然是针对已陈述后果的第二次显式确认。取消不删除任何东西。
+- 宿主侧的守卫未改动：只要仍有关联会话存在运行中的回合，`projects.remove` 依旧以 1008 / `CONFLICT` 拒绝，对话框也依旧把该拒绝映射为 `project.deleteRunningBlocked`。中止循环之后才开始的回合，正是这条兜底覆盖的情况。
+- 仅渲染层：无协议、存储、宿主、权限或迁移改动，也没有新增默认值。`project.deleteRunningBlocked` 的含义、文案与全部翻译保持不变。见 ADR 0251、D421 与 E2E-PROJECT-delete-running-sessions-are-named-and-stopped。
