@@ -344,6 +344,8 @@ export const fr = {
     "usageContextAriaRemaining": "restant",
     "usageContextAriaUsed": "utilisé",
     "usageTurnTotal": "Ce tour",
+    firstOutputLatency: "Première sortie {{seconds}}s",
+    firstOutputHint: "Temps entre la requête au modèle et le premier texte ou raisonnement, réseau et nouvelles tentatives inclus.",
     liveWaiting: "En attente de sortie",
     liveGenerating: "Génération",
     liveToolRunning: "Exécution des outils",

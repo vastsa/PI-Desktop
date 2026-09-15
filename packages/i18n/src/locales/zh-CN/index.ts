@@ -346,6 +346,8 @@ export const zhCN = {
     usageContextAriaRemaining: "剩余",
     usageContextAriaUsed: "已用",
     usageTurnTotal: "本轮合计",
+    firstOutputLatency: "首个输出 {{seconds}}s",
+    firstOutputHint: "从开始调用模型到收到第一段正文或思考内容的耗时，包含网络等待和请求重试。",
     liveWaiting: "等待输出",
     liveGenerating: "生成中",
     liveToolRunning: "执行工具中",

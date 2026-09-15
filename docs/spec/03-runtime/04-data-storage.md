@@ -1451,3 +1451,13 @@ the sidecar.
 The first slice has no projection cache or async scan bound; every list still
 reads/parses complete files. Caching by canonical path/file identity/size/mtime
 and bounded asynchronous scanning remain deferred performance work.
+
+
+### First-output latency
+
+`UiMessage.timeToFirstTokenMs` is optional, runtime-measured milliseconds from
+logical model request start to first visible text/thinking output. It survives
+stream coalescing and existing Rust message metadata storage; old rows omit it.
+The latest response's meta row shows seconds to one decimal place. It includes
+transport retries and waiting, excludes preceding tool time, and is not inferred
+from renderer timing. See ADR `first-output-latency.md`.

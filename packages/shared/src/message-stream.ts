@@ -38,6 +38,8 @@ export function streamingMessageIdentity(message: UiMessage): UiMessage {
     content: "",
     createdAt: message.createdAt,
     status: message.status,
+    ...(message.timeToFirstTokenMs !== undefined
+      ? { timeToFirstTokenMs: message.timeToFirstTokenMs } : {}),
     ...(message.modelId ? { modelId: message.modelId } : {}),
     ...(message.providerId ? { providerId: message.providerId } : {}),
     ...(message.parentToolCallId
@@ -166,6 +168,8 @@ export function applyMessageUpdate(
     status: event.message.status ?? seed.status,
     content,
     ...(thinking ? { thinking } : { thinking: undefined }),
+    ...(event.message.timeToFirstTokenMs !== undefined
+      ? { timeToFirstTokenMs: event.message.timeToFirstTokenMs } : {}),
     ...(event.message.modelId ? { modelId: event.message.modelId } : {}),
     ...(event.message.providerId ? { providerId: event.message.providerId } : {}),
     ...(event.message.parentToolCallId

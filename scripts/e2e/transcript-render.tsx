@@ -4,7 +4,7 @@ import { createInstance } from "i18next";
 import { I18nextProvider } from "react-i18next";
 import { en } from "@pi-desktop/i18n";
 import type { UiMessage } from "@pi-desktop/shared";
-import { LiveMessageMeta } from "../../apps/desktop/src/features/chat/transcript/shared";
+import { MessageMeta, LiveMessageMeta } from "../../apps/desktop/src/features/chat/transcript/shared";
 import { AssistantTurn } from "../../apps/desktop/src/features/chat/transcript/AssistantTurn";
 import { buildTranscriptEntries } from "../../apps/desktop/src/lib/assistant-turns";
 
@@ -250,6 +250,17 @@ globalThis.transcriptRenderProbe = async () => {
     assert(container.querySelector('[data-generation-phase="tool"]'), "tool lifecycle did not reach live meta row");
 
 
+    flushSync(() => root.render(<I18nextProvider i18n={i18n}><LiveMessageMeta
+      message={message("ttft", "assistant", "answer", { status: "streaming", timeToFirstTokenMs: 1250 })}
+    /></I18nextProvider>));
+    assert(container.querySelector(".first-output-latency")?.textContent === "First output 1.3s", "live TTFT format missing");
+    flushSync(() => root.render(<I18nextProvider i18n={i18n}><MessageMeta
+      modelId="fixture" timeToFirstTokenMs={1250}
+    /></I18nextProvider>));
+    assert(container.querySelector(".first-output-latency")?.textContent === "First output 1.3s", "completed TTFT missing");
+    flushSync(() => root.render(<I18nextProvider i18n={i18n}><MessageMeta modelId="legacy" /></I18nextProvider>));
+    assert(!container.querySelector(".first-output-latency"), "legacy message invented a TTFT");
+
     return {
       ok: true,
       groups,
@@ -259,6 +270,7 @@ globalThis.transcriptRenderProbe = async () => {
       taskLifecycleUpdated: true,
       taskTimingUpdated: true,
       liveThroughputPhases: true,
+      firstOutputLatency: true,
       textUpdateDurationMs,
     };
   } finally {

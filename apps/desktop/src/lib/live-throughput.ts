@@ -133,7 +133,7 @@ export function retainLiveRate(
 }
 
 export type GenerationPhase = "waiting" | "thinking" | "generating" | "tool";
-export type ThroughputMessage = Pick<UiMessage, "id" | "content" | "thinking" | "status">;
+export type ThroughputMessage = Pick<UiMessage, "id" | "content" | "thinking" | "status" | "timeToFirstTokenMs">;
 
 export function generationPhase(
   message: ThroughputMessage | undefined,

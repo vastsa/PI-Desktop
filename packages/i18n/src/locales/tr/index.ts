@@ -353,6 +353,8 @@ export const tr = {
     usageContextAriaRemaining: "kaldı",
     usageContextAriaUsed: "kullanıldı",
     usageTurnTotal: "Bu tur",
+    firstOutputLatency: "İlk çıktı {{seconds}}s",
+    firstOutputHint: "Model isteğinin başlangıcından ilk metin veya düşünce çıktısına kadar geçen süre; ağ beklemesi ve istek tekrarları dahildir.",
     liveWaiting: "Çıktı bekleniyor",
     liveGenerating: "Üretiliyor",
     liveToolRunning: "Araçlar çalışıyor",

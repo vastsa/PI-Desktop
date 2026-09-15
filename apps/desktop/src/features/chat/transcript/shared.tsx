@@ -1,3 +1,4 @@
+import { FirstOutputLatency } from "./FirstOutputLatency";
 import {
   memo,
   useCallback,
@@ -104,11 +105,13 @@ export function MessageMeta({
   usage,
   responseDurationMs,
   responseOutputTokens,
+  timeToFirstTokenMs,
 }: {
   modelId?: string;
   usage?: MessageUsage;
   responseDurationMs?: number;
   responseOutputTokens?: number;
+  timeToFirstTokenMs?: number;
 }) {
   const { t } = useTranslation();
   const throughput = calculateTokenRate(
@@ -116,7 +119,7 @@ export function MessageMeta({
     responseDurationMs,
   );
   const showThroughput = !usage && throughput !== undefined;
-  if (!modelId && !showThroughput) {
+  if (!modelId && !showThroughput && timeToFirstTokenMs === undefined) {
     return null;
   }
   return (
@@ -126,6 +129,7 @@ export function MessageMeta({
           {modelId}
         </span>
       ) : null}
+      <FirstOutputLatency milliseconds={timeToFirstTokenMs} />
       {showThroughput ? (
         <span className="message-meta-chip throughput">
           {t("chat.usageThroughputEstimated", {
@@ -175,6 +179,7 @@ export function LiveMessageMeta({
           {modelId}
         </span>
       ) : null}
+      <FirstOutputLatency milliseconds={message?.timeToFirstTokenMs} />
       <span className="message-meta-chip generation-phase" data-generation-phase={phase}>
         {phaseLabel}
       </span>

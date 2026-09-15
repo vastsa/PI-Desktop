@@ -346,6 +346,8 @@ export const zhTW = {
     usageContextAriaRemaining: "剩餘",
     usageContextAriaUsed: "已用",
     usageTurnTotal: "本輪合計",
+    firstOutputLatency: "首個輸出 {{seconds}}s",
+    firstOutputHint: "從開始呼叫模型到收到第一段正文或思考內容的耗時，包含網路等待和請求重試。",
     liveWaiting: "等待輸出",
     liveGenerating: "生成中",
     liveToolRunning: "執行工具中",

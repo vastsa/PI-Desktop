@@ -288,3 +288,5 @@ Each ADR includes:
 | 0259 | [Plugin-declared providers are Host-owned rows](0259-plugin-declared-providers.md) | Accepted for implementation (D427) |
 
 | 0258 | [Live turn throughput is a renderer-side windowed estimate](0258-live-turn-throughput-estimate.md) | Accepted (amends 0073; issue #93) |
+
+- [Runtime-owned first-output latency](first-output-latency.md) (Accepted; additive message metadata).

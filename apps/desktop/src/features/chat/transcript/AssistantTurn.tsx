@@ -345,6 +345,7 @@ export const AssistantTurn = memo(function AssistantTurn({
             usage={usage}
             responseDurationMs={responseDurationMs}
             responseOutputTokens={responseOutputTokens}
+            timeToFirstTokenMs={latestGenerationMessage(entry)?.timeToFirstTokenMs}
           />
         ) : null}
         {isActive ? (

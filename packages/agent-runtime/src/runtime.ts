@@ -1,3 +1,4 @@
+import { FirstOutputTiming, completedResponseTiming } from "./response-timing.js";
 import { randomUUID } from "node:crypto";
 import {
   settledDelegationMessage,
@@ -1453,6 +1454,7 @@ export class DesktopAgentRuntime {
    * which is the correct anchor: the request goes out once all have resolved. */
   private requestStartedAt?: number;
   private streamStartedAt?: number;
+  private readonly firstOutputTiming = new FirstOutputTiming();
   private agentActivity?: AgentActivity;
   /** Targets of the in-flight parent wait; live snapshots refresh this set. */
   private delegationWaitTargets?: DelegationRecord[];
@@ -1649,7 +1651,7 @@ Delegation rules:
     this.baseSystemPrompt = opts.systemPrompt ?? defaultSystemPrompt;
     this.agent = new Agent({
       streamFn: (m, context, options) => {
-        this.setAgentActivity({ phase: "waiting-model", since: Date.now() });
+        this.setAgentActivity({ phase: "waiting-model", since: this.firstOutputTiming.start() });
         this.providerResponseStatus = undefined;
         this.providerRetryHeaders = undefined;
         const requestOptions: SimpleStreamOptions = withProviderHeaders(
@@ -6063,7 +6065,7 @@ Delegation rules:
               : this.progressTurnRerunInProgress
                 ? retryingAssistant?.content ?? ""
                 : content.text;
-          this.currentAssistant = {
+          this.currentAssistant = this.firstOutputTiming.observe({
             id: retryingAssistant?.id ?? randomUUID(),
             role: "assistant",
             content: initialText,
@@ -6074,7 +6076,7 @@ Delegation rules:
             status: "streaming",
             modelId: this.provider.modelId,
             providerId: this.provider.id,
-          };
+          }, Boolean(content.text || content.thinking));
           if (retryingAssistant) {
             // Keep one visible assistant bubble across the bounded retry. The
             // failed partial response is replaced instead of leaving a
@@ -6108,7 +6110,7 @@ Delegation rules:
           const thinkingDelta = content.hasThinking
             ? cumulativeDelta(previousThinking, content.thinking)
             : { delta: "", reset: false };
-          this.currentAssistant = {
+          this.currentAssistant = this.firstOutputTiming.observe({
             ...this.currentAssistant,
             content: nextText,
             ...(nextThinking
@@ -6117,7 +6119,7 @@ Delegation rules:
                 ? { thinking: undefined }
                 : {}),
             status: "streaming",
-          };
+          }, Boolean(textDelta.delta || thinkingDelta.delta));
           if (
             textDelta.delta ||
             thinkingDelta.delta ||
@@ -6205,15 +6207,9 @@ Delegation rules:
           }
           const usage = usageFromPi((event.message as any).usage as Usage | undefined);
           const endedAt = Date.now();
-          const providerWaitMs =
-            this.requestStartedAt !== undefined &&
-            this.streamStartedAt !== undefined
-              ? this.streamStartedAt - this.requestStartedAt
-              : undefined;
-          const streamMs =
-            this.streamStartedAt !== undefined
-              ? Math.max(0, endedAt - this.streamStartedAt)
-              : undefined;
+          const { providerWaitMs, streamMs } = completedResponseTiming(
+            this.requestStartedAt, this.streamStartedAt, endedAt,
+          );
           if (classifiedError) {
             classifiedError = this.providerErrorWithDiagnostics(
               classifiedError,
@@ -6343,7 +6339,7 @@ Delegation rules:
                   thinking: nextThinking,
                 })
               : undefined;
-          this.currentAssistant = {
+          this.currentAssistant = this.firstOutputTiming.observe({
             ...this.currentAssistant,
             content: nextText,
             ...(nextThinking
@@ -6366,7 +6362,7 @@ Delegation rules:
             ...(classifiedError
               ? { error: classifiedError, isError: true }
               : {}),
-          };
+          }, Boolean(content.text || content.thinking));
           this.emit({ type: "message_end", message: this.currentAssistant });
           this.activeProviderRetryAttempt = 0;
           this.streamStartedAt = undefined;

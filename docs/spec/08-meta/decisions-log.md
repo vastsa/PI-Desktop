@@ -5295,3 +5295,8 @@ ADR 0258 now specifies explicit generation phases, historical-rate labels,
 time-based smoothing, and per-message sampling baselines. All eight locales
 carry the new labels. E2E-CHAT-live-generation-throughput covers the rendered
 phase transitions; no IPC, persistence, or plugin contract changes.
+
+### Runtime-owned first-output latency
+
+ADR `first-output-latency.md` adds optional per-response timing, measured before
+IPC and retained in existing message metadata. TPS semantics are unchanged.

@@ -2550,3 +2550,13 @@ This estimate does not claim provider TTFT or measured inference speed.
 
 Live and retained TPS values are rounded to whole tokens/s for display; the
 sampling and smoothing calculations retain full precision.
+
+
+### First-output latency
+
+`UiMessage.timeToFirstTokenMs` is optional, runtime-measured milliseconds from
+logical model request start to first visible text/thinking output. It survives
+stream coalescing and existing Rust message metadata storage; old rows omit it.
+The latest response's meta row shows seconds to one decimal place. It includes
+transport retries and waiting, excludes preceding tool time, and is not inferred
+from renderer timing. See ADR `first-output-latency.md`.

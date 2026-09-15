@@ -7287,3 +7287,12 @@ E2E-CHAT-live-generation-throughput additionally checks waiting, thinking,
 generating, and tool labels; historical rates marked as last; and per-message
 baseline reset. `pnpm test:e2e:transcript` exercises the real React components
 and timer in Chromium; provider/native journey acceptance remains separate.
+
+
+### E2E-CHAT-first-output-latency
+
+The runtime records first visible text/thinking latency per logical request.
+Verify the live and completed chip, new-request reset, reload persistence,
+and no invented timing for legacy or tool-only messages. The deterministic
+renderer probe is `test:e2e:transcript`; runtime and Rust tests cover timing and
+metadata round trips. See ADR `first-output-latency.md`.

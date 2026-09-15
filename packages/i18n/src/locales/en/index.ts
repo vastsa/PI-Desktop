@@ -351,6 +351,8 @@ export const en = {
     usageContextAriaRemaining: "remaining",
     usageContextAriaUsed: "used",
     usageTurnTotal: "This turn",
+    firstOutputLatency: "First output {{seconds}}s",
+    firstOutputHint: "Time from starting the model request to receiving its first text or thinking output, including network and request retries.",
     liveWaiting: "Waiting for output",
     liveGenerating: "Generating",
     liveToolRunning: "Running tools",

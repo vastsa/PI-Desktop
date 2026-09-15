@@ -2059,3 +2059,13 @@ submissions remain distinct; SDK entry IDs are never rewritten. Desktop event
 semantics are unchanged. Native terminal completion follows SDK settlement,
 not intermediate retry/compaction loop ends. Native abort never invokes
 `replaceSessionMessages` and reloads durable detail after abort returns.
+
+
+### First-output latency
+
+`UiMessage.timeToFirstTokenMs` is optional, runtime-measured milliseconds from
+logical model request start to first visible text/thinking output. It survives
+stream coalescing and existing Rust message metadata storage; old rows omit it.
+The latest response's meta row shows seconds to one decimal place. It includes
+transport retries and waiting, excludes preceding tool time, and is not inferred
+from renderer timing. See ADR `first-output-latency.md`.

@@ -344,6 +344,8 @@ export const de = {
     "usageContextAriaRemaining": "verbleibend",
     "usageContextAriaUsed": "verwendet",
     "usageTurnTotal": "Diese Runde",
+    firstOutputLatency: "Erste Ausgabe {{seconds}}s",
+    firstOutputHint: "Zeit vom Modellaufruf bis zur ersten Text- oder Denkausgabe, einschließlich Netzwerk und Anfragewiederholungen.",
     liveWaiting: "Warten auf Ausgabe",
     liveGenerating: "Generierung",
     liveToolRunning: "Werkzeuge werden ausgeführt",
