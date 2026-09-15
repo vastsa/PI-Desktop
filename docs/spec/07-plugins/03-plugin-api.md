@@ -246,6 +246,9 @@ picked through `requestDirectory()` when the mode declares
 anything outside it prompts the user, and the credential deny-list overrides both
 (see [04-plugin-security.md](04-plugin-security.md) §6). `remove` is
 non-recursive and moves the path to the OS trash.
+Under the `workspace` root, paths are relative to the project of the tool session
+that invoked the call, falling back to the visible workspace for a panel call,
+which has no tool session (ADR 0265).
 
 `list` returns one directory's entries, name-sorted, so a plugin can walk a tree
 lazily instead of pulling a whole-repo `glob` and reassembling it. It applies the
