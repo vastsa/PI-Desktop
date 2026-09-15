@@ -2923,7 +2923,7 @@
   margin: 0;
   overflow: auto;
   border-radius: var(--radius-md);
-  background: var(--ds-tile);
+  background: var(--ds-tool-row-bg);
   padding: 10px 12px;
   color: var(--ds-text-secondary);
   font-family: var(--font-mono);

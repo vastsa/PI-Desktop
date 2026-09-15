@@ -1742,12 +1742,8 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: color-mix(in oklab, var(--ds-bg-primary) 78%, transparent);
+  background: var(--ds-modal-veil);
   animation: plugins-fade-in var(--motion-duration-fast) var(--motion-ease-out) both;
-}
-
-:root[data-theme="light"] .plugins-modal-backdrop {
-  background: color-mix(in oklab, #1a1c1f 32%, transparent);
 }
 
 .plugins-modal {

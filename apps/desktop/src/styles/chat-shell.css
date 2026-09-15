@@ -627,10 +627,6 @@
   text-align: center;
 }
 
-:root[data-theme="light"] .empty-hero h1 {
-  color: #1a1c1f;
-}
-
 .empty-hero .home-project-switcher {
   display: inline-block;
   max-width: 100%;

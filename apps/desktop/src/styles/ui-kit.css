@@ -137,14 +137,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: color-mix(in oklab, #000 45%, transparent);
+  background: var(--ds-scrim);
   padding: 24px;
   animation: overlay-in var(--motion-duration-normal) var(--motion-ease-out) both;
-}
-
-:root[data-theme="light"] .overlay {
-  /* Lighter scrim keeps elevated white dialogs readable without a heavy veil. */
-  background: color-mix(in oklab, #1a1c1f 28%, transparent);
 }
 
 .dialog {

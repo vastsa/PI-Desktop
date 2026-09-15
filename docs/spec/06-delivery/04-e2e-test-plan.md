@@ -4827,7 +4827,9 @@ identify the platform validation still needed.
   4. Hover file-tree rows or diff headers; focus the browser URL field.
   5. Open a confirmation/provider dialog and inspect the scrim.
   6. In both light and dark palettes, inspect the settings rail, search, selected
-     item, on-state knob, composer shell, and plugin/capability searches. Apply
+     item, on-state knob, composer shell, plugin/capability searches, the code
+     card's head band, the Mermaid canvas, tool output, the composer placeholder
+     and disabled send chip, and the dialog scrim and permission backdrop. Apply
      custom surface variables, keyboard-focus both searches, then remove the
      custom theme.
 - **Expected**:
@@ -4836,9 +4838,14 @@ identify the platform validation still needed.
   - Toggle on-state keeps a white knob on the near-black track.
   - Hover fills on file-tree/diff/resize ease with shared motion tokens.
   - Light dialog scrim is softer than the dark 45% veil (~28% ink).
-  - Custom variables repaint the corresponding fills and search focus states;
-    removing them restores the built-in 8-bit RGBA paint and existing shadows/
-    focus rings. This batch does not migrate prose or scrims or change plugin APIs.
+  - Tool output keeps its cascade: light paints the same lighter tile over error
+    output and over plain tool blocks, while dark shows the error tint and leaves
+    plain blocks transparent.
+  - Custom variables repaint the corresponding fills, keycap ink, and search
+    focus states; removing them restores the built-in 8-bit RGBA paint and the
+    existing shadows/focus rings. Prose ink mixes follow `--ds-text-primary`,
+    and the `one-dark-pro` / `one-light` Shiki plate and its ink stay with the
+    Shiki theme by design. This batch does not change plugin APIs.
 - **Specs linked**: `04-ux/07-ui-design-system.md`, `04-ux/08-component-spec.md`
 - **Acceptance**: D148
 - **Milestone**: M5

@@ -15,9 +15,9 @@
 
 :root[data-theme="dark"] .composer-input::placeholder,
 :root[data-theme="dark"] .composer-placeholder {
-  /* Codex dark placeholder ~42% white */
-  color: color-mix(in oklab, var(--gray-0) 42%, transparent);
-  -webkit-text-fill-color: color-mix(in oklab, var(--gray-0) 42%, transparent);
+  /* Codex dark placeholder ink (--ds-placeholder-ink). */
+  color: var(--ds-placeholder-ink);
+  -webkit-text-fill-color: var(--ds-placeholder-ink);
   opacity: 1;
 }
 

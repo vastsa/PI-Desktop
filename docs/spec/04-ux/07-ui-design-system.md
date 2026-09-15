@@ -572,6 +572,13 @@ floating layers where an edge is an elevation cue rather than a partition.
 | Settings search | `--ds-settings-field-bg` (light `#ffffff`, dark `#212121`) | Search pill on the settings rail |
 | Active settings item | `--ds-settings-nav-active` (light 12% `#1a1c1f` mixed over white; dark 10% `--gray-0` over transparent) | Selected navigation pill |
 | Inset search | `--ds-field-inset-bg`, `--ds-field-inset-focus-bg` (light `#f3f3f3` / white; dark 5% / 7% primary-text mix over transparent) | Plugin search and Agent capability search, including focus |
+| Prose keycap / thinking code | `--ds-prose-kbd-fg` (light `#303030`, dark `--ds-text-secondary`), `--ds-thinking-code-bg` (light `#f0f0f0`, dark 4.5% text mix) | Keycap ink and the thinking-prose code chip |
+| Code-card chrome | `--ds-code-head-bg`, `--ds-code-hover-bg` (light 3.5% / 6% `#1a1c1f` over the plate; dark 4% / 8% white) | The `.code-block` head band and its hover fills. The Shiki syntax plate and its ink are deliberately not tokens — see below |
+| Mermaid canvas | `--ds-mermaid-canvas` (light `#ffffff`, dark 94% `--ds-bg-primary` + 6% text mix) | The diagram body inside `.mermaid-block` |
+| Scrim / veil | `--ds-scrim` (dark ~45% black, light ~28% `#1a1c1f`, D148), `--ds-modal-veil` (dark 78% `--ds-bg-primary`, light ~32% `#1a1c1f`) | The dialog scrim and the plugin permission backdrop |
+| Tool output | `--ds-tool-row-bg` (light 2% `#1a1c1f`, dark `--ds-tile`) | Tool result and error output blocks in the transcript |
+| Disabled send chip | `--ds-send-disabled-bg`, `--ds-send-disabled-fg` (light `#8e8e90` / `#ffffff`; dark 18% text mix / 70% `--gray-900`) | The composer's disabled send button |
+| Composer placeholder | `--ds-placeholder-ink` (light `#4a4c4f`, dark 42% white) | Input and placeholder ink in both composer states |
 
 The dark composer shell consumes `--ds-bg-elevated-primary` directly; light
 continues to use `--ds-bg-composer`. Switch on-state knobs consume
@@ -580,17 +587,58 @@ focus rings, and shadows while allowing a contributed stylesheet to override
 the variables. Theme-specific component rules may retain their existing shadow
 or layout differences, but must not replace a token-driven fill with a literal.
 
-Every surface colour the shell paints must come from a token. A
-`:root[data-theme="light"]` override that writes a literal raises specificity
-above the base token rule and does not read a variable, so it silently pins that
-surface out of every theme's reach — see D419.
+Prose and transcript inks ride `--ds-text-primary`: the light overrides that
+used to hardcode `#1a1c1f` now mix the token, so the whole light ink tier moves
+with the theme (headings 5/6 at 62%, list markers 40%, quote ink 72%, link
+underlines 30% and 80% on hover, the inline-code chip at 6% with full-strength
+ink, thinking prose 58% and its code 68%).
 
-`pnpm lint` also guards `background` / `background-color` on the migrated
-settings rail, search, navigation item, switch thumb, capability search, plugin
-search, and composer-shell families against bare hex, CSS color functions,
-`white`, and `black`. The guard is intentionally scoped; it does not establish
-full color-token coverage of prose, scrims, other chrome, or plugin CSS. Real
-rendered theme checks remain necessary to verify cascade and focus behavior.
+**Convention:** a `:root[data-theme="…"]` rule must not write a literal colour.
+Such a rule out-specifies the base token rule *and* never reads a variable, so it
+silently pins that surface out of every theme's reach — see D419. A
+theme-specific value belongs in the token blocks of `styles/tokens.css`, where
+both palettes define the same `--ds-*` name and the base rule reads it once.
+
+`pnpm lint` runs `scripts/style-surface-tokens.mjs`, which enforces that
+convention mechanically. Rule 1: inside a `:root[data-theme]` rule every colour
+declaration — `color`, `background`/`-color`/`-image`, `text-decoration-color`,
+`-webkit-text-fill-color`, `border` and its colour longhands, `outline`,
+`fill`, `stroke`, `accent-color`, `caret-color`, and `box-shadow` — must resolve
+through a custom property; the token blocks themselves are the place for
+literals, and a component-local custom property holding a literal colour is a
+violation too, because it shadows the root token. Rule 2: the base rules of the
+migrated chrome families — settings rail, search, navigation item, switch thumb,
+capability search, plugin search, composer shell, composer toolbar/chip/
+placeholder/input, plus prose, code-card (`code-block`, head band, language
+rail), Mermaid (block, body, head, title, error, source), scrims, tool rows,
+send button and empty hero — must not paint a literal either.
+
+Its exemptions are enumerated with reasons rather than left silent:
+
+- the `one-dark-pro` / `one-light` Shiki palette (the plate and its ink are
+  authored by the Shiki theme and emitted as inline colours on the highlighted
+  markup, so the pair has to move together — through the Shiki theme, not a CSS
+  token);
+- translucent black- or white-alpha shadow values (`box-shadow`, `text-shadow`,
+  `filter`), which only offset darkness; an opaque shadow colour is still
+  checked;
+- the ⌘K `.search-overlay` veil, which keeps the dark 45% black mix in both
+  palettes and so still departs from D148's lighter light veil. That one is a
+  maintainer decision recorded as a known gap: it is checked by the guard *and*
+  allowed there, so removing the allowance fails `pnpm lint`.
+
+Two boundaries stay open by design. The family rule is a fixed list, not every
+selector in the renderer, so it catches a regression in a migrated surface but
+not a brand-new literal on a selector nobody has reviewed. And the guard is
+static text: it cannot see a cascade conflict between two token-reading rules
+(#339's root cause). Both are why the rendered checks in
+`pnpm test:e2e:theme-surfaces` remain necessary — that probe compares the built
+paint of every migrated surface against values sampled from the pre-change app,
+so a token whose default is not exactly the old literal fails there. Keep the
+light-qualified `.tool-row-content` rule that probe pins: at (0,3,0) it
+out-specifies `.tool-row-content.is-error` and ties with
+`.tool-block.is-plain .tool-row-content`, so dropping it would tint error output
+and give plain tool blocks a fill in light only.
 
 | Context | Treatment |
 |---|---|
