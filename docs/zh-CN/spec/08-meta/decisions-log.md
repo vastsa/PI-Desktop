@@ -4294,11 +4294,12 @@ that amendment are retired by ADR 0268; the upstream work-panel lifecycle stays.
   `closeWindow`（`Mod+W`）的「对称键」，并由 `04-ux/09-interaction-patterns.md` §1.1
   记载 —— 因此 D438 取代 D384 的这一半；同一条决策里的插件 Plan 安全动作选项不受影响。
   编号跳过 D435 与 D437，因为其它在途工作已先占用。
-- 快捷键目录现在只保留 `window` 组里的一个 `toggleWindow`，各平台默认值都是 `Mod+W`。
-  `closeWindow` 与 `summonWindow` 已从 `KEYBOARD_SHORTCUT_IDS` 移除，因此被弃用的
-  `Mod+Shift+W` 不再被任何东西占用：它既不是随应用发布的默认值，也不会注册到
-  `globalShortcut`，既不是设置行，也不是菜单加速键。插件快捷键注册表因此改为拒绝
-  `Alt+Space` 与 `Mod+W`，而被释放出来的 `Mod+Shift+W` 可以交给插件使用。
+- 快捷键目录现在只保留 `window` 组里的一个 `toggleWindow`；`closeWindow` 与
+  `summonWindow` 已从 `KEYBOARD_SHORTCUT_IDS` 移除，因此两个退役组合键都不再被任何
+  东西占用：它们既不是随应用发布的默认值，也不会注册到 `globalShortcut`，既不是设置行，
+  也不是菜单加速键，而被释放出来的 `Mod+Shift+W` 可以重新交给插件使用。D439 后来把
+  开关键自己的默认值从 D438 选的 `Mod+W` 挪开；合并后的 id、切换语义与下面的迁移规则
+  都不受这次改键影响。
 - 按下这个键是一次判定，而不是一次关闭。`windowToggleAction` 对可见且在前台的窗口执行
   `Window.hide()`，其余情况显示并获得焦点（已隐藏、已最小化、被其它应用挡在后面都算
   「不可见」）。`Window.hide()` 就是隐藏的全部路径，所以 Windows/Linux 的关闭行为询问、
@@ -4309,7 +4310,7 @@ that amendment are retired by ADR 0268; the upstream work-panel lifecycle stays.
   `migrateKeybindingOverrides` 在读取时就折叠映射 —— Electron 主进程在注册加速键和构建
   菜单之前，渲染层 store 在任何消费方看到它之前 —— 因此没有任何表面会按退役 id 行事。
   规则有序且幂等：已存在的 `toggleWindow` 覆盖原样胜出；否则第一个带*绑定值*的退役项胜出，
-  `closeWindow` 优先，因为 `Mod+W` 正是开关键保留的那个键；只有在没有绑定值竞争时，
+  `closeWindow` 优先，因为隐藏才是开关键的主要职责；只有在没有绑定值竞争时，
   仅写入 `null` 的退役项才被尊重，所以明确的「未绑定」不会被随应用发布的默认值顶替；
   与自身退役默认值相同的存储值不携带任何意图（设置界面会删除等于发布默认值的覆盖项），
   因此 `Mod+W`/`Mod+Shift+W` 这类值会被丢弃而不是被复活。存储本身不做改写：折叠后的映射
@@ -4330,3 +4331,27 @@ that amendment are retired by ADR 0268; the upstream work-panel lifecycle stays.
 - 主进程新增可加的 `project/cloneCheckout({ url, parentPath })`：它克隆到显式指定的父目录并返回 `{ path, name }`，不更改当前工作空间、也不弹出选择器。`project/clone` 为首页切换器保留原有的原生选择器行为。
 - 项目创建语义不变：两种来源调用同一个项目 slice 助手，`project-group/create` 仍写入唯一的持久记录，检出目录成为同一逻辑项目组的主要根（ADR 0233）。
 - 渲染器加一条窄的主进程能力：协议、schema、host RPC、权限、存储与偏好均无变化。见 ADR 0273、`03-runtime/01-ipc-protocol.md` §9、`04-ux/08-component-spec.md` 与 E2E-258。
+
+## 2026-09-17 —— 窗口开关键避开 macOS 的关闭窗口组合键（#360，D439）
+
+- D438 把两个键合并到了 `Mod+W`，但这个键不能作为*系统级*全局加速键的默认值：
+  macOS 把 `Cmd+W` 用于自己的「关闭窗口」命令，全局占用它等于从所有其它应用程序
+  手里把这个组合键抢走，而不只是关闭本窗口。因此 `Mod+W` 正是开关键唯一不能持有的键。
+- 快捷键目录现在把 `toggleWindow` 发布在 `Alt+Shift+W` 上 —— 不含平台修饰键，因此在
+  macOS、Windows 与 Linux 上是同一个组合键 —— 它与任何发布默认值、保留的编辑组合键
+  以及平台命令都不冲突。合并本身、隐藏/显示语义、以及退役的
+  `closeWindow`/`summonWindow` 覆盖项的折叠规则，完全保持 D438 定义的样子。
+- 在 macOS 上 `Mod+W` 现在也拒绝交给插件（`isReservedKeybinding`），因此即使应用不再
+  使用它，平台仍然独占它自己的这个组合键。
+- 只重复「本版本发布默认值」或「已被取代的默认值」的 `toggleWindow` 存储值不携带用户
+  意图，折叠时会丢弃：曾经持久化过那个短命 `Mod+W` 默认值的配置会迁移到
+  `Alt+Shift+W`，而不是把 macOS 的组合键冻结住；真实改绑（`Ctrl+Alt+T`）与明确的
+  「未绑定」（`null`）原样保留，退役项的自定义值也仍然优先于被丢弃的旧默认值。
+- 编号取 D439，因为 D435 与 D437 已被其它在途工作占用。**注意**：本日志当前有两处
+  `D438` —— 本文件上方的窗口开关键合并决策（#360，重绑前）与紧随其后的 Git 检出决策
+  （ADR 0273）。后者是在开关键 D438 合入之后才追加的，编号需要由其作者改到 D440 或
+  之后的可用号；本条不代为改写他人决策正文。
+- 见 ADR 0211（再次修订）、`04-ux/09-interaction-patterns.md` §1.1 与 §1.4、
+  `04-ux/06-settings-ia.md`（快捷键选项卡）、`07-plugins/03-plugin-api.md`、
+  `07-plugins/04-plugin-security.md`、E2E-072 与
+  `apps/desktop/test/window-toggle-shortcut.test.mjs`。

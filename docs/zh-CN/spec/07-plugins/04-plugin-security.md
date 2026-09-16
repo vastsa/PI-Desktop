@@ -318,7 +318,7 @@ MCP 调用相同的 IPC 校验、生命周期检查、完成事件和审计条�
 Electron 的 `globalShortcut`；插件永远拿不到键盘钩子、`before-input-event`、
 原始输入设备或按键事件流，所以不存在键盘记录器形状的表面，也无法看到用户
 按下的键。插件只能把加速键映射到自己已注册的一条命令；被操作系统保留、被
-PI-Desktop 自己当前占用（默认是 `Alt+Space` 与 `Mod+W`；用户改绑后
+PI-Desktop 自己当前占用（默认是 `Alt+Space` 与 `Alt+Shift+W`；用户改绑后
 即可释放给插件）或已被另一个插件持有的
 加速键会被拒绝，返回 `SHORTCUT_CONFLICT` / `SHORTCUT_UNAVAILABLE` /
 `INVALID_ACCELERATOR` / `LIMIT_EXCEEDED`（每个插件最多 8 条），而不是被抢走。

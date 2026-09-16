@@ -4569,8 +4569,9 @@ D193, and D194.
 
 ## 2026-09-10 — Plan-safe plugin actions and summon-window shortcut (D384)
 
-*(superseded by D438 for the summon-window shortcut; the plan-safe plugin
-action opt-in below stays)*
+*(the summon-window half is superseded by D438, which replaced the pair, and by
+D439, which moved the toggle off the macOS close-window chord; the plan-safe
+plugin-action opt-in below stays)*
 
 - Plan and Goal modes could not invoke plugin tools at all, even for
   read-only actions like fetching a URL through the bundled Browser
@@ -4585,6 +4586,9 @@ action opt-in below stays)*
   declares `["navigate", "snapshot", "screenshot", "console"]`; the
   mutating actions stay Agent-only. The shortcut catalog gains
   `summonWindow` (`Mod+Shift+W`) in the `window` group, paired with
+  `closeWindow` (`Mod+W`), and the desktop main process registers it
+  through `globalShortcut` and the native menu. See ADR 0211 and
+  E2E-PLAN-005.
 
 ## 2026-09-17 — One window toggle replaces the summon/close pair (#360, D438)
 
@@ -4595,13 +4599,13 @@ action opt-in below stays)*
   so D438 supersedes exactly that half of D384; the plan-safe plugin-action
   opt-in from the same decision is untouched. The numbering skips D435 and D437,
   which other in-flight work already claims.
-- The catalog ships one `toggleWindow` id in the `window` group, default
-  `Mod+W` on every platform. `closeWindow` and `summonWindow` leave
-  `KEYBOARD_SHORTCUT_IDS`, so the retired `Mod+Shift+W` chord is spent on
-  nothing: it is not a shipped default, not registered with `globalShortcut`,
-  not a settings row, and not a menu accelerator. The plugin shortcut registry
-  therefore now refuses `Alt+Space` and `Mod+W`, and the freed `Mod+Shift+W`
-  becomes available to plugins.
+- The catalog ships one `toggleWindow` id in the `window` group, and
+  `closeWindow` and `summonWindow` leave `KEYBOARD_SHORTCUT_IDS`, so neither
+  retired chord is spent on anything: neither is a shipped default, registered
+  with `globalShortcut`, a settings row, or a menu accelerator, and the freed
+  `Mod+Shift+W` becomes available to plugins again. D439 later moved the
+  toggle's own default off `Mod+W`, which D438 had chosen; the merged id, the
+  toggle semantics, and the migration below are unchanged by that.
 - Pressing the key is a decision, not a close. `windowToggleAction` hides a
   visible, focused window through `Window.hide()` and otherwise shows and
   focuses it (hidden, minimized, or behind another application all count as
@@ -4618,7 +4622,7 @@ action opt-in below stays)*
   no surface can act on the retired ids. The rules are ordered and idempotent:
   an existing `toggleWindow` override wins unchanged; otherwise the first
   retired entry that carries a *binding* wins, `closeWindow` first because
-  `Mod+W` is the key the toggle keeps; a retired entry that is only `null` is
+  hiding is the toggle's primary job; a retired entry that is only `null` is
   honoured when no binding competes, so an explicit unbind is never replaced by
   a shipped default; and a stored value equal to its own retired default carries
   no intent (the settings UI deletes overrides that match a shipped default), so
@@ -4634,9 +4638,37 @@ action opt-in below stays)*
   `07-plugins/04-plugin-security.md`, `03-runtime/01-ipc-protocol.md`
   (`NATIVE_MENU_ACTIONS`), E2E-072, and
   `apps/desktop/test/window-toggle-shortcut.test.mjs`.
-  `closeWindow` (`Mod+W`), and the desktop main process registers it
-  through `globalShortcut` and the native menu. See ADR 0211 and
-  E2E-PLAN-005.
+
+## 2026-09-17 — The window toggle avoids the macOS close-window chord (#360, D439)
+
+- D438 merged the pair onto `Mod+W`, but that binding cannot be the default of a
+  *process-wide* accelerator: macOS spends `Cmd+W` on its own close-window
+  command, so claiming it globally takes the chord away from every other
+  application instead of only closing this window. `Mod+W` is therefore the one
+  key the toggle must not hold.
+- The catalog now ships `toggleWindow` on `Alt+Shift+W` — no platform modifier,
+  so it is one chord on macOS, Windows, and Linux — which collides with no
+  shipped default, no reserved editing chord, and no platform command. The
+  merge, the hide/show semantics, and the fold of the retired
+  `closeWindow`/`summonWindow` overrides stay exactly as D438 defined them.
+- On macOS `Mod+W` is now also refused to plugins (`isReservedKeybinding`), so
+  the platform keeps the chord it owns even though the app no longer uses it.
+- A stored `toggleWindow` value that only repeats a default this release ships
+  or already superseded carries no user intent, so the fold drops it: a profile
+  that persisted the short-lived `Mod+W` default moves to `Alt+Shift+W` instead
+  of freezing the macOS chord, while a real rebind (`Ctrl+Alt+T`) and an
+  explicit unbind (`null`) survive untouched, and a retired customization still
+  wins over a dropped superseded default.
+- The number is D439 because D435 and D437 were already claimed by other
+  in-flight work. **Note**: this log currently carries two `D438` entries — the
+  window-toggle merge above (#360, the pre-rebind decision) and the Git-checkout
+  decision (ADR 0273) near the end of the file. The latter was appended after the
+  toggle's D438 had merged, so its number needs to move to D440 or the next free
+  id; this entry does not rewrite another decision's text.
+- See ADR 0211 (amended again), `04-ux/09-interaction-patterns.md` §1.1 and
+  §1.4, `04-ux/06-settings-ia.md` (shortcuts tab), `07-plugins/03-plugin-api.md`,
+  `07-plugins/04-plugin-security.md`, E2E-072, and
+  `apps/desktop/test/window-toggle-shortcut.test.mjs`.
 
 ## 2026-09-10 — Remove diagnostic timing log streams (D385)
 

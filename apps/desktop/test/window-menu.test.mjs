@@ -96,7 +96,8 @@ test("macOS application menu routes shell commands and preserves native roles", 
   }
   assert.match(menuSource, /function nativeAction\(/);
   // The File menu's window item is the merged visibility toggle (D438): its
-  // accelerator is the toggle's `Mod+W` and its click is that native action.
+  // accelerator is the toggle's own binding (D438, rebound by D439) and its
+  // click is that native action.
   assert.match(menuSource, /accelerator\("toggleWindow"\)/);
   assert.match(menuSource, /labels\.menu\.toggleWindow/);
   for (const action of [

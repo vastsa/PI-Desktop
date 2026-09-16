@@ -15,7 +15,7 @@ import {
 } from "./keyboard-shortcuts.js";
 
 describe("keyboard shortcut mapping", () => {
-  it("declares one window toggle in the window group with a Mod+W default", () => {
+  it("declares one window toggle in the window group on the Alt+Shift+W default", () => {
     expect(KEYBOARD_SHORTCUT_IDS).toContain("toggleWindow");
     // D438: the summon/close pair is gone from the catalog, so nothing can
     // register the retired `Mod+Shift+W` chord any more.
@@ -26,10 +26,18 @@ describe("keyboard shortcut mapping", () => {
     );
     expect(toggle).toBeDefined();
     expect(toggle!.group).toBe("window");
-    expect(toggle!.defaultBinding).toBe("Mod+W");
-    expect(resolveKeybinding(toggle!, undefined, "darwin")).toBe("Mod+W");
-    expect(resolveKeybinding(toggle!, undefined, "win32")).toBe("Mod+W");
-    expect(resolveKeybinding(toggle!, undefined, "linux")).toBe("Mod+W");
+    expect(toggle!.defaultBinding).toBe("Alt+Shift+W");
+    expect(resolveKeybinding(toggle!, undefined, "darwin")).toBe("Alt+Shift+W");
+    expect(resolveKeybinding(toggle!, undefined, "win32")).toBe("Alt+Shift+W");
+    expect(resolveKeybinding(toggle!, undefined, "linux")).toBe("Alt+Shift+W");
+    // D439: the key is registered process-wide, so it must not be a chord the
+    // platform owns. `Mod+W` closes a window on macOS and the app no longer
+    // spends it anywhere.
+    expect(
+      KEYBOARD_SHORTCUTS.some((shortcut) => shortcut.defaultBinding === "Mod+W"),
+    ).toBe(false);
+    expect(isReservedKeybinding("Mod+W", "darwin")).toBe(true);
+    expect(isReservedKeybinding("Alt+Shift+W", "darwin")).toBe(false);
     // One key, one binding: no shipped default may collide with it.
     for (const shortcut of KEYBOARD_SHORTCUTS) {
       if (shortcut.id === "toggleWindow") continue;
@@ -199,15 +207,16 @@ describe("keyboard shortcut mapping", () => {
   });
 });
 
-describe("retired window keybindings migrate into the toggle (D438)", () => {
-  it("leaves users who never customized a window key on the new default", () => {
+describe("retired window keybindings migrate into the toggle (D438, D439)", () => {
+  const toggle = () => KEYBOARD_SHORTCUTS.find((s) => s.id === "toggleWindow")!;
+
+  it("leaves users who never customized a window key on the shipped default", () => {
     expect(migrateKeybindingOverrides(undefined)).toBeUndefined();
     expect(migrateKeybindingOverrides(null)).toBeUndefined();
     expect(migrateKeybindingOverrides({})).toBeUndefined();
-    const toggle = KEYBOARD_SHORTCUTS.find((s) => s.id === "toggleWindow")!;
     expect(
-      resolveKeybinding(toggle, migrateKeybindingOverrides({}), "darwin"),
-    ).toBe("Mod+W");
+      resolveKeybinding(toggle(), migrateKeybindingOverrides({}), "darwin"),
+    ).toBe("Alt+Shift+W");
   });
 
   it("carries a customized close binding onto the toggle key", () => {
@@ -225,15 +234,15 @@ describe("retired window keybindings migrate into the toggle (D438)", () => {
 
   it("merges a customized summon binding into the toggle", () => {
     expect(
-      migrateKeybindingOverrides({ summonWindow: "Alt+Shift+W" }),
-    ).toEqual({ toggleWindow: "Alt+Shift+W" });
+      migrateKeybindingOverrides({ summonWindow: "Ctrl+Alt+W" }),
+    ).toEqual({ toggleWindow: "Ctrl+Alt+W" });
   });
 
   it("prefers the close entry when both retired keys were customized", () => {
     expect(
       migrateKeybindingOverrides({
         closeWindow: "Mod+Shift+Q",
-        summonWindow: "Alt+Shift+W",
+        summonWindow: "Ctrl+Alt+W",
       }),
     ).toEqual({ toggleWindow: "Mod+Shift+Q" });
   });
@@ -244,8 +253,8 @@ describe("retired window keybindings migrate into the toggle (D438)", () => {
     });
     // A live binding still wins over a retired unbind.
     expect(
-      migrateKeybindingOverrides({ closeWindow: null, summonWindow: "Alt+Shift+W" }),
-    ).toEqual({ toggleWindow: "Alt+Shift+W" });
+      migrateKeybindingOverrides({ closeWindow: null, summonWindow: "Ctrl+Alt+W" }),
+    ).toEqual({ toggleWindow: "Ctrl+Alt+W" });
   });
 
   it("ignores stored values that only repeat a retired default", () => {
@@ -260,6 +269,49 @@ describe("retired window keybindings migrate into the toggle (D438)", () => {
     ).toBeUndefined();
   });
 
+  it("frees a frozen Mod+W toggle so D439's default can apply", () => {
+    // A release before D439 shipped `Mod+W`; the settings UI only stores a
+    // binding a user actually chose, so an equal-to-old-default value carries no
+    // intent and must not pin the toggle to the macOS close-window chord.
+    expect(migrateKeybindingOverrides({ toggleWindow: "Mod+W" })).toBeUndefined();
+    expect(
+      resolveKeybinding(
+        toggle(),
+        migrateKeybindingOverrides({ toggleWindow: "Mod+W" }),
+        "darwin",
+      ),
+    ).toBe("Alt+Shift+W");
+    // A retired customization still wins over the dropped superseded default,
+    // and a real customization is never rewritten.
+    expect(
+      migrateKeybindingOverrides({
+        toggleWindow: "Mod+W",
+        closeWindow: "Mod+Shift+Q",
+      }),
+    ).toEqual({ toggleWindow: "Mod+Shift+Q" });
+    expect(
+      migrateKeybindingOverrides({ toggleWindow: "Ctrl+Alt+T" }),
+    ).toEqual({ toggleWindow: "Ctrl+Alt+T" });
+  });
+
+  it("drops a folded binding that lands on the shipped default", () => {
+    // `Alt+Shift+W` is the current default, so it must not be persisted as an
+    // override either — otherwise a later default change could never reach the
+    // user again.
+    expect(
+      migrateKeybindingOverrides({ toggleWindow: "Alt+Shift+W" }),
+    ).toBeUndefined();
+    // The same value on a *retired* entry is kept as a genuine customization of
+    // that retired key unless it repeats the current default too.
+    expect(
+      migrateKeybindingOverrides({ summonWindow: "Alt+Shift+W" }),
+    ).toBeUndefined();
+    // An explicit unbind is intent and always survives.
+    expect(migrateKeybindingOverrides({ toggleWindow: null })).toEqual({
+      toggleWindow: null,
+    });
+  });
+
   it("is idempotent and never rewrites a later rebind", () => {
     const once = migrateKeybindingOverrides({
       closeWindow: "Mod+Shift+Q",
@@ -268,9 +320,9 @@ describe("retired window keybindings migrate into the toggle (D438)", () => {
     expect(once).toEqual({ toggleWindow: "Mod+Shift+T" });
     expect(migrateKeybindingOverrides(once)).toEqual(once);
     expect(
-      migrateKeybindingOverrides(migrateKeybindingOverrides({
-        summonWindow: "Alt+Shift+W",
-      })),
-    ).toEqual({ toggleWindow: "Alt+Shift+W" });
+      migrateKeybindingOverrides(
+        migrateKeybindingOverrides({ summonWindow: "Ctrl+Alt+W" }),
+      ),
+    ).toEqual({ toggleWindow: "Ctrl+Alt+W" });
   });
 });

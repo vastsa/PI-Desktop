@@ -183,11 +183,12 @@ a usage tab.
     on Windows/Linux; its native global registration follows the same override.
     An unbound launcher disables Electron registration, the Windows host hook,
     and the focused-window fallback
-  - the window-visibility row is one toggle on `Cmd/Ctrl + W`: it hides a
+  - the window-visibility row is one toggle on `Alt + Shift + W`: it hides a
     visible, focused window to the tray and brings a hidden or minimized window
     back. It is the only window key — the retired `Cmd/Ctrl + Shift + W` summon
-    row is gone — and a stored `closeWindow`/`summonWindow` override is folded
-    into it when the map is read (D438)
+    row is gone — and it avoids `Cmd/Ctrl + W` because macOS spends that chord
+    on its own close-window command; a stored `closeWindow`/`summonWindow`
+    override is folded into it when the map is read (D438, D439)
 
 ### Model configuration (`agent` tab)
 - **Defaults** card: a compact settings row shows the provider name and exact

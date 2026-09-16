@@ -15,7 +15,7 @@
 | `Cmd/Ctrl + Shift + P` | Open command palette | Global (D014) |
 | `Cmd/Ctrl + N` | New chat/session | Global |
 | `Cmd/Ctrl + O` | Open project | Global |
-| `Cmd/Ctrl + W` | Show or hide the window (toggle) | Global (D438); hides to the tray, never quits |
+| `Alt + Shift + W` | Show or hide the window (toggle) | OS-global (D439); hides to the tray, never quits |
 | `Cmd/Ctrl + ,` | Open settings | Global |
 | `Cmd/Ctrl + B` | Toggle sidebar | Global |
 | `Cmd/Ctrl + J` | Toggle work panel | Global; active session |
@@ -74,13 +74,16 @@
   the panel's normal activation instead of issuing a second application
   activation or window-stack move. The launcher always opens on the display
   nearest the pointer.
-- The window visibility key is one toggle (`Cmd/Ctrl + W`): a visible, focused
-  window hides to the tray, and anything else — hidden, minimized, or behind
-  another application — is shown and focused. Hiding never enters the close
-  path, so it raises no close-behaviour prompt, destroys nothing, and never
-  quits the app. The retired `Cmd/Ctrl + Shift + W` summon chord is not
-  registered, and stored `closeWindow`/`summonWindow` overrides are folded into
-  the toggle when the map is read (D438).
+- The window visibility key is one toggle (`Alt + Shift + W`): a visible,
+  focused window hides to the tray, and anything else — hidden, minimized, or
+  behind another application — is shown and focused. Hiding never enters the
+  close path, so it raises no close-behaviour prompt, destroys nothing, and
+  never quits the app. The key is globally registered, so it deliberately
+  avoids `Cmd/Ctrl + W`, which macOS spends on its own close-window command and
+  which would be taken from every application if the app claimed it. The
+  retired `Cmd/Ctrl + Shift + W` summon chord is not registered either, and
+  stored `closeWindow`/`summonWindow` overrides are folded into the toggle when
+  the map is read (D438, D439).
 
 ### 1.5 Plugin launcher shortcuts
 

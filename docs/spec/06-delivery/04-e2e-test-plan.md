@@ -4383,7 +4383,7 @@ identify the platform validation still needed.
   inactive. 11) Press and release Ctrl/Command alone, confirm an IME candidate,
   and hold the back/forward chord long enough to generate repeats.
   12) With the main window focused, press the window-visibility chord
-  `Cmd/Ctrl + W` and confirm the window hides to the tray with no
+  `Alt + Shift + W` and confirm the window hides to the tray with no
   close-behaviour prompt and with the app still running; from another
   application, press it again and confirm the window returns and focuses.
   13) Seed one profile with a stored customized `closeWindow` binding and one
@@ -4401,11 +4401,13 @@ identify the platform validation still needed.
   individual and global reset restore the shared defaults; Keyboard shortcuts is
   its own Settings destination. Modifier-only and IME keydowns dispatch nothing,
   and a held history chord traverses only once per physical press. The
-  window-visibility key is one toggle on `Cmd/Ctrl + W` — a visible, focused
+  window-visibility key is one toggle on `Alt + Shift + W` — a visible, focused
   window hides to the tray, anything else shows and focuses — and it never
   enters the close path, so it raises no close-behaviour prompt and never quits;
-  the retired `Cmd/Ctrl + Shift + W` chord registers nothing, and a stored
-  `closeWindow`/`summonWindow` override folds into the toggle (D438).
+  it is globally registered and deliberately avoids `Cmd/Ctrl + W`, which macOS
+  spends on its own close-window command; the retired `Cmd/Ctrl + Shift + W`
+  chord registers nothing, and a stored `closeWindow`/`summonWindow` override
+  folds into the toggle (D438, D439).
 - **Specs linked**: `04-ux/06-settings-ia.md`, `04-ux/07-ui-design-system.md`,
   `03-runtime/01-ipc-protocol.md`
 - **Acceptance**: F (settings persistence), Quality (keyboard accessibility)
@@ -7335,14 +7337,14 @@ identify the platform validation still needed.
   `Alt+Shift+V` and inspect the answer. 5) Disable and uninstall A and confirm
   the accelerator becomes free and B can take it; repeat after terminating A's
   runtime (crash) and while A's panel is closed. 6) Attempt the app's own
-  launcher accelerator `Alt+Space`, the `Mod+W` window toggle, a
+  launcher accelerator `Alt+Space`, the `Alt+Shift+W` window toggle, a
   reserved binding such as `Mod+C`, an invalid accelerator, and a ninth
   shortcut for one plugin.
 - **Expected**: Only A's own command runs for the accelerator; a shortcut whose
   `command` is not registered by the plugin is refused with `INVALID_ARGUMENT`.
   B receives a refusal (`registered: false`, code `SHORTCUT_CONFLICT`) and keeps
   no accelerator while A holds it. The host's own `Alt+Space` launcher and
-  `Mod+W` window-toggle shortcuts and OS-reserved bindings are refused with
+  `Alt+Shift+W` window-toggle shortcuts and OS-reserved bindings are refused with
   `SHORTCUT_CONFLICT` or `SHORTCUT_UNAVAILABLE`; an invalid accelerator is
   refused with `INVALID_ACCELERATOR` and the ninth per-plugin shortcut with
   `LIMIT_EXCEEDED`. Disabling, unloading, or crashing a plugin releases every

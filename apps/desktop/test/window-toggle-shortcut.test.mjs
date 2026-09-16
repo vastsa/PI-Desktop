@@ -30,8 +30,12 @@ register(pathToFileURL(join(here, "helpers/ts-import-hooks.mjs")));
 const { windowToggleAction } = await import(
   "../electron/main/bootstrap/window-visibility.ts"
 );
-const { KEYBOARD_SHORTCUTS, KEYBOARD_SHORTCUT_IDS, migrateKeybindingOverrides } =
-  await import("../../../packages/shared/src/keyboard-shortcuts.ts");
+const {
+  KEYBOARD_SHORTCUTS,
+  KEYBOARD_SHORTCUT_IDS,
+  isReservedKeybinding,
+  migrateKeybindingOverrides,
+} = await import("../../../packages/shared/src/keyboard-shortcuts.ts");
 const { catalogs, flattenCatalog } = await import(
   "../../../packages/i18n/src/index.ts"
 );
@@ -66,16 +70,27 @@ function toggleActionFor({ visible, minimized, focused }) {
   });
 }
 
-test("the catalog ships one window toggle on Mod+W, with no summon chord", () => {
+test("the catalog ships one window toggle on Alt+Shift+W, with no summon chord", () => {
   assert.ok(KEYBOARD_SHORTCUT_IDS.includes("toggleWindow"));
   assert.equal(KEYBOARD_SHORTCUT_IDS.includes("summonWindow"), false);
   assert.equal(KEYBOARD_SHORTCUT_IDS.includes("closeWindow"), false);
 
+  const toggle = KEYBOARD_SHORTCUTS.find((shortcut) => shortcut.id === "toggleWindow");
+  assert.equal(toggle.defaultBinding, "Alt+Shift+W");
+  assert.equal(toggle.macDefaultBinding, undefined);
   const windowGroup = KEYBOARD_SHORTCUTS.filter((shortcut) => shortcut.group === "window");
+  // D439: the toggle is registered process-wide, so it must avoid the chords
+  // the platform owns: `Mod+W` closes a window on macOS and `Mod+Shift+W` is the
+  // retired summon key. Neither is a shipped default any more.
+  assert.equal(
+    KEYBOARD_SHORTCUTS.some((shortcut) => shortcut.defaultBinding === "Mod+W"),
+    false,
+  );
   assert.equal(
     KEYBOARD_SHORTCUTS.some((shortcut) => shortcut.defaultBinding === "Mod+Shift+W"),
     false,
   );
+  assert.equal(isReservedKeybinding("Mod+W", "darwin"), true);
   assert.deepEqual(
     windowGroup.map((shortcut) => shortcut.id),
     ["toggleWindow", "resetZoom", "zoomIn", "zoomOut", "toggleFullScreen"],
@@ -125,7 +140,7 @@ test("the launcher registers the toggle accelerator and nothing else", () => {
     ["openPluginLauncher", "toggleWindow"],
   );
   // The plugin registry refuses what the app now holds: `Alt+Space` and the
-  // `Mod+W` toggle.
+  // `Alt+Shift+W` toggle.
   assert.match(
     registrySource,
     /HOST_GLOBAL_SHORTCUT_IDS = \["openPluginLauncher", "toggleWindow"\] as const/,
@@ -146,13 +161,18 @@ test("the shell key, the menu item, and the accelerator run one action", () => {
 test("stored legacy overrides are folded where each process reads them", () => {
   assert.match(lifecycleSource, /migrateKeybindingOverrides\(/);
   assert.match(storeSource, /migrateKeybindingOverrides\(settingsRaw\.keybindings\)/);
-  // The two cases the migration exists for: a user who customized the old close
-  // key, and one who customized the old summon key.
+  // The cases the migration exists for: a user who customized the old close
+  // key, one who customized the old summon key, a profile that froze the
+  // short-lived `Mod+W` toggle default (D439), and an untouched profile.
   assert.deepEqual(migrateKeybindingOverrides({ closeWindow: "Mod+Shift+Q" }), {
     toggleWindow: "Mod+Shift+Q",
   });
-  assert.deepEqual(migrateKeybindingOverrides({ summonWindow: "Alt+Shift+W" }), {
-    toggleWindow: "Alt+Shift+W",
+  assert.deepEqual(migrateKeybindingOverrides({ summonWindow: "Ctrl+Alt+W" }), {
+    toggleWindow: "Ctrl+Alt+W",
+  });
+  assert.deepEqual(migrateKeybindingOverrides({ toggleWindow: "Mod+W" }), undefined);
+  assert.deepEqual(migrateKeybindingOverrides({ toggleWindow: "Ctrl+Alt+T" }), {
+    toggleWindow: "Ctrl+Alt+T",
   });
   assert.deepEqual(migrateKeybindingOverrides({}), undefined);
 });

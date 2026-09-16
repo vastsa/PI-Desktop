@@ -121,10 +121,11 @@ Token 用量**不是设置目的地**（D335 / ADR 0173）。已完成回合历�
 - 插件启动器在 macOS 默认为 `Option + Space`，在 Windows/Linux 默认为
     `Alt + Space`；本机全局注册遵循相同覆盖。未绑定时会同时关闭 Electron 注册、
     Windows host hook 和聚焦窗口后备
-  - 窗口可见性只有一行、一个开关键 `Cmd/Ctrl + W`：把可见且在前台的窗口隐藏到
+  - 窗口可见性只有一行、一个开关键 `Alt + Shift + W`：把可见且在前台的窗口隐藏到
     托盘，把已隐藏或已最小化的窗口调回来。它是唯一的窗口键 —— 已弃用的
-    `Cmd/Ctrl + Shift + W` 呼出组合键已移除 —— 读取配置映射时，已存储的
-    `closeWindow` / `summonWindow` 覆盖项会并入它（D438）
+    `Cmd/Ctrl + Shift + W` 呼出组合键已移除 —— 并且避开 `Cmd/Ctrl + W`，因为
+    macOS 把它用于自己的关闭窗口命令；读取配置映射时，已存储的
+    `closeWindow` / `summonWindow` 覆盖项会并入它（D438、D439）
 
 ### 模型配置（`agent` 选项卡）
 - **Studio Hero**：提供商计数、就绪计数和当前默认 provider/model 摘要

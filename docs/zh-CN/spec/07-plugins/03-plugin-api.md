@@ -660,7 +660,7 @@ type PluginGlobalShortcut = {
 
 `command` 必须已经由调用插件注册；否则以 `INVALID_ARGUMENT` 失败。被操作
 系统保留、被 PI-Desktop 自己当前占用（默认 `Alt+Space` 打开插件启动器、
-`Mod+W` 呼出或隐藏窗口；用户改绑后释放出来的加速键可以再次被插件使用）或
+`Alt+Shift+W` 呼出或隐藏窗口；用户改绑后释放出来的加速键可以再次被插件使用）或
 已被另一个插件持有的加速键会被拒绝而不是被抢走，被拒绝的重新注册会保留原来
 的绑定。拒绝是返回的结果，不是抛出的异常：
 `registerGlobalShortcut` 以 `registered: false` 解析，并带 `error` 为

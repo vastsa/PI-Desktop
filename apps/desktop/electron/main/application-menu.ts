@@ -120,10 +120,11 @@ export function buildApplicationMenuTemplate({
             ] satisfies MenuItemConstructorOptions[])
           : []),
         { type: "separator" },
-        // One window-visibility key (D438): `Mod+W` hides the window the user
-        // is looking at and brings a hidden or tray-minimized window back. The
-        // retired `Mod+Shift+W` summon item is gone; the label is
-        // locale-resolved at render time.
+        // One window-visibility key (D438, rebound by D439): `Alt+Shift+W`
+        // hides the window the user is looking at and brings a hidden or
+        // tray-minimized window back. The key is process-wide, so it avoids the
+        // macOS close-window chord `Mod+W`. The retired `Mod+Shift+W` summon
+        // item is gone; the label is locale-resolved at render time.
         {
           label: labels.menu.toggleWindow,
           accelerator: accelerator("toggleWindow"),

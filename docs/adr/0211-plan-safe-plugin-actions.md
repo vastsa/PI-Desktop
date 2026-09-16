@@ -4,8 +4,8 @@
 - Date: 2026-09-10
 - Deciders: PI-Desktop core
  - Amended by: D438 (the window-summon shortcut in §7 becomes one
-  window-visibility toggle on `Mod+W`; the plan-safe plugin-action opt-in is
-  unchanged)
+  window-visibility toggle) and D439 (that toggle ships on `Alt+Shift+W`
+  because macOS owns `Cmd+W`; the plan-safe plugin-action opt-in is unchanged)
  - Related: ADR 0052, ADR 0053, ADR 0170, E2E-PLAN-005
 
 ## Context
@@ -108,11 +108,13 @@ is the symmetrical counterpart to `closeWindow`: closing a window hides
 it to the tray or minimizes it; summoning brings the same window back to
 focus.
 
-*(Amended by D438: the catalog now ships one `toggleWindow` id on `Mod+W`
-instead of the `summonWindow` / `closeWindow` pair, the retired `Mod+Shift+W`
-chord is registered by nothing, and stored overrides for the two retired ids
-are folded into the toggle on read. Hiding is `Window.hide()` and never the
-close path.)*
+*(Amended by D438: the catalog now ships one `toggleWindow` id instead of the
+`summonWindow` / `closeWindow` pair, the retired `Mod+Shift+W` chord is
+registered by nothing, and stored overrides for the two retired ids are folded
+into the toggle on read. Hiding is `Window.hide()` and never the close path.
+Amended again by D439: the toggle ships on `Alt+Shift+W`, not on the `Mod+W`
+this ADR's D438 amendment first named, because the key is registered
+process-wide and macOS spends `Cmd+W` on its own close-window command.)*
 
 ## Consequences
 

@@ -397,7 +397,7 @@ stream, so there is no keylogger-shaped surface and no way to see the keys the
 user types. A plugin may only map an accelerator to one of its own registered
 commands, and an accelerator the OS reserves, that PI-Desktop itself currently
 spends (the plugin-launcher and window-toggle bindings, `Alt+Space` and
-`Mod+W` by default; a user rebinding one frees it for plugins), or that
+`Alt+Shift+W` by default; a user rebinding one frees it for plugins), or that
 another plugin holds is refused with
 `LIMIT_EXCEEDED` (at most 8 per plugin) instead of being taken over. A trigger
 runs exactly that one command. Register, unregister, and trigger are audited

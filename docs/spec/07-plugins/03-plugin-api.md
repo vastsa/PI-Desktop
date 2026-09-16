@@ -804,7 +804,7 @@ command belonging to that plugin.
 `command` must already be registered by the calling plugin; anything else fails
 `INVALID_ARGUMENT`. An accelerator reserved by the operating system, one
 PI-Desktop itself currently spends (by default `Alt+Space` opens the plugin
-launcher and `Mod+W` shows or hides the window; once the user rebinds one of
+launcher and `Alt+Shift+W` shows or hides the window; once the user rebinds one of
 them, the freed accelerator is available again), or one held by another plugin
 is refused rather than taken over, and a refused re-registration leaves the
 previous binding in place.
