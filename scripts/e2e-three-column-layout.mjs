@@ -140,13 +140,21 @@ const MEASURE = `(() => {
   const main = document.querySelector(".main-pane");
   const panel = document.querySelector('[data-testid="work-panel"]');
   const sidebar = document.querySelector(".sidebar, .sidebar-rail");
+  const sidebarResize = document.querySelector(".sidebar-resize-handle");
   const handle = document.querySelector(".work-panel-resize");
+  const sidebarResizeBox = sidebarResize?.getBoundingClientRect();
   return {
     windowWidth: window.innerWidth,
     sidebar: round(sidebar),
     sidebarKind: sidebar ? String(sidebar.className).split(" ")[0] : null,
     main: round(main),
     panel: round(panel),
+    sidebarHandle: sidebarResizeBox
+      ? {
+          x: Math.round(sidebarResizeBox.left + sidebarResizeBox.width / 2),
+          y: Math.round(sidebarResizeBox.top + sidebarResizeBox.height / 2),
+        }
+      : null,
     handle: handle
       ? {
           x: Math.round(handle.getBoundingClientRect().left + handle.getBoundingClientRect().width / 2),
@@ -289,6 +297,55 @@ async function main() {
       });
       await delay(600);
       return { start, after: await measure(), minMain, windowChanged: false };
+    };
+    const dragSidebar = async (delta, steps = 8) => {
+      const start = await measure();
+      if (!start.sidebarHandle) throw new Error("sidebar resize handle not found");
+      await cdp.send("Input.dispatchMouseEvent", {
+        type: "mousePressed",
+        x: start.sidebarHandle.x,
+        y: start.sidebarHandle.y,
+        button: "left",
+        clickCount: 1,
+        buttons: 1,
+      });
+      let minSidebar = Infinity;
+      let maxSidebar = -Infinity;
+      let windowChanged = false;
+      for (let index = 1; index <= steps; index += 1) {
+        const x = start.sidebarHandle.x + (delta * index) / steps;
+        await cdp.send("Input.dispatchMouseEvent", {
+          type: "mouseMoved",
+          x,
+          y: start.sidebarHandle.y,
+          button: "left",
+          buttons: 1,
+        });
+        await delay(50);
+        const sample = await measure();
+        if (typeof sample.sidebar === "number") {
+          minSidebar = Math.min(minSidebar, sample.sidebar);
+          maxSidebar = Math.max(maxSidebar, sample.sidebar);
+        }
+        windowChanged ||= sample.windowWidth !== start.windowWidth;
+      }
+      const x = start.sidebarHandle.x + delta;
+      await cdp.send("Input.dispatchMouseEvent", {
+        type: "mouseReleased",
+        x,
+        y: start.sidebarHandle.y,
+        button: "left",
+        clickCount: 1,
+        buttons: 0,
+      });
+      await delay(600);
+      return {
+        start,
+        after: await measure(),
+        minSidebar,
+        maxSidebar,
+        windowChanged,
+      };
     };
 
     await waitFor(
@@ -455,6 +512,48 @@ async function main() {
       restored.windowWidth === baseline.windowWidth,
       "the whole flow keeps the native window width constant",
       `window ${baseline.windowWidth} -> ${restored.windowWidth}`,
+    );
+
+    const sidebarDrag = await dragSidebar(96);
+    check(
+      sidebarDrag.start.sidebarKind === "sidebar" &&
+        sidebarDrag.after.sidebar > sidebarDrag.start.sidebar &&
+        sidebarDrag.after.sidebar <= 520 &&
+        sidebarDrag.after.main < sidebarDrag.start.main,
+      "the sidebar follows an anchored pointer drag and reflows MainChat",
+      JSON.stringify(sidebarDrag),
+    );
+    check(
+      !sidebarDrag.windowChanged &&
+        sidebarDrag.after.windowWidth === sidebarDrag.start.windowWidth,
+      "resizing the sidebar never changes the native window width",
+      `window ${sidebarDrag.start.windowWidth} -> ${sidebarDrag.after.windowWidth}`,
+    );
+    const storedSidebarWidth = await cdp.evaluate(
+      `localStorage.getItem("pi.desktop.sidebarWidth")`,
+    );
+    check(
+      storedSidebarWidth === String(sidebarDrag.after.sidebar),
+      "pointer release persists the committed sidebar width",
+      `${storedSidebarWidth} vs ${sidebarDrag.after.sidebar}`,
+    );
+    const sidebarMinDrag = await dragSidebar(-400);
+    check(
+      sidebarMinDrag.after.sidebar === 240 && sidebarMinDrag.minSidebar >= 240,
+      "the sidebar clamps pointer drag at its 240px minimum",
+      JSON.stringify(sidebarMinDrag),
+    );
+    const sidebarMaxDrag = await dragSidebar(400);
+    check(
+      sidebarMaxDrag.after.sidebar === 520 && sidebarMaxDrag.maxSidebar <= 520,
+      "the sidebar clamps pointer drag at its 520px maximum",
+      JSON.stringify(sidebarMaxDrag),
+    );
+    const sidebarRestoreDrag = await dragSidebar(-245);
+    check(
+      sidebarRestoreDrag.after.sidebar === 275,
+      "the sidebar resize journey restores its default test width",
+      JSON.stringify(sidebarRestoreDrag),
     );
 
     const composer = await cdp.evaluate(`(() => {
@@ -878,18 +977,15 @@ async function main() {
 
     const e2eChromeSidebar = await cdp.evaluate(e2eChromeProbe);
     check(
-      e2eChromeSidebar.sidebarWidth === null || e2eChromeSidebar.sidebarWidth === 275,
-      "sidebar stays at its fixed width",
+      e2eChromeSidebar.sidebarWidth === null ||
+        (e2eChromeSidebar.sidebarWidth >= 240 &&
+          e2eChromeSidebar.sidebarWidth <= 520),
+      "sidebar width stays within its supported range",
       JSON.stringify(e2eChromeSidebar),
     );
     check(
-      e2eChromeSidebar.handleVisible === false,
-      "the sidebar edge is no longer a resize affordance",
-      JSON.stringify(e2eChromeSidebar),
-    );
-    check(
-      e2eChromeSidebar.storedWidth === null,
-      "sidebar width is no longer persisted",
+      e2eChromeSidebar.handleVisible === true,
+      "the sidebar edge exposes a resize affordance",
       JSON.stringify(e2eChromeSidebar),
     );
 

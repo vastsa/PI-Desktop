@@ -40,8 +40,9 @@ destination, chat as the home surface, tools and permissions inline.
   non-destructive pin/archive actions, an independent conversation-branch
   command, and sortable views. Projects not retained in the sidebar remain
   discoverable through Settings → Project archive.
-  Collapsible to an icon rail (Cmd/Ctrl+B). Its expanded column is fixed at
-  275px; persisted resize preferences from older builds are ignored.
+  Collapsible to an icon rail (Cmd/Ctrl+B). Its expanded column defaults to
+  275px and keeps a persisted 240px–520px preferred width across relaunches;
+  the preference is independent from the collapsed rail.
 - **Product identity**: runtime shell copy uses `PI-Desktop`; the home hero and
   sidebar reuse the derived `src/assets/brand/logo-*.png` marks, while composer prompt
   rows have no leading brand icon and session-creation controls use a dedicated

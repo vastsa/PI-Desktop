@@ -101,8 +101,9 @@ MainChat usable in the fixed window.
 ### Let the sidebar resize continuously to preserve every column
 
 Rejected because the sidebar remains a discrete expanded/collapsed column for
-this interaction. Its user-selected preferred width is not silently mutated by
-window pressure.
+automatic window-pressure behavior: its user-selected preferred width is not
+silently mutated by layout pressure. Explicit user resizing is restored by
+D434; the MainChat floor and automatic yield rules in this ADR remain in force.
 
 ### Mirror the committed panel width into native window bounds
 

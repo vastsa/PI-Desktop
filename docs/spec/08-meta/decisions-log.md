@@ -83,6 +83,7 @@ This log freezes previously open questions into concrete decisions.
 | D406 | Keep macOS DMG opening guidance text-only | **Amend D371 / ADR 0204: macOS DMGs expose the opening-help note as `If app won't open, read this.txt` and no longer include the executable `PI-Desktop-macOS-open.command`. macOS ZIP packages retain both the note and the helper. The note provides the narrow Terminal fallback for trusted unsigned builds; signed and notarized builds do not need it. See ADR 0232 and E2E-196b.** | The DMG should keep the normal app-to-Applications flow focused while still giving users a visible, actionable answer when an unsigned app does not open. |
 | D407 | Restore archived projects after session import | **Additive renderer behavior for issue #250: when a core or plugin import adds a new project-bound session, the import-triggered session refresh normalizes its project path and clears the renderer's archived presentation state for that project. Pathless sessions, skipped imports, historical plugin paths without an active binding, and ordinary refreshes leave archive state unchanged. Host project rows, IPC channels, plugin methods, storage schema, and data formats do not change. See ADR 0236 and E2E-257.** | The host can successfully materialize an imported session under a project while the renderer still hides that project's sidebar row as archived. Restoring only the newly imported binding makes the result discoverable without weakening deliberate archive choices during ordinary refreshes (issue #250). |
 | D408 | Prioritize MainChat in the three-column shell | **Amend ADR 0226 / ADR 0151 / ADR 0033 for issue #267: MainChat keeps a hard 450px minimum, the work panel is capped by the live budget (`client width - 450px - expanded sidebar`, with no fixed maximum), and the expanded sidebar yields at that threshold — including while `sidebar-out` still occupies flex space. A manual sidebar reopen spends panel width first and otherwise targets 460px; closing the panel restores only a sidebar the layout collapsed. The native window never changes: the reservation seam stays at zero and no geometry is applied. Preview mode temporarily unmounts MainChat and uses a window-level chrome row; collapsed-sidebar macOS preview reserves 88px, or 8px in fullscreen, for traffic lights (D433). See ADR 0238 and E2E-LAYOUT-three-column-width-priority.** | The fixed client area had no explicit width priority, so the side docks could pin MainChat to its floor and leave the composer unusable. Making the yield order explicit keeps the chat readable inside the fixed window without reintroducing native window growth (issue #267). |
+| D434 | Restore user-resizable expanded sidebar width | **Amend ADR 0238 / D408: restore the existing renderer-owned sidebar resize handle with a 240px–520px clamp and 275px default. Pointer preview remains anchored and cancellation-safe; release persists the preferred width, keyboard changes commit immediately, and collapse keeps the preference separate from the 48px icon rail. MainChat's 450px floor, work-panel budget, automatic sidebar yield, and fixed native-window bounds remain unchanged. See ADR 0141 and E2E-168.** | The fixed-width amendment disabled a still-supported sidebar affordance and made long project/session labels harder to inspect. |
 | D409 | Host-owned session collaboration messages | **Amend ADR 0237 / ADR 0165 / ADR 0213: Rust host-core owns a durable session-collaboration ledger keyed by message id and real source/target Session IDs. Plugin-mediated `spawn`, `send`, `status`, `result`, and `cancel` operations use the reviewed desktop-control gateway; the sender is bound to the active plugin Agent tool invocation, target turns retain their existing configuration, and each delivery is claimed by its actual durable turn. Completion callbacks are durable, at-most-once, and reference the settled turn. Provenance is persisted with transcript rows and cannot be forged, stripped, or edited through regeneration. The additive schema v16 migration retains queued work across restart without unattended replay, applies permission ceilings and bounded autonomous hops, and keeps the existing Task family unchanged. See ADR 0239 and E2E-PLUGIN-session-orchestrator-real-workers.** | The plugin's prior create/prompt polling path could infer neither a durable turn outcome nor a safe bidirectional sender identity. A host-owned ledger makes delivery, provenance, callback, cancellation, and restart behavior auditable without restoring the withdrawn A2A protocol. |
 | D410 | Independent session discovery and navigable collaboration projections | **Amend ADR 0239: add the reviewed read operation `session/collaboration/list`, bounded to 100 non-deleted Agent sessions and redacted to Session IDs, titles, status, updated time, readable provider/model labels, and bounded creation links. Extend the sidebar projection with readable model labels and at most eight created-session references. Render creator/created-session references as keyboard-focusable navigation buttons; independent sessions do not receive fabricated creator links. No renderer storage ownership or collaboration mutation boundary changes. See ADR 0240, E2E-SESSION-independent-top-level-communication, and E2E-SESSION-hover-card-model-and-links.** | Existing Session IDs were valid send targets but could be undiscoverable when they were not created by the plugin, while the hover card exposed only IDs and non-interactive provenance. A bounded host directory and navigable projection make durable sessions communicable and explainable without exposing transcripts or credentials. |
 | D413 | Skill market public-HTTPS catalog fetch | **Additive: Settings → Skills Market discovers SKILL.md catalogs in Electron main under a shared public-HTTPS policy (syntactic public host + DNS classification + per-hop redirect re-validation). The renderer does not fetch. Install remains `skills.create`. Catalog ids match host `valid_capability_id`. Expanded documents over 128 KiB are refused. Builtin titles are English. See ADR 0243, E2E-SKILL-MARKET-*, issue #287.** | Community skill discovery needs main-process egress without a plugin-marketplace host allowlist, and copied classifiers would collide with the MCP market. |
@@ -3102,7 +3103,7 @@ D193, and D194.
 - No IPC, storage, host protocol, or renderer resize contract changes. This
   refines D156/D163 and is covered by E2E-167.
 
-## 2026-09-01 — Expanded sidebar width is user-resizable (D280; superseded by D408)
+## 2026-09-01 — Expanded sidebar width is user-resizable (D280; amended by D408 and D434)
 
 - The expanded sidebar owns a persisted preferred width with a `240..520px`
   clamp and a `275px` default. The right-edge renderer handle previews width
@@ -3115,8 +3116,9 @@ D193, and D194.
 - Sidebar collapse remains independent from the preferred expanded width. No
   IPC, native-window bounds, work-panel reservation, or project/session order
   contract changes. See ADR 0141 and E2E-168.
-- D408 supersedes this width contract for the live shell: the expanded sidebar
-  is fixed at 275px and the historical resize handle is hidden.
+- D408 temporarily superseded the live shell behavior by fixing the expanded
+  sidebar at 275px; D434 restores this explicit user-resize contract while
+  retaining D408's MainChat priority and automatic yield rules.
 
 
 ## 2026-09-01 — Non-loopback HTTP MCP endpoints are supported (D281)
@@ -4858,6 +4860,19 @@ D193, and D194.
   fullscreen when the sidebar is collapsed.
 - Decision D408 records the issue #267 behavior. See ADR 0238 and
   E2E-LAYOUT-three-column-width-priority.
+
+## 2026-09-16 — Restore user-resizable expanded sidebar width (D434)
+
+- Restore the existing renderer-owned right-edge sidebar separator. The
+  expanded width defaults to 275px, rounds and clamps to 240px–520px, previews
+  from the pointer-down position, persists on pointer release, and commits
+  keyboard changes immediately. Escape, cancellation, lost capture, and
+  unmount restore the starting width for a pointer gesture.
+- Collapse/open changes only whether the sidebar column is present; the
+  preferred expanded width remains separate from the 48px icon rail and is
+  restored after relaunch.
+- D408's 450px MainChat floor, live work-panel budget, automatic sidebar yield,
+  and fixed native-window bounds remain unchanged. See ADR 0141 and E2E-168.
 
 ## 2026-09-13 — Host-owned session collaboration messages (D409)
 

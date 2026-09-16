@@ -5,12 +5,15 @@
 > Interaction behavior: [09-interaction-patterns.md](09-interaction-patterns.md)
 
 
-> Shell layout is Codex-aligned: left thread sidebar (fixed 275px), main transcript, floating bottom composer with runtime mode/permission/model controls, and a compact action-only top bar. Prefer neutral charcoal surfaces over blue-slate chrome.
+> Shell layout is Codex-aligned: left thread sidebar (240px–520px, 275px
+> default), main transcript, floating bottom composer with runtime
+> mode/permission/model controls, and a compact action-only top bar. Prefer
+> neutral charcoal surfaces over blue-slate chrome.
 >
 > **Precedence rule**: where a metric or copy string below disagrees with a
 > Codex parity decision in [decisions-log §D](../08-meta/decisions-log.md)
 > (D034+), the decision log wins — it tracks the live gold captures. Known
-> updated values: sidebar 275px fixed, toolbar 46px (not 44px),
+> updated values: sidebar 240px–520px (275px default), toolbar 46px (not 44px),
 > composer placeholder per D094/D066, home empty stack and bottom composer per
 > D111/D204/D206,
 > Projects index table per D066/D133, settings full-page shell per D063 with the
@@ -30,7 +33,7 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
 ```text
 +------------------+------------------------------+------------------+
 | Sidebar          | MainChat                     | WorkPanel        |
-| (275px / 48px) | (flex-1)                   | (≥244px / dynamic|
+| (240–520px / 48px) | (flex-1)                 | (≥244px / dynamic|
 |                  |                              |  hidden)         |
 +------------------+------------------------------+------------------+
 | Titlebar row: 46px, traffic lights at {x:16,y:16} (D034/D070)      |
@@ -55,9 +58,10 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
   `sidebar-in`, exit `sidebar-out` keyframes) that mirrors the work-panel dock:
   the aside stays in the tree through the exit keyframe, then unmounts
   (`is-exiting` flag + `animationend` guard, with a timeout fallback)
-- Sidebar width: the expanded column is fixed at 275px. Collapse/open changes
-  only whether the column is present; the historical resize handle is hidden
-  and legacy persisted width preferences are ignored.
+- Sidebar width: the expanded column defaults to 275px and is resizable from
+  240px to 520px through its right-edge handle. Collapse/open changes only
+  whether the column is present; the preferred expanded width is retained
+  independently from the 48px collapsed icon rail.
 - Work panel collapse: the sole control is the viewport-fixed toggle in the
   window's top-right corner, available on every non-Settings route whether the
   panel is open or closed. It does not sit in the work-panel content header.
@@ -87,8 +91,9 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
 
 ### 1.6 MVP constraints
 
-- Sidebar width is fixed at 275px and remains independent from the collapsed
-  icon-rail state; the work panel remains adjustable from its own divider
+- Sidebar width defaults to 275px, is retained independently from the collapsed
+  icon-rail state, and can be adjusted from 240px to 520px; the work panel
+  remains adjustable from its own divider
 - The main pane renders one active transcript and one selected workspace while
   the sidebar may retain several project tabs/groups
 - Sidebar and work-panel dock transitions animate their flex allocation as well
@@ -394,7 +399,7 @@ visually distinct from list content.
 | State | Behavior |
 |---|---|
 | Expanded | Full session titles visible |
-| Sidebar width | Fixed at 275px; collapse/open changes only column presence |
+| Sidebar width | 240px–520px (275px default); collapse/open changes only column presence |
 | Collapsed | Icon rail — hover shows tooltip with session title |
 | Active session | Accent-blue outlined status ring plus active row background |
 | Selecting session | Destination row receives the active treatment immediately while transcript/workspace resolution continues |

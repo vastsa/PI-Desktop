@@ -67,7 +67,7 @@ export function useAppShellRuntime() {
 
   const [searchOpen, setSearchOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [sidebarWidth] = useState(() => loadSidebarWidth());
+  const [sidebarWidth, setSidebarWidth] = useState(() => loadSidebarWidth());
   const [sidebarExiting, setSidebarExiting] = useState(false);
   const [shellWidth, setShellWidth] = useState(0);
   const appShellRef = useRef<HTMLDivElement>(null);
@@ -100,9 +100,14 @@ export function useAppShellRuntime() {
     observer.observe(shell);
     return () => observer.disconnect();
   }, []);
-  // The sidebar is a fixed-width column: it only collapses and opens.
-  const handleSidebarWidthChange = useCallback(() => {}, []);
-  const handleSidebarWidthCommit = useCallback(() => {}, []);
+  const handleSidebarWidthChange = useCallback((width: number) => {
+    setSidebarWidth(clampSidebarWidth(width));
+  }, []);
+  const handleSidebarWidthCommit = useCallback((width: number) => {
+    const nextWidth = clampSidebarWidth(width);
+    setSidebarWidth(nextWidth);
+    saveSidebarWidth(nextWidth);
+  }, []);
   // Reopening prefers the right column: the work panel gives up width first so
   // MainChat keeps the width it already had, and only a would-be breach of the
   // 450px floor falls back to the 460px reopen target.

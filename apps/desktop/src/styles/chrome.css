@@ -213,8 +213,6 @@
 }
 
 .sidebar-resize-handle {
-  /* The sidebar is fixed-width: collapse/open only, never dragged. */
-  display: none;
   position: absolute;
   top: 0;
   right: 0;

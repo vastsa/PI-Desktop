@@ -1022,9 +1022,11 @@ Work-panel and application-window resizing are implemented in MVP:
   Native pointer clicks must operate the controls and dragging empty header
   space must move the window; DOM/CDP clicks alone do not establish native hit testing.
 
-The expanded sidebar is fixed at 275px. Collapse/open changes only whether the
-column is present; the historical resize handle is hidden and legacy width
-preferences are ignored.
+The expanded sidebar defaults to 275px and keeps a persisted preferred width
+between 240px and 520px. Its right-edge separator previews pointer changes and
+commits the final width on release; keyboard changes commit immediately.
+Collapse/open changes only whether the column is present, so the preferred
+expanded width remains independent from the 48px icon rail.
 
 Project ordering is implemented for retained project groups. There is no
 reorder grip. Pressing the project title and moving 8px starts a project drag,
