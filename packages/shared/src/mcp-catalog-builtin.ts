@@ -10,7 +10,7 @@ import type { McpCatalogFile } from "./mcp-catalog.js";
 
 export const BUILTIN_MCP_CATALOG: McpCatalogFile = {
   schemaVersion: 1,
-  updatedAt: "2026-09-12",
+  updatedAt: "2026-09-16",
   source: "builtin",
   servers: [
     {
@@ -219,6 +219,25 @@ export const BUILTIN_MCP_CATALOG: McpCatalogFile = {
         {
           name: "BRAVE_API_KEY",
           description: "Brave Search API Key",
+        },
+      ],
+    },
+    {
+      id: "firecrawl",
+      name: "Firecrawl",
+      description: "Scrape, crawl, map and search the web as model-readable Markdown",
+      author: "firecrawl",
+      homepage: "https://docs.firecrawl.dev/mcp-server",
+      categories: ["web"],
+      verified: true,
+      transport: "stdio",
+      command: "npx",
+      args: ["-y", "firecrawl-mcp"],
+      env: { FIRECRAWL_API_KEY: "${FIRECRAWL_API_KEY}" },
+      requiredEnv: [
+        {
+          name: "FIRECRAWL_API_KEY",
+          description: "Firecrawl API Key",
         },
       ],
     },

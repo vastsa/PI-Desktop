@@ -8,6 +8,9 @@
  *                                 arguments and required/optional envs
  *   E2E-MCP-MARKET-NET-BOUNDARY   the URL guard rejects loopback/private/
  *                                 mapped/ULA/link-local bypass forms
+ *   E2E-MCP-MARKET-KEYED-ENV      a keyed stdio entry resolves its secret into
+ *                                 the launcher env, never argv, and refuses to
+ *                                 resolve without it
  *
  * Env: PI_DESKTOP_HOST_BIN (optional), DEBUG_HOST for tracing.
  * Deterministic: no live network access.
@@ -177,6 +180,37 @@ class Host {
     specs.find((s) => s.name === "OPT_KEY")?.optional === true &&
     specs.find((s) => s.name === "OPT_KEY")?.defaultValue === "off";
   record("E2E-MCP-MARKET-SEMANTICS", !!entry && argsOk && envOk, JSON.stringify({ args: entry?.args, env: specs }));
+}
+
+// ── E2E-MCP-MARKET-KEYED-ENV ─────────────────────────────────────────────
+{
+  const entry = BUILTIN_MCP_CATALOG.servers.find((server) => server.id === "firecrawl");
+  const spec = entry?.requiredEnv?.find((item) => item.name === "FIRECRAWL_API_KEY");
+  const key = "fc-e2e-key";
+  const resolved = entry ? resolveCatalogEntry(entry, { FIRECRAWL_API_KEY: key }) : null;
+  const envOk = resolved?.env?.FIRECRAWL_API_KEY === key;
+  const argvOk =
+    resolved?.command === "npx" &&
+    JSON.stringify(resolved?.args) === JSON.stringify(["-y", "firecrawl-mcp"]) &&
+    !(resolved?.args ?? []).some((arg) => arg.includes(key));
+  // The install form is the only place the key may come from, so a template
+  // that resolves without it would silently launch an unauthenticated server.
+  let missingRejected = false;
+  try {
+    resolveCatalogEntry(entry ?? {});
+  } catch {
+    missingRejected = true;
+  }
+  record(
+    "E2E-MCP-MARKET-KEYED-ENV",
+    !!spec && !spec.optional && envOk && argvOk && missingRejected,
+    JSON.stringify({
+      command: resolved?.command,
+      args: resolved?.args,
+      env: Object.keys(resolved?.env ?? {}),
+      missingRejected,
+    }),
+  );
 }
 
 // ── E2E-MCP-MARKET-INSTALL ───────────────────────────────────────────────
