@@ -280,6 +280,8 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 | 0263 | [向插件视图暴露项目的文件夹根，并跨根补全引用](/adr/0263-project-folder-roots-for-plugin-views) | 已接受（修订 ADR 0262；ADR 0249 §5） |
 | 0264 | [交给宿主执行的文件动作跟随视图正在浏览的文件夹](/adr/0264-host-mediated-actions-follow-the-browsed-folder) | 已接受（修订 ADR 0263；ADR 0249 §5） |
 | global-sidebar-pins | [在侧边栏全局显示置顶会话](/adr/global-sidebar-pins) | 已接受（修订 ADR 0016；issue #306） |
+| 0266 | [插件 fs 根跟随发起调用的会话](/adr/0266-plugin-fs-root-follows-the-calling-session) | 已接受（D093） |
+| 0267 | [Deny-first 权限规则](/adr/0267-deny-first-permission-rules) | 已接受（修订 D115；D433） |
 | active-turn-steering | [用 Alt+Enter 向当前回合补充指令](/adr/active-turn-steering) | 已接受 |
 | 0251 | [删除项目会一并删除其拥有的会话](/adr/0251-project-delete-with-owned-sessions) | 已接受 |
 | 0253 | [移除子智能体轮次上限](/adr/0253-remove-subagent-turn-limit) | 已接受（取代 0062 / 0063 / 0119 / 0126 / 0166 / 0210 中关于 `maxTurns` 的条款） |

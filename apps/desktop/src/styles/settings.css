@@ -431,6 +431,27 @@
   max-width: none;
 }
 
+.settings-permission-deny {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  width: 100%;
+  min-width: 280px;
+}
+
+.settings-row:has(.settings-permission-deny) .settings-row-control {
+  max-width: none;
+  flex: 1 1 auto;
+}
+
+.settings-permission-deny-textarea {
+  min-height: 8rem;
+  font-family: var(--ds-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 12px;
+  resize: vertical;
+}
+
 .settings-font-size .settings-segment {
   width: 100%;
   flex-wrap: nowrap;

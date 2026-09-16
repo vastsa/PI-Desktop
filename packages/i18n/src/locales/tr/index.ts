@@ -976,6 +976,10 @@ sklm: {
     permissionModeAsk: "Her seferinde sor",
     permissionModeAcceptEdits: "Düzenlemeleri otomatik kabul et",
     permissionModeAuto: "Tam otomatik",
+    permissionDeny: "Reddetme kuralları",
+    permissionDenyDesc: "Tam otomatikte bile her zaman reddeden JSON glob'ları. paths, .., ~ ve sembolik bağlantılar çözüldükten sonra Read/Write/Edit/Glob/Grep path/file_path değerlerine uyar; Bash veya Grep içeriğine uygulanmaz. commands, kırpılmış Bash dizesi öneki veya glob'dur, argv değildir. Eklentiler yalnızca kural ekleyebilir, sizinkileri kaldıramaz.",
+    permissionDenyPlaceholder: "{ \"tools\": [\"Bash\"], \"paths\": [\"**/.env\", \"~/.ssh/**\"], \"commands\": [\"rm -rf\"] }",
+    permissionDenySaveError: "Reddetme kuralları kaydedilemedi. JSON'u kontrol edin.",
     autoReview: "Otomatik inceleme",
     autoReviewDesc: "PI-Desktop projenizdeki dosyaları okuyup düzenleyebilir ve ek erişim isteklerine kendisi karar verir. Otomatik inceleme hata yapabilir.",
     learnMore: "Daha fazla bilgi",
@@ -1782,6 +1786,7 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
       mcp: "MCP sunucusu",
       services: "Arka plan servisi",
       bus: "Eklenti iletileri",
+      permissionDeny: "İzin reddetme kuralları",
     },
     serviceState: {
       starting: "Başlatılıyor",
@@ -1817,6 +1822,7 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
       "agent.complete": "Modellerinizle tek seferlik tamamlatma çalıştır",
       "agent.extension": "Ajanın içinde kod çalıştır",
       "provider.register": "Model listesine servis ekle",
+      "agent.permission.deny": "Her zaman reddeden izin kuralları ekle",
       "desktop.control": "Masaüstünü kontrol et",
       "models.list": "Kimliği doğrulanmış modelleri listele",
       "session.read": "Modele gönderilen geçerli konuşmayı oku",
@@ -1860,6 +1866,7 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
       "agent.extension": "ExtensionAPI modüllerini ajan sürecinde, ajanın kendi araçlarıyla aynı erişimle çalıştırır. Yalnızca güvendiğiniz kodu etkinleştirin.",
       "provider.register":
         "Bu eklentinin tanımladığı servisleri Ayarlar’daki servis listesine ekler. Uç noktayı ve modelleri eklenti sağlar; API anahtarınız PI-Desktop’ta kalır.",
+      "agent.permission.deny": "Eklentinin her zaman reddeden araç, yol ve komut glob'ları eklemesine izin verir. Sizin ayarlarınızı gevşetemez.",
       "desktop.control":
         "Eklentinin incelenmiş PI-Desktop denetim kataloğunu çağırmasını sağlar. Yıkıcı işlemler yine confirm=true gerektirir; MCP bearer token eklentiye verilmez.",
       "models.list": "Oturum açtığınız modelleri görebilir. Anahtar almaz.",

@@ -127,6 +127,9 @@ notification.list
     the active plugin invocation, target permission ceilings are rechecked at
     turn admission, callbacks are at-most-once, and restart recovery never
     replays an interrupted delivery
+11. Deny-first overlay (D433) matches after contract-mode hard deny and before
+    external-path / low-risk / auto / grants; a hit is Deny and outranks
+    session grants; plugins can only add rules
 
 ## 7. Packaging
 
@@ -160,3 +163,6 @@ notification.list
     settlement, cancellation, permission ceilings, hop limits, and schema v16
     recovery are durable and test-covered without changing the core `Task`
     family
+11. A deny-first overlay hit returns `TOOL_DENIED` even under `auto`, a
+    session grant, low-risk auto-allow, and `accept-edits`; contract-mode
+    hard deny still precedes it

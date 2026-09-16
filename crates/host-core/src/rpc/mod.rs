@@ -654,6 +654,11 @@ fn validate_settings_value(value: &Value) -> Result<(), JsonRpcError> {
     if let Err(message) = crate::network_proxy::validate_network_proxy(value) {
         return Err(rpc_err(1002, message, "INVALID_PARAMS"));
     }
+    if let Some(deny) = object.get("permissionDeny") {
+        if let Err(message) = crate::permission_deny::parse_rules(deny) {
+            return Err(rpc_err(1002, message, "INVALID_PARAMS"));
+        }
+    }
     let Some(shell_value) = object.get("defaultCommandShell") else {
         return Ok(());
     };
@@ -684,6 +689,17 @@ fn validate_settings_value(value: &Value) -> Result<(), JsonRpcError> {
         ));
     }
     Ok(())
+}
+
+fn merged_deny_rules(
+    state: &AppState,
+    project_path: Option<&str>,
+) -> crate::permission_deny::PermissionDenyRules {
+    let settings = state.db.get_setting("app").ok().flatten();
+    crate::permission_deny::merge_from_settings_and_plugins(
+        settings.as_ref(),
+        state.plugins.contributed_deny_rules(project_path),
+    )
 }
 
 fn gate_default_command_shell_setting(state: &AppState) -> Result<(), JsonRpcError> {
@@ -886,7 +902,12 @@ fn requires_external_path_permission(
     if !matches!(tool_name, "Read" | "Glob" | "Grep" | "Write" | "Edit") {
         return false;
     }
-    let Some(path) = args.get("path").and_then(Value::as_str) else {
+    let Some(path) = args
+        .get("path")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|path| !path.is_empty())
+    else {
         return false;
     };
     if scratch_path.is_some_and(|root| workspace::lexically_inside(root, path)) {
@@ -3151,6 +3172,9 @@ async fn handle_request(
                         &p.tool_name,
                         &p.args,
                     );
+                    let project_path =
+                        resolve_persisted_project_workspace(&st, &p.session_id)?;
+                    let deny_rules = merged_deny_rules(&st, project_path.as_deref());
                     let mut auto = st
                         .permissions
                         .evaluate_auto_with_permission_mode_and_risk_and_path(
@@ -3163,6 +3187,9 @@ async fn handle_request(
                                 declared_risk: p.declared_risk.as_deref(),
                                 requires_external_path_permission: external_path_permission,
                                 plan_safe_actions: p.plan_safe_actions.as_deref(),
+                                deny_rules: Some(&deny_rules),
+                                tool_args: Some(&p.args),
+                                path_root: ws.as_deref().map(Path::new),
                             },
                         );
                     // Write/Edit targeting the session scratch dir never touch
@@ -3335,7 +3362,10 @@ async fn handle_request(
                     let error_code = if cancelled {
                         "TOOL_ABORTED"
                     } else if sessions::is_contract_mode(&durable_mode)
-                        && !PermissionManager::plan_mode_allows(&p.tool_name)
+                        && PermissionManager::contract_mode_hard_denies(
+                            &p.tool_name,
+                            p.plan_safe_actions.as_deref(),
+                        )
                     {
                         match p.tool_name.as_str() {
                             "Write" => "WRITE_DISABLED_IN_PLAN",
@@ -3679,6 +3709,8 @@ async fn handle_request(
                 tool_name,
                 &args,
             );
+            let project_path = resolve_persisted_project_workspace(&st, session_id)?;
+            let deny_rules = merged_deny_rules(&st, project_path.as_deref());
             let decision = st
                 .permissions
                 .evaluate_auto_with_permission_mode_and_risk_and_path(PermissionEvaluationParams {
@@ -3690,6 +3722,9 @@ async fn handle_request(
                     declared_risk,
                     requires_external_path_permission: external_path_permission,
                     plan_safe_actions: plan_safe_actions.as_deref(),
+                    deny_rules: Some(&deny_rules),
+                    tool_args: Some(&args),
+                    path_root: workspace_path.as_deref().map(Path::new),
                 });
             Ok(json!({
                 "decision": decision,
@@ -5552,6 +5587,535 @@ mod tests {
         );
         assert!(catalog["choices"].is_array());
         assert!(catalog["effective"].is_object() || catalog["effective"].is_null());
+    }
+
+    #[tokio::test]
+    async fn permission_deny_settings_roundtrip() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({
+                "permissionDeny": {
+                    "tools": ["Bash"],
+                    "paths": ["**/.env"],
+                    "commands": ["rm -rf *"]
+                }
+            }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let stored = handle_request(state.clone(), "settings.get", json!({}), tx.clone())
+            .await
+            .unwrap();
+        assert_eq!(stored["permissionDeny"]["tools"], json!(["Bash"]));
+        assert_eq!(stored["permissionDeny"]["paths"], json!(["**/.env"]));
+        assert_eq!(stored["permissionDeny"]["commands"], json!(["rm -rf *"]));
+
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "permissionDeny": {} }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let emptied = handle_request(state.clone(), "settings.get", json!({}), tx.clone())
+            .await
+            .unwrap();
+        assert_eq!(emptied["permissionDeny"], json!({}));
+
+        let unknown = handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "permissionDeny": { "allow": ["Bash"] } }),
+            tx.clone(),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(unknown.data.unwrap()["errorCode"], "INVALID_PARAMS");
+
+        let empty_entry = handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "permissionDeny": { "tools": [""] } }),
+            tx.clone(),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(empty_entry.data.unwrap()["errorCode"], "INVALID_PARAMS");
+
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "permissionDeny": null }),
+            tx,
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn permission_deny_rules_outrank_auto_on_evaluate() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let session = sessions::create_session(
+            &app_state.db,
+            Some("Deny".into()),
+            Some("agent".into()),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({
+                "defaultPermissionMode": "auto",
+                "permissionDeny": { "tools": ["Bash"] }
+            }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+
+        let denied = handle_request(
+            state.clone(),
+            "permissions.evaluate",
+            json!({
+                "sessionId": session.id,
+                "toolName": "Bash",
+                "args": { "command": "git status" }
+            }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(denied["decision"], "deny");
+
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "permissionDeny": {} }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let allowed = handle_request(
+            state,
+            "permissions.evaluate",
+            json!({
+                "sessionId": session.id,
+                "toolName": "Bash",
+                "args": { "command": "git status" }
+            }),
+            tx,
+        )
+        .await
+        .unwrap();
+        assert_eq!(allowed["decision"], "allow-once");
+    }
+
+    #[tokio::test]
+    async fn permission_deny_rules_outrank_auto_on_tools_execute() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let project = data_dir.path().join("project");
+        fs::create_dir_all(&project).unwrap();
+        let marker = project.join("must-not-write.txt");
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let session = sessions::create_session(
+            &app_state.db,
+            Some("Deny execute".into()),
+            Some("agent".into()),
+            None,
+            None,
+            Some(project.to_string_lossy().into_owned()),
+        )
+        .unwrap();
+        sessions::configure_session_with_thinking(
+            &app_state.db,
+            &session.id,
+            "agent",
+            None,
+            None,
+            None,
+            Some("auto"),
+        )
+        .unwrap();
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "permissionDeny": { "tools": ["Write"] } }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+
+        let denied = handle_request(
+            state.clone(),
+            "tools.execute",
+            json!({
+                "sessionId": session.id,
+                "toolCallId": "deny-write",
+                "toolName": "Write",
+                "args": { "path": "must-not-write.txt", "content": "secret" },
+                "mode": "agent"
+            }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(denied["ok"], false);
+        assert_eq!(denied["errorCode"], "TOOL_DENIED");
+        assert!(!marker.exists());
+
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "permissionDeny": {} }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let allowed = handle_request(
+            state,
+            "tools.execute",
+            json!({
+                "sessionId": session.id,
+                "toolCallId": "allow-write",
+                "toolName": "Write",
+                "args": { "path": "must-not-write.txt", "content": "secret" },
+                "mode": "agent"
+            }),
+            tx,
+        )
+        .await
+        .unwrap();
+        assert_eq!(allowed["ok"], true, "auto Write failed: {allowed}");
+        assert!(marker.exists());
+    }
+
+    #[tokio::test]
+    async fn permission_deny_of_plan_safe_plugin_uses_tool_denied_not_in_plan() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let session = sessions::create_session(
+            &app_state.db,
+            Some("Plan deny".into()),
+            Some("plan".into()),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        sessions::configure_session_with_thinking(
+            &app_state.db,
+            &session.id,
+            "plan",
+            None,
+            None,
+            None,
+            Some("auto"),
+        )
+        .unwrap();
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "permissionDeny": { "tools": ["plugin_*"] } }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+
+        let denied = handle_request(
+            state,
+            "tools.execute",
+            json!({
+                "sessionId": session.id,
+                "toolCallId": "deny-plugin",
+                "toolName": "plugin_demo_run",
+                "args": {},
+                "mode": "plan",
+                "planSafeActions": ["navigate"],
+                "timeoutMs": 250
+            }),
+            tx,
+        )
+        .await
+        .unwrap();
+        assert_eq!(denied["ok"], false);
+        assert_eq!(denied["errorCode"], "TOOL_DENIED");
+    }
+
+    #[tokio::test]
+    async fn permission_deny_path_rules_block_parent_relative_read_in_auto() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let project = data_dir.path().join("project");
+        fs::create_dir_all(&project).unwrap();
+        let hidden = data_dir.path().join("deny-hidden-dir");
+        fs::create_dir_all(&hidden).unwrap();
+        let secret = hidden.join("secret.txt");
+        fs::write(&secret, "classified").unwrap();
+        let pattern = "**/deny-hidden-dir/**";
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let session = sessions::create_session(
+            &app_state.db,
+            Some("Deny relative path".into()),
+            Some("agent".into()),
+            None,
+            None,
+            Some(project.to_string_lossy().into_owned()),
+        )
+        .unwrap();
+        sessions::configure_session_with_thinking(
+            &app_state.db,
+            &session.id,
+            "agent",
+            None,
+            None,
+            None,
+            Some("auto"),
+        )
+        .unwrap();
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "permissionDeny": { "paths": [pattern] } }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+
+        let denied = handle_request(
+            state,
+            "tools.execute",
+            json!({
+                "sessionId": session.id,
+                "toolCallId": "deny-relative-read",
+                "toolName": "Read",
+                "args": { "path": "../deny-hidden-dir/secret.txt" },
+                "mode": "agent"
+            }),
+            tx,
+        )
+        .await
+        .unwrap();
+        assert_eq!(denied["ok"], false, "relative path deny failed: {denied}");
+        assert_eq!(denied["errorCode"], "TOOL_DENIED");
+        assert_ne!(
+            denied["content"].as_str().unwrap_or(""),
+            "classified",
+            "denied Read must not return file contents"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn permission_deny_path_rules_block_dangling_symlink_write_in_auto() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let project = data_dir.path().join("project");
+        fs::create_dir_all(&project).unwrap();
+        let hidden = data_dir.path().join("deny-hidden-dir");
+        fs::create_dir_all(&hidden).unwrap();
+        let target = hidden.join("secret.txt");
+        std::os::unix::fs::symlink(&target, project.join("link")).unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let session = sessions::create_session(
+            &app_state.db,
+            Some("Deny dangling write".into()),
+            Some("agent".into()),
+            None,
+            None,
+            Some(project.to_string_lossy().into_owned()),
+        )
+        .unwrap();
+        sessions::configure_session_with_thinking(
+            &app_state.db,
+            &session.id,
+            "agent",
+            None,
+            None,
+            None,
+            Some("auto"),
+        )
+        .unwrap();
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "permissionDeny": { "paths": ["**/deny-hidden-dir/**"] } }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+
+        let denied = handle_request(
+            state,
+            "tools.execute",
+            json!({
+                "sessionId": session.id,
+                "toolCallId": "deny-dangling-write",
+                "toolName": "Write",
+                "args": { "path": "link", "content": "pwned" },
+                "mode": "agent"
+            }),
+            tx,
+        )
+        .await
+        .unwrap();
+        assert_eq!(denied["ok"], false, "dangling symlink deny failed: {denied}");
+        assert_eq!(denied["errorCode"], "TOOL_DENIED");
+        assert!(!target.exists());
+    }
+
+    #[tokio::test]
+    async fn permission_deny_outranks_scratch_write_auto_allow() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let project = data_dir.path().join("project");
+        fs::create_dir_all(&project).unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let session = sessions::create_session(
+            &app_state.db,
+            Some("Deny scratch".into()),
+            Some("agent".into()),
+            None,
+            None,
+            Some(project.to_string_lossy().into_owned()),
+        )
+        .unwrap();
+        sessions::configure_session_with_thinking(
+            &app_state.db,
+            &session.id,
+            "agent",
+            None,
+            None,
+            None,
+            Some("auto"),
+        )
+        .unwrap();
+        let scratch = crate::scratch::session_dir(data_dir.path(), &session.id).unwrap();
+        fs::create_dir_all(&scratch).unwrap();
+        let marker = scratch.join("must-not-write.txt");
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "permissionDeny": { "tools": ["Write"] } }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+
+        let denied = handle_request(
+            state,
+            "tools.execute",
+            json!({
+                "sessionId": session.id,
+                "toolCallId": "deny-scratch-write",
+                "toolName": "Write",
+                "args": {
+                    "path": marker.to_string_lossy(),
+                    "content": "secret"
+                },
+                "mode": "agent"
+            }),
+            tx,
+        )
+        .await
+        .unwrap();
+        assert_eq!(denied["ok"], false, "scratch deny failed: {denied}");
+        assert_eq!(denied["errorCode"], "TOOL_DENIED");
+        assert!(!marker.exists());
+    }
+
+    #[tokio::test]
+    async fn permission_deny_command_glob_trims_leading_whitespace_on_execute() {
+        let Some(shell_id) = available_test_shell_id() else {
+            return;
+        };
+        let data_dir = tempfile::tempdir().unwrap();
+        let project = data_dir.path().join("project");
+        fs::create_dir_all(&project).unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let session = sessions::create_session(
+            &app_state.db,
+            Some("Deny command trim".into()),
+            Some("agent".into()),
+            None,
+            None,
+            Some(project.to_string_lossy().into_owned()),
+        )
+        .unwrap();
+        sessions::configure_session_with_thinking(
+            &app_state.db,
+            &session.id,
+            "agent",
+            None,
+            None,
+            None,
+            Some("auto"),
+        )
+        .unwrap();
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "permissionDeny": { "commands": ["echo DENY_GLOB_TRIM *"] } }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+
+        let denied = handle_request(
+            state,
+            "tools.execute",
+            json!({
+                "sessionId": session.id,
+                "toolCallId": "deny-command-trim",
+                "toolName": "Bash",
+                "args": { "command": "  echo DENY_GLOB_TRIM pwned" },
+                "expectedCommandShellId": shell_id,
+                "expectedCommandShellDialect": crate::tools::shell::dialect_for_id(&shell_id),
+                "mode": "agent"
+            }),
+            tx,
+        )
+        .await
+        .unwrap();
+        assert_eq!(denied["ok"], false, "command glob trim failed: {denied}");
+        assert_eq!(denied["errorCode"], "TOOL_DENIED");
     }
 
     #[tokio::test]

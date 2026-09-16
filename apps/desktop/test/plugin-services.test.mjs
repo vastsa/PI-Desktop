@@ -448,5 +448,6 @@ test("capability badges include every declared plugin capability", () => {
     "mcp",
     "services",
     "bus",
+    "permissionDeny",
   ]);
 });

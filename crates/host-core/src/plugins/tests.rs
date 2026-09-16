@@ -847,6 +847,105 @@ fn window_appearance_requires_permission_and_a_hex_colour() {
 }
 
 #[test]
+fn permission_deny_requires_permission_and_valid_rules() {
+    let dir = tempdir().unwrap();
+
+    let no_perm = dir.path().join("no-perm");
+    write_plugin(
+        &no_perm,
+        capability_manifest(
+            json!({ "permissionDeny": { "tools": ["Bash"] } }),
+            json!([]),
+        ),
+        &[],
+    );
+    assert!(read_manifest_err(&no_perm).contains("agent.permission.deny permission"));
+
+    let empty_still_needs_perm = dir.path().join("empty-no-perm");
+    write_plugin(
+        &empty_still_needs_perm,
+        capability_manifest(json!({ "permissionDeny": {} }), json!([])),
+        &[],
+    );
+    assert!(read_manifest_err(&empty_still_needs_perm).contains("agent.permission.deny permission"));
+
+    let unknown_key = dir.path().join("unknown-key");
+    write_plugin(
+        &unknown_key,
+        capability_manifest(
+            json!({ "permissionDeny": { "allow": ["Bash"] } }),
+            json!(["agent.permission.deny"]),
+        ),
+        &[],
+    );
+    assert!(read_manifest_err(&unknown_key).contains("permissionDeny.allow is not supported"));
+
+    let ok = dir.path().join("ok");
+    write_plugin(
+        &ok,
+        capability_manifest(
+            json!({ "permissionDeny": { "tools": ["Bash"], "paths": ["**/.env"], "commands": ["rm -rf *"] } }),
+            json!(["agent.permission.deny"]),
+        ),
+        &[],
+    );
+    let manifest = PluginManager::read_manifest(&ok).unwrap();
+    assert!(derive_capabilities(&manifest).contains(&"permissionDeny".to_string()));
+}
+
+#[test]
+fn contributed_deny_rules_honor_enabled_grant_and_scope() {
+    let _env = lock_market_env();
+    let dir = tempdir().unwrap();
+    let data = tempdir().unwrap();
+    unsafe {
+        std::env::set_var("PI_DESKTOP_DATA_DIR", data.path());
+    }
+    let root = dir.path().join("plugin");
+    write_plugin(
+        &root,
+        capability_manifest(
+            json!({ "permissionDeny": { "tools": ["Bash"], "paths": ["**/.env"] } }),
+            json!(["agent.permission.deny"]),
+        ),
+        &[],
+    );
+    let mut mgr = PluginManager::new(data.path(), None);
+    let summary = mgr.load_dev(root.to_str().unwrap()).unwrap();
+    assert!(summary.capabilities.contains(&"permissionDeny".to_string()));
+    assert!(summary.enabled);
+
+    let global = mgr.contributed_deny_rules(None);
+    assert_eq!(global.len(), 1);
+    assert_eq!(global[0].tools, vec!["Bash"]);
+    assert_eq!(global[0].paths, vec!["**/.env"]);
+
+    mgr.set_enabled("demo.caps", false).unwrap();
+    assert!(mgr.contributed_deny_rules(None).is_empty());
+    mgr.set_enabled("demo.caps", true).unwrap();
+
+    mgr.set_scope(
+        "demo.caps",
+        ActivationScope {
+            mode: ActivationMode::Projects,
+            projects: vec!["C:/repo".into()],
+        },
+    )
+    .unwrap();
+    assert!(mgr.contributed_deny_rules(None).is_empty());
+    assert_eq!(mgr.contributed_deny_rules(Some("C:/repo")).len(), 1);
+    assert!(mgr.contributed_deny_rules(Some("C:/other")).is_empty());
+
+    mgr.revoke_permissions("demo.caps", vec!["agent.permission.deny".into()])
+        .unwrap();
+    assert!(mgr.contributed_deny_rules(Some("C:/repo")).is_empty());
+
+    unsafe {
+        std::env::remove_var("PI_DESKTOP_DATA_DIR");
+    }
+}
+
+#[test]
 fn view_contributions_require_permission_and_an_existing_entry() {
     let dir = tempdir().unwrap();
     let view = |extra: Value| json!({ "views": [extra] });

@@ -25,6 +25,7 @@ Provide a permission–capability–risk–default-policy reference table for re
 | `agent.prompt.inject` | high | Inject a system prompt; activates `contributes.skills` | Deny by default / strong confirmation | Easily leads to behavior hijacking |
 | `agent.extension` | high | Run `contributes.agentExtensions` modules inside the agent process | Explicit confirmation; local imports and development plugins only in v1.1 | Same access as the agent's own tools; the plugin sandbox does not apply (spec 16) |
 | `provider.register` | high | `contributes.providers` become rows in the native provider list, owned by the plugin and refreshed from the manifest on load | Explicit confirmation; local imports and development plugins only in v1.1, matching `agent.extension` | The user path refuses the row (`PROVIDER_OWNED_BY_PLUGIN`); credentials stay in the Host secret store under the usual provider refs; `oauth` declarations are not enabled yet |
+| `agent.permission.deny` | medium | `contributes.permissionDeny` is merged into the host deny-first overlay | Confirm at install | Deny-only; cannot remove user rules or add allow. Empty `{}` still requires the permission. Not in `HIGH_RISK_PERMISSIONS` (D433 / ADR 0267) |
 | `net.fetch` | high | `net.fetch` | Deny by default | Confined to `manifest.net.domains`; an empty or malformed list means no egress (§2A) |
 | `net.websocket` | high | `pi.net.websocket.connect` / `send` / `close` (host-owned sockets; at most 4 per plugin, 1 MiB frames) | Deny by default | Confined to `manifest.net.domains` like `net.fetch`; a refused host never reaches the transport, and every socket is closed when the plugin unloads, is disabled, or crashes |
 | `shell.openExternal` | medium | Open external link | Confirm on first use | Prevents phishing links |
@@ -97,8 +98,10 @@ plugin, so it carries three bounds the other modes do not:
   nobody can use fails validation rather than being silently ignored
 - `fs.requestDirectory` (the `userSelected` root) is gated on `fs.read`; writing
   or deleting inside the chosen directory still needs `fs.write` / `fs.delete`
+- `agent.permission.deny` is required to contribute `permissionDeny`, including
+  an empty object
 - A contribution whose permission is missing fails manifest validation
-  (`themes`, `mcpServers`, `services`, `bus`); `skills` is the exception and is
+  (`themes`, `mcpServers`, `services`, `bus`, `permissionDeny`); `skills` is the exception and is
   skipped at load time instead (see
   [02-plugin-manifest-schema.md](02-plugin-manifest-schema.md) §7)
 - Lifecycle and state events need no permission: `workspace:changed`,
@@ -130,6 +133,7 @@ so "Modify the files it lists" is followed by the list.
 | `agent.tool.register` | Provide executable tools to the AI Agent | 向 AI Agent 提供可执行工具 |
 | `agent.prompt.inject` | Adjust agent instructions | 调整智能体指令 |
 | `agent.extension` | Run code inside the agent | 在 agent 内运行代码 |
+| `agent.permission.deny` | Add always-deny permission rules | 添加始终拒绝的权限规则 |
 | `net.fetch` | Access the network | 访问网络 |
 | `shell.openExternal` | Open external links | 打开外部链接 |
 | `ui.theme` | Provide a theme | 提供主题 |

@@ -124,6 +124,11 @@ notification.list
 8. 秘密永远不会返回到渲染器日志中
 9. 插件、shell 或批准路径中的崩溃失败关闭并且不授予或
    重放执行
+10. 会话协作由宿主认证：源身份来自当前插件调用，
+    目标权限上限在回合准入时复核，回调最多一次，重启恢复
+    从不重放中断的投递
+11. Deny-first 叠加（D433）在合同模式硬拒绝之后、外部路径 / 低风险 / auto / grants
+    之前匹配；命中为 Deny 且压过会话授权；插件只能加规则
 
 ## 7. 包装
 
@@ -153,3 +158,5 @@ notification.list
 9. Shell selection/fallback、过时的 ID/dialect 拒绝、stdout/stderr
    流式传输、60 秒超时、有界覆盖和进程树中止
    主机强制
+11. Deny-first 叠加命中即使在 `auto`、会话授权、低风险自动放行和 `accept-edits`
+    下也返回 `TOOL_DENIED`；合同模式硬拒绝仍排在它前面

@@ -4,6 +4,7 @@ import type {
   AppSettings,
   CommandShellCatalog,
   CommandShellId,
+  PermissionDenyRules,
 } from "@pi-desktop/shared";
 import {
   MAX_LARGE_PASTE_THRESHOLD,
@@ -12,7 +13,7 @@ import {
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { resolveContextUsageDisplay } from "../../lib/context-usage";
-import { Input, cx } from "../../components/ui";
+import { Input, Textarea, cx } from "../../components/ui";
 import { SettingsMenuSelect } from "../../components/settings/SettingsMenuSelect";
 
 export function SettingsRow({
@@ -342,6 +343,96 @@ export function LargePasteThresholdRow({
         {saveError ? (
           <span className="settings-command-shell-state error" role="status">
             {t("settings.largePasteThresholdSaveError")}
+          </span>
+        ) : null}
+      </div>
+    </SettingsRow>
+  );
+}
+
+export function PermissionDenyRow({
+  settings,
+  saveSettings,
+}: {
+  settings: AppSettings;
+  saveSettings: (patch: Partial<AppSettings>) => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const persistedText =
+    settings.permissionDeny != null
+      ? JSON.stringify(settings.permissionDeny, null, 2)
+      : "";
+  const [draft, setDraft] = useState(persistedText);
+  const [saveError, setSaveError] = useState(false);
+
+  useEffect(() => {
+    setDraft(persistedText);
+  }, [persistedText]);
+
+  const commit = async () => {
+    const trimmed = draft.trim();
+    if (trimmed === "") {
+      if (settings.permissionDeny == null) {
+        setSaveError(false);
+        return;
+      }
+      setSaveError(false);
+      try {
+        await saveSettings({ permissionDeny: null });
+      } catch {
+        setDraft(persistedText);
+        setSaveError(true);
+      }
+      return;
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      setSaveError(true);
+      return;
+    }
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      setSaveError(true);
+      return;
+    }
+
+    const next = parsed as PermissionDenyRules;
+    const nextText = JSON.stringify(next, null, 2);
+    if (nextText === persistedText) {
+      setDraft(nextText);
+      setSaveError(false);
+      return;
+    }
+    setSaveError(false);
+    try {
+      await saveSettings({ permissionDeny: next });
+    } catch {
+      setDraft(persistedText);
+      setSaveError(true);
+    }
+  };
+
+  return (
+    <SettingsRow
+      title={t("settings.permissionDeny")}
+      description={t("settings.permissionDenyDesc")}
+    >
+      <div className="settings-permission-deny">
+        <Textarea
+          className="settings-permission-deny-textarea"
+          rows={6}
+          value={draft}
+          placeholder={t("settings.permissionDenyPlaceholder")}
+          aria-label={t("settings.permissionDeny")}
+          aria-invalid={saveError}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={() => void commit()}
+        />
+        {saveError ? (
+          <span className="settings-command-shell-state error" role="status">
+            {t("settings.permissionDenySaveError")}
           </span>
         ) : null}
       </div>

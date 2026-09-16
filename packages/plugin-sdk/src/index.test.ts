@@ -411,6 +411,50 @@ describe("contributed theme assets and window appearance", () => {
       validateManifest({ ...base, permissions: ["ui.window.appearance"], contributes }).ok,
     ).toBe(true);
   });
+
+  it("accepts empty and well-formed permissionDeny lists", () => {
+    expect(validateContributions({ permissionDeny: {} })).toBeUndefined();
+    expect(
+      validateContributions({
+        permissionDeny: {
+          tools: ["Bash"],
+          paths: ["**/.env"],
+          commands: ["rm -rf *"],
+        },
+      }),
+    ).toBeUndefined();
+  });
+
+  it("rejects malformed permissionDeny contributions", () => {
+    expect(validateContributions({ permissionDeny: { allow: ["Bash"] } } as never)).toMatch(
+      /permissionDeny\.allow is not supported/,
+    );
+    expect(validateContributions({ permissionDeny: { tools: "Bash" } } as never)).toMatch(
+      /permissionDeny\.tools must be an array/,
+    );
+    expect(validateContributions({ permissionDeny: { tools: [""] } })).toMatch(
+      /non-empty strings/,
+    );
+    expect(validateContributions({ permissionDeny: { tools: [1] } } as never)).toMatch(
+      /entries must be strings/,
+    );
+    expect(validateContributions({ permissionDeny: { tools: ["a".repeat(513)] } })).toMatch(
+      /at most 512 characters/,
+    );
+    expect(
+      validateContributions({ permissionDeny: { tools: Array(257).fill("Bash") } }),
+    ).toMatch(/at most 256 entries/);
+  });
+
+  it("requires agent.permission.deny even for an empty permissionDeny object", () => {
+    const contributes = { permissionDeny: {} };
+    expect(validateManifest({ ...base, contributes }).error).toMatch(
+      /agent\.permission\.deny permission/,
+    );
+    expect(
+      validateManifest({ ...base, permissions: ["agent.permission.deny"], contributes }).ok,
+    ).toBe(true);
+  });
 });
 
 describe("contributes.globalShortcuts", () => {
@@ -507,6 +551,7 @@ describe("PLUGIN_PERMISSIONS", () => {
       "bus.subscribe",
       "agent.prompt.inject",
       "agent.complete",
+      "agent.permission.deny",
       "models.list",
       "project.create",
       "session.read",

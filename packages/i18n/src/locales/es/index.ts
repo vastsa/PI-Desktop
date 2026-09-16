@@ -964,6 +964,10 @@ sklm: {
     "permissionModeAsk": "Preguntar cada vez",
     "permissionModeAcceptEdits": "Aceptación automática de ediciones",
     "permissionModeAuto": "Totalmente automático",
+    "permissionDeny": "Reglas de denegación",
+    "permissionDenyDesc": "Globs JSON que siempre deniegan, incluso en modo automático. paths coinciden con path/file_path de Read/Write/Edit/Glob/Grep tras resolver .., ~ y symlinks; no aplican al contenido de Bash o Grep. commands son prefijos o globs de la cadena Bash recortada, no argv. Los plugins solo pueden añadir reglas, nunca quitar las tuyas.",
+    "permissionDenyPlaceholder": "{ \"tools\": [\"Bash\"], \"paths\": [\"**/.env\", \"~/.ssh/**\"], \"commands\": [\"rm -rf\"] }",
+    "permissionDenySaveError": "No se pudieron guardar las reglas de denegación. Revisa el JSON.",
     "autoReview": "Revisión automática",
     "autoReviewDesc": "PI-Desktop puede leer y editar archivos en su proyecto y decidirá automáticamente sobre solicitudes de acceso adicionales. La revisión automática puede cometer errores.",
     "learnMore": "Obtenga más información",
@@ -1762,7 +1766,8 @@ sklm: {
       "themes": "Tema",
       "mcp": "Servidor MCP",
       "services": "Servicio en segundo plano",
-      "bus": "Mensajes de complemento"
+      "bus": "Mensajes de complemento",
+      "permissionDeny": "Reglas de denegación de permisos"
     },
     "serviceState": {
       "starting": "Iniciando",
@@ -1798,6 +1803,7 @@ sklm: {
       "agent.complete": "Ejecutar una finalización de una sola vez con sus modelos",
       "agent.extension": "Ejecutar código dentro del agente",
       "provider.register": "Agregar proveedores a la lista de modelos",
+      "agent.permission.deny": "Añadir reglas de denegación permanente",
       "desktop.control": "Controlar el escritorio",
       "models.list": "Listar modelos autenticados",
       "session.read": "Leer la conversación actual enviada al modelo",
@@ -1833,6 +1839,7 @@ sklm: {
       "agent.complete": "Puede gastar su cuota de modelo en una finalización única. El complemento nunca recibe sus claves API.",
       "agent.extension": "Ejecuta módulos ExtensionAPI dentro del proceso del agente con el mismo acceso que sus propias herramientas. Activa solo código en el que confíes.",
       "provider.register": "Agregue los proveedores que define este complemento a la lista de proveedores de Configuración. El complemento aporta el punto final y los modelos; su clave API permanece en PI-Desktop.",
+      "agent.permission.deny": "Permite al plugin añadir globs de herramientas, rutas y comandos que siempre deniegan. No puede relajar tus ajustes.",
       "desktop.control": "Permite invocar el catálogo de control de PI-Desktop revisado; las operaciones destructivas siguen requiriendo confirm=true y el token bearer de MCP no se expone.",
       "models.list": "Puede ver en qué modelos se ha registrado. No recibe llaves.",
       "session.read": "Puede leer la conversación en la que está operando la llamada de herramienta actual, incluidos los resultados de la herramienta.",

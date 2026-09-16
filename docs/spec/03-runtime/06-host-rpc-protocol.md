@@ -760,12 +760,12 @@ Authoritative mode and workspace resolution are session-scoped:
    only a confirmed missing session may use the legacy fallback.
 
 For `Read`/`Glob`/`Grep`/`Write`/`Edit`, the host classifies an explicit path
-outside the workspace and scratch roots before the low-risk auto-allow rule.
-`auto` executes it, while `ask` and `accept-edits` emit
-`permissions.request`; denial, timeout, or cancellation returns `TOOL_DENIED`
-without executing the operation. Relative `..` and symlink escapes use the
-same classification. Bash's working directory and implicit recursive walks do
-not inherit this exception.
+outside the workspace and scratch roots before the low-risk auto-allow rule
+and after deny-first matching. `auto` executes it, while `ask` and
+`accept-edits` emit `permissions.request`; denial, timeout, or cancellation
+returns `TOOL_DENIED` without executing the operation. Relative `..` and
+symlink escapes use the same classification. Bash's working directory and
+implicit recursive walks do not inherit this exception.
 
 Before generic permission evaluation, host-core applies the mode policy:
 
@@ -786,6 +786,20 @@ Before generic permission evaluation, host-core applies the mode policy:
   shell before the turn pin is created, but execution never changes shell
   after the pin.
 - Agent applies the normal registered-tool and permission policy.
+- After the contract-mode matrix, host-core matches the deny-first overlay
+  (D433 / ADR 0267): `AppSettings.permissionDeny` unioned with
+  `contributes.permissionDeny` from enabled plugins granted
+  `agent.permission.deny` whose activation scope matches the session
+  workspace. Path globs resolve `path` / `file_path` against that same
+  session tool root (so `../`, `~`, and dangling workspace symlinks hit
+  the absolute path execution would write). Command globs trim the Bash
+  `command` string. A match is
+  `PermissionDecision::Deny`; `tools.execute` and `permissions.evaluate`
+  return the existing `TOOL_DENIED` / `"deny"`. The overlay outranks
+  `auto`, session grants, low-risk auto-allow, `accept-edits`, and the
+  outside-workspace auto exception. Scratch auto-allow is still after
+  this check. Contract-mode hard deny still precedes it, so a Plan
+  `Write` stays `*_IN_PLAN`.
 
 The visible tool list is not the security boundary; a forged RPC call is
 authorized by this host-side matrix.

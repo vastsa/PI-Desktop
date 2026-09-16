@@ -114,6 +114,28 @@ before it is ever sent to the UI:
 CSS cannot script, but it can mislead: a theme is still third-party code shaping
 what the user sees, which is why it is a declared, revocable permission.
 
+## 3.3 Contributed deny-first rules
+
+`contributes.permissionDeny` (`agent.permission.deny`) is deny-only. The plugin
+may add tool, path, and command globs to the host overlay; it cannot remove the
+user's `AppSettings.permissionDeny` or introduce an allow list.
+
+The host merges the user's settings with every **enabled** plugin that has been
+granted the permission and whose `ActivationScope` matches the session workspace
+(`global` always; project-scoped only when the session has a project and the
+scope hits). Scratch is not treated as a project. The host reads
+`manifest.json` at evaluation time, so a disable, a revoke, or a scope miss
+drops the contribution on the next call. Unreadable, invalid, or
+schema-invalid JSON is skipped with a warning.
+
+Shape checks (unknown keys, 256 × 512) run at install in both the SDK and
+host-core. Matching is host-only (`globset`). A hit is the existing
+`TOOL_DENIED` code, indistinguishable from a user card denial at the protocol
+layer.
+
+An empty `{}` still requires the permission, matching `windowAppearance`. Risk
+is **medium**; the name is not in `HIGH_RISK_PERMISSIONS`.
+
 ## 4. Permission-grant UX
 
 At install/load time, show:
@@ -434,6 +456,9 @@ The host should be able to:
    a non-loopback plain-HTTP URL is accepted only when its host is declared in
    `manifest.net.domains` and the UI shows the unencrypted-connection warning
 10. A low-risk or granted plugin tool still fails closed in Plan
+11. A deny-first overlay hit returns `TOOL_DENIED` under `auto`, a session
+    grant, low-risk auto-allow, and `accept-edits`; a plugin cannot remove a
+    user rule; Plan/Goal hard deny still precedes the overlay
 
 
 ## 11. Implementation status

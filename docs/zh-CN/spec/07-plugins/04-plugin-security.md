@@ -78,6 +78,22 @@
 CSS 无法脚本化，但它可能会产生误导：主题仍然是第三方代码塑造
 用户看到的内容，这就是为什么它是声明的、可撤销的权限。
 
+## 3.3 贡献的 deny-first 规则
+
+`contributes.permissionDeny`（`agent.permission.deny`）只能 deny。插件可以把工具、
+路径和命令 glob 加进宿主叠加；不能删除用户的 `AppSettings.permissionDeny`，也不能引入 allow 列表。
+
+宿主把用户设置与每个**已启用**、已授予该权限、且 `ActivationScope` 命中会话工作区的插件合并
+（`global` 始终生效；project-scoped 仅当会话有项目且范围命中）。scratch 不视为项目。
+宿主在求值时读取 `manifest.json`，因此禁用、撤销或范围未命中会在下一次调用时丢掉该贡献。
+无法读取、非法或 schema 不合法的 JSON 会记警告并跳过。
+
+形状检查（未知键、256 × 512）在安装时由 SDK 与 host-core 共同执行。匹配只在宿主
+（`globset`）。命中沿用既有 `TOOL_DENIED`，在协议层与用户卡片拒绝无法区分。
+
+空 `{}` 仍需要该权限，与 `windowAppearance` 一致。风险为 **medium**；名称不在
+`HIGH_RISK_PERMISSIONS` 中。
+
 ## 4. 权限授予用户体验
 
 在 install/load 时间，显示：
@@ -356,6 +372,8 @@ PI-Desktop 自己当前占用（默认是 `Alt+Space` 与 `Mod+Shift+W`；用户
    明文 HTTP URL 只有在主机声明于 `manifest.net.domains` 且 UI 显示未加密连接
    警告时才可接受
 10. 低风险或授予的插件工具在 Plan 中仍然无法关闭
+11. Deny-first 叠加命中在 `auto`、会话授权、低风险自动放行和 `accept-edits` 下
+    仍返回 `TOOL_DENIED`；插件不能删除用户规则；Plan/Goal 硬拒绝仍排在叠加前面
 
 
 ## 11. 实施情况

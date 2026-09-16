@@ -19,6 +19,7 @@
 | Agent 工具 | Agent 可以调用的函数 | `contributes.agentTools`、`pi.agent.registerTool` |
 | 技能 | Agent 按需加载指令 | `contributes.skills`、`agent.prompt.inject` 权限 |
 | 主题 | 设计令牌覆盖 | `contributes.themes`、`ui.theme` 权限 |
+| Deny-first 规则 | 始终拒绝的工具、路径和命令 glob | `contributes.permissionDeny`、`agent.permission.deny` 权限 |
 | MCP 服务器 | 从本地或远程 MCP 服务器发现的工具 | `contributes.mcpServers`，MCP 权限 |
 | 服务 | 驻地工作由主人监督 | `contributes.services`、`background.service` 权限 |
 | 消息总线 | 插件之间按约定类型化事件 | `contributes.bus`，总线权限 |
@@ -643,6 +644,32 @@ export default function (pi) {
   Electron 头重建（`npx @electron/rebuild -v <electron 版本>`）即可修复。安装失败会清理
   部分依赖并显示警告 toast，不会阻塞导入；只有扩展实际加载失败时插件行才显示 load error。
 
+### 6.11 Deny-first 权限规则
+
+插件可以收紧宿主的始终拒绝叠加，不能增加 allow 列表，也不能删除用户设置。
+声明该对象和中等风险的 `agent.permission.deny` 权限——即使对象为空也要声明：
+
+```json
+{
+  "contributes": {
+    "permissionDeny": {
+      "tools": ["Bash"],
+      "paths": ["**/.env", "~/.ssh/**"],
+      "commands": ["rm -rf"]
+    }
+  },
+  "permissions": ["agent.permission.deny"]
+}
+```
+
+使用前需要知道：
+
+- **只能 deny。** 宿主把它与 `AppSettings.permissionDeny` 取并集。你的规则只能缩小 agent 可做的事。
+- **宿主编译 glob。** SDK 只检查形状（未知键拒绝；每个列表最多 256 条；每条最多 512 字符）。匹配在 host-core（`globset`）。`paths` 会相对会话工具根解析 `..`、`~` 以及工作区 dangling symlink 后再匹配 `path` / `file_path`，不扫描 Bash 或 Grep 内容。`commands` 是 trim 后的 Bash 字符串（前缀或 glob），不是 argv。
+- **范围。** `global` 始终生效；project-scoped 插件只在会话有匹配的工作区时生效。scratch 不是项目。
+- **即时生效。** 禁用插件或撤销权限后，下一次工具调用就不再带上该贡献。宿主会重新读取 `manifest.json`，不把列表缓存在插件摘要上。
+- **命中是 `TOOL_DENIED`。** 不会告诉模型是哪条 glob 命中。
+
 ## 7.权限设计
 
 权限均在 `manifest.json` 中声明并由用户授予。
@@ -651,7 +678,7 @@ export default function (pi) {
 | 风险 | 权限 |
 |---|---|
 | 低 | `ui.panel`、`ui.theme`、`notify` |
-| 中等 | `clipboard.read`、`clipboard.write`、`fs.read`、`shell.openExternal`、`background.service`、`bus.publish`、`bus.subscribe`、`audio.playback.background`、`keyboard.globalShortcut` |
+| 中等 | `clipboard.read`、`clipboard.write`、`fs.read`、`shell.openExternal`、`background.service`、`bus.publish`、`bus.subscribe`、`audio.playback.background`、`keyboard.globalShortcut`、`agent.permission.deny` |
 | 高 | `fs.write`、`fs.delete`、`agent.tool.register`、`agent.prompt.inject`、`net.fetch`、`mcp.server.local`、`mcp.server.remote`、`audio.capture.background`、`net.websocket` |
 
 `keyboard.globalShortcut` 与 `net.websocket` 已实现。`pi.audio.*` 已经存在并且

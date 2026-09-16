@@ -2060,6 +2060,16 @@ identify the platform validation still needed.
 - **Milestone**: M5
 - **Status**: Partially automated (host-core unit tests: evaluate matrix, Plan policy precedence, session grants under ask; renderer source test: effective-only composer options and selection)
 
+#### E2E-PERM-deny-first-outranks-auto (D420)
+
+- **Preconditions**: Agent mode; project open; session permission mode `auto`.
+- **Steps**: 1) Settings → AI → Permissions: set `permissionDeny` to `{ "tools": ["Write"], "paths": ["**/.env"], "commands": ["echo DENY_GLOB_TRIM"] }`. 2) Ask the agent to Write a workspace file. 3) Ask the agent to Read a denied path via a `../` relative argument that lexically resolves onto the glob. 4) Ask the agent to run `  echo DENY_GLOB_TRIM pwned` (leading spaces). 5) Clear `permissionDeny` to `{}` and retry Write.
+- **Expected**: Steps 2–4 return `TOOL_DENIED` with no file mutation and no Bash spawn. Relative `../` path arguments match the same path globs as the resolved absolute path. Leading/trailing whitespace on Bash `command` does not bypass a command glob. Step 5 Write succeeds under Auto.
+- **Specs linked**: `03-runtime/03-tools-and-permissions.md §6`, `03-runtime/06-host-rpc-protocol.md` `tools.execute`, `08-meta/decisions-log.md` (D420), ADR 0249
+- **Acceptance**: E (deny-first overlay outranks auto / grants / scratch auto-allow)
+- **Milestone**: M5
+- **Status**: Partially automated (host-core unit tests and `tools.execute` RPC tests)
+
 #### E2E-019d: Bash tool sees the user's login-shell toolchain (D181)
 
 - **Preconditions**: Agent mode; project open; the OS user has a login shell

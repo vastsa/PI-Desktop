@@ -109,6 +109,7 @@ test("Basics and AI tabs expose their respective app and AI controls", () => {
   assert.match(aiSource, /CommandShellRow/);
   assert.match(aiSource, /enterToSend: !settings\.enterToSend/);
   assert.match(aiSource, /LargePasteThresholdRow/);
+  assert.match(aiSource, /PermissionDenyRow/);
   assert.match(aiSource, /ContextUsageDisplayRow/);
   assert.match(
     settingsPageSource,
@@ -126,6 +127,19 @@ test("Basics and AI tabs expose their respective app and AI controls", () => {
   }
   assert.match(sharedTypesSource, /contextUsageDisplay\?: ContextUsageDisplay/);
   assert.match(sharedTypesSource, /ContextUsageDisplay = "remaining" \| "used"/);
+  assert.match(sharedTypesSource, /permissionDeny\?: PermissionDenyRules \| null/);
+  assert.match(sharedTypesSource, /type PermissionDenyRules = \{/);
+  assert.match(settingsSearchSource, /settings\.permissionDeny/);
+  for (const key of [
+    "permissionDeny",
+    "permissionDenyDesc",
+    "permissionDenyPlaceholder",
+    "permissionDenySaveError",
+  ]) {
+    assert.match(enLocaleSource, new RegExp(`${key}:`));
+    assert.match(zhLocaleSource, new RegExp(`${key}:`));
+    assert.match(trLocaleSource, new RegExp(`${key}:`));
+  }
   assert.match(settingsPageSource, /largePasteThreshold/);
   assert.match(settingsPageSource, /saveSettings\(\{ largePasteThreshold: next \}\)/);
   assert.doesNotMatch(settingsPageSource, /commandShellConfigured/);

@@ -91,6 +91,7 @@ type PluginContributes = {
  settings?: PluginSettingContrib[];
  themes?: PluginThemeContrib[];
  windowAppearance?: PluginWindowAppearanceContrib; // native window background; needs `ui.window.appearance`
+ permissionDeny?: PluginPermissionDenyContrib; // deny-first overlay; needs `agent.permission.deny`
  mcpServers?: PluginMcpServerContrib[];
   services?: PluginServiceContrib[];
   bus?: PluginBusContrib;
@@ -162,6 +163,12 @@ type PluginThemeContrib = {
 
 type PluginWindowAppearanceContrib = {
  backgroundColor?: { light?: string; dark?: string }; // #rrggbb | #rrggbbaa
+};
+
+type PluginPermissionDenyContrib = {
+ tools?: string[]; // globs against the tool name
+ paths?: string[]; // globs against path / file_path; ~ expands
+ commands?: string[]; // Bash only: glob or prefix
 };
 
 type PluginSkillContrib = {
@@ -239,6 +246,7 @@ type PluginPermission =
  | "fs.delete"
  | "agent.tool.register"
  | "agent.prompt.inject"
+ | "agent.permission.deny"
  | "provider.register"
  | "net.fetch"
  | "shell.openExternal"
@@ -403,7 +411,8 @@ MVP may implement only:
    is missing: `themes` → `ui.theme`, `views` → `ui.view`, `providers` →
    `provider.register`, stdio servers → `mcp.server.local`, remote
    servers → `mcp.server.remote`, `services` → `background.service`,
-   `bus.publish` → `bus.publish`, `bus.subscribe` → `bus.subscribe`.
+   `bus.publish` → `bus.publish`, `bus.subscribe` → `bus.subscribe`,
+   `permissionDeny` → `agent.permission.deny` (including an empty `{}`).
    `skills` is the exception — it predates the permission gate, so a manifest
    without `agent.prompt.inject` still validates and the runtime simply skips
    the skills

@@ -976,6 +976,10 @@ sklm: {
     permissionModeAsk: "매번 묻기",
     permissionModeAcceptEdits: "편집 자동 승인",
     permissionModeAuto: "완전 자동",
+    permissionDeny: "거부 규칙",
+    permissionDenyDesc: "전체 자동 모드에서도 항상 거부하는 JSON glob입니다. paths는 .., ~, 심볼릭 링크를 해석한 뒤 Read/Write/Edit/Glob/Grep의 path/file_path에 맞으며 Bash/Grep 내용에는 적용되지 않습니다. commands는 앞뒤 공백을 제거한 Bash 문자열 접두사 또는 glob이며 argv가 아닙니다. 플러그인은 규칙을 추가만 할 수 있고 사용자의 규칙은 제거할 수 없습니다.",
+    permissionDenyPlaceholder: "{ \"tools\": [\"Bash\"], \"paths\": [\"**/.env\", \"~/.ssh/**\"], \"commands\": [\"rm -rf\"] }",
+    permissionDenySaveError: "거부 규칙을 저장하지 못했습니다. JSON을 확인하세요.",
     autoReview: "자동 검토",
     autoReviewDesc: "PI-Desktop은 프로젝트 파일을 읽고 편집하며 추가 접근 요청을 자동으로 결정할 수 있습니다. 자동 검토는 실수할 수 있습니다.",
     learnMore: "자세히 알아보기",
@@ -1782,6 +1786,7 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
       mcp: "MCP 서버",
       services: "백그라운드 서비스",
       bus: "플러그인 메시지",
+      permissionDeny: "권한 거부 규칙",
     },
     serviceState: {
       starting: "시작 중",
@@ -1817,6 +1822,7 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
       "agent.complete": "모델로 일회성 완성 실행",
       "agent.extension": "에이전트 안에서 코드 실행",
       "provider.register": "모델 목록에 프로바이더 추가",
+      "agent.permission.deny": "항상 거부하는 권한 규칙 추가",
       "desktop.control": "데스크톱 제어",
       "models.list": "인증된 모델 목록 표시",
       "session.read": "모델에 전송되는 현재 대화 읽기",
@@ -1860,6 +1866,7 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
       "agent.extension": "ExtensionAPI 모듈을 에이전트 프로세스 안에서 에이전트 자체 도구와 같은 권한으로 실행합니다. 신뢰하는 코드만 켜세요.",
       "provider.register":
         "이 플러그인이 정의한 프로바이더를 설정의 프로바이더 목록에 추가합니다. 플러그인은 엔드포인트와 모델을 제공하며, API 키는 PI-Desktop에 남습니다.",
+      "agent.permission.deny": "플러그인이 도구·경로·명령 glob을 추가해 항상 거부하게 합니다. 사용자 설정을 완화할 수는 없습니다.",
       "desktop.control":
         "플러그인이 검토된 PI-Desktop 제어 카탈로그를 호출할 수 있습니다. 파괴적 작업에는 여전히 confirm=true가 필요하며 MCP bearer token은 노출되지 않습니다.",
       "models.list": "로그인한 모델을 볼 수 있지만 키는 받지 않습니다.",

@@ -409,8 +409,13 @@ How high-risk tool calls get approved is governed by a **permission mode**:
 | `accept-edits` | auto-allow | confirm |
 | `auto` | auto-allow | auto-allow |
 
+These three modes are unchanged (D433 / ADR 0267). Always-deny is an overlay,
+not a fourth mode: a matching `permissionDeny` rule is `deny` even under
+`auto`.
+
 An explicit outside-workspace path is an exception to the low-risk row: it is
-auto-allowed only in `auto`; `ask` and `accept-edits` both confirm it.
+auto-allowed only in `auto`; `ask` and `accept-edits` both confirm it. Deny-first
+matching still precedes that exception.
 
 Resolution order per tool call (host-core `tools.execute`):
 
@@ -425,6 +430,10 @@ Rules:
   set via `session.configure` `permissionMode`.
 - Plan's hard deny wins over every permission mode for Write/Edit and plugin
   tools that lack `planSafeActions`. `auto` cannot re-enable a hidden or denied tool.
+- Deny-first overlay (D433 / ADR 0267) wins over `auto`, session grants,
+  low-risk auto-allow, `accept-edits`, and the outside-workspace auto
+  exception. A match is `PermissionDecision::Deny` and execution returns the
+  existing `TOOL_DENIED` code. Contract-mode hard deny still precedes it.
 - Low-risk tools (`Read`/`Glob`/`Grep`) inside the session roots auto-allow in
   every mode, as before.
 - `BrowserPreview` is an explicit read-only UI inspection capability and is
@@ -443,6 +452,66 @@ Rules:
   global setting until the user chooses a mode.
 - Enforcement lives in host-core only; the sidecar/model is never told the
   mode and cannot influence it.
+
+Per-call host evaluation order (frozen, D115 / D198 / D433):
+
+1. Resolve permission mode (session override → global default → `ask`)
+2. Plan/Goal hard deny (Write/Edit, plugin tools without `planSafeActions`,
+   unknown tools)
+3. Deny-first overlay match → `deny` / `TOOL_DENIED`
+4. Explicit outside-workspace path (`auto` allows; otherwise ask)
+5. Low-risk auto-allow
+6. `accept-edits` Write/Edit auto-allow; `auto` auto-allow
+7. Session grants
+8. Confirmation card (120s timeout → deny)
+
+Scratch-directory writes (D114) stay prompt-free **after** this evaluation, so
+a deny-first hit still wins.
+
+### Deny-first overlay (D433 / ADR 0267)
+
+`AppSettings.permissionDeny` and `contributes.permissionDeny` share one object:
+
+```ts
+type PermissionDenyRules = {
+  tools?: string[];
+  paths?: string[];
+  commands?: string[];
+};
+```
+
+Unknown keys are rejected. `null` or `{}` is an empty overlay. Each list is at
+most 256 entries; each entry is a non-empty string of at most 512 characters.
+Settings writes are validated in host-core; a corrupt persisted object is
+skipped at evaluation time. Shallow settings merge overwrites the whole
+`permissionDeny` key.
+
+The overlay is the union of the user's settings and `contributes.permissionDeny`
+from every **enabled** plugin that has been granted `agent.permission.deny` and
+whose `ActivationScope` matches the session workspace (`global` always;
+project-scoped only when the session has a project and the scope hits). Scratch
+is not treated as a project. Plugins are deny-only: there is no `allow` key, and
+a plugin cannot remove a user rule.
+
+Matching (host-core `globset` 0.4; SDK and Settings UI check shape only):
+
+- **tools** — glob against the tool name (`literal_separator`). `Bash` denies
+  every Bash call; `plugin_*` denies every plugin tool.
+- **paths** — glob against `path` / `file_path` / Edit `MV` dest on any tool
+  that sends those keys. Matching uses the trimmed string, `~` expansion
+  (user home), Windows `/c/...` and `\\?\` spellings, the file name, the
+  lexically resolved absolute form against the session tool root (project, or
+  scratch when the session has no project), and the same dangling-symlink
+  ancestor resolver execution uses. Relative `../`, `~`, and a Write through a
+  dangling workspace symlink therefore hit the same rule as the path
+  execution would write. Path globs do not inspect Bash command text or Grep
+  contents. `\\` is treated as `/`; a pattern that matches only the file name
+  still hits (`**/.env` and `.env` both deny `.env`). Case-insensitive on
+  Windows.
+- **commands** — Bash `command` only, after trim. A pattern with glob
+  metacharacters (`*`, `?`, `[`) is a glob; otherwise it is a prefix match
+  that must be the whole command or be followed by whitespace. This is a
+  string match, not argv. Prefix matching is case-insensitive on Windows.
 
 ## 7. Permission Flow
 
@@ -605,6 +674,6 @@ Naming:
 
 - MCP tools
 - tool group toggles
-- command allowlist / denylist
+- command allowlist (command denylist shipped as `permissionDeny.commands`, D433)
 - dry-run mode
 - apply patches after preview
